@@ -413,6 +413,7 @@ import { pickLatestClosing, type ResolvedClosing } from "@shared/equipmentContin
 import { computeEquipmentUsage } from "@shared/equipmentUsage";
 import { isMeaningfulEquipmentRow, meaningfulEquipmentRows } from "@shared/equipmentUsage";
 import { shouldCreateDprEquipmentDieselLedger } from "@shared/dprPlantLink";
+import { dprProgressReviewFactsChanged, resolveDprProgressSources } from "@shared/dprProgressIdentity";
 import { normaliseUnit, computeRequirementStatus, isContractCutToFillDescription } from "@shared/planningEngine";
 import { convertSolidQty } from "@shared/uomConvert";
 import { canonMaterialName } from "@shared/materialMatch";
@@ -530,6 +531,20 @@ export type DprEquipmentClosureAudit = {
   userName?: string | null;
   closedAt?: Date;
   allowMovedSourceReuse?: boolean;
+  /**
+   * An administrator may correct the report copy of a moved source segment.
+   * The canonical predecessor remains immutable; its old DPR log plus this
+   * new version log provide the audit trail.
+   */
+  allowMovedSourceCorrection?: boolean;
+  /**
+   * Exact canonical usage ids an administrator is correcting in this DPR
+   * version. The usage is row-locked and updated in the same DPR transaction.
+   * This must be row-scoped: a version can contain several linked rows, and
+   * unchanged unowned rows must remain historical rather than being adopted
+   * merely because another row was corrected.
+   */
+  allowUnownedLinkedCorrectionIds?: readonly number[];
   /** Clone copies an existing physical event: retain its canonical linkage. */
   preserveLinkedClone?: boolean;
   /** Clone-log id -> legacy source-log id, used to establish linkage once. */
@@ -3077,7 +3092,7 @@ export class DatabaseStorage implements IStorage {
       // 2. Insert Progress Entries with uppercase text fields
       if (dprData.progress?.length) {
         const progressWithPersonnel = dprData.progress.map(p => {
-          const { personnelIds, ...progressData } = p as any;
+          const { personnelIds, persistedId: _persistedId, uomOverrideReason: _uomOverrideReason, ...progressData } = p as any;
           return { progressData: { ...progressData, dprId, activity: progressData.activity?.toUpperCase() || progressData.activity, noSiteWorkDescription: progressData.noSiteWorkDescription?.toUpperCase() || progressData.noSiteWorkDescription, incidentalDescription: progressData.incidentalDescription?.toUpperCase() || progressData.incidentalDescription }, personnelIds: personnelIds || [] };
         });
         insertedProgress = await tx.insert(progressEntries).values(
@@ -3406,7 +3421,7 @@ export class DatabaseStorage implements IStorage {
 
       if (dprData.progress?.length) {
         const progressWithPersonnel = dprData.progress.map(p => {
-          const { personnelIds, ...progressData } = p as any;
+          const { personnelIds, persistedId: _persistedId, uomOverrideReason: _uomOverrideReason, ...progressData } = p as any;
           return { progressData: { ...progressData, dprId: id, activity: progressData.activity?.toUpperCase() || progressData.activity, noSiteWorkDescription: progressData.noSiteWorkDescription?.toUpperCase() || progressData.noSiteWorkDescription, incidentalDescription: progressData.incidentalDescription?.toUpperCase() || progressData.incidentalDescription }, personnelIds: personnelIds || [] };
         });
         const insertedProgress = await tx.insert(progressEntries).values(progressWithPersonnel.map(p => p.progressData)).returning();
@@ -3504,7 +3519,7 @@ export class DatabaseStorage implements IStorage {
 
       if (dprData.progress?.length) {
         const progressWithPersonnel = dprData.progress.map(p => {
-          const { personnelIds, ...progressData } = p as any;
+          const { personnelIds, persistedId: _persistedId, uomOverrideReason: _uomOverrideReason, ...progressData } = p as any;
           return { progressData: { ...progressData, dprId: id, activity: progressData.activity?.toUpperCase() || progressData.activity, noSiteWorkDescription: progressData.noSiteWorkDescription?.toUpperCase() || progressData.noSiteWorkDescription, incidentalDescription: progressData.incidentalDescription?.toUpperCase() || progressData.incidentalDescription }, personnelIds: personnelIds || [] };
         });
         const insertedProgress = await tx.insert(progressEntries).values(
@@ -3961,8 +3976,17 @@ export class DatabaseStorage implements IStorage {
       const preservedEquipmentInputs = await this.preserveOmittedEquipmentAllocationsTx(tx, originalEquipmentRows, dprData.equipment as any[] | undefined);
       const equipmentInputs = meaningfulEquipmentRows(preservedEquipmentInputs);
       dprData = { ...dprData, equipment: equipmentInputs as any };
-      const originalProgressForRemap = await tx.select({ id: progressEntries.id, entryKey: progressEntries.entryKey })
+      const originalProgressForRemap = await tx.select()
         .from(progressEntries).where(eq(progressEntries.dprId, originalId));
+      const progressSourceResolution = resolveDprProgressSources(
+        Array.isArray(dprData.progress) ? dprData.progress : [],
+        originalProgressForRemap as any[],
+      );
+      if (!progressSourceResolution.ok) {
+        const error = new Error(progressSourceResolution.message);
+        (error as any).code = "DPR_PROGRESS_IDENTITY_INVALID";
+        throw error;
+      }
 
       // Insert structure items (for workType = "structure")
       if (dprData.structureItems?.length) {
@@ -3974,13 +3998,34 @@ export class DatabaseStorage implements IStorage {
       // Insert edited progress entries with uppercase text fields
       if (dprData.progress?.length) {
         insertedProgress = await tx.insert(progressEntries).values(
-          dprData.progress.map(p => ({ 
-            ...p, 
-            dprId,
-            activity: (p as any).activity?.toUpperCase() || (p as any).activity,
-            noSiteWorkDescription: (p as any).noSiteWorkDescription?.toUpperCase() || (p as any).noSiteWorkDescription,
-            incidentalDescription: (p as any).incidentalDescription?.toUpperCase() || (p as any).incidentalDescription,
-          }))
+          dprData.progress.map((p, index) => {
+            const progressInput = p as any;
+            const source = progressSourceResolution.sources[index];
+            const relevantFactsChanged = !!source
+              && dprProgressReviewFactsChanged(source as any, progressInput);
+            const preservedSource = source && !relevantFactsChanged ? source : undefined;
+            const {
+              persistedId: _persistedId,
+              uomOverrideReason: _uomOverrideReason,
+              ...persistedProgress
+            } = progressInput;
+            return {
+              ...persistedProgress,
+              dprId,
+              // Version payloads intentionally expose the editable activity
+              // fields only. Carry forward server-side review/link facts so
+              // recreating a progress row cannot erase its audit history.
+              linkReviewRequired: preservedSource?.linkReviewRequired ?? false,
+              chainageReviewStatus: preservedSource?.chainageReviewStatus ?? null,
+              scopeWarningType: preservedSource?.scopeWarningType ?? null,
+              scopeOverrideReason: preservedSource?.scopeOverrideReason ?? null,
+              scopeOverrideBy: preservedSource?.scopeOverrideBy ?? null,
+              scopeOverrideAt: preservedSource?.scopeOverrideAt ?? null,
+              activity: (p as any).activity?.toUpperCase() || (p as any).activity,
+              noSiteWorkDescription: (p as any).noSiteWorkDescription?.toUpperCase() || (p as any).noSiteWorkDescription,
+              incidentalDescription: (p as any).incidentalDescription?.toUpperCase() || (p as any).incidentalDescription,
+            };
+          })
         ).returning();
       }
       await this.remapDprSourceLinksTx(tx, originalProgressForRemap, insertedProgress);
@@ -4044,6 +4089,8 @@ export class DatabaseStorage implements IStorage {
               supplier: m.supplier,
               location: m.location,
               receiptNumber: m.receiptNumber,
+              boqItemId: m.boqItemId,
+              structureId: m.structureId,
             }))
           );
         }
@@ -6523,6 +6570,11 @@ export class DatabaseStorage implements IStorage {
     const linkedLogs = logs
       .filter((log) => Number(log.plantUsageId) > 0)
       .sort((a, b) => Number(a.plantUsageId) - Number(b.plantUsageId));
+    const unownedCorrectionIds = new Set(
+      (audit?.allowUnownedLinkedCorrectionIds ?? [])
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    );
 
     for (const log of linkedLogs) {
       const usageId = Number(log.plantUsageId);
@@ -6545,7 +6597,8 @@ export class DatabaseStorage implements IStorage {
       const isMaterializedSite = usage.dprId != null
         && usage.destinationType === "site"
         && usage.plantName === "SITE";
-      const ownsDprFacts = isMovementSuccessor || isMaterializedSite;
+      const ownsDprFacts = isMovementSuccessor || isMaterializedSite
+        || unownedCorrectionIds.has(usageId);
 
       if (usage.status === "open") {
         if (usage.date !== dpr.date) {
@@ -6567,7 +6620,12 @@ export class DatabaseStorage implements IStorage {
         }
       }
 
-      if (successor) {
+       if (successor) {
+         // An administrator may correct the superseded DPR's report copy
+         // without mutating the canonical predecessor or its successor. The
+         // replacement equipment_log row is committed in this transaction,
+         // so the old and corrected report facts remain auditable.
+         if (audit?.allowMovedSourceCorrection) continue;
         if (audit?.allowMovedSourceReuse && usage.dprId != null) {
           const [originalLog] = await tx.select().from(equipmentLogs).where(and(
             eq(equipmentLogs.dprId, usage.dprId),

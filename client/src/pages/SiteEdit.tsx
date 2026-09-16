@@ -69,7 +69,7 @@ import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arr
 import { transitionDieselSource, validateDieselTankBalance } from "@shared/dieselEntryValidation";
 
 interface ProgressEntry {
-  /** Client-only database id for exact-row report deep links; stripped on save. */
+  /** Persisted row id used as a server-validated legacy-facts fallback. */
   persistedId?: number;
   // Batch 06C §22: stable photo-link key (same semantics as Guided/New DPR).
   entryKey: string;
@@ -93,6 +93,11 @@ interface ProgressEntry {
   quantitySource: string;
   quantitySourceNote: string;
   chainageOverrideReason: string;
+  // Admin-only physical length correction.  The stored length remains a
+  // historical fact; ordinary editors continue to use the chainage span.
+  lengthOverrideReason: string;
+  // Admin-only evidence for a normalized UOM conversion.
+  uomOverrideReason: string;
   executedBy: string;
   // 06P: optional physical layer/lift number; null = not multi-layer.
   layerNo: number | null;
@@ -172,6 +177,8 @@ interface MaterialEntry {
   supplier: string;
   location: string;
   receiptNumber: string;
+  boqItemId: number | null;
+  structureId: string | null;
 }
 
 interface SitePurchaseEntry {
@@ -197,6 +204,9 @@ interface StructureItem {
   quantity: number | null;
   uom: string;
   remarks: string;
+  boqItemId?: number | null;
+  dprConversionFactor?: number | null;
+  structureId?: string | null;
 }
 
 const STRUCTURE_UOM_OPTIONS = ["m³", "m²", "m", "MT", "Nos", "RM"];
@@ -205,7 +215,7 @@ const STRUCTURE_UOM_OPTIONS = ["m³", "m²", "m", "MT", "Nos", "RM"];
 // Used for initial load, draft comparison, and discard-draft restore.
 function mapDprToFormState(dpr: any) {
   const baseSite = dpr.site.replace(/ – (Edited by|Copy by) .+$/, '').trim();
-  const header = { date: dpr.date, site: baseSite, engineer: dpr.engineer };
+  const header = { date: dpr.date, site: baseSite, engineer: dpr.engineer, remarks: dpr.remarks || "" };
   const workType: "road" | "structure" = dpr.workType === "structure" ? "structure" : "road";
   const structureItems: StructureItem[] = dpr.structureItems?.length
     ? dpr.structureItems.map((s: any) => ({
@@ -217,8 +227,11 @@ function mapDprToFormState(dpr: any) {
         quantity: s.quantity ?? null,
         uom: s.uom || "m³",
         remarks: s.remarks || "",
+        boqItemId: s.boqItemId ?? null,
+        dprConversionFactor: s.dprConversionFactor ?? null,
+        structureId: s.structureId ?? null,
       }))
-    : [{ structureType: "Culvert", structureSubType: "Pipe Culvert", structureName: "", stage: "Excavation", itemOfWork: "Excavation", quantity: null, uom: "m³", remarks: "" }];
+    : [{ structureType: "Culvert", structureSubType: "Pipe Culvert", structureName: "", stage: "Excavation", itemOfWork: "Excavation", quantity: null, uom: "m³", remarks: "", boqItemId: null, dprConversionFactor: null, structureId: null }];
 
   const progress: ProgressEntry[] = dpr.progress?.length
     ? dpr.progress.map((p: any) => ({
@@ -231,7 +244,7 @@ function mapDprToFormState(dpr: any) {
         chainageFrom: p.chainageFrom || "",
         chainageTo: p.chainageTo || "",
         // Road-progress length is a chainage-derived physical measurement.
-        length: calculateLengthFromChainage(p.chainageFrom || "", p.chainageTo || ""),
+        length: p.length ?? calculateLengthFromChainage(p.chainageFrom || "", p.chainageTo || ""),
         width: p.width,
         thickness: p.thickness,
         quantity: p.quantity,
@@ -245,6 +258,8 @@ function mapDprToFormState(dpr: any) {
         quantitySource: p.quantitySource || "",
         quantitySourceNote: p.quantitySourceNote || "",
         chainageOverrideReason: p.chainageOverrideReason || "",
+        lengthOverrideReason: p.lengthOverrideReason || "",
+        uomOverrideReason: p.uomOverrideReason || "",
         executedBy: p.executedBy || "",
         layerNo: p.layerNo != null ? Number(p.layerNo) : null,
         isIncidental: !!p.isIncidental,
@@ -252,7 +267,7 @@ function mapDprToFormState(dpr: any) {
         ...normalizeExcavationMaterialOutcome(p.quantity, p.materialOutcome, p.reusableQty),
         allocations: [],
       }))
-     : [{ entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null, isIncidental: false, incidentalDescription: "", materialOutcome: null, reusableQty: null, allocations: [] }];
+      : [{ entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", lengthOverrideReason: "", uomOverrideReason: "", executedBy: "", layerNo: null, isIncidental: false, incidentalDescription: "", materialOutcome: null, reusableQty: null, allocations: [] }];
 
   const equipment: EquipmentEntry[] = dpr.equipment?.length
     ? dpr.equipment.map((e: any) => ({
@@ -325,6 +340,8 @@ function mapDprToFormState(dpr: any) {
         supplier: m.supplier || "",
         location: m.location || "",
         receiptNumber: m.receiptNumber || "",
+        boqItemId: m.boqItemId ?? null,
+        structureId: m.structureId ?? null,
       }))
     : [];
 
@@ -364,24 +381,23 @@ export default function SiteEdit() {
 
   const isCompleteMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('complete');
 
-  // Get PIN and role from sessionStorage (set by SiteReport before navigating)
-  // Keep credentials in sessionStorage until successful save to handle page refresh
+  // Keep the edit credential in sessionStorage until successful save to
+  // handle page refresh. Admin status is always read from authenticated user
+  // data below; a stored route role is never used to unlock fields.
   const [pin] = useState(() => {
     if (isCompleteMode) return "complete";
     return sessionStorage.getItem(`edit_pin_${id}`) || "";
   });
-  
-  const [role] = useState<"manager" | "admin" | "engineer">(() => {
-    if (isCompleteMode) return "engineer";
-    const storedRole = sessionStorage.getItem(`auth_role_${id}`) || "manager";
-    return storedRole as "manager" | "admin";
-  });
-
   // If the user navigated directly (bookmark/share/refresh), sessionStorage may be empty.
   // Fall back to the live permission check so authorised users are never locked out.
   const canEditLive = sectionCan("site_dprs", "edit");
+  // Admin editability is an authenticated-user fact, not a sessionStorage
+  // role or a client supplied route mode.  Keep this separate from the
+  // permission token because non-admin edit grants retain their normal locks.
+  const isAdmin = authUser?.isAdmin === true;
   const effectivePin = pin || (canEditLive ? (authUser?.isAdmin ? "admin" : "manager") : "");
-  const effectiveRole = (pin ? role : (canEditLive ? (authUser?.isAdmin ? "admin" : "manager") : role)) as "manager" | "admin" | "engineer";
+  const effectiveRole: "manager" | "admin" | "engineer" =
+    isAdmin ? "admin" : isCompleteMode ? "engineer" : "manager";
 
   // editGranted: gates the edit form for submitted DPRs.
   // True if: came through EditPermissionButton flow (token already in sessionStorage),
@@ -411,14 +427,12 @@ export default function SiteEdit() {
   useEffect(() => {
     if (!pin && effectivePin && editGranted) {
       sessionStorage.setItem(`edit_pin_${id}`, effectivePin);
-      sessionStorage.setItem(`auth_role_${id}`, effectiveRole);
     }
   }, [id, pin, effectivePin, effectiveRole, editGranted]);
 
   // Clear credentials and draft after successful save
   const clearCredentials = () => {
     sessionStorage.removeItem(`edit_pin_${id}`);
-    sessionStorage.removeItem(`auth_role_${id}`);
     sessionStorage.removeItem(DRAFT_KEY);
   };
 
@@ -446,6 +460,7 @@ export default function SiteEdit() {
     date: format(new Date(), "yyyy-MM-dd"),
     site: "",
     engineer: "",
+    remarks: "",
   });
 
   type SiteEditBoqItem = BillItem & {
@@ -508,7 +523,7 @@ export default function SiteEdit() {
   });
 
   const [progress, setProgress] = useState<ProgressEntry[]>([
-    { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null, isIncidental: false, incidentalDescription: "" }
+    { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", lengthOverrideReason: "", uomOverrideReason: "", executedBy: "", layerNo: null, isIncidental: false, incidentalDescription: "" }
   ]);
 
   // Batch 06B — chainage duplicate/overlap guard (same neutral shared helper
@@ -646,7 +661,7 @@ export default function SiteEdit() {
 
   const [workType, setWorkType] = useState<"road" | "structure">("road");
   const [structureItems, setStructureItems] = useState<StructureItem[]>([
-    { structureType: "Culvert", structureName: "", itemOfWork: "Excavation", quantity: null, uom: "m³", remarks: "" }
+    { structureType: "Culvert", structureSubType: "Pipe Culvert", structureName: "", stage: "Excavation", itemOfWork: "Excavation", quantity: null, uom: "m³", remarks: "", boqItemId: null, dprConversionFactor: null, structureId: null }
   ]);
 
   useEffect(() => {
@@ -911,10 +926,13 @@ export default function SiteEdit() {
     },
   });
 
-  // Road-progress length is always the physical chainage span. Invalid or
-  // incomplete chainage deliberately produces no length.
+  // Ordinary editors use the physical chainage span. Admin corrections may
+  // retain an explicit physical length override; invalid/incomplete
+  // chainage still deliberately produces no derived length.
   const getEffectiveLength = (entry: ProgressEntry): number | null =>
-    calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
+    isAdmin && entry.length != null
+      ? entry.length
+      : calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
 
   const changeChainage = (idx: number, field: "chainageFrom" | "chainageTo", value: string) => {
     const updated = [...progress];
@@ -932,7 +950,9 @@ export default function SiteEdit() {
     entry.boqItemId != null ? (siteBoqItems.find(i => i.id === entry.boqItemId) as any) ?? null : null;
 
   const progressUom = (entry: ProgressEntry): string =>
-    entryBoqItem(entry)
+    isAdmin && entry.uom?.trim()
+      ? entry.uom
+      : entryBoqItem(entry)
       ? resolveBoqUomProfile(entryBoqItem(entry)).uom
       : (deriveDprUom(getEffectiveLength(entry), entry.width, entry.thickness) ?? entry.uom);
 
@@ -941,9 +961,11 @@ export default function SiteEdit() {
     const boqItem = entryBoqItem(entry);
     const geo = calculateDprQuantity(length, entry.width, entry.thickness, boqItem);
     if (geo != null) {
-      entry.uom = boqItem
-        ? resolveBoqUomProfile(boqItem).uom
-        : (deriveDprUom(length, entry.width, entry.thickness) ?? entry.uom);
+      if (!isAdmin) {
+        entry.uom = boqItem
+          ? resolveBoqUomProfile(boqItem).uom
+          : (deriveDprUom(length, entry.width, entry.thickness) ?? entry.uom);
+      }
       return geo;
     }
     return entry.quantity ?? null;
@@ -956,9 +978,11 @@ export default function SiteEdit() {
     const boqItem = entryBoqItem(entry);
     const geo = calculateDprQuantity(length, entry.width, entry.thickness, boqItem);
     if (geo != null) {
-      entry.uom = boqItem
-        ? resolveBoqUomProfile(boqItem).uom
-        : (deriveDprUom(length, entry.width, entry.thickness) ?? entry.uom);
+      if (!isAdmin) {
+        entry.uom = boqItem
+          ? resolveBoqUomProfile(boqItem).uom
+          : (deriveDprUom(length, entry.width, entry.thickness) ?? entry.uom);
+      }
       entry.quantity = geo;
       entry.quantitySource = "calculated";
       entry.quantitySourceNote = "";
@@ -1002,7 +1026,7 @@ export default function SiteEdit() {
 
   const addRow = (section: 'progress' | 'equipment' | 'labour') => {
     if (section === 'progress') {
-      setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null, isIncidental: false, incidentalDescription: "" }]);
+      setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", lengthOverrideReason: "", uomOverrideReason: "", executedBy: "", layerNo: null, isIncidental: false, incidentalDescription: "" }]);
     } else if (section === 'equipment') {
       // 06Q: rows added during the edit session are flagged isNew — they get
       // opening-reading continuity when equipment is selected.
@@ -1035,7 +1059,7 @@ export default function SiteEdit() {
   };
 
   const addMaterial = () => {
-    setMaterials([...materials, { type: "Received", material: "", quantity: null, uom: "", vehicleNumber: "", supplier: "", location: "", receiptNumber: "" }]);
+    setMaterials([...materials, { type: "Received", material: "", quantity: null, uom: "", vehicleNumber: "", supplier: "", location: "", receiptNumber: "", boqItemId: null, structureId: null }]);
   };
   const removeMaterial = (index: number) => {
     setMaterials(materials.filter((_, i) => i !== index));
@@ -1089,7 +1113,10 @@ export default function SiteEdit() {
     workType,
     structureItems: workType === "structure" ? structureItems.filter(s => s.itemOfWork) : [],
     progress: workType === "road" ? progress.filter(p => p.activity).map(p => {
-      const { persistedId: _persistedId, allocations: _allocations, ...persisted } = p;
+      // Keep the persisted row id as a server-validated fallback when legacy
+      // progress rows have no stable entryKey. It is never inserted as a DB
+      // column, but lets versioning retain review/scope facts safely.
+      const { allocations: _allocations, ...persisted } = p;
       if (p.noSiteWork) {
         return {
           ...persisted,
@@ -1097,11 +1124,13 @@ export default function SiteEdit() {
           length: null, width: null, thickness: null, quantity: null,
           chainageFromKm: null, chainageToKm: null,
           quantitySource: null, quantitySourceNote: null,
-          chainageOverrideReason: null, executedBy: null,
+          chainageOverrideReason: null, lengthOverrideReason: null, uomOverrideReason: null, executedBy: null,
           isIncidental: false, incidentalDescription: null,
         };
       }
-      const effectiveLength = getEffectiveLength(p);
+      const effectiveLength = isAdmin
+        ? getEffectiveLength(p)
+        : calculateLengthFromChainage(p.chainageFrom, p.chainageTo);
       const effectiveQuantity = p.quantity ?? calculateQuantity(p);
       return {
         ...persisted,
@@ -1114,6 +1143,8 @@ export default function SiteEdit() {
         quantitySource: p.quantitySource || null,
         quantitySourceNote: p.quantitySourceNote?.trim() || null,
         chainageOverrideReason: p.chainageOverrideReason || null,
+        lengthOverrideReason: p.lengthOverrideReason?.trim() || null,
+        uomOverrideReason: p.uomOverrideReason?.trim() || null,
         executedBy: p.executedBy || null,
         // Batch 06V: incidental fields
         isIncidental: p.isIncidental,
@@ -1155,6 +1186,7 @@ export default function SiteEdit() {
       type: m.type, material: m.material, quantity: m.quantity, uom: m.uom,
       vehicleNumber: m.vehicleNumber || undefined, supplier: m.supplier || undefined,
       location: m.location || undefined, receiptNumber: m.receiptNumber || undefined,
+      boqItemId: m.boqItemId ?? null, structureId: m.structureId ?? null,
     })),
     sitePurchases: sitePurchases.filter(sp => sp.itemDescription),
   });
@@ -1364,7 +1396,6 @@ export default function SiteEdit() {
               onEditGranted={() => {
                 const r = authUser?.isAdmin ? "admin" : "manager";
                 sessionStorage.setItem(`edit_pin_${id}`, r);
-                sessionStorage.setItem(`auth_role_${id}`, r);
                 setEditGranted(true);
               }}
               label="Request Edit"
@@ -1491,7 +1522,7 @@ export default function SiteEdit() {
         <CardHeader>
           <CardTitle>Report Details</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <Label>Date</Label>
             <Input
@@ -1549,6 +1580,16 @@ export default function SiteEdit() {
               </Button>
             </div>
           </div>
+          <div>
+            <Label>Remarks</Label>
+            <Textarea
+              value={header.remarks}
+              onChange={(e) => setHeader({ ...header, remarks: e.target.value })}
+              placeholder="Optional report remarks"
+              rows={2}
+              data-testid="input-dpr-remarks"
+            />
+          </div>
         </CardContent>
       </Card>
 
@@ -1576,7 +1617,7 @@ export default function SiteEdit() {
               </Button>
             )}
             {workType === "structure" && (
-              <Button size="sm" variant="outline" onClick={() => setStructureItems(prev => [...prev, { structureType: "Culvert", structureSubType: "Pipe Culvert", structureName: "", stage: "Excavation", itemOfWork: "Excavation", quantity: null, uom: "m³", remarks: "" }])} data-testid="button-add-structure">
+              <Button size="sm" variant="outline" onClick={() => setStructureItems(prev => [...prev, { structureType: "Culvert", structureSubType: "Pipe Culvert", structureName: "", stage: "Excavation", itemOfWork: "Excavation", quantity: null, uom: "m³", remarks: "", boqItemId: null, dprConversionFactor: null, structureId: null }])} data-testid="button-add-structure">
                 <Plus className="w-4 h-4 mr-1" /> Add Item
               </Button>
             )}
@@ -1984,13 +2025,37 @@ export default function SiteEdit() {
                   <div>
                     <Label className="text-sm">Length (m)</Label>
                     <Input
-                      readOnly
-                      tabIndex={-1}
-                      className="bg-muted/50"
-                      value={calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo)?.toFixed(2) ?? ""}
+                      type={isAdmin ? "number" : "text"}
+                      step="0.01"
+                      readOnly={!isAdmin}
+                      tabIndex={isAdmin ? undefined : -1}
+                      className={isAdmin ? undefined : "bg-muted/50"}
+                      value={isAdmin
+                        ? (entry.length ?? calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo)?.toFixed(2) ?? "")
+                        : (calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo)?.toFixed(2) ?? "")}
                       placeholder="—"
+                      onChange={(e) => {
+                        if (!isAdmin) return;
+                        const updated = [...progress];
+                        updated[idx].length = e.target.value === "" ? null : parseFloat(e.target.value);
+                        applyCalc(updated[idx]);
+                        setProgress(updated);
+                      }}
                       data-testid={`input-length-${idx}`}
                     />
+                    {isAdmin && (
+                      <Input
+                        className="mt-1 h-8 text-xs"
+                        value={entry.lengthOverrideReason}
+                        onChange={(e) => {
+                          const updated = [...progress];
+                          updated[idx].lengthOverrideReason = e.target.value;
+                          setProgress(updated);
+                        }}
+                        placeholder="Admin correction reason (optional)"
+                        data-testid={`input-length-override-reason-${idx}`}
+                      />
+                    )}
                   </div>
                   <div>
                     <Label className="text-sm">Width (m)</Label>
@@ -2051,7 +2116,7 @@ export default function SiteEdit() {
                     </Label>
                     <Select
                       value={progressUom(entry)}
-                      disabled={!!entryBoqItem(entry) || !!deriveDprUom(getEffectiveLength(entry), entry.width, entry.thickness)}
+                      disabled={!isAdmin && (!!entryBoqItem(entry) || !!deriveDprUom(getEffectiveLength(entry), entry.width, entry.thickness))}
                       onValueChange={(val) => {
                         const updated = [...progress];
                         updated[idx].uom = val;
@@ -2066,6 +2131,19 @@ export default function SiteEdit() {
                         {UOM_OPTIONS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                       </SelectContent>
                     </Select>
+                    {isAdmin && (
+                      <Input
+                        className="mt-1 h-8 text-xs"
+                        value={entry.uomOverrideReason}
+                        onChange={(e) => {
+                          const updated = [...progress];
+                          updated[idx].uomOverrideReason = e.target.value;
+                          setProgress(updated);
+                        }}
+                        placeholder="Admin UOM conversion reason (optional)"
+                        data-testid={`input-uom-override-reason-${idx}`}
+                      />
+                    )}
                   </div>
                   <div>
                     <Label className="text-sm">Physical Qty ({progressUom(entry)})</Label>
@@ -2298,7 +2376,7 @@ export default function SiteEdit() {
             </Button>
           )}
           {workType === "structure" && (
-            <Button size="sm" variant="outline" className="w-full border-dashed" onClick={() => setStructureItems(prev => [...prev, { structureType: "Culvert", structureSubType: "Pipe Culvert", structureName: "", stage: "Excavation", itemOfWork: "Excavation", quantity: null, uom: "m³", remarks: "" }])} data-testid="button-add-structure-bottom">
+            <Button size="sm" variant="outline" className="w-full border-dashed" onClick={() => setStructureItems(prev => [...prev, { structureType: "Culvert", structureSubType: "Pipe Culvert", structureName: "", stage: "Excavation", itemOfWork: "Excavation", quantity: null, uom: "m³", remarks: "", boqItemId: null, dprConversionFactor: null, structureId: null }])} data-testid="button-add-structure-bottom">
               <Plus className="w-4 h-4 mr-1" /> Add Item
             </Button>
           )}
@@ -2393,7 +2471,10 @@ export default function SiteEdit() {
                 <Label className="text-sm">Equipment</Label>
                 <Select
                   value={entry.equipmentId ? String(entry.equipmentId) : ""}
-                  disabled={entry.plantUsageId != null}
+                   // equipmentId/plantUsageId are lifecycle identities and
+                   // remain immutable even for admins.  Other linked facts
+                   // are corrected through the version transaction below.
+                   disabled={entry.plantUsageId != null}
                   onValueChange={(val) => {
                     const updated = [...equipment];
                     const selectedEquip = activeEquipment.find(e => e.id === Number(val));
@@ -2537,7 +2618,7 @@ export default function SiteEdit() {
                   <Label className="text-sm">Diesel Source</Label>
                   <Select
                     value={entry.dieselSource ?? ""}
-                    disabled={entry.plantUsageId != null}
+                     disabled={entry.plantUsageId != null && !isAdmin}
                     onValueChange={(value) => {
                       const updated = [...equipment];
                       updated[idx] = transitionDieselSource(updated[idx], value);
@@ -2704,8 +2785,9 @@ export default function SiteEdit() {
                     reachLabel: [entry.chainageFrom, entry.chainageTo].filter(Boolean).join("–") || null,
                     side: entry.side || null,
                   }] : [])}
-                   enableTankContinuity={entry.dieselSource === "plant_stock"}
-                  onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, ...patch } : row))}
+                    enableTankContinuity={entry.dieselSource === "plant_stock"}
+                   allowLinkedSourceEdit={isAdmin}
+                   onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, ...patch } as EquipmentEntry : row))}
                   onWorkAssignmentChange={(activitySegments) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? {
                     ...row,
                     activitySegments,

@@ -239,8 +239,8 @@ const storedDpr = {
     dieselNorm: 5,
     expectedDiesel: null,
     equipmentId: 7701,
-    // Keep the real dispatch link so SiteEdit exercises linked-row tank edits
-    // without changing its immutable meter fields.
+    // Keep the real dispatch link so SiteEdit exercises authenticated admin
+    // corrections against a canonical lifecycle row.
     plantUsageId: 8101,
     dieselSource: "plant_stock",
     openingDiesel: 30,

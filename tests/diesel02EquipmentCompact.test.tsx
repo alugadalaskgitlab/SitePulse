@@ -347,6 +347,21 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
     expect(dieselInput.disabled).toBe(true);
   });
 
+  it("allows an authenticated admin correction of linked meter, time, and diesel facts", () => {
+    render(
+      <DprEquipmentCompact
+        row={{ ...contractorDailyRow, plantUsageId: 42, diesel: 12 }}
+        equipment={{ ownership: "hired", vendorName: "Fasi Uddin" }}
+        allowLinkedSourceEdit
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect((screen.getByTestId("equipment-compact-opening-meter-0") as HTMLInputElement).disabled).toBe(false);
+    expect((screen.getByTestId("equipment-compact-start-0") as HTMLInputElement).disabled).toBe(false);
+    expect((screen.getByTestId("equipment-compact-diesel-0") as HTMLInputElement).disabled).toBe(false);
+  });
+
   it("removes the old detailed and guided duplicate input nodes rather than merely collapsing them", () => {
     const detailed = fs.readFileSync("client/src/pages/SiteEdit.tsx", "utf8");
     const guided = fs.readFileSync("client/src/pages/GuidedDpr.tsx", "utf8");

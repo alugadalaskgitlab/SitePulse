@@ -167,3 +167,222 @@ describe("submitted clone/version project mutex", () => {
     expect(tx.events.indexOf("project-lock")).toBeLessThan(tx.events.indexOf("dpr-insert"));
   });
 });
+
+describe("versioned DPR lifecycle corrections", () => {
+  it("uses the real storage finalizer to row-lock and adopt an unowned closed usage", async () => {
+    const usage = {
+      id: 701,
+      date: "2026-03-10",
+      equipmentId: 77,
+      status: "closed",
+      dprId: null,
+      sourceUsageId: null,
+      successorId: null,
+      openingReading: 100,
+      closingReading: 110,
+      dieselIssued: 0,
+      dieselSource: "plant_stock",
+      dieselIncluded: false,
+    };
+    const events: string[] = [];
+    let selectCalls = 0;
+    const select = vi.fn(() => {
+      const results = [
+        [usage], // finalize: canonical usage
+        [], // finalize: successor lookup
+        [usage], // _updateEquipmentUsageTxn: canonical usage
+        [], // _updateEquipmentUsageTxn: successor lookup
+        [{ id: 77, name: "SOIL COMPACTOR", consumptionNorm: 5 }], // equipment master
+        [], // historical diesel ledger
+        [], // HLC party lookup
+      ];
+      const result = results[selectCalls++] ?? [];
+      const q: any = {
+        from() { return q; },
+        where() { return q; },
+        limit() { return q; },
+        then(resolve: (value: any) => unknown, reject?: (error: unknown) => unknown) {
+          return Promise.resolve(result).then(resolve, reject);
+        },
+      };
+      return q;
+    });
+    const update = vi.fn(() => {
+      const q: any = {
+        set(values: any) {
+          q.values = values;
+          return q;
+        },
+        where() { return q; },
+        returning: vi.fn(async () => [{ ...usage, dprId: 902, openingReading: 125, ...q.values }]),
+      };
+      return q;
+    });
+    const tx = {
+      execute: vi.fn(async () => {
+        events.push("usage-lock");
+      }),
+      select,
+      update,
+      delete: vi.fn(() => ({
+        where: vi.fn(async () => undefined),
+      })),
+    };
+
+    await (storage as any).finalizeDprEquipmentUsageTx(
+      tx,
+      { id: 902, date: "2026-03-10", site: "ALIPUR", dprStatus: "submitted", engineer: "FIELD ENGINEER" },
+      [{
+        plantUsageId: 701,
+        equipmentId: 77,
+        entryType: "time_meter",
+        openingReading: 125,
+        closingReading: 135,
+        startTime: "08:00",
+        endTime: "09:00",
+        operator: "OPERATOR",
+        task: "COMPACTION",
+        diesel: 0,
+        dieselSource: "plant_stock",
+      }],
+      {
+        userId: 42,
+        userName: "Admin",
+        allowUnownedLinkedCorrectionIds: [701],
+      },
+    );
+
+    expect(events).toEqual(["usage-lock"]);
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update.mock.results[0].value.set).toBeDefined();
+    expect(update.mock.results[0].value.values).toEqual(expect.objectContaining({
+      dprId: 902,
+      openingReading: 125,
+      closingReading: 135,
+      closedByUserId: 42,
+    }));
+  });
+
+  it("keeps a moved predecessor immutable while storing the corrected DPR copy", async () => {
+    const usage = {
+      id: 702,
+      date: "2026-03-10",
+      equipmentId: 77,
+      status: "closed",
+      dprId: 901,
+      sourceUsageId: null,
+      dieselIssued: 0,
+      dieselSource: "plant_stock",
+    };
+    let selectCalls = 0;
+    const select = vi.fn(() => {
+      const result = selectCalls++ === 0
+        ? [usage]
+        : [{ id: 703 }];
+      const q: any = {
+        from() { return q; },
+        where() { return q; },
+        limit() { return q; },
+        then(resolve: (value: any) => unknown, reject?: (error: unknown) => unknown) {
+          return Promise.resolve(result).then(resolve, reject);
+        },
+      };
+      return q;
+    });
+    const tx = {
+      execute: vi.fn(),
+      select,
+      update: vi.fn(),
+    };
+
+    await (storage as any).finalizeDprEquipmentUsageTx(
+      tx,
+      { id: 904, date: "2026-03-10", site: "ALIPUR", dprStatus: "submitted", engineer: "FIELD ENGINEER" },
+      [{
+        plantUsageId: 702,
+        equipmentId: 77,
+        entryType: "time_meter",
+        openingReading: 999,
+        closingReading: 110,
+        startTime: "08:00",
+        endTime: "09:00",
+        diesel: 0,
+        dieselSource: "plant_stock",
+      }],
+      { userId: 42, allowMovedSourceCorrection: true },
+    );
+
+    expect(tx.execute).toHaveBeenCalledTimes(1);
+    expect(tx.update).not.toHaveBeenCalled();
+  });
+
+  it("does not adopt an unchanged unowned row when another linked row is corrected", async () => {
+    const usage = (id: number) => ({
+      id,
+      date: "2026-03-10",
+      equipmentId: 77,
+      status: "closed",
+      dprId: null,
+      sourceUsageId: null,
+      dieselIssued: 0,
+      dieselSource: "plant_stock",
+    });
+    const first = usage(711);
+    const second = usage(712);
+    const selectResults = [
+      [first], [], [first], [], [{ id: 77, name: "SOIL COMPACTOR", consumptionNorm: 5 }], [], [],
+      [second], [], [second], [], [{ id: 77, name: "SOIL COMPACTOR", consumptionNorm: 5 }], [], [],
+    ];
+    let selectCalls = 0;
+    const select = vi.fn(() => {
+      const result = selectResults[selectCalls++] ?? [];
+      const q: any = {
+        from() { return q; },
+        where() { return q; },
+        limit() { return q; },
+        then(resolve: (value: any) => unknown, reject?: (error: unknown) => unknown) {
+          return Promise.resolve(result).then(resolve, reject);
+        },
+      };
+      return q;
+    });
+    const update = vi.fn(() => {
+      const q: any = {
+        set(values: any) {
+          q.values = values;
+          return q;
+        },
+        where() { return q; },
+        returning: vi.fn(async () => [{ ...first, ...q.values }]),
+      };
+      return q;
+    });
+    const tx = {
+      execute: vi.fn(),
+      select,
+      update,
+      delete: vi.fn(() => ({ where: vi.fn(async () => undefined) })),
+    };
+    const log = (plantUsageId: number, openingReading: number) => ({
+      plantUsageId,
+      equipmentId: 77,
+      entryType: "time_meter",
+      openingReading,
+      closingReading: openingReading + 10,
+      startTime: "08:00",
+      endTime: "09:00",
+      diesel: 0,
+      dieselSource: "plant_stock",
+    });
+
+    await (storage as any).finalizeDprEquipmentUsageTx(
+      tx,
+      { id: 905, date: "2026-03-10", site: "ALIPUR", dprStatus: "submitted", engineer: "FIELD ENGINEER" },
+      [log(711, 125), log(712, 200)],
+      { userId: 42, allowUnownedLinkedCorrectionIds: [711] },
+    );
+
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update.mock.results[0].value.values).toEqual(expect.objectContaining({ dprId: 905, openingReading: 125 }));
+  });
+});

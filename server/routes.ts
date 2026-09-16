@@ -68,7 +68,12 @@ import { insertAttachmentSchema, attachmentModuleTypes, boqProjects as boqProjec
 import { MAX_ACTIVITY_PHOTOS } from "@shared/dprPhotos";
 import { isBarSide, isDprSideCompatible, barSideLabel, parseChainageKm, areSidesDistinctCorridors } from "@shared/barSide";
 import { checkProgrammeLinkRow, deriveChainageReviewStatus, barSideCoverage, normalizeDprSideKey } from "@shared/dprProgrammeLink";
-import { checkQuantitySourceRow, resolveQuantitySource } from "@shared/dprGeometry";
+import { dprProgressReviewFactsChanged, resolveDprProgressSources } from "@shared/dprProgressIdentity";
+import {
+  checkQuantitySourceRow,
+  resolveQuantitySource,
+  resolveBoqUomProfile,
+} from "@shared/dprGeometry";
 import { evaluateDprSubmitReadiness, type DprReadinessIssue } from "@shared/dprSubmitReadiness";
 import { chainageOverlapReadinessIssues, isChainageGuardRow, unchangedChainageRowKeys, type CandidateChainageRow } from "@shared/chainageOverlap";
 import { blocksExternalReceiptsForBoqItem, mergeMaterialTripLinkage, reusedExcavationConfigurationIssue } from "@shared/materialReceiptSummary";
@@ -2600,6 +2605,7 @@ export async function registerRoutes(
   async function movedEquipmentVersionConflict(
     originalEquipment: any[],
     editedEquipment: any[],
+    allowMovedSourceCorrection = false,
   ): Promise<number | null> {
     const linkedOriginals = originalEquipment.filter((row) => Number(row?.plantUsageId) > 0);
     if (linkedOriginals.length === 0) return null;
@@ -2614,7 +2620,216 @@ export async function registerRoutes(
       const usageId = Number(original.plantUsageId);
       if (!movedIds.has(usageId)) continue;
       const edited = editedEquipment.find((row) => Number(row?.plantUsageId) === usageId);
-      if (materializedEquipmentLogChanged(original, edited)) return usageId;
+      // Omitting a moved source is a normal replacement/deletion: the
+      // canonical predecessor remains historical and its successor remains
+      // intact. An administrator may also correct the replacement DPR's copy
+      // safely; storage leaves the canonical predecessor untouched.
+      if (edited && materializedEquipmentLogChanged(original, edited) && !allowMovedSourceCorrection) {
+        return usageId;
+      }
+    }
+    return null;
+  }
+
+  async function unownedLinkedEquipmentConflicts(
+    originalEquipment: any[],
+    editedEquipment: any[],
+  ): Promise<number[]> {
+    const linkedOriginals = originalEquipment.filter((row) => Number(row?.plantUsageId) > 0);
+    if (linkedOriginals.length === 0) return [];
+    const ids = Array.from(new Set(linkedOriginals.map((row) => Number(row.plantUsageId))));
+    const lifecycleRows = await storage.getEquipmentUsageLifecycle(ids);
+    const changedIds: number[] = [];
+    for (const original of linkedOriginals) {
+      const usageId = Number(original.plantUsageId);
+      const lifecycle = lifecycleRows.find((row: any) => Number(row?.id) === usageId);
+      const edited = editedEquipment.find((row) => Number(row?.plantUsageId) === usageId);
+      if (
+        lifecycle
+        && edited
+        && lifecycle.successorId == null
+        && lifecycle.status !== "open"
+        && lifecycle.dprId == null
+        && lifecycle.sourceUsageId == null
+        && materializedEquipmentLogChanged(original, edited)
+      ) changedIds.push(usageId);
+    }
+    return changedIds;
+  }
+
+  /**
+   * Validate physical length and BOQ-unit semantics on versioned progress.
+   * Length is normally derived from chainage. Only an authenticated admin may
+   * retain a different physical length, and that exception must carry a
+   * reason that is persisted with the replacement progress row.
+   */
+  async function validateVersionProgressGeometry(
+    input: any,
+    opts: {
+      allowLengthOverride?: boolean;
+      allowUomOverride?: boolean;
+      sourceProgress?: any[];
+    } = {},
+  ): Promise<string | null> {
+    const progress: any[] = Array.isArray(input?.progress) ? input.progress : [];
+    const sourceProgress = Array.isArray(opts.sourceProgress) ? opts.sourceProgress : [];
+    const findSource = (row: any): any | undefined => {
+      const persistedId = row?.persistedId != null ? Number(row.persistedId) : null;
+      if (persistedId != null && Number.isInteger(persistedId)) {
+        return sourceProgress.find((candidate: any) => Number(candidate?.id) === persistedId);
+      }
+      return sourceProgress.find((candidate: any) =>
+        row?.entryKey != null && candidate?.entryKey === row.entryKey,
+      );
+    };
+    const usableLength = (value: unknown): number | null => {
+      const n = Number(value);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+    const lengthClose = (left: number, right: number): boolean => {
+      const tolerance = Math.max(0.005, Math.abs(right) * 0.001);
+      return Math.abs(left - right) <= tolerance;
+    };
+    for (const row of progress) {
+      if (!row || row.noSiteWork) continue;
+      const source = findSource(row);
+      // Prefer the display chainage when it is present. A forged numeric
+      // chainageFromKm must not make invalid display text look valid.
+      const fromText = typeof row.chainageFrom === "string" ? row.chainageFrom.trim() : "";
+      const toText = typeof row.chainageTo === "string" ? row.chainageTo.trim() : "";
+      const fromKm = fromText
+        ? parseChainageKm(fromText)
+        : (row.chainageFromKm != null && Number.isFinite(Number(row.chainageFromKm))
+          ? Number(row.chainageFromKm)
+          : null);
+      const toKm = toText
+        ? parseChainageKm(toText)
+        : (row.chainageToKm != null && Number.isFinite(Number(row.chainageToKm))
+          ? Number(row.chainageToKm)
+          : null);
+      const hasUsableChainage = fromKm != null && toKm != null
+        && Number.isFinite(fromKm) && Number.isFinite(toKm);
+      const chainageLength = hasUsableChainage
+        ? Math.abs(toKm - fromKm) * 1000
+        : null;
+      const enteredLength = usableLength(row.length);
+      const sourceLength = usableLength(source?.length);
+      const reason = String(row.lengthOverrideReason ?? "").trim();
+      if (!hasUsableChainage) {
+        // Legacy rows without chainage are still valid historical records.
+        // Preserve their physical length when an editor omits it rather than
+        // silently erasing the fact during wholesale row replacement.
+        if (sourceLength != null && enteredLength == null) {
+          row.length = sourceLength;
+        }
+        const effectiveEnteredLength = enteredLength ?? sourceLength;
+        const unchangedLegacy = sourceLength != null
+          && effectiveEnteredLength != null
+          && lengthClose(effectiveEnteredLength, sourceLength)
+          && !source?.chainageFrom
+          && !source?.chainageTo;
+        const normalMeasuredSource = effectiveEnteredLength != null
+          && ["measured", "survey", "other"].includes(String(row.quantitySource ?? "").toLowerCase())
+          && String(row.quantitySourceNote ?? "").trim() !== "";
+        if (effectiveEnteredLength != null && !unchangedLegacy && !normalMeasuredSource) {
+          if (!opts.allowLengthOverride || !reason) {
+            return `Progress entry "${row.activity ?? ""}": an explicit physical length without valid chainage requires an administrator correction reason or a documented measured/survey source`;
+          }
+        }
+      } else if (enteredLength != null && chainageLength != null && !lengthClose(enteredLength, chainageLength)) {
+        if (!opts.allowLengthOverride) {
+          return `Progress entry "${row.activity ?? ""}": physical length must be derived from chainage; an administrator correction is required`;
+        }
+        if (!reason) {
+          return `Progress entry "${row.activity ?? ""}": an administrator length correction requires a reason`;
+        }
+      }
+
+      if (row.boqItemId != null) {
+        const boqItem = await storage.getBoqItem(Number(row.boqItemId));
+        if (boqItem && !Array.isArray(boqItem)) {
+          const expected = resolveBoqUomProfile(boqItem as any).uom;
+          const actualRaw = row.uom == null ? "" : String(row.uom).trim();
+          const actual = actualRaw
+            ? resolveBoqUomProfile({ unit: actualRaw }).uom.toUpperCase()
+            : "";
+          if (actual && actual !== expected.toUpperCase()) {
+            const uomReason = String(row.uomOverrideReason ?? "").trim();
+            const conversionFactor = Number((boqItem as any).dprConversionFactor);
+            const measuredQuantity = Number(row.quantity);
+            const canConvert = opts.allowUomOverride
+              && !!uomReason
+              && Number.isFinite(conversionFactor)
+              && conversionFactor > 0
+              && Number.isFinite(measuredQuantity)
+              && String(row.quantitySource ?? "").toLowerCase() !== "calculated";
+            if (!canConvert) {
+              return `Progress entry "${row.activity ?? ""}": UOM ${row.uom} does not match ${expected}; an administrator must provide a valid conversion factor and reason`;
+            }
+            // dprConversionFactor is the configured physical-to-BOQ factor.
+            // Store the normalized physical quantity/UOM after applying it,
+            // and retain the reason in the source note for auditability.
+            row.quantity = measuredQuantity * conversionFactor;
+            row.quantitySourceNote = [
+              row.quantitySourceNote,
+              `UOM override ${actualRaw} -> ${expected} (x${conversionFactor}): ${uomReason}`,
+            ].filter(Boolean).join(" | ");
+          }
+          // Persist the canonical physical UOM even when a client omitted it.
+          row.uom = expected;
+        }
+      }
+    }
+    return null;
+  }
+
+  function equipmentLifecycleIdentityConflict(
+    originalEquipment: any[],
+    editedEquipment: any[],
+  ): number | null {
+    // A version recreates equipment_logs, so persisted log ids are expected
+    // to change.  The canonical plant usage id and its equipment master id,
+    // however, identify one physical lifecycle segment and must never be
+    // reassigned by a client payload. Omitting a linked row is a normal DPR
+    // replacement/deletion; the canonical usage remains historical and is
+    // still protected by the moved-source guard when it has a successor.
+    for (const original of originalEquipment) {
+      const usageId = Number(original?.plantUsageId);
+      if (!Number.isInteger(usageId) || usageId <= 0) continue;
+      const matchingRows = editedEquipment.filter((row) => Number(row?.plantUsageId) === usageId);
+      if (matchingRows.length === 0) continue;
+      if (matchingRows.length !== 1) return usageId;
+      const edited = matchingRows[0];
+      const originalEquipmentId = original?.equipmentId == null ? null : Number(original.equipmentId);
+      const editedEquipmentId = edited?.equipmentId == null ? null : Number(edited.equipmentId);
+      if (originalEquipmentId !== editedEquipmentId) return usageId;
+    }
+    return null;
+  }
+
+  function linkedEquipmentAdminOnlyFieldConflict(
+    originalEquipment: any[],
+    editedEquipment: any[],
+  ): number | null {
+    // These are the fields deliberately locked in SiteEdit for ordinary
+    // editors because they are canonical dispatch facts. Closing fields
+    // (end time, closing meter, operator and task) remain available to the
+    // normal completion workflow.
+    const protectedFields = ["openingReading", "startTime", "diesel", "dieselSource"] as const;
+    const numericFields = new Set(["openingReading", "diesel"]);
+    for (const original of originalEquipment) {
+      const usageId = Number(original?.plantUsageId);
+      if (!Number.isInteger(usageId) || usageId <= 0) continue;
+      const edited = editedEquipment.find((row) => Number(row?.plantUsageId) === usageId);
+      if (!edited) continue; // identity helper returns the clearer removal error.
+      for (const field of protectedFields) {
+        const left = original[field];
+        const right = edited[field];
+        const same = numericFields.has(field)
+          ? (left == null && right == null) || Number(left) === Number(right)
+          : String(left ?? "").trim().toUpperCase() === String(right ?? "").trim().toUpperCase();
+        if (!same) return usageId;
+      }
     }
     return null;
   }
@@ -2648,9 +2863,92 @@ export async function registerRoutes(
       }
 
       const input = versionSchema.parse(req.body);
+      // SiteEdit deliberately sends editable activity fields rather than
+      // exposing server-owned review/link facts as controls. Preserve those
+      // facts in the version payload before validation so programme approval,
+      // scope overrides, and link-review history survive the row replacement.
+      const originalProgress = Array.isArray((versionOriginal as any).progress)
+        ? (versionOriginal as any).progress
+        : [];
+      const progressSourceResolution = Array.isArray((input.data as any).progress)
+        ? resolveDprProgressSources((input.data as any).progress, originalProgress)
+        : { ok: true as const, sources: [] };
+      if (!progressSourceResolution.ok) {
+        return res.status(400).json({
+          code: "DPR_PROGRESS_IDENTITY_INVALID",
+          message: progressSourceResolution.message,
+        });
+      }
+      if (Array.isArray((input.data as any).progress)) {
+        (input.data as any).progress = (input.data as any).progress.map((row: any, index: number) => {
+          const source = progressSourceResolution.sources[index];
+          const relevantFactsChanged = !!source && dprProgressReviewFactsChanged(source, row);
+          const preservedSource = source && !relevantFactsChanged ? source : undefined;
+          return {
+            ...row,
+            // These are server-owned facts. Never accept a forged incoming
+            // approval/warning/actor value; restore the exact source row's
+            // facts only when the validated identity and relevant work facts
+            // still match. A changed chainage/link resets stale approval.
+            linkReviewRequired: (preservedSource as any)?.linkReviewRequired ?? false,
+            chainageReviewStatus: (preservedSource as any)?.chainageReviewStatus ?? null,
+            scopeWarningType: (preservedSource as any)?.scopeWarningType ?? null,
+            scopeOverrideReason: (preservedSource as any)?.scopeOverrideReason ?? null,
+            scopeOverrideBy: (preservedSource as any)?.scopeOverrideBy ?? null,
+            scopeOverrideAt: (preservedSource as any)?.scopeOverrideAt ?? null,
+            lengthOverrideReason: row.lengthOverrideReason ?? null,
+          };
+        });
+      }
+      const authenticatedIsAdmin = req.authUser?.isAdmin === true;
+      const geometryError = await validateVersionProgressGeometry(input.data, {
+        allowLengthOverride: authenticatedIsAdmin,
+        allowUomOverride: authenticatedIsAdmin,
+        sourceProgress: Array.isArray(versionOriginal.progress) ? versionOriginal.progress : [],
+      });
+      if (geometryError) {
+        return res.status(400).json({
+          code: "DPR_GEOMETRY_INVALID",
+          message: geometryError,
+        });
+      }
+      const lifecycleIdentityConflict = equipmentLifecycleIdentityConflict(
+        Array.isArray(versionOriginal.equipment) ? versionOriginal.equipment : [],
+        Array.isArray((input.data as any).equipment) ? (input.data as any).equipment : [],
+      );
+      if (lifecycleIdentityConflict != null) {
+        return res.status(409).json({
+          message: "The linked equipment and dispatch identity are immutable. Keep the original equipment and plant usage IDs unchanged.",
+          error: "EQUIPMENT_LIFECYCLE_ID_IMMUTABLE",
+          equipmentUsageId: lifecycleIdentityConflict,
+        });
+      }
+      const adminOnlyLinkedFieldConflict = linkedEquipmentAdminOnlyFieldConflict(
+        Array.isArray(versionOriginal.equipment) ? versionOriginal.equipment : [],
+        Array.isArray((input.data as any).equipment) ? (input.data as any).equipment : [],
+      );
+      if (adminOnlyLinkedFieldConflict != null && !authenticatedIsAdmin) {
+        return res.status(403).json({
+          message: "Opening meter, start time, diesel, and diesel source on a dispatched equipment segment can only be corrected by an administrator.",
+          error: "LINKED_EQUIPMENT_ADMIN_EDIT_REQUIRED",
+          equipmentUsageId: adminOnlyLinkedFieldConflict,
+        });
+      }
+      const unownedLinkedConflicts = await unownedLinkedEquipmentConflicts(
+        Array.isArray(versionOriginal.equipment) ? versionOriginal.equipment : [],
+        Array.isArray((input.data as any).equipment) ? (input.data as any).equipment : [],
+      );
+      if (unownedLinkedConflicts.length > 0 && !authenticatedIsAdmin) {
+        return res.status(409).json({
+          message: "This linked equipment usage is historical and has no editable canonical owner. Its source facts cannot be changed in a DPR version.",
+          error: "EQUIPMENT_USAGE_IMMUTABLE",
+          equipmentUsageId: unownedLinkedConflicts[0],
+        });
+      }
       const movedUsageConflict = await movedEquipmentVersionConflict(
         Array.isArray(versionOriginal.equipment) ? versionOriginal.equipment : [],
         Array.isArray((input.data as any).equipment) ? (input.data as any).equipment : [],
+        authenticatedIsAdmin,
       );
       if (movedUsageConflict != null) {
         return res.status(409).json({
@@ -2666,7 +2964,19 @@ export async function registerRoutes(
       if (qtySourceError) return res.status(400).json({ message: qtySourceError, code: "QUANTITY_SOURCE_INVALID" });
       const materialOutcomeError = await validateProgressMaterialOutcomes(input.data);
       if (materialOutcomeError) return res.status(400).json({ message: materialOutcomeError, code: "MATERIAL_OUTCOME_INVALID" });
-      const editedBy = input.editedBy || "engineer";
+      // The version actor is an authenticated identity, not a client
+      // assertion. In particular, a user with ordinary edit rights must not
+      // be able to submit `editedBy: "admin"` and unlock admin-only
+      // corrections. Keep the engineer completion workflow, but derive it
+      // from the authenticated role as well.
+      const authenticatedRole = String((req.authUser as any)?.role ?? "").toLowerCase();
+      const authenticatedIsEngineer =
+        authenticatedRole === "engineer" || (req.authUser as any)?.isFieldEngineer === true;
+      const editedBy = authenticatedIsAdmin
+        ? "admin"
+        : authenticatedIsEngineer
+          ? "engineer"
+          : "manager";
 
       if (editedBy === "engineer") {
         const equipment = Array.isArray(versionOriginal.equipment) ? versionOriginal.equipment : [];
@@ -2706,6 +3016,8 @@ export async function registerRoutes(
           userName: req.authUser ? currentUserName(req) : input.data.engineer,
           closedAt: new Date(),
           allowMovedSourceReuse: true,
+          allowMovedSourceCorrection: authenticatedIsAdmin,
+          allowUnownedLinkedCorrectionIds: authenticatedIsAdmin ? unownedLinkedConflicts : [],
         },
       );
 

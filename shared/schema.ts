@@ -1011,6 +1011,14 @@ export type PlantVersion = typeof plantVersions.$inferSelect;
 export const createDprRequestSchema = insertDprSchema.extend({
   progress: z.array(insertProgressSchema.extend({
     personnelIds: z.array(z.number()).optional(),
+    // Existing DPR editors retain this persisted row identity even when a
+    // legacy row has no stable entryKey. Storage uses it only to remap
+    // server-owned review/scope facts; it is never inserted as a column.
+    persistedId: z.number().int().positive().optional(),
+    // Transient administrator evidence for a UOM conversion/override. The
+    // storage layer records the normalized physical UOM and conversion note,
+    // never this client-only control field.
+    uomOverrideReason: z.string().trim().max(500).optional(),
   })).optional(),
   // Client-staged stoppages travel with their exact equipment-row position
   // until the transaction has created the equipment_logs serial id. Storage

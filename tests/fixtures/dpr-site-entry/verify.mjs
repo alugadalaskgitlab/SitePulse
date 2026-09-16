@@ -431,17 +431,40 @@ const verifySiteEdit = async () => {
   await navigate("/site/edit/6101?complete=1", 1440, 900, false);
   await waitFor("!!document.querySelector('[data-testid=\"button-save\"]')", "DPR edit form");
   await waitFor("!!document.querySelector('[data-testid=\"equipment-compact-opening-tank-0\"]')", "seed DPR tank controls");
-  await evaluate(`(() => {
-    const summary = document.querySelector('[data-testid="equipment-row-0"] details summary');
-    if (!summary) return false;
-    summary.click();
+  // DprEquipmentCompact uses its real aria-expanded button rather than a
+  // native <details> disclosure.  Expand the rendered row before inspecting
+  // the admin controls; do not call a component handler directly.
+  const expanded = await evaluate(`(() => {
+    const row = document.querySelector('[data-testid="equipment-row-0"]');
+    const trigger = row?.querySelector('[data-testid="equipment-compact-0"] button[aria-expanded]');
+    if (!trigger) return false;
+    if (trigger.getAttribute("aria-expanded") === "false") trigger.click();
     return true;
   })()`);
-  await waitFor("document.querySelector('[data-testid=\"equipment-row-0\"] details')?.open === true", "SiteEdit tank fields");
+  assert(expanded, "SiteEdit equipment compact disclosure button was not rendered");
+  await waitFor(
+    "document.querySelector('[data-testid=\"equipment-compact-0\"] button[aria-expanded]')?.getAttribute('aria-expanded') === 'true'",
+    "SiteEdit compact equipment fields",
+  );
   assert(
     await evaluate("document.querySelector('[data-testid=\"equipment-compact-opening-tank-0\"]')?.disabled === false"),
     "SiteEdit linked plant row incorrectly locked its opening tank balance",
   );
+  assert(
+    await evaluate("document.querySelector('[data-testid=\"equipment-compact-opening-meter-0\"]')?.disabled === false"),
+    "SiteEdit admin linked plant row incorrectly locked its opening meter",
+  );
+  assert(
+    await evaluate("document.querySelector('[data-testid=\"equipment-compact-start-0\"]')?.disabled === false"),
+    "SiteEdit admin linked plant row incorrectly locked its start time",
+  );
+  assert(
+    await evaluate("document.querySelector('[data-testid=\"equipment-compact-diesel-0\"]')?.disabled === false"),
+    "SiteEdit admin linked plant row incorrectly locked its diesel quantity",
+  );
+  await setInput("equipment-compact-opening-meter-0", "101");
+  await setInput("equipment-compact-start-0", "08:15");
+  await setInput("equipment-compact-diesel-0", "21");
   await setInput("equipment-compact-opening-tank-0", "32");
   const linkedImage = await captureEquipmentEvidence("diesel02-siteedit-linked-legacy-tank");
   await clickTestId("button-save");
@@ -449,7 +472,9 @@ const verifySiteEdit = async () => {
   const version = (await fixtureState()).dprVersionPayloads.at(-1);
   assert(version.id === 6101, `DPR version source id was ${version.id}`);
   assert(version.payload?.data?.equipment?.[0]?.plantUsageId === 8101, "SiteEdit dropped the linked plant usage id");
-  assert(version.payload?.data?.equipment?.[0]?.openingReading === 100 && version.payload?.data?.equipment?.[0]?.closingReading === 108, "SiteEdit changed the existing meter readings");
+  assert(version.payload?.data?.equipment?.[0]?.openingReading === 101 && version.payload?.data?.equipment?.[0]?.closingReading === 108, "SiteEdit admin meter correction was not saved");
+  assert(version.payload?.data?.equipment?.[0]?.startTime === "08:15", "SiteEdit admin start-time correction was not saved");
+  assert(version.payload?.data?.equipment?.[0]?.diesel === 21, "SiteEdit admin diesel correction was not saved");
   assert(version.payload?.data?.equipment?.[0]?.openingDiesel === 32, "SiteEdit opening tank balance was not saved");
 
   // Primary SiteEdit evidence: an unlinked draft with two hired Daily Hire
@@ -462,7 +487,7 @@ const verifySiteEdit = async () => {
   await expandGuidedCompact(0);
   await expandGuidedCompact(1);
   assert(await evaluate("document.querySelectorAll('[data-testid^=\"equipment-compact-opening-tank-\"]').length === 0 && document.querySelectorAll('[data-testid^=\"equipment-compact-closing-tank-\"]').length === 0"), "SiteEdit contractor rows exposed hidden tank controls");
-  assert(await evaluate("document.body.innerText.includes('Hired: FASI UDDIN')"), "SiteEdit contractor vendor was not displayed");
+  assert(await evaluate("document.body.innerText.toLowerCase().includes('hired: fasi uddin')"), "SiteEdit contractor vendor was not displayed");
   assert(await evaluate("document.querySelectorAll('[data-testid^=\"equipment-compact-start-\"]').length === 2 && document.querySelectorAll('[data-testid^=\"equipment-compact-end-\"]').length === 2 && document.querySelectorAll('[data-testid^=\"equipment-compact-diesel-\"]').length === 2"), "SiteEdit contractor compact inputs were not rendered once per row");
   const contractorImage = await captureEquipmentEvidence("diesel02-A-siteedit-contractor-daily");
   const beforeDraft = (await fixtureState()).dprDraftPayloads.length;
@@ -635,9 +660,9 @@ const verifyGuidedContractor = async () => {
   assert(await evaluate("document.querySelectorAll('[data-testid^=\"equipment-compact-start-\"]').length === 2"), "Guided did not render one start input per Daily Hire row");
   assert(await evaluate("document.querySelectorAll('[data-testid^=\"equipment-compact-end-\"]').length === 2"), "Guided did not render one end input per Daily Hire row");
   assert(await evaluate("document.querySelectorAll('[data-testid^=\"equipment-compact-diesel-\"]').length === 2"), "Guided did not render one diesel input per Daily Hire row");
-  assert(await evaluate("document.querySelectorAll('[data-testid^=\"equipment-compact-opening-meter-\"]').length === 0 && document.querySelectorAll('[data-testid^=\"equipment-compact-closing-meter-\"]').length === 0"), "Guided Daily Hire unexpectedly rendered meter controls");
+  assert(await evaluate("document.querySelectorAll('[data-testid^=\"equipment-compact-opening-meter-\"]').length === 2 && document.querySelectorAll('[data-testid^=\"equipment-compact-closing-meter-\"]').length === 2"), "Guided Daily Hire did not render its meter controls");
   assert(await evaluate("document.querySelectorAll('[data-testid^=\"equipment-compact-opening-tank-\"]').length === 0 && document.querySelectorAll('[data-testid^=\"equipment-compact-closing-tank-\"]').length === 0 && document.querySelectorAll('[data-testid^=\"equipment-compact-tank-confirmed-\"]').length === 0"), "Guided contractor unexpectedly rendered tank controls");
-  assert(await evaluate("document.body.innerText.includes('Hired: FASI UDDIN')"), "Guided editable hired vendor label was not visible");
+  assert(await evaluate("document.body.innerText.toLowerCase().includes('hired: fasi uddin')"), "Guided editable hired vendor label was not visible");
   const contractorImage = await captureEquipmentEvidence("diesel02-A-guided-contractor-no-duplicate");
 
   const beforeDraft = (await fixtureState()).dprDraftPayloads.length;
@@ -656,7 +681,7 @@ const verifyGuidedContractor = async () => {
   // DPR was written.
   await navigate("/guided/report?source=contractor", 1440, 1000, false);
   await waitFor("!!document.querySelector('[data-testid=\"text-fixture-report-title\"]')", "Guided saved report");
-  await waitFor("document.body.innerText.includes('Hired: FASI UDDIN')", "read-only hired vendor label");
+  await waitFor("document.body.innerText.toLowerCase().includes('hired: fasi uddin')", "read-only hired vendor label");
   assert(await evaluate("document.body.innerText.includes('Fixture saved report') && document.body.innerText.includes('not a customer DPR')"), "read-only report was not clearly labelled fixture evidence");
   assert(await evaluate("document.querySelectorAll('[data-testid^=\"equipment-compact-opening-tank-\"]').length === 0"), "read-only contractor report exposed tank fields");
   const readonlyImage = await captureEquipmentEvidence("diesel02-B-guided-contractor-readonly-saved");

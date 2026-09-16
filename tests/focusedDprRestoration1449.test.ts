@@ -42,7 +42,8 @@ describe("focused DPR restoration", () => {
     }
     expect(siteEntry).toMatch(/data-testid=\{`input-progress-length-\$\{idx\}`\}[\s\S]{0,500}?\/>/);
     expect(siteEntry).toMatch(/<Input[\s\S]{0,350}?readOnly[\s\S]{0,350}?data-testid=\{`input-progress-length-\$\{idx\}`\}/);
-    expect(siteEdit).toMatch(/<Input[\s\S]{0,350}?readOnly[\s\S]{0,350}?data-testid=\{`input-length-\$\{idx\}`\}/);
+    expect(siteEdit).toContain("readOnly={!isAdmin}");
+    expect(siteEdit).toContain("data-testid={`input-length-${idx}`}");
   });
 
   it("preserves equipment fallback identity while exposing child allocations and labour BOQ links", async () => {
