@@ -25,8 +25,13 @@ import {
   type TripWorkContext,
 } from "@/components/ReceiptWorkContext";
 import { AttachmentUploader } from "@/components/AttachmentUploader";
+import { FreeTextSuggestionInput } from "@/components/FreeTextSuggestionInput";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
 import { useAuth } from "@/lib/auth-context";
+import {
+  invalidateSiteMaterialSuggestions,
+  useSiteMaterialSuggestions,
+} from "@/hooks/use-site-material-suggestions";
 import type { Site } from "@shared/schema";
 import { isEditableMaterialReceiptSource } from "@shared/materialReceiptSummary";
 
@@ -105,6 +110,11 @@ export default function SiteMaterialsReceived() {
   const [selectedTrip, setSelectedTrip] = useState<any | null>(null);
   const [editUnlocked, setEditUnlocked] = useState(false);
   const [editForm, setEditForm] = useState<TripEditForm | null>(null);
+  const {
+    suppliers: supplierSuggestions,
+    vehicles: vehicleSuggestions,
+    error: suggestionError,
+  } = useSiteMaterialSuggestions(editForm?.site || selectedTrip?.site || filters.site || "");
 
   const hasActiveFilters =
     !!filters.dateFrom ||
@@ -162,6 +172,7 @@ export default function SiteMaterialsReceived() {
         typeof q.queryKey[0] === "string" &&
         (q.queryKey[0].startsWith("/api/site-material-trips") || q.queryKey[0].startsWith("/api/materials-received"))
       });
+      invalidateSiteMaterialSuggestions();
       toast({ title: "Deleted", description: "Material entry removed." });
       setSelectedTrip(null);
     },
@@ -173,11 +184,17 @@ export default function SiteMaterialsReceived() {
       const res = await apiRequest("PATCH", `/api/site-material-trips/${id}`, payload);
       return res.json();
     },
-    onSuccess: (updated: any) => {
+    onSuccess: (updated: any, variables) => {
       queryClient.invalidateQueries({ predicate: (q) =>
         typeof q.queryKey[0] === "string" &&
         (q.queryKey[0].startsWith("/api/site-material-trips") || q.queryKey[0].startsWith("/api/materials-received"))
       });
+      // An edit may move a receipt to another site. Refresh both cache
+      // entries (all is also safe when a legacy row omits its old site).
+      invalidateSiteMaterialSuggestions([
+        selectedTrip?.site,
+        variables.payload?.site,
+      ]);
       setSelectedTrip((prev: any) => prev ? { ...prev, ...updated } : prev);
       toast({ title: "Saved", description: "Material entry updated." });
     },
@@ -535,17 +552,23 @@ export default function SiteMaterialsReceived() {
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs uppercase tracking-wide text-muted-foreground">Vehicle No.</Label>
-                      <Input
+                      <FreeTextSuggestionInput
                         value={editForm.vehicleNumber}
-                        onChange={(e) => setEditForm(f => f && { ...f, vehicleNumber: e.target.value })}
+                        onChange={(value) => setEditForm(f => f && { ...f, vehicleNumber: value.toUpperCase() })}
+                        suggestions={vehicleSuggestions}
+                        match="vehicle"
+                        suggestionsError={suggestionError}
                         data-testid="input-edit-vehicle"
                       />
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs uppercase tracking-wide text-muted-foreground">Supplier / Party</Label>
-                      <Input
+                      <FreeTextSuggestionInput
                         value={editForm.supplier}
-                        onChange={(e) => setEditForm(f => f && { ...f, supplier: e.target.value })}
+                        onChange={(value) => setEditForm(f => f && { ...f, supplier: value.toUpperCase() })}
+                        suggestions={supplierSuggestions}
+                        match="supplier"
+                        suggestionsError={suggestionError}
                         data-testid="input-edit-supplier"
                       />
                     </div>

@@ -17,8 +17,17 @@ export function getBaseSiteName(site: string): string {
   return result || site;
 }
 
+/**
+ * Normalized key for exact site comparisons. Site names are business labels,
+ * so differences in case or repeated whitespace are not distinct sites; the
+ * comparison remains exact after normalization (never a prefix match).
+ */
+export function normalizeSiteName(site: string): string {
+  return getBaseSiteName(site).trim().replace(/\s+/g, " ").toUpperCase();
+}
+
 /** True when `dprSite`'s base name matches any of the permitted site names. */
 export function siteMatchesPermitted(dprSite: string, permittedSiteNames: string[]): boolean {
-  const base = getBaseSiteName(dprSite);
-  return permittedSiteNames.some((name) => getBaseSiteName(name) === base);
+  const base = normalizeSiteName(dprSite);
+  return permittedSiteNames.some((name) => normalizeSiteName(name) === base);
 }

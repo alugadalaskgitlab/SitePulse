@@ -108,6 +108,12 @@ import { resolveConversion, convertToBase, computeAdjustment, isNoChange, comput
 import { resolvePermittedSiteIds } from "@shared/siteAccess";
 import { getBaseSiteName, siteMatchesPermitted } from "@shared/siteName";
 import {
+  buildSiteTripSuggestions,
+  normalizeSiteTripHistorySite,
+  SITE_TRIP_HISTORY_SCAN_LIMIT,
+  type SiteTripSuggestions,
+} from "@shared/siteTripHistory";
+import {
   buildMovementSuccessor,
   materializedEquipmentLogChanged,
   type EquipmentDestinationType,
@@ -1329,6 +1335,7 @@ export interface IStorage {
   // Adds only nullable, backward-compatible transport fields to existing trips.
   ensureSiteMaterialTripsLinkageColumns(): Promise<void>;
   getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; indentItemId?: number; indentId?: number; boqProjectId?: number; boqItemId?: number; programmeBarId?: number; earthworkArrangementId?: number; permittedSiteNames?: string[] }): Promise<SiteMaterialTrip[]>;
+  getSiteMaterialTripSuggestions(site: string): Promise<SiteTripSuggestions>;
   createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip>;
   getSiteMaterialTripById(id: number): Promise<SiteMaterialTrip | undefined>;
   updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>): Promise<SiteMaterialTrip>;
@@ -11505,6 +11512,33 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(siteMaterialTrips.date), desc(siteMaterialTrips.createdAt));
     
     return trips;
+  }
+
+  async getSiteMaterialTripSuggestions(site: string): Promise<SiteTripSuggestions> {
+    const siteKey = normalizeSiteTripHistorySite(site);
+    if (!siteKey) return { vehicles: [], suppliers: [] };
+
+    // Keep this query bounded before any application-side de-duplication.
+    // Suggestions are read-only history; cancelled/deleted rows must never
+    // become a future default.
+    const rows = await db.select({
+      vehicleNumber: siteMaterialTrips.vehicleNumber,
+      supplier: siteMaterialTrips.supplier,
+    })
+      .from(siteMaterialTrips)
+      .where(and(
+        eq(siteMaterialTrips.isCancelled, false),
+        eq(siteMaterialTrips.isDeleted, false),
+        sql`upper(regexp_replace(trim(${siteMaterialTrips.site}), '[[:space:]]+', ' ', 'g')) = ${siteKey}`,
+      ))
+      .orderBy(
+        desc(siteMaterialTrips.date),
+        desc(siteMaterialTrips.createdAt),
+        desc(siteMaterialTrips.id),
+      )
+      .limit(SITE_TRIP_HISTORY_SCAN_LIMIT);
+
+    return buildSiteTripSuggestions(rows);
   }
 
   async createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip> {

@@ -19,9 +19,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
+import { FreeTextSuggestionInput } from "@/components/FreeTextSuggestionInput";
 import { useToast } from "@/hooks/use-toast";
 import { useUpload } from "@/hooks/use-upload";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import {
+  invalidateSiteMaterialSuggestions,
+  useSiteMaterialSuggestions,
+} from "@/hooks/use-site-material-suggestions";
 import type { SiteMaterialTrip } from "@shared/schema";
 import {
   aggregateReceived,
@@ -671,6 +676,7 @@ function SuggestionBlock({ trips, ctx, testIdPrefix }: { trips: SiteMaterialTrip
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/site-material-trips", ctx.siteName, ctx.date] });
+      invalidateSiteMaterialSuggestions(ctx.siteName);
       queryClient.invalidateQueries({ predicate: (query) =>
         typeof query.queryKey[0] === "string" && query.queryKey[0].startsWith("/api/materials-received")
       });
@@ -693,6 +699,7 @@ function SuggestionBlock({ trips, ctx, testIdPrefix }: { trips: SiteMaterialTrip
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/site-material-trips", ctx.siteName, ctx.date] });
+      invalidateSiteMaterialSuggestions(ctx.siteName);
       queryClient.invalidateQueries({ predicate: (query) =>
         typeof query.queryKey[0] === "string" && query.queryKey[0].startsWith("/api/materials-received")
       });
@@ -765,8 +772,25 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, piMatch, 
   toast: any;
   testIdPrefix: string;
 }) {
+  // 06G §4: today's operational supplier. Daily override governs display;
+  // other_agency must NEVER carry the standing earthworkArrangementId.
+  const supplierToday =
+    dailyOverride?.fulfilmentType === "other_agency"
+      ? (dailyOverride.agencyNameSnapshot ?? "")
+      : dailyOverride?.fulfilmentType === "hlc"
+        ? "HLC (Internal)"
+        : arrangement?.arrangementType === "client_supplied"
+          ? (arrangement?.agencyName ? `${arrangement.agencyName} (client supplied)` : "Client supplied")
+          : arrangement?.agencyName ?? "";
+  const arrangementIdForTrip = dailyOverride ? undefined : arrangement?.id ?? undefined;
+  const {
+    suppliers: supplierSuggestions,
+    vehicles: vehicleSuggestions,
+    error: suggestionError,
+  } = useSiteMaterialSuggestions(props.siteName);
   const [form, setForm] = useState({
     time: format(new Date(), "HH:mm"),
+    supplier: "",
     vehicleNumber: "",
     quantity: "",
     uom: arrangement?.uom || "Cum",
@@ -784,22 +808,16 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, piMatch, 
   // Fresh time whenever the dialog opens; reset the session counter.
   useEffect(() => {
     if (open) {
-      setForm((f) => ({ ...f, time: format(new Date(), "HH:mm") }));
+      setForm((f) => ({
+        ...f,
+        time: format(new Date(), "HH:mm"),
+        // Seed the editable field from operational context once.  A typed
+        // supplier is never overwritten when the site/arrangement changes.
+        supplier: f.supplier || supplierToday,
+      }));
       setSessionTrips(0);
     }
-  }, [open]);
-
-  // 06G §4: today's operational supplier. Daily override governs display;
-  // other_agency must NEVER carry the standing earthworkArrangementId.
-  const supplierToday =
-    dailyOverride?.fulfilmentType === "other_agency"
-      ? (dailyOverride.agencyNameSnapshot ?? "")
-      : dailyOverride?.fulfilmentType === "hlc"
-        ? "HLC (Internal)"
-        : arrangement?.arrangementType === "client_supplied"
-          ? (arrangement?.agencyName ? `${arrangement.agencyName} (client supplied)` : "Client supplied")
-          : arrangement?.agencyName ?? "";
-  const arrangementIdForTrip = dailyOverride ? undefined : arrangement?.id ?? undefined;
+  }, [open, supplierToday]);
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -810,7 +828,7 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, piMatch, 
         time: form.time,
         site: props.siteName,
         material: arrangement?.materialLabel || dailyMaterialName || "",
-        supplier: supplierToday,
+        supplier: form.supplier.trim() || supplierToday,
         vehicleNumber: form.vehicleNumber,
         quantity: parseFloat(form.quantity) || 0,
         uom: form.uom,
@@ -851,6 +869,7 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, piMatch, 
       }
       queryClient.invalidateQueries({ queryKey: ["/api/site-material-trips", props.siteName, props.date] });
       queryClient.invalidateQueries({ queryKey: ["/api/site-material-trips"] });
+      invalidateSiteMaterialSuggestions(props.siteName);
       queryClient.invalidateQueries({ predicate: (query) =>
         typeof query.queryKey[0] === "string" && query.queryKey[0].startsWith("/api/materials-received")
       });
@@ -906,7 +925,28 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, piMatch, 
             </div>
             <div>
               <Label className="text-xs">Vehicle number</Label>
-              <Input ref={vehicleRef} value={form.vehicleNumber} onChange={(e) => setForm({ ...form, vehicleNumber: e.target.value.toUpperCase() })} data-testid={`${testIdPrefix}-rr-vehicle`} />
+              <FreeTextSuggestionInput
+                ref={vehicleRef}
+                value={form.vehicleNumber}
+                onChange={(value) => setForm({ ...form, vehicleNumber: value.toUpperCase() })}
+                suggestions={vehicleSuggestions}
+                match="vehicle"
+                suggestionsError={suggestionError}
+                className="uppercase"
+                data-testid={`${testIdPrefix}-rr-vehicle`}
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Supplier / vendor</Label>
+              <FreeTextSuggestionInput
+                value={form.supplier}
+                onChange={(value) => setForm({ ...form, supplier: value.toUpperCase() })}
+                suggestions={supplierSuggestions}
+                match="supplier"
+                suggestionsError={suggestionError}
+                className="uppercase"
+                data-testid={`${testIdPrefix}-rr-supplier`}
+              />
             </div>
             <div>
               <Label className="text-xs">Quantity</Label>

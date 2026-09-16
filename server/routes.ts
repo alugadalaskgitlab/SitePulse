@@ -22,6 +22,7 @@ import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc, desc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { siteMatchesPermitted } from "@shared/siteName";
+import { normalizeSiteTripHistorySite } from "@shared/siteTripHistory";
 import { calculateHireBilling, planHireRegisterRows, type HireExceptionDecisionInput } from "@shared/hireBilling";
 import { computeItemEntries, computeItemAbstract } from "@shared/progressReport";
 import { isLayerCapableItem } from "@shared/layerDisplay";
@@ -470,6 +471,23 @@ export async function registerRoutes(
     return true;
   }
 
+  /** Suggestions are available to any authenticated site-materials user who
+   * can view, create, or edit trips. Site scope is checked separately below.
+   */
+  function assertSiteMaterialSuggestionsAccess(req: Express.Request, res: Express.Response): boolean {
+    if (!req.authUser) {
+      res.status(401).json({ error: "not_authenticated" });
+      return false;
+    }
+    if (req.authUser.isAdmin || req.authUser.isOwner) return true;
+    const permission = req.authPermissions?.site_materials;
+    if (!permission?.view && !permission?.create && !permission?.edit) {
+      res.status(403).json({ error: "forbidden", section: "site_materials", action: "view" });
+      return false;
+    }
+    return true;
+  }
+
   // List DPRs with filters
   app.get(api.dprs.list.path, async (req, res) => {
     try {
@@ -583,6 +601,23 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Error fetching material suppliers:", err);
       res.status(500).json({ message: "Failed to fetch material suppliers" });
+    }
+  });
+
+  // Site-scoped history suggestions for quick trip entry. This route must
+  // remain before /:id so "suggestions" cannot be interpreted as an id.
+  app.get("/api/site-material-trips/suggestions", async (req, res) => {
+    try {
+      if (!assertSiteMaterialSuggestionsAccess(req, res)) return;
+      const rawSite = typeof req.query.site === "string" ? req.query.site : "";
+      const site = normalizeSiteTripHistorySite(rawSite);
+      if (!site) return res.status(400).json({ message: "site is required" });
+      if (!await assertTripSiteAccess(req, res, site)) return;
+      const suggestions = await storage.getSiteMaterialTripSuggestions(site);
+      res.json(suggestions);
+    } catch (err) {
+      console.error("Error fetching site material trip suggestions:", err);
+      res.status(500).json({ message: "Failed to fetch site material trip suggestions" });
     }
   });
 

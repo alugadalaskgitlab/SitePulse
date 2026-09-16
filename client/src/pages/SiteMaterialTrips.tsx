@@ -16,8 +16,13 @@ import type { EquipmentMasterType, SiteMaterialTrip, Site } from "@shared/schema
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { useUpload } from "@/hooks/use-upload";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
+import { FreeTextSuggestionInput } from "@/components/FreeTextSuggestionInput";
 import { ReceiptWorkContext, TripWorkContextSummary, EMPTY_WORK_CONTEXT, hasRequiredWorkContext, type TripWorkContext } from "@/components/ReceiptWorkContext";
 import { findAllocationEntry, receiptSuggestionFromFulfilment, fulfilmentLabel } from "@shared/requirementFulfilment";
+import {
+  invalidateSiteMaterialSuggestions,
+  useSiteMaterialSuggestions,
+} from "@/hooks/use-site-material-suggestions";
 
 const MATERIAL_OPTIONS = [
   "WMM", "GSB", "Soil", "Dust", "6MM DOWN", "10/12MM", "20MM", "BC Mix", "DBM Mix", "Water", "Bitumen", "Emulsion", "Diesel"
@@ -80,6 +85,13 @@ export default function SiteMaterialTrips() {
     unloadedAt: "stretch",
     yardLabel: "",
   });
+  // Suggestions are scoped to the selected site.  They are optional
+  // convenience data; both fields remain ordinary free-text inputs.
+  const {
+    suppliers: supplierSuggestions,
+    vehicles: vehicleSuggestions,
+    error: suggestionError,
+  } = useSiteMaterialSuggestions(newTrip.site);
 
   // Batch 06E-F / DPR-02: standalone trips require project + intended item.
   const [workCtx, setWorkCtx] = useState<TripWorkContext>(EMPTY_WORK_CONTEXT);
@@ -222,6 +234,10 @@ export default function SiteMaterialTrips() {
       }
       setStagedPhotos([]);
       queryClient.invalidateQueries({ queryKey: ["/api/site-material-trips"] });
+      // The submitted site is captured in the mutation payload; invalidate
+      // all scoped entries so a quick site switch while saving cannot leave
+      // either the old or new site's list stale.
+      invalidateSiteMaterialSuggestions();
       queryClient.invalidateQueries({ predicate: (q) =>
         typeof q.queryKey[0] === "string" && q.queryKey[0].startsWith("/api/materials-received")
       });
@@ -288,6 +304,7 @@ export default function SiteMaterialTrips() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/site-material-trips"] });
+      invalidateSiteMaterialSuggestions();
       toast({ title: "Deleted", description: "Trip entry has been removed." });
     },
     onError: () => {
@@ -437,20 +454,26 @@ export default function SiteMaterialTrips() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <Label className="text-sm">{newTrip.transportType === "agency_vendor" ? "Vendor / Supplier *" : "Supplier"}</Label>
-                  <Input
+                  <FreeTextSuggestionInput
                     placeholder="e.g. Sanganna"
                     value={newTrip.supplier}
-                    onChange={(e) => setNewTrip({ ...newTrip, supplier: e.target.value.toUpperCase() })}
+                    onChange={(value) => setNewTrip({ ...newTrip, supplier: value.toUpperCase() })}
+                    suggestions={supplierSuggestions}
+                    match="supplier"
+                    suggestionsError={suggestionError}
                     className="uppercase"
                     data-testid="input-trip-supplier"
                   />
                 </div>
                 <div>
                   <Label className="text-sm">Vehicle Number <span className="text-muted-foreground">(free text fallback)</span></Label>
-                  <Input
+                  <FreeTextSuggestionInput
                     placeholder="e.g. TS15U1234"
                     value={newTrip.vehicleNumber}
-                    onChange={(e) => setNewTrip({ ...newTrip, vehicleNumber: e.target.value.toUpperCase() })}
+                    onChange={(value) => setNewTrip({ ...newTrip, vehicleNumber: value.toUpperCase() })}
+                    suggestions={vehicleSuggestions}
+                    match="vehicle"
+                    suggestionsError={suggestionError}
                     className="uppercase"
                     data-testid="input-trip-vehicle"
                   />
@@ -855,6 +878,7 @@ export default function SiteMaterialTrips() {
         cancelUrl={`/api/site-material-trips/${cancelTripId}/cancel`}
         recordLabel={`Material Trip #${cancelTripId}`}
         invalidateQueryKeys={["/api/site-material-trips"]}
+        onCancelled={() => invalidateSiteMaterialSuggestions()}
       />
       <HistoryDialog
         open={historyTripId !== null}
