@@ -25,18 +25,25 @@ import express from "express";
 import { createServer } from "http";
 import request from "supertest";
 import { barBalanceFigures } from "../shared/dprProgrammeLink";
+import { creditExecutedEntries } from "../shared/planOutcome";
 
 const PROJECT_ID = 910001;
 const BAR_ID = 8101;
 const OTHER_BAR_ID = 8102;
 const DRAFT_ID = 6001;
 
-const fx = { bars: [] as any[], drafts: new Map<number, any>(), nextId: DRAFT_ID };
+const fx = {
+  bars: [] as any[],
+  boqItems: new Map<number, any>(),
+  drafts: new Map<number, any>(),
+  nextId: DRAFT_ID,
+};
 const calls = {
   createdDprs: [] as Array<{ input: any; audit: any }>,
   draftUpdates: [] as Array<{ id: number; input: any; actorUserId: number | null }>,
   submits: [] as Array<{ id: number; input: any; audit: any }>,
   versions: [] as Array<{ originalId: number; audit: any }>,
+  versionInputs: [] as any[],
 };
 
 vi.mock("../server/push", () => ({
@@ -70,7 +77,7 @@ vi.mock("../server/storage", () => {
   // DPR when getDprs() is empty — return a non-empty list so it never runs
   // (its createDpr call would race with the tests' drafts).
   methods.getDprs = vi.fn(async () => [{ id: 1 }]);
-  methods.getBoqItem = vi.fn(async () => null);
+  methods.getBoqItem = vi.fn(async (id: number) => fx.boqItems.get(id) ?? null);
   methods.getWorkProgramBar = vi.fn(async (id: number) => fx.bars.find(b => b.id === id) ?? undefined);
   methods.getWorkProgramBars = vi.fn(async (projectId: number) => fx.bars.filter(b => b.boqProjectId === projectId));
   methods.createDpr = vi.fn(async (input: any, _timestamp: any, audit: any) => {
@@ -96,6 +103,7 @@ vi.mock("../server/storage", () => {
   methods.createNotification = vi.fn(async () => ({}));
   methods.createVersionDpr = vi.fn(async (originalId: number, input: any, _editedBy: any, _timestamp: any, audit: any) => {
     calls.versions.push({ originalId, audit });
+    calls.versionInputs.push(input);
     return { id: fx.nextId++, ...input, dprStatus: "submitted" };
   });
   methods.getReportedQtyByBar = vi.fn(async () => new Map());
@@ -176,11 +184,13 @@ function guidedPayload(opts: {
 
 function resetFx() {
   fx.bars = [roadBar()];
+  fx.boqItems.clear();
   fx.drafts.clear();
   calls.createdDprs = [];
   calls.draftUpdates = [];
   calls.submits = [];
   calls.versions = [];
+  calls.versionInputs = [];
 }
 beforeEach(resetFx);
 
@@ -286,6 +296,87 @@ describe("Part B — programmeBarId survives draft → update → submit (real r
     expect(calls.submits).toHaveLength(0);
     // The draft still exists untouched, link intact:
     expect(fx.drafts.get(id).progress[0].programmeBarId).toBe(BAR_ID);
+  });
+
+  it("unlinked real BOQ progress survives draft → update → submit → version with no scheduled bars", async () => {
+    // This is the production path for an item selected from the BOQ picker
+    // when its project has no programme bars. No link validation should run,
+    // but the real BOQ id and quantity must remain billable.
+    fx.bars = [];
+    fx.boqItems.set(701, {
+      id: 701,
+      boqProjectId: PROJECT_ID,
+      description: "GSB LAYING",
+      unit: "CUM",
+      dprConversionFactor: 1,
+    });
+    const unlinked = { programmeBarId: null, quantity: 1100, quantitySource: "measured" };
+
+    const create = await request(app).post("/api/dprs").send(guidedPayload({
+      asDraft: true,
+      progressOverrides: unlinked,
+    }));
+    expect(create.status).toBe(201);
+    const id = create.body.id;
+    expect(calls.createdDprs[0].input.progress[0]).toEqual(expect.objectContaining({
+      boqItemId: 701,
+      programmeBarId: null,
+      quantity: 1100,
+    }));
+
+    const update = await request(app).patch(`/api/dprs/${id}/draft`).send(guidedPayload({
+      asDraft: true,
+      progressOverrides: { ...unlinked, quantity: 1200 },
+    }));
+    expect(update.status).toBe(200);
+    expect(calls.draftUpdates[0].input.progress[0]).toEqual(expect.objectContaining({
+      boqItemId: 701,
+      programmeBarId: null,
+      quantity: 1200,
+    }));
+
+    const submit = await request(app).post(`/api/dprs/${id}/submit`).send(guidedPayload({
+      asDraft: false,
+      progressOverrides: { ...unlinked, quantity: 1200 },
+    }));
+    expect(submit.status).toBe(200);
+    expect(calls.submits[0].input.progress[0]).toEqual(expect.objectContaining({
+      boqItemId: 701,
+      programmeBarId: null,
+      quantity: 1200,
+    }));
+    expect(creditExecutedEntries(
+      [{ quantity: 1200, uom: "CUM", rowConversionFactor: null }],
+      fx.boqItems.get(701) ?? null,
+    ).executedByUom).toEqual([{ uom: "CUM", qty: 1200, entryCount: 1 }]);
+
+    const version = await request(app)
+      .post(`/api/dprs/${id}/version`)
+      .send({
+        editedBy: "manager",
+        data: guidedPayload({
+          asDraft: false,
+          progressOverrides: { ...unlinked, quantity: 1250 },
+        }),
+      });
+    expect(version.status).toBe(201);
+    expect(calls.versionInputs[0].progress[0]).toEqual(expect.objectContaining({
+      boqItemId: 701,
+      programmeBarId: null,
+      quantity: 1250,
+    }));
+  });
+
+  it("keeps stale programme links server-invalid until the row is explicitly unlinked", async () => {
+    fx.bars = [];
+    const stale = await request(app).post("/api/dprs").send(guidedPayload({
+      asDraft: true,
+      progressOverrides: { programmeBarId: BAR_ID },
+    }));
+
+    expect(stale.status).toBe(400);
+    expect(stale.body.code).toBe("PROGRAMME_LINK_INVALID");
+    expect(calls.createdDprs).toHaveLength(0);
   });
 });
 

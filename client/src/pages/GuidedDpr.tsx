@@ -63,7 +63,7 @@ import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/li
 import { CutFillOutcomeControls } from "@/components/CutFillOutcomeControls";
 import { BillItemPicker } from "@/components/BillItemPicker";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
-import { dprBoqItemDisplayName } from "@shared/dprBoqSelection";
+import { dprBoqItemDisplayName, dprSelectableBoqItems } from "@shared/dprBoqSelection";
 import { BreakdownStoppageEditor, type StagedBreakdown } from "@/components/BreakdownStoppageEditor";
 import { classifyWorkType } from "@shared/workTypeRecipes";
 import {
@@ -682,6 +682,13 @@ export default function GuidedDpr() {
     boqItems.forEach((i) => m.set(i.id, i));
     return m;
   }, [boqItems]);
+  // Labour work-item mapping follows the same selected-project, explicit
+  // opt-out-only rule as the activity Bill picker. A missing/future programme
+  // bar must never hide a valid BOQ item.
+  const dprBoqItemsForMapping = useMemo(
+    () => dprSelectableBoqItems(boqItems),
+    [boqItems],
+  );
 
   // Batch 06B — chainage duplicate/overlap guard: same neutral shared helper
   // as the Progress Report and the server Final-Submit recheck. Advisory
@@ -2559,7 +2566,7 @@ export default function GuidedDpr() {
                       <SelectTrigger data-testid={`select-labour-workitem-${i}`}><SelectValue placeholder="Work item (optional)" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">No work item</SelectItem>
-                        {boqItems.map((item) => (
+                        {dprBoqItemsForMapping.map((item) => (
                           <SelectItem key={item.id} value={String(item.id)}>{boqItemDisplayName(item)}</SelectItem>
                         ))}
                       </SelectContent>

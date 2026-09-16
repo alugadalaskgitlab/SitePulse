@@ -5,6 +5,8 @@ import {
   dprSelectableBoqItems,
   resolveDprBoqProjectId,
 } from "../shared/dprBoqSelection";
+import { emptySuggestionsReason } from "../shared/dprProgrammeLink";
+import { creditExecutedEntries } from "../shared/planOutcome";
 
 describe("shared DPR BOQ selection", () => {
   it("uses one project rule and lets Edit preserve the DPR's saved project", () => {
@@ -30,6 +32,32 @@ describe("shared DPR BOQ selection", () => {
     expect(dprSelectableBoqItems(apiItems).map((item) => item.id)).toEqual([41, 29, 8]);
   });
 
+  it("keeps a selected-project BOQ item available when no bar is scheduled", () => {
+    const projectItems = [
+      { id: 41, includeInDpr: true, description: "Valid item" },
+      { id: 17, includeInDpr: false, description: "Explicit DPR opt-out" },
+    ];
+    const futureBars = [{
+      id: 501,
+      startDate: "2026-10-01",
+      endDate: "2026-10-31",
+    }];
+
+    expect(emptySuggestionsReason([], "2026-09-15")).toBe("no_programme");
+    expect(emptySuggestionsReason(futureBars, "2026-09-15")).toBe("no_date_coverage");
+    expect(dprSelectableBoqItems(projectItems).map((item) => item.id)).toEqual([41]);
+  });
+
+  it("credits a real BOQ row without requiring a programme-bar link", () => {
+    const result = creditExecutedEntries(
+      [{ quantity: 10, uom: "SQM", rowConversionFactor: null }],
+      { id: 41, unit: "SQM", dprConversionFactor: 0.5 },
+    );
+
+    expect(result.creditApplied).toBe(true);
+    expect(result.executedByUom).toEqual([{ uom: "SQM", qty: 5, entryCount: 1 }]);
+  });
+
   it("shows only BOQ-owned saved names, never canonical/SNL labels", () => {
     expect(dprBoqItemDisplayName({
       id: 1,
@@ -47,6 +75,7 @@ describe("shared DPR BOQ selection", () => {
       expect(source, page).toContain("useDprBoqItems");
       expect(source, page).toContain("<BillItemPicker");
       expect(source, page).toContain("dprBoqItemDisplayName");
+      expect(source, page).toContain("dprSelectableBoqItems");
     }
   });
 });

@@ -15,3 +15,9 @@ description: Shared DPR↔programme-bar mechanics used by SiteEntry, GuidedDpr, 
 - Guided draft dedup: `draftId` state → PATCH /api/dprs/:id/draft on re-save, POST /:id/submit to promote; local autosave key "guided-dpr-new".
 - "Same as yesterday" structure-only copy is shared via `client/src/lib/sameAsYesterday.ts` (both screens).
 - Partly-outsourced arrangements (mode matches /part/i) require `executedBy` (hlc/agency) on submit.
+
+**BOQ eligibility is independent of scheduling.** Engineers may execute BOQ work ahead of programme dates or before any bar is scheduled. A programme link is optional; explicit DPR-excluded items remain excluded.
+
+**Why:** resource availability can legitimately advance actual execution. Missing programme context must not imply that BOQ work is unavailable or incidental.
+
+**How to apply:** retain BOQ credit for null-bar progress, keep full eligible item selectors available, respect deliberate unlinking, and never create/reschedule bars as a side effect of DPR entry. A retained unavailable bar ID is still a link until explicitly cleared.

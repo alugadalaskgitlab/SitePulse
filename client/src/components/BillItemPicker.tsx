@@ -6,7 +6,7 @@
 // BOQ item lists stay easy to scan and search on a phone.
 // Reused by Road DPR, Structure DPR, and labour/equipment/material BOQ links.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -179,7 +179,16 @@ export function BillItemPicker({
     return WORK_CAT_LABEL.get(it.workCategory!)?.label ?? it.workCategory!;
   }
 
-  const [bill, setBill] = useState<string>(itemGroup(selectedItem));
+  const selectedItemGroup = itemGroup(selectedItem);
+  const [bill, setBill] = useState<string>(selectedItemGroup);
+  // A restored row can arrive after the picker mounted (and an edit can
+  // replace the selected item from outside this component). Keep the second
+  // Bill selector in sync with that restored item. Do not clear a deliberately
+  // chosen bill when the parent clears the item: that is the normal
+  // bill-then-item interaction.
+  useEffect(() => {
+    if (selectedItemGroup) setBill(selectedItemGroup);
+  }, [selectedItemGroup]);
   const effectiveBill = bill || itemGroup(selectedItem);
 
   const billItems = useMemo(() => {

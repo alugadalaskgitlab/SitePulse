@@ -38,7 +38,7 @@ import { PERSONNEL_ROLES } from "@shared/schema";
 import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@shared/structureHierarchy";
 import { BillItemPicker } from "@/components/BillItemPicker";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
-import { dprBoqItemDisplayName } from "@shared/dprBoqSelection";
+import { dprBoqItemDisplayName, dprSelectableBoqItems } from "@shared/dprBoqSelection";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { barSideLabel, isDprSideCompatible, isBarSide, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
 import { chainageOutsideBar, normalizeDprSideKey } from "@shared/dprProgrammeLink";
@@ -483,6 +483,13 @@ export default function SiteEntry() {
   }, [activeSites, header.site]);
 
   const siteBoqProjectId = header.boqProjectId;
+  // All DPR-owned item mappings use the same opt-out rule as the Bill picker.
+  // Scheduling never narrows this list; only an explicit includeInDpr=false
+  // on the selected project's BOQ item does.
+  const dprBoqItemsForMapping = useMemo(
+    () => dprSelectableBoqItems(siteBoqItems),
+    [siteBoqItems],
+  );
 
   const siteBoqProjectName = useMemo(() => {
     if (!siteBoqProjectId) return null;
@@ -587,30 +594,6 @@ export default function SiteEntry() {
     const balance = Math.round((row.currentQty - row.totalActual) * 1000) / 1000;
     return { ...row, balance };
   };
-
-  // Road programme bars covering the DPR's date (excludes imported structure-location bars).
-  const activeRoadBars = useMemo(() => {
-    return programmeBars.filter((b) => {
-      if (b.planningMode === "structure_location") return false;
-      if (!b.startDate || !b.endDate) return true; // no calendar dates on the bar → can't tell, don't flag as unplanned
-      return header.date >= b.startDate && header.date <= b.endDate;
-    });
-  }, [programmeBars, header.date]);
-
-  const activeRoadBarsByItem = useMemo(() => {
-    const m = new Map<number, ProgrammeBar[]>();
-    activeRoadBars.forEach((b) => {
-      const list = m.get(b.boqItemId) ?? [];
-      list.push(b);
-      m.set(b.boqItemId, list);
-    });
-    return m;
-  }, [activeRoadBars]);
-
-  const hasRoadProgramme = useMemo(
-    () => programmeBars.some((b) => b.planningMode !== "structure_location"),
-    [programmeBars],
-  );
 
   // Structure-level actuals: /plan-vs-actual only aggregates per BOQ item across the
   // whole project, but a structure schedule can plan the same BOQ item at multiple
@@ -2077,7 +2060,7 @@ export default function SiteEntry() {
                     </Select>
                   </div>
                   )}
-                  {siteBoqItems.length > 0 && (
+                    {siteBoqItems.length > 0 && (
                   <div className="sm:col-span-2 md:col-span-4 space-y-1">
                     <Label className="text-sm">BOQ Item (Plan vs Actual link)</Label>
                     <BillItemPicker
@@ -2358,11 +2341,6 @@ export default function SiteEntry() {
                       }}
                       testidPrefix={`progress-${idx}`}
                     />
-                    {siteBoqItems.length > 0 && entry.boqItemId != null && hasRoadProgramme && (activeRoadBarsByItem.get(entry.boqItemId)?.length ?? 0) === 0 && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 mt-1" data-testid={`badge-unplanned-progress-${idx}`}>
-                        <AlertTriangle className="w-3 h-3" /> Unplanned DPR entry — no active programme for {header.date}
-                      </span>
-                    )}
                     {siteBoqItems.length > 0 && entry.programmeBarId == null && renderBalanceChips(entry.boqItemId, entry.quantity ?? calculateQuantity(entry))}
                     {siteBoqItems.length === 0 && (
                       <Input
@@ -3418,7 +3396,7 @@ export default function SiteEntry() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__none__">Not linked</SelectItem>
-                        {siteBoqItems.map((bi) => (
+                        {dprBoqItemsForMapping.map((bi) => (
                           <SelectItem key={bi.id} value={String(bi.id)}>
                             {bi.itemCode ? `[${bi.itemCode}] ` : ""}{boqItemDisplayName(bi)}
                           </SelectItem>
@@ -3580,7 +3558,7 @@ export default function SiteEntry() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="__none__">Not linked</SelectItem>
-                          {siteBoqItems.map((bi) => (
+                          {dprBoqItemsForMapping.map((bi) => (
                             <SelectItem key={bi.id} value={String(bi.id)}>
                               {bi.itemCode ? `[${bi.itemCode}] ` : ""}{boqItemDisplayName(bi)}
                             </SelectItem>

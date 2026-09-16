@@ -114,13 +114,19 @@ export function ProgrammeBarPicker({
   fromKm?: number | null;
   toKm?: number | null;
 }) {
-  const { data: bars = [] } = useQuery<PickerBar[]>({
+  const {
+    data: bars = [],
+    isError: programmeQueryFailed,
+    isLoading: programmeQueryLoading,
+  } = useQuery<PickerBar[]>({
     queryKey: ["/api/dpr/programme-bars", projectId, boqItemId],
     queryFn: async () => {
       const res = await fetch(`/api/dpr/programme-bars?projectId=${projectId}&boqItemId=${boqItemId}`, { credentials: "include" });
-      return res.ok ? res.json() : [];
+      if (!res.ok) throw new Error(`programme_bars_load_failed_${res.status}`);
+      return res.json();
     },
     enabled: !!projectId && !!boqItemId,
+    retry: false,
   });
 
   // Part C auto-match: fires once per (item, bar-list) while nothing is linked.
@@ -139,8 +145,18 @@ export function ProgrammeBarPicker({
   // 06T §2: chips collapsed by default — "Programme context" disclosure.
   const [chipsOpen, setChipsOpen] = useState(false);
   const sideKey = sideLabel ? normalizeDprSideKey(sideLabel) : null;
+  // A row's BOQ item/date is a new matching context. A manual choice for the
+  // previous item must not suppress the first automatic match for the next
+  // item, while an explicit unlink within this context remains respected.
   useEffect(() => {
-    if (!autoSelect || bars.length === 0 || value != null) return;
+    manualPickRef.current = false;
+    autoLinkedRef.current = null;
+    reconcileRef.current = null;
+    setAutoLinkedBarId(null);
+    setReconcile(null);
+  }, [boqItemId, dprDate]);
+  useEffect(() => {
+    if (!autoSelect || bars.length === 0 || value != null || manualPickRef.current) return;
     // Re-attempts as side/chainage narrow the candidates — item + side +
     // chainage identifying exactly one compatible bar links it automatically,
     // for suggested AND manually-added entries alike.
@@ -184,7 +200,46 @@ export function ProgrammeBarPicker({
     }
   }, [bars, value, sideKey, fromKm, toKm, dprDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (bars.length === 0) return null;
+  if (bars.length === 0) {
+    return (
+      <div className="mt-1 flex flex-wrap items-center gap-1.5" data-testid={`${testidPrefix}-programme-optional-status`}>
+        <span className="text-[10px] font-semibold text-muted-foreground">Programme link:</span>
+        <span className="text-[10px] text-muted-foreground">
+          {value != null
+            ? programmeQueryLoading
+              ? `Programme bar #${value} remains linked while programme context loads`
+              : programmeQueryFailed
+                ? `Programme bar #${value} remains linked, but its details are unavailable`
+                : `Programme bar #${value} remains linked, but its details are unavailable`
+            : programmeQueryLoading
+              ? "Loading programme context…"
+              : programmeQueryFailed
+                ? "Programme context unavailable — BOQ item can still be saved without a programme bar"
+                : "Not linked to a programme bar (optional)"}
+        </span>
+        {value != null && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-5 text-[10px] px-1.5 text-muted-foreground underline"
+            onClick={() => {
+              // A missing bar must not be silently stripped: the server keeps
+              // rejecting an invalid saved link until the engineer explicitly
+              // chooses to leave this row unlinked.
+              manualPickRef.current = true;
+              setAutoLinkedBarId(null);
+              setReconcile(null);
+              onSelect(null);
+            }}
+            data-testid={`${testidPrefix}-leave-unlinked`}
+          >
+            Leave unlinked
+          </Button>
+        )}
+      </div>
+    );
+  }
 
   const isActive = (b: PickerBar) =>
     !b.startDate || !b.endDate || (dprDate >= b.startDate && dprDate <= b.endDate);
@@ -194,6 +249,11 @@ export function ProgrammeBarPicker({
   const active = bars.filter(b => isActive(b) && sideOkChip(b));
   const others = bars.filter(b => !isActive(b) || !sideOkChip(b));
   const selected = value != null ? bars.find(b => b.id === value) ?? null : null;
+  // A restored link may no longer be present in the current programme
+  // response (deleted bar, project mismatch, or a restricted response). Keep
+  // the invalid value visible until the engineer explicitly unlinks it so the
+  // server remains the final authority for rejecting stale links.
+  const unavailableLinkedBar = value != null && selected == null;
 
   return (
     <div className="mt-1 space-y-1">
@@ -203,8 +263,12 @@ export function ProgrammeBarPicker({
         <span className="text-[10px] font-semibold text-muted-foreground">Programme context:</span>
         {selected ? (
           <span className="text-[11px]" data-testid={`${testidPrefix}-linked-summary`}>{barLabel(selected)}</span>
+        ) : unavailableLinkedBar ? (
+          <span className="text-[11px] text-amber-700 dark:text-amber-300" data-testid={`${testidPrefix}-linked-summary`}>
+            Programme bar #{value} remains linked, but its details are unavailable
+          </span>
         ) : (
-          <span className="text-[11px] text-muted-foreground" data-testid={`${testidPrefix}-linked-summary`}>No planned reach linked</span>
+          <span className="text-[11px] text-muted-foreground" data-testid={`${testidPrefix}-linked-summary`}>Not linked to a programme bar (optional)</span>
         )}
         <Button
           type="button"
@@ -216,6 +280,25 @@ export function ProgrammeBarPicker({
         >
           {chipsOpen ? "Hide options" : "Change planned reach"}
         </Button>
+        {(selected || unavailableLinkedBar) && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-5 text-[10px] px-1.5 text-muted-foreground underline"
+            onClick={() => {
+              // An explicit unlink is a deliberate choice. Keep it unlinked
+              // even when the automatic matcher sees one future/other bar.
+              manualPickRef.current = true;
+              setAutoLinkedBarId(null);
+              setReconcile(null);
+              onSelect(null);
+            }}
+            data-testid={`${testidPrefix}-leave-unlinked`}
+          >
+            Leave unlinked
+          </Button>
+        )}
       </div>
       {reconcile?.kind === "relinked" && value === reconcile.barId && (
         <p className="text-[10px] text-blue-700 dark:text-blue-300" data-testid={`${testidPrefix}-reconcile-relinked`}>
@@ -242,7 +325,7 @@ export function ProgrammeBarPicker({
                 ? "Linked to this programme bar — click to unlink"
                 : `Link to this bar${b.side ? ` (planned side: ${barSideLabel(b.side as any)})` : " (side unspecified)"}${b.plannedWidthM != null ? `, width ${b.plannedWidthM} m` : ""}. Prefills chainage — enter today's actual executed range; you never claim the whole bar.`}
               onClick={() => {
-                manualPickRef.current = !isSel;
+                manualPickRef.current = true;
                 setReconcile(null);
                 onSelect(isSel ? null : b);
               }}

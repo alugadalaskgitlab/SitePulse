@@ -41,7 +41,7 @@ import { parseDprError } from "@/lib/dprErrors";
 import { DPR_REGISTER_PATH, resolveReturnTo, withReturnTo } from "@/lib/progressReportNav";
 import { BillItemPicker, type BillItem } from "@/components/BillItemPicker";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
-import { dprBoqItemDisplayName } from "@shared/dprBoqSelection";
+import { dprBoqItemDisplayName, dprSelectableBoqItems } from "@shared/dprBoqSelection";
 import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/lib/dprNotReadyHighlight";
 import {
   adoptOpenUsageIntoDprRow,
@@ -478,6 +478,13 @@ export default function SiteEdit() {
     // normal new/edit fallback.
     preferredProjectId: dpr?.boqProjectId,
   });
+  // Keep labour/material BOQ mappings aligned with BillItemPicker: an item is
+  // available to DPR only unless the BOQ explicitly opts it out. Programme
+  // dates/bars do not filter this list.
+  const dprBoqItemsForMapping = useMemo(
+    () => dprSelectableBoqItems(siteBoqItems),
+    [siteBoqItems],
+  );
   const { data: cutFillArrangements = [] } = useQuery<any[]>({
     queryKey: ["/api/boq/projects", siteBoqProjectId, "earthwork-arrangements"],
     queryFn: async () => {
@@ -2929,7 +2936,7 @@ export default function SiteEdit() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__none__">Not linked</SelectItem>
-                      {siteBoqItems.map((item) => (
+                      {dprBoqItemsForMapping.map((item) => (
                         <SelectItem key={item.id} value={String(item.id)}>
                           {item.itemCode ? `[${item.itemCode}] ` : ""}{boqItemDisplayName(item)}
                         </SelectItem>
