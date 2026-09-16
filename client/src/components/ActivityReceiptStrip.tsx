@@ -110,7 +110,8 @@ export interface ActivityReceiptStripProps {
       genuine day-level resolver is added later — never a prorated bar total. */
   dayProgrammeQty?: number | null;
   bomRequirementQty?: number | null;
-  /** Detailed DPR passes true: read-only display (View Receipts only). */
+  /** Detailed DPR ordinary editors get a read-only display; authenticated
+      admins may correct the receipt/arrangement data from SiteEdit. */
   readOnly?: boolean;
   /**
    * 06T §3: the arrangement id already persisted on this progress row — a

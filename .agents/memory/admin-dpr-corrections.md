@@ -14,3 +14,9 @@ Server-owned review facts must follow a uniquely identified source row, with sem
 **Why:** legacy rows may have no stable entry key or normalized chainage values. Raw comparisons discard valid approvals, while duplicate source claims can copy approval onto multiple rows.
 
 **How to apply:** enforce one-to-one validated source identity before geometry exceptions and audit copying; normalize chainage and nullable booleans, ignore incoming approval fields, and reset review when relevant work facts change.
+
+Submitted-version programme, quantity-source, and material-outcome checks apply to changed/new activity rows, not untouched historical rows. Fresh creation and draft save/submit retain full validation.
+
+**Why:** a labour-only correction must not be blocked by unrelated legacy activity data. Semantic comparison must not normalize invalid enum values into an apparent unchanged match.
+
+**How to apply:** match validated source identity, compare authored facts, preserve unchanged rows without validator mutation, and compare strict enums exactly. Keep the server diesel guard aligned with UI: ordinary editors may correct Contractor/Direct-Purchase diesel; authenticated admins retain Plant-stock override.

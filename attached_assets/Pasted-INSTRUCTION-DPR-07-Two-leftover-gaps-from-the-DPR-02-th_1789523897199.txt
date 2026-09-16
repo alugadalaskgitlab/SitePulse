@@ -1,0 +1,54 @@
+INSTRUCTION DPR-07: Two leftover gaps from the DPR-02 through DPR-06 batch — (1) Diesel Issued/Added for Contractor/Direct-Purchase scope is still wrongly locked in DPR EDIT mode, (2) admin edits to a submitted DPR can still be blocked by unrelated, untouched rows failing today's quantity-source/material-outcome/programme-link checks
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Both fixes below are narrow completions of work already mostly done correctly in the previous batch — do not redo or touch anything already working (DPR-02, DPR-03, DPR-04, or the moved-equipment conflict logic in the version endpoint, which is already correct). Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+
+PART 1 — Diesel Issued/Added still locked in edit mode for Contractor/Direct-Purchase scope
+1. client/src/components/DprEquipmentCompact.tsx now has a single combined lock, `linkedSourceLocked = row.plantUsageId != null && !allowLinkedSourceEdit` (~line 78), applied identically to THREE different inputs: Opening Meter, Start Time, and Diesel Issued/Added (L).
+2. `allowLinkedSourceEdit` is only ever passed as `true` from client/src/pages/SiteEdit.tsx (~line 2789, `allowLinkedSourceEdit={isAdmin}`) — i.e. only for an admin editing an already-submitted DPR. It is never passed from GuidedDpr.tsx or SiteEntry.tsx.
+3. Confirmed by the person reporting this: normal DPR creation (GuidedDpr/SiteEntry) already correctly allows entering a diesel advance for Contractor-scope equipment — that part was never broken. The problem is specifically in DPR EDIT mode (SiteEdit.tsx): a Contractor-scope (or Direct-Purchase-scope) equipment row that is linked to a Plant usage record has its Diesel Issued/Added field locked there, purely because of the Plant linkage, with no admin exception applied to it — even after the previous batch's admin-correction work, this specific field was left bundled in with Opening Meter and Start Time under the same all-or-nothing lock.
+4. Opening Meter and Start Time SHOULD stay locked based on Plant linkage (that's correct — the linked Plant record is the authority for the machine's opening reading and start time) and SHOULD require the admin override to unlock (already working correctly per DPR-06's moved-equipment logic). Diesel Issued/Added is different: for Contractor and Direct-Purchase diesel scope, this figure has nothing to do with Plant's own stock, so it should never have been locked by Plant linkage in the first place, in ANY mode — draft, submit, or edit — regardless of admin status.
+
+FIX 1 — UNLOCK DIESEL ISSUED/ADDED FOR NON-PLANT-STOCK SCOPE, INDEPENDENT OF THE ADMIN OVERRIDE
+a. In DprEquipmentCompact.tsx, give the Diesel Issued/Added input its own disabled condition, separate from `linkedSourceLocked`: it should be disabled only when `row.plantUsageId != null && isPlantStock` (i.e. only for Plant-stock diesel scope) — never for contractor or direct-purchase scope, and never gated by `allowLinkedSourceEdit`.
+b. Leave Opening Meter and Start Time exactly as they are now (`disabled={linkedSourceLocked}`) — do not change those.
+c. This must work the same way in every screen that renders this row — GuidedDpr.tsx, SiteEntry.tsx, and SiteEdit.tsx — since it's the shared component; confirm SiteEdit.tsx in particular, since that's where the report says it's currently broken.
+
+PART 2 — Admin edits to a submitted DPR can still be blocked by unrelated, unchanged rows
+1. server/routes.ts, the DPR version endpoint (`POST /api/dprs/:id/version`, ~line 2961-2965) calls `validateProgressProgrammeLinks(input.data)`, `validateProgressQuantitySources(input.data)`, and `validateProgressMaterialOutcomes(input.data)` against the FULL submitted progress array, with no comparison to what was actually changed.
+2. This is inconsistent with how the SAME endpoint already correctly handles the "moved equipment" case (`movedEquipmentVersionConflict`, ~line 2605 onward) and the length/UOM geometry check (`validateVersionProgressGeometry`, ~line 2660 onward) — both of those already compare each row against its original/source version and only object when something CHANGED. The three validators named above do not do this comparison at all; they simply re-validate every row against today's rules, so a legacy or otherwise-untouched row that doesn't perfectly satisfy current validation can block an edit the admin never made to that row.
+
+FIX 2 — SCOPE THESE THREE VALIDATORS TO CHANGED/NEW ROWS ONLY, AT THE VERSION ENDPOINT
+a. Using the same row-identification approach already used by `validateVersionProgressGeometry` (persistedId match, falling back to entryKey match, against the original DPR's stored progress), determine for each row in the submitted version payload whether it is new or has actually changed compared to the original.
+b. For `validateProgressProgrammeLinks`, `validateProgressQuantitySources`, and `validateProgressMaterialOutcomes`, only run their checks against rows that are new or changed. A row that is unchanged from the original version should pass through without being re-validated, exactly like the moved-equipment and geometry checks already do.
+c. This change applies ONLY at the version endpoint (editing an already-submitted DPR). Do NOT change how these three validators are called for fresh DPR creation or draft save/submit (~line 2213-2217, 2325-2329, 2405-2409) — those must keep validating every row exactly as they do today, since there's no "original version" to compare against there.
+d. If a row is new or changed and fails one of these checks, the existing error behavior (blocking the save with the existing error message/code) stays exactly as it is today — this fix only changes which rows get checked, not what happens when a check fails.
+
+WHAT NOT TO DO
+- Do not touch DPR-02, DPR-03, or DPR-04 — all confirmed correctly built and working.
+- Do not touch the moved-equipment conflict logic (`movedEquipmentVersionConflict`) or `validateVersionProgressGeometry` — both already correctly scoped to changed rows; use them as the reference pattern, don't rewrite them.
+- Do not change Opening Meter or Start Time locking behavior.
+- Do not change validation behavior for fresh DPR creation, draft save, or first-time submission — only the version (edit-of-submitted-DPR) endpoint.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema/migration change is expected for either fix.
+
+TESTS
+A. In DPR edit mode (SiteEdit.tsx), open a Contractor-scope equipment row linked to a Plant usage record. Confirm "Diesel Issued / Added (L)" is now editable for a regular admin/manager edit, while Opening Meter and Start Time remain locked as before (unless the admin override is used).
+B. Repeat for Direct-Purchase scope, same result.
+C. Confirm Plant-Stock scope, linked to a Plant usage record, still has Diesel Issued/Added correctly LOCKED — no regression to the case this lock exists for.
+D. Confirm normal DPR creation (GuidedDpr/SiteEntry) for all three diesel scopes is completely unaffected — it was already working and must stay that way.
+E. Edit a submitted DPR as admin, changing one Labour field only, where some OTHER, untouched Activity row in that same DPR would fail today's quantity-source or material-outcome rules. Confirm the save now succeeds, and that untouched row is carried through unchanged.
+F. In the same kind of edit, actually change an Activity row's quantity/material-outcome/programme-link to something genuinely invalid. Confirm this is still correctly rejected — validation on changed data must still work.
+G. Confirm a fresh, brand-new DPR still enforces all three checks against every row exactly as before — no change to first-time creation/submission.
+
+REPORT BACK
+1. Confirm Fix 1 with Test A/B/C/D evidence (screenshots).
+2. Confirm Fix 2 with Test E/F/G evidence (screenshots).
+3. Confirm no schema change was needed.
+4. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

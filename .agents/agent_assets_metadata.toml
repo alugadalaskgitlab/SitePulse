@@ -1235,3 +1235,31 @@ mtime_ms = 1789494792806
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/206dab1d-6fe2-47cc-ac38-aab8044f0634/14d8e499-32dd-40ee-89dc-739b1bc77f09"
 storage_version_token = "1789494900917900"
 content_type = "image/png"
+
+[[outputs]]
+id = "ZbD7E8DIoVckkfEdGDQ3a"
+uri = "file://tests/fixtures/dpr-site-entry/evidence/dpr07-D-admin-plant-stock-linked-all-unlocked.png"
+type = "image"
+title = "DPR-07: Admin fields unlocked"
+description = "Isolated browser screenshot: linked Plant-stock equipment with admin opening meter, start time and diesel controls enabled."
+logical_id = "c20b43ad-0aed-437a-abf8-d93ff041650a"
+content_hash = "sha256:16c51af9befc12acbb8ab9fbecc972f4a324ea55a55c5d31c8765a8d0b99f2a4"
+size = 92430
+mtime_ms = 1789524861705
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c20b43ad-0aed-437a-abf8-d93ff041650a/30085e4d-90e2-453e-8bdb-f310037207e2"
+storage_version_token = "1789525429558449"
+content_type = "image/png"
+
+[[outputs]]
+id = "3UGJH4QLw9Yy4AoHmzaNz"
+uri = "file://tests/fixtures/dpr-site-entry/evidence/dpr07-evidence.html"
+type = "text"
+title = "DPR-07: A–H screenshot evidence"
+description = "All requested browser screenshots, with test-data and API-mock disclosure. Actual server-route behavior was tested separately."
+logical_id = "90f293af-3748-434f-b750-65bc1245498b"
+content_hash = "sha256:39c450651d09374bdfd9443a9037f73476bfe129c32643eccdb475f4221cb952"
+size = 1022534
+mtime_ms = 1789525456421
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/90f293af-3748-434f-b750-65bc1245498b/2288e967-bb78-4d97-96f4-6b60fdc840f4"
+storage_version_token = "1789525460528863"
+content_type = "text/html"

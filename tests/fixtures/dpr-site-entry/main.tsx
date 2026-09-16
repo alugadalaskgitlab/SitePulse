@@ -440,6 +440,118 @@ const siteEditContractorDpr = {
   remarks: "DIESEL-02 SITE EDIT CONTRACTOR FIXTURE — NOT A CUSTOMER DPR.",
 };
 
+/*
+ * DPR-07 linked-source matrix.  These records intentionally use one
+ * synthetic Plant usage id so SiteEdit renders the same linked lifecycle
+ * state for each diesel source.  The browser verifier changes only the
+ * authenticated fixture role (`?role=manager` vs the default admin); no
+ * route parameter is consulted by production code for editability.
+ */
+const dpr07LinkedContractor = {
+  ...siteEditContractorDpr,
+  id: 6210,
+  dprStatus: "submitted",
+  remarks: "DPR-07 A — linked Contractor scope; synthetic fixture only.",
+  equipment: [{
+    ...siteEditContractorDpr.equipment[0],
+    id: 7231,
+    plantUsageId: 8101,
+    dieselSource: "contractor",
+    diesel: 14,
+    openingReading: 100,
+    closingReading: 108,
+    startTime: "08:00",
+    endTime: "17:00",
+    openingDiesel: null,
+    dieselBalanceInTank: null,
+    dieselBalanceConfirmed: false,
+  }],
+};
+
+const dpr07LinkedDirectPurchase = {
+  ...dpr07LinkedContractor,
+  id: 6211,
+  remarks: "DPR-07 B — linked Direct-Purchase scope; synthetic fixture only.",
+  equipment: [{
+    ...dpr07LinkedContractor.equipment[0],
+    id: 7232,
+    dieselSource: "direct_purchase",
+    diesel: 9,
+    fuelStation: "HP CENTRAL",
+    billNumber: "FIX-DPR07-09",
+    amountPaid: 1200,
+  }],
+};
+
+const dpr07LinkedPlantManager = {
+  ...dpr07LinkedContractor,
+  id: 6212,
+  remarks: "DPR-07 C — linked Plant-Stock scope; synthetic fixture only.",
+  equipment: [{
+    ...dpr07LinkedContractor.equipment[0],
+    id: 7233,
+    dieselSource: "plant_stock",
+    diesel: 14,
+    openingDiesel: 30,
+    dieselBalanceInTank: 22,
+    dieselBalanceConfirmed: true,
+  }],
+};
+
+const dpr07LinkedPlantAdmin = {
+  ...dpr07LinkedPlantManager,
+  id: 6213,
+  remarks: "DPR-07 D — authenticated admin linked Plant-Stock scope; synthetic fixture only.",
+};
+
+const dpr07LegacyInvalid = {
+  ...storedDpr,
+  id: 6214,
+  dprStatus: "submitted",
+  remarks: "DPR-07 F/G — legacy invalid untouched activity; synthetic fixture only.",
+  progress: [{
+    ...storedDpr.progress[0],
+    id: 7314,
+    entryKey: "dpr07-legacy-invalid-activity",
+    activity: "LEGACY INVALID ACTIVITY",
+    quantity: 10,
+    length: 100,
+    width: 1,
+    thickness: null,
+    uom: "SQM",
+    // Deliberately invalid under today's rules.  The fixture version handler
+    // compares this original row before deciding whether to re-check it.
+    quantitySource: "legacy_invalid_source",
+    quantitySourceNote: null,
+    programmeBarId: null,
+    // Quantity-source is the deliberately untouched legacy failure for F/G.
+    // Keep materialOutcome null here so SiteEdit's local cut/fill guard does
+    // not mask the version-endpoint changed-row behavior we are evidencing.
+    materialOutcome: null,
+    reusableQty: null,
+  }],
+  labour: [{
+    id: 7315,
+    category: "Skilled",
+    gender: "Male",
+    count: 2,
+    task: "LEGACY LABOUR",
+    contractor: "DPR07 GANG",
+    boqItemId: null,
+    structureId: null,
+  }],
+  equipment: [],
+  materials: [],
+  sitePurchases: [],
+};
+
+const dpr07FreshInvalid = {
+  ...dpr07LegacyInvalid,
+  id: 6215,
+  dprStatus: "draft",
+  remarks: "DPR-07 H — fresh-create invalid validation fixture.",
+};
+
 const fixtureState = {
   requests: [] as RequestRecord[],
   dprCreatePayloads: [] as any[],
@@ -465,6 +577,8 @@ const fixtureState = {
   plantUsageRecords: [] as any[],
   guidedSavedReportPayloads: [] as any[],
   toasts: [] as unknown[],
+  dpr07VersionChecks: [] as any[],
+  dpr07FreshCreateChecks: [] as any[],
 };
 
 declare global {
@@ -482,6 +596,12 @@ const guidedDprRecords: Record<number, any> = {
   [guidedContractorDpr.id]: guidedContractorDpr,
   [guidedPlantStockDpr.id]: guidedPlantStockDpr,
   [siteEditContractorDpr.id]: siteEditContractorDpr,
+  [dpr07LinkedContractor.id]: dpr07LinkedContractor,
+  [dpr07LinkedDirectPurchase.id]: dpr07LinkedDirectPurchase,
+  [dpr07LinkedPlantManager.id]: dpr07LinkedPlantManager,
+  [dpr07LinkedPlantAdmin.id]: dpr07LinkedPlantAdmin,
+  [dpr07LegacyInvalid.id]: dpr07LegacyInvalid,
+  [dpr07FreshInvalid.id]: dpr07FreshInvalid,
 };
 let nextPlantUsageId = 8102;
 let plantUsageRecords: any[] = [{ ...initialPlantUsage }];
@@ -509,6 +629,65 @@ function parseBody(init?: RequestInit): any {
     return undefined;
   }
 }
+
+const isDpr07Route = () =>
+  new URLSearchParams(window.location.search).get("dpr07") === "1";
+
+const dpr07ComparableProgress = (row: any) => ({
+  id: row?.id ?? row?.persistedId ?? null,
+  entryKey: row?.entryKey ?? null,
+  activity: row?.activity ?? null,
+  boqItemId: row?.boqItemId ?? null,
+  programmeBarId: row?.programmeBarId ?? null,
+  side: row?.side ?? null,
+  chainageFrom: row?.chainageFrom ?? null,
+  chainageTo: row?.chainageTo ?? null,
+  quantity: row?.quantity ?? null,
+  uom: row?.uom ?? null,
+  quantitySource: row?.quantitySource ?? null,
+  quantitySourceNote: row?.quantitySourceNote ?? null,
+  materialOutcome: row?.materialOutcome ?? null,
+  reusableQty: row?.reusableQty ?? null,
+});
+
+const dpr07ComparableLabour = (row: any) => ({
+  category: row?.category ?? null,
+  gender: row?.gender ?? null,
+  count: row?.count ?? null,
+  task: row?.task ?? null,
+  contractor: row?.contractor ?? null,
+  boqItemId: row?.boqItemId ?? null,
+  structureId: row?.structureId ?? null,
+});
+
+const dpr07VersionValidation = (id: number, payload: any) => {
+  const original = id === dpr07LegacyInvalid.id ? dpr07LegacyInvalid : null;
+  const submitted = Array.isArray(payload?.data?.progress) ? payload.data.progress : [];
+  const source = original?.progress?.[0] ?? null;
+  const row = submitted[0] ?? null;
+  const changed = JSON.stringify(dpr07ComparableProgress(row))
+    !== JSON.stringify(dpr07ComparableProgress(source));
+  const labourChanged = JSON.stringify((payload?.data?.labour ?? []).map(dpr07ComparableLabour))
+    !== JSON.stringify((original?.labour ?? []).map(dpr07ComparableLabour));
+  fixtureState.dpr07VersionChecks.push({
+    sourceId: id,
+    originalRows: original?.progress?.length ?? 0,
+    submittedRows: submitted.length,
+    changedRows: changed ? 1 : 0,
+    labourChanged,
+    original: dpr07ComparableProgress(source),
+    submitted: dpr07ComparableProgress(row),
+    scope: changed ? "changed-or-new-only" : "unchanged-legacy-bypassed",
+    result: changed ? "rejected" : "accepted",
+  });
+  if (changed) {
+    return json({
+      code: "DPR_PROGRESS_VALIDATION",
+      message: "Progress entry \"LEGACY INVALID ACTIVITY\": changed quantity-source, material-outcome, or programme-link data is invalid.",
+    }, 422);
+  }
+  return null;
+};
 
 function copyDprWithPayload(id: number, payload: any, status: string) {
   const source = guidedDprRecords[id] ?? (id === 6101 ? storedDpr : currentDpr);
@@ -687,6 +866,21 @@ window.fetch = async (input, init) => {
   }
   if (pathname === "/api/dprs" && method === "GET") return json([currentDpr]);
   if (pathname === "/api/dprs" && method === "POST") {
+    // H exercises the same fresh-create route after the real SiteEntry
+    // controls have been rendered.  This branch is deliberately explicit:
+    // the response is fixture API evidence, not an actual server invocation.
+    if (isDpr07Route() && url.searchParams.get("validation") === "invalid") {
+      fixtureState.dpr07FreshCreateChecks.push({
+        route: "POST /api/dprs",
+        result: "rejected",
+        scope: "all-rows-fresh-create",
+        checkedRows: Array.isArray(body?.progress) ? body.progress.length : 0,
+      });
+      return json({
+        code: "DPR_PROGRESS_VALIDATION",
+        message: "Fresh DPR progress row fails quantity-source, material-outcome, or programme-link validation.",
+      }, 422);
+    }
     const id = nextDprId++;
     const status = String(body?.dprStatus || "").toLowerCase() === "draft" ? "draft" : "submitted";
     if (status === "draft") {
@@ -727,6 +921,10 @@ window.fetch = async (input, init) => {
   }
   const versionMatch = pathname.match(/^\/api\/dprs\/(\d+)\/version$/);
   if (versionMatch && method === "POST") {
+    if (isDpr07Route()) {
+      const validationResponse = dpr07VersionValidation(Number(versionMatch[1]), body);
+      if (validationResponse) return validationResponse;
+    }
     const id = nextDprId++;
     fixtureState.dprVersionPayloads.push({ id: Number(versionMatch[1]), payload: body || {} });
     fixtureState.versionPayloads.push({ id: Number(versionMatch[1]), payload: body || {} });
@@ -851,6 +1049,29 @@ function FixtureSubmittedReport() {
   );
 }
 
+function Dpr07EvidenceBanner() {
+  if (!isDpr07Route()) return null;
+  const params = new URLSearchParams(window.location.search);
+  const role = params.get("role") === "manager"
+    ? "NON-ADMIN MANAGER"
+    : "AUTHENTICATED ADMIN";
+  const scenario = params.get("scenario") || "shared DPR screen";
+  return (
+    <header
+      className="mx-auto mb-5 max-w-5xl rounded-lg border border-amber-300 bg-amber-50 px-5 py-4 text-amber-950 shadow-sm"
+      data-testid="dpr07-evidence-banner"
+    >
+      <div className="text-xs font-bold uppercase tracking-[0.18em] text-amber-800">
+        DPR-07 isolated browser evidence · {role}
+      </div>
+      <h1 className="mt-1 text-lg font-semibold">Fixture-only API adapter · {scenario}</h1>
+      <p className="mt-1 text-sm">
+        Real DPR components and rendered controls. Synthetic data only; no customer or production writes.
+      </p>
+    </header>
+  );
+}
+
 // wouter's setLocation uses history.pushState. The isolated fixture routes the
 // real SiteEntry success navigation to SiteSuccess without changing production
 // navigation code.
@@ -872,6 +1093,7 @@ const mount = () => {
   appRoot = createRoot(document.getElementById("root")!);
   appRoot.render(
     <QueryClientProvider client={queryClient}>
+      <Dpr07EvidenceBanner />
       {isGuidedReport
         ? <FixtureSavedReport />
         : isSiteSuccess

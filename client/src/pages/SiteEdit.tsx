@@ -2260,7 +2260,7 @@ export default function SiteEdit() {
                           entryBoqItem(entry),
                         )}
                         executedUom={resolveBoqDisplayUnit(siteBoqItems.find((it) => it.id === entry.boqItemId))}
-                        readOnly persistedArrangementId={entry.earthworkArrangementId}
+                        readOnly={!isAdmin} persistedArrangementId={entry.earthworkArrangementId}
                         onArrangementResolved={(id) => setProgress((prev) => prev.map((p, i) => (i === idx ? { ...p, earthworkArrangementId: id } : p)))}
                         activityMaterialHint={entry.activity || null} testIdPrefix={`detailed-receipt-${idx}`} />
                     ) : null}
@@ -2471,10 +2471,9 @@ export default function SiteEdit() {
                 <Label className="text-sm">Equipment</Label>
                 <Select
                   value={entry.equipmentId ? String(entry.equipmentId) : ""}
-                   // equipmentId/plantUsageId are lifecycle identities and
-                   // remain immutable even for admins.  Other linked facts
-                   // are corrected through the version transaction below.
-                   disabled={entry.plantUsageId != null}
+                   // Ordinary editors cannot replace a linked plant row, but
+                   // an authenticated admin may correct every equipment fact.
+                   disabled={entry.plantUsageId != null && !isAdmin}
                   onValueChange={(val) => {
                     const updated = [...equipment];
                     const selectedEquip = activeEquipment.find(e => e.id === Number(val));

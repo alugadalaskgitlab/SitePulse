@@ -68,7 +68,12 @@ import { insertAttachmentSchema, attachmentModuleTypes, boqProjects as boqProjec
 import { MAX_ACTIVITY_PHOTOS } from "@shared/dprPhotos";
 import { isBarSide, isDprSideCompatible, barSideLabel, parseChainageKm, areSidesDistinctCorridors } from "@shared/barSide";
 import { checkProgrammeLinkRow, deriveChainageReviewStatus, barSideCoverage, normalizeDprSideKey } from "@shared/dprProgrammeLink";
-import { dprProgressReviewFactsChanged, resolveDprProgressSources } from "@shared/dprProgressIdentity";
+import {
+  dprProgressProgrammeContextChanged,
+  dprProgressReviewFactsChanged,
+  dprProgressValidationFactsChanged,
+  resolveDprProgressSources,
+} from "@shared/dprProgressIdentity";
 import {
   checkQuantitySourceRow,
   resolveQuantitySource,
@@ -2814,20 +2819,35 @@ export async function registerRoutes(
     // These are the fields deliberately locked in SiteEdit for ordinary
     // editors because they are canonical dispatch facts. Closing fields
     // (end time, closing meter, operator and task) remain available to the
-    // normal completion workflow.
-    const protectedFields = ["openingReading", "startTime", "diesel", "dieselSource"] as const;
-    const numericFields = new Set(["openingReading", "diesel"]);
+    // normal completion workflow. Diesel is a canonical locked fact only for
+    // plant-stock dispatches: contractor/direct-purchase diesel is an
+    // ordinary completion value and remains editable by a manager. The
+    // original source is authoritative here; changing dieselSource itself is
+    // still always protected.
+    const protectedFields = ["openingReading", "startTime", "dieselSource"] as const;
+    const numericFields = new Set(["openingReading"]);
     for (const original of originalEquipment) {
       const usageId = Number(original?.plantUsageId);
       if (!Number.isInteger(usageId) || usageId <= 0) continue;
       const edited = editedEquipment.find((row) => Number(row?.plantUsageId) === usageId);
       if (!edited) continue; // identity helper returns the clearer removal error.
+      const source = String(original?.dieselSource ?? "")
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, "_");
+      const dieselProtected = source === "plant_stock";
       for (const field of protectedFields) {
         const left = original[field];
         const right = edited[field];
         const same = numericFields.has(field)
           ? (left == null && right == null) || Number(left) === Number(right)
           : String(left ?? "").trim().toUpperCase() === String(right ?? "").trim().toUpperCase();
+        if (!same) return usageId;
+      }
+      if (dieselProtected) {
+        const left = original.diesel;
+        const right = edited.diesel;
+        const same = (left == null && right == null) || Number(left) === Number(right);
         if (!same) return usageId;
       }
     }
@@ -2957,12 +2977,58 @@ export async function registerRoutes(
           equipmentUsageId: movedUsageConflict,
         });
       }
+      /*
+       * Version validation is intentionally narrower than fresh create/draft/
+       * submit validation.  SiteEdit sends a replacement array, so compare
+       * each row with the already-resolved source identity before invoking the
+       * three validators.  In particular, do not let a legacy untouched row
+       * fail because today's rules are stricter than the rules in force when
+       * that historical row was submitted.
+       *
+       * Keep the row objects themselves (rather than cloning them into JSON)
+       * so validator mutations for changed/new rows — calculated quantity
+       * source and chainage review status — still reach createVersionDpr.
+       * Unchanged rows are not passed to a validator at all and therefore
+       * cannot be mutated by one.
+       */
+      const versionProgress = Array.isArray((input.data as any).progress)
+        ? (input.data as any).progress
+        : [];
+      const changedProgressIndexes = new Set<number>();
+      versionProgress.forEach((row: any, index: number) => {
+        const source = progressSourceResolution.ok
+          ? progressSourceResolution.sources[index]
+          : undefined;
+        if (!source || dprProgressValidationFactsChanged(source as any, row as any)) {
+          changedProgressIndexes.add(index);
+        }
+      });
+      const changedProgress = versionProgress.filter((_row: any, index: number) =>
+        changedProgressIndexes.has(index)
+      );
+      const programmeContextChanged = dprProgressProgrammeContextChanged(
+        versionOriginal as any,
+        input.data as any,
+      );
+
       // 030A Part F: programme-bar link validation applies to edits too.
-      const linkError = await validateProgressProgrammeLinks(input.data);
+      // The BOQ-project header is part of this validator's context; when it
+      // changes, every current row is relevant even if its row facts match.
+      const linkError = await validateProgressProgrammeLinks(
+        programmeContextChanged
+          ? { ...(input.data as any), progress: versionProgress }
+          : { ...(input.data as any), progress: changedProgress },
+      );
       if (linkError) return res.status(400).json({ message: linkError, code: "PROGRAMME_LINK_INVALID" });
-      const qtySourceError = await validateProgressQuantitySources(input.data);
+      const qtySourceError = await validateProgressQuantitySources({
+        ...(input.data as any),
+        progress: changedProgress,
+      });
       if (qtySourceError) return res.status(400).json({ message: qtySourceError, code: "QUANTITY_SOURCE_INVALID" });
-      const materialOutcomeError = await validateProgressMaterialOutcomes(input.data);
+      const materialOutcomeError = await validateProgressMaterialOutcomes({
+        ...(input.data as any),
+        progress: changedProgress,
+      });
       if (materialOutcomeError) return res.status(400).json({ message: materialOutcomeError, code: "MATERIAL_OUTCOME_INVALID" });
       // The version actor is an authenticated identity, not a client
       // assertion. In particular, a user with ordinary edit rights must not

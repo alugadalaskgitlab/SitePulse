@@ -27,6 +27,21 @@ const contractorDailyRow = {
   dieselBalanceConfirmed: false,
 };
 
+const linkedDieselScopeCases = [
+  { dieselSource: "plant_stock", plantUsageId: 42, allowLinkedSourceEdit: false, dieselDisabled: true, sourceLabel: "plant-stock linked ordinary editor" },
+  { dieselSource: "plant_stock", plantUsageId: 42, allowLinkedSourceEdit: true, dieselDisabled: false, sourceLabel: "plant-stock linked admin" },
+  { dieselSource: "plant_stock", plantUsageId: null, allowLinkedSourceEdit: false, dieselDisabled: false, sourceLabel: "plant-stock unlinked ordinary editor" },
+  { dieselSource: "plant_stock", plantUsageId: null, allowLinkedSourceEdit: true, dieselDisabled: false, sourceLabel: "plant-stock unlinked admin" },
+  { dieselSource: "contractor", plantUsageId: 42, allowLinkedSourceEdit: false, dieselDisabled: false, sourceLabel: "contractor linked ordinary editor" },
+  { dieselSource: "contractor", plantUsageId: 42, allowLinkedSourceEdit: true, dieselDisabled: false, sourceLabel: "contractor linked admin" },
+  { dieselSource: "contractor", plantUsageId: null, allowLinkedSourceEdit: false, dieselDisabled: false, sourceLabel: "contractor unlinked ordinary editor" },
+  { dieselSource: "contractor", plantUsageId: null, allowLinkedSourceEdit: true, dieselDisabled: false, sourceLabel: "contractor unlinked admin" },
+  { dieselSource: "direct_purchase", plantUsageId: 42, allowLinkedSourceEdit: false, dieselDisabled: false, sourceLabel: "direct-purchase linked ordinary editor" },
+  { dieselSource: "direct_purchase", plantUsageId: 42, allowLinkedSourceEdit: true, dieselDisabled: false, sourceLabel: "direct-purchase linked admin" },
+  { dieselSource: "direct_purchase", plantUsageId: null, allowLinkedSourceEdit: false, dieselDisabled: false, sourceLabel: "direct-purchase unlinked ordinary editor" },
+  { dieselSource: "direct_purchase", plantUsageId: null, allowLinkedSourceEdit: true, dieselDisabled: false, sourceLabel: "direct-purchase unlinked admin" },
+] as const;
+
 describe("DIESEL-02 compact DPR equipment capture", () => {
   it("shows meter inputs for a non-plant daily-hire row while keeping tank controls source-gated", () => {
     const onChange = vi.fn();
@@ -334,10 +349,31 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("keeps diesel immutable for an equipment row linked to a plant dispatch", () => {
+  it.each(linkedDieselScopeCases)(
+    "applies the independent diesel lock for $sourceLabel",
+    ({ dieselSource, plantUsageId, allowLinkedSourceEdit, dieselDisabled }) => {
+      render(
+        <DprEquipmentCompact
+          row={{ ...contractorDailyRow, dieselSource, plantUsageId, diesel: 12 }}
+          equipment={{ ownership: "hired", vendorName: "Fasi Uddin" }}
+          allowLinkedSourceEdit={allowLinkedSourceEdit}
+          onChange={vi.fn()}
+        />,
+      );
+
+      const dieselInput = screen.getByTestId("equipment-compact-diesel-0") as HTMLInputElement;
+      const openingMeter = screen.getByTestId("equipment-compact-opening-meter-0") as HTMLInputElement;
+      const startTime = screen.getByTestId("equipment-compact-start-0") as HTMLInputElement;
+      expect(dieselInput.disabled).toBe(dieselDisabled);
+      expect(openingMeter.disabled).toBe(plantUsageId != null && !allowLinkedSourceEdit);
+      expect(startTime.disabled).toBe(plantUsageId != null && !allowLinkedSourceEdit);
+    },
+  );
+
+  it("keeps plant-stock diesel immutable for an ordinary editor linked to a plant dispatch", () => {
     render(
       <DprEquipmentCompact
-        row={{ ...contractorDailyRow, plantUsageId: 42, diesel: 12 }}
+        row={{ ...contractorDailyRow, dieselSource: "plant_stock", plantUsageId: 42, diesel: 12 }}
         equipment={{ ownership: "hired", vendorName: "Fasi Uddin" }}
         onChange={vi.fn()}
       />,
@@ -350,7 +386,7 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
   it("allows an authenticated admin correction of linked meter, time, and diesel facts", () => {
     render(
       <DprEquipmentCompact
-        row={{ ...contractorDailyRow, plantUsageId: 42, diesel: 12 }}
+        row={{ ...contractorDailyRow, dieselSource: "plant_stock", plantUsageId: 42, diesel: 12 }}
         equipment={{ ownership: "hired", vendorName: "Fasi Uddin" }}
         allowLinkedSourceEdit
         onChange={vi.fn()}
@@ -360,6 +396,18 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
     expect((screen.getByTestId("equipment-compact-opening-meter-0") as HTMLInputElement).disabled).toBe(false);
     expect((screen.getByTestId("equipment-compact-start-0") as HTMLInputElement).disabled).toBe(false);
     expect((screen.getByTestId("equipment-compact-diesel-0") as HTMLInputElement).disabled).toBe(false);
+  });
+
+  it("keeps the authenticated admin override wired through SiteEdit and leaves creation callers unchanged", () => {
+    const siteEdit = fs.readFileSync("client/src/pages/SiteEdit.tsx", "utf8");
+    const guided = fs.readFileSync("client/src/pages/GuidedDpr.tsx", "utf8");
+    const siteEntry = fs.readFileSync("client/src/pages/SiteEntry.tsx", "utf8");
+
+    expect(siteEdit.match(/disabled=\{entry\.plantUsageId != null && !isAdmin\}/g)).toHaveLength(2);
+    expect(siteEdit).toContain("readOnly={!isAdmin} persistedArrangementId={entry.earthworkArrangementId}");
+    expect(siteEdit).toContain("allowLinkedSourceEdit={isAdmin}");
+    expect(guided).not.toContain("allowLinkedSourceEdit");
+    expect(siteEntry).not.toContain("allowLinkedSourceEdit");
   });
 
   it("removes the old detailed and guided duplicate input nodes rather than merely collapsing them", () => {

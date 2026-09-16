@@ -1,0 +1,416 @@
+{
+  "scenario": "DPR-07 shared compact lock matrix and changed-row validation",
+  "fixture": {
+    "baseUrl": "http://127.0.0.1:4178",
+    "cdp": "127.0.0.1:9222",
+    "productionDatabaseUsed": false,
+    "customerWrites": false,
+    "apiRouteMode": "browser fetch adapter with in-memory fixture state",
+    "backendIntegrationTest": false,
+    "evidenceDirectory": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence"
+  },
+  "evidenceClassification": {
+    "browserFixture": "Rendered SiteEntry/SiteEdit browser evidence over the fixture's in-memory fetch adapter (API mock).",
+    "actualBackendTests": "None in this verifier; production Express/database route coverage remains a separate backend test."
+  },
+  "matrix": {
+    "A": "Non-admin manager + linked Contractor: Opening Meter/Start locked; Diesel Issued/Added enabled.",
+    "B": "Non-admin manager + linked Direct-Purchase: Opening Meter/Start locked; Diesel Issued/Added enabled.",
+    "C": "Non-admin manager + linked Plant Stock: Opening Meter/Start/Diesel Issued locked.",
+    "D": "Authenticated admin + linked Plant Stock: Opening Meter/Start/Diesel Issued all enabled.",
+    "E": "Fresh SiteEntry creation renders all three source scopes without changing the creation contract.",
+    "F": "Admin SiteEdit changes Labour only; untouched legacy invalid activity is carried through and version accepted.",
+    "G": "Admin SiteEdit changes the invalid activity; changed-row validation rejects and no version is created.",
+    "H": "Fresh SiteEntry controls are rendered; explicit fixture create probe rejects invalid progress under all-row semantics."
+  },
+  "screenshots": {
+    "A": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr07-A-manager-contractor-linked.png",
+    "B": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr07-B-manager-direct-purchase-linked.png",
+    "C": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr07-C-manager-plant-stock-linked.png",
+    "D": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr07-D-admin-plant-stock-linked-all-unlocked.png",
+    "E": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr07-E-creation-all-scopes.png",
+    "F": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr07-F-labour-only-legacy-untouched.png",
+    "G_before": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr07-G-changed-invalid-before-save.png",
+    "G_rejected": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr07-G-changed-invalid-rejected.png",
+    "H_before": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr07-H-fresh-create-invalid.png",
+    "H_rejected": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr07-H-fresh-create-rejected.png"
+  },
+  "assertions": {
+    "A": {
+      "image": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr07-A-manager-contractor-linked.png",
+      "role": "manager",
+      "id": 6210,
+      "state": {
+        "openingMeterDisabled": true,
+        "startDisabled": true,
+        "dieselDisabled": false,
+        "source": "Equipment\nDAILY HIRE ROLLER\n\nReg: FIX-HIRE-01\n\nHIRED: FASI UDDIN\n\nLinked dispatch #8101\nEntry Type\nDaily Hire\nDAILY HIRE\nOperator\nDiesel Source\nContractor\nOperating\nOPENING METER\nCLOSING METER\nSTART\nEND\nCLOCK DURATION\n9 h\nWORKING HOURS\n8.000 h\nFUEL\nDiesel source: contractor\nDIESEL ISSUED / ADDED (L)\nNON-BOQ / INCIDENTAL WORK (OPTIONAL)\n\nUse this only for work that has no BOQ item and is not payable progress — e.g. an incidental repair or diversion.\n\nWORK ASSIGNMENT\nPhysical work segments · BOQ only\n0 min assigned / 9 h· 9 h unassigned\n\nNo BOQ item assigned to this machine day.\n\nAssign Item\n\nBreakdown / Stoppage\n\nSaved against this exact equipment usage row.\n\nAdd stoppage"
+      },
+      "expected": {
+        "openingMeterDisabled": true,
+        "startDisabled": true,
+        "dieselDisabled": false
+      }
+    },
+    "B": {
+      "image": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr07-B-manager-direct-purchase-linked.png",
+      "role": "manager",
+      "id": 6211,
+      "state": {
+        "openingMeterDisabled": true,
+        "startDisabled": true,
+        "dieselDisabled": false,
+        "source": "Equipment\nDAILY HIRE ROLLER\n\nReg: FIX-HIRE-01\n\nHIRED: FASI UDDIN\n\nLinked dispatch #8101\nEntry Type\nDaily Hire\nDAILY HIRE\nOperator\nDiesel Source\nDirect Site Purchase\nFuel Station\nBill No.\nAmount (Rs)\nOperating\nOPENING METER\nCLOSING METER\nSTART\nEND\nCLOCK DURATION\n9 h\nWORKING HOURS\n8.000 h\nFUEL\nDiesel source: direct purchase\nDIESEL ISSUED / ADDED (L)\nNON-BOQ / INCIDENTAL WORK (OPTIONAL)\n\nUse this only for work that has no BOQ item and is not payable progress — e.g. an incidental repair or diversion.\n\nWORK ASSIGNMENT\nPhysical work segments · BOQ only\n0 min assigned / 9 h· 9 h unassigned\n\nNo BOQ item assigned to this machine day.\n\nAssign Item\n\nBreakdown / Stoppage\n\nSaved against this exact equipment usage row.\n\nAdd stoppage"
+      },
+      "expected": {
+        "openingMeterDisabled": true,
+        "startDisabled": true,
+        "dieselDisabled": false
+      }
+    },
+    "C": {
+      "image": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr07-C-manager-plant-stock-linked.png",
+      "role": "manager",
+      "id": 6212,
+      "state": {
+        "openingMeterDisabled": true,
+        "startDisabled": true,
+        "dieselDisabled": true,
+        "source": "Equipment\nDAILY HIRE ROLLER\n\nReg: FIX-HIRE-01\n\nHIRED: FASI UDDIN\n\nLinked dispatch #8101\nEntry Type\nDaily Hire\nDAILY HIRE\nOperator\nDiesel Source\nPlant Stock\nOperating\nOPENING METER\nCLOSING METER\nSTART\nEND\nCLOCK DURATION\n9 h\nWORKING HOURS\n8.000 h\nFUEL\nDiesel source: plant stock\nOPENING TANK (L)\nCLOSING / PHYSICAL DIP (L)\nDIESEL ISSUED / ADDED (L)\nPhysical Tank Balance Confirmed\nNON-BOQ / INCIDENTAL WORK (OPTIONAL)\n\nUse this only for work that has no BOQ item and is not payable progress — e.g. an incidental repair or diversion.\n\nWORK ASSIGNMENT\nPhysical work segments · BOQ only\n0 min assigned / 9 h· 9 h unassigned\n\nNo BOQ item assigned to this machine day.\n\nAssign Item\n\nBreakdown / Stoppage\n\nSaved against this exact equipment usage row.\n\nAdd stoppage"
+      },
+      "expected": {
+        "openingMeterDisabled": true,
+        "startDisabled": true,
+        "dieselDisabled": true
+      }
+    },
+    "D": {
+      "image": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr07-D-admin-plant-stock-linked-all-unlocked.png",
+      "role": "admin",
+      "id": 6213,
+      "state": {
+        "openingMeterDisabled": false,
+        "startDisabled": false,
+        "dieselDisabled": false,
+        "source": "Equipment\nDAILY HIRE ROLLER\n\nReg: FIX-HIRE-01\n\nHIRED: FASI UDDIN\n\nLinked dispatch #8101\nEntry Type\nDaily Hire\nDAILY HIRE\nOperator\nDiesel Source\nPlant Stock\nOperating\nOPENING METER\nCLOSING METER\nSTART\nEND\nCLOCK DURATION\n9 h\nWORKING HOURS\n8.000 h\nFUEL\nDiesel source: plant stock\nOPENING TANK (L)\nCLOSING / PHYSICAL DIP (L)\nDIESEL ISSUED / ADDED (L)\nPhysical Tank Balance Confirmed\nNON-BOQ / INCIDENTAL WORK (OPTIONAL)\n\nUse this only for work that has no BOQ item and is not payable progress — e.g. an incidental repair or diversion.\n\nWORK ASSIGNMENT\nPhysical work segments · BOQ only\n0 min assigned / 9 h· 9 h unassigned\n\nNo BOQ item assigned to this machine day.\n\nAssign Item\n\nBreakdown / Stoppage\n\nSaved against this exact equipment usage row.\n\nAdd stoppage"
+      },
+      "expected": {
+        "openingMeterDisabled": false,
+        "startDisabled": false,
+        "dieselDisabled": false
+      }
+    },
+    "E": {
+      "image": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr07-E-creation-all-scopes.png",
+      "scopes": [
+        "plant_stock",
+        "contractor",
+        "direct_purchase"
+      ],
+      "state": [
+        {
+          "index": 0,
+          "openingMeterDisabled": false,
+          "startDisabled": false,
+          "dieselDisabled": false,
+          "sourceDisabled": false,
+          "rowText": "Equipment\nJCB 3DX (FIX-JCB-01) — HLC OWN\n\nReg: FIX-JCB-01\n\nOperator\n\nTime / Meter Entry\n\nEnter opening reading and diesel in the morning. Closing reading and end time can be added later.\n\nStart Time\nEnd Time\nDuration\n-\nOpening Hour Meter\nClosing Hour Meter\nWorking Hours\n-\nExpected Diesel\n-\nNorm\n-\nDiesel Issued (L)\n\n⚠ No hour meter reading or start/end time entered.\n\nDiesel Source\nPlant Stock\nOpening Diesel Tank (L)\nDiesel Balance in Tank (L)\nPhysical tank balance confirmed\nJCB 3DX\nFIX-JCB-01 · Machine day 1\nOperating\nOPENING METER\nCLOSING METER\nSTART\nEND\nCLOCK DURATION\n—\nWORKING HOURS\n—\nNON-BOQ / INCIDENTAL WORK (OPTIONAL)\n\nUse this only for work that has no BOQ item and is not payable progress — e.g. an incidental repair or diversion.\n\nWORK ASSIGNMENT\nPhysical work segments · BOQ only\n0 min assigned\n\nNo BOQ item assigned to this machine day.\n\nAssign Item\n\nBreakdown / Stoppage\n\nSaved against this exact equipment usage row.\n\nAdd stoppage"
+        },
+        {
+          "index": 1,
+          "openingMeterDisabled": false,
+          "startDisabled": false,
+          "dieselDisabled": false,
+          "sourceDisabled": false,
+          "rowText": "Equipment\nWater Tanker (FIX-WATER-01) — HIRED: undefined\n\nReg: FIX-WATER-01\n\nEntry Type\nTime / Meter Reading\nOperator\n\nTime / Meter Entry\n\nEnter opening reading and diesel in the morning. Closing reading and end time can be added later.\n\nStart Time\nEnd Time\nDuration\n-\nOpening Odometer (km)\nClosing Odometer (km)\nKM Run\n-\nExpected Diesel\n-\nNorm\n-\nDiesel Issued (L)\n\n⚠ No odometer reading, trips, or start/end time entered.\n\nWater Delivery\n\nWater Quantity (Liters)\nNo. of Trips\nDiesel Source\nContractor\nWater Tanker\nFIX-WATER-01 · Machine day 2\nHired: Vendor not recorded\nOperating\nOPENING ODOMETER\nCLOSING ODOMETER\nSTART\nEND\nCLOCK DURATION\n—\nWORKING HOURS\n—\nNON-BOQ / INCIDENTAL WORK (OPTIONAL)\n\nUse this only for work that has no BOQ item and is not payable progress — e.g. an incidental repair or diversion.\n\nWORK ASSIGNMENT\nPhysical work segments · BOQ only\n0 min assigned\n\nNo BOQ item assigned to this machine day.\n\nAssign Item\n\nBreakdown / Stoppage\n\nSaved against this exact equipment usage row.\n\nAdd stoppage"
+        },
+        {
+          "index": 2,
+          "openingMeterDisabled": false,
+          "startDisabled": false,
+          "dieselDisabled": false,
+          "sourceDisabled": false,
+          "rowText": "Equipment\nJCB 3DX (FIX-JCB-01) — HLC OWN\n\nReg: FIX-JCB-01\n\nOperator\n\nTime / Meter Entry\n\nEnter opening reading and diesel in the morning. Closing reading and end time can be added later.\n\nStart Time\nEnd Time\nDuration\n-\nOpening Hour Meter\nClosing Hour Meter\nWorking Hours\n-\nExpected Diesel\n-\nNorm\n-\nDiesel Issued (L)\n\n⚠ No hour meter reading or start/end time entered.\n\nDiesel Source\nDirect Site Purchase\nFuel Station\nBill No.\nAmount (Rs)\nJCB 3DX\nFIX-JCB-01 · Machine day 3\nOperating\nOPENING METER\nCLOSING METER\nSTART\nEND\nCLOCK DURATION\n—\nWORKING HOURS\n—\nNON-BOQ / INCIDENTAL WORK (OPTIONAL)\n\nUse this only for work that has no BOQ item and is not payable progress — e.g. an incidental repair or diversion.\n\nWORK ASSIGNMENT\nPhysical work segments · BOQ only\n0 min assigned\n\nNo BOQ item assigned to this machine day.\n\nAssign Item\n\nBreakdown / Stoppage\n\nSaved against this exact equipment usage row.\n\nAdd stoppage"
+        }
+      ],
+      "screen": "real SiteEntry creation UI"
+    },
+    "F": {
+      "image": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr07-F-labour-only-legacy-untouched.png",
+      "check": {
+        "sourceId": 6214,
+        "originalRows": 1,
+        "submittedRows": 1,
+        "changedRows": 0,
+        "labourChanged": true,
+        "original": {
+          "id": 7314,
+          "entryKey": "dpr07-legacy-invalid-activity",
+          "activity": "LEGACY INVALID ACTIVITY",
+          "boqItemId": 8801,
+          "programmeBarId": null,
+          "side": "LHS",
+          "chainageFrom": "12+000",
+          "chainageTo": "12+100",
+          "quantity": 10,
+          "uom": "SQM",
+          "quantitySource": "legacy_invalid_source",
+          "quantitySourceNote": null,
+          "materialOutcome": null,
+          "reusableQty": null
+        },
+        "submitted": {
+          "id": 7314,
+          "entryKey": "dpr07-legacy-invalid-activity",
+          "activity": "LEGACY INVALID ACTIVITY",
+          "boqItemId": 8801,
+          "programmeBarId": null,
+          "side": "LHS",
+          "chainageFrom": "12+000",
+          "chainageTo": "12+100",
+          "quantity": 10,
+          "uom": "SQM",
+          "quantitySource": "legacy_invalid_source",
+          "quantitySourceNote": null,
+          "materialOutcome": null,
+          "reusableQty": null
+        },
+        "scope": "unchanged-legacy-bypassed",
+        "result": "accepted"
+      },
+      "version": {
+        "id": 6214,
+        "payload": {
+          "pin": "complete",
+          "editedBy": "admin",
+          "data": {
+            "date": "2026-08-05",
+            "site": "NARASIMHULU ROAD",
+            "engineer": "SURESH KUMAR",
+            "remarks": "DPR-07 F/G — legacy invalid untouched activity; synthetic fixture only.",
+            "boqProjectId": 5501,
+            "workType": "road",
+            "structureItems": [],
+            "progress": [
+              {
+                "entryKey": "dpr07-legacy-invalid-activity",
+                "persistedId": 7314,
+                "activity": "LEGACY INVALID ACTIVITY",
+                "side": "LHS",
+                "chainageFrom": "12+000",
+                "chainageTo": "12+100",
+                "length": 100,
+                "width": 1,
+                "thickness": null,
+                "quantity": 10,
+                "uom": "SQM",
+                "noSiteWork": false,
+                "noSiteWorkDescription": "",
+                "personnelIds": [
+                  6101
+                ],
+                "boqItemId": 8801,
+                "programmeBarId": null,
+                "earthworkArrangementId": null,
+                "quantitySource": "legacy_invalid_source",
+                "quantitySourceNote": null,
+                "chainageOverrideReason": null,
+                "lengthOverrideReason": null,
+                "uomOverrideReason": null,
+                "executedBy": "hlc",
+                "layerNo": null,
+                "isIncidental": false,
+                "incidentalDescription": null,
+                "materialOutcome": null,
+                "reusableQty": null,
+                "chainageFromKm": 12,
+                "chainageToKm": 12.1
+              }
+            ],
+            "cutFillConsumptions": [],
+            "equipment": [],
+            "labour": [
+              {
+                "category": "Skilled",
+                "gender": "Male",
+                "count": 2,
+                "task": "CORRECTED LABOUR",
+                "contractor": "DPR07 GANG",
+                "boqItemId": null,
+                "structureId": null
+              }
+            ],
+            "materials": [],
+            "sitePurchases": []
+          },
+          "clientTimestamp": "2026-09-16 02:14:24"
+        }
+      },
+      "screen": "real SiteEdit; mocked version handler"
+    },
+    "G": {
+      "image": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr07-G-changed-invalid-before-save.png",
+      "failureImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr07-G-changed-invalid-rejected.png",
+      "check": {
+        "sourceId": 6214,
+        "originalRows": 1,
+        "submittedRows": 1,
+        "changedRows": 1,
+        "labourChanged": false,
+        "original": {
+          "id": 7314,
+          "entryKey": "dpr07-legacy-invalid-activity",
+          "activity": "LEGACY INVALID ACTIVITY",
+          "boqItemId": 8801,
+          "programmeBarId": null,
+          "side": "LHS",
+          "chainageFrom": "12+000",
+          "chainageTo": "12+100",
+          "quantity": 10,
+          "uom": "SQM",
+          "quantitySource": "legacy_invalid_source",
+          "quantitySourceNote": null,
+          "materialOutcome": null,
+          "reusableQty": null
+        },
+        "submitted": {
+          "id": 7314,
+          "entryKey": "dpr07-legacy-invalid-activity",
+          "activity": "LEGACY INVALID ACTIVITY",
+          "boqItemId": 8801,
+          "programmeBarId": null,
+          "side": "LHS",
+          "chainageFrom": "12+000",
+          "chainageTo": "12+100",
+          "quantity": 11,
+          "uom": "SQM",
+          "quantitySource": "legacy_invalid_source",
+          "quantitySourceNote": null,
+          "materialOutcome": null,
+          "reusableQty": null
+        },
+        "scope": "changed-or-new-only",
+        "result": "rejected"
+      },
+      "screen": "real SiteEdit; mocked version handler"
+    },
+    "H": {
+      "image": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr07-H-fresh-create-invalid.png",
+      "failureImage": "/home/runner/workspace/tests/fixtures/dpr-site-entry/evidence/dpr07-H-fresh-create-rejected.png",
+      "response": {
+        "status": 422,
+        "body": {
+          "code": "DPR_PROGRESS_VALIDATION",
+          "message": "Fresh DPR progress row fails quantity-source, material-outcome, or programme-link validation."
+        }
+      },
+      "check": {
+        "route": "POST /api/dprs",
+        "result": "rejected",
+        "scope": "all-rows-fresh-create",
+        "checkedRows": 1
+      },
+      "screen": "real SiteEntry; explicit fixture create-handler probe"
+    }
+  },
+  "mockValidationLog": {
+    "versionChecks": [
+      {
+        "sourceId": 6214,
+        "originalRows": 1,
+        "submittedRows": 1,
+        "changedRows": 0,
+        "labourChanged": true,
+        "original": {
+          "id": 7314,
+          "entryKey": "dpr07-legacy-invalid-activity",
+          "activity": "LEGACY INVALID ACTIVITY",
+          "boqItemId": 8801,
+          "programmeBarId": null,
+          "side": "LHS",
+          "chainageFrom": "12+000",
+          "chainageTo": "12+100",
+          "quantity": 10,
+          "uom": "SQM",
+          "quantitySource": "legacy_invalid_source",
+          "quantitySourceNote": null,
+          "materialOutcome": null,
+          "reusableQty": null
+        },
+        "submitted": {
+          "id": 7314,
+          "entryKey": "dpr07-legacy-invalid-activity",
+          "activity": "LEGACY INVALID ACTIVITY",
+          "boqItemId": 8801,
+          "programmeBarId": null,
+          "side": "LHS",
+          "chainageFrom": "12+000",
+          "chainageTo": "12+100",
+          "quantity": 10,
+          "uom": "SQM",
+          "quantitySource": "legacy_invalid_source",
+          "quantitySourceNote": null,
+          "materialOutcome": null,
+          "reusableQty": null
+        },
+        "scope": "unchanged-legacy-bypassed",
+        "result": "accepted"
+      },
+      {
+        "sourceId": 6214,
+        "originalRows": 1,
+        "submittedRows": 1,
+        "changedRows": 1,
+        "labourChanged": false,
+        "original": {
+          "id": 7314,
+          "entryKey": "dpr07-legacy-invalid-activity",
+          "activity": "LEGACY INVALID ACTIVITY",
+          "boqItemId": 8801,
+          "programmeBarId": null,
+          "side": "LHS",
+          "chainageFrom": "12+000",
+          "chainageTo": "12+100",
+          "quantity": 10,
+          "uom": "SQM",
+          "quantitySource": "legacy_invalid_source",
+          "quantitySourceNote": null,
+          "materialOutcome": null,
+          "reusableQty": null
+        },
+        "submitted": {
+          "id": 7314,
+          "entryKey": "dpr07-legacy-invalid-activity",
+          "activity": "LEGACY INVALID ACTIVITY",
+          "boqItemId": 8801,
+          "programmeBarId": null,
+          "side": "LHS",
+          "chainageFrom": "12+000",
+          "chainageTo": "12+100",
+          "quantity": 11,
+          "uom": "SQM",
+          "quantitySource": "legacy_invalid_source",
+          "quantitySourceNote": null,
+          "materialOutcome": null,
+          "reusableQty": null
+        },
+        "scope": "changed-or-new-only",
+        "result": "rejected"
+      }
+    ],
+    "freshCreateChecks": [
+      {
+        "route": "POST /api/dprs",
+        "result": "rejected",
+        "scope": "all-rows-fresh-create",
+        "checkedRows": 1
+      }
+    ]
+  },
+  "limitations": [
+    "A-D and E are real production components in an isolated Vite browser fixture.",
+    "F-H use the fixture's in-memory API adapter; they do not prove the production Express route or database behavior.",
+    "F/G/H backend behavior must still be covered by the server route tests owned by the backend agent."
+  ],
+  "browserExceptions": []
+}
