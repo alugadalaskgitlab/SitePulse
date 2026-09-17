@@ -79,6 +79,74 @@ interface LineItem {
   initialBlank?: boolean;
 }
 
+type AdditionalAdjustment = { label: string; amount: number };
+
+/**
+ * Older bills have no additional_adjustments value (and the additive backend
+ * column is nullable), so keep all readers tolerant of null/undefined while
+ * always giving the editor a stable array to work with.
+ */
+function normalizeAdditionalAdjustments(value: unknown): AdditionalAdjustment[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((entry: any) => ({
+    label: String(entry?.label ?? entry?.reason ?? ""),
+    amount: Number.isFinite(Number(entry?.amount)) ? Number(entry.amount) : 0,
+  }));
+}
+
+function billAdditionalAdjustments(bill: any): AdditionalAdjustment[] {
+  return normalizeAdditionalAdjustments(bill?.additionalAdjustments ?? bill?.additional_adjustments);
+}
+
+/**
+ * Keep list/history totals on the same taxable/GST/TDS basis as the detail and
+ * print views. totalAmount remains the pre-tax line-item subtotal; adjustments
+ * are applied after GST and before TDS, matching those existing views.
+ */
+function getBillFinancialTotals(bill: any) {
+  const items = Array.isArray(bill?.items) ? bill.items : [];
+  const categoryTotals: Record<string, number> = {};
+  items.forEach((item: any) => {
+    const category = item.category || "other";
+    categoryTotals[category] = (categoryTotals[category] || 0) + (Number(item.amount) || 0);
+  });
+  const shouldGroup = Object.values(categoryTotals).filter(amount => amount !== 0).length > 1;
+  const billType = String(bill?.billType || "").toLowerCase();
+  const isAllType = billType === "all";
+  const usePerGroupGst = isAllType || shouldGroup;
+  const gstEquipmentRate = Number(bill?.gstRateEquipment) || 0;
+  const gstMaterialRate = Number(bill?.gstRateMaterial) || 0;
+  const gstTransportRate = Number(bill?.gstRateTransport) || 0;
+  const gstLabourRate = Number(bill?.gstRateLabour) || 0;
+  const groupedGst =
+    (categoryTotals.equipment || 0) * gstEquipmentRate / 100 +
+    (categoryTotals.material || 0) * gstMaterialRate / 100 +
+    (categoryTotals.transport || 0) * gstTransportRate / 100 +
+    (categoryTotals.labour || 0) * gstLabourRate / 100;
+  const singleGstRate = !usePerGroupGst
+    ? billType === "equipment" ? gstEquipmentRate
+      : billType === "material" ? gstMaterialRate
+      : billType === "transport" ? gstTransportRate
+      : billType === "labour" ? gstLabourRate : 0
+    : 0;
+  const totalAmount = Number(bill?.totalAmount) || 0;
+  const totalGst = usePerGroupGst ? groupedGst : totalAmount * singleGstRate / 100;
+  const primaryAdjustment = Number(bill?.adjustmentAmount) || 0;
+  const additional = billAdditionalAdjustments(bill);
+  const additionalTotal = additional.reduce((sum, adjustment) => sum + (Number(adjustment.amount) || 0), 0);
+  const tdsRate = Number(bill?.tdsRate) || 0;
+  const tds = totalAmount * tdsRate / 100;
+  return {
+    totalAmount,
+    totalGst,
+    primaryAdjustment,
+    additional,
+    additionalTotal,
+    tds,
+    netTotal: totalAmount + totalGst + primaryAdjustment + additionalTotal - tds,
+  };
+}
+
 const categoryOrder: Record<string, number> = { equipment: 0, material: 1, transport: 2, labour: 3, other: 4 };
 
 const isAutoLineSource = (source: string) => source === "auto" || source.startsWith("auto:");
@@ -623,6 +691,7 @@ export default function VendorBills() {
   const [lineItems, setLineItems] = useState<LineItem[]>(isAdmin ? [defaultManualItem] : []);
   const [adjustmentLabel, setAdjustmentLabel] = useState("");
   const [adjustmentAmount, setAdjustmentAmount] = useState<number>(0);
+  const [additionalAdjustments, setAdditionalAdjustments] = useState<AdditionalAdjustment[]>([]);
   const [gstRateEquipment, setGstRateEquipment] = useState<number>(0);
   const [gstRateMaterial, setGstRateMaterial] = useState<number>(0);
   const [gstRateTransport, setGstRateTransport] = useState<number>(0);
@@ -1009,6 +1078,7 @@ export default function VendorBills() {
     autoItemsContextRef.current = "";
     setAdjustmentLabel("");
     setAdjustmentAmount(0);
+    setAdditionalAdjustments([]);
     setGstRateEquipment(0);
     setGstRateMaterial(0);
     setGstRateTransport(0);
@@ -1111,6 +1181,9 @@ export default function VendorBills() {
     autoItemsContextRef.current = savedContext;
     setAdjustmentLabel(savedAdjustmentLabel);
     setAdjustmentAmount(savedAdjustmentAmount);
+    setAdditionalAdjustments(normalizeAdditionalAdjustments(
+      (bill as any).additionalAdjustments ?? (bill as any).additional_adjustments,
+    ));
     setGstRateEquipment((bill as any).gstRateEquipment || 0);
     setGstRateMaterial((bill as any).gstRateMaterial || 0);
     setGstRateTransport((bill as any).gstRateTransport || 0);
@@ -1578,7 +1651,14 @@ export default function VendorBills() {
   // new bill type, including Equipment Hire. Historical hire statements keep
   // their frozen calculation snapshot separately.
   const tdsAmount = useMemo(() => tdsRate ? totalAmount * tdsRate / 100 : 0, [totalAmount, tdsRate]);
-  const netTotal = useMemo(() => totalAmount + totalGstAmount + (adjustmentAmount || 0) - tdsAmount, [totalAmount, totalGstAmount, adjustmentAmount, tdsAmount]);
+  const additionalAdjustmentTotal = useMemo(
+    () => additionalAdjustments.reduce((sum, adjustment) => sum + (Number(adjustment.amount) || 0), 0),
+    [additionalAdjustments],
+  );
+  const netTotal = useMemo(
+    () => totalAmount + totalGstAmount + (adjustmentAmount || 0) + additionalAdjustmentTotal - tdsAmount,
+    [totalAmount, totalGstAmount, adjustmentAmount, additionalAdjustmentTotal, tdsAmount],
+  );
 
   const computeCategorySubTotals = (items: { category?: string | null; amount?: number | null }[]) => {
     const cats: Record<string, number> = {};
@@ -1762,6 +1842,17 @@ export default function VendorBills() {
       toast({ title: "Please fill vendor name and bill date", variant: "destructive" });
       return;
     }
+    const missingAdditionalReasonIndex = additionalAdjustments.findIndex(adjustment =>
+      Number(adjustment.amount) !== 0 && !adjustment.label.trim(),
+    );
+    if (missingAdditionalReasonIndex >= 0) {
+      toast({
+        title: "Additional adjustment needs a reason / reference",
+        description: `Enter a reason/reference for additional adjustment ${missingAdditionalReasonIndex + 1}.`,
+        variant: "destructive",
+      });
+      return;
+    }
     if ((billType === "equipment" || billType === "all") && invalidMonthlyHireEquipment.length) {
       toast({ title: `Monthly hire terms are incomplete for ${invalidMonthlyHireEquipment.map((equipment: any) => equipment.name).join(", ")}. Correct Equipment Master rate/start/divisor before billing.`, variant: "destructive" });
       return;
@@ -1867,6 +1958,12 @@ export default function VendorBills() {
       totalAmount,
       adjustmentLabel: adjustmentLabel || null,
       adjustmentAmount: adjustmentAmount || 0,
+      additionalAdjustments: additionalAdjustments
+        .filter(adjustment => adjustment.label.trim() !== "" || Number(adjustment.amount) !== 0)
+        .map(adjustment => ({
+          label: adjustment.label.trim(),
+          amount: Number(adjustment.amount) || 0,
+        })),
       gstRateEquipment: gstRateEquipment || null,
       gstRateMaterial: gstRateMaterial || null,
       gstRateTransport: gstRateTransport || null,
@@ -2206,11 +2303,13 @@ export default function VendorBills() {
           const pTotalGst = pUsePerGroupGst ? pGstEq + pGstMat + pGstTr + pGstLab : pSingleGstAmt;
           const pAdvAmt = pb.adjustmentAmount || 0;
           const pAdvLabel = pb.adjustmentLabel || "ADVANCE DEDUCTION";
+          const pAdditionalAdjustments = billAdditionalAdjustments(pb);
+          const pAdditionalTotal = pAdditionalAdjustments.reduce((sum, adjustment) => sum + (Number(adjustment.amount) || 0), 0);
           const pTdsR = pb.tdsRate || 0;
           const pTdsAmt = pTdsR ? (bill.totalAmount || 0) * pTdsR / 100 : 0;
-          const pHasAny = pTotalGst !== 0 || pAdvAmt !== 0 || pTdsAmt !== 0;
+          const pHasAny = pTotalGst !== 0 || pAdvAmt !== 0 || pAdditionalAdjustments.length > 0 || pTdsAmt !== 0;
           if (!pHasAny) return "";
-          const pNetTotal = (bill.totalAmount || 0) + pTotalGst + pAdvAmt - pTdsAmt;
+          const pNetTotal = (bill.totalAmount || 0) + pTotalGst + pAdvAmt + pAdditionalTotal - pTdsAmt;
           let adjRows = "";
           if (!pUsePerGroupGst && pSingleGstRate > 0) {
             adjRows += `<tr class="summary-row"><td colspan="${labelColCount}" style="text-align:right;color:#15803d;">GST @ ${pSingleGstRate}%</td><td style="text-align:right;color:#15803d;">+ Rs. ${formatCurrency(pSingleGstAmt)}</td></tr>`;
@@ -2221,6 +2320,10 @@ export default function VendorBills() {
           if (pAdvAmt !== 0) {
             adjRows += `<tr class="summary-row"><td colspan="${labelColCount}" style="text-align:right">${escHtml(pAdvLabel)}</td><td style="text-align:right">Rs. ${formatCurrency(pAdvAmt)}</td></tr>`;
           }
+          pAdditionalAdjustments.forEach((adjustment, index) => {
+            const label = adjustment.label || "ADDITIONAL DEDUCTION / CREDIT";
+            adjRows += `<tr class="summary-row" data-additional-adjustment="${index}"><td colspan="${labelColCount}" style="text-align:right">${escHtml(label)}</td><td style="text-align:right">Rs. ${formatCurrency(adjustment.amount)}</td></tr>`;
+          });
           if (pTdsAmt > 0) {
             adjRows += `<tr class="summary-row"><td colspan="${labelColCount}" style="text-align:right;color:#dc2626;">IT TDS @ ${pTdsR}%</td><td style="text-align:right;color:#dc2626;">- Rs. ${formatCurrency(pTdsAmt)}</td></tr>`;
           }
@@ -3504,6 +3607,68 @@ export default function VendorBills() {
                       </div>
                     </div>
 
+                    <div className="space-y-3 border-t pt-3" data-testid="additional-adjustments">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div>
+                          <Label className="text-sm uppercase">Additional deductions / credits</Label>
+                          <p className="text-xs text-muted-foreground">Add independent signed adjustments without replacing the primary recovery above.</p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setAdditionalAdjustments(previous => [...previous, { label: "", amount: 0 }])}
+                          data-testid="button-add-adjustment"
+                        >
+                          <Plus className="w-3 h-3 mr-1" /> ADD DEDUCTION / CREDIT
+                        </Button>
+                      </div>
+                      {additionalAdjustments.map((adjustment, index) => (
+                        <div
+                          key={index}
+                          className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end"
+                          data-testid={`additional-adjustment-row-${index}`}
+                        >
+                          <div className="md:col-span-2">
+                            <Label className="text-sm uppercase">Reason / reference</Label>
+                            <Input
+                              value={adjustment.label}
+                              onChange={e => setAdditionalAdjustments(previous => previous.map((entry, entryIndex) =>
+                                entryIndex === index ? { ...entry, label: e.target.value.toUpperCase() } : entry,
+                              ))}
+                              placeholder="CASH ADVANCE / DAMAGES / CREDIT"
+                              data-testid={`input-additional-adjustment-label-${index}`}
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-sm uppercase">Amount (negative to deduct)</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={adjustment.amount || ""}
+                              onChange={e => setAdditionalAdjustments(previous => previous.map((entry, entryIndex) =>
+                                entryIndex === index ? { ...entry, amount: parseFloat(e.target.value) || 0 } : entry,
+                              ))}
+                              placeholder="e.g. -50000"
+                              onWheel={e => (e.target as HTMLInputElement).blur()}
+                              data-testid={`input-additional-adjustment-amount-${index}`}
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="text-destructive"
+                            onClick={() => setAdditionalAdjustments(previous => previous.filter((_, entryIndex) => entryIndex !== index))}
+                            aria-label={`Remove additional adjustment ${index + 1}`}
+                            data-testid={`button-remove-adjustment-${index}`}
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                       <div className="md:col-span-2">
                         <Label className="text-sm uppercase">IT TDS</Label>
@@ -3532,7 +3697,7 @@ export default function VendorBills() {
                 );
               })()}
 
-              {(totalGstAmount !== 0 || adjustmentAmount !== 0 || tdsAmount !== 0) && (
+              {(totalGstAmount !== 0 || adjustmentAmount !== 0 || additionalAdjustmentTotal !== 0 || tdsAmount !== 0) && (
                 <div className="space-y-1 p-3 rounded-md bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700">
                   {totalGstAmount !== 0 && (
                     <div className="flex justify-between text-sm">
@@ -3546,6 +3711,12 @@ export default function VendorBills() {
                       <span className="font-semibold">{adjustmentAmount >= 0 ? "+" : ""} Rs. {formatCurrency(adjustmentAmount)}</span>
                     </div>
                   )}
+                  {additionalAdjustments.map((adjustment, index) => adjustment.amount !== 0 && (
+                    <div className="flex justify-between text-sm" key={index} data-testid={`text-additional-adjustment-${index}`}>
+                      <span className="font-semibold uppercase">{adjustment.label || "ADDITIONAL DEDUCTION / CREDIT"}</span>
+                      <span className="font-semibold">{adjustment.amount >= 0 ? "+" : ""} Rs. {formatCurrency(adjustment.amount)}</span>
+                    </div>
+                  ))}
                   {tdsAmount !== 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="font-semibold uppercase">IT TDS @ {tdsRate}%</span>
@@ -4062,11 +4233,13 @@ export default function VendorBills() {
                       const totalGst = usePerGroupGst ? gstEq + gstMat + gstTr + gstLab : singleGstAmt;
                       const advAmt = b.adjustmentAmount || 0;
                       const advLabel = b.adjustmentLabel || "ADVANCE DEDUCTION";
+                      const additional = billAdditionalAdjustments(b);
+                      const additionalTotal = additional.reduce((sum, adjustment) => sum + (Number(adjustment.amount) || 0), 0);
                       const tdsR = b.tdsRate || 0;
                       const tdsAmt = tdsR ? (bill.totalAmount || 0) * tdsR / 100 : 0;
-                      const hasAny = totalGst !== 0 || advAmt !== 0 || tdsAmt !== 0;
+                      const hasAny = totalGst !== 0 || advAmt !== 0 || additional.length > 0 || tdsAmt !== 0;
                       if (!hasAny) return null;
-                      const billNetTotal = (bill.totalAmount || 0) + totalGst + advAmt - tdsAmt;
+                      const billNetTotal = (bill.totalAmount || 0) + totalGst + advAmt + additionalTotal - tdsAmt;
                       return (
                         <>
                           {!usePerGroupGst && singleGstRate > 0 && (
@@ -4087,6 +4260,12 @@ export default function VendorBills() {
                               <td className="px-2 py-2 text-right text-sm font-semibold" colSpan={2}>Rs. {formatCurrency(advAmt)}</td>
                             </tr>
                           )}
+                          {additional.map((adjustment, index) => (
+                            <tr className="bg-muted/20" key={index} data-testid={`text-detail-additional-adjustment-${index}`}>
+                              <td colSpan={labelCols} className="px-2 py-2 text-right text-sm font-semibold uppercase">{adjustment.label || "ADDITIONAL DEDUCTION / CREDIT"}</td>
+                              <td className="px-2 py-2 text-right text-sm font-semibold" colSpan={2}>Rs. {formatCurrency(adjustment.amount)}</td>
+                            </tr>
+                          ))}
                           {tdsAmt > 0 && (
                             <tr className="bg-red-50 dark:bg-red-900/10">
                               <td colSpan={labelCols} className="px-2 py-2 text-right text-sm font-semibold text-red-600 dark:text-red-400 uppercase">IT TDS @ {tdsR}%</td>
@@ -4479,6 +4658,10 @@ export default function VendorBills() {
               else if (src === "plant") labourPlantAmt += amt;
             }
             const showLabourSplit = labourSiteAmt > 0 && labourPlantAmt > 0;
+            const billFinancialTotals = getBillFinancialTotals(bill);
+            const primaryAdjustmentAmount = billFinancialTotals.primaryAdjustment;
+            const additionalBillAdjustments = billFinancialTotals.additional;
+            const hasBillAdjustments = primaryAdjustmentAmount !== 0 || additionalBillAdjustments.length > 0;
             return (
             <Card
               key={bill.id}
@@ -4505,6 +4688,23 @@ export default function VendorBills() {
                       <p className={`font-bold text-base ${getStatusColor(bill.status)}`} data-testid={`text-bill-amount-${bill.id}`}>
                         {formatCurrency(bill.totalAmount)}
                       </p>
+                      {hasBillAdjustments && (
+                        <div className="text-xs text-muted-foreground space-y-0.5" data-testid={`bill-adjustments-${bill.id}`}>
+                          {primaryAdjustmentAmount !== 0 && (
+                            <p data-testid={`text-bill-adjustment-${bill.id}`}>
+                              {(bill as any).adjustmentLabel || "ADVANCE DEDUCTION"}: {formatCurrency(primaryAdjustmentAmount)}
+                            </p>
+                          )}
+                          {additionalBillAdjustments.map((adjustment, index) => (
+                            <p key={index} data-testid={`text-bill-additional-adjustment-${bill.id}-${index}`}>
+                              {adjustment.label || "ADDITIONAL DEDUCTION / CREDIT"}: {formatCurrency(adjustment.amount)}
+                            </p>
+                          ))}
+                          <p className="font-semibold text-foreground" data-testid={`text-bill-net-total-${bill.id}`}>
+                            Net total: {formatCurrency(billFinancialTotals.netTotal)}
+                          </p>
+                        </div>
+                      )}
                       <p className="text-sm text-muted-foreground">{bill.items?.length || 0} line items</p>
                     </div>
                     <Badge variant="outline" className={`uppercase ${getStatusBadgeClass(bill.status)} no-default-hover-elevate no-default-active-elevate`} data-testid={`badge-bill-status-${bill.id}`}>

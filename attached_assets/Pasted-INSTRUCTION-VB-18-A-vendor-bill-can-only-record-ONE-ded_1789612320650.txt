@@ -1,0 +1,44 @@
+INSTRUCTION VB-18: A vendor bill can only record ONE deduction/advance line at the whole-bill level — when the diesel-advance auto-suggestion fills it, there is no way to also record a separate cash/advance deduction to the same vendor on the same bill
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a precise, code-confirmed gap, not a guess — verified by reading client/src/pages/VendorBills.tsx and shared/schema.ts directly. Do not touch the per-equipment-group "Other Debit / Recovery / Advance Adjustment / Other Credit" three-field system used elsewhere in this same file (~line 2714) — that one already works correctly and is not in scope; if anything, use it as a design reference. Do not touch DPR-02 through DPR-10. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+1. client/src/pages/VendorBills.tsx has a single bill-level adjustment: `adjustmentLabel` (string) and `adjustmentAmount` (number), declared once (~line 624-625), rendered as ONE label + ONE reason/reference input + ONE signed amount input (~line 3478-3504), stored as ONE pair of flat columns on the bill: `adjustment_label` / `adjustment_amount` (shared/schema.ts ~line 2248-2249, real/text, default 0).
+2. When a diesel-advance recovery is detected for the vendor (`contractorAdvanceSuggestion`), it auto-fills this SAME single field: `setAdjustmentLabel(reason); setAdjustmentAmount(-contractorAdvanceSuggestion.amount)` (~line 918-919). The label even changes to "Other Debit / Recovery — Contractor Diesel Advance" specifically to describe this auto-filled use (~line 3479).
+3. Because there is only one label/amount pair for the whole bill, once the diesel-advance suggestion has filled it, there is no remaining field for any OTHER deduction — a cash advance paid directly to the vendor, a damages recovery, or any other agreed deduction unrelated to diesel. Typing over the field would simply replace the diesel-advance entry, not add a second one. This is confirmed as the exact case the person hit: a JCB Hourly Hire bill had a correctly auto-calculated 10 L diesel-advance deduction already occupying this field, with no way to also enter a separate advance amount owed by the same vendor.
+4. `netTotal` (~line 1581) already sums the single `adjustmentAmount` correctly into the bill total; the PDF/print output (~line 2207-2208, 2225) and the bill list/history view (~line 4063-4064) also each read this single value. All of these read points will need to account for multiple entries once the fix is in.
+
+FIX — SUPPORT MULTIPLE INDEPENDENT DEDUCTION/CREDIT LINES ON THE SAME BILL
+1. Add a new nullable column to the bill's schema to hold an array of additional adjustment entries — each with its own label/reason (text) and signed amount (number), e.g. `additionalAdjustments: jsonb("additional_adjustments")` defaulting to an empty array. Keep the existing `adjustmentLabel`/`adjustmentAmount` columns exactly as they are today (still used for the diesel-advance auto-suggestion, for backward compatibility with existing saved bills) — do not remove or repurpose them.
+2. In the UI (~line 3478-3505), keep the existing single adjustment row exactly as it is (still auto-filled by the diesel-advance suggestion when applicable). Below it, render the list of `additionalAdjustments` entries the same way — each with its own label/reason input and signed-amount input — plus a "+ Add deduction / credit" button that appends a new blank entry, and a remove control on each entry.
+3. Update `netTotal` (~line 1581) to sum the existing single `adjustmentAmount` PLUS every entry in `additionalAdjustments`.
+4. Update every other place that reads the bill's adjustment for display or export — the PDF/print row-builder (~line 2207-2208, 2225), and the bill list/history rendering (~line 4063-4064) — so each additional entry appears as its own labeled line (not just a single combined number), consistent with how the primary adjustment line is already shown.
+5. Update the save payload (~line 1868-1869) to also send `additionalAdjustments`, and the corresponding server-side bill create/update handling to persist and return it.
+6. When an existing bill is loaded for editing (~line 1096-1113), hydrate `additionalAdjustments` from the saved record the same way `adjustmentLabel`/`adjustmentAmount` are already hydrated.
+
+WHAT NOT TO DO
+- Do not change the per-equipment-group "Other Debit / Recovery / Advance Adjustment / Other Credit" fields (~line 2714) — that system is separate, already correct, and out of scope.
+- Do not remove or repurpose the existing single `adjustmentLabel`/`adjustmentAmount` fields — keep them as the primary/diesel-advance slot; add the list alongside, not instead of.
+- Do not change how the diesel-advance suggestion auto-fills the primary field.
+- Do not touch DPR-02 through DPR-10.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+One new nullable jsonb column with a safe default (empty array) is expected — additive only, no change to any existing column, no data migration needed for existing bills (they simply have no additional entries yet).
+
+TESTS
+A. Open a vendor bill where a diesel-advance suggestion has already filled the primary "Other Debit / Recovery" field. Click "+ Add deduction / credit", enter a second, independent amount with its own reason (e.g. a cash advance). Confirm both the diesel-advance line AND the new manual line are visible, independently editable, and both correctly subtract from (or add to, if positive) the net total.
+B. Save the bill and reopen it. Confirm both the primary adjustment and the additional entries are restored exactly as saved.
+C. Confirm the PDF/print output for this bill shows both lines separately, each with its own label and amount — not a single combined figure.
+D. Confirm the bill list/history view also reflects the correct combined total.
+E. Confirm a bill with NO additional entries (the ordinary case today) behaves exactly as before — no regression.
+
+REPORT BACK
+1. Confirm the fix with Test A/B evidence (screenshots).
+2. Confirm Test C/D — PDF and list view both correctly reflect multiple entries.
+3. Confirm Test E — no regression to the ordinary single-adjustment case.
+4. Confirm the schema change applied (new column name, default value).
+5. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

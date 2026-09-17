@@ -17,7 +17,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc, desc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
@@ -10932,6 +10932,12 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const { pin: _pin, ...billData } = req.body;
       const input = createVendorBillRequestSchema.parse(billData);
+      // The shared request schema intentionally defaults an omitted list to
+      // [] for creates. On update, older callers that do not know VB18 must
+      // preserve the stored list; only an explicit [] (or null) clears it.
+      if (!Object.prototype.hasOwnProperty.call(billData, "additionalAdjustments")) {
+        delete (input as any).additionalAdjustments;
+      }
       if (Array.isArray(billData?.hireGroups) && input.hireGroups) {
         input.hireGroups.forEach((group, index) => {
           const projectSite = billData.hireGroups[index]?.projectSite;
@@ -11314,9 +11320,11 @@ export async function registerRoutes(
         const pTotalGst = pdfUsePerGroupGst ? pGstEq + pGstMat + pGstTr + pGstLab : pSingleGstAmt;
         const adjustmentAmount = (bill as any).adjustmentAmount || 0;
         const adjustmentLabel = (bill as any).adjustmentLabel || "ADVANCE DEDUCTION";
+        const additionalAdjustments = normalizeVendorBillAdditionalAdjustments((bill as any).additionalAdjustments);
+        const additionalAdjustmentAmount = additionalAdjustments.reduce((sum, adjustment) => sum + adjustment.amount, 0);
         const pTdsRate = (bill as any).tdsRate || 0;
         const pTdsAmt = pTdsRate ? (bill.totalAmount || 0) * pTdsRate / 100 : 0;
-        const pHasAny = pTotalGst !== 0 || adjustmentAmount !== 0 || pTdsAmt !== 0;
+        const pHasAny = pTotalGst !== 0 || adjustmentAmount !== 0 || additionalAdjustments.length > 0 || pTdsAmt !== 0;
 
         if (pHasAny) {
           if (!pdfUsePerGroupGst && pSingleGstRate > 0) {
@@ -11343,6 +11351,14 @@ export async function registerRoutes(
             doc.font("Helvetica-Bold").text(`Rs. ${fmtCurrency(adjustmentAmount)}`, tableX + pageW - amtColW + 4, y + 6, { width: amtColW - 8, align: "right" });
             y += summaryH;
           }
+          for (const adjustment of additionalAdjustments) {
+            if (y + summaryH > 720) { doc.addPage(); y = 40; }
+            doc.fillColor("#f0f0f0").rect(tableX, y, pageW, summaryH).fill();
+            doc.fillColor("#000").fontSize(10).font("Helvetica");
+            doc.text(adjustment.label, tableX + 4, y + 6, { width: pageW - amtColW - 8, align: "right" });
+            doc.font("Helvetica-Bold").text(`Rs. ${fmtCurrency(adjustment.amount)}`, tableX + pageW - amtColW + 4, y + 6, { width: amtColW - 8, align: "right" });
+            y += summaryH;
+          }
           if (pTdsAmt > 0) {
             if (y + summaryH > 720) { doc.addPage(); y = 40; }
             doc.fillColor("#fff5f5").rect(tableX, y, pageW, summaryH).fill();
@@ -11352,7 +11368,7 @@ export async function registerRoutes(
             y += summaryH;
           }
 
-          const netTotal = (bill.totalAmount || 0) + pTotalGst + adjustmentAmount - pTdsAmt;
+          const netTotal = (bill.totalAmount || 0) + pTotalGst + adjustmentAmount + additionalAdjustmentAmount - pTdsAmt;
           if (y + summaryH > 720) { doc.addPage(); y = 40; }
           doc.fillColor("#1a1a1a").rect(tableX, y, pageW, summaryH).fill();
           doc.fillColor("#fff").fontSize(11).font("Helvetica-Bold");

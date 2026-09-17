@@ -2247,6 +2247,10 @@ export const vendorBills = pgTable("vendor_bills", {
   paidBy: text("paid_by"),
   adjustmentLabel: text("adjustment_label"),
   adjustmentAmount: real("adjustment_amount").default(0),
+  // Additive bill-level deductions/credits.  The nullable column preserves
+  // compatibility with pre-VB18 rows; callers normalize NULL/missing values
+  // to an empty list.
+  additionalAdjustments: jsonb("additional_adjustments").$type<VendorBillAdditionalAdjustment[] | null>().default([]),
   gstRateEquipment: real("gst_rate_equipment"),
   gstRateMaterial: real("gst_rate_material"),
   gstRateTransport: real("gst_rate_transport"),
@@ -2265,6 +2269,20 @@ export const vendorBills = pgTable("vendor_bills", {
   unlockedAt: timestamp("unlocked_at"),
   unlockReason: text("unlock_reason"),
 });
+
+export const vendorBillAdditionalAdjustmentSchema = z.object({
+  label: z.string().trim().min(1, "Adjustment label is required").max(240, "Adjustment label is too long"),
+  // Signed values are intentional: deductions are negative and credits are
+  // positive.  finite() rejects NaN and both infinities.
+  amount: z.number().finite("Adjustment amount must be finite"),
+}).strict();
+export type VendorBillAdditionalAdjustment = z.infer<typeof vendorBillAdditionalAdjustmentSchema>;
+
+/** Normalize legacy NULL/missing JSON to the VB18 empty-list contract. */
+export function normalizeVendorBillAdditionalAdjustments(value: unknown): VendorBillAdditionalAdjustment[] {
+  if (value == null) return [];
+  return z.array(vendorBillAdditionalAdjustmentSchema).parse(value);
+}
 
 export const vendorBillItems = pgTable("vendor_bill_items", {
   id: serial("id").primaryKey(),
@@ -2499,6 +2517,7 @@ export const hireGroupRequestSchema = z.object({
 export type HireGroupRequest = z.infer<typeof hireGroupRequestSchema>;
 
 export const createVendorBillRequestSchema = insertVendorBillSchema.extend({
+  additionalAdjustments: z.array(vendorBillAdditionalAdjustmentSchema).nullish().transform((value) => value ?? []),
   items: z.array(insertVendorBillItemSchema.omit({ billId: true })),
   hireGroups: z.array(hireGroupRequestSchema).optional(),
   /** Explicit payload marker persisted in the existing statement snapshot. */

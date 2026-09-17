@@ -99,6 +99,9 @@ app.use((req, res, next) => {
     storage.ensureVendorBillPaymentColumns()
       .then(() => console.log("Startup: ensureVendorBillPaymentColumns — vendor_bills payment columns + diesel payment_status columns verified/added"))
       .catch(e => console.error("Pre-routes: Failed to ensure vendor bill payment columns:", e)),
+    storage.ensureVendorBillAdditionalAdjustmentsColumn()
+      .then(() => console.log("Startup: ensureVendorBillAdditionalAdjustmentsColumn — VB18 JSONB adjustment list verified/added"))
+      .catch(e => console.error("Pre-routes: Failed to ensure VB18 vendor bill adjustment column:", e)),
     storage.ensureMaterialReceiptDieselLinkColumn()
       .then(() => console.log("Startup: ensureMaterialReceiptDieselLinkColumn — material_receipts Diesel linkage/exception columns verified/added"))
       .catch(e => console.error("Pre-routes: Failed to ensure material receipt diesel link column:", e)),

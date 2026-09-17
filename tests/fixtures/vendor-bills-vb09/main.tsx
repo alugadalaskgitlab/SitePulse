@@ -365,6 +365,20 @@ const vb17HistoricalBill: FixtureBill = {
   }],
 };
 
+const vb18LegacyBill: FixtureBill = {
+  id: 1802, billDate: "2026-12-05", billNo: "VB18-LEGACY-NO-EXTRAS",
+  billType: "material", vendorName: "VB18 ORDINARY SUPPLIER",
+  periodFrom: "2026-12-01", periodTo: "2026-12-05", status: "approved",
+  totalAmount: 2500, adjustmentLabel: "LEGACY ADVANCE", adjustmentAmount: -250,
+  additionalAdjustments: [], gstRateMaterial: 0, tdsRate: 0, netPayableAmount: 2250,
+  amountPaid: 0, createdAt: "2026-12-05T12:00:00.000Z",
+  items: [{
+    id: 18021, billId: 1802, date: "2026-12-05", category: "material",
+    description: "VB18 LEGACY MATERIAL", qty: 1, unit: "LOT", rate: 2500,
+    amount: 2500, source: "manual",
+  }],
+};
+
 const initialBills = (() => {
   const initialScenario = new URLSearchParams(window.location.search).get("scenario") || "";
   if (initialScenario.startsWith("vb10") || initialScenario === "vb16-draft") return [];
@@ -372,6 +386,8 @@ const initialBills = (() => {
   if (initialScenario === "vb16-material") return [vb16MaterialBill];
   if (initialScenario === "vb17-draft" || initialScenario === "vb17-vendor") return [];
   if (initialScenario === "vb17-historical") return [vb17HistoricalBill];
+  if (initialScenario === "vb18-new") return [];
+  if (initialScenario === "vb18-legacy") return [vb18LegacyBill];
   const injected = (window as Window & {
     __VB09_HISTORICAL_BILLS__?: FixtureBill[];
     __VB09_DEV_BILLS__?: FixtureBill[];
@@ -791,6 +807,38 @@ const vb17VendorName = () => vb17VendorScenario() ? "VB17 VENDOR HIRE" : "VB17 H
 const vb17Equipment = () => vb17VendorScenario() ? vb17VendorEquipment : vb17HlcEquipment;
 const vb17Activities = () => vb17VendorScenario() ? vb17VendorActivities : vb17HlcActivities;
 
+// VB-18 is an isolated adjustment fixture.  It deliberately uses an hourly
+// equipment activity (rather than a persisted hire statement) so the browser
+// exercises the ordinary Vendor Bills adjustment editor and its contractor
+// diesel auto-suggestion.  All records are synthetic and never reach storage.
+const vb18Scenario = () => scenarioName().startsWith("vb18");
+const vb18VendorName = "VB18 DIESEL CONTRACTOR";
+const vb18Equipment = {
+  id: 1801, name: "VB18 DIESEL LOADER", registrationNumber: "VB18-D-01",
+  ownership: "hired", vendorName: vb18VendorName, hireBillingBasis: "hourly",
+  hireRate: 5000, hireStartDate: "2026-12-01", hireEndDate: null,
+  consumptionNorm: 1.5, meterType: "hour_meter", hireDieselResponsibility: "vendor",
+  hireBreakdownDeductionEnabled: false, hireOperatorResponsibility: null,
+  hireAgreementRemarks: "VB18 isolated adjustment fixture",
+};
+const vb18AutoItems: FixtureBill[] = [{
+  date: "2026-12-05", category: "equipment",
+  description: "VB18 DIESEL LOADER - HOURLY HIRE (PLANT) | 2 HRS",
+  qty: 2, unit: "HRS", rate: 5000, amount: 10000, source: "auto",
+  sourceId: 18001, equipmentId: 1801, siteName: "PLANT",
+}];
+const vb18HireActivities: FixtureBill[] = [
+  { source: "equipment_default", sourceId: 1801, equipmentId: 1801, businessDate: "2026-12-01", equipment: vb18Equipment },
+  {
+    source: "plant_usage", sourceId: 18002, equipmentId: 1801, businessDate: "2026-12-05",
+    occurredAt: "2026-12-05T08:00:00Z", entryType: "hourly", status: "closed",
+    hoursOrKmRun: 10, actualDiesel: 10, dieselSource: "contractor",
+    expectedDiesel: 15, expectedDieselAvailable: true, consumptionNorm: 1.5,
+    equipmentName: vb18Equipment.name, site: "VB18 ROAD", task: "LOADING",
+  },
+  { source: "diesel_rate", sourceId: 18003, businessDate: "2026-12-01", date: "2026-12-01", rate: 100, qtyPurchased: 100, purchasedAt: "2026-12-01T12:00:00Z" },
+];
+
 function vb10SnapshotForGroup(group: any, status = "draft", billPayload: any = {}): any {
   const equipment = vb10EquipmentMasters.find(row => Number(row.id) === Number(group.equipmentId));
   const isHlc = Number(group.equipmentId) === 1001;
@@ -879,6 +927,7 @@ const fixtureState = {
   statusPayloads: [] as Array<{ id: number; payload: any }>,
   downloadClicks: [] as string[],
   downloadFiles: [] as Array<{ name: string; bytes: number; type: string; signature: string }>,
+  downloadBodies: [] as Array<{ name: string; type: string; base64: string }>,
   printDocuments: [] as string[],
   selectedHistorical: [] as number[],
   rateCardCalls: [] as string[],
@@ -971,6 +1020,7 @@ window.fetch = async (input, init) => {
     if (vb10Scenario()) return json(["VB10 EQUIPMENT HIRE"]);
     if (vb16Scenario()) return json([vb16VendorName()]);
     if (vb17Scenario()) return json([vb17VendorName()]);
+    if (vb18Scenario()) return json([vb18VendorName]);
     if (vb11MixedScenario()) return json(["VB11 MIXED SUPPLIER"]);
     if (vb11SingleCategoryScenario()) return json(["VB11 EQUIPMENT SUPPLIER"]);
     if (vb14Scenario()) return json([vb14VendorName()]);
@@ -1124,6 +1174,9 @@ window.fetch = async (input, init) => {
     if (vb17DraftScenario() || vb17VendorScenario()) return json([{
       vendorName: vb17VendorName(), recordCount: 3, categories: ["equipment"], existingBill: null,
     }]);
+    if (vb18Scenario()) return json([{
+      vendorName: vb18VendorName, recordCount: vb18AutoItems.length, categories: ["equipment"], existingBill: null,
+    }]);
     if (vb11MixedScenario()) return json([{
       vendorName: "VB11 MIXED SUPPLIER",
       recordCount: vb11MixedAutoItems.length,
@@ -1166,6 +1219,9 @@ window.fetch = async (input, init) => {
     if (vb10Scenario()) return json(["equipment", "all"].includes(billType) ? vb10AutoItems : []);
     if (vb16Scenario()) return json([]);
     if (vb17Scenario()) return json([]);
+    if (vb18Scenario()) {
+      return json(["equipment", "all"].includes(billType) ? vb18AutoItems : []);
+    }
     if (vb11MixedScenario()) {
       return json(billType === "all"
         ? vb11MixedAutoItems
@@ -1219,6 +1275,7 @@ window.fetch = async (input, init) => {
         ? { ...row, equipment }
         : row.source === "maintenance" ? { ...row, equipment } : row));
     }
+    if (vb18Scenario()) return json(vb18HireActivities);
     if (vb15Scenario()) {
       const from = requestUrl.searchParams.get("periodFrom") || "";
       const to = requestUrl.searchParams.get("periodTo") || "";
@@ -1269,7 +1326,7 @@ window.fetch = async (input, init) => {
       vendorName: payload.vendorName || (vb10Scenario() ? "VB10 EQUIPMENT HIRE" : "NARASIMHULU"),
       periodFrom: payload.periodFrom || "2026-08-01",
       periodTo: payload.periodTo || "2026-09-13",
-      status: "draft",
+      status: vb18Scenario() ? "approved" : "draft",
       totalAmount: Number(payload.hireGroups?.length
         ? responseItems.reduce((sum: number, item: any) => sum + Number(item.amount || 0), 0)
         : payload.totalAmount || items.reduce((sum: number, item: any) => sum + Number(item.amount || 0), 0)),
@@ -1335,7 +1392,66 @@ window.fetch = async (input, init) => {
 };
 
 const originalAnchorClick = HTMLAnchorElement.prototype.click;
+function fixturePdfForBill(bill: any): Blob {
+  // This is only a deterministic fixture-server PDF for the isolated browser
+  // run. The production endpoint remains untouched; print assertions below
+  // inspect the real client-generated iframe document.
+  const additional = Array.isArray(bill?.additionalAdjustments)
+    ? bill.additionalAdjustments
+    : Array.isArray(bill?.additional_adjustments) ? bill.additional_adjustments : [];
+  const baseTotal = Number(bill?.totalAmount || 0);
+  const gstRate = Number(bill?.gstRateEquipment || bill?.gstRateMaterial || 0);
+  const gst = baseTotal * gstRate / 100;
+  const tds = baseTotal * Number(bill?.tdsRate || 0) / 100;
+  const additionalTotal = additional.reduce((sum: number, entry: any) => sum + Number(entry?.amount || 0), 0);
+  const netTotal = baseTotal + gst + Number(bill?.adjustmentAmount || 0) + additionalTotal - tds;
+  const amount = (value: unknown) => `${Number(value || 0) >= 0 ? "+" : ""}${Number(value || 0).toFixed(2)}`;
+  const lines = [
+    `Vendor Bill ${bill?.billNo || ""}`,
+    ...(gstRate ? [`GST @ ${gstRate}% +${gst.toFixed(2)}`] : []),
+    `Primary: ${bill?.adjustmentLabel || "ADVANCE DEDUCTION"} ${amount(bill?.adjustmentAmount)}`,
+    ...additional.map((entry: any, index: number) =>
+      `Additional ${index + 1}: ${entry?.label || "ADDITIONAL DEDUCTION / CREDIT"} ${amount(entry?.amount)}`),
+    ...(tds ? [`TDS @ ${bill?.tdsRate}% -${tds.toFixed(2)}`] : []),
+    `NET TOTAL: ${netTotal.toFixed(2)}`,
+  ].map(line => line.replace(/[^\x20-\x7E]/g, "?"));
+  const escapePdf = (line: string) => line.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  const stream = ["BT", "/F1 12 Tf", "50 780 Td", ...lines.flatMap((line, index) => [
+    `(${escapePdf(line)}) Tj`, ...(index < lines.length - 1 ? ["0 -24 Td"] : []),
+  ]), "ET"].join("\n");
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Length ${new TextEncoder().encode(stream).byteLength} >>\nstream\n${stream}\nendstream`,
+  ];
+  let pdf = "%PDF-1.4\n%\xE2\xE3\xCF\xD3\n";
+  const offsets = [0];
+  objects.forEach((object, index) => {
+    offsets[index + 1] = new TextEncoder().encode(pdf).byteLength;
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+  const xref = new TextEncoder().encode(pdf).byteLength;
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (let index = 1; index <= objects.length; index += 1) {
+    pdf += `${String(offsets[index]).padStart(10, "0")} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return new Blob([pdf], { type: "application/pdf" });
+}
 function captureDownload(this: HTMLAnchorElement) {
+  if (this.href.includes("/api/vendor-bills/") && this.href.endsWith("/pdf")) {
+    const match = this.href.match(/\/api\/vendor-bills\/(\d+)\/pdf(?:$|[?#])/);
+    const bill = match ? bills.find(candidate => candidate.id === Number(match[1])) : undefined;
+    if (bill) {
+      const fixturePdfBlob = fixturePdfForBill(bill);
+      const fixturePdfUrl = nativeCreateObjectURL(fixturePdfBlob);
+      fixtureObjectUrls.set(fixturePdfUrl, fixturePdfBlob);
+      this.href = fixturePdfUrl;
+      this.download = this.download || `VendorBill-${bill.billNo}.pdf`;
+    }
+  }
   if (this.download || this.href.includes("/api/vendor-bills/")) {
     fixtureState.downloadClicks.push(this.download || this.href);
     const blob = fixtureObjectUrls.get(this.href);
@@ -1348,6 +1464,13 @@ function captureDownload(this: HTMLAnchorElement) {
           bytes: bytes.byteLength,
           type: blob.type,
           signature,
+        });
+        let binary = "";
+        bytes.forEach(byte => { binary += String.fromCharCode(byte); });
+        fixtureState.downloadBodies.push({
+          name: this.download || "unnamed-download",
+          type: blob.type,
+          base64: btoa(binary),
         });
       });
     }

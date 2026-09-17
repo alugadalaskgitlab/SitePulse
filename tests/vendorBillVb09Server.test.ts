@@ -111,6 +111,26 @@ describe("VB-09 server itemized equipment hire", () => {
     ]));
   });
 
+  it("persists independent VB18 adjustment entries alongside the primary adjustment", async () => {
+    const storage = new DatabaseStorage();
+    await storage.createVendorBill(itemizedEquipmentBill({
+      adjustmentLabel: "DIESEL RECOVERY",
+      adjustmentAmount: -100,
+      additionalAdjustments: [{ label: "CASH ADVANCE", amount: -250 }],
+    }) as any);
+
+    expect(fx.writes).toEqual(expect.arrayContaining([
+      {
+        kind: "insert",
+        value: expect.objectContaining({
+          adjustmentLabel: "DIESEL RECOVERY",
+          adjustmentAmount: -100,
+          additionalAdjustments: [{ label: "CASH ADVANCE", amount: -250 }],
+        }),
+      },
+    ]));
+  });
+
   it("updates an itemized equipment bill's GST/TDS and manual monthly line without groups", async () => {
     fx.txRows.push(
       [{
@@ -148,6 +168,25 @@ describe("VB-09 server itemized equipment hire", () => {
       { kind: "update", value: expect.objectContaining({ gstRateEquipment: 12, tdsRate: 1 }) },
       { kind: "insert", value: [expect.objectContaining({ amount: 11000, category: "equipment" })] },
     ]));
+    expect(fx.writes.find(write => write.kind === "update")?.value).not.toHaveProperty("additionalAdjustments");
+  });
+
+  it("clears VB18 entries only when an update explicitly sends [] or null", async () => {
+    const storage = new DatabaseStorage();
+    fx.txRows.push(
+      [{ id: 101, billType: "EQUIPMENT", vendorName: "NARASIMHULU", status: "draft" }],
+      [],
+    );
+    await storage.updateVendorBill(101, itemizedEquipmentBill({ additionalAdjustments: [] }) as any);
+    expect(fx.writes.find(write => write.kind === "update")?.value).toMatchObject({ additionalAdjustments: [] });
+
+    fx.writes = [];
+    fx.txRows.push(
+      [{ id: 101, billType: "EQUIPMENT", vendorName: "NARASIMHULU", status: "draft" }],
+      [],
+    );
+    await storage.updateVendorBill(101, itemizedEquipmentBill({ additionalAdjustments: null }) as any);
+    expect(fx.writes.find(write => write.kind === "update")?.value).toMatchObject({ additionalAdjustments: [] });
   });
 
   it("keeps historical hire-group edit protection when groups are omitted", async () => {
@@ -218,6 +257,7 @@ describe("VB-09 server itemized equipment hire", () => {
       totalAmount: 10000,
       amountPaid: null,
       adjustmentAmount: 0,
+      additionalAdjustments: [{ label: "CASH ADVANCE", amount: -200 }],
       gstRateEquipment: 18,
       tdsRate: 2,
     };
@@ -226,13 +266,15 @@ describe("VB-09 server itemized equipment hire", () => {
       [{ id: 504, vendorBillId: 104, status: "billed", calculationSnapshot: null }],
       [{ category: "equipment", amount: 10000 }],
     );
-    fx.lastBill = { ...historical, status: "approved", netPayableAmount: 11564, amountPaid: 0 };
+    fx.lastBill = { ...historical, status: "approved", netPayableAmount: 11364, amountPaid: 0 };
     const storage = new DatabaseStorage();
 
     await storage.updateVendorBillStatus(104, "approved", "reviewer");
 
     const approval = fx.writes.find(write => write.kind === "update")?.value;
-    expect(approval).toMatchObject({ netPayableAmount: 11564, amountPaid: 0 });
+    // Existing TDS basis remains subtotal + GST; VB18 is additive after TDS:
+    // 11,800 × .98 - 200 = 11,364.
+    expect(approval).toMatchObject({ netPayableAmount: 11364, amountPaid: 0 });
   });
 
   it("approves a new itemized equipment bill with TDS on the pre-GST subtotal", async () => {
@@ -267,6 +309,38 @@ describe("VB-09 server itemized equipment hire", () => {
       netPayableAmount: 11600,
       amountPaid: 0,
     });
+  });
+
+  it("includes VB18 entries in the approved net payable while preserving the primary slot", async () => {
+    const itemized = {
+      id: 105,
+      billType: "EQUIPMENT",
+      vendorName: "NARASIMHULU",
+      status: "verified",
+      totalAmount: 10000,
+      amountPaid: null,
+      adjustmentLabel: "DIESEL RECOVERY",
+      adjustmentAmount: 0,
+      additionalAdjustments: [{ label: "CASH ADVANCE", amount: -200 }],
+      gstRateEquipment: 18,
+      gstRateMaterial: null,
+      gstRateTransport: null,
+      gstRateLabour: null,
+      tdsRate: 2,
+    };
+    fx.txRows.push(
+      [itemized],
+      [],
+      [{ category: "equipment", amount: 10000 }],
+    );
+    fx.lastBill = { ...itemized, status: "approved", netPayableAmount: 11400, amountPaid: 0 };
+    const storage = new DatabaseStorage();
+
+    await storage.updateVendorBillStatus(105, "approved", "reviewer");
+
+    const approval = fx.writes.find(write => write.kind === "update")?.value;
+    // 10,000 + 1,800 GST - 200 VB18 entry - 200 TDS.
+    expect(approval).toMatchObject({ netPayableAmount: 11400, amountPaid: 0 });
   });
 
   it("matches shared UI GST category totals and subtotal TDS for mixed itemized equipment", async () => {

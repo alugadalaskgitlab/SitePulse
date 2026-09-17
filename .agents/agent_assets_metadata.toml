@@ -1305,3 +1305,17 @@ mtime_ms = 1789585116280
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/4954c83e-2767-4d5f-8c5b-d5cf3efb02c2/9a769feb-872d-4c85-ae1b-7ce2692feb64"
 storage_version_token = "1789585120111105"
 content_type = "text/html"
+
+[[outputs]]
+id = "nkzkyXC1PXPrnxAY8Vp91"
+uri = "file://tests/fixtures/vendor-bills-vb09/evidence/vb18/vb18-verification-report.html"
+type = "text"
+title = "VB-18 verification: deductions, credits and saved bills"
+description = "Screenshots A–E, tested totals, PDF/print checks, legacy compatibility, and additive development-schema confirmation."
+logical_id = "0faf72db-fe15-4ec6-879f-39501343129d"
+content_hash = "sha256:c06f9942473ce381a1d448fb0edbc5b1d61319bdf0902317d21b43b1302201e7"
+size = 876689
+mtime_ms = 1789613256992
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/0faf72db-fe15-4ec6-879f-39501343129d/562c32ae-e4e8-48f1-a93d-8e89dc9b5862"
+storage_version_token = "1789613261137155"
+content_type = "text/html"

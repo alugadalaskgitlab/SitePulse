@@ -278,6 +278,7 @@ import {
   type HireStatementException,
   type InsertHireStatement,
   type InsertHireStatementException,
+  normalizeVendorBillAdditionalAdjustments,
   vendorAliases,
   mixEstimates,
   type MixEstimate,
@@ -1515,6 +1516,9 @@ export interface IStorage {
   // 06M-A: ensures nullable payment_mode/paid_by columns on vendor_bills.
   // Safe to run multiple times (ALTER TABLE … ADD COLUMN IF NOT EXISTS).
   ensureVendorBillPaymentColumns(): Promise<void>;
+  // VB18: additive bill-level adjustment list. Nullable for legacy rows;
+  // newly created rows receive an empty JSON array by default.
+  ensureVendorBillAdditionalAdjustmentsColumn(): Promise<void>;
   ensureMaterialReceiptDieselLinkColumn(): Promise<void>;
   getDieselRequirementReceipts(requirementIds: number[]): Promise<MaterialReceipt[]>;
   deleteVendorBill(id: number): Promise<boolean>;
@@ -16212,7 +16216,12 @@ export class DatabaseStorage implements IStorage {
       with: { items: true, hireStatements: { with: { exceptions: true } } },
       orderBy: desc(vendorBills.billDate),
     });
-    return bills as VendorBillWithItems[];
+    return bills.map((bill) => ({
+      ...bill,
+      // VB18 is additive; historical rows may have NULL or may come from a
+      // replica predating the column. Keep every API response list-shaped.
+      additionalAdjustments: normalizeVendorBillAdditionalAdjustments((bill as any).additionalAdjustments),
+    })) as VendorBillWithItems[];
   }
 
   async getVendorBill(id: number): Promise<VendorBillWithItems | undefined> {
@@ -16220,7 +16229,12 @@ export class DatabaseStorage implements IStorage {
       where: eq(vendorBills.id, id),
       with: { items: true, hireStatements: { with: { exceptions: true } } },
     });
-    return bill as VendorBillWithItems | undefined;
+    return bill
+      ? {
+          ...bill,
+          additionalAdjustments: normalizeVendorBillAdditionalAdjustments((bill as any).additionalAdjustments),
+        } as VendorBillWithItems
+      : undefined;
   }
 
   private async generateVendorBillNo(): Promise<string> {
@@ -16521,6 +16535,7 @@ export class DatabaseStorage implements IStorage {
         totalAmount: data.totalAmount,
         adjustmentLabel: (data as any).adjustmentLabel?.toUpperCase() || null,
         adjustmentAmount: (data as any).adjustmentAmount || 0,
+        additionalAdjustments: normalizeVendorBillAdditionalAdjustments((data as any).additionalAdjustments),
         gstRateEquipment: (data as any).gstRateEquipment || null,
         gstRateMaterial: (data as any).gstRateMaterial || null,
         gstRateTransport: (data as any).gstRateTransport || null,
@@ -16573,9 +16588,17 @@ export class DatabaseStorage implements IStorage {
       if (data.hireGroups !== undefined) {
         const totalAmount = Math.round((items.reduce((sum, item) => sum + (item.amount || 0), 0) + Number.EPSILON) * 100) / 100;
         const [corrected] = await tx.update(vendorBills).set({ totalAmount }).where(eq(vendorBills.id, bill.id)).returning();
-        return { ...corrected, items };
+        return {
+          ...corrected,
+          additionalAdjustments: normalizeVendorBillAdditionalAdjustments((corrected as any).additionalAdjustments),
+          items,
+        };
       }
-      return { ...bill, items };
+      return {
+        ...bill,
+        additionalAdjustments: normalizeVendorBillAdditionalAdjustments((bill as any).additionalAdjustments),
+        items,
+      };
     });
   }
 
@@ -16665,13 +16688,23 @@ export class DatabaseStorage implements IStorage {
         const [bill] = await tx.select().from(vendorBills).where(eq(vendorBills.id, statement.vendorBillId));
         const items = bill ? await tx.select().from(vendorBillItems).where(eq(vendorBillItems.billId, bill.id)) : [];
         if (!bill) throw new Error("Linked vendor bill not found");
-        return { statement, bill: { ...bill, items } };
+        return {
+          statement,
+          bill: {
+            ...bill,
+            additionalAdjustments: normalizeVendorBillAdditionalAdjustments((bill as any).additionalAdjustments),
+            items,
+          },
+        };
       }
       if (statement.status !== "approved") throw Object.assign(new Error("Only approved statements can create a vendor bill"), { code: "CONFLICT" });
       const billNo = await this.generateVendorBillNo();
       const [bill] = await tx.insert(vendorBills).values({
         billDate: data.billDate, billNo, billType: data.billType.toUpperCase(), vendorName: uppercaseBusinessText(data.vendorName),
         periodFrom: statement.periodFrom, periodTo: statement.periodTo, status: "draft", notes: data.notes, totalAmount: statement.netAmount,
+        adjustmentLabel: (data as any).adjustmentLabel?.toUpperCase() || null,
+        adjustmentAmount: (data as any).adjustmentAmount || 0,
+        additionalAdjustments: normalizeVendorBillAdditionalAdjustments((data as any).additionalAdjustments),
         amountPaid: 0,
       }).returning();
       // The standalone statement was approved before this route was reached.
@@ -16688,7 +16721,14 @@ export class DatabaseStorage implements IStorage {
         revision: statement.revision + 1,
       })
         .where(eq(hireStatements.id, statementId)).returning();
-      return { statement: updated, bill: { ...bill, items } };
+      return {
+        statement: updated,
+        bill: {
+          ...bill,
+          additionalAdjustments: normalizeVendorBillAdditionalAdjustments((bill as any).additionalAdjustments),
+          items,
+        },
+      };
     });
   }
 
@@ -16737,6 +16777,11 @@ export class DatabaseStorage implements IStorage {
           paymentMode: (data as any).paymentMode,
           paidBy: (data as any).paidBy,
         };
+      // Preserve VB18 entries for legacy update callers that omit the field.
+      // An explicit [] or null is an intentional clear.
+      if (Object.prototype.hasOwnProperty.call(data, "additionalAdjustments")) {
+        setData.additionalAdjustments = normalizeVendorBillAdditionalAdjustments((data as any).additionalAdjustments);
+      }
       if (data.status) {
         setData.status = data.status;
         if (data.status === "draft") {
@@ -16793,9 +16838,17 @@ export class DatabaseStorage implements IStorage {
       if (data.hireGroups !== undefined) {
         const totalAmount = Math.round((items.reduce((sum, item) => sum + (item.amount || 0), 0) + Number.EPSILON) * 100) / 100;
         const [corrected] = await tx.update(vendorBills).set({ totalAmount }).where(eq(vendorBills.id, id)).returning();
-        return { ...corrected, items };
+        return {
+          ...corrected,
+          additionalAdjustments: normalizeVendorBillAdditionalAdjustments((corrected as any).additionalAdjustments),
+          items,
+        };
       }
-      return { ...updated, items };
+      return {
+        ...updated,
+        additionalAdjustments: normalizeVendorBillAdditionalAdjustments((updated as any).additionalAdjustments),
+        items,
+      };
     });
   }
 
@@ -16819,6 +16872,14 @@ export class DatabaseStorage implements IStorage {
     await db.execute(sql.raw(`ALTER TABLE diesel_requirements ADD COLUMN IF NOT EXISTS payment_status text DEFAULT 'pending'`));
     await db.execute(sql.raw(`ALTER TABLE diesel_requirements ADD COLUMN IF NOT EXISTS paid_at text`));
     await db.execute(sql.raw(`ALTER TABLE diesel_requirements ADD COLUMN IF NOT EXISTS payment_recorded_by text`));
+  }
+
+  // VB18: idempotent additive migration. Do not backfill legacy NULL values;
+  // API reads normalize them to [] and the column remains nullable.
+  async ensureVendorBillAdditionalAdjustmentsColumn(): Promise<void> {
+    await db.execute(sql.raw(
+      `ALTER TABLE vendor_bills ADD COLUMN IF NOT EXISTS additional_adjustments jsonb DEFAULT '[]'::jsonb`,
+    ));
   }
 
   // 06M-C: idempotent additive migration — nullable linkage from a Diesel
@@ -16937,6 +16998,9 @@ export class DatabaseStorage implements IStorage {
       const updates: any = { status };
       const now = format(new Date(), "yyyy-MM-dd HH:mm:ss");
       const actorUpper = actor.toUpperCase();
+      const additionalAdjustmentAmount = normalizeVendorBillAdditionalAdjustments(
+        (existing as any).additionalAdjustments,
+      ).reduce((sum, adjustment) => sum + adjustment.amount, 0);
       if (status === "verified") {
         updates.verifiedBy = actorUpper;
         updates.verifiedAt = now;
@@ -16975,16 +17039,19 @@ export class DatabaseStorage implements IStorage {
             if (savedFinancials.length) {
               const legacyNet = savedFinancials.reduce((sum: number, financials: any) => sum +
                 calculateEquipmentHireFinancials(financials).netPayable, 0);
-              updates.netPayableAmount = Math.round((legacyNet + Number.EPSILON) * 100) / 100;
+              // Legacy statement snapshots retain their historical financial
+              // path. VB18 additions are bill-level and additive without
+              // changing how the existing primary adjustment was treated.
+              updates.netPayableAmount = Math.round((legacyNet + additionalAdjustmentAmount + Number.EPSILON) * 100) / 100;
             } else {
               // Legacy statements without a financial snapshot retain the old
               // itemized tax treatment verbatim.
               updates.netPayableAmount = Math.round(((subtotal + gst + Number(existing.adjustmentAmount || 0)) *
-                (1 - Number(existing.tdsRate || 0) / 100) + Number.EPSILON) * 100) / 100;
+                (1 - Number(existing.tdsRate || 0) / 100) + additionalAdjustmentAmount + Number.EPSILON) * 100) / 100;
             }
           } else {
             const tdsAmount = subtotal * Number(existing.tdsRate || 0) / 100;
-            updates.netPayableAmount = Math.round((subtotal + gst + Number(existing.adjustmentAmount || 0) - tdsAmount + Number.EPSILON) * 100) / 100;
+            updates.netPayableAmount = Math.round((subtotal + gst + Number(existing.adjustmentAmount || 0) + additionalAdjustmentAmount - tdsAmount + Number.EPSILON) * 100) / 100;
           }
           // A new hire bill starts with no payment. Historical paid records
           // remain nullable and are interpreted as fully paid in the UI.
@@ -20842,10 +20909,17 @@ export class DatabaseStorage implements IStorage {
         "id", "billDate", "billNo", "billType", "vendorName", "periodFrom", "periodTo", "status",
         "notes", "totalAmount", "verifiedBy", "verifiedAt", "approvedBy", "approvedAt", "paidAt",
         "paymentRecordedBy", "paymentRemarks", "paymentMode", "paidBy", "adjustmentLabel",
-        "adjustmentAmount", "gstRateEquipment", "gstRateMaterial", "gstRateTransport", "gstRateLabour",
+        "adjustmentAmount", "additionalAdjustments", "gstRateEquipment", "gstRateMaterial", "gstRateTransport", "gstRateLabour",
         "tdsRate", "netPayableAmount", "amountPaid", "paymentAccountKey", "createdAt", "authorUserId",
         "lockStatus", "unlockedByUserId", "unlockedAt", "unlockReason",
       ]);
+      // Validate VB18 entries on import while keeping old exports, which do
+      // not have the field at all, fully compatible.
+      bills.forEach((bill) => {
+        if (hasOwn(bill, "additionalAdjustments")) {
+          bill.additionalAdjustments = normalizeVendorBillAdditionalAdjustments(bill.additionalAdjustments);
+        }
+      });
       const items = assertRows(bundle.items, vendorBillItems, "vendor_bills.items", [
         "id", "billId", "date", "category", "description", "qty", "unit", "rate", "amount", "source",
         "equipmentId", "leadDistance", "siteName", "suppliedTo", "transporter", "hireStatementId",
