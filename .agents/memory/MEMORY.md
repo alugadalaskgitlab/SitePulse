@@ -86,3 +86,4 @@
 - [Modal suggestion menus](modal-suggestion-menus.md) — custom autocomplete needs modal-aware pointer/focus behavior; standalone DOM tests miss Radix restrictions.
 - [Vehicle supplier stability](vehicle-supplier-stability.md) — standing associations override old trip conflicts; seed from full active history, with atomic writes and supplier-plus-version correction checks.
 - [DPR null-project recovery](dpr-null-project-recovery.md) — unassigned drafts need confirmed attachment; persisted refs block recovery, newly selected refs do not; scope tokens precede validation.
+- [Attachment viewer history](attachment-viewer-history.md) — same-URL overlay Back must preserve dirty routed forms; URL restoration alone cannot recover unmounted state.

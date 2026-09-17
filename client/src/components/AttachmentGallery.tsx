@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Trash2, FileText, Loader2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Attachment, AttachmentModuleType } from "@shared/schema";
+import { AttachmentViewer, getSafeAttachmentObjectPath } from "@/components/AttachmentViewer";
 
 interface AttachmentGalleryProps {
   moduleType: AttachmentModuleType;
@@ -85,6 +87,7 @@ export function AttachmentGrid({
   className?: string;
 }) {
   const { toast } = useToast();
+  const [selectedAttachment, setSelectedAttachment] = useState<Attachment | null>(null);
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       await apiRequest("DELETE", `/api/attachments/${id}`);
@@ -100,17 +103,25 @@ export function AttachmentGrid({
   return (
     <div className={className ?? "grid grid-cols-3 sm:grid-cols-4 gap-2"}>
       {items.map((att) => {
-        const isImage = (att.mimeType || "").startsWith("image/");
+        const safeObjectPath = getSafeAttachmentObjectPath(att.objectPath);
+        const isImage = safeObjectPath !== null && (att.mimeType || "").startsWith("image/");
         return (
           <div
             key={att.id}
             className="relative group border rounded-md overflow-hidden bg-muted aspect-square"
             data-testid={`card-attachment-${att.id}`}
           >
-            <a href={att.objectPath} target="_blank" rel="noreferrer" className="block h-full w-full">
+            <button
+              type="button"
+              className="block h-full w-full text-left"
+              onClick={() => setSelectedAttachment(att)}
+              aria-label={`Open attachment ${att.fileName}`}
+              aria-haspopup="dialog"
+              data-testid={`button-open-attachment-${att.id}`}
+            >
               {isImage ? (
                 <img
-                  src={att.objectPath}
+                  src={safeObjectPath ?? undefined}
                   alt={att.caption || att.fileName}
                   className="h-full w-full object-cover"
                   data-testid={`img-attachment-${att.id}`}
@@ -121,7 +132,7 @@ export function AttachmentGrid({
                   <span className="text-xs truncate w-full">{att.fileName}</span>
                 </div>
               )}
-            </a>
+            </button>
             {(att.uploadedByName || att.uploadedAt) && (
               <div
                 className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] leading-tight px-1 py-0.5 truncate"
@@ -153,6 +164,10 @@ export function AttachmentGrid({
           </div>
         );
       })}
+      <AttachmentViewer
+        attachment={selectedAttachment}
+        onClose={() => setSelectedAttachment(null)}
+      />
     </div>
   );
 }

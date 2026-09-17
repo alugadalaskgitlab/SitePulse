@@ -1,0 +1,52 @@
+INSTRUCTION DIESEL-04: Two unrelated fixes bundled together — (1) a diesel/material receipt can be saved twice by two near-simultaneous submissions, because the "does this exceed the remaining purchased quantity" check and the actual save are not atomic, (2) attachments (photos/bills) open in a bare new browser tab with no in-app close control, forcing people to leave and restart the app to get back to where they were
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Two independent, precisely-diagnosed problems. Fix 1 is a real, reproduced production incident (a PM's diesel receipt was saved twice, inflating stock and eventually driving the balance negative) — treat it with the care a financial/stock-integrity fix deserves. Fix 2 is a UI/navigation fix only. Do not touch DPR-02 through DPR-10 or VB-18. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND — FIX 1: DUPLICATE DIESEL RECEIPT FROM A SUBMISSION RACE
+1. server/routes.ts, `POST /api/plant-module/material-receipts` (~line 4333-4425), calls `validateDieselReceiptControl` (~line 4213-4300) BEFORE calling `storage.createMaterialReceipt(input)`. That validation reads the diesel requirement's already-recorded receipts (`storage.getDieselRequirementReceipts`), computes how much is still pending (`computeDieselReceiptState`), and rejects the request only if the NEW quantity would exceed that remaining amount (`DIESEL_RECEIPT_EXCEEDS_REMAINING`).
+2. This read-then-decide-then-insert sequence is not wrapped in any transaction or row lock. Two requests arriving close together (a double-tap on Submit, or a client retry after a slow/ambiguous response) can both run the "how much is remaining" read before either one's insert has committed — each sees zero/partial prior receipts, each independently passes the check, and both get saved. This is confirmed as the actual cause of a real incident: a PM entered a diesel receipt, believed it had not saved, entered it again — both went through, the purchase register correctly shows one purchase, but the stock ledger shows two identical receipts, and site diesel stock is now incorrectly inflated (and has since gone negative as it was drawn down against a balance that was too high to begin with).
+3. For comparison, `_adjustStockBalance` (server/storage.ts ~line 7709 onward) already does this correctly for the stock BALANCE table itself — it uses `SELECT ... FOR UPDATE` so two concurrent deductions can never both succeed against the same available stock. The diesel-receipt "remaining purchased quantity" check has no equivalent protection.
+4. Separately, the human side of this: the PM only entered it twice because he could not tell whether the first attempt had succeeded. The UI needs to make success/failure unambiguous and prevent a second submission while the first is still in flight.
+
+FIX 1
+a. Make the "remaining purchased quantity" check and the receipt insert atomic with respect to the SAME linked diesel requirement — e.g. take a row lock on the diesel requirement (or an equivalent serialization point) for the duration of the check-and-insert, inside a single database transaction, the same pattern `_adjustStockBalance` already uses with `FOR UPDATE`. Two near-simultaneous submissions against the same linked requirement must never both pass the remaining-quantity check.
+b. On the client (wherever the material/diesel receipt form submits — locate the relevant component under client/src, likely in the Plant/Stores materials receipt screen), disable the Submit button immediately on click and keep it disabled until the request resolves (success or error), and show an unambiguous success confirmation (not just a toast that can be missed) or a clear error, so a person is never left unsure whether their entry saved.
+c. This must not weaken the existing "exceeds remaining purchased quantity" rejection for a genuinely over-quantity receipt — only close the timing gap that lets two simultaneous, individually-valid-looking submissions both slip through.
+
+BACKGROUND — FIX 2: NO WAY TO CLOSE AN OPENED ATTACHMENT WITHOUT LEAVING THE APP
+1. client/src/components/AttachmentGallery.tsx (`AttachmentGrid`, ~line 110-115) renders every attachment thumbnail as `<a href={att.objectPath} target="_blank" rel="noreferrer">` — clicking a photo or document opens the raw file directly in a new browser tab, with no in-app viewer, no close button, and no path back to the exact screen/transaction the person was working on.
+2. Reported impact, especially on mobile/tablet browsers: after viewing an attached bill or photo this way, there is no way to simply close it and return — the person has to close and restart the app entirely, which drops them back at the dashboard, forcing them to re-navigate to the hub, find the same entry again, and scroll back down to where they were.
+3. `AttachmentGrid` is the shared component used everywhere attachments are shown (diesel receipts, purchases, DPR photos, bills, etc. — confirmed as the common gallery, not a per-module duplicate), so fixing it here fixes every screen at once.
+
+FIX 2
+a. Replace the bare `target="_blank"` link with an in-app viewer: clicking a thumbnail opens a modal/dialog (or an equivalent in-app overlay) showing the image full-size (or, for a non-image document, an embedded preview if feasible, otherwise a clearly-labeled open/download action) with a visible, unambiguous Close (X) control.
+b. Closing the viewer must return the person to exactly the screen and scroll position they were on — it must not navigate away, reload, or lose any in-progress form state on the underlying screen.
+c. This must work correctly on mobile and tablet browsers specifically, since that is where the reported problem is worst (the device's own back button/gesture should also sensibly close the viewer rather than leaving the app).
+d. Keep the existing delete control, "Linked" badge, and uploader/date caption exactly as they are today — only the open/view behavior changes.
+
+WHAT NOT TO DO
+- Do not weaken or remove the "exceeds remaining purchased quantity" check itself — only fix the race condition around it.
+- Do not change how standalone/unlinked diesel exception receipts are authorized (Owner/Admin/PM + reason) — that stays as is.
+- Do not build a new per-module attachment viewer — fix the shared AttachmentGrid/AttachmentGallery component so every screen benefits.
+- Do not touch DPR-02 through DPR-10 or VB-18.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema/migration change is expected for either fix.
+
+TESTS
+A. Simulate two near-simultaneous receipt submissions against the same linked diesel requirement (e.g. fire two requests back to back before the first responds, or rapid double-click in the UI). Confirm only one receipt is created and the second is correctly rejected as exceeding the remaining quantity.
+B. Confirm an ordinary single receipt submission still works exactly as before, with quantity validation unchanged.
+C. Confirm the Submit button is disabled immediately on click and re-enabled only after the request resolves, with a clear, unmissable success or error indication.
+D. Open a photo attachment from any screen (diesel receipt, purchase, DPR) on a phone-sized viewport. Confirm it opens in an in-app viewer with a visible Close control, and that closing it returns to the exact same screen/scroll position, with no app restart needed.
+E. Repeat Test D for a non-image document attachment (e.g. a PDF bill).
+F. Confirm the existing delete/"Linked" badge/caption behavior in the attachment grid is unaffected.
+
+REPORT BACK
+1. Confirm Fix 1 with Test A/B/C evidence (screenshots or logs).
+2. Confirm Fix 2 with Test D/E/F evidence (screenshots).
+3. Confirm no schema change was needed.
+4. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

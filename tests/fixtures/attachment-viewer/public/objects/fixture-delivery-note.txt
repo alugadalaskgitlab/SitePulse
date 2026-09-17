@@ -1,0 +1,1 @@
+Delivery note fixture — preview fallback must offer Open in new tab and Download.

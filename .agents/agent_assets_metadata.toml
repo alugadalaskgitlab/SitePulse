@@ -1319,3 +1319,17 @@ mtime_ms = 1789613256992
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/0faf72db-fe15-4ec6-879f-39501343129d/562c32ae-e4e8-48f1-a93d-8e89dc9b5862"
 storage_version_token = "1789613261137155"
 content_type = "text/html"
+
+[[outputs]]
+id = "1q3eT0VPvr0Fz23i7etjL"
+uri = "file://screenshots/attachment-viewer/diesel04-verification-report.html"
+type = "text"
+title = "DIESEL-04 verification evidence"
+description = "Receipt concurrency results, pending/success/error screenshots, phone/tablet attachment viewer, and dirty-form Back navigation checks."
+logical_id = "19a6c242-0be0-47d3-94a5-5756f13c57f4"
+content_hash = "sha256:7ca8d46e5596bacfa9747db837d9392f71406b1ea7a7b189307f0295aaf85c7d"
+size = 659245
+mtime_ms = 1789621368368
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/19a6c242-0be0-47d3-94a5-5756f13c57f4/dc5cda31-4da1-479a-ab49-586a262b7e8d"
+storage_version_token = "1789621372367762"
+content_type = "text/html"

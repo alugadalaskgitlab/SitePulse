@@ -20,17 +20,34 @@ describe("REC-03 Material Receipt update feedback and submitted edit controls", 
       "const updateMutation = useMutation({",
       "const deleteMutation = useMutation({",
     );
-    const onError = sourceBetween(
-      "onError: (error: any) => {",
-      "const deleteMutation = useMutation({",
-    );
+    const onErrorStart = updateMutation.indexOf("onError: (error: any) => {");
+    expect(onErrorStart).toBeGreaterThanOrEqual(0);
+    const onError = updateMutation.slice(onErrorStart);
 
     expect(updateMutation).toContain("onError: (error: any) =>");
-    expect(onError).toContain('error.message.replace(/^\\d+:\\s*/, "")');
-    expect(onError).toContain("parsed.message || msg");
+    expect(source).toContain("const getReceiptSubmissionError = (error: any, fallback: string) =>");
+    expect(source).toContain('rawMessage.replace(/^\\d+:\\s*/, "")');
+    expect(source).toContain("parsed.message || rawMessage || fallback");
+    expect(onError).toContain('getReceiptSubmissionError(error, "Failed to update material receipt")');
     expect(onError).toContain('title: "Cannot update receipt"');
     expect(onError).toContain('variant: "destructive"');
     expect(onError).not.toContain("setDialogOpen(false)");
+  });
+
+  it("keeps the shared parser's status stripping and server-message preference", () => {
+    const parseSubmissionError = (error: { message?: string }, fallback: string) => {
+      const rawMessage = typeof error?.message === "string" ? error.message : "";
+      try {
+        const parsed = JSON.parse(rawMessage.replace(/^\d+:\s*/, ""));
+        return parsed.message || rawMessage || fallback;
+      } catch {
+        return rawMessage || fallback;
+      }
+    };
+
+    expect(parseSubmissionError({ message: '409: {"message":"Receipt is locked"}' }, "fallback")).toBe("Receipt is locked");
+    expect(parseSubmissionError({ message: "500: plain server failure" }, "fallback")).toBe("500: plain server failure");
+    expect(parseSubmissionError({}, "fallback")).toBe("fallback");
   });
 
   it("lets direct editors open a submitted receipt with the explicit zero sentinel", () => {

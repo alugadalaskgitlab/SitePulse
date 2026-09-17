@@ -9,6 +9,12 @@ description: Purchased ≠ Received for Daily Diesel purchases; linked Material 
 
 **Why:** anti-pilferage — Purchased is the purchaser's claim, Received is an independent physical confirmation; storing receivedQty would go stale on receipt cancel/edit.
 
+Stock-balance locking alone does not protect the linked purchase's receipt limit. Serialize the remaining-purchased-quantity check and physical receipt/stock write against the linked requirement in one transaction.
+
+**Why:** concurrent submissions can each pass an earlier remaining-quantity read while perfectly serialized stock updates still add both duplicate receipts. Route prevalidation is not authoritative.
+
+**How to apply:** maintain compatible locking across create, correction, cancellation and deletion; verify competing requests against real PostgreSQL, including rollback of receipt, ledger and balance together. Do not silently repair historical duplicates while fixing this invariant.
+
 **How to apply:**
 - Valid receipts = not cancelled AND not deleted. Over-receipt shows as explicit +variance, never clamped. Cancelled linked receipts are excluded from received totals and set `cancelledReceiptCount`.
 - Create and correction paths must both enforce the active canonical DIESEL/HSD material and Liters ledger UOM. UI locks are only guidance; server enforcement is mandatory because receipt quantities are aggregated as litres.

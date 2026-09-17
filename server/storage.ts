@@ -2114,6 +2114,20 @@ export class DieselReceiptExceedsRemainingError extends Error {
   }
 }
 
+// A linked receipt may race a purchase status correction after route-level
+// validation. Keep that authoritative transaction failure structured so routes
+// can return the same client-facing 400 contract as their early check instead
+// of turning a stale/invalid link into a generic 500.
+export class InvalidLinkedDieselRequirementError extends Error {
+  readonly code = "LINKED_DIESEL_REQUIREMENT_INVALID" as const;
+  readonly requirementId: number;
+  constructor(requirementId: number) {
+    super("Linked diesel requirement not found or not a completed purchase");
+    this.name = "InvalidLinkedDieselRequirementError";
+    this.requirementId = requirementId;
+  }
+}
+
 export class InvalidDieselPhysicalStockError extends Error {
   readonly code = "INVALID_DIESEL_PHYSICAL_STOCK" as const;
   constructor(readonly physicalQty: number) {
@@ -2463,6 +2477,14 @@ export class DatabaseStorage implements IStorage {
 
     const [receipt] = await tx.select().from(materialReceipts).where(eq(materialReceipts.id, id)).limit(1);
     if (!receipt) return undefined;
+
+    // Keep active linked-receipt totals serialized with create/update. The
+    // receipt row is locked first, then the requirement row, and only then the
+    // stock balance row below (the common receipt -> requirement -> balance
+    // order used by all correction paths).
+    if (receipt.linkedDieselRequirementId != null) {
+      await this._lockDieselRequirement(tx, receipt.linkedDieselRequirementId);
+    }
 
     const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, receipt.materialId)).limit(1);
     if (!material) throw new Error(`Plant material #${receipt.materialId} not found`);
@@ -5523,17 +5545,11 @@ export class DatabaseStorage implements IStorage {
     // Serialize receipts against the same purchase. The route provides the
     // friendly early validation; this in-transaction check closes the race
     // where two individually-valid requests arrive at the same time.
-    const requirementResult = await tx.execute(sql`
-      SELECT id, status, qty_purchased
-      FROM diesel_requirements
-      WHERE id = ${requirementId}
-      LIMIT 1
-      FOR UPDATE
-    `);
-    const requirement = requirementResult.rows?.[0] as { status: string; qty_purchased: number | string | null } | undefined;
+    const requirement = await this._lockDieselRequirement(tx, requirementId);
     if (!requirement || requirement.status !== "purchased" || Number(requirement.qty_purchased) <= 0) {
-      throw new Error("Linked diesel requirement not found or not a completed purchase");
+      throw new InvalidLinkedDieselRequirementError(requirementId);
     }
+
     const exclusion = excludeReceiptId == null ? sql`` : sql`AND id <> ${excludeReceiptId}`;
     const receivedResult = await tx.execute(sql`
       SELECT COALESCE(SUM(quantity), 0) AS received
@@ -5553,6 +5569,28 @@ export class DatabaseStorage implements IStorage {
         linkedDieselRequirementId: requirementId,
       });
     }
+  }
+
+  /**
+   * Lock the purchase row that serializes all active linked-receipt changes.
+   *
+   * Receipt create/update/cancel/delete callers deliberately use this same
+   * requirement-row lock before reading or changing active receipt totals.
+   * The stock balance lock is acquired after this lock, so a receipt cannot
+   * commit a purchased-quantity decision independently of its stock writes.
+   */
+  private async _lockDieselRequirement(
+    tx: any,
+    requirementId: number,
+  ): Promise<{ id: number; status: string; qty_purchased: number | string | null } | undefined> {
+    const requirementResult = await tx.execute(sql`
+      SELECT id, status, qty_purchased
+      FROM diesel_requirements
+      WHERE id = ${requirementId}
+      LIMIT 1
+      FOR UPDATE
+    `);
+    return requirementResult.rows?.[0] as { id: number; status: string; qty_purchased: number | string | null } | undefined;
   }
 
   async createMaterialReceipt(receipt: InsertMaterialReceipt): Promise<MaterialReceipt> {
@@ -5658,14 +5696,30 @@ export class DatabaseStorage implements IStorage {
     const oldMaterialId = oldRecord[0]?.materialId;
 
     await db.transaction(async (tx) => {
-      // Get existing receipt first
+      // Lock order for every receipt correction is receipt -> requirement ->
+      // stock balance.  This prevents a concurrent cancel/delete/relink from
+      // changing which active quantity the requirement check observes.
+      const lockedReceipt = await tx.execute(sql`
+        SELECT id
+        FROM material_receipts
+        WHERE id = ${id}
+        LIMIT 1
+        FOR UPDATE
+      `);
+      if ((lockedReceipt.rows ?? []).length === 0) return undefined;
+
       const [existing] = await tx.select().from(materialReceipts).where(eq(materialReceipts.id, id)).limit(1);
       if (!existing) return undefined;
       const transactionDate = materialReceiptTransactionDate(
         receipt.invoiceDate ?? existing.invoiceDate,
         receipt.date ?? existing.date,
       );
-      const effectiveDieselRequirementId = receipt.linkedDieselRequirementId ?? existing.linkedDieselRequirementId;
+      // A linked receipt is immutable with respect to its purchase link. The
+      // route enforces this for HTTP callers; retain it here as the
+      // transaction-authoritative guard for storage callers and stale edits.
+      const effectiveDieselRequirementId = existing.linkedDieselRequirementId != null
+        ? existing.linkedDieselRequirementId
+        : (receipt.linkedDieselRequirementId ?? existing.linkedDieselRequirementId);
       if (effectiveDieselRequirementId != null) {
         await this._assertDieselReceiptWithinPurchasedQuantity(
           tx,
@@ -5677,6 +5731,9 @@ export class DatabaseStorage implements IStorage {
       
       // Uppercase text fields
       const updates = { ...receipt };
+      if (existing.linkedDieselRequirementId != null) {
+        delete (updates as any).linkedDieselRequirementId;
+      }
       // Do not silently backfill untouched historical rows. A supplied value
       // (including blank) is normalised, while omitted legacy nulls stay null.
       if (receipt.invoiceDate !== undefined || existing.invoiceDate != null) {
@@ -5830,6 +5887,13 @@ export class DatabaseStorage implements IStorage {
 
     const [receipt] = await tx.select().from(materialReceipts).where(eq(materialReceipts.id, id)).limit(1);
     if (!receipt) return false;
+
+    // Match cancel/update lock order. Deleting a linked receipt changes the
+    // active received total, so it must serialize with linked creates and
+    // quantity corrections even though its own operation increases remaining.
+    if (receipt.linkedDieselRequirementId != null) {
+      await this._lockDieselRequirement(tx, receipt.linkedDieselRequirementId);
+    }
 
     // Get material for conversion factor
     const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, receipt.materialId)).limit(1);

@@ -1,0 +1,30 @@
+export function useAuth() {
+  return {
+    isAdmin: true,
+    sectionCan: () => true,
+    sectionVisible: () => true,
+    canApprove: () => true,
+    isAuthenticated: true,
+    isLoading: false,
+    isOwner: true,
+    isManager: false,
+    isFieldEngineer: false,
+    canManagePermissions: true,
+    permissionManagerScope: "full" as const,
+    user: {
+      id: 940,
+      email: "material-receipt-fix1@example.invalid",
+      fullName: "Material Receipt Fix1 Fixture",
+      isAdmin: true,
+      isOwner: true,
+      isActive: true,
+      isFieldEngineer: false,
+      sessionPolicy: "sticky" as const,
+      canManagePermissions: true,
+      permissionManagerScope: "full" as const,
+    },
+    permissions: {},
+    refresh: async () => undefined,
+    logout: async () => undefined,
+  };
+}

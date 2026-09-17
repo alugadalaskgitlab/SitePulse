@@ -58,6 +58,17 @@ export default function PlantMaterialReceipts() {
   const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<MaterialReceipt | null>(null);
+  // React Query's isPending state is updated after the click handler returns.
+  // Keep a synchronous guard as well so two same-tick clicks can never enqueue
+  // two receipt requests before the disabled button has rendered.
+  const submitLockRef = useRef(false);
+  const [submissionLocked, setSubmissionLocked] = useState(false);
+  const [submissionFeedback, setSubmissionFeedback] = useState<{
+    kind: "success" | "error";
+    title: string;
+    description: string;
+  } | null>(null);
+  const submittedSummaryRef = useRef<{ date: string; quantity: string; uom: string } | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   // Photos are staged locally while creating a new receipt (no DB id yet to
@@ -495,6 +506,16 @@ export default function PlantMaterialReceipts() {
     staleTime: 0,
   });
 
+  const getReceiptSubmissionError = (error: any, fallback: string) => {
+    const rawMessage = typeof error?.message === "string" ? error.message : "";
+    try {
+      const parsed = JSON.parse(rawMessage.replace(/^\d+:\s*/, ""));
+      return parsed.message || rawMessage || fallback;
+    } catch {
+      return rawMessage || fallback;
+    }
+  };
+
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
       const res = await apiRequest("POST", "/api/plant-module/material-receipts", data);
@@ -522,14 +543,39 @@ export default function PlantMaterialReceipts() {
       await invalidateDieselRequirementQueries();
       setDialogOpen(false);
       resetForm();
+      const summary = submittedSummaryRef.current;
+      const receiptDate = receipt?.date || summary?.date || "the selected date";
+      const receiptQuantity = receipt?.quantity ?? summary?.quantity;
+      const receiptUom = receipt?.uom || summary?.uom || "";
+      const receiptReference = receipt?.receiptNo ? `GRN ${receipt.receiptNo}` : `receipt #${receipt?.id ?? "saved"}`;
+      setSubmissionFeedback({
+        kind: "success",
+        title: "Material receipt saved",
+        description: `${receiptReference} saved for ${receiptDate}: ${receiptQuantity} ${receiptUom}. Next: choose New Receipt when you are ready to record another delivery.`,
+      });
       toast({ title: "Material receipt recorded", description: receipt?.receiptNo ? `GRN: ${receipt.receiptNo}` : undefined });
+    },
+    onError: (error: any) => {
+      const message = getReceiptSubmissionError(error, "Failed to save material receipt");
+      setSubmissionFeedback({
+        kind: "error",
+        title: "Material receipt was not saved",
+        description: `${message} Your entered values are still here; correct the problem and try again.`,
+      });
+      toast({ title: "Cannot save receipt", description: message, variant: "destructive" });
+    },
+    onSettled: () => {
+      submitLockRef.current = false;
+      setSubmissionLocked(false);
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: any }) =>
-      apiRequest("PUT", `/api/plant-module/material-receipts/${id}`, data),
-    onSuccess: async () => {
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      const response = await apiRequest("PUT", `/api/plant-module/material-receipts/${id}`, data);
+      return response.json() as Promise<{ id: number; [key: string]: any }>;
+    },
+    onSuccess: async (receipt: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/material-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
@@ -537,15 +583,29 @@ export default function PlantMaterialReceipts() {
       setDialogOpen(false);
       setEditingReceipt(null);
       resetForm();
+      const summary = submittedSummaryRef.current;
+      const receiptDate = receipt?.date || summary?.date || "the selected date";
+      const receiptQuantity = receipt?.quantity ?? summary?.quantity;
+      const receiptUom = receipt?.uom || summary?.uom || "";
+      setSubmissionFeedback({
+        kind: "success",
+        title: "Material receipt updated",
+        description: `Receipt #${receipt?.id ?? editingReceipt?.id ?? "saved"} saved for ${receiptDate}: ${receiptQuantity} ${receiptUom}. Next: choose New Receipt when you are ready to record another delivery.`,
+      });
       toast({ title: "Receipt updated successfully" });
     },
     onError: (error: any) => {
-      let msg = "Failed to update material receipt";
-      try {
-        const parsed = JSON.parse(error.message.replace(/^\d+:\s*/, ""));
-        msg = parsed.message || msg;
-      } catch { msg = error.message || msg; }
+      const msg = getReceiptSubmissionError(error, "Failed to update material receipt");
+      setSubmissionFeedback({
+        kind: "error",
+        title: "Material receipt was not updated",
+        description: `${msg} Your entered values are still here; correct the problem and try again.`,
+      });
       toast({ title: "Cannot update receipt", description: msg, variant: "destructive" });
+    },
+    onSettled: () => {
+      submitLockRef.current = false;
+      setSubmissionLocked(false);
     },
   });
 
@@ -642,6 +702,9 @@ export default function PlantMaterialReceipts() {
   };
 
   const handleSubmit = () => {
+    // This ref is intentionally checked before any state-based pending flag:
+    // React may not render the disabled button until after this handler returns.
+    if (submitLockRef.current) return;
     if (!materialId || !quantity || !partyId) return;
     if (isSelectedDiesel && linkedDieselRequirementId == null) {
       if (!canRecordStandaloneDiesel) {
@@ -672,6 +735,10 @@ export default function PlantMaterialReceipts() {
     );
     
     const effectiveInvoiceDate = materialReceiptTransactionDate(invoiceDate, date);
+    submitLockRef.current = true;
+    setSubmissionLocked(true);
+    setSubmissionFeedback(null);
+    submittedSummaryRef.current = { date: effectiveInvoiceDate, quantity, uom };
     if (editingReceipt) {
       const updateData = {
         date,
@@ -1047,10 +1114,14 @@ export default function PlantMaterialReceipts() {
             <p className="text-muted-foreground">Record incoming materials at plant</p>
           </div>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setEditingReceipt(null); resetForm(); } }}>
+        <Dialog open={dialogOpen} onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (open) setSubmissionFeedback(null);
+          if (!open) { setEditingReceipt(null); resetForm(); }
+        }}>
           {canCreate && (
             <DialogTrigger asChild>
-              <Button className="gap-2" data-testid="button-add-receipt">
+              <Button className="gap-2" onClick={() => setSubmissionFeedback(null)} data-testid="button-add-receipt">
                 <Plus className="w-4 h-4" /> New Receipt
               </Button>
             </DialogTrigger>
@@ -1468,9 +1539,23 @@ export default function PlantMaterialReceipts() {
                 );
               })()}
 
+              {submissionFeedback?.kind === "error" && (
+                <div
+                  role="alert"
+                  aria-live="assertive"
+                  className="flex items-start gap-2 rounded-md border border-red-300 bg-red-50 px-3 py-2.5 text-red-800 dark:border-red-700 dark:bg-red-900/20 dark:text-red-200"
+                  data-testid="receipt-submission-error"
+                >
+                  <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold">{submissionFeedback.title}</p>
+                    <p className="text-sm">{submissionFeedback.description}</p>
+                  </div>
+                </div>
+              )}
               <div className="space-y-1.5">
-                <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !materialId || !quantity} data-testid="button-save-receipt">
-                  {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingReceipt ? "Update Receipt" : "Save Receipt"}
+                <Button onClick={handleSubmit} className="w-full" disabled={submissionLocked || createMutation.isPending || updateMutation.isPending || !materialId || !quantity} data-testid="button-save-receipt">
+                  {(submissionLocked || createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingReceipt ? "Update Receipt" : "Save Receipt"}
                 </Button>
                 {!editingReceipt && <AutoSaveIndicator lastSavedAt={lastSavedAt} className="justify-center w-full" />}
               </div>
@@ -1478,6 +1563,27 @@ export default function PlantMaterialReceipts() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {submissionFeedback && (!dialogOpen || submissionFeedback.kind === "success") && (
+        <div
+          role={submissionFeedback.kind === "error" ? "alert" : "status"}
+          aria-live={submissionFeedback.kind === "error" ? "assertive" : "polite"}
+          className={`flex items-start gap-2 rounded-md border px-3 py-2.5 ${
+            submissionFeedback.kind === "success"
+              ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-200"
+              : "border-red-300 bg-red-50 text-red-800 dark:border-red-700 dark:bg-red-900/20 dark:text-red-200"
+          }`}
+          data-testid={`receipt-submission-${submissionFeedback.kind}`}
+        >
+          {submissionFeedback.kind === "success"
+            ? <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            : <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />}
+          <div>
+            <p className="text-sm font-semibold">{submissionFeedback.title}</p>
+            <p className="text-sm">{submissionFeedback.description}</p>
+          </div>
+        </div>
+      )}
 
       {/* Export/Print Actions */}
       {canExport && (

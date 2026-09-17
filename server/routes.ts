@@ -1,6 +1,6 @@
 import type { Express, Response } from "express";
 import type { Server } from "http";
-import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, InvalidDieselPhysicalStockError, InvalidStockTransferQuantityError, InvalidDieselSourceError, DieselReceiptExceedsRemainingError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError, InitialScopeCorrectionBlockedError, ScopeChangedDuringPlanningError, DprProjectMismatchError, PushSubscriptionOwnershipError, assertValidDieselPhysicalStock } from "./storage";
+import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, InvalidDieselPhysicalStockError, InvalidStockTransferQuantityError, InvalidDieselSourceError, DieselReceiptExceedsRemainingError, InvalidLinkedDieselRequirementError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError, InitialScopeCorrectionBlockedError, ScopeChangedDuringPlanningError, DprProjectMismatchError, PushSubscriptionOwnershipError, assertValidDieselPhysicalStock } from "./storage";
 import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection, classifyBoqItem, getSectorMultiplier } from "./snlAutoMapper";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -4316,6 +4316,16 @@ export async function registerRoutes(
     return true;
   };
 
+  const handleInvalidLinkedDieselRequirementError = (err: unknown, res: any): boolean => {
+    if (!(err instanceof InvalidLinkedDieselRequirementError)) return false;
+    res.status(400).json({
+      code: err.code,
+      message: err.message,
+      linkedDieselRequirementId: err.requirementId,
+    });
+    return true;
+  };
+
   app.get("/api/plant-module/material-receipts", async (req, res) => {
     try {
       const filters = {
@@ -4424,6 +4434,7 @@ export async function registerRoutes(
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid receipt data", errors: err.errors });
       if (handleDieselReceiptRemainingError(err, res)) return;
+      if (handleInvalidLinkedDieselRequirementError(err, res)) return;
       if (handleInsufficientPlantStock(err, res)) return;
       console.error("Error creating material receipt:", err);
       res.status(500).json({ message: "Failed to create material receipt" });
@@ -4533,6 +4544,7 @@ export async function registerRoutes(
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid receipt data", errors: err.errors });
       if (handleDieselReceiptRemainingError(err, res)) return;
+      if (handleInvalidLinkedDieselRequirementError(err, res)) return;
       if (handleInsufficientPlantStock(err, res)) return;
       console.error("Error updating material receipt:", err);
       res.status(500).json({ message: "Failed to update material receipt" });
