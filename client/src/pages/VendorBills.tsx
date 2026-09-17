@@ -19,6 +19,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
 import type { VendorBillWithItems, VendorAlias } from "@shared/schema";
 import { aggregateGstBreakdown } from "@shared/vendor-bill-gst";
+import { defaultConvertedQuantity, isDifferentBillingUnit, matchingRateCardsForGroup, normalizeRateCardPart, type RateCardUnitOption, type VendorRateCardRecord } from "@/lib/vendorBillRateSelection";
 import { autoBillItemIdentity, availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateHireGroup, duplicateBillItemPayload, mergeOtherBillItems, normalizeHireActivities, rawAutoItemCoveredByHireGroup, uniqueDuplicateBillMatches, type DuplicateBillItemMatch, type HireActivity, type HireBillingBasis } from "@shared/hireBilling";
 import type { EquipmentPerformanceReport } from "@shared/equipmentPerformance";
 import { formatEquipmentOptionLabel } from "@shared/equipmentLabel";
@@ -369,6 +370,13 @@ type RateGroup<T extends Pick<LineItem, "category" | "description" | "unit" | "e
   unit: string;
   count: number;
   items: T[];
+};
+
+type BulkRateSelection = {
+  rate: number;
+  leadDistance: number;
+  targetUnit: string;
+  unitOptions: RateCardUnitOption[];
 };
 
 /**
@@ -725,7 +733,8 @@ export default function VendorBills() {
   const [aliasCanonical, setAliasCanonical] = useState("");
   const [aliasValue, setAliasValue] = useState("");
   const [showSetRatesDialog, setShowSetRatesDialog] = useState(false);
-  const [bulkRates, setBulkRates] = useState<Record<string, { rate: number; leadDistance: number }>>({});
+  const [bulkRates, setBulkRates] = useState<Record<string, BulkRateSelection>>({});
+  const [showBulkRateConfirmation, setShowBulkRateConfirmation] = useState(false);
   const activePullContextRef = useRef("");
   const pullInFlightRef = useRef(false);
   const [pullInFlight, setPullInFlight] = useState(false);
@@ -1089,6 +1098,8 @@ export default function VendorBills() {
     setVendorSearch("");
     setShowVendorDropdown(false);
     setShowVendorDiscovery(false);
+    setShowSetRatesDialog(false);
+    setShowBulkRateConfirmation(false);
   };
 
   const handleSelectDiscoveredVendor = (vendor: DiscoveredVendor) => {
@@ -1704,11 +1715,36 @@ export default function VendorBills() {
   const uniqueRateGroups = useMemo(() => {
     return groupRateItems(lineItems.filter(item => !["hire_group", "hire_statement"].includes(item.source)));
   }, [lineItems]);
+  const bulkUnitConversions = useMemo(() => uniqueRateGroups.flatMap(group => {
+    const selection = bulkRates[group.key];
+    if (!selection?.targetUnit || !isDifferentBillingUnit(selection.targetUnit, group.unit)) return [];
+    const newTotal = group.items.reduce((sum, item) => sum + calcAmount({
+      ...item,
+      unit: selection.targetUnit,
+      qty: defaultConvertedQuantity(selection.targetUnit),
+      rate: selection.rate,
+      leadDistance: item.category === "transport" && selection.leadDistance > 0
+        ? selection.leadDistance
+        : item.leadDistance,
+    }), 0);
+    const quantities = group.items.map(item => Number(item.qty) || 0);
+    const sameQuantity = quantities.every(quantity => quantity === quantities[0]);
+    const beforeQuantity = sameQuantity
+      ? formatQty(quantities[0])
+      : `${formatQty(Math.min(...quantities))}–${formatQty(Math.max(...quantities))}`;
+    return [{
+      group,
+      selection,
+      beforeQuantity,
+      beforeTotal: group.items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0),
+      newTotal,
+    }];
+  }), [bulkRates, uniqueRateGroups]);
 
   const openSetRatesDialog = async () => {
-    const initialRates: Record<string, { rate: number; leadDistance: number }> = {};
+    const initialRates: Record<string, BulkRateSelection> = {};
 
-    let rateCards: any[] = [];
+    let rateCards: VendorRateCardRecord[] = [];
     if (vendorName) {
       try {
         const res = await fetch(`/api/vendor-rate-cards?vendorName=${encodeURIComponent(vendorName)}`);
@@ -1716,57 +1752,40 @@ export default function VendorBills() {
       } catch (_e) {}
     }
 
-    const cardByKey = new Map(rateCards.map((rc: any) => [`${rc.itemKey.toUpperCase()}_${rc.category}`, rc]));
-
     uniqueRateGroups.forEach(group => {
-      let existing: LineItem | undefined;
-      if (group.equipmentId) {
-        existing = lineItems.find(item => {
-          if (!item.equipmentId) return false;
-          const mn = canonicalMachineName(item.description);
-          return mn === group.groupName.replace(/\s+/g, "_") && item.description.includes(group.entryType) && item.rate > 0;
-        });
-      } else if (group.category === "labour") {
-        existing = lineItems.find(item => !item.equipmentId && item.category === "labour" && deriveLabourKey(item.description) === deriveLabourKey(group.groupName) && (item.unit || "HEAD-DAY").toUpperCase() === group.unit && item.rate > 0);
-      } else {
-        existing = lineItems.find(item => !item.equipmentId && item.category === group.category && stripSourceSuffix(item.description.trim().toUpperCase()) === group.groupName.toUpperCase() && (item.unit || "NOS").toUpperCase() === group.unit && item.rate > 0);
-      }
-
-      let cardRate = 0;
-      if (!existing?.rate && rateCards.length > 0) {
-        let card: any = null;
-        if (group.equipmentId) {
-          const newKey = `EQ_${group.groupName.replace(/\s+/g, "_")}_${group.unit}`;
-          card = cardByKey.get(`${newKey}_${group.category}`);
-          if (!card) {
-            const entryType = (group.entryType || "OTHER").replace(/\s+/g, "_").replace(/\//g, "_");
-            const oldKey = `${group.equipmentId}_${entryType}`;
-            card = cardByKey.get(`${oldKey}_${group.category}`);
-          }
-        } else {
-          if (group.category === "material") {
-            const newKey = `MAT_${group.groupName.trim().toUpperCase().replace(/\s+/g, "_")}_${group.unit}`;
-            card = cardByKey.get(`${newKey}_${group.category}`);
-            if (!card) {
-              const oldKey = `MAT_${group.groupName.trim().toUpperCase()}`;
-              card = cardByKey.get(`${oldKey}_${group.category}`);
-            }
-          } else if (group.category === "transport") {
-            const canonicalKey = `EQ_${group.groupName.trim().toUpperCase().replace(/\s+/g, "_")}_${group.unit}`;
-            card = cardByKey.get(`${canonicalKey}_${group.category}`);
-          } else if (group.category === "labour") {
-            const labKey = deriveLabourKey(group.groupName);
-            card = cardByKey.get(`${labKey}_${group.category}`);
-          } else {
-            card = cardByKey.get(`${group.groupName.trim().toUpperCase()}_${group.category}`);
-          }
-        }
-        if (card) cardRate = Number(card.rate) || 0;
-      }
-
+      const currentUnit = normalizeRateCardPart(group.unit);
+      const existing = group.items.find(item =>
+        Number(item.rate) > 0 &&
+        (!group.equipmentId || item.description.includes(group.entryType)),
+      );
+      const currentCards = matchingRateCardsForGroup(group, currentUnit, rateCards, vendorName, { allowVendorAliases: true });
+      const currentCard = currentCards[0] ||
+        matchingRateCardsForGroup(group, currentUnit, rateCards, vendorName, {
+          allowBlankUnitFallback: true,
+          allowVendorAliases: true,
+        })[0];
+      const currentRate = Number(existing?.rate) || Number(currentCard?.rate) || 0;
+      const candidateUnits = Array.from(new Set(
+        rateCards
+          .filter(card => Number(card.rate) > 0)
+          .map(card => normalizeRateCardPart(card.unit))
+          .filter(unit => unit && matchingRateCardsForGroup(group, unit, rateCards, vendorName, { allowVendorAliases: true }).length > 0),
+      ));
+      const unitOptions: RateCardUnitOption[] = [
+        { unit: currentUnit, rate: currentRate, card: currentCard || {} },
+        ...candidateUnits
+          .filter(unit => unit !== currentUnit)
+          .map(unit => {
+            const card = matchingRateCardsForGroup(group, unit, rateCards, vendorName, { allowVendorAliases: true })[0];
+            return { unit, rate: Number(card?.rate) || 0, card };
+          })
+          .filter(option => option.rate > 0),
+      ];
       initialRates[group.key] = {
-        rate: existing?.rate || cardRate || 0,
-        leadDistance: existing?.leadDistance || 0,
+        rate: currentRate,
+        leadDistance: Number(existing?.leadDistance) || 0,
+        targetUnit: currentUnit,
+        unitOptions,
       };
     });
     setBulkRates(initialRates);
@@ -1774,16 +1793,38 @@ export default function VendorBills() {
   };
 
   const applyBulkRates = () => {
+    if (bulkUnitConversions.length > 0) {
+      if (bulkUnitConversions.some(({ selection }) => selection.rate <= 0)) {
+        toast({ title: "Enter a positive rate for every selected billing unit", variant: "destructive" });
+        return;
+      }
+      setShowBulkRateConfirmation(true);
+      return;
+    }
+    confirmBulkRateApplication();
+  };
+
+  const confirmBulkRateApplication = () => {
     let applied = 0;
+    const hasUnitConversion = uniqueRateGroups.some(group => {
+      const selection = bulkRates[group.key];
+      return selection?.targetUnit && isDifferentBillingUnit(selection.targetUnit, group.unit);
+    });
     setLineItems(prev => {
       const updated = [...prev];
       for (let i = 0; i < updated.length; i++) {
         const item = updated[i];
+        if (["hire_group", "hire_statement"].includes(String(item.source || "").toLowerCase())) continue;
         const key = groupRateItems([item])[0]?.key;
         if (!key) continue;
         const rateData = bulkRates[key];
         if (rateData && rateData.rate > 0) {
-          const newItem = { ...item, rate: rateData.rate };
+          const convertingUnit = rateData.targetUnit && isDifferentBillingUnit(rateData.targetUnit, item.unit);
+          const newItem = {
+            ...item,
+            ...(convertingUnit ? { unit: rateData.targetUnit, qty: defaultConvertedQuantity(rateData.targetUnit) } : {}),
+            rate: rateData.rate,
+          };
           if (item.category === "transport" && rateData.leadDistance > 0) {
             newItem.leadDistance = rateData.leadDistance;
           }
@@ -1795,46 +1836,17 @@ export default function VendorBills() {
       return updated;
     });
     setShowSetRatesDialog(false);
-    toast({ title: `Rates applied to ${applied} item${applied !== 1 ? "s" : ""}` });
+    setShowBulkRateConfirmation(false);
+    toast({
+      title: hasUnitConversion
+        ? `Rates and billing units applied to ${applied} item${applied !== 1 ? "s" : ""}`
+        : `Rates applied to ${applied} item${applied !== 1 ? "s" : ""}`,
+      description: hasUnitConversion ? "Changes remain in this bill until you save it." : undefined,
+    });
 
-    if (vendorName) {
-      const rateCardItems: any[] = [];
-      uniqueRateGroups.forEach(group => {
-        const rd = bulkRates[group.key];
-        if (rd && rd.rate > 0) {
-          let itemKey = "";
-          if (group.equipmentId) {
-            itemKey = `EQ_${group.groupName.replace(/\s+/g, "_")}_${group.unit}`;
-          } else if (group.category === "material") {
-            itemKey = `MAT_${group.groupName.trim().toUpperCase().replace(/\s+/g, "_")}_${group.unit}`;
-          } else if (group.category === "transport") {
-            itemKey = `EQ_${group.groupName.trim().toUpperCase().replace(/\s+/g, "_")}_${group.unit}`;
-          } else if (group.category === "labour") {
-            itemKey = deriveLabourKey(group.groupName);
-          } else {
-            itemKey = group.groupName.trim().toUpperCase();
-          }
-          rateCardItems.push({
-            vendorName: vendorName.toUpperCase(),
-            category: group.category,
-            itemKey: itemKey.toUpperCase(),
-            itemLabel: group.groupName.toUpperCase(),
-            unit: group.unit || "HRS",
-            rate: rd.rate,
-            notes: null,
-          });
-        }
-      });
-      if (rateCardItems.length > 0) {
-        fetch("/api/vendor-rate-cards/bulk-upsert", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ items: rateCardItems }),
-        }).then(() => {
-          queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards"] });
-        }).catch(() => {});
-      }
-    }
+    // Set Rates is a bill-editor operation only. Both rate-only and
+    // unit-conversion selections stay in memory; the ordinary Save action
+    // below is the single existing path that upserts the final rates.
   };
 
   const handleSubmit = () => {
@@ -3816,6 +3828,40 @@ export default function VendorBills() {
                           </div>
                         </div>
                         <div className="flex items-center gap-3 flex-wrap">
+                          {bulkRates[group.key]?.unitOptions?.length > 1 && (
+                            <div className="flex-1 min-w-[150px]">
+                              <Label className="text-sm uppercase">Billing Unit</Label>
+                              <Select
+                                value={bulkRates[group.key]?.targetUnit || group.unit}
+                                onValueChange={targetUnit => setBulkRates(prev => {
+                                  const current = prev[group.key];
+                                  if (!current) return prev;
+                                  const normalizedTargetUnit = normalizeRateCardPart(targetUnit);
+                                  const option = current.unitOptions.find(candidate =>
+                                    normalizeRateCardPart(candidate.unit) === normalizedTargetUnit,
+                                  );
+                                  return {
+                                    ...prev,
+                                    [group.key]: {
+                                      ...current,
+                                      targetUnit: option?.unit || normalizedTargetUnit,
+                                      rate: option?.rate || 0,
+                                    },
+                                  };
+                                })}
+                              >
+                                <SelectTrigger className="h-8 text-sm" data-testid={`select-bulk-unit-${group.key}`}>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {bulkRates[group.key].unitOptions.map(option => (
+                                    <SelectItem key={option.unit} value={option.unit}>{option.unit}{option.rate > 0 ? ` · ₹${formatCurrency(option.rate)}` : ""}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <p className="text-[11px] text-muted-foreground mt-1">Changing unit resets each row to quantity 1; review before saving.</p>
+                            </div>
+                          )}
                           <div className="flex-1 min-w-[120px]">
                             <Label className="text-sm uppercase">Rate (₹)</Label>
                             <Input
@@ -3852,6 +3898,46 @@ export default function VendorBills() {
                 </Button>
                 <Button onClick={applyBulkRates} data-testid="button-apply-rates">
                   <Check className="w-4 h-4 mr-1" /> APPLY RATES
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={showBulkRateConfirmation} onOpenChange={setShowBulkRateConfirmation}>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>CONFIRM BILLING UNIT CONVERSION</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Review these group-wide changes before applying. Each source row becomes one target unit; no conversion factor is inferred.
+              </p>
+              {bulkUnitConversions.map(({ group, selection, beforeQuantity, beforeTotal, newTotal }) => (
+                <div key={group.key} className="rounded-md border p-3 space-y-1" data-testid={`bulk-unit-confirm-${group.key}`}>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="font-semibold uppercase">{group.groupName}</span>
+                    <Badge variant="outline">{group.count} row{group.count !== 1 ? "s" : ""}</Badge>
+                  </div>
+                  <p className="text-sm">
+                    <span className="font-medium">{beforeQuantity} {group.unit}</span>
+                    {" → "}
+                    <span className="font-medium">{defaultConvertedQuantity(selection.targetUnit)} {selection.targetUnit}</span>
+                    {" @ ₹"}{formatCurrency(selection.rate)}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Before group total: ₹{formatCurrency(beforeTotal)} · New group total: ₹{formatCurrency(newTotal)}
+                  </p>
+                </div>
+              ))}
+              <p className="text-xs text-muted-foreground">
+                These edits stay in memory and can be adjusted per row. Nothing is written until the ordinary SAVE BILL action.
+              </p>
+              <div className="flex justify-end gap-2 pt-2 flex-wrap">
+                <Button variant="outline" onClick={() => setShowBulkRateConfirmation(false)} data-testid="button-cancel-unit-conversion">
+                  CANCEL
+                </Button>
+                <Button onClick={confirmBulkRateApplication} data-testid="button-confirm-unit-conversion">
+                  <Check className="w-4 h-4 mr-1" /> APPLY CONVERSION
                 </Button>
               </div>
             </div>

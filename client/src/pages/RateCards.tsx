@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,9 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Link, useSearch } from "wouter";
-import { ChevronLeft, Loader2, Save, Lock, Search, Plus, ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronLeft, Loader2, Save, Lock, Search, Plus, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { isManualVendorRateCard, MANUAL_VENDOR_RATE_CARD_NOTE, vendorRateCardIdentity } from "@shared/vendorRateCardIdentity";
 
 type DiscoveredItem = {
   itemKey: string;
@@ -18,6 +19,7 @@ type DiscoveredItem = {
   unit: string;
   rate: number | null;
   rateCardId: number | null;
+  isManual?: boolean;
 };
 
 type ManualRow = {
@@ -27,6 +29,7 @@ type ManualRow = {
   category: string;
   unit: string;
   rate: number | string;
+  rateCardId?: number;
 };
 
 const UNIT_OPTIONS = ["HRS", "DAYS", "TRIPS", "MONTHS", "TRIP", "MT", "KL", "NOS", "KGS", "LITERS", "CFT", "CUM", "KM", "HEAD-DAY"];
@@ -74,6 +77,7 @@ export default function RateCards() {
 
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [manualRows, setManualRows] = useState<ManualRow[]>([]);
+  const deletedManualRowsRef = useRef(new Map<number, ManualRow>());
 
   const [showAddEquipment, setShowAddEquipment] = useState(false);
   const [addEqType, setAddEqType] = useState("");
@@ -108,7 +112,7 @@ export default function RateCards() {
     },
   });
 
-  const { data: allRateCards = [] } = useQuery<any[]>({
+  const { data: allRateCards = [], isFetched: isRateCardsFetched } = useQuery<any[]>({
     queryKey: ["/api/vendor-rate-cards", selectedVendor],
     enabled: !!selectedVendor,
     queryFn: async () => {
@@ -116,6 +120,70 @@ export default function RateCards() {
       return r.ok ? r.json() : [];
     },
   });
+
+  const persistedManualCards = useMemo(
+    () => allRateCards.filter(card => isManualVendorRateCard(card.notes)),
+    [allRateCards],
+  );
+
+  const persistedManualKeys = useMemo(
+    () => new Set(persistedManualCards.map(card => vendorRateCardIdentity(card.category, String(card.itemKey), card.unit))),
+    [persistedManualCards],
+  );
+
+  const discoveredManualItems = useMemo(
+    () => discoveredItems.filter(item => item.isManual && item.rateCardId !== null),
+    [discoveredItems],
+  );
+
+  useEffect(() => {
+    if (!isRateCardsFetched) return;
+    setManualRows(previous => {
+      const unsavedRows = previous.filter(row => row.rateCardId === undefined);
+      const existingByRateCardId = new Map(
+        previous
+          .filter(row => row.rateCardId !== undefined)
+          .map(row => [row.rateCardId!, row]),
+      );
+      const persistedRows = persistedManualCards.map(card => {
+        const rateCardId = Number(card.id);
+        return existingByRateCardId.get(rateCardId) || deletedManualRowsRef.current.get(rateCardId) || {
+          id: `manual_saved_${card.id}`,
+          rateCardId,
+          itemKey: String(card.itemKey).toUpperCase().trim(),
+          itemLabel: card.itemLabel || card.itemKey,
+          category: card.category,
+          unit: card.unit,
+          rate: card.rate ?? "",
+        };
+      });
+      const persistedIds = new Set(persistedRows.map(row => row.rateCardId));
+      const persistedKeys = new Set(persistedRows.map(row => vendorRateCardIdentity(row.category, row.itemKey, row.unit)));
+      const legacyRows = discoveredManualItems
+        .filter(item => !persistedKeys.has(vendorRateCardIdentity(item.category, item.itemKey, item.unit)))
+        .map(item => {
+          const rateCardId = Number(item.rateCardId);
+          return existingByRateCardId.get(rateCardId) || deletedManualRowsRef.current.get(rateCardId) || {
+            id: `manual_saved_${item.rateCardId}`,
+            rateCardId,
+            itemKey: item.itemKey.toUpperCase().trim(),
+            itemLabel: item.itemLabel,
+            category: item.category,
+            unit: item.unit,
+            rate: item.rate ?? "",
+          };
+        });
+      return [
+        ...persistedRows,
+        ...legacyRows,
+        ...unsavedRows.filter(row =>
+          (!row.rateCardId || !persistedIds.has(row.rateCardId)) &&
+          !persistedKeys.has(vendorRateCardIdentity(row.category, row.itemKey, row.unit)) &&
+          !legacyRows.some(legacy => legacy.rateCardId === row.rateCardId),
+        ),
+      ];
+    });
+  }, [isRateCardsFetched, persistedManualCards, discoveredManualItems]);
 
   const { data: canonicalTypes = [] } = useQuery<string[]>({
     queryKey: ["/api/equipment-master/canonical-types", selectedVendor],
@@ -133,13 +201,15 @@ export default function RateCards() {
 
   useEffect(() => {
     if (discoveredItems.length > 0) {
-      const rateMap: Record<string, number | string> = {};
-      discoveredItems.forEach(item => {
-        if (item.rate !== null) {
-          rateMap[item.itemKey] = item.rate;
-        }
+      setRates(previous => {
+        const rateMap = { ...previous };
+        discoveredItems.forEach(item => {
+          if (!(item.itemKey in rateMap)) {
+            rateMap[item.itemKey] = item.rate ?? "";
+          }
+        });
+        return rateMap;
       });
-      setRates(rateMap);
     }
   }, [discoveredItems]);
 
@@ -153,6 +223,35 @@ export default function RateCards() {
     },
     onError: (err: any) => toast({ title: err.message || "Failed to save rates", variant: "destructive" }),
   });
+
+  const deleteManualMutation = useMutation({
+    mutationFn: ({ rateCardId }: { rateCardId: number; row: ManualRow }) =>
+      apiRequest("DELETE", `/api/vendor-rate-cards/${rateCardId}`),
+    onSuccess: (_, variables) => {
+      deletedManualRowsRef.current.delete(variables.rateCardId);
+      queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards/discover", selectedVendor] });
+      toast({ title: "Manual rate-card row removed" });
+    },
+    onError: (err: any, variables) => {
+      const removedRow = deletedManualRowsRef.current.get(variables.rateCardId);
+      if (removedRow) {
+        setManualRows(previous => previous.some(row => row.id === removedRow.id) ? previous : [...previous, removedRow]);
+        deletedManualRowsRef.current.delete(variables.rateCardId);
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards/discover", selectedVendor] });
+      toast({ title: err.message || "Failed to remove rate-card row", variant: "destructive" });
+    },
+  });
+
+  const visibleDiscoveredItems = useMemo(
+    () => discoveredItems.filter(item =>
+      !item.isManual &&
+      !persistedManualKeys.has(vendorRateCardIdentity(item.category, item.itemKey, item.unit)),
+    ),
+    [discoveredItems, persistedManualKeys],
+  );
 
   const getEffectiveUnit = (item: DiscoveredItem) => unitOverrides[item.itemKey] || item.unit;
 
@@ -296,7 +395,7 @@ export default function RateCards() {
   };
 
   const handleSaveAll = () => {
-    const discoveredToSave = discoveredItems.map(item => {
+    const discoveredToSave = visibleDiscoveredItems.map(item => {
       const effectiveUnit = getEffectiveUnit(item);
       const effectiveKey = getEffectiveKey(item);
       return {
@@ -316,6 +415,7 @@ export default function RateCards() {
       itemLabel: row.itemLabel,
       unit: row.unit,
       rate: parseFloat(String(row.rate || 0)) || 0,
+      notes: MANUAL_VENDOR_RATE_CARD_NOTE,
     })).filter(i => i.rate > 0);
 
     const allToSave = [...discoveredToSave, ...manualToSave];
@@ -327,41 +427,52 @@ export default function RateCards() {
     bulkSaveMutation.mutate(allToSave);
   };
 
+  const handleRemoveManualRow = (row: ManualRow) => {
+    if (!window.confirm(`Remove "${row.itemLabel}" from this vendor's rate card? This cannot be undone.`)) {
+      return;
+    }
+    setManualRows(previous => previous.filter(candidate => candidate.id !== row.id));
+    if (row.rateCardId !== undefined) {
+      deletedManualRowsRef.current.set(row.rateCardId, row);
+      deleteManualMutation.mutate({ rateCardId: row.rateCardId, row });
+    }
+  };
+
   const toggleSection = (section: string) => {
     setCollapsedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
   const equipmentItems = useMemo(() => {
-    return discoveredItems.filter(item => {
+    return visibleDiscoveredItems.filter(item => {
       if (item.category !== "equipment") return false;
       if (searchFilter && !item.itemLabel.toUpperCase().includes(searchFilter.toUpperCase())) return false;
       return true;
     });
-  }, [discoveredItems, searchFilter]);
+  }, [visibleDiscoveredItems, searchFilter]);
 
   const materialItems = useMemo(() => {
-    return discoveredItems.filter(item => {
+    return visibleDiscoveredItems.filter(item => {
       if (item.category !== "material") return false;
       if (searchFilter && !item.itemLabel.toUpperCase().includes(searchFilter.toUpperCase())) return false;
       return true;
     });
-  }, [discoveredItems, searchFilter]);
+  }, [visibleDiscoveredItems, searchFilter]);
 
   const transportItems = useMemo(() => {
-    return discoveredItems.filter(item => {
+    return visibleDiscoveredItems.filter(item => {
       if (item.category !== "transport") return false;
       if (searchFilter && !item.itemLabel.toUpperCase().includes(searchFilter.toUpperCase())) return false;
       return true;
     });
-  }, [discoveredItems, searchFilter]);
+  }, [visibleDiscoveredItems, searchFilter]);
 
   const labourItems = useMemo(() => {
-    return discoveredItems.filter(item => {
+    return visibleDiscoveredItems.filter(item => {
       if (item.category !== "labour") return false;
       if (searchFilter && !item.itemLabel.toUpperCase().includes(searchFilter.toUpperCase())) return false;
       return true;
     });
-  }, [discoveredItems, searchFilter]);
+  }, [visibleDiscoveredItems, searchFilter]);
 
   const equipmentManualRows = useMemo(() => manualRows.filter(r => r.category === "equipment"), [manualRows]);
   const materialManualRows = useMemo(() => manualRows.filter(r => r.category === "material"), [manualRows]);
@@ -369,10 +480,10 @@ export default function RateCards() {
   const labourManualRows = useMemo(() => manualRows.filter(r => r.category === "labour"), [manualRows]);
 
   const filledCount = useMemo(() => {
-    const discoveredFilled = Object.values(rates).filter(r => parseFloat(String(r)) > 0).length;
+    const discoveredFilled = visibleDiscoveredItems.filter(item => parseFloat(String(rates[item.itemKey])) > 0).length;
     const manualFilled = manualRows.filter(r => parseFloat(String(r.rate)) > 0).length;
     return discoveredFilled + manualFilled;
-  }, [rates, manualRows]);
+  }, [rates, manualRows, visibleDiscoveredItems]);
 
   const materialNameOptions = useMemo(() => {
     return plantMaterials.map((m: any) => m.name?.toUpperCase()?.trim()).filter(Boolean).sort();
@@ -408,6 +519,7 @@ export default function RateCards() {
           data-testid={`input-rate-${idx}`}
         />
       </td>
+      <td className="px-3 py-2 w-16" />
     </tr>
   );
 
@@ -437,6 +549,20 @@ export default function RateCards() {
           className="text-right font-mono w-full"
           data-testid={`input-manual-rate-${row.category}-${idx}`}
         />
+      </td>
+      <td className="px-3 py-2 w-16 text-center">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="text-destructive hover:text-destructive"
+          title="Remove manual rate-card row"
+          aria-label={`Remove ${row.itemLabel}`}
+          data-testid={`button-remove-manual-${row.category}-${idx}`}
+          onClick={() => handleRemoveManualRow(row)}
+        >
+          <Trash2 className="w-4 h-4" />
+        </Button>
       </td>
     </tr>
   );
@@ -472,7 +598,7 @@ export default function RateCards() {
         <CardContent className="pt-4 space-y-3">
           <div>
             <Label className="text-sm uppercase font-semibold">Select Vendor</Label>
-            <Select value={selectedVendor} onValueChange={(v) => { setSelectedVendor(v); setRates({}); setUnitOverrides({}); setSearchFilter(""); setManualRows([]); }}>
+            <Select value={selectedVendor} onValueChange={(v) => { setSelectedVendor(v); setRates({}); setUnitOverrides({}); setSearchFilter(""); setManualRows([]); deletedManualRowsRef.current.clear(); }}>
               <SelectTrigger data-testid="select-vendor">
                 <SelectValue placeholder="Choose a vendor..." />
               </SelectTrigger>
@@ -499,7 +625,7 @@ export default function RateCards() {
             <CardContent className="pt-4">
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-semibold">{discoveredItems.length + manualRows.length} ITEMS</span>
+                  <span className="text-sm font-semibold">{visibleDiscoveredItems.length + manualRows.length} ITEMS</span>
                   <Badge variant="outline" className="text-[12px] bg-green-600 text-white border-green-700 no-default-hover-elevate no-default-active-elevate">
                     {filledCount} RATES SET
                   </Badge>
@@ -530,13 +656,14 @@ export default function RateCards() {
                         <th className="px-3 py-2 text-left text-sm">MACHINE TYPE — BILLING MODE</th>
                         <th className="px-3 py-2 text-left text-sm w-28">UNIT</th>
                         <th className="px-3 py-2 text-right text-sm w-36">RATE (₹)</th>
+                        <th className="px-3 py-2 text-center text-sm w-16">REMOVE</th>
                       </tr>
                     </thead>
                     <tbody>
                       {equipmentItems.map((item, idx) => renderItemRow(item, idx))}
                       {equipmentManualRows.map((row, idx) => renderManualRow(row, idx))}
                       {equipmentItems.length === 0 && equipmentManualRows.length === 0 && (
-                        <tr><td colSpan={3} className="px-3 py-4 text-center text-muted-foreground text-sm">No equipment items discovered. Use ADD ROW to add manually.</td></tr>
+                        <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground text-sm">No equipment items discovered. Use ADD ROW to add manually.</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -595,13 +722,14 @@ export default function RateCards() {
                         <th className="px-3 py-2 text-left text-sm">MATERIAL NAME</th>
                         <th className="px-3 py-2 text-left text-sm w-28">UNIT</th>
                         <th className="px-3 py-2 text-right text-sm w-36">RATE (₹)</th>
+                        <th className="px-3 py-2 text-center text-sm w-16">REMOVE</th>
                       </tr>
                     </thead>
                     <tbody>
                       {materialItems.map((item, idx) => renderItemRow(item, idx))}
                       {materialManualRows.map((row, idx) => renderManualRow(row, idx))}
                       {materialItems.length === 0 && materialManualRows.length === 0 && (
-                        <tr><td colSpan={3} className="px-3 py-4 text-center text-muted-foreground text-sm">No materials discovered. Use ADD ROW to add manually.</td></tr>
+                        <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground text-sm">No materials discovered. Use ADD ROW to add manually.</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -660,13 +788,14 @@ export default function RateCards() {
                         <th className="px-3 py-2 text-left text-sm">MACHINE TYPE — BILLING MODE</th>
                         <th className="px-3 py-2 text-left text-sm w-28">UNIT</th>
                         <th className="px-3 py-2 text-right text-sm w-36">RATE (₹)</th>
+                        <th className="px-3 py-2 text-center text-sm w-16">REMOVE</th>
                       </tr>
                     </thead>
                     <tbody>
                       {transportItems.map((item, idx) => renderItemRow(item, idx))}
                       {transportManualRows.map((row, idx) => renderManualRow(row, idx))}
                       {transportItems.length === 0 && transportManualRows.length === 0 && (
-                        <tr><td colSpan={3} className="px-3 py-4 text-center text-muted-foreground text-sm">No transport items discovered. Use ADD ROW to add manually.</td></tr>
+                        <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground text-sm">No transport items discovered. Use ADD ROW to add manually.</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -721,13 +850,14 @@ export default function RateCards() {
                         <th className="px-3 py-2 text-left text-sm">LABOUR CATEGORY [GENDER]</th>
                         <th className="px-3 py-2 text-left text-sm w-28">UNIT</th>
                         <th className="px-3 py-2 text-right text-sm w-36">RATE (₹ / HEAD-DAY)</th>
+                        <th className="px-3 py-2 text-center text-sm w-16">REMOVE</th>
                       </tr>
                     </thead>
                     <tbody>
                       {labourItems.map((item, idx) => renderItemRow(item, idx))}
                       {labourManualRows.map((row, idx) => renderManualRow(row, idx))}
                       {labourItems.length === 0 && labourManualRows.length === 0 && (
-                        <tr><td colSpan={3} className="px-3 py-4 text-center text-muted-foreground text-sm">No labour items discovered. Use ADD ROW to add manually.</td></tr>
+                        <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground text-sm">No labour items discovered. Use ADD ROW to add manually.</td></tr>
                       )}
                     </tbody>
                   </table>

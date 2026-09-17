@@ -1333,3 +1333,17 @@ mtime_ms = 1789621368368
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/19a6c242-0be0-47d3-94a5-5756f13c57f4/dc5cda31-4da1-479a-ab49-586a262b7e8d"
 storage_version_token = "1789621372367762"
 content_type = "text/html"
+
+[[outputs]]
+id = "IdvEfksZx_E6cqMb3qxk8"
+uri = "file://screenshots/vb19/vb19-verification-report.html"
+type = "text"
+title = "VB-19 verification report"
+description = "Screenshots and A–F test evidence for manual rate-card deletion and 95-row TRIP billing conversion; synthetic data only."
+logical_id = "2aef104c-d3c0-42bc-8baa-5686b97130f0"
+content_hash = "sha256:326bf652e62ff28d9816cfd2c1f15059beba4852de227e8dca608969ff8d5a00"
+size = 771502
+mtime_ms = 1789632705236
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/2aef104c-d3c0-42bc-8baa-5686b97130f0/96b37c67-7d1a-4598-8276-204f06eb1d0d"
+storage_version_token = "1789632709226815"
+content_type = "text/html"

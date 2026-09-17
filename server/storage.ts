@@ -2,6 +2,7 @@ import { db } from "./db";
 import { calculateEquipmentHireFinancials, calculateHireGroup, getHireReviewGaps, isEquipmentHireBillEligible, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
 import { normalizeDprSiteName } from "../shared/dprBoqSelection";
 import { hasDprBoqReferences } from "../shared/dprBoqReferences";
+import { isManualVendorRateCard, vendorRateCardIdentity } from "../shared/vendorRateCardIdentity";
 import {
   auditLogs,
   type AuditLog,
@@ -1553,7 +1554,7 @@ export interface IStorage {
   resolveVendorAliases(vendorName: string): Promise<string[]>;
 
   getVendorRateCards(vendorName?: string): Promise<VendorRateCard[]>;
-  discoverVendorItems(vendorName: string): Promise<{ itemKey: string; itemLabel: string; category: string; unit: string; rate: number | null; rateCardId: number | null }[]>;
+  discoverVendorItems(vendorName: string): Promise<{ itemKey: string; itemLabel: string; category: string; unit: string; rate: number | null; rateCardId: number | null; isManual?: boolean }[]>;
   upsertVendorRateCard(data: InsertVendorRateCard): Promise<VendorRateCard>;
   deleteVendorRateCard(id: number): Promise<boolean>;
   checkDuplicateBilledItems(vendorName: string, items: { date: string; equipmentId?: number | null; description?: string; category?: string | null; siteName?: string | null }[], excludeBillId?: number): Promise<{ index: number; billNo: string; billStatus: string }[]>;
@@ -21200,15 +21201,25 @@ export class DatabaseStorage implements IStorage {
   async upsertVendorRateCard(data: InsertVendorRateCard): Promise<VendorRateCard> {
     const upperVendor = data.vendorName.toUpperCase().trim();
     const upperKey = data.itemKey.toUpperCase().trim();
+    const upperUnit = data.unit.toUpperCase().trim();
     const existing = await db.select().from(vendorRateCards)
       .where(and(
         sql`UPPER(TRIM(${vendorRateCards.vendorName})) = ${upperVendor}`,
         sql`UPPER(TRIM(${vendorRateCards.itemKey})) = ${upperKey}`,
         eq(vendorRateCards.category, data.category),
+        sql`UPPER(TRIM(${vendorRateCards.unit})) = ${upperUnit}`,
       ));
     if (existing.length > 0) {
       const [updated] = await db.update(vendorRateCards)
-        .set({ rate: data.rate, unit: data.unit, itemLabel: data.itemLabel, notes: data.notes, updatedAt: new Date() })
+        .set({
+          rate: data.rate,
+          unit: data.unit,
+          itemLabel: data.itemLabel,
+          // Vendor-bill saves submit notes: null. Do not erase the manual-row
+          // provenance marker (or any other existing note) in that path.
+          ...(data.notes == null ? {} : { notes: data.notes }),
+          updatedAt: new Date(),
+        })
         .where(eq(vendorRateCards.id, existing[0].id))
         .returning();
       return updated;
@@ -21226,7 +21237,7 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
-  async discoverVendorItems(vendorName: string): Promise<{ itemKey: string; itemLabel: string; category: string; unit: string; rate: number | null; rateCardId: number | null }[]> {
+  async discoverVendorItems(vendorName: string): Promise<{ itemKey: string; itemLabel: string; category: string; unit: string; rate: number | null; rateCardId: number | null; isManual?: boolean }[]> {
     const vendorVariants = await this.resolveVendorAliases(vendorName);
     const vendorMatchSql = (col: any) => {
       if (vendorVariants.length === 1) {
@@ -21289,8 +21300,9 @@ export class DatabaseStorage implements IStorage {
         const canonical = canonicalizeMachineType(rawName).toUpperCase().trim();
         const unit = entryTypeUnit(et);
         const key = `EQ_${canonical.replace(/\s+/g, "_")}_${unit}`;
-        if (!itemMap.has(key)) {
-          itemMap.set(key, {
+        const identity = vendorRateCardIdentity("equipment", key, unit);
+        if (!itemMap.has(identity)) {
+          itemMap.set(identity, {
             itemKey: key,
             itemLabel: `${canonical} - ${entryTypeLabel(et)}`,
             category: "equipment",
@@ -21312,8 +21324,9 @@ export class DatabaseStorage implements IStorage {
         const canonical = canonicalizeMachineType(rawName).toUpperCase().trim();
         const unit = entryTypeUnit(et);
         const key = `EQ_${canonical.replace(/\s+/g, "_")}_${unit}`;
-        if (!itemMap.has(key)) {
-          itemMap.set(key, {
+        const identity = vendorRateCardIdentity("equipment", key, unit);
+        if (!itemMap.has(identity)) {
+          itemMap.set(identity, {
             itemKey: key,
             itemLabel: `${canonical} - ${entryTypeLabel(et)}`,
             category: "equipment",
@@ -21327,8 +21340,9 @@ export class DatabaseStorage implements IStorage {
       const name = (matName || "MATERIAL").toUpperCase().trim();
       const unit = (uom || "NOS").toUpperCase().trim();
       const key = `MAT_${canonicalizeMatName(name)}_${unit}`;
-      if (!itemMap.has(key)) {
-        itemMap.set(key, {
+      const identity = vendorRateCardIdentity("material", key, unit);
+      if (!itemMap.has(identity)) {
+        itemMap.set(identity, {
           itemKey: key,
           itemLabel: name,
           category: "material",
@@ -21405,8 +21419,9 @@ export class DatabaseStorage implements IStorage {
 
       for (const canonical of transportMachineTypes) {
         const key = `EQ_${canonical.replace(/\s+/g, "_")}_TRIP`;
-        if (!itemMap.has(key)) {
-          itemMap.set(key, {
+        const identity = vendorRateCardIdentity("transport", key, "TRIP");
+        if (!itemMap.has(identity)) {
+          itemMap.set(identity, {
             itemKey: key,
             itemLabel: `${canonical} - TRANSPORT`,
             category: "transport",
@@ -21442,8 +21457,9 @@ export class DatabaseStorage implements IStorage {
       const keySuffix = gender ? `${cat}_${gender}` : cat;
       const key = `LAB_${keySuffix}`;
       const labelGender = gender ? ` ${gender}` : "";
-      if (!itemMap.has(key)) {
-        itemMap.set(key, {
+      const identity = vendorRateCardIdentity("labour", key, "HEAD-DAY");
+      if (!itemMap.has(identity)) {
+        itemMap.set(identity, {
           itemKey: key,
           itemLabel: `LABOUR ${cat}${labelGender}`,
           category: "labour",
@@ -21480,13 +21496,15 @@ export class DatabaseStorage implements IStorage {
         const canonical = canonicalizeMachineType(rawName).toUpperCase().trim();
         const unit = (row.unit || "HRS").toUpperCase().trim();
         key = `EQ_${canonical.replace(/\s+/g, "_")}_${unit}`;
-        if (!itemMap.has(key)) {
+        const category = row.category || "equipment";
+        const identity = vendorRateCardIdentity(category, key, unit);
+        if (!itemMap.has(identity)) {
           const entryTypeMatch = row.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION|TRANSPORT)/);
           const entryLabel = entryTypeMatch ? entryTypeMatch[1] : unit;
-          itemMap.set(key, {
+          itemMap.set(identity, {
             itemKey: key,
             itemLabel: `${canonical} - ${entryLabel}`,
-            category: row.category || "equipment",
+            category,
             unit,
           });
         }
@@ -21500,8 +21518,9 @@ export class DatabaseStorage implements IStorage {
           const canonical = canonicalizeMachineType(cleanDesc).toUpperCase().trim();
           const unit = (row.unit || "TRIP").toUpperCase().trim();
           key = `EQ_${canonical.replace(/\s+/g, "_")}_${unit}`;
-          if (!itemMap.has(key)) {
-            itemMap.set(key, {
+          const identity = vendorRateCardIdentity("transport", key, unit);
+          if (!itemMap.has(identity)) {
+            itemMap.set(identity, {
               itemKey: key,
               itemLabel: `${canonical} - TRANSPORT`,
               category: "transport",
@@ -21512,40 +21531,53 @@ export class DatabaseStorage implements IStorage {
         } else {
           key = cleanDesc || desc;
         }
-        if (key && !itemMap.has(key)) {
-          itemMap.set(key, {
+        const category = row.category || "other";
+        const unit = (row.unit || "NOS").toUpperCase().trim();
+        const identity = vendorRateCardIdentity(category, key, unit);
+        if (key && !itemMap.has(identity)) {
+          itemMap.set(identity, {
             itemKey: key,
             itemLabel: cleanDesc || desc,
-            category: row.category || "other",
-            unit: (row.unit || "NOS").toUpperCase().trim(),
+            category,
+            unit,
           });
         }
       }
     }
 
     const existingCards = await this.getVendorRateCards(vendorName);
-    const cardMap = new Map(existingCards.map(c => [c.itemKey.toUpperCase().trim(), c]));
+    const cardMap = new Map(existingCards.map(c => [
+      vendorRateCardIdentity(c.category, c.itemKey, c.unit),
+      c,
+    ]));
+    const legacyManualIdentities = new Set<string>();
 
     for (const card of existingCards) {
       const key = card.itemKey.toUpperCase().trim();
       if (/^\d+_/.test(key)) continue;
-      if (!itemMap.has(key)) {
-        itemMap.set(key, {
+      const identity = vendorRateCardIdentity(card.category, key, card.unit);
+      if (!itemMap.has(identity)) {
+        itemMap.set(identity, {
           itemKey: key,
           itemLabel: card.itemLabel || key,
           category: card.category,
           unit: card.unit,
         });
+        if (!isManualVendorRateCard(card.notes)) {
+          legacyManualIdentities.add(identity);
+        }
       }
     }
 
-    const results: { itemKey: string; itemLabel: string; category: string; unit: string; rate: number | null; rateCardId: number | null }[] = [];
-    for (const [key, item] of itemMap) {
-      const card = cardMap.get(key);
+    const results: { itemKey: string; itemLabel: string; category: string; unit: string; rate: number | null; rateCardId: number | null; isManual?: boolean }[] = [];
+    for (const [, item] of itemMap) {
+      const identity = vendorRateCardIdentity(item.category, item.itemKey, item.unit);
+      const card = cardMap.get(identity);
       results.push({
         ...item,
         rate: card ? Number(card.rate) : null,
         rateCardId: card ? card.id : null,
+        isManual: card ? isManualVendorRateCard(card.notes) || legacyManualIdentities.has(identity) : false,
       });
     }
 

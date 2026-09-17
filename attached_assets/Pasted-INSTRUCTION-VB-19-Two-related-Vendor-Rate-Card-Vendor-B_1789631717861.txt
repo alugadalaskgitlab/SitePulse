@@ -1,0 +1,57 @@
+INSTRUCTION VB-19: Two related Vendor Rate Card / Vendor Bill problems — (1) a manually-added Rate Card row can never be deleted once added, (2) the "Set Rates" bulk tool on a Vendor Bill can only inject a RATE onto existing bill rows — it can never change their UNIT or QUANTITY, so 90+ bill rows that were pulled in as "CFT" cannot be bulk-converted to "TRIP" billing even when a correct TRIP rate exists on the vendor's rate card
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Two independent, precisely-diagnosed problems found while investigating a real billing case (vendor FASIUDDIN, 95 soil-transport trips, each recorded as 600 CFT, needing to be billed as 95 TRIPS). Do not touch DPR-02 through DPR-10, VB-18, or DIESEL-04. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND — FIX 1: A MANUALLY-ADDED RATE CARD ROW CAN NEVER BE DELETED
+1. client/src/pages/RateCards.tsx renders every row in the Equipment/Materials/Transport/Labour sections via two functions: `renderItemRow` (~line 381-412, for items auto-discovered from historical data) and `renderManualRow` (~line 414-442, for rows added by hand via the "ADD ROW" button). Confirmed by direct reading: NEITHER function renders any delete/remove control — each row has only a Unit selector and a Rate input, nothing else. Once a person clicks "ADD ROW" and confirms, that row exists permanently; there is no way to remove a wrongly-added or duplicate/redundant row from the rate card.
+2. This matches the exact complaint: "I can add any number of rows but I cannot delete the redundant rows."
+
+FIX 1
+a. Add a delete/remove control (icon button, e.g. a trash icon) to `renderManualRow` (~line 414-442) for every manually-added row, in every section (Equipment, Materials, Transport, Labour — all four call this same function). Clicking it removes that row from the relevant `manualRows` state array (e.g. `materialManualRows`, `transportManualRows`, etc.) immediately, before save, and — if the row was already saved to the server via a prior bulk-upsert — also removes it from the persisted rate card on next save (or immediately via a dedicated delete call, whichever fits the existing `/api/vendor-rate-cards` save pattern used by `bulk-upsert`).
+b. Auto-discovered rows (`renderItemRow`, sourced from historical bill/trip data) do not need a delete control in this fix — they reflect real usage and are not the reported problem. If a discovered row's unit/rate is wrong, editing it in place (already possible) is sufficient. Do not add deletion for discovered rows unless it is trivial to do consistently — this is optional, not required.
+c. Add a confirmation step (simple confirm dialog) before removing a manual row, since this is a data-loss action.
+
+BACKGROUND — FIX 2: SET RATES CAN ONLY CHANGE THE RATE, NEVER THE UNIT OR QUANTITY — SO CFT-BASED ROWS CAN NEVER BE BULK-CONVERTED TO TRIP BILLING
+1. The person's real situation: soil/GSB/WMM transport by tippers is recorded per delivery, and each delivery is logged in the system with quantity 600 and unit CFT. The agreed vendor rate is actually per TRIP, not per CFT. When these records are pulled into a Vendor Bill (`handleAutoPopulate`, VendorBills.tsx ~line 1123-1279, sourced from `server/storage.ts`'s `getVendorBillAutoItems`, material branch ~line 17492-17591), each bill line item is created with `qty` and `unit` copied VERBATIM from the source record (`qty: row.quantity, unit: row.uom`) — so every one of the 95 deliveries becomes its own bill line at "600 CFT", with no conversion to a trip count anywhere in this step.
+2. The vendor's Rate Card DOES already support a TRIP-unit entry for this same material (confirmed in the person's own screenshot: SOIL / CFT / ₹800 and SOIL / TRIP / ₹800 both exist as separate rate card rows) — but the only tool that reads the rate card onto an existing bill (`openSetRatesDialog`/`applyBulkRates`, VendorBills.tsx ~line 1628-1712) is confirmed, by direct reading, to update ONLY the `rate` field (and `leadDistance` for transport rows) on each matching line item — it never writes a new `unit` or `quantity`, so it is structurally unable to turn a "600 CFT" row into a "1 TRIP" row, even when the correct TRIP rate card entry exists and is found by the lookup.
+3. This is the exact reason the person cannot use the rate card to fix the bill: the rate card has the right answer (₹800/TRIP), but no tool in the app is able to apply it to convert the existing CFT rows — leaving no path except manually editing all 90+ rows' unit and quantity by hand.
+4. For contrast/reference: TRANSPORT-category pulls (truck dispatch records) already ARE created as one bill line = "1 TRIP" per record (storage.ts ~line 17631/17652/17669, hardcoded `qty: 1, unit: "TRIP"`) — so this specific problem is confirmed to affect MATERIAL-category pulls (like this soil case) that were logged as material-trip/delivery records rather than truck-dispatch records, not transport-category pulls.
+
+FIX 2 — ADD A BULK "CONVERT TO A DIFFERENT BILLING UNIT" ACTION, GROUP-WIDE, IN ONE STEP
+1. In the same "Set Rates" dialog (or a clearly-labeled adjacent action next to it — your judgment on the cleanest placement), for each rate group (`uniqueRateGroups`, grouped by material/category/current-unit), add an option to pick a DIFFERENT unit than the group's current one, sourced from any other rate-card entry that exists for the same material/vendor (e.g. offer both CFT and TRIP if both exist on the rate card, as in this case).
+2. When the person picks a different unit for a group (e.g. switches SOIL from CFT to TRIP) and confirms:
+   a. Every bill line item currently in that group gets its `unit` changed to the newly-selected unit.
+   b. Each line item's `quantity` is reset to a sensible default for the new unit — for TRIP specifically, default each converted row's quantity to 1 (since each pulled-in record already represents one physical delivery/trip; do not attempt to compute a trip count from the old CFT quantity). Make this quantity value editable per-row after conversion, in case a person needs to correct an individual row (e.g. a delivery that was genuinely two trips).
+   c. Each line item's `rate` is set to the matching rate-card entry for the newly-selected unit (e.g. the TRIP rate, ₹800), and `amount` is recalculated (`calcAmount`) from the new unit/qty/rate — exactly as the existing rate application already does for rate-only changes.
+   d. This must apply to the ENTIRE group in one action (all 95 SOIL/FASIUDDIN rows converted together), not one row at a time — this is the specific, stated need ("about 90+ entries... how to do it").
+3. Show a clear before/after summary before applying (e.g. "Convert 95 rows: SOIL 600 CFT → SOIL 1 TRIP @ ₹800, new group total ₹76,000" or similar) so the person can confirm before committing, since this changes both quantity and unit across many rows at once.
+4. This conversion must be undoable in the ordinary sense — since it only edits in-memory `lineItems` until the bill is actually saved, a person can still review/adjust before saving, and nothing is written to the server until the normal bill save action is taken.
+
+WHAT NOT TO DO
+- Do not change how TRANSPORT-category pulls already work (they already correctly produce 1 TRIP per record) — this fix is about giving MATERIAL-category (and any other CFT-recorded) groups the same trip-based option when the vendor's rate card supports it.
+- Do not remove or change the existing rate-only "Set Rates" behavior for groups where no unit conversion is needed — it must keep working exactly as it does today for the ordinary case.
+- Do not auto-guess a trip count from the old CFT quantity (e.g. do not divide 600 CFT by some assumed CFT-per-trip figure) — default new quantity to 1 per row and let the person adjust if needed; guessing a conversion factor risks incorrect bills.
+- Do not add delete capability for auto-discovered Rate Card rows unless trivial — only manually-added rows are in scope for Fix 1.
+- Do not touch DPR-02 through DPR-10, VB-18, or DIESEL-04.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema/migration change is expected for either fix — both operate on existing bill line item and rate card structures already in the database.
+
+TESTS
+A. On the Rate Cards screen, add a manual row in any section, save, reopen the screen, and confirm the new delete control removes it (with confirmation), and that it stays removed after a page reload.
+B. Confirm auto-discovered rows are unaffected (still editable, no unexpected delete control unless you chose to add one there too).
+C. Reproduce the FASIUDDIN case: a vendor bill with 90+ material line items pulled in at "600 CFT" each, and a rate card with both a CFT and a TRIP entry for the same material. Open Set Rates (or the new conversion action), select TRIP as the target unit for that group, confirm the before/after summary, and apply. Confirm all matching rows are now "1 TRIP" (editable), at the TRIP rate, with correctly recalculated amounts and a correctly recalculated bill total.
+D. Confirm a single row within that converted group can still be manually edited afterward (e.g. changed to 2 trips) without affecting the other rows.
+E. Confirm an ordinary Set Rates action (rate-only, no unit change) on a different, unrelated group still works exactly as before — no regression.
+F. Confirm nothing is saved to the server until the bill itself is explicitly saved.
+
+REPORT BACK
+1. Confirm Fix 1 with Test A/B evidence (screenshots).
+2. Confirm Fix 2 with Test C/D evidence (screenshots), including the before/after summary shown to the person.
+3. Confirm Test E/F — no regression to the ordinary case, nothing saved prematurely.
+4. Confirm no schema change was needed.
+5. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

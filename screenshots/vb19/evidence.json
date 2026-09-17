@@ -1,0 +1,50 @@
+{
+  "scenario": "VB-19 synthetic browser verification",
+  "evidence": {
+    "productionDatabaseUsed": false,
+    "productionApiWrites": false,
+    "fixtureDisclosure": "All API responses and mutations are synthetic in-memory/sessionStorage fixture data; no vendor or DB records were changed.",
+    "mountedProductionComponents": [
+      "client/src/pages/RateCards.tsx",
+      "client/src/pages/VendorBills.tsx"
+    ],
+    "authBoundary": "VB-09-style auth/feature/origin/filter aliases",
+    "manualDeleteConfirmation": "window.confirm is fixture-controlled for deterministic cancel/accept assertions; native dialog screenshot not captured (assertion-only).",
+    "screenshots": [
+      "/home/runner/workspace/screenshots/vb19/vb19-A-ratecards-saved.png",
+      "/home/runner/workspace/screenshots/vb19/vb19-B-ratecards-deleted.png",
+      "/home/runner/workspace/screenshots/vb19/vb19-C-conversion-before.png",
+      "/home/runner/workspace/screenshots/vb19/vb19-C-conversion-after.png",
+      "/home/runner/workspace/screenshots/vb19/vb19-D-one-row-edited.png",
+      "/home/runner/workspace/screenshots/vb19/vb19-mobile-conversion-before.png",
+      "/home/runner/workspace/screenshots/vb19/vb19-mobile-conversion-after.png"
+    ]
+  },
+  "verified": {
+    "A_manualAddSaveReopenDeleteReload": true,
+    "A_cancelConfirmationRetains": true,
+    "B_discoveredRowsHaveNoDeleteControl": true,
+    "A_allSectionsSupported": true,
+    "C_ninetyFiveSoilRowsConvertedToTrip": true,
+    "C_beforeAfterConfirmationShows76000": true,
+    "D_oneEditedRowTwoTripsPeersOneTotal76800": true,
+    "E_rateOnlyGroupPreservesQuantityAndUnit": true,
+    "F_noMutationBeforeExplicitBillSave": true,
+    "F_savePayloadAsserted": true,
+    "desktopAndMobileConversionConfirmationCaptured": true,
+    "noSchemaChange": true
+  },
+  "arithmetic": {
+    "soilRows": 95,
+    "sourceQuantityEach": 600,
+    "targetQuantityEach": 1,
+    "targetUnit": "TRIP",
+    "tripRate": 800,
+    "convertedGroupTotal": 76000,
+    "editedFirstQuantity": 2,
+    "editedGroupTotal": 76800,
+    "ordinarySourceQuantity": 3,
+    "ordinarySourceUnit": "MT",
+    "ordinaryAppliedRate": 350
+  }
+}
