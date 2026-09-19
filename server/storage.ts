@@ -30136,6 +30136,7 @@ export class DatabaseStorage implements IStorage {
     reportedQty: number;
     earliestProgressDate: string | null;
     reviewRequired: boolean;
+    unresolved: boolean;
     conversionWarnings: string[];
   }>> {
     const bars = barsInput ?? await this.getWorkProgramBars(boqProjectId);
@@ -30143,10 +30144,11 @@ export class DatabaseStorage implements IStorage {
       reportedQty: number;
       earliestProgressDate: string | null;
       reviewRequired: boolean;
+      unresolved: boolean;
       conversionWarnings: string[];
     }>();
     for (const bar of bars) {
-      result.set(bar.id, { reportedQty: 0, earliestProgressDate: null, reviewRequired: false, conversionWarnings: [] });
+      result.set(bar.id, { reportedQty: 0, earliestProgressDate: null, reviewRequired: false, unresolved: false, conversionWarnings: [] });
     }
     if (bars.length === 0) return result;
 
@@ -30241,10 +30243,13 @@ export class DatabaseStorage implements IStorage {
       const creditedQty = entryBoqCredit(entry, item);
       for (const bar of matched) {
         const current = result.get(bar.id) ?? {
-          reportedQty: 0, earliestProgressDate: null, reviewRequired: false, conversionWarnings: [],
+          reportedQty: 0, earliestProgressDate: null, reviewRequired: false, unresolved: false, conversionWarnings: [],
         };
-        if (creditedQty == null || !conversion.valid) current.reviewRequired = true;
-        if (creditedQty != null) current.reportedQty += creditedQty;
+        if (creditedQty == null || !conversion.valid) {
+          current.reviewRequired = true;
+          current.unresolved = true;
+        }
+        if (creditedQty != null && conversion.valid) current.reportedQty += creditedQty;
         for (const warning of conversion.warnings) {
           if (!current.conversionWarnings.includes(warning)) current.conversionWarnings.push(warning);
         }
@@ -30385,6 +30390,8 @@ export class DatabaseStorage implements IStorage {
       id: number;
       reportedQty: number;
       earliestProgressDate: string | null;
+      reviewRequired: boolean;
+      unresolved: boolean;
     }>;
     source: {
       id: number;
@@ -30466,11 +30473,13 @@ export class DatabaseStorage implements IStorage {
       const evidenceIds = locked.map((bar) => bar.id).sort((a, b) => a - b);
       const expectedEvidence = new Map(input.expectedEvidence.map((row) => [row.id, row]));
       for (const id of evidenceIds) {
-        const actual = lockedEvidence.get(id) ?? { reportedQty: 0, earliestProgressDate: null };
-        const expected = expectedEvidence.get(id) ?? { reportedQty: 0, earliestProgressDate: null };
+        const actual = lockedEvidence.get(id) ?? { reportedQty: 0, earliestProgressDate: null, reviewRequired: false, unresolved: false };
+        const expected = expectedEvidence.get(id) ?? { reportedQty: 0, earliestProgressDate: null, reviewRequired: false, unresolved: false };
         if (
           Math.abs(Number(actual.reportedQty) - Number(expected.reportedQty)) > 1e-8
           || actual.earliestProgressDate !== expected.earliestProgressDate
+          || actual.reviewRequired !== expected.reviewRequired
+          || actual.unresolved !== expected.unresolved
         ) {
           throw stale("Work progress changed after the preview. Review the updated execution state before confirming again.");
         }

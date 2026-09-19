@@ -33,7 +33,7 @@ import { InsufficientDieselDialog, parseInsufficientPlantStock, type Insufficien
 import { useUpload } from "@/hooks/use-upload";
 import { format, subDays } from "date-fns";
 import SitePreview from "@/pages/SitePreview";
-import type { EquipmentMasterType, Site, Personnel } from "@shared/schema";
+import type { EquipmentMasterType, Site, Personnel, PlanVsActualRow } from "@shared/schema";
 import { PERSONNEL_ROLES } from "@shared/schema";
 import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@shared/structureHierarchy";
 import { BillItemPicker } from "@/components/BillItemPicker";
@@ -78,6 +78,7 @@ import { normalizeExcavationMaterialOutcome } from "@shared/cutFillReconciliatio
 import { APPLICABLE_ARRANGEMENT_STATUSES, blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { EquipmentTankBalanceInputs } from "@/components/EquipmentTankBalanceInputs";
+import { aggregateStructureActualCredits, dprActualBalance, exceedsKnownActualBalance, type DprActualBalance } from "@/lib/dprActualBalance";
 import { DPR_REGISTER_PATH, resolveReturnTo } from "@/lib/progressReportNav";
 import { calculateEquipmentClockDuration, formatEquipmentDuration, withEquipmentCreationStartTime, meaningfulEquipmentRows } from "@shared/equipmentUsage";
 import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arrangementStatusHistory";
@@ -238,17 +239,6 @@ type ProgrammeBar = {
   side: string | null;
   plannedWidthM: number | null;
   plannedThicknessMm: number | null;
-};
-
-type PlanVsActualRow = {
-  boqItemId: number;
-  itemCode: string | null;
-  description: string;
-  unit: string;
-  currentQty: number;
-  totalPlanned: number;
-  totalActual: number;
-  percentComplete: number;
 };
 
 const SIDE_OPTIONS = ["LHS", "RHS", "Both Sides", "Full Width"];
@@ -622,8 +612,7 @@ export default function SiteEntry() {
     if (boqItemId == null) return null;
     const row = planVsActualByItem.get(boqItemId);
     if (!row) return null;
-    const balance = Math.round((row.currentQty - row.totalActual) * 1000) / 1000;
-    return { ...row, balance };
+    return dprActualBalance(row);
   };
 
   // Structure-level actuals: /plan-vs-actual only aggregates per BOQ item across the
@@ -640,28 +629,12 @@ export default function SiteEntry() {
     enabled: !!siteBoqProjectId,
   });
 
-  const structureActualByKey = useMemo(() => {
-    const m = new Map<string, number>();
-    if (!siteBoqProjectId) return m;
-    allDprsWithDetails
-      .filter((d) => d.boqProjectId === siteBoqProjectId && d.date < header.date)
-      .forEach((d) => {
-        (d.structureItems || []).forEach((si) => {
-          if (si.boqItemId == null || !si.structureId || si.quantity == null) return;
-          const key = `${si.boqItemId}::${si.structureId}`;
-          const boqItem = siteBoqItems.find((item) => item.id === si.boqItemId);
-          const factor = resolveDprUnitConversion(
-            { ...si, kind: "structure" },
-            boqItem,
-            si.dprConversionFactor,
-          ).factor;
-          if (factor == null) return;
-          const contribution = Number(si.quantity) * factor;
-          m.set(key, Math.round(((m.get(key) ?? 0) + contribution) * 1000) / 1000);
-        });
-      });
-    return m;
-  }, [allDprsWithDetails, siteBoqProjectId, header.date]);
+  const structureActualByKey = useMemo(
+    () => siteBoqProjectId
+      ? aggregateStructureActualCredits(allDprsWithDetails, siteBoqProjectId, header.date, siteBoqItems)
+      : new Map(),
+    [allDprsWithDetails, siteBoqProjectId, header.date, siteBoqItems],
+  );
 
   // Planned/previous/balance scoped to a specific structure + BOQ item pair, using
   // the bar's own plannedQty (per-structure) rather than the project-wide BOQ total.
@@ -672,9 +645,14 @@ export default function SiteEntry() {
     if (!bar) return null;
     const boqItem = siteBoqItems.find((bi) => bi.id === boqItemId);
     const unit = resolveBoqDisplayUnit(boqItem) ?? "";
-    const totalActual = structureActualByKey.get(`${boqItemId}::${structureId}`) ?? 0;
-    const balance = Math.round((bar.plannedQty - totalActual) * 1000) / 1000;
-    return { currentQty: bar.plannedQty, totalActual, balance, unit };
+    const actual = structureActualByKey.get(`${boqItemId}::${structureId}`);
+    return dprActualBalance({
+      currentQty: bar.plannedQty,
+      totalActual: actual ? actual.totalActual : 0,
+      unit,
+      actualIncomplete: actual?.actualIncomplete ?? false,
+      conversionWarnings: actual?.conversionWarnings ?? [],
+    });
   };
 
   // Structure-schedule locations imported via the Structure Schedule Import wizard.
@@ -696,7 +674,7 @@ export default function SiteEntry() {
   const renderBalanceChips = (
     boqItemId: number | null | undefined,
     qty: number | null,
-    overrideInfo?: { currentQty: number; totalActual: number; balance: number; unit: string } | null,
+    overrideInfo?: DprActualBalance | { currentQty: number; totalActual: number; balance: number; unit: string; needsUnitReview?: false; actualIncomplete?: false; conversionWarnings?: string[] } | null,
     row?: { uom?: string | null; kind?: "progress" | "structure"; rowConversionFactor?: number | null },
   ) => {
     const info = overrideInfo !== undefined ? overrideInfo : balanceInfo(boqItemId);
@@ -704,12 +682,21 @@ export default function SiteEntry() {
     const boqItem = siteBoqItems.find((bi) => bi.id === boqItemId);
     const conversion = resolveDprUnitConversion(row ?? null, boqItem, row?.rowConversionFactor);
     const boqQty = qty != null && conversion.factor != null ? Number(qty) * conversion.factor : null;
-    const over = boqQty != null && boqQty > info.balance + 0.0001;
+    const needsUnitReview = info.needsUnitReview === true || info.actualIncomplete === true || info.totalActual == null || info.balance == null;
+    const over = exceedsKnownActualBalance({ balance: info.balance, needsUnitReview }, boqQty);
     return (
       <div className={`text-xs mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 ${over ? "text-amber-700" : "text-slate-500"}`}>
         <span>Planned: {info.currentQty} {info.unit}</span>
-        <span>Done so far: {info.totalActual} {info.unit}</span>
-        <span className={over ? "font-semibold" : ""}>Balance: {info.balance} {info.unit}</span>
+        <span>Done so far: {needsUnitReview ? "Needs unit review" : `${info.totalActual} ${info.unit}`}</span>
+        <span className={over ? "font-semibold" : ""}>Balance: {needsUnitReview ? "Needs unit review" : `${info.balance} ${info.unit}`}</span>
+        {needsUnitReview && (
+          <span className="inline-flex items-center gap-1 font-semibold text-amber-700" data-testid="badge-actual-unit-review">
+            <AlertTriangle className="w-3 h-3" /> Needs unit review
+          </span>
+        )}
+        {!needsUnitReview && info.conversionWarnings?.length ? (
+          <span className="text-amber-700" title={info.conversionWarnings.join(" · ")}>Unit warning · value retained</span>
+        ) : null}
         {over && (
           <span className="inline-flex items-center gap-1 font-semibold" data-testid="badge-over-balance">
             <AlertTriangle className="w-3 h-3" /> Exceeds balance
@@ -1756,12 +1743,12 @@ export default function SiteEntry() {
     rows.forEach((r) => {
       if (r.boqItemId == null || r.qty == null) return;
       const info = r.structureId ? structureBalanceInfo(r.structureId, r.boqItemId) : balanceInfo(r.boqItemId);
-      if (!info) return;
+      if (!info || info.needsUnitReview === true || info.actualIncomplete === true || info.balance == null) return;
       const boqItem = siteBoqItems.find((b) => b.id === r.boqItemId);
       const conversion = resolveDprUnitConversion(r, boqItem, r.rowConversionFactor);
       const convertedQty = conversion.factor != null ? Number(r.qty) * conversion.factor : null;
       if (convertedQty == null) return;
-      if (convertedQty > info.balance + 0.0001) {
+      if (exceedsKnownActualBalance({ balance: info.balance, needsUnitReview: false }, convertedQty)) {
         const label = boqItem ? boqItemDisplayName(boqItem) : "This item";
         const scope = r.structureId ? ` at ${r.structureId}` : "";
         const qtyStr = convertedQty !== r.qty

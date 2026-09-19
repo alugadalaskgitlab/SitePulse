@@ -110,6 +110,43 @@ describe("Abstract math (tests D–I, §12)", () => {
   });
 });
 
+describe("Task #1481 — unresolved quantities remain incomplete", () => {
+  const unresolvedItem: ReportBoqItem = {
+    ...wmm,
+    unit: "Cum",
+    dprMeasurementMethod: "CUM_LWT",
+  };
+
+  it("makes chronological cumulative null from an unresolved row, while preserving physical evidence", () => {
+    const rows = computeItemEntries([
+      entry({ dprDate: "2026-07-01", quantity: 10, uom: "Cum" }),
+      entry({ dprDate: "2026-07-02", quantity: 25, uom: "Nos" }),
+      entry({ dprDate: "2026-07-03", quantity: 5, uom: "Cum" }),
+    ], unresolvedItem);
+    expect(rows.map((row) => row.runningCumulative)).toEqual([10, null, null]);
+    expect(rows[1].quantity).toBe(25);
+    expect(rows[1].boqCreditQty).toBeNull();
+    expect(rows[1].boqCreditUnresolved).toBe(true);
+  });
+
+  it("keeps previous and period independently nullable and ignores future unresolved rows", () => {
+    const rows = computeItemEntries([
+      entry({ dprDate: "2026-07-01", quantity: 10, uom: "Nos" }),
+      entry({ dprDate: "2026-08-02", quantity: 20, uom: "Cum" }),
+      entry({ dprDate: "2026-09-01", quantity: 30, uom: "Nos" }),
+    ], unresolvedItem);
+    const august = computeItemAbstract(rows, unresolvedItem, "2026-08-01", "2026-08-31");
+    expect(august.previousQty).toBeNull();
+    expect(august.thisPeriodQty).toBe(20);
+    expect(august.cumulativeQty).toBeNull();
+
+    const july = computeItemAbstract(rows, unresolvedItem, "2026-01-01", "2026-06-30");
+    expect(july.previousQty).toBe(0);
+    expect(july.thisPeriodQty).toBe(0);
+    expect(july.cumulativeQty).toBe(0);
+  });
+});
+
 describe("Chronological running cumulative (§9 — tests P, Q, R, S)", () => {
   const entries = [
     entry({ dprDate: "2026-08-03", quantity: 30, dprId: 3, chainageFromKm: 1.0, chainageToKm: 1.1 }),

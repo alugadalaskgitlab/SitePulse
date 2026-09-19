@@ -130,6 +130,37 @@ function compareItemCode(a?: string | null, b?: string | null): number {
   return (a ?? "").localeCompare(b ?? "");
 }
 
+export function initialBoqItemEditForm(item: BoqItemWithCategory) {
+  return {
+    description: item.description,
+    itemName: (item as any).itemName ?? "",
+    // Never initialise an editable contractual field from a derived alias.
+    unit: item.unit,
+    itemCode: item.itemCode ?? "",
+    clientRate: item.clientRate != null ? String(item.clientRate) : "",
+    workCategory: item.workCategory ?? "__none__",
+    dprConversionFactor: (item as any).dprConversionFactor != null ? String((item as any).dprConversionFactor) : "",
+  };
+}
+
+export function buildBoqItemEditPatch(
+  form: ReturnType<typeof initialBoqItemEditForm>,
+  currentQty: number,
+): Record<string, unknown> {
+  const rate = form.clientRate !== "" ? parseFloat(form.clientRate) : null;
+  const clientAmount = rate != null ? Math.round(rate * currentQty * 100) / 100 : null;
+  return {
+    description: form.description.trim(),
+    itemName: form.itemName.trim() || null,
+    unit: form.unit.trim(),
+    itemCode: form.itemCode.trim() || null,
+    clientRate: rate,
+    clientAmount,
+    workCategory: form.workCategory === "__none__" ? null : form.workCategory,
+    dprConversionFactor: form.dprConversionFactor !== "" ? parseFloat(form.dprConversionFactor) : null,
+  };
+}
+
 function ItemEditDialog({
   item,
   onClose,
@@ -140,15 +171,7 @@ function ItemEditDialog({
   projectId: number;
 }) {
   const { toast } = useToast();
-  const [form, setForm] = useState({
-    description: item.description,
-    itemName: (item as any).itemName ?? "",
-    unit: (item as any).canonicalUnit ?? item.unit,
-    itemCode: item.itemCode ?? "",
-    clientRate: item.clientRate != null ? String(item.clientRate) : "",
-    workCategory: item.workCategory ?? "__none__",
-    dprConversionFactor: (item as any).dprConversionFactor != null ? String((item as any).dprConversionFactor) : "",
-  });
+  const [form, setForm] = useState(() => initialBoqItemEditForm(item));
   const physicalUnit = canonicalizeUnit(resolveBoqUomProfile({
     unit: form.unit,
     dprMeasurementMethod: (item as any).dprMeasurementMethod ?? null,
@@ -176,23 +199,12 @@ function ItemEditDialog({
       toast({ title: "Description and Unit are required", variant: "destructive" });
       return;
     }
-    const rate = form.clientRate !== "" ? parseFloat(form.clientRate) : null;
-    const clientAmount = rate != null ? Math.round(rate * item.currentQty * 100) / 100 : null;
     const convFactor = form.dprConversionFactor !== "" ? parseFloat(form.dprConversionFactor) : null;
     if (convFactor != null && (!Number.isFinite(convFactor) || convFactor <= 0)) {
       toast({ title: "Conversion factor must be a positive number", variant: "destructive" });
       return;
     }
-    patchMutation.mutate({
-      description: form.description.trim(),
-      itemName: form.itemName.trim() || null,
-      unit: form.unit.trim(),
-      itemCode: form.itemCode.trim() || null,
-      clientRate: rate,
-      clientAmount,
-      workCategory: form.workCategory === "__none__" ? null : form.workCategory,
-      dprConversionFactor: convFactor,
-    });
+    patchMutation.mutate(buildBoqItemEditPatch(form, item.currentQty));
   }
 
   return (

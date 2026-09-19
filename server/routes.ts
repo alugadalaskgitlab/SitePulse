@@ -14676,13 +14676,14 @@ export async function registerRoutes(
       const outcomeCounts = await storage.getProgrammeBarOutcomeEventCounts(bars.map((bar) => bar.id));
       res.json(bars.map((bar) => {
         const barEvidence = evidence.get(bar.id) ?? {
-          reportedQty: 0, earliestProgressDate: null, reviewRequired: false, conversionWarnings: [],
+          reportedQty: 0, earliestProgressDate: null, reviewRequired: false, unresolved: false, conversionWarnings: [],
         };
         return {
           ...bar,
           reportedQty: barEvidence.reportedQty,
           actualStartDate: barEvidence.earliestProgressDate,
           actualReviewRequired: barEvidence.reviewRequired,
+          actualQtyUnresolved: barEvidence.unresolved,
           actualConversionWarnings: barEvidence.conversionWarnings,
           executionState: classifyBarExecutionState(Number(bar.plannedQty ?? 0), barEvidence),
           hasOutcomeEvents: (outcomeCounts.get(bar.id) ?? 0) > 0,
@@ -14801,7 +14802,7 @@ export async function registerRoutes(
       requestedEnd: body.endDate,
       cascade: body.cascade,
     });
-    const sourceEvidence = evidence.get(barId) ?? { reportedQty: 0, earliestProgressDate: null };
+    const sourceEvidence = evidence.get(barId) ?? { reportedQty: 0, earliestProgressDate: null, reviewRequired: false, unresolved: false };
     const fullById = new Map(barsFull.map((bar) => [bar.id, bar]));
     const expectedBars = barsFull
       .map((bar) => ({
@@ -14818,11 +14819,13 @@ export async function registerRoutes(
       .sort((a, b) => a.id - b.id);
     const expectedEvidence = barsFull
       .map((bar) => {
-        const row = evidence.get(bar.id) ?? { reportedQty: 0, earliestProgressDate: null };
+        const row = evidence.get(bar.id) ?? { reportedQty: 0, earliestProgressDate: null, reviewRequired: false, unresolved: false };
         return {
           id: bar.id,
           reportedQty: Number(row.reportedQty ?? 0),
           earliestProgressDate: row.earliestProgressDate ?? null,
+          reviewRequired: row.reviewRequired ?? false,
+          unresolved: row.unresolved ?? false,
         };
       })
       .sort((a, b) => a.id - b.id);
@@ -15898,11 +15901,15 @@ export async function registerRoutes(
           boqItemDisplayName(it.boqItem),
           it.boqItem.unit,
           abstract.contractQty,
-          round3(abstract.previousQty),
-          round3(abstract.thisPeriodQty),
-          round3(abstract.cumulativeQty),
-          abstract.balanceQty != null ? round3(abstract.balanceQty) : "",
-          abstract.pctComplete != null ? Number(abstract.pctComplete.toFixed(1)) : "",
+          abstract.previousQty != null ? round3(abstract.previousQty) : "INCOMPLETE — unresolved BOQ credit",
+          abstract.thisPeriodQty != null ? round3(abstract.thisPeriodQty) : "INCOMPLETE — unresolved BOQ credit",
+          abstract.cumulativeQty != null ? round3(abstract.cumulativeQty) : "INCOMPLETE — unresolved BOQ credit",
+          abstract.cumulativeQty == null
+            ? "INCOMPLETE — unresolved BOQ credit"
+            : abstract.balanceQty != null ? round3(abstract.balanceQty) : "",
+          abstract.cumulativeQty == null
+            ? "INCOMPLETE — unresolved BOQ credit"
+            : abstract.pctComplete != null ? Number(abstract.pctComplete.toFixed(1)) : "",
           abstract.dprCount,
         ]);
         for (const e of it.entries) {
@@ -15918,12 +15925,12 @@ export async function registerRoutes(
             e.thickness ?? "",
             e.quantity ?? "",
             e.uom ?? "",
-            e.boqCreditQty != null ? round4(e.boqCreditQty) : "",
+            e.boqCreditQty != null ? round4(e.boqCreditQty) : "INCOMPLETE — unresolved BOQ credit",
             it.boqItem.unit,
-            round4(e.runningCumulative),
+            e.runningCumulative != null ? round4(e.runningCumulative) : "INCOMPLETE — unresolved BOQ credit",
             `DPR-${e.dprId}`,
             e.engineer ?? "",
-            [e.location, e.remarks, e.reviewFlag].filter(Boolean).join(" | "),
+            [e.location, e.remarks, e.reviewFlag, ...e.conversionWarnings].filter(Boolean).join(" | "),
             e.overlaps.length ? e.overlaps.map((o) => `DPR-${o.withDprId}`).join(", ") : "",
             (e as any).isIncidental ? `Yes${(e as any).incidentalDescription ? ` — ${(e as any).incidentalDescription}` : ""}` : "",
           ]);

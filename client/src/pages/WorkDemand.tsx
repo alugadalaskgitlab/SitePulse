@@ -35,7 +35,7 @@ import { resolveEquipmentBoqHours } from "@shared/equipmentActivityAllocations";
 import { visibleEquipmentRows } from "@shared/equipmentUsage";
 import { PlanVsActualTable } from "@/components/PlanVsActualTable";
 import { ArrangementRegisterLink } from "@/components/ArrangementRegisterLink";
-import type { BoqProject } from "@shared/schema";
+import type { BoqProject, PlanVsActualRow } from "@shared/schema";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -600,11 +600,6 @@ interface DprLogsLite {
   materials: Array<{ boqItemId: number | null; structureId: string | null; material: string; quantity: number | null; uom: string | null }>;
 }
 
-interface PlanVsActualRowLite {
-  boqItemId: number;
-  totalActual: number;
-}
-
 function actualEquipmentHours(log: DprLogsLite["equipment"][number]): number {
   if (log.openingReading != null && log.closingReading != null) {
     const d = log.closingReading - log.openingReading;
@@ -647,7 +642,8 @@ interface PlanVsActualItemRow {
   labourBreakdown: Map<string, { planned: number; actual: number }>;
   materialBreakdown: Map<string, { planned: number; actual: number; uom: string }>;
   structureBreakdown: Map<string, StructureBreakdownEntry>;
-  actualQtyCompleted: number;
+  actualQtyCompleted: number | null;
+  actualQtyIncomplete: boolean;
   productivityPerEquipHour: number | null;
   productivityPerLabourDay: number | null;
 }
@@ -659,7 +655,7 @@ function computePlanVsActual(
   dprs: DprLogsLite[],
   projectId: number,
   programmeBars: ProgrammeBarLite[],
-  actualQtyByItem: Map<number, number>
+  actualQtyByItem: Map<number, number | null>
 ): PlanVsActualItemRow[] {
   const rows: PlanVsActualItemRow[] = [];
   const relevantDprs = dprs.filter((d) => d.boqProjectId === projectId);
@@ -757,7 +753,13 @@ function computePlanVsActual(
 
     if (!hasPlannedEquip && !hasPlannedLabour && !hasPlannedMaterial && actualEquipHours === 0 && actualLabourDays === 0 && materialBreakdown.size === 0) continue;
 
-    const actualQtyCompleted = actualQtyByItem.get(item.id) ?? 0;
+    // A missing API row means no eligible progress for this item. A present
+    // null means eligible evidence exists but its BOQ credit is unresolved;
+    // it must not be turned into zero or used to fabricate productivity.
+    const actualQtyCompleted = actualQtyByItem.has(item.id)
+      ? actualQtyByItem.get(item.id)!
+      : 0;
+    const actualQtyIncomplete = actualQtyCompleted == null;
 
     rows.push({
       boqItemId: item.id,
@@ -766,7 +768,7 @@ function computePlanVsActual(
       displayName: (item as any).displayName ?? null,
       itemName: item.itemName ?? null,
       canonicalDisplayName: (item as any).canonicalDisplayName ?? null,
-      unit: (item as any).canonicalUnit ?? item.unit,
+      unit: item.unit,
       plannedEquipHours: planned.equipment.reduce((s, e) => s + e.totalHours, 0),
       actualEquipHours,
       actualEquipKm,
@@ -777,8 +779,9 @@ function computePlanVsActual(
       materialBreakdown,
       structureBreakdown,
       actualQtyCompleted,
-      productivityPerEquipHour: actualEquipHours > 0 ? actualQtyCompleted / actualEquipHours : null,
-      productivityPerLabourDay: actualLabourDays > 0 ? actualQtyCompleted / actualLabourDays : null,
+      actualQtyIncomplete,
+      productivityPerEquipHour: actualQtyCompleted != null && actualEquipHours > 0 ? actualQtyCompleted / actualEquipHours : null,
+      productivityPerLabourDay: actualQtyCompleted != null && actualLabourDays > 0 ? actualQtyCompleted / actualLabourDays : null,
     });
   }
 
@@ -830,7 +833,7 @@ function EquipLabourPlanVsActualTable({
   dprs: DprLogsLite[];
   projectId: number;
   programmeBars: ProgrammeBarLite[];
-  actualQtyByItem: Map<number, number>;
+  actualQtyByItem: Map<number, number | null>;
 }) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const rows = useMemo(
@@ -907,13 +910,17 @@ function EquipLabourPlanVsActualTable({
                       )}
                     </td>
                     <td className="px-2 py-2 text-right font-mono text-[11px] text-slate-600">
-                      {row.productivityPerEquipHour != null && (
+                      {row.actualQtyIncomplete ? (
+                        <span className="font-sans font-semibold text-amber-700" data-testid={`productivity-unit-review-${row.boqItemId}`}>
+                          Needs unit review
+                        </span>
+                      ) : row.productivityPerEquipHour != null && (
                         <div>{fmtQty(row.productivityPerEquipHour, 2)} {row.unit}/eq-hr</div>
                       )}
-                      {row.productivityPerLabourDay != null && (
+                      {!row.actualQtyIncomplete && row.productivityPerLabourDay != null && (
                         <div>{fmtQty(row.productivityPerLabourDay, 2)} {row.unit}/lab-day</div>
                       )}
-                      {row.productivityPerEquipHour == null && row.productivityPerLabourDay == null && "—"}
+                      {!row.actualQtyIncomplete && row.productivityPerEquipHour == null && row.productivityPerLabourDay == null && "—"}
                     </td>
                   </tr>
                   {isExpanded && (
@@ -2715,7 +2722,7 @@ export default function WorkDemand() {
 
   // Actual progress qty completed per item — used for the productivity metric
   // (qty completed per equipment hour / labour day).
-  const { data: planVsActualRows = [] } = useQuery<PlanVsActualRowLite[]>({
+  const { data: planVsActualRows = [] } = useQuery<PlanVsActualRow[]>({
     queryKey: ["/api/boq/projects", projectId, "plan-vs-actual"],
     queryFn: async () => {
       const res = await fetch(`/api/boq/projects/${projectId}/plan-vs-actual`, { credentials: "include" });
@@ -2725,8 +2732,10 @@ export default function WorkDemand() {
   });
 
   const actualQtyByItem = useMemo(() => {
-    const m = new Map<number, number>();
-    for (const r of planVsActualRows) m.set(r.boqItemId, r.totalActual);
+    const m = new Map<number, number | null>();
+    for (const r of planVsActualRows) {
+      m.set(r.boqItemId, r.actualIncomplete === true ? null : r.totalActual);
+    }
     return m;
   }, [planVsActualRows]);
 

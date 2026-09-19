@@ -16,7 +16,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertTriangle } from "lucide-react";
 import { barSideLabel, isDprSideCompatible } from "@shared/barSide";
-import { chainageOutsideBar, barBalanceFigures, autoMatchBar, isBarCompatible, normalizeDprSideKey } from "@shared/dprProgrammeLink";
+import { chainageOutsideBar, autoMatchBar, isBarCompatible, normalizeDprSideKey } from "@shared/dprProgrammeLink";
+import type { DprActualBalance } from "@/lib/dprActualBalance";
 import { OutOfRangeChainageModal } from "@/components/OutOfRangeChainageModal";
 
 export type PickerBar = {
@@ -31,8 +32,10 @@ export type PickerBar = {
   endDate: string | null;
   sequenceOrder: number | null;
   plannedQty: number;
-  reportedQty: number;
-  remainingQty: number;
+  reportedQty: number | null;
+  remainingQty: number | null;
+  reportedQtyReviewRequired?: boolean;
+  reportedQtyUnresolved?: boolean;
   unit: string | null;
   /** Batch 1 Part E: side-specific chainage coverage (quantity stays shared). */
   sideCoverage?: {
@@ -76,7 +79,10 @@ function barLabel(b: PickerBar): string {
     bits.push(`Ch ${b.chainageFrom ?? "?"}–${b.chainageTo ?? "?"}`);
   }
   if (b.side) bits.push(barSideLabel(b.side as any));
-  bits.push(`bal ${Math.round(b.remainingQty * 10) / 10}${b.unit ? ` ${b.unit}` : ""}`);
+  const balanceKnown = b.reportedQtyUnresolved !== true && b.reportedQty != null && b.remainingQty != null;
+  bits.push(balanceKnown
+    ? `bal ${Math.round(b.remainingQty! * 10) / 10}${b.unit ? ` ${b.unit}` : ""}`
+    : "bal Needs unit review");
   return bits.join(" · ");
 }
 
@@ -437,7 +443,7 @@ export function BarLinkFeedback({
   /** Warn (review, non-blocking) when BOQ-unit credit exceeds the selected reach balance. */
   warnOverBalance?: boolean;
   /** Whole-BOQ-item totals, shown smaller/separate from the reach figures. */
-  itemTotals?: { currentQty: number; totalActual: number; balance: number; unit: string } | null;
+  itemTotals?: DprActualBalance | null;
   /** Part H: who executed this row (required when arrangement is partly outsourced). */
   executedBy?: string | null;
   onExecutedBy?: (v: "hlc" | "agency") => void;
@@ -455,7 +461,13 @@ export function BarLinkFeedback({
   if (!bar) return null;
   const sideOk = isDprSideCompatible(bar.side as any, sideKey as any);
   const outOfRange = chainageOutsideBar(fromKm, toKm, bar);
-  const scoped = barBalanceFigures(bar);
+  const scopedNeedsUnitReview = bar.reportedQtyUnresolved === true || bar.reportedQty == null || bar.remainingQty == null;
+  const scoped = {
+    currentQty: Math.round(bar.plannedQty * 1000) / 1000,
+    totalActual: scopedNeedsUnitReview ? null : Math.round(bar.reportedQty! * 1000) / 1000,
+    balance: scopedNeedsUnitReview ? null : Math.round(bar.remainingQty! * 1000) / 1000,
+    unit: bar.unit ?? "",
+  };
   const partlyOutsourced = !!bar.arrangement && /part/i.test(bar.arrangement.mode ?? "");
   return (
     <div className="mt-1 space-y-1">
@@ -463,12 +475,35 @@ export function BarLinkFeedback({
         <div className="flex flex-wrap items-center gap-1" data-testid={`${testidPrefix}-reach-balance`}>
           <span className="text-[10px] font-semibold text-muted-foreground">Selected reach:</span>
           <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Planned {scoped.currentQty}{scoped.unit ? ` ${scoped.unit}` : ""}</Badge>
-          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Done {scoped.totalActual}</Badge>
-          <Badge variant={scoped.balance <= 0 ? "destructive" : "outline"} className="text-[10px] px-1.5 py-0">Balance {scoped.balance}</Badge>
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Done {scopedNeedsUnitReview ? "Needs unit review" : scoped.totalActual}</Badge>
+          <Badge variant={!scopedNeedsUnitReview && scoped.balance! <= 0 ? "destructive" : "outline"} className="text-[10px] px-1.5 py-0">Balance {scopedNeedsUnitReview ? "Needs unit review" : scoped.balance}</Badge>
+          {scopedNeedsUnitReview && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-amber-700 border-amber-300" data-testid={`${testidPrefix}-reach-unit-review`}>
+              Needs unit review
+            </Badge>
+          )}
+          {!scopedNeedsUnitReview && bar.reportedQtyReviewRequired && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-amber-700 border-amber-300" data-testid={`${testidPrefix}-reach-unit-warning`}>
+              Unit warning · value retained
+            </Badge>
+          )}
           {itemTotals && (
-            <span className="text-[9px] text-muted-foreground ml-1" data-testid={`${testidPrefix}-item-totals`}>
-              (BOQ item total: {itemTotals.currentQty} · done {itemTotals.totalActual} · bal {itemTotals.balance}{itemTotals.unit ? ` ${itemTotals.unit}` : ""})
-            </span>
+            <>
+              <span className="text-[9px] text-muted-foreground ml-1" data-testid={`${testidPrefix}-item-totals`}>
+                (BOQ item total: {itemTotals.currentQty} · {itemTotals.needsUnitReview
+                  ? "Needs unit review"
+                  : `done ${itemTotals.totalActual} · bal ${itemTotals.balance}${itemTotals.unit ? ` ${itemTotals.unit}` : ""}`})
+              </span>
+              {itemTotals.conversionWarnings.length > 0 && (
+                <span
+                  className="text-[9px] text-amber-700"
+                  title={itemTotals.conversionWarnings.join(" · ")}
+                  data-testid={`${testidPrefix}-item-unit-warning`}
+                >
+                  {itemTotals.needsUnitReview ? "Unresolved credit · unit review" : "Unit warning · value retained"}
+                </span>
+              )}
+            </>
           )}
         </div>
       )}
@@ -493,7 +528,7 @@ export function BarLinkFeedback({
           </p>
         )
       )}
-      {warnOverBalance && scoped && boqQty != null && boqQty > scoped.balance + 1e-9 && (
+      {warnOverBalance && !scopedNeedsUnitReview && boqQty != null && boqQty > scoped.balance! + 1e-9 && (
         <p className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 border border-amber-300 text-amber-700" data-testid={`${testidPrefix}-warn-over-balance`}>
           <AlertTriangle className="w-3 h-3" />
           Reported BOQ quantity {boqQty}{scoped.unit ? ` ${scoped.unit}` : ""} exceeds this reach's balance ({scoped.balance}) — review before submitting. BOQ-item totals are shown separately.

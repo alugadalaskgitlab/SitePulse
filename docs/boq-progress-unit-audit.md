@@ -48,3 +48,21 @@ the reason, authenticated actor, and affected item; it must not change
 contract units/rates/quantities or rewrite physical progress. Ambiguous
 legacy transformations require review rather than inferred inverse math.
 Publishing and production data mutation are outside this work.
+
+## Saved goal planning provenance — 2026-09-19
+
+A separate production read-only query traced project 2 / item 13 to two saved
+programme bars (project start date 2026-08-15):
+
+| Bar | Calendar dates | Month interval | Saved planned quantity |
+| --- | --- | --- | --- |
+| 921 | 2026-08-15–2026-08-16 | [1, 1.0645) | 3,840 Sqm |
+| 930 | 2026-10-15–2026-10-25 | [3, 3.3548) | 3,120 Sqm |
+
+The saved total is 6,960 Sqm. The existing Plan vs Actual horizon calculates
+the project month using elapsed days / 30.44, rounded up (minimum 1), and
+includes the whole current project month. On 2026-09-19 this is month 2:
+bar 921 contributes all 3,840 Sqm, and bar 930 contributes zero. Thus the goal
+card's planned-to-date quantity is 3,840 Sqm, independently of the 4,800 Sqm
+actual credit. It is not a daily target. Neither bar requires conversion or
+rewriting to match actuals; the contractual remaining quantity is 2,160 Sqm.

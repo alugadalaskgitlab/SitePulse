@@ -94,6 +94,12 @@ export type BarExecutionState = "not_started" | "started" | "completed";
 export interface BarEvidence {
   reportedQty: number;
   earliestProgressDate: string | null; // YYYY-MM-DD or null
+  /** Blocking evidence-quality state: partial resolved quantity is not a total. */
+  reviewRequired?: boolean;
+  /** Explicit unresolved BOQ-credit marker (distinct from valid warnings). */
+  unresolved?: boolean;
+  /** Advisory diagnostics; valid warnings do not block completion. */
+  conversionWarnings?: string[];
 }
 
 /**
@@ -158,7 +164,12 @@ export function classifyBarExecutionState(
   const hasEvidence = (typeof reportedQty === "number" && reportedQty > 0) || !!earliestProgressDate;
   if (!hasEvidence) return "not_started";
   // Completed: reported has reached or exceeded the planned qty (only for positive plannedQty)
-  if (plannedQty > 0 && reportedQty >= plannedQty) return "completed";
+  if (
+    plannedQty > 0
+    && reportedQty >= plannedQty
+    && !evidence.reviewRequired
+    && !evidence.unresolved
+  ) return "completed";
   return "started";
 }
 

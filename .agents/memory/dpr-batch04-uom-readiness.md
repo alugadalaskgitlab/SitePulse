@@ -11,6 +11,9 @@ description: Conversion-factor contract, measurement display rules, submit-readi
 - Advisory conversion warnings must not suppress valid credit or prevent completion. Unresolved conversion is a separate state that preserves visible physical evidence. **Why:** treating all warnings as invalid drops legitimate same-unit quantities; filtering invalid evidence before building warnings hides unresolved history.
 - **Why:** comparing 350 SQM directly with a 1.468 Ha balance produced false over-balance warnings and displayed 350 as Ha; the correct BOQ credit is 0.035 Ha.
 - **Rule:** derive conversion semantics from contractual units and physical-source provenance, never numeric record IDs. **Why:** IDs do not establish semantic identity across databases.
+- **Rule:** Unknown actual credit must remain unknown in balances, productivity, running totals, and completion decisions. Period incompleteness is chronological: future unresolved evidence must not invalidate earlier totals. Saved contractual unit wins over a stale canonical alias during factor-only edits.
+  **Why:** Correct API conversion alone did not protect downstream consumers that treated nullable actuals as zero or partial totals as complete.
+  **How to apply:** Audit every consumer when widening actuals to nullable; retain valid advisory-warning credit and preserve independent saved planned quantities.
 
 ## Submit readiness contract
 - `shared/dprSubmitReadiness.ts` is the single validator, consumed identically by Guided DPR, SiteEntry, SiteEdit, AND server (POST /api/dprs non-draft + POST /:id/submit → 422 `DPR_NOT_READY` with `{mandatory, advisories}`). Drafts are never gated.

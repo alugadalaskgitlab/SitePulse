@@ -75,6 +75,90 @@ function extractShortName(description: string, categoryName: string | null): str
   return "—";
 }
 
+export interface SiteGoalRow {
+  id: string;
+  item: string;
+  stretch: string;
+  planned: string;
+  completed: string;
+  toDo: string;
+  toDoType: "backlog" | "ahead" | "on-track" | "pending" | "not-started";
+  actualIncomplete: boolean;
+  unitNote?: string;
+  warningTitle?: string;
+}
+
+/**
+ * The plan-vs-actual endpoint supplies cumulative saved programme quantities
+ * through the as-of month, not an independently calculated daily target.
+ * Keep unresolved rows visible and never derive a balance from a partial sum.
+ */
+export function buildSiteGoalRows(rows: PlanVsActualRow[]): SiteGoalRow[] {
+  return rows
+    .filter((row) =>
+      row.totalPlanned > 0
+      || (row.totalActual != null && row.totalActual > 0)
+      || row.actualIncomplete === true
+      || row.totalActual == null
+    )
+    .map((row) => {
+      const planned = row.totalPlanned;
+      const actualIncomplete = row.actualIncomplete === true || row.totalActual == null;
+      const unit = row.unit ?? "";
+      const fmt = (quantity: number) =>
+        `${quantity.toLocaleString("en-IN", { maximumFractionDigits: 2 })} ${unit}`.trim();
+      const warnings = Array.isArray(row.conversionWarnings)
+        ? row.conversionWarnings.filter((warning): warning is string => typeof warning === "string")
+        : [];
+
+      if (actualIncomplete) {
+        return {
+          id: `r${row.boqItemId}`,
+          item: extractShortName(row.description, row.categoryName),
+          stretch: "",
+          planned: fmt(planned),
+          completed: "Needs unit review",
+          toDo: "Needs unit review",
+          toDoType: "pending" as const,
+          actualIncomplete: true,
+          unitNote: `Unresolved ${unit || "BOQ unit"} credit · no balance calculated`,
+          warningTitle: warnings.join(" · ") || undefined,
+        };
+      }
+
+      const actual = row.totalActual!;
+      const diff = actual - planned;
+      let toDo: string;
+      let toDoType: SiteGoalRow["toDoType"];
+      if (planned === 0) {
+        toDo = "No target set";
+        toDoType = "not-started";
+      } else if (diff > 0.01) {
+        toDo = `+${fmt(diff)} ahead`;
+        toDoType = "ahead";
+      } else if (diff < -0.01) {
+        toDo = `${fmt(Math.abs(diff))} balance`;
+        toDoType = "backlog";
+      } else {
+        toDo = "On track";
+        toDoType = "on-track";
+      }
+
+      return {
+        id: `r${row.boqItemId}`,
+        item: extractShortName(row.description, row.categoryName),
+        stretch: "",
+        planned: fmt(planned),
+        completed: fmt(actual),
+        toDo,
+        toDoType,
+        actualIncomplete: false,
+        unitNote: warnings.length > 0 ? "Unit warning · completed value retained" : undefined,
+        warningTitle: warnings.join(" · ") || undefined,
+      };
+    });
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type DprPhase =
@@ -116,6 +200,52 @@ function ToDoBadge({ type, text }: {
     <span className={`inline-block text-[11px] font-semibold px-2 py-0.5 rounded-md ${styles[type] ?? styles["not-started"]}`}>
       {text}
     </span>
+  );
+}
+
+/** Extracted from FieldHome so isolated browser fixtures exercise the real rows. */
+export function SiteGoalRows({ rows }: { rows: SiteGoalRow[] }) {
+  return (
+    <>
+      <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-4 py-2 bg-gray-50 border-b border-gray-100 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
+        <span>Item</span>
+        <span className="text-right w-20">Planned</span>
+        <span className="text-right w-20">Completed</span>
+        <span className="text-right w-24">To be done</span>
+      </div>
+      <div className="divide-y divide-gray-50">
+        {rows.map((row) => (
+          <div
+            key={row.id}
+            className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-4 py-3 items-center hover:bg-gray-50/60 transition-colors"
+            data-testid={`goal-row-${row.id}`}
+          >
+            <div>
+              <p className="text-sm font-semibold text-gray-900 leading-tight">{row.item}</p>
+              {row.stretch && <p className="text-xs text-gray-400 mt-0.5">{row.stretch}</p>}
+              {row.unitNote && (
+                <p
+                  className={`text-[10px] mt-0.5 ${row.actualIncomplete ? "text-amber-700 font-medium" : "text-amber-600"}`}
+                  title={row.warningTitle}
+                  data-testid={`goal-unit-note-${row.id}`}
+                >
+                  {row.unitNote}
+                </p>
+              )}
+            </div>
+            <div className="w-20 text-right">
+              <p className="text-xs text-gray-500 font-medium">{row.planned}</p>
+            </div>
+            <div className="w-20 text-right">
+              <p className="text-xs text-gray-800 font-semibold">{row.completed}</p>
+            </div>
+            <div className="w-24 text-right">
+              <ToDoBadge type={row.toDoType} text={row.toDo} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -875,60 +1005,12 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
   const yesterdayStr = format(addDays(new Date(), -1), "yyyy-MM-dd");
 
   // ── Today's Site Goal rows ────────────────────────────────────────────────
-  interface GoalRow {
-    id: string;
-    item: string;
-    stretch: string;
-    planned: string;       // "—" or formatted number
-    completed: string;
-    toDo: string;
-    toDoType: "backlog" | "ahead" | "on-track" | "pending" | "not-started";
-    noProgramme?: boolean;
-  }
-
-  let goalRows: GoalRow[] = [];
+  let goalRows: SiteGoalRow[] = [];
   let programmeState: "live" | "no-bars" | "no-project" = "no-project";
 
   if (hasProgramme && (planVsActual as PlanVsActualRow[]).length > 0) {
     programmeState = "live";
-    goalRows = (planVsActual as PlanVsActualRow[])
-      .filter(r => r.totalPlanned > 0 || r.totalActual > 0)  // only items with data
-      .slice(0, 8)                                           // cap at 8 on home screen
-      .map((r, i) => {
-        const planned   = r.totalPlanned;
-        const actual    = r.totalActual;
-        const diff      = actual - planned;
-        const unit      = r.unit ?? "";
-        const fmt = (n: number) =>
-          n === 0 ? "—" : `${n.toLocaleString("en-IN", { maximumFractionDigits: 2 })} ${unit}`.trim();
-
-        let toDo: string;
-        let toDoType: GoalRow["toDoType"];
-
-        if (planned === 0) {
-          toDo = "No target set";
-          toDoType = "not-started";
-        } else if (diff > 0.01) {
-          toDo = `+${fmt(diff)} ahead`;
-          toDoType = "ahead";
-        } else if (diff < -0.01) {
-          toDo = `${fmt(Math.abs(diff))} balance`;
-          toDoType = "backlog";
-        } else {
-          toDo = "On track";
-          toDoType = "on-track";
-        }
-
-        return {
-          id: `r${r.boqItemId}`,
-          item: extractShortName(r.description, r.categoryName),
-          stretch: "",  // no per-row chainage in plan-vs-actual; BOQ is at project level
-          planned:   fmt(planned),
-          completed: fmt(actual),
-          toDo,
-          toDoType,
-        };
-      });
+    goalRows = buildSiteGoalRows(planVsActual as PlanVsActualRow[]);
   } else if (activeProject && !hasProgramme) {
     programmeState = "no-bars";
   } else {
@@ -1291,7 +1373,9 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
                   <Target className="w-4 h-4 text-orange-500" />
                   Today's Site Goal
                 </h2>
-                <p className="text-xs text-gray-400 mt-0.5">Planned vs completed vs to be done</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Cumulative programme plan through the current month vs completed to date
+                </p>
               </div>
               {programmeState === "live" && behindCount > 0 && (
                 <span className="text-xs font-semibold text-red-500 bg-red-50 px-2 py-0.5 rounded-full border border-red-100">
@@ -1337,38 +1421,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
             )}
 
             {programmeState === "live" && goalRows.length > 0 && (
-              <>
-                {/* Column headers */}
-                <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-4 py-2 bg-gray-50 border-b border-gray-100 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
-                  <span>Item</span>
-                  <span className="text-right w-20">Planned</span>
-                  <span className="text-right w-20">Completed</span>
-                  <span className="text-right w-24">To be done</span>
-                </div>
-                <div className="divide-y divide-gray-50">
-                  {goalRows.map(row => (
-                    <div
-                      key={row.id}
-                      className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-4 py-3 items-center hover:bg-gray-50/60 transition-colors"
-                      data-testid={`goal-row-${row.id}`}
-                    >
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900 leading-tight">{row.item}</p>
-                        {row.stretch && <p className="text-xs text-gray-400 mt-0.5">{row.stretch}</p>}
-                      </div>
-                      <div className="w-20 text-right">
-                        <p className="text-xs text-gray-500 font-medium">{row.planned}</p>
-                      </div>
-                      <div className="w-20 text-right">
-                        <p className="text-xs text-gray-800 font-semibold">{row.completed}</p>
-                      </div>
-                      <div className="w-24 text-right">
-                        <ToDoBadge type={row.toDoType} text={row.toDo} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
+              <SiteGoalRows rows={goalRows} />
             )}
           </div>
 

@@ -118,7 +118,14 @@ export type ComputedEntry = ReportEntry & {
   /** BOQ-credit qty = physical × factor (exactly once). Null when quantity null. */
   boqCreditQty: number | null;
   /** Chronological running BOQ-credit cumulative INCLUDING this row. */
-  runningCumulative: number;
+  /**
+   * Chronological running BOQ-credit cumulative INCLUDING this row. Null from
+   * the first unresolved row onward; a later/future unresolved row never
+   * contaminates an earlier row's cumulative.
+   */
+  runningCumulative: number | null;
+  /** True when physical evidence exists but its BOQ credit cannot be resolved. */
+  boqCreditUnresolved: boolean;
   /** True when factor ≠ 1 (physical and BOQ qty genuinely differ). */
   converted: boolean;
   /** Historical/ambiguous row — surfaced, never silently corrected. */
@@ -154,9 +161,9 @@ export type OverlapPair = {
 export type ItemAbstract = {
   boqItemId: number;
   contractQty: number;
-  previousQty: number;
-  thisPeriodQty: number;
-  cumulativeQty: number;
+  previousQty: number | null;
+  thisPeriodQty: number | null;
+  cumulativeQty: number | null;
   balanceQty: number | null;
   /** null when contract qty is 0/absent (cannot divide). */
   pctComplete: number | null;
@@ -308,17 +315,27 @@ export function computeItemEntries(entries: ReportEntry[], item: ReportBoqItem |
   const chron = [...entries].sort(chronologicalCompare);
   const overlaps = detectOverlaps(entries);
   let running = 0;
+  let runningIncomplete = false;
   return chron.map((e) => {
     const conversion = entryConversionResolution(e, item);
     const credit = entryBoqCredit(e, item);
-    if (credit != null) running += credit;
+    // Classified zero-credit rows need no unit conversion and therefore never
+    // poison an otherwise complete cumulative.
+    const unresolved = credit == null || (!e.isIncidental && !e.noSiteWork && !conversion.valid);
+    if (unresolved) runningIncomplete = true;
+    else running += credit;
+    const quantityReview = entryReviewFlag(e, item);
     return {
       ...e,
       boqCreditQty: credit,
-      runningCumulative: running,
+      runningCumulative: runningIncomplete ? null : running,
+      boqCreditUnresolved: unresolved,
       converted: conversion.factor != null && conversion.factor !== 1,
-      reviewFlag: entryReviewFlag(e, item) ?? (conversion.warnings[0] ? `Review UOM — ${conversion.warnings[0]}` : null),
-      conversionWarnings: conversion.warnings,
+      // A valid conversion warning is advisory: it remains visible through
+      // conversionWarnings but must not make otherwise-resolved credit
+      // incomplete (or prevent programme completion).
+      reviewFlag: quantityReview ?? (!e.isIncidental && !e.noSiteWork && !conversion.valid && conversion.warnings[0] ? `Review UOM — ${conversion.warnings[0]}` : null),
+      conversionWarnings: e.isIncidental || e.noSiteWork ? [] : conversion.warnings,
       overlaps: overlaps.get(`${e.kind}:${e.entryId}`) ?? [],
     };
   });
@@ -330,7 +347,8 @@ export type LayerBreakdownRow = {
   /** null = entries with no layer recorded (never coerced to 1). */
   layerNo: number | null;
   /** Sum of BOQ-credit quantities — a split of the existing total, never a second quantity. */
-  qty: number;
+  qty: number | null;
+  unresolved: boolean;
   entryCount: number;
 };
 
@@ -343,19 +361,20 @@ export type LayerBreakdownRow = {
  * credit/cumulative formula involved.
  */
 export function layerBreakdown(computed: ComputedEntry[]): LayerBreakdownRow[] {
-  const m = new Map<number | null, { qty: number; entryCount: number }>();
+  const m = new Map<number | null, { qty: number; entryCount: number; unresolved: boolean }>();
   for (const e of computed) {
-    if (e.kind !== "progress" || e.boqCreditQty == null) continue;
+    if (e.kind !== "progress") continue;
     const key = e.layerNo ?? null;
-    const cur = m.get(key) ?? { qty: 0, entryCount: 0 };
-    cur.qty += e.boqCreditQty;
+    const cur = m.get(key) ?? { qty: 0, entryCount: 0, unresolved: false };
+    if (e.boqCreditUnresolved || e.boqCreditQty == null) cur.unresolved = true;
+    else cur.qty += e.boqCreditQty;
     cur.entryCount += 1;
     m.set(key, cur);
   }
   const distinctLayers = Array.from(m.keys()).filter((k): k is number => k != null);
   if (distinctLayers.length < 2) return [];
   return Array.from(m.entries())
-    .map(([layerNo, v]) => ({ layerNo, qty: v.qty, entryCount: v.entryCount }))
+    .map(([layerNo, v]) => ({ layerNo, qty: v.unresolved ? null : v.qty, unresolved: v.unresolved, entryCount: v.entryCount }))
     .sort((a, b) => (a.layerNo == null ? 1 : b.layerNo == null ? -1 : a.layerNo - b.layerNo));
 }
 
@@ -368,27 +387,36 @@ export function computeItemAbstract(
 ): ItemAbstract {
   let previous = 0;
   let period = 0;
+  let previousIncomplete = false;
+  let periodIncomplete = false;
   const dprIds = new Set<number>();
   let reviewCount = 0;
   let overlapCount = 0;
   for (const e of computed) {
     if (e.reviewFlag) reviewCount++;
     if (e.overlaps.length) overlapCount++;
-    if (e.boqCreditQty == null) continue;
-    if (e.dprDate < fromDate) previous += e.boqCreditQty;
-    else if (e.dprDate <= toDate) { period += e.boqCreditQty; dprIds.add(e.dprId); }
+    if (e.dprDate < fromDate) {
+      if (e.boqCreditUnresolved || e.boqCreditQty == null) previousIncomplete = true;
+      else previous += e.boqCreditQty;
+    } else if (e.dprDate <= toDate) {
+      if (e.boqCreditUnresolved || e.boqCreditQty == null) periodIncomplete = true;
+      else period += e.boqCreditQty;
+      dprIds.add(e.dprId);
+    }
   }
-  const cumulative = previous + period;
+  const previousQty = previousIncomplete ? null : previous;
+  const thisPeriodQty = periodIncomplete ? null : period;
+  const cumulative = previousQty == null || thisPeriodQty == null ? null : previousQty + thisPeriodQty;
   const contractQty = item.boqQty != null && Number.isFinite(item.boqQty) ? Number(item.boqQty) : 0;
   const hasContract = contractQty > 0;
   return {
     boqItemId: item.id,
     contractQty,
-    previousQty: previous,
-    thisPeriodQty: period,
+    previousQty,
+    thisPeriodQty,
     cumulativeQty: cumulative,
-    balanceQty: hasContract ? contractQty - cumulative : null,
-    pctComplete: hasContract ? (cumulative / contractQty) * 100 : null,
+    balanceQty: hasContract && cumulative != null ? contractQty - cumulative : null,
+    pctComplete: hasContract && cumulative != null ? (cumulative / contractQty) * 100 : null,
     dprCount: dprIds.size,
     entryCount: computed.filter((e) => e.dprDate >= fromDate && e.dprDate <= toDate).length,
     reviewCount,

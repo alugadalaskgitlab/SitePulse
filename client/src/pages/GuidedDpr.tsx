@@ -38,7 +38,7 @@ import { parseDprError } from "@/lib/dprErrors";
 import { InsufficientDieselDialog, parseInsufficientPlantStock, type InsufficientPlantStockPayload } from "@/components/InsufficientDieselDialog";
 import { useUpload } from "@/hooks/use-upload";
 import { format, subDays } from "date-fns";
-import type { Site, Personnel, DprWithDetails } from "@shared/schema";
+import type { Site, Personnel, DprWithDetails, PlanVsActualRow } from "@shared/schema";
 import { barSideLabel, parseChainageKm, QUANTITY_SOURCE_LABELS, allowedDprSides, dprSideOptionsForBar, isDprSideCompatible, isBarSide } from "@shared/barSide";
 import { chainageOutsideBar, suggestGuidedBars, emptySuggestionsReason, normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import { resolveQuantitySource, checkQuantitySourceRow, MANUAL_QUANTITY_SOURCES, calculateLengthFromChainage, resolveBoqUomProfile, boqProgressQty, dprMeasurementSummary, resolveBoqDisplayUnit } from "@shared/dprGeometry";
@@ -87,6 +87,7 @@ import { currentLocalEquipmentTime, isMeaningfulEquipmentRow, isVisibleEquipment
 import { DPR_REGISTER_PATH, resolveReturnTo } from "@/lib/progressReportNav";
 import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arrangementStatusHistory";
 import { transitionDieselSource, validateDieselTankBalance } from "@shared/dieselEntryValidation";
+import { dprActualBalance, type DprActualBalance } from "@/lib/dprActualBalance";
 
 // ── Local types (shapes mirror SiteEntry payload rows) ───────────────────────
 
@@ -892,7 +893,6 @@ export default function GuidedDpr() {
 
   // Part C (scoped balance): whole-BOQ-item totals — same endpoint the
   // Detailed DPR uses — shown smaller/separate from the bar's own figures.
-  type PlanVsActualRow = { boqItemId: number; currentQty: number; totalActual: number; unit: string };
   const { data: planVsActualRows = [] } = useQuery<PlanVsActualRow[]>({
     queryKey: ["/api/boq/projects", boqProjectId, "plan-vs-actual", date],
     queryFn: async () => {
@@ -901,12 +901,11 @@ export default function GuidedDpr() {
     },
     enabled: !!boqProjectId,
   });
-  const itemTotals = (boqItemId: number | null): { currentQty: number; totalActual: number; balance: number; unit: string } | null => {
+  const itemTotals = (boqItemId: number | null): DprActualBalance | null => {
     if (boqItemId == null) return null;
     const row = planVsActualRows.find((r) => r.boqItemId === boqItemId);
     if (!row) return null;
-    const balance = Math.round((row.currentQty - row.totalActual) * 1000) / 1000;
-    return { currentQty: row.currentQty, totalActual: row.totalActual, balance, unit: row.unit };
+    return dprActualBalance(row);
   };
 
   const { data: programmeBars = [] } = useQuery<ProgrammeBar[]>({

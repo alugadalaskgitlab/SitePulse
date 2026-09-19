@@ -110,7 +110,9 @@ describe("task1479 authoritative BOQ progress units", () => {
     expect(entryBoqCredit(progress, boq)).toBeNull();
     const computed = computeItemEntries([progress], boq)[0];
     expect(computed.reviewFlag).toMatch(/Review UOM/);
-    expect(computed.runningCumulative).toBe(0);
+    // Task #1481: unresolved credit makes the cumulative explicitly incomplete,
+    // rather than presenting the resolved subtotal as a complete zero.
+    expect(computed.runningCumulative).toBeNull();
   });
 
   it("honours a valid structure row custom override over the item factor", () => {

@@ -65,6 +65,7 @@ type Report = {
 const today = () => new Date().toISOString().slice(0, 10);
 const fmt = (n: number | null | undefined, dp = 3) =>
   n == null ? "—" : Number(n.toFixed(dp)).toLocaleString("en-IN");
+const incompleteQty = <span className="text-amber-700 font-medium" title="One or more physical evidence rows have unresolved BOQ credit">Incomplete — review</span>;
 const itemLabel = (b: ReportItem["boqItem"]) => boqItemDisplayName(b);
 
 export default function ProgressReport() {
@@ -247,11 +248,11 @@ function ItemWise({ abstracts, from, to, state, update }: { abstracts: Array<{ i
                   </td>
                   <td className="px-3 py-2">{it.boqItem.unit}</td>
                   <td className="px-3 py-2 text-right">{fmt(abs.contractQty)}</td>
-                  <td className="px-3 py-2 text-right">{fmt(abs.previousQty)}</td>
-                  <td className="px-3 py-2 text-right font-medium">{fmt(abs.thisPeriodQty)}</td>
-                  <td className="px-3 py-2 text-right font-medium">{fmt(abs.cumulativeQty)}</td>
-                  <td className="px-3 py-2 text-right">{fmt(abs.balanceQty)}</td>
-                  <td className="px-3 py-2 text-right">{abs.pctComplete != null ? `${abs.pctComplete.toFixed(1)}%` : "—"}</td>
+                  <td className="px-3 py-2 text-right">{abs.previousQty == null ? incompleteQty : fmt(abs.previousQty)}</td>
+                  <td className="px-3 py-2 text-right font-medium">{abs.thisPeriodQty == null ? incompleteQty : fmt(abs.thisPeriodQty)}</td>
+                  <td className="px-3 py-2 text-right font-medium">{abs.cumulativeQty == null ? incompleteQty : fmt(abs.cumulativeQty)}</td>
+                  <td className="px-3 py-2 text-right">{abs.cumulativeQty == null ? incompleteQty : fmt(abs.balanceQty)}</td>
+                  <td className="px-3 py-2 text-right">{abs.cumulativeQty == null ? incompleteQty : abs.pctComplete != null ? `${abs.pctComplete.toFixed(1)}%` : "—"}</td>
                   <td className="px-3 py-2 text-right">{abs.dprCount}</td>
                   <td className="px-2">{openId === it.boqItem.id ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</td>
                 </tr>
@@ -302,7 +303,7 @@ function MeasurementSheet({ item, from, to, state, update }: { item: ReportItem;
                 <span className="text-slate-600">
                   {l.layerNo != null ? layerDisplayName(itemLabel(item.boqItem), l.layerNo) : "No layer recorded"}
                 </span>
-                <span className="font-medium">— {fmt(l.qty, 4)} {item.boqItem.unit}</span>
+                <span className="font-medium">— {l.unresolved ? incompleteQty : <>{fmt(l.qty, 4)} {item.boqItem.unit}</>}</span>
                 <span className="text-slate-400">({l.entryCount} {l.entryCount === 1 ? "entry" : "entries"})</span>
               </div>
             ))}
@@ -373,7 +374,7 @@ function MeasurementSheet({ item, from, to, state, update }: { item: ReportItem;
                       <td className="px-2 py-1.5 text-right">
                         {isIncidental ? (
                           <span className="text-purple-700 font-semibold not-italic" title="Incidental — no BOQ credit">—</span>
-                        ) : e.boqCreditQty != null ? `${fmt(e.boqCreditQty, 4)} ${item.boqItem.unit}` : "—"}
+                        ) : e.boqCreditQty != null ? `${fmt(e.boqCreditQty, 4)} ${item.boqItem.unit}` : incompleteQty}
                       </td>
                     </>
                   ) : (
@@ -381,12 +382,12 @@ function MeasurementSheet({ item, from, to, state, update }: { item: ReportItem;
                       {isIncidental ? (
                         <span className="text-purple-700 font-semibold not-italic" title="Incidental — no BOQ credit">—</span>
                       ) : (
-                        e.boqCreditQty != null ? `${fmt(e.boqCreditQty, 4)} ${item.boqItem.unit}` : "—"
+                         e.boqCreditQty != null ? `${fmt(e.boqCreditQty, 4)} ${item.boqItem.unit}` : incompleteQty
                       )}
                     </td>
                   )}
                   <td className="px-2 py-1.5 text-right font-medium">
-                    {isIncidental ? <span className="text-purple-600 not-italic text-[10px]">incidental</span> : fmt(e.runningCumulative, 4)}
+                    {isIncidental ? <span className="text-purple-600 not-italic text-[10px]">incidental</span> : e.runningCumulative == null ? incompleteQty : fmt(e.runningCumulative, 4)}
                   </td>
                   <td className="px-2 py-1.5"><Link href={dprLinkWithReturn(e.dprId, state)} className="text-blue-600 hover:underline" data-testid={`link-dpr-${e.dprId}`}>DPR-{e.dprId}</Link></td>
                   <td className="px-2 py-1.5 text-slate-500">{e.engineer ?? "—"}</td>
@@ -398,6 +399,7 @@ function MeasurementSheet({ item, from, to, state, update }: { item: ReportItem;
                       </span>
                     )}
                     {e.reviewFlag && <span className="text-amber-700 flex items-center gap-1 not-italic"><AlertTriangle className="w-3 h-3" />{e.reviewFlag}</span>}
+                    {!e.reviewFlag && e.conversionWarnings.length > 0 && <span className="text-blue-700 flex items-center gap-1 not-italic"><AlertTriangle className="w-3 h-3" />Advisory: {e.conversionWarnings.join("; ")}</span>}
                     {e.overlaps.length > 0 && (
                       <span className="text-orange-700 flex items-center gap-1 not-italic"><AlertTriangle className="w-3 h-3" />
                         Possible overlap with {e.overlaps.map((o) => `DPR-${o.withDprId} (${o.side ?? "?"} ${formatChainageKm(o.fromKm)}–${formatChainageKm(o.toKm)})`).join(", ")}
@@ -540,7 +542,7 @@ function EntryMiniCard({ entry, item, state, side }: { entry: ComputedEntry; ite
         <span className="text-slate-500">Credited qty:</span>{" "}
         {entry.isIncidental
           ? <span className="text-purple-700 font-semibold">Incidental (no credit)</span>
-          : entry.boqCreditQty != null ? `${fmt(entry.boqCreditQty, 4)} ${item.boqItem.unit}` : "—"}
+          : entry.boqCreditQty != null ? `${fmt(entry.boqCreditQty, 4)} ${item.boqItem.unit}` : incompleteQty}
       </div>
       {(entry as any).chainageOverrideReason && (
         <div className="text-amber-700"><span className="font-semibold">Override reason:</span> {(entry as any).chainageOverrideReason}</div>
@@ -1122,12 +1124,12 @@ function ChainageWise({ items, state, update }: { items: ReportItem[] } & Nav) {
   }, [items, fromKm, toKm, chSide, active]);
 
   const totals = useMemo(() => {
-    const m = new Map<string, { label: string; unit: string; qty: number }>();
+    const m = new Map<string, { label: string; unit: string; qty: number | null }>();
     for (const { e, item } of rows) {
-      if (e.boqCreditQty == null) continue;
       const k = `${item.id}`;
       const t = m.get(k) ?? { label: itemLabel(item), unit: item.unit, qty: 0 };
-      t.qty += e.boqCreditQty;
+      if (e.boqCreditUnresolved || e.boqCreditQty == null) t.qty = null;
+      else if (t.qty != null) t.qty += e.boqCreditQty;
       m.set(k, t);
     }
     return Array.from(m.values());
@@ -1171,7 +1173,7 @@ function ChainageWise({ items, state, update }: { items: ReportItem[] } & Nav) {
                   <td className="px-2 py-1.5 text-right not-italic">
                     {e.isIncidental
                       ? <span className="text-purple-700 text-[10px]">no BOQ credit</span>
-                      : (e.boqCreditQty != null ? `${fmt(e.boqCreditQty, 4)} ${item.unit}` : "—")}
+                      : (e.boqCreditQty != null ? `${fmt(e.boqCreditQty, 4)} ${item.unit}` : incompleteQty)}
                   </td>
                   <td className="px-2 py-1.5 not-italic"><Link href={dprLinkWithReturn(e.dprId, state)} className="text-blue-600 hover:underline">DPR-{e.dprId}</Link></td>
                   <td className="px-2 py-1.5 max-w-xs text-slate-500">{e.remarks ?? ""}</td>
@@ -1182,7 +1184,7 @@ function ChainageWise({ items, state, update }: { items: ReportItem[] } & Nav) {
             {totals.length > 0 && (
               <tfoot className="bg-slate-50 border-t font-medium">
                 {totals.map((t) => (
-                  <tr key={t.label}><td colSpan={5} className="px-2 py-1.5 text-right">{t.label}</td><td colSpan={2} className="px-2 py-1.5 text-right">{fmt(t.qty, 4)} {t.unit}</td><td colSpan={2} /></tr>
+                  <tr key={t.label}><td colSpan={5} className="px-2 py-1.5 text-right">{t.label}</td><td colSpan={2} className="px-2 py-1.5 text-right">{t.qty == null ? incompleteQty : `${fmt(t.qty, 4)} ${t.unit}`}</td><td colSpan={2} /></tr>
                 ))}
               </tfoot>
             )}
@@ -1230,7 +1232,7 @@ function DateWise({ items, from, to, state }: { items: ReportItem[]; from: strin
                     <td className="px-2 py-1.5 text-right not-italic">
                       {e.isIncidental
                         ? <span className="text-purple-700 text-[10px]">no BOQ credit</span>
-                        : (e.boqCreditQty != null ? `${fmt(e.boqCreditQty, 4)} ${item.unit}` : "—")}
+                        : (e.boqCreditQty != null ? `${fmt(e.boqCreditQty, 4)} ${item.unit}` : incompleteQty)}
                     </td>
                     <td className="px-2 py-1.5 not-italic"><Link href={dprLinkWithReturn(e.dprId, state)} className="text-blue-600 hover:underline">DPR-{e.dprId}</Link></td>
                     <td className="px-2 py-1.5 text-slate-500">{e.engineer ?? "—"}</td>

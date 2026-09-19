@@ -112,6 +112,25 @@ describe("A: classifyBarExecutionState", () => {
     expect(classifyBarExecutionState(1000, mkEvidence(1200))).toBe("completed");
   });
 
+  it("invalid + valid quantity mix cannot complete from the partial resolved total", () => {
+    expect(classifyBarExecutionState(1000, {
+      reportedQty: 1000,
+      earliestProgressDate: "2025-06-05",
+      reviewRequired: true,
+      unresolved: true,
+    })).toBe("started");
+  });
+
+  it("a valid advisory warning does not prevent completion", () => {
+    expect(classifyBarExecutionState(1000, {
+      reportedQty: 1000,
+      earliestProgressDate: "2025-06-05",
+      reviewRequired: false,
+      unresolved: false,
+      conversionWarnings: ["Ignored stale conversion factor because units are identical"],
+    })).toBe("completed");
+  });
+
   it("does NOT complete when plannedQty <= 0 even if reportedQty >= 0", () => {
     // zero plannedQty: reportedQty=0 is not positive evidence => not_started
     expect(classifyBarExecutionState(0, mkEvidence(0))).toBe("not_started");
