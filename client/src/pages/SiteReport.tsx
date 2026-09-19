@@ -33,6 +33,7 @@ import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
 import { isVisibleEquipmentRow } from "@shared/equipmentUsage";
 import { getBaseSiteName } from "@shared/siteName";
 import { dprMeasurementSummary } from "@shared/dprGeometry";
+import { formatDprReference } from "@/lib/dprReference";
 
 export default function SiteReport() {
   const [, params] = useRoute("/site/report/:id");
@@ -285,8 +286,10 @@ export default function SiteReport() {
               <ChevronLeft className="w-5 h-5" />
             </Button>
           </Link>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold font-display">Site Report</h1>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-bold font-display">
+              Site Report <span className="text-primary whitespace-nowrap">· {formatDprReference(dpr.id)}</span>
+            </h1>
             {dpr && (
               <span
                 className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium whitespace-nowrap ${
@@ -358,6 +361,7 @@ export default function SiteReport() {
 
       {/* Report Info Header with HLC Logo */}
       <ReportHeader 
+        dprId={dpr.id}
         date={dpr.date} 
         site={dpr.site} 
         engineer={dpr.engineer} 

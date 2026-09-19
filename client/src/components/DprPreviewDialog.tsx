@@ -18,6 +18,7 @@ import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
 import { getBaseSiteName } from "@shared/siteName";
 import { dprMeasurementSummary } from "@shared/dprGeometry";
 import type { Site } from "@shared/schema";
+import { formatDprReference } from "@/lib/dprReference";
 
 type PreviewDpr = {
   id: number;
@@ -68,14 +69,16 @@ export function DprPreviewDialog({
   highlightEntryId?: number | null;
   onClose: () => void;
 }) {
+  const requestedSavedDprId = Number.isInteger(dprId) && Number(dprId) > 0 ? Number(dprId) : null;
   const { data: dpr, isLoading, isError } = useQuery<PreviewDpr>({
-    queryKey: ["/api/dprs", dprId],
+    queryKey: ["/api/dprs", requestedSavedDprId],
     queryFn: async () => {
-      const res = await fetch(`/api/dprs/${dprId}`, { credentials: "include" });
+      if (requestedSavedDprId == null) throw new Error("A saved DPR ID is required");
+      const res = await fetch(`/api/dprs/${requestedSavedDprId}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load DPR");
       return res.json();
     },
-    enabled: dprId != null,
+    enabled: requestedSavedDprId != null,
     staleTime: 60_000,
   });
   const visibleEquipment = visibleEquipmentRows(dpr?.equipment);
@@ -87,11 +90,15 @@ export function DprPreviewDialog({
   });
 
   return (
-    <Dialog open={dprId != null} onOpenChange={(v) => { if (!v) onClose(); }}>
+    <Dialog open={requestedSavedDprId != null} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="dpr-preview-dialog">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            DPR-{dprId}
+            {Number.isInteger(dpr?.id) && Number(dpr?.id) > 0
+              ? formatDprReference(dpr!.id)
+              : isLoading && requestedSavedDprId != null
+                ? formatDprReference(requestedSavedDprId)
+                : "DPR preview"}
             <Badge variant="secondary" data-testid="dpr-preview-readonly-badge">Read-only</Badge>
           </DialogTitle>
           <DialogDescription>

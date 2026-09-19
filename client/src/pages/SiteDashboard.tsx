@@ -35,6 +35,7 @@ import {
   Pencil,
   BarChart2,
   Camera,
+  Search,
 } from "lucide-react";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
 import type { EquipmentMasterType } from "@shared/schema";
@@ -62,6 +63,7 @@ import {
   type ActivityFilterOption,
 } from "@/lib/activityFilter";
 import { visibleEquipmentRows } from "@shared/equipmentUsage";
+import { dprMatchesReference, formatDprReference } from "@/lib/dprReference";
 
 const MATERIAL_OPTIONS = [
   "WMM", "GSB", "Soil", "Dust", "6MM DOWN", "10/12MM", "20MM", "BC Mix", "DBM Mix", "Water", "Bitumen", "Emulsion", "Diesel"
@@ -83,7 +85,7 @@ export default function SiteDashboard() {
   // re-opens with the user's last-used filter set. URL params (if any are
   // ever added for shareable links) win over the saved set.
   const SITE_DPR_FILTER_URL_KEYS = [
-    "site", "engineer", "dateFrom", "dateTo", "activity", "equipment", "hasDiesel", "material", "supplier", "workType",
+    "reference", "site", "engineer", "dateFrom", "dateTo", "activity", "equipment", "hasDiesel", "material", "supplier", "workType",
   ];
   const mgmtReportSite = (() => {
     if (typeof window === "undefined") return null;
@@ -100,6 +102,7 @@ export default function SiteDashboard() {
     if (typeof window === "undefined" || !urlHasDprFilterParams) return {};
     const sp = new URLSearchParams(window.location.search);
     return {
+      reference: sp.get("reference") ?? "",
       site: sp.get("site") ?? "",
       engineer: sp.get("engineer") ?? "",
       dateFrom: sp.get("dateFrom") ?? "",
@@ -115,6 +118,7 @@ export default function SiteDashboard() {
   const [filters, setFilters, resetDprFilters] = usePersistedFilters(
     "site-dashboard:dpr-filters:v2",
     {
+      reference: "",
       site: "",
       engineer: "",
       dateFrom: "",
@@ -200,6 +204,10 @@ export default function SiteDashboard() {
     if (!dprsWithDetails) return [];
     
     return detailedDprs.filter((dpr: any) => {
+      // Reference search always targets this exact saved row, never a
+      // version/original lineage id.
+      if (!dprMatchesReference(dpr.id, filters.reference)) return false;
+
       // Site filter - compare using base site name
       if (filters.site) {
         const dprBaseSite = getBaseSiteName(dpr.site);
@@ -337,7 +345,7 @@ export default function SiteDashboard() {
     resetDprFilters();
   };
 
-  const hasActiveFilters = filters.site || filters.engineer || filters.dateFrom || filters.dateTo || filters.activity || filters.equipment || filters.hasDiesel || filters.material || filters.supplier || filters.workType;
+  const hasActiveFilters = filters.reference || filters.site || filters.engineer || filters.dateFrom || filters.dateTo || filters.activity || filters.equipment || filters.hasDiesel || filters.material || filters.supplier || filters.workType;
 
   const handleAdminAction = (action: "reports-excel" | "reports-pdf" | "reports-print") => {
     executeAction(action);
@@ -526,6 +534,7 @@ export default function SiteDashboard() {
     
     // Filters info
     const filterLines = [];
+    if (filters.reference) filterLines.push(`DPR Reference: ${filters.reference}`);
     if (filters.dateFrom) filterLines.push(`From: ${format(new Date(filters.dateFrom), "dd MMM yyyy")}`);
     if (filters.dateTo) filterLines.push(`To: ${format(new Date(filters.dateTo), "dd MMM yyyy")}`);
     if (filters.site) filterLines.push(`Site: ${filters.site}`);
@@ -755,6 +764,7 @@ export default function SiteDashboard() {
     `;
 
     const filtersText = [];
+    if (filters.reference) filtersText.push(`DPR Reference: ${filters.reference}`);
     if (filters.dateFrom) filtersText.push(`From: ${format(new Date(filters.dateFrom), "dd MMM yyyy")}`);
     if (filters.dateTo) filtersText.push(`To: ${format(new Date(filters.dateTo), "dd MMM yyyy")}`);
     if (filters.site) filtersText.push(`Site: ${filters.site}`);
@@ -1005,6 +1015,21 @@ export default function SiteDashboard() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="space-y-2">
+                  <Label htmlFor="dpr-reference-search" className="text-sm">DPR Reference / ID</Label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                    <Input
+                      id="dpr-reference-search"
+                      type="search"
+                      value={filters.reference}
+                      onChange={(e) => setFilters({ ...filters, reference: e.target.value })}
+                      placeholder="DPR-123 or 123"
+                      className="pl-9"
+                      data-testid="input-dpr-reference"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
                   <Label className="text-sm">Date From</Label>
                   <Input
                     type="date"
@@ -1224,6 +1249,12 @@ export default function SiteDashboard() {
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <h3 className="font-semibold truncate">{dpr.site}</h3>
+                                <span
+                                  className="inline-flex items-center px-2 py-0.5 rounded border bg-muted font-mono text-xs font-semibold text-foreground whitespace-nowrap"
+                                  data-testid={`reference-dpr-${dpr.id}`}
+                                >
+                                  {formatDprReference(dpr.id)}
+                                </span>
                                 {(dpr as any).workType === "structure" ? (
                                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-semibold border bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-700 whitespace-nowrap" data-testid={`badge-worktype-${dpr.id}`}>Structure</span>
                                 ) : (

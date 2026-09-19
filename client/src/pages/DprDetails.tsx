@@ -21,6 +21,7 @@ import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
 import { layerDisplayName } from "@shared/layerDisplay";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { visibleEquipmentRows } from "@shared/equipmentUsage";
+import { formatDprReference } from "@/lib/dprReference";
 
 export default function DprDetails() {
   const [, params] = useRoute("/dpr/:id");
@@ -229,7 +230,9 @@ export default function DprDetails() {
           </Link>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl font-bold font-display">Report Details</h1>
+              <h1 className="text-2xl font-bold font-display">
+                Report Details <span className="text-primary whitespace-nowrap">· {formatDprReference(dpr.id)}</span>
+              </h1>
               {(dpr as any).dprStatus === "draft" ? (
                 <Badge variant="destructive" data-testid="badge-dpr-draft">Draft — not submitted</Badge>
               ) : (
@@ -278,9 +281,18 @@ export default function DprDetails() {
 
       {/* Report Info Header with HLC Logo */}
       <ReportHeader 
+        dprId={dpr.id}
         date={dpr.date} 
         site={dpr.site} 
         engineer={dpr.engineer}
+        submittedAt={(dpr as any).submittedAt || undefined}
+        dprStatus={(dpr as any).dprStatus}
+        createdAt={(dpr as any).createdAt}
+        authorName={(dpr as any).authorName}
+        lastEditedAt={(dpr as any).lastEditedAt}
+        lastEditedByName={(dpr as any).lastEditedByName}
+        submittedByName={(dpr as any).submittedByName}
+        workType={(dpr as any).workType}
       />
 
       {/* Activity Progress */}

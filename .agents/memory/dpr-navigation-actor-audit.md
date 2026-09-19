@@ -5,6 +5,14 @@ description: Durable rules for DPR return navigation and authenticated creator, 
 
 # DPR navigation and actor audit
 
+## Reference identity decision
+
+Keep the existing `DPR-{saved record id}` convention rather than introducing a separate number sequence or reusing an original version's identity.
+
+**Why:** Users need to match overlap warnings to the exact physical report/version they open; a shared lineage number would identify multiple different records.
+
+**How to apply:** Use the currently loaded saved record's ID in lists, headers and previews; keep lineage as separate history and leave unsaved reports unnumbered.
+
 ## Navigation rule
 
 Every DPR form, draft hub, report, success page, and submitted edit uses a validated root-relative return target. Preserve the complete originating register URL, including filters and tabs, through nested transitions. If no safe origin exists, return to the DPR register rather than a home page or unrelated hub.
