@@ -25,6 +25,10 @@ export type EvidenceProgress = {
   quantity?: number | null; dprConversionFactor?: number | null;
   chainageFromKm?: number | null; chainageToKm?: number | null; side?: string | null;
   layerNo?: number | null; isValid?: boolean | null;
+  /** Eligible physical evidence whose BOQ-unit credit could not be resolved. */
+  conversionUnresolved?: boolean | null;
+  /** Conversion diagnostics retained independently from eligibility/credit. */
+  conversionWarnings?: string[] | null;
 };
 export type EvidenceTrip = {
   id: number; boqProjectId?: number | null; boqItemId?: number | null;
@@ -34,7 +38,8 @@ export type EvidenceTrip = {
 };
 export type ArrangementBarEvidence = {
   programmeBarId: number; allocatedQty: number | null; allocationUom: string | null;
-  dprExecutedQty: number; dprEvidenceAvailable: boolean; tripCount: number; tripOriginal: Array<{ uom: string; quantity: number }>;
+  dprExecutedQty: number; dprEvidenceAvailable: boolean; dprCreditUnresolved: boolean;
+  tripCount: number; tripOriginal: Array<{ uom: string; quantity: number }>;
   tripConvertedCum: number | null; varianceCum: number | null; balanceVsAllocation: number | null;
   warnings: string[];
 };
@@ -51,7 +56,8 @@ export function calculateArrangementExecutionEvidence(
   const barsById = new Map(bars.map(bar => [bar.id, bar]));
   const out = new Map<number, ArrangementBarEvidence>(bars.map(bar => [bar.id, {
     programmeBarId: bar.id, allocatedQty: n(bar.allocatedQty), allocationUom: arrangement.uom ?? null,
-    dprExecutedQty: 0, dprEvidenceAvailable: false, tripCount: 0, tripOriginal: [], tripConvertedCum: null,
+    dprExecutedQty: 0, dprEvidenceAvailable: false, dprCreditUnresolved: false,
+    tripCount: 0, tripOriginal: [], tripConvertedCum: null,
     varianceCum: null, balanceVsAllocation: null, warnings: [] as string[],
   }]));
   const addWarning = (barId: number, warning: string) => {
@@ -68,8 +74,14 @@ export function calculateArrangementExecutionEvidence(
     if (direct) {
       if (direct.boqItemId === entry.boqItemId) {
         const row = out.get(direct.id)!;
-        row.dprExecutedQty += boqProgressQty(qty, { dprConversionFactor: entry.dprConversionFactor })!;
         row.dprEvidenceAvailable = true;
+        for (const warning of entry.conversionWarnings ?? []) addWarning(direct.id, warning);
+        if (entry.conversionUnresolved) {
+          row.dprCreditUnresolved = true;
+          addWarning(direct.id, DPR_INCOMPLETE_WARNING);
+        } else {
+          row.dprExecutedQty += boqProgressQty(qty, { dprConversionFactor: entry.dprConversionFactor })!;
+        }
       }
       continue;
     }
@@ -103,13 +115,19 @@ export function calculateArrangementExecutionEvidence(
       continue; // overlapping bars cannot be split reliably without an allocation rule
     }
     const covered = overlaps.reduce((sum, x) => sum + (x.segment.to - x.segment.from), 0);
-    const credited = boqProgressQty(qty, { dprConversionFactor: entry.dprConversionFactor })!;
     // Split only by the physical intersecting reach. This prevents a full DPR
     // quantity being duplicated onto every overlapping bar.
     for (const { bar, segment } of overlaps) {
       const row = out.get(bar.id)!;
-      row.dprExecutedQty += credited * ((segment.to - segment.from) / length);
       row.dprEvidenceAvailable = true;
+      for (const warning of entry.conversionWarnings ?? []) addWarning(bar.id, warning);
+      if (entry.conversionUnresolved) {
+        row.dprCreditUnresolved = true;
+        addWarning(bar.id, DPR_INCOMPLETE_WARNING);
+      } else {
+        const credited = boqProgressQty(qty, { dprConversionFactor: entry.dprConversionFactor })!;
+        row.dprExecutedQty += credited * ((segment.to - segment.from) / length);
+      }
     }
     if (covered < length - 1e-6) overlaps.forEach(({ bar }) => addWarning(bar.id, DPR_INCOMPLETE_WARNING));
   }
@@ -151,7 +169,7 @@ export function calculateArrangementExecutionEvidence(
     row.dprExecutedQty = Number(row.dprExecutedQty.toFixed(6));
     if (unconvertibleTripBars.has(bar.id)) row.tripConvertedCum = null;
     else row.tripConvertedCum = row.tripConvertedCum == null ? null : Number(row.tripConvertedCum.toFixed(6));
-    row.varianceCum = !row.dprEvidenceAvailable || row.tripConvertedCum == null
+    row.varianceCum = !row.dprEvidenceAvailable || row.dprCreditUnresolved || row.tripConvertedCum == null
       ? null : Number((row.dprExecutedQty - row.tripConvertedCum).toFixed(6));
     row.balanceVsAllocation = row.warnings.includes(DPR_INCOMPLETE_WARNING) || row.allocatedQty == null
       ? null : Number((row.allocatedQty - row.dprExecutedQty).toFixed(6));

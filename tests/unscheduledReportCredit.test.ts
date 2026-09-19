@@ -13,7 +13,10 @@ const fx = vi.hoisted(() => {
   const query = (rows: any[]) => {
     const q: any = {
       from: () => q,
+      innerJoin: () => q,
+      leftJoin: () => q,
       where: () => q,
+      groupBy: () => q,
       limit: () => q,
       then: (resolve: any, reject: any) => Promise.resolve(rows).then(resolve, reject),
     };
@@ -45,6 +48,7 @@ const boqItem = {
   currentQty: 5000,
   clientRate: null,
   dprConversionFactor: 0.5,
+  dprMeasurementMethod: "SQM_LW",
   categoryName: null,
 };
 
@@ -103,10 +107,18 @@ describe("unscheduled BOQ progress remains in reporting credit", () => {
   });
 
   it("getPlanVsActual reports the persisted null-link BOQ total", async () => {
-    // The raw aggregate is what the production SQL returns after joining the
-    // persisted DPR/progress/BOQ rows. A null programmeBarId is not a filter.
+    // Production now returns physical rows and credits them through the shared
+    // row-aware unit contract. A null programmeBarId is still not a filter.
     fx.executeRows.push(
-      [{ boqItemId: ITEM_ID, totalQty: 6, lastDate: "2026-08-05" }],
+      [{
+        boqItemId: ITEM_ID,
+        quantity: 12,
+        uom: "SQM",
+        boqUnit: "CUM",
+        measurementMethod: "SQM_LW",
+        conversionFactor: 0.5,
+        dprDate: "2026-08-05",
+      }],
       [], // structure DPR aggregate
     );
 
@@ -117,5 +129,124 @@ describe("unscheduled BOQ progress remains in reporting credit", () => {
       totalActual: 6,
       lastActivityDate: "2026-08-05",
     });
+  });
+
+  it("getPlanVsActual ignores a stale factor when row and contractual UOM are both SQM", async () => {
+    const alladurgItem = {
+      ...boqItem,
+      id: 13,
+      unit: "Sqm",
+      canonicalUnit: "Sqm",
+      currentQty: 6960,
+      clientRate: 4.04,
+      dprConversionFactor: 0.0001,
+    };
+    class AlladurgFixtureStorage extends FixtureStorage {
+      override async getBoqItems() { return [alladurgItem] as any; }
+    }
+    fx.executeRows.push(
+      [
+        { boqItemId: 13, quantity: 2400, uom: "SQM", boqUnit: "Sqm", measurementMethod: null, conversionFactor: 0.0001, dprDate: "2026-08-16" },
+        { boqItemId: 13, quantity: 2400, uom: "SQM", boqUnit: "Sqm", measurementMethod: null, conversionFactor: 0.0001, dprDate: "2026-08-17" },
+      ],
+      [],
+    );
+
+    const [row] = await new AlladurgFixtureStorage().getPlanVsActual(PROJECT_ID, "2026-08-31");
+    expect(row.totalActual).toBe(4800);
+    expect(row.actualAmount).toBe(19392);
+    expect(row.lastActivityDate).toBe("2026-08-17");
+    expect(row.actualIncomplete).toBe(false);
+    expect(row.conversionWarnings.join(" ")).toMatch(/Ignored stale conversion factor/);
+  });
+
+  it("getPlanVsActual nulls completion and valuation when any eligible credit is unresolved", async () => {
+    const unresolvedItem = {
+      ...boqItem,
+      unit: "MT",
+      canonicalUnit: "MT",
+      dprMeasurementMethod: null,
+      dprConversionFactor: 2,
+      clientRate: 100,
+    };
+    class UnresolvedFixtureStorage extends FixtureStorage {
+      override async getBoqItems() { return [unresolvedItem] as any; }
+    }
+    fx.executeRows.push(
+      [{
+        boqItemId: ITEM_ID, quantity: 10, uom: "NOS", quantitySource: "measured",
+        boqUnit: "MT", measurementMethod: null, conversionFactor: 2, dprDate: "2026-08-18",
+      }],
+      [],
+    );
+
+    const [row] = await new UnresolvedFixtureStorage().getPlanVsActual(PROJECT_ID, "2026-08-31");
+    expect(row.totalActual).toBeNull();
+    expect(row.percentComplete).toBeNull();
+    expect(row.actualAmount).toBeNull();
+    expect(row.actualIncomplete).toBe(true);
+    expect(row.conversionWarnings.join(" ")).toMatch(/explicit NOS→MT conversion profile factor/i);
+  });
+
+  it("getReportedQtyByBar uses full geometry metadata and exposes unresolved credit", async () => {
+    fx.selectRows.push([
+      {
+        barId: 81, boqItemId: 13, quantity: 2400, uom: "SQM",
+        quantitySource: "calculated", length: 1600, width: 1.5, thickness: null,
+        chainageFrom: "0.000", chainageTo: "1.600",
+        boqUnit: "Sqm", measurementMethod: null, conversionFactor: 0.0001,
+      },
+      {
+        barId: 82, boqItemId: 99, quantity: 10, uom: "NOS",
+        quantitySource: "measured", length: null, width: null, thickness: null,
+        chainageFrom: null, chainageTo: null,
+        boqUnit: "MT", measurementMethod: null, conversionFactor: 2,
+      },
+      {
+        barId: 83, boqItemId: 13, quantity: 0.24, uom: "SQM",
+        quantitySource: "measured",
+        quantitySourceNote: "UOM override SQM -> Ha (x0.0001): legacy import",
+        length: null, width: null, thickness: null, chainageFrom: null, chainageTo: null,
+        boqUnit: "Sqm", measurementMethod: null, conversionFactor: 0.0001,
+      },
+    ]);
+
+    const result = await new FixtureStorage().getReportedQtyByBar([81, 82]);
+    expect(result.get(81)).toBe(2400);
+    expect(result.reviewRequiredBarIds.has(81)).toBe(true); // stale factor warning remains visible
+    expect(result.has(82)).toBe(false);
+    expect(result.reviewRequiredBarIds.has(82)).toBe(true);
+    expect(result.has(83)).toBe(false);
+    expect(result.unresolvedBarIds.has(83)).toBe(true);
+  });
+
+  it("work-programme evidence credits valid warned SQM rows instead of turning them into zero", async () => {
+    fx.selectRows.push([{
+      programmeBarId: 81,
+      boqItemId: 13,
+      quantity: 2400,
+      dprDate: "2026-08-16",
+      uom: "SQM",
+      quantitySource: "calculated",
+      length: 1600,
+      width: 1.5,
+      thickness: null,
+      chainageFrom: "0.000",
+      chainageTo: "1.600",
+      itemUnit: "Sqm",
+      measurementMethod: null,
+      conversionFactor: 0.0001,
+    }]);
+    const bars = [{
+      id: 81, boqProjectId: PROJECT_ID, boqItemId: 13,
+      chainageFrom: 0, chainageTo: 1.6, side: "lhs", plannedQty: 3000,
+    }] as any;
+
+    const evidence = await new FixtureStorage().getWorkProgrammeExecutionEvidence(PROJECT_ID, bars, fx.fakeDb);
+    expect(evidence.get(81)).toMatchObject({
+      reportedQty: 2400,
+      reviewRequired: false,
+    });
+    expect(evidence.get(81)?.conversionWarnings.join(" ")).toMatch(/Ignored stale conversion factor/);
   });
 });

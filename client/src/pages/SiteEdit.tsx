@@ -23,7 +23,7 @@ import { useDpr } from "@/hooks/use-dprs";
 import type { EquipmentMasterType, Site, Personnel } from "@shared/schema";
 import { PERSONNEL_ROLES } from "@shared/schema";
 import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@shared/structureHierarchy";
-import { calculateDprQuantity, quantitiesMatch, MANUAL_QUANTITY_SOURCES, calculateLengthFromChainage, resolveBoqUomProfile, boqProgressQty, dprMeasurementSummary, resolveBoqDisplayUnit } from "@shared/dprGeometry";
+import { calculateDprQuantity, quantitiesMatch, MANUAL_QUANTITY_SOURCES, calculateLengthFromChainage, resolveBoqUomProfile, boqProgressQty, dprMeasurementSummary, resolveBoqDisplayUnit, resolveDprUnitConversion } from "@shared/dprGeometry";
 import { evaluateDprSubmitReadiness, type DprReadinessResult } from "@shared/dprSubmitReadiness";
 import { DprReadinessDialog } from "@/components/DprReadinessDialog";
 import { isBarSide, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
@@ -1975,6 +1975,27 @@ export default function SiteEdit() {
                       <SelectContent>{STRUCTURE_UOM_OPTIONS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
+                  {item.boqItemId != null && (() => {
+                    const boqItem = siteBoqItems.find((candidate) => candidate.id === item.boqItemId);
+                    if (!boqItem) return null;
+                    const conversion = resolveDprUnitConversion(
+                      { ...item, kind: "structure" },
+                      boqItem,
+                      item.dprConversionFactor,
+                    );
+                    return (
+                      <div className="sm:col-span-2 md:col-span-4 text-xs">
+                        {item.quantity != null && conversion.factor != null ? (
+                          <span className="font-medium text-teal-700" data-testid={`text-structure-boq-qty-${idx}`}>
+                            BOQ Qty: {(Number(item.quantity) * conversion.factor).toLocaleString(undefined, { maximumFractionDigits: 6 })} {conversion.targetUom}
+                          </span>
+                        ) : (
+                          <span className="font-medium text-amber-700">BOQ credit incomplete — {conversion.warnings[0] ?? "unit review required"}</span>
+                        )}
+                        {conversion.warnings.map((warning) => <p key={warning} className="text-amber-700">{warning}</p>)}
+                      </div>
+                    );
+                  })()}
                   <div className="sm:col-span-2 md:col-span-4">
                     <Label className="text-sm">Remarks (optional)</Label>
                     <Input placeholder="Any remarks..." value={item.remarks} onChange={(e) => updateField("remarks", e.target.value)} data-testid={`input-structure-remarks-${idx}`} />
@@ -2216,7 +2237,7 @@ export default function SiteEdit() {
                             updated[idx].chainageOverrideReason = v;
                             setProgress(updated);
                           }}
-                          boqQty={boqProgressQty(entry.quantity ?? calculateQuantity(entry), entryBoqItem(entry))}
+                          boqQty={boqProgressQty(entry.quantity ?? calculateQuantity(entry), entryBoqItem(entry), entry)}
                           warnOverBalance
                           executedBy={entry.executedBy || null}
                           onExecutedBy={(v) => {
@@ -2445,21 +2466,25 @@ export default function SiteEdit() {
                       const physicalQty = entry.quantity ?? calculateQuantity(entry);
                       const measurement = dprMeasurementSummary(
                         {
+                          ...entry,
                           length: getEffectiveLength(entry),
-                          chainageFrom: entry.chainageFrom,
-                          chainageTo: entry.chainageTo,
-                          width: entry.width,
-                          thickness: entry.thickness,
                           quantity: physicalQty,
                           uom: progressUom(entry),
                         },
                         boqItem,
                       );
-                      if (measurement.boqQty == null) return null;
-                      return (
-                        <p className="text-[11px] font-medium text-teal-700 mt-1" data-testid={`text-boq-qty-${idx}`}>
-                          BOQ Qty: {measurement.boqQty.toLocaleString(undefined, { maximumFractionDigits: 6 })} {measurement.boqUom ?? "(BOQ unit unavailable)"}
+                      if (measurement.boqQty == null) return (
+                        <p className="text-[11px] font-medium text-amber-700 mt-1" data-testid={`warning-boq-unit-${idx}`}>
+                          BOQ credit incomplete — {measurement.warnings[0] ?? "physical and contract units need review"}
                         </p>
+                      );
+                      return (
+                        <>
+                          <p className="text-[11px] font-medium text-teal-700 mt-1" data-testid={`text-boq-qty-${idx}`}>
+                            BOQ Qty: {measurement.boqQty.toLocaleString(undefined, { maximumFractionDigits: 6 })} {measurement.boqUom ?? "(BOQ unit unavailable)"}
+                          </p>
+                          {measurement.warnings.map((warning) => <p key={warning} className="text-[11px] text-amber-700">{warning}</p>)}
+                        </>
                       );
                     })()}
                     {/* Calculated quantities are labelled read-only; only a manual
@@ -2520,6 +2545,7 @@ export default function SiteEdit() {
                         executedQty={boqProgressQty(
                           entry.quantity ?? calculateQuantity(entry),
                           entryBoqItem(entry),
+                          entry,
                         )}
                         executedUom={resolveBoqDisplayUnit(siteBoqItems.find((it) => it.id === entry.boqItemId))}
                         readOnly={!isAdmin} persistedArrangementId={entry.earthworkArrangementId}

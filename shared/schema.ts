@@ -3670,13 +3670,20 @@ export type PlanVsActualRow = {
   categoryName: string | null;
   currentQty: number;
   totalPlanned: number;
-  totalActual: number;
-  percentComplete: number;
+  /** null when one or more eligible evidence rows have unresolved BOQ credit. */
+  totalActual: number | null;
+  /** null whenever totalActual is incomplete. */
+  percentComplete: number | null;
   lastActivityDate: string | null;
   clientRate: number | null;
   boqAmount: number;       // clientRate × currentQty
   plannedAmount: number;   // clientRate × totalPlanned (to date)
-  actualAmount: number;    // clientRate × totalActual (to date)
+  /** null whenever totalActual is incomplete. */
+  actualAmount: number | null; // clientRate × totalActual (to date)
+  /** True only when at least one eligible row has unresolved BOQ credit. */
+  actualIncomplete: boolean;
+  /** Informational and blocking conversion diagnostics; warnings alone do not imply incomplete. */
+  conversionWarnings: string[];
 };
 
 // ============================================

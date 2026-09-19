@@ -75,9 +75,9 @@ describe("BOQ credit & conversion factor (Batch 04 reuse — tests D, J, K, L, 1
     const rows2 = computeItemEntries([entry({ quantity: 225, boqItemId: 2 })], clearing);
     expect(rows2[0].converted).toBe(true);
   });
-  it("structure row-level factor override wins over item factor", () => {
+  it("same-unit structure row ignores a stale row-level factor", () => {
     const e = entry({ kind: "structure", quantity: 10, rowConversionFactor: 0.5 });
-    expect(entryBoqCredit(e, wmm)).toBe(5);
+    expect(entryBoqCredit(e, wmm)).toBe(10);
   });
 });
 

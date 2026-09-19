@@ -60,6 +60,7 @@ import { autoSequenceStructureBars, type SequenceableBar, type EquipmentInput } 
 import { isStructureTypeLabel, isChainageLabel, isChainageFromLabel, isChainageToLabel } from "@shared/structureImportLabels";
 import { classifyWorkType, STANDARD_CONCRETE_DESIGNS, isStructureOrLocationScheduledItem, isShoulderDesc } from "@shared/workTypeRecipes";
 import { suggestWorkCategoryFromDescription } from "@shared/boqWorkCategories";
+import { canonicalizeUnit } from "@shared/boqNormalise";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
@@ -79,6 +80,7 @@ import {
 import {
   checkQuantitySourceRow,
   resolveQuantitySource,
+  resolveDprUnitConversion,
   resolveBoqUomProfile,
 } from "@shared/dprGeometry";
 import { evaluateDprSubmitReadiness, type DprReadinessIssue } from "@shared/dprSubmitReadiness";
@@ -90,6 +92,7 @@ import { hasDprBoqReferences, hasPreservedDprBoqReferences } from "@shared/dprBo
 import { isEvidenceBasedDprNullProjectRecovery, normalizeDprSiteName } from "@shared/dprBoqSelection";
 import { SCOPE_SEGMENT_TYPES, SCOPE_APPLICABILITY_MODES, resolveEligibleScope, coverageForStretch, evaluateDprScope, type ScopeSegmentLike } from "@shared/projectScope";
 import { dprSaveErrorMetadata } from "./dprSaveError";
+import { boqConversionConfigError } from "./boqConversionConfig";
 import {
   registerAuthRoutes,
   assertAdmin,
@@ -2931,28 +2934,31 @@ export async function registerRoutes(
           const expected = resolveBoqUomProfile(boqItem as any).uom;
           const actualRaw = row.uom == null ? "" : String(row.uom).trim();
           const actual = actualRaw
-            ? resolveBoqUomProfile({ unit: actualRaw }).uom.toUpperCase()
+            ? canonicalizeUnit(actualRaw).toUpperCase()
             : "";
           if (actual && actual !== expected.toUpperCase()) {
             const uomReason = String(row.uomOverrideReason ?? "").trim();
-            const conversionFactor = Number((boqItem as any).dprConversionFactor);
             const measuredQuantity = Number(row.quantity);
-            const canConvert = opts.allowUomOverride
+            const normalization = resolveDprUnitConversion(
+              { uom: actualRaw },
+              { unit: expected },
+            );
+            const canNormalize = opts.allowUomOverride
               && !!uomReason
-              && Number.isFinite(conversionFactor)
-              && conversionFactor > 0
+              && normalization.valid
+              && normalization.factor != null
               && Number.isFinite(measuredQuantity)
               && String(row.quantitySource ?? "").toLowerCase() !== "calculated";
-            if (!canConvert) {
-              return `Progress entry "${row.activity ?? ""}": UOM ${row.uom} does not match ${expected}; an administrator must provide a valid conversion factor and reason`;
+            if (!canNormalize) {
+              return `Progress entry "${row.activity ?? ""}": UOM ${row.uom} does not match physical UOM ${expected}; an administrator must provide a reason and a supported input-unit normalization (BOQ credit factors cannot normalize saved evidence)`;
             }
-            // dprConversionFactor is the configured physical-to-BOQ factor.
-            // Store the normalized physical quantity/UOM after applying it,
-            // and retain the reason in the source note for auditability.
-            row.quantity = measuredQuantity * conversionFactor;
+            // Input normalization is deliberately independent of the BOQ
+            // credit factor. Persist source/target/factor provenance so a
+            // later BOQ-credit read cannot apply this conversion twice.
+            row.quantity = measuredQuantity * normalization.factor;
             row.quantitySourceNote = [
               row.quantitySourceNote,
-              `UOM override ${actualRaw} -> ${expected} (x${conversionFactor}): ${uomReason}`,
+              `Physical input normalization ${normalization.sourceUom} -> ${normalization.targetUom} (x${normalization.factor}): ${uomReason}`,
             ].filter(Boolean).join(" | ");
           }
           // Persist the canonical physical UOM even when a client omitted it.
@@ -14483,7 +14489,19 @@ export async function registerRoutes(
   app.patch("/api/boq/items/:id", async (req, res) => {
     try {
       if (!assertEdit(req, res, "qto_boq")) return;
-      const updated = await storage.updateBoqItem(parseInt(req.params.id), req.body);
+      const id = parseInt(req.params.id);
+      const existing = await storage.getBoqItem(id);
+      if (!existing || Array.isArray(existing)) return res.status(404).json({ error: "BOQ item not found" });
+      const conversionFieldsTouched = ["unit", "dprMeasurementMethod", "dprConversionFactor"]
+        .some((key) => Object.prototype.hasOwnProperty.call(req.body ?? {}, key));
+      if (conversionFieldsTouched) {
+        const configError = boqConversionConfigError(existing as any, req.body ?? {});
+        if (configError) return res.status(400).json({ error: configError });
+        if (req.body?.dprConversionFactor != null) {
+          req.body = { ...req.body, dprConversionFactor: Number(req.body.dprConversionFactor) };
+        }
+      }
+      const updated = await storage.updateBoqItem(id, req.body);
       if (!updated) return res.status(404).json({ error: "BOQ item not found" });
       res.json(updated);
     } catch (err) {
@@ -14657,11 +14675,15 @@ export async function registerRoutes(
       const evidence = await storage.getWorkProgrammeExecutionEvidence(projectId, bars);
       const outcomeCounts = await storage.getProgrammeBarOutcomeEventCounts(bars.map((bar) => bar.id));
       res.json(bars.map((bar) => {
-        const barEvidence = evidence.get(bar.id) ?? { reportedQty: 0, earliestProgressDate: null };
+        const barEvidence = evidence.get(bar.id) ?? {
+          reportedQty: 0, earliestProgressDate: null, reviewRequired: false, conversionWarnings: [],
+        };
         return {
           ...bar,
           reportedQty: barEvidence.reportedQty,
           actualStartDate: barEvidence.earliestProgressDate,
+          actualReviewRequired: barEvidence.reviewRequired,
+          actualConversionWarnings: barEvidence.conversionWarnings,
           executionState: classifyBarExecutionState(Number(bar.plannedQty ?? 0), barEvidence),
           hasOutcomeEvents: (outcomeCounts.get(bar.id) ?? 0) > 0,
         };
@@ -15564,7 +15586,9 @@ export async function registerRoutes(
       res.json(itemBars.map(b => {
         const alloc = arrangementByBar.get(b.id);
         const arr = alloc ? arrById.get(alloc.arrangementId) : null;
-        const reportedQty = reported.get(b.id) ?? 0;
+        const reportedReviewRequired = reported.reviewRequiredBarIds?.has(b.id) ?? false;
+        const reportedQtyUnresolved = reported.unresolvedBarIds?.has(b.id) ?? false;
+        const reportedQty = reportedQtyUnresolved ? null : (reported.get(b.id) ?? 0);
         return {
           id: b.id,
           reachLabel: (b as any).reachLabel,
@@ -15582,14 +15606,16 @@ export async function registerRoutes(
           sequenceOrder: (b as any).sequenceOrder ?? null,
           plannedQty: b.plannedQty,
           reportedQty,
-          remainingQty: Math.max(0, b.plannedQty - reportedQty),
+          remainingQty: reportedQty == null ? null : Math.max(0, b.plannedQty - reportedQty),
+          reportedQtyReviewRequired: reportedReviewRequired,
+          reportedQtyUnresolved,
           // Batch 1 Part E: shared quantity, SEPARATE side coverage — which
           // chainage each carriageway side has actually executed so far.
           sideCoverage: barSideCoverage(
             { side: (b as any).side ?? null, chainageFrom: (b as any).chainageFrom ?? null, chainageTo: (b as any).chainageTo ?? null },
             sideEntries.get(b.id) ?? [],
           ),
-          unit: (b as any).canonicalUnit ?? (b as any).unit ?? null,
+          unit: (b as any).unit ?? null,
           arrangement: arr ? {
             id: arr.id,
             mode: (arr as any).arrangementType ?? (arr as any).mode ?? null,
@@ -22031,13 +22057,6 @@ async function ensureBoqDprConversionFactor() {
     await db.execute(sql.raw(`ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS dpr_conversion_factor real`));
     // Shoulder sequencing — planner-confirmed shoulder layer class (idempotent DDL)
     await db.execute(sql.raw(`ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS shoulder_layer_class text`));
-    // Backfill known Takkadpally items: item 13 = Clearing & Grubbing (SQM → Ha = 0.0001)
-    await db.execute(sql.raw(`
-      UPDATE boq_items
-      SET dpr_conversion_factor = 0.0001
-      WHERE id = 13
-        AND dpr_conversion_factor IS NULL
-    `));
     console.log("boq_items: dpr_conversion_factor column ensured");
   } catch (err) {
     console.error("ensureBoqDprConversionFactor failed:", err);

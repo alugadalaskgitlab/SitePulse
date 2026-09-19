@@ -1876,11 +1876,8 @@ export default function GuidedDpr() {
         const boqItem = e.boqItemId != null ? itemById.get(e.boqItemId) ?? null : null;
         const measurement = dprMeasurementSummary(
           {
+            ...e,
             length: null,
-            chainageFrom: e.chainageFrom,
-            chainageTo: e.chainageTo,
-            width: e.width,
-            thickness: e.thickness,
             quantity: e.quantity,
             uom: e.uom,
           },
@@ -2108,11 +2105,18 @@ export default function GuidedDpr() {
                     <div>
                       <Label>Physical Qty {measurement.measuredUom ? `(${measurement.measuredUom})` : ""}</Label>
                       <Input type="number" inputMode="decimal" value={e.quantity ?? ""} onChange={(ev) => updateQuantity(idx, ev.target.value === "" ? null : Number(ev.target.value))} data-testid={`input-qty-${idx}`} />
-                      {measurement.boqQty != null && (
+                      {measurement.boqQty != null ? (
                         <p className="text-xs font-medium text-teal-700 mt-1" data-testid={`text-boq-qty-${idx}`}>
                           BOQ Qty: {measurement.boqQty.toLocaleString(undefined, { maximumFractionDigits: 6 })} {measurement.boqUom ?? "(BOQ unit unavailable)"}
                         </p>
-                      )}
+                      ) : boqItem ? (
+                        <p className="text-xs font-medium text-amber-700 mt-1" data-testid={`warning-unit-${idx}`}>
+                          BOQ credit incomplete — {measurement.warnings[0] ?? "physical and contract units need review"}
+                        </p>
+                      ) : null}
+                      {measurement.warnings.map((warning) => (
+                        <p key={warning} className="text-[11px] text-amber-700">{warning}</p>
+                      ))}
                     </div>
                   </div>
                   {mismatchCalc != null && (
@@ -2171,7 +2175,7 @@ export default function GuidedDpr() {
                   programmeBarId={e.programmeBarId} sideKey={sideKeyOf(e.side)} sideLabel={e.side}
                   fromKm={parseChainageKm(e.chainageFrom)} toKm={parseChainageKm(e.chainageTo)}
                   overrideReason={e.chainageOverrideReason} onOverrideReason={(v) => updateEntry(idx, { chainageOverrideReason: v })}
-                  boqQty={boqProgressQty(e.quantity, boqItem)} warnOverBalance itemTotals={itemTotals(e.boqItemId)}
+                  boqQty={boqProgressQty(e.quantity, boqItem, e)} warnOverBalance itemTotals={itemTotals(e.boqItemId)}
                   executedBy={e.executedBy || null} onExecutedBy={(v) => updateEntry(idx, { executedBy: v })}
                   testidPrefix={`guided-${idx}`} />
               )}
@@ -2194,7 +2198,7 @@ export default function GuidedDpr() {
                 onOutcomeChange={() => undefined} onAllocationsChange={allocations => updateEntry(idx, { allocations: allocations as any })} />
             ) : e.boqItemId != null && boqProjectId != null && siteName && (() => {
               const item = itemById.get(e.boqItemId);
-              const executedQty = boqProgressQty(e.quantity, item);
+              const executedQty = boqProgressQty(e.quantity, item, e);
               const loc = [e.side ? barSideLabel(e.side) : null, e.chainageFrom && e.chainageTo ? `Ch. ${e.chainageFrom}–${e.chainageTo}` : null].filter(Boolean).join(" ");
               return (
                 <ActivityReceiptStrip
@@ -2797,11 +2801,8 @@ export default function GuidedDpr() {
                 const item = e.boqItemId != null ? itemById.get(e.boqItemId) ?? null : null;
                 const measurement = dprMeasurementSummary(
                   {
+                    ...e,
                     length: null,
-                    chainageFrom: e.chainageFrom,
-                    chainageTo: e.chainageTo,
-                    width: e.width,
-                    thickness: e.thickness,
                     quantity: e.quantity,
                     uom: e.uom,
                   },
@@ -2812,7 +2813,7 @@ export default function GuidedDpr() {
                       `Physical ${measurement.measuredQty.toLocaleString(undefined, { maximumFractionDigits: 6 })}${measurement.measuredUom ? ` ${measurement.measuredUom}` : ""}`,
                       measurement.boqQty != null
                         ? `BOQ ${measurement.boqQty.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${measurement.boqUom ?? "(unit unavailable)"}`
-                        : null,
+                        : item ? "BOQ credit incomplete — unit review required" : null,
                     ].filter(Boolean).join(" · ")
                   : "No quantity";
                 return (

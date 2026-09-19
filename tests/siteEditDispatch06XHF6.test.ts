@@ -1328,7 +1328,10 @@ describe("06X-HF6 version-route closure", () => {
     expect(createVersionDprSpy.mock.calls[0][1].progress[0].uom).toBe("SQM");
   });
 
-  it("requires reasoned conversion metadata for a true administrator UOM override", async () => {
+  it.each([
+    { sourceUom: "CUM", expectedStatus: 400, expectedQuantity: null },
+    { sourceUom: "Kg", expectedStatus: 201, expectedQuantity: 0.01 },
+  ])("normalizes supported $sourceUom input without reusing a BOQ credit factor", async ({ sourceUom, expectedStatus, expectedQuantity }) => {
     getBoqItemSpy.mockResolvedValue({
       id: 78,
       unit: "MT",
@@ -1361,8 +1364,8 @@ describe("06X-HF6 version-route closure", () => {
             quantity: 10,
             quantitySource: "measured",
             quantitySourceNote: "weighbridge",
-            uom: "CUM",
-            uomOverrideReason: "approved density conversion",
+            uom: sourceUom,
+            uomOverrideReason: "approved input unit normalization",
             boqItemId: 78,
             noSiteWork: false,
           }],
@@ -1374,12 +1377,18 @@ describe("06X-HF6 version-route closure", () => {
         },
       });
 
-    expect(response.status).toBe(201);
+    expect(response.status).toBe(expectedStatus);
+    if (expectedStatus === 400) {
+      // MT_manual + an unrelated saved credit factor is not a density profile.
+      expect(response.body.message).toMatch(/supported input-unit normalization/);
+      expect(createVersionDprSpy).not.toHaveBeenCalled();
+      return;
+    }
     expect(createVersionDprSpy.mock.calls[0][1].progress[0]).toEqual(expect.objectContaining({
       uom: "MT",
-      quantity: 5,
+      quantity: expectedQuantity,
     }));
-    expect(createVersionDprSpy.mock.calls[0][1].progress[0].quantitySourceNote).toContain("approved density conversion");
+    expect(createVersionDprSpy.mock.calls[0][1].progress[0].quantitySourceNote).toContain("Physical input normalization Kg -> MT (x0.001)");
   });
 
   it("allows an admin to remove a linked DPR row without reassigning its lifecycle identity", async () => {

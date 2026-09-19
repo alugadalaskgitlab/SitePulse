@@ -120,10 +120,10 @@ describe("B: entryBoqCredit returns 0 for incidental entries", () => {
   it("No Site Work has zero credit even if a legacy row retained a quantity", () => {
     expect(entryBoqCredit(re({ noSiteWork: true, quantity: 100 }), wmm)).toBe(0);
   });
-  it("conversion factor still applies to non-incidental rows", () => {
+  it("same-unit stale conversion factor is ignored for non-incidental rows", () => {
     const item: ReportBoqItem = { ...wmm, dprConversionFactor: 0.5 };
     const e = re({ isIncidental: false, quantity: 100 });
-    expect(entryBoqCredit(e, item)).toBe(50);
+    expect(entryBoqCredit(e, item)).toBe(100);
   });
 });
 

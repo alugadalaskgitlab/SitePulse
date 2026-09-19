@@ -32,6 +32,7 @@ import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
 import { isVisibleEquipmentRow } from "@shared/equipmentUsage";
 import { getBaseSiteName } from "@shared/siteName";
+import { dprMeasurementSummary } from "@shared/dprGeometry";
 
 export default function SiteReport() {
   const [, params] = useRoute("/site/report/:id");
@@ -453,24 +454,41 @@ export default function SiteReport() {
                     <TableHead>Name / Location</TableHead>
                     <TableHead>Stage</TableHead>
                     <TableHead>Item of Work</TableHead>
-                    <TableHead className="text-right">Quantity</TableHead>
-                    <TableHead>Unit</TableHead>
+                    <TableHead className="text-right">Physical measurement</TableHead>
+                    <TableHead className="text-right">BOQ credit</TableHead>
                     <TableHead>Remarks</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(dpr as any).structureItems?.map((item: any, i: number) => (
+                  {(dpr as any).structureItems?.map((item: any, i: number) => {
+                    const boqItem = item.boqItemId != null
+                      ? reportBoqItems.find((candidate: any) => candidate.id === item.boqItemId) ?? null
+                      : null;
+                    const measurement = dprMeasurementSummary({
+                      ...item,
+                      kind: "structure",
+                      rowConversionFactor: item.rowConversionFactor ?? item.dprConversionFactor ?? null,
+                    }, boqItem);
+                    return (
                     <TableRow key={i} data-testid={`row-structure-${i}`}>
                       <TableCell><Badge variant="secondary">{item.structureType}</Badge></TableCell>
                       <TableCell className="text-muted-foreground text-sm">{item.structureSubType || '-'}</TableCell>
                       <TableCell className="font-medium">{item.structureName || '-'}</TableCell>
                       <TableCell className="text-muted-foreground text-sm">{item.stage || '-'}</TableCell>
                       <TableCell>{item.itemOfWork}</TableCell>
-                      <TableCell className="text-right font-semibold">{item.quantity != null ? item.quantity : '-'}</TableCell>
-                      <TableCell className="text-muted-foreground">{item.uom || '-'}</TableCell>
+                      <TableCell className="text-right font-semibold whitespace-nowrap">
+                        {measurement.measuredQty != null ? `${measurement.measuredQty} ${measurement.measuredUom ?? "(unit unavailable)"}` : "-"}
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap">
+                        {measurement.boqQty != null
+                          ? `${Number(measurement.boqQty.toFixed(6))} ${measurement.boqUom ?? "(BOQ unit unavailable)"}`
+                          : <span className="text-amber-700">Needs unit review</span>}
+                        {measurement.warnings.length > 0 && <div className="text-[10px] text-amber-700 whitespace-normal">{measurement.warnings.join(" · ")}</div>}
+                      </TableCell>
                       <TableCell className="text-muted-foreground text-sm">{item.remarks || '-'}</TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
                 </div>
@@ -493,8 +511,8 @@ export default function SiteReport() {
                   <TableHead className="text-right">Length (m)</TableHead>
                   <TableHead className="text-right">Width (m)</TableHead>
                   <TableHead className="text-right">Thickness (m)</TableHead>
-                  <TableHead className="text-right">Quantity</TableHead>
-                  <TableHead>UOM</TableHead>
+                  <TableHead className="text-right">Physical measurement</TableHead>
+                  <TableHead className="text-right">BOQ credit</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -529,6 +547,10 @@ export default function SiteReport() {
                     ? Math.abs((parseFloat(item.chainageTo) - parseFloat(item.chainageFrom)) * 1000)
                     : null;
                   const displayLength = item.length || (derivedLength ? derivedLength.toFixed(0) : null);
+                  const boqItem = item.boqItemId != null
+                    ? reportBoqItems.find((candidate: any) => candidate.id === item.boqItemId) ?? null
+                    : null;
+                  const measurement = dprMeasurementSummary(item, boqItem);
                   
                   return (
                     <TableRow key={i} data-testid={`row-progress-${i}`}>
@@ -563,8 +585,21 @@ export default function SiteReport() {
                       <TableCell className="text-right">{displayLength || '-'}</TableCell>
                       <TableCell className="text-right">{item.width || '-'}</TableCell>
                       <TableCell className="text-right">{item.thickness || '-'}</TableCell>
-                      <TableCell className="text-right font-semibold">{item.quantity?.toFixed(3) || '-'}</TableCell>
-                      <TableCell className="text-muted-foreground">{item.uom}</TableCell>
+                      <TableCell className="text-right font-semibold whitespace-nowrap" data-testid={`text-report-physical-${i}`}>
+                        {measurement.measuredQty != null
+                          ? `${Number(measurement.measuredQty.toFixed(3))} ${measurement.measuredUom ?? "(unit unavailable)"}`
+                          : "-"}
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap" data-testid={`text-report-boq-credit-${i}`}>
+                        {item.isIncidental
+                          ? <span className="text-amber-700">No BOQ credit</span>
+                          : measurement.boqQty != null
+                            ? `${Number(measurement.boqQty.toFixed(6))} ${measurement.boqUom ?? "(BOQ unit unavailable)"}`
+                            : <span className="text-amber-700">Needs unit review</span>}
+                        {measurement.warnings.length > 0 && (
+                          <div className="text-[10px] text-amber-700 whitespace-normal max-w-64">{measurement.warnings.join(" · ")}</div>
+                        )}
+                      </TableCell>
                     </TableRow>
                   );
                 })}

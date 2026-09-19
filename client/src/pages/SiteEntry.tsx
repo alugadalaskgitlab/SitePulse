@@ -48,7 +48,7 @@ import {
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { barSideLabel, isDprSideCompatible, isBarSide, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
 import { chainageOutsideBar, normalizeDprSideKey } from "@shared/dprProgrammeLink";
-import { checkQuantitySourceRow, quantitiesMatch, MANUAL_QUANTITY_SOURCES, boqProgressQty, dprMeasurementSummary, resolveBoqDisplayUnit } from "@shared/dprGeometry";
+import { checkQuantitySourceRow, quantitiesMatch, MANUAL_QUANTITY_SOURCES, boqProgressQty, dprMeasurementSummary, resolveBoqDisplayUnit, resolveDprUnitConversion } from "@shared/dprGeometry";
 import { evaluateDprSubmitReadiness, type DprReadinessResult } from "@shared/dprSubmitReadiness";
 import { applyEquipmentMasterSelection, computeTotalDiesel, computeTripTotalKm, OTHER_EQUIPMENT_VALUE } from "@shared/guidedEquipment";
 import { DprReadinessDialog } from "@/components/DprReadinessDialog";
@@ -631,7 +631,7 @@ export default function SiteEntry() {
   // structures (e.g. "RCC M25" at Culvert-1 and Culvert-2). To track balance per
   // structure we reuse the existing (read-only) /api/dprs/with-details endpoint and
   // aggregate previously-saved structure items ourselves — no new backend route.
-  const { data: allDprsWithDetails = [] } = useQuery<Array<{ boqProjectId: number | null; date: string; structureItems: Array<{ boqItemId: number | null; structureId: string | null; quantity: number | null; dprConversionFactor: number | null }> }>>({
+  const { data: allDprsWithDetails = [] } = useQuery<Array<{ boqProjectId: number | null; date: string; structureItems: Array<{ boqItemId: number | null; structureId: string | null; quantity: number | null; uom?: string | null; dprConversionFactor: number | null }> }>>({
     queryKey: ["/api/dprs/with-details"],
     queryFn: async () => {
       const res = await fetch(`/api/dprs/with-details`, { credentials: "include" });
@@ -649,7 +649,14 @@ export default function SiteEntry() {
         (d.structureItems || []).forEach((si) => {
           if (si.boqItemId == null || !si.structureId || si.quantity == null) return;
           const key = `${si.boqItemId}::${si.structureId}`;
-          const contribution = boqProgressQty(si.quantity, { dprConversionFactor: si.dprConversionFactor }) ?? 0;
+          const boqItem = siteBoqItems.find((item) => item.id === si.boqItemId);
+          const factor = resolveDprUnitConversion(
+            { ...si, kind: "structure" },
+            boqItem,
+            si.dprConversionFactor,
+          ).factor;
+          if (factor == null) return;
+          const contribution = Number(si.quantity) * factor;
           m.set(key, Math.round(((m.get(key) ?? 0) + contribution) * 1000) / 1000);
         });
       });
@@ -690,11 +697,13 @@ export default function SiteEntry() {
     boqItemId: number | null | undefined,
     qty: number | null,
     overrideInfo?: { currentQty: number; totalActual: number; balance: number; unit: string } | null,
+    row?: { uom?: string | null; kind?: "progress" | "structure"; rowConversionFactor?: number | null },
   ) => {
     const info = overrideInfo !== undefined ? overrideInfo : balanceInfo(boqItemId);
     if (!info) return null;
     const boqItem = siteBoqItems.find((bi) => bi.id === boqItemId);
-    const boqQty = boqProgressQty(qty, boqItem);
+    const conversion = resolveDprUnitConversion(row ?? null, boqItem, row?.rowConversionFactor);
+    const boqQty = qty != null && conversion.factor != null ? Number(qty) * conversion.factor : null;
     const over = boqQty != null && boqQty > info.balance + 0.0001;
     return (
       <div className={`text-xs mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 ${over ? "text-amber-700" : "text-slate-500"}`}>
@@ -1740,16 +1749,17 @@ export default function SiteEntry() {
   // push the linked BOQ item's cumulative actual past its planned balance.
   const getOverBalanceWarnings = (): string[] => {
     const warnings: string[] = [];
-    const rows: Array<{ boqItemId: number | null | undefined; qty: number | null; structureId?: string | null }> =
+    const rows: Array<{ boqItemId: number | null | undefined; qty: number | null; uom?: string | null; kind?: "progress" | "structure"; rowConversionFactor?: number | null; structureId?: string | null }> =
       workType === "structure"
-        ? structureItems.map((s) => ({ boqItemId: s.boqItemId, qty: s.quantity, structureId: s.programmeStructureId }))
-        : progress.map((p) => ({ boqItemId: p.boqItemId, qty: p.quantity ?? calculateQuantity(p) }));
+        ? structureItems.map((s) => ({ boqItemId: s.boqItemId, qty: s.quantity, uom: s.uom, kind: "structure", rowConversionFactor: s.dprConversionFactor, structureId: s.programmeStructureId }))
+        : progress.map((p) => ({ boqItemId: p.boqItemId, qty: p.quantity ?? calculateQuantity(p), uom: p.uom }));
     rows.forEach((r) => {
       if (r.boqItemId == null || r.qty == null) return;
       const info = r.structureId ? structureBalanceInfo(r.structureId, r.boqItemId) : balanceInfo(r.boqItemId);
       if (!info) return;
       const boqItem = siteBoqItems.find((b) => b.id === r.boqItemId);
-      const convertedQty = boqProgressQty(r.qty, boqItem);
+      const conversion = resolveDprUnitConversion(r, boqItem, r.rowConversionFactor);
+      const convertedQty = conversion.factor != null ? Number(r.qty) * conversion.factor : null;
       if (convertedQty == null) return;
       if (convertedQty > info.balance + 0.0001) {
         const label = boqItem ? boqItemDisplayName(boqItem) : "This item";
@@ -2274,7 +2284,10 @@ export default function SiteEntry() {
                         setStructureItems((prev) =>
                           prev.map((s, i) =>
                             i === idx
-                              ? { ...s, boqItemId: id, uom: it ? (resolveBoqDisplayUnit(it) ?? s.uom) : s.uom }
+                              // The selected item owns the contractual target
+                              // unit; the structure row's UOM remains the
+                              // physical source selected by the engineer.
+                              ? { ...s, boqItemId: id }
                               : s,
                           ),
                         );
@@ -2284,6 +2297,7 @@ export default function SiteEntry() {
                       item.boqItemId,
                       item.quantity,
                       item.programmeStructureId ? structureBalanceInfo(item.programmeStructureId, item.boqItemId) : undefined,
+                      { ...item, kind: "structure", rowConversionFactor: item.dprConversionFactor },
                     )}
                     {structureLocations.length > 0 && item.programmeStructureId == null && item.boqItemId != null && (
                       <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 mt-1" data-testid={`badge-unplanned-structure-${idx}`}>
@@ -2303,6 +2317,27 @@ export default function SiteEntry() {
                       <SelectContent>{STRUCTURE_UOM_OPTIONS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
+                  {item.boqItemId != null && (() => {
+                    const boqItem = siteBoqItems.find((candidate) => candidate.id === item.boqItemId);
+                    if (!boqItem) return null;
+                    const conversion = resolveDprUnitConversion(
+                      { ...item, kind: "structure" },
+                      boqItem,
+                      item.dprConversionFactor,
+                    );
+                    return (
+                      <div className="sm:col-span-2 md:col-span-4 text-xs">
+                        {item.quantity != null && conversion.factor != null ? (
+                          <span className="font-medium text-teal-700" data-testid={`text-structure-boq-qty-${idx}`}>
+                            BOQ Qty: {(Number(item.quantity) * conversion.factor).toLocaleString(undefined, { maximumFractionDigits: 6 })} {conversion.targetUom}
+                          </span>
+                        ) : (
+                          <span className="font-medium text-amber-700">BOQ credit incomplete — {conversion.warnings[0] ?? "unit review required"}</span>
+                        )}
+                        {conversion.warnings.map((warning) => <p key={warning} className="text-amber-700">{warning}</p>)}
+                      </div>
+                    );
+                  })()}
                   <div className="sm:col-span-2 md:col-span-4">
                     <Label className="text-sm">Remarks (optional)</Label>
                     <Input placeholder="Any remarks..." value={item.remarks} onChange={(e) => updateField("remarks", e.target.value)} data-testid={`input-structure-remarks-${idx}`} />
@@ -2506,6 +2541,7 @@ export default function SiteEntry() {
                         boqQty={boqProgressQty(
                           entry.quantity ?? calculateQuantity(entry),
                           entry.boqItemId != null ? siteBoqItems.find((item) => item.id === entry.boqItemId) : null,
+                          entry,
                         )}
                         warnOverBalance
                         itemTotals={balanceInfo(entry.boqItemId)}
@@ -2535,7 +2571,7 @@ export default function SiteEntry() {
                       }}
                       testidPrefix={`progress-${idx}`}
                     />
-                    {siteEntryBoqItemsForPicker.length > 0 && entry.programmeBarId == null && renderBalanceChips(entry.boqItemId, entry.quantity ?? calculateQuantity(entry))}
+                    {siteEntryBoqItemsForPicker.length > 0 && entry.programmeBarId == null && renderBalanceChips(entry.boqItemId, entry.quantity ?? calculateQuantity(entry), undefined, entry)}
                     {siteEntryBoqItemsForPicker.length === 0 && (
                       <Input
                         placeholder="Activity name"
@@ -2742,21 +2778,25 @@ export default function SiteEntry() {
                       const physicalQty = entry.quantity ?? calculateQuantity(entry);
                       const measurement = dprMeasurementSummary(
                         {
+                          ...entry,
                           length: getEffectiveLength(entry),
-                          chainageFrom: entry.chainageFrom,
-                          chainageTo: entry.chainageTo,
-                          width: entry.width,
-                          thickness: entry.thickness,
                           quantity: physicalQty,
                           uom: progressUom(entry) ?? entry.uom,
                         },
                         boqItem,
                       );
-                      if (measurement.boqQty == null) return null;
-                      return (
-                        <p className="text-[11px] font-medium text-teal-700 mt-1" data-testid={`text-progress-boq-qty-${idx}`}>
-                          BOQ Qty: {measurement.boqQty.toLocaleString(undefined, { maximumFractionDigits: 6 })} {measurement.boqUom ?? "(BOQ unit unavailable)"}
+                      if (measurement.boqQty == null) return (
+                        <p className="text-[11px] font-medium text-amber-700 mt-1" data-testid={`warning-progress-unit-${idx}`}>
+                          BOQ credit incomplete — {measurement.warnings[0] ?? "physical and contract units need review"}
                         </p>
+                      );
+                      return (
+                        <>
+                          <p className="text-[11px] font-medium text-teal-700 mt-1" data-testid={`text-progress-boq-qty-${idx}`}>
+                            BOQ Qty: {measurement.boqQty.toLocaleString(undefined, { maximumFractionDigits: 6 })} {measurement.boqUom ?? "(BOQ unit unavailable)"}
+                          </p>
+                          {measurement.warnings.map((warning) => <p key={warning} className="text-[11px] text-amber-700">{warning}</p>)}
+                        </>
                       );
                     })()}
                     {/* Quantity source: a system-calculated quantity is labelled
@@ -2836,6 +2876,7 @@ export default function SiteEntry() {
                       executedQty={boqProgressQty(
                         entry.quantity ?? calculateQuantity(entry),
                         siteBoqItems.find((item) => item.id === entry.boqItemId),
+                        entry,
                       )}
                       executedUom={resolveBoqDisplayUnit(siteBoqItems.find((it) => it.id === entry.boqItemId))}
                       readOnly persistedArrangementId={entry.earthworkArrangementId}

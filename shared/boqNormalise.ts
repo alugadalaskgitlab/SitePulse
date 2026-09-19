@@ -20,14 +20,15 @@
 // The goal is one unambiguous string per physical unit, in a readable form.
 const CANONICAL_UNIT_MAP: Record<string, string> = {
   // ── Cubic metre ──────────────────────────────────────────────────────────
-  CUM:          "Cum",   M3:           "Cum",   CBM:          "Cum",
+  CUM:          "Cum",   M3:           "Cum",   "M³":         "Cum",
+  CBM:          "Cum",
   CUBM:         "Cum",   CUB:          "Cum",
   CUBICMETER:   "Cum",   CUBICMETRE:   "Cum",   CUBICMTR:     "Cum",
   CUBICMTRS:    "Cum",   CUBICMETRES:  "Cum",   CUBICMETERS:  "Cum",
   CUBM3:        "Cum",   CM3:          "Cum",
 
   // ── Square metre ─────────────────────────────────────────────────────────
-  SQM:          "Sqm",   M2:           "Sqm",
+  SQM:          "Sqm",   M2:           "Sqm",   "M²":         "Sqm",
   SQMT:         "Sqm",   SQMTR:        "Sqm",   SQMTRS:       "Sqm",
   SQUAREMETER:  "Sqm",   SQUAREMETRE:  "Sqm",
   SQUAREMTR:    "Sqm",   SQUAREMTRS:   "Sqm",   SQUAREMETERS: "Sqm",
@@ -35,13 +36,20 @@ const CANONICAL_UNIT_MAP: Record<string, string> = {
   // ── Hectare ──────────────────────────────────────────────────────────────
   HA:           "Ha",    HECT:         "Ha",    HEC:          "Ha",
   HECTARE:      "Ha",    HECTARES:     "Ha",
+  ACRE:         "Acre",  ACRES:        "Acre",
+  ARE:          "Are",   ARES:         "Are",
 
   // ── Running / linear metre ────────────────────────────────────────────────
   RMT:          "Rmt",   RM:           "Rmt",   LM:           "Rmt",
+  M:            "Rmt",
   LMT:          "Rmt",   MTR:          "Rmt",
+  METER:        "Rmt",   METRE:        "Rmt",   METERS:       "Rmt",
+  METRES:       "Rmt",
   RUNNINGMETER: "Rmt",   RUNNINGMETRE: "Rmt",
   LINEARMETER:  "Rmt",   LINEARMETRE:  "Rmt",
   RUNNIGMETER:  "Rmt",   // common import typo
+  KM:           "Km",    KILOMETER:     "Km",    KILOMETRE:    "Km",
+  KILOMETERS:   "Km",    KILOMETRES:    "Km",
 
   // ── Metric tonne ─────────────────────────────────────────────────────────
   MT:           "MT",    TON:          "MT",    TONNE:        "MT",

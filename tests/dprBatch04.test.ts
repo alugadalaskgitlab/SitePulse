@@ -51,7 +51,7 @@ describe("Batch 04 — measurement & BOQ-unit conversion", () => {
     expect(boqProgressQty(physicalQty, CG)).toBeCloseTo(0.035, 12);
 
     const summary = dprMeasurementSummary(
-      { chainageFrom: "1.9", chainageTo: "2.1", width: 1.75, quantity: physicalQty, uom: "Ha" },
+      { chainageFrom: "1.9", chainageTo: "2.1", width: 1.75, quantity: physicalQty, uom: "SQM" },
       CG,
     );
     expect(summary.measuredQty).toBe(350);
@@ -139,7 +139,7 @@ describe("Batch 04 — measurement & BOQ-unit conversion", () => {
       .toContain("resolveBoqDisplayUnit");
   });
 
-  it("reach balance and Plan-vs-Actual aggregate stored physical quantity in BOQ units", () => {
+  it("reach balance and Plan-vs-Actual use the shared row-aware BOQ credit contract", () => {
     const storage = readFileSync(new URL("../server/storage.ts", import.meta.url), "utf8");
     const reachAggregator = storage.slice(
       storage.indexOf("async getReportedQtyByBar"),
@@ -150,12 +150,10 @@ describe("Batch 04 — measurement & BOQ-unit conversion", () => {
       storage.indexOf("// --- Site Requirements"),
     );
 
-    expect(reachAggregator).toContain(
-      "sum(${progressEntries.quantity} * coalesce(${boqItems.dprConversionFactor}, 1.0))",
-    );
-    expect(planAggregator).toContain(
-      "SUM(pe.quantity * COALESCE(bi.dpr_conversion_factor, 1.0))",
-    );
+    expect(reachAggregator).toContain("entryBoqCredit(");
+    expect(reachAggregator).not.toContain("quantity} * coalesce");
+    expect(planAggregator).toContain("entryBoqCredit(");
+    expect(planAggregator).not.toContain("SUM(pe.quantity * COALESCE");
   });
 
   it("D — dprConversionFactor is applied exactly once (summary uses raw stored qty)", () => {

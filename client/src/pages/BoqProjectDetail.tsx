@@ -25,6 +25,8 @@ import { BoqItemRecipeDialog } from "@/pages/BoqItemRecipes";
 import type { BoqProject, BoqItemWithCategory, BoqRevisionWithItems } from "@shared/schema";
 import { boqItemDisplayName } from "@shared/boqItemName";
 import { uppercaseBusinessText } from "@shared/businessText";
+import { resolveBoqDisplayUnit, resolveBoqUomProfile } from "@shared/dprGeometry";
+import { canonicalizeUnit } from "@shared/boqNormalise";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -147,6 +149,16 @@ function ItemEditDialog({
     workCategory: item.workCategory ?? "__none__",
     dprConversionFactor: (item as any).dprConversionFactor != null ? String((item as any).dprConversionFactor) : "",
   });
+  const physicalUnit = canonicalizeUnit(resolveBoqUomProfile({
+    unit: form.unit,
+    dprMeasurementMethod: (item as any).dprMeasurementMethod ?? null,
+  }).uom);
+  const contractUnit = resolveBoqDisplayUnit({ unit: form.unit }) ?? form.unit.trim();
+  const enteredFactor = form.dprConversionFactor === "" ? null : Number(form.dprConversionFactor);
+  const sameUnitFactorIgnored = physicalUnit === contractUnit
+    && enteredFactor != null
+    && Number.isFinite(enteredFactor)
+    && enteredFactor !== 1;
 
   const patchMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
@@ -167,6 +179,10 @@ function ItemEditDialog({
     const rate = form.clientRate !== "" ? parseFloat(form.clientRate) : null;
     const clientAmount = rate != null ? Math.round(rate * item.currentQty * 100) / 100 : null;
     const convFactor = form.dprConversionFactor !== "" ? parseFloat(form.dprConversionFactor) : null;
+    if (convFactor != null && (!Number.isFinite(convFactor) || convFactor <= 0)) {
+      toast({ title: "Conversion factor must be a positive number", variant: "destructive" });
+      return;
+    }
     patchMutation.mutate({
       description: form.description.trim(),
       itemName: form.itemName.trim() || null,
@@ -245,15 +261,23 @@ function ItemEditDialog({
             </div>
           </div>
           <div>
-            <Label className="text-sm">DPR → BOQ CONVERSION FACTOR</Label>
+            <Label className="text-sm">PHYSICAL → CONTRACT CONVERSION</Label>
+            <p className="text-xs text-slate-500 mb-1">
+              Source: <strong>{physicalUnit}</strong> physical measurement · Target: <strong>{contractUnit || "unit unavailable"}</strong> BOQ quantity
+            </p>
             <Input
               type="number"
               step="any"
               value={form.dprConversionFactor}
               onChange={e => setForm(p => ({ ...p, dprConversionFactor: e.target.value }))}
-              placeholder="Leave blank for 1 (no conversion)"
+              placeholder="Leave blank when units are equivalent"
               data-testid="input-edit-conv-factor"
             />
+            {sameUnitFactorIgnored && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-1" data-testid="warning-same-unit-factor">
+                {physicalUnit} and {contractUnit} are the same unit. This legacy factor is ignored for BOQ credit; clear it to remove the stale configuration.
+              </p>
+            )}
             {/* Unit-pair suggestions based on current BOQ unit */}
             {(() => {
               const u = form.unit.trim().toUpperCase();
@@ -273,7 +297,7 @@ function ItemEditDialog({
                 suggestions.push({ label: "Same unit — no conversion", factor: "1" });
               }
               if (suggestions.length === 0) return (
-                <p className="text-xs text-slate-400 mt-1">Multiplies DPR quantities before summing actuals. Common: SQM→Ha = 0.0001 · m→km = 0.001 · same unit = 1</p>
+                <p className="text-xs text-slate-400 mt-1">A factor is used only when its physical source and contract target units are compatible. Missing or uncertain conversions require review.</p>
               );
               return (
                 <div className="mt-1.5 flex flex-wrap gap-1.5 items-center">

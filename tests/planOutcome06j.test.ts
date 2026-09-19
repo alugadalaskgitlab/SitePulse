@@ -122,9 +122,35 @@ describe("creditExecutedEntries (06J-HF §1, tests A/B/C/D/J)", () => {
   });
   it("B/C/J: canonical conversion factor applied; executed uom is BOQ item's unit, not physical uom", () => {
     // e.g. DPR records Cum loose, BOQ credits MT via item factor 2.4
-    const r = creditExecutedEntries(rows, { id: 11, unit: "MT", dprConversionFactor: 2.4 });
+    const r = creditExecutedEntries(rows, {
+      id: 11, unit: "MT", dprMeasurementMethod: "CUM_LWT", dprConversionFactor: 2.4,
+    });
     expect(r.creditApplied).toBe(true);
     expect(r.executedByUom).toEqual([{ uom: "MT", qty: 600, entryCount: 2 }]);
+  });
+  it("custom cross-unit factor without physical-source provenance stays unresolved and raw-visible", () => {
+    const r = creditExecutedEntries(rows, { id: 11, unit: "MT", dprConversionFactor: 2.4 });
+    expect(r.creditApplied).toBe(false);
+    expect(r.executedByUom).toEqual([{ uom: "Cum", qty: 250, entryCount: 2 }]);
+  });
+  it("passes row metadata through canonical credit: valid stale same-unit factor credits, legacy override stays raw", () => {
+    const valid = creditExecutedEntries([{
+      quantity: 2400, uom: "SQM", quantitySource: "calculated",
+      length: 1600, width: 1.5, chainageFrom: "0.000", chainageTo: "1.600",
+    }], { id: 13, unit: "Sqm", dprConversionFactor: 0.0001 });
+    expect(valid).toEqual({
+      executedByUom: [{ uom: "Sqm", qty: 2400, entryCount: 1 }],
+      creditApplied: true,
+    });
+
+    const legacy = creditExecutedEntries([{
+      quantity: 0.24, uom: "SQM", quantitySource: "measured",
+      quantitySourceNote: "UOM override SQM -> Ha (x0.0001): legacy import",
+    }], { id: 13, unit: "Sqm", dprConversionFactor: 0.0001 });
+    expect(legacy).toEqual({
+      executedByUom: [{ uom: "SQM", qty: 0.24, entryCount: 1 }],
+      creditApplied: false,
+    });
   });
   it("D: no BOQ item / unit — credit not applied, raw grouping flagged", () => {
     const r = creditExecutedEntries(rows, null);
@@ -140,7 +166,9 @@ describe("creditExecutedEntries (06J-HF §1, tests A/B/C/D/J)", () => {
     expect(c.suggestedBalance).toBeNull();
   });
   it("credited-but-mismatched BOQ unit vs planned uom stays non-comparable (never invent conversion)", () => {
-    const r = creditExecutedEntries(rows, { id: 11, unit: "MT", dprConversionFactor: 2.4 });
+    const r = creditExecutedEntries(rows, {
+      id: 11, unit: "MT", dprMeasurementMethod: "CUM_LWT", dprConversionFactor: 2.4,
+    });
     const c = computeExecutionComparison({ plannedQty: 350, plannedUom: "Cum", executedByUom: r.executedByUom, dprExists: true, creditApplied: true });
     expect(c.comparable).toBe(false);
   });

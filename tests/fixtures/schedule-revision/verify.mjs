@@ -202,17 +202,33 @@ const eCommit = eState.commitPayloads.at(-1);
 assert(!Object.prototype.hasOwnProperty.call(eCommit.payload, "startDate"), "E commit unexpectedly included startDate");
 assert(eCommit?.payload?.endDate === "2026-01-12", "E commit did not use edited finish");
 
+// Task 1479 — the production PlanVsActualTable used by WorkProgramme must keep
+// contractual Sqm authoritative: 2400 + 2400 = 4800 and 4800 × ₹4.04 = ₹19392.
+await waitFor("!!document.querySelector('[data-testid=\"pva-contractor-row-1479\"]')", "Task 1479 Plan vs Actual row");
+const planActualText = await evaluate("document.querySelector('[data-testid=\"pva-contractor-row-1479\"]')?.innerText || ''");
+assert(planActualText.includes("4,800"), `Plan vs Actual did not show contractual total 4,800 Sqm: ${planActualText}`);
+assert(planActualText.includes("19,392"), `Plan vs Actual did not show actual value ₹19,392: ${planActualText}`);
+assert(planActualText.includes("Unit warning · value retained"), `Advisory stale-factor warning incorrectly hid valid Alladurg values: ${planActualText}`);
+const unresolvedText = await evaluate("document.querySelector('[data-testid=\"pva-contractor-row-1480\"]')?.innerText || ''");
+assert(unresolvedText.includes("Incomplete"), `Unresolved Plan vs Actual row exposed partial numeric actuals: ${unresolvedText}`);
+assert(!unresolvedText.includes("0.0%"), `Unresolved Plan vs Actual row exposed a fabricated completion percentage: ${unresolvedText}`);
+const screenshotUnits = await capture("task1479-work-programme-plan-vs-actual-4800-19392");
+await evaluate("document.querySelector('[data-testid=\"pva-contractor-row-1480\"]')?.scrollIntoView({ block: 'center' })");
+await sleep(100);
+const screenshotUnresolved = await capture("task1479-work-programme-unresolved-incomplete");
+
 const result = {
   scenario: "WP-01 ScheduleRevisionActions isolated browser evidence",
   baseUrl,
   evidenceDirectory: evidenceDir,
-  screenshots: { A: screenshotA, B: screenshotB, C: screenshotC, D: screenshotD, E: screenshotE },
+  screenshots: { A: screenshotA, B: screenshotB, C: screenshotC, D: screenshotD, E: screenshotE, task1479: screenshotUnits, task1479Unresolved: screenshotUnresolved },
   assertions: {
     A: "Jan 10 start auto-suggested Jan 12 finish from original 3-day duration",
     B: "Jan 15 finish override remained accepted",
     C: "Direct finish edit preserved Jan 1 start",
     D: "Preview and commit used Jan 10/Jan 15, cascade=true, matching preview token",
     E: "Started actual start Jan 5 stayed locked; preview and commit omitted startDate",
+    task1479: "Advisory stale-factor warning retains 4,800 Sqm / ₹19,392; unresolved row shows explicit incomplete derived fields",
   },
   previewPayloads: await evaluate("window.__ScheduleRevisionFixture.previewPayloads"),
   commitPayloads: await evaluate("window.__ScheduleRevisionFixture.commitPayloads"),

@@ -14,6 +14,10 @@ import { formatChainageKm } from "@shared/barSide";
 import { DprPhotoGroups } from "@/components/DprPhotoGroups";
 import { layerDisplayName } from "@shared/layerDisplay";
 import { visibleEquipmentRows } from "@shared/equipmentUsage";
+import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
+import { getBaseSiteName } from "@shared/siteName";
+import { dprMeasurementSummary } from "@shared/dprGeometry";
+import type { Site } from "@shared/schema";
 
 type PreviewDpr = {
   id: number;
@@ -23,6 +27,7 @@ type PreviewDpr = {
   weather?: string | null;
   remarks?: string | null;
   dprStatus?: string | null;
+  boqProjectId?: number | null;
   progress: Array<{
     id: number;
     activity: string | null;
@@ -37,6 +42,11 @@ type PreviewDpr = {
     layerNo: number | null;
     quantity: number | null;
     uom: string | null;
+    boqItemId?: number | null;
+    quantitySource?: string | null;
+    quantitySourceNote?: string | null;
+    kind?: "progress" | "structure";
+    rowConversionFactor?: number | null;
     chainageOverrideReason?: string | null;
     entryKey?: string | null;
   }>;
@@ -69,6 +79,12 @@ export function DprPreviewDialog({
     staleTime: 60_000,
   });
   const visibleEquipment = visibleEquipmentRows(dpr?.equipment);
+  const { data: sites = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
+  const { items: boqItems } = useDprBoqItems<any>({
+    siteName: getBaseSiteName(dpr?.site ?? ""),
+    sites,
+    preferredProjectId: dpr?.boqProjectId ?? null,
+  });
 
   return (
     <Dialog open={dprId != null} onOpenChange={(v) => { if (!v) onClose(); }}>
@@ -97,6 +113,8 @@ export function DprPreviewDialog({
                 {(dpr.progress ?? []).length === 0 && <p className="px-3 py-2 text-slate-500">No progress rows.</p>}
                 {(dpr.progress ?? []).map((p) => {
                   const highlighted = highlightEntryId != null && p.id === highlightEntryId;
+                  const boqItem = p.boqItemId != null ? boqItems.find((item: any) => item.id === p.boqItemId) ?? null : null;
+                  const measurement = dprMeasurementSummary(p, boqItem);
                   return (
                     <div
                       key={p.id}
@@ -115,10 +133,17 @@ export function DprPreviewDialog({
                       </p>
                       <p className="text-slate-600 dark:text-slate-400">
                         {p.side ? `${p.side} · ` : ""}Ch. {chLabel(p)}
-                        {p.quantity != null ? ` · ${p.quantity} ${p.uom ?? ""}` : ""}
+                        {measurement.measuredQty != null ? ` · Physical ${measurement.measuredQty} ${measurement.measuredUom ?? ""}` : ""}
+                        {measurement.boqQty != null ? ` · BOQ ${Number(measurement.boqQty.toFixed(6))} ${measurement.boqUom ?? ""}` : ""}
                         {p.width != null ? ` · W ${p.width}m` : ""}
                         {p.thickness != null ? ` · T ${p.thickness}m` : ""}
                       </p>
+                      {boqItem && measurement.boqQty == null && (
+                        <p className="text-xs text-amber-700">BOQ credit incomplete — {measurement.warnings[0] ?? "unit review required"}</p>
+                      )}
+                      {measurement.warnings.length > 0 && measurement.boqQty != null && (
+                        <p className="text-xs text-amber-700">{measurement.warnings.join(" · ")}</p>
+                      )}
                       {p.chainageOverrideReason && (
                         <p className="text-xs text-slate-500 mt-0.5">Reason recorded: {p.chainageOverrideReason}</p>
                       )}

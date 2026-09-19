@@ -119,7 +119,7 @@ function ItemSearchList({
             — Select item —
           </CommandItem>
           {billItems.map((it) => {
-            const unitSuffix = `(${resolveBoqDisplayUnit(it) ?? "BOQ unit unavailable"}${it.dprConversionFactor != null && it.dprConversionFactor !== 1 ? ` × ${it.dprConversionFactor}` : ""})`;
+            const unitSuffix = `(contract: ${resolveBoqDisplayUnit(it) ?? "unit unavailable"})`;
             return (
               <CommandItem
                 key={it.id}
@@ -226,7 +226,7 @@ export function BillItemPicker({
   const triggerLabel = selectedItem ? (
     <ItemRow
       it={selectedItem}
-      unitSuffix={`(${resolveBoqDisplayUnit(selectedItem) ?? "BOQ unit unavailable"}${selectedItem.dprConversionFactor != null && selectedItem.dprConversionFactor !== 1 ? ` × ${selectedItem.dprConversionFactor}` : ""})`}
+      unitSuffix={`(contract: ${resolveBoqDisplayUnit(selectedItem) ?? "unit unavailable"})`}
     />
   ) : (
     <span className="text-muted-foreground">{effectiveBill ? "Select item…" : "Pick a bill first"}</span>

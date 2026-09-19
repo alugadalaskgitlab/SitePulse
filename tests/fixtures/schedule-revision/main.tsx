@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ScheduleRevisionActions } from "../../../client/src/pages/WorkProgramme";
+import { PlanVsActualTable } from "../../../client/src/components/PlanVsActualTable";
 import { queryClient } from "../../../client/src/lib/queryClient";
 import "../../../client/src/index.css";
 
@@ -39,6 +40,46 @@ window.fetch = async (input, init) => {
   const url = typeof input === "string" ? input : input.url;
   const parsed = new URL(url, window.location.origin);
   const match = parsed.pathname.match(/^\/api\/boq\/programme\/bars\/(\d+)\/(revision-preview|revise-schedule)$/);
+
+  if (parsed.pathname === "/api/boq/projects/501/plan-vs-actual") {
+    return json([{
+      boqItemId: 1479,
+      itemCode: "1.1",
+      description: "Clearing and grubbing — two submitted 2400 Sqm DPR rows",
+      unit: "Sqm",
+      categoryName: "Site clearance",
+      currentQty: 10000,
+      totalPlanned: 4800,
+      totalActual: 4800,
+      percentComplete: 48,
+      lastActivityDate: "2026-09-14",
+      clientRate: 4.04,
+      boqAmount: 40400,
+      plannedAmount: 19392,
+      actualAmount: 19392,
+      actualIncomplete: false,
+      conversionWarnings: ["Ignored stale conversion factor 0.0001: physical and contractual UOM are both Sqm"],
+    }, {
+      boqItemId: 1480,
+      itemCode: "1.2",
+      description: "Unresolved legacy physical UOM — review required",
+      unit: "MT",
+      categoryName: "Site clearance",
+      currentQty: 100,
+      totalPlanned: 25,
+      // Server values are deliberately present to prove the UI does not show
+      // a misleading partial zero/derived balance when credit is unresolved.
+      totalActual: 0,
+      percentComplete: 0,
+      lastActivityDate: "2026-09-14",
+      clientRate: 10,
+      boqAmount: 1000,
+      plannedAmount: 250,
+      actualAmount: 0,
+      actualIncomplete: true,
+      conversionWarnings: ["BOQ credit requires an explicit Nos→MT conversion profile factor"],
+    }]);
+  }
 
   if (match) {
     const barId = Number(match[1]);
@@ -151,6 +192,11 @@ function Fixture() {
           </section>
         ))}
       </div>
+      <section className="mx-auto mt-5 max-w-6xl rounded-lg border border-slate-200 bg-white p-4 shadow-sm" data-testid="task1479-work-programme-plan-actual">
+        <h2 className="font-semibold">Work Programme · Plan vs Actual</h2>
+        <p className="mb-3 mt-1 text-xs text-slate-500">Two synthetic submitted DPR records: 2,400 Sqm + 2,400 Sqm at ₹4.04/Sqm.</p>
+        <PlanVsActualTable projectId={501} />
+      </section>
     </main>
   );
 }

@@ -19,6 +19,33 @@ describe("arrangement execution evidence", () => {
     expect(corrected.map(x => x.dprExecutedQty)).toEqual([0, 500]);
   });
 
+  it("keeps unresolved physical DPR evidence visible and emits an incomplete-credit warning", () => {
+    const [result] = calculateArrangementExecutionEvidence(arrangement, bars, [{
+      id: 1, boqProjectId: 1, boqItemId: 20, programmeBarId: 1,
+      quantity: 2400, isValid: true, conversionUnresolved: true,
+      conversionWarnings: ["BOQ credit requires an explicit SQM→CUM conversion profile factor"],
+    }], []);
+    expect(result.dprEvidenceAvailable).toBe(true);
+    expect(result.dprCreditUnresolved).toBe(true);
+    expect(result.dprExecutedQty).toBe(0);
+    expect(result.balanceVsAllocation).toBeNull();
+    expect(result.warnings).toContain(DPR_INCOMPLETE_WARNING);
+    expect(result.warnings.join(" ")).toContain("SQM→CUM");
+  });
+
+  it("credits valid warned DPR evidence without marking its BOQ quantity incomplete", () => {
+    const [result] = calculateArrangementExecutionEvidence(arrangement, bars, [{
+      id: 1, boqProjectId: 1, boqItemId: 20, programmeBarId: 1,
+      quantity: 2400, dprConversionFactor: 1, isValid: true,
+      conversionWarnings: ["Ignored stale conversion factor"],
+    }], []);
+    expect(result.dprExecutedQty).toBe(2400);
+    expect(result.dprCreditUnresolved).toBe(false);
+    expect(result.balanceVsAllocation).toBe(-1900);
+    expect(result.warnings).toContain("Ignored stale conversion factor");
+    expect(result.warnings).not.toContain(DPR_INCOMPLETE_WARNING);
+  });
+
   it("does not retain a wrong-BOQ DPR contribution after its current correction", () => {
     const wrong = calculateArrangementExecutionEvidence(arrangement, bars, [{ id: 1, boqProjectId: 1, boqItemId: 99, programmeBarId: 1, quantity: 500, isValid: true }], []);
     const corrected = calculateArrangementExecutionEvidence(arrangement, bars, [{ id: 1, boqProjectId: 1, boqItemId: 20, programmeBarId: 1, quantity: 500, isValid: true }], []);

@@ -4,6 +4,13 @@ import { Loader2 } from "lucide-react";
 import { fmtQty } from "@shared/planningEngine";
 import type { PlanVsActualRow } from "@shared/schema";
 
+type PlanVsActualDisplayRow = PlanVsActualRow & {
+  /** True only when one or more eligible rows have unresolved BOQ credit. */
+  actualIncomplete?: boolean;
+  /** Advisory and unresolved conversion diagnostics; warnings alone do not hide values. */
+  conversionWarnings?: string[];
+};
+
 // Task #1240 — single, DPR-fed source of truth for the contractor-style
 // Plan vs Actual table. Both WorkProgramme.tsx (Gantt "Plan vs Actual" tab)
 // and WorkDemand.tsx (BOM & Demand "Plan vs Actual" tab) render THIS same
@@ -14,6 +21,9 @@ import type { PlanVsActualRow } from "@shared/schema";
 // Value / BOQ Balance / % Complete / Status / Last Activity.
 
 function deriveStatus(row: PlanVsActualRow): { label: string; className: string } {
+  if (row.actualIncomplete || row.totalActual == null || row.percentComplete == null) {
+    return { label: "Unit review", className: "text-amber-700 bg-amber-50 border-amber-200" };
+  }
   const balance = row.currentQty - row.totalActual;
   if (row.percentComplete >= 100 || balance <= 0) {
     return { label: "Complete", className: "text-emerald-700 bg-emerald-50 border-emerald-200" };
@@ -28,7 +38,7 @@ function deriveStatus(row: PlanVsActualRow): { label: string; className: string 
 }
 
 export function PlanVsActualTable({ projectId }: { projectId: number }) {
-  const { data: rows = [], isLoading } = useQuery<PlanVsActualRow[]>({
+  const { data: rows = [], isLoading } = useQuery<PlanVsActualDisplayRow[]>({
     queryKey: ["/api/boq/projects", projectId, "plan-vs-actual"],
     queryFn: async () => {
       const res = await fetch(`/api/boq/projects/${projectId}/plan-vs-actual`, { credentials: "include" });
@@ -77,8 +87,18 @@ export function PlanVsActualTable({ projectId }: { projectId: number }) {
         </thead>
         <tbody>
           {rows.map((row) => {
-            const balance = row.currentQty - row.totalActual;
-            const status = deriveStatus(row);
+            const balance = row.totalActual == null ? null : row.currentQty - row.totalActual;
+            const conversionWarnings = Array.isArray(row.conversionWarnings)
+              ? row.conversionWarnings.filter((warning: unknown): warning is string => typeof warning === "string")
+              : [];
+            // Warnings are advisory (for example an ignored stale same-unit
+            // factor). Only the server's explicit unresolved-credit flag makes
+            // actual-derived totals incomplete.
+            const actualIncomplete = row.actualIncomplete === true
+              || row.totalActual == null || row.percentComplete == null || row.actualAmount == null;
+            const status = actualIncomplete
+              ? { label: "Unit review", className: "text-amber-700 bg-amber-50 border-amber-200" }
+              : deriveStatus(row);
             return (
               <tr key={row.boqItemId} className="border-b border-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800/30" data-testid={`pva-contractor-row-${row.boqItemId}`}>
                 <td className="px-3 py-2 sticky left-0 bg-white dark:bg-gray-950 z-10 text-slate-700 dark:text-slate-300 max-w-[320px]">
@@ -105,20 +125,33 @@ export function PlanVsActualTable({ projectId }: { projectId: number }) {
                 <td className="px-2 py-2 text-right font-mono text-slate-600">{row.clientRate != null ? fmtQty(row.clientRate, 2) : "—"}</td>
                 <td className="px-2 py-2 text-right font-mono">{fmtQty(row.currentQty, 1)}</td>
                 <td className="px-2 py-2 text-right font-mono text-blue-700">{fmtQty(row.totalPlanned, 1)}</td>
-                <td className="px-2 py-2 text-right font-mono text-teal-700">{fmtQty(row.totalActual, 1)}</td>
-                <td className={`px-2 py-2 text-right font-mono font-semibold ${balance <= 0 ? "text-emerald-700" : "text-slate-600"}`}>{fmtQty(balance, 1)}</td>
+                <td className="px-2 py-2 text-right font-mono text-teal-700">
+                  {actualIncomplete ? <span className="text-amber-700 font-sans">Incomplete</span> : fmtQty(row.totalActual!, 1)}
+                  {conversionWarnings.length > 0 && (
+                    <span className="block text-[10px] font-sans text-amber-700 whitespace-normal" title={conversionWarnings.join(" · ")} data-testid={`pva-unit-warning-${row.boqItemId}`}>
+                      {actualIncomplete ? "Unresolved credit · unit review" : "Unit warning · value retained"}
+                    </span>
+                  )}
+                </td>
+                <td className={`px-2 py-2 text-right font-mono font-semibold ${actualIncomplete ? "text-amber-700" : balance! <= 0 ? "text-emerald-700" : "text-slate-600"}`}>
+                  {actualIncomplete ? "Incomplete" : fmtQty(balance!, 1)}
+                </td>
                 <td className="px-2 py-2 text-right font-mono text-slate-600">{fmtQty(row.boqAmount, 0)}</td>
                 <td className="px-2 py-2 text-right font-mono text-blue-700">{fmtQty(row.plannedAmount, 0)}</td>
-                <td className="px-2 py-2 text-right font-mono text-teal-700">{fmtQty(row.actualAmount, 0)}</td>
+                <td className="px-2 py-2 text-right font-mono text-teal-700">
+                  {actualIncomplete ? <span className="text-amber-700 font-sans">Incomplete</span> : fmtQty(row.actualAmount!, 0)}
+                </td>
                 <td className="px-2 py-2 text-right">
-                  <span className={`font-semibold ${
-                    row.percentComplete >= 100 ? "text-emerald-700"
-                    : row.percentComplete >= 80 ? "text-teal-700"
-                    : row.percentComplete >= 50 ? "text-amber-700"
+                  {actualIncomplete ? (
+                    <span className="font-semibold text-amber-700">Incomplete</span>
+                  ) : <span className={`font-semibold ${
+                    row.percentComplete! >= 100 ? "text-emerald-700"
+                    : row.percentComplete! >= 80 ? "text-teal-700"
+                    : row.percentComplete! >= 50 ? "text-amber-700"
                     : "text-red-700"
                   }`}>
-                    {fmtQty(row.percentComplete, 1)}%
-                  </span>
+                    {fmtQty(row.percentComplete!, 1)}%
+                  </span>}
                 </td>
                 <td className="px-2 py-2 text-left">
                   <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold border whitespace-nowrap ${status.className}`}>
@@ -136,7 +169,11 @@ export function PlanVsActualTable({ projectId }: { projectId: number }) {
             <td></td><td></td><td></td><td></td><td></td><td></td>
             <td className="px-2 py-2 text-right font-mono">{fmtQty(rows.reduce((s, r) => s + (r.boqAmount || 0), 0), 0)}</td>
             <td className="px-2 py-2 text-right font-mono text-blue-700">{fmtQty(rows.reduce((s, r) => s + (r.plannedAmount || 0), 0), 0)}</td>
-            <td className="px-2 py-2 text-right font-mono text-teal-700">{fmtQty(rows.reduce((s, r) => s + (r.actualAmount || 0), 0), 0)}</td>
+            <td className="px-2 py-2 text-right font-mono text-teal-700">
+              {rows.some((row) => row.actualIncomplete === true || row.actualAmount == null)
+                ? <span className="text-amber-700 font-sans">Incomplete</span>
+                : fmtQty(rows.reduce((s, r) => s + (r.actualAmount || 0), 0), 0)}
+            </td>
             <td></td><td></td><td></td>
           </tr>
         </tfoot>

@@ -206,7 +206,8 @@ describe("shared DPR BOQ selection", () => {
     );
 
     expect(result.creditApplied).toBe(true);
-    expect(result.executedByUom).toEqual([{ uom: "SQM", qty: 5, entryCount: 1 }]);
+    // Same physical/contract unit: a stale saved factor must not reduce credit.
+    expect(result.executedByUom).toEqual([{ uom: "SQM", qty: 10, entryCount: 1 }]);
   });
 
   it("shows only BOQ-owned saved names, never canonical/SNL labels", () => {

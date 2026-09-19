@@ -348,7 +348,9 @@ export default function DprDetails() {
                         <TableCell className="text-right whitespace-nowrap" data-testid={`text-boq-progress-${i}`}>
                           {m.converted && m.boqQty != null
                              ? `${Number(m.boqQty.toFixed(4))} ${m.boqUom ?? "(BOQ unit unavailable)"}`
-                            : m.boqQty != null ? `${Number(m.boqQty.toFixed(3))} ${m.boqUom ?? ''}`.trim() : '-'}
+                             : m.boqQty != null ? `${Number(m.boqQty.toFixed(3))} ${m.boqUom ?? ''}`.trim()
+                             : <span className="text-amber-700 whitespace-normal" title={m.warnings.join(" · ")}>Needs unit review</span>}
+                          {m.warnings.length > 0 && <div className="text-[10px] text-amber-700 whitespace-normal max-w-64">{m.warnings.join(" · ")}</div>}
                         </TableCell>
                       </TableRow>
                       {boqProjectId != null && item.boqItemId != null && (

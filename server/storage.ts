@@ -440,6 +440,7 @@ import { convertSolidQty } from "@shared/uomConvert";
 import { canonMaterialName } from "@shared/materialMatch";
 import { suggestWorkCategory, suggestWorkCategoryFromDescription } from "@shared/boqWorkCategories";
 import { canonicalizeUnit } from "@shared/boqNormalise";
+import { entryBoqCredit, entryConversionResolution, type ReportBoqItem, type ReportEntry } from "@shared/progressReport";
 import { creditExecutedEntries } from "@shared/planOutcome";
 import {
   normalizeBoqProjectBusinessText,
@@ -1784,7 +1785,10 @@ export interface IStorage {
   getSubmittedProgressLinkCounts(barIds: number[]): Promise<Map<number, number>>;
   getProgressLinksForProject(boqProjectId: number): Promise<Array<{ programmeBarId: number; submittedCount: number; draftCount: number }>>;
   markProgressLinksReviewRequired(programmeBarId: number): Promise<number[]>;
-  getReportedQtyByBar(barIds: number[]): Promise<Map<number, number>>;
+  getReportedQtyByBar(barIds: number[]): Promise<Map<number, number> & {
+    reviewRequiredBarIds: Set<number>;
+    unresolvedBarIds: Set<number>;
+  }>;
   /** Current-source, read-only DPR/trip evidence for one arrangement's allocated reaches. */
   getArrangementExecutionEvidence(arrangementId: number): Promise<ArrangementBarEvidence[]>;
   getArrangementProgress(arrangementId: number): Promise<{
@@ -30040,13 +30044,36 @@ export class DatabaseStorage implements IStorage {
 
   // Sum BOQ-unit credit per bar from submitted, current DPRs — used by the DPR
   // bar selector to show a BOQ-to-BOQ remaining balance. Stored progress
-  // quantity remains physical; apply the item's DPR factor exactly once here.
-  async getReportedQtyByBar(barIds: number[]): Promise<Map<number, number>> {
-    if (barIds.length === 0) return new Map();
+  // quantity remains physical; resolve credit from each row's physical UOM and
+  // the BOQ item's contractual UOM rather than blindly applying its legacy
+  // factor.
+  async getReportedQtyByBar(barIds: number[]): Promise<Map<number, number> & {
+    reviewRequiredBarIds: Set<number>;
+    unresolvedBarIds: Set<number>;
+  }> {
+    const map = new Map<number, number>() as Map<number, number> & {
+      reviewRequiredBarIds: Set<number>;
+      unresolvedBarIds: Set<number>;
+    };
+    map.reviewRequiredBarIds = new Set<number>();
+    map.unresolvedBarIds = new Set<number>();
+    if (barIds.length === 0) return map;
     const rows = await db
       .select({
         barId: progressEntries.programmeBarId,
-        total: sql<number>`coalesce(sum(${progressEntries.quantity} * coalesce(${boqItems.dprConversionFactor}, 1.0)), 0)`,
+        quantity: progressEntries.quantity,
+        uom: progressEntries.uom,
+        quantitySource: progressEntries.quantitySource,
+        quantitySourceNote: progressEntries.quantitySourceNote,
+        length: progressEntries.length,
+        width: progressEntries.width,
+        thickness: progressEntries.thickness,
+        chainageFrom: progressEntries.chainageFrom,
+        chainageTo: progressEntries.chainageTo,
+        boqItemId: boqItems.id,
+        boqUnit: boqItems.unit,
+        measurementMethod: boqItems.dprMeasurementMethod,
+        conversionFactor: boqItems.dprConversionFactor,
       })
       .from(progressEntries)
       .innerJoin(dprs, eq(progressEntries.dprId, dprs.id))
@@ -30062,10 +30089,37 @@ export class DatabaseStorage implements IStorage {
         // rows are preserved but excluded from the bar's completed quantity
         // until reviewed/approved.
         sql`(${progressEntries.chainageReviewStatus} IS NULL OR ${progressEntries.chainageReviewStatus} <> 'review_required')`,
-      ))
-      .groupBy(progressEntries.programmeBarId);
-    const map = new Map<number, number>();
-    for (const r of rows) if (r.barId != null) map.set(r.barId, Number(r.total));
+      ));
+    for (const r of rows) {
+      if (r.barId == null || r.boqItemId == null) continue;
+      const entry = {
+        kind: "progress",
+        quantity: r.quantity == null ? null : Number(r.quantity),
+        uom: r.uom ?? null,
+        quantitySource: r.quantitySource ?? null,
+        quantitySourceNote: r.quantitySourceNote ?? null,
+        length: r.length == null ? null : Number(r.length),
+        width: r.width == null ? null : Number(r.width),
+        thickness: r.thickness == null ? null : Number(r.thickness),
+        chainageFrom: r.chainageFrom ?? null,
+        chainageTo: r.chainageTo ?? null,
+      } as ReportEntry;
+      const item = {
+          id: Number(r.boqItemId),
+          description: "",
+          unit: r.boqUnit ?? "",
+          boqQty: null,
+          dprMeasurementMethod: r.measurementMethod ?? null,
+          dprConversionFactor: r.conversionFactor == null ? null : Number(r.conversionFactor),
+      } as ReportBoqItem;
+      const conversion = entryConversionResolution(entry, item);
+      const credit = entryBoqCredit(entry, item);
+      if (credit == null || !conversion.valid || conversion.warnings.length > 0) {
+        map.reviewRequiredBarIds.add(Number(r.barId));
+      }
+      if (credit == null || !conversion.valid) map.unresolvedBarIds.add(Number(r.barId));
+      if (credit != null) map.set(Number(r.barId), (map.get(Number(r.barId)) ?? 0) + credit);
+    }
     return map;
   }
 
@@ -30078,10 +30132,22 @@ export class DatabaseStorage implements IStorage {
     boqProjectId: number,
     barsInput?: WorkProgramBarWithItem[],
     executor: any = db,
-  ): Promise<Map<number, { reportedQty: number; earliestProgressDate: string | null }>> {
+  ): Promise<Map<number, {
+    reportedQty: number;
+    earliestProgressDate: string | null;
+    reviewRequired: boolean;
+    conversionWarnings: string[];
+  }>> {
     const bars = barsInput ?? await this.getWorkProgramBars(boqProjectId);
-    const result = new Map<number, { reportedQty: number; earliestProgressDate: string | null }>();
-    for (const bar of bars) result.set(bar.id, { reportedQty: 0, earliestProgressDate: null });
+    const result = new Map<number, {
+      reportedQty: number;
+      earliestProgressDate: string | null;
+      reviewRequired: boolean;
+      conversionWarnings: string[];
+    }>();
+    for (const bar of bars) {
+      result.set(bar.id, { reportedQty: 0, earliestProgressDate: null, reviewRequired: false, conversionWarnings: [] });
+    }
     if (bars.length === 0) return result;
 
     const itemIds = Array.from(new Set(bars.map((b) => b.boqItemId)));
@@ -30095,6 +30161,16 @@ export class DatabaseStorage implements IStorage {
         chainageToKm: progressEntries.chainageToKm,
         side: progressEntries.side,
         dprDate: dprs.date,
+        uom: progressEntries.uom,
+        quantitySource: progressEntries.quantitySource,
+        quantitySourceNote: progressEntries.quantitySourceNote,
+        length: progressEntries.length,
+        width: progressEntries.width,
+        thickness: progressEntries.thickness,
+        chainageFrom: progressEntries.chainageFrom,
+        chainageTo: progressEntries.chainageTo,
+        itemUnit: boqItems.unit,
+        measurementMethod: boqItems.dprMeasurementMethod,
         conversionFactor: boqItems.dprConversionFactor,
       })
       .from(progressEntries)
@@ -30141,10 +30217,37 @@ export class DatabaseStorage implements IStorage {
           );
         }
       }
-      const creditedQty = Number(row.quantity ?? 0) * Number(row.conversionFactor ?? 1);
+      const entry = {
+          kind: "progress",
+          quantity: row.quantity == null ? null : Number(row.quantity),
+          uom: row.uom ?? null,
+          quantitySource: row.quantitySource ?? null,
+          quantitySourceNote: row.quantitySourceNote ?? null,
+          length: row.length == null ? null : Number(row.length),
+          width: row.width == null ? null : Number(row.width),
+          thickness: row.thickness == null ? null : Number(row.thickness),
+          chainageFrom: row.chainageFrom ?? null,
+          chainageTo: row.chainageTo ?? null,
+      } as ReportEntry;
+      const item = {
+          id: Number(row.boqItemId),
+          description: "",
+          unit: row.itemUnit ?? "",
+          boqQty: null,
+          dprMeasurementMethod: row.measurementMethod ?? null,
+          dprConversionFactor: row.conversionFactor == null ? null : Number(row.conversionFactor),
+      } as ReportBoqItem;
+      const conversion = entryConversionResolution(entry, item);
+      const creditedQty = entryBoqCredit(entry, item);
       for (const bar of matched) {
-        const current = result.get(bar.id) ?? { reportedQty: 0, earliestProgressDate: null };
-        current.reportedQty += creditedQty;
+        const current = result.get(bar.id) ?? {
+          reportedQty: 0, earliestProgressDate: null, reviewRequired: false, conversionWarnings: [],
+        };
+        if (creditedQty == null || !conversion.valid) current.reviewRequired = true;
+        if (creditedQty != null) current.reportedQty += creditedQty;
+        for (const warning of conversion.warnings) {
+          if (!current.conversionWarnings.includes(warning)) current.conversionWarnings.push(warning);
+        }
         if (!current.earliestProgressDate || row.dprDate < current.earliestProgressDate) {
           current.earliestProgressDate = row.dprDate;
         }
@@ -30192,6 +30295,12 @@ export class DatabaseStorage implements IStorage {
         programmeBarId: progressEntries.programmeBarId, earthworkArrangementId: progressEntries.earthworkArrangementId,
         quantity: progressEntries.quantity, chainageFromKm: progressEntries.chainageFromKm,
         chainageToKm: progressEntries.chainageToKm, side: progressEntries.side, layerNo: progressEntries.layerNo,
+         uom: progressEntries.uom, itemUnit: boqItems.unit,
+         quantitySource: progressEntries.quantitySource, quantitySourceNote: progressEntries.quantitySourceNote,
+         length: progressEntries.length,
+         width: progressEntries.width, thickness: progressEntries.thickness,
+         chainageFrom: progressEntries.chainageFrom, chainageTo: progressEntries.chainageTo,
+         dprMeasurementMethod: boqItems.dprMeasurementMethod,
         dprConversionFactor: boqItems.dprConversionFactor,
       }).from(progressEntries).innerJoin(dprs, eq(progressEntries.dprId, dprs.id))
         // BOQ item's project is the canonical project relation for a progress
@@ -30211,7 +30320,41 @@ export class DatabaseStorage implements IStorage {
     return calculateArrangementExecutionEvidence(
       { id: arrangement.id, boqProjectId: arrangement.boqProjectId, agencyName: arrangement.agencyName, uom: (arrangement as any).uom ?? null },
       bars,
-      progress.map(row => ({ ...row, boqProjectId: arrangement.boqProjectId, isValid: true })),
+      progress.map(row => {
+        const quantity = row.quantity == null ? null : Number(row.quantity);
+        const entry = {
+            kind: "progress",
+            quantity,
+            uom: row.uom ?? null,
+            quantitySource: row.quantitySource ?? null,
+            quantitySourceNote: row.quantitySourceNote ?? null,
+            length: row.length == null ? null : Number(row.length),
+            width: row.width == null ? null : Number(row.width),
+            thickness: row.thickness == null ? null : Number(row.thickness),
+            chainageFrom: row.chainageFrom ?? null,
+            chainageTo: row.chainageTo ?? null,
+        } as ReportEntry;
+        const item = {
+            id: Number(row.boqItemId),
+            description: "",
+            unit: row.itemUnit ?? "",
+            boqQty: null,
+            dprMeasurementMethod: row.dprMeasurementMethod ?? null,
+            dprConversionFactor: row.dprConversionFactor == null ? null : Number(row.dprConversionFactor),
+        } as ReportBoqItem;
+        const conversion = entryConversionResolution(entry, item);
+        const credit = entryBoqCredit(entry, item);
+        return {
+          ...row,
+          boqProjectId: arrangement.boqProjectId,
+          // The legacy pure arrangement seam accepts an effective factor.
+          // Resolve it row-by-row here; never pass the persisted factor blind.
+          dprConversionFactor: credit != null && quantity != null && quantity > 0 ? credit / quantity : null,
+          isValid: true,
+          conversionUnresolved: credit == null || !conversion.valid,
+          conversionWarnings: conversion.warnings,
+        };
+      }),
       trips,
     );
   }
@@ -30781,17 +30924,29 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Get actuals from progress_entries linked to items in this project.
-    // Multiply each entry's quantity by the item's dpr_conversion_factor so that
-    // DPR field-units (e.g. SQM) are converted to the BOQ unit (e.g. Hectares).
+    // Credit each physical row through the shared row-aware unit contract.
+    // This keeps a stale same-unit factor informational instead of allowing it
+    // to shrink contractual progress or valuation.
     const itemIds = items.map((i) => i.id);
-    type ActualRow = { boqItemId: number; totalQty: number; lastDate: string };
+    type ActualRow = { boqItemId: number; totalQty: number; lastDate: string; incomplete: boolean; conversionWarnings: string[] };
     let actuals: ActualRow[] = [];
     if (itemIds.length > 0) {
       const dateFilter = asOfDate ? sql`AND dprs.date <= ${asOfDate}` : sql``;
       const rawActuals = await db.execute(sql`
         SELECT pe.boq_item_id as "boqItemId",
-               COALESCE(SUM(pe.quantity * COALESCE(bi.dpr_conversion_factor, 1.0)), 0) as "totalQty",
-               MAX(dprs.date) as "lastDate"
+               pe.quantity as "quantity",
+               pe.uom as "uom",
+               pe.quantity_source as "quantitySource",
+               pe.quantity_source_note as "quantitySourceNote",
+               pe.length as "length",
+               pe.width as "width",
+               pe.thickness as "thickness",
+               pe.chainage_from as "chainageFrom",
+               pe.chainage_to as "chainageTo",
+               bi.unit as "boqUnit",
+               bi.dpr_measurement_method as "measurementMethod",
+               bi.dpr_conversion_factor as "conversionFactor",
+               dprs.date as "dprDate"
         FROM progress_entries pe
         JOIN dprs ON dprs.id = pe.dpr_id
         JOIN boq_items bi ON bi.id = pe.boq_item_id
@@ -30800,31 +30955,98 @@ export class DatabaseStorage implements IStorage {
           AND pe.no_site_work = false
           AND pe.is_incidental = false
           ${dateFilter}
-        GROUP BY pe.boq_item_id
       `);
-      actuals = rawActuals.rows as ActualRow[];
+      const actualMap = new Map<number, ActualRow>();
+      for (const row of rawActuals.rows as any[]) {
+        const id = Number(row.boqItemId);
+        const entry = {
+          kind: "progress",
+          quantity: row.quantity == null ? null : Number(row.quantity),
+          uom: row.uom ?? null,
+          quantitySource: row.quantitySource ?? null,
+          quantitySourceNote: row.quantitySourceNote ?? null,
+          length: row.length == null ? null : Number(row.length),
+          width: row.width == null ? null : Number(row.width),
+          thickness: row.thickness == null ? null : Number(row.thickness),
+          chainageFrom: row.chainageFrom ?? null,
+          chainageTo: row.chainageTo ?? null,
+        } as ReportEntry;
+        const item = {
+            id,
+            description: "",
+            unit: row.boqUnit ?? "",
+            boqQty: null,
+            dprMeasurementMethod: row.measurementMethod ?? null,
+            dprConversionFactor: row.conversionFactor == null ? null : Number(row.conversionFactor),
+        } as ReportBoqItem;
+        const conversion = entryConversionResolution(entry, item);
+        const credit = entryBoqCredit(entry, item);
+        const existing = actualMap.get(id) ?? {
+          boqItemId: id, totalQty: 0, lastDate: String(row.dprDate),
+          incomplete: false, conversionWarnings: [],
+        };
+        if (credit != null) existing.totalQty += credit;
+        if (credit == null || !conversion.valid) existing.incomplete = true;
+        for (const warning of conversion.warnings) {
+          if (!existing.conversionWarnings.includes(warning)) existing.conversionWarnings.push(warning);
+        }
+        if (String(row.dprDate) > existing.lastDate) existing.lastDate = String(row.dprDate);
+        actualMap.set(id, existing);
+      }
+      actuals = Array.from(actualMap.values());
 
       // Structure DPR actuals (dpr_structure_items linked to a BOQ item) — merged into
       // the same per-item totals so structure work also shows Plan vs Actual.
       const rawStruct = await db.execute(sql`
         SELECT dsi.boq_item_id as "boqItemId",
-               COALESCE(SUM(dsi.quantity * COALESCE(dsi.dpr_conversion_factor, bi.dpr_conversion_factor, 1.0)), 0) as "totalQty",
-               MAX(dprs.date) as "lastDate"
+               dsi.quantity as "quantity",
+               dsi.uom as "uom",
+               dsi.dpr_conversion_factor as "rowConversionFactor",
+               bi.unit as "boqUnit",
+               bi.dpr_measurement_method as "measurementMethod",
+               bi.dpr_conversion_factor as "conversionFactor",
+               dprs.date as "dprDate"
         FROM dpr_structure_items dsi
         JOIN dprs ON dprs.id = dsi.dpr_id
         JOIN boq_items bi ON bi.id = dsi.boq_item_id
         WHERE dsi.boq_item_id = ANY(ARRAY[${sql.raw(itemIds.join(","))}]::int[])
           AND (dprs.is_superseded = false OR dprs.is_superseded IS NULL)
           ${dateFilter}
-        GROUP BY dsi.boq_item_id
       `);
-      for (const sr of rawStruct.rows as ActualRow[]) {
-        const existing = actuals.find(a => a.boqItemId === sr.boqItemId);
+      for (const sr of rawStruct.rows as any[]) {
+        const id = Number(sr.boqItemId);
+        const entry = {
+            kind: "structure",
+            quantity: sr.quantity == null ? null : Number(sr.quantity),
+            uom: sr.uom ?? null,
+            rowConversionFactor: sr.rowConversionFactor == null ? null : Number(sr.rowConversionFactor),
+        } as ReportEntry;
+        const item = {
+            id,
+            description: "",
+            unit: sr.boqUnit ?? "",
+            boqQty: null,
+            dprMeasurementMethod: sr.measurementMethod ?? null,
+            dprConversionFactor: sr.conversionFactor == null ? null : Number(sr.conversionFactor),
+        } as ReportBoqItem;
+        const credit = entryBoqCredit(entry, item);
+        const conversion = entryConversionResolution(entry, item);
+        const existing = actuals.find(a => a.boqItemId === id);
         if (existing) {
-          existing.totalQty += Number(sr.totalQty);
-          if (sr.lastDate > existing.lastDate) existing.lastDate = sr.lastDate;
+          if (credit != null) existing.totalQty += credit;
+          if (credit == null || !conversion.valid) existing.incomplete = true;
+          for (const warning of conversion.warnings) {
+            if (!existing.conversionWarnings.includes(warning)) existing.conversionWarnings.push(warning);
+          }
+          if (String(sr.dprDate) > existing.lastDate) existing.lastDate = String(sr.dprDate);
         } else {
-          actuals.push({ ...sr, totalQty: Number(sr.totalQty) });
+          actuals.push({
+            boqItemId: id,
+            totalQty: credit ?? 0,
+            lastDate: String(sr.dprDate),
+            incomplete: credit == null || !conversion.valid,
+            conversionWarnings: [...conversion.warnings],
+          });
         }
       }
     }
@@ -30848,26 +31070,34 @@ export class DatabaseStorage implements IStorage {
 
     return items.map((item) => {
       const actualRow = actuals.find((a) => a.boqItemId === item.id);
-      const totalActual = actualRow?.totalQty ?? 0;
+      const actualIncomplete = actualRow?.incomplete ?? false;
+      const resolvedActual = actualRow?.totalQty ?? 0;
+      const totalActual = actualIncomplete ? null : Math.round(resolvedActual * 1000) / 1000;
       const totalPlanned = Math.round((plannedToDate.get(item.id) ?? 0) * 1000) / 1000;
-      const percentComplete = item.currentQty > 0 ? Math.round((totalActual / item.currentQty) * 10000) / 100 : 0;
+      const percentComplete = totalActual == null
+        ? null
+        : item.currentQty > 0 ? Math.round((totalActual / item.currentQty) * 10000) / 100 : 0;
       const clientRate = item.clientRate ?? null;
       const round2 = (n: number) => Math.round(n * 100) / 100;
       return {
         boqItemId: item.id,
         itemCode: item.itemCode,
         description: item.description,
-        unit: item.canonicalUnit ?? item.unit,
+        unit: item.unit,
         categoryName: item.categoryName,
         currentQty: item.currentQty,
         totalPlanned,
-        totalActual: Math.round(totalActual * 1000) / 1000,
+        totalActual,
         percentComplete,
         lastActivityDate: actualRow?.lastDate ?? null,
         clientRate,
         boqAmount: clientRate != null ? round2(clientRate * item.currentQty) : 0,
         plannedAmount: clientRate != null ? round2(clientRate * totalPlanned) : 0,
-        actualAmount: clientRate != null ? round2(clientRate * totalActual) : 0,
+        actualAmount: actualIncomplete
+          ? null
+          : clientRate != null ? round2(clientRate * resolvedActual) : 0,
+        actualIncomplete,
+        conversionWarnings: actualRow?.conversionWarnings ?? [],
       };
     });
   }
@@ -32038,6 +32268,13 @@ export class DatabaseStorage implements IStorage {
     const rows = await db.select({
       quantity: progressEntries.quantity,
       uom: progressEntries.uom,
+      quantitySource: progressEntries.quantitySource,
+      quantitySourceNote: progressEntries.quantitySourceNote,
+      length: progressEntries.length,
+      width: progressEntries.width,
+      thickness: progressEntries.thickness,
+      chainageFrom: progressEntries.chainageFrom,
+      chainageTo: progressEntries.chainageTo,
       programmeBarId: progressEntries.programmeBarId,
       noSiteWork: progressEntries.noSiteWork,
       isIncidental: progressEntries.isIncidental,
@@ -32057,8 +32294,24 @@ export class DatabaseStorage implements IStorage {
     // item's unit — never the raw physical entry quantity/uom.
     const boqItem = await this.getBoqItem(args.boqItemId);
     const { executedByUom, creditApplied } = creditExecutedEntries(
-      billable.map(r => ({ quantity: r.quantity, uom: r.uom })),
-      boqItem ? { id: boqItem.id, unit: (boqItem as any).unit, dprConversionFactor: (boqItem as any).dprConversionFactor ?? null } : null,
+      billable.map(row => ({
+        kind: "progress",
+        quantity: Number(row.quantity),
+        uom: row.uom ?? null,
+        quantitySource: row.quantitySource ?? null,
+        quantitySourceNote: row.quantitySourceNote ?? null,
+        length: row.length == null ? null : Number(row.length),
+        width: row.width == null ? null : Number(row.width),
+        thickness: row.thickness == null ? null : Number(row.thickness),
+        chainageFrom: row.chainageFrom ?? null,
+        chainageTo: row.chainageTo ?? null,
+      })),
+      boqItem ? {
+        id: boqItem.id,
+        unit: (boqItem as any).unit,
+        dprMeasurementMethod: (boqItem as any).dprMeasurementMethod ?? null,
+        dprConversionFactor: (boqItem as any).dprConversionFactor ?? null,
+      } : null,
     );
     return { dprExists: true, executedByUom, creditApplied };
   }

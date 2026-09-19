@@ -126,6 +126,17 @@ export function alreadyCarriedForward(allocationStatus: any): { requirementId: n
 
 export interface ExecutedByUom { uom: string; qty: number; entryCount: number }
 
+export type ExecutedCreditRow =
+  Pick<ReportEntry, "quantity">
+  & Partial<Pick<ReportEntry,
+    "kind" | "uom" | "quantitySource" | "quantitySourceNote" |
+    "length" | "width" | "thickness" | "chainageFrom" | "chainageTo" |
+    "rowConversionFactor"
+  >>;
+
+export type ExecutedCreditItem =
+  Pick<ReportBoqItem, "id" | "unit" | "dprConversionFactor" | "dprMeasurementMethod">;
+
 export interface ExecutionComparison {
   dprExists: boolean;
   billableEntryCount: number;
@@ -154,29 +165,38 @@ const normUom = (u: string | null | undefined) => (u ?? "").trim().toLowerCase()
  * never falls back to raw physical quantity just because the text matches.
  */
 export function creditExecutedEntries(
-  rows: Array<{ quantity: number | string | null; uom?: string | null; rowConversionFactor?: number | null }>,
-  boqItem: Pick<ReportBoqItem, "id" | "unit" | "dprConversionFactor"> | null | undefined,
+  rows: ExecutedCreditRow[],
+  boqItem: ExecutedCreditItem | null | undefined,
 ): { executedByUom: ExecutedByUom[]; creditApplied: boolean } {
-  if (!boqItem || !boqItem.unit?.trim()) {
-    // No safe credit basis — group by raw physical uom, flagged non-creditable.
+  const creditRows = rows.filter(r => r.quantity != null && Number.isFinite(Number(r.quantity)));
+  const rawGrouped = () => {
     const byUom = new Map<string, ExecutedByUom>();
-    for (const r of rows) {
+    for (const r of creditRows) {
       const key = normUom(r.uom);
       const cur = byUom.get(key) ?? { uom: (r.uom ?? "").trim(), qty: 0, entryCount: 0 };
       cur.qty += Number(r.quantity) || 0;
       cur.entryCount += 1;
       byUom.set(key, cur);
     }
-    return { executedByUom: Array.from(byUom.values()), creditApplied: false };
+    return Array.from(byUom.values());
+  };
+  if (!boqItem || !boqItem.unit?.trim()) {
+    // No safe credit basis — group by raw physical uom, flagged non-creditable.
+    return { executedByUom: rawGrouped(), creditApplied: false };
   }
   let qty = 0;
   let count = 0;
-  for (const r of rows) {
+  for (const r of creditRows) {
     const credit = entryBoqCredit(
-      { quantity: r.quantity == null ? null : Number(r.quantity), rowConversionFactor: r.rowConversionFactor ?? null } as ReportEntry,
+      {
+        ...r,
+        kind: r.kind ?? "progress",
+        quantity: r.quantity == null ? null : Number(r.quantity),
+        rowConversionFactor: r.rowConversionFactor ?? null,
+      } as ReportEntry,
       boqItem as ReportBoqItem,
     );
-    if (credit == null) continue;
+    if (credit == null) return { executedByUom: rawGrouped(), creditApplied: false };
     qty += credit;
     count += 1;
   }

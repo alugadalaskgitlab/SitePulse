@@ -4,13 +4,14 @@
  * READ-ONLY reporting helpers shared by the server report/export endpoints
  * and the Progress Report page, so screen and Excel always agree.
  *
- * Quantity semantics (Batch 04, unchanged):
+ * Quantity semantics:
  *  - progress_entries.quantity / dpr_structure_items.quantity store the
  *    PHYSICAL measurement in the field unit.
- *  - BOQ-credit qty = physical qty × dprConversionFactor (?? 1), applied
- *    exactly once — same rule as resolveDprConversionFactor / the existing
- *    cumulative SQL. Structure rows may carry a row-level factor override
- *    (COALESCE(row factor, item factor, 1) — same as getPlanVsActual).
+ *  - BOQ-credit uses the shared source/target-aware resolver exactly once.
+ *    Same-unit rows are identity even when a stale factor exists; known
+ *    dimensional pairs use their authoritative factor; custom pairs require
+ *    explicit provenance. Invalid/ambiguous conversion returns no credit and
+ *    a review warning. Structure rows may carry a row-level override.
  *
  * CRITICAL (§9): running cumulative is computed CHRONOLOGICALLY and attached
  * to rows BEFORE any display sort. Display sorting never recomputes it.
@@ -25,7 +26,7 @@
  *  - OverlapPair type + buildOverlapPairs helper for the Overlap Review panel
  */
 
-import { resolveDprConversionFactor, geometryQtyForRow, quantitiesMatch, resolveBoqUomProfile } from "./dprGeometry";
+import { resolveDprUnitConversion, geometryQtyForRow, quantitiesMatch, resolveBoqUomProfile, type DprUnitConversionResolution } from "./dprGeometry";
 import { KM_EPS, compareChainageRows, normaliseReportSide, sidesMayOverlap } from "./chainageOverlap";
 
 // Batch 06B: the generic side/interval semantics now live in the neutral
@@ -122,6 +123,8 @@ export type ComputedEntry = ReportEntry & {
   converted: boolean;
   /** Historical/ambiguous row — surfaced, never silently corrected. */
   reviewFlag: string | null;
+  /** Unit conversion warnings (stale factor, legacy UOM uncertainty, unresolved profile). */
+  conversionWarnings: string[];
   /** Advisory possible-overlap notes (never changes quantities). */
   overlaps: OverlapNote[];
 };
@@ -165,17 +168,21 @@ export type ItemAbstract = {
 
 // ── Factor / credit (single rule, reused) ───────────────────────────────────
 
+export function entryConversionResolution(entry: ReportEntry, item: ReportBoqItem | undefined): DprUnitConversionResolution {
+  return resolveDprUnitConversion(entry, item ?? null, entry.rowConversionFactor);
+}
+
+/** Compatibility API. Invalid unresolved conversions return NaN, never factor 1. */
 export function entryConversionFactor(entry: ReportEntry, item: ReportBoqItem | undefined): number {
-  const rf = entry.rowConversionFactor;
-  if (typeof rf === "number" && Number.isFinite(rf) && rf > 0) return rf;
-  return resolveDprConversionFactor(item ?? null);
+  return entryConversionResolution(entry, item).factor ?? Number.NaN;
 }
 
 export function entryBoqCredit(entry: ReportEntry, item: ReportBoqItem | undefined): number | null {
   // Classification wins over any stale physical values on a legacy row.
   if (entry.isIncidental || entry.noSiteWork) return 0;
   if (entry.quantity == null || !Number.isFinite(Number(entry.quantity))) return null;
-  return Number(entry.quantity) * entryConversionFactor(entry, item);
+  const factor = entryConversionResolution(entry, item).factor;
+  return factor == null ? null : Number(entry.quantity) * factor;
 }
 
 // ── Chronological ordering (§9) ─────────────────────────────────────────────
@@ -302,14 +309,16 @@ export function computeItemEntries(entries: ReportEntry[], item: ReportBoqItem |
   const overlaps = detectOverlaps(entries);
   let running = 0;
   return chron.map((e) => {
+    const conversion = entryConversionResolution(e, item);
     const credit = entryBoqCredit(e, item);
     if (credit != null) running += credit;
     return {
       ...e,
       boqCreditQty: credit,
       runningCumulative: running,
-      converted: entryConversionFactor(e, item) !== 1,
-      reviewFlag: entryReviewFlag(e, item),
+      converted: conversion.factor != null && conversion.factor !== 1,
+      reviewFlag: entryReviewFlag(e, item) ?? (conversion.warnings[0] ? `Review UOM — ${conversion.warnings[0]}` : null),
+      conversionWarnings: conversion.warnings,
       overlaps: overlaps.get(`${e.kind}:${e.entryId}`) ?? [],
     };
   });

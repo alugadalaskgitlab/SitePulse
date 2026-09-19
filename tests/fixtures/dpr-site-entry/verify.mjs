@@ -759,6 +759,38 @@ const verifyGuidedBoqUnit = async () => {
   return { image, text: text.match(/BOQ Qty:[^\n]+/)?.[0] || "" };
 };
 
+const verifyAuthoritativeProgressUnits = async () => {
+  await navigate("/site/new?task1479=1", 1440, 1100, false);
+  await evaluate("localStorage.clear()");
+  await waitFor("!!document.querySelector('[data-testid=\"input-site\"]')", "SiteEntry progress-unit header");
+  await setInput("input-date", "2026-09-14");
+  await selectOption("input-site", "NARASIMHULU ROAD");
+  await selectOption("select-engineer", "SURESH KUMAR");
+  await clickProgressBill("Road Work");
+  await clickTestId("progress-0-item-select");
+  await waitFor("!!document.querySelector('[data-testid=\"option-boq-item-8805\"]')", "same-unit clearing item");
+  await clickTestId("option-boq-item-8805");
+  await setInput("input-progress-from-0", "0+000");
+  await setInput("input-progress-to-0", "1+600");
+  await setInput("input-progress-width-0", "1.5");
+  await waitFor("document.querySelector('[data-testid=\"text-progress-boq-qty-0\"]')?.textContent?.includes('2,400')", "SiteEntry 2400 Sqm BOQ credit");
+  const siteEntryImage = await capture("task1479-siteentry-2400sqm-same-unit");
+
+  await navigate("/site/edit/6217", 1440, 1100, false);
+  await waitFor("!!document.querySelector('[data-testid=\"text-boq-qty-0\"]') && !!document.querySelector('[data-testid=\"text-boq-qty-1\"]')", "SiteEdit authoritative BOQ quantities");
+  const sameUnit = await evaluate("document.querySelector('[data-testid=\"text-boq-qty-0\"]')?.textContent || ''");
+  const trueHa = await evaluate("document.querySelector('[data-testid=\"text-boq-qty-1\"]')?.textContent || ''");
+  assert(sameUnit.includes("2,400") && sameUnit.includes("Sqm"), `Same-unit stale-factor row was not credited as 2400 Sqm: ${sameUnit}`);
+  assert(trueHa.includes("0.24") && trueHa.includes("Ha"), `True SQM→Ha row was not credited as 0.24 Ha: ${trueHa}`);
+  const text = await bodyText();
+  assert(text.includes("Ignored stale conversion factor 0.0001"), "SiteEdit did not visibly flag the ignored same-unit legacy factor");
+  const image = await capture("task1479-siteedit-2400sqm-and-true-0.24ha");
+  await evaluate("document.querySelector('[data-testid=\"text-boq-qty-1\"]')?.scrollIntoView({ block: 'center' })");
+  await sleep(100);
+  const trueHaImage = await capture("task1479-siteedit-true-ha-0.24");
+  return { siteEntryImage, image, trueHaImage, sameUnit, trueHa };
+};
+
 await cdp("Runtime.enable");
 const dieselDraft = await verifyDprDieselDraft();
 const labour = await verifyDprLabour();
@@ -769,6 +801,7 @@ const plantC = await verifyPlantCStockZero();
 const guidedContractor = await verifyGuidedContractor();
 const guidedPlantStock = await verifyGuidedPlantStock();
 const guidedBoq = await verifyGuidedBoqUnit();
+const authoritativeUnits = await verifyAuthoritativeProgressUnits();
 
 console.log(JSON.stringify({
   scenario: "DPR + Plant Equipment isolated browser fixture",
@@ -787,6 +820,7 @@ console.log(JSON.stringify({
     plantStock: guidedPlantStock,
     boq: guidedBoq,
   },
+  authoritativeUnits,
   writes: {
     // Page.navigate performs a real document load for each scenario, so the
     // fixture's in-memory state is intentionally inspected immediately after

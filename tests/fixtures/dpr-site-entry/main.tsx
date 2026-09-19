@@ -229,6 +229,24 @@ const boqItems = [
     dprMeasurementMethod: "SQM_LW",
     includeInDpr: true,
   },
+  {
+    id: 8805,
+    itemCode: "1.1",
+    itemName: "CLEARING SQM CONTRACT",
+    description: "Clearing and grubbing — contractual square metre item",
+    displayName: "CLEARING SQM CONTRACT",
+    unit: "SQM",
+    canonicalUnit: "SQM",
+    // Synthetic legacy configuration copied from the reported failure. The
+    // actual SiteEntry/SiteEdit screens must ignore it because physical and
+    // contractual units are the same.
+    dprConversionFactor: 0.0001,
+    categoryName: "Road Work",
+    sortOrder: 5,
+    planningWorkType: "road",
+    dprMeasurementMethod: "SQM_LW",
+    includeInDpr: true,
+  },
 ];
 
 const programmeBars = [
@@ -420,6 +438,53 @@ const storedDpr = {
   }],
   remarks: "Fixture DPR — representative data only.",
   createdAt: "2026-08-05T16:00:00.000Z",
+};
+
+// Task 1479 browser record: actual SiteEdit renders both authoritative cases
+// from synthetic, read-only fixture data (no database writes).
+const progressUnitsDpr = {
+  ...storedDpr,
+  id: 6217,
+  dprStatus: "draft",
+  remarks: "Task 1479 progress-unit fixture — synthetic records only.",
+  progress: [
+    {
+      ...storedDpr.progress[0],
+      id: 7317,
+      entryKey: "units-sqm-same-unit",
+      activity: "CLEARING SQM CONTRACT",
+      boqItemId: 8805,
+      programmeBarId: null,
+      chainageFrom: "0+000",
+      chainageTo: "1+600",
+      length: 1600,
+      width: 1.5,
+      thickness: null,
+      quantity: 2400,
+      uom: "SQM",
+      quantitySource: "calculated",
+    },
+    {
+      ...storedDpr.progress[0],
+      id: 7318,
+      entryKey: "units-true-ha",
+      activity: "CLEARING AND GRUBBING ROAD",
+      boqItemId: 8803,
+      programmeBarId: 9902,
+      chainageFrom: "0+000",
+      chainageTo: "1+600",
+      length: 1600,
+      width: 1.5,
+      thickness: null,
+      quantity: 2400,
+      uom: "SQM",
+      quantitySource: "calculated",
+    },
+  ],
+  equipment: [],
+  labour: [],
+  materials: [],
+  sitePurchases: [],
 };
 
 /*
@@ -1077,6 +1142,7 @@ const guidedDprRecords: Record<number, any> = {
   [dpr10BottomDraft.id]: dpr10BottomDraft,
   [dpr10OverlapDraft.id]: dpr10OverlapDraft,
   [dpr10SubmittedAdmin.id]: dpr10SubmittedAdmin,
+  [progressUnitsDpr.id]: progressUnitsDpr,
 };
 for (const [id, record] of Object.entries(persistedDprState.records)) {
   if (record && typeof record === "object") guidedDprRecords[Number(id)] = record;
