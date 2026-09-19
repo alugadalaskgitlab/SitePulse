@@ -24,6 +24,27 @@ const pendingRow = {
   source: "dpr_log",
   dprId: 244,
   suggestions: [{ equipmentId: 5, name: "ROLLER 5", registrationNumber: "R-5", match: "substring" }],
+  reason: "confirmation_required",
+  evidence: {
+    vehicleNo: "TS-09-ZZ-1010",
+    openingReading: 0,
+    closingReading: 4,
+    startTime: "08:00",
+    endTime: null,
+    numberOfTrips: 0,
+    tripDistance: null,
+    diesel: 0,
+    openingDiesel: 0,
+    dieselBalanceInTank: 12,
+    dieselBalanceConfirmed: false,
+    dieselSource: "plant_stock",
+    task: "Rolling",
+    operator: null,
+    notes: ["Hydraulic leak · 10:00–11:00 · Repaired"],
+    activityAllocationCount: 1,
+    activitySegmentCount: 0,
+    breakdownCount: 1,
+  },
 };
 
 function report(reviewRows: any[] = [pendingRow], events: any[] = []) {
@@ -62,6 +83,40 @@ afterEach(() => {
 });
 
 describe("Equipment identification dialog orchestration", () => {
+  it("shows a missing name explicitly and does not preselect among multiple suggestions", async () => {
+    const missingNameRow = {
+      ...pendingRow,
+      logId: 20,
+      machine: "",
+      reason: "missing_name",
+      suggestions: [],
+    };
+    const multipleRow = {
+      ...pendingRow,
+      logId: 21,
+      reason: "multiple_suggestions",
+      suggestions: [
+        { equipmentId: 5, name: "ROLLER 5", registrationNumber: "R-5", match: "substring" },
+        { equipmentId: 6, name: "ROLLER 6", registrationNumber: "R-6", match: "substring" },
+      ],
+    };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === "/api/reports/equipment-performance") {
+        return new Response(JSON.stringify(report([missingNameRow, multipleRow])), { status: 200 });
+      }
+      throw new Error(`Unexpected request: ${String(input)}`);
+    }));
+
+    render(<QueryClientProvider client={queryClient}><EquipmentIdentificationSection /></QueryClientProvider>);
+
+    expect(await screen.findByText("Missing — no equipment name was entered")).toBeTruthy();
+    expect(screen.getByTestId("identification-reason-20").textContent).toContain("no equipment name");
+    expect(screen.getByTestId("identification-reason-21").textContent).toContain("no match was guessed");
+    expect(screen.getByTestId("suggestion-21").textContent).toContain("ROLLER 5 (R-5)");
+    expect(screen.getByTestId("suggestion-21").textContent).toContain("ROLLER 6 (R-6)");
+    expect((screen.getByTestId("select-existing-equipment-21") as HTMLSelectElement).value).toBe("");
+  });
+
   it("links an existing record through the confirm API and removes the pending row", async () => {
     let linked = false;
     const requests: Array<{ url: string; init?: RequestInit }> = [];
@@ -80,6 +135,23 @@ describe("Equipment identification dialog orchestration", () => {
 
     render(<QueryClientProvider client={queryClient}><EquipmentIdentificationSection /></QueryClientProvider>);
     expect(await screen.findByTestId("identification-row-19")).toBeTruthy();
+    expect(screen.getByTestId("identification-reason-19").textContent).toContain("must confirm it");
+    expect(screen.getByText("DPR #244 · Equipment log #19")).toBeTruthy();
+    expect(screen.getByText("Global pending queue across every project and equipment record you are authorized to see; report filters do not limit this list.")).toBeTruthy();
+    expect(screen.getByText("It does not approve the DPR, usage, readings, or work performed.", { exact: false })).toBeTruthy();
+    const evidence = screen.getByTestId("identification-evidence-19");
+    expect(evidence.textContent).toContain("Opening meter0");
+    expect(evidence.textContent).toContain("Trips0");
+    expect(evidence.textContent).toContain("Diesel entered0 L");
+    expect(evidence.textContent).toContain("Opening tank0 L");
+    expect(evidence.textContent).toContain("Closing tank confirmedNo");
+    expect(evidence.textContent).toContain("Diesel sourceplant_stock");
+    expect(evidence.textContent).toContain("Vehicle / registration no.TS-09-ZZ-1010");
+    expect(evidence.textContent).toContain("Hydraulic leak");
+    expect(evidence.textContent).toContain("End timeNot recorded");
+    expect(screen.getByTestId("child-evidence-19").textContent).toContain("1 activity allocation");
+    expect(screen.getByTestId("child-evidence-19").textContent).toContain("0 activity segments");
+    expect(screen.getByTestId("child-evidence-19").textContent).toContain("1 breakdown record");
     fireEvent.click(screen.getByTestId("link-existing-19"));
 
     await waitFor(() => expect(screen.queryByTestId("identification-row-19")).toBeNull());

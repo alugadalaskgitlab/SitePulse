@@ -1,0 +1,29 @@
+{
+  "passed": true,
+  "assertions": [
+    "actual App and HubShell fixture rendered",
+    "independent all-accessible-record banner rendered",
+    "unnamed review reason and representative source evidence rendered",
+    "raw tank, child-count, and linked breakdown evidence rendered",
+    "date controls fit responsive panel",
+    "dialog layer is above desktop and mobile navigation",
+    "dialog is bounded at desktop, tablet, and phone",
+    "wheel scroll moved horizontal and vertical table axes",
+    "Escape restored focus and keyboard reopened popup",
+    "source records are focusable and vertically scrollable",
+    "shared standard dialog z-50 contract remained unchanged",
+    "shared select dropdown remained above HubShell and restored focus",
+    "nested dialog trapped focus and restored focus across Escape closes",
+    "large desktop popup remained bounded with both table axes"
+  ],
+  "screenshots": [
+    "/home/runner/workspace/tests/fixtures/equipment-performance-layout/evidence/after-report-banner-1024x620.png",
+    "/home/runner/workspace/tests/fixtures/equipment-performance-layout/evidence/after-unnamed-review-evidence-1024x620.png",
+    "/home/runner/workspace/tests/fixtures/equipment-performance-layout/evidence/after-popup-1024x620.png",
+    "/home/runner/workspace/tests/fixtures/equipment-performance-layout/evidence/after-popup-tablet-768x720.png",
+    "/home/runner/workspace/tests/fixtures/equipment-performance-layout/evidence/after-popup-phone-390x844.png",
+    "/home/runner/workspace/tests/fixtures/equipment-performance-layout/evidence/after-shared-select-desktop-1440x900.png",
+    "/home/runner/workspace/tests/fixtures/equipment-performance-layout/evidence/after-nested-dialog-desktop-1440x900.png",
+    "/home/runner/workspace/tests/fixtures/equipment-performance-layout/evidence/after-popup-desktop-1440x900.png"
+  ]
+}

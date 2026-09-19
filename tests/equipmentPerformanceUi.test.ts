@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 const report = readFileSync("client/src/pages/EquipmentPerformanceReport.tsx", "utf8");
 const master = readFileSync("client/src/pages/Plant.tsx", "utf8");
 const shell = readFileSync("client/src/components/HubShell.tsx", "utf8");
+const dialog = readFileSync("client/src/components/ui/dialog.tsx", "utf8");
+const select = readFileSync("client/src/components/ui/select.tsx", "utf8");
 
 describe("EQUIP-07 equipment performance UI contract", () => {
   it("uses the canonical Equipment Master formatter while keeping equipmentId values", () => {
@@ -37,7 +39,8 @@ describe("EQUIP-07 equipment performance UI contract", () => {
     expect(report).toContain('href="/reports/hub"');
     expect(report).toContain('data-testid="link-reports-hub"');
     expect(report).toContain('ChevronRight as Crumb');
-    expect(report).toContain("xl:grid-cols-8");
+    expect(report).toContain("repeat(auto-fit,minmax(min(100%,10.5rem),1fr))");
+    expect(report).toContain('min-w-[9.5rem] max-w-full');
     expect(report).toContain('label="Owner / Vendor"');
     expect(report).toContain('selectOptions(report.data, "owners")');
     expect(report).toContain('<th className="px-4 py-2.5">Equipment</th><th>Owned / Hired</th><th>Owner / Vendor</th>');
@@ -47,5 +50,29 @@ describe("EQUIP-07 equipment performance UI contract", () => {
     expect(report).toContain("function MachineDialog");
     expect(report).toContain("Daily details");
     expect(report).toContain("View Source Records");
+  });
+
+  it("keeps standard dialogs above navigation and bounds both popup scroll axes", () => {
+    expect(shell).toContain("fixed inset-y-0 left-0 z-40");
+    expect(shell).toContain("fixed inset-0 z-[39]");
+    expect(shell).not.toContain("z-[60]");
+    expect(report).toContain('data-testid="equipment-daily-table-scroll"');
+    expect(report).toContain('aria-label="Daily equipment details, scroll horizontally and vertically"');
+    expect(report).toContain("max-h-[45dvh]");
+    expect(report).toContain('data-testid="equipment-source-records"');
+    expect(report).toContain("max-h-48 space-y-2 overflow-y-auto");
+    expect(report).toContain("flex-none border-b");
+    expect(dialog).toContain('"fixed inset-0 z-50');
+    expect(dialog).toContain('top-[50%] z-50 grid');
+    expect(select).toContain('"relative z-50');
+  });
+
+  it("shows the independent identification result outside report loading state", () => {
+    const notice = report.indexOf('data-testid="notice-equipment-identification"');
+    const reportState = report.indexOf("{report.isLoading ?");
+    expect(notice).toBeGreaterThan(0);
+    expect(notice).toBeLessThan(reportState);
+    expect(report).toContain("across all accessible dates and projects");
+    expect(report).toContain("queryKey: EQUIPMENT_IDENTIFICATION_QUERY_KEY");
   });
 });

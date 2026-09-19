@@ -13,6 +13,12 @@ description: Why wide flex-shrink-0 button blocks collapse sibling columns, why 
 
 ## How to visually verify layout in this repo
 
+Keep navigation below the shared modal layer rather than raising an individual dialog above everything.
+
+**Why:** Raising a dialog alone can leave its portalled Select/dropdown menus behind it. Wide report dialogs revealed sidebar occlusion that page-only screenshots missed.
+
+**How to apply:** Verify the actual App/HubShell with the dialog open, two-axis overflow, nested dialogs and Select menus. A page-layout assertion does not establish modal usability.
+
 - The Screenshot tool only reaches **registered workflow ports** (main app 5000); ad-hoc `python -m http.server` ports get ERR_CONNECTION_REFUSED, and the mockup-sandbox vite 404s loose files in its public/ (its plugin restricts serving).
 - Cheap method: write a self-contained HTML page (Tailwind CDN + the exact classes, multiple fixed-width containers e.g. 1050/800/375px) into `client/public/`, screenshot `/{file}.html` on port 5000, then delete the file.
 - `pkill -f "<pattern>"` inside a ShellExec kills the shell itself if the pattern appears in the command line — bracket a char (`http[.]server`).

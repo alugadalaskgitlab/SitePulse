@@ -91,6 +91,25 @@ describe("equipment empty-row reliability", () => {
       breakdowns: [{ sourceType: "dpr_log", sourceRecordId: 3, description: "Hydraulic leak" }],
     });
     expect(report.events.map((event) => event.reference.equipmentLogId)).toEqual([2, 3]);
+    expect(report.reviewRows).toEqual([
+      expect.objectContaining({
+        logId: 2,
+        evidence: expect.objectContaining({
+          activityAllocationCount: 1,
+          activitySegmentCount: 0,
+          breakdownCount: 0,
+        }),
+      }),
+      expect.objectContaining({
+        logId: 3,
+        evidence: expect.objectContaining({
+          activityAllocationCount: 0,
+          activitySegmentCount: 0,
+          breakdownCount: 1,
+          notes: ["Hydraulic leak"],
+        }),
+      }),
+    ]);
   });
 
   it("uses the same filter on create, replace/edit, version, and clone paths while retaining omitted linked children", () => {

@@ -69,6 +69,7 @@ export interface EquipmentPerformanceLog {
   id: number;
   dprId: number;
   machine: string;
+  vehicleNo?: string | null;
   equipmentId?: number | null;
   plantUsageId?: number | null;
   entryType?: string | null;
@@ -79,6 +80,10 @@ export interface EquipmentPerformanceLog {
   numberOfTrips?: number | null;
   tripDistance?: number | null;
   diesel?: number | null;
+  openingDiesel?: number | null;
+  dieselBalanceInTank?: number | null;
+  dieselBalanceConfirmed?: boolean | null;
+  dieselSource?: string | null;
   operator?: string | null;
   task?: string | null;
   /** Child evidence can be supplied by storage when the log itself is blank. */
@@ -100,6 +105,34 @@ export interface EquipmentSuggestion {
   name: string;
   registrationNumber: string | null;
   match: "exact" | "substring";
+}
+
+export type EquipmentIdentificationReason =
+  | "missing_name"
+  | "unmatched"
+  | "multiple_suggestions"
+  | "confirmation_required";
+
+export interface EquipmentIdentificationEvidence {
+  vehicleNo: string | null;
+  openingReading: number | null;
+  closingReading: number | null;
+  startTime: string | null;
+  endTime: string | null;
+  numberOfTrips: number | null;
+  tripDistance: number | null;
+  diesel: number | null;
+  openingDiesel: number | null;
+  dieselBalanceInTank: number | null;
+  dieselBalanceConfirmed: boolean | null;
+  dieselSource: string | null;
+  task: string | null;
+  operator: string | null;
+  /** Exact linked breakdown details; equipment_logs itself has no notes column. */
+  notes: string[];
+  activityAllocationCount: number;
+  activitySegmentCount: number;
+  breakdownCount: number;
 }
 
 export interface EquipmentPerformanceEvent {
@@ -277,6 +310,8 @@ export interface EquipmentPerformanceReport {
     source: EquipmentEventSource;
     dprId: number | null;
     suggestions: EquipmentSuggestion[];
+    reason: EquipmentIdentificationReason;
+    evidence: EquipmentIdentificationEvidence;
   }>;
   events: EquipmentPerformanceEvent[];
   fleet: EquipmentPerformanceFleetRow[];
@@ -326,6 +361,16 @@ export function suggestEquipment(machine: string, masters: EquipmentPerformanceM
       match: exact ? "exact" as const : "substring" as const,
     }] : [];
   }).sort((a, b) => (a.match === b.match ? a.name.localeCompare(b.name) : a.match === "exact" ? -1 : 1));
+}
+
+export function equipmentIdentificationReason(
+  machine: string,
+  suggestions: EquipmentSuggestion[],
+): EquipmentIdentificationReason {
+  if (!String(machine ?? "").trim()) return "missing_name";
+  if (suggestions.length === 0) return "unmatched";
+  if (suggestions.length > 1) return "multiple_suggestions";
+  return "confirmation_required";
 }
 
 function liveDpr(dpr: EquipmentPerformanceDpr | undefined): dpr is EquipmentPerformanceDpr {
@@ -569,6 +614,7 @@ export function buildEquipmentPerformanceReport(input: {
   const dprs = new Map(input.dprs.filter((d) => liveDpr(d) && d.boqProjectId != null && projects.has(d.boqProjectId)).map((d) => [d.id, d]));
   const masters = new Map(input.masters.map((m) => [m.id, m]));
   const usages = new Map(input.usages.map((u) => [u.id, u]));
+  const logsById = new Map(input.logs.map((log) => [log.id, log]));
   const breakdownsByDprLogId = new Map<number, EquipmentPerformanceBreakdown[]>();
   for (const breakdown of input.breakdowns ?? []) {
     if (breakdown.sourceType !== "dpr_log" || breakdown.sourceRecordId == null) continue;
@@ -875,11 +921,36 @@ export function buildEquipmentPerformanceReport(input: {
       efficiencyPercent: totalDieselComparedActual > 0 ? totalDieselExpected / totalDieselComparedActual * 100 : null,
       dieselBasis: aggregateDieselBasis(dieselRows),
     },
-    reviewRows: orderedFiltered.filter((e) => e.confidence === "unclassified").map((e) => ({
-      logId: e.reference.equipmentLogId!, date: e.date, machine: e.machine, project: e.project,
-      site: e.site, usageValue: e.usageValue, source: e.source, dprId: e.reference.dprId,
-      suggestions: e.suggestions,
-    })),
+    reviewRows: orderedFiltered.filter((e) => e.confidence === "unclassified").map((e) => {
+      const log = e.reference.equipmentLogId == null ? undefined : logsById.get(e.reference.equipmentLogId);
+      const linkedBreakdowns = log == null ? [] : breakdownsByDprLogId.get(log.id) ?? [];
+      return {
+        logId: e.reference.equipmentLogId!, date: e.date, machine: e.machine, project: e.project,
+        site: e.site, usageValue: e.usageValue, source: e.source, dprId: e.reference.dprId,
+        suggestions: e.suggestions,
+        reason: equipmentIdentificationReason(e.machine, e.suggestions),
+        evidence: {
+          vehicleNo: log?.vehicleNo ?? null,
+          openingReading: log?.openingReading ?? null,
+          closingReading: log?.closingReading ?? null,
+          startTime: log?.startTime ?? null,
+          endTime: log?.endTime ?? null,
+          numberOfTrips: log?.numberOfTrips ?? null,
+          tripDistance: log?.tripDistance ?? null,
+          diesel: log?.diesel ?? null,
+          openingDiesel: log?.openingDiesel ?? null,
+          dieselBalanceInTank: log?.dieselBalanceInTank ?? null,
+          dieselBalanceConfirmed: log?.dieselBalanceConfirmed ?? null,
+          dieselSource: log?.dieselSource ?? null,
+          task: log?.task ?? null,
+          operator: log?.operator ?? null,
+          notes: e.breakdownNotes,
+          activityAllocationCount: log?.activityAllocations?.length ?? 0,
+          activitySegmentCount: log?.activitySegments?.length ?? 0,
+          breakdownCount: linkedBreakdowns.length,
+        },
+      };
+    }),
     events: orderedFiltered, fleet, projects: projectRows,
   };
 }

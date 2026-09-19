@@ -1,5 +1,9 @@
 import { createRoot } from "react-dom/client";
+import { useState } from "react";
 import App from "../../../client/src/App";
+import { Button } from "../../../client/src/components/ui/button";
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "../../../client/src/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../client/src/components/ui/select";
 import "../../../client/src/index.css";
 
 const authPayload = {
@@ -43,6 +47,58 @@ const dailyRow = {
   events: [],
 };
 
+const dailyRows = Array.from({ length: 18 }, (_, index) => ({
+  ...dailyRow,
+  key: `plant_usage:${9001 + index}`,
+  date: `2026-01-${String(index + 2).padStart(2, "0")}`,
+  openingMeter: 120 + index * 6,
+  closingMeter: 126 + index * 6,
+  projectSite: index % 2 ? "Fixture Highway / Site B" : "Fixture Road / Site A",
+}));
+
+const sourceEvents = dailyRows.map((row, index) => ({
+  key: `plant_usage:${9001 + index}`,
+  date: row.date,
+  projectId: 9001,
+  project: index % 2 ? "Fixture Highway" : "Fixture Road",
+  scope: "plant" as const,
+  site: index % 2 ? "Site B" : "Site A",
+  plant: "Fixture HMP",
+  equipmentId: 9001,
+  machine: "Fixture Excavator",
+  equipmentType: "Excavator",
+  ownership: "owned",
+  task: `Fixture source record ${index + 1}`,
+  openingReading: row.openingMeter,
+  closingReading: row.closingMeter,
+  startTime: row.startTime,
+  endTime: row.endTime,
+  trips: null,
+  usageBasis: "hour_meter" as const,
+  usageValue: 6,
+  runtimeHours: 6,
+  totalKm: null,
+  dieselIssued: 42,
+  openingTank: 80,
+  closingTank: 38,
+  clockDuration: 6,
+  dieselActual: 42,
+  dieselBasis: "tank_measured" as const,
+  dieselExpected: 30,
+  dieselVariance: 12,
+  actualConsumptionRate: 7,
+  dieselEfficiencyUnit: "L/hr" as const,
+  efficiencyPercent: 71.4,
+  operator: "Fixture Operator",
+  source: "plant_usage" as const,
+  link: "linked" as const,
+  reference: { dprId: null, equipmentLogId: null, plantUsageId: 9001 + index },
+  notes: null,
+  breakdownNotes: [],
+  confidence: "linked" as const,
+  suggestions: [],
+}));
+
 const report = {
   filterOptions: {
     projects: [{ id: 9001, name: "Fixture Road" }],
@@ -79,8 +135,39 @@ const report = {
     dieselComparedActual: 42,
     dieselComparisonIncomplete: false,
   },
-  reviewRows: [],
-  events: [],
+  reviewRows: [{
+    logId: 9701,
+    date: "2025-12-03",
+    machine: "",
+    project: "Accessible Historic Project",
+    site: "Historic Site",
+    usageValue: 7.5,
+    source: "dpr_log" as const,
+    dprId: 8801,
+    suggestions: [],
+    reason: "missing_name" as const,
+    evidence: {
+      vehicleNo: "RAW-CHILD-9701",
+      openingReading: 42,
+      closingReading: 49.5,
+      startTime: "08:00",
+      endTime: "15:30",
+      numberOfTrips: null,
+      tripDistance: null,
+      diesel: 38,
+      openingDiesel: 84,
+      dieselBalanceInTank: 46,
+      dieselBalanceConfirmed: true,
+      dieselSource: "Opening/closing tank readings",
+      task: "Loading reclaimed material",
+      operator: "Review Agent",
+      notes: ["Hydraulic hose inspection recorded"],
+      activityAllocationCount: 2,
+      activitySegmentCount: 1,
+      breakdownCount: 1,
+    },
+  }],
+  events: sourceEvents,
   fleet: [{
     key: "equipment:9001",
     equipmentId: 9001,
@@ -125,7 +212,7 @@ const report = {
     consumptionRate: 7,
     consumptionRateUnit: "L/hr" as const,
     consumptionIncomplete: false,
-    dailyRows: [dailyRow],
+    dailyRows,
   }],
   projects: [{
     projectId: 9001,
@@ -180,4 +267,38 @@ window.fetch = async (input, init) => {
 };
 
 sessionStorage.setItem("sp_splash_shown", "1");
-createRoot(document.getElementById("root")!).render(<App />);
+
+function AcceptanceHarness() {
+  const [enabled] = useState(() => new URLSearchParams(window.location.search).has("acceptanceHarness"));
+  const [outerOpen, setOuterOpen] = useState(false);
+  const [innerOpen, setInnerOpen] = useState(false);
+  if (!enabled) return null;
+  return (
+    <div className="fixed bottom-3 right-3 z-30">
+      <Dialog open={outerOpen} onOpenChange={setOuterOpen}>
+        <DialogTrigger asChild><Button data-testid="harness-open-outer">Open overlay harness</Button></DialogTrigger>
+        <DialogContent data-testid="harness-outer-dialog">
+          <DialogTitle>Shared overlay acceptance harness</DialogTitle>
+          <a href="#outside" data-testid="harness-first-focus">First focus target</a>
+          <Select>
+            <SelectTrigger data-testid="harness-select"><SelectValue placeholder="Choose equipment" /></SelectTrigger>
+            <SelectContent data-testid="harness-select-content">
+              <SelectItem value="excavator">Excavator</SelectItem>
+              <SelectItem value="tanker">Tanker</SelectItem>
+            </SelectContent>
+          </Select>
+          <Dialog open={innerOpen} onOpenChange={setInnerOpen}>
+            <DialogTrigger asChild><Button data-testid="harness-open-inner">Open nested dialog</Button></DialogTrigger>
+            <DialogContent data-testid="harness-inner-dialog">
+              <DialogTitle>Nested equipment check</DialogTitle>
+              <input data-testid="harness-inner-input" aria-label="Nested equipment note" />
+              <Button data-testid="harness-inner-action">Confirm nested check</Button>
+            </DialogContent>
+          </Dialog>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+createRoot(document.getElementById("root")!).render(<><App /><AcceptanceHarness /></>);

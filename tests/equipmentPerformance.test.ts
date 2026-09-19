@@ -55,6 +55,27 @@ describe("EQUIP-01 pure equipment performance report", () => {
       usageValue: 20,
       source: "dpr_log",
       dprId: 100,
+      reason: "confirmation_required",
+      evidence: {
+        vehicleNo: null,
+        openingReading: 100,
+        closingReading: 120,
+        startTime: null,
+        endTime: null,
+        numberOfTrips: null,
+        tripDistance: null,
+        diesel: null,
+        openingDiesel: null,
+        dieselBalanceInTank: null,
+        dieselBalanceConfirmed: null,
+        dieselSource: null,
+        task: null,
+        operator: null,
+        notes: [],
+        activityAllocationCount: 0,
+        activitySegmentCount: 0,
+        breakdownCount: 0,
+      },
     })]);
     // Unidentified DPR entries stay in the review queue but never appear as a
     // machine row in the management report.
@@ -343,6 +364,64 @@ describe("EQUIP-01 pure equipment performance report", () => {
       },
     ]);
     expect(report.reviewRows[0].suggestions).toEqual([]);
+    expect(report.reviewRows[0].reason).toBe("unmatched");
+  });
+
+  it("projects review reasons and raw evidence without dropping explicit zeroes", () => {
+    const reasonMasters = [
+      ...masters,
+      { id: 3, name: "Road Roller 1", registrationNumber: "RR-1" },
+      { id: 4, name: "Road Roller 2", registrationNumber: "RR-2" },
+    ];
+    const report = buildEquipmentPerformanceReport({
+      projects, dprs, masters: reasonMasters, usages: [],
+      logs: [
+        {
+          id: 940, dprId: 100, machine: "", vehicleNo: "TS-01-AB-0001", openingReading: 0, closingReading: 0,
+          startTime: "08:00", endTime: "08:00", numberOfTrips: 0, tripDistance: 0,
+          diesel: 0, openingDiesel: 0, dieselBalanceInTank: 0, dieselBalanceConfirmed: false,
+          dieselSource: "plant_stock", task: "Standby", operator: "Ravi",
+          activityAllocations: [{ boqItemId: 7 }],
+          activitySegments: [{ startTime: "08:00", endTime: "09:00" }],
+        },
+        { id: 941, dprId: 100, machine: "Unknown crusher", openingReading: 0 },
+        { id: 942, dprId: 100, machine: "Road Roller", openingReading: 0 },
+      ],
+      breakdowns: [{
+        sourceType: "dpr_log", sourceRecordId: 940, description: "Meter checked",
+        fromTime: "09:00", toTime: "09:15", remarks: "No fault",
+      }],
+    });
+
+    expect(report.reviewRows.map((row) => [row.logId, row.reason])).toEqual([
+      [940, "missing_name"],
+      [941, "unmatched"],
+      [942, "multiple_suggestions"],
+    ]);
+    expect(report.reviewRows[0]).toMatchObject({
+      dprId: 100,
+      evidence: {
+        vehicleNo: "TS-01-AB-0001",
+        openingReading: 0,
+        closingReading: 0,
+        startTime: "08:00",
+        endTime: "08:00",
+        numberOfTrips: 0,
+        tripDistance: 0,
+        diesel: 0,
+        openingDiesel: 0,
+        dieselBalanceInTank: 0,
+        dieselBalanceConfirmed: false,
+        dieselSource: "plant_stock",
+        task: "Standby",
+        operator: "Ravi",
+        notes: ["Meter checked · 09:00–09:15 · No fault"],
+        activityAllocationCount: 1,
+        activitySegmentCount: 1,
+        breakdownCount: 1,
+      },
+    });
+    expect(report.reviewRows[2].suggestions).toHaveLength(2);
   });
 
   it("does not calculate hired utilization or gaps without both hire-window dates", () => {

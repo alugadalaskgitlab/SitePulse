@@ -4038,6 +4038,20 @@ export function MixTemplateMaster() {
 
 type IdentificationRow = EquipmentPerformanceReport["reviewRows"][number];
 
+const IDENTIFICATION_REASON_TEXT: Record<IdentificationRow["reason"], string> = {
+  missing_name: "The source entry has no equipment name.",
+  unmatched: "No matching Equipment Master record was found.",
+  multiple_suggestions: "More than one possible Equipment Master match was found. Select the correct record; no match was guessed.",
+  confirmation_required: "A possible Equipment Master match was found, but an owner or administrator must confirm it.",
+};
+
+function EvidenceValue({ value, suffix }: { value: string | number | boolean | null | undefined; suffix?: string }) {
+  if (value === null || value === undefined || value === "") {
+    return <span className="text-muted-foreground">Not recorded</span>;
+  }
+  return <span>{typeof value === "boolean" ? value ? "Yes" : "No" : String(value)}{suffix ?? ""}</span>;
+}
+
 function PendingIdentificationRow({
   row,
   equipmentOptions,
@@ -4051,23 +4065,77 @@ function PendingIdentificationRow({
   onLink: (row: IdentificationRow, equipmentId: number) => void;
   onAdd: (row: IdentificationRow) => void;
 }) {
-  const [selectedId, setSelectedId] = useState(row.suggestions[0]?.equipmentId ? String(row.suggestions[0].equipmentId) : "");
-  const suggested = row.suggestions[0];
+  const [selectedId, setSelectedId] = useState(
+    row.suggestions.length === 1 ? String(row.suggestions[0].equipmentId) : "",
+  );
   const sourceHref = equipmentIdentificationSourceHref(row);
+  const childEvidenceCount = row.evidence.activityAllocationCount
+    + row.evidence.activitySegmentCount
+    + row.evidence.breakdownCount;
 
   return (
     <div className="rounded-md border bg-background p-4 space-y-3" data-testid={`identification-row-${row.logId}`}>
+      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950" data-testid={`identification-reason-${row.logId}`}>
+        <strong>Why this needs review:</strong> {IDENTIFICATION_REASON_TEXT[row.reason]}
+      </div>
       <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
         <div><span className="block text-xs font-medium text-muted-foreground">Date</span>{format(new Date(row.date), "dd MMM yyyy")}</div>
         <div><span className="block text-xs font-medium text-muted-foreground">Project / Site</span>{row.project}{row.site ? ` / ${row.site}` : ""}</div>
-        <div><span className="block text-xs font-medium text-muted-foreground">Source type</span>{row.source === "dpr_log" ? "DPR" : "Plant Equipment Usage"}</div>
-        <div><span className="block text-xs font-medium text-muted-foreground">Entered equipment name</span><strong>{row.machine}</strong></div>
+        <div>
+          <span className="block text-xs font-medium text-muted-foreground">Source reference</span>
+          {row.source === "dpr_log"
+            ? `DPR #${row.dprId ?? "unavailable"} · Equipment log #${row.logId}`
+            : `Plant Equipment Usage · Log #${row.logId}`}
+        </div>
+        <div>
+          <span className="block text-xs font-medium text-muted-foreground">Entered equipment name</span>
+          {row.machine.trim()
+            ? <strong>{row.machine}</strong>
+            : <strong className="text-amber-800">Missing — no equipment name was entered</strong>}
+        </div>
       </div>
-      {suggested && (
+      {row.suggestions.length > 0 && (
         <p className="rounded bg-emerald-50 px-3 py-2 text-sm text-emerald-900" data-testid={`suggestion-${row.logId}`}>
-          Suggested master match: <strong>{suggested.name}{suggested.registrationNumber ? ` (${suggested.registrationNumber})` : ""}</strong>
+          {row.suggestions.length === 1 ? "Possible master match: " : "Possible master matches: "}
+          {row.suggestions.map((suggestion, index) => (
+            <span key={suggestion.equipmentId}>
+              {index > 0 ? "; " : ""}
+              <strong>{suggestion.name}{suggestion.registrationNumber ? ` (${suggestion.registrationNumber})` : ""}</strong>
+            </span>
+          ))}
         </p>
       )}
+      {childEvidenceCount > 0 && (
+        <p className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-950" data-testid={`child-evidence-${row.logId}`}>
+          This entry was retained because it has linked operational evidence:{" "}
+          <strong>{row.evidence.activityAllocationCount}</strong> activity allocation{row.evidence.activityAllocationCount === 1 ? "" : "s"},{" "}
+          <strong>{row.evidence.activitySegmentCount}</strong> activity segment{row.evidence.activitySegmentCount === 1 ? "" : "s"}, and{" "}
+          <strong>{row.evidence.breakdownCount}</strong> breakdown record{row.evidence.breakdownCount === 1 ? "" : "s"}.
+        </p>
+      )}
+      <div className="rounded-md bg-muted/40 p-3" data-testid={`identification-evidence-${row.logId}`}>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Source evidence (as entered)</p>
+        <div className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <div><span className="block text-xs text-muted-foreground">Vehicle / registration no.</span><EvidenceValue value={row.evidence.vehicleNo} /></div>
+          <div><span className="block text-xs text-muted-foreground">Opening meter</span><EvidenceValue value={row.evidence.openingReading} /></div>
+          <div><span className="block text-xs text-muted-foreground">Closing meter</span><EvidenceValue value={row.evidence.closingReading} /></div>
+          <div><span className="block text-xs text-muted-foreground">Start time</span><EvidenceValue value={row.evidence.startTime} /></div>
+          <div><span className="block text-xs text-muted-foreground">End time</span><EvidenceValue value={row.evidence.endTime} /></div>
+          <div><span className="block text-xs text-muted-foreground">Trips</span><EvidenceValue value={row.evidence.numberOfTrips} /></div>
+          <div><span className="block text-xs text-muted-foreground">One-way trip distance</span><EvidenceValue value={row.evidence.tripDistance} suffix={row.evidence.tripDistance == null ? undefined : " km"} /></div>
+          <div><span className="block text-xs text-muted-foreground">Diesel entered</span><EvidenceValue value={row.evidence.diesel} suffix={row.evidence.diesel == null ? undefined : " L"} /></div>
+          <div><span className="block text-xs text-muted-foreground">Opening tank</span><EvidenceValue value={row.evidence.openingDiesel} suffix={row.evidence.openingDiesel == null ? undefined : " L"} /></div>
+          <div><span className="block text-xs text-muted-foreground">Closing tank</span><EvidenceValue value={row.evidence.dieselBalanceInTank} suffix={row.evidence.dieselBalanceInTank == null ? undefined : " L"} /></div>
+          <div><span className="block text-xs text-muted-foreground">Closing tank confirmed</span><EvidenceValue value={row.evidence.dieselBalanceConfirmed} /></div>
+          <div><span className="block text-xs text-muted-foreground">Diesel source</span><EvidenceValue value={row.evidence.dieselSource} /></div>
+          <div><span className="block text-xs text-muted-foreground">Task</span><EvidenceValue value={row.evidence.task} /></div>
+          <div><span className="block text-xs text-muted-foreground">Operator</span><EvidenceValue value={row.evidence.operator} /></div>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <span className="block text-xs text-muted-foreground">Linked breakdown notes</span>
+            <EvidenceValue value={row.evidence.notes.length ? row.evidence.notes.join(" | ") : null} />
+          </div>
+        </div>
+      </div>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
         <label className="min-w-0 flex-1">
           <span className="mb-1 block text-xs font-medium">Existing Equipment Master record</span>
@@ -4168,7 +4236,10 @@ export function EquipmentIdentificationSection() {
         <Card id="equipment-needing-identification" className="border-amber-300" data-testid="equipment-needing-identification">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-amber-600" />Equipment Needing Identification <Badge variant="secondary">{rows.length}</Badge></CardTitle>
-            <CardDescription>Review equipment names entered in DPRs and connect each one to Equipment Master.</CardDescription>
+            <CardDescription className="space-y-1">
+              <span className="block">Global pending queue across every project and equipment record you are authorized to see; report filters do not limit this list.</span>
+              <span className="block">Use this review only to identify the Equipment Master record behind a source entry. It does not approve the DPR, usage, readings, or work performed.</span>
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {partialLink && (

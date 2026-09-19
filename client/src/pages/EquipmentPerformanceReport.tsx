@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { AlertTriangle, ArrowUpRight, ChevronRight, ChevronRight as Crumb, RotateCcw, Search, Truck } from "lucide-react";
@@ -73,6 +73,7 @@ export default function EquipmentPerformanceReport() {
     return new URLSearchParams(window.location.search).get("machine") ?? "";
   }, []);
   const [openMachine, setOpenMachine] = useState<FleetRow | null>(null);
+  const machineTriggerRef = useRef<HTMLElement | null>(null);
   const [selectedMachineKey, setSelectedMachineKey] = useState(initialMachineKey);
   const params = useMemo(() => {
     const value = new URLSearchParams();
@@ -101,6 +102,16 @@ export default function EquipmentPerformanceReport() {
     [events, openMachine],
   );
   const set = (key: keyof Filters, value: string) => setFilters(current => ({ ...current, [key]: value }));
+  const openMachineDetails = (row: FleetRow, trigger: HTMLElement) => {
+    machineTriggerRef.current = trigger;
+    setOpenMachine(row);
+    setSelectedMachineKey(row.key);
+  };
+  const closeMachineDetails = () => {
+    setOpenMachine(null);
+    setSelectedMachineKey("");
+    requestAnimationFrame(() => machineTriggerRef.current?.focus());
+  };
   const reset = () => {
     resetPersistedFilters();
     setFilters(defaultFilters);
@@ -158,9 +169,9 @@ export default function EquipmentPerformanceReport() {
         </header>
 
         <section className="equip-panel rounded-md border border-[#cfc8b8] bg-[#faf7ed] p-3">
-          <div className="grid gap-2 md:grid-cols-4 xl:grid-cols-8">
-            <Filter label="From Date"><Input type="date" value={filters.dateFrom} onChange={event => set("dateFrom", event.target.value)} className="h-9 bg-[#fffdf6]" /></Filter>
-            <Filter label="To Date"><Input type="date" value={filters.dateTo} onChange={event => set("dateTo", event.target.value)} className="h-9 bg-[#fffdf6]" /></Filter>
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,10.5rem),1fr))] gap-2">
+            <Filter label="From Date"><Input type="date" value={filters.dateFrom} onChange={event => set("dateFrom", event.target.value)} className="h-9 min-w-[9.5rem] max-w-full bg-[#fffdf6]" /></Filter>
+            <Filter label="To Date"><Input type="date" value={filters.dateTo} onChange={event => set("dateTo", event.target.value)} className="h-9 min-w-[9.5rem] max-w-full bg-[#fffdf6]" /></Filter>
             <Filter label="Project / Site"><NativeSelect value={filters.projectId} onChange={value => set("projectId", value)} placeholder="All projects" items={selectOptions(report.data, "projects")} /></Filter>
             <Filter label="Scope"><NativeSelect value={filters.scope} onChange={value => set("scope", value)} placeholder="All" items={selectOptions(report.data, "scopes")} fallback={["site", "plant"]} /></Filter>
             <Filter label="Ownership"><NativeSelect value={filters.ownership} onChange={value => set("ownership", value)} placeholder="All" items={selectOptions(report.data, "ownership")} fallback={["owned", "hired"]} /></Filter>
@@ -171,13 +182,14 @@ export default function EquipmentPerformanceReport() {
           <div className="mt-3"><Button variant="outline" className="h-9 border-[#9fb4b8] bg-transparent" onClick={reset}><RotateCcw className="mr-1.5 h-3.5 w-3.5" />Reset</Button></div>
         </section>
 
+        {canReview && pendingIdentificationCount > 0 && (
+          <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" data-testid="notice-equipment-identification">
+            <span><strong>{pendingIdentificationCount} equipment log{pendingIdentificationCount === 1 ? "" : "s"}</strong> need{pendingIdentificationCount === 1 ? "s" : ""} identification across all accessible dates and projects.</span>
+            <Link href={EQUIPMENT_IDENTIFICATION_RETURN_TO}><Button size="sm" variant="outline">Review</Button></Link>
+          </div>
+        )}
+
         {report.isLoading ? <Skeleton /> : report.isError ? <ErrorState retry={() => report.refetch()} /> : <>
-          {canReview && pendingIdentificationCount > 0 && (
-            <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" data-testid="notice-equipment-identification">
-              <span>{pendingIdentificationCount} equipment log{pendingIdentificationCount === 1 ? "" : "s"} need{pendingIdentificationCount === 1 ? "s" : ""} identification</span>
-              <Link href={EQUIPMENT_IDENTIFICATION_RETURN_TO}><Button size="sm" variant="outline">Review</Button></Link>
-            </div>
-          )}
            <section className="equip-panel min-w-0 max-w-full overflow-hidden rounded-md border border-[#cfc8b8] bg-[#fffdf6]">
             <div className="flex items-center justify-between border-b border-[#d9d2c2] px-4 py-3">
               <div><h2 className="font-bold text-[#173f49]">Equipment</h2><p className="text-xs text-slate-600">Select a machine to see daily details.</p></div>
@@ -191,7 +203,7 @@ export default function EquipmentPerformanceReport() {
                   <th className="text-right">Diesel Issued</th><th className="text-right">Opening Tank</th><th className="text-right">Closing Tank</th>
                   <th className="text-right">Diesel Consumed</th><th className="text-right">Expected Diesel</th><th className="text-right">Difference</th><th className="px-4 text-right">Consumption Rate</th>
                 </tr></thead>
-                <tbody>{rows.length ? rows.map(row => <tr key={row.key} className="equip-row cursor-pointer border-t border-[#e4dece]" tabIndex={0} role="button" onClick={() => { setOpenMachine(row); setSelectedMachineKey(row.key); }} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setOpenMachine(row); setSelectedMachineKey(row.key); } }}>
+                 <tbody>{rows.length ? rows.map(row => <tr key={row.key} className="equip-row cursor-pointer border-t border-[#e4dece]" tabIndex={0} role="button" onClick={event => openMachineDetails(row, event.currentTarget)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openMachineDetails(row, event.currentTarget); } }}>
                   <td className="px-4 py-3 font-semibold text-[#193f48]">{row.machine}{row.registrationNumber ? <div className="mt-0.5 text-[10px] font-normal text-slate-500">{row.registrationNumber}</div> : null}</td>
                   <td className="capitalize">{row.ownership}</td><td>{row.ownerVendor}</td>
                   <Numeric>{reading(row.openingMeter, row.meterUnit)}</Numeric><Numeric>{reading(row.closingMeter, row.meterUnit)}</Numeric>
@@ -206,7 +218,7 @@ export default function EquipmentPerformanceReport() {
           </section>
         </>}
       </div>
-      <MachineDialog machine={openMachine} events={machineEvents} returnTo={reportUrl} onSourceNavigate={rememberScroll} close={() => { setOpenMachine(null); setSelectedMachineKey(""); }} />
+      <MachineDialog machine={openMachine} events={machineEvents} returnTo={reportUrl} onSourceNavigate={rememberScroll} close={closeMachineDetails} />
     </div>
   );
 }
@@ -217,18 +229,22 @@ function MachineDialog({ machine, events, returnTo, onSourceNavigate, close }: {
   // sources while carrying the full-stream gap check used by the period row.
   const daily = machine?.dailyRows ?? [];
   useEffect(() => setShowSources(false), [machine?.key]);
-  return <Dialog open={!!machine} onOpenChange={value => !value && close()}><DialogContent className="max-h-[90vh] max-w-[96vw] overflow-y-auto bg-[#fffdf6]">
-    <DialogHeader><div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-[#1f7180]"><Search className="h-3.5 w-3.5" />Daily details</div><DialogTitle className="text-2xl text-[#173f49]">{machine?.machine}</DialogTitle></DialogHeader>
-    <div className="overflow-x-auto"><table className="w-full min-w-[1500px] text-xs"><thead className="bg-[#e8e2d3] text-[10px] uppercase tracking-wider"><tr>
+  return <Dialog open={!!machine} onOpenChange={value => !value && close()}><DialogContent className="flex max-h-[90dvh] w-[calc(100vw-2rem)] min-w-0 max-w-[96vw] flex-col gap-0 overflow-hidden bg-[#fffdf6] p-0">
+    <DialogHeader className="min-w-0 flex-none border-b border-[#d9d2c2] px-5 py-4 pr-12">
+      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-[#1f7180]"><Search className="h-3.5 w-3.5" />Daily details</div>
+      <DialogTitle className="truncate text-2xl text-[#173f49]">{machine?.machine}</DialogTitle>
+    </DialogHeader>
+    <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-5" data-testid="equipment-machine-dialog-body">
+    <div className="max-h-[45dvh] min-w-0 max-w-full overflow-auto rounded border border-[#d9d2c2]" data-testid="equipment-daily-table-scroll" tabIndex={0} role="region" aria-label="Daily equipment details, scroll horizontally and vertically"><table className="w-full min-w-[1500px] text-xs"><thead className="sticky top-0 bg-[#e8e2d3] text-[10px] uppercase tracking-wider"><tr>
       <th className="px-2 py-2 text-left">Date</th><th className="text-left">Project / Site</th><th className="text-right">Opening Meter</th><th className="text-right">Closing Meter</th><th className="text-right">Working Hours</th>
       <th className="text-left">Start Time</th><th className="text-left">End Time</th><th className="text-right">Clock Duration</th><th className="text-right">Diesel Issued</th><th className="text-right">Opening Tank</th><th className="text-right">Closing Tank</th><th className="text-right">Diesel Consumed</th><th className="text-right">Expected Diesel</th><th className="text-right">Difference</th><th className="px-2 text-right">Consumption Rate</th>
     </tr></thead><tbody>{daily.length ? daily.map(row => <DailyTableRow key={row.key} row={row} meterUnit={machine?.meterUnit ?? "h"} />) : <tr><td colSpan={15}><Empty title="No daily records are available." detail="This machine has no records in the selected dates." /></td></tr>}</tbody></table></div>
-    <div className="border-t pt-3"><Button size="sm" variant="outline" onClick={() => setShowSources(current => !current)}>{showSources ? "Hide Source Records" : "View Source Records"}</Button>
-      {showSources && <div className="mt-3 space-y-2">{events.map(event => {
+    <div className="mt-4 border-t pt-3"><Button size="sm" variant="outline" onClick={() => setShowSources(current => !current)}>{showSources ? "Hide Source Records" : "View Source Records"}</Button>
+      {showSources && <div className="mt-3 max-h-48 space-y-2 overflow-y-auto pr-1" data-testid="equipment-source-records" tabIndex={0} role="region" aria-label="Equipment source records">{events.map(event => {
         const href = equipmentSourceHref(event, returnTo);
         return <div key={event.key} className="flex items-center justify-between gap-3 rounded border p-2 text-xs"><span>{date(event.date)} · {event.project}{event.site || event.plant ? ` / ${event.site ?? event.plant}` : ""}</span>{href ? <a href={href} onClick={onSourceNavigate} className="inline-flex items-center gap-1 text-[#20677a]">View Source <ArrowUpRight className="h-3.5 w-3.5" /></a> : <span>—</span>}</div>;
       })}</div>}
-    </div>
+    </div></div>
   </DialogContent></Dialog>;
 }
 
@@ -242,7 +258,7 @@ function DailyTableRow({ row, meterUnit }: { row: EquipmentPerformanceDailyRow; 
   </tr>;
 }
 
-function Filter({ label, children }: { label: string; children: ReactNode }) { return <label className="block"><span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[#536568]">{label}</span>{children}</label>; }
+function Filter({ label, children }: { label: string; children: ReactNode }) { return <label className="block min-w-0"><span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[#536568]">{label}</span>{children}</label>; }
 function NativeSelect({ value, onChange, placeholder, items, fallback = [] }: { value: string; onChange: (value: string) => void; placeholder: string; items: any[]; fallback?: string[] }) { const options = items.length ? items : fallback; return <select value={value} onChange={event => onChange(event.target.value)} className="h-9 w-full rounded-md border border-[#c8c3b6] bg-[#fffdf6] px-2 text-xs outline-none focus:border-[#1d7183]"><option value="">{placeholder}</option>{options.map((item: any) => <option key={String(item.id ?? item.value ?? item)} value={String(item.id ?? item.value ?? item)}>{item.label ?? item.name ?? item}</option>)}</select>; }
 function Numeric({ children, className = "" }: { children: ReactNode; className?: string }) { return <td className={`px-2 py-2 text-right font-mono ${className}`}>{children}</td>; }
 function partialDuration(value: number | null | undefined, incomplete: boolean) { if (value == null) return "—"; return `${incomplete ? "Partial · " : ""}${formatEquipmentDuration(value)}`; }

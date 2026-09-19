@@ -304,19 +304,19 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
   return (
     <div className="min-h-screen bg-slate-50 flex">
       {/* Sidebar — desktop */}
-      <aside className="w-56 bg-slate-900 flex-shrink-0 hidden md:flex flex-col border-r border-slate-800 fixed inset-y-0 left-0 z-[60]">
+      <aside className="w-56 bg-slate-900 flex-shrink-0 hidden md:flex flex-col border-r border-slate-800 fixed inset-y-0 left-0 z-40">
         <SidebarContent />
       </aside>
 
       {/* Sidebar — mobile overlay */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-[59] bg-black/50 md:hidden"
+          className="fixed inset-0 z-[39] bg-black/50 md:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-[60] w-56 bg-slate-900 flex flex-col border-r border-slate-800 transition-transform duration-200 md:hidden ${
+        className={`fixed inset-y-0 left-0 z-40 w-56 bg-slate-900 flex flex-col border-r border-slate-800 transition-transform duration-200 md:hidden ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
