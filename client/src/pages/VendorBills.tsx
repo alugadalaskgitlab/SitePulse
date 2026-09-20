@@ -33,6 +33,7 @@ import {
   type EquipmentHireExportData,
 } from "@/components/vendor-bills/EquipmentHireBillOutput";
 import DraftEquipmentHireCalendar, { SavedEquipmentCalendarExport } from "@/components/vendor-bills/DraftEquipmentHireCalendar";
+import HireActivityBreakdownCalendar from "@/components/vendor-bills/HireActivityBreakdownCalendar";
 
 const formatDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return "-";
@@ -2905,6 +2906,12 @@ export default function VendorBills() {
                    gstRate: gstRateEquipment, tdsRate, paid: 0,
                  });
                  const vendorDieselScope = String(equipment?.hireDieselResponsibility || "").toLowerCase() === "vendor";
+                 const groupActivities = activityForGroup(group);
+                 const tripApplicable = group.basis === "trip" || groupActivities.some(activity =>
+                   String(activity.entryType || "").toLowerCase().replace(/[\s-]+/g, "_") === "trip_based" ||
+                   activity.source === "site_material_trip" ||
+                   activity.source === "bulk_transport_trip"
+                 );
                  const suggestedExcess = Number.isFinite(Number(diesel?.suggestedExcess)) && Number(diesel?.suggestedExcess) > 0
                    ? Number(diesel?.suggestedExcess)
                    : undefined;
@@ -3102,23 +3109,42 @@ export default function VendorBills() {
                     ) : (
                     <details>
                       <summary className="cursor-pointer text-xs font-semibold uppercase">View activity / breakdown calendar ({calendar.length} days)</summary>
-                      <div className="mt-2 max-h-64 overflow-auto space-y-1">
-                        {calendar.map(day => {
-                          const events = maintenance.filter((row: any) => row.businessDate === day.date && String(row.eventType).toLowerCase() === "breakdown");
-                          return <div key={day.date} className="grid grid-cols-[110px_1fr] gap-2 rounded border p-2 text-xs">
-                            <div><strong>{formatDate(day.date)}</strong><span className="block text-muted-foreground">{day.activity === "no_activity" ? "No activity (still billable)" : day.activity === "breakdown" ? "Breakdown" : "Logged active"}</span></div>
-                            <div>{events.length ? events.map((event: any) => {
-                              const current = group.exceptionDecisions.find((decision: any) => decision.sourceType === "maintenance" && Number(decision.sourceId) === Number(event.sourceId));
-                              const without = group.exceptionDecisions.filter((decision: any) => !(decision.sourceType === "maintenance" && Number(decision.sourceId) === Number(event.sourceId)));
-                              return <div key={event.sourceId} className="flex flex-wrap items-center gap-2"><span>{event.description || "Breakdown"}{event.downtimeHours ? ` · ${event.downtimeHours}h` : ""}</span>
-                                <Select value={current?.decision || "__automatic__"} onValueChange={decision => patchHireGroup(group.id, { exceptionDecisions: decision === "__automatic__" ? without : [...without, { sourceType: "maintenance", sourceId: event.sourceId, exceptionType: "breakdown", date: day.date, decision }] })}>
-                                  <SelectTrigger className="h-7 w-44"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__automatic__">Automatic after grace</SelectItem><SelectItem value="none">No deduction</SelectItem><SelectItem value="half_day">Half day</SelectItem><SelectItem value="full_day">Full day</SelectItem></SelectContent>
-                                </Select>
-                              </div>;
-                            }) : <span>{day.hours ? `${day.hours} logged runtime/KM` : `${day.activityCount} activity record(s)`}</span>}</div>
-                          </div>;
-                        })}
-                      </div>
+                      <HireActivityBreakdownCalendar
+                        days={calendar}
+                        consumptionNorm={diesel?.consumptionNorm ?? equipment?.consumptionNorm}
+                        normBasis={diesel?.normBasis ?? group.dieselNormBasisOverride}
+                        meterType={equipment?.meterType}
+                        tripApplicable={tripApplicable}
+                        showFuel={!vendorDieselScope}
+                        formatDate={date => formatDate(date)}
+                      />
+                      {maintenance.some((row: any) => String(row.eventType).toLowerCase() === "breakdown") && (
+                        <div className="mt-2 space-y-2" data-testid={`monthly-calendar-breakdown-controls-${monthlyTestSuffix}`}>
+                          <p className="text-[10px] font-semibold uppercase text-muted-foreground">Breakdown deduction decisions</p>
+                          {maintenance.filter((row: any) => String(row.eventType).toLowerCase() === "breakdown").map((event: any) => {
+                            const current = group.exceptionDecisions.find((decision: any) =>
+                              decision.sourceType === "maintenance" && Number(decision.sourceId) === Number(event.sourceId));
+                            const without = group.exceptionDecisions.filter((decision: any) =>
+                              !(decision.sourceType === "maintenance" && Number(decision.sourceId) === Number(event.sourceId)));
+                            return <div key={event.sourceId} className="flex flex-wrap items-center gap-2 rounded border p-2 text-xs">
+                              <span>{formatDate(event.businessDate)} · {event.description || "Breakdown"}{event.downtimeHours ? ` · ${event.downtimeHours}h` : ""}</span>
+                              <Select value={current?.decision || "__automatic__"} onValueChange={decision => patchHireGroup(group.id, {
+                                exceptionDecisions: decision === "__automatic__"
+                                  ? without
+                                  : [...without, { sourceType: "maintenance", sourceId: event.sourceId, exceptionType: "breakdown", date: event.businessDate, decision }],
+                              })}>
+                                <SelectTrigger className="h-7 w-44"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="__automatic__">Automatic after grace</SelectItem>
+                                  <SelectItem value="none">No deduction</SelectItem>
+                                  <SelectItem value="half_day">Half day</SelectItem>
+                                  <SelectItem value="full_day">Full day</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>;
+                          })}
+                        </div>
+                      )}
                     </details>
                     )}
                   </div>

@@ -1445,3 +1445,87 @@ mtime_ms = 1789903077293
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e5319b01-8b02-47bd-9608-dcdd073d8f4f/a55a8805-2760-4c62-b08b-e7e415dfaf76"
 storage_version_token = "1789903351598614"
 content_type = "image/png"
+
+[[outputs]]
+id = "J2SEqXI_KnSl4QJtZj9l9"
+uri = "file://screenshots/vb21/A-logged-activity-all-columns.png"
+type = "image"
+title = "Daily readings, fuel and status"
+description = "Real calendar component with isolated synthetic test data; no live bill changes."
+logical_id = "7e6b4e13-2ea0-4ed7-bf8c-5ef5d4bd6cd8"
+content_hash = "sha256:7c7f46673a02455424fb38a609d08d5df3faed14defe65b984628d9cdb94703e"
+size = 139514
+mtime_ms = 1789904232669
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/7e6b4e13-2ea0-4ed7-bf8c-5ef5d4bd6cd8/780996f4-cbab-440c-873d-23721c0f12fc"
+storage_version_token = "1789904303478939"
+content_type = "image/png"
+
+[[outputs]]
+id = "Vl0-ho728zAzoOr56w6bk"
+uri = "file://screenshots/vb21/B-no-activity-still-billable.png"
+type = "image"
+title = "No activity — still billable"
+description = "Real calendar component with isolated synthetic test data; no live bill changes."
+logical_id = "99cb67a4-1bf4-4f14-bb9e-99397c65d0cd"
+content_hash = "sha256:19e2e4b1fa89e445386e2a28090aa2430dcb83b251636b552faa325226c5d094"
+size = 153814
+mtime_ms = 1789904233813
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/99cb67a4-1bf4-4f14-bb9e-99397c65d0cd/520141be-78ff-4bf6-b908-691f023264c6"
+storage_version_token = "1789904305488948"
+content_type = "image/png"
+
+[[outputs]]
+id = "aqlaESnCrwH8WhVqhGgr2"
+uri = "file://screenshots/vb21/C-tipper-two-material-trips.png"
+type = "image"
+title = "Transport trip counts"
+description = "Real calendar component with isolated synthetic test data; no live bill changes."
+logical_id = "8b2bf451-7246-487f-a5cd-008261058cb0"
+content_hash = "sha256:17964e5f948c433822a2e7f7395a156204a39d8d9d7989ba044cca367cd425b3"
+size = 134278
+mtime_ms = 1789904236697
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8b2bf451-7246-487f-a5cd-008261058cb0/0d9d7782-d5a9-4019-8f88-d2eea1ace229"
+storage_version_token = "1789904307436029"
+content_type = "image/png"
+
+[[outputs]]
+id = "qwE9WmJxhQTK9gpR175lv"
+uri = "file://screenshots/vb21/D-consumption-rate-and-zero-guard.png"
+type = "image"
+title = "Consumption rate and zero-value handling"
+description = "Real calendar component with isolated synthetic test data; no live bill changes."
+logical_id = "db8e6554-569b-4223-8455-52361f669584"
+content_hash = "sha256:24b44304cb92a9be03a4ddd8f7eee4459f4045fd7cf02aad8d0900f5556b8278"
+size = 144657
+mtime_ms = 1789904234873
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/db8e6554-569b-4223-8455-52361f669584/8d68b544-01f7-4711-942d-812bcf537ea3"
+storage_version_token = "1789904309328562"
+content_type = "image/png"
+
+[[outputs]]
+id = "rtqI2YfB-egc8Uj93QkZb"
+uri = "file://screenshots/vb21/D-distance-rate-unit.png"
+type = "image"
+title = "Distance-based consumption norm"
+description = "Real calendar component with isolated synthetic test data; no live bill changes."
+logical_id = "14c81665-d9dd-4e1c-a822-0843df4c59fb"
+content_hash = "sha256:17964e5f948c433822a2e7f7395a156204a39d8d9d7989ba044cca367cd425b3"
+size = 134278
+mtime_ms = 1789904237025
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/14c81665-d9dd-4e1c-a822-0843df4c59fb/e45557ff-f1ff-4d8a-b771-3d1405bbc60d"
+storage_version_token = "1789904311361856"
+content_type = "image/png"
+
+[[outputs]]
+id = "aHKcMDsL7aexYEwXmV3Xx"
+uri = "file://screenshots/vb21/E-multiple-records-visible.png"
+type = "image"
+title = "Multiple records and reading warnings"
+description = "Real calendar component with isolated synthetic test data; no live bill changes."
+logical_id = "82049e78-0829-4fc8-bcb9-8786b42ac70d"
+content_hash = "sha256:2b8ac2f55080f9aa39f384edb6f6d9c1ab80152d5d89eaac1dd1883cbece18ec"
+size = 133557
+mtime_ms = 1789904235557
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/82049e78-0829-4fc8-bcb9-8786b42ac70d/11238d61-d667-4621-a0e5-1181b3fed3f9"
+storage_version_token = "1789904313289289"
+content_type = "image/png"

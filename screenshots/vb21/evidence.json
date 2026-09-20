@@ -1,0 +1,40 @@
+{
+  "scenario": "VB-21 isolated fixture verification — synthetic, not live bills",
+  "safety": {
+    "productionDatabaseUsed": false,
+    "productionApiWrites": false,
+    "mountedProductionComponent": "client/src/pages/VendorBills.tsx",
+    "interception": "All API reads and the synthetic save were intercepted by tests/fixtures/vendor-bills-vb21/main.tsx."
+  },
+  "screenshots": [
+    "/home/runner/workspace/screenshots/vb21/A-logged-activity-all-columns.png",
+    "/home/runner/workspace/screenshots/vb21/A-site-work-and-records-columns.png",
+    "/home/runner/workspace/screenshots/vb21/B-no-activity-still-billable.png",
+    "/home/runner/workspace/screenshots/vb21/C-hour-machine-trips-na.png",
+    "/home/runner/workspace/screenshots/vb21/C-tipper-two-material-trips.png",
+    "/home/runner/workspace/screenshots/vb21/D-consumption-rate-and-zero-guard.png",
+    "/home/runner/workspace/screenshots/vb21/D-distance-rate-unit.png",
+    "/home/runner/workspace/screenshots/vb21/E-multiple-records-visible.png"
+  ],
+  "verified": {
+    "A_allRequiredDailyDetailsAndBreakdown": true,
+    "B_noActivityStillBillable": true,
+    "C_hourMachineTripsNAAndTipperTrips2": true,
+    "D_hourlyAndDistanceRatesWithZeroGuard": true,
+    "E_multipleRecordsExplicit": true,
+    "F_displayedAndSavedRecoveryRemain720": true,
+    "F_savedExpectedActualExcess": {
+      "expectedLitres": 24,
+      "actualLitres": 32,
+      "excessLitres": 8
+    },
+    "F_savedGrossAndNet": {
+      "gross": 5000,
+      "breakdown": 1000,
+      "recovery": 720,
+      "net": 3280
+    },
+    "G_existingExpectedDieselReportAndExportCodePresent": true,
+    "noSchemaChangeNeeded": true
+  }
+}

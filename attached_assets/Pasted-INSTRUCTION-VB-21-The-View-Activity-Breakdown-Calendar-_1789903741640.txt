@@ -1,0 +1,57 @@
+INSTRUCTION VB-21: The "View Activity / Breakdown Calendar" list on a Monthly Hire vendor bill only shows a bare activity count ("0 activity record(s)", "No activity (still billable)") per day — it should show the real per-day detail (readings, hours/km, trips, diesel issued, consumption rate vs norm, downtime, status, site/work) since almost all of this data is already computed and simply isn't being displayed
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a display-only fix — the underlying per-day data is already computed correctly by `buildHireActivityDays` (shared/hireBilling.ts). Do not change that calculation logic except for the one new field described in Fix 2 below (consumption rate), which is a simple derived display value, not a change to how diesel recovery itself is calculated. Do not touch DPR-02 through DPR-10, VB-18, VB-19, VB-20, or DIESEL-04. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+1. `shared/hireBilling.ts`'s `buildHireActivityDays()` (~line 794-841) already returns one `HireActivityDay` object per day in the bill period, and each one ALREADY carries: `hours`, `trips`, `actualDiesel`, `expectedDiesel`, `expectedDieselAvailable`, `dieselVariance`, `downtimeHours`, `activityCount`, `billableActivityCount`, `openActivityCount`, `equipmentNames`, `siteLocations`, `activityDescriptions`, `openingReadings` (array), `closingReadings` (array), `maintenanceDescriptions`, `movementReferences`.
+2. The "VIEW ACTIVITY / BREAKDOWN CALENDAR" expandable list on the Monthly Hire bill screen (client/src/pages/VendorBills.tsx, the `calendar = buildHireActivityDays(...)` call ~line 2861 and its render) currently displays almost none of this — confirmed by screenshot: each day row shows only "0 activity record(s)" and "No activity (still billable)", discarding all the richer fields already sitting on the same object.
+3. Trips are sourced from three different places depending on the machine: for a tipper/transport vehicle, `numberOfTrips` comes automatically from that vehicle's own material-trip/dispatch records (source `site_material_trip` / `bulk_transport_trip`, always 1 trip per record — server/storage.ts ~line 17334, 17352). For an hour-meter machine (dozer/roller/excavator), a trip count only exists if that day's log entry was explicitly entered with entry type "Trip Based" and a manually-typed trip number (server/storage.ts ~line 17299-17300, from `equipmentLogs`/plant usage) — which is not how these machines are normally logged. So a blank/zero Trips value for a dozer/roller/excavator is CORRECT, not missing data, and must be shown in a way that doesn't look like an error.
+
+FIX 1 — SHOW THE ALREADY-COMPUTED PER-DAY DETAIL AS REAL COLUMNS
+Replace the current "0 activity record(s)" / generic no-activity text with a proper per-day row/table showing:
+a. **Date**
+b. **Reading (Opening → Closing)** — from `openingReadings`/`closingReadings` (these are arrays because a day can have more than one record; if more than one distinct reading exists for the day, show them clearly rather than silently picking one — e.g. "120 → 128" or, if multiple readings conflict, flag it visibly rather than averaging/hiding it).
+c. **Hours / Km Run** — from `hours`.
+d. **Trips** — from `trips`. For a machine whose billing/entry basis is NOT trip-based (i.e. no trip-based activity exists in its normal logging pattern), show this as "—" or "N/A" rather than "0", so it reads as "not applicable to this machine" rather than "nothing happened."
+e. **Diesel Issued (Actual)** — from `actualDiesel`.
+f. **Excess / Under** — from `dieselVariance`, signed (+ excess, − under), shown as "Tank Readings N/A" when `expectedDieselAvailable` is false, exactly as the existing summary box already does elsewhere on this screen.
+g. **Downtime (Breakdown) Hours** — from `downtimeHours`, only shown/non-zero on breakdown days.
+h. **Status** — derived from `activity` ("worked" / "no_activity" / "breakdown"): show "Worked", "No Activity — Still Billable" (monthly hire bills every calendar day regardless of a log existing — make this reasoning visible in the label itself, not just implied), or "Breakdown".
+i. **Site / Work Done** — from `siteLocations` and `activityDescriptions`, joined readably (e.g. "ALLADURG PWD ROAD — Embankment").
+j. **Records that day** — from `activityCount` (and optionally distinguish `billableActivityCount` vs `openActivityCount` if more than one record exists that day), so it's visible when a day has multiple log entries merged into one row rather than that being invisible.
+Do NOT show a raw "Expected Diesel (litres)" column — that figure moves to Fix 2 as a rate instead, and remains available in the full report after the bill is saved (do not remove it from wherever it already appears post-save, e.g. any print/PDF output — only this pre-save calendar view changes).
+
+FIX 2 — REPLACE "EXPECTED DIESEL" WITH A CONSUMPTION-RATE COMPARISON, FOR QUICK REFERENCE
+1. Instead of showing the raw expected-diesel litres figure in this calendar view, compute and show a **Consumption Rate** column: the day's actual rate next to the equipment's own set norm, in whichever unit that machine's norm is defined in (litres/hour for an hour-meter machine, or the equivalent distance-based unit for a machine with a km-based norm) — e.g. "5.2 L/Hr (Norm: 4.0)". Derive the day's actual rate from `actualDiesel` divided by that day's `hours` (or the equivalent distance-based figure), and pull the norm from the equipment's own `consumptionNorm`/`normBasis` (already used elsewhere in this same calculation for the "Expected" figure — reuse that norm value, don't ask the person to re-enter it).
+2. When `hours` (or the relevant run figure) is zero or diesel wasn't recorded that day, show a clear "—" rather than dividing by zero or showing a misleading rate.
+3. This is a display-only derived value for at-a-glance reference on this screen — it must NOT change how the actual `expectedDiesel`/`dieselVariance`/recovery-amount calculation works anywhere else (the HSD reconciliation box above this calendar, and the final bill recovery amount, must keep using the existing `expectedDiesel` figure exactly as today — only this calendar's display swaps litres-expected for a rate).
+
+WHAT NOT TO DO
+- Do not change `buildHireActivityDays`'s existing fields or the HSD Recovery box's calculation — this is a display fix using data that already exists, plus one new derived rate for display only.
+- Do not show "0" for Trips on a machine that doesn't do trip-based work in a way that looks like an error or missing data — use "—"/"N/A" with a plain label.
+- Do not remove the Expected Diesel figure from anywhere it's used for the actual recovery calculation or from any post-save report/PDF — only this pre-save calendar view stops showing the raw litres figure, replacing it with the rate.
+- Do not touch DPR-02 through DPR-10, VB-18, VB-19, VB-20, or DIESEL-04.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema/migration change is expected — every field needed already exists on `HireActivityDay`/`HireActivity`; Fix 2's consumption rate is a client-side derived display value, not a new stored field.
+
+TESTS
+A. Open a Monthly Hire bill for a machine with real logged activity (readings, hours, diesel) across several days in the period. Expand "View Activity / Breakdown Calendar" and confirm each day shows Reading, Hours/Km, Diesel Issued, Consumption Rate vs Norm, Excess/Under, Downtime, Status, and Site/Work — not just a bare count.
+B. Confirm a day with NO logged activity shows "No Activity — Still Billable" (or equivalent clear wording), not a bare "0 activity record(s)".
+C. Confirm Trips shows "—"/"N/A" (not "0") for an hour-meter machine like a dozer/roller/excavator with no trip-based entries, and shows the correct trip count for a tipper/transport vehicle with material-trip records.
+D. Confirm the Consumption Rate column shows the correct actual-vs-norm comparison in the right unit for the machine, and shows "—" (not a division error) on a day with zero hours or no diesel recorded.
+E. Confirm a day with more than one log entry shows this clearly (e.g. a "2 records" indicator) rather than silently merging without any sign of it.
+F. Confirm the HSD Recovery box above the calendar, and the final bill's recovery amount, are completely unchanged in value — only this calendar's own display changed.
+G. Confirm any post-save report/PDF that already shows Expected Diesel litres still shows it there, unaffected by this pre-save display change.
+
+REPORT BACK
+1. Confirm Fix 1 with Test A/B/C/E evidence (screenshots).
+2. Confirm Fix 2 with Test D evidence (screenshots).
+3. Confirm Test F — no change to the actual recovery calculation.
+4. Confirm Test G — post-save report/PDF unaffected.
+5. Confirm no schema change was needed.
+6. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

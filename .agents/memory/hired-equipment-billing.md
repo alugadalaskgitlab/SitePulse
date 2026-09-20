@@ -138,3 +138,9 @@ Bill-facing unavailable consumption is labelled “Tank Readings N/A”. Contrac
 **Why:** The user chose this wording and a definite contractor-scope presentation; Equipment Performance remains a separate display contract.
 
 **How to apply:** Freeze the actual Master norm/unit even with no usage, and use identical financial snapshot values for approval and exports. With built-in PDF fonts, serialize rupee/minus symbols as supported ASCII rather than emitting corrupted glyphs.
+
+The generic pre-save monthly activity calendar compares consumption rates, not raw expected litres; this is not a change to fuel recovery or saved reporting.
+
+**Why:** The user wants a quick machine-efficiency comparison while preserving the existing financial calculation and post-save evidence.
+
+**How to apply:** Keep rate derivation display-only, preserve Expected Diesel in recovery and saved exports, and leave the separate equipment-specific calendar workflow unchanged.
