@@ -1389,3 +1389,59 @@ mtime_ms = 1789816798307
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/db465356-8b98-4dee-b4eb-3cafa392d817/f3749217-d0cc-4b06-ace1-34cd0c6b1def"
 storage_version_token = "1789816896805169"
 content_type = "image/png"
+
+[[outputs]]
+id = "kQTG_eMKHYedegLV8Kex-"
+uri = "file://screenshots/vb20/fixture-verification-A-two-month-august.png"
+type = "image"
+title = "A — Separate monthly amounts"
+description = "Isolated real-component fixture using synthetic data. Storage tests separately verify August overlap rejection."
+logical_id = "e476aa12-e7a6-48a2-a957-c5adbac229a5"
+content_hash = "sha256:3b683aefbf6a59a907bc4d4104d951f02bad4702d963392c38a374359690bb2d"
+size = 119441
+mtime_ms = 1789903075129
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e476aa12-e7a6-48a2-a957-c5adbac229a5/5d7265c6-64c8-48b3-a5c1-52546b49724c"
+storage_version_token = "1789903345644933"
+content_type = "image/png"
+
+[[outputs]]
+id = "Qu68z3sIk_HcdLvpnQ0xh"
+uri = "file://screenshots/vb20/fixture-verification-B-september-unchecked.png"
+type = "image"
+title = "B — September excluded"
+description = "Isolated real-component fixture using synthetic data. Storage tests separately verify August overlap rejection."
+logical_id = "506adf8a-b172-4304-bf21-1636c712419e"
+content_hash = "sha256:355c7dffd109294d087913b1dace09c5a3e40d0ad72a71ea4e79887174c57041"
+size = 124896
+mtime_ms = 1789903075817
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/506adf8a-b172-4304-bf21-1636c712419e/77d079b7-75f1-4f09-9446-e8c75f466e70"
+storage_version_token = "1789903347708020"
+content_type = "image/png"
+
+[[outputs]]
+id = "gSv4tnjBFlcvnnYURls8h"
+uri = "file://screenshots/vb20/fixture-verification-C-september-offered-later.png"
+type = "image"
+title = "C — September available later"
+description = "Isolated real-component fixture using synthetic data. Storage tests separately verify August overlap rejection."
+logical_id = "3f6d849e-41c0-4f0b-b6b8-99b7ba557697"
+content_hash = "sha256:aa249f35ba377eace33222c2981f62f49c9987ad2303787c6f03cc5b6095f50c"
+size = 128678
+mtime_ms = 1789903076733
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/3f6d849e-41c0-4f0b-b6b8-99b7ba557697/21b091f4-bd53-4e10-b3d8-0ab38df58ead"
+storage_version_token = "1789903349710433"
+content_type = "image/png"
+
+[[outputs]]
+id = "kaIxt34aRKMsk09ivjU3p"
+uri = "file://screenshots/vb20/fixture-verification-D-simulated-overlap-not-backend-proof.png"
+type = "image"
+title = "D — Overlap error display (simulated)"
+description = "Isolated real-component fixture using synthetic data. Storage tests separately verify August overlap rejection."
+logical_id = "e5319b01-8b02-47bd-9608-dcdd073d8f4f"
+content_hash = "sha256:19c2fbbfeb702a54a351567a79f91e57699ab34ef57f8ed3034ada184ace767e"
+size = 117823
+mtime_ms = 1789903077293
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e5319b01-8b02-47bd-9608-dcdd073d8f4f/a55a8805-2760-4c62-b08b-e7e415dfaf76"
+storage_version_token = "1789903351598614"
+content_type = "image/png"

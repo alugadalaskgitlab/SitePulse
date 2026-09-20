@@ -59,11 +59,17 @@ Grouped pulling must preserve the existing Set Rates identity rather than introd
 
 **How to apply:** Share the grouping implementation with Set Rates. Scope asynchronous pulls to a form instance as well as vendor/period, since distinct bills can share the same commercial context.
 
-Grace is a per-bill, per-machine total allowance, default zero, frozen in the existing snapshot—not a new Equipment Master field. Contractor advance suggestions use period-bounded quantity-weighted diesel purchase rates; absent pricing requires manual review rather than an invented rate.
+Grace is a per-bill, per-machine allowance (per selected calendar-month group when split), default zero, frozen in the existing snapshot—not a new Equipment Master field. Contractor advance suggestions use period-bounded quantity-weighted diesel purchase rates; absent pricing requires manual review rather than an invented rate.
 
 **Why:** The user chose snapshot-only grace and existing purchase-rate suggestions to avoid a schema migration. Missing activity does not mean a monthly machine was unavailable.
 
 **How to apply:** Count duplicate maintenance records as one breakdown date, honour the explicit override regardless of which duplicate supplied it, and retain server-owned historical versus automatic integration identity through edits. Mixed-bill approval includes ordinary and generated lines exactly once. Context changes must remove generated evidence belonging to the previous vendor/period without discarding valid saved rows when switching Equipment ↔ All.
+
+Monthly availability across calendar months is independently selectable; an omitted month creates no liability or reserved billing period.
+
+**Why:** Vendors invoice by calendar month, and the preparer must be able to close one month while leaving another for later. Diesel netting, breakdown grace, and adjustments must not cross those selected month boundaries.
+
+**How to apply:** Reuse the existing gross calculation's calendar segmentation without changing proration arithmetic. Keep historical saved combined groups intact; validate overlap only for included persisted groups, and scope performance evidence to each group's dates.
 
 Where the retained linked-statement workflow uses hire groups, terms must have an exact valid Equipment Master basis: monthly, daily, hourly, or trip. This is not an eligibility gate for shared itemized bills.
 

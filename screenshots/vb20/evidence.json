@@ -1,0 +1,31 @@
+{
+  "scenario": "VB-20 fixture verification — synthetic, not live bills",
+  "evidence": {
+    "productionDatabaseUsed": false,
+    "productionApiWrites": false,
+    "mountedProductionComponent": "client/src/pages/VendorBills.tsx",
+    "disclosure": "All responses and mutations were intercepted by tests/fixtures/vendor-bills-vb20/main.tsx.",
+    "screenshots": [
+      "/home/runner/workspace/screenshots/vb20/fixture-verification-A-two-month-august.png",
+      "/home/runner/workspace/screenshots/vb20/fixture-verification-B-september-unchecked.png",
+      "/home/runner/workspace/screenshots/vb20/fixture-verification-C-september-offered-later.png",
+      "/home/runner/workspace/screenshots/vb20/fixture-verification-D-simulated-overlap-not-backend-proof.png",
+      "/home/runner/workspace/screenshots/vb20/fixture-verification-E-three-month-split.png",
+      "/home/runner/workspace/screenshots/vb20/fixture-verification-E-third-month-october.png",
+      "/home/runner/workspace/screenshots/vb20/fixture-verification-F-single-month-no-regression.png",
+      "/home/runner/workspace/screenshots/vb20/fixture-verification-G-separate-diesel-breakdown.png",
+      "/home/runner/workspace/screenshots/vb20/fixture-verification-G-august-diesel-breakdown.png"
+    ]
+  },
+  "verified": {
+    "A_twoRows60000Plus40000Equals100000": true,
+    "B_savePayloadOnlyAugust": true,
+    "C_omittedSeptemberOfferedLaterAt40000": true,
+    "D_uiDisplaysSynthetic409Overlap": true,
+    "D_backendOverlapProvenByThisFixture": false,
+    "E_threeMonthSplit": true,
+    "F_singleMonthNoSplitRegression": true,
+    "G_dieselAndBreakdownEvidenceDateScoped": true,
+    "noSchemaChangeRequired": true
+  }
+}

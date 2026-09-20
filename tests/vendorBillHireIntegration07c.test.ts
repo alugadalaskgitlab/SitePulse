@@ -49,7 +49,8 @@ describe("07C vendor-bill hire transaction wiring", () => {
   it("rejects raw auto rows covered by hire groups without touching manual rows", () => {
     expect(storage.match(/rawAutoItemCoveredByHireGroup\(item, data\.hireGroups\)/g)?.length).toBe(2);
     expect(storage).toContain("is already covered by a hire group for this bill");
-    expect(client).toContain("availableOtherBillItems(mappedAutoItems, lineItems, hireGroups)");
+    expect(client).toContain("availableOtherBillItems(mappedAutoItems, lineItems, includedHireGroups)");
+    expect(client).toContain("hireGroups.filter(group => group.includeInBill !== false)");
     expect(client).toContain("Removed ${covered.length} raw activity row");
   });
 
@@ -61,7 +62,8 @@ describe("07C vendor-bill hire transaction wiring", () => {
   });
 
   it("keeps Pull Items additive and derives its count from final eligibility", () => {
-    expect(client).toContain("availableOtherBillItems(mappedAutoItems, lineItems, hireGroups)");
+    expect(client).toContain("availableOtherBillItems(mappedAutoItems, lineItems, includedHireGroups)");
+    expect(client).toContain("includedHireCalculated.filter(x => x.result)");
     expect(client).toContain("setLineItems(prev => mergeOtherBillItems(");
     expect(client).toContain("mapped,");
     expect(client).not.toContain("setLineItems(uncovered)");

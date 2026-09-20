@@ -1,0 +1,51 @@
+INSTRUCTION VB-20: When a Monthly Hire equipment's selected bill period spans more than one calendar month, the bill currently bundles the whole span into ONE combined line/amount — it should instead show one row per calendar month, each separately selectable, so a person can bill August now and leave September for a later bill
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a UI/selection change on top of math that is already correct — do not change the underlying per-month calculation. Do not touch DPR-02 through DPR-10, VB-18, VB-19, or DIESEL-04. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+1. shared/hireBilling.ts's `monthlyGross(from, to, terms)` (~line 238-263) already computes a Monthly Hire amount by walking calendar-month segments one at a time: a segment that is a COMPLETE calendar month earns the full monthly rate; a PARTIAL segment (the first or last month of a spanning range) is prorated using the equipment's monthly divisor (calendar days in that month / 30 / a custom divisor). It sums every segment and returns one total. This is confirmed correct — e.g. a 01-Aug-2026 to 20-Sep-2026 range at ₹60,000/month correctly returns ₹1,00,000 (full August ₹60,000 + prorated September 20 days ≈ ₹40,000).
+2. The problem is NOT the math — it's that this per-month internal breakdown is never surfaced. `server/storage.ts` (~line 16375-16510, the monthly-hire auto-generation path used to build the "Auto-generated monthly hire" card) calls this calculation ONCE across the entire selected period and produces a SINGLE hire group / single bill line ("1 MONTHS", the full blended amount) — confirmed in the person's screenshot: a 01-Aug-2026–20-Sep-2026 period produced one row, "1 MONTHS", ₹1,00,000, with no way to bill only August now and pick up September later.
+3. This is a real operational need: vendors normally expect one bill per calendar month. Bundling two months together in one bill line (especially when GST/TDS and diesel reconciliation are computed once across the blended figure) doesn't match how the person needs to invoice, and makes it impossible to close out August's bill while September is still ongoing/incomplete.
+4. The data model already supports per-item billing periods safely: `reconcileVendorBillHireGroups` (server/storage.ts ~line 16327-16338) already allows each hire group to carry its OWN `periodFrom`/`periodTo` within the overall bill period, and already guards against overlapping periods for the same equipment across groups before taking database locks. This means splitting one equipment's span into multiple month-bound groups, and independently choosing which to bill now, is a safe extension of an already-existing mechanism — not new architecture.
+
+FIX — SPLIT A MULTI-MONTH SPAN INTO ONE SELECTABLE ROW PER CALENDAR MONTH
+1. When building the "Auto-generated monthly hire" section for a Monthly Hire equipment whose selected bill period touches more than one calendar month, do not call `monthlyGross`/the equivalent hire-group builder once across the whole span. Instead, split the span into the same calendar-month segments `monthlyGross` already computes internally (reuse that exact segmentation logic — do not reimplement it separately, to guarantee the sum of the parts always equals what the whole-range calculation would have produced) and render EACH segment as its OWN row/card:
+   a. Its own "Active Billable Range" (e.g. 01-Aug-2026–31-Aug-2026, then 01-Sep-2026–20-Sep-2026).
+   b. Its own Monthly Rate display and Generated Taxable/Bill Amount for just that segment.
+   c. Its own "Breakdown Grace Days for this bill period" input and breakdown/maintenance exceptions relevant to that segment's dates only.
+   d. Its own "HLC diesel reconciliation" box (Expected/Actual/Excess/Recovery), computed from usage within that segment's dates only — do not blend diesel figures across two different months.
+   e. Its own Other Debit/Recovery / Advance Adjustment / Other Credit adjustment fields, matching the existing per-group adjustment pattern.
+2. Add a clear "Include in this bill" checkbox/toggle on each month-segment row. Default: ALL segments checked (so a person who does want to bill the full multi-month span in one go, as today, can just proceed unchanged). Unchecking a segment removes it from this bill's line items and totals.
+3. Only CHECKED segments become actual bill line items and contribute to the bill total (GST/TDS applied per the existing overall-bill logic on whatever is included). An unchecked segment must be cleanly left out — not saved as a zero-amount line, not silently dropped from ever being billable.
+4. The unchecked (not-billed-now) segment's date range must remain fully billable later: when a future bill is raised for the same vendor/equipment covering that remaining month, it must be offered normally, with the existing overlap guard (server/storage.ts ~line 16338 onward) correctly preventing that same date range from ever being billed twice, and correctly allowing it once it's genuinely not yet billed.
+5. If the selected period spans THREE or more calendar months (e.g. a bill raised very late), split into that many rows, not just two — the fix must handle any number of calendar months touched, not just the two-month case.
+6. A period that falls entirely within a single calendar month must behave exactly as it does today — one row, no new checkbox needed (or a checkbox that's simply always checked/hidden since there's nothing to split) — no regression to the common case.
+
+WHAT NOT TO DO
+- Do not change `monthlyGross`'s calculation logic itself — it is already correct; reuse its segmentation, don't rewrite it.
+- Do not allow a partially-selected (unchecked) month to be double-billed later, or to disappear and never become billable — verify the overlap guard correctly tracks this.
+- Do not blend diesel reconciliation or breakdown deductions across two different calendar months in one figure — each month gets its own.
+- Do not touch DPR-02 through DPR-10, VB-18, VB-19, or DIESEL-04.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema/migration change is expected — hire groups already support independent periods per the existing `reconcileVendorBillHireGroups` mechanism; this fix changes how many groups get proposed to the person and which ones they choose to include, not the underlying storage shape.
+
+TESTS
+A. Select a bill period spanning exactly two calendar months (e.g. 01-Aug-2026 to 20-Sep-2026) for a Monthly Hire machine. Confirm two separate rows appear — one for August (full month, full rate) and one for September (prorated, partial rate) — each with its own amount, and confirm the two amounts sum to the same total the old combined calculation would have produced (₹1,00,000 in the reproduction case).
+B. Uncheck the September row, save/raise the bill. Confirm the bill total and line items reflect ONLY August's amount, and September is not included anywhere on this bill.
+C. Later, raise a new bill for the same vendor/equipment covering September. Confirm September is offered normally as billable (not blocked, not missing) and its amount matches what it would have been in Test A.
+D. Attempt to bill August again in any later bill for the same equipment. Confirm the existing overlap guard correctly blocks/prevents double-billing it.
+E. Select a period spanning three calendar months. Confirm three separate rows appear, each individually selectable, with correct per-month amounts.
+F. Select a period entirely within one calendar month. Confirm behavior is unchanged from today — one row, correct amount, no regression.
+G. Confirm diesel reconciliation and breakdown-deduction figures shown on each month row reflect only that month's own dates, not a blend.
+
+REPORT BACK
+1. Confirm the fix with Test A/B/C/D evidence (screenshots).
+2. Confirm Test E (3+ month span) and Test F (single-month, no regression).
+3. Confirm Test G — diesel/breakdown figures are per-month, not blended.
+4. Confirm no schema change was needed.
+5. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

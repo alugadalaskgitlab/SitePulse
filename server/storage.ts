@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { calculateEquipmentHireFinancials, calculateHireGroup, getHireReviewGaps, isEquipmentHireBillEligible, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
+import { calculateEquipmentHireFinancials, calculateHireGroup, getHireReviewGaps, isEquipmentHireBillEligible, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
 import { normalizeDprSiteName } from "../shared/dprBoqSelection";
 import { hasDprBoqReferences } from "../shared/dprBoqReferences";
 import { isManualVendorRateCard, vendorRateCardIdentity } from "../shared/vendorRateCardIdentity";
@@ -16332,7 +16332,6 @@ export class DatabaseStorage implements IStorage {
     if (data.hireGroups === undefined) return [];
     if (bill.status !== "draft") throw Object.assign(new Error("Hire groups can only be recalculated on a draft bill"), { code: "CONFLICT" });
     const groups = data.hireGroups;
-    if (groups.length === 0) throw Object.assign(new Error("Select at least one hired equipment item before creating an equipment-hire bill."), { code: "BAD_REQUEST" });
     if (!bill.periodFrom || !bill.periodTo) throw Object.assign(new Error("Hire groups require a bill period"), { code: "BAD_REQUEST" });
     for (const group of groups) {
       if (group.periodFrom < bill.periodFrom || group.periodTo > bill.periodTo) {
@@ -16362,16 +16361,11 @@ export class DatabaseStorage implements IStorage {
     const requiredMonthlyIds = new Set(monthlyMasters
       .filter((equipment: any) => isEquipmentHireBillEligible({ ...equipment, ownership: "hired" }, bill.periodFrom!, bill.periodTo!))
       .map((equipment: any) => Number(equipment.id)));
-    const submittedMonthlyIds = new Set(groups.filter(group => group.basis === "monthly").map(group => Number(group.equipmentId)));
-    const missingMonthly = Array.from(requiredMonthlyIds).filter(id => !submittedMonthlyIds.has(id));
-    if (missingMonthly.length) {
-      throw Object.assign(new Error("Every eligible monthly hired machine must be included for the selected vendor and bill period."), { code: "BAD_REQUEST" });
-    }
-    for (const equipmentId of Array.from(requiredMonthlyIds)) {
-      const matches = groups.filter(group => Number(group.equipmentId) === equipmentId && group.basis === "monthly");
-      if (matches.length !== 1 || matches[0].periodFrom !== bill.periodFrom || matches[0].periodTo !== bill.periodTo) {
-        throw Object.assign(new Error("Each eligible monthly machine requires exactly one full bill-period hire group; monthly sub-period splitting is not allowed."), { code: "BAD_REQUEST" });
-      }
+    // An empty selection is meaningful when the form offered automatic
+    // monthly availability rows: the preparer may leave every calendar month
+    // for a later bill. Preserve the legacy empty-group rejection otherwise.
+    if (groups.length === 0 && requiredMonthlyIds.size === 0) {
+      throw Object.assign(new Error("Select at least one hired equipment item before creating an equipment-hire bill."), { code: "BAD_REQUEST" });
     }
     const desiredStatementIds = new Set<number>();
     const generated: VendorBillItem[] = [];
@@ -16414,6 +16408,36 @@ export class DatabaseStorage implements IStorage {
         statement = (await tx.select().from(hireStatements).where(and(eq(hireStatements.equipmentId, group.equipmentId),
           eq(hireStatements.periodFrom, group.periodFrom), eq(hireStatements.periodTo, group.periodTo))).limit(1))[0];
         if (statement && statement.vendorBillId !== bill.id) throw Object.assign(new Error("This equipment already has an overlapping hire statement"), { code: "CONFLICT" });
+      }
+      // Existing saved groups keep their historical period shape. Only a new
+      // automatic monthly group must be one of this bill's exact calendar
+      // segments; selected segments may be omitted freely.
+      if (group.basis === "monthly" && !statement) {
+        const submittedFrom = Date.parse(`${group.periodFrom}T00:00:00.000Z`);
+        const submittedTo = Date.parse(`${group.periodTo}T00:00:00.000Z`);
+        const activeFrom = equipment.hireStartDate && equipment.hireStartDate > bill.periodFrom
+          ? equipment.hireStartDate : bill.periodFrom;
+        const activeTo = equipment.hireEndDate && equipment.hireEndDate < bill.periodTo
+          ? equipment.hireEndDate : bill.periodTo;
+        // Current automatic groups retain bill-month boundaries and the
+        // calculator clips their active range to Master dates. Also accept the
+        // directly clipped shape emitted by earlier VB-20 clients.
+        const allowedAutomaticSegments = [
+          ...monthlyHireSegments(
+            Date.parse(`${bill.periodFrom}T00:00:00.000Z`),
+            Date.parse(`${bill.periodTo}T00:00:00.000Z`),
+          ),
+          ...monthlyHireSegments(
+            Date.parse(`${activeFrom}T00:00:00.000Z`),
+            Date.parse(`${activeTo}T00:00:00.000Z`),
+          ),
+        ];
+        const validAutomaticSegment = allowedAutomaticSegments.some(
+          segment => segment.from === submittedFrom && segment.to === submittedTo,
+        );
+        if (!validAutomaticSegment) {
+          throw Object.assign(new Error("Automatic monthly hire groups must match one calendar-month segment of the bill period."), { code: "BAD_REQUEST" });
+        }
       }
       if (statement && statement.status !== "draft") throw Object.assign(new Error("Approved or billed statement calculations are immutable"), { code: "CONFLICT" });
       const [overlap] = await tx.select({ id: hireStatements.id }).from(hireStatements).where(and(

@@ -235,15 +235,29 @@ function exceptionKey(value: Pick<HireBillingException, "sourceType" | "sourceId
   return `${value.sourceType}:${value.sourceId ?? ""}:${value.exceptionType}:${value.date ?? ""}`;
 }
 
-export function monthlyGross(from: number, to: number, terms: HireTerms): number {
-  let result = 0;
+export function monthlyHireSegments(from: number, to: number): Array<{ from: number; to: number }> {
+  const segments: Array<{ from: number; to: number }> = [];
   let cursor = from;
   while (cursor <= to) {
+    const start = new Date(cursor);
+    const nextMonth = Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1);
+    const monthEnd = nextMonth - DAY_MS;
+    const segmentEnd = Math.min(to, monthEnd);
+    segments.push({ from: cursor, to: segmentEnd });
+    cursor = segmentEnd + DAY_MS;
+  }
+  return segments;
+}
+
+export function monthlyGross(from: number, to: number, terms: HireTerms): number {
+  let result = 0;
+  for (const segment of monthlyHireSegments(from, to)) {
+    const cursor = segment.from;
+    const segmentEnd = segment.to;
     const start = new Date(cursor);
     const monthStart = Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1);
     const nextMonth = Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1);
     const monthEnd = nextMonth - DAY_MS;
-    const segmentEnd = Math.min(to, monthEnd);
     const days = Math.round((segmentEnd - cursor) / DAY_MS) + 1;
     const daysInMonth = Math.round((monthEnd - monthStart) / DAY_MS) + 1;
     // A complete calendar month always earns its agreed monthly rate.  The
@@ -257,7 +271,6 @@ export function monthlyGross(from: number, to: number, terms: HireTerms): number
           : 30;
       result += terms.rate * days / divisor;
     }
-    cursor = segmentEnd + DAY_MS;
   }
   return money(result);
 }
