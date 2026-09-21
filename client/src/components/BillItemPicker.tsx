@@ -86,10 +86,12 @@ function ItemSearchList({
   billItems,
   value,
   onSelect,
+  listClassName = "max-h-[60vh]",
 }: {
   billItems: BillItem[];
   value: number | null;
   onSelect: (it: BillItem | null) => void;
+  listClassName?: string;
 }) {
   return (
     <Command
@@ -111,7 +113,7 @@ function ItemSearchList({
       }}
     >
       <CommandInput placeholder="Search by code, name, or description…" data-testid="input-boq-item-search" />
-      <CommandList className="max-h-[60vh]">
+      <CommandList className={listClassName}>
         <CommandEmpty>No matching items.</CommandEmpty>
         <CommandGroup>
           <CommandItem value="__none__" onSelect={() => onSelect(null)} data-testid="option-boq-item-none">
@@ -315,7 +317,12 @@ export function BillItemPicker({
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-[min(92vw,640px)] p-0" align="start">
-              <ItemSearchList billItems={billItems} value={value} onSelect={handleSelect} />
+              <ItemSearchList
+                billItems={billItems}
+                value={value}
+                onSelect={handleSelect}
+                listClassName="max-h-[45vh]"
+              />
             </PopoverContent>
           </Popover>
         )}

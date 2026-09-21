@@ -152,27 +152,45 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
     expect(screen.getByTestId("equipment-compact-opening-tank-0")).toBeTruthy();
     expect(screen.getByTestId("equipment-compact-closing-tank-0")).toBeTruthy();
     expect(screen.getByTestId("equipment-compact-tank-confirmed-0")).toBeTruthy();
-  });
-
-  it("keeps the hired vendor and source-gated fuel detail in the read-only model", () => {
-    render(
-      <DprEquipmentCompact
-        row={{ ...contractorDailyRow, diesel: 12 }}
-        equipment={{ ownership: "hired", vendorName: "Fasi Uddin", meterType: "hour_meter" }}
-        editable={false}
-      />,
-    );
-
-    expect(screen.getByTestId("equipment-owner-0").textContent).toContain("Hired: Fasi Uddin");
-    expect(screen.getByText("Owner / vendor")).toBeTruthy();
-    expect(screen.getByText("Diesel Issued / Added")).toBeTruthy();
-    expect(screen.queryByText("Opening Tank (L)")).toBeNull();
-    expect(screen.queryByText("Closing Tank / Physical Dip (L)")).toBeNull();
-    expect(screen.queryByText("Physical Tank Balance")).toBeNull();
+    expect(screen.queryByText("Fuel Performance")).toBeNull();
   });
 
   it.each(["contractor", "direct_purchase"] as const)(
-    "does not derive %s consumption from stale legacy tank readings",
+    "keeps only issued diesel and source in the read-only fuel summary for %s",
+    dieselSource => {
+      render(
+        <DprEquipmentCompact
+          row={{
+            ...contractorDailyRow,
+            dieselSource,
+            diesel: 12,
+            openingDiesel: 100,
+            dieselBalanceInTank: 85,
+            dieselBalanceConfirmed: true,
+            expectedDiesel: 9,
+          }}
+          equipment={{ ownership: "hired", vendorName: "Fasi Uddin", meterType: "hour_meter", consumptionNorm: 1 }}
+          editable={false}
+        />,
+      );
+
+      expect(screen.getByTestId("equipment-owner-0").textContent).toContain("Hired: Fasi Uddin");
+      expect(screen.getByText("Owner / vendor")).toBeTruthy();
+      expect(screen.getByText("Diesel Issued / Added").parentElement?.textContent).toContain("12.00 L");
+      expect(screen.getByText("Diesel Source")).toBeTruthy();
+      expect(screen.queryByText("Opening Tank (L)")).toBeNull();
+      expect(screen.queryByText("Closing Tank / Physical Dip (L)")).toBeNull();
+      expect(screen.queryByText("Physical Tank Balance")).toBeNull();
+      expect(screen.queryByText("Fuel Performance")).toBeNull();
+      expect(screen.queryByText("Actual Consumed")).toBeNull();
+      expect(screen.queryByText("Expected")).toBeNull();
+      expect(screen.queryByText("Variance")).toBeNull();
+      expect(screen.queryByText(/Consumption Rate/)).toBeNull();
+    },
+  );
+
+  it.each(["contractor", "direct_purchase"] as const)(
+    "does not display %s performance from stale legacy tank readings",
     (dieselSource) => {
       render(
         <DprEquipmentCompact
@@ -189,12 +207,68 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
         />,
       );
 
-      expect(screen.getByText("Actual Consumed").parentElement?.textContent).toContain("Awaiting tank dip");
-      expect(screen.getByText("Variance").parentElement?.textContent).toContain("—");
-       expect(screen.getByText("Expected Consumption Rate · from norm, actual unavailable").parentElement?.textContent).toContain("1.00 L/hr");
+      expect(screen.queryByText("Fuel Performance")).toBeNull();
+      expect(screen.queryByText("Actual Consumed")).toBeNull();
+      expect(screen.queryByText("Expected")).toBeNull();
+      expect(screen.queryByText("Variance")).toBeNull();
+      expect(screen.queryByText(/Consumption Rate/)).toBeNull();
       expect(screen.queryByText("Physical Tank Balance")).toBeNull();
     },
   );
+
+  it.each(["contractor", "direct_purchase"] as const)(
+    "keeps issued diesel editable while omitting tank and performance controls for %s",
+    dieselSource => {
+      const onChange = vi.fn();
+      render(
+        <DprEquipmentCompact
+          row={{ ...contractorDailyRow, dieselSource, diesel: 12 }}
+          equipment={{ meterType: "hour_meter", consumptionNorm: 1 }}
+          onChange={onChange}
+        />,
+      );
+
+      const issued = screen.getByTestId("equipment-compact-diesel-0") as HTMLInputElement;
+      expect(issued.value).toBe("12");
+      expect(issued.disabled).toBe(false);
+      expect(screen.queryByTestId("equipment-compact-opening-tank-0")).toBeNull();
+      expect(screen.queryByTestId("equipment-compact-closing-tank-0")).toBeNull();
+      expect(screen.queryByTestId("equipment-compact-tank-confirmed-0")).toBeNull();
+      expect(screen.queryByText("Fuel Performance")).toBeNull();
+
+      fireEvent.change(issued, { target: { value: "15" } });
+      expect(onChange).toHaveBeenCalledWith({ diesel: 15 });
+    },
+  );
+
+  it("keeps the complete plant-stock read-only fuel summary and performance figures", () => {
+    render(
+      <DprEquipmentCompact
+        row={{
+          ...contractorDailyRow,
+          dieselSource: "plant_stock",
+          diesel: 12,
+          openingDiesel: 100,
+          dieselBalanceInTank: 85,
+          dieselBalanceConfirmed: true,
+          openingReading: 10,
+          closingReading: 12,
+        }}
+        equipment={{ meterType: "hour_meter", consumptionNorm: 4 }}
+        editable={false}
+      />,
+    );
+
+    expect(screen.getByText("Diesel Issued / Added").parentElement?.textContent).toContain("12.00 L");
+    expect(screen.getByText("Opening Tank (L)")).toBeTruthy();
+    expect(screen.getByText("Closing Tank / Physical Dip (L)")).toBeTruthy();
+    expect(screen.getByText("Physical Tank Balance")).toBeTruthy();
+    expect(screen.getByText("Fuel Performance")).toBeTruthy();
+    expect(screen.getByText("Actual Consumed")).toBeTruthy();
+    expect(screen.getByText("Expected")).toBeTruthy();
+    expect(screen.getByText("Variance")).toBeTruthy();
+    expect(screen.getByText("Actual Consumption Rate · from confirmed tank dip")).toBeTruthy();
+  });
 
   it("does not make a contractor Daily Hire row with no meter or tank a submit-readiness blocker at zero or positive diesel", () => {
     for (const diesel of [0, 12]) {
@@ -254,7 +328,7 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
   it("uses the trip efficiency unit when falling back to an hour-meter norm", () => {
     render(
       <DprEquipmentCompact
-        row={{ ...contractorDailyRow, entryType: "trip_based", numberOfTrips: 2, tripDistance: 10 }}
+        row={{ ...contractorDailyRow, dieselSource: "plant_stock", entryType: "trip_based", numberOfTrips: 2, tripDistance: 10 }}
         equipment={{ meterType: "hour_meter", consumptionNorm: 5 }}
         editable={false}
       />,
@@ -273,7 +347,7 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
           closingReading: 419,
           startTime: "",
           endTime: "",
-          dieselSource: "contractor",
+          dieselSource: "plant_stock",
         }}
         equipment={{ meterType: "hour_meter", consumptionNorm: 3.5 }}
         editable={false}

@@ -1,0 +1,104 @@
+[
+  {
+    "source": "contractor",
+    "mode": "editable",
+    "performance": false,
+    "tanks": false,
+    "visibility": {
+      "dieselIssued": true,
+      "fuelPerformance": false,
+      "openingTank": false,
+      "closingTank": false,
+      "actualConsumed": false,
+      "expected": false,
+      "variance": false,
+      "consumptionRate": false
+    },
+    "screenshot": "/home/runner/workspace/tests/fixtures/dpr11-touch/evidence/fuel-contractor-editable.png"
+  },
+  {
+    "source": "contractor",
+    "mode": "readonly",
+    "performance": false,
+    "tanks": false,
+    "visibility": {
+      "dieselIssued": true,
+      "fuelPerformance": false,
+      "openingTank": false,
+      "closingTank": false,
+      "actualConsumed": false,
+      "expected": false,
+      "variance": false,
+      "consumptionRate": false
+    },
+    "screenshot": "/home/runner/workspace/tests/fixtures/dpr11-touch/evidence/fuel-contractor-readonly.png"
+  },
+  {
+    "source": "direct_purchase",
+    "mode": "editable",
+    "performance": false,
+    "tanks": false,
+    "visibility": {
+      "dieselIssued": true,
+      "fuelPerformance": false,
+      "openingTank": false,
+      "closingTank": false,
+      "actualConsumed": false,
+      "expected": false,
+      "variance": false,
+      "consumptionRate": false
+    },
+    "screenshot": "/home/runner/workspace/tests/fixtures/dpr11-touch/evidence/fuel-direct_purchase-editable.png"
+  },
+  {
+    "source": "direct_purchase",
+    "mode": "readonly",
+    "performance": false,
+    "tanks": false,
+    "visibility": {
+      "dieselIssued": true,
+      "fuelPerformance": false,
+      "openingTank": false,
+      "closingTank": false,
+      "actualConsumed": false,
+      "expected": false,
+      "variance": false,
+      "consumptionRate": false
+    },
+    "screenshot": "/home/runner/workspace/tests/fixtures/dpr11-touch/evidence/fuel-direct_purchase-readonly.png"
+  },
+  {
+    "source": "plant_stock",
+    "mode": "editable",
+    "performance": false,
+    "tanks": true,
+    "visibility": {
+      "dieselIssued": true,
+      "fuelPerformance": false,
+      "openingTank": true,
+      "closingTank": true,
+      "actualConsumed": false,
+      "expected": false,
+      "variance": false,
+      "consumptionRate": false
+    },
+    "screenshot": "/home/runner/workspace/tests/fixtures/dpr11-touch/evidence/fuel-plant_stock-editable.png"
+  },
+  {
+    "source": "plant_stock",
+    "mode": "readonly",
+    "performance": true,
+    "tanks": true,
+    "visibility": {
+      "dieselIssued": true,
+      "fuelPerformance": true,
+      "openingTank": true,
+      "closingTank": true,
+      "actualConsumed": true,
+      "expected": true,
+      "variance": true,
+      "consumptionRate": true
+    },
+    "screenshot": "/home/runner/workspace/tests/fixtures/dpr11-touch/evidence/fuel-plant_stock-readonly.png"
+  }
+]

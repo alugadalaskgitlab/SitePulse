@@ -1,0 +1,55 @@
+INSTRUCTION DPR-11: Two problems on the DPR equipment-entry screen — (1) a "Fuel Performance" panel (tank-dip-based Actual Consumed / Variance / Consumption Rate) is shown even for Contractor-supplied diesel, where none of that data can ever exist, permanently displaying misleading placeholders; (2) the equipment-selection list and the BOQ item list do not scroll with touch on iPad, trapping the person inside a partial list
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Two independent, precisely-diagnosed problems. Fix 1 is a confirmed, code-level logic gap. Fix 2 is a reproduce-and-fix task with one confirmed starting point (below) — investigate the equipment-select counterpart yourself and apply the same fix pattern. Do not touch DPR-02 through DPR-10, VB-18 through VB-21, or DIESEL-04. Do not publish automatically. STOP after this and report back.
+
+NOTE ON A THIRD ITEM THAT WAS RAISED BUT IS NOT IN SCOPE HERE
+The person also reported a "Failed to update bill" / "A draft DPR cannot be versioned" error while saving a draft DPR. I checked the current codebase directly: client/src/pages/SiteEdit.tsx's bottom Save button (~line 3339-3368) is already correctly gated by `isDraftMode` and calls `handleDraftSave`/`handleSubmitDraft` for a draft, exactly as DPR-10 already fixed and as was already verified correct in the most recent delivered build. This exact error cannot occur in the current code for a genuine draft. This means the screen recording that showed this error is very likely FROM BEFORE the DPR-10 fix was deployed (old/stale footage), not a new occurrence — do not attempt to fix this again; do not touch this code. If it turns out to still be reproducible on the live, currently-deployed app, that is a deployment/version question, not a code gap, and should be raised separately after confirming which build is actually live.
+
+BACKGROUND — FIX 1: FUEL PERFORMANCE PANEL SHOWN FOR NON-PLANT-STOCK DIESEL
+1. client/src/components/DprEquipmentCompact.tsx (~line 215-223) already correctly gates the TANK input fields (Opening Tank, Closing/Physical Dip, Physical Tank Balance Confirmed checkbox) behind `isPlantStock` (`row.dieselSource === "plant_stock"`) — these correctly disappear for Contractor or Direct Site Purchase, leaving only "Diesel Issued / Added (L)" visible, which is correct.
+2. BUT the separate read-only "Fuel Performance" section (~line 225-234) — "Actual Consumed", "Expected", "Variance", and "Actual/Expected Consumption Rate" — is gated ONLY by `!editable` (i.e. it shows whenever the row is being viewed, not edited), with NO check on `isPlantStock` at all. Since "Actual Consumed" (`fuel.actualConsumed`) can only ever be derived from a confirmed tank dip, and Contractor/Direct-Purchase rows never have one, this section permanently shows "Awaiting tank dip" (not "temporarily", forever, since no tank dip will ever exist for a contractor-supplied row), "Variance —", and a consumption rate that's silently just the plain norm figure — none of which is meaningful when HLC never measured or tracked that diesel. Confirmed by the person's screenshot: Diesel Source "contractor" with "Actual Consumed: Awaiting tank dip", "Expected: 7.92 L", "Variance: —", "Expected Consumption Rate: 0.36 L/km" all still displayed.
+3. The person's own framing is correct and should be the target behavior: "When the source is Contractor, only diesel issue should be there to enter any diesel filled as advance."
+
+FIX 1
+a. Gate the entire "Fuel Performance" section (~line 225-234) behind `isPlantStock`, the same condition that already correctly gates the tank input fields. For Contractor or Direct Site Purchase diesel, this section must not render at all.
+b. For a non-Plant-Stock row, only "Diesel Issued / Added (L)" (already correctly shown at ~line 220 for every source) remains visible — representing diesel filled as an informational/advance entry, not a measured consumption figure.
+c. Do not change anything about how Plant Stock (HLC-supplied) rows behave — the Fuel Performance panel, tank inputs, and confirmation checkbox must continue to work exactly as they do today for that source.
+d. Check the read-only summary view (~line 222, the `Detail` grid shown when `!editable`) for the same issue — confirm it does not separately leak tank/expected/variance-style figures for a non-Plant-Stock row either; if it does, apply the same `isPlantStock` gate there.
+
+BACKGROUND — FIX 2: EQUIPMENT LIST AND BOQ ITEM LIST DO NOT SCROLL WITH TOUCH ON iPAD
+1. Reported directly: on an iPad, inside the DPR equipment-add flow, both the equipment-selection dropdown/list and the BOQ Item/Activity picker list get stuck — touch dragging up/down does not scroll them, trapping the person on whatever portion of the list is initially visible.
+2. One confirmed lead: client/src/components/BillItemPicker.tsx (~line 114) renders its list inside a `CommandList` (cmdk) with `className="max-h-[60vh]"` — a fixed max-height with no explicit `overflow-y-auto`/touch-scroll handling visible at that line, which is a common source of iPad Safari touch-scroll failure, especially when this list sits inside a Dialog/Drawer that has its own scroll/touch-handling that can conflict with a nested scrollable area.
+3. The equipment-selection list (used above the equipment detail card in client/src/pages/SiteEdit.tsx, around where `DprEquipmentCompact` is rendered ~line 3035) is a SEPARATE component from BillItemPicker — its exact file was not pinned down in this review; find it and check whether it has the same class of problem (fixed-height container, missing/blocked overflow scrolling, or a parent element with `touch-action: none`/`overflow: hidden` swallowing the touch gesture).
+
+FIX 2
+a. Reproduce on an actual iPad (Safari) or with iPad/touch emulation: open the "Complete DPR" (draft edit) screen, add/edit an equipment row, open the equipment-selection list, and confirm whether touch-drag scrolling works. Do the same for the BOQ Item/Activity picker (client/src/components/BillItemPicker.tsx).
+b. Fix whichever CSS/structural cause is found — typically ensuring the scrollable container has `overflow-y: auto` (or `overflow-y: scroll`), a bounded height that actually triggers scrolling, `-webkit-overflow-scrolling: touch` if targeting older iOS/iPadOS Safari behavior, and that no ancestor element (Dialog/Drawer wrapper, outer page scroll lock) is capturing/blocking the touch gesture meant for the inner list.
+c. Apply the fix to BOTH lists — the equipment-selection list and BillItemPicker.tsx's `CommandList` — even if their underlying causes turn out to be different from each other; both must end up genuinely scrollable by touch.
+d. Check whether the same list components are reused elsewhere in the app (Guided DPR, Site Entry, Vendor Bills' own item pickers, etc.) — if the same underlying component is shared, the fix should naturally cover those too; note in your report if you find and fix other affected screens as a side effect, but do not go looking for unrelated new work beyond confirming this specific class of touch-scroll bug isn't present elsewhere in the same shared component.
+
+WHAT NOT TO DO
+- Do not touch DPR-02 through DPR-10, VB-18, VB-19, VB-20, VB-21, or DIESEL-04.
+- Do not re-investigate or "fix" the "cannot be versioned" draft-save error — it is already correctly fixed in the current code; treat any report of it as stale footage unless separately reconfirmed against the live, currently-deployed app.
+- Do not remove or change the Fuel Performance panel's behavior for Plant Stock diesel — only Contractor/Direct Site Purchase are affected by Fix 1.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema/migration change is expected for either fix — both are client-side display/CSS corrections.
+
+TESTS
+A. Add or edit an equipment row with Diesel Source = Contractor. Confirm only "Diesel Issued / Added (L)" is shown for fuel — no tank fields, no Fuel Performance panel (no "Actual Consumed", "Expected", "Variance", or "Consumption Rate").
+B. Repeat Test A for Diesel Source = Direct Site Purchase. Confirm the same — no Fuel Performance panel.
+C. Add or edit an equipment row with Diesel Source = Plant Stock. Confirm tank fields AND the Fuel Performance panel still appear and work exactly as before — no regression.
+D. On an iPad (or touch-emulated viewport), open the equipment-selection list in the DPR equipment-add flow and confirm touch-drag scrolling now works through the full list.
+E. On the same device/emulation, open the BOQ Item/Activity picker and confirm touch-drag scrolling now works through the full list.
+F. Confirm both lists still work normally with mouse/trackpad scrolling on desktop — no regression there.
+
+REPORT BACK
+1. Confirm Fix 1 with Test A/B/C evidence (screenshots).
+2. Confirm Fix 2 with Test D/E/F evidence (screenshots or a screen recording on iPad if possible), and explain what the actual root cause turned out to be for each list.
+3. Confirm no schema change was needed.
+4. Confirm you did NOT touch the already-fixed draft-versioning save path.
+5. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

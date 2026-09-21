@@ -1,0 +1,367 @@
+{
+  "mode": "before",
+  "touchMobileDrawer": {
+    "viewport": {
+      "width": 767,
+      "height": 900
+    },
+    "billItemPresentation": "Drawer",
+    "equipment": {
+      "touchToBottom": {
+        "before": {
+          "scrollTop": 0,
+          "scrollHeight": 1928,
+          "clientHeight": 670,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 384.5,
+          "y": 735
+        },
+        "after": {
+          "scrollTop": 1258,
+          "scrollHeight": 1928,
+          "clientHeight": 670,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 384.5,
+          "y": 759
+        }
+      },
+      "wheel": {
+        "before": {
+          "scrollTop": 0,
+          "scrollHeight": 1928,
+          "clientHeight": 646,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 384.5,
+          "y": 739.8000000000001
+        },
+        "after": {
+          "scrollTop": 1258,
+          "scrollHeight": 1928,
+          "clientHeight": 670,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 384.5,
+          "y": 759
+        }
+      },
+      "selectedLast": true
+    },
+    "boq": {
+      "touchToBottom": {
+        "before": {
+          "scrollTop": 0,
+          "scrollHeight": 3355,
+          "clientHeight": 540,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 383.5,
+          "y": 775
+        },
+        "after": {
+          "scrollTop": 2815,
+          "scrollHeight": 3355,
+          "clientHeight": 540,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 383.5,
+          "y": 775
+        }
+      },
+      "wheel": {
+        "before": {
+          "scrollTop": 0,
+          "scrollHeight": 3355,
+          "clientHeight": 540,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 383.5,
+          "y": 775
+        },
+        "after": {
+          "scrollTop": 720,
+          "scrollHeight": 3355,
+          "clientHeight": 540,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 383.5,
+          "y": 775
+        }
+      },
+      "selectedLast": true,
+      "lastState": {
+        "visible": true,
+        "rect": {
+          "top": 823.75,
+          "bottom": 879
+        },
+        "list": {
+          "scrollTop": 2815,
+          "scrollHeight": 3355,
+          "clientHeight": 540
+        },
+        "innerHeight": 900
+      }
+    },
+    "screenshot": "/home/runner/workspace/tests/fixtures/dpr11-touch/evidence/before-mobile-767.png"
+  },
+  "touchIpadPortrait": {
+    "viewport": {
+      "width": 768,
+      "height": 1024
+    },
+    "billItemPresentation": "Popover",
+    "equipment": {
+      "touchToBottom": {
+        "before": {
+          "scrollTop": 0,
+          "scrollHeight": 1928,
+          "clientHeight": 794,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 385,
+          "y": 834.2
+        },
+        "after": {
+          "scrollTop": 1134,
+          "scrollHeight": 1928,
+          "clientHeight": 794,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 385,
+          "y": 858.2
+        }
+      },
+      "wheel": {
+        "before": {
+          "scrollTop": 0,
+          "scrollHeight": 1928,
+          "clientHeight": 770,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 385,
+          "y": 839
+        },
+        "after": {
+          "scrollTop": 1134,
+          "scrollHeight": 1928,
+          "clientHeight": 794,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 385,
+          "y": 858.2
+        }
+      },
+      "selectedLast": true
+    },
+    "boq": {
+      "touchToBottom": {
+        "before": {
+          "scrollTop": 0,
+          "scrollHeight": 3355,
+          "clientHeight": 614,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 378,
+          "y": 969.5125
+        },
+        "after": {
+          "scrollTop": 2741,
+          "scrollHeight": 3355,
+          "clientHeight": 614,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 378,
+          "y": 969.5125
+        }
+      },
+      "wheel": {
+        "before": {
+          "scrollTop": 0,
+          "scrollHeight": 3355,
+          "clientHeight": 614,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 378,
+          "y": 969.5125
+        },
+        "after": {
+          "scrollTop": 720,
+          "scrollHeight": 3355,
+          "clientHeight": 614,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 378,
+          "y": 969.5125
+        }
+      },
+      "selectedLast": false,
+      "lastState": {
+        "visible": false,
+        "rect": {
+          "top": 1032.75,
+          "bottom": 1088
+        },
+        "list": {
+          "scrollTop": 2741,
+          "scrollHeight": 3355,
+          "clientHeight": 614
+        },
+        "innerHeight": 1024
+      }
+    },
+    "screenshot": "/home/runner/workspace/tests/fixtures/dpr11-touch/evidence/before-ipad-portrait-768.png"
+  },
+  "touchIpadLandscape": {
+    "viewport": {
+      "width": 1024,
+      "height": 768
+    },
+    "billItemPresentation": "Popover",
+    "equipment": {
+      "touchToBottom": {
+        "before": {
+          "scrollTop": 0,
+          "scrollHeight": 1928,
+          "clientHeight": 538,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 513,
+          "y": 629.4000000000001
+        },
+        "after": {
+          "scrollTop": 1390,
+          "scrollHeight": 1928,
+          "clientHeight": 538,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 513,
+          "y": 653.4000000000001
+        }
+      },
+      "wheel": {
+        "before": {
+          "scrollTop": 0,
+          "scrollHeight": 1928,
+          "clientHeight": 514,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 513,
+          "y": 634.2
+        },
+        "after": {
+          "scrollTop": 1390,
+          "scrollHeight": 1928,
+          "clientHeight": 538,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 513,
+          "y": 653.4000000000001
+        }
+      },
+      "selectedLast": true
+    },
+    "boq": {
+      "touchToBottom": {
+        "before": {
+          "scrollTop": 0,
+          "scrollHeight": 3355,
+          "clientHeight": 461,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 442,
+          "y": 410.13750000000005
+        },
+        "after": {
+          "scrollTop": 2894,
+          "scrollHeight": 3355,
+          "clientHeight": 461,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 442,
+          "y": 294.63750000000005
+        }
+      },
+      "wheel": {
+        "before": {
+          "scrollTop": 0,
+          "scrollHeight": 3355,
+          "clientHeight": 461,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 442,
+          "y": 294.63750000000005
+        },
+        "after": {
+          "scrollTop": 720,
+          "scrollHeight": 3355,
+          "clientHeight": 461,
+          "overflowY": "auto",
+          "touchAction": "auto",
+          "x": 442,
+          "y": 294.63750000000005
+        }
+      },
+      "selectedLast": true,
+      "lastState": {
+        "visible": true,
+        "rect": {
+          "top": 327.75,
+          "bottom": 383
+        },
+        "list": {
+          "scrollTop": 2894,
+          "scrollHeight": 3355,
+          "clientHeight": 461
+        },
+        "innerHeight": 768
+      }
+    },
+    "screenshot": "/home/runner/workspace/tests/fixtures/dpr11-touch/evidence/before-ipad-landscape-1024.png"
+  },
+  "desktop": {
+    "equipmentWheel": {
+      "before": {
+        "scrollTop": 0,
+        "scrollHeight": 1928,
+        "clientHeight": 670,
+        "overflowY": "auto",
+        "touchAction": "auto",
+        "x": 721,
+        "y": 735
+      },
+      "after": {
+        "scrollTop": 544,
+        "scrollHeight": 1928,
+        "clientHeight": 646,
+        "overflowY": "auto",
+        "touchAction": "auto",
+        "x": 721,
+        "y": 739.8000000000001
+      }
+    },
+    "boqWheel": {
+      "before": {
+        "scrollTop": 0,
+        "scrollHeight": 3355,
+        "clientHeight": 540,
+        "overflowY": "auto",
+        "touchAction": "auto",
+        "x": 650,
+        "y": 910
+      },
+      "after": {
+        "scrollTop": 0,
+        "scrollHeight": 3355,
+        "clientHeight": 540,
+        "overflowY": "auto",
+        "touchAction": "auto",
+        "x": 650,
+        "y": 910
+      }
+    }
+  },
+  "desktopScreenshot": "/home/runner/workspace/tests/fixtures/dpr11-touch/evidence/before-desktop-wheel.png"
+}

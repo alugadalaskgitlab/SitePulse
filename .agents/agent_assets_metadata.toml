@@ -1529,3 +1529,87 @@ mtime_ms = 1789904235557
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/82049e78-0829-4fc8-bcb9-8786b42ac70d/11238d61-d667-4621-a0e5-1181b3fed3f9"
 storage_version_token = "1789904313289289"
 content_type = "image/png"
+
+[[outputs]]
+id = "uGu9Jfpzav2UwE8JQLB3U"
+uri = "file://tests/fixtures/dpr11-touch/evidence/fuel-contractor-readonly.png"
+type = "image"
+title = "A — Contractor fuel summary"
+description = "Isolated real-component test evidence using synthetic data and Chromium touch emulation; not physical iPad Safari."
+logical_id = "e437699f-fad1-4edb-aee6-63740583724c"
+content_hash = "sha256:d82432457f292c453a4805a0578aaef40b9af59f51ea8e12daf043afa8174855"
+size = 91411
+mtime_ms = 1789952565354
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e437699f-fad1-4edb-aee6-63740583724c/263b9cd1-6723-4bc2-9bf8-ddd3d932624f"
+storage_version_token = "1789953103286470"
+content_type = "image/png"
+
+[[outputs]]
+id = "1yoNeLqt77GlmnW2HRLml"
+uri = "file://tests/fixtures/dpr11-touch/evidence/fuel-direct_purchase-readonly.png"
+type = "image"
+title = "B — Direct-purchase fuel summary"
+description = "Isolated real-component test evidence using synthetic data and Chromium touch emulation; not physical iPad Safari."
+logical_id = "8112ac07-ea3d-421f-8000-c74cbc4f4c83"
+content_hash = "sha256:5ab4bee6fd2f3782c398fad866b8e2fe73406b16f7f8439b7f933128cfc01051"
+size = 93044
+mtime_ms = 1789952565850
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8112ac07-ea3d-421f-8000-c74cbc4f4c83/60ec215a-5b5a-4c9e-b46c-ef7c7f47d7a6"
+storage_version_token = "1789953104964340"
+content_type = "image/png"
+
+[[outputs]]
+id = "JQ5aeSzK5d3hutjGyP5d9"
+uri = "file://tests/fixtures/dpr11-touch/evidence/fuel-plant_stock-readonly.png"
+type = "image"
+title = "C — Plant Stock performance retained"
+description = "Isolated real-component test evidence using synthetic data and Chromium touch emulation; not physical iPad Safari."
+logical_id = "78b3acb2-f743-44cf-b1c6-d297b0bd71fc"
+content_hash = "sha256:375ab3f07d552deb6398eafbd5ad2e3d96c3303fdf52c7bbd8d7e3e93e0f5f3c"
+size = 121371
+mtime_ms = 1789952566342
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/78b3acb2-f743-44cf-b1c6-d297b0bd71fc/fc6a8368-7b9a-4308-b8f3-cdaf0cf1138e"
+storage_version_token = "1789953106896655"
+content_type = "image/png"
+
+[[outputs]]
+id = "pSh99MZMTuKpZeRamW-BE"
+uri = "file://tests/fixtures/dpr11-touch/evidence/after-ipad-portrait-768.png"
+type = "image"
+title = "Tablet portrait — full-list selection"
+description = "Isolated real-component test evidence using synthetic data and Chromium touch emulation; not physical iPad Safari."
+logical_id = "fa068d73-b8c5-4643-9be0-647befecec77"
+content_hash = "sha256:bd479c7fef61938ba5f23f1edb948bd7c77fc483ab7bc54232d0450092df51e2"
+size = 239594
+mtime_ms = 1789952906344
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/fa068d73-b8c5-4643-9be0-647befecec77/6583683e-3308-46ed-a52a-e3eecbab68f2"
+storage_version_token = "1789953109256854"
+content_type = "image/png"
+
+[[outputs]]
+id = "GLYv5ovhNmuXw4F337qkZ"
+uri = "file://tests/fixtures/dpr11-touch/evidence/after-ipad-landscape-1024.png"
+type = "image"
+title = "Tablet landscape — full-list selection"
+description = "Isolated real-component test evidence using synthetic data and Chromium touch emulation; not physical iPad Safari."
+logical_id = "676720b6-6c1a-457e-95cc-05a42b067e31"
+content_hash = "sha256:bfdc8111dacab0b442a18a12ded5c580d7ec60585d8ca92916c9fd1ba197297a"
+size = 167275
+mtime_ms = 1789952920678
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/676720b6-6c1a-457e-95cc-05a42b067e31/b1cac786-6821-4157-a544-ef8d5ab5f985"
+storage_version_token = "1789953111325433"
+content_type = "image/png"
+
+[[outputs]]
+id = "W6LcqJ6UW-1p1W4U965HJ"
+uri = "file://tests/fixtures/dpr11-touch/evidence/after-desktop-wheel.png"
+type = "image"
+title = "Desktop scrolling verification"
+description = "Isolated real-component test evidence using synthetic data and Chromium touch emulation; not physical iPad Safari."
+logical_id = "b7b29524-59cc-4087-a762-5d657e9b2160"
+content_hash = "sha256:92cd80173b82efb0b65ef87bcd28ab4039acb3bdb99746b1451dd5782066d5ff"
+size = 87290
+mtime_ms = 1789952923632
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b7b29524-59cc-4087-a762-5d657e9b2160/87b5e243-6a0b-4cdf-b311-97c42d54d3d2"
+storage_version_token = "1789953112990545"
+content_type = "image/png"
