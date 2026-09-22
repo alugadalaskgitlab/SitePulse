@@ -14,3 +14,9 @@ Automatic source billing conversion reuses the existing rate-card conversion con
 **Why:** Source vendors may charge per trip while delivery records remain in CFT. Rate-card ambiguity is not permission to guess a price.
 
 **How to apply:** Auto-apply only an unambiguous matching material card; otherwise retain logged quantity/unit and let the user use Set Rates.
+
+Do not infer that a placeholder audit ID caused a bulk assignment rollback.
+
+**Why:** In a reported live assignment failure, read-only SQL confirmed blank source values, but the original implementation committed the exact-sized fixture in real PostgreSQL. The production audit table had only a primary-key constraint, so the suggested ID-zero constraint failure was ruled out. A zero-update response was also misleadingly labelled success, but was not proven to explain the original incident.
+
+**How to apply:** Distinguish reproduced defects from the unresolved live cause. Verify committed rows through a separate query, keep per-trip audit identifiers, and return explicit failure for zero matches or transaction errors rather than claiming live data repair.

@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import SiteMaterialTrips from "../../../client/src/pages/SiteMaterialTrips";
+import SiteMaterialsReceived from "../../../client/src/pages/SiteMaterialsReceived";
 import VendorBills from "../../../client/src/pages/VendorBills";
 import "../../../client/src/index.css";
 
@@ -144,6 +145,22 @@ window.fetch = async (input, init) => {
     fixtureState.createdTrips.push(created);
     return json(created, 201);
   }
+  if (pathname === "/api/materials-received" && method === "GET") {
+    return json(trips.map(row => ({ ...row, source: "trip" })));
+  }
+  if (pathname === "/api/materials/suppliers" && method === "GET") {
+    return json([TRANSPORTER, "VB22 OTHER HAULER"]);
+  }
+  if (/^\/api\/site-material-trips\/\d+$/.test(pathname) && method === "PATCH") {
+    const id = Number(pathname.split("/").pop());
+    let updated: AnyRow | undefined;
+    trips = trips.map(row => {
+      if (row.id !== id) return row;
+      updated = { ...row, ...body };
+      return updated;
+    });
+    return updated ? json(updated) : json({ message: "Trip not found" }, 404);
+  }
   if (/^\/api\/site-material-trips\/\d+$/.test(pathname) && method === "DELETE") {
     trips = trips.filter(row => row.id !== Number(pathname.split("/").pop()));
     return json({});
@@ -184,6 +201,20 @@ window.fetch = async (input, init) => {
   }
 
   if (pathname === "/api/vendor-bills" && method === "GET") return json(bills);
+  if (pathname === "/api/audit-logs" && method === "GET") return json([
+    {
+      id: 24002, module: "site_material_trips", transactionId: Number(request.url.searchParams.get("transactionId")),
+      action: "update", userId: 2201, userName: "VB-24 Fixture Reviewer", userRole: "admin",
+      oldValues: { materialSourceSupplier: SOURCE }, newValues: { materialSourceSupplier: "VB24 CORRECTED QUARRY" },
+      reason: "Single-trip edit", stockImpact: null, createdAt: "2027-02-14T10:45:00.000Z",
+    },
+    {
+      id: 24001, module: "site_material_trips", transactionId: Number(request.url.searchParams.get("transactionId")),
+      action: "update", userId: 2201, userName: "VB-24 Fixture Reviewer", userRole: "admin",
+      oldValues: { materialSourceSupplier: null }, newValues: { materialSourceSupplier: SOURCE },
+      reason: "Bulk assigned material source supplier", stockImpact: null, createdAt: "2027-02-14T09:30:00.000Z",
+    },
+  ]);
   if (pathname === "/api/vendor-bills/summary" && method === "GET") return json({
     total: bills.length, totalAmount: bills.reduce((sum, bill) => sum + Number(bill.totalAmount || 0), 0),
     draft: bills.length, draftAmount: bills.reduce((sum, bill) => sum + Number(bill.totalAmount || 0), 0),
@@ -250,14 +281,21 @@ function FixtureRoute() {
     window.addEventListener("vb22-duplicate", listener);
     return () => window.removeEventListener("vb22-duplicate", listener);
   }, []);
+  const vb24Scenario = new URLSearchParams(window.location.search).get("scenario") === "vb24";
   return <>
-    <div className="sticky top-0 z-[200] border-b border-purple-300 bg-purple-50 px-4 py-2 text-center text-xs font-bold text-purple-900" data-testid="vb22-fixture-disclosure">
-      VB-22 REAL-COMPONENT FIXTURE — SYNTHETIC API DATA — NO LIVE API OR DATABASE WRITES
+    <div className={`${vb24Scenario ? "fixed inset-x-0 top-0" : "sticky top-0"} z-[200] border-b border-purple-300 bg-purple-50 px-4 py-2 text-center text-xs font-bold text-purple-900`} data-testid="vb22-fixture-disclosure">
+      {vb24Scenario
+        ? "VB-24 REAL-COMPONENT FIXTURE — SYNTHETIC API + AUDIT HISTORY — NO LIVE API OR DATABASE WRITES"
+        : "VB-22 REAL-COMPONENT FIXTURE — SYNTHETIC API DATA — NO LIVE API OR DATABASE WRITES"}
     </div>
     {(duplicateScenario || duplicateMessage) && <div className="border-b border-red-400 bg-red-50 px-4 py-2 text-center text-sm font-bold text-red-800" data-testid="vb22-duplicate-simulation">
       {duplicateMessage || "SYNTHETIC SAME-ROLE DUPLICATE API SIMULATION — expected pull block only for the same material-source vendor"}
     </div>}
-    {location.startsWith("/site/material-trips") ? <SiteMaterialTrips /> : <VendorBills />}
+    {location.startsWith("/site/materials-received")
+      ? <SiteMaterialsReceived />
+      : location.startsWith("/site/material-trips")
+        ? <SiteMaterialTrips />
+        : <VendorBills />}
   </>;
 }
 

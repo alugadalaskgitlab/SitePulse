@@ -1,0 +1,9 @@
+{
+  "disclosure": "Real production React components with synthetic intercepted API and audit data; no live API/database proof.",
+  "singleTripEdit": "Material source was edited independently; transporter remained VB22 ROAD TRANSPORT.",
+  "history": "History rendered friendly Material Source / Supplier labels with Old and New values for synthetic bulk and single-trip entries.",
+  "screenshots": [
+    "A-single-trip-edit-material-source-SYNTHETIC.png",
+    "B-trip-history-bulk-and-single-old-new-SYNTHETIC.png"
+  ]
+}

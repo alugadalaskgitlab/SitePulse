@@ -371,7 +371,12 @@ export default function SiteMaterialTrips() {
         materialSourceSupplier: bulkMaterialSourceSupplier.trim(),
       };
       const response = await apiRequest("POST", "/api/site-material-trips/material-source/bulk", payload);
-      return response.json() as Promise<{ updatedCount: number }>;
+      const result: unknown = await response.json();
+      const updatedCount = (result as { updatedCount?: unknown } | null)?.updatedCount;
+      if (!Number.isSafeInteger(updatedCount) || (updatedCount as number) < 0 || (updatedCount as number) > filteredTrips.length) {
+        throw new Error("The server returned an invalid updated-trip count. Reload the trips before trying again.");
+      }
+      return { updatedCount: updatedCount as number };
     },
     onSuccess: ({ updatedCount }) => {
       setBulkConfirmOpen(false);
@@ -379,6 +384,14 @@ export default function SiteMaterialTrips() {
         typeof query.queryKey[0] === "string" && query.queryKey[0].startsWith("/api/site-material-trips")
       });
       invalidateSiteMaterialSuggestions(siteFilter);
+      if (updatedCount === 0) {
+        toast({
+          title: "No trips updated",
+          description: "Nothing was changed. Check the filters and edit permission, then reload the trips before trying again.",
+          variant: "destructive",
+        });
+        return;
+      }
       toast({
         title: "Material source assigned",
         description: `${updatedCount} trip${updatedCount === 1 ? "" : "s"} updated.`,

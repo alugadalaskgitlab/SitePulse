@@ -1921,3 +1921,45 @@ mtime_ms = 1790091086070
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/374f0788-3711-48be-8863-62f03c8fd910/919b6343-3d0d-4ac4-99b6-e2d3fad4fd06"
 storage_version_token = "1790091296667912"
 content_type = "image/png"
+
+[[outputs]]
+id = "Vk6Cgo45ZXjHgDpJb6LWV"
+uri = "file://screenshots/vb24/database-verification.txt"
+type = "text"
+title = "VB-24 — Direct database verification"
+description = "Actual Express route and isolated PostgreSQL evidence: 114 rows updated and 114 per-trip audit entries. Includes limits; not a production repair."
+logical_id = "ef9da3dd-1805-496b-82aa-b402621b2a26"
+content_hash = "sha256:92f451ded3007200b0246a79fd4eaa55244dde0e02157e3b9489a88fe7f4c48c"
+size = 2018
+mtime_ms = 1790095524193
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/ef9da3dd-1805-496b-82aa-b402621b2a26/5b2bb712-c89c-43e3-981d-eab66f0fcbe0"
+storage_version_token = "1790095859071379"
+content_type = "text/plain"
+
+[[outputs]]
+id = "dmBGuejC2J6FKaTSfEMy5"
+uri = "file://screenshots/vb24/A-single-trip-edit-material-source-SYNTHETIC.png"
+type = "image"
+title = "Single-trip material source edit"
+description = "Real UI components using clearly labelled synthetic API data."
+logical_id = "d9d2ab29-3da1-42d8-a5f9-5d641144cd64"
+content_hash = "sha256:16286ecc5295d313c536c626bbe6361e7ff5654c903ec33656b539660dda3aaa"
+size = 141857
+mtime_ms = 1790095205377
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d9d2ab29-3da1-42d8-a5f9-5d641144cd64/76b7aeb2-2856-4d51-aeba-1996c8c74f1c"
+storage_version_token = "1790095861090926"
+content_type = "image/png"
+
+[[outputs]]
+id = "nbOJ_bWFZNaU4AZAXn0BR"
+uri = "file://screenshots/vb24/B-trip-history-bulk-and-single-old-new-SYNTHETIC.png"
+type = "image"
+title = "Trip History — bulk and single edits"
+description = "Real UI components using clearly labelled synthetic API data."
+logical_id = "af35ea42-e2ea-4fd6-8bda-9207fb3a1bd0"
+content_hash = "sha256:554f87619b84666f7ab8caae69be0eb61d23b20d39db359b4b910902a18105ce"
+size = 128678
+mtime_ms = 1790095207405
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/af35ea42-e2ea-4fd6-8bda-9207fb3a1bd0/5731bfeb-544d-4614-8b2c-39805da61445"
+storage_version_token = "1790095863132185"
+content_type = "image/png"

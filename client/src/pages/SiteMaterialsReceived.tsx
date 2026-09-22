@@ -54,6 +54,7 @@ interface TripEditForm {
   uom: string;
   vehicleNumber: string;
   supplier: string;
+  materialSourceSupplier: string;
   receiptNumber: string;
   notes: string;
   workType: string;
@@ -115,6 +116,7 @@ export default function SiteMaterialsReceived() {
   const [editForm, setEditForm] = useState<TripEditForm | null>(null);
   const {
     suppliers: supplierSuggestions,
+    materialSourceSuppliers: materialSourceSupplierSuggestions,
     vehicles: vehicleSuggestions,
     error: suggestionError,
     vehicleSuppliers,
@@ -218,6 +220,7 @@ export default function SiteMaterialsReceived() {
       uom: trip.uom || "",
       vehicleNumber: trip.vehicleNumber || "",
       supplier: trip.supplier || "",
+      materialSourceSupplier: trip.materialSourceSupplier || "",
       receiptNumber: trip.receiptNumber || "",
       notes: trip.notes || "",
       workType: trip.workType || "",
@@ -245,6 +248,7 @@ export default function SiteMaterialsReceived() {
       uom: editForm.uom.trim(),
       vehicleNumber: editForm.vehicleNumber.trim() || null,
       supplier: editForm.supplier.trim() || null,
+      materialSourceSupplier: editForm.materialSourceSupplier.trim() || null,
       receiptNumber: editForm.receiptNumber.trim() || null,
       notes: editForm.notes.trim() || null,
       workType: editForm.workType || null,
@@ -608,6 +612,20 @@ export default function SiteMaterialsReceived() {
                         data-testid="input-edit-supplier"
                       />
                     </div>
+                    <div className="space-y-1 col-span-2">
+                      <Label className="text-xs uppercase tracking-wide text-muted-foreground">Material Source / Supplier (optional)</Label>
+                      <FreeTextSuggestionInput
+                        value={editForm.materialSourceSupplier}
+                        onChange={(value) => setEditForm(f => f && { ...f, materialSourceSupplier: value.toUpperCase() })}
+                        suggestions={materialSourceSupplierSuggestions}
+                        match="supplier"
+                        suggestionsError={suggestionError}
+                        placeholder="Leave blank to clear"
+                        className="uppercase"
+                        data-testid="input-edit-material-source-supplier"
+                      />
+                      <p className="text-[11px] text-muted-foreground">Who sold the material; independent from the transporter and vehicle.</p>
+                    </div>
                     <div className="space-y-1">
                       <Label className="text-xs uppercase tracking-wide text-muted-foreground">Work Type</Label>
                       <Select value={editForm.workType || "road"} onValueChange={(v) => setEditForm(f => f && { ...f, workType: v })}>
@@ -691,6 +709,10 @@ export default function SiteMaterialsReceived() {
                   <div>
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Supplier / Party</p>
                     <p className="font-semibold mt-0.5">{selectedTrip.supplier || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Material Source / Supplier</p>
+                    <p className="font-semibold mt-0.5" data-testid="detail-material-source-supplier">{selectedTrip.materialSourceSupplier || "—"}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Receipt / Challan No.</p>

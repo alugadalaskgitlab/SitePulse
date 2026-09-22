@@ -148,11 +148,17 @@ describe("VB22 backend storage", () => {
     expect(result).toEqual({ updatedCount: 2 });
     expect(fx.updates).toEqual([{ materialSourceSupplier: "BORROW OWNER" }]);
     expect(fx.inserts).toHaveLength(1);
-    expect(fx.inserts[0]).toMatchObject({
-      module: "site_material_trips",
-      action: "edit",
-      newValues: { tripIds: [11, 12], materialSourceSupplier: "BORROW OWNER" },
-    });
+    expect(fx.inserts[0]).toEqual([
+      expect.objectContaining({
+        module: "site_material_trips", transactionId: 11, action: "edit",
+        oldValues: { materialSourceSupplier: null },
+        newValues: { materialSourceSupplier: "BORROW OWNER" },
+      }),
+      expect.objectContaining({
+        transactionId: 12, oldValues: { materialSourceSupplier: "" },
+        newValues: { materialSourceSupplier: "BORROW OWNER" },
+      }),
+    ]);
   });
 
   it("rolls the bulk assignment back when its audit write fails", async () => {

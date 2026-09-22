@@ -100,6 +100,6 @@ describe("DPR-02 site-material-trip route enforcement", () => {
     expect(res.status).toBe(200);
     expect(spies.updateTrip).toHaveBeenCalledWith(99, expect.objectContaining({
       boqProjectId: 1, boqItemId: 11, programmeBarId: null, earthworkArrangementId: null,
-    }));
+    }), { userId: 7, userName: "tester", userRole: "manager" });
   });
 });

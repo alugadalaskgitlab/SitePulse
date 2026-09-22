@@ -46,6 +46,17 @@ const ACTION_VARIANT: Record<string, "default" | "secondary" | "destructive" | "
   reopen: "outline",
 };
 
+function valueFromAudit(values: unknown, field: string): unknown {
+  if (!values || typeof values !== "object" || Array.isArray(values)) return undefined;
+  return (values as Record<string, unknown>)[field];
+}
+
+function displayAuditValue(value: unknown): string {
+  if (value == null || value === "") return "Blank";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  return JSON.stringify(value);
+}
+
 export default function HistoryDialog({ open, onOpenChange, module, transactionId, recordLabel }: HistoryDialogProps) {
   const query = useQuery<AuditLog[]>({
     queryKey: ["/api/audit-logs", { module, transactionId }],
@@ -84,36 +95,51 @@ export default function HistoryDialog({ open, onOpenChange, module, transactionI
           {query.data && query.data.length === 0 && (
             <p className="text-sm text-muted-foreground py-4">No audit history recorded yet for this record.</p>
           )}
-          {query.data?.map((entry) => (
-            <div
-              key={entry.id}
-              className="rounded-md border border-border p-3 text-sm space-y-1"
-              data-testid={`row-audit-${entry.id}`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <Badge variant={ACTION_VARIANT[entry.action] ?? "outline"} data-testid={`badge-action-${entry.id}`}>
-                  {ACTION_LABEL[entry.action] ?? entry.action}
-                </Badge>
-                <span className="text-xs text-muted-foreground">
-                  {new Date(entry.createdAt).toLocaleString()}
-                </span>
-              </div>
-              <p className="text-muted-foreground">
-                by <span className="font-medium text-foreground">{entry.userName}</span>{" "}
-                <span className="capitalize">({entry.userRole})</span>
-              </p>
-              {entry.reason && (
+          {query.data?.map((entry) => {
+            const oldMaterialSource = valueFromAudit(entry.oldValues, "materialSourceSupplier");
+            const newMaterialSource = valueFromAudit(entry.newValues, "materialSourceSupplier");
+            const hasMaterialSourceChange = oldMaterialSource !== undefined || newMaterialSource !== undefined;
+            return (
+              <div
+                key={entry.id}
+                className="rounded-md border border-border p-3 text-sm space-y-1"
+                data-testid={`row-audit-${entry.id}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <Badge variant={ACTION_VARIANT[entry.action] ?? "outline"} data-testid={`badge-action-${entry.id}`}>
+                    {ACTION_LABEL[entry.action] ?? entry.action}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(entry.createdAt).toLocaleString()}
+                  </span>
+                </div>
                 <p className="text-muted-foreground">
-                  Reason: <span className="text-foreground">{entry.reason}</span>
+                  by <span className="font-medium text-foreground">{entry.userName}</span>{" "}
+                  <span className="capitalize">({entry.userRole})</span>
                 </p>
-              )}
-              {entry.stockImpact && (
-                <p className="text-amber-600 dark:text-amber-500">
-                  Stock impact: {entry.stockImpact}
-                </p>
-              )}
-            </div>
-          ))}
+                {entry.reason && (
+                  <p className="text-muted-foreground">
+                    Reason: <span className="text-foreground">{entry.reason}</span>
+                  </p>
+                )}
+                {hasMaterialSourceChange && (
+                  <div className="mt-2 rounded bg-muted/50 px-2 py-1.5" data-testid={`audit-material-source-change-${entry.id}`}>
+                    <p className="text-xs font-medium text-foreground">Material Source / Supplier</p>
+                    <p className="text-xs text-muted-foreground">
+                      Old: <span className="text-foreground">{displayAuditValue(oldMaterialSource)}</span>
+                      {" → "}
+                      New: <span className="text-foreground">{displayAuditValue(newMaterialSource)}</span>
+                    </p>
+                  </div>
+                )}
+                {entry.stockImpact && (
+                  <p className="text-amber-600 dark:text-amber-500">
+                    Stock impact: {entry.stockImpact}
+                  </p>
+                )}
+              </div>
+            );
+          })}
         </div>
       </DialogContent>
     </Dialog>

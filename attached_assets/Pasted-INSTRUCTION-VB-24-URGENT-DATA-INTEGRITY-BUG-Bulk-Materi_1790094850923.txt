@@ -1,0 +1,60 @@
+INSTRUCTION VB-24 (URGENT — DATA-INTEGRITY BUG): Bulk Material Source / Supplier assign shows a success message but the assigned value is not actually persisting/showing on the trips afterward — diagnose and fix the real cause, not just the symptom. Also add the two known gaps from VB-22's own follow-up: a single-trip edit for Material Source/Supplier, and a fix to the audit trail so bulk-assign entries show up in each trip's own History.
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Fix 1 is a live data-integrity bug — treat it as the priority, reproduce it exactly as described, find the true root cause (do not just re-save and call it fixed). Fix 2 and Fix 3 are the two follow-up gaps already known from VB-22 review. Do not touch DPR-02 through DPR-12, VB-18 through VB-21, VB-23, or PI-01. Do not publish automatically. STOP after this and report back.
+
+REPRODUCTION — CONFIRMED BY THE PERSON, NOT A GUESS
+1. On Site Material Trips, filters set: Site = ALLADURG PWD ROAD TO PAMPAD, Material = Soil, From/To date range covering 15–22 Sep 2026, Vehicle Number and Transporter left at "ALL" (i.e. no filter on those), "Only trips without a material source" left UNCHECKED.
+2. Result showed "114 matching trips", 68,300.00 CFT total.
+3. Supplier value "RAMESH MOHABATHPUR" entered, "Assign to 114 matching trips" clicked.
+4. A success confirmation was shown.
+5. The person then refreshed the page (hard refresh, not just re-navigating) and re-checked — the Material Source column on the individual trip rows (e.g. 19-Sep-2026 trips, vehicles TG15UF4984/TG15UF4983/15UE4308, all within the exact filtered range/site/material) still shows "-" (blank), not "RAMESH MOHABATHPUR".
+6. This was independently re-confirmed by the person after being asked to check exactly these three things (confirmation message, hard refresh, date/site range match) — all three checked out, yet the value is still not showing. This is not a caching or user-error issue; treat it as a genuine backend bug.
+
+BACKGROUND — STRONGEST LEAD, VERIFY THIS FIRST
+`bulkAssignSiteMaterialTripMaterialSource` (server/storage.ts ~12397-12459) writes an audit log entry for the bulk action at ~12448-12456 with `transactionId: 0` (not the actual trip ID — confirmed odd/inconsistent with how audit logs are filed elsewhere in this codebase, where `transactionId` normally holds the specific record's ID). This is the single most likely root cause of the reported symptom: if the `auditLogs` table or its insert path has any constraint (FK, type check, or application-level validation) that a `transactionId: 0` value violates, the audit-log write could throw AFTER the trip UPDATE has already run — and depending on whether both operations share one DB transaction, and whether the route handler awaits/catches that specific error correctly, this could produce exactly the observed behavior: either (a) the whole transaction (including the trip UPDATE) rolls back due to the later audit-log failure, while the route still returns a success response to the client because the thrown error is caught too late/too broadly, or (b) some other swallowed-error path that lets a success response reach the UI while the actual database write never committed. VERIFY THIS HYPOTHESIS FIRST by tracing the exact transaction boundaries and error handling in `bulkAssignSiteMaterialTripMaterialSource` and its caller route (server/routes.ts ~739-772) — do not assume it's correct without checking. If this is not the cause, keep investigating (check the WHERE-clause filter construction too — confirm it is actually matching and updating the 114 rows the count query reported, not a different/empty set due to a mismatch between the count query and the update query's conditions).
+
+FIX 1 — FIND AND FIX THE TRUE ROOT CAUSE (PRIORITY)
+a. Reproduce the exact scenario above in a test/dev environment: 114+ matching trips, a supplier value, "only trips without a material source" unchecked, run the bulk assign.
+b. Confirm definitively, by querying the database directly (not just trusting the UI), whether the `material_source_supplier` column was actually updated on the matching rows after the action. Do not rely on the UI response alone.
+c. If the audit-log `transactionId: 0` issue (per Background) is confirmed as the cause, fix it properly — every audit-log entry for this bulk action should either reference a real, valid identifier (e.g. the first/primary trip ID in the batch, or a dedicated "bulk action" identifier if the schema needs a small addition to support that cleanly) or the audit logging should be decoupled from the main update transaction so a logging failure can NEVER roll back or block the actual data change. Your judgment on the cleanest correct fix, but the core requirement is: a failure to write the audit log must never cause the underlying trip update to silently fail or roll back, and the success response returned to the user must accurately reflect whether the update actually persisted.
+d. If the true cause is something else entirely (e.g. a WHERE-clause mismatch between the "count matching trips" query and the actual UPDATE query), fix that instead — report exactly what you found, with evidence (e.g. before/after row counts from a direct query), not just "fixed it."
+e. Add a server-side integration test that runs the full bulk-assign flow against a real (test) database and asserts the column value actually changed afterward — not just that the endpoint returned 200. This is the test that would have caught this bug; make sure it now exists and passes.
+
+FIX 2 — SINGLE-TRIP EDIT FOR MATERIAL SOURCE / SUPPLIER
+a. Confirmed gap: there is currently no UI to open one individual trip and correct just its Material Source / Supplier value — only the bulk tool can set this field, even though the backend (`updateSiteMaterialTrip`, server/storage.ts ~12647-12659) already supports it if present in a PATCH body.
+b. Add this field to the existing single-trip edit flow (the "Edit Fields"/"Request Edit" form referenced in `TripEditForm`, wherever that lives per the current codebase — locate and extend it) alongside the fields it already edits (date, time, site, material, quantity, uom, vehicle number, supplier/transporter, receipt number, notes, work type).
+c. Keep it optional, same as the bulk tool — clearing it back to blank should also be allowed.
+
+FIX 3 — BULK-ASSIGN AUDIT ENTRIES SHOULD APPEAR IN EACH TRIP'S OWN HISTORY
+a. Confirmed gap: the bulk-assign audit log entry is filed under `transactionId: 0`, so it never appears when a person opens an individual trip's "History" button (which queries audit logs by that specific trip's ID). This is the same underlying `transactionId: 0` issue as Fix 1 — fixing it properly there should also resolve this, but confirm explicitly: after your Fix 1 change, open the History dialog for a trip that was included in a bulk-assign action and confirm the bulk action now appears in its history, with the old and new Material Source values shown.
+b. If Fix 1's solution doesn't naturally cover this (e.g. you chose to decouple audit logging from the transaction rather than fixing the identifier), make sure each individual trip that was part of a bulk action still gets its own traceable audit entry (or a shared reference that the per-trip History query can find), not just one orphaned entry under a placeholder ID.
+c. Separately, confirm individual single-trip PATCH edits (Fix 2) also get proper audit logging — confirmed currently absent (no `storage.logAudit` call on that path) — add it, consistent with how other edit actions in this codebase are logged.
+
+WHAT NOT TO DO
+- Do not mark this fixed without directly verifying against the database that the update persists — a UI success message alone is not sufficient evidence, that's exactly what fooled the reported flow.
+- Do not weaken or remove the "only trips without a material source" safeguard, the filter logic, or the confirmation dialog — those are working correctly and are unrelated to this bug.
+- Do not touch DPR-02 through DPR-12, VB-18 through VB-21, VB-23, or PI-01.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change expected for Fix 1/3 unless your chosen fix requires a small addition (e.g. a nullable "bulk action batch id" concept) — if so, keep it additive/nullable and explain why in your report. Fix 2 needs no schema change (field already exists).
+
+TESTS
+A. Reproduce the exact person-reported scenario (114 trips, unchecked "only trips without", one supplier value) against a test database. Directly query the database after the action (not just the UI) and confirm all matching rows now have the new `material_source_supplier` value.
+B. Confirm the success/failure response returned to the client accurately reflects what happened in the database — no case where a success message is shown but nothing actually persisted.
+C. Open a trip that was part of a bulk-assign action and confirm the History dialog now shows that bulk action with old/new values.
+D. Edit a single trip's Material Source / Supplier directly via the new single-trip edit control, save, and confirm it persists and shows correctly in the trips list.
+E. Confirm that single-trip edit is now also logged and visible in that trip's own History.
+F. Re-run the original "only trips without a material source" checked scenario (fill-blanks-only mode) and confirm it still works correctly and doesn't regress.
+G. Confirm the existing VB-22 automatic unit-conversion pull into vendor bills (from the prior batch) still works correctly against trips whose Material Source was set via either the bulk tool or the new single-trip edit — no regression there.
+
+REPORT BACK
+1. State plainly what the actual root cause of the bulk-assign persistence failure was, with evidence (not just "fixed").
+2. Confirm Fix 1 with Test A/B evidence (direct database query screenshots/output, not just UI).
+3. Confirm Fix 2 with Test D evidence (screenshots).
+4. Confirm Fix 3 with Test C/E evidence (screenshots of History dialogs showing both bulk and single-trip edits).
+5. Confirm Test F/G — no regression to existing correct behavior.
+6. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

@@ -1398,7 +1398,7 @@ export interface IStorage {
   }>;
   createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip>;
   getSiteMaterialTripById(id: number): Promise<SiteMaterialTrip | undefined>;
-  updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>): Promise<SiteMaterialTrip>;
+  updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>, actor?: { userId: number; userName: string; userRole?: string | null }): Promise<SiteMaterialTrip>;
   deleteSiteMaterialTrip(id: number): Promise<void>;
   getSiteMaterialReconciliation(filters?: { permittedSiteNames?: string[]; dateFrom?: string; dateTo?: string }): Promise<{
     site: string; material: string; matched: boolean; uom: string;
@@ -12564,17 +12564,17 @@ export class DatabaseStorage implements IStorage {
       await tx.update(siteMaterialTrips)
         .set({ materialSourceSupplier: sourceSupplier })
         .where(inArray(siteMaterialTrips.id, ids));
-      await tx.insert(auditLogs).values({
+      await tx.insert(auditLogs).values(matched.map((row) => ({
         module: "site_material_trips",
-        transactionId: 0,
+        transactionId: row.id,
         action: "edit",
         userId: input.actor.userId,
         userName: input.actor.userName,
         userRole: input.actor.userRole ?? null,
-        oldValues: { tripIds: ids, materialSourceSuppliers: matched.map((row: any) => row.previous) },
-        newValues: { tripIds: ids, materialSourceSupplier: sourceSupplier },
+        oldValues: { materialSourceSupplier: row.previous },
+        newValues: { materialSourceSupplier: sourceSupplier },
         reason: "Bulk assigned material source supplier",
-      });
+      })));
       return { updatedCount: ids.length };
     });
   }
@@ -12758,7 +12758,7 @@ export class DatabaseStorage implements IStorage {
     return trip;
   }
 
-  async updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>): Promise<SiteMaterialTrip> {
+  async updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>, actor?: { userId: number; userName: string; userRole?: string | null }): Promise<SiteMaterialTrip> {
     const [trip] = await db.transaction(async (tx) => {
         if (data.materialSourceSupplier !== undefined) {
           data = {
@@ -12800,6 +12800,23 @@ export class DatabaseStorage implements IStorage {
           .where(eq(siteMaterialTrips.id, id))
           .returning(), data.indentItemId);
         if (!updated) return [undefined] as const;
+
+        // Audit in the same transaction as the edit and PI reconciliation:
+        // an audit failure must not acknowledge an unaudited committed edit.
+        if (actor) {
+          const fields = Object.keys(data) as (keyof InsertSiteMaterialTrip)[];
+          await tx.insert(auditLogs).values({
+            module: "site_material_trips",
+            transactionId: id,
+            action: "edit",
+            userId: actor.userId,
+            userName: actor.userName,
+            userRole: actor.userRole ?? null,
+            oldValues: Object.fromEntries(fields.map(key => [key, existing[key]])),
+            newValues: Object.fromEntries(fields.map(key => [key, updated[key]])),
+            reason: "Edited site material trip",
+          });
+        }
 
         // For a vehicle with no prior history, save a new pair only after the
         // factual edit has succeeded.  Existing stable associations are never

@@ -756,7 +756,7 @@ export async function registerRoutes(
       ), { message: "At least one trip filter is required" }).parse(req.body);
       if (input.site && !await assertTripSiteAccess(req, res, input.site)) return;
       const permittedSiteNames = await getPermittedSiteNames(req);
-      res.json(await storage.bulkAssignSiteMaterialTripMaterialSource({
+      const result = await storage.bulkAssignSiteMaterialTripMaterialSource({
         ...input,
         ...(permittedSiteNames !== null ? { permittedSiteNames } : {}),
         actor: {
@@ -764,7 +764,15 @@ export async function registerRoutes(
           userName: currentUserName(req),
           userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
         },
-      }));
+      });
+      if (result.updatedCount === 0) {
+        return res.status(409).json({
+          code: "NO_MATCHING_TRIPS",
+          message: "No trips were updated. Refresh the trips and check the filters and site access before retrying.",
+          updatedCount: 0,
+        });
+      }
+      res.json(result);
     } catch (err) {
       if (err instanceof z.ZodError || (err as any)?.code === "BAD_REQUEST") {
         return res.status(400).json({ message: err instanceof z.ZodError ? err.errors[0]?.message : (err as any).message });
@@ -940,7 +948,12 @@ export async function registerRoutes(
           if (linkageError) return res.status(400).json({ message: linkageError });
         }
       }
-      const trip = await storage.updateSiteMaterialTrip(id, input);
+      const trip = await storage.updateSiteMaterialTrip(id, input, {
+        userId: req.authUser!.id,
+        userName: currentUserName(req),
+        userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
+      });
+      if (!trip) return res.status(404).json({ message: "Site material trip not found" });
       sendPushToSection("site_materials", "Site Material Trip Updated", `Trip #${id} updated`, "/site-reports").catch(() => {});
       res.json(trip);
     } catch (err) {
