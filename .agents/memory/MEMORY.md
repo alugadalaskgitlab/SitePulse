@@ -89,3 +89,4 @@
 - [Attachment viewer history](attachment-viewer-history.md) — same-URL overlay Back must preserve dirty routed forms; URL restoration alone cannot recover unmounted state.
 - [Rate-card manual provenance](vendor-rate-card-manual-provenance.md) — retain manual removability across bill rate saves; deliberate billing-unit changes do not convert physical delivery quantities.
 - [Equipment daily status](equipment-daily-status.md) — explicit status is independent of maintenance; idle defaults preserve evidence and never auto-confirm tank dips.
+- [Material source billing](material-source-billing.md) — source seller and transporter are independent liabilities; role-qualified duplicate identity preserves both.

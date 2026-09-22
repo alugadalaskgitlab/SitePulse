@@ -1,0 +1,53 @@
+INSTRUCTION VB-22: Site Material Trips has no way to record who the material was actually PURCHASED FROM (e.g. a borrow-area owner selling soil), only who transported it — add that as a separate vendor, and let Vendor Bills pull that vendor's bill straight from the trip records, auto-converting into their Rate Card's purchase unit
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This reuses three things that already exist and are already correct — Vendor Rate Cards (any vendor name, Materials category with unit+rate), the CFT→Trip-style bulk unit conversion logic from VB-19/VB-21, and the existing transporter trip-pull mechanism in Vendor Bills. Do not rebuild any of these; extend them. Do not touch DPR-02 through DPR-12, VB-18 through VB-21, or DIESEL-04. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+1. shared/schema.ts's `siteMaterialTrips` table has exactly ONE vendor-type field: `supplier` (text). client/src/pages/SiteMaterialTrips.tsx (~line 477) labels this "Vendor / Supplier" and, confirmed by its own logic (`applyVehicleSuggestion`, `vehicleSupplierAssociationFor`, ~line 101-116), it is specifically wired to the TRANSPORT side — it auto-fills from a vehicle-number-to-supplier association, i.e. it identifies who owns/operates the vehicle hauling the material, not who owns or sold the material itself.
+2. There is no second field on this form (or table) for the material's SOURCE — e.g. the owner of a borrow area selling soil, or a GSB/WMM quarry/supplier — priced per load, per trip, per CFT, or per MT, separately from whatever the transporter is paid.
+3. client/src/pages/RateCards.tsx already supports creating a rate card for ANY vendor name (the `vendorName` param is free text, not restricted to any particular vendor role/type — confirmed at ~line 69-119) with a Materials section (material name, unit, rate) — this is already a fully general-purpose "supplier price master." A borrow-area owner can already be entered here today with, e.g., SOIL / TRIP / ₹800, with no schema change needed for Rate Cards itself.
+4. VB-19/VB-21's work already proved the pattern needed here: converting a trip's logged unit (e.g. CFT, from the physical delivery record) into a different billing unit (e.g. TRIP) using a vendor's own rate card entry for that unit. That conversion logic should be reused, not reimplemented, just applied at a different point (automatically at pull-in time for this new vendor role, since the target unit is already known from the vendor's own rate card before pulling).
+
+FIX 1 — ADD A SEPARATE "MATERIAL SOURCE / SUPPLIER" FIELD TO SITE MATERIAL TRIPS
+a. Add a new nullable column to `siteMaterialTrips` (e.g. `materialSourceSupplier: text("material_source_supplier")`) — separate from the existing `supplier` (transporter) field. Keep `supplier`/transporter exactly as it is today; this is additive, not a replacement.
+b. In client/src/pages/SiteMaterialTrips.tsx, add a new field "Material Source / Supplier (optional)" alongside the existing Vendor/Supplier (transporter) and Vehicle Number fields — a text input with suggestions (mirror the existing supplier-suggestions pattern), left optional since not every material has a separately-paid source (e.g. materials issued from HLC's own store have no external source vendor to pay).
+c. This field must NOT auto-fill from the vehicle-number association (that association is specifically for the transporter) — it is independent and manually entered/selected per trip.
+d. Show this field (when set) alongside the transporter on the trip's own display/list, so it's visible which trips have a recorded material source.
+e. IMPORTANT — BACKFILL FOR EXISTING TRIPS: hundreds of soil trips already exist with no Material Source / Supplier set (the field didn't exist when they were logged), and the person still needs to bill the source vendor for that backlog. Add a bulk-edit capability on the Site Material Trips list: let the person filter trips (by date range, material, and/or vehicle/transporter) and assign a Material Source / Supplier to all matching trips in one action, instead of opening each trip individually. This must be available both from the Site Material Trips list itself (for general cleanup) and should be usable to prepare a backlog of trips before raising a material-source vendor's first bill.
+
+FIX 2 — LET VENDOR BILLS PULL A MATERIAL-SOURCE VENDOR'S BILL FROM TRIP RECORDS, WITH AUTOMATIC UNIT CONVERSION
+a. Extend Vendor Bills' material-trip pull-in logic (the same mechanism that already pulls trips into a TRANSPORTER's bill by matching vehicle/supplier) to ALSO support pulling trips into a bill by matching `materialSourceSupplier` to the selected vendor name, for the material and date range selected — independent of and in addition to the existing transporter-based pull.
+b. The SAME trip record must remain independently pullable into BOTH the transporter's bill (by `supplier`/vehicle) and the material-source vendor's bill (by `materialSourceSupplier`) — these are two different vendors being billed for two different things from one physical delivery; do not treat pulling it into one bill as "consuming" it or blocking it from the other. Confirm the existing duplicate-check/already-billed logic operates per-vendor (so it correctly still prevents billing the SAME vendor twice for the same trip, without incorrectly blocking the OTHER vendor).
+c. When pulling trips into a material-source vendor's bill, look up that vendor's Rate Card entry for the material (e.g. SOIL) to find their purchase unit (e.g. TRIP). If the trip's logged unit differs from the rate card's unit (e.g. logged as 600 CFT, rate card is per TRIP), automatically convert at pull-in time — reusing the exact conversion/lookup logic already built for VB-19/VB-21, not a new implementation — so the resulting bill line item is already in the vendor's correct billing unit and rate, without needing a manual "Set Rates" bulk-convert step afterward.
+d. If the vendor has NO rate card entry for that material/unit yet, fall back to pulling the trip in at its logged unit/quantity (exactly as materials are pulled in today) and let the person set the rate manually or via Set Rates as usual — do not block the pull, just skip the automatic conversion when there's nothing to convert against.
+e. Multiple trips for the same material-source vendor across a date range must all pull in individually (one line per trip, matching today's per-trip line-item pattern), consistent with how VB-19's bulk conversion already lets many such rows be adjusted together afterward if needed.
+
+WHAT NOT TO DO
+- Do not remove, rename, or repurpose the existing `supplier` (transporter) field — `materialSourceSupplier` is additive, alongside it.
+- Do not make the new field mandatory — many materials have no separate paid source.
+- Do not change how Rate Cards' vendor selection works — it is already general-purpose and needs no change.
+- Do not rebuild the unit-conversion logic — call into the same logic VB-19/VB-21 already established.
+- Do not touch DPR-02 through DPR-12, VB-18, VB-19, VB-20, VB-21, or DIESEL-04.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+One new nullable text column (`materialSourceSupplier`) on `siteMaterialTrips` — additive only, safe default (null), no migration needed for existing trips (they simply have no recorded material source yet).
+
+TESTS
+A. Log a soil trip with both a Transporter (existing field) and a Material Source / Supplier (new field) filled in. Save and confirm both are stored and visible.
+A2. On the Site Material Trips list, filter to a set of existing (pre-VB-22) trips with no Material Source / Supplier set, bulk-assign a supplier to all of them in one action, and confirm every matching trip is updated correctly with no effect on unrelated trips.
+B. Set up a Rate Card for the material-source vendor with SOIL priced per TRIP. Raise a bill for that vendor, pull in trips logged at 600 CFT each, and confirm they arrive on the bill already converted to 1 TRIP at the correct rate — no manual Set Rates step needed.
+C. Raise a SEPARATE bill for the transporter on the same trips (by vehicle/existing supplier field) and confirm they pull in correctly there too, completely independent of Test B — same trips, two different vendors' bills, no conflict or blocking.
+D. Confirm the existing duplicate/already-billed check still correctly prevents billing the SAME vendor twice for the same trip, in both the transporter and material-source directions independently.
+E. Pull trips for a material-source vendor who has NO rate card entry for that material yet. Confirm they still pull in at their logged unit/quantity (no automatic conversion, no error/block) exactly as materials pull in today.
+F. Confirm a trip with no Material Source / Supplier set behaves exactly as today — pullable only into the transporter's bill, nothing missing or broken.
+
+REPORT BACK
+1. Confirm Fix 1 with Test A evidence (screenshots).
+2. Confirm Fix 2 with Test B/C/D evidence (screenshots), including a bill showing the automatic unit conversion.
+3. Confirm Test E/F — no regression, graceful fallback when no rate card exists.
+4. Confirm the schema change applied (new column name, default).
+5. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

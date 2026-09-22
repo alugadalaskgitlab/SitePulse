@@ -1366,6 +1366,18 @@ export interface IStorage {
   ensureSiteMaterialTripsLinkageColumns(): Promise<void>;
   getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; indentItemId?: number; indentId?: number; boqProjectId?: number; boqItemId?: number; programmeBarId?: number; earthworkArrangementId?: number; permittedSiteNames?: string[] }): Promise<SiteMaterialTrip[]>;
   getSiteMaterialTripSuggestions(site: string): Promise<SiteMaterialTripSuggestions>;
+  bulkAssignSiteMaterialTripMaterialSource(input: {
+    dateFrom?: string;
+    dateTo?: string;
+    site?: string;
+    material?: string;
+    vehicleNumber?: string;
+    supplier?: string;
+    onlyUnassigned?: boolean;
+    materialSourceSupplier: string;
+    permittedSiteNames?: string[];
+    actor: { userId: number; userName: string; userRole?: string | null };
+  }): Promise<{ updatedCount: number }>;
   hasActiveSiteMaterialTripVehicle(site: string, vehicleNumber: string): Promise<boolean>;
   correctVehicleSupplierAssociation(input: {
     site: string;
@@ -1538,7 +1550,7 @@ export interface IStorage {
   ensureMaterialReceiptDieselLinkColumn(): Promise<void>;
   getDieselRequirementReceipts(requirementIds: number[]): Promise<MaterialReceipt[]>;
   deleteVendorBill(id: number): Promise<boolean>;
-  getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; vehicleNumber?: string | null; receiptNumber?: string | null })[]>;
+  getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null })[]>;
   getEquipmentHireVendors(periodFrom: string, periodTo: string): Promise<{
     vendorName: string;
     equipmentCount: number;
@@ -1572,7 +1584,7 @@ export interface IStorage {
   discoverVendorItems(vendorName: string): Promise<{ itemKey: string; itemLabel: string; category: string; unit: string; rate: number | null; rateCardId: number | null; isManual?: boolean }[]>;
   upsertVendorRateCard(data: InsertVendorRateCard): Promise<VendorRateCard>;
   deleteVendorRateCard(id: number): Promise<boolean>;
-  checkDuplicateBilledItems(vendorName: string, items: { date: string; equipmentId?: number | null; description?: string; category?: string | null; siteName?: string | null }[], excludeBillId?: number): Promise<{ index: number; billNo: string; billStatus: string }[]>;
+  checkDuplicateBilledItems(vendorName: string, items: { date: string; source?: string | null; equipmentId?: number | null; description?: string; category?: string | null; siteName?: string | null }[], excludeBillId?: number): Promise<{ index: number; billNo: string; billStatus: string }[]>;
 
   discoverVendors(billType: string, periodFrom: string, periodTo: string): Promise<{
     vendorName: string;
@@ -12330,7 +12342,7 @@ export class DatabaseStorage implements IStorage {
   async getSiteMaterialTripSuggestions(site: string): Promise<SiteMaterialTripSuggestions> {
     const siteKey = normalizeSiteTripHistorySite(site);
     if (!siteKey) {
-      return { vehicles: [], suppliers: [], vehicleSuppliers: {}, canCorrectVehicleSupplier: false };
+      return { vehicles: [], suppliers: [], materialSourceSuppliers: [], vehicleSuppliers: {}, canCorrectVehicleSupplier: false };
     }
 
     // Keep this query bounded before any application-side de-duplication.
@@ -12339,6 +12351,7 @@ export class DatabaseStorage implements IStorage {
     const rows = await db.select({
       vehicleNumber: siteMaterialTrips.vehicleNumber,
       supplier: siteMaterialTrips.supplier,
+      materialSourceSupplier: siteMaterialTrips.materialSourceSupplier,
     })
       .from(siteMaterialTrips)
       .where(and(
@@ -12379,6 +12392,73 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return { ...suggestions, vehicleSuppliers, canCorrectVehicleSupplier: false };
+  }
+
+  async bulkAssignSiteMaterialTripMaterialSource(input: {
+    dateFrom?: string;
+    dateTo?: string;
+    site?: string;
+    material?: string;
+    vehicleNumber?: string;
+    supplier?: string;
+    onlyUnassigned?: boolean;
+    materialSourceSupplier: string;
+    permittedSiteNames?: string[];
+    actor: { userId: number; userName: string; userRole?: string | null };
+  }): Promise<{ updatedCount: number }> {
+    const sourceSupplier = normalizeVehicleSupplierName(input.materialSourceSupplier);
+    if (!sourceSupplier) throw Object.assign(new Error("materialSourceSupplier is required"), { code: "BAD_REQUEST" });
+    const hasFilter = !!(
+      input.dateFrom || input.dateTo || input.site || input.material ||
+      input.vehicleNumber || input.supplier || input.onlyUnassigned
+    );
+    if (!hasFilter) throw Object.assign(new Error("At least one trip filter is required"), { code: "BAD_REQUEST" });
+
+    return db.transaction(async (tx) => {
+      const conditions: any[] = [
+        eq(siteMaterialTrips.isCancelled, false),
+        eq(siteMaterialTrips.isDeleted, false),
+      ];
+      if (input.dateFrom) conditions.push(gte(siteMaterialTrips.date, input.dateFrom));
+      if (input.dateTo) conditions.push(lte(siteMaterialTrips.date, input.dateTo));
+      if (input.site) conditions.push(sql`UPPER(TRIM(${siteMaterialTrips.site})) = ${input.site.trim().toUpperCase()}`);
+      if (input.material) conditions.push(sql`UPPER(TRIM(${siteMaterialTrips.material})) = ${input.material.trim().toUpperCase()}`);
+      if (input.vehicleNumber) {
+        const vehicleKey = normalizeVehicleSupplierVehicle(input.vehicleNumber);
+        conditions.push(sql`upper(regexp_replace(trim(${siteMaterialTrips.vehicleNumber}), '[[:space:]-]+', '', 'g')) = ${vehicleKey}`);
+      }
+      if (input.supplier) conditions.push(sql`UPPER(TRIM(${siteMaterialTrips.supplier})) = ${normalizeVehicleSupplierName(input.supplier)}`);
+      if (input.onlyUnassigned) {
+        conditions.push(or(isNull(siteMaterialTrips.materialSourceSupplier), sql`TRIM(${siteMaterialTrips.materialSourceSupplier}) = ''`)!);
+      }
+      if (input.permittedSiteNames !== undefined) {
+        if (input.permittedSiteNames.length === 0) return { updatedCount: 0 };
+        conditions.push(inArray(siteMaterialTrips.site, input.permittedSiteNames));
+      }
+
+      const matched = await tx.select({
+        id: siteMaterialTrips.id,
+        previous: siteMaterialTrips.materialSourceSupplier,
+      }).from(siteMaterialTrips).where(and(...conditions)).for("update");
+      if (matched.length === 0) return { updatedCount: 0 };
+
+      const ids = matched.map((row: { id: number }) => row.id);
+      await tx.update(siteMaterialTrips)
+        .set({ materialSourceSupplier: sourceSupplier })
+        .where(inArray(siteMaterialTrips.id, ids));
+      await tx.insert(auditLogs).values({
+        module: "site_material_trips",
+        transactionId: 0,
+        action: "edit",
+        userId: input.actor.userId,
+        userName: input.actor.userName,
+        userRole: input.actor.userRole ?? null,
+        oldValues: { tripIds: ids, materialSourceSuppliers: matched.map((row: any) => row.previous) },
+        newValues: { tripIds: ids, materialSourceSupplier: sourceSupplier },
+        reason: "Bulk assigned material source supplier",
+      });
+      return { updatedCount: ids.length };
+    });
   }
 
   async hasActiveSiteMaterialTripVehicle(site: string, vehicleNumber: string): Promise<boolean> {
@@ -12484,7 +12564,13 @@ export class DatabaseStorage implements IStorage {
           }
         }
 
-        const [inserted] = await tx.insert(siteMaterialTrips).values(data).returning();
+        const materialSourceSupplier = data.materialSourceSupplier == null
+          ? null
+          : normalizeVehicleSupplierName(data.materialSourceSupplier) || null;
+        const [inserted] = await tx.insert(siteMaterialTrips).values({
+          ...data,
+          materialSourceSupplier,
+        }).returning();
         // The association for a new pair is committed only in the same
         // successful transaction as the trip.  Conflicting history remains
         // conflict and is never silently resolved by the latest row.
@@ -12560,6 +12646,14 @@ export class DatabaseStorage implements IStorage {
 
   async updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>): Promise<SiteMaterialTrip> {
     const [trip] = await db.transaction(async (tx) => {
+        if (data.materialSourceSupplier !== undefined) {
+          data = {
+            ...data,
+            materialSourceSupplier: data.materialSourceSupplier == null
+              ? null
+              : normalizeVehicleSupplierName(data.materialSourceSupplier) || null,
+          };
+        }
         const [existing] = await tx.select().from(siteMaterialTrips)
           .where(eq(siteMaterialTrips.id, id))
           .limit(1)
@@ -16765,6 +16859,57 @@ export class DatabaseStorage implements IStorage {
     return generated;
   }
 
+  private async assertSiteMaterialTripItemsAvailable(
+    tx: any,
+    vendorName: string,
+    items: readonly Partial<InsertVendorBillItem>[],
+    excludeBillId?: number,
+  ): Promise<void> {
+    const candidates = items
+      .map(item => String(item.source || "").trim().toLowerCase())
+      .filter(source => /^auto:site_material_trip(?:_material)?:\d+$/.test(source));
+    if (candidates.length === 0) return;
+
+    if (new Set(candidates).size !== candidates.length) {
+      throw Object.assign(new Error("The same site-material trip role cannot be added twice to one bill"), { code: "CONFLICT" });
+    }
+    const sources = candidates.slice().sort();
+    for (const source of sources) {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(1432, hashtext(${source}))`);
+    }
+
+    const aliases = await tx.select().from(vendorAliases);
+    const upperVendor = vendorName.toUpperCase().trim();
+    const variants = new Set<string>([upperVendor]);
+    for (const alias of aliases) {
+      const canonical = alias.canonicalName.toUpperCase().trim();
+      const alternate = alias.alias.toUpperCase().trim();
+      if (canonical === upperVendor || alternate === upperVendor) {
+        variants.add(canonical);
+        variants.add(alternate);
+      }
+    }
+    for (const alias of aliases) {
+      if (variants.has(alias.canonicalName.toUpperCase().trim())) variants.add(alias.alias.toUpperCase().trim());
+    }
+    const vendorConditions = Array.from(variants).map(value => sql`UPPER(TRIM(${vendorBills.vendorName})) = ${value}`);
+    const existing = await tx.select({
+      billNo: vendorBills.billNo,
+      source: vendorBillItems.source,
+    })
+      .from(vendorBillItems)
+      .innerJoin(vendorBills, eq(vendorBills.id, vendorBillItems.billId))
+      .where(and(
+        inArray(vendorBillItems.source, sources),
+        or(...vendorConditions),
+        ...(excludeBillId ? [ne(vendorBills.id, excludeBillId)] : []),
+      ))
+      .limit(1);
+    if (existing.length > 0) {
+      throw Object.assign(new Error(`Site-material trip role ${existing[0].source} is already billed on ${existing[0].billNo}`), { code: "CONFLICT" });
+    }
+  }
+
   async createVendorBill(data: CreateVendorBillRequest): Promise<VendorBillWithItems> {
     const billNo = await this.generateVendorBillNo();
 
@@ -16812,6 +16957,7 @@ export class DatabaseStorage implements IStorage {
 
       let items: VendorBillItem[] = [];
       if (data.items?.length) {
+        await this.assertSiteMaterialTripItemsAvailable(tx, data.vendorName, data.items);
         const conflict = data.items.find(item => rawAutoItemCoveredByHireGroup(item, data.hireGroups));
         if (conflict) {
           throw Object.assign(new Error(`Line item for ${conflict.description} on ${conflict.date} is already covered by a hire group for this bill — remove it before saving`), { code: "CONFLICT" });
@@ -17064,6 +17210,7 @@ export class DatabaseStorage implements IStorage {
 
       let items: VendorBillItem[] = [];
       if (data.items?.length) {
+        await this.assertSiteMaterialTripItemsAvailable(tx, data.vendorName, data.items, id);
         const conflict = data.items.find(item => rawAutoItemCoveredByHireGroup(item, data.hireGroups));
         if (conflict) {
           throw Object.assign(new Error(`Line item for ${conflict.description} on ${conflict.date} is already covered by a hire group for this bill — remove it before saving`), { code: "CONFLICT" });
@@ -17559,10 +17706,10 @@ export class DatabaseStorage implements IStorage {
     ];
   }
 
-  async getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; vehicleNumber?: string | null; receiptNumber?: string | null })[]> {
+  async getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null })[]> {
     const vendorVariants = await this.resolveVendorAliases(vendorName);
     const bt = billType.toLowerCase();
-    const items: (Partial<InsertVendorBillItem> & { sourceId?: number | string; vehicleNumber?: string | null; receiptNumber?: string | null })[] = [];
+    const items: (Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null })[] = [];
 
     const entryTypeLabel = (entryType: string | null) => {
       switch ((entryType || "").toLowerCase()) {
@@ -17881,6 +18028,38 @@ export class DatabaseStorage implements IStorage {
         }
       }
 
+      // A physical delivery can generate two independent commercial lines.
+      // Keep the existing transporter-side pull above unchanged; this new
+      // role is identified separately so billing one side never consumes the
+      // other side.
+      const materialSourceTrips = await db.select()
+        .from(siteMaterialTrips)
+        .where(and(
+          vendorMatchSql(siteMaterialTrips.materialSourceSupplier),
+          gte(siteMaterialTrips.date, periodFrom),
+          lte(siteMaterialTrips.date, periodTo),
+          eq(siteMaterialTrips.isCancelled, false),
+          eq(siteMaterialTrips.isDeleted, false),
+        ));
+
+      for (const row of materialSourceTrips) {
+        if (row.quantity && row.quantity > 0) {
+          items.push({
+            date: typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0],
+            category: "material",
+            description: `${(row.material || "MATERIAL").toUpperCase()} (SITE TRIP MATERIAL)`,
+            qty: row.quantity,
+            unit: row.uom || "NOS",
+            source: "auto",
+            sourceType: "site_material_trip_material",
+            sourceId: row.id,
+            siteName: `SITE: ${(row.site || "").toUpperCase()}`,
+            vehicleNumber: row.vehicleNumber ?? null,
+            receiptNumber: row.receiptNumber ?? null,
+          });
+        }
+      }
+
       const plantReceipts = await db.select({
         id: materialReceipts.id,
         date: materialReceipts.date,
@@ -18162,6 +18341,11 @@ export class DatabaseStorage implements IStorage {
       .from(siteMaterialTrips)
       .where(sql`${siteMaterialTrips.supplier} IS NOT NULL AND ${siteMaterialTrips.supplier} != ''`);
     for (const r of smtSuppliers) { if (r.name) names.add(r.name.toUpperCase().trim()); }
+
+    const smtMaterialSourceSuppliers = await db.select({ name: siteMaterialTrips.materialSourceSupplier })
+      .from(siteMaterialTrips)
+      .where(sql`${siteMaterialTrips.materialSourceSupplier} IS NOT NULL AND ${siteMaterialTrips.materialSourceSupplier} != ''`);
+    for (const r of smtMaterialSourceSuppliers) { if (r.name) names.add(r.name.toUpperCase().trim()); }
 
     const tdOwners = await db.select({ name: truckDispatches.ownerName })
       .from(truckDispatches)
@@ -20868,6 +21052,7 @@ export class DatabaseStorage implements IStorage {
 
       const siteTrips = await db.select({
         supplier: siteMaterialTrips.supplier,
+        materialSourceSupplier: siteMaterialTrips.materialSourceSupplier,
       })
       .from(siteMaterialTrips)
       .where(and(
@@ -20878,6 +21063,21 @@ export class DatabaseStorage implements IStorage {
 
       for (const row of siteTrips) {
         if (row.supplier) addRecord(row.supplier, "material");
+      }
+
+      const materialSourceTrips = await db.select({
+        materialSourceSupplier: siteMaterialTrips.materialSourceSupplier,
+      })
+      .from(siteMaterialTrips)
+      .where(and(
+        sql`${siteMaterialTrips.materialSourceSupplier} IS NOT NULL AND ${siteMaterialTrips.materialSourceSupplier} != ''`,
+        gte(siteMaterialTrips.date, periodFrom),
+        lte(siteMaterialTrips.date, periodTo),
+        eq(siteMaterialTrips.isCancelled, false),
+        eq(siteMaterialTrips.isDeleted, false),
+      ));
+      for (const row of materialSourceTrips) {
+        if (row.materialSourceSupplier) addRecord(row.materialSourceSupplier, "material");
       }
 
       const plantReceipts = await db.select({
@@ -21572,6 +21772,20 @@ export class DatabaseStorage implements IStorage {
       addMaterial(row.material || "MATERIAL", row.uom);
     }
 
+    const materialSourceTrips = await db.selectDistinct({
+      material: siteMaterialTrips.material,
+      uom: siteMaterialTrips.uom,
+    })
+    .from(siteMaterialTrips)
+    .where(and(
+      vendorMatchSql(siteMaterialTrips.materialSourceSupplier),
+      eq(siteMaterialTrips.isCancelled, false),
+      eq(siteMaterialTrips.isDeleted, false),
+    ));
+    for (const row of materialSourceTrips) {
+      addMaterial(row.material || "MATERIAL", row.uom);
+    }
+
     const plantReceipts = await db.selectDistinct({
       materialName: plantMaterials.name,
       uom: materialReceipts.uom,
@@ -21783,7 +21997,7 @@ export class DatabaseStorage implements IStorage {
     return results;
   }
 
-  async checkDuplicateBilledItems(vendorName: string, items: { date: string; equipmentId?: number | null; description?: string; category?: string | null; siteName?: string | null }[], excludeBillId?: number): Promise<{ index: number; billNo: string; billStatus: string }[]> {
+  async checkDuplicateBilledItems(vendorName: string, items: { date: string; source?: string | null; equipmentId?: number | null; description?: string; category?: string | null; siteName?: string | null }[], excludeBillId?: number): Promise<{ index: number; billNo: string; billStatus: string }[]> {
     const variants = await this.resolveVendorAliases(vendorName);
     const vendorConds = variants.map(v => sql`UPPER(TRIM(${vendorBills.vendorName})) = ${v}`);
     const whereConditions = excludeBillId
@@ -21813,6 +22027,12 @@ export class DatabaseStorage implements IStorage {
       for (const existing of existingItems) {
         const bill = billMap.get(existing.billId);
         if (!bill) continue;
+        const sourceMatch = /^auto:site_material_trip(?:_material)?:\d+$/.test(String(item.source || "").toLowerCase()) &&
+          String(existing.source || "").toLowerCase() === String(item.source || "").toLowerCase();
+        if (sourceMatch) {
+          duplicates.push({ index: i, billNo: bill.billNo, billStatus: bill.status });
+          break;
+        }
         const dateMatch = existing.date === item.date;
         if (!dateMatch) continue;
 

@@ -6,7 +6,10 @@ describe("VB-15 duplicate-safe grouped pull wiring", () => {
   const shared = readFileSync("shared/hireBilling.ts", "utf8");
 
   it("preflights the exact available source payload while retaining VB-11 grouping", () => {
-    expect(client).toContain("availableOtherItems.map(duplicateBillItemPayload)");
+    expect(client).toContain("availableOtherItems.map(sourceQualifiedDuplicateBillItemPayload)");
+    expect(client).toContain("mapped.map(sourceQualifiedDuplicateBillItemPayload)");
+    expect(client).toContain("sourceType: item.sourceType ?? null");
+    expect(client).toContain("sourceId: item.sourceId ?? null");
     expect(client).toContain('"/api/vendor-bills/check-duplicates"');
     expect(client).toContain("groupRateItems(candidates)");
     expect(client).toContain("alreadyBilledCount");

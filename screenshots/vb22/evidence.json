@@ -1,0 +1,45 @@
+{
+  "scenario": "VB-22 isolated real-component fixture verification — synthetic API, no production writes",
+  "safety": {
+    "productionDatabaseUsed": false,
+    "productionApiWrites": false,
+    "mountedProductionComponents": [
+      "client/src/pages/SiteMaterialTrips.tsx",
+      "client/src/pages/VendorBills.tsx"
+    ],
+    "interception": "Every API read/write was intercepted in tests/fixtures/vb22/main.tsx."
+  },
+  "screenshots": [
+    "/home/runner/workspace/screenshots/vb22/A-saved-both-transporter-and-material-source.png",
+    "/home/runner/workspace/screenshots/vb22/A2-filtered-bulk-assignment.png",
+    "/home/runner/workspace/screenshots/vb22/B-600CFT-auto-converted-to-1TRIP-800.png",
+    "/home/runner/workspace/screenshots/vb22/C-independent-transporter-pull-same-trip.png",
+    "/home/runner/workspace/screenshots/vb22/D-same-role-duplicate-warning-and-block.png",
+    "/home/runner/workspace/screenshots/vb22/E-no-rate-card-preserves-600CFT.png",
+    "/home/runner/workspace/screenshots/vb22/F-legacy-trip-transporter-only.png"
+  ],
+  "verified": {
+    "A_savedAndDisplayedIndependentVendors": true,
+    "A2_filteredBulkAssignedTwoAndPreservedUnrelated": true,
+    "B_raw600CftAutoConverted": {
+      "qty": 1,
+      "unit": "TRIP",
+      "rate": 800,
+      "sourceType": "site_material_trip_material"
+    },
+    "C_sameTripIndependentTransporterRole": true,
+    "D_sameRoleDuplicateWarningAndBlock": true,
+    "D_apiSimulationExplicitlyLabelled": true,
+    "E_noRateFallback": {
+      "qty": 600,
+      "unit": "CFT",
+      "rate": 0
+    },
+    "F_legacyTransporterOnly": true,
+    "schema": {
+      "column": "material_source_supplier",
+      "nullable": true,
+      "additiveMigration": true
+    }
+  }
+}

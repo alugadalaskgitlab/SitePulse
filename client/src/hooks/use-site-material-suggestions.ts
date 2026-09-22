@@ -14,6 +14,8 @@ export const SITE_MATERIAL_SUGGESTIONS_QUERY_KEY =
 export interface SiteMaterialSuggestions {
   vehicles: string[];
   suppliers: string[];
+  /** Material purchase/source vendors; independent from vehicle transporters. */
+  materialSourceSuppliers: string[];
   /**
    * Associations are deliberately separate from the free-text lists.  A
    * vehicle is only allowed to fill a supplier after an explicit vehicle
@@ -155,6 +157,9 @@ export function useSiteMaterialSuggestions(site?: string | null) {
         suppliers: Array.isArray(body.suppliers)
           ? body.suppliers.filter((value): value is string => typeof value === "string")
           : [],
+        materialSourceSuppliers: Array.isArray(body.materialSourceSuppliers)
+          ? body.materialSourceSuppliers.filter((value): value is string => typeof value === "string")
+          : [],
       };
       // Keep the old two-field result shape for older deployments while
       // exposing the augmented contract as soon as the server sends it.
@@ -176,9 +181,10 @@ export function useSiteMaterialSuggestions(site?: string | null) {
     // Keep the loading/disabled value compatible with the original
     // two-field suggestion shape; augmented fields are exposed below with
     // safe empty defaults and arrive in `suggestions` once the server does.
-    suggestions: query.data ?? { vehicles: [], suppliers: [] },
+    suggestions: query.data ?? { vehicles: [], suppliers: [], materialSourceSuppliers: [] },
     vehicles: query.data?.vehicles ?? [],
     suppliers: query.data?.suppliers ?? [],
+    materialSourceSuppliers: query.data?.materialSourceSuppliers ?? [],
     vehicleSuppliers: query.data?.vehicleSuppliers ?? {},
     canCorrectVehicleSupplier: query.data?.canCorrectVehicleSupplier ?? false,
   };

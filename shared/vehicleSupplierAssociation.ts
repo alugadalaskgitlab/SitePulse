@@ -32,6 +32,7 @@ export type VehicleSupplierAssociations = Record<string, VehicleSupplierAssociat
 export interface SiteMaterialTripSuggestions {
   vehicles: string[];
   suppliers: string[];
+  materialSourceSuppliers: string[];
   vehicleSuppliers: Record<string, VehicleSupplierAssociationView>;
   canCorrectVehicleSupplier: boolean;
 }

@@ -165,10 +165,18 @@ describe("useSiteMaterialSuggestions", () => {
     await waitFor(() => expect(requests).toHaveLength(2));
     expect(requests[0].signal?.aborted).toBe(true);
     expect(screen.getByTestId("suggestions")).toHaveTextContent(
-      '{"vehicles":[],"suppliers":[]}',
+      '{"vehicles":[],"suppliers":[],"materialSourceSuppliers":[]}',
     );
     expect(requests[1].url).toContain("/api/site-material-trips/suggestions?site=Site%20B");
-    requests[1].resolve(new Response(JSON.stringify({ vehicles: ["B-1"], suppliers: ["B"] })));
-    await waitFor(() => expect(screen.getByTestId("suggestions")).toHaveTextContent("B-1"));
+    requests[1].resolve(new Response(JSON.stringify({
+      vehicles: ["B-1"],
+      suppliers: ["B TRANSPORT"],
+      materialSourceSuppliers: ["B QUARRY"],
+    })));
+    await waitFor(() => {
+      expect(screen.getByTestId("suggestions")).toHaveTextContent("B-1");
+      expect(screen.getByTestId("suggestions")).toHaveTextContent("B TRANSPORT");
+      expect(screen.getByTestId("suggestions")).toHaveTextContent("B QUARRY");
+    });
   });
 });

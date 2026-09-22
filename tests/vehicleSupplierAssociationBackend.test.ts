@@ -50,7 +50,9 @@ describe("vehicle supplier association persistence safeguards", () => {
     expect(create.indexOf("await this.lockVehicleSupplierAssociationKey")).toBeLessThan(
       create.indexOf("getActiveVehicleSupplierHistoryTx"),
     );
-    expect(create).toContain("await tx.insert(siteMaterialTrips).values(data).returning()");
+    // Additive trip fields may be normalized into a copied insert object. Pin
+    // the ordering/invariant rather than the exact object-expression spelling.
+    expect(create).toContain("await tx.insert(siteMaterialTrips).values({");
     expect(create).toContain("historySupplierSet(history)");
   });
 

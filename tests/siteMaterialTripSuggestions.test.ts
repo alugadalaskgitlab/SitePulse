@@ -13,6 +13,7 @@ import {
   SITE_TRIP_HISTORY_SCAN_LIMIT,
   SITE_TRIP_SUGGESTION_LIMIT,
 } from "../shared/siteTripHistory";
+import { insertSiteMaterialTripSchema, vendorBillItems } from "../shared/schema";
 
 const spies = vi.hoisted(() => ({
   getPermitted: vi.fn(),
@@ -20,6 +21,7 @@ const spies = vi.hoisted(() => ({
   getSuggestions: vi.fn(),
   hasActiveVehicle: vi.fn(),
   correctAssociation: vi.fn(),
+  bulkAssignMaterialSource: vi.fn(),
   logAudit: vi.fn(),
 }));
 
@@ -30,6 +32,7 @@ vi.mock("../server/storage", () => {
     getSiteMaterialTripSuggestions: spies.getSuggestions,
     hasActiveSiteMaterialTripVehicle: spies.hasActiveVehicle,
     correctVehicleSupplierAssociation: spies.correctAssociation,
+    bulkAssignSiteMaterialTripMaterialSource: spies.bulkAssignMaterialSource,
     logAudit: spies.logAudit,
   };
   return {
@@ -106,6 +109,18 @@ import { registerRoutes } from "../server/routes";
 const read = (file: string) => fs.readFileSync(path.resolve(__dirname, "..", file), "utf8");
 
 describe("site trip history suggestion normalization", () => {
+  it("accepts the nullable material-source field", () => {
+    const trip = insertSiteMaterialTripSchema.parse({
+      date: "2026-01-01",
+      site: "SITE A",
+      material: "SOIL",
+      quantity: 600,
+      uom: "CFT",
+      materialSourceSupplier: "BORROW OWNER",
+    });
+    expect(trip.materialSourceSupplier).toBe("BORROW OWNER");
+  });
+
   it("normalizes canonical site keys without changing site identity", () => {
     expect(normalizeSiteTripHistorySite("  site   a  ")).toBe("SITE A");
     expect(normalizeSiteTripHistorySite("Site A – Edited by Manager – 2026-01-01")).toBe("SITE A");
@@ -126,6 +141,19 @@ describe("site trip history suggestion normalization", () => {
     ])).toEqual({
       vehicles: ["KA01AB-1234", "TS 09 XX 1"],
       suppliers: ["ACME HAULAGE", "OTHER SUPPLIER"],
+      materialSourceSuppliers: [],
+    });
+  });
+
+  it("keeps material-source suggestions independent from transporter suppliers", () => {
+    expect(buildSiteTripSuggestions([
+      { supplier: "Transport A", materialSourceSupplier: "Borrow Owner" },
+      { supplier: "Transport B", materialSourceSupplier: " borrow   owner " },
+      { supplier: "Borrow Owner", materialSourceSupplier: "Quarry B" },
+    ])).toEqual({
+      vehicles: [],
+      suppliers: ["TRANSPORT A", "TRANSPORT B", "BORROW OWNER"],
+      materialSourceSuppliers: ["BORROW OWNER", "QUARRY B"],
     });
   });
 
@@ -160,6 +188,7 @@ describe("site trip suggestion route authorization", () => {
       supplier: "ACME HAULAGE",
       version: "next-version",
     });
+    spies.bulkAssignMaterialSource.mockResolvedValue({ updatedCount: 2 });
     spies.logAudit.mockResolvedValue(undefined);
   });
 
@@ -274,6 +303,44 @@ describe("site trip suggestion route authorization", () => {
     expect(conflict.body.currentVersion).toBe("newer-version");
     expect(spies.logAudit).not.toHaveBeenCalled();
   });
+
+  it("requires an explicit filter and edit/site scope for material-source bulk assignment", async () => {
+    const unfiltered = await request(app)
+      .post("/api/site-material-trips/material-source/bulk")
+      .set("x-test-auth", "edit")
+      .send({ materialSourceSupplier: "Borrow Owner" });
+    expect(unfiltered.status).toBe(400);
+    expect(spies.bulkAssignMaterialSource).not.toHaveBeenCalled();
+
+    const denied = await request(app)
+      .post("/api/site-material-trips/material-source/bulk")
+      .set("x-test-auth", "edit")
+      .send({ site: "Site B", onlyUnassigned: true, materialSourceSupplier: "Borrow Owner" });
+    expect(denied.status).toBe(403);
+    expect(spies.bulkAssignMaterialSource).not.toHaveBeenCalled();
+
+    const assigned = await request(app)
+      .post("/api/site-material-trips/material-source/bulk")
+      .set("x-test-auth", "edit")
+      .send({
+        dateFrom: "2026-01-01",
+        dateTo: "2026-01-31",
+        material: "Soil",
+        onlyUnassigned: true,
+        materialSourceSupplier: "Borrow Owner",
+      });
+    expect(assigned.status).toBe(200);
+    expect(assigned.body).toEqual({ updatedCount: 2 });
+    expect(spies.bulkAssignMaterialSource).toHaveBeenCalledWith(expect.objectContaining({
+      dateFrom: "2026-01-01",
+      dateTo: "2026-01-31",
+      material: "Soil",
+      onlyUnassigned: true,
+      materialSourceSupplier: "Borrow Owner",
+      permittedSiteNames: ["Site A"],
+      actor: expect.objectContaining({ userId: 7, userName: "tester" }),
+    }));
+  });
 });
 
 describe("site trip suggestion storage contract", () => {
@@ -289,5 +356,21 @@ describe("site trip suggestion storage contract", () => {
     expect(block).toContain(".limit(SITE_TRIP_HISTORY_SCAN_LIMIT)");
     expect(block).toContain("buildSiteTripSuggestions(rows)");
     expect(SITE_TRIP_HISTORY_SCAN_LIMIT).toBe(1000);
+  });
+
+  it("keeps source-vendor billing separately source-qualified and concurrency guarded", () => {
+    const storage = read("server/storage.ts");
+    expect(storage).toContain('sourceType: "site_material_trip_material"');
+    expect(storage).toContain("vendorMatchSql(siteMaterialTrips.materialSourceSupplier)");
+    expect(storage).toContain("assertSiteMaterialTripItemsAvailable");
+    expect(storage).toContain("pg_advisory_xact_lock(1432, hashtext");
+    expect(storage).toContain("inArray(vendorBillItems.source, sources)");
+    expect(storage).toContain("materialSourceSupplier: siteMaterialTrips.materialSourceSupplier");
+
+    const migration = read("migrations/0033_site_material_trip_material_source.sql");
+    expect(migration).toContain("ADD COLUMN IF NOT EXISTS material_source_supplier text");
+    expect(migration).not.toContain("vendor_bill_items");
+    expect("sourceType" in vendorBillItems).toBe(false);
+    expect("sourceId" in vendorBillItems).toBe(false);
   });
 });

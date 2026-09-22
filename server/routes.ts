@@ -736,6 +736,44 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/site-material-trips/material-source/bulk", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "site_materials")) return;
+      const input = z.object({
+        dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        site: z.string().trim().min(1).optional(),
+        material: z.string().trim().min(1).optional(),
+        vehicleNumber: z.string().trim().min(1).optional(),
+        supplier: z.string().trim().min(1).optional(),
+        onlyUnassigned: z.boolean().optional(),
+        materialSourceSupplier: z.string().trim().min(1),
+      }).strict().refine(value => !value.dateFrom || !value.dateTo || value.dateFrom <= value.dateTo, {
+        message: "dateFrom must be on or before dateTo",
+      }).refine(value => !!(
+        value.dateFrom || value.dateTo || value.site || value.material ||
+        value.vehicleNumber || value.supplier || value.onlyUnassigned
+      ), { message: "At least one trip filter is required" }).parse(req.body);
+      if (input.site && !await assertTripSiteAccess(req, res, input.site)) return;
+      const permittedSiteNames = await getPermittedSiteNames(req);
+      res.json(await storage.bulkAssignSiteMaterialTripMaterialSource({
+        ...input,
+        ...(permittedSiteNames !== null ? { permittedSiteNames } : {}),
+        actor: {
+          userId: req.authUser!.id,
+          userName: currentUserName(req),
+          userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
+        },
+      }));
+    } catch (err) {
+      if (err instanceof z.ZodError || (err as any)?.code === "BAD_REQUEST") {
+        return res.status(400).json({ message: err instanceof z.ZodError ? err.errors[0]?.message : (err as any).message });
+      }
+      console.error("POST /api/site-material-trips/material-source/bulk:", err);
+      res.status(500).json({ message: "Failed to bulk assign material source supplier" });
+    }
+  });
+
   // 06S §2: procurement match for a Site Material Trip — informational/
   // auto-fill only. Explicit requirement→PI chain; never fuzzy, never blocks,
   // never creates anything.

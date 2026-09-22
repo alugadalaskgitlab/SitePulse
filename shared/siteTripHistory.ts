@@ -9,11 +9,13 @@ export const SITE_TRIP_SUGGESTION_LIMIT = 50;
 export interface SiteTripHistoryValueRow {
   vehicleNumber?: string | null;
   supplier?: string | null;
+  materialSourceSupplier?: string | null;
 }
 
 export interface SiteTripSuggestions {
   vehicles: string[];
   suppliers: string[];
+  materialSourceSuppliers: string[];
 }
 
 /**
@@ -53,7 +55,7 @@ export function siteTripVehicleKey(value: string): string {
 
 function collectSuggestions(
   rows: readonly SiteTripHistoryValueRow[],
-  field: "vehicleNumber" | "supplier",
+  field: "vehicleNumber" | "supplier" | "materialSourceSupplier",
   normalize: (value: string | null | undefined) => string,
   key: (value: string) => string = (value) => value,
 ): string[] {
@@ -89,6 +91,7 @@ export function buildSiteTripSuggestions(
       siteTripVehicleKey,
     ),
     suppliers: collectSuggestions(rows, "supplier", normalizeSiteTripSupplier),
+    materialSourceSuppliers: collectSuggestions(rows, "materialSourceSupplier", normalizeSiteTripSupplier),
   };
 }
 

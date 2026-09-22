@@ -874,6 +874,9 @@ export const siteMaterialTrips = pgTable("site_material_trips", {
   site: text("site").notNull(), // Site name
   material: text("material").notNull(), // Material name
   supplier: text("supplier"), // Supplier name
+  // The seller/owner of the material is independent from `supplier`, which
+  // remains the vehicle/transporter-side vendor.
+  materialSourceSupplier: text("material_source_supplier"),
   vehicleNumber: text("vehicle_number"), // Vehicle registration
   // DPR-01 Parts 8/9: null preserves historical trips whose transport source
   // was not recorded. New entries classify the trip without overloading supplier.

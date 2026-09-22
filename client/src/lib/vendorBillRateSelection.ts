@@ -26,6 +26,35 @@ export type RateCardMatchOptions = {
   allowVendorAliases?: boolean;
 };
 
+export const SITE_MATERIAL_TRIP_MATERIAL_SOURCE = "site_material_trip_material" as const;
+
+export type AutoMaterialRateConversionItem = {
+  sourceType?: string | null;
+  category?: string | null;
+  unit?: string | null;
+};
+
+export type AutoMaterialRateConversion =
+  | { status: "not_applicable" | "no_match" | "ambiguous" }
+  | { status: "converted"; targetUnit: string; quantity: number; rate: number; card: VendorRateCardRecord };
+
+/**
+ * Material and transport can now be emitted from the same trip. Qualify only
+ * the new material role so its identity cannot collide with the unchanged
+ * legacy transporter identity.
+ */
+export function vendorBillAutoSourceIdentity(
+  sourceType: string | null | undefined,
+  sourceId: number | string | null | undefined,
+  fallbackSource: string | null | undefined = "auto",
+): string {
+  if (sourceId == null || String(sourceId) === "") return fallbackSource || "auto";
+  const normalizedId = String(sourceId).toLowerCase();
+  return sourceType === SITE_MATERIAL_TRIP_MATERIAL_SOURCE
+    ? `auto:${SITE_MATERIAL_TRIP_MATERIAL_SOURCE}:${normalizedId}`
+    : `auto:${normalizedId}`;
+}
+
 export const normalizeRateCardPart = (value: unknown) =>
   String(value ?? "").trim().toUpperCase().replace(/\s+/g, "_");
 
@@ -111,4 +140,48 @@ export function defaultConvertedQuantity(_unit: string): number {
 
 export function isDifferentBillingUnit(left: unknown, right: unknown): boolean {
   return normalizeRateCardPart(left) !== normalizeRateCardPart(right);
+}
+
+/**
+ * VB22's material-supplier role is the only discovered source that may change
+ * billing units during Pull. A conversion is safe only when exact rate-card
+ * matching leaves one positive alternate-unit card. In particular, do not use
+ * matchingRateCardsForGroup's sort order to choose between multiple cards.
+ */
+export function selectAutoMaterialRateConversion(
+  item: AutoMaterialRateConversionItem,
+  group: RateSelectionGroup,
+  rateCards: VendorRateCardRecord[],
+  selectedVendor: string,
+): AutoMaterialRateConversion {
+  if (
+    item.sourceType !== SITE_MATERIAL_TRIP_MATERIAL_SOURCE ||
+    normalizeRateCardPart(item.category) !== "MATERIAL"
+  ) {
+    return { status: "not_applicable" };
+  }
+
+  const currentUnit = normalizeRateCardPart(item.unit || group.unit);
+  const alternateUnits = Array.from(new Set(
+    rateCards
+      .filter(card => Number(card.rate) > 0)
+      .map(card => normalizeRateCardPart(card.unit))
+      .filter(unit => unit && unit !== currentUnit),
+  ));
+  const matches = alternateUnits.flatMap(targetUnit =>
+    matchingRateCardsForGroup(group, targetUnit, rateCards, selectedVendor)
+      .filter(card => Number(card.rate) > 0)
+      .map(card => ({ targetUnit, card })),
+  );
+
+  if (matches.length === 0) return { status: "no_match" };
+  if (matches.length !== 1) return { status: "ambiguous" };
+
+  return {
+    status: "converted",
+    targetUnit: matches[0].targetUnit,
+    quantity: defaultConvertedQuantity(matches[0].targetUnit),
+    rate: Number(matches[0].card.rate),
+    card: matches[0].card,
+  };
 }

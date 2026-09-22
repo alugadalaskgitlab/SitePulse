@@ -26,6 +26,11 @@ import {
   useSiteMaterialSuggestions,
 } from "@/hooks/use-site-material-suggestions";
 import { VehicleSupplierAssociationNotice } from "@/components/VehicleSupplierAssociationNotice";
+import { useAuth } from "@/lib/auth-context";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const MATERIAL_OPTIONS = [
   "WMM", "GSB", "Soil", "Dust", "6MM DOWN", "10/12MM", "20MM", "BC Mix", "DBM Mix", "Water", "Bitumen", "Emulsion", "Diesel"
@@ -35,6 +40,8 @@ const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs", "Tons"];
 
 export default function SiteMaterialTrips() {
   const { toast } = useToast();
+  const { sectionCan } = useAuth();
+  const canEdit = sectionCan("site_materials", "edit");
   const { companyName, logoFile } = useFeatureFlags();
   const searchString = useSearch();
   const [, navigate] = useLocation();
@@ -66,8 +73,15 @@ export default function SiteMaterialTrips() {
   const today = format(new Date(), "yyyy-MM-dd");
   const currentTime = format(new Date(), "HH:mm");
 
-  const [dateFilter, setDateFilter] = useState(today);
+  const [dateFromFilter, setDateFromFilter] = useState(today);
+  const [dateToFilter, setDateToFilter] = useState(today);
   const [siteFilter, setSiteFilter] = useState(piParams.site || "");
+  const [materialFilter, setMaterialFilter] = useState("");
+  const [vehicleFilter, setVehicleFilter] = useState("");
+  const [supplierFilter, setSupplierFilter] = useState("");
+  const [onlyUnassigned, setOnlyUnassigned] = useState(true);
+  const [bulkMaterialSourceSupplier, setBulkMaterialSourceSupplier] = useState("");
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
 
   const [newTrip, setNewTrip] = useState({
     date: today,
@@ -75,6 +89,7 @@ export default function SiteMaterialTrips() {
     site: piParams.site || "",
     material: piParams.material || "",
     supplier: piParams.supplier || "",
+    materialSourceSupplier: "",
     vehicleNumber: "",
     transportType: "",
     internalEquipmentId: null as number | null,
@@ -92,11 +107,18 @@ export default function SiteMaterialTrips() {
   // convenience data; both fields remain ordinary free-text inputs.
   const {
     suppliers: supplierSuggestions,
+    materialSourceSuppliers: materialSourceSupplierSuggestions,
     vehicles: vehicleSuggestions,
     error: suggestionError,
     vehicleSuppliers,
     canCorrectVehicleSupplier,
   } = useSiteMaterialSuggestions(newTrip.site);
+  const {
+    suppliers: filterSupplierSuggestions,
+    materialSourceSuppliers: filterMaterialSourceSupplierSuggestions,
+    vehicles: filterVehicleSuggestions,
+    error: filterSuggestionError,
+  } = useSiteMaterialSuggestions(siteFilter && siteFilter !== "all" ? siteFilter : "");
 
   const applyVehicleSuggestion = (vehicleNumber: string) => {
     // FreeTextSuggestionInput calls onChange first and this callback second.
@@ -206,11 +228,13 @@ export default function SiteMaterialTrips() {
 
   const buildTripsUrl = () => {
     const params = new URLSearchParams();
-    if (dateFilter) {
-      params.set("dateFrom", dateFilter);
-      params.set("dateTo", dateFilter);
-    }
+    if (dateFromFilter) params.set("dateFrom", dateFromFilter);
+    if (dateToFilter) params.set("dateTo", dateToFilter);
     if (siteFilter && siteFilter !== "all") params.set("site", siteFilter);
+    if (materialFilter && materialFilter !== "all") params.set("material", materialFilter);
+    if (vehicleFilter.trim()) params.set("vehicleNumber", vehicleFilter.trim());
+    if (supplierFilter.trim()) params.set("supplier", supplierFilter.trim());
+    if (onlyUnassigned) params.set("onlyUnassigned", "true");
     const queryString = params.toString();
     return queryString ? `/api/site-material-trips?${queryString}` : "/api/site-material-trips";
   };
@@ -297,6 +321,7 @@ export default function SiteMaterialTrips() {
           site: newTrip.site,
           material: "",
           supplier: "",
+           materialSourceSupplier: "",
           vehicleNumber: "",
             transportType: "",
             internalEquipmentId: null,
@@ -314,7 +339,7 @@ export default function SiteMaterialTrips() {
       }
     },
     onError: (error) => {
-      toast({ title: "Error", description: "Failed to log material trip.", variant: "destructive" });
+      toast({ title: "Failed to log material trip", description: error instanceof Error ? error.message : "The trip could not be saved.", variant: "destructive" });
       console.error("Error creating trip:", error);
     },
   });
@@ -330,6 +355,42 @@ export default function SiteMaterialTrips() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to delete trip.", variant: "destructive" });
+    },
+  });
+
+  const bulkAssignMutation = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        dateFrom: dateFromFilter || undefined,
+        dateTo: dateToFilter || undefined,
+        site: siteFilter && siteFilter !== "all" ? siteFilter : undefined,
+        material: materialFilter && materialFilter !== "all" ? materialFilter : undefined,
+        vehicleNumber: vehicleFilter.trim() || undefined,
+        supplier: supplierFilter.trim() || undefined,
+        onlyUnassigned,
+        materialSourceSupplier: bulkMaterialSourceSupplier.trim(),
+      };
+      const response = await apiRequest("POST", "/api/site-material-trips/material-source/bulk", payload);
+      return response.json() as Promise<{ updatedCount: number }>;
+    },
+    onSuccess: ({ updatedCount }) => {
+      setBulkConfirmOpen(false);
+      queryClient.invalidateQueries({ predicate: (query) =>
+        typeof query.queryKey[0] === "string" && query.queryKey[0].startsWith("/api/site-material-trips")
+      });
+      invalidateSiteMaterialSuggestions(siteFilter);
+      toast({
+        title: "Material source assigned",
+        description: `${updatedCount} trip${updatedCount === 1 ? "" : "s"} updated.`,
+      });
+    },
+    onError: (error) => {
+      setBulkConfirmOpen(false);
+      toast({
+        title: "Bulk assignment failed",
+        description: error instanceof Error ? error.message : "The material source could not be assigned.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -357,14 +418,11 @@ export default function SiteMaterialTrips() {
     createMutation.mutate(newTrip);
   };
 
-  const todaysTrips = useMemo(() => {
-    if (!trips) return [];
-    return trips.filter(t => t.date === dateFilter);
-  }, [trips, dateFilter]);
+  const filteredTrips = trips ?? [];
 
   const tripsByMaterial = useMemo(() => {
     const grouped: Record<string, { count: number; totalQty: number; uom: string }> = {};
-    todaysTrips.forEach(trip => {
+    filteredTrips.forEach(trip => {
       const key = trip.material;
       if (!grouped[key]) {
         grouped[key] = { count: 0, totalQty: 0, uom: trip.uom };
@@ -373,7 +431,7 @@ export default function SiteMaterialTrips() {
       grouped[key].totalQty += trip.quantity || 0;
     });
     return grouped;
-  }, [todaysTrips]);
+  }, [filteredTrips]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -485,6 +543,20 @@ export default function SiteMaterialTrips() {
                     className="uppercase"
                     data-testid="input-trip-supplier"
                   />
+                </div>
+                <div>
+                  <Label className="text-sm">Material Source / Supplier (optional)</Label>
+                  <FreeTextSuggestionInput
+                    placeholder="e.g. Borrow area owner"
+                    value={newTrip.materialSourceSupplier}
+                    onChange={(value) => setNewTrip((prev) => ({ ...prev, materialSourceSupplier: value.toUpperCase() }))}
+                    suggestions={materialSourceSupplierSuggestions}
+                    match="supplier"
+                    suggestionsError={suggestionError}
+                    className="uppercase"
+                    data-testid="input-trip-material-source-supplier"
+                  />
+                  <p className="mt-1 text-[11px] text-muted-foreground">Who sold the material; independent from the transporter.</p>
                 </div>
                 <div>
                   <Label className="text-sm">Vehicle Number <span className="text-muted-foreground">(free text fallback)</span></Label>
@@ -789,7 +861,7 @@ export default function SiteMaterialTrips() {
                   {data.totalQty.toFixed(3)} {data.uom}
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  {data.count} trip{data.count !== 1 ? 's' : ''} today
+                  {data.count} matching trip{data.count !== 1 ? 's' : ''}
                 </div>
               </CardContent>
             </Card>
@@ -797,39 +869,89 @@ export default function SiteMaterialTrips() {
         </div>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <CardTitle>Today's Trips</CardTitle>
-            <div className="flex items-center gap-2">
-              <Input
-                type="date"
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
-                className="w-40"
-                data-testid="input-filter-date"
-              />
-              <Select
-                value={siteFilter}
-                onValueChange={setSiteFilter}
-              >
-                <SelectTrigger className="w-40" data-testid="select-filter-site">
-                  <SelectValue placeholder="All Sites" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Sites</SelectItem>
-                  {activeSites.map((s) => (
-                    <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <CardHeader>
+            <CardTitle>Material Trips</CardTitle>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 pt-3">
+              <div>
+                <Label className="text-xs">From date</Label>
+                <Input type="date" value={dateFromFilter} onChange={(e) => setDateFromFilter(e.target.value)} data-testid="input-filter-date-from" />
+              </div>
+              <div>
+                <Label className="text-xs">To date</Label>
+                <Input type="date" value={dateToFilter} onChange={(e) => setDateToFilter(e.target.value)} data-testid="input-filter-date-to" />
+              </div>
+              <div>
+                <Label className="text-xs">Site</Label>
+                <Select value={siteFilter} onValueChange={setSiteFilter}>
+                  <SelectTrigger data-testid="select-filter-site"><SelectValue placeholder="All Sites" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sites</SelectItem>
+                    {activeSites.map((s) => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Material</Label>
+                <Select value={materialFilter} onValueChange={setMaterialFilter}>
+                  <SelectTrigger data-testid="select-filter-material"><SelectValue placeholder="All Materials" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Materials</SelectItem>
+                    {MATERIAL_OPTIONS.map((material) => <SelectItem key={material} value={material}>{material}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Vehicle number</Label>
+                <FreeTextSuggestionInput value={vehicleFilter} onChange={(value) => setVehicleFilter(value.toUpperCase())} suggestions={filterVehicleSuggestions} match="vehicle" suggestionsError={filterSuggestionError} placeholder="All vehicles" data-testid="input-filter-vehicle" />
+              </div>
+              <div>
+                <Label className="text-xs">Transporter</Label>
+                <FreeTextSuggestionInput value={supplierFilter} onChange={(value) => setSupplierFilter(value.toUpperCase())} suggestions={filterSupplierSuggestions} match="supplier" suggestionsError={filterSuggestionError} placeholder="All transporters" data-testid="input-filter-supplier" />
+              </div>
+              <label className="flex items-end gap-2 pb-2 text-sm">
+                <input type="checkbox" checked={onlyUnassigned} onChange={(event) => setOnlyUnassigned(event.target.checked)} data-testid="checkbox-filter-only-unassigned" />
+                Only trips without a material source
+              </label>
             </div>
           </CardHeader>
           <CardContent>
+            {canEdit && (
+              <div className="mb-4 rounded-lg border bg-muted/20 p-3 space-y-2" data-testid="bulk-material-source-panel">
+                <div>
+                  <p className="font-medium">Prepare material-source backlog for billing</p>
+                  <p className="text-xs text-muted-foreground">
+                    Assign one source supplier to the {filteredTrips.length} trip{filteredTrips.length === 1 ? "" : "s"} matching the filters above. The transporter is not changed.
+                  </p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <FreeTextSuggestionInput
+                    value={bulkMaterialSourceSupplier}
+                    onChange={(value) => setBulkMaterialSourceSupplier(value.toUpperCase())}
+                    suggestions={filterMaterialSourceSupplierSuggestions}
+                    match="supplier"
+                    suggestionsError={filterSuggestionError}
+                    placeholder="Material Source / Supplier"
+                    className="uppercase sm:max-w-sm"
+                    data-testid="input-bulk-material-source-supplier"
+                  />
+                  <Button
+                    type="button"
+                    disabled={!bulkMaterialSourceSupplier.trim() || !filteredTrips.length || !siteFilter || siteFilter === "all"}
+                    onClick={() => setBulkConfirmOpen(true)}
+                    data-testid="button-bulk-assign-material-source"
+                  >
+                    Assign to {filteredTrips.length} matching trip{filteredTrips.length === 1 ? "" : "s"}
+                  </Button>
+                </div>
+                {(!siteFilter || siteFilter === "all") && <p className="text-xs text-amber-700">Select one site before bulk assignment.</p>}
+              </div>
+            )}
             {isLoading ? (
               <div className="flex justify-center py-8">
                 <Loader2 className="w-6 h-6 animate-spin" />
               </div>
-            ) : !todaysTrips.length ? (
-              <p className="text-center text-muted-foreground py-8">No trips recorded for this date.</p>
+            ) : !filteredTrips.length ? (
+              <p className="text-center text-muted-foreground py-8">No trips match these filters.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -838,7 +960,8 @@ export default function SiteMaterialTrips() {
                       <th className="text-left p-2">Time</th>
                       <th className="text-left p-2">Site</th>
                       <th className="text-left p-2">Material</th>
-                      <th className="text-left p-2">Supplier</th>
+                      <th className="text-left p-2">Transporter</th>
+                      <th className="text-left p-2">Material Source</th>
                       <th className="text-left p-2">Vehicle</th>
                       <th className="text-right p-2">Qty</th>
                       <th className="text-left p-2">UOM</th>
@@ -848,7 +971,7 @@ export default function SiteMaterialTrips() {
                     </tr>
                   </thead>
                   <tbody>
-                    {todaysTrips.map((trip) => (
+                    {filteredTrips.map((trip) => (
                       <tr key={trip.id} className="border-b hover:bg-muted/30" data-testid={`row-trip-${trip.id}`}>
                         <td className="p-2">{trip.time || '-'}</td>
                         <td className="p-2 font-medium">{trip.site}</td>
@@ -857,6 +980,7 @@ export default function SiteMaterialTrips() {
                           <TripWorkContextSummary trip={trip} testIdPrefix="trip-list-ctx" />
                         </td>
                         <td className="p-2">{trip.supplier || '-'}</td>
+                        <td className="p-2" data-testid={`trip-material-source-${trip.id}`}>{trip.materialSourceSupplier || '-'}</td>
                         <td className="p-2">{trip.vehicleNumber || '-'}</td>
                         <td className="p-2 text-right font-mono">{trip.quantity?.toFixed(3)}</td>
                         <td className="p-2">{trip.uom}</td>
@@ -926,6 +1050,41 @@ export default function SiteMaterialTrips() {
         transactionId={historyTripId}
         recordLabel={`Material Trip #${historyTripId}`}
       />
+      <AlertDialog open={bulkConfirmOpen} onOpenChange={setBulkConfirmOpen}>
+        <AlertDialogContent data-testid="dialog-confirm-bulk-material-source">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Assign material source to {filteredTrips.length} trip{filteredTrips.length === 1 ? "" : "s"}?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  Set <strong>{bulkMaterialSourceSupplier}</strong> as the material source for matching trips at <strong>{siteFilter}</strong>.
+                </p>
+                <p>
+                  Filters: {dateFromFilter || "any start"} to {dateToFilter || "any end"}
+                  {materialFilter && materialFilter !== "all" ? ` · ${materialFilter}` : ""}
+                  {vehicleFilter ? ` · vehicle ${vehicleFilter}` : ""}
+                  {supplierFilter ? ` · transporter ${supplierFilter}` : ""}
+                  {onlyUnassigned ? " · unassigned only" : ""}.
+                </p>
+                <p>The existing transporter values will remain untouched.</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-bulk-material-source">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                bulkAssignMutation.mutate();
+              }}
+              disabled={bulkAssignMutation.isPending}
+              data-testid="button-confirm-bulk-material-source"
+            >
+              {bulkAssignMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : `Assign ${filteredTrips.length} trips`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -19,7 +19,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
 import type { VendorBillWithItems, VendorAlias } from "@shared/schema";
 import { aggregateGstBreakdown } from "@shared/vendor-bill-gst";
-import { defaultConvertedQuantity, isDifferentBillingUnit, matchingRateCardsForGroup, normalizeRateCardPart, type RateCardUnitOption, type VendorRateCardRecord } from "@/lib/vendorBillRateSelection";
+import { defaultConvertedQuantity, isDifferentBillingUnit, matchingRateCardsForGroup, normalizeRateCardPart, selectAutoMaterialRateConversion, SITE_MATERIAL_TRIP_MATERIAL_SOURCE, vendorBillAutoSourceIdentity, type RateCardUnitOption, type VendorRateCardRecord } from "@/lib/vendorBillRateSelection";
 import { autoBillItemIdentity, availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateHireGroup, duplicateBillItemPayload, mergeOtherBillItems, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, uniqueDuplicateBillMatches, type DuplicateBillItemMatch, type HireActivity, type HireBillingBasis } from "@shared/hireBilling";
 import type { EquipmentPerformanceReport } from "@shared/equipmentPerformance";
 import { formatEquipmentOptionLabel } from "@shared/equipmentLabel";
@@ -69,6 +69,7 @@ interface LineItem {
   rate: number;
   amount: number;
   source: string;
+  sourceType?: string | null;
   sourceId?: number | string | null;
   equipmentId: number | null;
   leadDistance: number | null;
@@ -156,6 +157,8 @@ const isGeneratedEvidenceLine = (source: string) =>
   isAutoLineSource(source) || ["hire_group", "hire_statement"].includes(source);
 
 function mapAutoBillItem(item: any): LineItem {
+  const sourceType = item.sourceType ?? null;
+  const source = vendorBillAutoSourceIdentity(sourceType, item.sourceId, item.source);
   return {
     date: item.date || "",
     category: item.category || "other",
@@ -164,7 +167,8 @@ function mapAutoBillItem(item: any): LineItem {
     unit: item.unit || "HRS",
     rate: item.rate || 0,
     amount: (item.qty || 0) * (item.rate || 0),
-    source: item.sourceId != null ? `auto:${String(item.sourceId).toLowerCase()}` : (item.source || "auto"),
+    source,
+    sourceType,
     sourceId: item.sourceId ?? null,
     equipmentId: item.equipmentId || null,
     leadDistance: item.leadDistance ?? null,
@@ -173,6 +177,20 @@ function mapAutoBillItem(item: any): LineItem {
     transporter: item.transporter ?? null,
     vehicleNumber: item.vehicleNumber ?? null,
     receiptNumber: item.receiptNumber ?? null,
+  };
+}
+
+/**
+ * Keep the banner preflight and the authoritative post-conversion check on
+ * the same source-qualified projection. The latter receives `mapped`, so it
+ * checks the exact candidates that will be merged after pull-time conversion.
+ */
+function sourceQualifiedDuplicateBillItemPayload(item: LineItem) {
+  return {
+    ...duplicateBillItemPayload(item),
+    source: item.source,
+    sourceType: item.sourceType ?? null,
+    sourceId: item.sourceId ?? null,
   };
 }
 
@@ -1164,6 +1182,8 @@ export default function VendorBills() {
         rate: item.rate || 0,
         amount: item.amount || 0,
         source: item.source || "manual",
+        sourceType: (item as any).sourceType ?? null,
+        sourceId: (item as any).sourceId ?? null,
         equipmentId: item.equipmentId || null,
         leadDistance: item.leadDistance ?? null,
         siteName: inferSiteNameFromDescription(item.description, item.siteName) || null,
@@ -1258,8 +1278,32 @@ export default function VendorBills() {
           if (!isCurrentPull()) return;
           const cardByKey = new Map(rateCards.map((rc: any) => [`${rc.itemKey.toUpperCase()}_${rc.category}`, rc]));
           let appliedCount = 0;
+          let convertedCount = 0;
+          let ambiguousConversionCount = 0;
           for (let i = 0; i < mapped.length; i++) {
             const item = mapped[i];
+            if (item.sourceType === SITE_MATERIAL_TRIP_MATERIAL_SOURCE) {
+              const group = groupRateItems([item])[0];
+              const conversion = group
+                ? selectAutoMaterialRateConversion(item, group, rateCards, vendorName)
+                : { status: "no_match" as const };
+              if (conversion.status === "converted") {
+                mapped[i] = {
+                  ...item,
+                  unit: conversion.targetUnit,
+                  qty: conversion.quantity,
+                  rate: conversion.rate,
+                };
+                mapped[i].amount = calcAmount(mapped[i]);
+                appliedCount++;
+                convertedCount++;
+              } else if (conversion.status === "ambiguous") {
+                ambiguousConversionCount++;
+              }
+              // This role deliberately has no legacy/current-unit fallback:
+              // without one unambiguous alternate card, preserve logged data.
+              continue;
+            }
             if (item.rate === 0) {
               let card: any = null;
               if (item.category === "transport") {
@@ -1309,7 +1353,18 @@ export default function VendorBills() {
             }
           }
           if (appliedCount > 0) {
-            toast({ title: `Applied ${appliedCount} rates from rate card` });
+            toast({
+              title: `Applied ${appliedCount} rates from rate card`,
+              description: convertedCount > 0
+                ? `${convertedCount} material source row${convertedCount === 1 ? "" : "s"} converted to the configured billing unit.`
+                : undefined,
+            });
+          }
+          if (ambiguousConversionCount > 0) {
+            toast({
+              title: `Skipped automatic conversion for ${ambiguousConversionCount} material source row${ambiguousConversionCount === 1 ? "" : "s"}`,
+              description: "Multiple matching rate cards are available. Use Set Rates to choose the billing unit.",
+            });
           }
         }
       } catch (_e) {
@@ -1321,7 +1376,7 @@ export default function VendorBills() {
       // another vendor or period. Never submit stale source evidence.
       if (!isCurrentPull()) return;
 
-      const duplicatePayload = mapped.map(duplicateBillItemPayload);
+      const duplicatePayload = mapped.map(sourceQualifiedDuplicateBillItemPayload);
       const dupRes = await fetch("/api/vendor-bills/check-duplicates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1518,7 +1573,7 @@ export default function VendorBills() {
     [lineItems],
   );
   const duplicatePreflightItems = useMemo(
-    () => availableOtherItems.map(duplicateBillItemPayload),
+    () => availableOtherItems.map(sourceQualifiedDuplicateBillItemPayload),
     [availableOtherItems],
   );
   const duplicatePreflight = useQuery<DuplicateBillItemMatch[]>({
@@ -2031,6 +2086,8 @@ export default function VendorBills() {
         rate: item.rate,
         amount: item.amount,
         source: item.source,
+        sourceType: item.sourceType ?? null,
+        sourceId: item.sourceId ?? null,
         equipmentId: item.equipmentId,
         leadDistance: item.leadDistance,
         siteName: item.siteName || null,
@@ -3172,6 +3229,13 @@ export default function VendorBills() {
                 </span>
                   {billType !== "equipment" && <span className="mt-1 block text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">Other billable activities for this vendor/period are shown here.</span>}
                   <div className="mt-3 space-y-2">
+                    {(billType === "material" || billType === "all") && (
+                      <Link href={`/site/material-trips?returnTo=${encodeURIComponent(typeof window !== "undefined" ? window.location.pathname : "/plant/vendor-bills")}`}>
+                        <Button type="button" variant="ghost" size="sm" className="h-auto px-0 text-xs" data-testid="link-material-trip-backlog">
+                          PREPARE MATERIAL TRIP BACKLOG <ArrowRight className="ml-1 h-3 w-3" />
+                        </Button>
+                      </Link>
+                    )}
                     {availableOtherItems.length > 0 && (
                       <div className="flex flex-wrap items-center gap-3 rounded border border-blue-200 bg-background/60 px-2 py-2 text-[11px] dark:border-blue-800">
                         {duplicatePreflight.isFetching && (

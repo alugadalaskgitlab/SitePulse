@@ -48,6 +48,7 @@ describePostgres("vehicle supplier association PostgreSQL transactions", () => {
         site text NOT NULL,
         material text,
         supplier text,
+        material_source_supplier text,
         vehicle_number text,
         transport_type text,
         internal_equipment_id integer,

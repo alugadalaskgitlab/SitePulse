@@ -1683,3 +1683,73 @@ mtime_ms = 1790047527906
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/7deb269c-1490-4315-98b1-75172b3333f9/2b321dcf-df7a-4210-90f7-db902231d892"
 storage_version_token = "1790047870314396"
 content_type = "image/png"
+
+[[outputs]]
+id = "OVUfiIz_iizDkHPSVua0e"
+uri = "file://screenshots/vb22/A-saved-both-transporter-and-material-source.png"
+type = "image"
+title = "A — Separate transporter and material source"
+description = "Real-component fixture with synthetic API data. Duplicate screenshot uses a simulated API response; storage tests separately verify actual enforcement."
+logical_id = "296b8133-9572-456c-a2eb-19e553732038"
+content_hash = "sha256:10f888c6203f354a6310fc154a9d6d0022c2d332bca7fcd61c0dfbc55ed4d5e5"
+size = 173037
+mtime_ms = 1790053136762
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/296b8133-9572-456c-a2eb-19e553732038/46abbf2d-0204-4e0b-98a9-8c8738939db1"
+storage_version_token = "1790053606149252"
+content_type = "image/png"
+
+[[outputs]]
+id = "5dolVcPw79jSCsY4rQ2rN"
+uri = "file://screenshots/vb22/A2-filtered-bulk-assignment.png"
+type = "image"
+title = "A2 — Filtered backlog assignment"
+description = "Real-component fixture with synthetic API data. Duplicate screenshot uses a simulated API response; storage tests separately verify actual enforcement."
+logical_id = "cc02a6f2-5eef-4d4f-a542-bb3d1e69ed8e"
+content_hash = "sha256:01503f83c0c12d02423441353265da222ce03f5905f1eafb2d13c4d233f7f220"
+size = 155871
+mtime_ms = 1790053137774
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/cc02a6f2-5eef-4d4f-a542-bb3d1e69ed8e/f94195fe-3d93-48f6-8d5e-ebff7443dd22"
+storage_version_token = "1790053608120801"
+content_type = "image/png"
+
+[[outputs]]
+id = "wjw5nE7bKPTDiRtByavbA"
+uri = "file://screenshots/vb22/B-600CFT-auto-converted-to-1TRIP-800.png"
+type = "image"
+title = "B — Automatic 600 CFT → 1 TRIP conversion"
+description = "Real-component fixture with synthetic API data. Duplicate screenshot uses a simulated API response; storage tests separately verify actual enforcement."
+logical_id = "c2c0f26b-d184-4a17-8828-65a206bff1e5"
+content_hash = "sha256:8eff9f81cf076246c1425acbd6299f60c39606e64f5275f5c3067e75fe44d98c"
+size = 135503
+mtime_ms = 1790053138894
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c2c0f26b-d184-4a17-8828-65a206bff1e5/cc252622-f39a-4976-81d7-c9b242436d2f"
+storage_version_token = "1790053610033963"
+content_type = "image/png"
+
+[[outputs]]
+id = "6tFw5uD8iyGJHCjARLLSG"
+uri = "file://screenshots/vb22/C-independent-transporter-pull-same-trip.png"
+type = "image"
+title = "C — Independent transporter bill"
+description = "Real-component fixture with synthetic API data. Duplicate screenshot uses a simulated API response; storage tests separately verify actual enforcement."
+logical_id = "716299b7-f897-4412-abc3-ebc887f09983"
+content_hash = "sha256:1e1e5a9c5a524105e0b838d222cf979e6737e610b2591063dabcb878c86449bb"
+size = 145514
+mtime_ms = 1790053140002
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/716299b7-f897-4412-abc3-ebc887f09983/c75feb9d-a592-4c1e-8a17-144087331998"
+storage_version_token = "1790053611981484"
+content_type = "image/png"
+
+[[outputs]]
+id = "V3TxswpMiZgDvqiA6PTh6"
+uri = "file://screenshots/vb22/D-same-role-duplicate-warning-and-block.png"
+type = "image"
+title = "D — Duplicate warning and rejection"
+description = "Real-component fixture with synthetic API data. Duplicate screenshot uses a simulated API response; storage tests separately verify actual enforcement."
+logical_id = "b9f7a92e-e364-4a38-95e2-1afd1d51f7f0"
+content_hash = "sha256:64d6cd92bd6d9602447037b27e5096aeac9a32a3445499c3aa3a0011690dbc54"
+size = 127569
+mtime_ms = 1790053141182
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b9f7a92e-e364-4a38-95e2-1afd1d51f7f0/78bf52f8-2775-498d-a3c5-aa2bba2c786f"
+storage_version_token = "1790053613889439"
+content_type = "image/png"
