@@ -489,7 +489,28 @@ function getBillTypeLabel(type: string) {
 // PI/diesel. Entry preferred once the bill is PAID; values display read-only
 // otherwise. Deliberately NO payment evidence / QR / screenshot upload.
 const VB_MODE_LABELS: Record<string, string> = { cash: "CASH", credit: "CREDIT", advance: "ADVANCE", upi: "UPI", cheque: "CHEQUE", rtgs: "RTGS / NEFT" };
-function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; canEditPayment: boolean }) {
+export const hasCumulativeVendorPayment = (billType: string) => ["equipment", "all"].includes(String(billType || "").toLowerCase());
+
+function useVendorBillCompanyAccounts(enabled: boolean, paymentAccountKey?: string | null) {
+  const query = useQuery<{ id: string; name: string; type: string }[]>({
+    queryKey: ["/api/vendor-bills/company-accounts"],
+    queryFn: () => fetch("/api/vendor-bills/company-accounts", { credentials: "include" }).then(async response => {
+      if (!response.ok) throw new Error((await response.text()) || "Could not load company accounts");
+      return response.json();
+    }),
+    enabled,
+  });
+  return { ...query, selectedAccount: query.data?.find(account => account.id === paymentAccountKey) };
+}
+
+export function VendorBillPaidAccount({ paymentAccountKey }: { paymentAccountKey?: string | null }) {
+  const { selectedAccount } = useVendorBillCompanyAccounts(!!paymentAccountKey, paymentAccountKey);
+  return selectedAccount ? (
+    <span data-testid="status-paid-account" className="text-[12px] font-medium text-muted-foreground whitespace-nowrap leading-tight">{selectedAccount.name}</span>
+  ) : null;
+}
+
+export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; canEditPayment: boolean }) {
   const { toast } = useToast();
   const [editing, setEditing] = useState(false);
   const [mode, setMode] = useState<string>(bill.paymentMode || "");
@@ -499,20 +520,16 @@ function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; canEdit
     bill.paidBy && bill.paidBy !== "company" && bill.paidBy !== "PERSONAL" ? bill.paidBy : "");
   const [amountPaid, setAmountPaid] = useState<string>(() => initialVendorBillPaidAmount(bill));
   const [paymentAccountKey, setPaymentAccountKey] = useState<string>(bill.paymentAccountKey || "");
-  const accountsQuery = useQuery<{ id: string; name: string; type: string }[]>({
-    queryKey: ["/api/vendor-bills/company-accounts"],
-    queryFn: () => fetch("/api/vendor-bills/company-accounts", { credentials: "include" }).then(async response => {
-      if (!response.ok) throw new Error((await response.text()) || "Could not load company accounts");
-      return response.json();
-    }),
-    enabled: String(bill.billType || "").toLowerCase() === "equipment" && ((editing && paidByKind === "company") || !!bill.paymentAccountKey),
-  });
-  const isEquipmentHire = String(bill.billType || "").toLowerCase() === "equipment";
+  const isEquipmentHire = hasCumulativeVendorPayment(bill.billType);
+  const accountsQuery = useVendorBillCompanyAccounts(
+    isEquipmentHire && ((editing && paidByKind === "company") || !!bill.paymentAccountKey),
+    bill.paymentAccountKey,
+  );
   const netPayable = bill.netPayableAmount != null ? Number(bill.netPayableAmount) : Number(bill.totalAmount || 0);
   // Historic all-or-nothing paid bills deliberately have no backfill; display
   // them as fully paid without changing any source record.
   const effectivePaid = bill.amountPaid != null ? Number(bill.amountPaid) : bill.status === "paid" ? netPayable : 0;
-  const selectedAccount = (accountsQuery.data || []).find(account => account.id === bill.paymentAccountKey);
+  const selectedAccount = accountsQuery.selectedAccount;
 
   const saveMutation = useMutation({
     mutationFn: () => apiRequest("PATCH", `/api/vendor-bills/${bill.id}/payment-details`, {
@@ -2465,6 +2482,7 @@ export default function VendorBills() {
     approvedBy?: string | null;
     paidAt?: string | null;
     paymentRecordedBy?: string | null;
+    paymentAccountKey?: string | null;
   }) => {
     const currentIdx = STATUS_ORDER.indexOf(currentStatus as any);
     const stepMeta: Record<string, { timestamp?: string | null; actor?: string | null }> = {
@@ -2499,6 +2517,7 @@ export default function VendorBills() {
                 {(isDone || isActive) && sm?.actor && (
                   <span className="text-[12px] font-medium text-muted-foreground whitespace-nowrap leading-tight">{sm.actor}</span>
                 )}
+                {step === "paid" && (isDone || isActive) && <VendorBillPaidAccount paymentAccountKey={meta?.paymentAccountKey} />}
               </div>
             </div>
           );
@@ -4236,7 +4255,7 @@ export default function VendorBills() {
 
             {/* 06M-A: Payment Mode / Paid By — entry preferred once PAID, shown
                 whenever values exist. No payment evidence/QR upload here. */}
-            {(String(bill.billType || "").toLowerCase() === "equipment" || bill.status === "paid" || (bill as any).paymentMode || (bill as any).paidBy) && (
+            {(hasCumulativeVendorPayment(bill.billType) || bill.status === "paid" || (bill as any).paymentMode || (bill as any).paidBy) && (
               <VendorBillPaymentDetails
                 key={bill.id}
                 bill={bill}
@@ -4254,6 +4273,7 @@ export default function VendorBills() {
                 approvedBy: bill.approvedBy,
                 paidAt: bill.paidAt,
                 paymentRecordedBy: (bill as any).paymentRecordedBy,
+                paymentAccountKey: (bill as any).paymentAccountKey,
               })}
             </div>
 

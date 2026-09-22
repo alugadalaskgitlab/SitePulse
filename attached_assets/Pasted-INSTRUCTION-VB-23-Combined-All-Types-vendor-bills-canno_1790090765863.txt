@@ -1,0 +1,53 @@
+INSTRUCTION VB-23: Combined ("All Types") vendor bills cannot be marked Paid because the payment-amount and bank-account fields only render for Equipment-type bills, plus the Status Progress timeline's PAID step should also show which bank account was used, alongside the timestamp/user it already shows
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Single root cause feeds Fix 1 and Fix 2 — a stale `billType === "equipment"` gate. Fix 3 is a small additive display change to an already-working timeline component. Do not touch DPR-02 through DPR-12, VB-18 through VB-22, PI-01, or DIESEL-04. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+1. `server/storage.ts`'s `updateVendorBillStatus` (paid-transition branch, ~lines 17462-17480) blocks marking a bill "paid" when `billType` is `"equipment"` OR `"all"` (combined), requiring `amountPaid >= netPayableAmount`, throwing "Record the cumulative equipment hire payment before marking this bill paid." or "Record the remaining equipment hire balance before marking this bill paid." otherwise.
+2. `client/src/pages/VendorBills.tsx`'s `VendorBillPaymentDetails` component (~lines 489-654) is the ONLY place `amountPaid` is ever entered or sent to the server. The flag gating it, `isEquipmentHire` (~line 508/510), checks ONLY `billType.toLowerCase() === "equipment"` — with no branch for `"all"`. Confirmed: the mutation payload (~line 521) only includes `amountPaid` `if (isEquipmentHire)`, else spreads `{}` — so for a Combined bill, `amountPaid` is never sent at all, leaving Combined-bill users with no UI path to satisfy the backend check from point 1. Same gate (`isEquipmentHire`) also hides the "Paid This Bill (cumulative ₹)" input itself (~lines 605-609) and the PAID/BALANCE badges (~lines 552-555).
+3. The Bank/Account selector (~lines 591-600) is gated by the SAME `isEquipmentHire` flag (~line 591), so it's also missing for Combined bills — confirmed this is the same root cause as point 2, not a separate bug.
+4. Payment Mode (~lines 561-568) and Paid By (~lines 570-577) are NOT gated by `isEquipmentHire` — they already render for all bill types. Only the cumulative-amount field, its badges, and the bank account selector are wrongly restricted.
+5. `vendorBills` schema (shared/schema.ts ~2245-2285) already has everything needed: `paymentMode`, `paidBy` (payer name/"company"), `paymentAccountKey` (references the shared company-accounts list served at `GET /api/vendor-bills/company-accounts`), `paidAt` (timestamp), and `paymentRecordedBy` (the app user who clicked Mark as Paid — distinct from `paidBy`). No schema change is needed for any part of this batch.
+6. Status Progress timeline: `renderStatusSteps` (VendorBills.tsx ~2460-2504) already correctly shows a timestamp and actor name under DRAFT/VERIFIED/APPROVED/PAID identically, sourced from `paidAt`/`paymentRecordedBy` for the PAID step (~2474). This already works correctly once a bill is actually paid — confirmed NOT a bug. It does not currently show the bank/account used, which is the one genuinely missing piece here. The account-name lookup already exists (`selectedAccount = accounts.find(a => a.id === bill.paymentAccountKey)`, ~line 515) and is already used to render an "ACCOUNT: {name}" badge elsewhere on the page (~line 552) — reuse this exact lookup, don't rebuild it.
+
+FIX 1 — WIDEN THE PAYMENT-AMOUNT GATE TO COVER COMBINED BILLS
+a. Change `isEquipmentHire` (VendorBills.tsx ~line 510) — or introduce a second flag alongside it, your judgment on the cleanest approach — so the cumulative "Paid This Bill (cumulative ₹)" input, its PAID/BALANCE badges, and the `amountPaid` field in the save mutation payload all render/send for `billType === "equipment"` OR `billType === "all"`, not `"equipment"` only.
+b. Confirm the label/copy still makes sense for a Combined bill (e.g. "cumulative" language is fine since it already reads generically), adjust wording only if genuinely confusing, not required otherwise.
+
+FIX 2 — WIDEN THE BANK/ACCOUNT SELECTOR TO COVER COMBINED BILLS
+a. Apply the identical widening to the Bank/Account selector (~lines 591-600) — same flag, same fix, do this alongside Fix 1 since they share the root cause.
+b. Confirm the account list and save behavior work identically for Combined bills as they already do for Equipment bills — no new logic needed here, just removing the incorrect restriction.
+
+FIX 3 — SHOW BANK ACCOUNT ON THE PAID STEP OF THE STATUS PROGRESS TIMELINE
+a. In `renderStatusSteps`'s PAID step metadata (~line 2474 area), alongside the existing timestamp (`paidAt`) and actor (`paymentRecordedBy`), add the resolved bank/account name — reuse the exact `selectedAccount`/company-accounts lookup already used at ~line 515/552, do not reimplement it.
+b. Display it as a third line under the PAID step, consistent in style with the existing timestamp/actor lines (e.g. "22-Sep-26 20:34 · SUNIL KUMAR · HDFC CURRENT A/C" or stacked — your judgment on the cleanest layout matching the existing DRAFT/VERIFIED/APPROVED steps' style).
+c. If a bill is paid but has no `paymentAccountKey` recorded (e.g. a bill paid before this fix, or a non-equipment/non-combined bill type that never had the selector), simply omit the bank line for that step — do not show a blank/broken placeholder.
+d. Do not change how DRAFT/VERIFIED/APPROVED steps render — they already work correctly, this is additive to PAID only.
+
+WHAT NOT TO DO
+- Do not touch Payment Mode or Paid By fields — they already render correctly for all bill types.
+- Do not add a new bank-accounts table/master — reuse the existing shared company-accounts list and lookup exactly as-is.
+- Do not change DRAFT/VERIFIED/APPROVED step rendering.
+- Do not touch DPR-02 through DPR-12, VB-18 through VB-22, PI-01, or DIESEL-04.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change required — every field needed (`paymentMode`, `paidBy`, `paymentAccountKey`, `paidAt`, `paymentRecordedBy`) already exists on `vendorBills`. This batch is UI-gating and display logic only.
+
+TESTS
+A. Open a Combined ("All Types") bill in Draft/Verified/Approved status. Confirm the "Paid This Bill (cumulative ₹)" field and the Bank/Account selector now appear, exactly as they already do for an Equipment-only bill.
+B. Enter a cumulative amount equal to the bill's net payable and select a bank account on a Combined bill, save, then click Mark as Paid. Confirm it succeeds (no more 409 "Record the remaining equipment hire balance" error) when the amount fully covers net payable.
+C. Confirm the same 409 error still correctly blocks Mark as Paid on a Combined bill when the amount entered is less than net payable — the safeguard itself must remain intact, only the missing UI is being restored.
+D. Confirm an Equipment-only bill's payment fields and Mark-as-Paid flow are completely unaffected — no regression.
+E. Confirm a bill that is NOT equipment or combined type (e.g. a pure Material bill, if such a type exists and doesn't use this payment-amount mechanism) is also unaffected — this fix should not accidentally widen the gate to bill types it was never meant to apply to.
+F. Mark a Combined bill as paid with a bank account selected. Confirm the Status Progress PAID step now shows timestamp, user, AND the bank/account name together.
+G. Check an older already-paid bill (paid before this fix, no `paymentAccountKey` recorded). Confirm its PAID step still shows timestamp and user correctly, with the bank line simply omitted (no blank/broken text).
+
+REPORT BACK
+1. Confirm Fix 1/2 with Test A/B/C evidence (screenshots), including one showing the 409 error still firing correctly for an underpaid amount.
+2. Confirm Test D/E — no regression to Equipment-only or other bill types.
+3. Confirm Fix 3 with Test F/G evidence (screenshots), including the older-bill fallback case.
+4. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

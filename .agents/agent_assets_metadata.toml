@@ -1851,3 +1851,73 @@ mtime_ms = 1790057483054
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/3b422fc9-1b15-4936-b614-5991af183056/70cc2b33-488d-4b81-ba37-fdd33eaea300"
 storage_version_token = "1790058941096386"
 content_type = "image/png"
+
+[[outputs]]
+id = "5M4AX0lCFiwNaVQhf5AtE"
+uri = "file://screenshots/vb23/A-approved-combined-payment-inputs.png"
+type = "image"
+title = "Combined bill — payment amount and account"
+description = "Real Vendor Bills page with labelled synthetic API data. The payment guard is separately tested through the actual storage method with an isolated transaction mock."
+logical_id = "103a5219-e558-42cb-851f-be5b1141fb4d"
+content_hash = "sha256:6ffa2333a27941f40e3c58d668107fce13234977e936c4bb9625fb994f89e191"
+size = 100671
+mtime_ms = 1790091079206
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/103a5219-e558-42cb-851f-be5b1141fb4d/b5f0ba3e-074b-4eef-bbef-3c5ffd81aea3"
+storage_version_token = "1790091289675586"
+content_type = "image/png"
+
+[[outputs]]
+id = "x7dXk-p2GOZ5RG1JoUbLn"
+uri = "file://screenshots/vb23/B-combined-paid-success.png"
+type = "image"
+title = "Combined bill — fully paid"
+description = "Real Vendor Bills page with labelled synthetic API data. The payment guard is separately tested through the actual storage method with an isolated transaction mock."
+logical_id = "94f392a3-6f24-4706-a7b5-6734190337b4"
+content_hash = "sha256:c1a4eb629323e82f428e5f8411f47cbcff7762a30d4e00f76156d1177c48d1a8"
+size = 92656
+mtime_ms = 1790091079878
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/94f392a3-6f24-4706-a7b5-6734190337b4/c82fcce9-5fac-464d-a586-2a333a263805"
+storage_version_token = "1790091291332495"
+content_type = "image/png"
+
+[[outputs]]
+id = "BpAN4AuIZKpKFb97X8ldH"
+uri = "file://screenshots/vb23/C-underpaid-409-simulated-api.png"
+type = "image"
+title = "Underpaid bill — 409 safeguard"
+description = "Real Vendor Bills page with labelled synthetic API data. The payment guard is separately tested through the actual storage method with an isolated transaction mock."
+logical_id = "b7dec4e8-0537-440d-a82e-63236c60a051"
+content_hash = "sha256:3b66b4952794bea2d697a943394529f9f44f6d233e3511bd6560478a1cd87361"
+size = 101169
+mtime_ms = 1790091082270
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b7dec4e8-0537-440d-a82e-63236c60a051/adc77edf-69e7-481c-a24b-0e65ad5b48de"
+storage_version_token = "1790091293230788"
+content_type = "image/png"
+
+[[outputs]]
+id = "eLdic3124QvEH9lu2BuUg"
+uri = "file://screenshots/vb23/F-paid-timestamp-user-bank.png"
+type = "image"
+title = "PAID timeline — timestamp, user and bank"
+description = "Real Vendor Bills page with labelled synthetic API data. The payment guard is separately tested through the actual storage method with an isolated transaction mock."
+logical_id = "57b6d99d-487d-46c8-b705-34fff28e6a62"
+content_hash = "sha256:c1a4eb629323e82f428e5f8411f47cbcff7762a30d4e00f76156d1177c48d1a8"
+size = 92656
+mtime_ms = 1790091080198
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/57b6d99d-487d-46c8-b705-34fff28e6a62/42a2cd69-8b49-488c-bb1f-b849b4fa8e0c"
+storage_version_token = "1790091294867380"
+content_type = "image/png"
+
+[[outputs]]
+id = "o-zKEphV5dAWgGdNqhcX5"
+uri = "file://screenshots/vb23/G-legacy-paid-no-bank.png"
+type = "image"
+title = "Older paid bill — no bank recorded"
+description = "Real Vendor Bills page with labelled synthetic API data. The payment guard is separately tested through the actual storage method with an isolated transaction mock."
+logical_id = "374f0788-3711-48be-8863-62f03c8fd910"
+content_hash = "sha256:e3030b0cb25a293f126c8cedbb8da3bab510e8e91c9d62eb957f54f0cb835823"
+size = 86315
+mtime_ms = 1790091086070
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/374f0788-3711-48be-8863-62f03c8fd910/919b6343-3d0d-4ac4-99b6-e2d3fad4fd06"
+storage_version_token = "1790091296667912"
+content_type = "image/png"

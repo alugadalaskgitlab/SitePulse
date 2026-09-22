@@ -1,0 +1,23 @@
+{
+  "disclosure": "Production VendorBills component mounted with synthetic in-memory API. 409 screenshot is simulated API; separate storage guard tests exercise production storage.",
+  "assertions": [
+    "A: draft/verified read-only; approved fields visible",
+    "B: cumulative amount/account saved, simulated API paid success",
+    "F: timestamp + actor + resolved bank shown",
+    "C: simulated 409 rendered by real status mutation; status stays approved",
+    "D: equipment fields/save/paid flow unchanged",
+    "E: material visibility, input gates, and payload unaffected",
+    "G: legacy paid timestamp/actor preserved, bank omitted"
+  ],
+  "screenshots": [
+    "screenshots/vb23/A-draft-read-only.png",
+    "screenshots/vb23/A-verified-read-only.png",
+    "screenshots/vb23/A-approved-combined-payment-inputs.png",
+    "screenshots/vb23/B-combined-paid-success.png",
+    "screenshots/vb23/F-paid-timestamp-user-bank.png",
+    "screenshots/vb23/C-underpaid-409-simulated-api.png",
+    "screenshots/vb23/D-equipment-regression.png",
+    "screenshots/vb23/E-material-regression.png",
+    "screenshots/vb23/G-legacy-paid-no-bank.png"
+  ]
+}
