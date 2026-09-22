@@ -13,6 +13,7 @@ import { vi, describe, it, expect, beforeAll } from "vitest";
 import express from "express";
 import { createServer } from "http";
 import request from "supertest";
+import { getTableName } from "drizzle-orm";
 
 vi.mock("../server/push", () => ({
   sendPushToAll: vi.fn().mockResolvedValue(undefined),
@@ -84,15 +85,18 @@ function stubTx(f: Fixture) {
       return { rows: [{ id: 1, balance: f.balance, uom: "Liters" }] };
     }),
     select: vi.fn(() => ({
-      from: (table: any) => ({
-        where: () => ({
-          limit: async () => {
-            // material_receipts select vs plant_materials select — receipt first, then material
-            if (!tx._selectedReceipt) { tx._selectedReceipt = true; return f.receipt ? [f.receipt] : []; }
-            return f.material ? [f.material] : [];
-          },
-        }),
-      }),
+      from: (table: any) => {
+        // PI reconciliation now reads linkage tables in the same transaction.
+        // This fixture intentionally has no PI links; retain real stock checks.
+        const name = getTableName(table);
+        const rows = name === "material_receipts" ? (f.receipt ? [f.receipt] : [])
+          : name === "plant_materials" ? (f.material ? [f.material] : []) : [];
+        const chain: any = {
+          where: () => chain, limit: () => chain, for: () => chain,
+          then: (resolve: any, reject: any) => Promise.resolve(rows).then(resolve, reject),
+        };
+        return chain;
+      },
     })),
     insert: vi.fn(() => ({ values: (v: any) => { calls.ledgerInserts.push(v); return { returning: async () => [{ id: 5, ...v }] }; } })),
     update: vi.fn(() => ({ set: (v: any) => ({ where: () => ({ returning: async () => { calls.receiptUpdates.push(v); return [{ ...f.receipt, ...v }]; } }) }) })),

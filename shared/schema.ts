@@ -1872,6 +1872,7 @@ export const purchaseIndentItems = pgTable("purchase_indent_items", {
   approvedQty: real("approved_qty"),
   purchaseStatus: text("purchase_status"),
   qtyPurchased: real("qty_purchased"),
+  deliveredQty: real("delivered_qty").notNull().default(0),
   vendor: text("vendor"),
   billNo: text("bill_no"),
   rate: real("rate"),
@@ -1938,7 +1939,7 @@ export const purchaseIndentItemHistoryRelations = relations(purchaseIndentItemHi
 }));
 
 export const insertPurchaseIndentSchema = createInsertSchema(purchaseIndents).omit({ id: true, createdAt: true });
-export const insertPurchaseIndentItemSchema = createInsertSchema(purchaseIndentItems).omit({ id: true });
+export const insertPurchaseIndentItemSchema = createInsertSchema(purchaseIndentItems).omit({ id: true, deliveredQty: true });
 export const insertPurchaseIndentItemHistorySchema = createInsertSchema(purchaseIndentItemHistory).omit({ id: true, actionAt: true });
 export type PurchaseIndent = typeof purchaseIndents.$inferSelect;
 export type PurchaseIndentItem = typeof purchaseIndentItems.$inferSelect;

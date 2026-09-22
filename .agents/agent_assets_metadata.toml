@@ -1753,3 +1753,101 @@ mtime_ms = 1790053141182
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b9f7a92e-e364-4a38-95e2-1afd1d51f7f0/78bf52f8-2775-498d-a3c5-aa2bba2c786f"
 storage_version_token = "1790053613889439"
 content_type = "image/png"
+
+[[outputs]]
+id = "qUR4VwnlEflUZLLmQxqmZ"
+uri = "file://screenshots/pi01/A-site-scoped-numbers-two-sites-SYNTHETIC.png"
+type = "image"
+title = "A/B — Site numbering"
+description = "Real Purchase Indents component with labelled synthetic API data. Backend behavior separately tested using isolated PostgreSQL."
+logical_id = "01e8a7ff-ad40-4b94-85e5-d181312ddd18"
+content_hash = "sha256:9f0e8ec54eacaf3c253304a6c15f3980d3896ce0cf3388c2e1fd0dfe9165148a"
+size = 189179
+mtime_ms = 1790057479026
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/01e8a7ff-ad40-4b94-85e5-d181312ddd18/be790df4-e791-42c8-9ba7-0aca8b06b34f"
+storage_version_token = "1790058929326172"
+content_type = "image/png"
+
+[[outputs]]
+id = "J8fGK2OT9FFHt2q8-k4Uk"
+uri = "file://screenshots/pi01/C1-bulk-form-hides-spec-and-part-fields-SYNTHETIC.png"
+type = "image"
+title = "C — Bulk item form"
+description = "Real Purchase Indents component with labelled synthetic API data. Backend behavior separately tested using isolated PostgreSQL."
+logical_id = "add2f89f-8b48-41b9-9fe3-c83d37409b38"
+content_hash = "sha256:584ddc675738a3a66712daa621b9b498d6527fd1f496eda72857dfe617fb7995"
+size = 117585
+mtime_ms = 1790057480170
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/add2f89f-8b48-41b9-9fe3-c83d37409b38/06ea873e-3223-4d93-8f56-37819b136bb4"
+storage_version_token = "1790058931228447"
+content_type = "image/png"
+
+[[outputs]]
+id = "HP6CREHYg5ghpYshWF3tf"
+uri = "file://screenshots/pi01/C2-store-form-keeps-spec-and-part-fields-SYNTHETIC.png"
+type = "image"
+title = "C — Store item form"
+description = "Real Purchase Indents component with labelled synthetic API data. Backend behavior separately tested using isolated PostgreSQL."
+logical_id = "55fd08b1-037e-4168-8aef-25b472005a40"
+content_hash = "sha256:7946b51fe491a7122d409274532fb8b58001c922f928020d95e0b6bc6f5b7984"
+size = 123962
+mtime_ms = 1790057480638
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/55fd08b1-037e-4168-8aef-25b472005a40/4babba69-1af3-4671-9c09-cc7d855c90ea"
+storage_version_token = "1790058933137920"
+content_type = "image/png"
+
+[[outputs]]
+id = "f0e8wZUz8aOauwUbiBFwc"
+uri = "file://screenshots/pi01/D-partial-overdue-progress-600-of-1500-SYNTHETIC.png"
+type = "image"
+title = "D — Partial delivery progress"
+description = "Real Purchase Indents component with labelled synthetic API data. Backend behavior separately tested using isolated PostgreSQL."
+logical_id = "6bc88f65-fcad-4909-92d8-c9b1452e8e56"
+content_hash = "sha256:8edd3fca6a485a0aed09ef07d61b044353ebd8787824ad630c2243d5bdc39acd"
+size = 135161
+mtime_ms = 1790057481242
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/6bc88f65-fcad-4909-92d8-c9b1452e8e56/76ed8dd1-288b-4110-a323-219074436a90"
+storage_version_token = "1790058935102119"
+content_type = "image/png"
+
+[[outputs]]
+id = "3t4PV8T2w1j3kydpH1TTV"
+uri = "file://screenshots/pi01/E-fully-delivered-after-date-not-overdue-SYNTHETIC.png"
+type = "image"
+title = "E — Fully delivered"
+description = "Real Purchase Indents component with labelled synthetic API data. Backend behavior separately tested using isolated PostgreSQL."
+logical_id = "dac369e3-9e62-4514-8a33-87c697210e60"
+content_hash = "sha256:ec048a38e267a9faf88f881e25138f61e522591a1463ded945cc1df6b3d5b9e7"
+size = 136756
+mtime_ms = 1790057481742
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/dac369e3-9e62-4514-8a33-87c697210e60/d6737835-3bd3-4bab-aa10-ca457e7918f4"
+storage_version_token = "1790058937089589"
+content_type = "image/png"
+
+[[outputs]]
+id = "9MCNyFW9-aJHvxB28nzXr"
+uri = "file://screenshots/pi01/F-required-destination-selection-site-SYNTHETIC.png"
+type = "image"
+title = "F — Destination confirmation"
+description = "Real Purchase Indents component with labelled synthetic API data. Backend behavior separately tested using isolated PostgreSQL."
+logical_id = "67e38540-629a-4352-aa3e-b3f32efc973a"
+content_hash = "sha256:6028892b91530a29197ad53b1625c9aba3686342e95a4f49989d4af7b342da07"
+size = 137067
+mtime_ms = 1790057482530
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/67e38540-629a-4352-aa3e-b3f32efc973a/b9574e7c-5723-4a1c-99c8-6ce2ffda7a64"
+storage_version_token = "1790058939100462"
+content_type = "image/png"
+
+[[outputs]]
+id = "-b6S2FUpONlVqJtakH1YB"
+uri = "file://screenshots/pi01/G-combined-plant-receipt-and-site-trip-SYNTHETIC.png"
+type = "image"
+title = "G — Combined receipts and trips"
+description = "Real Purchase Indents component with labelled synthetic API data. Backend behavior separately tested using isolated PostgreSQL."
+logical_id = "3b422fc9-1b15-4936-b614-5991af183056"
+content_hash = "sha256:e838bdf7e3301ff274c7fae6ce699162a8bd9274c697c8231e94de26cf1afebd"
+size = 136175
+mtime_ms = 1790057483054
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/3b422fc9-1b15-4936-b614-5991af183056/70cc2b33-488d-4b81-ba37-fdd33eaea300"
+storage_version_token = "1790058941096386"
+content_type = "image/png"

@@ -1,0 +1,43 @@
+{
+  "scenario": "PI-01 real PurchaseIndents component browser verification with intercepted synthetic APIs",
+  "limitation": "UI/component evidence only. This does not prove backend sequencing, persistence, reconciliation, migrations, or production data.",
+  "safety": {
+    "productionDatabaseUsed": false,
+    "productionApiWrites": false,
+    "mountedProductionComponent": "client/src/pages/PurchaseIndents.tsx",
+    "interception": "Every /api request was intercepted by tests/fixtures/pi01/main.tsx.",
+    "vitePort": 4195,
+    "cdpPort": 9345
+  },
+  "screenshots": [
+    "/home/runner/workspace/screenshots/pi01/A-site-scoped-numbers-two-sites-SYNTHETIC.png",
+    "/home/runner/workspace/screenshots/pi01/B-same-site-counter-shared-by-bulk-and-store-SYNTHETIC.png",
+    "/home/runner/workspace/screenshots/pi01/C1-bulk-form-hides-spec-and-part-fields-SYNTHETIC.png",
+    "/home/runner/workspace/screenshots/pi01/C2-store-form-keeps-spec-and-part-fields-SYNTHETIC.png",
+    "/home/runner/workspace/screenshots/pi01/D-partial-overdue-progress-600-of-1500-SYNTHETIC.png",
+    "/home/runner/workspace/screenshots/pi01/E-fully-delivered-after-date-not-overdue-SYNTHETIC.png",
+    "/home/runner/workspace/screenshots/pi01/F-required-destination-selection-site-SYNTHETIC.png",
+    "/home/runner/workspace/screenshots/pi01/G-combined-plant-receipt-and-site-trip-SYNTHETIC.png"
+  ],
+  "verified": {
+    "A_syntheticSiteScopedNumbersRendered": true,
+    "B_syntheticSameSiteCounterSharedAcrossTypes": true,
+    "C_realFormConditionalFields": {
+      "bulkHidden": true,
+      "storeVisible": true
+    },
+    "D_realProgressRendererPartialPastDue": "600 of 1,500 MT delivered — partially delivered · past required date",
+    "E_realProgressRendererFullDelivered": "Delivered — 1,500 of 1,500 MT delivered",
+    "F_realDestinationControlAndInterceptedPatch": {
+      "indentId": 1,
+      "itemId": 103,
+      "receivingLocation": "site",
+      "receivingSiteId": 22
+    },
+    "G_realCombinedEvidenceRenderer": {
+      "plantReceipt": "400 MT",
+      "siteTrip": "200 MT"
+    }
+  },
+  "interceptedRequestCount": 20
+}

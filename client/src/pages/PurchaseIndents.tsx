@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect, type ComponentType } from "react";
+import { deliveryProgress, DestinationFields, PurchaseIndentDeliveryPanel } from "@/components/purchase-indent-delivery";
 import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useUpload } from "@/hooks/use-upload";
@@ -829,6 +830,8 @@ export default function PurchaseIndents() {
     payerName: string;
     purchaseDate: string;
     expectedDeliveryDate: string;
+    receivingLocation?: string;
+    receivingSiteId?: string;
     billNo: string;
     remarks: string;
   };
@@ -851,7 +854,7 @@ export default function PurchaseIndents() {
   const [bulkReceiptOpen, setBulkReceiptOpen] = useState(false);
   type BulkReceiptItemData = { qty: string; uom: string; vendor: string; rate: string; receiptDate: string; remarks: string; partyId: string };
   const [bulkReceiptData, setBulkReceiptData] = useState<Record<number, BulkReceiptItemData>>({});
-  const [bulkReceivingLocation, setBulkReceivingLocation] = useState<string>("hmp_plant");
+  const [bulkReceivingLocation, setBulkReceivingLocation] = useState<string>("");
   const [bulkReceivingSiteId, setBulkReceivingSiteId] = useState<number | null>(null);
 
   // Service / Hire route — completion verification dialog
@@ -2071,7 +2074,7 @@ export default function PurchaseIndents() {
 
     const itemRows = indent.items.map((item, i) => {
       const approvedCell = item.approvedQty != null ? `${item.approvedQty} ${esc(item.uom)}` : "—";
-      const statusCell = item.purchaseStatus ? esc(item.purchaseStatus.toUpperCase()) : (item.cancelledBy ? "CANCELLED" : "—");
+      const statusCell = (indent as any).piType === "material" ? esc(deliveryProgress(item)) : item.purchaseStatus ? esc(item.purchaseStatus.toUpperCase()) : (item.cancelledBy ? "CANCELLED" : "—");
       return `
         <tr style="border-bottom:1px solid #e5e7eb;">
           <td style="padding:6px 8px;font-weight:600;">${i + 1}. ${esc(item.description)}</td>
@@ -2390,6 +2393,20 @@ export default function PurchaseIndents() {
         )}
       </div>
 
+      {selectedIndent && !["list", "form", "report"].includes(view) && (selectedIndent as any).piType === "material" && (
+        <Card data-testid="bulk-delivery-tracking">
+          <CardHeader><CardTitle className="text-base">Bulk delivery tracking</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            {selectedIndent.items.map(item => <PurchaseIndentDeliveryPanel key={`${selectedIndent.id}-${item.id}`} item={item} indentId={selectedIndent.id} indentNo={selectedIndent.indentNo} sites={allSites} canEdit={canEdit}
+              onSave={async (itemId, receivingLocation, receivingSiteId) => {
+                await apiRequest("PATCH", `/api/purchase-indents/${selectedIndent.id}/items/${itemId}/destination`, { receivingLocation, receivingSiteId });
+                await queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
+                await queryClient.invalidateQueries({ queryKey: ["/api/pending-plant-receipts"] });
+              }} />)}
+          </CardContent>
+        </Card>
+      )}
+
       {view === "list" && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -2563,7 +2580,8 @@ export default function PurchaseIndents() {
                             <div className="mt-2.5 flex flex-wrap gap-1.5">
                               {indent.items.slice(0, 5).map(item => (
                                 <span key={item.id} className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-white dark:bg-slate-800 text-gray-800 dark:text-slate-200 border border-gray-300 dark:border-slate-600">
-                                  {item.description}{(item as any).spec ? ` · ${(item as any).spec}` : ""} — {item.qty} {item.uom}
+                                  {item.description}{(indent as any).piType !== "material" && (item as any).spec ? ` · ${(item as any).spec}` : ""} — {item.qty} {item.uom}
+                                  {(indent as any).piType === "material" && <span data-testid={`list-delivery-progress-${item.id}`}> · {deliveryProgress(item)}</span>}
                                 </span>
                               ))}
                               {indent.items.length > 5 && (
@@ -2853,7 +2871,7 @@ export default function PurchaseIndents() {
                           data-testid={`input-item-desc-${index}`}
                         />
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
+                      {formPiType !== "material" && <div className="grid grid-cols-2 gap-2">
                         <div>
                           <Label className="text-sm">SPEC / DIMENSIONS <span className="font-normal text-muted-foreground">(optional)</span></Label>
                           <Input
@@ -2874,7 +2892,7 @@ export default function PurchaseIndents() {
                             data-testid={`input-item-partno-${index}`}
                           />
                         </div>
-                      </div>
+                      </div>}
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                         <div>
                           <Label className="text-sm">QTY</Label>
@@ -3096,7 +3114,7 @@ export default function PurchaseIndents() {
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-sm font-bold text-muted-foreground">#{idx + 1}</span>
                               <span className="font-semibold uppercase text-sm">{item.description}</span>
-                              {(item as any).spec && <span className="text-sm text-slate-800 dark:text-slate-100 italic font-normal">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</span>}
+                              {(selectedIndent as any).piType !== "material" && (item as any).spec && <span className="text-sm text-slate-800 dark:text-slate-100 italic font-normal">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</span>}
                               {getPriorityBadge(item.priority)}
                               {!isVerified && <Badge variant="outline" className="text-sm bg-slate-50 text-slate-600 border-slate-300">PENDING</Badge>}
                               {isVerified && (
@@ -3455,7 +3473,7 @@ export default function PurchaseIndents() {
                           <div className="flex justify-between items-start">
                             <div>
                               <h3 className={`font-semibold text-sm ${st.action==='rejected'?'line-through text-red-800 dark:text-red-300':st.action==='approved'?'text-emerald-900 dark:text-emerald-300':'text-amber-900 dark:text-amber-300'}`}>{index+1}. {item.description}</h3>
-                              {(item as any).spec && <p className="text-sm text-slate-800 dark:text-slate-100 italic mt-0.5">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
+                              {(selectedIndent as any).piType !== "material" && (item as any).spec && <p className="text-sm text-slate-800 dark:text-slate-100 italic mt-0.5">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
                             </div>
                             <div className="shrink-0 text-right">
                               <span className={`font-bold text-sm ${st.action==='rejected'?'text-red-700':st.action==='approved'?'text-emerald-700':'text-amber-700'}`}>{st.action==='modified'?st.approvedQty:item.qty} {item.uom}</span>
@@ -3483,7 +3501,7 @@ export default function PurchaseIndents() {
                           <div className="flex justify-between items-start gap-2">
                             <div className="flex-1 min-w-0">
                               <p className="font-bold text-gray-900 dark:text-gray-100">{index+1}. {item.description}</p>
-                              {(item as any).spec && <p className="text-sm text-slate-800 dark:text-slate-100 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
+                              {(selectedIndent as any).piType !== "material" && (item as any).spec && <p className="text-sm text-slate-800 dark:text-slate-100 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
                               <p className="text-sm text-gray-700 dark:text-gray-300">FOR: {item.purpose}</p>
                             </div>
                             <div className="text-right shrink-0">
@@ -3863,6 +3881,12 @@ export default function PurchaseIndents() {
                                     {/* Fields for "ordered" */}
                                     {isOrdered && (
                                       <>
+                                        {(isMat || ["material", "bulk_plant"].includes(route)) && <DestinationFields
+                                          value={purchaserActionData[item.id]?.receivingLocation || ""}
+                                          siteId={purchaserActionData[item.id]?.receivingSiteId || ""}
+                                          sites={allSites} id={`order-${item.id}`}
+                                          onChange={(location, siteId) => setPurchaserActionData(prev => ({ ...prev, [item.id]: { ...pd, receivingLocation: location, receivingSiteId: siteId } }))}
+                                        />}
                                         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                                           <div><Label className="text-sm">QTY ORDERED ({item.uom})</Label><Input type="number" min={0} max={approvedQty} value={pd.qty} onChange={e => updField("qty", e.target.value)} data-testid={`input-pa-qty-${item.id}`} /></div>
                                           <div><Label className="text-sm">VENDOR / SUPPLIER</Label><Input value={pd.vendor} onChange={e => updField("vendor", e.target.value)} onBlur={e => updField("vendor", e.target.value.toUpperCase())} placeholder="Optional" className="uppercase" data-testid={`input-pa-vendor-${item.id}`} /></div>
@@ -3981,6 +4005,9 @@ export default function PurchaseIndents() {
                                 const pd = purchaserActionData[aItem.id] ?? { purchaseActionType: defaultAt, qty: String(aItem.approvedQty ?? aItem.qty), orderNo: "", orderedByName: "", vendor: "", rate: "", paymentMode: "cash", paidBy: "company", payerName: "", purchaseDate: format(new Date(), "yyyy-MM-dd"), expectedDeliveryDate: "", billNo: "", remarks: "" };
                                 const at = pd.purchaseActionType;
                                 if (at === "not_available") continue;
+                                if ((isMat || ["material", "bulk_plant"].includes((aItem as any).procurementRoute)) && at === "ordered" && (!purchaserActionData[aItem.id]?.receivingLocation || (purchaserActionData[aItem.id]?.receivingLocation === "site" && !purchaserActionData[aItem.id]?.receivingSiteId))) {
+                                  toast({ title: "Destination required", description: `Select Plant or Site (and receiving site) for ${aItem.description}`, variant: "destructive" }); return;
+                                }
                                 if (at === "recommend_cancellation") { if (!pd.remarks.trim()) { toast({ title: "Reason required", description: `Enter reason for recommending cancellation: ${aItem.description}`, variant: "destructive" }); return; } continue; }
                                 if (!parseFloat(pd.qty) || parseFloat(pd.qty) <= 0) { toast({ title: "Invalid quantity", description: `Enter a valid quantity for: ${aItem.description}`, variant: "destructive" }); return; }
                                 if (!parseFloat(pd.rate) || parseFloat(pd.rate) <= 0) { toast({ title: "Rate required", description: `Enter rate for: ${aItem.description}`, variant: "destructive" }); return; }
@@ -3996,6 +4023,8 @@ export default function PurchaseIndents() {
                                 return {
                                   itemId: item.id,
                                   purchaseActionType: at,
+                                  receivingLocation: purchaserActionData[item.id]?.receivingLocation || null,
+                                  receivingSiteId: Number(purchaserActionData[item.id]?.receivingSiteId) || null,
                                   qty: (at === "not_available" || at === "recommend_cancellation") ? 0 : (parseFloat(pd.qty) || (item.approvedQty ?? item.qty)),
                                   orderNo: pd.orderNo || null,
                                   orderedByName: pd.orderedByName || currentUser?.fullName || null,
@@ -4058,7 +4087,7 @@ export default function PurchaseIndents() {
                   </CardHeader>
                   <CardContent className="py-3 px-4 space-y-2">
                     {selectedIndent.items
-                      .filter(item => (item.approvedQty ?? 0) > 0 && (item.totalAcceptedQty ?? 0) < (item.approvedQty ?? 0))
+                      .filter(item => ["hmp_plant", "rmc_plant"].includes((item as any).receivingLocation) && (item.approvedQty ?? 0) > 0 && (item.totalAcceptedQty ?? 0) < (item.approvedQty ?? 0))
                       .map(item => {
                         const remaining = (item.approvedQty ?? item.qty) - (item.totalAcceptedQty ?? 0);
                         return (
@@ -4187,7 +4216,7 @@ export default function PurchaseIndents() {
                             <div className="flex justify-between items-start">
                               <div>
                                 <h3 className="font-semibold text-gray-500 dark:text-gray-400 line-through">{realIndex + 1}. {item.description}</h3>
-                                {(item as any).spec && <p className="text-sm text-slate-600 dark:text-slate-300 italic line-through">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
+                                {(selectedIndent as any).piType !== "material" && (item as any).spec && <p className="text-sm text-slate-600 dark:text-slate-300 italic line-through">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
                                 <p className="text-sm text-gray-400 mt-0.5">{item.qty} {item.uom} · FOR: {item.purpose}</p>
                               </div>
                             </div>
@@ -4204,7 +4233,7 @@ export default function PurchaseIndents() {
                         return (
                           <div key={item.id} className="border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800/30 p-4 opacity-70" data-testid={`card-procure-item-${item.id}`}>
                             <h3 className="font-semibold text-gray-500 dark:text-gray-400 line-through">{realIndex + 1}. {item.description}</h3>
-                            {(item as any).spec && <p className="text-sm text-slate-600 dark:text-slate-300 italic line-through">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
+                            {(selectedIndent as any).piType !== "material" && (item as any).spec && <p className="text-sm text-slate-600 dark:text-slate-300 italic line-through">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
                             <p className="text-sm text-gray-400 mt-1">Cancelled{item.cancelledBy ? ` by ${item.cancelledBy}` : ""}
                               {item.purchaseRemarks ? ` · ${item.purchaseRemarks}` : ""}</p>
                           </div>
@@ -4217,7 +4246,7 @@ export default function PurchaseIndents() {
                             <div className="flex justify-between items-start mb-1.5">
                               <div>
                                 <h3 className="font-semibold text-emerald-900 dark:text-emerald-300">{realIndex + 1}. {item.description}</h3>
-                                {(item as any).spec && <p className="text-sm text-slate-800 dark:text-slate-100 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
+                                {(selectedIndent as any).piType !== "material" && (item as any).spec && <p className="text-sm text-slate-800 dark:text-slate-100 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
                                 <p className="text-sm text-emerald-700 dark:text-emerald-400 mt-0.5">{approvedQty} {item.uom} approved</p>
                               </div>
                             </div>
@@ -4280,7 +4309,7 @@ export default function PurchaseIndents() {
                             <div className="flex justify-between items-start mb-1.5">
                               <div>
                                 <h3 className={`font-semibold ${isPartialDelivery ? "text-amber-900 dark:text-amber-300" : "text-blue-900 dark:text-blue-300"}`}>{realIndex + 1}. {item.description}</h3>
-                                {(item as any).spec && <p className="text-sm text-slate-800 dark:text-slate-100 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
+                                {(selectedIndent as any).piType !== "material" && (item as any).spec && <p className="text-sm text-slate-800 dark:text-slate-100 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
                                 <p className={`text-sm mt-0.5 ${isPartialDelivery ? "text-amber-700 dark:text-amber-400" : "text-blue-600 dark:text-blue-400"}`}>
                                   {approvedQty} {item.uom}
                                   {isPartialDelivery && deliveredSoFar > 0 && ` · ${deliveredSoFar} received, ${Number((approvedQty - deliveredSoFar).toFixed(2))} remaining`}
@@ -4417,7 +4446,7 @@ export default function PurchaseIndents() {
                               <div className="flex justify-between items-start mb-1.5">
                                 <div>
                                   <h3 className="font-semibold text-violet-900 dark:text-violet-300">{realIndex + 1}. {item.description}</h3>
-                                  {(item as any).spec && <p className="text-sm italic text-violet-700 dark:text-violet-400">{(item as any).spec}</p>}
+                                  {(selectedIndent as any).piType !== "material" && (item as any).spec && <p className="text-sm italic text-violet-700 dark:text-violet-400">{(item as any).spec}</p>}
                                   <p className="text-sm text-violet-600 dark:text-violet-400 mt-0.5">{approvedQty} {item.uom} approved · FOR: {item.purpose}</p>
                                 </div>
                                 <span className="shrink-0 inline-flex items-center text-xs font-bold text-violet-700 bg-violet-100 border border-violet-300 rounded-full px-2.5 py-1 ml-2">{paTx.expectedDeliveryDate ? "Ordered — Awaiting Delivery" : "Purchase Recorded — Awaiting Receipt"}</span>
@@ -4473,7 +4502,7 @@ export default function PurchaseIndents() {
                           <div className="flex justify-between items-start mb-2">
                             <div className="flex-1 min-w-0">
                               <h3 className="font-bold text-gray-900 dark:text-gray-100">{realIndex + 1}. {item.description}</h3>
-                              {(item as any).spec && <p className="text-sm text-slate-800 dark:text-slate-100 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
+                              {(selectedIndent as any).piType !== "material" && (item as any).spec && <p className="text-sm text-slate-800 dark:text-slate-100 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
                               <p className="text-sm text-gray-700 dark:text-gray-300 mt-0.5">{approvedQty} {item.uom} approved · FOR: {item.purpose}</p>
                             </div>
                             <span className="shrink-0 inline-flex items-center text-xs font-bold text-orange-700 bg-orange-50 border border-orange-200 rounded-full px-2.5 py-1 ml-2">
@@ -4629,10 +4658,9 @@ export default function PurchaseIndents() {
                                   const locLabels: Record<string, string> = { hmp_plant: "HMP Plant", rmc_plant: "RMC Plant" };
                                   const locName = isSite
                                     ? (receivingSite?.name ?? `Site #${ppr?.receivingSiteId}`)
-                                    : (locLabels[ppr?.receivingLocation ?? "hmp_plant"] ?? "HMP Plant");
+                                    : (locLabels[ppr?.receivingLocation ?? ""] ?? "Destination not confirmed");
                                   if (isSite) {
-                                    const itemTrips = indentSiteTrips.filter((t: any) => t.indentItemId === item.id);
-                                    const totalDelivered = itemTrips.reduce((sum: number, t: any) => sum + (t.quantity || 0), 0);
+                                    const totalDelivered = Number((item as any).deliveredQty ?? 0);
                                     const purchasedQty = ppr?.qty ?? (item as any).totalPurchasedQty ?? 0;
                                     const balance = Math.max(0, purchasedQty - totalDelivered);
                                     return (
@@ -4673,7 +4701,7 @@ export default function PurchaseIndents() {
                                     onClick={() => {
                                       const paTx = piTxns.filter((t: any) => t.indentItemId === item.id && t.transactionType === "purchaser_action").slice(-1)[0] as any;
                                       setBulkReceiptData(prev => ({ ...prev, [item.id]: { qty: paTx?.qty?.toString() || (item.approvedQty ?? item.qty).toString(), uom: item.uom, vendor: paTx?.vendor || "", rate: paTx?.rate?.toString() || "", receiptDate: format(new Date(), "yyyy-MM-dd"), remarks: "", partyId: "" } }));
-                                      setBulkReceivingLocation("hmp_plant");
+                                      setBulkReceivingLocation("");
                                       setBulkReceivingSiteId(null);
                                       setBulkReceiptOpen(true);
                                     }}
@@ -4836,7 +4864,7 @@ export default function PurchaseIndents() {
                   <Button variant="outline" onClick={() => setBulkReceiptOpen(false)} data-testid="button-cancel-bulk-receipt">Cancel</Button>
                   <Button
                     className="bg-amber-600 hover:bg-amber-700 text-white"
-                    disabled={bulkReceiptMutation.isPending}
+                    disabled={bulkReceiptMutation.isPending || !bulkReceivingLocation || (bulkReceivingLocation === "site" && !bulkReceivingSiteId)}
                     onClick={() => bulkReceiptMutation.mutate({
                       receivingLocation: bulkReceivingLocation,
                       receivingSiteId: bulkReceivingSiteId,

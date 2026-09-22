@@ -47,12 +47,19 @@ describe("vehicle supplier association persistence safeguards", () => {
       storage.indexOf("private async checkSiteDeliveryCompletion"),
     );
     expect(lock).toContain("pg_advisory_xact_lock");
-    expect(create.indexOf("await this.lockVehicleSupplierAssociationKey")).toBeLessThan(
-      create.indexOf("getActiveVehicleSupplierHistoryTx"),
-    );
-    // Additive trip fields may be normalized into a copied insert object. Pin
-    // the ordering/invariant rather than the exact object-expression spelling.
-    expect(create).toContain("await tx.insert(siteMaterialTrips).values({");
+    const transactionAt = create.indexOf("db.transaction(async (tx)");
+    const lockAt = create.indexOf("await this.lockVehicleSupplierAssociationKey");
+    const historyAt = create.indexOf("getActiveVehicleSupplierHistoryTx");
+    const insertAt = create.search(/\btx\.insert\(siteMaterialTrips\)\.values\(/);
+    // The insert may be returned by a transactional reconciliation callback,
+    // rather than awaited inline. Require the same tx and actual ordering,
+    // and guard against missing markers falsely satisfying index comparisons.
+    for (const offset of [transactionAt, lockAt, historyAt, insertAt]) {
+      expect(offset).toBeGreaterThanOrEqual(0);
+    }
+    expect(transactionAt).toBeLessThan(lockAt);
+    expect(lockAt).toBeLessThan(historyAt);
+    expect(historyAt).toBeLessThan(insertAt);
     expect(create).toContain("historySupplierSet(history)");
   });
 

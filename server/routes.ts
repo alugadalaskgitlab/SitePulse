@@ -8716,6 +8716,7 @@ export async function registerRoutes(
 
   app.get("/api/purchase-indents", async (req, res) => {
     try {
+      if (!assertView(req, res, "purchase_indents_view")) return;
       const filters = {
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
@@ -8723,7 +8724,13 @@ export async function registerRoutes(
         priority: req.query.priority as string | undefined,
       };
       const indents = await storage.getPurchaseIndents(filters);
-      res.json(indents);
+      const permitted = await getPermittedSiteNames(req);
+      if (permitted === null) return res.json(indents);
+      const sites = await storage.getSites();
+      res.json(indents.filter(indent => {
+        const name = sites.find(site => site.id === indent.siteId)?.name ?? indent.raisedFrom;
+        return !!name && siteMatchesPermitted(name, permitted);
+      }));
     } catch (err) {
       console.error("Error fetching purchase indents:", err);
       res.status(500).json({ message: "Failed to fetch purchase indents" });
@@ -8786,9 +8793,42 @@ export async function registerRoutes(
     }
   });
 
+  async function assertPiDeliveryScope(req: Express.Request, res: Response, indentId: number, destinations: any[] = []) {
+    const indent = await storage.getPurchaseIndent(indentId);
+    if (!indent) { res.status(404).json({ message: "Purchase indent not found" }); return false; }
+    const sites = await storage.getSites();
+    const source = sites.find(s => s.id === indent.siteId)?.name ?? indent.raisedFrom;
+    const permitted = await getPermittedSiteNames(req);
+    if (permitted !== null && (!source || !siteMatchesPermitted(source, permitted))) {
+      res.status(403).json({ message: "Access denied for this site" }); return false;
+    }
+    for (const destination of destinations) {
+      if (destination.receivingLocation === "site") {
+        const site = sites.find(s => s.id === destination.receivingSiteId);
+        if (!site) { res.status(400).json({ message: "Valid receiving site is required" }); return false; }
+        if (!await assertTripSiteAccess(req, res, site.name)) return false;
+      }
+    }
+    return true;
+  }
+
+  app.patch("/api/purchase-indents/:id/items/:itemId/destination", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "site_procurement")) return;
+      const indentId = Number(req.params.id), itemId = Number(req.params.itemId);
+      if (!await assertPiDeliveryScope(req, res, indentId, [req.body])) return;
+      await storage.setPurchaseIndentDestination(indentId, itemId, req.body.receivingLocation, req.body.receivingSiteId, req.authUser?.id ?? 0, currentUserName(req));
+      res.json(await storage.getPurchaseIndent(indentId));
+    } catch (err) {
+      res.status(400).json({ message: (err as Error).message });
+    }
+  });
+
   app.get("/api/purchase-indents/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
+      if (!assertView(req, res, "purchase_indents_view")) return;
+      if (!await assertPiDeliveryScope(req, res, id)) return;
       const indent = await storage.getPurchaseIndent(id);
       if (!indent) {
         return res.status(404).json({ message: "Purchase indent not found" });
@@ -8945,12 +8985,13 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "site_procurement")) return;
       const actionBy = currentUserName(req);
       const { items } = req.body;
-      const indent = await storage.placeOrderIndent(id, items || [], actionBy);
+      if (!await assertPiDeliveryScope(req, res, id, items || [])) return;
+      const indent = await storage.placeOrderIndent(id, items || [], actionBy, req.authUser?.id);
       if (!indent) return res.status(404).json({ message: "Indent not found" });
       res.json(indent);
     } catch (err) {
       console.error("Error placing order:", err);
-      res.status(500).json({ message: "Failed to place order" });
+      res.status(400).json({ message: (err as Error).message });
     }
   });
 
@@ -9889,6 +9930,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "items array is required" });
       }
       // Server-side validation: validate per purchaseActionType
+      if (!await assertPiDeliveryScope(req, res, indentId, items)) return;
       for (const item of items as any[]) {
         const actionType: string = item.purchaseActionType
           ?? (item.reasonCode === "ordered" ? "ordered"
@@ -10047,6 +10089,7 @@ export async function registerRoutes(
 
   app.post("/api/purchase-indents/:id/bulk-receipt", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "site_procurement")) return;
       const indentId = Number(req.params.id);
       const actionBy = currentUserName(req);
       const createdByUserId = req.authUser?.id ?? 0;
@@ -10054,8 +10097,10 @@ export async function registerRoutes(
       if (!Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ message: "items array is required" });
       }
-      const location = (receivingLocation as string) || "hmp_plant";
+      if (!["hmp_plant", "rmc_plant", "site"].includes(receivingLocation)) return res.status(400).json({ message: "Explicit delivery destination is required" });
+      const location = receivingLocation as string;
       const siteId = receivingSiteId ? parseInt(String(receivingSiteId)) : null;
+      if (!await assertPiDeliveryScope(req, res, indentId, [{ receivingLocation: location, receivingSiteId: siteId }])) return;
       await storage.submitBulkReceiptAsPending(indentId, location, siteId, items, createdByUserId, actionBy);
       const indent = await storage.getPurchaseIndent(indentId);
       res.json(indent);

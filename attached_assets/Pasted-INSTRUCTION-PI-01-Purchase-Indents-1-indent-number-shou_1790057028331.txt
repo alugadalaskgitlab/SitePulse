@@ -1,0 +1,76 @@
+INSTRUCTION PI-01: Purchase Indents — (1) indent number should be per-site, not one global counter, (2) Bulk Material indents should not show Spec/Dimensions and Part No/Cat No fields, (3) Required By should track delivered quantity so a partially-delivered bulk item is never wrongly nagged as "late", (4) unify bulk material delivery tracking so every Bulk Material item — whether headed to Plant or straight to Site — has a clear, visible link to its actual receipts/trips, not just the narrow existing path
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Four related but independently-scoped fixes in one batch, all confined to Purchase Indents and its two existing delivery-recording paths (Plant Material Receipts, Site Material Trips). Do not touch DPR-02 through DPR-12, VB-18 through VB-22, or DIESEL-04. Do not change Plant Material Receipts' or Site Material Trips' own recording forms beyond what Fix 4 explicitly asks. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+
+FIX 1 BACKGROUND — INDENT NUMBER IS ONE GLOBAL COUNTER
+`generateIndentNo` (server/storage.ts ~14255-14262) counts ALL purchaseIndents created in the current calendar year, with no filter by site or indent type, and produces `HLC/PI/{year}/{seq}` (e.g. HLC/PI/2026/0004). Every PI across every site and both indent types (Store, Bulk Material) shares this one counter. `createPurchaseIndent` calls this before reading `piType`/`siteId` (~14267).
+
+FIX 2 BACKGROUND — SPEC/PART NO SHOWN FOR BULK MATERIAL TOO
+`purchaseIndentItems.spec` and `.partNo` (shared/schema.ts ~1866-1867) are plain nullable columns with no type discriminator. The item-row form in client/src/pages/PurchaseIndents.tsx (~2856-2874, inside the `formItems.map(...)` block starting ~2823) renders both fields unconditionally — there is no `if (formPiType === ...)` guard, even though the form already has a `formPiType` toggle (state ~782, UI ~2772/2786/2797) that switches the indent's own `piType` and default `procurementRoute`.
+
+FIX 3 BACKGROUND — REQUIRED BY / LATE FLAGGING
+`requiredBy` (shared/schema.ts ~1846) is a single `date` column. Confirmed: there is currently NO "late"/"overdue" flag anywhere in the PI code today — every render site (PurchaseIndents.tsx ~2541-2552, 3496, 3583-3586, 4485-4489) just prints `REQ. BY: <date>` as plain text, no comparison to today's date. There is also no `receivedQty`/`deliveredQty` column on `purchaseIndentItems` — only `qty` (indented) and `qtyPurchased` (ordered) exist. So this is a net-new capability to build carefully, not an existing bug to correct — and the person has explicitly flagged the exact trap to avoid: a bulk material item (e.g. 1500 MT WMM) is delivered gradually over many trips/receipts across days or weeks, so a lateness check that simply compares `requiredBy` to today and flags "late" the moment the date passes — while quantity is still actively arriving — would nag constantly and be wrong. Any lateness signal must be based on delivery progress, not date alone.
+
+FIX 4 BACKGROUND — BULK DELIVERY LINKAGE IS NARROW AND HIDDEN
+Two independent delivery-recording paths exist for a purchased Bulk Material item, gated by `procurementRoute`:
+1. Plant-destined: reconciled only via Plant Material Receipts (`linkedReceiptId` set on the item — server/storage.ts ~14999, 15133, 15418). "Record Delivery" is explicitly BLOCKED for `procurementRoute === "material"` or `"bulk_plant"` items (server/storage.ts ~15573-15575, throws an error directing to Plant Material Receipts instead); client comment confirms this at PurchaseIndents.tsx ~4333.
+2. Site-destined: `siteMaterialTrips` already has `indentId`/`indentItemId`/`piTransactionId` columns (shared/schema.ts ~884-886) for exactly this purpose. BUT this path only activates if the purchaser, when recording the order, explicitly set the associated `pending_plant_receipts` row's `receivingLocation` to `"site"` (schema ~4099-4127). Only then does a "Log Site Delivery" button appear (PurchaseIndents.tsx ~4634-4652) that deep-links into Site Material Trips pre-filled with `piIndentId`/`piItemId`. SiteMaterialTrips.tsx (~41-60, 238-241) reads these query params and stamps `indentId`/`indentItemId` onto the new trip. The PI page then reads linked trips back (`GET /api/site-material-trips?indentId=...`, PurchaseIndents.tsx ~1119-1120) to reconcile delivered-vs-purchased qty per item (~4634-4637).
+Confirmed gap: if `receivingLocation` was never explicitly set to `"site"` at order time (easy to miss, or the item is still in an earlier status), the item has NO delivery-tracking path at all — neither the Plant Receipts route nor the Site Trips route is reachable.
+
+FIX 1 — PER-SITE INDENT NUMBERING
+a. Change `generateIndentNo` to count only PIs raised from the same site (`raisedFrom`/`siteId`, whichever field holds the site — confirm which, they may be the same or `raisedFrom` may reference a site record) within the current calendar year, and compose the number as `HLC/PI/{SITE_CODE}/{year}/{seq}` — using the site's short code/name exactly as it already displays elsewhere in the app (e.g. "ALLADURG"), not a raw ID.
+b. Keep the same reset-per-year behavior, just scoped per site now instead of globally.
+c. This does NOT need to vary by indent type (Store vs Bulk Material) — confirmed per the person's explicit choice, one counter per site covering both types.
+d. Fix the underlying `COUNT(*)+1` race-condition risk while you're in this function if it's a small, safe change (e.g. wrap in the same transaction/lock pattern used elsewhere in this codebase for sequence generation) — but do not let this turn into a larger refactor; if it requires touching unrelated code, leave a note in your report instead.
+
+FIX 2 — HIDE SPEC/PART NO FOR BULK MATERIAL INDENTS
+a. In the item-row form (PurchaseIndents.tsx ~2823-2874), only render Spec/Dimensions and Part No/Cat No when `formPiType` (or the indent's own `piType`, whichever is authoritative in this form) is the Store/stock-item type — not for Bulk Material.
+b. Apply the same conditional to any other place these two fields render for an item (view/detail/print pages) so a Bulk Material item never shows two blank-looking "optional" fields that don't apply to it.
+c. Do not remove the columns or the fields themselves — Store items still need them exactly as today.
+
+FIX 3 — REQUIRED BY STAYS A SINGLE DATE; ADD DELIVERED-QUANTITY TRACKING SO LATENESS REFLECTS PROGRESS, NOT JUST THE CALENDAR
+a. Add a `deliveredQty` (or equivalent, name at your discretion, match existing schema conventions) running total to `purchaseIndentItems`, kept in sync from BOTH delivery paths: increment it when a linked Plant Material Receipt is recorded against the item, and when a linked Site Material Trip is recorded against the item (both paths already exist per Fix 4 background — hook into both, not just one).
+b. Build a lateness/status indicator (a simple label is enough — e.g. "On Track" / "Due Soon" / "Overdue" / "Delivered") computed as: if `deliveredQty >= qtyPurchased` (or `qty` if not yet purchased), the item is always "Delivered" regardless of whether that happened before or after `requiredBy` — never flag a fully-delivered item as late. If not fully delivered and `requiredBy` has passed, show "Overdue" but the wording/tone should reflect PARTIAL delivery where applicable (e.g. "Overdue — 600 of 1500 MT delivered") rather than a flat unexplained "LATE" flag, so it reads as informative progress tracking, not a nag. If `requiredBy` has passed and zero quantity has been delivered, this is the clearest true "late" case — label it plainly.
+c. This status should be visible on the PI list and detail views (reuse existing badge/label patterns already used elsewhere in this app, e.g. the "BOQ"/"Incidental" badge pattern from DPR-12, for visual consistency — your judgment on the closest existing pattern to reuse).
+d. Do not add any push notification, alert, or reminder mechanism for this — display-only status for now, nothing proactive.
+
+FIX 4 — GIVE EVERY BULK MATERIAL ITEM A REACHABLE DELIVERY-TRACKING PATH, NOT JUST THE NARROW EXISTING ONE
+a. Do not remove or break the existing "site-destined" flow (pending_plant_receipts.receivingLocation === "site" → "Log Site Delivery" button → Site Material Trips linkage) — it already works correctly for the case it covers.
+b. For a Bulk Material item that does NOT yet have a `pending_plant_receipts` row with `receivingLocation` set (e.g., not yet ordered, or ordered but destination not yet decided), do not leave it with zero delivery-tracking path. Add a way, once the item reaches "ordered" status, to explicitly record/confirm its intended destination (Plant or Site) directly on the PI item itself — this can be as simple as a required destination selector shown at the point of marking an item "Ordered" — so every ordered Bulk Material item always ends up on one of the two existing reconciliation paths, with no silent gap.
+c. If an item's destination needs to change after ordering (e.g. originally meant for plant, redirected to site partway through), allow that to be corrected — your judgment on the cleanest place for this (e.g. an edit action on the "Order Placed" panel) — without breaking already-recorded receipts/trips linked under the prior destination.
+d. Surface both linked Plant Material Receipts and linked Site Material Trips (whichever apply) directly on the PI item's detail view, with quantities, so the person can see exactly what has arrived and through which path, in one place — not by navigating away to check.
+
+WHAT NOT TO DO
+- Do not split the numbering counter by indent type — per-site only, per the person's explicit choice.
+- Do not remove Spec/Part No for Store items.
+- Do not build any active/push lateness notification — display status only.
+- Do not remove or weaken the existing site-destined delivery-linkage flow — extend it.
+- Do not touch DPR-02 through DPR-12, VB-18 through VB-22, or DIESEL-04.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+Fix 1 and Fix 2 need no schema change (Fix 1 is query-scoping logic; Fix 2 is UI conditional). Fix 3 needs one new nullable/defaulted numeric column (`deliveredQty` or equivalent) on `purchaseIndentItems`, additive only, safe default (0 or null), backfill not required — existing items simply start at 0/unknown until new deliveries update it (note in your report whether a one-time backfill from existing linked receipts/trips is feasible and worth doing, but do not block the rest of this batch on it). Fix 4 needs a nullable destination field on the relevant record (item or the ordering step) if one doesn't already effectively exist via `pending_plant_receipts.receivingLocation` — reuse that column if it's the natural fit rather than adding a duplicate.
+
+TESTS
+A. Raise a Bulk Material PI from Site A and another from Site B in the same week. Confirm each site's numbering is independent (e.g. Site A's 4th PI this year vs Site B's 1st), and the site name/code appears correctly in the number.
+B. Raise a Store Indent and a Bulk Material Indent from the same site. Confirm they share the same per-site counter (not split further by type), consistent with the person's choice.
+C. Create a new Bulk Material indent item and confirm Spec/Dimensions and Part No/Cat No do not appear. Create a new Store indent item and confirm they still appear exactly as before.
+D. Order a Bulk Material item (e.g. 1500 MT WMM), record several partial Plant Material Receipts against it over multiple days spanning past its Required By date, and confirm the status shows informative partial-progress wording (e.g. "600 of 1500 MT delivered") rather than a flat unexplained "Late" flag, right up until full quantity arrives — at which point it shows "Delivered", even though it finished after the date.
+E. Repeat Test D using Site Material Trips instead of Plant Material Receipts (site-destined item) — confirm the same progress-based status works identically for the site-delivery path.
+F. Order a Bulk Material item, do not set any destination, and confirm the new destination-selection step from Fix 4b appears and, once set, correctly routes to the matching delivery path (Plant Receipts or Site Trips) — no item is left untrackable.
+G. Confirm a PI item's detail view shows both linked receipts and linked trips (whichever apply) with quantities, in one place.
+H. Confirm nothing in this batch changes Plant Material Receipts' or Site Material Trips' own entry forms beyond the destination-confirmation step and the existing PI-linkage fields already in place.
+
+REPORT BACK
+1. Confirm Fix 1 with Test A/B evidence (screenshots of PI numbers from two different sites).
+2. Confirm Fix 2 with Test C evidence (screenshots, Bulk vs Store item forms side by side).
+3. Confirm Fix 3 with Test D/E evidence (screenshots showing partial-progress status across a Required By date, and the final "Delivered" state).
+4. Confirm Fix 4 with Test F/G evidence (screenshots of the destination step and the combined receipts+trips view).
+5. Confirm Test H — no unintended changes to Plant Material Receipts/Site Material Trips forms.
+6. Confirm the schema changes applied (new column names, defaults), and whether a backfill of `deliveredQty` from existing linked receipts/trips was done or is still needed.
+7. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
