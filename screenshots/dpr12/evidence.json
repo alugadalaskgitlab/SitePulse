@@ -1,0 +1,20 @@
+{
+  "fixture": "DPR-12 isolated real-component browser verification",
+  "productionDatabaseUsed": false,
+  "productionApiWrites": false,
+  "components": [
+    "DprDetails",
+    "DprEquipmentCompact",
+    "EquipmentStatus"
+  ],
+  "screenshots": {
+    "A": "/home/runner/workspace/screenshots/dpr12/A-incidental-badge.png",
+    "B": "/home/runner/workspace/screenshots/dpr12/B-normal-and-no-site-work.png",
+    "C": "/home/runner/workspace/screenshots/dpr12/C-latest-reading-across-gap.png",
+    "D": "/home/runner/workspace/screenshots/dpr12/D-manual-reading-preserved.png",
+    "E": "/home/runner/workspace/screenshots/dpr12/E-idle-reason-editable-synthetic-save.png",
+    "E2": "/home/runner/workspace/screenshots/dpr12/E2-idle-defaults-reloaded.png",
+    "F": "/home/runner/workspace/screenshots/dpr12/F-legacy-status-unset.png",
+    "G": "/home/runner/workspace/screenshots/dpr12/G-fleet-mixed-explicit-and-not-logged.png"
+  }
+}

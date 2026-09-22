@@ -145,6 +145,8 @@ interface EquipmentEntry {
   structureId: string | null;
   // Batch 6: links this DPR equipment row back to the plant equipment_usage record it closes
   plantUsageId: number | null;
+  usageStatus?: "working" | "idle_no_work" | "idle_no_operator" | "breakdown" | null;
+  usageStatusReason?: string | null;
   openingDiesel?: number | null;
   dieselBalanceInTank?: number | null;
   dieselBalanceConfirmed?: boolean | null;
@@ -1496,7 +1498,7 @@ export default function SiteEntry() {
     if (!header.date || !equipmentId) return;
     // Continuity fallback still guards `row.equipmentId === equipmentId` and
     // `row.openingReading === null` before applying an asynchronous response;
-    // it calls `fetchLatestPriorClosing(equipmentId, header.date)` only after
+    // it calls the site-scoped `fetchLatestPriorClosing` only after
     // the same-day open-record branch returns.
     // 06X-HF2: surface missing site context explicitly rather than silently
     // omitting the site param (the server requires it and returns 400 without it).
@@ -1562,7 +1564,7 @@ export default function SiteEntry() {
       // 06Q: no same-day open Plant record — fall back to the canonical
       // cross-source resolver (including same-day prior segments). Manual entries are never overwritten; a stale response
       // for equipment A can never populate equipment B.
-      const latest = await fetchLatestPriorClosing(equipmentId, header.date, { inclusive: true });
+      const latest = await fetchLatestPriorClosing(equipmentId, header.date, header.site, { inclusive: true });
       if (latest.closingReading == null) return;
       setEquipment(prev => {
         const updated = [...prev];
@@ -1596,6 +1598,7 @@ export default function SiteEntry() {
     }
     for (const e of equipment) {
       if (!e.machine) continue;
+      if (e.usageStatus && e.usageStatus !== "working" && !e.usageStatusReason?.trim()) return false;
       if (e.openingReading !== null && e.closingReading === null) return false;
       if (e.startTime && !e.endTime) return false;
     }
@@ -3266,7 +3269,7 @@ export default function SiteEntry() {
                         />
                       </div>
                     </div>
-                    {usage.warning && (
+                    {usage.warning && entry.usageStatus !== "idle_no_work" && entry.usageStatus !== "idle_no_operator" && (
                       <p className="text-sm text-amber-600 dark:text-amber-400 flex items-center gap-1" data-testid={`warning-equipment-${idx}`}>
                         ⚠ {usage.warning}
                       </p>
@@ -3478,7 +3481,7 @@ export default function SiteEntry() {
                   }] : [])}
                    showTankBalance={false}
                    enableTankContinuity={entry.dieselSource === "plant_stock"}
-                  onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, ...patch } : row))}
+                   onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, ...patch } as EquipmentEntry : row))}
                 />
                 <BreakdownStoppageEditor
                   value={entry.breakdowns ?? []}

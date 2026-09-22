@@ -2456,7 +2456,7 @@ export default function GuidedDpr() {
                             if (!hasOpen && date) {
                               // Inclusive continuity is deliberate: a same-day
                               // prior Site/Plant segment is the correct opening.
-                              fetchLatestPriorClosing(sel.id, date, { inclusive: true }).then((latest) => {
+                              fetchLatestPriorClosing(sel.id, date, siteName, { inclusive: true }).then((latest) => {
                                 if (latest.closingReading == null) return;
                                 setEquipment((p) => p.map((r, j) => {
                                   // Only the row this selection happened on —

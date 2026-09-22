@@ -2,6 +2,7 @@ import { pgTable, text, serial, real, integer, timestamp, date, boolean, index, 
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations, sql } from "drizzle-orm";
+import { equipmentStatusInputError } from "./equipmentStatus";
 
 // === TABLE DEFINITIONS ===
 
@@ -235,6 +236,9 @@ export const equipmentLogs = pgTable("equipment_logs", {
   structureId: text("structure_id"),
   // Batch 6: link back to the equipment_usage row this DPR entry closed
   plantUsageId: integer("plant_usage_id"),
+  // DPR-12 explicit daily outcome. Null preserves legacy "not specified".
+  usageStatus: text("usage_status"), // working | idle_no_work | idle_no_operator | breakdown
+  usageStatusReason: text("usage_status_reason"),
 });
 
 // One physical equipment row may be attributed across several BOQ activities.
@@ -680,6 +684,9 @@ export const equipmentUsage = pgTable("equipment_usage", {
   // Null destinationType is retained for pre-06Y records.
   destinationType: text("destination_type"), // site | hmp | rmc
   sourceUsageId: integer("source_usage_id"), // immutable closed predecessor
+  // DPR-12 explicit daily outcome. Kept separate from lifecycle status above.
+  usageStatus: text("usage_status"), // working | idle_no_work | idle_no_operator | breakdown
+  usageStatusReason: text("usage_status_reason"),
 }, (table) => ({
   dateIdx: index("equipment_usage_date_idx").on(table.date),
   sourceHeatingSessionIdx: index("equipment_usage_source_heating_session_idx").on(table.sourceHeatingSessionId),
@@ -1093,6 +1100,18 @@ export const createDprRequestSchema = insertDprSchema.extend({
     quantity: z.number().finite().positive(),
   })).optional(),
   clientTimestamp: z.string().optional(),
+}).superRefine((input, ctx) => {
+  input.equipment?.forEach((row, index) => {
+    const message = equipmentStatusInputError(row);
+    if (message) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["equipment", index, row.usageStatus && row.usageStatus !== "working"
+          ? "usageStatusReason" : "usageStatus"],
+        message,
+      });
+    }
+  });
 });
 
 export type CreateDprRequest = z.infer<typeof createDprRequestSchema>;

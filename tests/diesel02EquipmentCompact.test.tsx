@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import fs from "node:fs";
 import { DprEquipmentCompact } from "../client/src/components/DprEquipmentCompact";
 import { evaluateDprSubmitReadiness } from "../shared/dprSubmitReadiness";
@@ -411,7 +411,7 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
     vi.stubGlobal("fetch", fetchSpy);
     render(
       <DprEquipmentCompact
-        row={contractorDailyRow}
+        row={{ ...contractorDailyRow, openingReading: 0 }}
         equipment={{ ownership: "hired", vendorName: "Fasi Uddin" }}
         beforeDate="2026-09-01"
         site="SITE A"
@@ -421,6 +421,89 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
 
     await Promise.resolve();
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("carries the true latest closing across date gaps with site scope and preserves zero", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ closingReading: 0, sourceDate: "2026-08-20", source: "dpr_log" }),
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    const onChange = vi.fn();
+    render(
+      <DprEquipmentCompact
+        row={contractorDailyRow}
+        equipment={{ meterType: "hour_meter" }}
+        beforeDate="2026-09-01"
+        site="SITE A"
+        onChange={onChange}
+      />,
+    );
+
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith({ openingReading: 0 }));
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/equipment/7/latest-closing?beforeDate=2026-09-01&site=SITE%20A",
+      { credentials: "include" },
+    );
+  });
+
+  it.each([
+    { label: "manual opening", row: { ...contractorDailyRow, openingReading: 12 } },
+    { label: "linked source", row: { ...contractorDailyRow, plantUsageId: 42 } },
+  ])("does not request meter continuity for $label", async ({ row }) => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    render(
+      <DprEquipmentCompact
+        row={row}
+        equipment={{ meterType: "hour_meter" }}
+        beforeDate="2026-09-01"
+        site="SITE A"
+        onChange={vi.fn()}
+      />,
+    );
+    await Promise.resolve();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("applies an asynchronously carried opening to the idle closing without inventing issued diesel", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ closingReading: 34.5, sourceDate: "2026-08-20", source: "dpr_log" }),
+    }));
+    const onChange = vi.fn();
+    render(
+      <DprEquipmentCompact
+        row={{ ...contractorDailyRow, usageStatus: "idle_no_work", diesel: 6 }}
+        equipment={{ meterType: "hour_meter" }}
+        beforeDate="2026-09-01"
+        site="SITE A"
+        onChange={onChange}
+      />,
+    );
+
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith({
+      openingReading: 34.5,
+      closingReading: 34.5,
+    }));
+    expect(onChange).not.toHaveBeenCalledWith(expect.objectContaining({ dieselBalanceConfirmed: true }));
+    expect(onChange).not.toHaveBeenCalledWith(expect.objectContaining({ diesel: 0 }));
+  });
+
+  it("requires a reason for breakdown without defaulting readings or fuel", () => {
+    const onChange = vi.fn();
+    render(
+      <DprEquipmentCompact
+        row={{ ...contractorDailyRow, usageStatus: "breakdown" }}
+        equipment={{ meterType: "hour_meter" }}
+        onChange={onChange}
+      />,
+    );
+
+    const reason = screen.getByTestId("equipment-compact-usage-reason-0") as HTMLTextAreaElement;
+    expect(reason.required).toBe(true);
+    expect(reason.getAttribute("aria-invalid")).toBe("true");
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it.each(linkedDieselScopeCases)(

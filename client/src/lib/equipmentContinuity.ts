@@ -12,12 +12,13 @@ export interface LatestClosingResult {
 export async function fetchLatestPriorClosing(
   equipmentId: number,
   beforeDate: string,
+  site: string,
   opts?: { inclusive?: boolean },
 ): Promise<LatestClosingResult> {
   try {
     const inc = opts?.inclusive ? "&inclusive=1" : "";
     const res = await fetch(
-      `/api/equipment/${equipmentId}/latest-closing?beforeDate=${encodeURIComponent(beforeDate)}${inc}`,
+      `/api/equipment/${equipmentId}/latest-closing?beforeDate=${encodeURIComponent(beforeDate)}&site=${encodeURIComponent(site)}${inc}`,
       { credentials: "include" },
     );
     if (!res.ok) return { closingReading: null, sourceDate: null, source: null };

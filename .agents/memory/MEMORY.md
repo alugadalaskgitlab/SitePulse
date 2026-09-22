@@ -88,3 +88,4 @@
 - [DPR null-project recovery](dpr-null-project-recovery.md) — unassigned drafts need confirmed attachment; persisted refs block recovery, newly selected refs do not; scope tokens precede validation.
 - [Attachment viewer history](attachment-viewer-history.md) — same-URL overlay Back must preserve dirty routed forms; URL restoration alone cannot recover unmounted state.
 - [Rate-card manual provenance](vendor-rate-card-manual-provenance.md) — retain manual removability across bill rate saves; deliberate billing-unit changes do not convert physical delivery quantities.
+- [Equipment daily status](equipment-daily-status.md) — explicit status is independent of maintenance; idle defaults preserve evidence and never auto-confirm tank dips.

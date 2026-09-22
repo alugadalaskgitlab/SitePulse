@@ -207,9 +207,9 @@ describe("06Q client wiring (source pins)", () => {
   });
   it("SiteEntry: same-day open Plant linkage first, resolver fallback with stale + manual-override guards", () => {
     const s = read("client/src/pages/SiteEntry.tsx");
-    const fn = s.slice(s.indexOf("const fetchOpenPlantRecord"), s.indexOf("const fetchOpenPlantRecord") + 3000);
+    const fn = s.slice(s.indexOf("const fetchOpenPlantRecord"), s.indexOf("// Returns true when all"));
     expect(fn).toContain("open-today");
-    expect(fn).toContain("fetchLatestPriorClosing(equipmentId, header.date)");
+    expect(fn).toContain("fetchLatestPriorClosing(equipmentId, header.date, header.site");
     // linkage priority: resolver only runs when no open record
     expect(fn.indexOf("return;")).toBeLessThan(fn.indexOf("fetchLatestPriorClosing"));
     // stale guard + manual-override guard
@@ -219,13 +219,13 @@ describe("06Q client wiring (source pins)", () => {
   it("Guided DPR: open-usage link priority, resolver fallback guarded by equipmentId + blank opening", () => {
     const s = read("client/src/pages/GuidedDpr.tsx");
     expect(s).toContain("nextPt.plantUsageId = open.id");
-    expect(s).toContain("fetchLatestPriorClosing(sel.id, date, { inclusive: true })");
+    expect(s).toContain("fetchLatestPriorClosing(sel.id, date, siteName, { inclusive: true })");
     expect(s).toContain("pt?.equipmentId !== sel.id");
     expect(s).toContain("pt.plantUsageId != null");
   });
   it("Plant Equipment Usage: cross-source resolver (inclusive), stale-sequence guard, manual edits win, diesel previous-balance untouched", () => {
     const s = read("client/src/pages/PlantEquipmentUsage.tsx");
-    expect(s).toContain("fetchLatestPriorClosing(Number(value), date, { inclusive: true })");
+    expect(s).toContain("fetchLatestPriorClosing(Number(value), date, continuitySite, { inclusive: true })");
     expect(s).toContain("openingFetchSeqRef");
     expect(s).toContain("!userModifiedOpening");
     expect(s).toContain("previous-balance"); // diesel logic still uses its own endpoint
@@ -241,7 +241,7 @@ describe("06Q Test S — SiteEdit (source pins)", () => {
 
   it("rows added in the edit session are flagged isNew and get continuity on equipment select", () => {
     expect(s).toMatch(/setEquipment\(\[\.\.\.equipment[\s\S]{0,600}isNew: true/);
-    expect(s).toContain("fetchLatestPriorClosing(selectedEquip.id, header.date, { inclusive: true })");
+    expect(s).toContain("fetchLatestPriorClosing(selectedEquip.id, header.date, header.site, { inclusive: true })");
     // new rows only fill a blank opening — manual entry never overwritten
     expect(s).toContain("row.isNew && row.openingReading != null");
   });

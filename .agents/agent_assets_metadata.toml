@@ -1613,3 +1613,73 @@ mtime_ms = 1789952923632
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b7b29524-59cc-4087-a762-5d657e9b2160/87b5e243-6a0b-4cdf-b311-97c42d54d3d2"
 storage_version_token = "1789953112990545"
 content_type = "image/png"
+
+[[outputs]]
+id = "nSHXHf5dRP-8qMORSQQ-i"
+uri = "file://screenshots/dpr12/A-incidental-badge.png"
+type = "image"
+title = "A — Incidental badge"
+description = "Real-component browser verification with synthetic API data. Backend persistence and authorization covered separately by automated tests."
+logical_id = "f7658697-265f-4f9a-8742-8602a984a2b0"
+content_hash = "sha256:50f523556d221024846ffa8fd772076c5b13976ef284779ee6b6781ba4e7d13c"
+size = 135375
+mtime_ms = 1790047519542
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/f7658697-265f-4f9a-8742-8602a984a2b0/1f78a2bd-18d0-4753-b48a-9852f3f5da76"
+storage_version_token = "1790047862325890"
+content_type = "image/png"
+
+[[outputs]]
+id = "Oe_q-5zgoeXfK5Pgbqnko"
+uri = "file://screenshots/dpr12/C-latest-reading-across-gap.png"
+type = "image"
+title = "C — Opening reading across an unlogged gap"
+description = "Real-component browser verification with synthetic API data. Backend persistence and authorization covered separately by automated tests."
+logical_id = "df8d4743-6a56-4ed8-a5cd-a9f490e4fe9e"
+content_hash = "sha256:cc1fe5764d2a4191a9058c87fb04c8b7580b37d2a8f667e918c963dbe3434059"
+size = 97878
+mtime_ms = 1790047520518
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/df8d4743-6a56-4ed8-a5cd-a9f490e4fe9e/bb9cfe22-9a90-4297-a65c-67afae7daccb"
+storage_version_token = "1790047864394679"
+content_type = "image/png"
+
+[[outputs]]
+id = "YzXsO1hFpZXIVWIYVi-Su"
+uri = "file://screenshots/dpr12/D-manual-reading-preserved.png"
+type = "image"
+title = "D — Manual reading preserved"
+description = "Real-component browser verification with synthetic API data. Backend persistence and authorization covered separately by automated tests."
+logical_id = "1bd812e8-1cfe-49f3-b44c-f03cf374fb61"
+content_hash = "sha256:4a9076785a4fed3f9110e490042ace6041131e27527440a6f2b38fd712425215"
+size = 96162
+mtime_ms = 1790047521886
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/1bd812e8-1cfe-49f3-b44c-f03cf374fb61/8495ca85-f8f7-4b6b-93a3-c4b1861b4f00"
+storage_version_token = "1790047866373423"
+content_type = "image/png"
+
+[[outputs]]
+id = "IeVV2HmjbhmDWjbZpiNlx"
+uri = "file://screenshots/dpr12/E2-idle-defaults-reloaded.png"
+type = "image"
+title = "E — Idle status and defaults after reload"
+description = "Real-component browser verification with synthetic API data. Backend persistence and authorization covered separately by automated tests."
+logical_id = "9d333102-10d6-4d8a-b239-329276b597c3"
+content_hash = "sha256:3540e6eb7510f3866fd36f3881046d76eeb0c611b6a21cb0fa42c32b4cfdf87c"
+size = 97538
+mtime_ms = 1790047524634
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/9d333102-10d6-4d8a-b239-329276b597c3/173101a1-45a4-43ac-ac17-d626dcc57c7f"
+storage_version_token = "1790047868356405"
+content_type = "image/png"
+
+[[outputs]]
+id = "BSEKfOQSFYAWHTKzgkNfa"
+uri = "file://screenshots/dpr12/G-fleet-mixed-explicit-and-not-logged.png"
+type = "image"
+title = "G — Fleet status and Not Logged days"
+description = "Real-component browser verification with synthetic API data. Backend persistence and authorization covered separately by automated tests."
+logical_id = "7deb269c-1490-4315-98b1-75172b3333f9"
+content_hash = "sha256:6855be2bd2b70ba06fb627a5691cd8e6a3a0892ebba96755cad683e499f1af4f"
+size = 95075
+mtime_ms = 1790047527906
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/7deb269c-1490-4315-98b1-75172b3333f9/2b321dcf-df7a-4210-90f7-db902231d892"
+storage_version_token = "1790047870314396"
+content_type = "image/png"

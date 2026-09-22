@@ -5193,6 +5193,32 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/reports/equipment-status", requireAuth, async (req, res) => {
+    try {
+      const canView = !!(
+        req.authUser?.isAdmin
+        || req.authUser?.isOwner
+        || req.authPermissions?.equipment_hub?.view
+        || req.authPermissions?.plant_equipment?.view
+        || req.authPermissions?.equipment_performance_report?.view
+      );
+      if (!canView) return res.status(403).json({ error: "forbidden", action: "view" });
+      const dateFrom = typeof req.query.dateFrom === "string" ? req.query.dateFrom : "";
+      const dateTo = typeof req.query.dateTo === "string" ? req.query.dateTo : "";
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
+        return res.status(400).json({ message: "dateFrom and dateTo must use YYYY-MM-DD" });
+      }
+      if (dateFrom > dateTo) {
+        return res.status(400).json({ message: "dateFrom must be on or before dateTo" });
+      }
+      const permittedSiteNames = await getPermittedSiteNames(req);
+      res.json(await storage.getFleetEquipmentStatus(dateFrom, dateTo, { permittedSiteNames }));
+    } catch (err) {
+      console.error("GET /api/reports/equipment-status:", err);
+      res.status(500).json({ message: "Failed to fetch equipment status report" });
+    }
+  });
+
   // Explicitly confirms one historical DPR log identity. This never creates
   // or mutates a canonical equipment_usage row.
   app.post("/api/reports/equipment-performance/logs/:id/confirm", requireAuth, async (req, res) => {
@@ -5330,7 +5356,30 @@ export async function registerRoutes(
         return res.status(400).json({ message: "equipmentId and beforeDate (YYYY-MM-DD) are required" });
       }
       const inclusive = req.query.inclusive === "1" || req.query.inclusive === "true";
-      const resolved = await storage.resolveLatestPriorClosing(equipmentId, beforeDate, { inclusive });
+      const siteName = typeof req.query.site === "string" ? req.query.site.trim() : "";
+      const unrestricted = !!(req.authUser?.isAdmin || req.authUser?.isOwner);
+      if (siteName) {
+        if (!assertView(req, res, "site_dprs")) return;
+        if (!await assertTripSiteAccess(req, res, siteName)) return;
+      } else if (!unrestricted && !req.authPermissions?.plant_equipment?.view) {
+        return res.status(400).json({ message: "site is required for site equipment continuity" });
+      }
+      const excludeSource = req.query.excludeSource === "plant_usage" || req.query.excludeSource === "dpr_log"
+        ? req.query.excludeSource : undefined;
+      const excludeRecordId = req.query.excludeRecordId == null
+        ? undefined : Number(req.query.excludeRecordId);
+      if (
+        (excludeSource && (!Number.isInteger(excludeRecordId) || Number(excludeRecordId) <= 0))
+        || (!excludeSource && excludeRecordId !== undefined)
+      ) {
+        return res.status(400).json({ message: "excludeSource and a positive excludeRecordId must be supplied together" });
+      }
+      const permittedSiteNames = await getPermittedSiteNames(req);
+      const resolved = await storage.resolveLatestPriorClosing(equipmentId, beforeDate, {
+        inclusive,
+        ...(siteName ? { siteName, permittedSiteNames } : {}),
+        ...(excludeSource ? { excludeSource, excludeRecordId } : {}),
+      });
       res.json(resolved ?? { closingReading: null, sourceDate: null, source: null });
     } catch (err) {
       res.status(500).json({ message: "Failed to resolve latest closing reading" });

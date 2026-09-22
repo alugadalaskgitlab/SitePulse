@@ -1,0 +1,73 @@
+INSTRUCTION DPR-12: Three related DPR/equipment items — (1) the compact DPR detail/list view never shows an "Incidental" marker, even though the full Site Report already does, (2) an equipment row's Opening Reading never auto-fills from the machine's true last logged closing reading (only diesel tank balance does this today), (3) a new explicit daily "Working / Idle / Breakdown" status is needed per equipment, plus a new Fleet/Equipment Status view to see it across machines
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Three related but independently-scoped items in one batch. Fix 1 and Fix 2 are small, precise, code-confirmed display/logic gaps — fix them directly. Fix 3 is a real new feature — build it carefully, and do NOT let it touch the existing breakdown/maintenance recording system; that integration is deliberately deferred to a separate future decision. Do not touch DPR-02 through DPR-11, VB-18 through VB-21, or DIESEL-04. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND — FIX 1: "INCIDENTAL" NOT SHOWN ON THE COMPACT DPR DETAIL VIEW
+1. client/src/pages/SiteReport.tsx (the full Site Report / print view) already correctly shows an Incidental indicator for a progress row where `item.isIncidental` is true (~line 572, 598).
+2. client/src/pages/DprDetails.tsx — a separate, more compact detail/list-style view of the same DPR — has NO reference to `isIncidental` anywhere in its "Activity Progress" table (~line 300-380). That same table DOES already show a "BOQ" badge when `item.boqItemId` is set (~line 336-338), so the pattern for adding a small status badge already exists in this exact file — Incidental was simply never added alongside it.
+3. Confirmed: this is why the person sees Incidental status correctly on the full report but not on the summary/list-style detail view — a straightforward display gap, not a deeper logic bug.
+
+FIX 1
+a. In client/src/pages/DprDetails.tsx's Activity Progress table (~line 328-345, the same TableCell that already conditionally renders the "BOQ" badge), also render an "Incidental" badge/label when `item.isIncidental` is true — styled consistently with the existing "BOQ" badge so it reads clearly at a glance, without needing to open the full report.
+b. If the row is also `noSiteWork`, keep existing behavior (that case is already handled correctly elsewhere) — Incidental and No Site Work are mutually exclusive per the existing data model, so no conflict is expected, but confirm this holds.
+c. Do not change SiteReport.tsx's existing Incidental display — only add the missing one to DprDetails.tsx.
+
+BACKGROUND — FIX 2: OPENING READING DOES NOT CARRY FORWARD FROM THE TRUE LAST LOGGED DATE
+1. client/src/components/DprEquipmentCompact.tsx (~line 137-148) already has a working continuity fetch for diesel tank balance: on adding an equipment row, it calls `GET /api/equipment/:id/latest-confirmed-diesel-tank?beforeDate=...&site=...` and auto-fills `openingDiesel` from the machine's last CONFIRMED tank balance before the current date — correctly regardless of how many days have passed since that machine was last logged (not just literally "yesterday").
+2. The "Opening Reading" (Opening Odometer/Opening Meter) field (~line 186) has NO equivalent continuity fetch at all — it is a bare, always-blank input (`placeholder="Not recorded"`) with no auto-fill logic whatsoever. This is confirmed as the root cause of the reported gap: after a machine goes unlogged for several days (no work on site), its next entry's Opening Reading comes up empty instead of pulling the machine's actual last recorded closing reading.
+
+FIX 2
+a. Add an equivalent continuity fetch for Opening Reading, following the exact same pattern as the diesel tank continuity fetch (~line 137-148): on adding/opening an equipment row with no `openingReading` already set, call a "latest confirmed closing reading before this date" lookup for that equipment (add a new endpoint mirroring `/api/equipment/:id/latest-confirmed-diesel-tank`, e.g. `/api/equipment/:id/latest-confirmed-reading`, or extend the existing endpoint to also return the last closing reading if that's simpler — your judgment on the cleanest implementation) and auto-fill `openingReading` from it.
+b. This must search backward to the true last logged entry for that equipment, not just the literal previous calendar day — mirroring the diesel version's correct "beforeDate" behavior exactly.
+c. Like the diesel version, this must only auto-fill when `openingReading` is not already set (never overwrite a value the person has already entered or that came from a linked source), and must respect `site` scoping the same way the diesel fetch does.
+d. This applies to both hour-meter and odometer machines — the label already correctly adapts ("Opening Odometer" vs "Opening Meter"); only the auto-fill behavior is being added.
+
+BACKGROUND — FIX 3 (NEW FEATURE): EXPLICIT DAILY EQUIPMENT STATUS (WORKING / IDLE / BREAKDOWN) + A FLEET STATUS VIEW
+1. Today, the only way to signal a hired or owned machine was idle on a given day is an informal workaround: entering the same value for Opening and Closing reading. This is ambiguous — it looks identical to someone simply forgetting to update the reading, and it captures no reason (no work available, operator unavailable, breakdown).
+2. The person wants: an explicit status per equipment per day, and a place to see, across all machines (hired and owned, especially monthly-hire), how much of the time each one has actually been operating vs idle, and why.
+3. Explicitly OUT OF SCOPE for this fix: do not modify the existing breakdown/maintenance recording system (downtime hours, breakdown deduction logic already used in vendor bill hire calculations) — that integration is a deliberate, separate future decision. For this batch, "Breakdown" is simply one selectable status value with a reason field; it does not need to create or link to a maintenance record yet.
+
+FIX 3
+a. Add a `usageStatus` field to the equipment daily log entry (server/storage.ts / shared/schema.ts's `equipmentLogs` table, and the equivalent plant-usage entry table if it captures the same per-day concept — check both), nullable, with values: `"working"`, `"idle_no_work"`, `"idle_no_operator"`, `"breakdown"`. Null/unset means "not specified" — treat exactly as today (inferred from readings) for full backward compatibility with existing rows.
+b. Add a `usageStatusReason` free-text field alongside it, required in the UI whenever `usageStatus` is anything other than `"working"`.
+c. In client/src/components/DprEquipmentCompact.tsx, add this status selector to the equipment row — place it near the top of the card (by Machine/Operator/Entry-Type details), before the Opening/Closing reading fields, since it should inform how the person fills the rest of the row (e.g., an explicit Idle day may still have identical opening/closing readings, but now that's clearly intentional and explained, not ambiguous).
+d. When `usageStatus` is set to `"idle_no_work"` or `"idle_no_operator"` (i.e. the machine did not run at all that day), AUTO-FILL Closing Reading to match Opening Reading, and diesel-related fields (Diesel Issued/Added, and for Plant Stock rows the Closing/Physical Dip) to match their opening equivalents — so the person can select the status and move straight on to the next equipment or DPR section without manually typing matching numbers. This must remain EDITABLE, not locked: keep it a helpful default, not a hard rule, since the person can still change any of these fields if needed.
+e. When `usageStatus` is `"breakdown"`, do NOT auto-fill the same way by default — a machine can genuinely work part of the day before breaking down, so Closing Reading and diesel fields must stay exactly as the person enters them (or blank) for a breakdown day, with no assumption of zero movement. Do not remove any "did you forget to update this" warning that exists for a genuine data-entry slip — only suppress it for the two idle statuses in point (d), where matching values are now an expected, intentional outcome of the auto-fill, not a slip.
+e. Do NOT remove or repurpose the existing entry-type/basis fields (daily/hourly/trip_based/monthly/time_meter) — `usageStatus` is a new, additional concept layered on top of the existing per-day entry, not a replacement for anything.
+
+FIX 3 — NEW FLEET / EQUIPMENT STATUS VIEW
+f. Build a new page/view (place it under the Equipment & Fleet section of navigation) showing, for a selected date range, every hired and owned machine's day-by-day or summarized status: total days Working, Idle (broken down by reason), and Breakdown, with the reason text visible on demand (e.g. expandable per machine, similar in spirit to the existing per-day activity calendar already built for vendor bills in VB-21 — reuse that presentation pattern where sensible rather than inventing a new one).
+g. Source this view from the new `usageStatus`/`usageStatusReason` fields where they exist; for days with no explicit status recorded (legacy data, or a day genuinely not logged at all), show them distinctly as "Not Logged" rather than silently folding them into "Idle" — these are different things (an unlogged day is missing data; an explicitly-idle day is a confirmed, reasoned status) and must not be visually conflated.
+h. This view should be usable by whoever already has equipment/fleet visibility today (follow the existing permission-section pattern — e.g. gate it under `equipment_hub`/`plant_equipment`/a similar existing section, your judgment on the closest fit; do not invent a whole new permission section unless genuinely necessary).
+
+WHAT NOT TO DO
+- Do not touch the existing breakdown/maintenance recording system, downtime-hour deduction logic, or the breakdown form itself — that is explicitly deferred.
+- Do not remove the existing diesel tank continuity fetch or change its behavior — Fix 2 only adds an equivalent for readings, using it as a reference pattern.
+- Do not conflate "Not Logged" (no entry at all that day) with "Idle" (an explicit status) anywhere in the new Fleet Status view — they must be visually distinct.
+- Do not touch DPR-02 through DPR-11, VB-18, VB-19, VB-20, VB-21, or DIESEL-04.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+Fix 1 and Fix 2 need no schema change. Fix 3 needs two new nullable columns (`usageStatus`, `usageStatusReason`) on the relevant equipment-log table(s) — additive only, safe default (null), no migration needed for existing rows (they simply have no explicit status yet, treated as "not specified"/legacy).
+
+TESTS
+A. Open a DPR with an Incidental row via the compact DprDetails.tsx view. Confirm an "Incidental" badge now shows there, matching what already shows on the full Site Report.
+B. Confirm a normal (non-incidental, non-no-site-work) row and a No Site Work row both still display exactly as before on DprDetails.tsx — no regression.
+C. Log a machine, leave it unlogged for several days (no entry at all), then add a new entry. Confirm Opening Reading auto-fills from the machine's actual last logged closing reading, not blank.
+D. Confirm Opening Reading is never overwritten if the person has already typed a value, or if the row is linked to a source that already sets it.
+E. Add an equipment row, select status "Idle (No Work Available)" with a reason, and save. Reopen the DPR and confirm the status and reason are preserved.
+E2. Add an equipment row for a machine whose Opening Reading carried forward via Fix 2, select "Idle (No Work Available)" or "Idle (Operator Unavailable)", and confirm Closing Reading (and diesel/tank fields) auto-fill to match — with no need to type them — while still being editable if changed. Confirm this auto-fill does NOT happen for "Breakdown" status.
+F. Confirm a row with `usageStatus` unset (legacy/older data) displays and behaves exactly as before — no regression to existing DPRs.
+G. Open the new Fleet/Equipment Status view for a date range spanning a mix of Working, Idle (different reasons), Breakdown, and genuinely unlogged days for at least one machine. Confirm all four states are shown distinctly, with "Not Logged" visually separate from "Idle".
+H. Confirm nothing in this batch touches or changes the existing breakdown/maintenance deduction calculation used in vendor bill hire statements.
+
+REPORT BACK
+1. Confirm Fix 1 with Test A/B evidence (screenshots).
+2. Confirm Fix 2 with Test C/D evidence (screenshots).
+3. Confirm Fix 3 with Test E/F/G evidence (screenshots), and where in navigation you placed the new Fleet/Equipment Status view.
+4. Confirm Test H — no changes to breakdown/maintenance deduction logic.
+5. Confirm the schema change applied (new column names, defaults).
+6. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

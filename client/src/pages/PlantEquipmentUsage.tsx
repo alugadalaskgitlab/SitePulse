@@ -602,7 +602,10 @@ export default function PlantEquipmentUsage() {
         // resolver (plant usage + submitted DPR logs), on-or-before this
         // entry's date so a second same-day entry continues from the day's
         // earlier closing. Zero is a valid reading; manual edits win.
-        const latest = await fetchLatestPriorClosing(Number(value), date, { inclusive: true });
+        const continuitySite = workingPlant === "OTHER" ? siteName : workingPlant;
+        const latest = continuitySite
+          ? await fetchLatestPriorClosing(Number(value), date, continuitySite, { inclusive: true })
+          : { closingReading: null };
         if (
           fetchSeq === openingFetchSeqRef.current &&
           latest.closingReading != null &&

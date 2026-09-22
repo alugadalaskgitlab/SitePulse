@@ -88,6 +88,8 @@ type EquipmentRowLike = {
   waterQuantity?: number | null;
   openingDiesel?: number | null;
   dieselBalanceInTank?: number | null;
+  usageStatus?: "working" | "idle_no_work" | "idle_no_operator" | "breakdown" | null;
+  usageStatusReason?: string | null;
   activityAllocations?: unknown[];
   activitySegments?: unknown[];
   breakdowns?: unknown[];
@@ -120,6 +122,7 @@ const hasText = (v: unknown): boolean => typeof v === "string" && v.trim() !== "
 /** Any evidence the machine was actually used today. */
 export function equipmentHasUsage(e: EquipmentRowLike): boolean {
   return (
+    (e.usageStatus != null && e.usageStatus !== "working") ||
     e.openingReading != null ||
     e.closingReading != null ||
     hasText(e.startTime) ||
@@ -203,6 +206,14 @@ export function evaluateDprSubmitReadiness(input: DprReadinessInput): DprReadine
         section: "equipment",
         label,
         message: "equipment identity missing — select equipment or choose Other / Unlisted and enter its name",
+        rowIndex: i,
+      });
+    }
+    if (e.usageStatus != null && e.usageStatus !== "working" && !hasText(e.usageStatusReason)) {
+      mandatory.push({
+        section: "equipment",
+        label,
+        message: "reason required for Idle or Breakdown status",
         rowIndex: i,
       });
     }

@@ -90,7 +90,8 @@ export function isMeaningfulEquipmentRow(row: MeaningfulEquipmentRow | null | un
   if (meaningfulText(row.machine) || meaningfulText(row.vehicleNo) || meaningfulText(row.operator) || meaningfulText(row.task)) return true;
   // `time_meter` is the blank-row default; an explicitly selected operational
   // outcome such as idle, breakdown, daily hire, or trip-based work is not.
-  if (meaningfulText(row.entryType) || meaningfulText(row.status) || meaningfulText(row.activityStatus)) return true;
+  if (meaningfulText(row.entryType) || meaningfulText(row.status) || meaningfulText(row.activityStatus)
+      || meaningfulText(row.usageStatus) || meaningfulText(row.usageStatusReason)) return true;
   if (meaningfulText(row.dieselSource) || meaningfulText(row.fuelStation) || meaningfulText(row.billNumber)
     || meaningfulText(row.structureId) || meaningfulText(row.remarks) || meaningfulText(row.notes)) return true;
   if (positiveIdentifier(row.boqItemId)) return true;
@@ -147,6 +148,7 @@ export function isVisibleEquipmentRow(row: MeaningfulEquipmentRow | null | undef
   const noOtherDetail = ![
     row.task, row.dieselSource, row.fuelStation, row.billNumber, row.amountPaid,
     row.structureId, row.boqItemId, row.remarks, row.notes,
+    row.usageStatus, row.usageStatusReason,
   ].some((value) => {
     if (explicitFiniteNumber(value)) return Number(value) !== 0;
     return meaningfulText(value);

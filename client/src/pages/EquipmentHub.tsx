@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
-  Activity, AlertTriangle, Fuel, Zap, ShoppingCart, ClipboardList, CalendarCheck, BarChart3,
+  Activity, AlertTriangle, Fuel, Zap, ShoppingCart, ClipboardList, CalendarCheck, BarChart3, ListChecks,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -144,6 +144,15 @@ export default function EquipmentHub() {
               accent="amber"
               iconBg="bg-amber-100"
               enabled={canSeePerformanceReport}
+            />
+            <HubActionTile
+              href="/equipment/status"
+              icon={ListChecks}
+              title="Fleet / Equipment Status"
+              description="Review working, idle, breakdown and unlogged days across the fleet"
+              accent="teal"
+              iconBg="bg-teal-100"
+              enabled={canSeeEquip}
             />
             <HubActionTile
               href={`/plant/maintenance?returnTo=${HUB}&context=equipment`}

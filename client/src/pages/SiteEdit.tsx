@@ -135,6 +135,8 @@ interface EquipmentEntry {
   dieselNorm?: number | null;
   equipmentId: number | null;
   plantUsageId: number | null;
+  usageStatus?: "working" | "idle_no_work" | "idle_no_operator" | "breakdown" | null;
+  usageStatusReason?: string | null;
   dieselSource: string;
   fuelStation: string;
   billNumber: string;
@@ -309,6 +311,8 @@ function mapDprToFormState(dpr: any) {
         hoursWorked: e.hoursWorked ?? null,
         equipmentId: e.equipmentId ?? null,
         plantUsageId: e.plantUsageId ?? null,
+        usageStatus: e.usageStatus ?? null,
+        usageStatusReason: e.usageStatusReason ?? null,
         dieselSource: e.dieselSource ?? "",
         fuelStation: e.fuelStation ?? "",
         billNumber: e.billNumber ?? "",
@@ -1324,6 +1328,7 @@ export default function SiteEdit() {
     }
     for (const e of equipment) {
       if (!e.machine) continue;
+      if (e.usageStatus && e.usageStatus !== "working" && !e.usageStatusReason?.trim()) return false;
       if (e.openingReading !== null && e.closingReading === null) return false;
       if (e.startTime && !e.endTime) return false;
     }
@@ -2791,7 +2796,7 @@ export default function SiteEdit() {
                       if (runContinuity && header.date) {
                         // Inclusive continuity carries a prior same-day segment
                         // into a newly selected, unlinked master row.
-                        fetchLatestPriorClosing(selectedEquip.id, header.date, { inclusive: true }).then((latest) => {
+                        fetchLatestPriorClosing(selectedEquip.id, header.date, header.site, { inclusive: true }).then((latest) => {
                           if (latest.closingReading == null) return;
                           setEquipment(prev => {
                             const next = [...prev];

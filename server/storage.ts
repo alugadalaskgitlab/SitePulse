@@ -159,6 +159,13 @@ import {
   type EquipmentPerformanceFilters,
   type EquipmentPerformanceReport,
 } from "@shared/equipmentPerformance";
+import {
+  assertValidEquipmentStatus,
+  buildFleetEquipmentStatus,
+  normalizeEquipmentStatusFields,
+  type EquipmentStatusRecord,
+  type FleetStatusResponse,
+} from "@shared/equipmentStatus";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
@@ -770,12 +777,19 @@ export interface IStorage {
   deleteTruckDispatch(id: number): Promise<boolean>;
   
   getEquipmentUsage(filters?: { equipmentId?: number; dateFrom?: string; dateTo?: string }): Promise<EquipmentUsage[]>;
+  getFleetEquipmentStatus(dateFrom: string, dateTo: string, options: { permittedSiteNames: string[] | null }): Promise<FleetStatusResponse>;
   getEquipmentPerformanceReport(filters?: EquipmentPerformanceFilters, options?: { permittedSiteNames?: string[] | null }): Promise<EquipmentPerformanceReport>;
   getEquipmentPerformanceLogContext(id: number): Promise<{ id: number; site: string; equipmentId: number | null; plantUsageId: number | null } | undefined>;
   confirmEquipmentPerformanceLog(id: number, equipmentId: number, actor: { userId?: number | null; userName: string; userRole?: string | null }): Promise<any>;
   getEquipmentUsageById(id: number): Promise<EquipmentUsage | undefined>;
   // 06Q: canonical cross-source "latest prior valid closing" resolver.
-  resolveLatestPriorClosing(equipmentId: number, beforeDate: string, opts?: { inclusive?: boolean }): Promise<import("@shared/equipmentContinuity").ResolvedClosing | null>;
+  resolveLatestPriorClosing(equipmentId: number, beforeDate: string, opts?: {
+    inclusive?: boolean;
+    siteName?: string;
+    permittedSiteNames?: string[] | null;
+    excludeSource?: "plant_usage" | "dpr_log";
+    excludeRecordId?: number;
+  }): Promise<import("@shared/equipmentContinuity").ResolvedClosing | null>;
   resolveLatestConfirmedDieselTank(equipmentId: number, beforeDate: string, scope: { siteName: string; permittedSiteNames: string[] | null }, opts?: { inclusive?: boolean }): Promise<{ dieselBalanceInTank: number; sourceDate: string; recordId: number } | null>;
   createEquipmentUsage(usage: InsertEquipmentUsage): Promise<EquipmentUsage>;
   updateEquipmentUsage(id: number, usage: Partial<InsertEquipmentUsage>): Promise<EquipmentUsage | undefined>;
@@ -4185,6 +4199,8 @@ export class DatabaseStorage implements IStorage {
             tripDistance: (e as any).tripDistance ?? null,
             totalKm: (e as any).totalKm ?? null,
             boqItemId: e.boqItemId ?? null,
+            usageStatus: e.usageStatus ?? null,
+            usageStatusReason: e.usageStatusReason ?? null,
             // Preserve the dispatch linkage across clone/version chains.
             plantUsageId: (e as any).plantUsageId ?? null,
           }))
@@ -6228,6 +6244,110 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(equipmentUsage.date));
   }
 
+  async getFleetEquipmentStatus(
+    dateFrom: string,
+    dateTo: string,
+    options: { permittedSiteNames: string[] | null },
+  ): Promise<FleetStatusResponse> {
+    const permitted = options.permittedSiteNames;
+    const unrestricted = permitted === null;
+    const [masters, dprRows, usageRows] = await Promise.all([
+      this.getEquipmentMaster(false),
+      db.select({
+        recordId: equipmentLogs.id,
+        equipmentId: equipmentLogs.equipmentId,
+        date: dprs.date,
+        status: equipmentLogs.usageStatus,
+        reason: equipmentLogs.usageStatusReason,
+        plantUsageId: equipmentLogs.plantUsageId,
+        site: dprs.site,
+      }).from(equipmentLogs).innerJoin(dprs, eq(equipmentLogs.dprId, dprs.id)).where(and(
+        gte(dprs.date, dateFrom),
+        lte(dprs.date, dateTo),
+        isNotNull(equipmentLogs.equipmentId),
+        eq(dprs.isDeleted, false),
+        eq(dprs.isCancelled, false),
+        eq(dprs.isSuperseded, false),
+        ne(dprs.dprStatus, "draft"),
+      )),
+      db.select({
+        recordId: equipmentUsage.id,
+        equipmentId: equipmentUsage.equipmentId,
+        date: equipmentUsage.date,
+        status: equipmentUsage.usageStatus,
+        reason: equipmentUsage.usageStatusReason,
+        siteName: equipmentUsage.siteName,
+        destinationSite: equipmentUsage.destinationSite,
+        dprId: equipmentUsage.dprId,
+        linkedDprSite: dprs.site,
+        linkedDprStatus: dprs.dprStatus,
+        linkedDprDeleted: dprs.isDeleted,
+        linkedDprCancelled: dprs.isCancelled,
+        linkedDprSuperseded: dprs.isSuperseded,
+      }).from(equipmentUsage).leftJoin(dprs, eq(equipmentUsage.dprId, dprs.id)).where(and(
+        gte(equipmentUsage.date, dateFrom),
+        lte(equipmentUsage.date, dateTo),
+      )),
+    ]);
+
+    const visibleDprRows = unrestricted
+      ? dprRows
+      : dprRows.filter((row) => siteMatchesPermitted(row.site, permitted));
+    const visibleUsageRows = unrestricted
+      ? usageRows
+      : usageRows.filter((row) => {
+          // Once canonical usage is attached to a DPR, that DPR's site is the
+          // authorization boundary. Never leak linked facts through a stale
+          // siteName/destinationSite. If the other source is inaccessible or
+          // non-live it is simply absent; independently visible DPR evidence
+          // remains available through visibleDprRows above.
+          if (row.dprId != null) {
+            return !!row.linkedDprSite
+              && row.linkedDprDeleted === false
+              && row.linkedDprCancelled === false
+              && row.linkedDprSuperseded === false
+              && row.linkedDprStatus !== "draft"
+              && siteMatchesPermitted(row.linkedDprSite, permitted);
+          }
+          const site = row.destinationSite ?? row.siteName;
+          return !!site && siteMatchesPermitted(site, permitted);
+        });
+    const visibleIds = new Set<number>([
+      ...visibleDprRows.map((row) => Number(row.equipmentId)),
+      ...visibleUsageRows.map((row) => Number(row.equipmentId)),
+    ]);
+    // Unrestricted fleet viewers can see all active owned/hired masters,
+    // including machines with no entry in the selected period. Restricted
+    // viewers see only masters evidenced inside their permitted site boundary.
+    const visibleMasters = masters.filter((master) =>
+      (master.ownership === "owned" || master.ownership === "hired")
+      && (unrestricted || visibleIds.has(master.id)));
+    const records: EquipmentStatusRecord[] = [
+      ...visibleDprRows.map((row) => ({
+        source: "dpr_log" as const,
+        recordId: row.recordId,
+        equipmentId: Number(row.equipmentId),
+        date: row.date,
+        status: row.status as any,
+        reason: row.reason,
+        plantUsageId: row.plantUsageId,
+      })),
+      ...visibleUsageRows.map((row) => ({
+        source: "plant_usage" as const,
+        recordId: row.recordId,
+        equipmentId: row.equipmentId,
+        date: row.date,
+        status: row.status as any,
+        reason: row.reason,
+      })),
+    ];
+    return {
+      dateFrom,
+      dateTo,
+      equipment: buildFleetEquipmentStatus(visibleMasters, records, dateFrom, dateTo),
+    };
+  }
+
   async getEquipmentPerformanceReport(
     filters?: EquipmentPerformanceFilters,
     options?: { permittedSiteNames?: string[] | null },
@@ -6467,7 +6587,13 @@ export class DatabaseStorage implements IStorage {
   async resolveLatestPriorClosing(
     equipmentId: number,
     beforeDate: string,
-    opts?: { inclusive?: boolean },
+    opts?: {
+      inclusive?: boolean;
+      siteName?: string;
+      permittedSiteNames?: string[] | null;
+      excludeSource?: "plant_usage" | "dpr_log";
+      excludeRecordId?: number;
+    },
   ): Promise<ResolvedClosing | null> {
     const usageDateCond = opts?.inclusive
       ? lte(equipmentUsage.date, beforeDate)
@@ -6475,6 +6601,39 @@ export class DatabaseStorage implements IStorage {
     const dprDateCond = opts?.inclusive
       ? lte(dprs.date, beforeDate)
       : lt(dprs.date, beforeDate);
+    const siteName = opts?.siteName?.trim();
+    if (
+      siteName
+      && opts?.permittedSiteNames !== null
+      && opts?.permittedSiteNames !== undefined
+      && !siteMatchesPermitted(siteName, opts.permittedSiteNames)
+    ) return null;
+    const wantedSite = siteName?.toUpperCase();
+    const usageConditions = [
+      eq(equipmentUsage.equipmentId, equipmentId),
+      usageDateCond,
+      isNotNull(equipmentUsage.closingReading),
+      // A strict-before DPR carry-forward must never consume the provisional
+      // closing of an open dispatch. Inclusive Plant continuity intentionally
+      // retains its established same-day behavior.
+      ...(!opts?.inclusive ? [eq(equipmentUsage.status, "closed")] : []),
+      ...(wantedSite ? [
+        sql`UPPER(TRIM(COALESCE(${equipmentUsage.destinationSite}, ${equipmentUsage.siteName}, ''))) = ${wantedSite}`,
+      ] : []),
+      ...(opts?.excludeSource === "plant_usage" && opts.excludeRecordId
+        ? [ne(equipmentUsage.id, opts.excludeRecordId)] : []),
+    ];
+    const logConditions = [
+      eq(equipmentLogs.equipmentId, equipmentId),
+      dprDateCond,
+      isNotNull(equipmentLogs.closingReading),
+      eq(dprs.isDeleted, false),
+      eq(dprs.isSuperseded, false),
+      ne(dprs.dprStatus, "draft"),
+      ...(wantedSite ? [sql`UPPER(TRIM(${dprs.site})) = ${wantedSite}`] : []),
+      ...(opts?.excludeSource === "dpr_log" && opts.excludeRecordId
+        ? [ne(equipmentLogs.id, opts.excludeRecordId)] : []),
+    ];
 
     const [usageRows, logRows] = await Promise.all([
       db
@@ -6484,11 +6643,7 @@ export class DatabaseStorage implements IStorage {
           closingReading: equipmentUsage.closingReading,
         })
         .from(equipmentUsage)
-        .where(and(
-          eq(equipmentUsage.equipmentId, equipmentId),
-          usageDateCond,
-          isNotNull(equipmentUsage.closingReading),
-        ))
+        .where(and(...usageConditions))
         .orderBy(
           desc(equipmentUsage.date),
           sql`${equipmentUsage.createdAt} DESC NULLS LAST`,
@@ -6504,14 +6659,7 @@ export class DatabaseStorage implements IStorage {
         })
         .from(equipmentLogs)
         .innerJoin(dprs, eq(equipmentLogs.dprId, dprs.id))
-        .where(and(
-          eq(equipmentLogs.equipmentId, equipmentId),
-          dprDateCond,
-          isNotNull(equipmentLogs.closingReading),
-          eq(dprs.isDeleted, false),
-          eq(dprs.isSuperseded, false),
-          ne(dprs.dprStatus, "draft"),
-        ))
+        .where(and(...logConditions))
         .orderBy(desc(dprs.date), desc(equipmentLogs.id))
         .limit(1),
     ]);
@@ -6568,6 +6716,7 @@ export class DatabaseStorage implements IStorage {
    * deliberately retained unchanged.
    */
   private async normaliseDprEquipmentRowsTx(tx: any, rows: any[], boqProjectId?: number | null): Promise<any[]> {
+    for (const row of rows) assertValidEquipmentStatus(row);
     const ids = Array.from(new Set(rows.map(r => Number(r?.equipmentId)).filter(Number.isFinite)));
     const masters = ids.length
       ? await tx.select().from(equipmentMaster).where(inArray(equipmentMaster.id, ids))
@@ -6582,7 +6731,8 @@ export class DatabaseStorage implements IStorage {
     const barRows = barIds.length ? await tx.select().from(workProgramBars).where(inArray(workProgramBars.id, barIds)) : [];
     const boqById = new Map(boqRows.map((row: any) => [Number(row.id), row]));
     const barById = new Map(barRows.map((row: any) => [Number(row.id), row]));
-    return rows.map((input: any) => {
+    return rows.map((rawInput: any) => {
+      const input = normalizeEquipmentStatusFields(rawInput);
       const { breakdowns: _breakdowns, persistedId: _persistedId, activityAllocations, activitySegments, _preserveActivityAssignment, _preserveLinkedChildren, ...row } = input;
       const normalizedSegmentsAreExplicit = Array.isArray(activitySegments)
         && (activitySegments.length > 0 || !Array.isArray(activityAllocations));
@@ -6819,10 +6969,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   private async _createEquipmentUsageTxn(usage: InsertEquipmentUsage): Promise<EquipmentUsage> {
+    usage = normalizeEquipmentStatusFields(usage);
     assertValidDieselSourceForQuantity(Number(usage.dieselIssued || 0), usage.dieselSource);
     return db.transaction(async (tx) => {
       const normalisedUsage = {
-        ...usage,
+        ...normalizeEquipmentStatusFields(usage),
         ...(usage.openedAt !== undefined && {
           openedAt: usage.openedAt ? new Date(usage.openedAt as any) : null,
         }),
@@ -7171,6 +7322,8 @@ export class DatabaseStorage implements IStorage {
         endTime: log.endTime || undefined,
         operator: log.operator || undefined,
         task: log.task || undefined,
+        usageStatus: log.usageStatus,
+        usageStatusReason: log.usageStatusReason,
         status: "closed",
         closedByDprId: dprId,
         closedByUserId: audit?.userId ?? null,
@@ -7203,6 +7356,8 @@ export class DatabaseStorage implements IStorage {
         // diesel stock a second time; _updateEquipmentUsageTxn only updates
         // the already-linked canonical record.
         closingDiesel: log.dieselBalanceInTank ?? undefined,
+        usageStatus: log.usageStatus,
+        usageStatusReason: log.usageStatusReason,
       } : {};
       await this._updateEquipmentUsageTxn(usageId, { ...closure, ...ownedFacts }, tx);
     }
@@ -7246,6 +7401,8 @@ export class DatabaseStorage implements IStorage {
         // and km for odometer/trip runtime; never coerce km into hours.
         hoursOrKmRun: log.hoursWorked ?? log.totalKm,
         expectedDiesel: log.expectedDiesel,
+        usageStatus: log.usageStatus,
+        usageStatusReason: log.usageStatusReason,
         variance: Number(log.diesel ?? 0) - Number(log.expectedDiesel ?? 0),
       } as any).returning();
       await tx.update(equipmentLogs).set({ plantUsageId: usage.id }).where(eq(equipmentLogs.id, log.id));
@@ -7325,6 +7482,15 @@ export class DatabaseStorage implements IStorage {
 
       const [existing] = await tx.select().from(equipmentUsage).where(eq(equipmentUsage.id, id)).limit(1);
       if (!existing) return undefined;
+      assertValidEquipmentStatus({
+        usageStatus: usage.usageStatus !== undefined ? usage.usageStatus : existing.usageStatus,
+        usageStatusReason: usage.usageStatusReason !== undefined
+          ? usage.usageStatusReason : existing.usageStatusReason,
+      });
+      if (normalisedUsage.usageStatus === "") normalisedUsage.usageStatus = null;
+      if (typeof normalisedUsage.usageStatusReason === "string") {
+        normalisedUsage.usageStatusReason = normalisedUsage.usageStatusReason.trim() || null;
+      }
       // Once a movement exists the predecessor is historical evidence. Do not
       // allow ordinary PUT paths to alter its continuity or diesel facts.
       const [successor] = await tx.select({ id: equipmentUsage.id }).from(equipmentUsage)

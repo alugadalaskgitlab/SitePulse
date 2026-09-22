@@ -137,7 +137,11 @@ describe("equipment consistency storage runtime", () => {
       dprStatus: "submitted", boqProjectId: 3, progress: [], labour: [], materials: [], sitePurchases: [],
       equipment: [
         { id: 1, machine: "", operator: "Operator name", entryType: "time_meter", diesel: 0 },
-        { id: 2, machine: "", operator: "Operator name", entryType: "time_meter", diesel: 0, activityAllocations: [{ boqItemId: 9 }] },
+        {
+          id: 2, machine: "", operator: "Operator name", entryType: "time_meter", diesel: 0,
+          usageStatus: "idle_no_work", usageStatusReason: "Awaiting approved work front",
+          activityAllocations: [{ boqItemId: 9 }],
+        },
         { id: 3, machine: "", operator: "Operator name", entryType: "time_meter", diesel: 0 },
         { id: 4, machine: "", operator: "Operator name", entryType: "time_meter", diesel: 0, breakdowns: [{ description: "Leak" }] },
       ],
@@ -166,6 +170,95 @@ describe("equipment consistency storage runtime", () => {
       expect.anything(),
       expect.objectContaining({ cloneSourceLogIds: { 91: 2, 92: 4 } }),
     );
+    const clonedEquipmentWrite = fx.writes.find((write) =>
+      Array.isArray(write) && write.some((row) => row.usageStatus === "idle_no_work"));
+    expect(clonedEquipmentWrite).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        usageStatus: "idle_no_work",
+        usageStatusReason: "Awaiting approved work front",
+      }),
+    ]));
+  });
+
+  it("creates and reloads a meaningful DPR status-only equipment row", async () => {
+    const storage = new DatabaseStorage();
+    await storage.createDpr({
+      date: "2026-09-05",
+      site: "SITE A",
+      engineer: "Engineer",
+      dprStatus: "draft",
+      equipment: [{
+        machine: "",
+        usageStatus: "idle_no_operator",
+        usageStatusReason: "Operator on approved leave",
+      }],
+    } as any);
+    const equipmentInsert = fx.writes.find((write) =>
+      Array.isArray(write) && write.some((row) => row.usageStatus === "idle_no_operator"));
+    expect(equipmentInsert).toEqual([
+      expect.objectContaining({
+        usageStatus: "idle_no_operator",
+        usageStatusReason: "Operator on approved leave",
+      }),
+    ]);
+    expect(visibleEquipmentRows(equipmentInsert)).toHaveLength(1);
+  });
+
+  it("persists plant status through create, update, and reload", async () => {
+    fx.queue.push([{ id: 2, meterType: "hour_meter", consumptionNorm: 4 }]);
+    const storage = new DatabaseStorage();
+    const created = await storage.createEquipmentUsage({
+      equipmentId: 2,
+      date: "2026-09-05",
+      dieselIssued: 0,
+      usageStatus: "idle_no_work",
+      usageStatusReason: "No work front",
+    } as any);
+    expect(created).toMatchObject({
+      usageStatus: "idle_no_work",
+      usageStatusReason: "No work front",
+    });
+
+    fx.queue.push(
+      [created],
+      [],
+      [{ id: 2, meterType: "hour_meter", consumptionNorm: 4 }],
+      [],
+      [],
+    );
+    const updated = await storage.updateEquipmentUsage(created.id, {
+      usageStatus: "breakdown",
+      usageStatusReason: "Hydraulic hose failed",
+    } as any);
+    expect(updated).toMatchObject({
+      usageStatus: "breakdown",
+      usageStatusReason: "Hydraulic hose failed",
+    });
+
+    fx.queue.push([updated]);
+    await expect(storage.getEquipmentUsageById(created.id)).resolves.toMatchObject({
+      usageStatus: "breakdown",
+      usageStatusReason: "Hydraulic hose failed",
+    });
+  });
+
+  it("rejects missing non-working reasons at every direct DPR and plant write seam", async () => {
+    const storage = new DatabaseStorage();
+    await expect(storage.createDpr({
+      date: "2026-09-05", site: "SITE A", engineer: "Engineer", dprStatus: "draft",
+      equipment: [{ machine: "ROLLER", usageStatus: "idle_no_work" }],
+    } as any)).rejects.toThrow(/reason/i);
+    await expect(storage.createEquipmentUsage({
+      equipmentId: 2, date: "2026-09-05",
+      usageStatus: "idle_no_operator",
+    } as any)).rejects.toThrow(/reason/i);
+
+    fx.queue.push(
+      [{ id: 7, equipmentId: 2, dieselIssued: 0, usageStatus: "working", usageStatusReason: null }],
+    );
+    await expect(storage.updateEquipmentUsage(7, {
+      usageStatus: "breakdown",
+    } as any)).rejects.toThrow(/reason/i);
   });
 
   it("standalone create uses invalid-meter time fallback and persists its physical tank", async () => {

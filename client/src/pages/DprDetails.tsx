@@ -346,6 +346,9 @@ export default function DprDetails() {
                             )}
                           </span>
                         )}
+                         {item.isIncidental && (
+                           <Badge variant="outline" className="mt-1 text-[12px] h-4 px-1 text-amber-700 border-amber-300 bg-amber-50">Incidental</Badge>
+                         )}
                         </TableCell>
                         <TableCell><Badge variant="outline">{item.side || '-'}</Badge></TableCell>
                         <TableCell>{item.chainageFrom || '-'}</TableCell>

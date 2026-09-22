@@ -30,6 +30,7 @@ const HmpHub            = lazy(() => import("@/pages/HmpHub"));
 const EquipmentHub      = lazy(() => import("@/pages/EquipmentHub"));
 const ReportsHub        = lazy(() => import("@/pages/ReportsHub"));
 const EquipmentPerformanceReport = lazy(() => import("@/pages/EquipmentPerformanceReport"));
+const EquipmentStatus   = lazy(() => import("@/pages/EquipmentStatus"));
 const SiteHub           = lazy(() => import("@/pages/SiteHub"));
 const MastersHub        = lazy(() => import("@/pages/MastersHub"));
 const AdminMastersHub   = lazy(() => import("@/pages/AdminMastersHub"));
@@ -268,6 +269,7 @@ function AuthedShell() {
         <div className="container mx-auto p-4 md:p-8 pt-6 max-w-7xl">
           <Switch>
           <Route path="/reports/equipment-performance" component={gatedEither(EquipmentPerformanceReport, "equipment_performance_report", "plant_equipment")} />
+           <Route path="/equipment/status" component={gatedEither(EquipmentStatus, "equipment_hub", "plant_equipment", "equipment_performance_report")} />
           {/* Site pages */}
           <Route path="/site" component={SiteHome} />
           <Route path="/site/dashboard" component={gated(SiteDashboard, "site_dprs")} />
