@@ -1991,3 +1991,31 @@ mtime_ms = 1790096307969
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8190398d-33cb-4008-9297-9a2d7b67e396/fd7f5c27-86ec-424b-8c82-44663b18cdd4"
 storage_version_token = "1790096367923742"
 content_type = "image/png"
+
+[[outputs]]
+id = "vkZdbD1XrIKekDnKxl_Nw"
+uri = "file://screenshots/pi02/A-new-bulk-WMM-selection-route-material-SYNTHETIC.png"
+type = "image"
+title = "New Bulk WMM — material route"
+description = "Real Purchase Indents screen with synthetic intercepted API data; saved fixture route is material. No live records were changed."
+logical_id = "ecf9968a-c439-4370-aa22-bf8daa3ea068"
+content_hash = "sha256:6c221d2bd04589dc4a4548b60444c5d73ceed81e07ebd11f92f2fabb53ef26e2"
+size = 122299
+mtime_ms = 1790096854385
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/ecf9968a-c439-4370-aa22-bf8daa3ea068/cbe58358-f587-4a49-b7b7-47929b7da876"
+storage_version_token = "1790096925081472"
+content_type = "image/png"
+
+[[outputs]]
+id = "XyL-iGlP6WVC0PZx6Zsxg"
+uri = "file://screenshots/pi02/B-saved-bulk-detail-banner-no-Record-Delivery-SYNTHETIC.png"
+type = "image"
+title = "Bulk detail — correct receipt path"
+description = "Real Purchase Indents screen with synthetic intercepted API data; saved fixture route is material. No live records were changed."
+logical_id = "69ed28c3-1df5-4f68-bd87-f0bf3545d5ed"
+content_hash = "sha256:0151588e2ee7c57a7c1f6e643041b9dca3a76906910e7b720a23d3c9ebaa23c2"
+size = 107305
+mtime_ms = 1790096854809
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/69ed28c3-1df5-4f68-bd87-f0bf3545d5ed/d2d69de6-ab1e-45a9-b21b-4d5cbe433be8"
+storage_version_token = "1790096927485908"
+content_type = "image/png"

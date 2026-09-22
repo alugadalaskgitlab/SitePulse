@@ -1,0 +1,28 @@
+{
+  "scenario": "PI-02 real PurchaseIndents component with synthetic intercepted APIs",
+  "limitation": "UI/component and intercepted request evidence only; no live API, catalog, record, or database was read or written.",
+  "safety": {
+    "productionDatabaseUsed": false,
+    "productionApiWrites": false,
+    "mountedProductionComponent": "client/src/pages/PurchaseIndents.tsx",
+    "vitePort": 4196,
+    "cdpPort": 9346,
+    "chromiumProfile": "/tmp/pi02-chromium-profile"
+  },
+  "screenshots": [
+    "/home/runner/workspace/screenshots/pi02/A-new-bulk-WMM-selection-route-material-SYNTHETIC.png",
+    "/home/runner/workspace/screenshots/pi02/B-saved-bulk-detail-banner-no-Record-Delivery-SYNTHETIC.png"
+  ],
+  "verified": {
+    "untaggedWmmBulkPayloadRoute": "material",
+    "savedBulkHasMaterialReceiptBanner": true,
+    "savedBulkHasRecordDelivery": false,
+    "taggedStoreInheritedRoute": "service",
+    "untaggedStoreFallbackRoute": "stores",
+    "existingPreFixRouteBeforeAndAfterOpening": {
+      "before": "stores",
+      "after": "stores",
+      "writesCausedByOpening": 0
+    }
+  }
+}

@@ -2859,7 +2859,7 @@ export default function PurchaseIndents() {
                               // used when a material has no defaultUom set — that would override the user's choice)
                               ...(uom && uom !== "NOS" ? { uom } : {}),
                               materialId: materialId ?? (desc !== item.description ? null : updated[index].materialId),
-                              procurementRoute: mat ? ((mat as any).procurementRoute || "stores") : updated[index].procurementRoute,
+                              procurementRoute: mat ? (formPiType === "material" ? "material" : ((mat as any).procurementRoute || "stores")) : updated[index].procurementRoute,
                             };
                             setFormItems(updated);
                           }}

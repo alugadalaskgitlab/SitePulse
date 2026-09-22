@@ -1,0 +1,42 @@
+INSTRUCTION PI-02: A Bulk Material indent's item can end up mislabeled with `procurementRoute: "stores"` if its material-catalog entry isn't tagged correctly, which wrongly shows the stores-only "Record Delivery" button on a bulk-material item (and would fail server-side if clicked) — fix items to reliably inherit the correct route from the indent type
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Small, precise fix confined to Purchase Indents' item-route assignment. Do not touch DPR-02 through DPR-12, VB-18 through VB-24, PI-01, or DIESEL-04. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+1. `client/src/pages/PurchaseIndents.tsx` correctly GATES the stores-only "Record Delivery" panel by the item's own `procurementRoute` (~line 4362-4363): `canCreate && (item.procurementRoute !== "material" && item.procurementRoute !== "bulk_plant") && (...)`. This check itself is correct and should stay.
+2. The bug is upstream, in how `procurementRoute` gets SET on an item. When a material is picked from the catalog in the item-selection handler (~line 2862): `procurementRoute: mat ? (mat.procurementRoute || "stores") : updated[index].procurementRoute` — this OVERWRITES the form's own default (which is correctly set to `"material"` at ~line 1702/1716 when the indent's `piType === "material"`) with whatever `procurementRoute` the picked material's catalog/master entry happens to have, falling back to `"stores"` if that master entry has none set.
+3. Confirmed live: a Bulk Material PI for WMM (procured from SARVANA METAL INDUSTRIES) ended up with its item's `procurementRoute` resolving to `"stores"` because WMM's material-master entry apparently has no `procurementRoute` tagged — so the "Record Delivery" button incorrectly appeared on a Bulk Material item.
+4. Confirmed this is NOT new — byte-identical in the pre-PI-01 baseline, not a regression from that batch.
+5. Confirmed low actual risk but real UX confusion: clicking the wrongly-shown button would fail server-side (`server/storage.ts` ~15573-15575 blocks record-delivery for `material`/`bulk_plant` routes regardless of what the button shows), so no data corruption risk — but it's misleading and clutters the screen.
+6. Confirmed correct elsewhere: the "RECORD MATERIAL RECEIPT" banner above it is driven by the PI's own `piType`, not the item's route, and renders correctly — this fix should NOT change that banner's logic, only the item-level route assignment/gate.
+
+FIX — MAKE ITEM ROUTE RELIABLY INHERIT FROM THE INDENT'S TYPE FOR BULK MATERIAL INDENTS
+a. When a material is picked into an item on a Bulk Material indent (`piType === "material"`), do NOT let the picked material's own (possibly untagged/incorrect) `procurementRoute` silently override the indent-level default. Instead: if the indent's `piType === "material"`, the item's `procurementRoute` should always resolve to a bulk/plant-appropriate value (`"material"` or `"bulk_plant"`, whichever this codebase already uses to mean "bulk material, not stores" — confirm which is the correct value by checking how Fix 4 of PI-01 and the record-delivery block at storage.ts ~15573 already use these two values) — regardless of what the catalog entry says.
+b. For Store indents (`piType === "stores"` or equivalent), keep the existing behavior of trusting the material's own `procurementRoute` (with `"stores"` fallback) exactly as today — this fix is specifically about Bulk Material indents pulling in a mistagged catalog entry, not about changing Store-indent behavior.
+c. As a defensive backstop (not a replacement for point a), also consider tagging WMM's own material-master entry with the correct `procurementRoute` if that's a simple, safe data fix you can make alongside the code change — but the code-level inheritance fix in point a is the actual requirement; do not rely on data-tagging alone, since any future untagged material would hit the same bug otherwise.
+d. Confirm this doesn't affect any ALREADY-SAVED items from before this fix — existing items keep whatever `procurementRoute` they already have; this fix only changes how NEW item selections resolve their route going forward. If you want to also correct existing already-saved Bulk Material items whose route incorrectly resolved to `"stores"`, that would need a one-time data correction — flag this as a separate question back to the person rather than silently rewriting existing records, since some of those items might already have deliveries recorded through the (unintended) stores flow and changing their route retroactively could have side effects worth discussing first.
+
+WHAT NOT TO DO
+- Do not change the "RECORD MATERIAL RECEIPT" banner's own `piType`-based gating — it's already correct.
+- Do not change Store-indent item route behavior.
+- Do not silently rewrite existing saved items' `procurementRoute` — flag that as a separate decision if relevant, per point d.
+- Do not touch DPR-02 through DPR-12, VB-18 through VB-24, PI-01, or DIESEL-04.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change — this is item-creation/selection logic only.
+
+TESTS
+A. Create a new Bulk Material indent, pick WMM (or any material whose catalog entry has no `procurementRoute` tagged) as an item. Confirm the resulting item's `procurementRoute` resolves to the bulk/plant value, not `"stores"`.
+B. Confirm the "Record Delivery" panel no longer appears on this item, and the "RECORD MATERIAL RECEIPT" banner still correctly appears above it exactly as before.
+C. Create a new Store indent, pick a stock/spare-part item whose catalog entry DOES have a specific `procurementRoute` tagged (if any exist). Confirm the item still correctly inherits that value — no regression to Store-indent behavior.
+D. Confirm an existing (pre-fix) Bulk Material item that already resolved to `"stores"` is left untouched by this fix (unless the person explicitly asks for a data correction per point d) — no silent rewrite.
+
+REPORT BACK
+1. Confirm the fix with Test A/B evidence (screenshots), including the item's stored `procurementRoute` value before and after.
+2. Confirm Test C — no regression to Store indents.
+3. Confirm Test D and explicitly ask the person whether they want existing mistagged Bulk Material items corrected retroactively, rather than doing it automatically.
+4. Whether you also tagged WMM's material-master entry directly (point c), and if so, what value you set.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
