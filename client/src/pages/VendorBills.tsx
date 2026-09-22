@@ -14,6 +14,7 @@ import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Check, Circle, Info, Fuel, Settings, Copy, X, Download, Search, Edit, PlusCircle, BarChart2, Calculator } from "lucide-react";
 import { queryClient, apiRequest, isForbiddenError, NO_PERMISSION_DESCRIPTION } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { vendorBillStatusError } from "@/lib/vendorBillStatusError";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
@@ -1102,7 +1103,7 @@ export default function VendorBills() {
       toast({ title: "Bill status updated" });
     },
     onError: (err: Error) => {
-      toast({ title: "Failed to update status", description: err.message, variant: "destructive" });
+      toast({ ...vendorBillStatusError(err), variant: "destructive" });
     },
   });
 
