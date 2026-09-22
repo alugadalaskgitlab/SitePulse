@@ -15,6 +15,8 @@ import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Chec
 import { queryClient, apiRequest, isForbiddenError, NO_PERMISSION_DESCRIPTION } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { vendorBillStatusError } from "@/lib/vendorBillStatusError";
+import { hasCumulativeVendorPayment } from "@shared/vendorBillPayment";
+export { hasCumulativeVendorPayment } from "@shared/vendorBillPayment";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
@@ -490,7 +492,6 @@ function getBillTypeLabel(type: string) {
 // PI/diesel. Entry preferred once the bill is PAID; values display read-only
 // otherwise. Deliberately NO payment evidence / QR / screenshot upload.
 const VB_MODE_LABELS: Record<string, string> = { cash: "CASH", credit: "CREDIT", advance: "ADVANCE", upi: "UPI", cheque: "CHEQUE", rtgs: "RTGS / NEFT" };
-export const hasCumulativeVendorPayment = (billType: string) => ["equipment", "all"].includes(String(billType || "").toLowerCase());
 
 function useVendorBillCompanyAccounts(enabled: boolean, paymentAccountKey?: string | null) {
   const query = useQuery<{ id: string; name: string; type: string }[]>({

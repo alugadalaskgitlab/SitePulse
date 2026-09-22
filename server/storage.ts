@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { formatPurchaseIndentNumber, reconcileDeliveryEvidence, validateDeliveryDestination, type DeliveryEvidence } from "../shared/purchaseIndentDelivery";
 import { calculateEquipmentHireFinancials, calculateHireGroup, getHireReviewGaps, isEquipmentHireBillEligible, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
+import { hasCumulativeVendorPayment } from "../shared/vendorBillPayment";
 import { normalizeDprSiteName } from "../shared/dprBoqSelection";
 import { hasDprBoqReferences } from "../shared/dprBoqReferences";
 import { isManualVendorRateCard, vendorRateCardIdentity } from "../shared/vendorRateCardIdentity";
@@ -17556,8 +17557,8 @@ export class DatabaseStorage implements IStorage {
       if (details.paymentMode !== undefined) setData.paymentMode = details.paymentMode;
       if (details.paidBy !== undefined) setData.paidBy = details.paidBy;
       if (details.amountPaid !== undefined) {
-        if (existing.billType.toLowerCase() !== "equipment") {
-          throw Object.assign(new Error("Partial-payment amounts are available only on equipment hire bills."), { code: "BAD_REQUEST" });
+        if (!hasCumulativeVendorPayment(existing.billType)) {
+          throw Object.assign(new Error("Cumulative payment amounts are available only on equipment or combined bills."), { code: "BAD_REQUEST" });
         }
         if (!["approved", "paid"].includes(existing.status)) {
           throw Object.assign(new Error("Record a partial payment only after the equipment hire bill is approved."), { code: "CONFLICT" });
@@ -17636,7 +17637,7 @@ export class DatabaseStorage implements IStorage {
       } else if (status === "approved") {
         updates.approvedBy = actorUpper;
         updates.approvedAt = now;
-        if (["equipment", "all"].includes(existing.billType.toLowerCase())) {
+        if (hasCumulativeVendorPayment(existing.billType)) {
           // The saved items are the shared bill total: generated monthly
           // statements, ordinary hourly/daily/trip items, and every other
           // category participate once. Statement financials are evidence for

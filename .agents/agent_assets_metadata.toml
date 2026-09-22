@@ -1963,3 +1963,31 @@ mtime_ms = 1790095207405
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/af35ea42-e2ea-4fd6-8bda-9207fb3a1bd0/5731bfeb-544d-4614-8b2c-39805da61445"
 storage_version_token = "1790095863132185"
 content_type = "image/png"
+
+[[outputs]]
+id = "zfuBqV_6xQ42H0Z7Ehlyi"
+uri = "file://screenshots/vb23b/A-combined-payment-entered.png"
+type = "image"
+title = "Combined bill — payment entered"
+description = "Actual Vendor Bills page with isolated HTTP server invoking production storage methods; database is an in-memory transaction mock, not live data."
+logical_id = "7758bf32-fa3c-4dc6-8dd3-101a6b961bb5"
+content_hash = "sha256:46f932a9b12abb7308248038a86ba86b7f404bb85e4b26d05318af114646a93a"
+size = 95175
+mtime_ms = 1790096307293
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/7758bf32-fa3c-4dc6-8dd3-101a6b961bb5/d1421504-3f17-463f-bf4c-c89336e25496"
+storage_version_token = "1790096366291079"
+content_type = "image/png"
+
+[[outputs]]
+id = "UVkeT5CeYycAAHwofB3mB"
+uri = "file://screenshots/vb23b/B-combined-saved-and-paid.png"
+type = "image"
+title = "Combined bill — saved and marked Paid"
+description = "Successful save → Paid through actual storage methods; isolated mocked database. No customer bill or production data changed."
+logical_id = "8190398d-33cb-4008-9297-9a2d7b67e396"
+content_hash = "sha256:1aa5dadee8ffb7de88d0a030d5b9302a9b14383befba74da125685f83443cdd7"
+size = 85085
+mtime_ms = 1790096307969
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8190398d-33cb-4008-9297-9a2d7b67e396/fd7f5c27-86ec-424b-8c82-44663b18cdd4"
+storage_version_token = "1790096367923742"
+content_type = "image/png"

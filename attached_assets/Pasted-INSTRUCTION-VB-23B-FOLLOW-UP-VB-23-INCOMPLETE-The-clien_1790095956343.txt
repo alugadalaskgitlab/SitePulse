@@ -1,0 +1,44 @@
+INSTRUCTION VB-23B (FOLLOW-UP — VB-23 INCOMPLETE): The client-side fix for Combined-bill payment saving was done correctly, but the matching server-side validation was missed, so saving still fails with a 400 error
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a one-line-condition follow-up to VB-23, not a new investigation. Do not touch DPR-02 through DPR-12, VB-18 through VB-22, VB-24, or PI-01. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND — CONFIRMED BY DIRECT CODE REVIEW AND BY THE PERSON HITTING THIS LIVE
+1. VB-23's client-side fix was done correctly: `client/src/pages/VendorBills.tsx:493` — `hasCumulativeVendorPayment = (billType) => ["equipment", "all"].includes(...)` — correctly widened to cover both bill types, and used consistently throughout the Payment Details UI (lines 524, 4259, etc.).
+2. BUT the server-side validation in `updateVendorBillPaymentDetails` (server/storage.ts ~line 17534-17545) was NOT updated to match. It still reads:
+```js
+if (details.amountPaid !== undefined) {
+  if (existing.billType.toLowerCase() !== "equipment") {
+    throw Object.assign(new Error("Partial-payment amounts are available only on equipment hire bills."), { code: "BAD_REQUEST" });
+  }
+  ...
+```
+This rejects ANY save that includes `amountPaid` for a bill whose `billType` is not exactly `"equipment"` — including `"all"` (Combined) — with an HTTP 400.
+3. Confirmed live: the person opened a Combined bill (VISWANATH, HLC/VB/2026/0048), correctly saw and filled in the now-visible Payment Mode/Paid By/Bank Account/cumulative amount fields (VB-23's client fix working as intended), clicked Save, and got "Failed to save payment details 400: {"message":"Partial-payment amounts are available only on equipment hire bills."}" — this is the exact server check above firing.
+
+FIX — WIDEN THE SERVER CHECK TO MATCH THE CLIENT
+a. In `updateVendorBillPaymentDetails` (server/storage.ts ~line 17542), change the condition from `existing.billType.toLowerCase() !== "equipment"` to reject only when the bill type is neither `"equipment"` NOR `"all"` — i.e. mirror the client's `hasCumulativeVendorPayment` logic exactly (ideally, share one single source of truth for this list between client and server, e.g. export it from a shared module both sides import, rather than maintaining two separate hardcoded lists that can drift out of sync again like this).
+b. Confirm every OTHER validation inside that same `if (details.amountPaid !== undefined)` block (status must be approved/paid, ceiling = netPayableAmount, paid-bill lock, etc. — lines ~17544-17552) is unaffected and still applies correctly to Combined bills exactly as it already does for Equipment bills — these were written generically and should not need changes, just confirm.
+c. Leave every other bill type (material, transport, labour, or whatever else exists) correctly rejected — this widening is specifically to include `"all"` alongside `"equipment"`, not to open this up further.
+
+WHAT NOT TO DO
+- Do not modify the client-side `hasCumulativeVendorPayment` logic — it is already correct.
+- Do not touch DPR-02 through DPR-12, VB-18 through VB-22, VB-24, or PI-01.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change — this is a single validation condition fix.
+
+TESTS
+A. Repeat the exact scenario that failed: open Combined bill HLC/VB/2026/0048 (or any Combined bill), fill in Payment Mode/Paid By/Bank Account/cumulative amount, save. Confirm it now succeeds (no 400).
+B. Confirm the existing safeguards still correctly fire for a Combined bill: an amount below zero or above net payable is rejected; a save attempted while the bill is still Draft/Verified (not yet Approved) is rejected; a Paid bill's amount is locked.
+C. Confirm Equipment-only bills are completely unaffected — same behavior as before.
+D. Confirm any other, non-equipment/non-combined bill type is still correctly rejected if one exists in this codebase (check billType enum values).
+E. Complete the originally-blocked flow end to end: on the Combined bill from the person's screenshot, record a cumulative amount equal to net payable, save successfully, then confirm Mark as Paid now succeeds (this was the original VB-23 goal — confirm the full chain works, not just the payment-details save).
+
+REPORT BACK
+1. Confirm the fix with Test A/E evidence (screenshots), including the full end-to-end Mark as Paid success.
+2. Confirm Test B/C/D — no regression to existing safeguards or other bill types.
+3. State whether you unified the equipment/all list into one shared source of truth or kept two separate lists in sync manually, and why.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
