@@ -1,0 +1,29 @@
+{
+  "scope": "Production database data verification only. This is not production UI screenshot evidence.",
+  "environment": "production",
+  "access": "READ ONLY via executeSql",
+  "writesPerformed": false,
+  "containsPersonalData": false,
+  "query1": {
+    "sql": "SELECT COUNT(*)::int AS total_trips, COUNT(*) FILTER (WHERE NULLIF(BTRIM(material_source_supplier), '') IS NOT NULL)::int AS with_source, COUNT(*) FILTER (WHERE NULLIF(BTRIM(material_source_supplier), '') IS NULL)::int AS without_source, COUNT(*) FILTER (WHERE UPPER(BTRIM(material_source_supplier)) = UPPER($1))::int AS ramesh_count, MIN(date)::text AS first_date, MAX(date)::text AS last_date FROM site_material_trips WHERE date >= $2::date AND date <= $3::date AND UPPER(BTRIM(site)) = UPPER($4) AND UPPER(BTRIM(material)) = UPPER($5)",
+    "params": [
+      "RAMESH MOHABATHPUR",
+      "2026-09-15",
+      "2026-09-22",
+      "ALLADURG PWD ROAD TO PAMPAD",
+      "Soil"
+    ],
+    "rawOutput": "total_trips,with_source,without_source,ramesh_count,first_date,last_date\n114,114,0,114,2026-09-16,2026-09-19"
+  },
+  "query2": {
+    "sql": "SELECT COALESCE(NULLIF(BTRIM(material_source_supplier), ''), '(UNASSIGNED)') AS material_source_supplier, COUNT(*)::int AS trip_count FROM site_material_trips WHERE date >= $1::date AND date <= $2::date AND UPPER(BTRIM(site)) = UPPER($3) AND UPPER(BTRIM(material)) = UPPER($4) GROUP BY 1 ORDER BY trip_count DESC, material_source_supplier",
+    "params": [
+      "2026-09-15",
+      "2026-09-22",
+      "ALLADURG PWD ROAD TO PAMPAD",
+      "Soil"
+    ],
+    "rawOutput": "material_source_supplier,trip_count\nRAMESH MOHABATHPUR,114"
+  },
+  "conclusion": "All 114 matching production trips have material source RAMESH MOHABATHPUR; none are unassigned."
+}

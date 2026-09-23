@@ -602,7 +602,7 @@ export async function registerRoutes(
 
   app.get("/api/materials/suppliers", async (req, res) => {
     try {
-      const suppliers = await storage.getMaterialSuppliers();
+      const suppliers = await storage.getMaterialSuppliers(req.query.includeMaterialSources === "true");
       res.json(suppliers);
     } catch (err) {
       console.error("Error fetching material suppliers:", err);

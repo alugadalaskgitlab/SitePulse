@@ -1409,7 +1409,7 @@ export interface IStorage {
 
   // Combined Materials Received (site_material_trips + DPR material_logs type=Received)
   getAllMaterialsReceived(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; supplier?: string; permittedSiteNames?: string[]; workType?: string }): Promise<any[]>;
-  getMaterialSuppliers(): Promise<string[]>;
+  getMaterialSuppliers(includeMaterialSources?: boolean): Promise<string[]>;
   
   // Consumption Audit Log
   getConsumptionAuditLog(filters?: { dispatchId?: number; dateFrom?: string; dateTo?: string }): Promise<ConsumptionAuditLog[]>;
@@ -12998,7 +12998,12 @@ export class DatabaseStorage implements IStorage {
     if (filters?.dateFrom) tripConditions.push(gte(siteMaterialTrips.date, filters.dateFrom));
     if (filters?.dateTo) tripConditions.push(lte(siteMaterialTrips.date, filters.dateTo));
     if (filters?.material) tripConditions.push(ilike(siteMaterialTrips.material, `%${filters.material}%`));
-    if (filters?.supplier) tripConditions.push(ilike(siteMaterialTrips.supplier, `%${filters.supplier}%`));
+    if (filters?.supplier) {
+      tripConditions.push(or(
+        ilike(siteMaterialTrips.supplier, `%${filters.supplier}%`),
+        ilike(siteMaterialTrips.materialSourceSupplier, `%${filters.supplier}%`),
+      ));
+    }
     if (filters?.permittedSiteNames && filters.permittedSiteNames.length > 0) {
       tripConditions.push(inArray(siteMaterialTrips.site, filters.permittedSiteNames));
     }
@@ -13067,6 +13072,7 @@ export class DatabaseStorage implements IStorage {
       site: t.site,
       material: t.material,
       supplier: t.supplier || null,
+      materialSourceSupplier: t.materialSourceSupplier || null,
       quantity: t.quantity || 0,
       uom: t.uom || "",
       vehicleNumber: t.vehicleNumber || null,
@@ -13158,11 +13164,16 @@ export class DatabaseStorage implements IStorage {
     return combined;
   }
 
-  async getMaterialSuppliers(): Promise<string[]> {
-    const [tripSuppliers, dprSuppliers] = await Promise.all([
+  async getMaterialSuppliers(includeMaterialSources = false): Promise<string[]> {
+    const [tripSuppliers, materialSourceSuppliers, dprSuppliers] = await Promise.all([
       db.selectDistinct({ supplier: siteMaterialTrips.supplier })
         .from(siteMaterialTrips)
         .where(isNotNull(siteMaterialTrips.supplier)),
+      includeMaterialSources
+        ? db.selectDistinct({ supplier: siteMaterialTrips.materialSourceSupplier })
+          .from(siteMaterialTrips)
+          .where(isNotNull(siteMaterialTrips.materialSourceSupplier))
+        : Promise.resolve([]),
       db.selectDistinct({ supplier: materialLogs.supplier })
         .from(materialLogs)
         .innerJoin(dprs, eq(materialLogs.dprId, dprs.id))
@@ -13173,7 +13184,7 @@ export class DatabaseStorage implements IStorage {
         )),
     ]);
     const all = new Set<string>();
-    for (const row of [...tripSuppliers, ...dprSuppliers]) {
+    for (const row of [...tripSuppliers, ...materialSourceSuppliers, ...dprSuppliers]) {
       const val = (row.supplier || '').trim().toUpperCase();
       if (val) all.add(val);
     }

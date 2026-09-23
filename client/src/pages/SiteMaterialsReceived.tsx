@@ -148,7 +148,7 @@ export default function SiteMaterialsReceived() {
   });
 
   const { data: supplierList = [] } = useQuery<string[]>({
-    queryKey: ["/api/materials/suppliers"],
+    queryKey: ["/api/materials/suppliers?includeMaterialSources=true"],
   });
   const { data: sitesList = [] } = useQuery<Site[]>({
     queryKey: ["/api/sites"],
@@ -326,11 +326,11 @@ export default function SiteMaterialsReceived() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label className="text-sm">Supplier / Party</Label>
+                <Label className="text-sm">Transporter / Material Source</Label>
                 <Select value={filters.supplier || "__all__"} onValueChange={(v) => setFilters(f => ({ ...f, supplier: v === "__all__" ? "" : v }))}>
-                  <SelectTrigger data-testid="select-supplier-filter"><SelectValue placeholder="All Suppliers" /></SelectTrigger>
+                  <SelectTrigger data-testid="select-supplier-filter"><SelectValue placeholder="All Parties" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__all__">All Suppliers</SelectItem>
+                    <SelectItem value="__all__">All Parties</SelectItem>
                     {supplierList.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -387,10 +387,10 @@ export default function SiteMaterialsReceived() {
                     <tr className="bg-muted/50">
                       <th className="text-left p-2 border text-sm">Date / Time</th>
                       <th className="text-left p-2 border text-sm">Site</th>
-                      <th className="text-left p-2 border text-sm">Vehicle</th>
+                      <th className="text-left p-2 border text-sm">Transporter</th>
                       <th className="text-left p-2 border text-sm">Material</th>
                       <th className="text-right p-2 border text-sm">Qty / UOM</th>
-                      <th className="text-left p-2 border text-sm">Supplier</th>
+                      <th className="text-left p-2 border text-sm">Material Source</th>
                       <th className="text-left p-2 border text-sm">Receipt No.</th>
                       <th className="text-center p-2 border text-sm">Work Type</th>
                       <th className="text-center p-2 border text-sm">Source</th>
@@ -411,13 +411,19 @@ export default function SiteMaterialsReceived() {
                           {trip.time && <div className="text-muted-foreground text-xs">{trip.time}</div>}
                         </td>
                         <td className="p-2 border text-sm">{trip.site || "-"}</td>
-                        <td className="p-2 border text-sm">{trip.vehicleNumber || "-"}</td>
+                        <td className="p-2 border text-sm" data-testid={`cell-transporter-${trip.source}-${trip.id}`}>
+                          {trip.supplier && <div>{trip.supplier}</div>}
+                          {trip.vehicleNumber && <div className="text-xs text-muted-foreground">{trip.vehicleNumber}</div>}
+                          {!trip.supplier && !trip.vehicleNumber && <span>–</span>}
+                        </td>
                         <td className="p-2 border text-sm font-medium">
                           {trip.material || "-"}
                           {trip.source === "trip" && <TripWorkContextSummary trip={trip} testIdPrefix="received-list-ctx" />}
                         </td>
                         <td className="p-2 border text-sm text-right">{trip.quantity} {trip.uom}</td>
-                        <td className="p-2 border text-sm">{trip.supplier || "-"}</td>
+                        <td className="p-2 border text-sm" data-testid={`cell-material-source-${trip.source}-${trip.id}`}>
+                          {trip.materialSourceSupplier || "–"}
+                        </td>
                         <td className="p-2 border text-sm">{trip.receiptNumber || "-"}</td>
                         <td className="p-2 border text-center"><WorkTypeBadge workType={trip.workType} /></td>
                         <td className="p-2 border text-center"><SourceBadge source={trip.source} /></td>

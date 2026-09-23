@@ -146,10 +146,26 @@ window.fetch = async (input, init) => {
     return json(created, 201);
   }
   if (pathname === "/api/materials-received" && method === "GET") {
-    return json(trips.map(row => ({ ...row, source: "trip" })));
+    const matScenario = request.url.searchParams.get("scenario") === "mat01"
+      || new URLSearchParams(window.location.search).get("scenario") === "mat01";
+    const rows = matScenario
+      ? [
+          ...trips,
+          { id: 2207, date: DATE, time: "14:10", site: SITE, material: "Soil", supplier: null, materialSourceSupplier: SOURCE, vehicleNumber: "TS22VEH2207", quantity: 600, uom: "CFT", receiptNumber: "VEH-ONLY" },
+          { id: 2208, date: DATE, time: "15:20", site: SITE, material: "Soil", supplier: "VB22 SUPPLIER ONLY", materialSourceSupplier: null, vehicleNumber: null, quantity: 600, uom: "CFT", receiptNumber: "SUP-ONLY" },
+        ]
+      : trips;
+    const supplier = request.url.searchParams.get("supplier")?.toUpperCase();
+    return json(rows
+      .filter(row => !supplier
+        || row.supplier?.toUpperCase().includes(supplier)
+        || row.materialSourceSupplier?.toUpperCase().includes(supplier))
+      .map(row => ({ ...row, source: "trip" })));
   }
   if (pathname === "/api/materials/suppliers" && method === "GET") {
-    return json([TRANSPORTER, "VB22 OTHER HAULER"]);
+    return json(request.url.searchParams.get("includeMaterialSources") === "true"
+      ? [TRANSPORTER, "VB22 OTHER HAULER", SOURCE, NO_RATE]
+      : [TRANSPORTER, "VB22 OTHER HAULER"]);
   }
   if (/^\/api\/site-material-trips\/\d+$/.test(pathname) && method === "PATCH") {
     const id = Number(pathname.split("/").pop());
@@ -282,9 +298,12 @@ function FixtureRoute() {
     return () => window.removeEventListener("vb22-duplicate", listener);
   }, []);
   const vb24Scenario = new URLSearchParams(window.location.search).get("scenario") === "vb24";
+  const mat01Scenario = new URLSearchParams(window.location.search).get("scenario") === "mat01";
   return <>
     <div className={`${vb24Scenario ? "fixed inset-x-0 top-0" : "sticky top-0"} z-[200] border-b border-purple-300 bg-purple-50 px-4 py-2 text-center text-xs font-bold text-purple-900`} data-testid="vb22-fixture-disclosure">
-      {vb24Scenario
+      {mat01Scenario
+        ? "MAT-01 REAL MATERIALS RECEIVED COMPONENT — SYNTHETIC FIXTURE DATA — NO LIVE API OR DATABASE WRITES"
+        : vb24Scenario
         ? "VB-24 REAL-COMPONENT FIXTURE — SYNTHETIC API + AUDIT HISTORY — NO LIVE API OR DATABASE WRITES"
         : "VB-22 REAL-COMPONENT FIXTURE — SYNTHETIC API DATA — NO LIVE API OR DATABASE WRITES"}
     </div>

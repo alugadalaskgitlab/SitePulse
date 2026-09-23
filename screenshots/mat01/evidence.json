@@ -1,0 +1,17 @@
+{
+  "disclosure": "MAT-01 REAL MATERIALS RECEIVED COMPONENT — SYNTHETIC FIXTURE DATA — NO LIVE API OR DATABASE WRITES",
+  "assertions": {
+    "transporterAndVehicleStacked": true,
+    "materialSourceAndBlankDash": true,
+    "missingValuesShownAlone": true,
+    "materialSourceOnlyOptionUnique": true,
+    "materialSourceOrFilter": true,
+    "transporterFilterPreserved": true
+  },
+  "screenshots": [
+    "/home/runner/workspace/screenshots/mat01/A-transporter-stack-material-source-and-dash-synthetic.png",
+    "/home/runner/workspace/screenshots/mat01/B-union-filter-options-no-duplicates-synthetic.png",
+    "/home/runner/workspace/screenshots/mat01/C-material-source-filter-or-match-synthetic.png",
+    "/home/runner/workspace/screenshots/mat01/D-transporter-filter-regression-synthetic.png"
+  ]
+}

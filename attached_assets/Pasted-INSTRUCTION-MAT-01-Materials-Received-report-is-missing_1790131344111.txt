@@ -1,0 +1,52 @@
+INSTRUCTION MAT-01: Materials Received report is missing the Material Source column (already shown on the Site Material Trips list page) — combine Supplier+Vehicle into one "Transporter" column and repurpose the freed column to show Material Source, and extend the Supplier/Party filter to also search Material Source
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Small, precise UI/filter change confined to the Materials Received report page. Do not touch DPR-02 through DPR-12, VB-18 through VB-24, VB-23B, PI-01, or PI-02/PI-02B. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+1. `client/src/pages/SiteMaterialsReceived.tsx` — the "Materials Received" report table (lines ~386-459) has columns, left to right: Date/Time, Site, Vehicle, Material, Qty/UOM, Supplier, Receipt No., Work Type, Source, Photos, actions. Header cells at lines 388-398; row cells at lines 409-458, specifically `trip.vehicleNumber` at line 414 and `trip.supplier` at line 420.
+2. `materialSourceSupplier` (the field added in VB-22) is NOT shown anywhere in this table. It only appears in this page's row-detail modal (view mode ~line 713-716, edit mode ~line 615-628) — i.e., you have to open a trip's detail dialog to see who the material source vendor was, even though it's a first-class field on every trip. This is confirmed as the gap the person is asking to fix.
+3. Confirmed it IS already shown as its own column on the separate Site Material Trips list page (`client/src/pages/SiteMaterialTrips.tsx`) — this fix brings the Materials Received report to parity with that page, just via a combined-column layout instead of adding a whole new column (to conserve table width).
+4. The "Filters" card above the table (~lines 288-351) has a "Supplier / Party" dropdown (~lines 328-337, populated from `GET /api/materials/suppliers`, which itself is backed by `getMaterialSuppliers` in server/storage.ts ~line 13161 — confirmed this only selects from `siteMaterialTrips.supplier`/`materialLogs.supplier`, never `materialSourceSupplier`). The actual filter query (`server/storage.ts` ~line 13001, wired from `server/routes.ts` ~695-707) applies `ilike(siteMaterialTrips.supplier, ...)` only — confirmed Material Source is NOT currently searchable through this filter at all.
+5. The person has confirmed: combine the Vehicle and Supplier (transporter) columns into one "Transporter" column (vehicle number can sit as a secondary/smaller line under the transporter name in the same cell), and use the freed column position to show Material Source — AND extend the Supplier/Party filter to also search Material Source, so the report can be filtered by either party.
+
+FIX 1 — COMBINE VEHICLE + SUPPLIER INTO ONE "TRANSPORTER" COLUMN
+a. Replace the separate "Vehicle" and "Supplier" header cells (~lines 390, 393) with a single "Transporter" header.
+b. In the row cell for this combined column, show the transporter/supplier name (`trip.supplier`) as the primary line, with the vehicle number (`trip.vehicleNumber`) as a smaller/secondary line beneath it (e.g. muted text, smaller font) — both values must remain visible, just stacked rather than in separate columns. If either value is missing, show the other alone without a blank placeholder line.
+
+FIX 2 — REPURPOSE THE FREED COLUMN TO SHOW MATERIAL SOURCE
+a. Use the column position freed up by Fix 1 to display `trip.materialSourceSupplier`.
+b. Header label: "Material Source" (or "Material Source / Supplier" if space allows — match the terminology already used elsewhere, e.g. the label used on Site Material Trips' own column).
+c. If a trip has no Material Source set (blank/null — expected for many pre-VB-22 trips or trips where it genuinely doesn't apply), show a plain dash "–" or similar, consistent with how other optional fields in this table already handle blanks (e.g. Receipt No.).
+d. This is purely a display change — do not alter how `materialSourceSupplier` is entered/edited (the existing detail-dialog edit field ~line 615-628 stays as-is).
+
+FIX 3 — EXTEND THE SUPPLIER/PARTY FILTER TO ALSO SEARCH MATERIAL SOURCE
+a. Update `getMaterialSuppliers` (server/storage.ts ~line 13161) so the dropdown's list of selectable names is the UNION of distinct `siteMaterialTrips.supplier`, `siteMaterialTrips.materialSourceSupplier`, and `materialLogs.supplier` values (deduplicated) — so a material-source vendor like "RAMESH MOHABATHPUR" appears as a selectable option even if they've never been a transporter.
+b. Update the actual filter query (server/storage.ts ~line 13001) so selecting a name matches EITHER `supplier` (transporter) OR `materialSourceSupplier` — i.e. an `OR` condition, not requiring both — so filtering by a name returns trips where that party was either the transporter or the material source.
+c. Consider whether the dropdown/label should be relabeled to make clear it now searches both roles (e.g. "Transporter / Material Source") — your judgment on wording, but it should not silently search two roles under a label that still says "Supplier / Party" without any indication, since that could confuse the person about what's being matched. A small helper caption under the filter is an acceptable lightweight solution if a longer label doesn't fit well.
+d. Do not change how the Supplier/Party filter behaves on any OTHER page (e.g. Site Material Trips' own filters, or Vendor Bills) — this change is scoped to the Materials Received report's filter only, unless the same `getMaterialSuppliers` function is shared and a shared fix is unavoidable, in which case confirm it doesn't change filtering behavior unexpectedly elsewhere and report this explicitly.
+
+WHAT NOT TO DO
+- Do not remove the ability to see the vehicle number — it must remain visible, just as a secondary line within the combined Transporter cell.
+- Do not change the detail-dialog view/edit behavior for Material Source — only the list/table display and the filter are in scope.
+- Do not touch DPR-02 through DPR-12, VB-18 through VB-24, VB-23B, PI-01, or PI-02/PI-02B.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change — this is display and filter-query logic only, using fields that already exist.
+
+TESTS
+A. Open Materials Received for a date range/site with a mix of trips — some with Material Source set, some without. Confirm the Transporter column shows supplier name + vehicle number stacked, and the new Material Source column shows the correct value or a dash when blank.
+B. Confirm all 114 of the person's previously bulk-assigned Soil trips now show "RAMESH MOHABATHPUR" in the Material Source column on this report.
+C. Open the Supplier/Party filter dropdown and confirm it now lists material-source-only vendors (e.g. RAMESH MOHABATHPUR) alongside transporter names, with no duplicates for a party that is both.
+D. Select a material-source-only vendor in the filter and confirm the report correctly returns trips where they were the material source, even though they were never the transporter on any of those trips.
+E. Select a transporter-only vendor and confirm existing transporter-filtering behavior is unaffected (no regression).
+F. Confirm this change did not affect the Site Material Trips page's own filters/columns, or any other page using `getMaterialSuppliers`, unless explicitly reported otherwise.
+
+REPORT BACK
+1. Confirm Fix 1/2 with Test A/B evidence (screenshots).
+2. Confirm Fix 3 with Test C/D/E evidence (screenshots).
+3. Confirm Test F — no unintended effect elsewhere, or explain what shared-function impact was unavoidable and why it's safe.
+4. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

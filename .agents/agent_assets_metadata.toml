@@ -2061,3 +2061,59 @@ mtime_ms = 1790126029855
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/f114a760-b289-4bf4-be3b-c027ed121cea/71d9ee9c-ea91-4fe8-9742-f4c8d53a499b"
 storage_version_token = "1790126151275997"
 content_type = "image/png"
+
+[[outputs]]
+id = "58IUR_zdhC3nDkGtpVMT4"
+uri = "file://screenshots/mat01/A-transporter-stack-material-source-and-dash-synthetic.png"
+type = "image"
+title = "Materials Received — transporter and material source"
+description = "Actual report component with clearly labelled synthetic fixture data. Production source counts were checked separately with read-only SQL."
+logical_id = "76c82733-9f49-49c2-8f9c-7c2ca63bc352"
+content_hash = "sha256:1a551d08abf13119fb1c963a61de29589e52f7306f4d8dc8a191f514c1fa66aa"
+size = 175035
+mtime_ms = 1790131615996
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/76c82733-9f49-49c2-8f9c-7c2ca63bc352/b1eb34ea-569b-45b2-8b46-57534b2fa928"
+storage_version_token = "1790131673114445"
+content_type = "image/png"
+
+[[outputs]]
+id = "aFooZWlZKi_NMDEMLTIT9"
+uri = "file://screenshots/mat01/B-union-filter-options-no-duplicates-synthetic.png"
+type = "image"
+title = "Party filter — source vendors included"
+description = "Actual report component with clearly labelled synthetic fixture data. Production source counts were checked separately with read-only SQL."
+logical_id = "f7fa7d40-7fd6-4755-97d6-5ada7b7b3868"
+content_hash = "sha256:08c5033b10f079a3831a624f90d52fbdbeb955163347e5e0c8d21ef72b6a9140"
+size = 194684
+mtime_ms = 1790131616316
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/f7fa7d40-7fd6-4755-97d6-5ada7b7b3868/6960aeef-4fc1-4306-9536-fe0264c86b59"
+storage_version_token = "1790131675290057"
+content_type = "image/png"
+
+[[outputs]]
+id = "iS-3bXBsUcCYLUwlsDP7l"
+uri = "file://screenshots/mat01/C-material-source-filter-or-match-synthetic.png"
+type = "image"
+title = "Filtered by material source"
+description = "Actual report component with clearly labelled synthetic fixture data. Production source counts were checked separately with read-only SQL."
+logical_id = "da9d5aee-8f35-4000-8cb9-1358a4a523c5"
+content_hash = "sha256:74bbc5ffef861297e5eee7711f3966ed0c91245c12be3314d5a908b09138facc"
+size = 91225
+mtime_ms = 1790131616696
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/da9d5aee-8f35-4000-8cb9-1358a4a523c5/17e8adb9-d30a-4117-bd97-9ba48d3e837f"
+storage_version_token = "1790131677177924"
+content_type = "image/png"
+
+[[outputs]]
+id = "iHQgmgerwyDSkSnljLJ65"
+uri = "file://screenshots/mat01/D-transporter-filter-regression-synthetic.png"
+type = "image"
+title = "Filtered by transporter"
+description = "Actual report component with clearly labelled synthetic fixture data. Production source counts were checked separately with read-only SQL."
+logical_id = "b4d2f1ad-ef55-4191-9d83-b366041a0822"
+content_hash = "sha256:e411885689b4ac19a82c0cf7497c11f58d7b079ad7b17a277ead12df60d14808"
+size = 111939
+mtime_ms = 1790131617232
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b4d2f1ad-ef55-4191-9d83-b366041a0822/b112e208-c1c3-4b0e-be32-1c3cf4c75395"
+storage_version_token = "1790131679058335"
+content_type = "image/png"
