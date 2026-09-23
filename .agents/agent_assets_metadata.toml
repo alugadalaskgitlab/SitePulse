@@ -2523,3 +2523,45 @@ mtime_ms = 1790175241023
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e3a3edca-155d-4350-ad78-967a9da008ca/070042bf-2da7-424f-a5c4-7cbcb42a9371"
 storage_version_token = "1790175336484702"
 content_type = "image/png"
+
+[[outputs]]
+id = "r9BShwFDcnPSDJ_Yg8wGS"
+uri = "file://tests/fixtures/vendor-bills-vb26/evidence/VB-26-synthetic-owned-Hr-actual-component.png"
+type = "image"
+title = "Owned equipment — hourly norm and tank confirmation"
+description = "Actual calendar component with synthetic test data, not live bills. Covers expected totals, confirmed/unconfirmed actuals, tasks and no-activity days."
+logical_id = "ee464d09-75bd-4e10-a9c4-73c4aaa1955b"
+content_hash = "sha256:37fa56e9fb768f68cecfd6181e1d93a7643f2df296ee34732135635be675aa0a"
+size = 44078
+mtime_ms = 1790177768289
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/ee464d09-75bd-4e10-a9c4-73c4aaa1955b/74a9aa65-0d49-4801-b5ba-b9f6fcbb19d4"
+storage_version_token = "1790177914027201"
+content_type = "image/png"
+
+[[outputs]]
+id = "1b4AtA7B5lcKsHOEJC-4A"
+uri = "file://tests/fixtures/vendor-bills-vb26/evidence/VB-26-synthetic-hired-Km-actual-component.png"
+type = "image"
+title = "Hired equipment — kilometre norm and linked tasks"
+description = "Actual calendar component with synthetic test data, not live bills. Covers expected totals, confirmed/unconfirmed actuals, tasks and no-activity days."
+logical_id = "8d8061da-13e8-498f-95f4-7407b4a98464"
+content_hash = "sha256:0144a897e485eb854e5052123d50d0b49a4606e61c8a4e0a987ecd14b40f9275"
+size = 45315
+mtime_ms = 1790177768353
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8d8061da-13e8-498f-95f4-7407b4a98464/1aeb3fca-f2ee-4868-b789-25f8067f2b3e"
+storage_version_token = "1790177915410451"
+content_type = "image/png"
+
+[[outputs]]
+id = "sHjsEvt6JlW-YgaP2nie7"
+uri = "file://tests/fixtures/vendor-bills-vb26/evidence/VB-26-synthetic-owned-hired-actual-component.png"
+type = "image"
+title = "Equipment Hire calendar — complete comparison"
+description = "Actual calendar component with synthetic test data, not live bills. Covers expected totals, confirmed/unconfirmed actuals, tasks and no-activity days."
+logical_id = "c0c014e9-0e32-493a-8826-dd0591cc16b9"
+content_hash = "sha256:f7a2b349179f6af23a0bbf1a6b779dcc0fdc6f5f9cc1447b5347869af9aece13"
+size = 104012
+mtime_ms = 1790177768213
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c0c014e9-0e32-493a-8826-dd0591cc16b9/c28343df-992d-4580-8403-9cc3b943684f"
+storage_version_token = "1790177917754253"
+content_type = "image/png"

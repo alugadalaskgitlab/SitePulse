@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "screenshots": [
+    "/home/runner/workspace/tests/fixtures/vendor-bills-vb26/evidence/VB-26-synthetic-owned-hired-actual-component.png",
+    "/home/runner/workspace/tests/fixtures/vendor-bills-vb26/evidence/VB-26-synthetic-owned-Hr-actual-component.png",
+    "/home/runner/workspace/tests/fixtures/vendor-bills-vb26/evidence/VB-26-synthetic-hired-Km-actual-component.png"
+  ],
+  "assertions": [
+    "owned+hired",
+    "Hr+Km norms",
+    "unconfirmed+confirmed actual",
+    "distinct multiple tasks",
+    "no activity",
+    "period Expected",
+    "variance absent"
+  ]
+}

@@ -1,0 +1,65 @@
+INSTRUCTION VB-26: Vendor Bills' Equipment Hire daily activity calendar — Expected Diesel is wrongly gated by the same "tank confirmed" checkbox as Actual Consumed (so it shows blank even when the equipment master has a norm), remove the Difference/Variance column, split the cramped "Actual | Master Norm" cell into clean separate columns, and show the real linked DPR activity/task instead of a generic "Worked"/"Activity recorded" label
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a precise, code-confirmed bug plus three display refinements, all confined to the Equipment Hire bill's daily calendar. Do not touch the SEPARATE "HireActivityBreakdownCalendar" component (VB-21's earlier work, used for a different combined-bill view) — this instruction targets `EquipmentHireBillOutput.tsx`/`DraftEquipmentHireCalendar.tsx`/`shared/equipmentPerformance.ts`, a different code path, confirmed via direct tracing against a live screenshot. Do not touch DPR-02 through DPR-13, VB-18 through VB-25, PI-01, PI-02, PI-02B, MAT-01, MAT-02, or PR-01. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review against a live screenshot — do not re-derive)
+1. The daily calendar's Diesel Consumed and Expected cells (`client/src/components/vendor-bills/EquipmentHireBillOutput.tsx:167-168`) both render the literal "Tank Readings N/A" whenever `item.consumptionIncomplete` is true.
+2. `consumptionIncomplete` (`shared/equipmentPerformance.ts:550`) is `dieselConsumed == null`, and `dieselConsumed` is only computed when BOTH the opening and closing boundary readings for that day have `dieselBasis === "tank_measured"` (`equipmentPerformance.ts:513-520`), which in turn requires the entry's `dieselBalanceConfirmed` checkbox ("Physical Tank Balance Confirmed", `client/src/components/DprEquipmentCompact.tsx:294`) to be explicitly ticked — a manual confirmation, separate from whether Opening/Closing Tank numbers were actually entered. Confirmed live: a day with real 0L→8.5L tank readings still showed "Tank Readings N/A" because this checkbox wasn't ticked, even though the raw numbers display correctly elsewhere in the same row (`openingTank`/`closingTank` are populated unconditionally, `equipmentPerformance.ts:692-693`).
+3. CONFIRMED BUG: `expectedDiesel` (`shared/equipmentUsage.ts:219`, computed purely from `consumptionNorm × runtime` — needs NO tank data at all) is nonetheless gated by the SAME `consumptionIncomplete` flag (`EquipmentHireBillOutput.tsx:168`, and again in the period-total summary at `:228`: `expectedDiesel: fuelIsContractorScope || item?.consumptionIncomplete ? null : item?.expectedDiesel`). This is why Expected showed "—" even though the equipment master has a valid consumption norm — a completely unrelated value is being suppressed by a checkbox that has nothing to do with it.
+4. The "Actual Consumption | Master Norm" cell (`EquipmentHireBillOutput.tsx:146,155-157`) crams both the day's actual consumption RATE and the master's norm into one combined text cell, also fully suppressed by `consumptionIncomplete` — confirmed this is what the person found confusing ("what is actual consumed master norm").
+5. The "Difference" column (`EquipmentHireBillOutput.tsx:146`, cell at `:90-91`/`169`, using `row.difference = dieselConsumed - expectedDiesel` from `equipmentPerformance.ts:547`, also surfaced as a "Total Variance" period total at `:262`/`:389-390` and in `DraftEquipmentHireCalendar.tsx:41`) — the person wants this removed entirely.
+6. Status/Remarks (`EquipmentHireBillOutput.tsx:134-135`, rendered at `:171`) currently generates a generic `"Worked"`/`"No Work"` status and `"Activity recorded"`/`"No activity recorded"` remarks text. The actual task/work description IS already captured in the data model — each `EquipmentPerformanceEvent` has a `task` field (`equipmentPerformance.ts:150`, populated at `:681` from the DPR log/usage row), and the daily row retains the raw events at `events: orderedRows` (`equipmentPerformance.ts:576`) — it's simply never read into this display.
+7. `meterType`-driven L/Hr vs L/Km unit selection (`shared/equipmentUsage.ts:211`, `equipmentPerformance.ts:549`) is already correctly implemented and working — confirmed NOT broken, no change needed there.
+8. Confirmed NOT ownership-specific: the `dieselBalanceConfirmed` gate applies identically to owned and hired equipment; `fuelIsContractorScope` (checking `dieselResponsibility === "vendor"`) only hides fuel columns entirely for contractor-scope diesel, a separate and correctly-working concern. This fix applies uniformly across all equipment shown in this calendar.
+
+FIX 1 — DECOUPLE EXPECTED DIESEL FROM THE TANK-CONFIRMATION GATE
+a. In `EquipmentHireBillOutput.tsx` (~line 168) and the period-total builder (~line 228), stop gating `expectedDiesel` on `item.consumptionIncomplete`. Expected should render whenever `consumptionNorm × runtime` can be computed (i.e., the equipment has a norm set in its master and the day has runtime data) — completely independent of whether tank readings were confirmed that day.
+b. Diesel CONSUMED (the actual, tank-based figure) should CONTINUE to correctly show "Tank Readings N/A" (or clearer wording, see Fix 3) when `dieselBalanceConfirmed` is false — this part of the gating is legitimate (an unconfirmed physical reading shouldn't be presented as a trusted actual figure) and must NOT be removed, only decoupled from Expected.
+c. Confirm this fix applies correctly to both the per-day row and the period summary total for Expected.
+
+FIX 2 — REMOVE THE DIFFERENCE/VARIANCE COLUMN
+a. Remove the "Difference" column header and its per-day cell value from `EquipmentHireBillOutput.tsx` (~lines 146, 169).
+b. Remove the corresponding "Total Variance" period-total line (~lines 262, 389-390 and `DraftEquipmentHireCalendar.tsx:41`).
+c. Confirm no other part of the bill (e.g. HSD recovery suggestion logic used elsewhere in Vendor Bills) depends on this specific displayed value being present in this table — if the underlying `difference`/variance calculation is used elsewhere for a real purpose (e.g. feeding the recovery-suggestion feature), keep the underlying calculation intact and only remove it from THIS display.
+
+FIX 3 — SPLIT "ACTUAL | MASTER NORM" INTO CLEAN SEPARATE COLUMNS
+a. Replace the combined "Actual Consumption | Master Norm" cell with two separate, clearly labeled columns: "Diesel Consumed" (already exists as its own column per the screenshot, keep as-is, gated correctly per Fix 1b) and a new "Norm" column showing the equipment master's `consumptionNorm` value with its correct unit (L/Hr for hour-meter equipment, L/Km for odometer equipment — reuse the already-correct `meterType`-driven unit logic from `equipmentUsage.ts`/`equipmentPerformance.ts`, do not reimplement).
+b. The Norm column should show the master's value regardless of tank confirmation status (it's a static master value, not a computed actual) — always visible when the equipment has a norm set.
+c. If a consumption RATE (actual L/Hr or L/Km for that specific day, distinct from the master norm) is still considered useful to show, it may remain as part of the Diesel Consumed column's own gating (Fix 1b) rather than mixed into the Norm column — your judgment on the cleanest layout, but Norm and Actual/Consumed must be visually and logically separate columns, not combined text.
+
+FIX 4 — SHOW THE ACTUAL LINKED ACTIVITY/TASK, NOT A GENERIC STATUS LABEL
+a. In `buildBillingDailyRows()` (`EquipmentHireBillOutput.tsx` ~lines 134-135), replace the generic `remarks` value ("Activity recorded"/"No activity recorded") with the actual task/activity description(s) from that day's DPR entries — read from `performance.events[].task` (confirmed already populated, `equipmentPerformance.ts:150,681`). If multiple distinct tasks were logged for the equipment on the same day, join them clearly (e.g. comma-separated distinct values) rather than picking just one arbitrarily.
+b. Keep the "Worked"/"No Work" status concept if it remains useful as a quick visual indicator (e.g. a small badge), but the REMARKS text specifically must now show the real activity, not a placeholder phrase.
+c. When no activity/task was logged for a no-activity day, it's fine to keep "No activity recorded" or similar — this fix is about days that DO have a real linked activity showing it properly, not about inventing text for genuinely blank days.
+
+WHAT NOT TO DO
+- Do not weaken or remove the `dieselBalanceConfirmed` gate for Diesel Consumed itself — only decouple Expected from it.
+- Do not touch the separate `HireActivityBreakdownCalendar.tsx` component (a different, VB-21-era view) — confirm this fix is scoped only to the Equipment Hire daily calendar files identified above.
+- Do not remove the underlying difference/variance calculation if it's used elsewhere (e.g. HSD recovery suggestions) — only remove it from this specific table's display.
+- Do not touch DPR-02 through DPR-13, VB-18 through VB-25, PI-01, PI-02, PI-02B, MAT-01, MAT-02, or PR-01.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change — all four fixes are display/derivation logic only, using data that already exists (`consumptionNorm`, `meterType`, `events[].task` are all already present).
+
+TESTS
+A. Open the Equipment Hire calendar for an OWNED machine with real logged runtime on a day where the tank-confirmation checkbox was NOT ticked, but the equipment master has a consumption norm set. Confirm Expected now shows a real computed value (norm × runtime), while Diesel Consumed still correctly shows the unconfirmed-tank message.
+B. Repeat Test A for a HIRED machine — confirm identical correct behavior (not ownership-specific).
+C. Confirm the period summary's Expected total is also no longer suppressed by unconfirmed days.
+D. Confirm the Difference/Variance column and "Total Variance" line no longer appear anywhere in this calendar.
+E. Confirm the Norm column shows the correct unit (L/Hr for an hour-meter machine, L/Km for an odometer machine) sourced from the equipment master, always visible regardless of tank confirmation.
+F. Open a day with a real logged DPR task/activity for the equipment. Confirm the Remarks column now shows the actual task description instead of "Activity recorded".
+G. Confirm a genuinely no-activity day still shows an appropriate "No activity" indication, not broken/blank text.
+H. Confirm a day WITH confirmed tank readings still correctly shows both Diesel Consumed and Expected as before (no regression to the working case).
+I. Confirm this fix did NOT alter `HireActivityBreakdownCalendar.tsx` or any VB-21 behavior — check that file is untouched in your diff.
+
+REPORT BACK
+1. Confirm Fix 1 with Test A/B/C evidence (screenshots), across both owned and hired equipment.
+2. Confirm Fix 2 with Test D evidence (screenshots).
+3. Confirm Fix 3 with Test E evidence (screenshots).
+4. Confirm Fix 4 with Test F/G evidence (screenshots).
+5. Confirm Test H/I — no regression to the working case or to the separate VB-21 component.
+6. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

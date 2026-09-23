@@ -81,7 +81,7 @@ describe("equipment hire bill output", () => {
     expect(excelWrites).toEqual(["VB-EH-001.xlsx"]);
   });
 
-  it("keeps canonical L/hr norms and hides fuel-performance columns for contractor-scope fuel", () => {
+  it("keeps canonical norm units separate and hides fuel-performance columns for contractor-scope fuel", () => {
     excelSheets.length = 0;
     exportEquipmentHireBill({ ...data, dieselResponsibility: "vendor", consumptionNorm: 3.5 }, rows, "xlsx");
     const activity = excelSheets.find(sheet => sheet.name === "Daily Activity")!.data;
@@ -90,13 +90,15 @@ describe("equipment hire bill output", () => {
     expect(activity[1]).not.toContain("Opening Tank");
     expect(activity[1]).not.toContain("Closing Tank");
     expect(activity[1]).not.toContain("Diesel Consumed");
-    expect(activity[1]).not.toContain("Actual Consumption | Master Norm");
+    expect(activity[1]).not.toContain("Norm");
 
     excelSheets.length = 0;
     exportEquipmentHireBill({ ...data, dieselResponsibility: "hlc", consumptionNorm: 3.5 }, rows, "xlsx");
     const hlcActivity = excelSheets.find(sheet => sheet.name === "Daily Activity")!.data;
-    expect(hlcActivity[0]).toContain("Actual Consumption | Master Norm");
-    expect(hlcActivity[1]).toContain("Actual: 3.13 L/hr | Master Norm: 3.5 L/hr");
+    expect(hlcActivity[0]).toContain("Norm");
+    expect(hlcActivity[0]).not.toContain("Difference");
+    expect(hlcActivity[0]).not.toContain("Actual Consumption | Master Norm");
+    expect(hlcActivity[1]).toContain("3.5 L/Hr");
     expect(hlcActivity[2]).toContain("Tank Readings N/A");
   });
 
@@ -205,7 +207,7 @@ describe("equipment hire bill output", () => {
       hours: 2,
       dieselIssued: 3,
       dieselConsumed: null,
-      expectedDiesel: null,
+      expectedDiesel: 88,
       variance: null,
     });
     const zeroRow = {
@@ -239,8 +241,77 @@ describe("equipment hire bill output", () => {
     expect(renderedRow).toBeDefined();
     expect(renderedRow).toContain("Tank Readings N/A");
     expect(renderedRow).not.toContain("99 L");
-    expect(renderedRow).not.toContain("88 L");
+    expect(renderedRow).toContain("88 L");
     expect(renderedRow).not.toContain("Actual: 49.50");
+  });
+
+  it("decouples expected and norm from actual confirmation and displays distinct DPR tasks", () => {
+    const activityRows = buildBillingDailyRows([{
+      ...rows[0].performance!,
+      consumptionIncomplete: true,
+      dieselConsumed: null,
+      expectedDiesel: 16,
+      consumptionRate: null,
+      consumptionRateUnit: "L/km",
+      events: [
+        { task: "Shoulder grading" },
+        { task: "Shoulder grading" },
+        { task: "Material shifting" },
+        { task: " " },
+      ] as any,
+    }], "2026-01-10", "2026-01-10");
+    expect(activityRows[0].remarks).toBe("Shoulder grading, Material shifting");
+    expect(buildEquipmentHirePeriodTotals(activityRows)).toMatchObject({
+      dieselConsumed: null,
+      expectedDiesel: 16,
+      variance: null,
+    });
+
+    excelSheets.length = 0;
+    exportEquipmentHireCalendar({ ...data, consumptionNorm: 2.25 }, activityRows, "xlsx");
+    const sheet = excelSheets[0].data;
+    const headers = sheet.find(row => row.includes("Date"))!;
+    const rendered = sheet.find(row => row[0] === "10 Jan 2026")!;
+    expect(headers).toEqual(expect.arrayContaining(["Diesel Consumed", "Expected", "Norm", "Status / Remarks"]));
+    expect(headers).not.toEqual(expect.arrayContaining(["Difference", "Actual Consumption | Master Norm"]));
+    expect(rendered).toEqual(expect.arrayContaining([
+      "Tank Readings N/A",
+      "16 L",
+      "2.25 L/Km",
+      "Worked — Shoulder grading, Material shifting",
+    ]));
+    expect(sheet).toContainEqual(["Total Expected Diesel", 16]);
+    expect(sheet.some(row => row[0] === "Total Variance")).toBe(false);
+  });
+
+  it("uses the master meter type for Norm when the entire period has no performance rows", () => {
+    const noActivity = buildBillingDailyRows([], "2026-01-10", "2026-01-11");
+
+    excelSheets.length = 0;
+    exportEquipmentHireCalendar({ ...data, consumptionNorm: 3.5, meterType: "hour_meter" }, noActivity, "xlsx");
+    let sheet = excelSheets[0].data;
+    expect(sheet.find(row => row[0] === "10 Jan 2026")).toContain("3.5 L/Hr");
+
+    excelSheets.length = 0;
+    exportEquipmentHireCalendar({ ...data, consumptionNorm: 0.2, meterType: "odometer" }, noActivity, "xlsx");
+    sheet = excelSheets[0].data;
+    expect(sheet.find(row => row[0] === "10 Jan 2026")).toContain("0.2 L/Km");
+  });
+
+  it("keeps the master Norm unit when an hour-meter row has a trip-converted L/km usage unit", () => {
+    const tripConvertedRows = buildBillingDailyRows([{
+      ...rows[0].performance!,
+      consumptionRateUnit: "L/km",
+    }], "2026-01-10", "2026-01-10");
+    excelSheets.length = 0;
+    exportEquipmentHireCalendar({
+      ...data,
+      consumptionNorm: 3.5,
+      meterType: "hour_meter",
+    }, tripConvertedRows, "xlsx");
+    const rendered = excelSheets[0].data.find(row => row[0] === "10 Jan 2026")!;
+    expect(rendered).toContain("3.5 L/Hr");
+    expect(rendered).not.toContain("3.5 L/Km");
   });
 
   it("uses the immutable storage-shaped snapshot and never double-counts aggregate statement deductions", () => {

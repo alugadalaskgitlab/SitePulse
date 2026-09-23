@@ -26,6 +26,7 @@ function EquipmentHirePeriodTotals({
   rows: BillingDailyRow[];
   dieselResponsibility?: string | null;
   consumptionNorm?: number | null;
+  meterType?: string | null;
 }) {
   const fuelIsContractorScope = String(dieselResponsibility).toLowerCase() === "vendor";
   const totals = buildEquipmentHirePeriodTotals(rows, dieselResponsibility);
@@ -38,7 +39,6 @@ function EquipmentHirePeriodTotals({
         <span><strong>Diesel issued:</strong> {display(totals.dieselIssued, " L")}</span>
         <span><strong>Consumed:</strong> {display(totals.dieselConsumed, " L")}</span>
         <span><strong>Expected:</strong> {display(totals.expectedDiesel, " L")}</span>
-        <span><strong>Variance:</strong> {display(totals.variance, " L")}</span>
       </>}
       {totals.trips != null && <span><strong>Trips:</strong> {display(totals.trips)}</span>}
       <span><strong>Breakdown days:</strong> {totals.breakdownDays}</span>
@@ -79,6 +79,7 @@ export default function DraftEquipmentHireCalendar({
   maintenance = [],
   dieselResponsibility,
   consumptionNorm,
+  meterType,
   exceptionDecisions = [],
   dieselRecoveryDecision,
   exportData,
@@ -109,6 +110,9 @@ export default function DraftEquipmentHireCalendar({
     if (!query.data || !Array.isArray(query.data.fleet)) return undefined;
     return query.data.fleet.find((row: any) => Number(row.equipmentId) === Number(equipmentId));
   }, [equipmentId, query.data]);
+  const masterMeterType = meterType || query.data?.filterOptions?.equipment?.find(
+    row => Number(row.id) === Number(equipmentId),
+  )?.meterType;
 
   const rows = useMemo<BillingDailyRow[]>(() => {
     if (!query.isSuccess) return [];
@@ -145,9 +149,13 @@ export default function DraftEquipmentHireCalendar({
     : null;
   const liveExportData = useMemo(
     () => exportData
-      ? { ...exportData, projectSite: exportData.projectSite || performance?.currentLocation || undefined }
+      ? {
+        ...exportData,
+        projectSite: exportData.projectSite || performance?.currentLocation || undefined,
+        meterType: exportData.meterType || masterMeterType,
+      }
       : undefined,
-    [exportData, performance?.currentLocation],
+    [exportData, masterMeterType, performance?.currentLocation],
   );
 
   if (mode === "detail") {
@@ -184,6 +192,7 @@ export default function DraftEquipmentHireCalendar({
           rows={rows}
           dieselResponsibility={dieselResponsibility}
           consumptionNorm={consumptionNorm}
+          meterType={masterMeterType}
         />
       </>
     );
@@ -214,6 +223,7 @@ export default function DraftEquipmentHireCalendar({
               rows={rows}
               dieselResponsibility={dieselResponsibility}
               consumptionNorm={consumptionNorm}
+              meterType={masterMeterType}
             />
             {status && <p className="text-xs font-medium text-muted-foreground">{status}</p>}
             {canExport && liveExportData && (

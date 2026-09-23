@@ -5,7 +5,7 @@ import * as XLSX from "xlsx";
 import { format } from "date-fns";
 import { Download, FileText } from "lucide-react";
 import type { EquipmentPerformanceDailyRow } from "@shared/equipmentPerformance";
-import { formatEquipmentDuration, formatEquipmentTime } from "@shared/equipmentUsage";
+import { computeEquipmentUsage, formatEquipmentDuration, formatEquipmentTime } from "@shared/equipmentUsage";
 import { calculateEquipmentHireFinancials } from "@shared/hireBilling";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -67,6 +67,8 @@ export type EquipmentHireExportData = {
   paid: number;
   dieselResponsibility?: "hlc" | "vendor" | string | null;
   consumptionNorm?: number | null;
+  meterType?: string | null;
+  consumptionRateUnit?: "L/hr" | "L/km" | null;
 };
 
 const money = (value: number | null | undefined) => `₹${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -87,8 +89,16 @@ const duration = (value: number | null | undefined, incomplete = false) =>
 // never substitute an inferred value or alternate wording.
 const litres = (value: number | null | undefined) => value == null ? "Tank Readings N/A" : `${number(value)} L`;
 const tankReading = (value: number | null | undefined) => value == null ? "Tank Readings N/A" : `${number(value)} L`;
-const difference = (row?: EquipmentPerformanceDailyRow) =>
-  !row || row.consumptionIncomplete ? "Tank Readings N/A" : row.difference == null ? "Tank Readings N/A" : `${row.difference > 0 ? "+" : ""}${litres(row.difference)}`;
+const expectedLitres = (value: number | null | undefined) => value == null ? "—" : `${number(value)} L`;
+const displayConsumptionUnit = (unit: EquipmentPerformanceDailyRow["consumptionRateUnit"] | undefined) =>
+  unit === "L/hr" ? "L/Hr" : unit === "L/km" ? "L/Km" : "";
+const masterConsumptionUnit = (meterType?: string | null): EquipmentPerformanceDailyRow["consumptionRateUnit"] =>
+  meterType ? computeEquipmentUsage({ meterType }, {}).efficiencyUnit : null;
+const calendarConsumptionUnit = (
+  rows: BillingDailyRow[],
+  meterType?: string | null,
+  frozenUnit?: EquipmentPerformanceDailyRow["consumptionRateUnit"],
+) => frozenUnit || masterConsumptionUnit(meterType) || rows.map(row => row.performance?.consumptionRateUnit).find(Boolean);
 
 function isoDays(from: string, to: string) {
   if (!from || !to || from > to) return [];
@@ -128,11 +138,16 @@ export function buildBillingDailyRows(
       entry.fromTime || entry.toTime ? `${entry.fromTime || "?"}–${entry.toTime || "?"}` : null,
       entry.remarks,
     ].filter(Boolean).join(" · ")).join(" | ");
+    const activity = Array.from(new Set((performance?.events || [])
+      .map(event => String(event.task || "").trim())
+      .filter(Boolean)))
+      .join(", ");
+    const combinedRemarks = [remarks, activity].filter(Boolean).join(" | ");
     return {
       date,
       performance,
       status: breakdowns.length ? "Breakdown" : performance ? "Worked" : "No Work",
-      remarks: remarks || (performance ? "Activity recorded" : "No activity recorded"),
+      remarks: combinedRemarks || "No activity recorded",
       downtimeHours,
     };
   });
@@ -143,18 +158,25 @@ function dailyHeaders(dieselResponsibility?: string | null) {
   return [
     "Date", "Project / Site", "Opening Meter", "Closing Meter", "Working Hours", "Start", "End", "Clock Duration",
     ...(fuelIsContractorScope ? [] : ["Diesel Issued", "Opening Tank", "Closing Tank"]),
-    ...(fuelIsContractorScope ? [] : ["Diesel Consumed", "Expected", "Difference", "Actual Consumption | Master Norm"]),
+    ...(fuelIsContractorScope ? [] : ["Diesel Consumed", "Expected", "Norm"]),
     "Status / Remarks",
   ];
 }
 
-function dailyValues(row: BillingDailyRow, dieselResponsibility?: string | null, consumptionNorm?: number | null) {
+function dailyValues(
+  row: BillingDailyRow,
+  dieselResponsibility?: string | null,
+  consumptionNorm?: number | null,
+  fallbackConsumptionUnit?: EquipmentPerformanceDailyRow["consumptionRateUnit"],
+) {
   const item = row.performance;
   const fuelIsContractorScope = String(dieselResponsibility).toLowerCase() === "vendor";
-  const consumptionUnit = item?.consumptionRateUnit || "";
-  const actualAndNorm = item?.consumptionIncomplete || item?.consumptionRate == null
-    ? "Tank Readings N/A"
-    : `Actual: ${number(item.consumptionRate, 2)} ${consumptionUnit} | Master Norm: ${consumptionNorm == null ? "Tank Readings N/A" : `${number(consumptionNorm, 2)} ${consumptionUnit}`}`;
+  // Norm is a master value, so its explicit master/frozen unit wins over a
+  // row's usage unit (for example, a trip-converted hour-meter activity).
+  const consumptionUnit = displayConsumptionUnit(fallbackConsumptionUnit || item?.consumptionRateUnit);
+  const norm = consumptionNorm == null
+    ? "—"
+    : `${number(consumptionNorm, 2)}${consumptionUnit ? ` ${consumptionUnit}` : ""}`;
   return [
     dateLabel(row.date),
     item?.projectSite || "—",
@@ -165,8 +187,8 @@ function dailyValues(row: BillingDailyRow, dieselResponsibility?: string | null,
     ...(fuelIsContractorScope ? [] : [item?.dieselIssued == null ? "Tank Readings N/A" : litres(item.dieselIssued), tankReading(item?.openingTank), tankReading(item?.closingTank)]),
     ...(fuelIsContractorScope ? [] : [
       item?.consumptionIncomplete ? "Tank Readings N/A" : litres(item?.dieselConsumed),
-      item?.consumptionIncomplete ? "Tank Readings N/A" : litres(item?.expectedDiesel),
-      difference(item), actualAndNorm,
+      expectedLitres(item?.expectedDiesel),
+      norm,
     ]),
     `${row.status}${row.downtimeHours ? ` · ${number(row.downtimeHours, 2)}h downtime` : ""}${row.remarks ? ` — ${row.remarks}` : ""}`,
   ];
@@ -225,7 +247,7 @@ export function buildEquipmentHirePeriodTotals(
     hours: item?.workingHours,
     dieselIssued: fuelIsContractorScope ? null : item?.dieselIssued,
     dieselConsumed: fuelIsContractorScope || item?.consumptionIncomplete ? null : item?.dieselConsumed,
-    expectedDiesel: fuelIsContractorScope || item?.consumptionIncomplete ? null : item?.expectedDiesel,
+    expectedDiesel: fuelIsContractorScope ? null : item?.expectedDiesel,
     variance: fuelIsContractorScope || item?.consumptionIncomplete ? null : item?.difference,
   }));
   return {
@@ -259,7 +281,6 @@ function EquipmentHirePeriodTotalsSummary({
       <span><strong>Diesel issued:</strong> {periodTotalLabel(totals.dieselIssued, " L")}</span>
       <span><strong>Consumed:</strong> {periodTotalLabel(totals.dieselConsumed, " L")}</span>
       <span><strong>Expected:</strong> {periodTotalLabel(totals.expectedDiesel, " L")}</span>
-      <span><strong>Variance:</strong> {periodTotalLabel(totals.variance, " L")}</span>
     </>}
     {totals.trips != null && <span><strong>Trips:</strong> {periodTotalLabel(totals.trips)}</span>}
     <span><strong>Breakdown days:</strong> {totals.breakdownDays}</span>
@@ -267,25 +288,29 @@ function EquipmentHirePeriodTotalsSummary({
   </div>;
 }
 
-export function EquipmentHireDailyTable({ rows, dieselResponsibility, consumptionNorm }: {
+export function EquipmentHireDailyTable({ rows, dieselResponsibility, consumptionNorm, meterType, consumptionRateUnit }: {
   rows: BillingDailyRow[];
   dieselResponsibility?: string | null;
   consumptionNorm?: number | null;
+  meterType?: string | null;
+  consumptionRateUnit?: EquipmentPerformanceDailyRow["consumptionRateUnit"];
 }) {
   const headers = dailyHeaders(dieselResponsibility);
+  const consumptionUnit = calendarConsumptionUnit(rows, meterType, consumptionRateUnit);
   return <div className="overflow-x-auto">
     <table className="w-full min-w-[1780px] text-xs">
       <thead className="bg-muted text-[10px] uppercase tracking-wide"><tr>{headers.map(header => <th key={header} className="px-2 py-2 text-right first:text-left last:text-left">{header}</th>)}</tr></thead>
       <tbody>{rows.map(row => <tr key={row.date} className="border-b align-top">
-        {dailyValues(row, dieselResponsibility, consumptionNorm).map((value, index) => <td key={index} className={`px-2 py-2 ${index === 0 || index === 1 || index === headers.length - 1 ? "text-left" : "text-right"}`}>{value}</td>)}
+        {dailyValues(row, dieselResponsibility, consumptionNorm, consumptionUnit).map((value, index) => <td key={index} className={`px-2 py-2 ${index === 0 || index === 1 || index === headers.length - 1 ? "text-left" : "text-right"}`}>{value}</td>)}
       </tr>)}</tbody>
     </table>
   </div>;
 }
 
-export function EquipmentHireDailyActivity({ open, onOpenChange, rows, dieselResponsibility, consumptionNorm }: {
+export function EquipmentHireDailyActivity({ open, onOpenChange, rows, dieselResponsibility, consumptionNorm, meterType, consumptionRateUnit }: {
   open: boolean; onOpenChange: (value: boolean) => void; rows: BillingDailyRow[];
   dieselResponsibility?: string | null; consumptionNorm?: number | null;
+  meterType?: string | null; consumptionRateUnit?: EquipmentPerformanceDailyRow["consumptionRateUnit"];
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fuelIsContractorScope = String(dieselResponsibility).toLowerCase() === "vendor";
@@ -299,7 +324,7 @@ export function EquipmentHireDailyActivity({ open, onOpenChange, rows, dieselRes
        {fuelIsContractorScope && <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">Fuel / Diesel: Contractor Scope</div>}
        <EquipmentHirePeriodTotalsSummary rows={rows} dieselResponsibility={dieselResponsibility} />
        <div ref={scrollRef}>
-         <EquipmentHireDailyTable rows={rows} dieselResponsibility={dieselResponsibility} consumptionNorm={consumptionNorm} />
+         <EquipmentHireDailyTable rows={rows} dieselResponsibility={dieselResponsibility} consumptionNorm={consumptionNorm} meterType={meterType} consumptionRateUnit={consumptionRateUnit} />
        </div>
     </DialogContent>
   </Dialog>;
@@ -321,6 +346,7 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
     [`TDS @ ${data.tdsRate}%`, `− ${money(data.tdsAmount)}`], ["NET PAYABLE", money(data.netPayable)], ["Paid", money(data.paid)], ["Balance This Bill", money(balance)],
   ];
   const safeName = (data.billNo || "equipment-hire-bill").replace(/[^\w-]+/g, "-");
+  const consumptionUnit = calendarConsumptionUnit(rows, data.meterType, data.consumptionRateUnit);
   if (format === "xlsx") {
     const workbook = XLSX.utils.book_new();
     const summarySheet = XLSX.utils.aoa_to_sheet([["Equipment Hire Bill Summary"], ...summary]);
@@ -328,7 +354,7 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
     const headers = dailyHeaders(data.dieselResponsibility);
     const activitySheet = XLSX.utils.aoa_to_sheet([
       ...(String(data.dieselResponsibility).toLowerCase() === "vendor" ? [["Fuel / Diesel: Contractor Scope"]] : []),
-      headers, ...rows.map(row => dailyValues(row, data.dieselResponsibility, data.consumptionNorm)),
+      headers, ...rows.map(row => dailyValues(row, data.dieselResponsibility, data.consumptionNorm, consumptionUnit)),
     ]);
     activitySheet["!cols"] = headers.map((header, index) => ({ wch: index === headers.length - 1 ? 52 : Math.max(14, header.length + 2) }));
     XLSX.utils.book_append_sheet(workbook, summarySheet, "Bill Summary");
@@ -367,7 +393,7 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
   autoTable(doc, {
     startY: String(data.dieselResponsibility).toLowerCase() === "vendor" ? 21 : 16,
     head: [dailyHeaders(data.dieselResponsibility)],
-    body: rows.map(row => dailyValues(row, data.dieselResponsibility, data.consumptionNorm).map(value => pdfText(String(value)))),
+    body: rows.map(row => dailyValues(row, data.dieselResponsibility, data.consumptionNorm, consumptionUnit).map(value => pdfText(String(value)))),
     theme: "grid",
     styles: { fontSize: 5.7, cellPadding: 1.2, overflow: "linebreak" },
     headStyles: { fillColor: [180, 83, 9], fontSize: 5.8 },
@@ -387,7 +413,6 @@ function calendarTotalsRows(
       ["Total Diesel Issued", totals.dieselIssued],
       ["Total Diesel Consumed", totals.dieselConsumed],
       ["Total Expected Diesel", totals.expectedDiesel],
-      ["Total Variance", totals.variance],
     ]),
     ...(totals.trips == null ? [] : [["Total Trips", totals.trips]]),
     ["Breakdown Days", totals.breakdownDays],
@@ -403,6 +428,7 @@ export function exportEquipmentHireCalendar(data: EquipmentHireExportData, rows:
   const fuelIsContractorScope = String(data.dieselResponsibility).toLowerCase() === "vendor";
   const totals = buildEquipmentHirePeriodTotals(rows, data.dieselResponsibility);
   const headers = dailyHeaders(data.dieselResponsibility);
+  const consumptionUnit = calendarConsumptionUnit(rows, data.meterType, data.consumptionRateUnit);
   const safeName = (data.billNo || "equipment-hire-bill").replace(/[^\w-]+/g, "-");
   const metadata: Array<Array<string | number | null>> = [
     ["Equipment Hire Daily Activity"],
@@ -420,7 +446,7 @@ export function exportEquipmentHireCalendar(data: EquipmentHireExportData, rows:
       [],
       ...(fuelIsContractorScope ? [["Fuel / Diesel: Contractor Scope"]] : []),
       headers,
-      ...rows.map(row => dailyValues(row, data.dieselResponsibility, data.consumptionNorm)),
+      ...rows.map(row => dailyValues(row, data.dieselResponsibility, data.consumptionNorm, consumptionUnit)),
     ]);
     activitySheet["!cols"] = headers.map((header, index) => ({ wch: index === headers.length - 1 ? 52 : Math.max(14, header.length + 2) }));
     XLSX.utils.book_append_sheet(workbook, activitySheet, "Daily Activity");
@@ -455,7 +481,7 @@ export function exportEquipmentHireCalendar(data: EquipmentHireExportData, rows:
   autoTable(doc, {
     startY: fuelIsContractorScope ? 21 : 16,
     head: [headers],
-    body: rows.map(row => dailyValues(row, data.dieselResponsibility, data.consumptionNorm).map(value => pdfText(String(value)))),
+    body: rows.map(row => dailyValues(row, data.dieselResponsibility, data.consumptionNorm, consumptionUnit).map(value => pdfText(String(value)))),
     theme: "grid",
     styles: { fontSize: 5.7, cellPadding: 1.2, overflow: "linebreak" },
     headStyles: { fillColor: [180, 83, 9], fontSize: 5.8 },
@@ -591,6 +617,8 @@ export function buildSavedEquipmentHireBillOutput(bill: any): { data: EquipmentH
     netPayable: Number(bill.netPayableAmount ?? financials.netPayable), paid,
     dieselResponsibility: snapshot.terms?.dieselResponsibility ?? statement.dieselResponsibility,
     consumptionNorm: snapshot.diesel?.consumptionNorm ?? snapshot.terms?.consumptionNorm,
+    meterType: snapshot.terms?.meterType,
+    consumptionRateUnit: snapshot.terms?.consumptionRateUnit ?? snapshot.dieselNormBasisOverride,
   };
   return { data, rows, hasFrozenDailyRows };
 }
@@ -607,6 +635,6 @@ export function EquipmentHireBillDetailOutput({ bill }: { bill: any }) {
     {!hasFrozenDailyRows && <span className="self-center text-xs text-amber-700">Frozen daily activity is unavailable for this historical bill.</span>}
     <Button type="button" variant="outline" size="sm" onClick={() => setShowDaily(true)} data-testid="button-detail-view-daily-activity">View Daily Activity</Button>
     <EquipmentHireExportButtons data={data} rows={rows} />
-    <EquipmentHireDailyActivity open={showDaily} onOpenChange={setShowDaily} rows={rows} dieselResponsibility={data.dieselResponsibility} consumptionNorm={data.consumptionNorm} />
+    <EquipmentHireDailyActivity open={showDaily} onOpenChange={setShowDaily} rows={rows} dieselResponsibility={data.dieselResponsibility} consumptionNorm={data.consumptionNorm} meterType={data.meterType} consumptionRateUnit={data.consumptionRateUnit} />
   </div>;
 }

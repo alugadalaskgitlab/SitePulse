@@ -561,6 +561,35 @@ describe("EQUIP-01 pure equipment performance report", () => {
     expect(report.fleet[0]).toMatchObject({ dieselIssued: null, dieselConsumed: null, consumptionIncomplete: true });
   });
 
+  it("keeps expected diesel and the meter-driven norm unit when tank readings are unconfirmed", () => {
+    const report = buildEquipmentPerformanceReport({
+      projects,
+      dprs,
+      masters,
+      usages: [{
+        id: 809,
+        date: "2026-01-01",
+        equipmentId: 1,
+        dprId: 100,
+        openingReading: 10,
+        closingReading: 14,
+        openingDiesel: 0,
+        dieselIssued: 8.5,
+        closingDiesel: 8.5,
+        dieselBalanceConfirmed: false,
+        task: "Earth cutting",
+      }],
+      logs: [],
+    });
+    expect(report.fleet[0].dailyRows[0]).toMatchObject({
+      dieselConsumed: null,
+      expectedDiesel: 20,
+      consumptionRate: null,
+      consumptionRateUnit: null,
+      consumptionIncomplete: true,
+    });
+  });
+
   it("fails closed when a project or scope filter omits an intervening canonical event", () => {
     const report = buildEquipmentPerformanceReport({
       projects, dprs, masters,
