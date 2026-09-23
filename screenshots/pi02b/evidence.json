@@ -1,0 +1,43 @@
+{
+  "scenario": "PI-02B real PurchaseIndents component with visibly labelled synthetic intercepted API",
+  "limitation": "Browser/UI evidence uses intercepted synthetic API. Actual storage/database flow is independently verified with isolated PGlite in tests/purchase-indent-pi02b.test.ts.",
+  "safety": {
+    "productionDatabaseUsed": false,
+    "liveApiWrites": false,
+    "mountedProductionComponent": "client/src/pages/PurchaseIndents.tsx"
+  },
+  "screenshots": {
+    "A1": "/home/runner/workspace/screenshots/pi02b/A1-review-current-proposed-valid-excluded-SYNTHETIC-API.png",
+    "A2": "/home/runner/workspace/screenshots/pi02b/A2-after-explicit-apply-detail-no-Record-Delivery-audit-SYNTHETIC-API.png",
+    "A3": "/home/runner/workspace/screenshots/pi02b/A3-before-explicit-apply-zero-writes-SYNTHETIC-API.png"
+  },
+  "verified": {
+    "A1": {
+      "listedMistagged": true,
+      "current": "stores",
+      "proposed": "material",
+      "validMaterialExcluded": true,
+      "validBulkPlantExcluded": true
+    },
+    "A3": {
+      "applyRequestsBeforeClick": 0,
+      "auditRowsBeforeClick": 0,
+      "storedRouteBeforeClick": "stores"
+    },
+    "A2": {
+      "explicitApplyRequests": 1,
+      "correctedRoute": "material",
+      "recordDeliveryVisible": false,
+      "audit": {
+        "module": "purchase_indent_route_correction",
+        "transactionId": 9001,
+        "oldValues": {
+          "procurementRoute": "stores"
+        },
+        "newValues": {
+          "procurementRoute": "material"
+        }
+      }
+    }
+  }
+}

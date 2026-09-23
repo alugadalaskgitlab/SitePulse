@@ -2019,3 +2019,45 @@ mtime_ms = 1790096854809
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/69ed28c3-1df5-4f68-bd87-f0bf3545d5ed/d2d69de6-ab1e-45a9-b21b-4d5cbe433be8"
 storage_version_token = "1790096927485908"
 content_type = "image/png"
+
+[[outputs]]
+id = "wtlNGyPDWepiNHCffUG7E"
+uri = "file://screenshots/pi02b/A1-review-current-proposed-valid-excluded-SYNTHETIC-API.png"
+type = "image"
+title = "PI review: current and proposed routes"
+description = "Actual Purchase Indents component with labelled synthetic API data. Storage and audit verified separately using isolated PGlite. No production changes."
+logical_id = "cf3643f3-8a41-4d05-8896-6cba2d556860"
+content_hash = "sha256:3d220aa257f99e980fc7587727244379da81bdfeaf145d43cdadcb100862dbb2"
+size = 144291
+mtime_ms = 1790126029203
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/cf3643f3-8a41-4d05-8896-6cba2d556860/f86710aa-229e-4060-a3c8-9ebb262951be"
+storage_version_token = "1790126147563526"
+content_type = "image/png"
+
+[[outputs]]
+id = "-NHmlOLsNi-lMAFdfIu-A"
+uri = "file://screenshots/pi02b/A3-before-explicit-apply-zero-writes-SYNTHETIC-API.png"
+type = "image"
+title = "PI review: no changes before Apply"
+description = "Actual Purchase Indents component with labelled synthetic API data. Storage and audit verified separately using isolated PGlite. No production changes."
+logical_id = "1f14f699-b3cf-4dd6-8cdc-1b7ce0e026b5"
+content_hash = "sha256:f90d3ab3e86843191e2b83f5c4d3b1669bc36bb57689b09d86764fa7e0366f5e"
+size = 94581
+mtime_ms = 1790126029283
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/1f14f699-b3cf-4dd6-8cdc-1b7ce0e026b5/3070e145-613d-4842-ade4-497cea96d93e"
+storage_version_token = "1790126149337496"
+content_type = "image/png"
+
+[[outputs]]
+id = "EN9EYx8R7u7NrJlVfeqrL"
+uri = "file://screenshots/pi02b/A2-after-explicit-apply-detail-no-Record-Delivery-audit-SYNTHETIC-API.png"
+type = "image"
+title = "PI correction: after explicit Apply"
+description = "Actual Purchase Indents component with labelled synthetic API data. Storage and audit verified separately using isolated PGlite. No production changes."
+logical_id = "f114a760-b289-4bf4-be3b-c027ed121cea"
+content_hash = "sha256:7b7a75caffb5303188244622dd12dd6451acc603811951655e6f7cb5aebefd83"
+size = 118794
+mtime_ms = 1790126029855
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/f114a760-b289-4bf4-be3b-c027ed121cea/71d9ee9c-ea91-4fe8-9742-f4c8d53a499b"
+storage_version_token = "1790126151275997"
+content_type = "image/png"

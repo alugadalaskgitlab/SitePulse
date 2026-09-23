@@ -1,6 +1,7 @@
 /*
- * PI-02 isolated real-component browser verification. All API traffic is
- * intercepted by main.tsx; this is synthetic UI/payload evidence, not DB proof.
+ * PI-02B isolated real-component browser verification. API traffic is
+ * intercepted by main.tsx and visibly labelled synthetic. Database/storage
+ * behavior is separately proven by tests/purchase-indent-pi02b.test.ts.
  */
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
@@ -10,10 +11,10 @@ import WebSocket from "ws";
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const fixtureDir = path.dirname(new URL(import.meta.url).pathname);
 const workspace = path.resolve(fixtureDir, "../../..");
-const evidenceDir = path.join(workspace, "screenshots/pi02");
+const evidenceDir = path.join(workspace, "screenshots/pi02b");
 const vitePort = 4196;
 const cdpPort = 9346;
-const chromiumProfile = "/tmp/pi02-chromium-profile";
+const chromiumProfile = "/tmp/pi02b-chromium-profile";
 mkdirSync(evidenceDir, { recursive: true });
 rmSync(chromiumProfile, { recursive: true, force: true });
 
@@ -40,17 +41,17 @@ async function waitHttp(url, label, attempts = 200) {
   }
   throw new Error(`Timed out waiting for ${label}. ${viteLog.slice(-1000)}`);
 }
-await waitHttp(`http://127.0.0.1:${vitePort}`, "PI-02 Vite");
+await waitHttp(`http://127.0.0.1:${vitePort}`, "PI-02B Vite");
 
 const chromium = spawn("/repl/tools/bin/chromium", [
   "--headless=new", "--no-sandbox", "--disable-gpu", `--remote-debugging-port=${cdpPort}`,
   `--user-data-dir=${chromiumProfile}`, "--window-size=1920,1080", `http://127.0.0.1:${vitePort}`,
 ], { cwd: workspace, stdio: "ignore" });
 children.push(chromium);
-await waitHttp(`http://127.0.0.1:${cdpPort}/json/version`, "PI-02 Chromium");
+await waitHttp(`http://127.0.0.1:${cdpPort}/json/version`, "PI-02B Chromium");
 const targets = await (await fetch(`http://127.0.0.1:${cdpPort}/json/list`)).json();
 const page = targets.find(target => target.type === "page");
-if (!page) throw new Error("No PI-02 Chromium page");
+if (!page) throw new Error("No PI-02B Chromium page");
 const socket = new WebSocket(page.webSocketDebuggerUrl);
 await new Promise((resolve, reject) => { socket.once("open", resolve); socket.once("error", reject); });
 let sequence = 0;
@@ -69,122 +70,75 @@ const evaluate = async expression => {
   if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
   return result.result?.value;
 };
-const quote = JSON.stringify;
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 const waitFor = async (expression, label, attempts = 300) => {
   for (let i = 0; i < attempts; i++) {
-    try { if (await evaluate(expression)) return; } catch (error) {
-      if (!/navigated|context.*destroyed/i.test(error.message)) throw error;
-    }
+    if (await evaluate(expression)) return;
     await sleep(50);
   }
   throw new Error(`Timed out waiting for ${label}`);
 };
-const click = async id => {
-  const ok = await evaluate(`(() => { const e=document.querySelector('[data-testid=${quote(id)}]'); if(!e||e.disabled)return false; e.click(); return true })()`);
-  assert(ok, `Could not click ${id}`);
+const click = async testId => {
+  const ok = await evaluate(`(() => { const e=document.querySelector('[data-testid="${testId}"]'); if(!e||e.disabled)return false; e.click(); return true })()`);
+  assert(ok, `Could not click ${testId}`);
 };
-const input = async (id, value) => {
-  const ok = await evaluate(`(() => { const e=document.querySelector('[data-testid=${quote(id)}]'); if(!e)return false; e.focus(); const s=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; s.call(e,${quote(value)}); e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true})); return true })()`);
-  assert(ok, `Could not input ${id}`);
-  await sleep(40);
-};
-const selectOptionText = async text => {
-  await waitFor(`[...document.querySelectorAll('[role=option]')].some(e=>e.textContent.trim()===${quote(text)})`, `${text} option`);
-  assert(await evaluate(`(() => { const e=[...document.querySelectorAll('[role=option]')].find(e=>e.textContent.trim()===${quote(text)}); e?.click(); return !!e })()`), `Could not select ${text}`);
-};
-const pickCatalog = async (id, name) => {
-  await input(id, name);
-  await waitFor(`[...document.querySelectorAll('div')].some(e=>e.children.length===2&&e.firstElementChild?.textContent.trim()===${quote(name)})`, `${name} catalog row`);
-  assert(await evaluate(`(() => { const e=[...document.querySelectorAll('div')].find(e=>e.children.length===2&&e.firstElementChild?.textContent.trim()===${quote(name)}); if(!e)return false; e.dispatchEvent(new MouseEvent('mousedown',{bubbles:true})); return true })()`), `Could not pick ${name}`);
-};
-const text = id => evaluate(`document.querySelector('[data-testid=${quote(id)}]')?.innerText || ''`);
-const exists = id => evaluate(`!!document.querySelector('[data-testid=${quote(id)}]')`);
-const focus = async id => { await evaluate(`document.querySelector('[data-testid=${quote(id)}]')?.scrollIntoView({block:'center'})`); await sleep(150); };
 const screenshot = async name => {
   const result = await cdp("Page.captureScreenshot", { format: "png", fromSurface: true });
   const target = path.join(evidenceDir, `${name}.png`);
   writeFileSync(target, Buffer.from(result.data, "base64"));
   return target;
 };
-const openRaiseMenu = async () => {
-  assert(await evaluate(`(() => { const e=document.querySelector('[data-testid="button-raise-indent"]'); if(!e)return false; e.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,button:0,pointerType:'mouse'})); e.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,button:0,pointerType:'mouse'})); return true })()`), "Could not open Raise Indent menu");
-};
-const fillHeader = async () => {
-  await click("select-site"); await selectOptionText("SYNTHETIC SITE");
-  await input("input-proposed-by", "SYNTHETIC REQUESTER");
-  await input("input-raised-by", "SYNTHETIC ENGINEER");
-  await input("input-item-qty-0", "25");
-};
 
 await cdp("Page.enable");
 await cdp("Runtime.enable");
 await cdp("Emulation.setDeviceMetricsOverride", { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
 await waitFor("document.readyState==='complete' && !!document.querySelector('[data-testid=pi02-fixture-disclosure]')", "fixture");
-await waitFor("!!document.querySelector('[data-testid=card-indent-90]')", "initial list");
+await waitFor("!!document.querySelector('[data-testid=card-indent-90]')", "PI list");
 
-// Existing pre-fix row remains stores simply by opening it; no mutation occurs.
+await click("button-review-route-corrections");
+await waitFor("!!document.querySelector('[data-testid=route-correction-row-9001]')", "route proposal");
+const dialogText = await evaluate("document.querySelector('[data-testid=dialog-route-corrections]').innerText");
+assert(dialogText.includes("SYNTHETIC/PI02/BEFORE/0090"), "A1 indent number missing");
+assert(dialogText.includes("PRE-FIX STORED ROW") && dialogText.includes("stores") && dialogText.includes("material"), "A1 current/proposed route missing");
+assert(!dialogText.includes("ALREADY VALID BULK ROUTE"), "A1 incorrectly listed valid bulk_plant row");
+assert(!dialogText.includes("ALREADY VALID MATERIAL ROUTE"), "A1 incorrectly listed valid material row");
+const a1 = await screenshot("A1-review-current-proposed-valid-excluded-SYNTHETIC-API");
+
+// A3: opening/scanning is read-only. No Apply request or audit exists.
+assert(await evaluate("window.__PI02Fixture.routeApplyRequests.length") === 0, "A3 scan unexpectedly applied");
+assert(await evaluate("window.__PI02Fixture.audits.length") === 0, "A3 scan unexpectedly audited");
+assert(await evaluate("window.__PI02Fixture.existingBefore.procurementRoute") === "stores", "A3 fixture baseline changed");
+const a3 = await screenshot("A3-before-explicit-apply-zero-writes-SYNTHETIC-API");
+
+const selected = await evaluate(`(() => {
+  const e=document.querySelector('input[aria-label="Select WMM — PRE-FIX STORED ROW"]');
+  if(!e)return false; e.click(); return e.checked;
+})()`);
+assert(selected, "Could not select correction row");
+await click("button-apply-route-corrections");
+await waitFor("window.__PI02Fixture.routeApplyRequests.length===1 && window.__PI02Fixture.audits.length===1", "explicit apply and audit");
+await waitFor("!!document.querySelector('[data-testid=route-corrections-empty]')", "empty corrected scan");
+await evaluate(`[...document.querySelectorAll('[data-testid=dialog-route-corrections] button')].find(e=>e.textContent.trim()==='Close')?.click()`);
+await waitFor("!document.querySelector('[data-testid=dialog-route-corrections]')", "dialog close");
 await click("card-indent-90");
-await waitFor("!!document.querySelector('[data-testid=card-procure-item-9001]')", "old detail");
-assert(await exists("button-expand-delivery-9001"), "Pre-fix synthetic stores route should still expose Record Delivery");
-assert((await evaluate("window.__PI02Fixture.creates.length")) === 0, "Opening old row unexpectedly wrote data");
-assert((await evaluate("window.__PI02Fixture.existingBefore.procurementRoute")) === "stores", "Old route changed");
-await click("button-back-to-list");
-
-// Untagged WMM in the real Bulk form must become material and save that payload.
-await openRaiseMenu(); await waitFor("!!document.querySelector('[data-testid=menu-item-bulk-indent]')", "raise menu");
-await click("menu-item-bulk-indent"); await waitFor("!!document.querySelector('[data-testid=card-item-row-0]')", "bulk form");
-await fillHeader(); await pickCatalog("input-item-desc-0", "WMM");
-assert((await text("select-item-route-0")).includes("BULK MATERIAL"), "Untagged WMM did not inherit Bulk route");
-await focus("card-item-row-0");
-const selectedScreenshot = await screenshot("A-new-bulk-WMM-selection-route-material-SYNTHETIC");
-await click("button-submit-indent");
-await waitFor("window.__PI02Fixture.creates.length===1", "Bulk create payload");
-const bulkPayload = JSON.parse(await evaluate("JSON.stringify(window.__PI02Fixture.creates[0])"));
-assert(bulkPayload.piType === "material" && bulkPayload.items[0].procurementRoute === "material", "Bulk save payload route mismatch");
-await waitFor("!!document.querySelector('[data-testid=card-indent-92]')", "saved Bulk list");
-await click("card-indent-92");
-await waitFor("!!document.querySelector('[data-testid=card-procure-item-9200]')", "saved Bulk detail");
-assert(await exists("card-record-mat-receipt"), "Material receipt banner missing");
-assert(!(await exists("button-expand-delivery-9200")), "Record Delivery is visible for saved Bulk material");
-await focus("card-record-mat-receipt");
-const detailScreenshot = await screenshot("B-saved-bulk-detail-banner-no-Record-Delivery-SYNTHETIC");
-await click("button-back-to-list");
-
-// Store form preserves catalog route and untagged fallback.
-await openRaiseMenu(); await waitFor("!!document.querySelector('[data-testid=menu-item-store-indent]')", "store menu");
-await click("menu-item-store-indent"); await waitFor("!!document.querySelector('[data-testid=card-item-row-0]')", "store form");
-await fillHeader(); await pickCatalog("input-item-desc-0", "CRANE HIRE");
-assert((await text("select-item-route-0")).includes("SERVICE / HIRE"), "Tagged Store selection did not inherit service");
-await click("button-submit-indent");
-await waitFor("window.__PI02Fixture.creates.length===2", "tagged Store payload");
-const taggedStorePayload = JSON.parse(await evaluate("JSON.stringify(window.__PI02Fixture.creates[1])"));
-assert(taggedStorePayload.items[0].procurementRoute === "service", "Tagged Store payload route mismatch");
-
-await openRaiseMenu(); await waitFor("!!document.querySelector('[data-testid=menu-item-store-indent]')", "second store menu");
-await click("menu-item-store-indent"); await waitFor("!!document.querySelector('[data-testid=card-item-row-0]')", "fallback store form");
-await fillHeader(); await pickCatalog("input-item-desc-0", "COTTON WASTE");
-assert((await text("select-item-route-0")).includes("STORES"), "Untagged Store selection did not fallback to stores");
-await click("button-submit-indent");
-await waitFor("window.__PI02Fixture.creates.length===3", "fallback Store payload");
-const fallbackStorePayload = JSON.parse(await evaluate("JSON.stringify(window.__PI02Fixture.creates[2])"));
-assert(fallbackStorePayload.items[0].procurementRoute === "stores", "Untagged Store payload fallback mismatch");
+await waitFor("!!document.querySelector('[data-testid=card-procure-item-9001]')", "corrected detail");
+assert(!(await evaluate("!!document.querySelector('[data-testid=button-expand-delivery-9001]')")), "A2 Record Delivery still visible");
+const audit = JSON.parse(await evaluate("JSON.stringify(window.__PI02Fixture.audits[0])"));
+assert(audit.module === "purchase_indent_route_correction" && audit.transactionId === 9001, "A2 audit module/item mismatch");
+assert(audit.oldValues.procurementRoute === "stores" && audit.newValues.procurementRoute === "material", "A2 audit old/new mismatch");
+const a2 = await screenshot("A2-after-explicit-apply-detail-no-Record-Delivery-audit-SYNTHETIC-API");
 
 const evidence = {
-  scenario: "PI-02 real PurchaseIndents component with synthetic intercepted APIs",
-  limitation: "UI/component and intercepted request evidence only; no live API, catalog, record, or database was read or written.",
-  safety: { productionDatabaseUsed: false, productionApiWrites: false, mountedProductionComponent: "client/src/pages/PurchaseIndents.tsx", vitePort, cdpPort, chromiumProfile },
-  screenshots: [selectedScreenshot, detailScreenshot],
+  scenario: "PI-02B real PurchaseIndents component with visibly labelled synthetic intercepted API",
+  limitation: "Browser/UI evidence uses intercepted synthetic API. Actual storage/database flow is independently verified with isolated PGlite in tests/purchase-indent-pi02b.test.ts.",
+  safety: { productionDatabaseUsed: false, liveApiWrites: false, mountedProductionComponent: "client/src/pages/PurchaseIndents.tsx" },
+  screenshots: { A1: a1, A2: a2, A3: a3 },
   verified: {
-    untaggedWmmBulkPayloadRoute: bulkPayload.items[0].procurementRoute,
-    savedBulkHasMaterialReceiptBanner: true,
-    savedBulkHasRecordDelivery: false,
-    taggedStoreInheritedRoute: taggedStorePayload.items[0].procurementRoute,
-    untaggedStoreFallbackRoute: fallbackStorePayload.items[0].procurementRoute,
-    existingPreFixRouteBeforeAndAfterOpening: { before: "stores", after: "stores", writesCausedByOpening: 0 },
+    A1: { listedMistagged: true, current: "stores", proposed: "material", validMaterialExcluded: true, validBulkPlantExcluded: true },
+    A3: { applyRequestsBeforeClick: 0, auditRowsBeforeClick: 0, storedRouteBeforeClick: "stores" },
+    A2: { explicitApplyRequests: 1, correctedRoute: "material", recordDeliveryVisible: false, audit },
   },
 };
 writeFileSync(path.join(evidenceDir, "evidence.json"), `${JSON.stringify(evidence, null, 2)}\n`);
 console.log(JSON.stringify(evidence, null, 2));
 socket.close(); stop(); await sleep(250);
-rmSync(chromiumProfile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });

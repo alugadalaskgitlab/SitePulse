@@ -1446,6 +1446,12 @@ export interface IStorage {
   // Purchase Indents
   getPurchaseIndents(filters?: { dateFrom?: string; dateTo?: string; status?: string; priority?: string }): Promise<PurchaseIndentWithItems[]>;
   getPurchaseIndent(id: number): Promise<PurchaseIndentWithItems | undefined>;
+  scanPurchaseIndentRouteCorrections(permittedSiteNames?: string[]): Promise<PurchaseIndentRouteCorrection[]>;
+  applyPurchaseIndentRouteCorrections(input: {
+    items: { itemId: number; expectedProcurementRoute: string | null }[];
+    permittedSiteNames?: string[];
+    actor: { userId: number; userName: string; userRole?: string | null };
+  }): Promise<{ corrected: PurchaseIndentRouteCorrection[] }>;
   createPurchaseIndent(data: CreatePurchaseIndentRequest): Promise<PurchaseIndentWithItems>;
   setPurchaseIndentDestination(indentId: number, itemId: number, location: unknown, siteId: unknown, userId: number, actor: string): Promise<void>;
   approvePurchaseIndent(id: number, approvedItems: { itemId: number; approvedQty: number }[], approvedBy: string, remarks?: string): Promise<PurchaseIndentWithItems | undefined>;
@@ -2458,6 +2464,25 @@ export class VehicleSupplierAssociationHistoryAccessError extends Error {
   constructor() {
     super("The vehicle is not present in active history for this site.");
     this.name = "VehicleSupplierAssociationHistoryAccessError";
+  }
+}
+
+export type PurchaseIndentRouteCorrection = {
+  itemId: number;
+  indentId: number;
+  indentNo: string;
+  itemName: string;
+  currentProcurementRoute: string | null;
+  proposedProcurementRoute: "material";
+  canApply: boolean;
+  conflictReason: string | null;
+};
+
+export class PurchaseIndentRouteCorrectionConflictError extends Error {
+  readonly code = "PI_ROUTE_CORRECTION_CONFLICT" as const;
+  constructor(readonly conflicts: { itemId: number; message: string }[]) {
+    super("One or more selected items changed or have Stores delivery history. Refresh the review before applying corrections.");
+    this.name = "PurchaseIndentRouteCorrectionConflictError";
   }
 }
 
@@ -14662,6 +14687,169 @@ export class DatabaseStorage implements IStorage {
     return { ...indent, items: deliveryItems, unlockedByName } as PurchaseIndentWithItems | undefined;
   }
 
+  private async purchaseIndentRouteCorrectionRows(tx: any, itemIds?: number[]): Promise<PurchaseIndentRouteCorrection[]> {
+    if (itemIds && itemIds.length === 0) return [];
+    const rows = await tx.select({
+      itemId: purchaseIndentItems.id,
+      indentId: purchaseIndents.id,
+      indentNo: purchaseIndents.indentNo,
+      itemName: purchaseIndentItems.description,
+      currentProcurementRoute: purchaseIndentItems.procurementRoute,
+      siteName: sites.name,
+      raisedFrom: purchaseIndents.raisedFrom,
+      linkedGrnId: purchaseIndentItems.linkedGrnId,
+    })
+      .from(purchaseIndentItems)
+      .innerJoin(purchaseIndents, eq(purchaseIndentItems.indentId, purchaseIndents.id))
+      .leftJoin(sites, eq(purchaseIndents.siteId, sites.id))
+      .where(and(
+        eq(purchaseIndents.piType, "material"),
+        sql`${purchaseIndentItems.procurementRoute} IS DISTINCT FROM 'material'
+          AND ${purchaseIndentItems.procurementRoute} IS DISTINCT FROM 'bulk_plant'`,
+        ...(itemIds ? [inArray(purchaseIndentItems.id, itemIds)] : []),
+      ))
+      .orderBy(asc(purchaseIndents.indentNo), asc(purchaseIndentItems.id));
+
+    if (rows.length === 0) return [];
+    const ids = rows.map((row: any) => row.itemId);
+    const [transactions, grnLines, history] = await Promise.all([
+      tx.select({ itemId: piItemTransactions.indentItemId })
+        .from(piItemTransactions)
+        .where(and(
+          inArray(piItemTransactions.indentItemId, ids),
+          inArray(piItemTransactions.transactionType, ["delivery_receipt", "handover"]),
+        )),
+      tx.select({ itemId: sql<number>`COALESCE(${storeGrnItems.sourcePiItemId}, ${storeGrnItems.indentItemId})` })
+        .from(storeGrnItems)
+        .where(or(
+          inArray(storeGrnItems.sourcePiItemId, ids),
+          inArray(storeGrnItems.indentItemId, ids),
+        )),
+      tx.select({ itemId: purchaseIndentItemHistory.itemId })
+        .from(purchaseIndentItemHistory)
+        .where(and(
+          inArray(purchaseIndentItemHistory.itemId, ids),
+          ilike(purchaseIndentItemHistory.action, "DELIVERY_%"),
+        )),
+    ]);
+    const withStoresHistory = new Set<number>([
+      ...transactions.map((row: any) => row.itemId),
+      ...grnLines.map((row: any) => Number(row.itemId)),
+      ...history.map((row: any) => row.itemId),
+      ...rows.filter((row: any) => row.linkedGrnId != null).map((row: any) => row.itemId),
+    ]);
+    return rows.map((row: any) => ({
+      itemId: row.itemId,
+      indentId: row.indentId,
+      indentNo: row.indentNo,
+      itemName: row.itemName,
+      currentProcurementRoute: row.currentProcurementRoute,
+      proposedProcurementRoute: "material" as const,
+      canApply: !withStoresHistory.has(row.itemId),
+      conflictReason: withStoresHistory.has(row.itemId)
+        ? "Stores delivery/GRN history exists. This item cannot be safely converted automatically."
+        : null,
+      siteName: row.siteName ?? row.raisedFrom,
+    })) as (PurchaseIndentRouteCorrection & { siteName: string | null })[];
+  }
+
+  async scanPurchaseIndentRouteCorrections(permittedSiteNames?: string[]): Promise<PurchaseIndentRouteCorrection[]> {
+    if (permittedSiteNames?.length === 0) return [];
+    const rows = await this.purchaseIndentRouteCorrectionRows(db);
+    return rows
+      .filter((row: any) => permittedSiteNames === undefined
+        || (!!row.siteName && siteMatchesPermitted(row.siteName, permittedSiteNames)))
+      .map(({ siteName: _siteName, ...row }: any) => row);
+  }
+
+  async applyPurchaseIndentRouteCorrections(input: {
+    items: { itemId: number; expectedProcurementRoute: string | null }[];
+    permittedSiteNames?: string[];
+    actor: { userId: number; userName: string; userRole?: string | null };
+  }): Promise<{ corrected: PurchaseIndentRouteCorrection[] }> {
+    const unique = new Map(input.items.map(item => [item.itemId, item]));
+    const requested = Array.from(unique.values()).sort((a, b) => a.itemId - b.itemId);
+    if (requested.length === 0) return { corrected: [] };
+
+    return db.transaction(async (tx) => {
+      const parents = await tx.select({ indentId: purchaseIndentItems.indentId })
+        .from(purchaseIndentItems)
+        .where(inArray(purchaseIndentItems.id, requested.map(item => item.itemId)));
+      const parentIds = Array.from(new Set<number>(parents.map((row: any) => Number(row.indentId)))).sort((a, b) => a - b);
+      for (const indentId of parentIds) {
+        await tx.select({ id: purchaseIndents.id })
+          .from(purchaseIndents)
+          .where(eq(purchaseIndents.id, indentId))
+          .for("update");
+      }
+      if (input.permittedSiteNames?.length === 0) {
+        throw new PurchaseIndentRouteCorrectionConflictError(requested.map(item => ({
+          itemId: item.itemId,
+          message: "Access denied for this item's site.",
+        })));
+      }
+      for (const item of requested) {
+        await tx.select({ id: purchaseIndentItems.id })
+          .from(purchaseIndentItems)
+          .where(eq(purchaseIndentItems.id, item.itemId))
+          .for("update");
+      }
+      const rows = await this.purchaseIndentRouteCorrectionRows(tx, requested.map(item => item.itemId));
+      const byId = new Map(rows.map((row: any) => [row.itemId, row]));
+      const conflicts: { itemId: number; message: string }[] = [];
+      for (const request of requested) {
+        const row: any = byId.get(request.itemId);
+        if (!row) {
+          conflicts.push({ itemId: request.itemId, message: "Item is no longer eligible. Refresh the review." });
+        } else if (row.currentProcurementRoute !== request.expectedProcurementRoute) {
+          conflicts.push({ itemId: request.itemId, message: "The current route changed. Refresh the review." });
+        } else if (input.permittedSiteNames !== undefined
+          && (!row.siteName || !siteMatchesPermitted(row.siteName, input.permittedSiteNames))) {
+          conflicts.push({ itemId: request.itemId, message: "Access denied for this item's site." });
+        } else if (!row.canApply) {
+          conflicts.push({ itemId: request.itemId, message: row.conflictReason });
+        }
+      }
+      if (conflicts.length) throw new PurchaseIndentRouteCorrectionConflictError(conflicts);
+
+      for (const request of requested) {
+        const row: any = byId.get(request.itemId);
+        const updated = await tx.update(purchaseIndentItems)
+          .set({ procurementRoute: "material" })
+          .where(and(
+            eq(purchaseIndentItems.id, request.itemId),
+            request.expectedProcurementRoute == null
+              ? isNull(purchaseIndentItems.procurementRoute)
+              : eq(purchaseIndentItems.procurementRoute, request.expectedProcurementRoute),
+          ))
+          .returning({ id: purchaseIndentItems.id });
+        if (updated.length !== 1) {
+          throw new PurchaseIndentRouteCorrectionConflictError([{
+            itemId: request.itemId,
+            message: "The current route changed while applying. Refresh the review.",
+          }]);
+        }
+        await tx.insert(auditLogs).values({
+          module: "purchase_indent_route_correction",
+          transactionId: request.itemId,
+          action: "edit",
+          userId: input.actor.userId,
+          userName: input.actor.userName,
+          userRole: input.actor.userRole ?? null,
+          oldValues: { procurementRoute: row.currentProcurementRoute },
+          newValues: { procurementRoute: "material" },
+          reason: "Explicit PI-02B review correction",
+        });
+      }
+      return {
+        corrected: requested.map(request => {
+          const { siteName: _siteName, ...row } = byId.get(request.itemId) as any;
+          return { ...row, currentProcurementRoute: "material", canApply: false };
+        }),
+      };
+    });
+  }
+
   private async generateIndentNo(tx: any, siteId: number | null, raisedFrom: string | null): Promise<string> {
     const year = new Date().getFullYear();
     const [site] = siteId ? await tx.select().from(sites).where(eq(sites.id, siteId)) : [];
@@ -15337,6 +15525,22 @@ export class DatabaseStorage implements IStorage {
     actionBy: string
   ): Promise<PiItemTransaction> {
     const [tx_row] = await db.transaction(async (tx) => {
+      const [existing] = await tx.select({
+        indentId: purchaseIndentItems.indentId,
+        procurementRoute: purchaseIndentItems.procurementRoute,
+        totalAcceptedQty: purchaseIndentItems.totalAcceptedQty,
+        totalRejectedQty: purchaseIndentItems.totalRejectedQty,
+        approvedQty: purchaseIndentItems.approvedQty,
+      }).from(purchaseIndentItems)
+        .where(eq(purchaseIndentItems.id, data.indentItemId))
+        .limit(1)
+        .for("update");
+      if (!existing || existing.indentId !== data.indentId) {
+        throw new Error("Item does not belong to this purchase indent");
+      }
+      if (existing.procurementRoute === "material" || existing.procurementRoute === "bulk_plant") {
+        throw new Error("Cannot use Stores handover for material/bulk-plant route items.");
+      }
       const inserted = await tx.insert(piItemTransactions).values({
         indentId: data.indentId,
         indentItemId: data.indentItemId,
@@ -15351,11 +15555,6 @@ export class DatabaseStorage implements IStorage {
         createdBy: actionBy.toUpperCase(),
       }).returning();
       // Update running totals
-      const [existing] = await tx.select({
-        totalAcceptedQty: purchaseIndentItems.totalAcceptedQty,
-        totalRejectedQty: purchaseIndentItems.totalRejectedQty,
-        approvedQty: purchaseIndentItems.approvedQty,
-      }).from(purchaseIndentItems).where(eq(purchaseIndentItems.id, data.indentItemId)).limit(1);
       const newAccepted = (existing?.totalAcceptedQty ?? 0) + data.acceptedQty;
       const newRejected = (existing?.totalRejectedQty ?? 0) + data.rejectedQty;
       const approved = existing?.approvedQty ?? 0;
@@ -16045,65 +16244,63 @@ export class DatabaseStorage implements IStorage {
     actionBy: string,
     userId?: number
   ): Promise<{ item: PurchaseIndentItem; grnId?: number }> {
-    const [existingItem] = await db.select().from(purchaseIndentItems)
-      .where(eq(purchaseIndentItems.id, itemId)).limit(1);
-    if (!existingItem) throw new Error(`PI item ${itemId} not found`);
+    // The item lock serializes delivery creation with PI-02B route correction.
+    // Whichever action locks first wins; the other re-reads authoritative route/evidence.
+    const { existingItem, updatedItem, newAccepted } = await db.transaction(async (tx) => {
+      const [existingItem] = await tx.select().from(purchaseIndentItems)
+        .where(eq(purchaseIndentItems.id, itemId)).limit(1).for("update");
+      if (!existingItem) throw new Error(`PI item ${itemId} not found`);
 
-    const currentStatus = (existingItem.purchaseStatus ?? "").toUpperCase();
-    if (currentStatus !== "ORDERED" && currentStatus !== "PARTIAL") {
-      throw new Error(`Cannot record delivery: item is in status '${existingItem.purchaseStatus}'. Only ORDERED or PARTIAL items accept delivery.`);
-    }
-    // Material and bulk-plant route items must go through the material receipt flow (stock posting)
-    if (existingItem.procurementRoute === "material" || existingItem.procurementRoute === "bulk_plant") {
-      throw new Error(`Cannot use record-delivery for material/bulk-plant route items. Use Plant Material Receipts to post delivery and update stock.`);
-    }
+      const currentStatus = (existingItem.purchaseStatus ?? "").toUpperCase();
+      if (currentStatus !== "ORDERED" && currentStatus !== "PARTIAL") {
+        throw new Error(`Cannot record delivery: item is in status '${existingItem.purchaseStatus}'. Only ORDERED or PARTIAL items accept delivery.`);
+      }
+      if (existingItem.procurementRoute === "material" || existingItem.procurementRoute === "bulk_plant") {
+        throw new Error(`Cannot use record-delivery for material/bulk-plant route items. Use Plant Material Receipts to post delivery and update stock.`);
+      }
 
-    const orderedQty = existingItem.orderedQty ?? existingItem.approvedQty ?? 0;
-    const prevAccepted = existingItem.totalAcceptedQty ?? 0;
-    if (data.deliveredQty <= 0) throw new Error("Delivered quantity must be greater than zero");
-    if (prevAccepted + data.deliveredQty > orderedQty + 0.001) {
-      throw new Error(`Cannot record delivery of ${data.deliveredQty} — total would exceed ordered quantity of ${orderedQty}`);
-    }
+      const orderedQty = existingItem.orderedQty ?? existingItem.approvedQty ?? 0;
+      const prevAccepted = existingItem.totalAcceptedQty ?? 0;
+      if (data.deliveredQty <= 0) throw new Error("Delivered quantity must be greater than zero");
+      if (prevAccepted + data.deliveredQty > orderedQty + 0.001) {
+        throw new Error(`Cannot record delivery of ${data.deliveredQty} — total would exceed ordered quantity of ${orderedQty}`);
+      }
 
-    const newAccepted = prevAccepted + data.deliveredQty;
-    const newStatus = newAccepted >= orderedQty - 0.001 ? "PURCHASED" : "PARTIAL";
-
-    // Insert delivery transaction
-    await db.insert(piItemTransactions).values({
-      indentId: existingItem.indentId,
-      indentItemId: itemId,
-      transactionType: "delivery_receipt",
-      qty: data.deliveredQty,
-      vendor: existingItem.vendor ?? null,
-      rate: existingItem.rate ?? null,
-      paymentMode: data.paymentMode ?? existingItem.paymentMode ?? null,
-      paidBy: data.paidBy ?? null,
-      expectedDeliveryDate: data.deliveryDate ?? null,
-      reasonCode: data.challanNo ? `challan:${data.challanNo}` : null,
-      remarks: data.remarks ?? null,
-      createdBy: actionBy.toUpperCase(),
-    });
-
-    // Update item
-    const [updatedItem] = await db.update(purchaseIndentItems)
-      .set({
-        totalAcceptedQty: newAccepted,
-        purchaseStatus: newStatus,
+      const newAccepted = prevAccepted + data.deliveredQty;
+      const newStatus = newAccepted >= orderedQty - 0.001 ? "PURCHASED" : "PARTIAL";
+      await tx.insert(piItemTransactions).values({
+        indentId: existingItem.indentId,
+        indentItemId: itemId,
+        transactionType: "delivery_receipt",
+        qty: data.deliveredQty,
+        vendor: existingItem.vendor ?? null,
+        rate: existingItem.rate ?? null,
         paymentMode: data.paymentMode ?? existingItem.paymentMode ?? null,
-      })
-      .where(eq(purchaseIndentItems.id, itemId))
-      .returning();
-    if (!updatedItem) throw new Error("Failed to update PI item");
-
-    // Audit log
-    await db.insert(purchaseIndentItemHistory).values({
-      itemId,
-      action: `DELIVERY_${newStatus}`,
-      actionBy: actionBy.toUpperCase(),
-      notes: data.remarks ? data.remarks.toUpperCase() : null,
-      qtyValue: data.deliveredQty,
-      vendor: existingItem.vendor ?? null,
-      rate: existingItem.rate ?? null,
+        paidBy: data.paidBy ?? null,
+        expectedDeliveryDate: data.deliveryDate ?? null,
+        reasonCode: data.challanNo ? `challan:${data.challanNo}` : null,
+        remarks: data.remarks ?? null,
+        createdBy: actionBy.toUpperCase(),
+      });
+      const [updatedItem] = await tx.update(purchaseIndentItems)
+        .set({
+          totalAcceptedQty: newAccepted,
+          purchaseStatus: newStatus,
+          paymentMode: data.paymentMode ?? existingItem.paymentMode ?? null,
+        })
+        .where(eq(purchaseIndentItems.id, itemId))
+        .returning();
+      if (!updatedItem) throw new Error("Failed to update PI item");
+      await tx.insert(purchaseIndentItemHistory).values({
+        itemId,
+        action: `DELIVERY_${newStatus}`,
+        actionBy: actionBy.toUpperCase(),
+        notes: data.remarks ? data.remarks.toUpperCase() : null,
+        qtyValue: data.deliveredQty,
+        vendor: existingItem.vendor ?? null,
+        rate: existingItem.rate ?? null,
+      });
+      return { existingItem, updatedItem, newAccepted };
     });
 
     let grnId: number | undefined;

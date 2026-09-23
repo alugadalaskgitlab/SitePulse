@@ -30,6 +30,17 @@ import { AttachmentUploader } from "@/components/AttachmentUploader";
 
 type StoreItem = { id: number; name: string; uom: string; category: string };
 
+type RouteCorrectionRow = {
+  itemId: number;
+  indentId: number;
+  indentNo: string;
+  itemName: string;
+  currentProcurementRoute: string | null;
+  proposedProcurementRoute: "material";
+  canApply: boolean;
+  conflictReason: string | null;
+};
+
 type ItemApprovalState = {
   action: 'pending' | 'modifying' | 'rejecting' | 'approved' | 'modified' | 'rejected';
   approvedQty: number;
@@ -724,6 +735,8 @@ export default function PurchaseIndents() {
   const [view, setView] = useState<ViewMode>(() => (fromIrnId || prefill ? "form" : "list"));
   const [selectedIndentId, setSelectedIndentId] = useState<number | null>(null);
   const [sourceIrnId, setSourceIrnId] = useState<number | null>(fromIrnId);
+  const [showRouteCorrections, setShowRouteCorrections] = useState(false);
+  const [selectedRouteCorrections, setSelectedRouteCorrections] = useState<Set<number>>(new Set());
 
   const [piFilters, setPiFilters, resetPiFilters] = usePersistedFilters(
     "purchase-indents:filters:v1",
@@ -983,6 +996,50 @@ export default function PurchaseIndents() {
     completed: number;
   }>({
     queryKey: ["/api/purchase-indents/summary"],
+  });
+
+  const {
+    data: routeCorrections = [],
+    isLoading: isLoadingRouteCorrections,
+    refetch: refetchRouteCorrections,
+  } = useQuery<RouteCorrectionRow[]>({
+    queryKey: ["/api/purchase-indents/route-corrections"],
+    enabled: showRouteCorrections,
+  });
+
+  const applyRouteCorrectionsMutation = useMutation({
+    mutationFn: async () => {
+      const items = routeCorrections
+        .filter(row => row.canApply && selectedRouteCorrections.has(row.itemId))
+        .map(row => ({
+          itemId: row.itemId,
+          expectedProcurementRoute: row.currentProcurementRoute,
+        }));
+      const response = await apiRequest("POST", "/api/purchase-indents/route-corrections/apply", { items });
+      return response.json() as Promise<{ corrected: RouteCorrectionRow[] }>;
+    },
+    onSuccess: async (result) => {
+      setSelectedRouteCorrections(new Set());
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents/route-corrections"] }),
+      ]);
+      toast({
+        title: "ROUTES CORRECTED",
+        description: `${result.corrected.length} selected item${result.corrected.length === 1 ? "" : "s"} updated to the material route.`,
+      });
+    },
+    onError: async (error: Error) => {
+      setSelectedRouteCorrections(new Set());
+      await refetchRouteCorrections();
+      toast({
+        title: "CORRECTION NOT APPLIED",
+        description: error.message.includes("409")
+          ? "One or more items changed or now have Stores history. Review the refreshed list and try again."
+          : error.message,
+        variant: "destructive",
+      });
+    },
   });
 
   const { data: selectedIndent, isLoading: isLoadingDetail } = useQuery<PurchaseIndentWithItems>({
@@ -2356,6 +2413,16 @@ export default function PurchaseIndents() {
         </div>
         {view === "list" && (
           <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSelectedRouteCorrections(new Set());
+                setShowRouteCorrections(true);
+              }}
+              data-testid="button-review-route-corrections"
+            >
+              <ClipboardCheck className="w-4 h-4 mr-1" /> REVIEW ROUTES
+            </Button>
             <Button variant="outline" onClick={() => setView("report")} data-testid="button-report">
               <BarChart3 className="w-4 h-4 mr-1" /> REPORT
             </Button>
@@ -2392,6 +2459,116 @@ export default function PurchaseIndents() {
           </Button>
         )}
       </div>
+
+      <Dialog
+        open={showRouteCorrections}
+        onOpenChange={(open) => {
+          setShowRouteCorrections(open);
+          if (!open) setSelectedRouteCorrections(new Set());
+        }}
+      >
+        <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto" data-testid="dialog-route-corrections">
+          <DialogHeader>
+            <DialogTitle>Review Bulk Material routes</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+              This is a read-only scan. Nothing changes until you select rows and click <strong>Apply selected corrections</strong>.
+              Items already stored as <strong>material</strong> or <strong>bulk_plant</strong> are valid and are not listed.
+            </div>
+
+            {isLoadingRouteCorrections ? (
+              <div className="flex items-center justify-center py-10 text-muted-foreground">
+                <Loader2 className="w-5 h-5 animate-spin mr-2" /> Scanning existing Bulk Material items…
+              </div>
+            ) : routeCorrections.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-8 text-center" data-testid="route-corrections-empty">
+                <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-emerald-600" />
+                <p className="font-semibold">No route corrections proposed</p>
+                <p className="text-sm text-muted-foreground mt-1">All site-scoped Bulk Material items already use a valid material or bulk_plant route.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full text-sm" data-testid="table-route-corrections">
+                  <thead className="bg-muted/60">
+                    <tr className="text-left">
+                      <th className="p-3 w-10">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all safe corrections"
+                          disabled={!canEdit || applyRouteCorrectionsMutation.isPending}
+                          checked={routeCorrections.some(row => row.canApply)
+                            && routeCorrections.filter(row => row.canApply).every(row => selectedRouteCorrections.has(row.itemId))}
+                          onChange={(event) => setSelectedRouteCorrections(event.target.checked
+                            ? new Set(routeCorrections.filter(row => row.canApply).map(row => row.itemId))
+                            : new Set())}
+                        />
+                      </th>
+                      <th className="p-3">Indent</th>
+                      <th className="p-3">Item / material</th>
+                      <th className="p-3">Current route</th>
+                      <th className="p-3">Proposed route</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {routeCorrections.map(row => (
+                      <tr key={row.itemId} className="border-t align-top" data-testid={`route-correction-row-${row.itemId}`}>
+                        <td className="p-3">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${row.itemName}`}
+                            disabled={!canEdit || !row.canApply || applyRouteCorrectionsMutation.isPending}
+                            checked={selectedRouteCorrections.has(row.itemId)}
+                            onChange={(event) => setSelectedRouteCorrections(previous => {
+                              const next = new Set(previous);
+                              event.target.checked ? next.add(row.itemId) : next.delete(row.itemId);
+                              return next;
+                            })}
+                          />
+                        </td>
+                        <td className="p-3 font-medium">{row.indentNo}</td>
+                        <td className="p-3">
+                          <div className="font-medium">{row.itemName}</div>
+                          {row.conflictReason && (
+                            <div className="mt-1 flex gap-1 text-xs text-amber-700 dark:text-amber-300" role="alert">
+                              <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {row.conflictReason}
+                            </div>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          <Badge variant="outline">{row.currentProcurementRoute ?? "not set"}</Badge>
+                        </td>
+                        <td className="p-3">
+                          <Badge className="bg-teal-600 text-white">{row.proposedProcurementRoute}</Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                {selectedRouteCorrections.size} selected · {routeCorrections.length} proposed
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setShowRouteCorrections(false)}>Close</Button>
+                {canEdit && (
+                  <Button
+                    onClick={() => applyRouteCorrectionsMutation.mutate()}
+                    disabled={selectedRouteCorrections.size === 0 || applyRouteCorrectionsMutation.isPending}
+                    data-testid="button-apply-route-corrections"
+                  >
+                    {applyRouteCorrectionsMutation.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
+                    Apply selected corrections ({selectedRouteCorrections.size})
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {selectedIndent && !["list", "form", "report"].includes(view) && (selectedIndent as any).piType === "material" && (
         <Card data-testid="bulk-delivery-tracking">

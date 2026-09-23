@@ -1,0 +1,17 @@
+VB24 real PostgreSQL integration evidence
+Captured: 2026-09-23T01:01:35.470Z
+Environment: isolated local PostgreSQL test database, temporary per-run schema; synthetic fixtures, not production trips.
+Actual registered Express POST/GET handlers, DatabaseStorage and PostgreSQL transactions; authentication and ancillary seed/site metadata mocked.
+Reproduce: ASSOCIATION_PG_TEST_URL=postgresql://runner@127.0.0.1:55439/vb24_test VB24_EVIDENCE_PATH=screenshots/vb24/database-verification.txt npx vitest run tests/vehicleSupplierAssociationPostgres.integration.test.ts
+Fixture: ALLADURG PWD ROAD TO PAMPAD; Soil; 2026-09-15 through 2026-09-22; onlyUnassigned:false; supplier RAMESH MOHABATHPUR.
+BEFORE SQL: SELECT count(*)::int AS count, sum(quantity) AS quantity, count(material_source_supplier)::int AS assigned FROM site_material_trips
+[{"count":114,"quantity":68300,"assigned":0}]
+POST /api/site-material-trips/material-source/bulk: HTTP 200 {"updatedCount":114}
+AFTER SQL (separate pool query, after HTTP response): SELECT count(*)::int AS count FROM site_material_trips WHERE material_source_supplier = 'RAMESH MOHABATHPUR'
+[{"count":114}]
+AUDIT SQL: SELECT count(*)::int AS count, count(DISTINCT transaction_id)::int AS trips FROM audit_logs WHERE old_values->>'materialSourceSupplier' IS NULL AND new_values->>'materialSourceSupplier' = 'RAMESH MOHABATHPUR'
+[{"count":114,"trips":114}]
+Fresh filtered GET: HTTP 200, 114 trips, all assigned=true
+CAVEAT: Reported live persistence failure remains unreproduced. Original pre-fix storage with transactionId:0 also committed 114/114 in the isolated baseline run. This file captures the current post-change run, not that earlier baseline.
+ID0 was a proven per-trip history visibility defect, not an established rollback cause. Zero-match HTTP200 was a proven false-success boundary; now HTTP409. Audit failures must return HTTP500 and roll back.
+Production verification is separate/read-only; this integration evidence does not demonstrate or claim any live data repair.

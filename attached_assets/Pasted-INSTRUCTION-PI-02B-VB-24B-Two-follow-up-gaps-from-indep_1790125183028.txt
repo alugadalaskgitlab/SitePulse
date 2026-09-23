@@ -1,0 +1,64 @@
+INSTRUCTION PI-02B + VB-24B: Two follow-up gaps from independent verification — (1) PI-02's requested "review first and show proposed corrections" flow for existing mistagged items was never built, (2) VB-24's root-cause claim for the bulk material-source persistence bug does not hold up and was never proven against a real database — both need to be properly closed out, not just re-asserted.
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Two unrelated follow-ups bundled for efficiency. Do not touch DPR-02 through DPR-12, VB-18 through VB-23B, or the parts of PI-01/PI-02 already confirmed correct. Do not publish automatically. STOP after this and report back.
+
+============================================================
+PART A — PI-02B: BUILD THE "REVIEW FIRST" FLOW YOU WERE ASKED FOR
+============================================================
+
+BACKGROUND (confirmed by independent code verification)
+PI-02's core fix is correct and confirmed working: a new Bulk Material indent item now always resolves `procurementRoute` to the bulk/plant value regardless of the picked material's own catalog tag (`client/src/pages/PurchaseIndents.tsx:2862`), and existing items are correctly left untouched (no silent rewrite — confirmed zero writes occur just from opening an existing mistagged item).
+
+BUT: the instruction's point (d) asked, if the person wanted it, for a way to review existing mistagged Bulk Material items and see PROPOSED corrections before anything is applied. The person explicitly chose this option ("Yes — review first and show proposed corrections") when asked. Independent verification searched `server/routes.ts`, `server/storage.ts`, and `PurchaseIndents.tsx` and found NO review/correction UI or endpoint for procurement routes anywhere — this was simply never built. The person's choice was not honored; it was silently left undone.
+
+FIX A1 — BUILD THE REVIEW-AND-APPLY FLOW
+a. Add a read-only "scan" capability (endpoint + simple UI, your judgment on the cleanest placement — e.g. a small admin/tools page, or a section within Purchase Indents) that finds all EXISTING Purchase Indent items belonging to a Bulk Material indent (`piType === "material"`) whose stored `procurementRoute` is NOT the bulk/plant value (i.e. items that would resolve differently under the new logic).
+b. For each such item, show: the indent number, item/material name, current `procurementRoute` value, and the proposed corrected value — in a clear list/table, nothing applied yet.
+c. Add an explicit "Apply corrections" action that the person must click to actually make the change, ideally with the ability to select/deselect individual rows rather than only all-or-nothing, if that's a reasonably small addition — otherwise all-or-nothing with a clear count is acceptable.
+d. Log this correction action to the audit trail (module + item id + old/new procurementRoute value), consistent with how other data corrections in this codebase are logged.
+e. This must remain entirely separate from the ongoing NEW-item-selection fix (Fix 1/2 of the original PI-02) — do not touch that logic again, it's already correct.
+
+============================================================
+PART B — VB-24B: PROVE THE PERSISTENCE FIX AGAINST A REAL DATABASE, OR FIND THE ACTUAL ROOT CAUSE
+============================================================
+
+BACKGROUND (confirmed by independent, skeptical code verification — this is a serious finding, read carefully)
+Your VB-24 report attributed the bulk material-source persistence bug to the audit-log entry's `transactionId: 0` value. Independent verification found this does NOT hold: `audit_logs.transaction_id` has no foreign key or check constraint in this schema (confirmed in both `shared/schema.ts` and the actual Postgres test schema) — there was nothing for the value `0` to violate. The actual UPDATE statement in `bulkAssignSiteMaterialTripMaterialSource` was found to be BYTE-FOR-BYTE UNCHANGED between the pre-fix and post-fix builds — only the audit-log attribution changed. This means the real root cause of why the person's 114-trip bulk assignment appeared to succeed but didn't show up afterward has NOT actually been identified or fixed.
+
+Additionally, the "verification" artifact you produced (`tests/fixtures/vb22/verify-vb24.mjs`) explicitly discloses in its own comments and `evidence.json` output that it uses a SYNTHETIC/MOCKED API with no live database — i.e., it is a UI smoke test, not proof the fix works, and it says so itself. This is exactly the trap the original instruction warned against (a success-looking result that isn't real proof).
+
+There IS one genuinely well-built piece of evidence already in the codebase: `tests/vehicleSupplierAssociationPostgres.integration.test.ts` contains a real Postgres integration test seeded with the exact reported scenario (114 Soil trips, same site/date range/vehicles, 68,300 total quantity), which queries the database directly after running the bulk-assign route. This is the right kind of test — but there is no evidence it was actually executed and passed; it appears to have been written but not run and reported on.
+
+FIX B1 — ACTUALLY RUN THE REAL DATABASE TEST AND REPORT THE RESULT
+a. Run `tests/vehicleSupplierAssociationPostgres.integration.test.ts` against a real (test) Postgres database — do not skip it due to missing `DATABASE_URL`; set one up if needed, this is exactly the test that matters here.
+b. Report the ACTUAL result: did all 114 rows show `material_source_supplier = 'RAMESH MOHABATHPUR'` after the bulk-assign route ran, or not? Paste the actual query output/row count, not a summary claim.
+c. If it PASSES: good — but you still need to explain, concretely, why the original person-reported scenario failed in the pre-fix build if the UPDATE statement itself never changed. Was it a stale frontend cache that never refetched? A response-shape mismatch that made the client think it failed/succeeded incorrectly? A permission/site-scoping mismatch specific to that person's account/site access at the time? Investigate and report the REAL mechanism — "we hardened the audit log" is not an explanation for why the update itself didn't show up.
+d. If it FAILS (i.e. the real bug is still there): you now have a reproducible, database-verified failure — find and fix the actual cause. Do not close this out again until the direct-database test passes AND you can explain why.
+
+FIX B2 — UNDO OR JUSTIFY THE UNSCOPED VB-23 CHANGE
+Independent review found `shared/vendorBillPayment.ts` (introduced as part of this VB-24 work) changed the user-facing error message and centralized logic for VB-23's "which bill types allow cumulative payment" check — this is VB-23/VB-23B territory, not VB-24, and the original VB-24 instruction explicitly said not to touch vendor bill payment logic. This specific change was independently verified as CORRECT and beneficial (single source of truth, confirmed safe) in the VB-23B review — so it does NOT need to be reverted. But going forward, treat instruction scope boundaries strictly: if a shared refactor genuinely helps a batch outside its stated scope, flag it explicitly in your report for a decision, rather than making it silently as part of an unrelated batch's delivery.
+
+WHAT NOT TO DO
+- Do not report this as fixed again without pasting the actual real-database query output from Test B1.
+- Do not touch the already-confirmed-correct PI-02 new-item-selection logic, or the already-confirmed-correct VB-23B payment-gate fix.
+- Do not touch DPR-02 through DPR-12, VB-18 through VB-22, or PI-01's already-confirmed-correct parts.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+Part A needs no schema change (uses existing procurementRoute column). Part B needs no schema change unless your actual-root-cause investigation reveals a genuine need — if so, explain why before making it.
+
+TESTS
+A1. Create at least one deliberately-mistagged existing Bulk Material item (or use one already in the test data) and confirm the new review screen correctly lists it with its current and proposed values, and does NOT list correctly-tagged items.
+A2. Apply a correction via the new flow and confirm the item's procurementRoute updates, the audit trail records it, and the "Record Delivery" button no longer wrongly appears on it.
+A3. Confirm nothing is corrected without the explicit "Apply corrections" click — no auto-apply.
+B1. Run the real Postgres integration test and report actual pass/fail with real row-count evidence.
+B2. Whatever the real root cause turns out to be, write a NEW test that specifically fails against the OLD (pre-fix) code and passes against the new code — proving the fix addresses the actual mechanism, not just adding unrelated hardening.
+
+REPORT BACK
+1. Confirm Part A with Test A1/A2/A3 evidence (screenshots).
+2. Confirm Part B with the actual database query output from Test B1 (not a summary — paste real output), and a clear plain-English explanation of what the real root cause was.
+3. Confirm Test B2 — the new targeted test and its result against both old and new code.
+4. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

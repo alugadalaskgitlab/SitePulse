@@ -19,15 +19,28 @@ const oldItem = {
   purchaseStatus: "ordered", totalAcceptedQty: 0, deliveredQty: 0, receivingLocation: "hmp_plant",
   vendor: "SYNTHETIC VENDOR", paymentMode: "credit", deliveryEvidence: [], deliveryWarnings: [],
 };
+const validBulkItem = {
+  ...oldItem,
+  id: 9002,
+  description: "GSB — ALREADY VALID BULK ROUTE",
+  procurementRoute: "bulk_plant",
+};
+const validMaterialItem = {
+  ...oldItem,
+  id: 9003,
+  description: "RAP — ALREADY VALID MATERIAL ROUTE",
+  procurementRoute: "material",
+};
 let indents: AnyRow[] = [{
   id: 90, indentNo: "SYNTHETIC/PI02/BEFORE/0090", date: "2026-03-01", siteId: 11,
   raisedFrom: "SYNTHETIC SITE", proposedBy: "SYNTHETIC REQUESTER", raisedBy: "SYNTHETIC ENGINEER",
   remarks: "PRE-FIX SYNTHETIC STORED ROUTE MUST REMAIN UNCHANGED", status: "ordered",
-  storesStatus: "bypassed", piType: "material", createdAt: "2026-03-01T08:00:00.000Z", items: [oldItem],
+  storesStatus: "bypassed", piType: "material", createdAt: "2026-03-01T08:00:00.000Z", items: [oldItem, validBulkItem, validMaterialItem],
 }];
 
 const fixtureState = {
   requests: [] as RequestRecord[], creates: [] as AnyRow[], toasts: [] as AnyRow[],
+  routeApplyRequests: [] as AnyRow[], audits: [] as AnyRow[],
   existingBefore: { indentId: 90, itemId: 9001, procurementRoute: "stores" },
 };
 declare global { interface Window { __PI02Fixture?: typeof fixtureState; } }
@@ -46,6 +59,38 @@ window.fetch = async (input, init) => {
   try { body = init?.body ? JSON.parse(String(init.body)) : undefined; } catch { body = init?.body; }
   fixtureState.requests.push({ method, path: `${url.pathname}${url.search}`, body });
 
+  if (url.pathname === "/api/purchase-indents/route-corrections" && method === "GET") {
+    const item = indents[0].items.find((row: AnyRow) => row.id === 9001);
+    return json(["material", "bulk_plant"].includes(item.procurementRoute) ? [] : [{
+      itemId: item.id,
+      indentId: 90,
+      indentNo: indents[0].indentNo,
+      itemName: item.description,
+      currentProcurementRoute: item.procurementRoute,
+      proposedProcurementRoute: "material",
+      canApply: true,
+      conflictReason: null,
+    }]);
+  }
+  if (url.pathname === "/api/purchase-indents/route-corrections/apply" && method === "POST") {
+    fixtureState.routeApplyRequests.push(body);
+    const selection = body?.items?.[0];
+    const item = indents[0].items.find((row: AnyRow) => row.id === selection?.itemId);
+    if (!item || item.procurementRoute !== selection.expectedProcurementRoute) {
+      return json({ code: "PI_ROUTE_CORRECTION_CONFLICT", message: "Synthetic stale selection conflict" }, 409);
+    }
+    const oldRoute = item.procurementRoute;
+    item.procurementRoute = "material";
+    fixtureState.audits.push({
+      module: "purchase_indent_route_correction",
+      transactionId: item.id,
+      oldValues: { procurementRoute: oldRoute },
+      newValues: { procurementRoute: "material" },
+    });
+    document.querySelector("[data-testid=pi02-route-evidence]")!.textContent =
+      "SYNTHETIC INTERCEPTED API — explicit Apply completed — audit old stores → new material";
+    return json({ corrected: [{ itemId: item.id, currentProcurementRoute: "material", proposedProcurementRoute: "material" }] });
+  }
   if (url.pathname === "/api/purchase-indents" && method === "POST") {
     fixtureState.creates.push(body);
     const id = 91 + fixtureState.creates.length;
@@ -87,8 +132,8 @@ queryClient.clear();
 createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={queryClient}>
     <div className="sticky top-0 z-[200] border-b border-fuchsia-300 bg-fuchsia-50 px-4 py-2 text-center text-xs font-bold text-fuchsia-950" data-testid="pi02-fixture-disclosure">
-      PI-02 REAL PURCHASE INDENTS COMPONENT — SYNTHETIC INTERCEPTED API ONLY — NO LIVE API, CATALOG, RECORD, OR DATABASE WRITES
-      <div data-testid="pi02-route-evidence">SYNTHETIC FIXTURE BEFORE stored route: stores — awaiting new selection/save</div>
+      PI-02B REAL PURCHASE INDENTS COMPONENT — SYNTHETIC INTERCEPTED UI API — NO LIVE OR PRODUCTION WRITES
+      <div data-testid="pi02-route-evidence">Before Apply: stored route remains stores · apply requests 0 · audit rows 0</div>
     </div>
     <PurchaseIndents />
   </QueryClientProvider>,

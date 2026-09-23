@@ -1,6 +1,6 @@
 import type { Express, Response } from "express";
 import type { Server } from "http";
-import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, InvalidDieselPhysicalStockError, InvalidStockTransferQuantityError, InvalidDieselSourceError, DieselReceiptExceedsRemainingError, InvalidLinkedDieselRequirementError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError, InitialScopeCorrectionBlockedError, ScopeChangedDuringPlanningError, DprProjectMismatchError, PushSubscriptionOwnershipError, assertValidDieselPhysicalStock } from "./storage";
+import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, InvalidDieselPhysicalStockError, InvalidStockTransferQuantityError, InvalidDieselSourceError, DieselReceiptExceedsRemainingError, InvalidLinkedDieselRequirementError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError, InitialScopeCorrectionBlockedError, ScopeChangedDuringPlanningError, DprProjectMismatchError, PushSubscriptionOwnershipError, PurchaseIndentRouteCorrectionConflictError, assertValidDieselPhysicalStock } from "./storage";
 import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection, classifyBoqItem, getSectorMultiplier } from "./snlAutoMapper";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -8803,6 +8803,51 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Error fetching procurement report:", err);
       res.status(500).json({ message: "Failed to fetch procurement report" });
+    }
+  });
+
+  app.get("/api/purchase-indents/route-corrections", async (req, res) => {
+    try {
+      if (!assertView(req, res, "purchase_indents_view")) return;
+      const permitted = await getPermittedSiteNames(req);
+      const rows = await storage.scanPurchaseIndentRouteCorrections(permitted ?? undefined);
+      res.json(rows);
+    } catch (err) {
+      console.error("Error scanning PI route corrections:", err);
+      res.status(500).json({ message: "Failed to scan purchase indent route corrections" });
+    }
+  });
+
+  app.post("/api/purchase-indents/route-corrections/apply", async (req, res) => {
+    try {
+      if (!assertView(req, res, "purchase_indents_view")) return;
+      if (!assertEdit(req, res, "site_procurement")) return;
+      const body = z.object({
+        items: z.array(z.object({
+          itemId: z.number().int().positive(),
+          expectedProcurementRoute: z.string().nullable(),
+        })).min(1).max(500),
+      }).parse(req.body);
+      const permitted = await getPermittedSiteNames(req);
+      const result = await storage.applyPurchaseIndentRouteCorrections({
+        items: body.items,
+        permittedSiteNames: permitted ?? undefined,
+        actor: {
+          userId: req.authUser!.id,
+          userName: currentUserName(req),
+          userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : null,
+        },
+      });
+      res.json(result);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid correction selection" });
+      }
+      if (err instanceof PurchaseIndentRouteCorrectionConflictError) {
+        return res.status(409).json({ code: err.code, message: err.message, conflicts: err.conflicts });
+      }
+      console.error("Error applying PI route corrections:", err);
+      res.status(500).json({ message: "Failed to apply purchase indent route corrections" });
     }
   });
 
