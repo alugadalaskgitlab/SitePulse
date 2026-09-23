@@ -1,0 +1,85 @@
+INSTRUCTION VB-25: Three related Vendor Bills improvements — (1) add a Site field to bill creation that restricts which items can be pulled in, plus a real Site filter on the bills list, (2) fix a genuine overbilling risk: rate-card unit conversion only works for the new VB-22 material-source path today, not for regular vendors, and there's a dangerous legacy fallback that can silently apply a mismatched-unit rate, (3) display bill items grouped by date in collapsible sections instead of one long flat table, especially for trip-heavy material bills
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Three related fixes to Vendor Bills, bundled together since they all touch the same bill-creation/item-pull/item-display flow. Part B is the highest priority — it's a live financial-accuracy risk, not just a UX gap. Do not touch DPR-02 through DPR-11, VB-18 through VB-24, VB-23B, PI-01, PI-02, PI-02B, MAT-01, or MAT-02/DPR-13. Do not publish automatically. STOP after this and report back.
+
+============================================================
+PART A — SITE FIELD ON BILL CREATION + REAL SITE FILTER ON THE LIST
+============================================================
+BACKGROUND (confirmed by direct code review)
+1. The "New Vendor Bill" creation form (`client/src/pages/VendorBills.tsx` ~lines 2543-2660, "BILL DETAILS" card) currently has: Bill Date, Bill Number, Bill Type, Vendor/Supplier Name, Period From, Period To. No Site/Location field exists.
+2. Each line item already carries its own `siteName`, inherited from wherever it was logged (`server/storage.ts`, e.g. ~18280 equipment, ~18400 material, ~18447 site-trip, ~18596 labour) — so a bill today can silently span multiple sites with no site-level control at creation time.
+3. A `site` filter concept already exists in the vendor bills list's state and filtering logic (`filterSite`/`vbFilters.site`, ~lines 720, 728, 2205 — filters `bill.items?.some(it => it.siteName === filterSite)`), but has NO visible dropdown in the filter bar — it's only reachable via a deep-link URL param from the Management Report page (~lines 689, 697). This is the foundation to build on, not something to rebuild from scratch.
+
+FIX A1 — SITE FIELD ON BILL CREATION, RESTRICTING ITEM PULL
+a. Add a "Site" selector to the bill-creation form, alongside Bill Type/Vendor/Period. Include an explicit "All Sites" option (for vendors whose work genuinely spans multiple sites within one bill, e.g. a company-wide equipment hire) — this is not mandatory single-site-only, per the person's confirmed choice.
+b. When a specific site is chosen (not "All Sites"), the auto-item-pull logic (`getVendorBillAutoItems` and wherever it's invoked from `VendorBills.tsx`) must only offer/show items whose `siteName` matches the selected site — restricting the pull, not just labeling it afterward.
+c. When "All Sites" is chosen, behavior is unchanged from today (items from any site for that vendor+period are offered, exactly as now).
+d. Store the selected site on the bill record itself (add a `siteId`/`site` column if one doesn't already exist at the bill level — confirmed today it only exists per-item, not per-bill).
+
+FIX A2 — VISIBLE SITE FILTER ON THE BILLS LIST
+a. Add a visible Site filter dropdown to the vendor bills list/dashboard filter bar (alongside the existing Date/Vendor/Status/Category/Supplied-To filters, ~lines 4770-4886), wired to the SAME `filterSite`/`vbFilters.site` state that already exists — do not build a new filter mechanism, just expose the existing one properly.
+b. Confirm the existing deep-link-from-Management-Report behavior (~lines 689, 697) still works exactly as before — this fix is additive (exposing a UI control), not a replacement.
+c. A bill created under "All Sites" (Fix A1) should appear when filtering by ANY of the sites its items actually belong to (consistent with the existing `bill.items?.some(...)` logic) — confirm this still holds correctly once bills also carry their own `site`/`siteId` field from Fix A1d.
+
+============================================================
+PART B — FIX THE RATE-CARD UNIT-CONVERSION GAP (LIVE OVERBILLING RISK)
+============================================================
+BACKGROUND (confirmed by direct code review — this is the priority fix in this batch)
+1. VB-22's `selectAutoMaterialRateConversion` (`client/src/lib/vendorBillRateSelection.ts` ~lines 151-186) ONLY applies when `item.sourceType === SITE_MATERIAL_TRIP_MATERIAL_SOURCE` — i.e., only for the new "material source" vendor role. For a REGULAR vendor (e.g. a transporter being billed for the same trips), this conversion never runs.
+2. For the regular-vendor path, `getVendorBillAutoItems` (`server/storage.ts` ~18141, transporter pull ~18441-18449) pushes the item's raw logged quantity and unit as-is (`qty: row.quantity, unit: row.uom || "NOS"`) with NO rate set server-side.
+3. Client-side, `mapAutoBillItem` (`VendorBills.tsx` ~162-183) defaults the rate to 0, then `handleAutoPopulate` (~1266-1380) tries a rate-card lookup KEYED BY THE LOGGED UNIT (`newKey = MAT_${materialName}_${item.unit}`, ~1330-1335) — e.g. looks for `MAT_SOIL_CFT`. If the vendor's rate card is actually keyed by a DIFFERENT unit (e.g. `MAT_SOIL_TRIP`), this lookup correctly fails to match, and the rate stays 0 — safe, but requires the person to notice and fill it in manually with zero conversion help.
+4. CONFIRMED DANGEROUS: there is a legacy fallback (`oldKey = MAT_${strippedDescription}`, ~1336-1338) that has NO UNIT IN THE KEY AT ALL. If an older-format rate card exists under this unit-less key, it WILL match regardless of the logged unit — meaning it can silently apply a TRIP-based rate to a CFT-based quantity with no conversion, producing a bill amount that's wrong by whatever the CFT-to-TRIP ratio is (e.g. the exact scenario the person described: 600 CFT × ₹800/TRIP instead of 1 TRIP × ₹800/TRIP — a ~600x overbilling error). This must be fixed as the top priority in this batch.
+
+FIX B1 — EXTEND UNIT-AWARE CONVERSION TO ALL VENDOR ROLES, NOT JUST MATERIAL-SOURCE
+a. Generalize `selectAutoMaterialRateConversion` (or extract its core matching/conversion logic into a shared helper both paths call) so it applies to ANY auto-pulled item where the vendor has a rate card for that material/equipment/service in a DIFFERENT unit than the item's logged unit — not gated to `SITE_MATERIAL_TRIP_MATERIAL_SOURCE` only. Reuse the exact same matching and conversion mechanics already proven correct in VB-22 (`matchingRateCardsForGroup`, `defaultConvertedQuantity`) — do not reimplement.
+b. When a regular vendor's rate card is found in a different unit than the logged data, auto-convert at pull-in time exactly as VB-22 already does for the material-source role: correct target unit, correctly converted quantity, correct rate — no manual "Set Rates" step required by default (though that tool remains available for adjustments).
+c. When no matching rate card exists in any unit (regardless of vendor role), fall back to the safe current behavior: logged unit/quantity, rate = 0, requiring manual entry — never silently guess.
+
+FIX B2 — REMOVE OR FIX THE DANGEROUS UNIT-LESS LEGACY FALLBACK
+a. The `oldKey = MAT_${strippedDescription}` fallback (~1336-1338) must NOT be allowed to match a rate card in a different unit than what's logged and silently apply that rate. Either: (i) remove this fallback entirely now that Fix B1 provides proper unit-aware matching across all cases, or (ii) if it must be kept for some other legacy reason, add an explicit unit-equality check before allowing it to auto-apply, and require confirmation/surface a clear warning if it would otherwise apply a unit-mismatched rate. Your judgment on which approach is cleaner, but a silent unit-mismatched auto-apply must not remain possible after this fix.
+b. Audit for this exact failure pattern on any ALREADY-CREATED bills if feasible (a read-only check, not an automatic correction — per the same "review first" principle used in PI-02B): are there existing bills where a legacy unit-less rate-card match was applied to a quantity in a different unit than the rate card's own unit? If you can identify any with reasonable confidence, list them in your report for the person to review manually — do not auto-correct financial records.
+
+============================================================
+PART C — GROUP BILL ITEMS BY DATE, COLLAPSIBLE
+============================================================
+BACKGROUND (confirmed by direct code review)
+Both the bill edit form (`VendorBills.tsx` ~3602-3706) and read-only bill detail view (~4386-4403) currently render items as a single flat `<table>` when the bill has only one type category (`shouldGroup` is false for a single-category bill, e.g. a pure equipment-hire or pure material bill — confirmed via ~line 119/3365/4324). Only a Combined ("All Types") bill currently gets any grouping (by category band, and within Labour, by sub-source). Site Material Trip items specifically get NO grouping at all — one row per trip, in array order, which becomes unwieldy for a bill with 100+ individual trips.
+
+FIX C1 — DATE-GROUPED COLLAPSIBLE ITEM DISPLAY
+a. Add date-based grouping as an additional layer within the existing display: group line items by their date under a collapsible section header showing the date and a subtotal (item count and amount) for that date, expandable to reveal the individual line items.
+b. This should apply generally to any bill with many date-stamped items (not just site material trips) — but is especially valuable for material/trip-heavy bills. Use your judgment on a sensible threshold (e.g. only auto-collapse when there are more than some reasonable number of items, so a small 3-item bill doesn't get needlessly fragmented into three collapsed single-item sections) — or default all date groups to expanded for small bills and collapsed for large ones.
+c. For a Combined bill that already has category-band grouping (Equipment/Material/Transport/Labour), nest the date-grouping WITHIN each category band, not as a separate competing grouping layer — per the person's confirmed preference.
+d. Preserve the existing Labour sub-grouping (DPR Site Labour / Plant Shift Manpower / Manual / Other) exactly as it works today, with date-grouping nested inside that where applicable.
+e. Ensure the bill's grand total, and each group's subtotal, remain clearly visible and correct regardless of collapsed/expanded state — collapsing a date group must not hide its contribution to the total.
+f. This applies to both the edit view and the read-only detail view consistently.
+g. Provide "Expand All"/"Collapse All" controls, consistent with the pattern already used elsewhere in this app (e.g. confirmed on the Site Reports page).
+
+WHAT NOT TO DO
+- Do not restrict "All Sites" bills — that flexibility must remain available.
+- Do not silently auto-correct any already-created bill's rates/amounts — Part B2's audit is read-only/reporting only.
+- Do not remove the existing category-band grouping for Combined bills — nest date-grouping inside it, don't replace it.
+- Do not touch DPR-02 through DPR-11, VB-18 through VB-24, VB-23B, PI-01, PI-02, PI-02B, MAT-01, or MAT-02/DPR-13.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+Part A needs one new nullable column on the vendor bill record (`siteId`/`site`) — additive only, safe default (null = "All Sites" for existing bills). Parts B and C need no schema change — logic and display only.
+
+TESTS
+A. Create a new bill, select a specific Site. Confirm only that site's items are offered for pull-in. Create another bill with "All Sites" selected and confirm behavior is unchanged from today.
+B. Add the Site filter to the bills list, filter by a specific site, confirm only matching bills appear (including correctly showing an "All Sites" bill if any of its items belong to that site).
+C. Confirm the existing Management Report deep-link-to-filtered-bills-list still works.
+D. Reproduce the exact overbilling scenario: a vendor with a rate card in TRIP but trips logged in CFT, pulled as a REGULAR vendor (not material-source). Confirm the item now auto-converts correctly (converted unit, converted quantity, correct rate) instead of leaving qty=600/unit=CFT/rate=0-or-wrong.
+E. Confirm the dangerous unit-less legacy fallback can no longer silently apply a mismatched-unit rate — test with a vendor who has ONLY a legacy-format rate card in a different unit than logged data, and confirm either no auto-rate is applied, or a clear warning appears, but never a silent wrong-unit auto-apply.
+F. Confirm the VB-22 material-source path still works exactly as before — no regression to the already-correct conversion for that role.
+G. Open a bill with 100+ individual trip line items. Confirm they're grouped by date in collapsible sections with correct per-date subtotals, and the grand total is correct regardless of expand/collapse state.
+H. Open a Combined bill and confirm category bands are preserved with date-grouping nested inside, and Labour's existing sub-grouping still works correctly.
+I. Confirm Expand All/Collapse All controls work correctly.
+
+REPORT BACK
+1. Confirm Part A with Test A/B/C evidence (screenshots).
+2. Confirm Part B with Test D/E/F evidence (screenshots) — this is the priority, be thorough. Include the audit findings from B2b (list of any existing bills found with the dangerous pattern, if any).
+3. Confirm Part C with Test G/H/I evidence (screenshots).
+4. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

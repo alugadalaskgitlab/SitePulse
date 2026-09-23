@@ -111,7 +111,7 @@ import {
 } from "@shared/schema";
 import { resolveConversion, convertToBase, computeAdjustment, isNoChange, computeVarianceWarnings, toFiniteNumber, type VarianceWarning } from "@shared/stockReconciliation";
 import { resolvePermittedSiteIds } from "@shared/siteAccess";
-import { getBaseSiteName, siteMatchesPermitted } from "@shared/siteName";
+import { getBaseSiteName, siteMatchesPermitted, vendorBillItemMatchesSite } from "@shared/siteName";
 import {
   buildSiteTripSuggestions,
   normalizeSiteTripHistorySite,
@@ -1559,7 +1559,7 @@ export interface IStorage {
   ensureMaterialReceiptDieselLinkColumn(): Promise<void>;
   getDieselRequirementReceipts(requirementIds: number[]): Promise<MaterialReceipt[]>;
   deleteVendorBill(id: number): Promise<boolean>;
-  getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null })[]>;
+  getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null, siteName?: string | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null })[]>;
   getEquipmentHireVendors(periodFrom: string, periodTo: string): Promise<{
     vendorName: string;
     equipmentCount: number;
@@ -17360,6 +17360,7 @@ export class DatabaseStorage implements IStorage {
         if (required) throw Object.assign(new Error("Every eligible monthly hired machine must be included as a server-reconciled hire group."), { code: "BAD_REQUEST" });
       }
       const [bill] = await tx.insert(vendorBills).values({
+        siteId: data.siteId ?? null,
         billDate: data.billDate,
         billNo,
         billType: data.billType.toUpperCase(),
@@ -17595,6 +17596,7 @@ export class DatabaseStorage implements IStorage {
         if (required) throw Object.assign(new Error("Every eligible monthly hired machine must be included as a server-reconciled hire group."), { code: "BAD_REQUEST" });
       }
       const setData: any = {
+          siteId: data.siteId ?? null,
           billDate: data.billDate,
           billType: data.billType.toUpperCase(),
           vendorName: uppercaseBusinessText(data.vendorName),
@@ -18138,7 +18140,7 @@ export class DatabaseStorage implements IStorage {
     ];
   }
 
-  async getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null })[]> {
+  async getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null, siteName?: string | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null })[]> {
     const vendorVariants = await this.resolveVendorAliases(vendorName);
     const bt = billType.toLowerCase();
     const items: (Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null })[] = [];
@@ -18748,7 +18750,9 @@ export class DatabaseStorage implements IStorage {
       return (catOrder[a.category || ""] || 9) - (catOrder[b.category || ""] || 9);
     });
 
-    return items;
+    return siteName
+      ? items.filter(item => vendorBillItemMatchesSite(item.siteName, siteName))
+      : items;
   }
 
   async getVendorNames(): Promise<string[]> {

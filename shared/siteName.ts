@@ -31,3 +31,70 @@ export function siteMatchesPermitted(dprSite: string, permittedSiteNames: string
   const base = normalizeSiteName(dprSite);
   return permittedSiteNames.some((name) => normalizeSiteName(name) === base);
 }
+
+/** Vendor-bill lines retain a display prefix ("SITE:" / "SITE*:"). */
+export function vendorBillItemMatchesSite(itemSite: string | null | undefined, siteName: string): boolean {
+  if (!itemSite) return false;
+  const unprefixed = itemSite.replace(/^SITE\*?\s*:\s*/i, "").trim();
+  return siteMatchesPermitted(unprefixed, [siteName]);
+}
+
+export function vendorBillVisibleToSites(
+  bill: { siteId?: number | null; items?: { siteName?: string | null }[] | null },
+  permittedSiteNames: string[],
+  siteNameById: ReadonlyMap<number, string>,
+): boolean {
+  if (bill.siteId != null) {
+    return siteMatchesPermitted(siteNameById.get(bill.siteId) || "", permittedSiteNames);
+  }
+  const items = bill.items || [];
+  return items.length > 0 && items.every(item =>
+    permittedSiteNames.some(site => vendorBillItemMatchesSite(item.siteName, site)));
+}
+
+type VendorBillSourceItem = {
+  source?: string | null;
+  date?: string | null;
+  category?: string | null;
+  description?: string | null;
+  siteName?: string | null;
+};
+
+/** Existing generated evidence is trusted only while its saved provenance is unchanged. */
+export function untrustedVendorBillAutoItems(
+  submitted: VendorBillSourceItem[],
+  existing: VendorBillSourceItem[] = [],
+): VendorBillSourceItem[] {
+  const same = (left: string | null | undefined, right: string | null | undefined) =>
+    String(left || "").trim().replace(/\s+/g, " ").toUpperCase() ===
+    String(right || "").trim().replace(/\s+/g, " ").toUpperCase();
+  return submitted.filter(item => {
+    const source = String(item.source || "").toLowerCase();
+    if (source !== "auto" && !source.startsWith("auto:")) return false;
+    return !existing.some(saved =>
+      same(saved.source, item.source) &&
+      same(saved.date, item.date) &&
+      same(saved.category, item.category) &&
+      same(saved.description, item.description) &&
+      same(saved.siteName, item.siteName));
+  });
+}
+
+export function vendorBillUpdateSiteId(
+  payloadHasSiteId: boolean,
+  proposedSiteId: number | null | undefined,
+  existingSiteId: number | null | undefined,
+): number | null | undefined {
+  return payloadHasSiteId ? proposedSiteId : existingSiteId;
+}
+
+export function vendorBillAutoSourceFromCandidate(candidate: {
+  sourceId?: number | string | null;
+  sourceType?: string | null;
+}): string | null {
+  if (candidate.sourceId == null || String(candidate.sourceId) === "") return null;
+  const id = String(candidate.sourceId).toLowerCase();
+  return candidate.sourceType === "site_material_trip_material"
+    ? `auto:site_material_trip_material:${id}`
+    : `auto:${id}`;
+}

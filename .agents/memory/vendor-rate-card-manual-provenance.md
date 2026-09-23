@@ -14,3 +14,9 @@ Billing-unit changes are deliberate bill-local edits, not physical-unit conversi
 **Why:** One recorded delivery can contain 600 CFT but be commercially billed as one TRIP. No assumed CFT-per-trip factor is authorized.
 
 **How to apply:** Offer only explicitly supported alternate rate-card units, keep per-row quantity editable, and defer Set Rates writes until ordinary bill Save. Preserve rate-only quantity/unit behavior.
+
+For automatic regular-vendor pulls, a rate card's alternate unit alone is not evidence of a conversion factor. Prefer exact same-unit cards; one identifiable physical trip can become one TRIP, but unknown conversions retain logged quantities at zero rate with a manual-conversion warning.
+
+**Why:** Extending the historical bill-local one-unit default indiscriminately to hours/days or volume/mass creates financial errors. The pre-existing material-source conversion behavior was explicitly retained rather than silently reinterpreted.
+
+**How to apply:** Keep manual billing-unit edits distinct from automatic conversion. Never revive unitless legacy rate application; require explicit unit-aware matching.

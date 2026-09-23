@@ -36,6 +36,8 @@ export type AutoMaterialRateConversionItem = {
 
 export type AutoMaterialRateConversion =
   | { status: "not_applicable" | "no_match" | "ambiguous" }
+  | { status: "manual_conversion_required"; targetUnit: string; card: VendorRateCardRecord }
+  | { status: "same_unit"; rate: number; card: VendorRateCardRecord }
   | { status: "converted"; targetUnit: string; quantity: number; rate: number; card: VendorRateCardRecord };
 
 /**
@@ -143,9 +145,10 @@ export function isDifferentBillingUnit(left: unknown, right: unknown): boolean {
 }
 
 /**
- * VB22's material-supplier role is the only discovered source that may change
- * billing units during Pull. A conversion is safe only when exact rate-card
- * matching leaves one positive alternate-unit card. In particular, do not use
+ * Auto-pulled rows may use a physical/logged unit that differs from the
+ * vendor's commercial billing unit, regardless of the vendor's role. A
+ * conversion is safe only when exact, unit-aware rate-card matching leaves one
+ * positive alternate-unit card. In particular, do not use
  * matchingRateCardsForGroup's sort order to choose between multiple cards.
  */
 export function selectAutoMaterialRateConversion(
@@ -154,14 +157,26 @@ export function selectAutoMaterialRateConversion(
   rateCards: VendorRateCardRecord[],
   selectedVendor: string,
 ): AutoMaterialRateConversion {
-  if (
-    item.sourceType !== SITE_MATERIAL_TRIP_MATERIAL_SOURCE ||
-    normalizeRateCardPart(item.category) !== "MATERIAL"
-  ) {
+  if (!normalizeRateCardPart(item.category)) {
     return { status: "not_applicable" };
   }
 
   const currentUnit = normalizeRateCardPart(item.unit || group.unit);
+  const currentMatches = matchingRateCardsForGroup(
+    group,
+    currentUnit,
+    rateCards,
+    selectedVendor,
+  ).filter(card => Number(card.rate) > 0);
+  if (currentMatches.length === 1) {
+    return {
+      status: "same_unit",
+      rate: Number(currentMatches[0].rate),
+      card: currentMatches[0],
+    };
+  }
+  if (currentMatches.length > 1) return { status: "ambiguous" };
+
   const alternateUnits = Array.from(new Set(
     rateCards
       .filter(card => Number(card.rate) > 0)
@@ -176,6 +191,18 @@ export function selectAutoMaterialRateConversion(
 
   if (matches.length === 0) return { status: "no_match" };
   if (matches.length !== 1) return { status: "ambiguous" };
+
+  const isExistingMaterialSource = item.sourceType === SITE_MATERIAL_TRIP_MATERIAL_SOURCE;
+  const isOneTripCommercialUnit =
+    item.sourceType === "site_material_trip" &&
+    matches[0].targetUnit === "TRIP";
+  if (!isExistingMaterialSource && !isOneTripCommercialUnit) {
+    return {
+      status: "manual_conversion_required",
+      targetUnit: matches[0].targetUnit,
+      card: matches[0].card,
+    };
+  }
 
   return {
     status: "converted",

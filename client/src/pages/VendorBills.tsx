@@ -20,9 +20,10 @@ export { hasCumulativeVendorPayment } from "@shared/vendorBillPayment";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
-import type { VendorBillWithItems, VendorAlias } from "@shared/schema";
+import type { VendorBillWithItems, VendorAlias, Site } from "@shared/schema";
+import { siteMatchesPermitted, vendorBillItemMatchesSite } from "@shared/siteName";
 import { aggregateGstBreakdown } from "@shared/vendor-bill-gst";
-import { defaultConvertedQuantity, isDifferentBillingUnit, matchingRateCardsForGroup, normalizeRateCardPart, selectAutoMaterialRateConversion, SITE_MATERIAL_TRIP_MATERIAL_SOURCE, vendorBillAutoSourceIdentity, type RateCardUnitOption, type VendorRateCardRecord } from "@/lib/vendorBillRateSelection";
+import { defaultConvertedQuantity, isDifferentBillingUnit, matchingRateCardsForGroup, normalizeRateCardPart, selectAutoMaterialRateConversion, vendorBillAutoSourceIdentity, type RateCardUnitOption, type VendorRateCardRecord } from "@/lib/vendorBillRateSelection";
 import { autoBillItemIdentity, availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateHireGroup, duplicateBillItemPayload, mergeOtherBillItems, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, uniqueDuplicateBillMatches, type DuplicateBillItemMatch, type HireActivity, type HireBillingBasis } from "@shared/hireBilling";
 import type { EquipmentPerformanceReport } from "@shared/equipmentPerformance";
 import { formatEquipmentOptionLabel } from "@shared/equipmentLabel";
@@ -37,6 +38,7 @@ import {
 } from "@/components/vendor-bills/EquipmentHireBillOutput";
 import DraftEquipmentHireCalendar, { SavedEquipmentCalendarExport } from "@/components/vendor-bills/DraftEquipmentHireCalendar";
 import HireActivityBreakdownCalendar from "@/components/vendor-bills/HireActivityBreakdownCalendar";
+import { BillDateGroupControls, BillDateGroupRows } from "@/components/vendor-bills/BillDateGroups";
 
 const formatDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return "-";
@@ -730,6 +732,7 @@ export default function VendorBills() {
   const [billDate, setBillDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [billNo, setBillNo] = useState("");
   const [billType, setBillType] = useState(FRESH_BILL_TYPE);
+  const [selectedSiteId, setSelectedSiteId] = useState<string>("all");
   const [vendorName, setVendorName] = useState("");
   const [periodFrom, setPeriodFrom] = useState("");
   const [periodTo, setPeriodTo] = useState("");
@@ -745,6 +748,8 @@ export default function VendorBills() {
   const [gstRateLabour, setGstRateLabour] = useState<number>(0);
   const [tdsRate, setTdsRate] = useState<number>(0);
   const [labourFilter, setLabourFilter] = useState<"all" | "site" | "plant">("all");
+  const [dateGroupExpansionMode, setDateGroupExpansionMode] = useState<"auto" | "expanded" | "collapsed">("auto");
+  const [dateGroupExpansionOverrides, setDateGroupExpansionOverrides] = useState<Record<string, boolean>>({});
   const [hireGroups, setHireGroups] = useState<HireGroup[]>([]);
   const monthlyHireSeedRef = useRef("");
   const contractorAdvanceSeedRef = useRef("");
@@ -765,6 +770,19 @@ export default function VendorBills() {
   useEffect(() => {
     setLabourFilter("all");
   }, [vendorName, periodFrom, periodTo]);
+
+  useEffect(() => {
+    setDateGroupExpansionMode("auto");
+    setDateGroupExpansionOverrides({});
+  }, [editingBillId, selectedBillId]);
+
+  const setAllDateGroupsExpanded = (mode: "expanded" | "collapsed") => {
+    setDateGroupExpansionMode(mode);
+    setDateGroupExpansionOverrides({});
+  };
+  const toggleDateGroup = (key: string, expanded: boolean) => {
+    setDateGroupExpansionOverrides(previous => ({ ...previous, [key]: expanded }));
+  };
 
   const [pendingDeleteAction, setPendingDeleteAction] = useState<{ billId: number; billNo?: string; status?: string } | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -830,6 +848,7 @@ export default function VendorBills() {
   });
 
   const vendorNames = vendorNamesData || [];
+  const { data: sites = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
 
   const { data: vendorAliasesData } = useQuery<VendorAlias[]>({
     queryKey: ["/api/vendor-aliases"],
@@ -904,11 +923,11 @@ export default function VendorBills() {
   });
 
   const autoItemsUrl = vendorName && periodFrom && periodTo && billType !== "other"
-    ? `/api/vendor-bills/auto-items?vendorName=${encodeURIComponent(vendorName)}&billType=${encodeURIComponent(billType)}&periodFrom=${encodeURIComponent(periodFrom)}&periodTo=${encodeURIComponent(periodTo)}`
+    ? `/api/vendor-bills/auto-items?vendorName=${encodeURIComponent(vendorName)}&billType=${encodeURIComponent(billType)}&periodFrom=${encodeURIComponent(periodFrom)}&periodTo=${encodeURIComponent(periodTo)}${selectedSiteId === "all" ? "" : `&siteId=${encodeURIComponent(selectedSiteId)}`}`
     : null;
 
   const { data: autoItems, isFetching: autoItemsLoading } = useQuery<any[]>({
-    queryKey: ["/api/vendor-bills/auto-items", vendorName, billType, periodFrom, periodTo],
+    queryKey: ["/api/vendor-bills/auto-items", vendorName, billType, periodFrom, periodTo, selectedSiteId],
     queryFn: () => autoItemsUrl ? fetch(autoItemsUrl).then(r => r.json()) : Promise.resolve([]),
     enabled: !!autoItemsUrl,
   });
@@ -1131,6 +1150,7 @@ export default function VendorBills() {
     setBillDate(format(new Date(), "yyyy-MM-dd"));
     setBillNo("");
     setBillType(FRESH_BILL_TYPE);
+    setSelectedSiteId("all");
     setVendorName("");
     setPeriodFrom("");
     setPeriodTo("");
@@ -1186,6 +1206,7 @@ export default function VendorBills() {
     setBillDate(bill.billDate);
     setBillNo(bill.billNo);
     setBillType(bill.billType.toLowerCase());
+    setSelectedSiteId((bill as any).siteId == null ? "all" : String((bill as any).siteId));
     setVendorName(bill.vendorName);
     setVendorSearch(bill.vendorName);
     setPeriodFrom(bill.periodFrom || "");
@@ -1295,17 +1316,17 @@ export default function VendorBills() {
         if (rcRes.ok) {
           const rateCards: any[] = await rcRes.json();
           if (!isCurrentPull()) return;
-          const cardByKey = new Map(rateCards.map((rc: any) => [`${rc.itemKey.toUpperCase()}_${rc.category}`, rc]));
           let appliedCount = 0;
           let convertedCount = 0;
           let ambiguousConversionCount = 0;
+          let manualConversionCount = 0;
           for (let i = 0; i < mapped.length; i++) {
             const item = mapped[i];
-            if (item.sourceType === SITE_MATERIAL_TRIP_MATERIAL_SOURCE) {
+            if (item.rate === 0) {
               const group = groupRateItems([item])[0];
               const conversion = group
                 ? selectAutoMaterialRateConversion(item, group, rateCards, vendorName)
-                : { status: "no_match" as const };
+                : { status: "not_applicable" as const };
               if (conversion.status === "converted") {
                 mapped[i] = {
                   ...item,
@@ -1316,58 +1337,14 @@ export default function VendorBills() {
                 mapped[i].amount = calcAmount(mapped[i]);
                 appliedCount++;
                 convertedCount++;
-              } else if (conversion.status === "ambiguous") {
-                ambiguousConversionCount++;
-              }
-              // This role deliberately has no legacy/current-unit fallback:
-              // without one unambiguous alternate card, preserve logged data.
-              continue;
-            }
-            if (item.rate === 0) {
-              let card: any = null;
-              if (item.category === "transport") {
-                const canonical = canonicalTransportName(item.description);
-                const unit = (item.unit || "TRIP").toUpperCase();
-                const canonicalKey = `EQ_${canonical}_${unit}`;
-                card = cardByKey.get(`${canonicalKey}_${item.category}`);
-              } else if (item.category === "material") {
-                const unit = (item.unit || "NOS").toUpperCase();
-                const mn = canonicalMatName(item.description);
-                const newKey = `MAT_${mn}_${unit}`;
-                card = cardByKey.get(`${newKey}_${item.category}`);
-                if (!card) {
-                  const oldKey = `MAT_${stripSourceSuffix(item.description.trim().toUpperCase())}`;
-                  card = cardByKey.get(`${oldKey}_${item.category}`);
-                }
-              } else if (item.equipmentId) {
-                const mn = canonicalMachineName(item.description);
-                const unit = (item.unit || "HRS").toUpperCase();
-                const newKey = `EQ_${mn}_${unit}`;
-                card = cardByKey.get(`${newKey}_${item.category}`);
-                if (!card) {
-                  const entryTypeMatch = item.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
-                  const entryType = entryTypeMatch ? entryTypeMatch[1].replace(/\s+/g, "_").replace(/\//g, "_") : "OTHER";
-                  const oldKey = `${item.equipmentId}_${entryType}`;
-                  card = cardByKey.get(`${oldKey}_${item.category}`);
-                }
-              } else if (item.category === "labour") {
-                const labKey = deriveLabourKey(item.description);
-                card = cardByKey.get(`${labKey}_${item.category}`);
-                if (!card) {
-                  const parts = labKey.split("_");
-                  if (parts.length === 3) {
-                    const fallbackKey = `${parts[0]}_${parts[1]}`;
-                    card = cardByKey.get(`${fallbackKey}_${item.category}`);
-                  }
-                }
-              } else {
-                const descKey = stripSourceSuffix(item.description.trim().toUpperCase());
-                card = cardByKey.get(`${descKey}_${item.category}`);
-              }
-              if (card && Number(card.rate) > 0) {
-                mapped[i] = { ...item, rate: Number(card.rate) };
+              } else if (conversion.status === "same_unit") {
+                mapped[i] = { ...item, rate: conversion.rate };
                 mapped[i].amount = calcAmount(mapped[i]);
                 appliedCount++;
+              } else if (conversion.status === "ambiguous") {
+                ambiguousConversionCount++;
+              } else if (conversion.status === "manual_conversion_required") {
+                manualConversionCount++;
               }
             }
           }
@@ -1375,14 +1352,20 @@ export default function VendorBills() {
             toast({
               title: `Applied ${appliedCount} rates from rate card`,
               description: convertedCount > 0
-                ? `${convertedCount} material source row${convertedCount === 1 ? "" : "s"} converted to the configured billing unit.`
+                ? `${convertedCount} row${convertedCount === 1 ? "" : "s"} converted to the configured billing unit.`
                 : undefined,
             });
           }
           if (ambiguousConversionCount > 0) {
             toast({
-              title: `Skipped automatic conversion for ${ambiguousConversionCount} material source row${ambiguousConversionCount === 1 ? "" : "s"}`,
+              title: `Skipped automatic conversion for ${ambiguousConversionCount} row${ambiguousConversionCount === 1 ? "" : "s"}`,
               description: "Multiple matching rate cards are available. Use Set Rates to choose the billing unit.",
+            });
+          }
+          if (manualConversionCount > 0) {
+            toast({
+              title: `Manual conversion needed for ${manualConversionCount} row${manualConversionCount === 1 ? "" : "s"}`,
+              description: "A different-unit rate card exists, but the quantity cannot be derived safely. Logged quantity and unit were retained with rate ₹0; use Set Rates to confirm the billing quantity.",
             });
           }
         }
@@ -1603,6 +1586,7 @@ export default function VendorBills() {
       "preflight",
       view,
       billType,
+      selectedSiteId,
       vendorName,
       periodFrom,
       periodTo,
@@ -2064,6 +2048,7 @@ export default function VendorBills() {
       billDate,
       billNo: billNo || `AUTO-${Date.now()}`,
       billType,
+      siteId: selectedSiteId === "all" ? null : Number(selectedSiteId),
       vendorName: vendorName.toUpperCase(),
       periodFrom: periodFrom || null,
       periodTo: periodTo || null,
@@ -2109,7 +2094,9 @@ export default function VendorBills() {
         sourceId: item.sourceId ?? null,
         equipmentId: item.equipmentId,
         leadDistance: item.leadDistance,
-        siteName: item.siteName || null,
+        siteName: item.siteName ||
+          (selectedSiteId === "all" ? null : sites.find(site => String(site.id) === selectedSiteId)?.name) ||
+          null,
         suppliedTo: item.suppliedTo ?? null,
         transporter: item.transporter ?? null,
       })),
@@ -2202,10 +2189,15 @@ export default function VendorBills() {
         if (bt !== target) return false;
       }
       if (filterParty !== "all" && !bill.items?.some((it: any) => it.suppliedTo === filterParty)) return false;
-      if (filterSite && !bill.items?.some((it: any) => it.siteName === filterSite)) return false;
+      if (filterSite) {
+        const persistedSite = sites.find(site => site.id === (bill as any).siteId)?.name;
+        const headerMatches = persistedSite ? siteMatchesPermitted(persistedSite, [filterSite]) : false;
+        const itemMatches = bill.items?.some((it: any) => vendorBillItemMatchesSite(it.siteName, filterSite));
+        if (!headerMatches && !itemMatches) return false;
+      }
       return true;
     });
-  }, [bills, filterDateFrom, filterDateTo, filterVendor, filterStatus, filterCategory, filterParty, filterSite]);
+  }, [bills, sites, filterDateFrom, filterDateTo, filterVendor, filterStatus, filterCategory, filterParty, filterSite]);
 
   const gstBreakdown = useMemo(() => aggregateGstBreakdown(filteredBills), [filteredBills]);
 
@@ -2584,7 +2576,28 @@ export default function VendorBills() {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <Label className="text-sm uppercase">Site</Label>
+                <Select value={selectedSiteId} onValueChange={(value) => {
+                  cancelActivePull();
+                  const selectedName = sites.find(site => String(site.id) === value)?.name ?? null;
+                  setSelectedSiteId(value);
+                  setLineItems(items => items
+                    .filter(item => !isGeneratedEvidenceLine(item.source))
+                    .map(item => item.initialBlank && !item.siteName
+                      ? { ...item, siteName: selectedName }
+                      : item));
+                }}>
+                  <SelectTrigger data-testid="select-bill-site">
+                    <SelectValue placeholder="ALL SITES" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">ALL SITES</SelectItem>
+                    {sites.map(site => <SelectItem key={site.id} value={String(site.id)}>{site.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="relative">
                 <Label className="text-sm uppercase">Vendor / Supplier Name</Label>
                 <Input
@@ -3352,6 +3365,10 @@ export default function VendorBills() {
                   <X className="w-4 h-4 mr-1" /> EXCLUDE ALREADY-BILLED ROWS ({billedLineItemCount})
                 </Button>
               )}
+              <BillDateGroupControls
+                expansionMode={dateGroupExpansionMode}
+                onExpansionModeChange={setAllDateGroupsExpanded}
+              />
             </div>
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
@@ -3669,12 +3686,34 @@ export default function VendorBills() {
                                           </span>
                                         </td>
                                       </tr>
-                                      {grp.items.map(({ item, idx }) => renderItemRow(item, idx))}
+                                      <BillDateGroupRows
+                                        items={grp.items}
+                                        scope={`edit-${cat}-labour-${grp.key}`}
+                                        totalColumns={totalColSpan}
+                                        totalBillItems={lineItems.length}
+                                        expansionMode={dateGroupExpansionMode}
+                                        expansionOverrides={dateGroupExpansionOverrides}
+                                        onToggle={toggleDateGroup}
+                                        renderRow={renderItemRow}
+                                        formatDate={formatDate}
+                                        formatAmount={formatCurrency}
+                                      />
                                     </Fragment>
                                   );
                                 })
                               ) : (
-                                catItems.map(({ item, idx }) => renderItemRow(item, idx))
+                                <BillDateGroupRows
+                                  items={catItems}
+                                  scope={`edit-${cat}`}
+                                  totalColumns={totalColSpan}
+                                  totalBillItems={lineItems.length}
+                                  expansionMode={dateGroupExpansionMode}
+                                  expansionOverrides={dateGroupExpansionOverrides}
+                                  onToggle={toggleDateGroup}
+                                  renderRow={renderItemRow}
+                                  formatDate={formatDate}
+                                  formatAmount={formatCurrency}
+                                />
                               )}
                               <tr className="border-b bg-muted/40">
                                 <td colSpan={labelColSpan} className="px-2 py-2 text-right text-sm font-semibold uppercase" data-testid={`text-subtotal-label-${cat}`}>
@@ -3688,13 +3727,23 @@ export default function VendorBills() {
                         })}
                       </>
                     ) : (
-                      lineItems
-                        .map((item, idx) => ({ item, idx }))
-                        .filter(({ item }) => {
+                      <BillDateGroupRows
+                        items={lineItems
+                          .map((item, idx) => ({ item, idx }))
+                          .filter(({ item }) => {
                           if (item.category !== "labour" || labourFilter === "all" || !showLabourFilter) return true;
                           return getLabourSource(item) === labourFilter;
-                        })
-                        .map(({ item, idx }) => renderItemRow(item, idx))
+                          })}
+                        scope="edit-all"
+                        totalColumns={totalColSpan}
+                        totalBillItems={lineItems.length}
+                        expansionMode={dateGroupExpansionMode}
+                        expansionOverrides={dateGroupExpansionOverrides}
+                        onToggle={toggleDateGroup}
+                        renderRow={renderItemRow}
+                        formatDate={formatDate}
+                        formatAmount={formatCurrency}
+                      />
                     )}
                   </tbody>
                   <tfoot>
@@ -4313,6 +4362,10 @@ export default function VendorBills() {
             <span className="font-bold text-amber-600 dark:text-amber-400" data-testid="text-detail-total">
               TOTAL: {formatCurrency(bill.totalAmount)}
             </span>
+            <BillDateGroupControls
+              expansionMode={dateGroupExpansionMode}
+              onExpansionModeChange={setAllDateGroupsExpanded}
+            />
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
             {(() => {
@@ -4419,12 +4472,38 @@ export default function VendorBills() {
                                 </td>
                               </tr>
                               {(() => {
-                                if (cat !== "labour") return catItems.map(({ item, idx }: any) => renderDetailRow(item, idx));
+                                if (cat !== "labour") return (
+                                  <BillDateGroupRows
+                                    items={catItems}
+                                    scope={`detail-${cat}`}
+                                    totalColumns={totalCols}
+                                    totalBillItems={bill.items.length}
+                                    expansionMode={dateGroupExpansionMode}
+                                    expansionOverrides={dateGroupExpansionOverrides}
+                                    onToggle={toggleDateGroup}
+                                    renderRow={renderDetailRow}
+                                    formatDate={formatDate}
+                                    formatAmount={formatCurrency}
+                                  />
+                                );
                                 const siteItems = catItems.filter(({ item }: any) => getLabourSource(item) === "site");
                                 const plantItems = catItems.filter(({ item }: any) => getLabourSource(item) === "plant");
                                 const otherItems = catItems.filter(({ item }: any) => getLabourSource(item) === "other");
                                 const present = (siteItems.length ? 1 : 0) + (plantItems.length ? 1 : 0) + (otherItems.length ? 1 : 0);
-                                if (present <= 1) return catItems.map(({ item, idx }: any) => renderDetailRow(item, idx));
+                                if (present <= 1) return (
+                                  <BillDateGroupRows
+                                    items={catItems}
+                                    scope="detail-labour"
+                                    totalColumns={totalCols}
+                                    totalBillItems={bill.items.length}
+                                    expansionMode={dateGroupExpansionMode}
+                                    expansionOverrides={dateGroupExpansionOverrides}
+                                    onToggle={toggleDateGroup}
+                                    renderRow={renderDetailRow}
+                                    formatDate={formatDate}
+                                    formatAmount={formatCurrency}
+                                  />
+                                );
                                 const groups: Array<{ key: "site" | "plant" | "other"; label: string; items: any[] }> = [];
                                 if (siteItems.length) groups.push({ key: "site", label: "DPR Site Labour", items: siteItems });
                                 if (plantItems.length) groups.push({ key: "plant", label: "Plant Shift Manpower", items: plantItems });
@@ -4446,7 +4525,18 @@ export default function VendorBills() {
                                           </span>
                                         </td>
                                       </tr>
-                                      {grp.items.map(({ item, idx }: any) => renderDetailRow(item, idx))}
+                                      <BillDateGroupRows
+                                        items={grp.items}
+                                        scope={`detail-${cat}-labour-${grp.key}`}
+                                        totalColumns={totalCols}
+                                        totalBillItems={bill.items.length}
+                                        expansionMode={dateGroupExpansionMode}
+                                        expansionOverrides={dateGroupExpansionOverrides}
+                                        onToggle={toggleDateGroup}
+                                        renderRow={renderDetailRow}
+                                        formatDate={formatDate}
+                                        formatAmount={formatCurrency}
+                                      />
                                     </Fragment>
                                   );
                                 });
@@ -4470,7 +4560,18 @@ export default function VendorBills() {
                         })}
                       </>
                     ) : (
-                      bill.items.map((item: any, idx: number) => renderDetailRow(item, idx))
+                      <BillDateGroupRows
+                        items={bill.items.map((item: any, idx: number) => ({ item, idx }))}
+                        scope="detail-all"
+                        totalColumns={totalCols}
+                        totalBillItems={bill.items.length}
+                        expansionMode={dateGroupExpansionMode}
+                        expansionOverrides={dateGroupExpansionOverrides}
+                        onToggle={toggleDateGroup}
+                        renderRow={renderDetailRow}
+                        formatDate={formatDate}
+                        formatAmount={formatCurrency}
+                      />
                     )}
                   </tbody>
                   <tfoot>
@@ -4882,13 +4983,35 @@ export default function VendorBills() {
                 </div>
               </div>
             )}
+            <div>
+              <Label className="text-sm uppercase">Site</Label>
+              <div className="flex items-center gap-1">
+                <Select value={filterSite || "all"} onValueChange={value => setFilterSite(value === "all" ? "" : value)}>
+                  <SelectTrigger data-testid="filter-site" className="flex-1">
+                    <SelectValue placeholder="ALL SITES" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">ALL SITES</SelectItem>
+                    {filterSite && !sites.some(site => siteMatchesPermitted(site.name, [filterSite])) && (
+                      <SelectItem value={filterSite}>{filterSite}</SelectItem>
+                    )}
+                    {sites.map(site => <SelectItem key={site.id} value={site.name}>{site.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {filterSite && (
+                  <Button size="icon" variant="ghost" onClick={() => setFilterSite("")} data-testid="button-clear-site">
+                    <X className="w-3 h-3" />
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
-          {(filterDateFrom || filterDateTo || filterVendor !== "all" || filterStatus !== "all" || filterCategory !== "all" || filterParty !== "all") && (
+          {(filterDateFrom || filterDateTo || filterVendor !== "all" || filterStatus !== "all" || filterCategory !== "all" || filterParty !== "all" || filterSite) && (
             <div className="flex justify-end mt-2">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => { setFilterDateFrom(""); setFilterDateTo(""); setFilterVendor("all"); setFilterStatus("all"); setFilterCategory("all"); setFilterParty("all"); }}
+                onClick={() => { setFilterDateFrom(""); setFilterDateTo(""); setFilterVendor("all"); setFilterStatus("all"); setFilterCategory("all"); setFilterParty("all"); setFilterSite(""); }}
                 data-testid="button-clear-all-filters"
               >
                 <X className="w-3 h-3 mr-1" />

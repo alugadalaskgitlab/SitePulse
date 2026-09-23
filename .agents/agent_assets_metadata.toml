@@ -2215,3 +2215,171 @@ mtime_ms = 1790166912269
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/1e5f0fbf-93a6-473a-b5ec-c67e80bfd1dd/3591546c-b9aa-4e1f-87e5-9ce071068247"
 storage_version_token = "1790167009704815"
 content_type = "image/png"
+
+[[outputs]]
+id = "GuR2FVikaVtWWf0PeoUNC"
+uri = "file://screenshots/vb25/A-specific-site-restricts-item-pull.png"
+type = "image"
+title = "Site-specific item pull"
+description = "Actual Vendor Bills component using labelled synthetic API data. No live records changed; server/database checks were run separately."
+logical_id = "98f39753-44f7-46b3-9a14-20bf565fc08e"
+content_hash = "sha256:757a0f4c6e3cce7acb5a03b776bb6274189397d74b0f963797d0dbe27a0a0d34"
+size = 117488
+mtime_ms = 1790170365744
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/98f39753-44f7-46b3-9a14-20bf565fc08e/51b63818-a966-4c28-a3d9-d87109a2e227"
+storage_version_token = "1790170540827030"
+content_type = "image/png"
+
+[[outputs]]
+id = "F3bY3lm0rIML2mKNCfTij"
+uri = "file://screenshots/vb25/B-all-sites-preserves-cross-site-pull.png"
+type = "image"
+title = "All Sites item pull"
+description = "Actual Vendor Bills component using labelled synthetic API data. No live records changed; server/database checks were run separately."
+logical_id = "53d48590-4446-4ed4-bde1-f49e770fa02e"
+content_hash = "sha256:558490f35e75144848a8e36658d6c5c8c102ae774da4f2543e0caa0d5c5cf2b2"
+size = 117480
+mtime_ms = 1790170367140
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/53d48590-4446-4ed4-bde1-f49e770fa02e/3fb7940f-2318-41c2-9db0-e4c9a4900a77"
+storage_version_token = "1790170543017343"
+content_type = "image/png"
+
+[[outputs]]
+id = "jO-2y21BLrpHDIUM3mrdC"
+uri = "file://screenshots/vb25/C-management-deep-link-visible-site-filter.png"
+type = "image"
+title = "Site filter and Management Report link"
+description = "Actual Vendor Bills component using labelled synthetic API data. No live records changed; server/database checks were run separately."
+logical_id = "ef9fe6dc-90de-40df-a8eb-e4a02e702073"
+content_hash = "sha256:75b174ce3912341d24919426f7d5759c43f5166a52121641633423a4db7fb6ff"
+size = 120919
+mtime_ms = 1790170367860
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/ef9fe6dc-90de-40df-a8eb-e4a02e702073/e1652a7f-d554-47a8-8771-dec0a84d9b94"
+storage_version_token = "1790170545126347"
+content_type = "image/png"
+
+[[outputs]]
+id = "r0YsKT-2UFXJbHdD5Qv47"
+uri = "file://screenshots/vb25/D-regular-600CFT-to-1TRIP-rate800-total800.png"
+type = "image"
+title = "Regular vendor — 1 TRIP × ₹800"
+description = "Actual Vendor Bills component using labelled synthetic API data. No live records changed; server/database checks were run separately."
+logical_id = "f940c683-0dbc-4d7d-9a45-888ec38ce4a6"
+content_hash = "sha256:41ed9b7f0ddbb366b96c85757fd0ab447a989809a6372645700dcd79b19f4feb"
+size = 129475
+mtime_ms = 1790170369628
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/f940c683-0dbc-4d7d-9a45-888ec38ce4a6/5be4731f-7aec-4234-80dd-add74eb62ab1"
+storage_version_token = "1790170547118116"
+content_type = "image/png"
+
+[[outputs]]
+id = "46JhIjzH2fYTRFkmb47Rh"
+uri = "file://screenshots/vb25/E1-legacy-key-explicit-unit-safe-conversion.png"
+type = "image"
+title = "Legacy card — explicit unit conversion"
+description = "Actual Vendor Bills component using labelled synthetic API data. No live records changed; server/database checks were run separately."
+logical_id = "4a3afda2-28de-42c3-83da-a021e3eb9f8c"
+content_hash = "sha256:7ef0b3e86019c9f809a61327af647f3220bece16d9fc665525af65fd7f29246d"
+size = 129115
+mtime_ms = 1790170371364
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/4a3afda2-28de-42c3-83da-a021e3eb9f8c/d3ea0cbb-b040-4a2d-9b46-c3972b711d13"
+storage_version_token = "1790170549624977"
+content_type = "image/png"
+
+[[outputs]]
+id = "wzwnFyl0yxcx2jMMmqd7k"
+uri = "file://screenshots/vb25/E2-blank-unit-legacy-card-no-guess.png"
+type = "image"
+title = "Legacy card without unit — no automatic rate"
+description = "Actual Vendor Bills component using labelled synthetic API data. No live records changed; server/database checks were run separately."
+logical_id = "63902ea3-8a8a-40c2-b0d3-27bb7e1fa5d1"
+content_hash = "sha256:b45ae98be16e9ac7b31828661006f30ea158284c962d2b394cdf238b5f6ad20c"
+size = 121966
+mtime_ms = 1790170372988
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/63902ea3-8a8a-40c2-b0d3-27bb7e1fa5d1/9ed1b7f1-7746-43f4-96ac-b497af1c0eb7"
+storage_version_token = "1790170551827842"
+content_type = "image/png"
+
+[[outputs]]
+id = "pCmj3bLFo1yGzdJH3MyHh"
+uri = "file://screenshots/vb25/E3-unsupported-CFT-to-MT-retained-rate0-manual.png"
+type = "image"
+title = "Unknown conversion — quantity preserved, rate zero"
+description = "Actual Vendor Bills component using labelled synthetic API data. No live records changed; server/database checks were run separately."
+logical_id = "2a517030-1a61-467f-b163-5f726340ec4b"
+content_hash = "sha256:03eea1d895e5a0fd32a444b60776eebdbc494e1b4c0264fba314e166f9854344"
+size = 123362
+mtime_ms = 1790170374456
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/2a517030-1a61-467f-b163-5f726340ec4b/cf2940f0-00fd-4de0-96ad-3e25c3fffd29"
+storage_version_token = "1790170553823398"
+content_type = "image/png"
+
+[[outputs]]
+id = "mDSqOBNaAOGP5cBqIIWqv"
+uri = "file://screenshots/vb25/F-material-source-conversion-regression-safe.png"
+type = "image"
+title = "Material-source conversion unchanged"
+description = "Actual Vendor Bills component using labelled synthetic API data. No live records changed; server/database checks were run separately."
+logical_id = "682c291a-0751-42e0-afb6-64e2c172a74c"
+content_hash = "sha256:9613a4705e5589e85969083c3a04cd13e4b1624f454f15b30d982e69b1ea93dc"
+size = 129263
+mtime_ms = 1790170375924
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/682c291a-0751-42e0-afb6-64e2c172a74c/c6e96459-4c93-422b-b05c-b764da0fae45"
+storage_version_token = "1790170555922319"
+content_type = "image/png"
+
+[[outputs]]
+id = "5HTbFAVTU_GI42tpx81Jn"
+uri = "file://screenshots/vb25/G-105-trips-date-groups-collapsed-subtotals-grand-total.png"
+type = "image"
+title = "105 trips — date groups and totals"
+description = "Actual Vendor Bills component using labelled synthetic API data. No live records changed; server/database checks were run separately."
+logical_id = "699897cc-09d7-4dc7-9b18-feada11619a4"
+content_hash = "sha256:72c466993e88e6695e7116dcb85d55479338396750595585c509b5b4eee39b7e"
+size = 77869
+mtime_ms = 1790170376824
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/699897cc-09d7-4dc7-9b18-feada11619a4/5601c59b-6e61-4ecd-bfb9-0d1f7d544f76"
+storage_version_token = "1790170557615057"
+content_type = "image/png"
+
+[[outputs]]
+id = "VSELiJpWwZpf6g0Jzo3XI"
+uri = "file://screenshots/vb25/H2-labour-source-date-nesting-and-subtotals.png"
+type = "image"
+title = "Labour subgroups with nested dates"
+description = "Actual Vendor Bills component using labelled synthetic API data. No live records changed; server/database checks were run separately."
+logical_id = "58edb95c-06c1-4d6c-b653-817081eaa1ba"
+content_hash = "sha256:acb18d5a08668c240da8b163f14f8cd23f0abdbb6123e5d9f43077afdbc35462"
+size = 129220
+mtime_ms = 1790170378760
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/58edb95c-06c1-4d6c-b653-817081eaa1ba/700e3ed7-00b3-48b7-978a-f123bbd80897"
+storage_version_token = "1790170559909876"
+content_type = "image/png"
+
+[[outputs]]
+id = "Dfez76sAvc8D67BlULhRs"
+uri = "file://screenshots/vb25/I1-read-only-expand-all.png"
+type = "image"
+title = "Read-only Expand All"
+description = "Actual Vendor Bills component using labelled synthetic API data. No live records changed; server/database checks were run separately."
+logical_id = "18379f06-ef00-4508-974c-98fc96dab9e9"
+content_hash = "sha256:89c7cf455f57884113c7d9d311881d3565af049caeb485f4951a7de40296f190"
+size = 134494
+mtime_ms = 1790170377276
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/18379f06-ef00-4508-974c-98fc96dab9e9/9c7d41f0-9029-4ff3-9cd1-2f88c78f1389"
+storage_version_token = "1790170561876922"
+content_type = "image/png"
+
+[[outputs]]
+id = "MeTvTDoDO5rBFnXkSaiu5"
+uri = "file://screenshots/vb25/I2-edit-view-collapse-all-category-labour-preserved.png"
+type = "image"
+title = "Edit-view Collapse All"
+description = "Actual Vendor Bills component using labelled synthetic API data. No live records changed; server/database checks were run separately."
+logical_id = "8b46e3c6-5a44-49a9-90f8-147aadbb8cc3"
+content_hash = "sha256:d36d2abea1bc5cf1c0cec4cde434ca738972b71eac1b300ae1579ead43c9c433"
+size = 120950
+mtime_ms = 1790170379504
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8b46e3c6-5a44-49a9-90f8-147aadbb8cc3/d42fc344-7650-4522-870c-01eff884a64d"
+storage_version_token = "1790170563878611"
+content_type = "image/png"

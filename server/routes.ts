@@ -21,7 +21,7 @@ import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNoti
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc, desc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
-import { siteMatchesPermitted } from "@shared/siteName";
+import { siteMatchesPermitted, untrustedVendorBillAutoItems, vendorBillAutoSourceFromCandidate, vendorBillItemMatchesSite, vendorBillUpdateSiteId, vendorBillVisibleToSites } from "@shared/siteName";
 import { normalizeSiteTripHistorySite } from "@shared/siteTripHistory";
 import { normalizeVehicleSupplierVehicle } from "@shared/vehicleSupplierAssociation";
 import { calculateHireBilling, planHireRegisterRows, type HireExceptionDecisionInput } from "@shared/hireBilling";
@@ -10609,6 +10609,65 @@ export async function registerRoutes(
   // VENDOR BILLS
   // ============================================
 
+  async function resolveVendorBillSite(req: Express.Request, res: Express.Response, rawSiteId: unknown) {
+    if (rawSiteId == null || rawSiteId === "") return { siteId: null, siteName: null };
+    const siteId = Number(rawSiteId);
+    if (!Number.isInteger(siteId) || siteId <= 0) {
+      res.status(400).json({ message: "siteId must be a positive integer or null for All Sites" });
+      return null;
+    }
+    const site = (await storage.getSites()).find(candidate => candidate.id === siteId);
+    if (!site) {
+      res.status(400).json({ message: "Selected site does not exist" });
+      return null;
+    }
+    if (!await assertTripSiteAccess(req, res, site.name)) return null;
+    return { siteId, siteName: site.name };
+  }
+
+  async function scopeVendorBillsToSiteAccess(req: Express.Request, bills: any[]) {
+    const permitted = await getPermittedSiteNames(req);
+    if (permitted === null) return bills;
+    const siteNameById = new Map((await storage.getSites()).map(site => [site.id, site.name]));
+    return bills.filter(bill => vendorBillVisibleToSites(bill, permitted, siteNameById));
+  }
+
+  async function assertVendorBillAutoSources(
+    req: Express.Request,
+    res: Express.Response,
+    input: z.infer<typeof createVendorBillRequestSchema>,
+    selectedSiteName: string | null,
+    existingItems: any[] = [],
+  ): Promise<boolean> {
+    const untrustedAutoItems = untrustedVendorBillAutoItems(input.items, existingItems);
+    const submittedAutoSources = untrustedAutoItems
+      .map(item => String(item.source || "").toLowerCase())
+      .filter(source => source === "auto" || source.startsWith("auto:"));
+    if (submittedAutoSources.length === 0) return true;
+    if (!input.periodFrom || !input.periodTo) {
+      res.status(400).json({ message: "Auto-pulled items require a bill period" });
+      return false;
+    }
+    let authoritative = await storage.getVendorBillAutoItems(
+      input.vendorName, input.billType, input.periodFrom, input.periodTo, null, selectedSiteName,
+    );
+    if (!selectedSiteName) {
+      const permitted = await getPermittedSiteNames(req);
+      if (permitted !== null) {
+        authoritative = authoritative.filter(item =>
+          permitted.some(site => vendorBillItemMatchesSite(item.siteName, site)));
+      }
+    }
+    const validSources = new Set(authoritative
+      .map(vendorBillAutoSourceFromCandidate)
+      .filter((source): source is string => source != null));
+    if (submittedAutoSources.some(source => !validSources.has(source))) {
+      res.status(400).json({ message: "One or more auto-pulled items no longer match the selected site and period" });
+      return false;
+    }
+    return true;
+  }
+
   app.get("/api/vendor-bills", async (req, res) => {
     try {
       const filters = {
@@ -10617,7 +10676,14 @@ export async function registerRoutes(
         vendor: req.query.vendor as string | undefined,
         status: req.query.status as string | undefined,
       };
-      const bills = await storage.getVendorBills(filters);
+      let bills = await storage.getVendorBills(filters);
+      const selectedSite = await resolveVendorBillSite(req, res, req.query.siteId);
+      if (!selectedSite) return;
+      bills = await scopeVendorBillsToSiteAccess(req, bills);
+      if (selectedSite.siteName) {
+        bills = bills.filter(bill => bill.siteId === selectedSite.siteId ||
+          (bill.siteId == null && bill.items?.some(item => vendorBillItemMatchesSite(item.siteName, selectedSite.siteName!))));
+      }
       res.json(bills);
     } catch (err) {
       console.error("Error fetching vendor bills:", err);
@@ -10633,7 +10699,7 @@ export async function registerRoutes(
         vendor: req.query.vendor as string | undefined,
         status: req.query.status as string | undefined,
       };
-      const bills = await storage.getVendorBills(filters);
+      const bills = await scopeVendorBillsToSiteAccess(req, await storage.getVendorBills(filters));
 
       const { total: totalGst, ...gstByCategory } = aggregateGstBreakdown(bills);
 
@@ -11008,7 +11074,15 @@ export async function registerRoutes(
       if (!vendorName || !billType || !periodFrom || !periodTo) {
         return res.status(400).json({ message: "vendorName, billType, periodFrom, and periodTo are required" });
       }
-      const items = await storage.getVendorBillAutoItems(vendorName, billType, periodFrom, periodTo, entryTypeFilter);
+      const selectedSite = await resolveVendorBillSite(req, res, req.query.siteId);
+      if (!selectedSite) return;
+      let items = await storage.getVendorBillAutoItems(vendorName, billType, periodFrom, periodTo, entryTypeFilter, selectedSite.siteName);
+      if (!selectedSite.siteName) {
+        const permitted = await getPermittedSiteNames(req);
+        if (permitted !== null) {
+          items = items.filter(item => permitted.some(site => vendorBillItemMatchesSite(item.siteName, site)));
+        }
+      }
       res.json(items);
     } catch (err) {
       console.error("Error fetching vendor bill auto items:", err);
@@ -11095,6 +11169,8 @@ export async function registerRoutes(
       if (!bill) {
         return res.status(404).json({ message: "Vendor bill not found" });
       }
+      const visible = await scopeVendorBillsToSiteAccess(req, [bill]);
+      if (visible.length === 0) return res.status(403).json({ message: "Access denied for this bill's site" });
       res.json(bill);
     } catch (err) {
       console.error("Error fetching vendor bill:", err);
@@ -11106,6 +11182,17 @@ export async function registerRoutes(
     try {
       if (!assertCreateEither(req, res, "vendor_bills_raise", "vendor_bills")) return;
       const input = createVendorBillRequestSchema.parse(req.body);
+      const selectedSite = await resolveVendorBillSite(req, res, input.siteId);
+      if (!selectedSite) return;
+      if (selectedSite.siteName && input.items.some(item => !vendorBillItemMatchesSite(item.siteName, selectedSite.siteName!))) {
+        return res.status(400).json({ message: "Every pulled item must belong to the selected bill site" });
+      }
+      const permittedSites = await getPermittedSiteNames(req);
+      if (permittedSites !== null && input.items.some(item =>
+        !permittedSites.some(site => vendorBillItemMatchesSite(item.siteName, site)))) {
+        return res.status(403).json({ message: "One or more bill items are outside your permitted sites" });
+      }
+      if (!await assertVendorBillAutoSources(req, res, input, selectedSite.siteName)) return;
       // Equipment Hire uses the same itemized request contract as every other
       // bill type.  The optional hireGroups payload remains available for
       // historical/integrated hire statements, but a new shared-flow bill is
@@ -11140,6 +11227,32 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const { pin: _pin, ...billData } = req.body;
       const input = createVendorBillRequestSchema.parse(billData);
+      const existing = await storage.getVendorBill(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Vendor bill not found" });
+      }
+      const existingVisible = await scopeVendorBillsToSiteAccess(req, [existing]);
+      if (existingVisible.length === 0) {
+        return res.status(403).json({ message: "Access denied for this bill's existing site scope" });
+      }
+      // Legacy/partial PUT callers predate siteId. Omission preserves the
+      // persisted scope; only an explicit null changes the bill to All Sites.
+      (input as any).siteId = vendorBillUpdateSiteId(
+        Object.prototype.hasOwnProperty.call(billData, "siteId"),
+        input.siteId,
+        existing.siteId,
+      );
+      const selectedSite = await resolveVendorBillSite(req, res, input.siteId);
+      if (!selectedSite) return;
+      if (selectedSite.siteName && input.items.some(item => !vendorBillItemMatchesSite(item.siteName, selectedSite.siteName!))) {
+        return res.status(400).json({ message: "Every pulled item must belong to the selected bill site" });
+      }
+      const permittedSites = await getPermittedSiteNames(req);
+      if (permittedSites !== null && input.items.some(item =>
+        !permittedSites.some(site => vendorBillItemMatchesSite(item.siteName, site)))) {
+        return res.status(403).json({ message: "One or more bill items are outside your permitted sites" });
+      }
+      if (!await assertVendorBillAutoSources(req, res, input, selectedSite.siteName, existing.items)) return;
       // The shared request schema intentionally defaults an omitted list to
       // [] for creates. On update, older callers that do not know VB18 must
       // preserve the stored list; only an explicit [] (or null) clears it.
@@ -11151,11 +11264,6 @@ export async function registerRoutes(
           const projectSite = billData.hireGroups[index]?.projectSite;
           if (typeof projectSite === "string" && projectSite.trim()) (group as any).projectSite = projectSite.trim().slice(0, 240);
         });
-      }
-
-      const existing = await storage.getVendorBill(id);
-      if (!existing) {
-        return res.status(404).json({ message: "Vendor bill not found" });
       }
 
       // Permission check: verified/approved/paid bills require admin.

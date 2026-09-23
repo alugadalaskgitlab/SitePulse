@@ -1,0 +1,67 @@
+{
+  "scenario": "VB-25 actual VendorBills isolated browser fixture",
+  "disclosure": "Synthetic fetch interception; no request reaches a live API and no writes are performed.",
+  "mounted": "client/src/pages/VendorBills.tsx",
+  "screenshots": [
+    "screenshots/vb25/A-specific-site-restricts-item-pull.png",
+    "screenshots/vb25/B-all-sites-preserves-cross-site-pull.png",
+    "screenshots/vb25/C-management-deep-link-visible-site-filter.png",
+    "screenshots/vb25/D-regular-600CFT-to-1TRIP-rate800-total800.png",
+    "screenshots/vb25/E1-legacy-key-explicit-unit-safe-conversion.png",
+    "screenshots/vb25/E2-blank-unit-legacy-card-no-guess.png",
+    "screenshots/vb25/E3-unsupported-CFT-to-MT-retained-rate0-manual.png",
+    "screenshots/vb25/F-material-source-conversion-regression-safe.png",
+    "screenshots/vb25/G-105-trips-date-groups-collapsed-subtotals-grand-total.png",
+    "screenshots/vb25/I1-read-only-expand-all.png",
+    "screenshots/vb25/H-combined-category-and-labour-nesting-totals.png",
+    "screenshots/vb25/H2-labour-source-date-nesting-and-subtotals.png",
+    "screenshots/vb25/I2-edit-view-collapse-all-category-labour-preserved.png"
+  ],
+  "verified": {
+    "A_specificSitePullCount": 1,
+    "B_allSitesPullCount": 3,
+    "C_deepLinkAndVisibleFilter": true,
+    "D_regularConversion": {
+      "logged": "600 CFT",
+      "billed": "1 TRIP",
+      "rate": 800,
+      "total": 800
+    },
+    "E_legacyExplicitUnit": {
+      "billed": "1 TRIP",
+      "rate": 800
+    },
+    "E_blankUnitNoGuess": {
+      "billed": "600 CFT",
+      "rate": 0
+    },
+    "E_unsupportedAlternateUnitGuard": {
+      "logged": "600 CFT",
+      "alternateCard": "MT",
+      "retainedRate": 0,
+      "manualConversionToast": true
+    },
+    "F_materialSourceRegression": {
+      "billed": "1 TRIP",
+      "rate": 800
+    },
+    "G_tripRows": 105,
+    "G_dateGroups": 3,
+    "G_grandTotal": 84000,
+    "H_categoryBands": [
+      "equipment",
+      "material",
+      "labour"
+    ],
+    "H_labourGroups": [
+      "DPR Site Labour",
+      "Plant Shift Manpower",
+      "Manual / Other"
+    ],
+    "H_grandTotal": 9500,
+    "I_readOnlyAndEditExpandCollapse": true
+  },
+  "interceptedRequests": 9,
+  "writeRequests": [],
+  "audit": "Synthetic fixture cannot audit live records; no live database was read by design."
+}
