@@ -91,7 +91,7 @@ describe("DPR-12 equipment status contract", () => {
       record("dpr_log", 1, null),
     ])).toEqual({
       date: "2026-09-01",
-      status: "not_logged",
+      status: "logged_unspecified",
       reason: null,
       legacyLogged: true,
     });
@@ -145,9 +145,42 @@ describe("DPR-12 equipment status contract", () => {
       idleNoWork: 0,
       idleNoOperator: 0,
       breakdown: 0,
+      loggedUnspecified: 0,
       notLogged: 3,
     });
     expect(equipment[0].days).toHaveLength(3);
+  });
+
+  it("counts logged records without explicit status separately from truly unlogged dates", () => {
+    const legacyDates = ["2026-08-26", "2026-08-28", "2026-08-29", "2026-08-30"];
+    const records = legacyDates.map((date, index) => ({
+      ...record("dpr_log", index + 1, null),
+      date,
+    }));
+    const equipment = buildFleetEquipmentStatus([{
+      id: 7,
+      name: "HIRED EXCAVATOR",
+      ownership: "hired",
+      vendorName: "VENDOR",
+      meterType: "hour_meter",
+    }], [
+      ...records,
+      { ...record("plant_usage", 99, "working"), date: "2026-08-31" },
+    ], "2026-08-01", "2026-08-31");
+
+    expect(equipment[0].summary).toEqual({
+      working: 1,
+      idleNoWork: 0,
+      idleNoOperator: 0,
+      breakdown: 0,
+      loggedUnspecified: 4,
+      notLogged: 26,
+    });
+    expect(equipment[0].days.find(day => day.date === "2026-08-27")).toEqual({
+      date: "2026-08-27",
+      status: "not_logged",
+      reason: null,
+    });
   });
 
   it("uses only closed plant usage for strict DPR carry-forward, preserving inclusive Plant continuity", () => {

@@ -1,0 +1,35 @@
+{
+  "fixture": "DPR-13 isolated real EquipmentStatus component; synthetic read-only responses",
+  "productionDatabaseUsed": false,
+  "productionApiWrites": false,
+  "scenarios": {
+    "EF": {
+      "explicitStatuses": 0,
+      "loggedUnspecifiedDays": [
+        "2026-08-26",
+        "2026-08-28",
+        "2026-08-29",
+        "2026-08-30"
+      ],
+      "trueNotLoggedDay": "2026-08-27",
+      "summary": {
+        "working": 0,
+        "loggedUnspecified": 4,
+        "notLogged": 27
+      }
+    },
+    "G": {
+      "explicitWorkingDay": "2026-08-31",
+      "summary": {
+        "working": 1,
+        "loggedUnspecified": 4,
+        "notLogged": 26
+      }
+    }
+  },
+  "screenshots": {
+    "E": "screenshots/dpr13/E-summary-4-logged-unspecified-27-not-logged.png",
+    "F": "screenshots/dpr13/F-aug26-30-four-legacy-and-27-true-not-logged.png",
+    "G": "screenshots/dpr13/G-separate-explicit-working-scenario.png"
+  }
+}

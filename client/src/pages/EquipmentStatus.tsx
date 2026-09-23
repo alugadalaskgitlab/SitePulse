@@ -18,6 +18,7 @@ type EquipmentDayStatus =
   | "idle_no_work"
   | "idle_no_operator"
   | "breakdown"
+  | "logged_unspecified"
   | "not_logged";
 
 type EquipmentStatusDay = {
@@ -40,6 +41,7 @@ type EquipmentStatusItem = {
     idleNoWork: number;
     idleNoOperator: number;
     breakdown: number;
+    loggedUnspecified: number;
     notLogged: number;
   };
   days: EquipmentStatusDay[];
@@ -56,6 +58,7 @@ const STATUS_META: Record<EquipmentDayStatus, { label: string; classes: string }
   idle_no_work: { label: "Idle — No Work", classes: "border-amber-200 bg-amber-50 text-amber-800" },
   idle_no_operator: { label: "Idle — No Operator", classes: "border-orange-200 bg-orange-50 text-orange-800" },
   breakdown: { label: "Breakdown", classes: "border-red-200 bg-red-50 text-red-800" },
+  logged_unspecified: { label: "Logged — No Status", classes: "border-violet-200 bg-violet-50 text-violet-800" },
   not_logged: { label: "Not Logged", classes: "border-slate-300 bg-slate-100 text-slate-700" },
 };
 
@@ -106,9 +109,10 @@ export default function EquipmentStatus() {
       working: sum.working + item.summary.working,
       idle: sum.idle + item.summary.idleNoWork + item.summary.idleNoOperator,
       breakdown: sum.breakdown + item.summary.breakdown,
+      loggedUnspecified: sum.loggedUnspecified + item.summary.loggedUnspecified,
       notLogged: sum.notLogged + item.summary.notLogged,
     }),
-    { working: 0, idle: 0, breakdown: 0, notLogged: 0 },
+    { working: 0, idle: 0, breakdown: 0, loggedUnspecified: 0, notLogged: 0 },
   ), [equipment]);
 
   const toggle = (id: string) => setExpanded(current => {
@@ -171,10 +175,11 @@ export default function EquipmentStatus() {
       </section>
 
       {!invalidRange && !report.isLoading && !report.isError && (
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Fleet status totals">
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-5" aria-label="Fleet status totals">
           <TotalCard label="Working" value={totals.working} classes="border-emerald-200 text-emerald-800" />
           <TotalCard label="Idle" value={totals.idle} classes="border-amber-200 text-amber-800" />
           <TotalCard label="Breakdown" value={totals.breakdown} classes="border-red-200 text-red-800" />
+          <TotalCard label="Logged — No Status" value={totals.loggedUnspecified} classes="border-violet-200 text-violet-800" />
           <TotalCard label="Not Logged" value={totals.notLogged} classes="border-slate-300 text-slate-700" />
         </section>
       )}
@@ -227,9 +232,10 @@ function Summary({ summary }: { summary: EquipmentStatusItem["summary"] }) {
     ["Idle · No Work", summary.idleNoWork, "text-amber-700"],
     ["Idle · No Operator", summary.idleNoOperator, "text-orange-700"],
     ["Breakdown", summary.breakdown, "text-red-700"],
+    ["Logged · No Status", summary.loggedUnspecified, "text-violet-700"],
     ["Not Logged", summary.notLogged, "text-slate-600"],
   ] as const;
-  return <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3 lg:grid-cols-5">{values.map(([label, value, color]) => <div key={label} className="text-xs"><strong className={`mr-1 text-base ${color}`}>{value}</strong><span className="text-slate-500">{label}</span></div>)}</div>;
+  return <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3 lg:grid-cols-6">{values.map(([label, value, color]) => <div key={label} className="text-xs"><strong className={`mr-1 text-base ${color}`}>{value}</strong><span className="text-slate-500">{label}</span></div>)}</div>;
 }
 
 function DayDetails({ days }: { days: EquipmentStatusDay[] }) {

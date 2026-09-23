@@ -52,22 +52,35 @@ const dpr = {
 };
 
 const statusReport = {
-  dateFrom: "2026-12-08",
-  dateTo: "2026-12-12",
+  dateFrom: "2026-08-01",
+  dateTo: "2026-08-31",
   equipment: [{
     equipmentId: EQUIPMENT_ID,
-    name: "DPR12 EXCAVATOR",
-    ownership: "owned",
+    name: "HIRED EXCAVATOR — AUGUST 2026",
+    ownership: "hired",
+    vendorName: "Synthetic Plant Hire",
     meterType: "hour_meter",
-    summary: { working: 1, idleNoWork: 1, idleNoOperator: 1, breakdown: 1, notLogged: 1 },
-    days: [
-      { date: "2026-12-08", status: "working", reason: null },
-      { date: "2026-12-09", status: "idle_no_work", reason: "Awaiting approved work front" },
-      { date: "2026-12-10", status: "idle_no_operator", reason: "Operator on approved leave" },
-      { date: "2026-12-11", status: "breakdown", reason: "Hydraulic hose inspection" },
-      { date: "2026-12-12", status: "not_logged", reason: null },
-    ],
+    summary: { working: 0, idleNoWork: 0, idleNoOperator: 0, breakdown: 0, loggedUnspecified: 4, notLogged: 27 },
+    days: Array.from({ length: 31 }, (_, index) => {
+      const day = index + 1;
+      const date = `2026-08-${String(day).padStart(2, "0")}`;
+      if ([26, 28, 29, 30].includes(day)) {
+        return { date, status: "logged_unspecified", reason: null, legacyLogged: true };
+      }
+      return { date, status: "not_logged", reason: null };
+    }),
   }],
+};
+
+const explicitStatusReport = {
+  ...statusReport,
+  equipment: statusReport.equipment.map(item => ({
+    ...item,
+    summary: { ...item.summary, working: 1, notLogged: 26 },
+    days: item.days.map(day => day.date === "2026-08-31"
+      ? { date: day.date, status: "working", reason: null }
+      : day),
+  })),
 };
 
 window.fetch = async (input, init) => {
@@ -90,7 +103,9 @@ window.fetch = async (input, init) => {
   if (url.pathname === `/api/equipment/${EQUIPMENT_ID}/latest-confirmed-diesel-tank`) {
     return json({ dieselBalanceInTank: 76 });
   }
-  if (url.pathname === "/api/reports/equipment-status") return json(statusReport);
+  if (url.pathname === "/api/reports/equipment-status") {
+    return json(location.search.includes("scenario=explicit") ? explicitStatusReport : statusReport);
+  }
   if (url.pathname.startsWith("/api/")) return json([]);
   return json({ message: `Unmocked fixture request: ${path}` }, 404);
 };

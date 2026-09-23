@@ -20,12 +20,12 @@ const report = {
     ownership: "hired",
     vendorName: "Acme Plant Hire",
     meterType: "hour_meter",
-    summary: { working: 1, idleNoWork: 1, idleNoOperator: 0, breakdown: 1, notLogged: 2 },
+    summary: { working: 1, idleNoWork: 1, idleNoOperator: 0, breakdown: 1, loggedUnspecified: 1, notLogged: 1 },
     days: [
       { date: "2025-05-01", status: "working" },
       { date: "2025-05-02", status: "idle_no_work", reason: "Front not released" },
       { date: "2025-05-03", status: "breakdown", reason: "Hydraulic hose" },
-      { date: "2025-05-04", status: "not_logged", legacyLogged: true },
+      { date: "2025-05-04", status: "logged_unspecified", legacyLogged: true },
       {
         date: "2025-05-05",
         status: "not_logged",
@@ -50,8 +50,8 @@ describe("EquipmentStatus", () => {
     render(<EquipmentStatus />);
     expect(screen.getByText("Excavator EX-01")).toBeInTheDocument();
     expect(screen.getAllByText("Not Logged").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Logged . No Status/).length).toBeGreaterThan(0);
     expect(screen.getAllByText("Idle").length).toBeGreaterThan(0);
-    expect(screen.getByText("2", { selector: "strong" })).toBeInTheDocument();
   });
 
   it("expands dates, reasons, legacy unspecified status and conflict records", () => {

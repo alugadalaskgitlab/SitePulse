@@ -14,7 +14,7 @@ describe("VB-22 site material trip source supplier UI", () => {
     expect(page).toContain("materialSourceSupplier: value.toUpperCase()");
     expect(page).toContain("? { supplier: association.supplier }");
     expect(page).not.toContain("? { supplier: association.supplier, materialSourceSupplier:");
-    expect(page).toContain("trip.materialSourceSupplier || '-'");
+    expect(page).toContain("trip.materialSourceSupplier?.trim() || '-'");
     expect(suggestions).toContain("materialSourceSuppliers: string[]");
     expect(suggestions).toContain("body.materialSourceSuppliers");
   });
@@ -46,8 +46,16 @@ describe("VB-22 site material trip source supplier UI", () => {
 
   it("gates bulk edits with site-material edit permission", () => {
     expect(page).toContain('sectionCan("site_materials", "edit")');
-    expect(page).toContain("{canEdit && (");
+    expect(page).toContain("{canEdit && hasUnassignedFilteredTrips && (");
     expect(page).toContain('data-testid="bulk-material-source-panel"');
+  });
+
+  it("hides a cleared backlog, treats whitespace as blank, and collapses a real backlog by default", () => {
+    expect(page).toContain("const hasUnassignedFilteredTrips = filteredTrips.some(");
+    expect(page).toContain("!trip.materialSourceSupplier?.trim()");
+    expect(page).toContain("<details");
+    expect(page).toContain("Show material-source backfill tool");
+    expect(page).not.toMatch(/<details[^>]*\sopen(?:=|\s|>)/);
   });
 
   it("supports an optional independent material source in the existing single-trip edit flow", () => {
@@ -57,6 +65,23 @@ describe("VB-22 site material trip source supplier UI", () => {
     expect(editPage).toContain("materialSourceSupplier: editForm.materialSourceSupplier.trim() || null");
     expect(editPage).toContain("independent from the transporter and vehicle");
     expect(editPage).not.toContain("materialSourceSupplier: association.supplier");
+  });
+
+  it("exits edit mode only after a successful received-trip update", () => {
+    const successHandler = editPage.slice(
+      editPage.indexOf("onSuccess: (updated: any, variables)"),
+      editPage.indexOf("onError:", editPage.indexOf("onSuccess: (updated: any, variables)")),
+    );
+    const errorHandler = editPage.slice(
+      editPage.indexOf("onError:", editPage.indexOf("onSuccess: (updated: any, variables)")),
+      editPage.indexOf("startEditingFields"),
+    );
+    expect(successHandler).toContain("setEditForm(null)");
+    expect(successHandler).toContain('toast({ title: "Saved"');
+    expect(successHandler).toContain("queryClient.invalidateQueries");
+    expect(errorHandler).not.toContain("setEditForm(null)");
+    expect(editPage).toContain('data-testid="button-cancel-edit"');
+    expect(editPage).toContain("onClick={() => setEditForm(null)}");
   });
 
   it("shows a friendly old/new material source label in per-trip history", () => {

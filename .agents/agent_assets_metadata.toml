@@ -2117,3 +2117,101 @@ mtime_ms = 1790131617232
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b4d2f1ad-ef55-4191-9d83-b366041a0822/b112e208-c1c3-4b0e-be32-1c3cf4c75395"
 storage_version_token = "1790131679058335"
 content_type = "image/png"
+
+[[outputs]]
+id = "05zsmLfVnwL5TuFt9UUEO"
+uri = "file://screenshots/mat02/A-cleared-filtered-backlog-hidden-SYNTHETIC.png"
+type = "image"
+title = "A — Cleared backlog: tool hidden"
+description = "Actual component with isolated synthetic test data; not a production screenshot. No live records changed."
+logical_id = "0e53cd99-11b1-4add-a174-497171e7f29b"
+content_hash = "sha256:b3bb8fbc9cc8ab780bbd6ff8f7ed1c6d93a054d3073921800fe4e1d1c9339bb8"
+size = 128370
+mtime_ms = 1790166792501
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/0e53cd99-11b1-4add-a174-497171e7f29b/78a40c7f-5c52-4037-911e-9c811bb659f5"
+storage_version_token = "1790166998625444"
+content_type = "image/png"
+
+[[outputs]]
+id = "XW9DVmCSUfik4k3vEIu14"
+uri = "file://screenshots/mat02/B-whitespace-backlog-visible-collapsed-SYNTHETIC.png"
+type = "image"
+title = "B — Backlog present: tool collapsed"
+description = "Actual component with isolated synthetic test data; not a production screenshot. No live records changed."
+logical_id = "97a3c1ca-8ee0-43ad-85a8-03e74b2b1a03"
+content_hash = "sha256:53b99a599e9c2482789faac03164629bf8aa34e152e1ed5ed3697f79d0db0134"
+size = 123509
+mtime_ms = 1790166793085
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/97a3c1ca-8ee0-43ad-85a8-03e74b2b1a03/4ff53065-ab78-415d-8bcf-c957b1111cd7"
+storage_version_token = "1790167000582599"
+content_type = "image/png"
+
+[[outputs]]
+id = "jL3Xs3RZRZmDFeVzFSqn8"
+uri = "file://screenshots/mat02/C-success-closes-edit-toast-refresh-SYNTHETIC.png"
+type = "image"
+title = "C — Successful save exits edit mode"
+description = "Actual component with isolated synthetic test data; not a production screenshot. No live records changed."
+logical_id = "42cba33c-bd33-4243-a0a5-b3372e56cbb1"
+content_hash = "sha256:ac2fd0c8ad6ff28ebfd7ecc0b2c05e8ae0c31152c909b6e6d107fdaa80926ba0"
+size = 107358
+mtime_ms = 1790166793785
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/42cba33c-bd33-4243-a0a5-b3372e56cbb1/2d434481-6992-4c8f-97df-90f14853126a"
+storage_version_token = "1790167002477184"
+content_type = "image/png"
+
+[[outputs]]
+id = "8FRym2NtJLRC2pky6EIr2"
+uri = "file://screenshots/mat02/D-failure-retains-edit-and-input-SYNTHETIC.png"
+type = "image"
+title = "D — Failed save preserves edits"
+description = "Actual component with isolated synthetic test data; not a production screenshot. No live records changed."
+logical_id = "9e6376b1-aff0-497b-9ffb-0c8386c8376f"
+content_hash = "sha256:1c7573656033ebd2a591d31b2ac113339d9a1da69c1af06ddd01c35b6eade514"
+size = 117917
+mtime_ms = 1790166794497
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/9e6376b1-aff0-497b-9ffb-0c8386c8376f/90232156-adce-4e85-b2ea-3fd0c88bf5ba"
+storage_version_token = "1790167004345814"
+content_type = "image/png"
+
+[[outputs]]
+id = "gIDETVC30xmtGx__dtkMG"
+uri = "file://screenshots/dpr13/E-summary-4-logged-unspecified-27-not-logged.png"
+type = "image"
+title = "E — Four logged days, 27 not logged"
+description = "Actual component with isolated synthetic test data; not a production screenshot. No live records changed."
+logical_id = "3ec56965-4f23-4a5c-bbfd-0ebc0a0285e7"
+content_hash = "sha256:1abdf3942ce6480a799d3d022e85a35a95659656e52ef74c3a6b2ec15e360a85"
+size = 76895
+mtime_ms = 1790166911289
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/3ec56965-4f23-4a5c-bbfd-0ebc0a0285e7/3f1ec8be-4eb3-41b3-aecb-66e5af872c59"
+storage_version_token = "1790167006049278"
+content_type = "image/png"
+
+[[outputs]]
+id = "vv-xfnI4FiyOBhX8kA8QV"
+uri = "file://screenshots/dpr13/F-aug26-30-four-legacy-and-27-true-not-logged.png"
+type = "image"
+title = "F — Legacy and missing days distinguished"
+description = "Actual component with isolated synthetic test data; not a production screenshot. No live records changed."
+logical_id = "04393e01-e398-4fc3-98f0-99bb1078c1a2"
+content_hash = "sha256:177b50e51bfb0ff3480ec5a76610220a9ccceb7eebb8c5dc7858926df3eff52c"
+size = 111258
+mtime_ms = 1790166911609
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/04393e01-e398-4fc3-98f0-99bb1078c1a2/842790a6-d6fb-4189-b495-9aa48836d3f4"
+storage_version_token = "1790167007962746"
+content_type = "image/png"
+
+[[outputs]]
+id = "lsWErAR-4WfN5fvp0c-wh"
+uri = "file://screenshots/dpr13/G-separate-explicit-working-scenario.png"
+type = "image"
+title = "G — Explicit Working remains unchanged"
+description = "Actual component with isolated synthetic test data; not a production screenshot. No live records changed."
+logical_id = "1e5f0fbf-93a6-473a-b5ec-c67e80bfd1dd"
+content_hash = "sha256:48486cf11dc417ec67280ade3d87cf37260aa4ee85a401e74a4528e02b1c5190"
+size = 80555
+mtime_ms = 1790166912269
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/1e5f0fbf-93a6-473a-b5ec-c67e80bfd1dd/3591546c-b9aa-4e1f-87e5-9ce071068247"
+storage_version_token = "1790167009704815"
+content_type = "image/png"

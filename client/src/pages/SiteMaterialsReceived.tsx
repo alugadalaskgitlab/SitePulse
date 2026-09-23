@@ -203,6 +203,7 @@ export default function SiteMaterialsReceived() {
         variables.payload?.site,
       ]);
       setSelectedTrip((prev: any) => prev ? { ...prev, ...updated } : prev);
+      setEditForm(null);
       toast({ title: "Saved", description: "Material entry updated." });
     },
     onError: (err: any) => {

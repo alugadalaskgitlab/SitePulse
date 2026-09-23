@@ -128,15 +128,26 @@ assert(current.usageStatus == null && current.openingReading === 400 && current.
 assert((await evaluate("document.body.innerText")).includes("Not specified (legacy behavior)"), "F legacy status label missing");
 const F = await shot("F-legacy-status-unset");
 
-// G — production EquipmentStatus with all explicit states plus Not Logged.
+// E/F — production EquipmentStatus with four legacy logs and 27 truly unlogged days.
 await go("/equipment-status");
-await waitFor("document.body.innerText.includes('DPR12 EXCAVATOR')", "fleet status");
+await waitFor("document.body.innerText.includes('HIRED EXCAVATOR — AUGUST 2026')", "fleet status");
 await evaluate("document.querySelector('[data-testid=\"equipment-status-1201\"]').querySelector('button').click()");
 await sleep(200);
-const fleet = await evaluate("document.body.innerText");
-for (const label of ["Working", "Idle — No Work", "Idle — No Operator", "Breakdown", "Not Logged"]) {
-  assert(fleet.includes(label), `G missing ${label}`);
+let fleet = await evaluate("document.body.innerText");
+for (const label of ["Logged — No Status", "Legacy log · status unspecified", "Not Logged"]) {
+  assert(fleet.includes(label), `E/F missing ${label}`);
 }
+assert(fleet.includes("4 Logged · No Status"), "E/F logged-unspecified summary is not 4");
+assert(fleet.includes("27 Not Logged"), "E/F Not Logged summary is not 27");
+assert(!fleet.includes("1 Working"), "E/F fixture is contaminated by an explicit Working day");
+
+// G — explicit status is verified in a separate scenario.
+await go("/equipment-status?scenario=explicit");
+await waitFor("document.body.innerText.includes('HIRED EXCAVATOR — AUGUST 2026')", "explicit fleet status");
+await evaluate("document.querySelector('[data-testid=\"equipment-status-1201\"]').querySelector('button').click()");
+await sleep(200);
+fleet = await evaluate("document.body.innerText");
+assert(fleet.includes("31 Aug 2026") && fleet.includes("Working"), "G explicit Working day missing");
 const G = await shot("G-fleet-mixed-explicit-and-not-logged");
 
 const evidence = {

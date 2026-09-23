@@ -1,0 +1,69 @@
+INSTRUCTION MAT-02 / DPR-13: Three unrelated small bugs found during live testing — (1) the material-source bulk-backfill panel is permanently visible instead of hiding once the backlog is cleared, (2) editing a single trip's fields doesn't close the edit form after a successful save, (3) the Fleet/Equipment Status view genuinely mis-buckets real logged-but-unstatused days into "Not Logged" instead of a distinct category
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Three small, independent fixes bundled for efficiency — Part A (Site Material Trips), Part B (Materials Received edit form), Part C (Fleet/Equipment Status). Do not touch DPR-02 through DPR-11, VB-18 through VB-24, VB-23B, PI-01, PI-02, PI-02B, or MAT-01. Do not publish automatically. STOP after this and report back.
+
+============================================================
+PART A — HIDE THE BULK BACKFILL PANEL ONCE THERE'S NOTHING LEFT TO BACKFILL
+============================================================
+BACKGROUND: `client/src/pages/SiteMaterialTrips.tsx`, the "Prepare material-source backlog for billing" panel (~lines 931-962) is gated only by `canEdit` (~line 931) — it has no awareness of whether any trips still lack a Material Source. It was meant as a one-time cleanup tool but is now permanently visible to everyone with edit rights, even though the backlog it was built for has already been cleared.
+
+FIX A1
+a. Only render this panel when there is at least one trip in the currently filtered view with no `materialSourceSupplier` set — reuse the existing `onlyUnassigned` concept/`filteredTrips` data already on this page (confirmed available at ~lines 950/957) rather than adding a new query if the existing filtered data already covers it. If the panel's own filters are independent of the main page filters, add a lightweight check (e.g. a count of unassigned trips across a sensible default range, or check on demand when the panel would render) — your judgment on the cleanest approach, but the panel must not show when there's genuinely nothing left to backfill.
+b. As a secondary/alternative safeguard (do both if straightforward): wrap the panel in a collapsed-by-default disclosure ("Show material-source backfill tool") rather than always-expanded, so even if some unassigned trips remain, it doesn't dominate the page for routine day-to-day use once the initial big backlog is done.
+c. Do not remove the panel or its functionality — it should still work correctly whenever there IS a genuine backlog (e.g. a future data import, or a new material type that needs the same treatment).
+
+============================================================
+PART B — CLOSE THE EDIT FORM AFTER A SUCCESSFUL TRIP SAVE
+============================================================
+BACKGROUND: `client/src/pages/SiteMaterialsReceived.tsx`, `handleSaveEdit` (~lines 236-260) calls `updateMutation.mutate(...)`. The mutation's `onSuccess` (~lines 194-207) correctly invalidates queries, updates local state, and shows a "Saved" toast — but never calls `setEditForm(null)`. Edit mode is driven purely by `editForm` being non-null (~line 505), so the form stays open after a successful save. The only place that currently clears it is the explicit Cancel button (~line 674) or closing the dialog entirely (~line 476).
+
+FIX B1
+a. In `updateMutation`'s `onSuccess` handler (or at the end of `handleSaveEdit`'s success path — your judgment on which is cleaner given the surrounding code), add `setEditForm(null)` so the form correctly exits edit mode and returns to the read-only detail/list view after a successful save.
+b. Confirm the "Saved" toast still fires and the underlying data still refreshes exactly as it does today — only the lingering edit-mode state is being fixed, not the save/refresh behavior itself.
+c. Confirm this does NOT affect the Cancel button's behavior, or what happens if the save fails (form should presumably stay open on failure so the person doesn't lose their edits — confirm this is already the case and remains so).
+
+============================================================
+PART C — FLEET STATUS: SEPARATE "LOGGED, NO EXPLICIT STATUS" FROM TRUE "NOT LOGGED"
+============================================================
+BACKGROUND: `shared/equipmentStatus.ts`, `resolveFleetStatusDay` (~line 135) currently does:
+```
+const explicit = records.filter(...);
+if (explicit.length === 0) {
+  return { date, status: "not_logged", reason: null, legacyLogged: true };  // ~line 146-148
+}
+```
+This conflates two genuinely different situations: (1) zero records exist for that equipment/day (true "not logged" — correctly handled separately at `records.length === 0`, ~line 140), and (2) real logged records DO exist (e.g. real meter readings, diesel data — confirmed present for the person's test case, a hired Excavator with 4 real logged entries on 26/28/29/30 Aug 2026) but none of them have an explicit `usageStatus` set (legacy data predating DPR-12, or any future row where status wasn't filled in). Case (2) is currently ALSO returned as `status: "not_logged"`, just with a `legacyLogged: true` flag tacked on. `buildFleetEquipmentStatus`'s tally (~lines 200-206) then counts these days straight into the `notLogged` bucket. The `EquipmentStatus.tsx` UI (~line 246) renders a "Legacy log · status unspecified" badge on top of these days, but this is purely cosmetic — it does not change which bucket/count the day is tallied into. Net effect confirmed by the person's own test: a machine with real logged data across 4 days shows Working=0/Idle=0/Breakdown=0/Not Logged=775 (i.e., those 4 real days are invisible in the actual counts, indistinguishable from genuinely unlogged days except for a small badge).
+
+FIX C1
+a. Introduce a distinct status value (e.g. `"logged_unspecified"` — name at your discretion, consistent with the existing four-value convention `working`/`idle_no_work`/`idle_no_operator`/`breakdown`) for the case where records exist but none carry an explicit `usageStatus`. Do NOT fold this into `"not_logged"` — `"not_logged"` must be reserved strictly for `records.length === 0` (zero rows at all that day), exactly as it already correctly is at line 140.
+b. Update `buildFleetEquipmentStatus`'s tally (~lines 200-206) to count this new status into its own summary counter (e.g. `summary.loggedUnspecified`), separate from `summary.notLogged`.
+c. Update `EquipmentStatus.tsx`'s summary/total cards (~lines 43, 59, 109, 178, 230) to show this as its own category (e.g. a fifth card "Logged — No Status" alongside Working/Idle/Breakdown/Not Logged), so a person scanning the top-line totals can immediately see how much of their fleet has real activity that simply predates explicit status tracking, versus genuinely unlogged days.
+d. Keep the existing "Legacy log · status unspecified" badge/label on the per-day row (~line 246) — it's a reasonable label for this exact case, just make sure it's now attached to a day whose `status` is genuinely this new value, not one still hardcoded to `"not_logged"`.
+e. Confirm the true not-logged days (zero records, e.g. the other 27 August days for this same equipment) are completely unaffected — they should continue to show as plain "Not Logged" with no badge, exactly as today (confirmed correct already, do not change this path).
+
+WHAT NOT TO DO
+- Do not change how a day with an explicit `usageStatus` (working/idle/breakdown) is resolved or counted — only the "records exist but no explicit status" case is being fixed.
+- Do not remove the "Legacy log" badge concept — just make it reflect a real, separately-counted status rather than a cosmetic label over "not_logged".
+- Do not touch DPR-02 through DPR-11, VB-18 through VB-24, VB-23B, PI-01, PI-02, PI-02B, or MAT-01.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change for any part — Part A/B are UI logic only; Part C is a computed/derived status category, not a new database column (the underlying `usageStatus` field already correctly allows null).
+
+TESTS
+A. Filter Site Material Trips to a date range/site with all trips already having a Material Source set. Confirm the backfill panel does not appear (or appears collapsed, per your chosen approach).
+B. Filter to a range with some unassigned trips. Confirm the panel appears and still works correctly.
+C. Edit a single trip's Material Source (or any field), save successfully. Confirm the form closes/returns to the read-only view, the toast still shows, and the updated value is visible.
+D. Trigger a save failure (e.g. invalid input if validation exists, or simulate a network error) and confirm the form correctly stays open so edits aren't lost.
+E. Open Fleet/Equipment Status for the exact test case described (a hired Excavator, August 2026, with real logged entries on 4 specific days and no entries on the rest). Confirm those 4 days now show under a distinct "Logged — No Status" category (not folded into Not Logged), and the summary totals reflect this new category correctly.
+F. Confirm the other 27 genuinely-unlogged days for this same equipment still show plain "Not Logged" with no badge — no regression.
+G. Confirm a day with an explicit status (working/idle/breakdown, from DPR-12 data going forward) still resolves and counts correctly — no regression to that path.
+
+REPORT BACK
+1. Confirm Part A with Test A/B evidence (screenshots).
+2. Confirm Part B with Test C/D evidence (screenshots).
+3. Confirm Part C with Test E/F/G evidence (screenshots), including the new summary category and per-day badge correctly reflecting the new distinct status.
+4. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

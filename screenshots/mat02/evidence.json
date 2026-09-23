@@ -1,0 +1,19 @@
+{
+  "disclosure": "MAT-02 PRODUCTION COMPONENT — SYNTHETIC INTERCEPTED API — NO LIVE API OR DATABASE WRITES",
+  "mountedProductionComponents": [
+    "client/src/pages/SiteMaterialTrips.tsx",
+    "client/src/pages/SiteMaterialsReceived.tsx"
+  ],
+  "assertions": {
+    "A_clearedFilteredBacklogHidden": true,
+    "B_whitespaceBacklogVisibleAndCollapsed": true,
+    "C_successClosesEditWithToastAndRefreshedValue": true,
+    "D_failureRetainsInputAndCancelLeavesSavedValueUnchanged": true
+  },
+  "screenshots": [
+    "/home/runner/workspace/screenshots/mat02/A-cleared-filtered-backlog-hidden-SYNTHETIC.png",
+    "/home/runner/workspace/screenshots/mat02/B-whitespace-backlog-visible-collapsed-SYNTHETIC.png",
+    "/home/runner/workspace/screenshots/mat02/C-success-closes-edit-toast-refresh-SYNTHETIC.png",
+    "/home/runner/workspace/screenshots/mat02/D-failure-retains-edit-and-input-SYNTHETIC.png"
+  ]
+}

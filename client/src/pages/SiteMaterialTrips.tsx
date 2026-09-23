@@ -432,6 +432,9 @@ export default function SiteMaterialTrips() {
   };
 
   const filteredTrips = trips ?? [];
+  const hasUnassignedFilteredTrips = filteredTrips.some(
+    (trip) => !trip.materialSourceSupplier?.trim(),
+  );
 
   const tripsByMaterial = useMemo(() => {
     const grouped: Record<string, { count: number; totalQty: number; uom: string }> = {};
@@ -928,36 +931,41 @@ export default function SiteMaterialTrips() {
             </div>
           </CardHeader>
           <CardContent>
-            {canEdit && (
-              <div className="mb-4 rounded-lg border bg-muted/20 p-3 space-y-2" data-testid="bulk-material-source-panel">
-                <div>
+            {canEdit && hasUnassignedFilteredTrips && (
+              <details className="mb-4 rounded-lg border bg-muted/20 p-3" data-testid="bulk-material-source-panel">
+                <summary className="cursor-pointer font-medium" data-testid="bulk-material-source-disclosure">
+                  Show material-source backfill tool
+                </summary>
+                <div className="mt-3 space-y-2">
+                  <div>
                   <p className="font-medium">Prepare material-source backlog for billing</p>
                   <p className="text-xs text-muted-foreground">
                     Assign one source supplier to the {filteredTrips.length} trip{filteredTrips.length === 1 ? "" : "s"} matching the filters above. The transporter is not changed.
                   </p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <FreeTextSuggestionInput
+                      value={bulkMaterialSourceSupplier}
+                      onChange={(value) => setBulkMaterialSourceSupplier(value.toUpperCase())}
+                      suggestions={filterMaterialSourceSupplierSuggestions}
+                      match="supplier"
+                      suggestionsError={filterSuggestionError}
+                      placeholder="Material Source / Supplier"
+                      className="uppercase sm:max-w-sm"
+                      data-testid="input-bulk-material-source-supplier"
+                    />
+                    <Button
+                      type="button"
+                      disabled={!bulkMaterialSourceSupplier.trim() || !filteredTrips.length || !siteFilter || siteFilter === "all"}
+                      onClick={() => setBulkConfirmOpen(true)}
+                      data-testid="button-bulk-assign-material-source"
+                    >
+                      Assign to {filteredTrips.length} matching trip{filteredTrips.length === 1 ? "" : "s"}
+                    </Button>
+                  </div>
+                  {(!siteFilter || siteFilter === "all") && <p className="text-xs text-amber-700">Select one site before bulk assignment.</p>}
                 </div>
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <FreeTextSuggestionInput
-                    value={bulkMaterialSourceSupplier}
-                    onChange={(value) => setBulkMaterialSourceSupplier(value.toUpperCase())}
-                    suggestions={filterMaterialSourceSupplierSuggestions}
-                    match="supplier"
-                    suggestionsError={filterSuggestionError}
-                    placeholder="Material Source / Supplier"
-                    className="uppercase sm:max-w-sm"
-                    data-testid="input-bulk-material-source-supplier"
-                  />
-                  <Button
-                    type="button"
-                    disabled={!bulkMaterialSourceSupplier.trim() || !filteredTrips.length || !siteFilter || siteFilter === "all"}
-                    onClick={() => setBulkConfirmOpen(true)}
-                    data-testid="button-bulk-assign-material-source"
-                  >
-                    Assign to {filteredTrips.length} matching trip{filteredTrips.length === 1 ? "" : "s"}
-                  </Button>
-                </div>
-                {(!siteFilter || siteFilter === "all") && <p className="text-xs text-amber-700">Select one site before bulk assignment.</p>}
-              </div>
+              </details>
             )}
             {isLoading ? (
               <div className="flex justify-center py-8">
@@ -993,7 +1001,7 @@ export default function SiteMaterialTrips() {
                           <TripWorkContextSummary trip={trip} testIdPrefix="trip-list-ctx" />
                         </td>
                         <td className="p-2">{trip.supplier || '-'}</td>
-                        <td className="p-2" data-testid={`trip-material-source-${trip.id}`}>{trip.materialSourceSupplier || '-'}</td>
+                        <td className="p-2" data-testid={`trip-material-source-${trip.id}`}>{trip.materialSourceSupplier?.trim() || '-'}</td>
                         <td className="p-2">{trip.vehicleNumber || '-'}</td>
                         <td className="p-2 text-right font-mono">{trip.quantity?.toFixed(3)}</td>
                         <td className="p-2">{trip.uom}</td>

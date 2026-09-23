@@ -6,7 +6,7 @@ export const EQUIPMENT_USAGE_STATUSES = [
 ] as const;
 
 export type EquipmentUsageStatus = typeof EQUIPMENT_USAGE_STATUSES[number];
-export type FleetDayStatus = EquipmentUsageStatus | "not_logged";
+export type FleetDayStatus = EquipmentUsageStatus | "logged_unspecified" | "not_logged";
 export type EquipmentStatusSource = "dpr_log" | "plant_usage";
 
 export interface EquipmentStatusRecord {
@@ -46,6 +46,7 @@ export interface FleetEquipmentStatus {
     idleNoWork: number;
     idleNoOperator: number;
     breakdown: number;
+    loggedUnspecified: number;
     notLogged: number;
   };
   days: FleetStatusDay[];
@@ -144,7 +145,7 @@ export function resolveFleetStatusDay(
       isEquipmentUsageStatus(row.status),
   );
   if (explicit.length === 0) {
-    return { date, status: "not_logged", reason: null, legacyLogged: true };
+    return { date, status: "logged_unspecified", reason: null, legacyLogged: true };
   }
 
   const statuses = new Set(explicit.map((row) => row.status));
@@ -195,6 +196,7 @@ export function buildFleetEquipmentStatus(
       idleNoWork: 0,
       idleNoOperator: 0,
       breakdown: 0,
+      loggedUnspecified: 0,
       notLogged: 0,
     };
     for (const day of days) {
@@ -202,6 +204,7 @@ export function buildFleetEquipmentStatus(
       else if (day.status === "idle_no_work") summary.idleNoWork++;
       else if (day.status === "idle_no_operator") summary.idleNoOperator++;
       else if (day.status === "breakdown") summary.breakdown++;
+      else if (day.status === "logged_unspecified") summary.loggedUnspecified++;
       else summary.notLogged++;
     }
     return {
