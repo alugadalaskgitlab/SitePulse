@@ -2383,3 +2383,143 @@ mtime_ms = 1790170379504
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8b46e3c6-5a44-49a9-90f8-147aadbb8cc3/d42fc344-7650-4522-870c-01eff884a64d"
 storage_version_token = "1790170563878611"
 content_type = "image/png"
+
+[[outputs]]
+id = "tgPmlX9oriwpxC-00oG25"
+uri = "file://tests/fixtures/progress-report-pr01/evidence/Z-site-dropdown-deduped.png"
+type = "image"
+title = "Clean, deduplicated site dropdown"
+description = "Actual Progress Report component with labelled synthetic two-site data. No live DPR records changed."
+logical_id = "db84cfc1-3c9f-41f2-ba8f-16b65a73017c"
+content_hash = "sha256:078f726a96e52df74ff41c6568837b516e2f62de1b6227c0a275b6120e5bb9ef"
+size = 67868
+mtime_ms = 1790175239367
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/db84cfc1-3c9f-41f2-ba8f-16b65a73017c/ceeb0a59-935f-47a1-99db-bbce412e4df6"
+storage_version_token = "1790175319274947"
+content_type = "image/png"
+
+[[outputs]]
+id = "XdwnBkgBwPEGL7AhgkG1O"
+uri = "file://tests/fixtures/progress-report-pr01/evidence/Z2-selected-legacy-suffixed-site.png"
+type = "image"
+title = "Selected site includes edited DPR entries"
+description = "Actual Progress Report component with labelled synthetic two-site data. No live DPR records changed."
+logical_id = "82be7767-c62b-4ea9-a99e-10eef19608b5"
+content_hash = "sha256:43405241a304128859fff9030fc35c9080865a8c8142c43c07342432e0d4c3c0"
+size = 64455
+mtime_ms = 1790175239715
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/82be7767-c62b-4ea9-a99e-10eef19608b5/b54076f4-2f52-4752-b35f-1e5f39e5d45d"
+storage_version_token = "1790175321226903"
+content_type = "image/png"
+
+[[outputs]]
+id = "50xoWdzTCGlybc2EQDZfw"
+uri = "file://tests/fixtures/progress-report-pr01/evidence/A-abstract-BOQ-Qty.png"
+type = "image"
+title = "Abstract — BOQ Qty header"
+description = "Actual Progress Report component with labelled synthetic two-site data. No live DPR records changed."
+logical_id = "743932ba-4337-4d51-b075-2d9cb79918fe"
+content_hash = "sha256:272be4b83bfc901613c2e32593e0c8c64e4dde8ee32e7da11d8dc41f432f3d3f"
+size = 64768
+mtime_ms = 1790175240419
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/743932ba-4337-4d51-b075-2d9cb79918fe/2dc53199-456c-4d15-8b6a-8d916b4108a1"
+storage_version_token = "1790175323006293"
+content_type = "image/png"
+
+[[outputs]]
+id = "i43bLMfvMlaRWpFh-FNN2"
+uri = "file://tests/fixtures/progress-report-pr01/evidence/B-I-detailed-bands-mode-direction.png"
+type = "image"
+title = "Detailed — Cumulative and sort controls"
+description = "Actual Progress Report component with labelled synthetic two-site data. No live DPR records changed."
+logical_id = "c8c31d86-674f-430d-808c-1731af5c2612"
+content_hash = "sha256:4e0c08424df195ae1343fe14c5780207f60be016649027d2de3a6e4d5b878822"
+size = 118259
+mtime_ms = 1790175240731
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c8c31d86-674f-430d-808c-1731af5c2612/d5c9bf56-9c06-4b03-a919-8e8e536badd6"
+storage_version_token = "1790175325088500"
+content_type = "image/png"
+
+[[outputs]]
+id = "zKmrLnruEKXG92uHzFL9O"
+uri = "file://tests/fixtures/progress-report-pr01/evidence/E-selected-site-no-group-band.png"
+type = "image"
+title = "Single site — no extra site bands"
+description = "Actual Progress Report component with labelled synthetic two-site data. No live DPR records changed."
+logical_id = "61d67e26-fe2a-4b8f-89aa-35bb8858eb4f"
+content_hash = "sha256:f2d333a61c5281926f55b342eb337b0c605f68e0c338080832d555f24eed5e3c"
+size = 78432
+mtime_ms = 1790175240055
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/61d67e26-fe2a-4b8f-89aa-35bb8858eb4f/d68fd066-0b44-41f2-afc0-950523ede576"
+storage_version_token = "1790175326861406"
+content_type = "image/png"
+
+[[outputs]]
+id = "DFJIehhpiu3f_7yVA2-Li"
+uri = "file://tests/fixtures/progress-report-pr01/evidence/D-F-chainage-sites-ascending.png"
+type = "image"
+title = "Chainage — ascending site groups"
+description = "Actual Progress Report component with labelled synthetic two-site data. No live DPR records changed."
+logical_id = "6f786b05-aac4-4d46-98ca-07e9219daa46"
+content_hash = "sha256:79a3dfafde2d3c1eb481c372f86e7fb959aadeabd4c6228f41e80bbbcdab6c3f"
+size = 98262
+mtime_ms = 1790175241387
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/6f786b05-aac4-4d46-98ca-07e9219daa46/03ca5aea-1af3-4f47-967b-ed938ffd0c8d"
+storage_version_token = "1790175328712797"
+content_type = "image/png"
+
+[[outputs]]
+id = "rPc2p1_BSnlQ8W5EgrLVh"
+uri = "file://tests/fixtures/progress-report-pr01/evidence/F-H-chainage-sites-descending.png"
+type = "image"
+title = "Chainage — descending site groups"
+description = "Actual Progress Report component with labelled synthetic two-site data. No live DPR records changed."
+logical_id = "348faaba-1e26-4f35-ab92-f276593aa3c8"
+content_hash = "sha256:80003ce45daafab3c17f8fdf65bb8c6bb9d1962fbfb33bf31d6a77b04545cb0e"
+size = 98347
+mtime_ms = 1790175241663
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/348faaba-1e26-4f35-ab92-f276593aa3c8/4135cd99-18ea-4200-aef3-9557a028c0e3"
+storage_version_token = "1790175330635580"
+content_type = "image/png"
+
+[[outputs]]
+id = "wxyYgKmtPdD7Rsk2VmkXR"
+uri = "file://tests/fixtures/progress-report-pr01/evidence/D-G-date-sites-ascending.png"
+type = "image"
+title = "Date — ascending site groups"
+description = "Actual Progress Report component with labelled synthetic two-site data. No live DPR records changed."
+logical_id = "161a5c31-b45f-41f9-bd8e-bf1f64ecd8b6"
+content_hash = "sha256:65893c66550ef857f172a69b80d883fcdd37bf53149ab82fab3bf51e91c7bcd0"
+size = 119195
+mtime_ms = 1790175241951
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/161a5c31-b45f-41f9-bd8e-bf1f64ecd8b6/b4cdeba1-6a2e-46d9-afa5-1a9ae5e6a16c"
+storage_version_token = "1790175332710495"
+content_type = "image/png"
+
+[[outputs]]
+id = "tlQG1TiERjIX-KDEfWEd5"
+uri = "file://tests/fixtures/progress-report-pr01/evidence/G-H-date-sites-descending.png"
+type = "image"
+title = "Date — descending site groups"
+description = "Actual Progress Report component with labelled synthetic two-site data. No live DPR records changed."
+logical_id = "95509482-1363-4b39-b132-a367f61bed8a"
+content_hash = "sha256:1449da107f96d459c0077a3e777759a76f0d18c3fc70ea73c8d01591477fe3d1"
+size = 119303
+mtime_ms = 1790175242207
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/95509482-1363-4b39-b132-a367f61bed8a/8d53d8ff-45e2-43b0-9c87-6d1c939b2762"
+storage_version_token = "1790175334553496"
+content_type = "image/png"
+
+[[outputs]]
+id = "j3ohCBf4OLlT1RRtS1tei"
+uri = "file://tests/fixtures/progress-report-pr01/evidence/I-detailed-date-mode-descending.png"
+type = "image"
+title = "Detailed — date-first descending"
+description = "Actual Progress Report component with labelled synthetic two-site data. No live DPR records changed."
+logical_id = "e3a3edca-155d-4350-ad78-967a9da008ca"
+content_hash = "sha256:ab033171c4f6c12fa451729c82a1a33efdd4d3afccd3e14f673b2c58d757c27e"
+size = 118175
+mtime_ms = 1790175241023
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e3a3edca-155d-4350-ad78-967a9da008ca/070042bf-2da7-424f-a5c4-7cbcb42a9371"
+storage_version_token = "1790175336484702"
+content_type = "image/png"

@@ -28,6 +28,7 @@
 
 import { resolveDprUnitConversion, geometryQtyForRow, quantitiesMatch, resolveBoqUomProfile, type DprUnitConversionResolution } from "./dprGeometry";
 import { KM_EPS, compareChainageRows, normaliseReportSide, sidesMayOverlap } from "./chainageOverlap";
+import { getBaseSiteName, normalizeSiteName } from "./siteName";
 
 // Batch 06B: the generic side/interval semantics now live in the neutral
 // shared/chainageOverlap.ts module (used by DPR entry + server submit too).
@@ -427,21 +428,70 @@ export function computeItemAbstract(
 // ── Display sorting (§10) — never touches runningCumulative ─────────────────
 
 export type MeasurementSort = "chainage_date" | "date_chainage";
+export type SortDirection = "asc" | "desc";
 
-export function sortForDisplay(computed: ComputedEntry[], sort: MeasurementSort): ComputedEntry[] {
-  const byChainage = (a: ComputedEntry, b: ComputedEntry) => {
-    const ra = kmRange(a); const rb = kmRange(b);
-    if (ra && rb && ra.from !== rb.from) return ra.from - rb.from;
-    if (ra && !rb) return -1;
-    if (!ra && rb) return 1;
-    return 0;
-  };
-  const copy = [...computed];
-  if (sort === "chainage_date") {
-    copy.sort((a, b) => byChainage(a, b) || chronologicalCompare(a, b));
-  } else {
-    copy.sort((a, b) => chronologicalCompare(a, b) || byChainage(a, b));
+/** Clean display/group label only; the stored DPR site string remains untouched. */
+export function reportSiteName(entry: Pick<ReportEntry, "site">): string {
+  const base = getBaseSiteName(entry.site ?? "").trim();
+  return base || "Site not recorded";
+}
+
+/** One clean option per physical site, independent of DPR edit provenance. */
+export function progressReportSiteOptions(entries: Array<Pick<ReportEntry, "site">>): string[] {
+  const byKey = new Map<string, string>();
+  for (const entry of entries) {
+    const base = getBaseSiteName(entry.site ?? "").trim();
+    const key = normalizeSiteName(base);
+    if (base && !byKey.has(key)) byKey.set(key, base);
   }
+  return Array.from(byKey.values()).sort((a, b) => a.localeCompare(b));
+}
+
+/** Match a selected clean option to raw current and legacy suffixed DPR sites. */
+export function progressReportEntryMatchesSite(entry: Pick<ReportEntry, "site">, selectedSite: string): boolean {
+  return !!entry.site && normalizeSiteName(entry.site) === normalizeSiteName(selectedSite);
+}
+
+function compareSite(a: ReportEntry, b: ReportEntry): number {
+  return normalizeSiteName(reportSiteName(a)).localeCompare(normalizeSiteName(reportSiteName(b)));
+}
+
+function compareChainage(a: ReportEntry, b: ReportEntry): number {
+  const ra = kmRange(a); const rb = kmRange(b);
+  if (ra && rb && ra.from !== rb.from) return ra.from - rb.from;
+  if (ra && !rb) return -1;
+  if (!ra && rb) return 1;
+  return 0;
+}
+
+/**
+ * Shared display comparator used by every Progress Report view. Direction
+ * reverses the complete ordering: site blocks and the primary/secondary keys
+ * within each block. It never computes or changes running cumulative values.
+ */
+export function compareForDisplay(
+  a: ReportEntry,
+  b: ReportEntry,
+  sort: MeasurementSort,
+  direction: SortDirection = "asc",
+  groupBySite = false,
+): number {
+  const site = groupBySite ? compareSite(a, b) : 0;
+  const withinSite = sort === "chainage_date"
+    ? compareChainage(a, b) || chronologicalCompare(a, b)
+    : chronologicalCompare(a, b) || compareChainage(a, b);
+  const result = site || withinSite;
+  return direction === "desc" ? -result : result;
+}
+
+export function sortForDisplay(
+  computed: ComputedEntry[],
+  sort: MeasurementSort,
+  direction: SortDirection = "asc",
+  groupBySite = false,
+): ComputedEntry[] {
+  const copy = [...computed];
+  copy.sort((a, b) => compareForDisplay(a, b, sort, direction, groupBySite));
   return copy;
 }
 

@@ -1,0 +1,83 @@
+INSTRUCTION PR-01: Progress Report — unify column headers between Abstract and Detailed views (both should read "BOQ Qty"/"Cumulative"), add site-wise sort/grouping so chainage continuity per site is visible, and add a real ascending/descending toggle to the Chainage Wise and Date Wise tabs (currently only fixed-direction sort exists)
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Three related but independently-scoped display/sort fixes to client/src/pages/ProgressReport.tsx and shared/progressReport.ts. Do not touch DPR-02 through DPR-13, VB-18 through VB-25, PI-01, PI-02, PI-02B, or MAT-01/MAT-02. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+
+1. HEADER LABELS — confirmed real inconsistency, but the underlying values are NOT identical, so read this carefully before touching labels:
+   - Abstract view (`ProgressReport.tsx:222`): header "Contract Qty", rendering `abs.contractQty` (`:250`) — sourced from `computeItemAbstract` in `shared/progressReport.ts:410` (`const contractQty = item.boqQty ...`), i.e. the ITEM'S TOTAL contracted/BOQ quantity — one value per BOQ item.
+   - Detailed/Measurement view (`ProgressReport.tsx:347`), Chainage-wise (`:1162`), and Date-wise (`:1223`): header "BOQ Qty", rendering `e.boqCreditQty` (`shared/progressReport.ts:119`) — the QUANTITY CREDITED ON THAT SPECIFIC ROW/ENTRY, a smaller per-entry value; many rows sum up to the item's total.
+   - The person has explicitly confirmed their preference (after being shown this distinction): use "BOQ Qty" as the header label in BOTH places, accepting that the two tables show it at different granularities (item-total in Abstract, per-entry in Detailed/Chainage/Date) — this is acceptable given each table's own row-context makes the meaning clear. Do NOT invent a different label for one of them (e.g. do not use "BOQ Credit Qty") — both should literally read "BOQ Qty".
+   - Second confirmed mismatch: Abstract's "Cumulative" (`:223`, `abs.cumulativeQty`) vs Detailed's "Running Cum." (`:348`, `e.runningCumulative`, `shared/progressReport.ts:126`) — same underlying concept (running cumulative credited quantity), different wording. Per the person's stated preference (match Detailed's wording to Abstract's, not the reverse), rename Detailed's "Running Cum." to "Cumulative".
+   - Third, minor, flagged only for awareness, not necessarily a fix: Abstract's "DPRs" (a count column, `:225`) vs Detailed/Chainage/Date's "DPR" (a link column, `:348`/`:1162`/`:1223`) — these are genuinely different in kind (count vs link), so this is NOT a mislabel; leave as-is unless you judge a clearer distinction is warranted.
+   - "BOQ Item" header is already consistent across Abstract (`:221`) and Chainage/Date views (`:1162`/`:1223`) — no change needed there.
+
+2. SORTING — SITE-WISE: confirmed completely absent. `sortForDisplay` (`shared/progressReport.ts:431-446`) composes `byChainage` (`:432-438`) and `chronologicalCompare` (`:201-206`) — neither references `site` anywhere. The Chainage-wise tab's sort (`ProgressReport.tsx:1122`) and the Date-wise tab's grouping (`:1202-1211`) also never reference site. `state.site` (`:161-169`) is a FILTER only (all sites / one site) — when "All sites" is selected, rows from different sites are fully interleaved by chainage or date with no site grouping at all.
+
+3. SORTING — NO ASCENDING/DESCENDING TOGGLE ANYWHERE: confirmed absent, not partial. The three main tabs (Item/Chainage/Date, `ProgressReport.tsx:186-195`) are pure view-mode switches with no direction concept. The Detailed/Measurement view's two buttons ("Chainage → Date" and "Date → Chainage", `:338-339`) pick between two fixed sort MODES, not a direction toggle — clicking the same button again does nothing, there's no arrow/caret indicator, and the underlying comparators (`byChainage`, `chronologicalCompare`) only ever sort ascending, with no descending branch anywhere in the code. The Chainage-wise and Date-wise tabs have no sort control UI at all today.
+
+BACKGROUND — FIX 0: SITE FILTER DROPDOWN SHOWS DUPLICATE ENTRIES PER DPR REVISION, NOT ONE PER SITE
+Confirmed real, separate bug found during live testing. The Site filter dropdown (`ProgressReport.tsx:166`, `{(report?.sites ?? []).map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}`) is populated from `report.sites`, built server-side in `assembleProgressReport` (`server/routes.ts:16140`):
+```ts
+const dprSites = Array.from(new Set(entries.map((e) => e.site).filter((s): s is string => !!s))).sort();
+```
+This dedupes on the RAW `dprs.site` string. But `dprs.site` gets a provenance suffix appended every time a DPR is edited/copied (per `shared/siteName.ts:1-9`, e.g. `"ALLADURG PWD ROAD TO PAMPAD – Edited by Admin – 2026-09-16 05:43:09"`) — this is intentional DPR revision tracking, not a site name. Because the dedup runs on the raw suffixed string, every distinct edit timestamp for the SAME physical site produces its own dropdown entry, which is exactly what the person saw live (one real site appearing 4+ times, each with a different "Edited by ... [timestamp]" tail).
+
+The fix already has the right tool available: `shared/siteName.ts` already exports `getBaseSiteName()`/`normalizeSiteName()` specifically to strip this suffix, and is already used correctly elsewhere in this codebase (e.g. `server/routes.ts:16091-16106` via `storage.getSites()`/`siteMatchesPermitted`). A real `sites` master table also already exists (`shared/schema.ts:1776`).
+
+FIX 0 — DEDUPE THE SITE DROPDOWN ON THE TRUE SITE NAME
+a. In `server/routes.ts` ~line 16140, change the `dprSites` derivation to strip the edit-provenance suffix before deduplicating — e.g. `entries.map((e) => e.site ? getBaseSiteName(e.site) : null).filter(...)` — so each physical site appears exactly once regardless of how many times it's been edited.
+b. Prefer, if straightforward without expanding scope significantly: derive the dropdown list from the `sites` master table (`storage.getSites()`) filtered to sites actually referenced by this project's DPRs, rather than deriving it from DPR text at all — this is more robust long-term (a site's canonical name and dropdown behavior won't depend on DPR text formatting). Use your judgment on which approach is cleaner given the surrounding code, but the end result must be one clean entry per real site, with no edit-provenance text visible in the dropdown.
+c. Confirm the dropdown's VALUE (what gets sent when a site is selected/filtered) is also normalized consistently — selecting a site must correctly filter all its DPR entries regardless of which edit-revision suffix any individual entry happens to carry internally.
+d. This must not affect how the edit-provenance suffix itself is stored/displayed elsewhere (e.g. DPR history/audit views that legitimately want to show "Edited by ... [timestamp]") — only this dropdown's option-list derivation is in scope.
+
+FIX 1 — UNIFY HEADER LABELS
+a. Change Abstract view's header (`ProgressReport.tsx:222`) from "Contract Qty" to "BOQ Qty" — text label only, do not change what data it displays (`abs.contractQty` stays the same field).
+b. Change Detailed/Measurement view's "Running Cum." header (`:348`) to "Cumulative", matching Abstract's wording (`:223`) — text label only, same underlying field (`e.runningCumulative`).
+c. Confirm the Chainage-wise (`:1162`) and Date-wise (`:1223`) views' existing "BOQ Qty" headers need no further change (they already say "BOQ Qty", now consistent with the newly-relabeled Abstract header).
+d. Do not touch the "DPRs"/"DPR" pair (point 1 background) unless you find, during implementation, that it's trivially clarifiable without any logic change — optional, not required.
+e. Confirm this is a pure label/text change with zero effect on any calculation, export, or PDF/Excel output that might reference these column headers by text — check for any such references (e.g. report generation code that keys off header strings) and update them consistently if found.
+
+FIX 2 — SITE-WISE SORTING/GROUPING
+a. When multiple sites are in view (i.e., "All Sites" is selected in the existing site filter), add site as the PRIMARY sort/grouping key ahead of chainage or date, in both the Chainage-wise and Date-wise tabs (and the Detailed/Measurement view's two existing sort modes) — so all of one site's chainage/date sequence appears together as a contiguous block before moving to the next site, rather than being interleaved.
+b. When a SPECIFIC single site is already selected via the existing site filter, this is a non-issue (only one site's data is shown) — site-wise grouping only matters/activates in the "All Sites" case.
+c. Add a clear visual separator or sub-header between site groups (e.g. a site-name band row, consistent with how this codebase already handles grouped sections elsewhere — reuse an existing pattern if one fits, such as the category-band pattern used in Vendor Bills' date-grouping work from VB-25, adapted appropriately here) so the site boundaries are visually obvious, not just an invisible sort order.
+d. Within each site's block, existing chainage or date sort order (per whichever mode is active) is preserved exactly as today — this fix only adds the outer site grouping layer, not a change to the inner ordering logic.
+
+FIX 3 — CLICK-TO-TOGGLE ASCENDING/DESCENDING SORT
+a. Add a real ascending/descending toggle to BOTH the Chainage-wise tab and the Date-wise tab: clicking the relevant sort control once sorts ascending (with a clear visual indicator, e.g. an up arrow), clicking it again toggles to descending (down arrow) — a genuine state-flipping toggle, not two fixed one-way modes.
+b. This applies to the tab's primary sort key (chainage number for Chainage-wise, date for Date-wise) — implement actual descending comparator logic where none currently exists (confirmed today only ascending exists anywhere in this feature's sort code).
+c. If Fix 2's site-wise grouping is active (multiple sites shown), the ascending/descending toggle should affect the ORDER WITHIN each site's block and the order of the site blocks themselves consistently (your judgment on the cleanest combined behavior — e.g. toggling descending reverses both the site block order and the chainage/date order within each block) — describe what you chose to do here in your report so the person can confirm it matches what they expect.
+d. The existing "Chainage → Date" / "Date → Chainage" mode-switch buttons in the Detailed/Measurement view (`:338-339`) are a SEPARATE concept (which field to sort by first) from the new ascending/descending toggle (which direction) — both should coexist; do not remove the existing mode-switch buttons, add direction toggling alongside them for that view too, consistent with the Chainage-wise/Date-wise tabs.
+
+WHAT NOT TO DO
+- Do not use a different label for Detailed's "BOQ Qty" than Abstract's — the person explicitly confirmed both should read exactly "BOQ Qty" despite representing different granularities.
+- Do not change what data any column actually displays — Fix 1 is text-label-only.
+- Do not touch DPR-02 through DPR-13, VB-18 through VB-25, PI-01, PI-02, PI-02B, or MAT-01/MAT-02.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change — all three fixes are display/sort logic only, using data that already exists.
+
+TESTS
+Z. Open the Site filter dropdown on a project with DPRs that have been edited multiple times. Confirm each physical site now appears exactly once, with no "Edited by ... [timestamp]" text visible anywhere in the list.
+Z2. Select a site from the corrected dropdown and confirm it still correctly filters to that site's DPR entries, regardless of how many edit-revisions those entries have internally.
+A. Open Abstract view and confirm the header now reads "BOQ Qty" (was "Contract Qty"), with the same values as before.
+B. Open Detailed/Measurement view and confirm "Running Cum." now reads "Cumulative", with the same values as before.
+C. Confirm no report export (PDF/Excel/print) broke or shows stale header text after this change.
+D. With "All Sites" selected and data from 2+ sites present, open Chainage-wise tab. Confirm rows are now grouped by site first, with each site's chainage sequence appearing as a contiguous block with a clear visual separator, and confirm the same for Date-wise tab.
+E. With a single specific site selected, confirm behavior is unchanged (no site grouping needed/shown, since there's only one site).
+F. Click the new ascending/descending toggle on Chainage-wise tab. Confirm the order genuinely flips (not just re-render with no visible change), with a clear ascending/descending indicator.
+G. Repeat Test F for Date-wise tab.
+H. With site-grouping active (multiple sites) AND the descending toggle applied, confirm the combined behavior matches what was described in the report-back, and looks sensible (not confusingly half-reversed).
+I. Confirm the existing "Chainage → Date"/"Date → Chainage" mode buttons in the Detailed view still work exactly as before, now with a direction toggle available alongside them.
+
+REPORT BACK
+1. Confirm Fix 0 with Test Z/Z2 evidence (screenshots) — a dropdown with a multiply-edited site showing only once, and correct filtering after selecting it.
+2. Confirm Fix 1 with Test A/B/C evidence (screenshots).
+3. Confirm Fix 2 with Test D/E evidence (screenshots), including a case with 2+ sites clearly grouped.
+4. Confirm Fix 3 with Test F/G/H/I evidence (screenshots), and explicitly describe the combined site-grouping + direction-toggle behavior you implemented per point 3c.
+5. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

@@ -25,7 +25,7 @@ import { siteMatchesPermitted, untrustedVendorBillAutoItems, vendorBillAutoSourc
 import { normalizeSiteTripHistorySite } from "@shared/siteTripHistory";
 import { normalizeVehicleSupplierVehicle } from "@shared/vehicleSupplierAssociation";
 import { calculateHireBilling, planHireRegisterRows, type HireExceptionDecisionInput } from "@shared/hireBilling";
-import { computeItemEntries, computeItemAbstract } from "@shared/progressReport";
+import { computeItemEntries, computeItemAbstract, progressReportEntryMatchesSite, progressReportSiteOptions } from "@shared/progressReport";
 import { isLayerCapableItem } from "@shared/layerDisplay";
 import { boqItemDisplayName, shortItemName as sharedShortItemName, trustedCanonicalBoqName } from "@shared/boqItemName";
 import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, isContractCutToFillDescription, validateBarAllocation, executionArrangementCategoryForItem, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
@@ -16102,8 +16102,11 @@ export async function registerRoutes(
     if (permittedSiteNames !== null) {
       entries = entries.filter((e) => e.site != null && siteMatchesPermitted(e.site, permittedSiteNames));
     }
+    // Dropdown options use clean physical-site names. Keep raw DPR site strings
+    // (including edit/copy provenance) intact on entries for audit/history.
+    const dprSites = progressReportSiteOptions(entries);
     if (siteFilter) {
-      entries = entries.filter((e) => e.site != null && siteMatchesPermitted(e.site, [siteFilter]));
+      entries = entries.filter((e) => progressReportEntryMatchesSite(e, siteFilter));
     }
     const itemsById = new Map(boqItems.map((i) => [i.id, i]));
     const byItem = new Map<number, typeof entries>();
@@ -16137,7 +16140,6 @@ export async function registerRoutes(
         entries: computeItemEntries(list, item as any),
       });
     }
-    const dprSites = Array.from(new Set(entries.map((e) => e.site).filter((s): s is string => !!s))).sort();
     const earliest = entries.reduce<string | null>((min, e) => (min == null || e.dprDate < min ? e.dprDate : min), null);
     return {
       project: { id: project.id, name: project.name, startDate: (project as any).startDate ?? null },
@@ -16181,14 +16183,14 @@ export async function registerRoutes(
       const summaryRows: any[][] = [
         ["Progress Report — RA-style DPR Rollup"],
         ["Project", report.project.name],
-        ["Site", (req.query.site as string) || "All sites"],
+        ["Site", (req.query.site as string) || "All Sites"],
         ["Period", `${from} to ${to}`],
         ["Generated", new Date().toISOString().slice(0, 10)],
         [],
-        ["Sl.", "BOQ Item", "UoM", "Contract Qty", "Previous", "This Period", "Cumulative", "Balance", "% Complete", "DPR Count"],
+        ["Sl.", "BOQ Item", "UoM", "BOQ Qty", "Previous", "This Period", "Cumulative", "Balance", "% Complete", "DPR Count"],
       ];
       const detailRows: any[][] = [
-        ["Date", "Item", "Side", "From", "To", "L", "W", "T", "Measured Qty", "Measured UoM", "BOQ Qty", "BOQ UoM", "Running Cumulative", "DPR No.", "Prepared By", "Remarks", "Possible Overlap", "Incidental (no BOQ credit)"],
+        ["Date", "Item", "Side", "From", "To", "L", "W", "T", "Measured Qty", "Measured UoM", "BOQ Qty", "BOQ UoM", "Cumulative", "DPR No.", "Prepared By", "Remarks", "Possible Overlap", "Incidental (no BOQ credit)"],
       ];
       let sl = 0;
       for (const it of report.items) {

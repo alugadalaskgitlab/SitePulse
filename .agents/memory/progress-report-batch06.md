@@ -9,3 +9,6 @@ description: Rules for the read-only Progress Report — single math seam, canon
 - **Why:** the report is a contractual/audit surface (RA bill style); sort-dependent cumulatives or silently corrected historical rows would falsify it. Ambiguous rows get a "Review quantity" flag, never a rewrite.
 - **Security:** report endpoints must assertView("site_dprs") AND authorize the project's site against getPermittedSiteNames — filtering DPR rows alone still leaks BOQ metadata. Client-side route gating is not an API boundary (architect finding).
 - Overlap detection is advisory-only: compatible sides + strictly intersecting km ranges; adjacent ranges and LHS-vs-RHS never warn; quantities never adjusted.
+
+- **Label decision:** “BOQ Qty” intentionally means the item-total contract quantity in Abstract and the per-entry credited quantity in detailed views; “Cumulative” is the common heading.
+- **Why:** The user explicitly accepted the granularity difference and rejected inventing “BOQ Credit Qty” as an alternative. Keep fields and math unchanged when adjusting labels.

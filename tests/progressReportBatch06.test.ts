@@ -520,6 +520,6 @@ describe("Progress Report quantity presentation source lock (06X-HF2)", () => {
     expect((source.match(/e\.boqCreditQty != null/g) ?? []).length).toBeGreaterThanOrEqual(3);
     expect(source).not.toContain("e.converted && e.boqCreditQty");
     expect(source).toContain("no BOQ credit");
-    expect(source).toContain("Contract Qty");
+    expect(source).toContain("BOQ Qty");
   });
 });

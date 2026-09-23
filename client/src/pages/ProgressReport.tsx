@@ -37,14 +37,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
-import { Download, ChevronDown, ChevronRight, AlertTriangle, Layers, Loader2 } from "lucide-react";
+import { Download, ChevronDown, ChevronRight, AlertTriangle, Layers, Loader2, ArrowUp, ArrowDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { buildReason, OTHER_VALUE } from "@/lib/overlapReason";
 import {
   type ComputedEntry, type ReportBoqItem, type OverlapPair,
   computeItemAbstract, sortForDisplay, buildCoverageStrips, entryIntersectsRange,
-  layerBreakdown, buildOverlapPairs,
+  layerBreakdown, buildOverlapPairs, compareForDisplay, reportSiteName,
+  progressReportEntryMatchesSite, type SortDirection,
 } from "@shared/progressReport";
 import { layerDisplayName, showLayerField } from "@shared/layerDisplay";
 import { parseChainageKm, formatChainageKm } from "@shared/barSide";
@@ -162,7 +163,7 @@ export default function ProgressReport() {
           <Select value={state.site || "__all"} onValueChange={(v) => update({ site: v === "__all" ? "" : v })}>
             <SelectTrigger className="w-44" data-testid="select-site"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="__all">All sites</SelectItem>
+              <SelectItem value="__all">All Sites</SelectItem>
               {(report?.sites ?? []).map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
             </SelectContent>
           </Select>
@@ -219,7 +220,7 @@ function ItemWise({ abstracts, from, to, state, update }: { abstracts: Array<{ i
           <thead className="bg-slate-50 text-slate-700">
             <tr className="[&>th]:px-3 [&>th]:py-2 [&>th]:text-left [&>th]:font-semibold">
               <th>Sl.</th><th>BOQ Item</th><th>UoM</th>
-              <th className="text-right">Contract Qty</th><th className="text-right">Previous</th>
+              <th className="text-right">BOQ Qty</th><th className="text-right">Previous</th>
               <th className="text-right">This Period</th><th className="text-right">Cumulative</th>
               <th className="text-right">Balance</th><th className="text-right">%</th>
               <th className="text-right">DPRs</th><th></th>
@@ -272,7 +273,12 @@ function ItemWise({ abstracts, from, to, state, update }: { abstracts: Array<{ i
 
 function MeasurementSheet({ item, from, to, state, update }: { item: ReportItem; from: string; to: string } & Nav) {
   const sort = state.sort;
-  const rows = useMemo(() => sortForDisplay(item.entries, sort), [item.entries, sort]);
+  const [direction, setDirection] = useState<SortDirection>("asc");
+  const groupBySite = !state.site;
+  const rows = useMemo(
+    () => sortForDisplay(item.entries, sort, direction, groupBySite),
+    [item.entries, sort, direction, groupBySite],
+  );
   const strips = useMemo(() => buildCoverageStrips(item.entries), [item.entries]);
   const anyConverted = item.entries.some((e) => e.converted);
   const layers = useMemo(() => layerBreakdown(item.entries), [item.entries]);
@@ -337,6 +343,7 @@ function MeasurementSheet({ item, from, to, state, update }: { item: ReportItem;
         <span className="text-slate-600">Sort:</span>
         <Button size="sm" variant={sort === "chainage_date" ? "default" : "outline"} onClick={() => update({ sort: "chainage_date" })} data-testid="sort-chainage-date">Chainage → Date</Button>
         <Button size="sm" variant={sort === "date_chainage" ? "default" : "outline"} onClick={() => update({ sort: "date_chainage" })} data-testid="sort-date-chainage">Date → Chainage</Button>
+        <DirectionButton direction={direction} onToggle={() => setDirection((d) => d === "asc" ? "desc" : "asc")} testId="sort-measurement-direction" />
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs bg-white rounded border text-slate-900">
@@ -345,18 +352,18 @@ function MeasurementSheet({ item, from, to, state, update }: { item: ReportItem;
               <th>Sl.</th><th>Date</th><th>Side</th><th>From</th><th>To</th>
               <th className="text-right">L</th><th className="text-right">W</th><th className="text-right">T</th>
               {anyConverted ? <><th className="text-right">Measured Qty</th><th className="text-right">BOQ Qty</th></> : <th className="text-right">BOQ Qty</th>}
-              <th className="text-right">Running Cum.</th><th>DPR</th><th>Prepared By</th><th>Remarks</th>
+              <th className="text-right">Cumulative</th><th>DPR</th><th>Prepared By</th><th>Remarks</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((e, i) => {
               const isIncidental = !!e.isIncidental;
               return (
-                <tr
-                  key={`${e.kind}:${e.entryId}`}
-                  className={`border-t ${isIncidental ? "bg-purple-50 italic" : e.overlaps.length ? "bg-orange-50" : ""}`}
-                  data-testid={`row-entry-${e.kind}-${e.entryId}`}
-                >
+                <Fragment key={`${e.kind}:${e.entryId}`}>
+                {groupBySite && (i === 0 || !progressReportEntryMatchesSite(e, reportSiteName(rows[i - 1]))) && (
+                  <SiteBand site={reportSiteName(e)} colSpan={anyConverted ? 14 : 13} />
+                )}
+                <tr className={`border-t ${isIncidental ? "bg-purple-50 italic" : e.overlaps.length ? "bg-orange-50" : ""}`} data-testid={`row-entry-${e.kind}-${e.entryId}`}>
                   <td className="px-2 py-1.5">{i + 1}</td>
                   <td className="px-2 py-1.5 whitespace-nowrap">
                     {e.dprDate}
@@ -408,6 +415,7 @@ function MeasurementSheet({ item, from, to, state, update }: { item: ReportItem;
                     {e.remarks && <span className="text-slate-500 not-italic">{e.remarks}</span>}
                   </td>
                 </tr>
+                </Fragment>
               );
             })}
           </tbody>
@@ -1102,10 +1110,36 @@ function OverlapReview({
   );
 }
 
+function DirectionButton({
+  direction, onToggle, testId,
+}: {
+  direction: SortDirection;
+  onToggle: () => void;
+  testId: string;
+}) {
+  const ascending = direction === "asc";
+  return (
+    <Button size="sm" variant="outline" onClick={onToggle} data-testid={testId} aria-label={`Sort ${ascending ? "ascending" : "descending"}; click to reverse`}>
+      {ascending ? <ArrowUp className="w-3.5 h-3.5 mr-1" /> : <ArrowDown className="w-3.5 h-3.5 mr-1" />}
+      {ascending ? "Ascending" : "Descending"}
+    </Button>
+  );
+}
+
+function SiteBand({ site, colSpan }: { site: string; colSpan: number }) {
+  return (
+    <tr className="bg-blue-50 border-y border-blue-200" data-testid={`site-band-${site}`}>
+      <td colSpan={colSpan} className="px-3 py-1.5 text-xs font-semibold text-blue-900">Site: {site}</td>
+    </tr>
+  );
+}
+
 // ── Chainage-wise ────────────────────────────────────────────────────────────
 
 function ChainageWise({ items, state, update }: { items: ReportItem[] } & Nav) {
   const { chFrom, chTo, chSide } = state;
+  const [direction, setDirection] = useState<SortDirection>("asc");
+  const groupBySite = !state.site;
 
   const fromKm = parseChainageKm(chFrom);
   const toKm = parseChainageKm(chTo);
@@ -1119,9 +1153,12 @@ function ChainageWise({ items, state, update }: { items: ReportItem[] } & Nav) {
         if (entryIntersectsRange(e, fromKm!, toKm!, chSide || null)) out.push({ e, item: it.boqItem });
       }
     }
-    out.sort((a, b) => (a.e.dprDate < b.e.dprDate ? -1 : a.e.dprDate > b.e.dprDate ? 1 : String(itemLabel(a.item)).localeCompare(String(itemLabel(b.item)))));
+    out.sort((a, b) =>
+      compareForDisplay(a.e, b.e, "chainage_date", direction, groupBySite)
+      || (direction === "asc" ? 1 : -1) * String(itemLabel(a.item)).localeCompare(String(itemLabel(b.item))),
+    );
     return out;
-  }, [items, fromKm, toKm, chSide, active]);
+  }, [items, fromKm, toKm, chSide, active, direction, groupBySite]);
 
   const totals = useMemo(() => {
     const m = new Map<string, { label: string; unit: string; qty: number | null }>();
@@ -1153,6 +1190,7 @@ function ChainageWise({ items, state, update }: { items: ReportItem[] } & Nav) {
             </SelectContent>
           </Select>
         </div>
+        <DirectionButton direction={direction} onToggle={() => setDirection((d) => d === "asc" ? "desc" : "asc")} testId="sort-chainage-direction" />
         {!active && (chFrom || chTo) && <div className="text-xs text-amber-600">Enter valid chainages (e.g. 2+000)</div>}
       </CardContent></Card>
       {active && (
@@ -1162,8 +1200,12 @@ function ChainageWise({ items, state, update }: { items: ReportItem[] } & Nav) {
               <th>Date</th><th>BOQ Item</th><th>Side</th><th>From</th><th>To</th><th className="text-right">Measured Qty</th><th className="text-right">BOQ Qty</th><th>DPR</th><th>Remarks</th>
             </tr></thead>
             <tbody>
-              {rows.map(({ e, item }) => (
-                <tr key={`${e.kind}:${e.entryId}`} className={`border-t ${e.isIncidental ? "bg-purple-50 italic" : ""}`} data-testid={`row-ch-${e.kind}-${e.entryId}`}>
+              {rows.map(({ e, item }, i) => (
+                <Fragment key={`${e.kind}:${e.entryId}`}>
+                {groupBySite && (i === 0 || !progressReportEntryMatchesSite(e, reportSiteName(rows[i - 1].e))) && (
+                  <SiteBand site={reportSiteName(e)} colSpan={9} />
+                )}
+                <tr className={`border-t ${e.isIncidental ? "bg-purple-50 italic" : ""}`} data-testid={`row-ch-${e.kind}-${e.entryId}`}>
                   <td className="px-2 py-1.5 whitespace-nowrap">{e.dprDate}</td>
                   <td className="px-2 py-1.5 max-w-xs font-medium">{itemLabel(item)}</td>
                   <td className="px-2 py-1.5">{e.side ?? "—"}</td>
@@ -1178,6 +1220,7 @@ function ChainageWise({ items, state, update }: { items: ReportItem[] } & Nav) {
                   <td className="px-2 py-1.5 not-italic"><Link href={dprLinkWithReturn(e.dprId, state)} className="text-blue-600 hover:underline">DPR-{e.dprId}</Link></td>
                   <td className="px-2 py-1.5 max-w-xs text-slate-500">{e.remarks ?? ""}</td>
                 </tr>
+                </Fragment>
               ))}
               {rows.length === 0 && <tr><td colSpan={9} className="px-3 py-4 text-center text-slate-500">No submitted DPR progress intersects this range.</td></tr>}
             </tbody>
@@ -1199,23 +1242,50 @@ function ChainageWise({ items, state, update }: { items: ReportItem[] } & Nav) {
 // ── Date-wise ────────────────────────────────────────────────────────────────
 
 function DateWise({ items, from, to, state }: { items: ReportItem[]; from: string; to: string; state: ProgressReportState }) {
+  const [direction, setDirection] = useState<SortDirection>("asc");
+  const groupBySite = !state.site;
   const groups = useMemo(() => {
-    const m = new Map<string, Array<{ e: ComputedEntry; item: ReportItem["boqItem"] }>>();
+    const rows: Array<{ e: ComputedEntry; item: ReportItem["boqItem"] }> = [];
     for (const it of items) {
       for (const e of it.entries) {
         if (e.dprDate < from || e.dprDate > to) continue;
-        (m.get(e.dprDate) ?? m.set(e.dprDate, []).get(e.dprDate)!).push({ e, item: it.boqItem });
+        rows.push({ e, item: it.boqItem });
       }
     }
-    return Array.from(m.entries()).sort((a, b) => (a[0] < b[0] ? 1 : -1));
-  }, [items, from, to]);
+    rows.sort((a, b) =>
+      compareForDisplay(a.e, b.e, "date_chainage", direction, groupBySite)
+      || (direction === "asc" ? 1 : -1) * String(itemLabel(a.item)).localeCompare(String(itemLabel(b.item))),
+    );
+    const grouped: Array<{ site: string; dates: Array<[string, typeof rows]> }> = [];
+    for (const row of rows) {
+      const site = reportSiteName(row.e);
+      let siteGroup = grouped[grouped.length - 1];
+      if (!siteGroup || !progressReportEntryMatchesSite(row.e, siteGroup.site)) {
+        siteGroup = { site, dates: [] };
+        grouped.push(siteGroup);
+      }
+      let dateGroup = siteGroup.dates[siteGroup.dates.length - 1];
+      if (!dateGroup || dateGroup[0] !== row.e.dprDate) {
+        dateGroup = [row.e.dprDate, []];
+        siteGroup.dates.push(dateGroup);
+      }
+      dateGroup[1].push(row);
+    }
+    return grouped;
+  }, [items, from, to, direction, groupBySite]);
 
   if (groups.length === 0) return <div className="text-sm text-slate-500 p-6 text-center">No submitted DPR progress in the selected period.</div>;
 
   return (
     <div className="space-y-4">
-      {groups.map(([date, rows]) => (
-        <Card key={date}><CardContent className="p-0">
+      <div className="flex justify-end">
+        <DirectionButton direction={direction} onToggle={() => setDirection((d) => d === "asc" ? "desc" : "asc")} testId="sort-date-direction" />
+      </div>
+      {groups.map(({ site, dates }) => (
+        <div key={site} className="space-y-2">
+        {groupBySite && <div className="px-3 py-2 rounded-t bg-blue-50 border border-blue-200 font-semibold text-sm text-blue-900" data-testid={`site-band-${site}`}>Site: {site}</div>}
+        {dates.map(([date, rows]) => (
+        <Card key={`${site}:${date}`}><CardContent className="p-0">
           <div className="px-3 py-2 bg-slate-50 font-semibold text-sm border-b text-slate-800">{date}</div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-slate-900">
@@ -1246,6 +1316,8 @@ function DateWise({ items, from, to, state }: { items: ReportItem[]; from: strin
             </table>
           </div>
         </CardContent></Card>
+        ))}
+        </div>
       ))}
     </div>
   );

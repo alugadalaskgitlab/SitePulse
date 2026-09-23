@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "options": [
+    "All Sites",
+    "Site Alpha",
+    "Site Beta"
+  ],
+  "screenshots": [
+    "/home/runner/workspace/tests/fixtures/progress-report-pr01/evidence/Z-site-dropdown-deduped.png",
+    "/home/runner/workspace/tests/fixtures/progress-report-pr01/evidence/Z2-selected-legacy-suffixed-site.png",
+    "/home/runner/workspace/tests/fixtures/progress-report-pr01/evidence/E-selected-site-no-group-band.png",
+    "/home/runner/workspace/tests/fixtures/progress-report-pr01/evidence/A-abstract-BOQ-Qty.png",
+    "/home/runner/workspace/tests/fixtures/progress-report-pr01/evidence/B-I-detailed-bands-mode-direction.png",
+    "/home/runner/workspace/tests/fixtures/progress-report-pr01/evidence/I-detailed-date-mode-descending.png",
+    "/home/runner/workspace/tests/fixtures/progress-report-pr01/evidence/D-F-chainage-sites-ascending.png",
+    "/home/runner/workspace/tests/fixtures/progress-report-pr01/evidence/F-H-chainage-sites-descending.png",
+    "/home/runner/workspace/tests/fixtures/progress-report-pr01/evidence/D-G-date-sites-ascending.png",
+    "/home/runner/workspace/tests/fixtures/progress-report-pr01/evidence/G-H-date-sites-descending.png"
+  ]
+}
