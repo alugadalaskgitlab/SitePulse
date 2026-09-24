@@ -2649,3 +2649,73 @@ mtime_ms = 1790219765239
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/427de7a6-d110-4e9c-9927-feba0ea26523/b75f3d0d-725e-4b75-9f97-b512ec2fd975"
 storage_version_token = "1790220197137054"
 content_type = "image/png"
+
+[[outputs]]
+id = "n2fnKckzANS40zZAVrfU9"
+uri = "file://tests/fixtures/vendor-bills-part-b/evidence/B1-converted-synthetic-actual-component.png"
+type = "image"
+title = "B1 — unique match refreshes quantity, rate and amount"
+description = "Actual VendorBills component with labelled synthetic APIs and data. No live bills were changed."
+logical_id = "56288070-c89f-47ac-8554-6eb7a9c615a5"
+content_hash = "sha256:6221d82738a4ad2537436a028146d0065bc0313a86ee6892db175a1963c72ebb"
+size = 116009
+mtime_ms = 1790236848261
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/56288070-c89f-47ac-8554-6eb7a9c615a5/69bc2b94-87cf-4dda-b5d8-48b99429df69"
+storage_version_token = "1790236899775265"
+content_type = "image/png"
+
+[[outputs]]
+id = "OQBt9Ycs0uNyrmwzXwL_P"
+uri = "file://tests/fixtures/vendor-bills-part-b/evidence/B2-no-match-warning-synthetic-actual-component.png"
+type = "image"
+title = "B2 — no match preserves values and warns"
+description = "Actual VendorBills component with labelled synthetic APIs and data. No live bills were changed."
+logical_id = "5369af3f-c852-46ce-8157-787f26f73806"
+content_hash = "sha256:3ca031ff9e6d35ea8d9dd072ee7f5057891352a44a3025adc323c5dd1451e43f"
+size = 112989
+mtime_ms = 1790236848665
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/5369af3f-c852-46ce-8157-787f26f73806/16610e78-6bc1-416e-aa50-215fcae610cb"
+storage_version_token = "1790236902013086"
+content_type = "image/png"
+
+[[outputs]]
+id = "LV3m3pZ-C4uESOxIf_8Dc"
+uri = "file://tests/fixtures/vendor-bills-part-b/evidence/B3-ambiguous-warning-synthetic-actual-component.png"
+type = "image"
+title = "B3 — ambiguous match preserves values and warns"
+description = "Actual VendorBills component with labelled synthetic APIs and data. No live bills were changed."
+logical_id = "10305658-212f-4c16-9fe6-996f83fdf82c"
+content_hash = "sha256:e1a1f1ecb7960c273e8f339fb1991a80b969a970def8ebfe5d28c9d46c702ec5"
+size = 115706
+mtime_ms = 1790236848901
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/10305658-212f-4c16-9fe6-996f83fdf82c/75f755ad-d24a-4561-ba2b-39f7b72a1485"
+storage_version_token = "1790236904046126"
+content_type = "image/png"
+
+[[outputs]]
+id = "miI63YdhuJtnwJmnwjj6l"
+uri = "file://tests/fixtures/vendor-bills-part-b/evidence/B4-linked-parity-synthetic-actual-component.png"
+type = "image"
+title = "B4 — linked vendor uses the same name-based rules"
+description = "Actual VendorBills component with labelled synthetic APIs and data. No live bills were changed."
+logical_id = "642acc41-7190-46d0-9b40-6ffc768cf974"
+content_hash = "sha256:6221d82738a4ad2537436a028146d0065bc0313a86ee6892db175a1963c72ebb"
+size = 116009
+mtime_ms = 1790236849429
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/642acc41-7190-46d0-9b40-6ffc768cf974/994f3259-22bb-4ee4-b2d4-6f86a46ec342"
+storage_version_token = "1790236906393334"
+content_type = "image/png"
+
+[[outputs]]
+id = "XLHynUcpfVhSZ4up5sVdN"
+uri = "file://tests/fixtures/vendor-bills-part-b/evidence/B5-bulk-inline-physical-roundtrip-synthetic-actual-component.png"
+type = "image"
+title = "B5 — Set Rates followed by inline unit restoration"
+description = "Actual VendorBills component with labelled synthetic APIs and data. No live bills were changed."
+logical_id = "9dff69cb-9d5b-4ea1-822d-5a53f4ee7b17"
+content_hash = "sha256:a9cf1fb42fa0519956876f129cab4bcd95c98d3d5039b76961d38c03fa1db431"
+size = 103501
+mtime_ms = 1790236851409
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/9dff69cb-9d5b-4ea1-822d-5a53f4ee7b17/7af12d47-4a1d-43fa-8df5-9c53518beb4c"
+storage_version_token = "1790236908409547"
+content_type = "image/png"

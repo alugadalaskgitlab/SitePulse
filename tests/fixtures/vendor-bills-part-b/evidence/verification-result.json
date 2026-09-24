@@ -1,0 +1,25 @@
+{
+  "passed": true,
+  "syntheticFixture": true,
+  "actualComponent": "VendorBills",
+  "screenshots": [
+    "/home/runner/workspace/tests/fixtures/vendor-bills-part-b/evidence/B1-converted-synthetic-actual-component.png",
+    "/home/runner/workspace/tests/fixtures/vendor-bills-part-b/evidence/B2-no-match-warning-synthetic-actual-component.png",
+    "/home/runner/workspace/tests/fixtures/vendor-bills-part-b/evidence/B3-ambiguous-warning-synthetic-actual-component.png",
+    "/home/runner/workspace/tests/fixtures/vendor-bills-part-b/evidence/B4-linked-parity-synthetic-actual-component.png",
+    "/home/runner/workspace/tests/fixtures/vendor-bills-part-b/evidence/B4-stale-qty-protected-synthetic-actual-component.png",
+    "/home/runner/workspace/tests/fixtures/vendor-bills-part-b/evidence/B5-set-rates-synthetic-actual-component.png",
+    "/home/runner/workspace/tests/fixtures/vendor-bills-part-b/evidence/B5-bulk-inline-physical-roundtrip-synthetic-actual-component.png"
+  ],
+  "assertions": [
+    "B1 single-card trip conversion and amount (per-line vendor differs from bill vendor)",
+    "B2 absent card preserves qty/rate and warns",
+    "B3 ambiguous cards preserve qty/rate and warns",
+    "B4 linked/unlinked name matching and repeat restoration",
+    "Delayed inline rate-card response cannot overwrite subsequent qty edit",
+    "B5 existing Set Rates opens/applies",
+    "Manual unconvertible source stays 600; original-unit restoration uses original rate",
+    "Persisted row without provenance: bulk Set Rates conversion then inline restore qty 600/rate 12/amount 7200",
+    "No live APIs or writes"
+  ]
+}

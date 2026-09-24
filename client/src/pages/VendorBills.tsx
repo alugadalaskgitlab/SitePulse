@@ -85,6 +85,10 @@ interface LineItem {
   vehicleNumber?: string | null;
   receiptNumber?: string | null;
   initialBlank?: boolean;
+  vendorName?: string | null;
+  physicalQuantity?: number;
+  physicalUnit?: string;
+  unitRateWarning?: string;
 }
 
 type AdditionalAdjustment = { label: string; amount: number };
@@ -182,6 +186,9 @@ function mapAutoBillItem(item: any): LineItem {
     transporter: item.transporter ?? null,
     vehicleNumber: item.vehicleNumber ?? null,
     receiptNumber: item.receiptNumber ?? null,
+    vendorName: item.vendorName ?? null,
+    physicalQuantity: Number(item.qty) || 0,
+    physicalUnit: item.unit || "HRS",
   };
 }
 
@@ -330,7 +337,7 @@ function getSiteBadgeClass(type: "site" | "plant" | "site-unlinked"): string {
 }
 
 function stripSourceSuffix(desc: string): string {
-  return desc.replace(/\s*\(SITE-UNLINKED\)\s*/gi, " ").replace(/\s*\(SITE TRIP\)\s*/gi, " ").replace(/\s*\(SITE\)\s*/gi, " ").replace(/\s*\(PLANT\)\s*/gi, " ").trim();
+  return desc.replace(/\s*\(SITE-UNLINKED\)\s*/gi, " ").replace(/\s*\(SITE TRIP MATERIAL\)\s*/gi, " ").replace(/\s*\(SITE TRIP\)\s*/gi, " ").replace(/\s*\(SITE\)\s*/gi, " ").replace(/\s*\(PLANT\)\s*/gi, " ").trim();
 }
 
 function canonicalizeMachineType(name: string): string {
@@ -792,6 +799,11 @@ export default function VendorBills() {
   const [showSetRatesDialog, setShowSetRatesDialog] = useState(false);
   const [bulkRates, setBulkRates] = useState<Record<string, BulkRateSelection>>({});
   const [showBulkRateConfirmation, setShowBulkRateConfirmation] = useState(false);
+  const unitEditGeneration = useRef(0);
+  const unitEditContext = `${view}|${editingBillId ?? ""}|${billType}|${selectedSiteId}|${vendorName}|${periodFrom}|${periodTo}`;
+  const unitEditContextRef = useRef(unitEditContext);
+  unitEditContextRef.current = unitEditContext;
+  useEffect(() => { unitEditGeneration.current++; }, [vendorName, editingBillId, view, billType, selectedSiteId, periodFrom, periodTo]);
   const activePullContextRef = useRef("");
   const pullInFlightRef = useRef(false);
   const [pullInFlight, setPullInFlight] = useState(false);
@@ -1229,6 +1241,7 @@ export default function VendorBills() {
         siteName: inferSiteNameFromDescription(item.description, item.siteName) || null,
         suppliedTo: item.suppliedTo ?? null,
         transporter: item.transporter ?? null,
+        vendorName: (item as any).vendorName ?? null,
       }))
     );
     const persisted = ((bill as any).hireStatements || []).map((s: any, index: number): HireGroup => {
@@ -1488,6 +1501,7 @@ export default function VendorBills() {
   };
 
   const removeLineItem = (index: number) => {
+    unitEditGeneration.current++;
     setLineItems(prev => {
       const item = prev[index];
       if (item && String(item.source || "").toLowerCase().startsWith("auto")) {
@@ -1715,9 +1729,68 @@ export default function VendorBills() {
   }, [includedHireCalculated.length, includedHireCalculated.map(x => `${x.group.id}:${x.result?.netAmount}:${x.result?.quantity}`).join("|")]);
 
   const updateLineItem = (index: number, field: keyof LineItem, value: any) => {
+    unitEditGeneration.current++;
+    if (field === "unit") {
+      const before = lineItems[index];
+      if (!before || !isDifferentBillingUnit(before.unit, value)) return;
+      const generation = unitEditGeneration.current;
+      const contextAtEdit = unitEditContextRef.current;
+      const selectedVendor = before.vendorName?.trim() || vendorName;
+      const warning = "Unit changed — qty/rate may no longer match this vendor's rate card; use Set Rates to review.";
+      setLineItems(prev => prev.map((item, i) => i === index ? {
+        ...item, unit: value, initialBlank: false,
+        physicalQuantity: item.physicalQuantity ?? item.qty,
+        physicalUnit: item.physicalUnit ?? item.unit,
+        unitRateWarning: warning,
+      } : item));
+      const physicalUnit = before.physicalUnit ?? before.unit;
+      const group = groupRateItems([{ ...before, unit: physicalUnit }])[0];
+      if (!group || !selectedVendor) return;
+      void (async () => {
+        try {
+          const response = await fetch(`/api/vendor-rate-cards?vendorName=${encodeURIComponent(selectedVendor)}`);
+          if (!response.ok) throw new Error(`Rate-card lookup failed (${response.status})`);
+          const cards: VendorRateCardRecord[] = await response.json();
+          const matches = matchingRateCardsForGroup(group, value, cards, selectedVendor, { allowVendorAliases: true })
+            .filter(card => Number(card.rate) > 0);
+          if (matches.length !== 1) return;
+          // Use VB-22/VB-25's conversion gate: one source trip can be
+          // billed as one commercial trip; hours→days and CFT→MT cannot
+          // be inferred. Returning to the physical unit restores its qty.
+          const conversion = selectAutoMaterialRateConversion(
+            { category: before.category, unit: physicalUnit, sourceType: before.sourceType },
+            group, [matches[0]], selectedVendor,
+          );
+          const restoringPhysical = !isDifferentBillingUnit(physicalUnit, value);
+          if (!restoringPhysical && (conversion.status !== "converted" || conversion.targetUnit !== normalizeRateCardPart(value))) return;
+          if (generation !== unitEditGeneration.current || contextAtEdit !== unitEditContextRef.current) return;
+          setLineItems(prev => prev.map((item, i) => {
+            if (i !== index || item.unit !== value || item.source !== before.source ||
+                item.sourceId !== before.sourceId || item.description !== before.description) return item;
+            const next = {
+              ...item,
+              qty: restoringPhysical ? (item.physicalQuantity ?? before.qty) : defaultConvertedQuantity(value),
+              rate: Number(matches[0].rate),
+              unitRateWarning: undefined,
+            };
+            return { ...next, amount: calcAmount(next) };
+          }));
+        } catch {
+          // Keep the explicit row warning when the advisory lookup fails.
+        }
+      })();
+      return;
+    }
     setLineItems(prev => {
       const updated = [...prev];
       updated[index] = { ...updated[index], [field]: value, initialBlank: false };
+      if (field === "qty" || field === "rate") {
+        updated[index].unitRateWarning = undefined;
+        if (field === "qty") {
+          updated[index].physicalQuantity = value;
+          updated[index].physicalUnit = updated[index].unit;
+        }
+      }
       if (field === "category" && value !== "transport") {
         updated[index].leadDistance = null;
       }
@@ -1891,6 +1964,7 @@ export default function VendorBills() {
   };
 
   const confirmBulkRateApplication = () => {
+    unitEditGeneration.current++;
     let applied = 0;
     const hasUnitConversion = uniqueRateGroups.some(group => {
       const selection = bulkRates[group.key];
@@ -1908,8 +1982,17 @@ export default function VendorBills() {
           const convertingUnit = rateData.targetUnit && isDifferentBillingUnit(rateData.targetUnit, item.unit);
           const newItem = {
             ...item,
-            ...(convertingUnit ? { unit: rateData.targetUnit, qty: defaultConvertedQuantity(rateData.targetUnit) } : {}),
+            ...(convertingUnit ? {
+              unit: rateData.targetUnit,
+              qty: defaultConvertedQuantity(rateData.targetUnit),
+              // Set Rates is itself a reviewed conversion. Retain the
+              // original physical evidence for later inline restoration,
+              // without changing its existing qty/rate/application rules.
+              physicalQuantity: item.physicalQuantity ?? item.qty,
+              physicalUnit: item.physicalUnit ?? item.unit,
+            } : {}),
             rate: rateData.rate,
+            unitRateWarning: undefined,
           };
           if (item.category === "transport" && rateData.leadDistance > 0) {
             newItem.leadDistance = rateData.leadDistance;
@@ -3392,7 +3475,7 @@ export default function VendorBills() {
               ];
 
               const renderItemRow = (item: LineItem, idx: number) => (
-                <tr key={idx} className="border-b">
+                <tr key={idx} className={`border-b ${item.unitRateWarning ? "bg-amber-100 dark:bg-amber-900/30" : ""}`} data-testid={`bill-item-row-${idx}`}>
                   <td className="px-2 py-1.5 text-muted-foreground text-sm">{idx + 1}</td>
                   <td className="px-2 py-1.5">
                     {isGeneratedEvidenceLine(item.source) ? (
@@ -3515,7 +3598,7 @@ export default function VendorBills() {
                   </td>
                   <td className="px-2 py-1.5">
                     <Select value={item.unit} onValueChange={v => updateLineItem(idx, "unit", v)} disabled={["hire_group", "hire_statement"].includes(item.source)}>
-                      <SelectTrigger className="h-8 text-sm" data-testid={`select-item-unit-${idx}`}>
+                      <SelectTrigger className={`h-8 text-sm ${item.unitRateWarning ? "border-amber-600" : ""}`} data-testid={`select-item-unit-${idx}`}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -3524,6 +3607,7 @@ export default function VendorBills() {
                         ))}
                       </SelectContent>
                     </Select>
+                    {item.unitRateWarning && <p role="alert" title={item.unitRateWarning} className="mt-1 text-xs font-medium text-amber-900 dark:text-amber-200" data-testid={`warning-item-unit-${idx}`}>{item.unitRateWarning}</p>}
                   </td>
                   {hasLead && (
                     <td className="px-2 py-1.5">
