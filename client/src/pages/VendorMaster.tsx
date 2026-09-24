@@ -49,8 +49,6 @@ export default function VendorMaster() {
   const [editing, setEditing] = useState<Partial<Vendor> | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [chosen, setChosen] = useState<Record<string, string>>({});
-  const [selected, setSelected] = useState<string[]>([]);
-  const [batchTarget, setBatchTarget] = useState("");
   const [creating, setCreating] = useState<Proposal | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -64,20 +62,6 @@ export default function VendorMaster() {
     setCreating(null);
     setMessage(`Confirmed ${p.count} ${roleLabels[p.role]} link(s) for ${p.name}. Free-text names remain unchanged.`);
   });
-  const confirmBatch = () => {
-    const groups = (review.data || []).filter(p => selected.includes(`${p.role}:${p.name}`))
-      .map(({ role, name, ids }) => ({ role, name, ids }));
-    const vendor = (vendors.data || []).find(v => String(v.id) === batchTarget && v.isActive);
-    if (groups.length < 2 || !vendor) { setMessage("Select at least two open names and an active master vendor."); return; }
-    if (!window.confirm(`Link ${groups.length} selected groups to ${vendor.name}? This links only their listed record IDs and saves non-canonical names as aliases.`)) return;
-    run(async () => {
-      const response = await apiRequest("POST", "/api/vendor-master/review/confirm", { groups, vendorId: vendor.id });
-      const result = await response.json() as { linked: number };
-      setSelected([]);
-      setBatchTarget("");
-      setMessage(`Linked ${result.linked} records across ${groups.length} groups to ${vendor.name}. Free-text names remain unchanged.`);
-    });
-  };
   const available = vendors.data || [];
   return <main className="max-w-6xl mx-auto p-5 space-y-5">
     <Link href="/masters/hub" className="text-sm text-blue-700 hover:underline">← Master Data</Link>
@@ -108,21 +92,13 @@ export default function VendorMaster() {
         </>}
       </section>}
     </> : isAdmin ? <>
-       <p className="text-sm text-slate-600">Open names are sorted alphabetically within each role to help spot variants. Alias hints are suggestions only; select names you recognize and explicitly confirm the same master for all. Nothing is automatically merged.</p>
+      <p className="text-sm text-slate-600">Each source and exact name is reviewed separately. Alias hints are suggestions only; nothing is linked until you confirm.</p>
       {review.isError && <p role="alert">Unable to load proposals: {String(review.error)}</p>}
       {review.data?.length === 0 && <p>No unlinked vendor names found.</p>}
-       {!!review.data?.length && <div className="rounded-lg border bg-blue-50 p-4 flex flex-wrap gap-3 items-center">
-         <span className="font-medium text-sm">{selected.length} group(s) selected</span>
-         <select aria-label="Master vendor for selected groups" className="border rounded px-2 py-2" value={batchTarget} onChange={e => setBatchTarget(e.target.value)}>
-           <option value="">Choose one target master vendor</option>{available.filter(v => v.isActive).map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-         </select>
-         <button type="button" disabled={busy || selected.length < 2 || !batchTarget} onClick={confirmBatch} className="bg-blue-700 text-white rounded px-3 py-2 disabled:opacity-40">Confirm selected links</button>
-       </div>}
       <div className="space-y-3">{review.data?.map(p => {
         const key = `${p.role}:${p.name}`;
         const target = chosen[key] ?? String(p.suggestionId ?? "");
-         return <div key={key} className="rounded-lg border bg-white p-4 flex flex-wrap items-center gap-4">
-           <label className="flex items-center gap-2 text-sm"><input type="checkbox" aria-label={`Select ${p.name} ${roleLabels[p.role]}`} checked={selected.includes(key)} onChange={e => setSelected(e.target.checked ? [...selected, key] : selected.filter(k => k !== key))} />Select</label>
+        return <div key={key} className="rounded-lg border bg-white p-4 flex flex-wrap items-center gap-4">
           <div className="flex-1 min-w-52"><strong>{p.name}</strong><p className="text-sm text-slate-600">{roleLabels[p.role]} · {p.count} unlinked record(s){p.hint ? ` · Alias hint: ${p.hint}` : ""}</p></div>
           <select aria-label={`Master match for ${p.name} ${p.role}`} className="border rounded px-2 py-2" value={target} onChange={e => setChosen({ ...chosen, [key]: e.target.value })}>
             <option value="">Select master vendor</option>{available.filter(v => v.isActive).map(v => <option key={v.id} value={v.id}>{v.name}</option>)}

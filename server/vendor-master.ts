@@ -31,12 +31,6 @@ const roles = {
   materialSource: { table: siteMaterialTrips, name: siteMaterialTrips.materialSourceSupplier, id: siteMaterialTrips.id, fk: siteMaterialTrips.materialSourceVendorId },
 } as const;
 type Role = keyof typeof roles;
-const reviewGroup = z.object({
-  role: z.enum(["bills", "rates", "indents", "transport", "materialSource"]),
-  name: z.string().min(1),
-  ids: z.array(z.number().int().positive()).min(1),
-}).strict();
-class ReviewConflict extends Error {}
 const bankKeys = ["bankAccountName", "bankAccountNumber", "bankIfsc", "bankName"] as const;
 export function publicVendor(v: typeof vendors.$inferSelect, sensitive: boolean) {
   if (sensitive) return v;
@@ -133,7 +127,7 @@ export function registerVendorMasterRoutes(app: Express, permittedSites: (req: R
           if (!row.name?.trim()) continue;
           grouped.set(row.name, [...(grouped.get(row.name) || []), row.id]);
         }
-        for (const [name, ids] of Array.from(grouped).sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: "base" }))) {
+        for (const [name, ids] of Array.from(grouped)) {
           proposals.push({ role, name, count: ids.length, ids: ids.sort((a: number,b: number) => a-b), ...proposeVendorMatch(name, master, aliases) });
         }
       }
@@ -143,63 +137,6 @@ export function registerVendorMasterRoutes(app: Express, permittedSites: (req: R
   app.post("/api/vendor-master/review/confirm", async (req, res) => {
     if (!canManage(req, res)) return;
     try {
-      if (req.body?.groups !== undefined) {
-        const input = z.object({
-          groups: z.array(reviewGroup).min(2),
-          vendorId: z.number().int().positive(),
-        }).strict().parse(req.body);
-        const seen = new Set<string>();
-        for (const group of input.groups) {
-          // A row can be selected once in each of the two trip roles, but never
-          // twice for the same FK, even when submitted under different names.
-          if (new Set(group.ids).size !== group.ids.length)
-            throw new ReviewConflict("Duplicate IDs in a review group. Refresh proposals and try again.");
-          for (const rowId of group.ids) {
-            const key = `${group.role}:${rowId}`;
-            if (seen.has(key)) throw new ReviewConflict("Overlapping review groups. Refresh proposals and try again.");
-            seen.add(key);
-          }
-        }
-        const result = await db.transaction(async tx => {
-          const [target] = await tx.select({ id: vendors.id, name: vendors.name, isActive: vendors.isActive })
-            .from(vendors).where(eq(vendors.id, input.vendorId)).for("update");
-          if (!target?.isActive) return { missing: true as const };
-          // Validate every exact-name group before writing anything. A later
-          // failed UPDATE or alias conflict still rolls the whole transaction back.
-          for (const group of input.groups) {
-            const { table, name, id, fk } = roles[group.role];
-            const current = await tx.select({ id }).from(table)
-              .where(and(eq(name, group.name), isNull(fk))).for("update");
-            if (!sameReviewIds(current.map(row => row.id), group.ids))
-              throw new ReviewConflict("Review is stale. Refresh proposals and confirm again.");
-          }
-          let linked = 0;
-          for (const group of input.groups) {
-            const { table, name, id, fk } = roles[group.role];
-            const columnKey = group.role === "transport" ? "supplierVendorId"
-              : group.role === "materialSource" ? "materialSourceVendorId" : "vendorId";
-            const updated = await tx.update(table).set({ [columnKey]: target.id })
-              .where(and(inArray(id, group.ids), eq(name, group.name), isNull(fk))).returning({ id });
-            if (!sameReviewIds(updated.map(row => row.id), group.ids))
-              throw new ReviewConflict("Review changed during confirmation. Refresh proposals and try again.");
-            linked += updated.length;
-          }
-          const aliases = [...new Set(input.groups.map(g => g.name).filter(name => name !== target.name))];
-          for (const alias of aliases) {
-            // alias is unique in the existing schema. ON CONFLICT + reread
-            // handles simultaneous confirms without overwriting an existing mapping.
-            await tx.insert(vendorAliases).values({ canonicalName: target.name, alias })
-              .onConflictDoNothing({ target: vendorAliases.alias });
-            const [existing] = await tx.select({ canonicalName: vendorAliases.canonicalName })
-              .from(vendorAliases).where(eq(vendorAliases.alias, alias));
-            if (existing?.canonicalName !== target.name)
-              throw new ReviewConflict(`Alias "${alias}" already belongs to "${existing?.canonicalName ?? "another vendor"}". No links were saved.`);
-          }
-          return { vendorId: target.id, linked };
-        });
-        if ("missing" in result) return res.status(404).json({ message: "Active vendor not found" });
-        return res.json(result);
-      }
       const input = z.object({
         role: z.enum(["bills", "rates", "indents", "transport", "materialSource"]),
         name: z.string().min(1),
@@ -233,10 +170,7 @@ export function registerVendorMasterRoutes(app: Express, permittedSites: (req: R
       if ("conflict" in result) return res.status(409).json({ message: "Review is stale. Refresh proposals and confirm again." });
       if ("missing" in result) return res.status(404).json({ message: "Active vendor not found" });
       res.json(result);
-    } catch (e) {
-      if (e instanceof ReviewConflict) return res.status(409).json({ message: e.message });
-      error(res, e);
-    }
+    } catch (e) { error(res, e); }
   });
 
   app.get("/api/vendor-master/:id/activity", async (req, res) => {
