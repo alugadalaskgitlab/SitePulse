@@ -6,6 +6,7 @@ import WebSocket from "ws";
 const root = path.resolve(new URL("../../..", import.meta.url).pathname);
 const fixture = path.join(root, "tests/fixtures/vendor-master-part-a");
 const evidence = path.join(fixture, "evidence");
+const partD = process.env.VENDOR_PART_D === "1";
 const vitePort = Number(process.env.VITE_PORT || 4217);
 const cdpPort = Number(process.env.CDP_PORT || 9367);
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -20,7 +21,7 @@ try {
     if (i === 99) throw new Error("Fixture Vite did not start");
     await sleep(100);
   }
-  chromium = spawn("/repl/tools/bin/chromium", ["--headless", "--no-sandbox", "--disable-gpu", `--remote-debugging-port=${cdpPort}`, `--user-data-dir=/tmp/vendor-a-${process.pid}`, `http://127.0.0.1:${vitePort}/`], { stdio: "ignore" });
+  chromium = spawn("/repl/tools/bin/chromium", ["--headless", "--no-sandbox", "--disable-gpu", `--remote-debugging-port=${cdpPort}`, `--user-data-dir=/tmp/vendor-a-${process.pid}`, `http://127.0.0.1:${vitePort}/${partD ? "?part=D" : ""}`], { stdio: "ignore" });
   let targets;
   for (let i = 0; i < 100; i++) {
     try {
@@ -71,6 +72,28 @@ try {
   };
   await cdp("Page.enable"); await cdp("Runtime.enable");
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+  if (partD) {
+    await waitFor(`document.body.innerText.includes("SYNTHETIC GANGARAM") && !!document.querySelector('[data-testid="fixture-label"]')`, "actual VendorMaster D component");
+    await clickText("button", "Link Vendors");
+    await waitFor(`document.body.innerText.includes("SYNTHETIC Gangaram Narsimhulu")`, "synthetic variants");
+    const screenshots = [await shot("D-before-synthetic-variants")];
+    assert((await evaluate(`window.__vendorFixture.links.length`)) === 0, "Variants were auto-linked");
+    await evaluate(`window.confirm = () => true`);
+    for (const label of ["Select SYNTHETIC Gangaram Narasimhulu Trip transporter", "Select SYNTHETIC Gangaram Narsimhulu Trip transporter", "Select SYNTHETIC Gangaram Narsimhulu Trip material source"]) {
+      assert(await evaluate(`(() => { const box=document.querySelector('input[aria-label=${JSON.stringify(label)}]'); box?.click(); return !!box; })()`), `Missing ${label}`);
+    }
+    assert(await evaluate(`(() => { const select=document.querySelector('select[aria-label="Master vendor for selected groups"]'); if (!select) return false; const setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set; setter.call(select, '1'); select.dispatchEvent(new Event('change',{bubbles:true})); return true; })()`), "Missing explicit master target");
+    await waitFor(`document.body.innerText.includes("3 group(s) selected") && !Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === "Confirm selected links")?.disabled`, "selected groups");
+    screenshots.push(await shot("D-selected-synthetic-variants"));
+    await clickText("button", "Confirm selected links");
+    await waitFor(`window.__vendorFixture.links.length === 3`, "D batch confirm");
+    assert((await evaluate(`window.__vendorFixture.aliases.length`)) === 2, "Aliases not saved exactly once");
+    assert((await evaluate(`window.__vendorFixture.proposals.length`)) === 0, "Selected names still open");
+    screenshots.push(await shot("D-after-synthetic-linked"));
+    const result = { passed: true, syntheticFixture: true, screenshots, assertions: ["Actual VendorMaster component before and after explicit batch confirm", "Three role/name groups, two spellings, one master target", "Two deduplicated aliases", "No live API or database writes"] };
+    writeFileSync(path.join(evidence, "D-verification-result.json"), JSON.stringify(result, null, 2));
+    console.log(JSON.stringify(result, null, 2));
+  } else {
   await waitFor(`document.body.innerText.includes("SYNTHETIC Metro Supplies") && !!document.querySelector('[data-testid="fixture-label"]')`, "actual VendorMaster list");
   const screenshots = [await shot("A-list-synthetic-actual-component")];
 
@@ -142,6 +165,7 @@ try {
   const result = { passed: true, syntheticFixture: true, screenshots, inputAppearance, editedInput, assertions: ["VENDOR-02 A1 mixed-case typing has computed text-transform none for name and business while other fields retain uppercase CSS", "VENDOR-02 A1 uppercase saved and displayed", "VENDOR-02 A2 uppercase after mixed-case edit", "VENDOR-02 A3 alias hint matches edited uppercase master case-insensitively", "A3 explicit confirmation", "A4 inline create/link", "A5 equipment/material/transport/labour across two sites", "No real API or business writes"], mockedWrites: writes.map(w => `${w.method} ${w.path}`) };
   writeFileSync(path.join(evidence, "verification-result.json"), JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result, null, 2));
+  }
 } finally {
   socket?.close();
   chromium?.kill("SIGTERM");

@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "syntheticFixture": true,
+  "screenshots": [
+    "/home/runner/workspace/tests/fixtures/vendor-master-part-a/evidence/D-before-synthetic-variants.png",
+    "/home/runner/workspace/tests/fixtures/vendor-master-part-a/evidence/D-selected-synthetic-variants.png",
+    "/home/runner/workspace/tests/fixtures/vendor-master-part-a/evidence/D-after-synthetic-linked.png"
+  ],
+  "assertions": [
+    "Actual VendorMaster component before and after explicit batch confirm",
+    "Three role/name groups, two spellings, one master target",
+    "Two deduplicated aliases",
+    "No live API or database writes"
+  ]
+}
