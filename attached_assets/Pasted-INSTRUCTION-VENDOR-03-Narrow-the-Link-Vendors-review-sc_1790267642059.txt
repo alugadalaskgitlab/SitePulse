@@ -1,0 +1,38 @@
+INSTRUCTION VENDOR-03: Narrow the "Link Vendors" review screen to only show vendors tied to Bulk Material Purchase Indents, not all five roles
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a small, standalone fix — supersedes and replaces the earlier-discussed "Part D" (multi-select spelling-variant linking) work, which was explicitly cancelled and must NOT be built. Do not touch VENDOR-01 Parts A/B/C, VENDOR-02 Parts A/B/C, or any other prior instruction. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+1. Vendor Master linkage (the `vendors` table and its FK columns, added in VENDOR-01 Part A) is today only genuinely used by Purchase Indents/Purchase Orders: the PO workflow (VENDOR-02 Part C) requires the PI item's vendor to be linked to Vendor Master, and pulls address/GST/PAN/bank details from that link.
+2. Linkage for Vendor Bills (`vendor_bills.vendor_id`), Vendor Rate Cards (`vendor_rate_cards.vendor_id`), and Site Material Trips (`site_material_trips.supplier_vendor_id` and `.material_source_vendor_id`) exists in the database but is NOT consumed by any UI yet — confirmed by direct investigation. The person has decided to leave those alone for now and address them later together with planned Vendor Bills refinements.
+3. The "Link Vendors" review screen (`server/vendor-master.ts`, `GET /api/vendor-master/review`) currently surfaces open (unlinked) free-text names from ALL FIVE roles: `bills`, `rates`, `indents`, `transport`, `materialSource`. Since only the `indents` role's linkage is actually useful today, showing the other four roles' names in this list creates confusion and noise for no current benefit — the person has to review/decide on names that don't affect anything yet.
+
+FIX
+a. In `server/vendor-master.ts`'s review-proposals endpoint (`GET /api/vendor-master/review`), scope the query to ONLY the `purchase_indent_items` role (`indents`), further restricted to items whose `procurementRoute` is `"material"` or `"bulk_plant"` (bulk material items). Reuse the existing `isBulkPiDeliveryItem`/`effectivePiDeliveryRoute` helper from `shared/purchaseIndentDelivery.ts` (built in VENDOR-02 Part B) for this route check rather than reimplementing route detection.
+b. Stop surfacing the `bills`, `rates`, `transport`, and `materialSource` roles in the proposals list for now. Do NOT delete their underlying FK columns, their confirm-handler support, or any related code — just stop listing them in this endpoint's output. This must be easy to reverse later (e.g. a role allowlist/flag you can widen back, not a deletion).
+c. Update the Link Vendors screen's UI heading/copy if needed so it's clear the list is currently scoped to "Bulk Material Purchase Indent vendors" — so the person understands why other vendor names (from bills, trips, etc.) no longer appear here.
+d. Confirm the confirm/link action (`POST /api/vendor-master/review/confirm`) still works correctly and unchanged for the `indents` role — this fix only narrows what's LISTED for review, not how confirming a link works.
+e. Do NOT touch the Vendor Master detail/Activity view (the site-grouped rollup shown when viewing a specific vendor) — that should continue to show activity across all applicable areas exactly as it does today. This fix is specific to the Review/proposals list only.
+f. Do NOT resume or build the earlier-discussed multi-select/alias-writing linking feature — that work was explicitly cancelled by the person and must not be reintroduced here or elsewhere.
+
+WHAT NOT TO DO
+- Do not delete the `vendor_id`/`supplier_vendor_id`/`material_source_vendor_id` columns or any related schema/confirm-handler code for the other four roles — they may be re-enabled later.
+- Do not touch VENDOR-01 or VENDOR-02 Parts A/B/C in any way.
+- Do not touch DPR, MAT, PR-01, or unrelated VB instructions.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change — this is a query-scope and UI-copy change only.
+
+TESTS
+A. Open the Link Vendors review screen. Confirm only bulk-material Purchase Indent vendor names appear as open proposals — no vendor bill names, rate card names, or site material trip supplier/material-source names should appear.
+B. Confirm linking one of these still works correctly (creates the FK link, removes it from the open list).
+C. Confirm the Vendor Master detail/Activity page for an already-linked vendor still shows activity across all applicable areas (not narrowed) — only the Review/proposals list is scoped down.
+D. Confirm a stores-type (non-bulk-material) PI item's vendor does NOT appear in this review list.
+
+REPORT BACK
+1. Confirm the fix with Test A/B/C/D evidence (screenshots) — the Link Vendors screen showing only bulk-material PI vendors, and confirm the confirm/link action and Activity view are unaffected.
+2. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

@@ -3027,3 +3027,59 @@ mtime_ms = 1790260192800
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/989079d7-06b8-45f9-a376-b9254f9a25de/eec29c0f-cfe7-4195-97b4-b2bf41400f6d"
 storage_version_token = "1790260316602965"
 content_type = "application/pdf"
+
+[[outputs]]
+id = "Wn1cMZYrpnXZOK5K2q72E"
+uri = "file://tests/fixtures/vendor-master-03/evidence/A-D-bulk-only-review-before-link.png"
+type = "image"
+title = "Link Vendors — bulk PI vendors only"
+description = "Actual Vendor Master component with labelled synthetic API data. No live vendor links were changed."
+logical_id = "887024b1-a72e-484a-b4f7-0996cbdb8fdd"
+content_hash = "sha256:969354e52c79f5ece06ea79ee18f5978df0c49876335fad2ba92fc16fe8987af"
+size = 80571
+mtime_ms = 1790267953284
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/887024b1-a72e-484a-b4f7-0996cbdb8fdd/e895ffee-9ed9-488e-a904-75d47c35a08e"
+storage_version_token = "1790268072621155"
+content_type = "image/png"
+
+[[outputs]]
+id = "PUla9ifbJ6sj2SXGgB189"
+uri = "file://tests/fixtures/vendor-master-03/evidence/B-bulk-review-after-link.png"
+type = "image"
+title = "Confirmed link — removed from open proposals"
+description = "Actual Vendor Master component with labelled synthetic API data. No live vendor links were changed."
+logical_id = "44bd89bc-402f-484d-b543-659f5301ec91"
+content_hash = "sha256:cd65bb2eaf037ba0d0af71dfb78f2cbef30c986707f1a8a47a38ad4d1278eca7"
+size = 73914
+mtime_ms = 1790267953632
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/44bd89bc-402f-484d-b543-659f5301ec91/45233bfc-a8dd-494c-8062-96ffb81fae25"
+storage_version_token = "1790268074428043"
+content_type = "image/png"
+
+[[outputs]]
+id = "-PJRZhxJ-NQGv9KmhbJVD"
+uri = "file://tests/fixtures/vendor-master-03/evidence/C-activity-before-link.png"
+type = "image"
+title = "Vendor Activity — existing cross-area summary"
+description = "Actual Vendor Master component with labelled synthetic API data. No live vendor links were changed."
+logical_id = "2c7f046d-34a0-4c3e-8fbf-dbaf5ae74838"
+content_hash = "sha256:d317b46a383989a0f0b12fc308787ca703e50814fb011c385ce51e65fb7762d7"
+size = 93966
+mtime_ms = 1790267953028
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/2c7f046d-34a0-4c3e-8fbf-dbaf5ae74838/aa6a2032-2afb-40fe-ae39-c38204c3b596"
+storage_version_token = "1790268076369638"
+content_type = "image/png"
+
+[[outputs]]
+id = "dtmbMm36cYPMjfXnOLkDo"
+uri = "file://tests/fixtures/vendor-master-03/evidence/C-activity-after-link.png"
+type = "image"
+title = "Vendor Activity — unchanged scope after linking"
+description = "Actual Vendor Master component with labelled synthetic API data. No live vendor links were changed."
+logical_id = "1a05971b-184f-4890-a122-3e9feec0280a"
+content_hash = "sha256:a0b1e6345d21464edac3e3eb8142f9562e849d7f333ed798812fbc65bad7aa13"
+size = 93837
+mtime_ms = 1790267953924
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/1a05971b-184f-4890-a122-3e9feec0280a/89ced5fb-7fd0-4b2e-ac80-a3fd9aa86728"
+storage_version_token = "1790268078227751"
+content_type = "image/png"

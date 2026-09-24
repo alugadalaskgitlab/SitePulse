@@ -19,7 +19,7 @@ const labels: Record<string, string> = {
   bankAccountName: "Account holder", bankAccountNumber: "Account number", bankIfsc: "IFSC", bankName: "Bank name",
 };
 const roleLabels: Record<string, string> = {
-  bills: "Vendor bills", rates: "Rate cards", indents: "Purchase indents", transport: "Trip transporter", materialSource: "Trip material source",
+  bills: "Vendor bills", rates: "Rate cards", indents: "Bulk material purchase indents", transport: "Trip transporter", materialSource: "Trip material source",
 };
 const empty = () => Object.fromEntries(keys.map(k => [k, ""])) as Record<typeof keys[number], string>;
 function Editor({ initial, onSave, onCancel, busy }: {
@@ -92,9 +92,10 @@ export default function VendorMaster() {
         </>}
       </section>}
     </> : isAdmin ? <>
-      <p className="text-sm text-slate-600">Each source and exact name is reviewed separately. Alias hints are suggestions only; nothing is linked until you confirm.</p>
+      <h2 className="text-lg font-semibold">Bulk Material Purchase Indent vendors</h2>
+      <p className="text-sm text-slate-600">Only unlinked bulk-material purchase indent vendors appear here. Other vendor names and stores purchase indents are not included. Alias hints are suggestions only; nothing is linked until you confirm.</p>
       {review.isError && <p role="alert">Unable to load proposals: {String(review.error)}</p>}
-      {review.data?.length === 0 && <p>No unlinked vendor names found.</p>}
+      {review.data?.length === 0 && <p>No unlinked bulk-material purchase indent vendors found.</p>}
       <div className="space-y-3">{review.data?.map(p => {
         const key = `${p.role}:${p.name}`;
         const target = chosen[key] ?? String(p.suggestionId ?? "");

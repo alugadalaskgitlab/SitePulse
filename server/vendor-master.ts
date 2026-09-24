@@ -3,8 +3,9 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "./db";
 import { assertAdmin, assertView } from "./auth-routes";
-import { vendors, vendorBills, vendorBillItems, vendorRateCards, vendorAliases, purchaseIndentItems, purchaseIndents, siteMaterialTrips, sites } from "@shared/schema";
+import { vendors, vendorBills, vendorBillItems, vendorRateCards, vendorAliases, purchaseIndentItems, purchaseIndents, plantMaterials, siteMaterialTrips, sites } from "@shared/schema";
 import { siteMatchesPermitted } from "@shared/siteName";
+import { isBulkPiDeliveryItem } from "@shared/purchaseIndentDelivery";
 
 export const vendorMasterFields = z.object({
   name: z.string().trim().min(1).max(250).transform(value => value.toUpperCase()),
@@ -31,6 +32,12 @@ const roles = {
   materialSource: { table: siteMaterialTrips, name: siteMaterialTrips.materialSourceSupplier, id: siteMaterialTrips.id, fk: siteMaterialTrips.materialSourceVendorId },
 } as const;
 type Role = keyof typeof roles;
+// Review only the currently actionable PI links; retain other roles for confirmation
+// and for a future review-scope expansion.
+const reviewRoles: Role[] = ["indents"];
+function bulkReviewItem(row: { procurementRoute: string | null; catalogProcurementRoute: string | null }) {
+  return isBulkPiDeliveryItem(row);
+}
 const bankKeys = ["bankAccountName", "bankAccountNumber", "bankIfsc", "bankName"] as const;
 export function publicVendor(v: typeof vendors.$inferSelect, sensitive: boolean) {
   if (sensitive) return v;
@@ -119,9 +126,17 @@ export function registerVendorMasterRoutes(app: Express, permittedSites: (req: R
       const master = await db.select({ id: vendors.id, name: vendors.name }).from(vendors);
       const aliases = await db.select().from(vendorAliases);
       const proposals = [];
-      for (const role of Object.keys(roles) as Role[]) {
+      for (const role of reviewRoles) {
         const { table, name, id, fk } = roles[role];
-        const rows = await db.select({ id, name }).from(table).where(isNull(fk));
+        const rows = role === "indents"
+          ? (await db.select({
+            id: purchaseIndentItems.id, name: purchaseIndentItems.vendor,
+            procurementRoute: purchaseIndentItems.procurementRoute,
+            catalogProcurementRoute: plantMaterials.procurementRoute,
+          }).from(purchaseIndentItems)
+            .leftJoin(plantMaterials, eq(plantMaterials.id, purchaseIndentItems.materialId))
+            .where(isNull(purchaseIndentItems.vendorId))).filter(bulkReviewItem)
+          : await db.select({ id, name }).from(table).where(isNull(fk));
         const grouped = new Map<string, number[]>();
         for (const row of rows) {
           if (!row.name?.trim()) continue;
@@ -147,7 +162,16 @@ export function registerVendorMasterRoutes(app: Express, permittedSites: (req: R
       const { table, name, id, fk } = roles[input.role];
       const result = await db.transaction(async tx => {
         // Lock matching rows: a stale review cannot silently link a changed name or an already-linked row.
-        const current = await tx.select({ id }).from(table).where(and(eq(name, input.name), isNull(fk))).for("update");
+        const current = input.role === "indents"
+          ? (await tx.select({
+            id: purchaseIndentItems.id,
+            procurementRoute: purchaseIndentItems.procurementRoute,
+            catalogProcurementRoute: plantMaterials.procurementRoute,
+          }).from(purchaseIndentItems)
+            .leftJoin(plantMaterials, eq(plantMaterials.id, purchaseIndentItems.materialId))
+            .where(and(eq(purchaseIndentItems.vendor, input.name), isNull(purchaseIndentItems.vendorId)))
+            .for("update", { of: purchaseIndentItems })).filter(bulkReviewItem)
+          : await tx.select({ id }).from(table).where(and(eq(name, input.name), isNull(fk))).for("update");
         if (!sameReviewIds(current.map(r => r.id), input.ids))
           return { conflict: true as const };
         let vendorId = input.vendorId;

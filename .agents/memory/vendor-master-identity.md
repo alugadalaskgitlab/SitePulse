@@ -14,3 +14,9 @@ The initial identity scope is bill headers, rate cards, PI items and the two tri
 **Why:** The requested schema scope explicitly limited the linked tables. Equipment activity in the initial master summary comes from linked bills, not a complete equipment-history migration.
 
 **How to apply:** Flag standalone equipment identity as separate scope rather than silently adding more FKs or inferred links.
+
+Multi-select spelling-variant linking and alias-writing were explicitly cancelled in favor of narrowing review to bulk PI vendors.
+
+**Why:** The user wants other vendor roles deferred until later Vendor Bills refinements, not further linking functionality now.
+
+**How to apply:** Do not revive the earlier multi-select proposal without a new request. Keep the broader Activity view and dormant role support intact when changing review visibility.

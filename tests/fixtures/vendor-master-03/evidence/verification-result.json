@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "syntheticFixture": true,
+  "screenshots": [
+    "/home/runner/workspace/tests/fixtures/vendor-master-03/evidence/C-activity-before-link.png",
+    "/home/runner/workspace/tests/fixtures/vendor-master-03/evidence/A-D-bulk-only-review-before-link.png",
+    "/home/runner/workspace/tests/fixtures/vendor-master-03/evidence/B-bulk-review-after-link.png",
+    "/home/runner/workspace/tests/fixtures/vendor-master-03/evidence/C-activity-after-link.png"
+  ],
+  "assertions": [
+    "A only bulk-material PI vendors are proposals, no bill/rate/trip names",
+    "B confirmed link disappears from review",
+    "C full equipment/material/transport/labour activity before and after",
+    "D stores PI excluded",
+    "No live API/business writes"
+  ],
+  "mockedWrites": [
+    "POST /api/vendor-master/review/confirm"
+  ]
+}

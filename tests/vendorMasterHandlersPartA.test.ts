@@ -34,7 +34,8 @@ vi.mock("../server/db", async () => {
           : [];
         const get = () => getRows()
           .filter(row => selection?.name === s.vendorBills.vendorName ? row.vendorId == null
-            : selection?.name === s.vendorRateCards.vendorName ? row.vendorId == null : true)
+            : selection?.name === s.vendorRateCards.vendorName ? row.vendorId == null
+            : selection?.name === s.purchaseIndentItems.vendor ? row.vendorId == null : true)
           .map(row => project(selection, row));
         const chain = {
           where: () => chain,
@@ -61,7 +62,8 @@ vi.mock("../server/db", async () => {
       set: (patch: any) => ({
         where: (condition: any) => ({
           returning: async (selection?: any) => {
-            const rows = table === s.vendors ? memory.vendors : table === s.vendorBills ? memory.bills : table === s.vendorRateCards ? memory.rates : [];
+            const rows = table === s.vendors ? memory.vendors : table === s.vendorBills ? memory.bills
+              : table === s.vendorRateCards ? memory.rates : table === s.purchaseIndentItems ? memory.pi : [];
             const compiled = new PgDialect().sqlToQuery(condition);
             memory.updateConditions.push(compiled.sql);
             const target = table === s.vendors ? rows.filter(row => row.id === 1) :
@@ -79,9 +81,12 @@ vi.mock("../server/db", async () => {
         ...db,
         select: (selection?: any) => ({
           from: (table: any) => {
+            let condition: any;
             const list = () => table === s.vendors ? memory.vendors.map(row => project(selection, row))
-              : (table === s.vendorBills ? memory.bills : memory.rates).filter(row => row.vendorId == null).map(row => project(selection, row));
-            const chain = { where: () => chain, for: async () => {
+               : (table === s.vendorBills ? memory.bills : table === s.purchaseIndentItems ? memory.pi : memory.rates)
+                 .filter(row => row.vendorId == null && (!condition || new PgDialect().sqlToQuery(condition).params.includes(row.name)))
+                 .map(row => project(selection, row));
+             const chain = { where: (query: any) => { condition = query; return chain; }, leftJoin: () => chain, for: async () => {
               const locked = list();
               if (memory.injectPhantomOnLock && table === s.vendorBills) {
                 memory.bills.push({ id: 12, name: "SYNTHETIC Alias Ltd", vendorId: null });
@@ -134,6 +139,67 @@ beforeEach(() => {
 });
 
 describe("Vendor Master Part A real Express handlers, synthetic transaction DB boundary", () => {
+  it("VENDOR-03 lists only unlinked bulk PI routes, with catalog bulk override and null/mistagged fallback", async () => {
+    memory.pi = [
+      { id: 31, name: "SYNTHETIC Alias Ltd", vendorId: null, procurementRoute: "material", catalogProcurementRoute: null },
+      { id: 32, name: "SYNTHETIC Alias Ltd", vendorId: null, procurementRoute: "stores", catalogProcurementRoute: "bulk_plant" },
+      { id: 33, name: "SYNTHETIC Alias Ltd", vendorId: null, procurementRoute: "bulk_plant", catalogProcurementRoute: "unconfigured" },
+      { id: 34, name: "SYNTHETIC Alias Ltd", vendorId: null, procurementRoute: "stores", catalogProcurementRoute: "stores" },
+      { id: 35, name: "SYNTHETIC Stores Only", vendorId: null, procurementRoute: "stores", catalogProcurementRoute: null },
+      { id: 36, name: "SYNTHETIC Blank Route", vendorId: null, procurementRoute: null, catalogProcurementRoute: null },
+      { id: 37, name: "SYNTHETIC Linked", vendorId: 1, procurementRoute: "material", catalogProcurementRoute: null },
+      { id: 38, name: "SYNTHETIC Catalog Bulk", vendorId: null, procurementRoute: null, catalogProcurementRoute: "material" },
+    ];
+    const review = await request(api()).get("/api/vendor-master/review");
+    expect(review.status).toBe(200);
+    expect(review.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: "indents", name: "SYNTHETIC Alias Ltd", ids: [31, 32, 33], count: 3, suggestionId: 1 }),
+      expect.objectContaining({ role: "indents", name: "SYNTHETIC Catalog Bulk", ids: [38], count: 1 }),
+    ]));
+    expect(review.body).toHaveLength(2);
+    expect(review.body.every((p: any) => p.role === "indents")).toBe(true);
+    expect(memory.bills.every(row => row.vendorId == null)).toBe(true);
+    expect(memory.rates.every(row => row.vendorId == null)).toBe(true);
+
+    const confirmed = await request(api()).post("/api/vendor-master/review/confirm")
+      .send({ role: "indents", name: "SYNTHETIC Alias Ltd", ids: [31, 32, 33], vendorId: 1 });
+    expect(confirmed.status).toBe(200);
+    expect(confirmed.body).toEqual({ vendorId: 1, linked: 3 });
+    expect(memory.pi.filter(row => [31, 32, 33].includes(row.id)).every(row => row.vendorId === 1)).toBe(true);
+    expect(memory.pi.find(row => row.id === 34)?.vendorId).toBeNull();
+    expect(memory.pi.find(row => row.id === 35)?.vendorId).toBeNull();
+    expect((await request(api()).get("/api/vendor-master/review")).body).toEqual([
+      expect.objectContaining({ ids: [38] }),
+    ]);
+  });
+  it("VENDOR-03 rejects stale bulk subsets and duplicates without linking stores; legacy role confirm remains supported", async () => {
+    memory.pi = [
+      { id: 41, name: "SYNTHETIC Alias Ltd", vendorId: null, procurementRoute: "material", catalogProcurementRoute: null },
+      { id: 42, name: "SYNTHETIC Alias Ltd", vendorId: null, procurementRoute: "stores", catalogProcurementRoute: null },
+    ];
+    const app = api();
+    expect((await request(app).post("/api/vendor-master/review/confirm")
+      .send({ role: "indents", name: "SYNTHETIC Alias Ltd", ids: [41, 42], vendorId: 1 })).status).toBe(409);
+    expect((await request(app).post("/api/vendor-master/review/confirm")
+      .send({ role: "indents", name: "SYNTHETIC Alias Ltd", ids: [41, 41], vendorId: 1 })).status).toBe(409);
+    memory.pi[0].procurementRoute = "stores";
+    expect((await request(app).post("/api/vendor-master/review/confirm")
+      .send({ role: "indents", name: "SYNTHETIC Alias Ltd", ids: [41], vendorId: 1 })).status).toBe(409);
+    expect(memory.pi.every(row => row.vendorId == null)).toBe(true);
+    expect((await request(app).post("/api/vendor-master/review/confirm")
+      .send({ role: "bills", name: "SYNTHETIC Alias Ltd", ids: [10, 11], vendorId: 1 })).status).toBe(200);
+  });
+  it("VENDOR-03 leaves full linked activity aggregation unaffected by review filtering", async () => {
+    memory.activityBills = [{ itemId: 31, vendorId: 1, siteName: "SYNTHETIC North Site", siteId: null, billType: "equipment", category: "Equipment Hire" }];
+    memory.pi = [{ id: 50, name: "SYNTHETIC Stores Only", vendorId: 1, siteId: 7, procurementRoute: "stores", catalogProcurementRoute: null }];
+    memory.trips = [{ site: "SYNTHETIC North Site", supplierId: 1, materialId: 1 }];
+    expect((await request(api()).get("/api/vendor-master/review")).body).toEqual([]);
+    const activity = await request(api()).get("/api/vendor-master/1/activity");
+    expect(activity.status).toBe(200);
+    expect(activity.body.sites).toEqual([
+      expect.objectContaining({ site: "SYNTHETIC North Site", equipment: 1, material: 2, transport: 1, labour: 0 }),
+    ]);
+  });
   it("VENDOR-02 A create trims/uppercases both names while leaving existing rows untouched", async () => {
     const app = api();
     const created = await request(app).post("/api/vendor-master").send({
@@ -165,9 +231,7 @@ describe("Vendor Master Part A real Express handlers, synthetic transaction DB b
     memory.aliases = [{ alias: "synthetic alias ltd", canonicalName: "synthetic canonical" }];
     const review = await request(app).get("/api/vendor-master/review");
     expect(review.status).toBe(200);
-    expect(review.body).toEqual(expect.arrayContaining([
-      expect.objectContaining({ role: "bills", name: "SYNTHETIC Alias Ltd", suggestionId: 1, hint: "synthetic canonical" }),
-    ]));
+    expect(review.body).toEqual([]);
     const inline = await request(app).post("/api/vendor-master/review/confirm").send({
       role: "rates", name: "SYNTHETIC New Supplier", ids: [20],
       newVendor: { name: "  new Supplier  ", businessName: "  Supply house  " },
@@ -197,9 +261,7 @@ describe("Vendor Master Part A real Express handlers, synthetic transaction DB b
     const app = api();
     const review = await request(app).get("/api/vendor-master/review");
     expect(review.status).toBe(200);
-    expect(review.body).toEqual(expect.arrayContaining([
-      expect.objectContaining({ role: "bills", name: "SYNTHETIC Alias Ltd", ids: [10, 11], suggestionId: 1, hint: "SYNTHETIC Canonical" }),
-    ]));
+    expect(review.body).toEqual([]);
     expect(memory.bills.every(row => row.vendorId === null)).toBe(true);
     const confirmed = await request(app).post("/api/vendor-master/review/confirm")
       .send({ role: "bills", name: "SYNTHETIC Alias Ltd", ids: [10, 11], vendorId: 1 });
