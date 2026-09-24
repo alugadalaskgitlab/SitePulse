@@ -2915,3 +2915,115 @@ mtime_ms = 1790257081879
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/7c0ff789-2af7-4152-85ec-b97bc1908fd6/e8c4f309-5565-4131-91ff-facf29bbb339"
 storage_version_token = "1790257140520278"
 content_type = "image/png"
+
+[[outputs]]
+id = "kKiUpJjRlbQDrVV1PyZwk"
+uri = "file://tests/fixtures/purchase-order-part-c/evidence/C-A-order-without-po-after.png"
+type = "image"
+title = "Order recorded without a PO"
+description = "Actual component with labelled synthetic data; no live business orders changed."
+logical_id = "b77cb443-be7c-4b2e-b111-e7b99237c4fb"
+content_hash = "sha256:e551d1778fe90075e9e2a5ebacfabd4690ff2618d2d20ee42a9644b1fb485432"
+size = 77686
+mtime_ms = 1790260164923
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b77cb443-be7c-4b2e-b111-e7b99237c4fb/803732f1-35f6-4f74-ad93-ead2a26eb066"
+storage_version_token = "1790260303606998"
+content_type = "image/png"
+
+[[outputs]]
+id = "gEcrHN9x79QTXWr5f5mOH"
+uri = "file://tests/fixtures/purchase-order-part-c/evidence/C-B-11-raise-edit-draft.png"
+type = "image"
+title = "Raise and edit an independent PO draft"
+description = "Actual component with labelled synthetic data; no live business orders changed."
+logical_id = "a0565276-a4d2-4c69-8a42-daafb631d872"
+content_hash = "sha256:b474cd7f2b7a3ca6fe7eaaccceafdf9db12398f3406fdd9f22991b0a0c175410"
+size = 116888
+mtime_ms = 1790260155867
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/a0565276-a4d2-4c69-8a42-daafb631d872/c27a4b51-ef46-4859-b664-5e2d5a522390"
+storage_version_token = "1790260305514188"
+content_type = "image/png"
+
+[[outputs]]
+id = "-9D7BFsM4t98Xk5BfXu4E"
+uri = "file://tests/fixtures/purchase-order-part-c/evidence/C-C-approver-pending-list.png"
+type = "image"
+title = "Approver — pending PO submissions"
+description = "Actual component with labelled synthetic data; no live business orders changed."
+logical_id = "b734f403-060f-4a66-bc9d-a622e3bb0112"
+content_hash = "sha256:147be83b8be9ea73c2fe5e25c607a7c9bcfbac243b6a3071109a40375992ce02"
+size = 139514
+mtime_ms = 1790260156975
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b734f403-060f-4a66-bc9d-a622e3bb0112/027a4bab-eca7-4545-bf2a-5ffba46de988"
+storage_version_token = "1790260307443674"
+content_type = "image/png"
+
+[[outputs]]
+id = "jdW8qcpGjdMR1J3nW96U_"
+uri = "file://tests/fixtures/purchase-order-part-c/evidence/C-CF-11-submitted-locked-no-pdf.png"
+type = "image"
+title = "Submitted PO — locked, no PDF download"
+description = "Actual component with labelled synthetic data; no live business orders changed."
+logical_id = "82bc012a-58be-40ea-9553-d31e97d6a44c"
+content_hash = "sha256:74eb497635e02ebb2e0ed0b86116ca1a91adbd5033ae1dfa0c2f70f94f21d83c"
+size = 126944
+mtime_ms = 1790260156423
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/82bc012a-58be-40ea-9553-d31e97d6a44c/61f7036d-6569-464d-9243-e9435f1cfc1f"
+storage_version_token = "1790260309534510"
+content_type = "image/png"
+
+[[outputs]]
+id = "9ckUUhGZknLWWhUcO4u3a"
+uri = "file://tests/fixtures/purchase-order-part-c/evidence/C-D-11-approved-real-names-download.png"
+type = "image"
+title = "Approved PO — names and download"
+description = "Actual component with labelled synthetic data; no live business orders changed."
+logical_id = "49f93056-6c6b-4f88-8fb4-87ce50fd1c47"
+content_hash = "sha256:14658587e6773f539d37e967c4098cc074f2b1ab795836ac196ee1e1a9773f8e"
+size = 131492
+mtime_ms = 1790260157443
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/49f93056-6c6b-4f88-8fb4-87ce50fd1c47/bf4bbfe5-edd5-4ddf-80e1-aa5fd71ac004"
+storage_version_token = "1790260311506583"
+content_type = "image/png"
+
+[[outputs]]
+id = "wfRrgxQEyE37mmgyRGGJB"
+uri = "file://tests/fixtures/purchase-order-part-c/evidence/C-DG-11-approved-pdf-preview.png"
+type = "image"
+title = "Approved bulk PO — new single-page layout"
+description = "Actual component with labelled synthetic data; no live business orders changed."
+logical_id = "b470b4dd-3a27-41ac-ba6f-aea5d5300c2d"
+content_hash = "sha256:4d71e6d53dfb02d2a7555613d2f3081374490280271eae57dddd40ff6f28f24a"
+size = 94338
+mtime_ms = 1790260159615
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b470b4dd-3a27-41ac-ba6f-aea5d5300c2d/e80f7239-8a85-455f-ac22-a629148b51a0"
+storage_version_token = "1790260313133328"
+content_type = "image/png"
+
+[[outputs]]
+id = "BKqhUdU6-jKAcUyHTi4hS"
+uri = "file://tests/fixtures/purchase-order-part-c/evidence/C-DG-12-approved-pdf-preview.png"
+type = "image"
+title = "Approved store PO — new single-page layout"
+description = "Actual component with labelled synthetic data; no live business orders changed."
+logical_id = "b2c860a8-9e47-491c-8331-1cd0978ed605"
+content_hash = "sha256:98950c32606a8f851538badfb28b84b92accd4e5af8540faf93c8cb4f87db09e"
+size = 106353
+mtime_ms = 1790260163291
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b2c860a8-9e47-491c-8331-1cd0978ed605/f53aa034-9b20-48d8-9774-6ac067e88fd6"
+storage_version_token = "1790260315313305"
+content_type = "image/png"
+
+[[outputs]]
+id = "_1fTo0coP2nGgYV0Vbqf3"
+uri = "file://reports/part-c/integration-material.pdf"
+type = "pdf"
+title = "Sample approved PO PDF"
+description = "Synthetic one-page PDF produced by the actual API in an isolated test database."
+logical_id = "989079d7-06b8-45f9-a376-b9254f9a25de"
+content_hash = "sha256:518c8214bc8e913a60f303d08ce8c280d197508f55cb14606105c47e6697b765"
+size = 14536
+mtime_ms = 1790260192800
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/989079d7-06b8-45f9-a376-b9254f9a25de/eec29c0f-cfe7-4195-97b4-b2bf41400f6d"
+storage_version_token = "1790260316602965"
+content_type = "application/pdf"

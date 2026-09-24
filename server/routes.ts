@@ -1,4 +1,4 @@
-import type { Express, Response } from "express";
+import type { Express, Request, Response } from "express";
 import type { Server } from "http";
 import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, InvalidDieselPhysicalStockError, InvalidStockTransferQuantityError, InvalidDieselSourceError, DieselReceiptExceedsRemainingError, InvalidLinkedDieselRequirementError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError, InitialScopeCorrectionBlockedError, ScopeChangedDuringPlanningError, DprProjectMismatchError, PushSubscriptionOwnershipError, PurchaseIndentRouteCorrectionConflictError, assertValidDieselPhysicalStock } from "./storage";
 import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection, classifyBoqItem, getSectorMultiplier } from "./snlAutoMapper";
@@ -17,7 +17,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, vendors, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, vendors, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
 import { db } from "./db";
 import { registerVendorMasterRoutes } from "./vendor-master";
 import { buildPurchaseOrderPdf } from "./purchase-order-pdf";
@@ -8901,56 +8901,210 @@ export async function registerRoutes(
     }
   });
 
-  // Read-only, optional PO document. Preview is the same PDF served inline; download changes disposition only.
+  const poFields = z.object({
+    orderNo: z.string().max(120).nullable().optional(),
+    vendorId: z.number().int().positive().nullable().optional(),
+    vendorName: z.string().trim().min(1).max(300),
+    description: z.string().trim().min(1).max(1000),
+    spec: z.string().max(500).nullable().optional(),
+    quantity: z.number().positive().finite(),
+    unit: z.string().trim().min(1).max(80),
+    rate: z.number().nonnegative().finite().nullable(),
+    expectedDelivery: z.string().max(150).nullable().optional(),
+    paymentTerms: z.string().max(250).nullable().optional(),
+    destination: z.string().max(350).nullable().optional(),
+  }).strict();
+
+  async function scopedPoItem(req: Request, res: Response) {
+    const indentId = Number(req.params.id), itemId = Number(req.params.itemId);
+    if (!Number.isSafeInteger(indentId) || indentId < 1 || !Number.isSafeInteger(itemId) || itemId < 1) {
+      res.status(400).json({ message: "Invalid indent or item ID" }); return null;
+    }
+    if (!await assertPiDeliveryScope(req, res, indentId)) return null;
+    const indent = await storage.getPurchaseIndent(indentId);
+    const item = indent?.items.find(row => row.id === itemId);
+    if (!indent || !item) { res.status(404).json({ message: "Purchase indent item not found" }); return null; }
+    return { indent, item };
+  }
+  async function poDetails(order: typeof purchaseOrders.$inferSelect) {
+    const [raiser] = await db.select({ fullName: users.fullName }).from(users).where(eq(users.id, order.raisedByUserId));
+    const [approver] = order.approvedByUserId
+      ? await db.select({ fullName: users.fullName }).from(users).where(eq(users.id, order.approvedByUserId))
+      : [];
+    return { ...order, raisedByName: raiser?.fullName ?? null, approvedByName: approver?.fullName ?? null };
+  }
+  async function poPdf(order: typeof purchaseOrders.$inferSelect, indentNo: string) {
+    const details = await poDetails(order);
+    if (!details.raisedByName || !details.approvedByName || !order.approvedAt) throw new Error("PO actor names and approval date are required for the final PDF");
+    const company = await getCompanyConfig();
+    return buildPurchaseOrderPdf({
+      companyName: company.companyName, logoPath: getCompanyLogoPath(company.logoFile),
+      indentNo, orderNo: order.orderNo?.trim() || `PO-${order.id}`,
+      orderDate: order.approvedAt, vendor: order.vendorName,
+      vendorBusinessName: order.vendorBusinessName, vendorGst: order.vendorGst,
+      vendorPan: order.vendorPan, vendorAddress: order.vendorAddress,
+      description: order.description, spec: order.spec, qty: order.quantity,
+      unit: order.unit, rate: order.rate, expectedDelivery: order.expectedDelivery,
+      paymentTerms: order.paymentTerms, destination: order.destination,
+      raisedBy: details.raisedByName, raisedAt: order.raisedAt,
+      approvedBy: details.approvedByName, approvedAt: order.approvedAt,
+    });
+  }
+  const poError = (err: any, res: Response) => {
+    if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message });
+    if (err?.code === "23505") return res.status(409).json({ message: "This item already has an active Purchase Order" });
+    console.error("Purchase Order request failed:", err);
+    return res.status(500).json({ message: "Purchase Order request failed" });
+  };
+  const activePo = async (itemId: number) => db.select().from(purchaseOrders)
+    .where(and(eq(purchaseOrders.purchaseIndentItemId, itemId), sql`${purchaseOrders.status} <> 'rejected'`)).limit(1);
+  const linkedPoNameMatches = (submitted: string, canonical: string) =>
+    submitted.trim().replace(/\s+/g, " ").toLocaleLowerCase() === canonical.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+
+  // A scoped pending list: unlike a global counter, this never leaks inaccessible sites.
+  app.get("/api/purchase-orders/pending", async (req, res) => {
+    try {
+      if (!assertApprove(req, res, "purchase_indents_approve")) return;
+      const rows = await db.select().from(purchaseOrders).where(eq(purchaseOrders.status, "submitted"));
+      const permitted = await getPermittedSiteNames(req), sites = await storage.getSites();
+      const indents = await storage.getPurchaseIndents();
+      res.json(rows.flatMap(order => {
+        const indent = indents.find(row => row.id === order.purchaseIndentId);
+        if (!indent) return [];
+        const name = sites.find(s => s.id === indent.siteId)?.name ?? indent.raisedFrom;
+        if (permitted !== null && (!name || !siteMatchesPermitted(name, permitted))) return [];
+        if (!req.authUser?.isAdmin && (order.raisedByUserId === req.authUser?.id || indent.authorUserId === req.authUser?.id)) return [];
+        return [{ id: order.id, itemId: order.purchaseIndentItemId, indentId: indent.id, indentNo: indent.indentNo, description: order.description }];
+      }));
+    } catch (err) { poError(err, res); }
+  });
+
+  app.get("/api/purchase-indents/:id/items/:itemId/purchase-order", async (req, res) => {
+    try {
+      if (!assertView(req, res, "purchase_indents_view")) return;
+      const scoped = await scopedPoItem(req, res);
+      if (!scoped) return;
+      const [order] = await activePo(scoped.item.id);
+      const item = scoped.item;
+      const [vendor] = item.vendorId ? await db.select({ name: vendors.name }).from(vendors).where(eq(vendors.id, item.vendorId)).limit(1) : [];
+      const sites = await storage.getSites();
+      const location = (item as any).receivingLocation;
+      const destination = location === "site" ? sites.find(s => s.id === (item as any).receivingSiteId)?.name
+        : location === "hmp_plant" ? "HMP Plant" : location === "rmc_plant" ? "RMC Plant" : null;
+      res.json({
+        order: order ? await poDetails(order) : null,
+        defaults: {
+          orderNo: item.orderNo || "", vendorId: item.vendorId ?? null, vendorName: vendor?.name || item.vendor || "",
+          description: item.description, spec: item.spec || "", quantity: Number(item.orderedQty ?? item.qtyPurchased ?? item.approvedQty ?? item.qty),
+          unit: item.uom, rate: item.rate == null ? null : Number(item.rate),
+          expectedDelivery: item.expectedDelivery || "", paymentTerms: item.paymentMode || "",
+          destination: destination || "",
+        },
+      });
+    } catch (err) { poError(err, res); }
+  });
+
+  app.post("/api/purchase-indents/:id/items/:itemId/purchase-order", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "site_procurement")) return;
+      const scoped = await scopedPoItem(req, res);
+      if (!scoped) return;
+      // An approved PI item can get a PO before or after its independent order-recording action.
+      if (["pending", "stores_check", "rejected"].includes(scoped.indent.status) || Number(scoped.item.approvedQty ?? scoped.item.qty) <= 0)
+        return res.status(409).json({ message: "Purchase Order requires an approved Purchase Indent item" });
+      const fields = poFields.parse(req.body);
+      if (fields.vendorId && fields.vendorId !== scoped.item.vendorId)
+        return res.status(400).json({ message: "Only the PI item's reviewed Vendor Master link may be used" });
+      const [linkedVendor] = fields.vendorId
+        ? await db.select({ id: vendors.id, name: vendors.name, businessName: vendors.businessName, gstNumber: vendors.gstNumber, panNumber: vendors.panNumber, address: vendors.address }).from(vendors).where(eq(vendors.id, fields.vendorId)).limit(1) : [];
+      if (fields.vendorId && !linkedVendor) return res.status(400).json({ message: "Linked vendor not found" });
+      if (linkedVendor && !linkedPoNameMatches(fields.vendorName, linkedVendor.name))
+        return res.status(400).json({ message: "Vendor name does not match the linked Vendor Master record; clear the link to use a different name" });
+      const [order] = await db.insert(purchaseOrders).values({
+        ...fields, vendorName: linkedVendor?.name ?? fields.vendorName,
+        purchaseIndentId: scoped.indent.id, purchaseIndentItemId: scoped.item.id,
+        raisedByUserId: req.authUser!.id,
+        vendorBusinessName: linkedVendor?.businessName ?? null, vendorGst: linkedVendor?.gstNumber ?? null,
+        vendorPan: linkedVendor?.panNumber ?? null, vendorAddress: linkedVendor?.address ?? null,
+      }).returning();
+      res.status(201).json(await poDetails(order));
+    } catch (err) { poError(err, res); }
+  });
+
+  app.patch("/api/purchase-indents/:id/items/:itemId/purchase-order", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "site_procurement")) return;
+      const scoped = await scopedPoItem(req, res);
+      if (!scoped) return;
+      const fields = poFields.parse(req.body);
+      if (fields.vendorId && fields.vendorId !== scoped.item.vendorId)
+        return res.status(400).json({ message: "Only the PI item's reviewed Vendor Master link may be used" });
+      const [linkedVendor] = fields.vendorId
+        ? await db.select({ id: vendors.id, name: vendors.name, businessName: vendors.businessName, gstNumber: vendors.gstNumber, panNumber: vendors.panNumber, address: vendors.address }).from(vendors).where(eq(vendors.id, fields.vendorId)).limit(1) : [];
+      if (fields.vendorId && !linkedVendor) return res.status(400).json({ message: "Linked vendor not found" });
+      if (linkedVendor && !linkedPoNameMatches(fields.vendorName, linkedVendor.name))
+        return res.status(400).json({ message: "Vendor name does not match the linked Vendor Master record; clear the link to use a different name" });
+      const [order] = await db.update(purchaseOrders).set({
+        ...fields, vendorName: linkedVendor?.name ?? fields.vendorName,
+        vendorBusinessName: linkedVendor?.businessName ?? null,
+        vendorGst: linkedVendor?.gstNumber ?? null, vendorPan: linkedVendor?.panNumber ?? null,
+        vendorAddress: linkedVendor?.address ?? null, updatedAt: new Date(),
+      }).where(and(eq(purchaseOrders.purchaseIndentItemId, scoped.item.id), eq(purchaseOrders.status, "draft"))).returning();
+      if (!order) return res.status(409).json({ message: "Only an active draft can be edited" });
+      res.json(await poDetails(order));
+    } catch (err) { poError(err, res); }
+  });
+
+  app.post("/api/purchase-indents/:id/items/:itemId/purchase-order/submit", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "site_procurement")) return;
+      const scoped = await scopedPoItem(req, res);
+      if (!scoped) return;
+      const [order] = await db.update(purchaseOrders).set({ status: "submitted", submittedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(purchaseOrders.purchaseIndentItemId, scoped.item.id), eq(purchaseOrders.status, "draft"))).returning();
+      if (!order) return res.status(409).json({ message: "Only a draft can be submitted" });
+      res.json(await poDetails(order));
+    } catch (err) { poError(err, res); }
+  });
+
+  app.post("/api/purchase-indents/:id/items/:itemId/purchase-order/decision", async (req, res) => {
+    try {
+      if (!assertApprove(req, res, "purchase_indents_approve")) return;
+      const scoped = await scopedPoItem(req, res);
+      if (!scoped) return;
+      const decision = z.object({ action: z.enum(["approve", "reject"]), reason: z.string().trim().max(500).optional() }).strict().parse(req.body);
+      if (decision.action === "reject" && !decision.reason) return res.status(400).json({ message: "Rejection reason is required" });
+      const [current] = await activePo(scoped.item.id);
+      if (!current || current.status !== "submitted") return res.status(409).json({ message: "Only a submitted PO can be reviewed" });
+      if (!req.authUser?.isAdmin && (current.raisedByUserId === req.authUser?.id || scoped.indent.authorUserId === req.authUser?.id))
+        return res.status(403).json({ message: "You cannot approve a record you raised." });
+      const now = new Date();
+      const next = decision.action === "approve"
+        ? { status: "approved", approvedByUserId: req.authUser!.id, approvedAt: now, updatedAt: now }
+        : { status: "rejected", rejectionReason: decision.reason, updatedAt: now };
+      // Verify that the finalized document is renderable before committing approval.
+      if (decision.action === "approve") await poPdf({
+        ...current, status: "approved", approvedByUserId: req.authUser!.id, approvedAt: now,
+      }, scoped.indent.indentNo);
+      const [order] = await db.update(purchaseOrders).set(next).where(and(eq(purchaseOrders.id, current.id), eq(purchaseOrders.status, "submitted"))).returning();
+      if (!order) return res.status(409).json({ message: "PO was already reviewed" });
+      res.json(await poDetails(order));
+    } catch (err) { poError(err, res); }
+  });
+
+  // The former instant-export URL now enforces approval, even for direct callers.
   app.get("/api/purchase-indents/:id/items/:itemId/purchase-order.pdf", async (req, res) => {
     try {
       if (!assertView(req, res, "purchase_indents_view")) return;
-      const indentId = Number(req.params.id);
-      const itemId = Number(req.params.itemId);
-      if (!Number.isSafeInteger(indentId) || !Number.isSafeInteger(itemId)) return res.status(400).json({ message: "Invalid indent or item ID" });
-      if (!await assertPiDeliveryScope(req, res, indentId)) return;
-      const indent = await storage.getPurchaseIndent(indentId);
-      const item = indent?.items.find(row => row.id === itemId);
-      if (!item) return res.status(404).json({ message: "Purchase indent item not found" });
-      const orderedViaMaterialIndent = indent?.piType === "material" && indent.status === "ordered" && Number(item.orderedQty) > 0;
-      if (!["ordered", "partial"].includes((item.purchaseStatus ?? "").toLowerCase()) && !orderedViaMaterialIndent) {
-        return res.status(409).json({ message: "Purchase Order export is available only after an item is ordered" });
-      }
-      const location = (item as any).receivingLocation as string | null;
-      const destinationId = (item as any).receivingSiteId as number | null;
-      const sites = await storage.getSites();
-      const destinationSite = location === "site" ? sites.find(s => s.id === destinationId) : null;
-      if (location === "site" && destinationSite && !await assertTripSiteAccess(req, res, destinationSite.name)) return;
-      const destination = location === "site"
-        ? destinationSite?.name ?? null
-        : location === "hmp_plant" ? "HMP Plant" : location === "rmc_plant" ? "RMC Plant" : null;
-      // A reviewed vendorId is the only identity link. Never infer master details from a typed name.
-      const canSeeMaster = !!(req.authUser?.isOwner || req.authUser?.isAdmin || req.authPermissions?.master_parties?.view);
-      const [linkedVendor] = item.vendorId && canSeeMaster
-        ? await db.select().from(vendors).where(eq(vendors.id, item.vendorId)).limit(1)
-        : [];
-      const companyConfig = await getCompanyConfig();
-      const pdf = await buildPurchaseOrderPdf({
-        companyName: companyConfig.companyName,
-        logoPath: getCompanyLogoPath(companyConfig.logoFile),
-        indentNo: indent!.indentNo,
-        orderNo: item.orderNo,
-        vendor: item.vendor,
-        linkedVendor: linkedVendor ?? null,
-        showBank: !!(req.authUser?.isOwner || req.authUser?.isAdmin),
-        description: item.description,
-        spec: item.spec,
-        qty: Number(item.orderedQty ?? item.qtyPurchased ?? item.approvedQty ?? item.qty),
-        unit: item.uom,
-        rate: item.rate,
-        expectedDelivery: item.expectedDelivery,
-        paymentMode: item.paymentMode,
-        destination,
-      });
+      const scoped = await scopedPoItem(req, res);
+      if (!scoped) return;
+      const [order] = await activePo(scoped.item.id);
+      if (!order || order.status !== "approved") return res.status(409).json({ message: "Purchase Order PDF is available only after approval" });
+      const pdf = await poPdf(order, scoped.indent.indentNo);
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Cache-Control", "private, no-store");
       res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader("Content-Disposition", `${req.query.preview === "1" ? "inline" : "attachment"}; filename="PurchaseOrder-${indent!.id}-${item.id}.pdf"`);
+      res.setHeader("Content-Disposition", `${req.query.preview === "1" ? "inline" : "attachment"}; filename="PurchaseOrder-${order.id}.pdf"`);
       res.send(pdf);
     } catch (err) {
       console.error("Purchase Order PDF export failed:", err);

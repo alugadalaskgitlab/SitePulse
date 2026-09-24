@@ -32,6 +32,7 @@ const state = {
   previews: [] as string[],
   previewUrls: { created: [] as string[], revoked: [] as string[] },
   unexpected: [] as string[],
+  orders: {} as Record<number, any>,
 };
 (window as any).__poFixture = state;
 const createObjectURL = URL.createObjectURL.bind(URL);
@@ -54,6 +55,54 @@ window.fetch = async (input, init = {}) => {
     permissions: {},
   });
   if (url.pathname === "/api/purchase-indents" && method === "GET") return Response.json(state.indents);
+  if (url.pathname === "/api/purchase-orders/pending") return Response.json(
+    Object.values(state.orders).filter((order: any) => order.status === "submitted").map((order: any) => ({
+      id: order.id, indentId: order.purchaseIndentId, itemId: order.purchaseIndentItemId,
+      indentNo: `SYN/PI/${order.purchaseIndentId}`, description: order.description,
+    })),
+  );
+  const poMatch = url.pathname.match(/^\/api\/purchase-indents\/(\d+)\/items\/(\d+)\/purchase-order(\/submit|\/decision)?$/);
+  if (poMatch) {
+    const indentId = Number(poMatch[1]), itemId = Number(poMatch[2]);
+    const item = state.indents.find(indent => indent.id === indentId)?.items.find(item => item.id === itemId);
+    if (!item) return Response.json({ message: "Synthetic item not found" }, { status: 404 });
+    const existing = state.orders[itemId];
+    if (method === "GET") return Response.json({
+      order: existing || null,
+      defaults: {
+        orderNo: item.orderNo || "", vendorId: item.vendorId,
+        vendorName: item.vendor || "", description: item.description, spec: item.spec || "",
+        quantity: item.orderedQty || item.qty, unit: item.uom, rate: item.rate,
+        expectedDelivery: item.expectedDelivery || "", paymentTerms: item.paymentMode || "",
+        destination: "SYNTHETIC SITE A",
+      },
+    });
+    const body = JSON.parse(String(init.body || "{}"));
+    state.writes.push({ method, path: url.pathname, body });
+    if (method === "POST" && !poMatch[3] && !existing) {
+      state.orders[itemId] = {
+        ...body, id: itemId, purchaseIndentId: indentId, purchaseIndentItemId: itemId,
+        status: "draft", raisedByName: "Synthetic Administrator", raisedAt: new Date().toISOString(),
+        submittedAt: null, approvedAt: null, approvedByName: null, rejectionReason: null,
+      };
+      return Response.json(state.orders[itemId], { status: 201 });
+    }
+    if (method === "PATCH" && !poMatch[3] && existing?.status === "draft") {
+      Object.assign(existing, body);
+      return Response.json(existing);
+    }
+    if (method === "POST" && poMatch[3] === "/submit" && existing?.status === "draft") {
+      Object.assign(existing, { status: "submitted", submittedAt: new Date().toISOString() });
+      return Response.json(existing);
+    }
+    if (method === "POST" && poMatch[3] === "/decision" && existing?.status === "submitted") {
+      Object.assign(existing, body.action === "approve"
+        ? { status: "approved", approvedAt: new Date().toISOString(), approvedByName: "Synthetic Administrator" }
+        : { status: "rejected", rejectionReason: body.reason });
+      return Response.json(existing);
+    }
+    return Response.json({ message: "Invalid synthetic PO transition" }, { status: 409 });
+  }
   if (url.pathname === "/api/purchase-indents/summary") return Response.json({ total: state.indents.length, approved: 1, pending: 0, storesCheck: 0, completed: 0, rejected: 0 });
   if (url.pathname === "/api/sites" || url.pathname === "/api/site-list") return Response.json([{ id: 1, name: "SYNTHETIC SITE A" }]);
   if (/^\/api\/purchase-indents\/\d+$/.test(url.pathname)) return Response.json(state.indents.find(indent => indent.id === Number(url.pathname.split("/").pop())));
@@ -75,6 +124,8 @@ window.fetch = async (input, init = {}) => {
     return Response.json({ indent, txnIdsByItemId: {}, grnIdsByItemId: {} });
   }
   if (url.pathname.endsWith("/purchase-order.pdf")) {
+    const id = Number(url.pathname.match(/items\/(\d+)/)?.[1]);
+    if (state.orders[id]?.status !== "approved") return Response.json({ message: "PO approval required" }, { status: 409 });
     state.previews.push(url.pathname + url.search);
     return originalFetch(input, init);
   }

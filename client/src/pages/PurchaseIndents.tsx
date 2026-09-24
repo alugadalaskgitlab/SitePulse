@@ -28,6 +28,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { PersonnelCombobox } from "@/components/PersonnelCombobox";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
 import { AttachmentUploader } from "@/components/AttachmentUploader";
+import { PurchaseOrderWorkflow } from "@/components/purchase-order-workflow";
 
 type StoreItem = { id: number; name: string; uom: string; category: string };
 
@@ -963,6 +964,15 @@ export default function PurchaseIndents() {
 
   const { data: indents, isLoading } = useQuery<PurchaseIndentWithItems[]>({
     queryKey: ["/api/purchase-indents"],
+  });
+  const { data: pendingPurchaseOrders = [] } = useQuery<{ id: number; itemId: number; indentId: number; indentNo: string; description: string }[]>({
+    queryKey: ["/api/purchase-orders/pending"],
+    enabled: isApprover,
+    queryFn: async () => {
+      const response = await fetch("/api/purchase-orders/pending", { credentials: "include" });
+      if (!response.ok) throw new Error((await response.json()).message || "Failed to load pending Purchase Orders");
+      return response.json();
+    },
   });
 
   const { data: allSites = [] } = useQuery<{ id: number; name: string }[]>({
@@ -2449,6 +2459,9 @@ export default function PurchaseIndents() {
         </div>
         {view === "list" && (
           <div className="flex items-center gap-2 flex-wrap">
+            {isApprover && <Button variant="outline" onClick={() => document.getElementById("pending-purchase-orders")?.scrollIntoView({ behavior: "smooth" })} data-testid="button-po-pending">
+              PO approvals {pendingPurchaseOrders.length > 0 && <Badge className="ml-2">{pendingPurchaseOrders.length}</Badge>}
+            </Button>}
             <Button
               variant="outline"
               onClick={() => {
@@ -2622,6 +2635,16 @@ export default function PurchaseIndents() {
 
       {view === "list" && (
         <>
+          {isApprover && <Card id="pending-purchase-orders" data-testid="po-pending-list">
+            <CardHeader><CardTitle className="text-base">Purchase Orders awaiting approval ({pendingPurchaseOrders.length})</CardTitle></CardHeader>
+            <CardContent className="space-y-2">
+              {pendingPurchaseOrders.length === 0 && <p className="text-sm text-muted-foreground">No Purchase Orders awaiting your review.</p>}
+              {pendingPurchaseOrders.map(po => <Button key={po.id} variant="outline" className="block w-full text-left h-auto py-2" onClick={() => {
+                setSelectedIndentId(po.indentId);
+                setView("procurement");
+              }} data-testid={`po-pending-${po.id}`}>{po.indentNo} · {po.description}</Button>)}
+            </CardContent>
+          </Card>}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <Card data-testid="card-summary-total">
               <CardContent className="p-4 text-center">
@@ -4378,15 +4401,18 @@ export default function PurchaseIndents() {
                 </div>
               )}
 
-              {/* Legacy material-indent order path records the order at indent level without
-                  setting each item's purchaseStatus. Keep its optional PDF available too. */}
-              {(selectedIndent as any).piType === "material" && selectedIndent.status === "ordered" &&
-                selectedIndent.items.filter(item => Number(item.orderedQty) > 0 && !["ordered", "partial", "purchased", "cancelled"].includes((item.purchaseStatus ?? "").toLowerCase())).map(item => (
-                  <div key={`po-legacy-${item.id}`} className="flex flex-wrap items-center gap-3 rounded-lg border border-blue-200 p-3" data-testid={`legacy-po-item-${item.id}`}>
-                    <span className="font-medium">{item.description} — Order Placed</span>
-                    <Button variant="outline" size="sm" onClick={() => openPoPreview(selectedIndent.id, item.id)} data-testid={`button-po-preview-${item.id}`}>Review Purchase Order (PDF)</Button>
+              {/* PO snapshots are independent of the order-recording lifecycle. */}
+              <div className="space-y-2" data-testid="purchase-order-items">
+                {selectedIndent.items.filter(item => (item.approvedQty ?? item.qty) > 0).map(item => (
+                  <div key={`po-${item.id}`} className="flex flex-wrap items-center gap-3 rounded-lg border p-3">
+                    <span className="font-medium">{item.description}</span>
+                    <PurchaseOrderWorkflow indentId={selectedIndent.id} itemId={item.id} canRaise={canCreate}
+                      allowNew={!["pending", "stores_check", "rejected"].includes(selectedIndent.status)}
+                      canApprove={isApprover}
+                      onPreview={() => openPoPreview(selectedIndent.id, item.id)} />
                   </div>
                 ))}
+              </div>
               {/* Item cards — sorted: pending → ordered → received → rejected */}
               <div className="space-y-3">
                 {(() => {
@@ -4546,16 +4572,6 @@ export default function PurchaseIndents() {
                                 <span className={`font-semibold text-sm ${isPartialDelivery ? "text-amber-800 dark:text-amber-200" : "text-blue-800 dark:text-blue-200"}`}>{isPartialDelivery ? "Partial Delivery — Balance Due" : "Order Placed"}</span>
                               </div>
                               <div className="px-3 py-2.5 space-y-1.5 text-sm">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  disabled={poPreviewLoading === item.id}
-                                  onClick={() => openPoPreview(selectedIndent.id, item.id)}
-                                  data-testid={`button-po-preview-${item.id}`}
-                                >
-                                  {poPreviewLoading === item.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileText className="w-4 h-4 mr-2" />}
-                                  Review Purchase Order (PDF)
-                                </Button>
                                 {item.vendor && (
                                   <div className="flex justify-between">
                                     <span className="text-gray-500">Vendor</span>
@@ -5715,11 +5731,7 @@ export default function PurchaseIndents() {
           {poPreview && (
             <>
               <iframe title="Purchase Order PDF preview" src={poPreview.url} className="w-full h-[65vh] border rounded" data-testid="po-pdf-preview" />
-              <div className="flex justify-end">
-                <a href={`/api/purchase-indents/${selectedIndent?.id}/items/${poPreview.itemId}/purchase-order.pdf`} className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground" data-testid="button-po-download">
-                  Export Purchase Order (PDF)
-                </a>
-              </div>
+              <p className="text-sm text-muted-foreground">Approved Purchase Order preview. Download from the Purchase Order details.</p>
             </>
           )}
         </DialogContent>

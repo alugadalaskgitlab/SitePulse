@@ -1,30 +1,100 @@
 {
-  "fixture": "actual PurchaseIndents component; synthetic browser fetch; real PDFKit documents; no live writes",
+  "fixture": "Real PurchaseIndents component, synthetic browser API, real PDFKit files. No live business writes; access enforcement covered by isolated route tests.",
   "screenshots": [
-    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C0-synthetic-indent-list-actual-component.png",
-    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-bulk-linked-ordered-actual-component.png",
-    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-bulk-linked-review-actual-component.png",
-    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-store-unlinked-ordered-actual-component.png",
-    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-store-unlinked-review-actual-component.png",
-    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-bulk-unlinked-ordered-actual-component.png",
-    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-bulk-unlinked-review-actual-component.png",
-    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-store-linked-ordered-actual-component.png",
-    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-store-linked-review-actual-component.png",
-    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-order-without-export-before-actual-component.png",
-    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-order-without-export-after-actual-component.png"
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-A-list-before-order.png",
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-B-11-raise-edit-draft.png",
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-CF-11-submitted-locked-no-pdf.png",
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-C-approver-pending-list.png",
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-D-11-approved-real-names-download.png",
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-DG-11-approved-pdf-preview.png",
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-B-12-raise-edit-draft.png",
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-CF-12-submitted-locked-no-pdf.png",
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-D-12-approved-real-names-download.png",
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-DG-12-approved-pdf-preview.png",
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-B-linked-name-change-clears-vendor-id.png",
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-A-order-without-po-before.png",
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-A-order-without-po-after.png"
   ],
-  "previewRequests": [
-    "/api/purchase-indents/11/items/11/purchase-order.pdf?preview=1",
-    "/api/purchase-indents/11/items/11/purchase-order.pdf?preview=1",
-    "/api/purchase-indents/12/items/12/purchase-order.pdf?preview=1",
-    "/api/purchase-indents/13/items/13/purchase-order.pdf?preview=1",
-    "/api/purchase-indents/14/items/14/purchase-order.pdf?preview=1"
+  "downloadedPdfs": [
+    "SYNTHETIC-PO-11.pdf",
+    "SYNTHETIC-PO-12.pdf"
   ],
-  "previewUrlLifecycle": {
-    "created": 5,
-    "revoked": 5
-  },
   "writes": [
+    {
+      "method": "POST",
+      "path": "/api/purchase-indents/11/items/11/purchase-order",
+      "body": {
+        "orderNo": "SYN-PO-11",
+        "vendorId": 3,
+        "vendorName": "SYNTHETIC Supplier",
+        "description": "SYNTHETIC 11 edited standalone PO",
+        "spec": "",
+        "quantity": 20,
+        "unit": "MT",
+        "rate": 735,
+        "expectedDelivery": "2026-09-29",
+        "paymentTerms": "credit",
+        "destination": "SYNTHETIC SITE A"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/purchase-indents/11/items/11/purchase-order/submit",
+      "body": {}
+    },
+    {
+      "method": "POST",
+      "path": "/api/purchase-indents/11/items/11/purchase-order/decision",
+      "body": {
+        "action": "approve"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/purchase-indents/12/items/12/purchase-order",
+      "body": {
+        "orderNo": "SYN-PO-12",
+        "vendorId": null,
+        "vendorName": "SYNTHETIC Supplier",
+        "description": "SYNTHETIC 12 edited standalone PO",
+        "spec": "",
+        "quantity": 4,
+        "unit": "NOS",
+        "rate": 735,
+        "expectedDelivery": "2026-09-29",
+        "paymentTerms": "credit",
+        "destination": "SYNTHETIC SITE A"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/purchase-indents/12/items/12/purchase-order/submit",
+      "body": {}
+    },
+    {
+      "method": "POST",
+      "path": "/api/purchase-indents/12/items/12/purchase-order/decision",
+      "body": {
+        "action": "approve"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/purchase-indents/14/items/14/purchase-order",
+      "body": {
+        "orderNo": "SYN-PO-14",
+        "vendorId": null,
+        "vendorName": "SYNTHETIC Alternate Source",
+        "description": "SYNTHETIC seal · linked store",
+        "spec": "",
+        "quantity": 4,
+        "unit": "NOS",
+        "rate": 735,
+        "expectedDelivery": "2026-09-29",
+        "paymentTerms": "credit",
+        "destination": "SYNTHETIC SITE A"
+      }
+    },
     {
       "method": "POST",
       "path": "/api/purchase-indents/15/purchaser-action",

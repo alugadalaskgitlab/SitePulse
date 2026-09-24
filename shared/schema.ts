@@ -1914,6 +1914,42 @@ export const purchaseIndentItems = pgTable("purchase_indent_items", {
   orderedByName: text("ordered_by_name"),          // display name of person who placed the order
 });
 
+// Optional, independently editable PO snapshot. Rejected rows remain as history;
+// the partial unique index guarantees one active lifecycle per PI item.
+export const purchaseOrders = pgTable("purchase_orders", {
+  id: serial("id").primaryKey(),
+  purchaseIndentId: integer("purchase_indent_id").notNull().references(() => purchaseIndents.id),
+  purchaseIndentItemId: integer("purchase_indent_item_id").notNull().references(() => purchaseIndentItems.id),
+  status: text("status").notNull().default("draft"),
+  orderNo: text("order_no"),
+  vendorId: integer("vendor_id").references(() => vendors.id, { onDelete: "set null" }),
+  vendorName: text("vendor_name").notNull(),
+  vendorBusinessName: text("vendor_business_name"),
+  vendorGst: text("vendor_gst"),
+  vendorPan: text("vendor_pan"),
+  vendorAddress: text("vendor_address"),
+  description: text("description").notNull(),
+  spec: text("spec"),
+  quantity: real("quantity").notNull(),
+  unit: text("unit").notNull(),
+  rate: real("rate"),
+  expectedDelivery: text("expected_delivery"),
+  paymentTerms: text("payment_terms"),
+  destination: text("destination"),
+  raisedByUserId: integer("raised_by_user_id").notNull().references(() => users.id),
+  raisedAt: timestamp("raised_at").notNull().defaultNow(),
+  submittedAt: timestamp("submitted_at"),
+  approvedByUserId: integer("approved_by_user_id").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  rejectionReason: text("rejection_reason"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("purchase_orders_one_active_per_item").on(table.purchaseIndentItemId).where(sql`${table.status} <> 'rejected'`),
+  check("purchase_orders_status_check", sql`${table.status} IN ('draft', 'submitted', 'approved', 'rejected')`),
+]);
+export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
+
 export const purchaseIndentItemHistory = pgTable("purchase_indent_item_history", {
   id: serial("id").primaryKey(),
   itemId: integer("item_id").notNull(),

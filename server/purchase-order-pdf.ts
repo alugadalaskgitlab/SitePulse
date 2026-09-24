@@ -1,84 +1,102 @@
 import PDFDocument from "pdfkit";
-import type { Vendor } from "@shared/schema";
 
 export type PurchaseOrderDetails = {
   companyName: string;
   logoPath?: string;
   indentNo: string;
-  orderNo?: string | null;
-  vendor: string | null;
-  linkedVendor?: Vendor | null;
-  showBank: boolean;
+  orderNo: string;
+  orderDate: Date;
+  vendor: string;
+  vendorBusinessName?: string | null;
+  vendorGst?: string | null;
+  vendorPan?: string | null;
+  vendorAddress?: string | null;
   description: string;
   spec?: string | null;
   qty: number;
   unit: string;
   rate: number | null;
   expectedDelivery?: string | null;
-  paymentMode?: string | null;
+  paymentTerms?: string | null;
   destination?: string | null;
+  raisedBy: string;
+  raisedAt: Date;
+  approvedBy: string;
+  approvedAt: Date;
 };
 
 export async function buildPurchaseOrderPdf(data: PurchaseOrderDetails): Promise<Buffer> {
-  const doc = new PDFDocument({ size: "A4", margin: 40, autoFirstPage: true });
+  const doc = new PDFDocument({ size: "A4", margin: 40 });
   const chunks: Buffer[] = [];
   const result = new Promise<Buffer>((resolve, reject) => {
     doc.on("data", (chunk: Buffer) => chunks.push(chunk));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
   });
-  const left = 40;
-  const width = 515;
-  const line = (label: string, value: string | number | null | undefined) => {
-    if (value == null || String(value).trim() === "") return;
-    // A vendor can store arbitrarily long text. Bound it before PDFKit lays it
-    // out so a single PO never silently spills onto a second page.
-    const printable = String(value).replace(/\s+/g, " ").trim();
-    const concise = printable.length > 140 ? `${printable.slice(0, 137)}...` : printable;
-    doc.font("Helvetica-Bold").fontSize(9).fillColor("#334155").text(`${label}:`, left, doc.y, { continued: true });
-    doc.font("Helvetica").fillColor("#0f172a").text(` ${concise}`, { width, height: 38, ellipsis: true });
-    doc.moveDown(0.35);
+  const x = 40, w = 515;
+  const clean = (value: string | null | undefined, limit = 170) => {
+    const text = (value || "").replace(/\s+/g, " ").trim();
+    return text.length > limit ? `${text.slice(0, limit - 1)}…` : text || "—";
   };
-  const section = (label: string) => {
-    doc.moveDown(0.7);
-    doc.font("Helvetica-Bold").fontSize(10).fillColor("#b45309").text(label.toUpperCase(), left);
-    doc.moveDown(0.4);
-  };
+  const date = (value: Date) => value.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
   if (data.logoPath) {
-    try { doc.image(data.logoPath, left, 38, { fit: [36, 36] }); } catch { /* Optional logo; the company name remains the letterhead. */ }
+    try { doc.image(data.logoPath, x, 39, { fit: [48, 48] }); } catch { /* Company name remains visible without a logo. */ }
   }
-  doc.font("Helvetica-Bold").fontSize(17).fillColor("#0f172a").text(data.companyName.toUpperCase(), { align: "center", height: 42, ellipsis: true });
-  doc.fontSize(12).text("PURCHASE ORDER", { align: "center" });
-  doc.moveDown(0.6);
-  doc.moveTo(left, doc.y).lineTo(left + width, doc.y).lineWidth(2).strokeColor("#d97706").stroke();
-  section("Reference");
-  line("Purchase Indent", data.indentNo);
-  line("PO / Order No", data.orderNo);
-  section("Supplier");
-  line("Vendor", data.vendor);
-  const vendor = data.linkedVendor;
-  if (vendor) {
-    line("Business Name", vendor.businessName);
-    line("GST", vendor.gstNumber);
-    line("PAN", vendor.panNumber);
-    line("Address", vendor.address);
-    if (data.showBank) {
-      line("Bank", vendor.bankName);
-      line("Account Name", vendor.bankAccountName);
-      line("Account No", vendor.bankAccountNumber);
-      line("IFSC", vendor.bankIfsc);
+  doc.fillColor("#142b43").font("Helvetica-Bold").fontSize(17).text(clean(data.companyName, 65), 96, 43, { width: 458, height: 45, ellipsis: true });
+  doc.moveTo(x, 98).lineTo(x + w, 98).lineWidth(2).strokeColor("#d79235").stroke();
+  doc.fillColor("#142b43").font("Helvetica-Bold").fontSize(20).text("PURCHASE ORDER", x, 116, { width: 300 });
+  doc.roundedRect(355, 110, 200, 64, 5).fillAndStroke("#f1f5f9", "#cbd5e1");
+  doc.fontSize(9).fillColor("#475569").text("PO / ORDER NO.", 365, 119);
+  doc.fontSize(12).fillColor("#142b43").text(clean(data.orderNo, 40), 365, 132, { width: 178, height: 18, ellipsis: true });
+  doc.font("Helvetica").fontSize(9).fillColor("#475569").text(`Date: ${date(data.orderDate)}`, 365, 153);
+  doc.fontSize(9).text(`Purchase Indent: ${clean(data.indentNo, 75)}`, x, 165, { width: 300 });
+
+  const boxY = 197, boxH = 160, gap = 12, half = (w - gap) / 2;
+  const block = (bx: number, heading: string, lines: string[]) => {
+    doc.roundedRect(bx, boxY, half, boxH, 5).strokeColor("#cbd5e1").stroke();
+    doc.rect(bx + 1, boxY + 1, half - 2, 30).fill("#e9eff5");
+    doc.font("Helvetica-Bold").fontSize(10).fillColor("#142b43").text(heading, bx + 12, boxY + 10, { width: half - 24 });
+    let yy = boxY + 42;
+    for (const line of lines) {
+      if (!line) continue;
+      doc.font("Helvetica").fontSize(9).fillColor("#27364a").text(clean(line, 95), bx + 12, yy, { width: half - 24, height: 31, ellipsis: true });
+      yy += Math.min(32, Math.max(16, doc.heightOfString(clean(line, 95), { width: half - 24 }) + 5));
+      if (yy > boxY + boxH - 12) break;
     }
-  }
-  section("Item & agreed terms");
-  line("Description", data.description);
-  line("Specification", data.spec);
-  line("Quantity", `${data.qty} ${data.unit}`);
-  line("Agreed rate", data.rate == null ? null : `Rs. ${Number(data.rate).toLocaleString("en-IN", { maximumFractionDigits: 2 })} / ${data.unit}`);
-  line("Expected delivery", data.expectedDelivery);
-  line("Payment mode", data.paymentMode);
-  line("Delivery destination", data.destination || "To be confirmed");
-  doc.moveDown(1);
-  doc.fontSize(8).fillColor("#64748b").text("Generated from the Purchase Indent. Please confirm delivery arrangements with the purchaser.", left, Math.min(doc.y + 15, 735), { width });
+  };
+  block(x, "VENDOR", [
+    data.vendor, data.vendorBusinessName && data.vendorBusinessName !== data.vendor ? data.vendorBusinessName : "",
+    data.vendorGst ? `GST: ${data.vendorGst}` : "",
+    data.vendorPan ? `PAN: ${data.vendorPan}` : "",
+    data.vendorAddress || "",
+  ]);
+  block(x + half + gap, "DELIVER TO", [data.destination || "To be confirmed"]);
+
+  doc.font("Helvetica-Bold").fontSize(11).fillColor("#142b43").text("ITEM & AGREED TERMS", x, 383);
+  const cols = [x, x + 196, x + 252, x + 307, x + 367, x + 441, x + w];
+  const labels = ["DESCRIPTION", "QTY", "UNIT", "RATE", "DELIVERY", "PAYMENT"];
+  const tableY = 407, rowH = 116;
+  doc.rect(x, tableY, w, 34).fill("#e9eff5");
+  doc.rect(x, tableY, w, 34 + rowH).strokeColor("#aebdca").stroke();
+  doc.moveTo(x, tableY + 34).lineTo(x + w, tableY + 34).stroke();
+  for (let i = 1; i < cols.length - 1; i++) doc.moveTo(cols[i], tableY).lineTo(cols[i], tableY + 34 + rowH).stroke();
+  labels.forEach((label, i) => doc.font("Helvetica-Bold").fontSize(8).fillColor("#142b43")
+    .text(label, cols[i] + 5, tableY + 11, { width: cols[i + 1] - cols[i] - 10 }));
+  const cells = [
+    `${data.description}${data.spec ? `\n${data.spec}` : ""}`,
+    String(data.qty), data.unit,
+    data.rate == null ? "—" : `Rs. ${Number(data.rate).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`,
+    data.expectedDelivery || "—", data.paymentTerms || "—",
+  ];
+  cells.forEach((value, i) => doc.font("Helvetica").fontSize(9).fillColor("#27364a")
+    .text(clean(value, i === 0 ? 220 : 75), cols[i] + 5, tableY + 45, {
+      width: cols[i + 1] - cols[i] - 10, height: rowH - 15, ellipsis: true,
+    }));
+  doc.moveTo(x, 558).lineTo(x + w, 558).strokeColor("#cbd5e1").stroke();
+  doc.font("Helvetica-Bold").fontSize(9).fillColor("#142b43").text(`Raised by: ${clean(data.raisedBy, 75)}`, x, 574, { width: half });
+  doc.font("Helvetica").fontSize(9).fillColor("#475569").text(date(data.raisedAt), x, 592);
+  doc.font("Helvetica-Bold").fillColor("#142b43").text(`Approved by: ${clean(data.approvedBy, 75)}`, x + half + gap, 574, { width: half });
+  doc.font("Helvetica").fillColor("#475569").text(date(data.approvedAt), x + half + gap, 592);
   doc.end();
   return result;
 }
