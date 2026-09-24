@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect, type ComponentType } from "react";
 import { deliveryProgress, DestinationFields, PurchaseIndentDeliveryPanel } from "@/components/purchase-indent-delivery";
+import { isBulkPiDeliveryItem } from "@shared/purchaseIndentDelivery";
 import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useUpload } from "@/hooks/use-upload";
@@ -2166,7 +2167,7 @@ export default function PurchaseIndents() {
 
     const itemRows = indent.items.map((item, i) => {
       const approvedCell = item.approvedQty != null ? `${item.approvedQty} ${esc(item.uom)}` : "—";
-      const statusCell = (indent as any).piType === "material" ? esc(deliveryProgress(item)) : item.purchaseStatus ? esc(item.purchaseStatus.toUpperCase()) : (item.cancelledBy ? "CANCELLED" : "—");
+      const statusCell = isBulkPiDeliveryItem(item) ? esc(deliveryProgress(item)) : item.purchaseStatus ? esc(item.purchaseStatus.toUpperCase()) : (item.cancelledBy ? "CANCELLED" : "—");
       return `
         <tr style="border-bottom:1px solid #e5e7eb;">
           <td style="padding:6px 8px;font-weight:600;">${i + 1}. ${esc(item.description)}</td>
@@ -2605,11 +2606,11 @@ export default function PurchaseIndents() {
         </DialogContent>
       </Dialog>
 
-      {selectedIndent && !["list", "form", "report"].includes(view) && (selectedIndent as any).piType === "material" && (
+      {selectedIndent && !["list", "form", "report"].includes(view) && selectedIndent.items.some(isBulkPiDeliveryItem) && (
         <Card data-testid="bulk-delivery-tracking">
           <CardHeader><CardTitle className="text-base">Bulk delivery tracking</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            {selectedIndent.items.map(item => <PurchaseIndentDeliveryPanel key={`${selectedIndent.id}-${item.id}`} item={item} indentId={selectedIndent.id} indentNo={selectedIndent.indentNo} sites={allSites} canEdit={canEdit}
+            {selectedIndent.items.filter(isBulkPiDeliveryItem).map(item => <PurchaseIndentDeliveryPanel key={`${selectedIndent.id}-${item.id}`} item={item} indentId={selectedIndent.id} indentNo={selectedIndent.indentNo} sites={allSites} canEdit={canEdit}
               onSave={async (itemId, receivingLocation, receivingSiteId) => {
                 await apiRequest("PATCH", `/api/purchase-indents/${selectedIndent.id}/items/${itemId}/destination`, { receivingLocation, receivingSiteId });
                 await queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
@@ -2793,7 +2794,7 @@ export default function PurchaseIndents() {
                               {indent.items.slice(0, 5).map(item => (
                                 <span key={item.id} className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-white dark:bg-slate-800 text-gray-800 dark:text-slate-200 border border-gray-300 dark:border-slate-600">
                                   {item.description}{(indent as any).piType !== "material" && (item as any).spec ? ` · ${(item as any).spec}` : ""} — {item.qty} {item.uom}
-                                  {(indent as any).piType === "material" && <span data-testid={`list-delivery-progress-${item.id}`}> · {deliveryProgress(item)}</span>}
+                                  {isBulkPiDeliveryItem(item) && <span data-testid={`list-delivery-progress-${item.id}`}> · {deliveryProgress(item)}</span>}
                                 </span>
                               ))}
                               {indent.items.length > 5 && (
@@ -4591,7 +4592,7 @@ export default function PurchaseIndents() {
                                   </div>
                                 )}
                                 {/* Record Delivery expandable panel — stores/service route only; material route uses Plant Material Receipts */}
-                                {canCreate && ((item as any).procurementRoute !== "material" && (item as any).procurementRoute !== "bulk_plant") && (
+                                {canCreate && !isBulkPiDeliveryItem(item) && (
                                   <div className="mt-3 border-t border-blue-200 dark:border-blue-800 pt-3">
                                     <Button
                                       variant="outline"
@@ -4812,7 +4813,7 @@ export default function PurchaseIndents() {
                                 </Select>
                               </div>
                             </div>
-                            {(((item as any).procurementRoute === "stores" || !(item as any).procurementRoute)) && selectedIndent.status === "purchaser_actioned" ? (
+                            {!isBulkPiDeliveryItem(item) && (((item as any).procurementRoute === "stores" || !(item as any).procurementRoute)) && selectedIndent.status === "purchaser_actioned" ? (
                               <div className="pt-1">
                                 {(item as any).linkedGrnId ? (
                                   <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-50 border border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800 text-sm text-emerald-700 dark:text-emerald-300" data-testid={`grn-pending-receipt-${item.id}`}>
@@ -4880,7 +4881,7 @@ export default function PurchaseIndents() {
                               }
                               return null;
                             })()
-                            : ((item as any).procurementRoute === "material" || (item as any).procurementRoute === "bulk_plant") && selectedIndent.status === "purchaser_actioned" ? (
+                            : isBulkPiDeliveryItem(item) && selectedIndent.status === "purchaser_actioned" ? (
                               <div className="pt-1">
                                 {(item.purchaseStatus || "").toLowerCase() === "pending_plant_receipt" ? (() => {
                                   const ppr = indentPendingPPRs.find((r: any) => r.indentItemId === item.id);

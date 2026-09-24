@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { formatPurchaseIndentNumber, reconcileDeliveryEvidence, validateDeliveryDestination, type DeliveryEvidence } from "../shared/purchaseIndentDelivery";
+import { formatPurchaseIndentNumber, reconcileDeliveryEvidence, validateDeliveryDestination, isBulkPiDeliveryItem, type DeliveryEvidence } from "../shared/purchaseIndentDelivery";
 import { calculateEquipmentHireFinancials, calculateHireGroup, getHireReviewGaps, isEquipmentHireBillEligible, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
 import { hasCumulativeVendorPayment } from "../shared/vendorBillPayment";
 import { normalizeDprSiteName } from "../shared/dprBoqSelection";
@@ -14478,11 +14478,17 @@ export class DatabaseStorage implements IStorage {
       orderBy: desc(purchaseIndents.date),
     });
 
+    const catalogIds = Array.from(new Set(indents.flatMap(indent => indent.items.map(item => item.materialId).filter((id): id is number => id != null))));
+    const catalogRoutes = new Map((catalogIds.length
+      ? await db.select({ id: plantMaterials.id, procurementRoute: plantMaterials.procurementRoute })
+        .from(plantMaterials).where(inArray(plantMaterials.id, catalogIds))
+      : []).map(row => [row.id, row.procurementRoute]));
     const enrichedIndents = await Promise.all(indents.map(async indent => ({
       ...indent,
       items: await Promise.all(indent.items.map(async item => {
-        if (indent.piType !== "material" && !["material", "bulk_plant"].includes(item.procurementRoute ?? "")) return item;
-        return { ...item, ...reconcileDeliveryEvidence(await this._getPiDeliveryEvidence(db, item.id), item.uom) };
+        const withCatalog = { ...item, catalogProcurementRoute: item.materialId ? catalogRoutes.get(item.materialId) ?? null : null };
+        if (!isBulkPiDeliveryItem(withCatalog)) return withCatalog;
+        return { ...withCatalog, ...reconcileDeliveryEvidence(await this._getPiDeliveryEvidence(db, item.id), item.uom) };
       })),
     })));
     if (filters?.priority) {
@@ -14658,23 +14664,24 @@ export class DatabaseStorage implements IStorage {
         : item
     );
 
-    // Infer procurementRoute for items where it's null but materialId is set (legacy/historical)
-    const nullRouteMaterialIds = Array.from(new Set(
-      finalItems.filter((i: any) => !i.procurementRoute && i.materialId).map((i: any) => i.materialId as number)
+    // Expose the catalog route independently so a mistagged saved Stores route
+    // remains visible for explicit review while bulk actions remain guarded.
+    const linkedMaterialIds = Array.from(new Set<number>(
+      finalItems.filter((i: any) => i.materialId).map((i: any) => i.materialId as number)
     ));
     let materialRouteMap = new Map<number, string | null>();
-    if (nullRouteMaterialIds.length > 0) {
+    if (linkedMaterialIds.length > 0) {
       const matRows = await db
         .select({ id: plantMaterials.id, procurementRoute: plantMaterials.procurementRoute })
         .from(plantMaterials)
-        .where(inArray(plantMaterials.id, nullRouteMaterialIds));
+        .where(inArray(plantMaterials.id, linkedMaterialIds));
       for (const m of matRows) {
         materialRouteMap.set(m.id, m.procurementRoute ?? null);
       }
     }
     const resolvedItems = finalItems.map((item: any) =>
-      !item.procurementRoute && item.materialId && materialRouteMap.has(item.materialId)
-        ? { ...item, procurementRoute: materialRouteMap.get(item.materialId) ?? null }
+      item.materialId && materialRouteMap.has(item.materialId)
+        ? { ...item, catalogProcurementRoute: materialRouteMap.get(item.materialId) ?? null }
         : item
     );
 
@@ -14706,15 +14713,20 @@ export class DatabaseStorage implements IStorage {
       indentNo: purchaseIndents.indentNo,
       itemName: purchaseIndentItems.description,
       currentProcurementRoute: purchaseIndentItems.procurementRoute,
+      catalogProcurementRoute: plantMaterials.procurementRoute,
       siteName: sites.name,
       raisedFrom: purchaseIndents.raisedFrom,
       linkedGrnId: purchaseIndentItems.linkedGrnId,
     })
       .from(purchaseIndentItems)
       .innerJoin(purchaseIndents, eq(purchaseIndentItems.indentId, purchaseIndents.id))
+      .leftJoin(plantMaterials, eq(purchaseIndentItems.materialId, plantMaterials.id))
       .leftJoin(sites, eq(purchaseIndents.siteId, sites.id))
       .where(and(
-        eq(purchaseIndents.piType, "material"),
+        or(
+          inArray(plantMaterials.procurementRoute, ["material", "bulk_plant"]),
+          and(eq(purchaseIndents.piType, "material"), isNull(plantMaterials.procurementRoute)),
+        ),
         sql`${purchaseIndentItems.procurementRoute} IS DISTINCT FROM 'material'
           AND ${purchaseIndentItems.procurementRoute} IS DISTINCT FROM 'bulk_plant'`,
         ...(itemIds ? [inArray(purchaseIndentItems.id, itemIds)] : []),
@@ -15211,6 +15223,7 @@ export class DatabaseStorage implements IStorage {
     const allItemDbRows = await db.select({
       id: purchaseIndentItems.id,
       indentId: purchaseIndentItems.indentId,
+      materialId: purchaseIndentItems.materialId,
       procurementRoute: purchaseIndentItems.procurementRoute,
       description: purchaseIndentItems.description,
       uom: purchaseIndentItems.uom,
@@ -15219,6 +15232,11 @@ export class DatabaseStorage implements IStorage {
     }).from(purchaseIndentItems)
       .where(inArray(purchaseIndentItems.id, items.map(i => i.itemId)));
     const allItemDbMap = new Map(allItemDbRows.map(r => [r.id, r]));
+    const linkedMaterialIds = Array.from(new Set(allItemDbRows.map(row => row.materialId).filter((id): id is number => id != null)));
+    const catalogRouteById = new Map((linkedMaterialIds.length
+      ? await db.select({ id: plantMaterials.id, procurementRoute: plantMaterials.procurementRoute })
+        .from(plantMaterials).where(inArray(plantMaterials.id, linkedMaterialIds))
+      : []).map(row => [row.id, row.procurementRoute]));
     const [parentIndent] = await db.select({ piType: purchaseIndents.piType }).from(purchaseIndents).where(eq(purchaseIndents.id, indentId));
 
     await db.transaction(async (tx) => {
@@ -15231,6 +15249,11 @@ export class DatabaseStorage implements IStorage {
           ?? (item.reasonCode === "ordered" ? "ordered"
             : item.reasonCode === "not_available" ? "not_available"
             : "already_purchased");
+        if (actionType === "already_purchased" && dbRoute === "stores"
+          && isBulkPiDeliveryItem({ procurementRoute: dbRoute,
+            catalogProcurementRoute: existing.materialId ? catalogRouteById.get(existing.materialId) : null })) {
+          throw new Error(`Cannot create a Stores receipt for bulk material item ${item.itemId}. Review and correct its procurement route first.`);
+        }
 
         if (actionType === "ordered") {
           if (parentIndent?.piType === "material" || dbRoute === "material" || dbRoute === "bulk_plant") {
@@ -15538,6 +15561,7 @@ export class DatabaseStorage implements IStorage {
     const [tx_row] = await db.transaction(async (tx) => {
       const [existing] = await tx.select({
         indentId: purchaseIndentItems.indentId,
+        materialId: purchaseIndentItems.materialId,
         procurementRoute: purchaseIndentItems.procurementRoute,
         totalAcceptedQty: purchaseIndentItems.totalAcceptedQty,
         totalRejectedQty: purchaseIndentItems.totalRejectedQty,
@@ -15549,7 +15573,11 @@ export class DatabaseStorage implements IStorage {
       if (!existing || existing.indentId !== data.indentId) {
         throw new Error("Item does not belong to this purchase indent");
       }
-      if (existing.procurementRoute === "material" || existing.procurementRoute === "bulk_plant") {
+      const [catalog] = existing.materialId
+        ? await tx.select({ procurementRoute: plantMaterials.procurementRoute }).from(plantMaterials)
+          .where(eq(plantMaterials.id, existing.materialId)).limit(1)
+        : [];
+      if (isBulkPiDeliveryItem({ ...existing, catalogProcurementRoute: catalog?.procurementRoute })) {
         throw new Error("Cannot use Stores handover for material/bulk-plant route items.");
       }
       const inserted = await tx.insert(piItemTransactions).values({
@@ -16266,7 +16294,11 @@ export class DatabaseStorage implements IStorage {
       if (currentStatus !== "ORDERED" && currentStatus !== "PARTIAL") {
         throw new Error(`Cannot record delivery: item is in status '${existingItem.purchaseStatus}'. Only ORDERED or PARTIAL items accept delivery.`);
       }
-      if (existingItem.procurementRoute === "material" || existingItem.procurementRoute === "bulk_plant") {
+      const [catalog] = existingItem.materialId
+        ? await tx.select({ procurementRoute: plantMaterials.procurementRoute }).from(plantMaterials)
+          .where(eq(plantMaterials.id, existingItem.materialId)).limit(1)
+        : [];
+      if (isBulkPiDeliveryItem({ ...existingItem, catalogProcurementRoute: catalog?.procurementRoute })) {
         throw new Error(`Cannot use record-delivery for material/bulk-plant route items. Use Plant Material Receipts to post delivery and update stock.`);
       }
 

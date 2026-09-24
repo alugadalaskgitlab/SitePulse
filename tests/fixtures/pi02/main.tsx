@@ -12,7 +12,12 @@ const catalog = [
   { id: 501, name: "WMM", defaultUom: "MT", category: "Aggregate", isActive: 1 }, // deliberately untagged
   { id: 502, name: "CRANE HIRE", defaultUom: "HOUR", category: "Service", procurementRoute: "service", isActive: 1 },
   { id: 503, name: "COTTON WASTE", defaultUom: "KG", category: "Consumable", isActive: 1 }, // store fallback
+  { id: 504, name: "SYNTHETIC CEMENT BAGS", defaultUom: "BAG", category: "Stores", procurementRoute: "stores", isActive: 1 },
+  { id: 505, name: "SYNTHETIC GSB", defaultUom: "MT", category: "Aggregate", procurementRoute: "bulk_plant", isActive: 1 },
+  { id: 506, name: "SYNTHETIC WMM", defaultUom: "MT", category: "Aggregate", procurementRoute: "material", isActive: 1 },
 ];
+const partB = new URLSearchParams(location.search).has("partB");
+const fixtureRole = new URLSearchParams(location.search).get("role") || "stores";
 const oldItem = {
   id: 9001, description: "WMM — PRE-FIX STORED ROW", qty: 100, approvedQty: 100, orderedQty: 100,
   uom: "MT", purpose: "PLANT", priority: "normal", materialId: 501, procurementRoute: "stores",
@@ -37,6 +42,25 @@ let indents: AnyRow[] = [{
   remarks: "PRE-FIX SYNTHETIC STORED ROUTE MUST REMAIN UNCHANGED", status: "ordered",
   storesStatus: "bypassed", piType: "material", createdAt: "2026-03-01T08:00:00.000Z", items: [oldItem, validBulkItem, validMaterialItem],
 }];
+if (partB) {
+  indents = [{
+    id: 92, indentNo: "SYNTHETIC/PI02B/STORES/0092", date: "2026-03-01", siteId: 11,
+    raisedFrom: "SYNTHETIC SITE", proposedBy: "SYNTHETIC REQUESTER", raisedBy: "SYNTHETIC ENGINEER",
+    status: "ordered", storesStatus: "verified", piType: "stores", createdAt: "2026-03-01T08:00:00.000Z",
+    items: [
+      { ...oldItem, id: 9201, indentId: 92, materialId: 506, description: "SYNTHETIC WMM · NULL ROUTE", procurementRoute: null,
+        catalogProcurementRoute: "material", deliveredQty: 25, receivingLocation: "site", receivingSiteId: 11,
+        deliveryEvidence: [{ kind: "trip", id: 101, date: "2026-03-02", quantity: 25, uom: "MT", countedQty: 25, status: "active", reference: "SYN-TRIP-101" }] },
+      { ...oldItem, id: 9202, indentId: 92, description: "SYNTHETIC CEMENT BAGS · STORES", materialId: 504,
+        procurementRoute: "stores", catalogProcurementRoute: "stores", uom: "BAG", qty: 40,
+        approvedQty: 40, orderedQty: 40, receivingLocation: null, deliveryEvidence: [] },
+      { ...oldItem, id: 9203, indentId: 92, materialId: 505, description: "SYNTHETIC GSB · MISTAGGED STORES",
+        procurementRoute: "stores", catalogProcurementRoute: "bulk_plant", receivingLocation: "hmp_plant",
+        deliveredQty: 10, deliveryEvidence: [{ kind: "receipt", id: 102, date: "2026-03-03", quantity: 10,
+          uom: "MT", countedQty: 10, status: "active", reference: "SYN-RECEIPT-102" }] },
+    ],
+  }];
+}
 
 const fixtureState = {
   requests: [] as RequestRecord[], creates: [] as AnyRow[], toasts: [] as AnyRow[],
@@ -60,6 +84,14 @@ window.fetch = async (input, init) => {
   fixtureState.requests.push({ method, path: `${url.pathname}${url.search}`, body });
 
   if (url.pathname === "/api/purchase-indents/route-corrections" && method === "GET") {
+    if (partB) return json(indents[0].items.filter((item: AnyRow) =>
+      ["material", "bulk_plant"].includes(item.catalogProcurementRoute)
+      && !["material", "bulk_plant"].includes(item.procurementRoute)
+    ).map((item: AnyRow) => ({
+      itemId: item.id, indentId: 92, indentNo: indents[0].indentNo, itemName: item.description,
+      currentProcurementRoute: item.procurementRoute, proposedProcurementRoute: "material",
+      canApply: true, conflictReason: null,
+    })));
     const item = indents[0].items.find((row: AnyRow) => row.id === 9001);
     return json(["material", "bulk_plant"].includes(item.procurementRoute) ? [] : [{
       itemId: item.id,
@@ -132,7 +164,7 @@ queryClient.clear();
 createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={queryClient}>
     <div className="sticky top-0 z-[200] border-b border-fuchsia-300 bg-fuchsia-50 px-4 py-2 text-center text-xs font-bold text-fuchsia-950" data-testid="pi02-fixture-disclosure">
-      PI-02B REAL PURCHASE INDENTS COMPONENT — SYNTHETIC INTERCEPTED UI API — NO LIVE OR PRODUCTION WRITES
+      PI-02B REAL PURCHASE INDENTS COMPONENT — SYNTHETIC INTERCEPTED UI API — NO LIVE OR PRODUCTION WRITES {partB ? `· PART B · ${fixtureRole.toUpperCase()} VIEW` : ""}
       <div data-testid="pi02-route-evidence">Before Apply: stored route remains stores · apply requests 0 · audit rows 0</div>
     </div>
     <PurchaseIndents />

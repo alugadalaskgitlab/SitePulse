@@ -128,11 +128,44 @@ assert(audit.module === "purchase_indent_route_correction" && audit.transactionI
 assert(audit.oldValues.procurementRoute === "stores" && audit.newValues.procurementRoute === "material", "A2 audit old/new mismatch");
 const a2 = await screenshot("A2-after-explicit-apply-detail-no-Record-Delivery-audit-SYNTHETIC-API");
 
+// Part B: isolated, role-specific synthetic API fixture of the actual component.
+// A non-material parent contains null-route WMM and mistagged GSB linked to bulk
+// catalog records, alongside a genuine catalog-linked Stores item.
+const partBShots = {};
+for (const role of ["stores", "purchaser", "pm"]) {
+  await cdp("Page.navigate", { url: `http://127.0.0.1:${vitePort}/?partB=1&role=${role}` });
+  await waitFor("!!document.querySelector('[data-testid=card-indent-92]') && document.body.innerText.includes('PART B')", `${role} synthetic indent list`);
+  await click("card-indent-92");
+  await waitFor("!!document.querySelector('[data-testid=delivery-panel-9201]') && !!document.querySelector('[data-testid=card-procure-item-9202]')", `${role} bulk and Stores detail`);
+  assert(!(await evaluate("!!document.querySelector('[data-testid=button-expand-delivery-9201]')")), `${role}: null-route bulk offered Stores delivery`);
+  assert(!(await evaluate("!!document.querySelector('[data-testid=button-expand-delivery-9203]')")), `${role}: mistagged bulk offered Stores delivery`);
+  assert(await evaluate("!!document.querySelector('[data-testid=button-expand-delivery-9202]')"), `${role}: genuine Stores delivery missing`);
+  assert(!(await evaluate("!!document.querySelector('[data-testid=delivery-panel-9202]')")), `${role}: Stores received bulk progress panel`);
+  assert((await evaluate("document.querySelector('[data-testid=delivery-progress-9201]').textContent")).includes("25 of 100 MT delivered"), `${role}: WMM site-trip progress missing`);
+  assert((await evaluate("document.querySelector('[data-testid=delivery-panel-9201]').innerText")).includes("SYN-TRIP-101"), `${role}: linked trip missing`);
+  assert((await evaluate("document.querySelector('[data-testid=delivery-panel-9203]').innerText")).includes("SYN-RECEIPT-102"), `${role}: linked receipt missing`);
+  partBShots[`${role}-A-B-D`] = await screenshot(`B-${role}-nonmaterial-bulk-progress-and-true-stores-SYNTHETIC`);
+  await click("button-back-to-list");
+  await waitFor("!!document.querySelector('[data-testid=card-indent-92]')", `${role} back to list`);
+  await click("button-review-route-corrections");
+  await waitFor("!!document.querySelector('[data-testid=route-correction-row-9201]')", `${role} route review`);
+  assert(await evaluate("!!document.querySelector('[data-testid=route-correction-row-9203]')"), `${role}: mistagged bulk omitted`);
+  assert(!(await evaluate("!!document.querySelector('[data-testid=route-correction-row-9202]')")), `${role}: genuine Stores proposed for correction`);
+  partBShots[`${role}-C`] = await screenshot(`B-${role}-route-correction-review-SYNTHETIC`);
+  if (role === "pm") {
+    assert(await evaluate(`(() => { const e=document.querySelector('input[aria-label="Select SYNTHETIC WMM · NULL ROUTE"]'); if(!e)return false; e.click(); return e.checked; })()`), "PM WMM selection unavailable");
+    await click("button-apply-route-corrections");
+    await waitFor("window.__PI02Fixture.routeApplyRequests.length === 1", "explicit non-material WMM correction");
+    assert((await evaluate("window.__PI02Fixture.audits[0].oldValues.procurementRoute")) === null, "null-to-material audit missing");
+    partBShots["pm-C-applied"] = await screenshot("B-pm-explicit-WMM-correction-audit-SYNTHETIC");
+  }
+}
+
 const evidence = {
   scenario: "PI-02B real PurchaseIndents component with visibly labelled synthetic intercepted API",
   limitation: "Browser/UI evidence uses intercepted synthetic API. Actual storage/database flow is independently verified with isolated PGlite in tests/purchase-indent-pi02b.test.ts.",
   safety: { productionDatabaseUsed: false, liveApiWrites: false, mountedProductionComponent: "client/src/pages/PurchaseIndents.tsx" },
-  screenshots: { A1: a1, A2: a2, A3: a3 },
+  screenshots: { A1: a1, A2: a2, A3: a3, partB: partBShots },
   verified: {
     A1: { listedMistagged: true, current: "stores", proposed: "material", validMaterialExcluded: true, validBulkPlantExcluded: true },
     A3: { applyRequestsBeforeClick: 0, auditRowsBeforeClick: 0, storedRouteBeforeClick: "stores" },

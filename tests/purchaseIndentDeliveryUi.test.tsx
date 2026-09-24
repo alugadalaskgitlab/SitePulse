@@ -4,11 +4,21 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import "@testing-library/jest-dom";
 import { readFileSync } from "node:fs";
 import { deliveryProgress, DestinationFields, PurchaseIndentDeliveryPanel } from "@/components/purchase-indent-delivery";
+import { isBulkPiDeliveryItem } from "@shared/purchaseIndentDelivery";
 
 afterEach(cleanup);
 const item = { id: 12, description: "WMM", qty: 1500, uom: "MT", requiredBy: "2026-02-10", purchaseStatus: "ordered", deliveredQty: 600 };
 const today = new Date(2026, 1, 20);
 describe("PI-01 delivery display", () => {
+  it("routes linked bulk regardless of parent role/type while preserving catalog Stores", () => {
+    for (const role of ["stores", "purchaser", "pm"]) {
+      const bulk = { procurementRoute: "stores", catalogProcurementRoute: "bulk_plant", piType: "stores", role };
+      expect(isBulkPiDeliveryItem(bulk)).toBe(true);
+      expect(isBulkPiDeliveryItem({ ...bulk, procurementRoute: null })).toBe(true);
+      expect(isBulkPiDeliveryItem({ ...bulk, procurementRoute: "material", catalogProcurementRoute: "stores" })).toBe(true);
+      expect(isBulkPiDeliveryItem({ ...bulk, procurementRoute: "stores", catalogProcurementRoute: "stores" })).toBe(false);
+    }
+  });
   it("keeps partial overdue progress informative and prioritizes Delivered over dates", () => {
     expect(deliveryProgress(item, null, today)).toBe("600 of 1,500 MT delivered — partially delivered · past required date");
     expect(deliveryProgress({ ...item, deliveredQty: 1500 }, null, today)).toMatch(/^Delivered/);

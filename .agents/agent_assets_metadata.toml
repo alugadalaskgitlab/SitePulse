@@ -2845,3 +2845,73 @@ mtime_ms = 1790254711949
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/72e532d4-5d39-45d3-9ee0-f74dbce4c769/926413ea-62dd-48cf-b844-0b183ef59d9f"
 storage_version_token = "1790254873671015"
 content_type = "image/png"
+
+[[outputs]]
+id = "kYqR0MU3T0jUcWEcB2jqA"
+uri = "file://screenshots/pi02b/B-stores-nonmaterial-bulk-progress-and-true-stores-SYNTHETIC.png"
+type = "image"
+title = "Stores — bulk progress and genuine Stores actions"
+description = "Actual PurchaseIndents component with labelled synthetic API data. The real development WMM item was inspected read-only and was not changed."
+logical_id = "7fdb59ef-a266-4b66-89df-2a21f5372f74"
+content_hash = "sha256:e45eb41f2d6f27a306123985aebc747b8c40879eab92d7f2419a828276200253"
+size = 125255
+mtime_ms = 1790257080187
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/7fdb59ef-a266-4b66-89df-2a21f5372f74/032a6f9f-587d-40cf-8544-690056392be0"
+storage_version_token = "1790257132735763"
+content_type = "image/png"
+
+[[outputs]]
+id = "46-6qQwCNcRu_naMVV_oJ"
+uri = "file://screenshots/pi02b/B-purchaser-nonmaterial-bulk-progress-and-true-stores-SYNTHETIC.png"
+type = "image"
+title = "Purchaser — mixed-indent item routing"
+description = "Actual PurchaseIndents component with labelled synthetic API data. The real development WMM item was inspected read-only and was not changed."
+logical_id = "254c2709-5a30-42ba-a1fb-08644cc7eeb4"
+content_hash = "sha256:4c351321eed46694771c2e97b33db85706cc8a1a6a6981275865b5da6ad435e3"
+size = 125176
+mtime_ms = 1790257080843
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/254c2709-5a30-42ba-a1fb-08644cc7eeb4/7ba86825-d46f-45ce-ac51-ba590e683cf9"
+storage_version_token = "1790257134705441"
+content_type = "image/png"
+
+[[outputs]]
+id = "7H-9wMZgoSvoHCSwkV9_g"
+uri = "file://screenshots/pi02b/B-pm-nonmaterial-bulk-progress-and-true-stores-SYNTHETIC.png"
+type = "image"
+title = "PM — bulk progress in a non-material indent"
+description = "Actual PurchaseIndents component with labelled synthetic API data. The real development WMM item was inspected read-only and was not changed."
+logical_id = "94af3855-8cbc-4324-9c7a-e5e80d74b2fc"
+content_hash = "sha256:d68c3012d2b64e9ecd4cc75550d2798d0a278b5f5da7000c12b0d09c02a54186"
+size = 125078
+mtime_ms = 1790257081499
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/94af3855-8cbc-4324-9c7a-e5e80d74b2fc/5bb3f8c1-dc9a-4b9d-8716-fd9c51b9bf5f"
+storage_version_token = "1790257136624011"
+content_type = "image/png"
+
+[[outputs]]
+id = "Zz1FDyfmF6aVcZkp7WbXT"
+uri = "file://screenshots/pi02b/B-pm-route-correction-review-SYNTHETIC.png"
+type = "image"
+title = "Route Corrections — bulk items now included"
+description = "Actual PurchaseIndents component with labelled synthetic API data. The real development WMM item was inspected read-only and was not changed."
+logical_id = "283854dc-aeed-46a8-88b6-456024022164"
+content_hash = "sha256:1b6175d2dd5adb5ff52fa8df85225d88c4dbb0b1c49272666147edbe2d36a9d9"
+size = 147419
+mtime_ms = 1790257081747
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/283854dc-aeed-46a8-88b6-456024022164/4a503223-52a0-49c9-8f59-ca3b5b056c4d"
+storage_version_token = "1790257138606396"
+content_type = "image/png"
+
+[[outputs]]
+id = "NdEpsGQykWDyN_zpHz9Ju"
+uri = "file://screenshots/pi02b/B-pm-explicit-WMM-correction-audit-SYNTHETIC.png"
+type = "image"
+title = "Explicit WMM correction — synthetic verification"
+description = "Actual PurchaseIndents component with labelled synthetic API data. The real development WMM item was inspected read-only and was not changed."
+logical_id = "7c0ff789-2af7-4152-85ec-b97bc1908fd6"
+content_hash = "sha256:d332ab9899569f180a2d5e4595993c340a2c01e010bd3b1f5c49120a99be5306"
+size = 97277
+mtime_ms = 1790257081879
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/7c0ff789-2af7-4152-85ec-b97bc1908fd6/e8c4f309-5565-4131-91ff-facf29bbb339"
+storage_version_token = "1790257140520278"
+content_type = "image/png"

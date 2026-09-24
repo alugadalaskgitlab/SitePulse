@@ -9,7 +9,16 @@
   "screenshots": {
     "A1": "/home/runner/workspace/screenshots/pi02b/A1-review-current-proposed-valid-excluded-SYNTHETIC-API.png",
     "A2": "/home/runner/workspace/screenshots/pi02b/A2-after-explicit-apply-detail-no-Record-Delivery-audit-SYNTHETIC-API.png",
-    "A3": "/home/runner/workspace/screenshots/pi02b/A3-before-explicit-apply-zero-writes-SYNTHETIC-API.png"
+    "A3": "/home/runner/workspace/screenshots/pi02b/A3-before-explicit-apply-zero-writes-SYNTHETIC-API.png",
+    "partB": {
+      "stores-A-B-D": "/home/runner/workspace/screenshots/pi02b/B-stores-nonmaterial-bulk-progress-and-true-stores-SYNTHETIC.png",
+      "stores-C": "/home/runner/workspace/screenshots/pi02b/B-stores-route-correction-review-SYNTHETIC.png",
+      "purchaser-A-B-D": "/home/runner/workspace/screenshots/pi02b/B-purchaser-nonmaterial-bulk-progress-and-true-stores-SYNTHETIC.png",
+      "purchaser-C": "/home/runner/workspace/screenshots/pi02b/B-purchaser-route-correction-review-SYNTHETIC.png",
+      "pm-A-B-D": "/home/runner/workspace/screenshots/pi02b/B-pm-nonmaterial-bulk-progress-and-true-stores-SYNTHETIC.png",
+      "pm-C": "/home/runner/workspace/screenshots/pi02b/B-pm-route-correction-review-SYNTHETIC.png",
+      "pm-C-applied": "/home/runner/workspace/screenshots/pi02b/B-pm-explicit-WMM-correction-audit-SYNTHETIC.png"
+    }
   },
   "verified": {
     "A1": {

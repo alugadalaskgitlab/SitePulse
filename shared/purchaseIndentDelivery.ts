@@ -4,6 +4,20 @@ export type DeliveryEvidence = {
   countedQty?: number | null;
 };
 
+// A linked material master is authoritative for bulk routing. Never infer a route
+// from the item's free-text description (or silently rewrite its saved route).
+export function effectivePiDeliveryRoute(item: {
+  procurementRoute?: string | null; catalogProcurementRoute?: string | null;
+}): string | null {
+  return item.catalogProcurementRoute === "material" || item.catalogProcurementRoute === "bulk_plant"
+    ? item.catalogProcurementRoute
+    : item.procurementRoute ?? item.catalogProcurementRoute ?? null;
+}
+
+export function isBulkPiDeliveryItem(item: Parameters<typeof effectivePiDeliveryRoute>[0]): boolean {
+  return ["material", "bulk_plant"].includes(effectivePiDeliveryRoute(item) ?? "");
+}
+
 export function convertDeliveryQuantity(qty: number, from: string, to: string): number | null {
   const unit = (value: string): [string, number] => {
     const s = value.trim().toLowerCase();
