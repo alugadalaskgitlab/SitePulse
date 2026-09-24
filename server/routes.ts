@@ -17,9 +17,10 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, vendors, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
 import { db } from "./db";
 import { registerVendorMasterRoutes } from "./vendor-master";
+import { buildPurchaseOrderPdf } from "./purchase-order-pdf";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc, desc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { siteMatchesPermitted, untrustedVendorBillAutoItems, vendorBillAutoSourceFromCandidate, vendorBillItemMatchesSite, vendorBillUpdateSiteId, vendorBillVisibleToSites } from "@shared/siteName";
@@ -8897,6 +8898,63 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Error fetching purchase indent:", err);
       res.status(500).json({ message: "Failed to fetch purchase indent" });
+    }
+  });
+
+  // Read-only, optional PO document. Preview is the same PDF served inline; download changes disposition only.
+  app.get("/api/purchase-indents/:id/items/:itemId/purchase-order.pdf", async (req, res) => {
+    try {
+      if (!assertView(req, res, "purchase_indents_view")) return;
+      const indentId = Number(req.params.id);
+      const itemId = Number(req.params.itemId);
+      if (!Number.isSafeInteger(indentId) || !Number.isSafeInteger(itemId)) return res.status(400).json({ message: "Invalid indent or item ID" });
+      if (!await assertPiDeliveryScope(req, res, indentId)) return;
+      const indent = await storage.getPurchaseIndent(indentId);
+      const item = indent?.items.find(row => row.id === itemId);
+      if (!item) return res.status(404).json({ message: "Purchase indent item not found" });
+      const orderedViaMaterialIndent = indent?.piType === "material" && indent.status === "ordered" && Number(item.orderedQty) > 0;
+      if (!["ordered", "partial"].includes((item.purchaseStatus ?? "").toLowerCase()) && !orderedViaMaterialIndent) {
+        return res.status(409).json({ message: "Purchase Order export is available only after an item is ordered" });
+      }
+      const location = (item as any).receivingLocation as string | null;
+      const destinationId = (item as any).receivingSiteId as number | null;
+      const sites = await storage.getSites();
+      const destinationSite = location === "site" ? sites.find(s => s.id === destinationId) : null;
+      if (location === "site" && destinationSite && !await assertTripSiteAccess(req, res, destinationSite.name)) return;
+      const destination = location === "site"
+        ? destinationSite?.name ?? null
+        : location === "hmp_plant" ? "HMP Plant" : location === "rmc_plant" ? "RMC Plant" : null;
+      // A reviewed vendorId is the only identity link. Never infer master details from a typed name.
+      const canSeeMaster = !!(req.authUser?.isOwner || req.authUser?.isAdmin || req.authPermissions?.master_parties?.view);
+      const [linkedVendor] = item.vendorId && canSeeMaster
+        ? await db.select().from(vendors).where(eq(vendors.id, item.vendorId)).limit(1)
+        : [];
+      const companyConfig = await getCompanyConfig();
+      const pdf = await buildPurchaseOrderPdf({
+        companyName: companyConfig.companyName,
+        logoPath: getCompanyLogoPath(companyConfig.logoFile),
+        indentNo: indent!.indentNo,
+        orderNo: item.orderNo,
+        vendor: item.vendor,
+        linkedVendor: linkedVendor ?? null,
+        showBank: !!(req.authUser?.isOwner || req.authUser?.isAdmin),
+        description: item.description,
+        spec: item.spec,
+        qty: Number(item.orderedQty ?? item.qtyPurchased ?? item.approvedQty ?? item.qty),
+        unit: item.uom,
+        rate: item.rate,
+        expectedDelivery: item.expectedDelivery,
+        paymentMode: item.paymentMode,
+        destination,
+      });
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Cache-Control", "private, no-store");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Content-Disposition", `${req.query.preview === "1" ? "inline" : "attachment"}; filename="PurchaseOrder-${indent!.id}-${item.id}.pdf"`);
+      res.send(pdf);
+    } catch (err) {
+      console.error("Purchase Order PDF export failed:", err);
+      res.status(500).json({ message: "Failed to generate Purchase Order PDF" });
     }
   });
 

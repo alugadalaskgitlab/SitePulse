@@ -1,0 +1,55 @@
+{
+  "fixture": "actual PurchaseIndents component; synthetic browser fetch; real PDFKit documents; no live writes",
+  "screenshots": [
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C0-synthetic-indent-list-actual-component.png",
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-bulk-linked-ordered-actual-component.png",
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-bulk-linked-review-actual-component.png",
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-store-unlinked-ordered-actual-component.png",
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-store-unlinked-review-actual-component.png",
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-bulk-unlinked-ordered-actual-component.png",
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-bulk-unlinked-review-actual-component.png",
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-store-linked-ordered-actual-component.png",
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-store-linked-review-actual-component.png",
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-order-without-export-before-actual-component.png",
+    "/home/runner/workspace/tests/fixtures/purchase-order-part-c/evidence/C-order-without-export-after-actual-component.png"
+  ],
+  "previewRequests": [
+    "/api/purchase-indents/11/items/11/purchase-order.pdf?preview=1",
+    "/api/purchase-indents/11/items/11/purchase-order.pdf?preview=1",
+    "/api/purchase-indents/12/items/12/purchase-order.pdf?preview=1",
+    "/api/purchase-indents/13/items/13/purchase-order.pdf?preview=1",
+    "/api/purchase-indents/14/items/14/purchase-order.pdf?preview=1"
+  ],
+  "previewUrlLifecycle": {
+    "created": 5,
+    "revoked": 5
+  },
+  "writes": [
+    {
+      "method": "POST",
+      "path": "/api/purchase-indents/15/purchaser-action",
+      "body": {
+        "items": [
+          {
+            "itemId": 15,
+            "purchaseActionType": "ordered",
+            "receivingLocation": null,
+            "receivingSiteId": null,
+            "qty": 4,
+            "orderNo": null,
+            "orderedByName": "Synthetic Administrator",
+            "vendor": "SYNTHETIC Supplier",
+            "rate": 735,
+            "paymentMode": "cash",
+            "paidBy": null,
+            "expectedDeliveryDate": "2026-09-29",
+            "billNo": null,
+            "remarks": null,
+            "procurementRoute": "stores"
+          }
+        ]
+      }
+    }
+  ],
+  "unexpected": []
+}

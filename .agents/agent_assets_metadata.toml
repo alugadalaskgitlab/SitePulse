@@ -2719,3 +2719,73 @@ mtime_ms = 1790236851409
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/9dff69cb-9d5b-4ea1-822d-5a53f4ee7b17/7af12d47-4a1d-43fa-8df5-9c53518beb4c"
 storage_version_token = "1790236908409547"
 content_type = "image/png"
+
+[[outputs]]
+id = "hs2GINl8Zk8XC2psBiv23"
+uri = "file://tests/fixtures/purchase-order-part-c/evidence/C-bulk-linked-review-actual-component.png"
+type = "image"
+title = "Bulk item — linked vendor PO review"
+description = "Synthetic test evidence only. Screenshots use the actual PurchaseIndents component; PDFs use the real PDFKit generator. No live orders changed."
+logical_id = "55812f3b-5e5f-401d-a6d8-d61d8fc464d7"
+content_hash = "sha256:1c88490bd0ea5ea3b50f164faaebe3c4bc64ed39353837c9ca86690986d89034"
+size = 110144
+mtime_ms = 1790239638952
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/55812f3b-5e5f-401d-a6d8-d61d8fc464d7/91522bd5-2d9e-44a8-b3a2-50a6c33c29c9"
+storage_version_token = "1790239767785175"
+content_type = "image/png"
+
+[[outputs]]
+id = "IHZZF6m5tt5PZx7tuggeY"
+uri = "file://tests/fixtures/purchase-order-part-c/evidence/C-store-unlinked-review-actual-component.png"
+type = "image"
+title = "Store item — unlinked vendor PO review"
+description = "Synthetic test evidence only. Screenshots use the actual PurchaseIndents component; PDFs use the real PDFKit generator. No live orders changed."
+logical_id = "33d5704e-d586-4796-83a7-629dbb5fe5e2"
+content_hash = "sha256:36c4ed14295b2c61f72b2f96946b024a610853bed8f760e60b47c8ee597061ac"
+size = 89397
+mtime_ms = 1790239642200
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/33d5704e-d586-4796-83a7-629dbb5fe5e2/bdae57b6-1daf-4eac-a86c-5b2461c42e33"
+storage_version_token = "1790239769649419"
+content_type = "image/png"
+
+[[outputs]]
+id = "shPSetWgnnmRySWg8-NFr"
+uri = "file://tests/fixtures/purchase-order-part-c/evidence/C-order-without-export-after-actual-component.png"
+type = "image"
+title = "Ordering succeeds without exporting a PO"
+description = "Synthetic test evidence only. Screenshots use the actual PurchaseIndents component; PDFs use the real PDFKit generator. No live orders changed."
+logical_id = "f4b2dc60-ce1b-4a9c-8365-d07174918d42"
+content_hash = "sha256:c79c24e74176c7d3939a409364fe4a32ac86cbfcd6ad5c9c82025d0b82838bea"
+size = 74996
+mtime_ms = 1790239649492
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/f4b2dc60-ce1b-4a9c-8365-d07174918d42/7361579b-02dd-4bec-9510-427ef2adc10c"
+storage_version_token = "1790239771266925"
+content_type = "image/png"
+
+[[outputs]]
+id = "8Pm7LCy88XtX1vcN9Jz-3"
+uri = "file://reports/part-c/bulk-linked.pdf"
+type = "pdf"
+title = "Sample PO — linked vendor"
+description = "Synthetic test evidence only. Screenshots use the actual PurchaseIndents component; PDFs use the real PDFKit generator. No live orders changed."
+logical_id = "28424b4b-97bf-4371-a10e-caf53f68c3a2"
+content_hash = "sha256:5ea71a4c909b8d408f2255f02eb6e5516e994293ece07e88799a7571c81037bc"
+size = 2496
+mtime_ms = 1790239719240
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/28424b4b-97bf-4371-a10e-caf53f68c3a2/31e06611-a4e2-4c8a-aee2-6b32dab08f69"
+storage_version_token = "1790239772641443"
+content_type = "application/pdf"
+
+[[outputs]]
+id = "15sVj9fESJhj1-LTlHp3W"
+uri = "file://reports/part-c/store-unlinked.pdf"
+type = "pdf"
+title = "Sample PO — unlinked vendor"
+description = "Synthetic test evidence only. Screenshots use the actual PurchaseIndents component; PDFs use the real PDFKit generator. No live orders changed."
+logical_id = "31c81b6d-9d77-4a16-860a-beab869a51df"
+content_hash = "sha256:38176f7197e4bf6df748157d335b66930ad9952bc261ac2d4898a8be326650c3"
+size = 2177
+mtime_ms = 1790239719280
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/31c81b6d-9d77-4a16-860a-beab869a51df/093133f1-d77e-4005-98ad-0e02b897627b"
+storage_version_token = "1790239774029136"
+content_type = "application/pdf"

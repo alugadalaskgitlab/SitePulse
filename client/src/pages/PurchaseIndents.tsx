@@ -853,6 +853,41 @@ export default function PurchaseIndents() {
   type DeliveryFormData = { deliveredQty: string; deliveryDate: string; challanNo: string; paymentMode: string; remarks: string };
   const [deliveryForms, setDeliveryForms] = useState<Record<number, DeliveryFormData>>({});
   const [deliveryExpanded, setDeliveryExpanded] = useState<Set<number>>(new Set());
+  const [poPreview, setPoPreview] = useState<{ itemId: number; url: string } | null>(null);
+  const [poPreviewLoading, setPoPreviewLoading] = useState<number | null>(null);
+  const poPreviewUrl = useRef<string | null>(null);
+  const poPreviewRequest = useRef(0);
+  useEffect(() => () => {
+    poPreviewRequest.current++;
+    if (poPreviewUrl.current) URL.revokeObjectURL(poPreviewUrl.current);
+    poPreviewUrl.current = null;
+  }, []);
+  const closePoPreview = () => {
+    poPreviewRequest.current++;
+    if (poPreviewUrl.current) URL.revokeObjectURL(poPreviewUrl.current);
+    poPreviewUrl.current = null;
+    setPoPreview(null);
+    setPoPreviewLoading(null);
+  };
+  const openPoPreview = async (indentId: number, itemId: number) => {
+    const requestId = ++poPreviewRequest.current;
+    setPoPreviewLoading(itemId);
+    try {
+      const response = await fetch(`/api/purchase-indents/${indentId}/items/${itemId}/purchase-order.pdf?preview=1`, { credentials: "include" });
+      if (!response.ok) throw new Error((await response.json()).message || `PDF preview failed (${response.status})`);
+      const pdf = await response.blob();
+      if (requestId !== poPreviewRequest.current) return;
+      const url = URL.createObjectURL(pdf);
+      if (poPreviewUrl.current) URL.revokeObjectURL(poPreviewUrl.current);
+      poPreviewUrl.current = url;
+      setPoPreview({ itemId, url });
+    } catch (error) {
+      if (requestId === poPreviewRequest.current)
+        toast({ title: "Purchase Order preview unavailable", description: (error as Error).message, variant: "destructive" });
+    } finally {
+      if (requestId === poPreviewRequest.current) setPoPreviewLoading(null);
+    }
+  };
   // Staged photos for Purchaser Action — per-item, keyed by PI item ID (Batch 17)
   const [paPhotos, setPaPhotos] = useState<Record<number, File[]>>({});
   const { uploadFile } = useUpload();
@@ -4342,6 +4377,15 @@ export default function PurchaseIndents() {
                 </div>
               )}
 
+              {/* Legacy material-indent order path records the order at indent level without
+                  setting each item's purchaseStatus. Keep its optional PDF available too. */}
+              {(selectedIndent as any).piType === "material" && selectedIndent.status === "ordered" &&
+                selectedIndent.items.filter(item => Number(item.orderedQty) > 0 && !["ordered", "partial", "purchased", "cancelled"].includes((item.purchaseStatus ?? "").toLowerCase())).map(item => (
+                  <div key={`po-legacy-${item.id}`} className="flex flex-wrap items-center gap-3 rounded-lg border border-blue-200 p-3" data-testid={`legacy-po-item-${item.id}`}>
+                    <span className="font-medium">{item.description} — Order Placed</span>
+                    <Button variant="outline" size="sm" onClick={() => openPoPreview(selectedIndent.id, item.id)} data-testid={`button-po-preview-${item.id}`}>Review Purchase Order (PDF)</Button>
+                  </div>
+                ))}
               {/* Item cards — sorted: pending → ordered → received → rejected */}
               <div className="space-y-3">
                 {(() => {
@@ -4501,6 +4545,16 @@ export default function PurchaseIndents() {
                                 <span className={`font-semibold text-sm ${isPartialDelivery ? "text-amber-800 dark:text-amber-200" : "text-blue-800 dark:text-blue-200"}`}>{isPartialDelivery ? "Partial Delivery — Balance Due" : "Order Placed"}</span>
                               </div>
                               <div className="px-3 py-2.5 space-y-1.5 text-sm">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={poPreviewLoading === item.id}
+                                  onClick={() => openPoPreview(selectedIndent.id, item.id)}
+                                  data-testid={`button-po-preview-${item.id}`}
+                                >
+                                  {poPreviewLoading === item.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileText className="w-4 h-4 mr-2" />}
+                                  Review Purchase Order (PDF)
+                                </Button>
                                 {item.vendor && (
                                   <div className="flex justify-between">
                                     <span className="text-gray-500">Vendor</span>
@@ -5652,6 +5706,21 @@ export default function PurchaseIndents() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!poPreview} onOpenChange={open => { if (!open) closePoPreview(); }}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader><DialogTitle>Review Purchase Order</DialogTitle></DialogHeader>
+          {poPreview && (
+            <>
+              <iframe title="Purchase Order PDF preview" src={poPreview.url} className="w-full h-[65vh] border rounded" data-testid="po-pdf-preview" />
+              <div className="flex justify-end">
+                <a href={`/api/purchase-indents/${selectedIndent?.id}/items/${poPreview.itemId}/purchase-order.pdf`} className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground" data-testid="button-po-download">
+                  Export Purchase Order (PDF)
+                </a>
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
