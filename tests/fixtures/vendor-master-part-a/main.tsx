@@ -12,11 +12,17 @@ const vendors: Record<string, any>[] = [{
   contactEmail: "metro@example.invalid", isActive: true,
 }];
 const proposals = [
-  { role: "bills", name: "SYNTHETIC Metro Ltd", ids: [101, 102], count: 2, hint: "SYNTHETIC Metro Supplies", suggestionId: 1 },
+  { role: "bills", name: "SYNTHETIC Metro Ltd", ids: [101, 102], count: 2, hint: "synthetic metro supplies", suggestionId: 1 },
   { role: "materialSource", name: "SYNTHETIC Quarry Partner", ids: [201], count: 1, hint: null, suggestionId: null },
 ];
 const links: any[] = [];
 const writes: any[] = [];
+// Synthetic API boundary mirrors the server normalization; real route coverage lives in vendorMasterHandlersPartA.test.ts.
+const normalizeNames = (body: Record<string, any>) => ({
+  ...body,
+  ...("name" in body ? { name: body.name.trim().toUpperCase() } : {}),
+  ...("businessName" in body ? { businessName: body.businessName == null ? body.businessName : body.businessName.trim().toUpperCase() } : {}),
+});
 const fixture = { vendors, proposals, links, writes };
 (window as any).__vendorFixture = fixture;
 const originalFetch = window.fetch.bind(window);
@@ -30,18 +36,20 @@ window.fetch = async (input, init = {}) => {
   });
   if (url.pathname === "/api/vendor-master") {
     if (method === "GET") return Response.json(vendors);
-    const created = { ...body, id: Math.max(...vendors.map(v => v.id)) + 1 };
+    const created = { ...normalizeNames(body), id: Math.max(...vendors.map(v => v.id)) + 1 };
     vendors.push(created);
     writes.push({ method, path: url.pathname, body });
     return Response.json(created, { status: 201 });
   }
-  if (url.pathname === "/api/vendor-master/review") return Response.json(proposals);
+  if (url.pathname === "/api/vendor-master/review") return Response.json(proposals.map(p => ({
+    ...p, suggestionId: p.hint ? vendors.find(v => v.name.trim().toLowerCase() === p.hint!.trim().toLowerCase())?.id ?? null : null,
+  })));
   if (url.pathname === "/api/vendor-master/review/confirm") {
     const index = proposals.findIndex(p => p.role === body.role && p.name === body.name);
     if (index < 0 || JSON.stringify(proposals[index].ids) !== JSON.stringify(body.ids))
       return Response.json({ message: "Review is stale" }, { status: 409 });
     const vendorId = body.vendorId || Math.max(...vendors.map(v => v.id)) + 1;
-    if (body.newVendor) vendors.push({ ...body.newVendor, id: vendorId });
+    if (body.newVendor) vendors.push({ ...normalizeNames(body.newVendor), id: vendorId });
     proposals.splice(index, 1);
     links.push({ role: body.role, name: body.name, vendorId, ids: body.ids });
     writes.push({ method, path: url.pathname, body });
@@ -51,7 +59,7 @@ window.fetch = async (input, init = {}) => {
   if (edit && method === "PATCH") {
     const vendor = vendors.find(v => v.id === Number(edit[1]));
     if (!vendor) return Response.json({ message: "Missing" }, { status: 404 });
-    Object.assign(vendor, body);
+    Object.assign(vendor, normalizeNames(body));
     writes.push({ method, path: url.pathname, body });
     return Response.json(vendor);
   }

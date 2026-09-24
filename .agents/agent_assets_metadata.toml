@@ -2789,3 +2789,59 @@ mtime_ms = 1790239719280
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/31c81b6d-9d77-4a16-860a-beab869a51df/093133f1-d77e-4005-98ad-0e02b897627b"
 storage_version_token = "1790239774029136"
 content_type = "application/pdf"
+
+[[outputs]]
+id = "8voJ4htDeJymfNLR3UZ-c"
+uri = "file://tests/fixtures/vendor-master-part-a/evidence/VENDOR-02-A1-mixed-case-typing-synthetic.png"
+type = "image"
+title = "Name fields — actual mixed-case typing"
+description = "Actual Vendor Master component with labelled synthetic test data. No existing business records were rewritten."
+logical_id = "af3e84e8-a721-475e-a6b3-26d0ce0a4ced"
+content_hash = "sha256:8e87d9085e5773b8be638aac6c0fb035cd0e1c1a938915e8bb6f31c3f0e9621c"
+size = 82182
+mtime_ms = 1790254710901
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/af3e84e8-a721-475e-a6b3-26d0ce0a4ced/3eaa02a2-63d8-43a6-a016-edb2b1d6d081"
+storage_version_token = "1790254867993924"
+content_type = "image/png"
+
+[[outputs]]
+id = "uLd3FVZBVlbtE-c20Pm3Y"
+uri = "file://tests/fixtures/vendor-master-part-a/evidence/VENDOR-02-A1-uppercase-saved-synthetic.png"
+type = "image"
+title = "New vendor — saved uppercase values"
+description = "Actual Vendor Master component with labelled synthetic test data. No existing business records were rewritten."
+logical_id = "c368703c-cb0b-4632-a66f-ce11e588fcea"
+content_hash = "sha256:f0adb44c185b859adc8e76b861edc19fbe6b0f920e32ae217fca1184fbd4416d"
+size = 100185
+mtime_ms = 1790254711173
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c368703c-cb0b-4632-a66f-ce11e588fcea/1bee8d0b-fb9e-4e37-9988-9f2fab919006"
+storage_version_token = "1790254870053350"
+content_type = "image/png"
+
+[[outputs]]
+id = "VM11PGos2Mac_G6J2zvW0"
+uri = "file://tests/fixtures/vendor-master-part-a/evidence/VENDOR-02-A2-uppercase-edited-synthetic.png"
+type = "image"
+title = "Edited vendor — saved uppercase values"
+description = "Actual Vendor Master component with labelled synthetic test data. No existing business records were rewritten."
+logical_id = "c169c272-744d-4889-81b7-9f47e46ba3fe"
+content_hash = "sha256:0660ce3f7a5b5d499faca75e7fbd0e4c04bd73d70a2a0e11e99e1fb27e4dcd1d"
+size = 101062
+mtime_ms = 1790254711713
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c169c272-744d-4889-81b7-9f47e46ba3fe/aff40f0a-e553-4521-978c-ad1089543fcf"
+storage_version_token = "1790254872015751"
+content_type = "image/png"
+
+[[outputs]]
+id = "9-c2QWROufaKUTqEcM9EC"
+uri = "file://tests/fixtures/vendor-master-part-a/evidence/VENDOR-02-A3-case-insensitive-alias-synthetic.png"
+type = "image"
+title = "Link Vendors — case-insensitive suggestions"
+description = "Actual Vendor Master component with labelled synthetic test data. No existing business records were rewritten."
+logical_id = "72e532d4-5d39-45d3-9ee0-f74dbce4c769"
+content_hash = "sha256:9e211af7744dadc8867820be79ec2aaeba86a5b7657159332734030a46b4537b"
+size = 70877
+mtime_ms = 1790254711949
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/72e532d4-5d39-45d3-9ee0-f74dbce4c769/926413ea-62dd-48cf-b844-0b183ef59d9f"
+storage_version_token = "1790254873671015"
+content_type = "image/png"

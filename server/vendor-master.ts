@@ -7,8 +7,8 @@ import { vendors, vendorBills, vendorBillItems, vendorRateCards, vendorAliases, 
 import { siteMatchesPermitted } from "@shared/siteName";
 
 export const vendorMasterFields = z.object({
-  name: z.string().trim().min(1).max(250),
-  businessName: z.string().trim().max(250).nullish(),
+  name: z.string().trim().min(1).max(250).transform(value => value.toUpperCase()),
+  businessName: z.string().trim().max(250).transform(value => value.toUpperCase()).nullish(),
   gstNumber: z.string().trim().max(50).nullish(),
   panNumber: z.string().trim().max(50).nullish(),
   address: z.string().trim().max(2000).nullish(),

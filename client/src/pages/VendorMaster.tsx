@@ -33,7 +33,7 @@ function Editor({ initial, onSave, onCancel, busy }: {
     <div className="grid sm:grid-cols-2 gap-4">
       {keys.map(k => <label key={k} className={k === "address" ? "sm:col-span-2 text-sm" : "text-sm"}>
         <span className="block font-medium mb-1">{labels[k]}{k === "name" ? " *" : ""}</span>
-        <input className="w-full border rounded-md px-3 py-2" required={k === "name"} value={String(form[k] ?? "")} onChange={e => setForm({ ...form, [k]: e.target.value })}
+        <input className={`w-full border rounded-md px-3 py-2${k === "name" || k === "businessName" ? " vendor-master-name-input" : ""}`} required={k === "name"} value={String(form[k] ?? "")} onChange={e => setForm({ ...form, [k]: e.target.value })}
           type={k === "contactEmail" ? "email" : "text"} autoComplete="off" />
       </label>)}
     </div>

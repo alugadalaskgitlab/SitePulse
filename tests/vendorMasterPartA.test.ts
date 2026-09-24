@@ -15,7 +15,7 @@ const fixture = {
 describe("Vendor Master Part A — synthetic fixtures, no business records written", () => {
   it("A1 validates all structured vendor details and strips bank details from non-admin responses", () => {
     const { id, createdAt, updatedAt, ...input } = fixture;
-    expect(vendorMasterFields.parse(input)).toMatchObject({ name: fixture.name, bankIfsc: fixture.bankIfsc, gstNumber: fixture.gstNumber });
+    expect(vendorMasterFields.parse(input)).toMatchObject({ name: "SYNTHETIC VENDOR", businessName: "SYNTHETIC TRADING", bankIfsc: fixture.bankIfsc, gstNumber: fixture.gstNumber });
     expect(publicVendor(fixture, false)).not.toHaveProperty("bankAccountNumber");
     expect(publicVendor(fixture, true)).toHaveProperty("bankAccountNumber", fixture.bankAccountNumber);
   });

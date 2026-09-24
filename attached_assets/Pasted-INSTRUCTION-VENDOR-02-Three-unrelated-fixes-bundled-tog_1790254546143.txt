@@ -1,0 +1,130 @@
+INSTRUCTION VENDOR-02: Three unrelated fixes bundled together — (A) Vendor Master name is displaying in a misleading fake-uppercase style while typing but saves in mixed case; make the saved value genuinely consistent, (B) a real code gap where bulk-material Purchase Indent items outside a purely "material"-typed indent still show stores-only Record Delivery/Record Site Receipt actions and are invisible to both the read-only delivery panel and the route-correction self-fix tool, (C) redesign the Purchase Order into a proper gated raise -> edit -> submit -> approve -> PDF workflow with a professional single-page layout
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Three parts, bundled for efficiency but logically independent. Part C is the largest and changes real behavior (the PO is no longer an instant "export PDF" button — it becomes a small approval workflow) — STOP after each Part and report back before starting the next. Do not touch VB-18 through VB-26, PI-01, PI-02, PI-02B, MAT-01, MAT-02, PR-01, or VENDOR-01 Parts A/B beyond what's explicitly described below. Do not publish automatically.
+
+============================================================
+PART A — VENDOR NAME: STOP THE FAKE-UPPERCASE DISPLAY, SAVE A REAL CONSISTENT VALUE
+============================================================
+BACKGROUND (confirmed by direct code review — do not re-derive)
+1. `client/src/index.css` (~lines 207-212) applies `text-transform: uppercase` globally to every plain `<input type="text">`/`<input:not([type])>`/`<textarea>` in the app. This is a CSS rendering trick only — it makes letters LOOK uppercase while being typed, but does not touch the actual value captured in `onChange`/React state.
+2. `client/src/pages/VendorMaster.tsx` (~line 36) — the Name/Business Name inputs are bare `<input>` elements, so they're caught by this rule. The person types normally, sees fake capitals while typing, but the real string sent to the server (`vendorMasterFields`, `server/vendor-master.ts` ~lines 9-23) is whatever mixed/lower case was actually keyed in — only `.trim()` is applied server-side, no case transform.
+3. `shared/schema.ts` (~line 2566) stores `name`/`businessName` as plain `text`, no transform.
+4. Net effect: the vendor list (`VendorMaster.tsx` ~line 80) correctly displays the real stored value, which is why it appeared lowercase/mixed-case in the screenshots — nothing is corrupted, but the CSS illusion during entry is misleading.
+
+FIX A1
+a. Remove the global `text-transform: uppercase` rule from `client/src/index.css` (~lines 207-212), OR scope it away from the Vendor Master name/business-name inputs specifically — your judgment on whether other parts of the app rely on this global rule elsewhere (check for any other place that assumes visually-uppercase input before removing globally; if it's used intentionally elsewhere, scope the removal to just the Vendor Master form instead of a blanket removal).
+b. Separately, make the ACTUAL SAVED VALUE genuinely uppercase for `name` and `businessName` — apply `.toUpperCase()` server-side in `vendorMasterFields`/the create/update handler in `server/vendor-master.ts`, after `.trim()`, so what's stored in the database is real uppercase text, consistent with how vendor/supplier names are typically entered elsewhere in this app (e.g. site material trip supplier names). This should apply on both create and edit.
+c. Do NOT retroactively uppercase-transform existing vendor rows automatically as part of this migration — leave already-saved names as-is (a person can re-save/edit them if they want the new casing); this fix only governs new saves going forward. If you believe a one-time backfill is low-risk and useful, ask instead of doing it silently.
+d. Confirm the "Link Vendors" review screen (VENDOR-01 Part A) and matching logic (`proposeVendorMatch`) still work correctly — they already lowercase both sides for comparison, so this change should not affect matching, but confirm.
+
+WHAT NOT TO DO (Part A)
+- Do not touch matching/search logic elsewhere in the app that also uses `.toLowerCase()`/`.toUpperCase()` for comparison — those are separate from storage casing and already work correctly.
+- Do not silently rewrite existing vendor data.
+
+SCHEMA SAFETY (Part A)
+No schema change.
+
+TESTS (Part A)
+A. Create a new vendor typing the name in ordinary mixed case (e.g. "saravana metal industries"). Confirm the input box no longer shows a misleading fake-uppercase preview while typing (or, if you chose to keep the CSS for other inputs, confirm this specific field no longer does), and confirm the saved/displayed value in the vendor list is genuinely "SARAVANA METAL INDUSTRIES".
+B. Edit an existing vendor's name and re-save. Confirm it now saves in uppercase.
+C. Confirm the Link Vendors review screen still proposes/matches correctly against existing free-text vendor names regardless of case.
+
+============================================================
+PART B — BULK MATERIAL PI ITEMS OUTSIDE A "MATERIAL"-TYPED INDENT: CLOSE THE ROUTE-GATING GAP
+============================================================
+BACKGROUND (confirmed by direct code review — do not re-derive)
+1. The "Record Delivery" button (`client/src/pages/PurchaseIndents.tsx` ~lines 4593-4606) correctly hides for `procurementRoute === "material"` or `"bulk_plant"` — but fails open for any item where `procurementRoute` is null/unset or still mistagged (e.g. `"stores"`), showing Record Delivery/Record Receipt actions on what is actually a bulk material item.
+2. The read-only delivery-progress panel (`PurchaseIndentDeliveryPanel`, `client/src/components/purchase-indent-delivery.tsx`, built in PI-01 to show trip/receipt-based supply progress) is only rendered when the PARENT INDENT's `piType === "material"` (`PurchaseIndents.tsx` ~line 2608) — not based on the individual item's own `procurementRoute`. Since item-level route tagging is independent of the indent's overall `piType` (an item can be tagged `stores`/`material`/`service` regardless of what type the parent indent is), a genuinely bulk-material item sitting inside an indent whose `piType` isn't purely `"material"` never gets this panel.
+3. The Route Corrections self-fix scanner (PI-02B, `server/storage.ts` ~lines 14701-14723, `purchaseIndentRouteCorrectionRows()`) has the SAME restriction — it only scans items inside `piType === "material"` indents, so it cannot find or offer to fix a mistagged bulk item living inside a differently-typed indent. This means the person's own self-service fix tool is unreachable for exactly this case.
+4. Net effect confirmed: a bulk material item (e.g. WMM) inside a non-`"material"`-typed indent can end up permanently stuck showing the wrong stores-style actions, invisible to the read-only delivery-status view, AND invisible to the tool meant to let the person fix mistagged items themselves.
+
+FIX B1
+a. Change the three gates identified above to key off the ITEM's own `procurementRoute` field rather than (or in addition to) the parent indent's `piType`:
+   - The delivery-progress panel (`PurchaseIndents.tsx` ~line 2608): render `PurchaseIndentDeliveryPanel` for any item where `procurementRoute` is `"material"` or `"bulk_plant"`, regardless of the parent indent's `piType`.
+   - The Route Corrections scanner (`server/storage.ts` ~line 14717): widen the query to scan ALL purchase indent items regardless of parent `piType`, matching on the item's own route-tagging logic (same mistagging criteria as today, just not restricted to `piType === "material"` indents).
+   - The Record Delivery button gate (`PurchaseIndents.tsx` ~line 4593): keep the existing correct exclusions, but also ensure a null/unset `procurementRoute` on an item that is clearly a bulk material (e.g. matched against the material catalog's own route tagging, reusing PI-02's inheritance logic) does not default to showing Record Delivery — apply the same "hard-set to material when appropriate" logic PI-02 already established for NEW item selection, but now also as a fallback check when rendering this button for EXISTING items with an ambiguous/null route.
+b. After this fix, a store user, purchaser, or PM should be able to open any bulk material PI item (in any indent) and see read-only delivery/trip status (how much has been supplied via Site Material Trips or plant receipts against the ordered qty) — without seeing or being able to use the Record Delivery/Record Site Receipt actions, which must remain exclusive to genuinely stores-routed items.
+c. Confirm this does not regress the correctly-working case: a stores-routed item (e.g. cement bags via warehouse) must continue to show Record Delivery/Record Receipt exactly as today.
+
+WHAT NOT TO DO (Part B)
+- Do not change how a genuinely stores-routed item's Record Delivery/Receipt flow works.
+- Do not remove the Route Corrections screen's existing safety check (blocking correction if real Stores delivery/GRN history already exists for that item) — keep that guard, just widen which items the scanner considers in the first place.
+
+SCHEMA SAFETY (Part B)
+No schema change — this is a gating/query-scope fix using the existing `procurementRoute` field.
+
+TESTS (Part B)
+A. Find or create a bulk material item (e.g. WMM) inside an indent whose `piType` is NOT purely `"material"` (or reproduce the exact case the person is seeing — check their actual data if possible). Confirm Record Delivery/Record Site Receipt no longer show for this item.
+B. Confirm the same item now shows the read-only delivery/trip-status panel with real progress data.
+C. Run the Route Corrections screen and confirm this item is now visible there if its route is genuinely mistagged, and can be corrected.
+D. Confirm a genuinely stores-routed item (cement, or similar) is completely unaffected — Record Delivery/Receipt still work exactly as before.
+
+============================================================
+PART C — PURCHASE ORDER: GATED RAISE -> EDIT -> APPROVE -> PDF WORKFLOW, PROPER LAYOUT
+============================================================
+BACKGROUND
+The current Part C delivery generates a PDF on demand from an "Export PO (PDF)" button once an item is Ordered/Partial — correct that it's optional and non-blocking, but the person wants a real, lightweight approval workflow around it instead of an instant export, and a more professional single-page layout matching the sample they provided (letterhead, vendor/ship-to style blocks, a clear item line, though NOT as elaborate as a full commercial template).
+
+Decisions already made (do not re-litigate):
+- The PO remains fully OPTIONAL and NON-BLOCKING — marking a PI item "Ordered" continues to work exactly as it does today (per VENDOR-01 Part C), completely independent of whether anyone ever raises a PO for it. "Raise PO" is a separate, additional action, not a replacement for the existing order-recording flow.
+- The PO approver is the SAME PERSON/ROLE who approves that Purchase Indent — reuse the existing PI-approval permission check, do not introduce a new approver role.
+- The PDF must NOT show a subtotal/total amount, and must NOT include a signature line/block.
+- The PDF (and the on-screen PO record) MUST show the actual names of the person who raised it and the person who approved it — real user names (e.g. "Raised by: Ramesh Kumar", "Approved by: Suresh Reddy"), not just their role/title (not "Manager"/"Admin").
+
+FIX C1 — NEW `purchase_orders` TABLE (additive, per-item PO lifecycle)
+a. Add a new table, e.g. `purchase_orders`: id, `purchase_indent_id` (FK), `purchase_indent_item_id` (FK), `status` (`"draft"` | `"submitted"` | `"approved"` | `"rejected"` — your naming discretion, keep consistent with existing enum conventions in this codebase), a snapshot of the editable PO fields (vendor name + linked `vendorId` if applicable, description, quantity, unit, rate, expected delivery date/supply duration, payment terms, delivery destination — i.e., the same fields the current PDF shows, but now stored as an independently-editable draft rather than read live off the PI item every time), `raisedByUserId` (FK to users), `raisedAt`, `submittedAt`, `approvedByUserId` (FK to users), `approvedAt`, `rejectionReason` (nullable, if you support reject), `createdAt`/`updatedAt`.
+b. This table is purely additive — no changes to `purchaseIndentItems` or any other existing table required for this.
+c. A PI item may have zero or one active (non-rejected) PO draft at a time — your judgment on how to handle re-raising after a rejection (e.g. allow a new draft, or allow editing the rejected one back to draft).
+
+FIX C2 — RAISE / EDIT (DRAFT) UI
+a. On the Purchase Indent item's ordering/Order Placed panel, add a "Raise PO" button/action, available to the same users who can record a purchase order (existing `canCreate`/purchaser permission) — separate from, and not required by, the existing "Record Purchase Action" flow.
+b. Clicking "Raise PO" opens an editable form pre-filled with the item's current details (vendor — pulling from the linked Vendor Master record if the vendor is linked per VENDOR-01 Part A, else the free-text vendor name; description; quantity; unit; rate; expected delivery; payment terms; delivery destination). The person can adjust any of these before saving — this is an independent editable snapshot, not a live mirror of the PI item.
+c. Saving creates/updates the `purchase_orders` row with `status = "draft"`, `raisedByUserId` = the current user, `raisedAt` = now.
+d. While in `"draft"`, the PO is freely editable by the person who raised it (or any user with the same purchaser permission — your judgment, but keep it consistent with how the rest of this app handles draft-stage editing).
+
+FIX C3 — SUBMIT FOR APPROVAL
+a. A "Submit for Approval" action moves the PO from `"draft"` to `"submitted"`, setting `submittedAt`. Once submitted, the draft fields should no longer be casually editable by the raiser (your judgment: either lock editing entirely until approved/rejected, or allow the approver to send it back to draft with a reason — keep it simple, a straightforward lock is fine).
+b. The PI's existing approver (reuse the current PI-approval permission/role check — do not invent a new one) sees pending PO submissions needing their review — a simple list/badge is sufficient, does not need to be elaborate.
+
+FIX C4 — APPROVE -> GENERATE PDF
+a. On approval, set `status = "approved"`, `approvedByUserId` = the approving user, `approvedAt` = now, and generate the final PDF at this point (reuse `server/purchase-order-pdf.ts`'s existing `pdfkit`-based rendering, adapted to read from the new `purchase_orders` snapshot instead of the live PI item — do not introduce a new PDF library).
+b. The PDF becomes downloadable ONLY once `status = "approved"` — before that, the store/purchaser/PM can see the draft/submitted details on-screen (read-only once submitted) but cannot download a PDF. This matches the person's intent that the PDF is the finalized, sendable artifact.
+c. Once approved, the PDF (or a "Download PO" action that (re)renders it from the stored snapshot) should be accessible to store, purchaser, and PM roles — not just Admin — consistent with the person's explicit request that these roles be able to download/export it to their device.
+
+FIX C5 — LAYOUT REDESIGN (single page, not elaborate, matching the sample's structure)
+Reading the sample layout the person provided as a reference for STRUCTURE (not literal fields — do not add subtotal/tax/shipping/F.O.B./signature, which they explicitly said NOT to include):
+a. Company letterhead block (logo + company name), matching current branding usage elsewhere (reuse `getCompanyConfig()`/`getCompanyLogoPath()`).
+b. A clear "PURCHASE ORDER" title, with PO/Order No. and Date displayed prominently near the top (similar visual weight to the sample's DATE/PO# box).
+c. A "VENDOR" block (vendor name, business name, GST/PAN/address when linked via Vendor Master) and, if useful, a simple "DELIVER TO" block (site/delivery destination) — side by side or stacked, whichever reads cleanly on one page.
+d. A clean item line/table: description, quantity, unit, rate, expected delivery/supply duration, payment terms — presented as an actual table with borders/shading (like the sample's item grid), not a plain label-colon-value list as in the current build's screenshot.
+e. At the bottom: "Raised by: [full name]" and "Approved by: [full name]" with their respective dates — no signature line, no total amount line, per the person's explicit choice.
+f. Keep it to one page, reasonably compact — this is explicitly NOT meant to be an elaborate commercial template, just a properly laid-out, professional-looking one-pager.
+
+WHAT NOT TO DO (Part C)
+- Do not make "Raise PO"/approval mandatory before an item can be marked "Ordered" — the existing order-recording flow must remain fully independent and unblocked.
+- Do not add a subtotal/total amount or a signature line to the PDF.
+- Do not show generic role labels ("Manager"/"Admin") in place of real names for Raised by/Approved by.
+- Do not touch VENDOR-01 Part A/B code beyond reusing (read-only) the vendor linking and rate-selection logic already in place.
+- Do not touch DPR, MAT, PR-01, or unrelated VB instructions.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY (Part C)
+New additive table `purchase_orders` with FKs to `purchase_indents`, `purchase_indent_items`, and `users` — all nullable-safe, no changes to existing tables' columns.
+
+TESTS (Part C)
+A. Mark a PI item "Ordered" WITHOUT ever raising a PO — confirm this still works exactly as before, completely unaffected.
+B. Raise a PO for an item, edit the draft, confirm changes save correctly and independently of the live PI item's own data.
+C. Submit for approval — confirm the PI's approver (and only that role) can see and act on it.
+D. Approve it — confirm the PDF becomes available, shows the new layout (letterhead, PO#/date, vendor/deliver-to blocks, item table, Raised by/Approved by with real names), and explicitly does NOT show a total amount or signature line.
+E. Confirm store, purchaser, and PM roles (not just Admin) can download the approved PDF.
+F. Confirm the PDF cannot be downloaded while still in draft/submitted status.
+G. Confirm this works for both Bulk Material and Store-type items, consistent with VENDOR-01 Part C's "any indent type" requirement.
+
+REPORT BACK
+1. Confirm Part A with Test A/B/C evidence (screenshots).
+2. Confirm Part B with Test A/B/C/D evidence (screenshots), including which specific case (stale-data self-fixable vs code gap) applied to the person's actual reported item if you can identify it from their data.
+3. Confirm Part C with Test A through G evidence (screenshots of the new PDF layout specifically).
+4. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch. STOP after each Part and report back before continuing to the next.

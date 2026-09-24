@@ -77,29 +77,45 @@ try {
   await clickText("button", "Create vendor");
   await waitFor(`!!document.querySelector('form')`, "vendor creation form");
   for (const [label, value] of Object.entries({
-    "Display name *": "SYNTHETIC Fleet Co", "Business name": "SYNTHETIC Fleet Trading",
+    "Display name *": "saravana metal industries", "Business name": "Saravana Metal Trading",
     "GST number": "SYN-GST-NEW", "PAN number": "SYN-PAN-NEW", "Address": "2 Synthetic Road",
     "Contact person": "SYNTHETIC Manager", "Phone": "000-111-2222", "Email": "fleet@example.invalid",
     "Account holder": "SYNTHETIC Fleet Holder", "Account number": "SYN-ACCOUNT-NEW",
     "IFSC": "SYN-IFSC-NEW", "Bank name": "SYNTHETIC Fleet Bank",
   })) await input(label, value);
-  screenshots.push(await shot("A1-full-fields-before-save-synthetic"));
+  const inputAppearance = await evaluate(`(() => {
+    const fields = Array.from(document.querySelectorAll('form label'));
+    const find = label => fields.find(x => x.querySelector('span')?.textContent.trim() === label)?.querySelector('input');
+    const name = find('Display name *'), business = find('Business name'), gst = find('GST number');
+    return { name: name?.value, business: business?.value, nameTransform: getComputedStyle(name).textTransform,
+      businessTransform: getComputedStyle(business).textTransform, otherTransform: getComputedStyle(gst).textTransform };
+  })()`);
+  assert(inputAppearance.name === "saravana metal industries" && inputAppearance.business === "Saravana Metal Trading"
+    && inputAppearance.nameTransform === "none" && inputAppearance.businessTransform === "none"
+    && inputAppearance.otherTransform === "uppercase", `Unexpected input appearance: ${JSON.stringify(inputAppearance)}`);
+  screenshots.push(await shot("VENDOR-02-A1-mixed-case-typing-synthetic"));
   await clickText("button", "Save vendor");
-  await waitFor(`window.__vendorFixture.vendors.some(v => v.name === "SYNTHETIC Fleet Co")`, "vendor create persisted to mocked API");
-  assert((await evaluate(`window.__vendorFixture.vendors.find(v => v.name === "SYNTHETIC Fleet Co").bankAccountNumber`)) === "SYN-ACCOUNT-NEW", "A1 bank details not saved");
-  await clickText("button", "SYNTHETIC Fleet Co");
+  await waitFor(`window.__vendorFixture.vendors.some(v => v.name === "SARAVANA METAL INDUSTRIES")`, "vendor create persisted to mocked API");
+  assert((await evaluate(`window.__vendorFixture.vendors.find(v => v.name === "SARAVANA METAL INDUSTRIES").businessName`)) === "SARAVANA METAL TRADING", "business casing not normalized");
+  await clickText("button", "SARAVANA METAL INDUSTRIES");
   await waitFor(`document.body.innerText.includes("SYN-GST-NEW") && document.body.innerText.includes("SYN-ACCOUNT-NEW")`, "A1 full vendor detail");
-  screenshots.push(await shot("A1-saved-detail-synthetic"));
+  screenshots.push(await shot("VENDOR-02-A1-uppercase-saved-synthetic"));
   await clickText("button", "Edit");
-  await input("Contact person", "SYNTHETIC Edited Contact");
+  await input("Display name *", "synthetic Metro supplies");
+  await input("Business name", "synthetic Metro trading");
+  const editedInput = await evaluate(`(() => { const el=Array.from(document.querySelectorAll('form label')).find(x=>x.querySelector('span')?.textContent.trim()==='Display name *')?.querySelector('input'); return { value:el?.value, transform:getComputedStyle(el).textTransform }; })()`);
+  assert(editedInput.value === "synthetic Metro supplies" && editedInput.transform === "none", "Edit displayed fake uppercase");
+  screenshots.push(await shot("VENDOR-02-A2-mixed-case-edit-synthetic"));
   await clickText("button", "Save vendor");
-  await waitFor(`window.__vendorFixture.vendors.some(v => v.contactPersonName === "SYNTHETIC Edited Contact")`, "A1 edit persisted");
-  screenshots.push(await shot("A1-edited-detail-synthetic"));
+  await waitFor(`window.__vendorFixture.vendors.some(v => v.name === "SYNTHETIC METRO SUPPLIES")`, "A2 edit persisted uppercase");
+  assert((await evaluate(`window.__vendorFixture.vendors[0].businessName`)) === "SYNTHETIC METRO TRADING", "Edit business casing not normalized");
+  screenshots.push(await shot("VENDOR-02-A2-uppercase-edited-synthetic"));
 
   await clickText("button", "Link Vendors");
-  await waitFor(`document.body.innerText.includes("SYNTHETIC Metro Ltd") && document.body.innerText.includes("Alias hint: SYNTHETIC Metro Supplies")`, "A2 alias hint");
+  await waitFor(`document.body.innerText.includes("SYNTHETIC Metro Ltd") && document.body.innerText.includes("Alias hint: synthetic metro supplies")`, "A2 alias hint");
   assert((await evaluate(`window.__vendorFixture.links.length`)) === 0, "Review silently linked an existing name");
-  screenshots.push(await shot("A2-proposals-alias-hint-synthetic"));
+  assert((await evaluate(`document.querySelector('select[aria-label="Master match for SYNTHETIC Metro Ltd bills"]')?.value`)) === "1", "Case-insensitive alias did not suggest edited uppercase master");
+  screenshots.push(await shot("VENDOR-02-A3-case-insensitive-alias-synthetic"));
   await clickText("button", "Confirm link");
   await waitFor(`window.__vendorFixture.links.length === 1`, "A3 explicit confirmation");
   assert((await evaluate(`window.__vendorFixture.links[0].vendorId`)) === 1, "A3 alias hint selected wrong master");
@@ -111,11 +127,11 @@ try {
   screenshots.push(await shot("A4-inline-create-synthetic"));
   await clickText("button", "Save vendor");
   await waitFor(`window.__vendorFixture.links.length === 2`, "A4 inline create and explicit link");
-  assert((await evaluate(`window.__vendorFixture.vendors.find(v => v.name === "SYNTHETIC Quarry Partner")?.gstNumber`)) === "SYN-GST-QUARRY", "A4 inline details lost");
+  assert((await evaluate(`window.__vendorFixture.vendors.find(v => v.name === "SYNTHETIC QUARRY PARTNER")?.gstNumber`)) === "SYN-GST-QUARRY", "A4 inline details lost");
   screenshots.push(await shot("A4-inline-linked-synthetic"));
 
   await clickText("button", "Vendors");
-  await clickText("button", "SYNTHETIC Metro Supplies");
+  await clickText("button", "SYNTHETIC METRO SUPPLIES");
   await waitFor(`document.body.innerText.includes("SYNTHETIC North Site") && document.body.innerText.includes("SYNTHETIC South Site")`, "A5 site summary");
   const activity = await evaluate(`document.body.innerText`);
   assert(activity.includes("Equipment hire 2 · Material supply 0 · Transport 1 · Labour 0"), "A5 North activities missing");
@@ -123,7 +139,7 @@ try {
   screenshots.push(await shot("A5-site-summary-synthetic"));
   const writes = await evaluate(`window.__vendorFixture.writes`);
   assert(writes.length === 4 && writes.every(w => w.path.startsWith("/api/vendor-master")), "Unexpected mocked API writes");
-  const result = { passed: true, syntheticFixture: true, screenshots, assertions: ["A1 create/save/edit full structured fields", "A2 alias suggestion without silent linking", "A3 explicit confirmation", "A4 inline create/link", "A5 equipment/material/transport/labour across two sites", "No real API or business writes"], mockedWrites: writes.map(w => `${w.method} ${w.path}`) };
+  const result = { passed: true, syntheticFixture: true, screenshots, inputAppearance, editedInput, assertions: ["VENDOR-02 A1 mixed-case typing has computed text-transform none for name and business while other fields retain uppercase CSS", "VENDOR-02 A1 uppercase saved and displayed", "VENDOR-02 A2 uppercase after mixed-case edit", "VENDOR-02 A3 alias hint matches edited uppercase master case-insensitively", "A3 explicit confirmation", "A4 inline create/link", "A5 equipment/material/transport/labour across two sites", "No real API or business writes"], mockedWrites: writes.map(w => `${w.method} ${w.path}`) };
   writeFileSync(path.join(evidence, "verification-result.json"), JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result, null, 2));
 } finally {

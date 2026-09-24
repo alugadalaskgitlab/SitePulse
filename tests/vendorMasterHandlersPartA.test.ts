@@ -134,6 +134,48 @@ beforeEach(() => {
 });
 
 describe("Vendor Master Part A real Express handlers, synthetic transaction DB boundary", () => {
+  it("VENDOR-02 A create trims/uppercases both names while leaving existing rows untouched", async () => {
+    const app = api();
+    const created = await request(app).post("/api/vendor-master").send({
+      name: "  saravana metal industries  ", businessName: "  Saravana Metal Trading  ",
+    });
+    expect(created.status).toBe(201);
+    expect(created.body).toMatchObject({ name: "SARAVANA METAL INDUSTRIES", businessName: "SARAVANA METAL TRADING" });
+    expect(memory.vendors[0]).toMatchObject({ name: "SYNTHETIC Canonical", businessName: "SYNTHETIC Trading" });
+    const list = await request(app).get("/api/vendor-master");
+    expect(list.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "SARAVANA METAL INDUSTRIES", businessName: "SARAVANA METAL TRADING" }),
+    ]));
+  });
+  it("VENDOR-02 B patch uppercases supplied names and preserves null/omitted business name", async () => {
+    const app = api();
+    const edited = await request(app).patch("/api/vendor-master/1").send({
+      name: "  sYnThEtIc edited  ", businessName: "  Edited works  ",
+    });
+    expect(edited.status).toBe(200);
+    expect(edited.body).toMatchObject({ name: "SYNTHETIC EDITED", businessName: "EDITED WORKS" });
+    const nullBusiness = await request(app).patch("/api/vendor-master/1").send({ businessName: null });
+    expect(nullBusiness.status).toBe(200);
+    expect(nullBusiness.body.businessName).toBeNull();
+    const onlyName = await request(app).patch("/api/vendor-master/1").send({ name: "  another Name " });
+    expect(onlyName.body).toMatchObject({ name: "ANOTHER NAME", businessName: null });
+  });
+  it("VENDOR-02 C inline create uppercases while review aliases still match regardless of case", async () => {
+    const app = api();
+    memory.aliases = [{ alias: "synthetic alias ltd", canonicalName: "synthetic canonical" }];
+    const review = await request(app).get("/api/vendor-master/review");
+    expect(review.status).toBe(200);
+    expect(review.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: "bills", name: "SYNTHETIC Alias Ltd", suggestionId: 1, hint: "synthetic canonical" }),
+    ]));
+    const inline = await request(app).post("/api/vendor-master/review/confirm").send({
+      role: "rates", name: "SYNTHETIC New Supplier", ids: [20],
+      newVendor: { name: "  new Supplier  ", businessName: "  Supply house  " },
+    });
+    expect(inline.status).toBe(200);
+    expect(memory.vendors[1]).toMatchObject({ name: "NEW SUPPLIER", businessName: "SUPPLY HOUSE" });
+    expect(memory.rates[0]).toMatchObject({ name: "SYNTHETIC New Supplier", vendorId: 2 });
+  });
   it("A1 creates full structured fields, and blocks non-admin creation/bank reads", async () => {
     const input = {
       name: "SYNTHETIC Fleet", businessName: "SYNTHETIC Fleet Works", gstNumber: "GST-SYN",
@@ -144,7 +186,7 @@ describe("Vendor Master Part A real Express handlers, synthetic transaction DB b
     expect((await request(api(false)).post("/api/vendor-master").send(input)).status).toBe(403);
     const created = await request(api()).post("/api/vendor-master").send(input);
     expect(created.status).toBe(201);
-    expect(created.body).toMatchObject(input);
+    expect(created.body).toMatchObject({ ...input, name: "SYNTHETIC FLEET", businessName: "SYNTHETIC FLEET WORKS" });
     expect(memory.vendors[1].bankAccountNumber).toBe(input.bankAccountNumber);
     const privateList = await request(api(false)).get("/api/vendor-master");
     expect(privateList.status).toBe(200);

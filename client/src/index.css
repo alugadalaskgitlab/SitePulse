@@ -211,6 +211,11 @@ textarea {
   text-transform: uppercase;
 }
 
+/* Vendor Master names show the actual value being typed; casing is normalized on save. */
+input.vendor-master-name-input[type="text"] {
+  text-transform: none;
+}
+
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: none;
