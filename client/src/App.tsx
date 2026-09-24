@@ -34,6 +34,7 @@ const EquipmentStatus   = lazy(() => import("@/pages/EquipmentStatus"));
 const SiteHub           = lazy(() => import("@/pages/SiteHub"));
 const MastersHub        = lazy(() => import("@/pages/MastersHub"));
 const AdminMastersHub   = lazy(() => import("@/pages/AdminMastersHub"));
+const VendorMaster      = lazy(() => import("@/pages/VendorMaster"));
 const StoresHub         = lazy(() => import("@/pages/StoresHub"));
 const FinanceHub        = lazy(() => import("@/pages/FinanceHub"));
 const RmcHub            = lazy(() => import("@/pages/RmcHub"));
@@ -385,6 +386,7 @@ function AuthedShell() {
           <Route path="/admin/concrete-estimates" component={gatedEither(ConcreteEstimates, "concrete_calculator", "reports")} />
 
           {/* Masters */}
+          <Route path="/masters/vendors" component={gated(VendorMaster, "master_parties")} />
           <Route path="/masters/section/:section" component={gatedEither(PlantMasters, "master_parties", "master_materials", "master_equipment", "master_personnel")} />
 
           {/* Edit requests — /edit-requests is the admin review queue; /mine is open to any authenticated user */}

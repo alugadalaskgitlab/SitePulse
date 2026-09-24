@@ -42,6 +42,15 @@ export default function AdminMastersHub() {
               iconBg="bg-emerald-50"
               enabled={sectionVisible("master_parties")}
             />
+            <HubActionTile
+              href="/masters/vendors"
+              icon={Users}
+              title="Vendor Master"
+              description="Vendor details, site activity and reviewed identity links"
+              accent="blue"
+              iconBg="bg-blue-50"
+              enabled={sectionVisible("master_parties")}
+            />
           </div>
         </div>
 

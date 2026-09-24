@@ -1,0 +1,29 @@
+{
+  "passed": true,
+  "syntheticFixture": true,
+  "screenshots": [
+    "/home/runner/workspace/tests/fixtures/vendor-master-part-a/evidence/A-list-synthetic-actual-component.png",
+    "/home/runner/workspace/tests/fixtures/vendor-master-part-a/evidence/A1-full-fields-before-save-synthetic.png",
+    "/home/runner/workspace/tests/fixtures/vendor-master-part-a/evidence/A1-saved-detail-synthetic.png",
+    "/home/runner/workspace/tests/fixtures/vendor-master-part-a/evidence/A1-edited-detail-synthetic.png",
+    "/home/runner/workspace/tests/fixtures/vendor-master-part-a/evidence/A2-proposals-alias-hint-synthetic.png",
+    "/home/runner/workspace/tests/fixtures/vendor-master-part-a/evidence/A3-confirmed-link-synthetic.png",
+    "/home/runner/workspace/tests/fixtures/vendor-master-part-a/evidence/A4-inline-create-synthetic.png",
+    "/home/runner/workspace/tests/fixtures/vendor-master-part-a/evidence/A4-inline-linked-synthetic.png",
+    "/home/runner/workspace/tests/fixtures/vendor-master-part-a/evidence/A5-site-summary-synthetic.png"
+  ],
+  "assertions": [
+    "A1 create/save/edit full structured fields",
+    "A2 alias suggestion without silent linking",
+    "A3 explicit confirmation",
+    "A4 inline create/link",
+    "A5 equipment/material/transport/labour across two sites",
+    "No real API or business writes"
+  ],
+  "mockedWrites": [
+    "POST /api/vendor-master",
+    "PATCH /api/vendor-master/1",
+    "POST /api/vendor-master/review/confirm",
+    "POST /api/vendor-master/review/confirm"
+  ]
+}

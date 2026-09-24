@@ -19,6 +19,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
 import { db } from "./db";
+import { registerVendorMasterRoutes } from "./vendor-master";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc, desc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { siteMatchesPermitted, untrustedVendorBillAutoItems, vendorBillAutoSourceFromCandidate, vendorBillItemMatchesSite, vendorBillUpdateSiteId, vendorBillVisibleToSites } from "@shared/siteName";
@@ -465,6 +466,7 @@ export async function registerRoutes(
     const allSites = await storage.getSites();
     return allSites.filter((s) => permittedIds.includes(s.id)).map((s) => s.name);
   }
+  registerVendorMasterRoutes(app, getPermittedSiteNames);
 
   /** Site trips are operational records: both their current record and their
    * requested destination must be in the caller's site scope. */

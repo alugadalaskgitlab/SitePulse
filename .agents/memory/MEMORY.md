@@ -92,3 +92,4 @@
 - [Material source billing](material-source-billing.md) — source seller and transporter are independent liabilities; role-qualified duplicate identity preserves both.
 - [PI delivery progress](pi-delivery-progress.md) — retain both delivery paths across destination changes; reconcile mutations without guessing missing historical links.
 - [Vendor payment validation](vendor-payment-validation.md) — test actual payment save before paid transition; synthetic UI success cannot prove server eligibility.
+- [Vendor master identity](vendor-master-identity.md) — review-first links remain separate from name matching; name changes invalidate associations independently by role.

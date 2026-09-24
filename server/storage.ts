@@ -22055,7 +22055,11 @@ export class DatabaseStorage implements IStorage {
       return updated;
     }
     const [created] = await db.insert(vendorRateCards).values({
-      ...data,
+      category: data.category,
+      itemLabel: data.itemLabel,
+      unit: data.unit,
+      rate: data.rate,
+      notes: data.notes,
       vendorName: upperVendor,
       itemKey: upperKey,
     }).returning();

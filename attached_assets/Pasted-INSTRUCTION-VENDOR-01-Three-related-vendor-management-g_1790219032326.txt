@@ -1,0 +1,107 @@
+INSTRUCTION VENDOR-01: Three related vendor-management gaps — (1) build a real Vendor Master (GST/PAN/address/bank/contact, linked to Equipment/Material/Transport/Labour activity across sites) and link it to the free-text vendor names already scattered across Vendor Bills/Rate Cards/Purchase Indents/Material Trips, (2) auto-refresh qty/rate from the rate card when a bill line item's unit is edited live (not just at pull-in time), (3) add an optional Purchase Order PDF export from the Purchase Indent "Order Placed" step, for any indent type
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a genuinely new piece of architecture (Part A), plus two smaller, related fixes (Parts B and C) that both benefit from Part A existing. Build in order: A, then B and C can follow (B and C should still work correctly even if referencing vendors that haven't been linked to the new master yet — see backward-compatibility requirements in Part A). Do not touch DPR-02 through DPR-13, VB-18 through VB-26, PI-01, PI-02, PI-02B, MAT-01, MAT-02, or PR-01. Do not publish automatically. STOP after each Part and report back before continuing to the next — this is large enough that it should be reviewed in stages, not delivered as one giant unreviewable diff.
+
+============================================================
+PART A — VENDOR MASTER
+============================================================
+BACKGROUND (confirmed by direct code review — do not re-derive)
+1. There is NO vendor/party master table anywhere in this codebase. "Vendor" is a free-text name string, entered and matched independently in: `vendorBills.vendorName` (shared/schema.ts ~2256), `vendorBillItems.vendorName` (~2347), `vendorRateCards.vendorName` (~2631), `purchaseIndentItems.vendor` (~1876), `siteMaterialTrips.supplier`/`materialSourceSupplier` (~879, ~884-886), and plant equipment records (`vendorName`, ~513).
+2. The only existing name-normalization mechanism is `vendorAliases` (shared/schema.ts ~2553: `id, canonicalName, alias, createdAt`) — a simple alias-mapping table with no structured fields, used to reconcile spelling variants of the same vendor name for matching purposes (e.g. in VB-22/VB-25's vendor-role matching logic).
+3. No field for GST number, PAN number, address, bank details, or contact info exists anywhere for a vendor — confirmed via schema-wide search.
+4. Existing PDF-generation patterns already used in this app (for Part C to reuse): server-side `pdfkit` (`server/routes.ts`, used for Vendor Bills' PDF export at `GET /api/vendor-bills/:id/pdf`, Daily Plant Report, RMC daily report) and client-side `jsPDF`+`jspdf-autotable` (`client/src/components/vendor-bills/EquipmentHireBillOutput.tsx`, `exportEquipmentHireBill()`).
+
+FIX A1 — NEW VENDOR MASTER TABLE
+a. Add a new `vendors` table (name at your discretion, e.g. `vendors`) with: `id`, `name` (the canonical display name), `businessName` (nullable, if different from personal/trade name), `gstNumber` (nullable), `panNumber` (nullable), `address` (nullable, can be a single text field or structured — your judgment), `bankAccountName`/`bankAccountNumber`/`bankIfsc`/`bankName` (nullable, grouped sensibly), `contactPersonName`/`contactPhone`/`contactEmail` (nullable), `isActive` (default true), `createdAt`/`updatedAt`.
+b. Add a "Vendor Master" management page (list + create/edit form) somewhere sensible in navigation — your judgment on placement (e.g. under Masters, alongside other master-data pages already in this app).
+c. On the Vendor Master's detail/edit view, show a rolled-up summary of what this vendor is doing across the app: linked Equipment Hire activity, Material supply activity, Transport activity, Labour activity — grouped by SITE, so a person can see at a glance "this vendor is doing equipment hire at Site A and material supply at Site B." Source this from the existing `siteName`/site data already present on vendor bill items, rate cards, and any linked Purchase Indents/Material Trips — this is a read/aggregation view, not a new data-entry surface.
+
+FIX A2 — LINK EXISTING FREE-TEXT VENDOR NAMES TO THE NEW MASTER (REVIEW-FIRST, PER THE PERSON'S EXPLICIT CHOICE)
+a. Add a nullable `vendorId` foreign-key column to each of: `vendorBills`, `vendorRateCards`, `purchaseIndentItems` (or wherever the vendor field lives there), and `siteMaterialTrips` (for both `supplier` and `materialSourceSupplier` roles — consider whether one `vendorId` per role is needed, or whether trips need two separate FK columns since transporter and material-source can be different vendors on the same trip). This is ADDITIVE — the existing free-text name columns must remain fully functional and unchanged; do not remove or stop populating them.
+b. Build a "Link Vendors" review screen (following the same review-first pattern already successfully used for PI-02B's route-correction tool): scan all distinct free-text vendor names currently in use across these tables, propose matches to existing/new Vendor Master records (using the existing `vendorAliases` table as a starting hint where available), and let the person confirm or adjust each match before anything is linked. Do NOT auto-link silently.
+c. Support creating a NEW Vendor Master record directly from this review screen for a name that doesn't yet have one, so the person can process the full backlog of existing vendor names in one pass without leaving the screen.
+d. Once linked, all EXISTING billing/matching logic that currently keys off vendor NAME (rate card matching, VB-22/VB-25's role-based item pulling, `vendorAliases` reconciliation, etc.) must continue to work exactly as it does today — this fix adds a structured identity layer alongside the name-based system, it does not replace or require migrating the matching logic itself in this batch. A future batch may gradually shift matching to `vendorId`-based lookups where beneficial, but that is explicitly OUT OF SCOPE here — do not attempt it now.
+
+WHAT NOT TO DO (Part A)
+- Do not remove or stop populating any existing free-text vendor-name column.
+- Do not auto-link existing vendor names to master records without explicit review/confirmation.
+- Do not attempt to migrate existing rate-card/billing MATCHING logic to be vendorId-based in this batch — that's explicitly deferred.
+- Do not touch DPR-02 through DPR-13, VB-18 through VB-26, PI-01, PI-02, PI-02B, MAT-01, MAT-02, or PR-01.
+
+SCHEMA SAFETY (Part A)
+One new table (`vendors`, all fields nullable except `name`/`id`/`isActive`/timestamps). Nullable `vendorId` FK columns added to the four tables listed in A2a — additive only, safe default null, zero impact on existing unlinked records.
+
+TESTS (Part A)
+A1. Create a new Vendor Master record with GST/PAN/address/bank/contact details, confirm it saves and displays correctly.
+A2. Open the Link Vendors review screen, confirm it lists distinct existing vendor names not yet linked, with sensible match suggestions where `vendorAliases` data exists.
+A3. Link an existing vendor name to a Vendor Master record via explicit confirmation. Confirm existing billing behavior for that vendor (rate card matching, item pulling) is completely unaffected — no regression.
+A4. Create a brand-new Vendor Master record directly from the review screen for a name with no prior alias data.
+A5. Open a linked vendor's detail view and confirm the site-grouped activity summary (equipment/material/transport/labour) shows correctly, sourced from real existing data.
+
+============================================================
+PART B — LIVE UNIT-EDIT AUTO-REFRESH ON VENDOR BILL LINE ITEMS
+============================================================
+BACKGROUND (confirmed by direct code review)
+`client/src/pages/VendorBills.tsx`'s generic `updateLineItem(index, field, value)` (~lines 1717-1729) only recalculates `amount` when `field` is `qty`/`rate`/`leadDistance`/`category` — `"unit"` is NOT in that list. The per-row Unit `<Select>` (~line 3517, shared by both pulled-in and manually-added rows) calls `updateLineItem(idx, "unit", v)` directly, which today does nothing beyond updating the unit text — qty/rate/amount are left completely unchanged, so they can silently go out of sync with the newly-selected unit. Rate-card-based conversion only happens today via the separate, explicitly-triggered "Set Rates" bulk dialog (~lines 4026-4090), never as a natural consequence of editing a row's unit inline. The person has confirmed: auto-refresh when there's an unambiguous rate-card match for the new unit; otherwise, clearly warn that the item is now out of sync rather than guessing.
+
+FIX B1 — AUTO-REFRESH ON UNAMBIGUOUS MATCH, WARN OTHERWISE
+a. When the Unit dropdown is changed on an existing line item (pulled-in or manual), look up the item's vendor's rate card for the SAME material/equipment/service in the newly-selected unit — reuse the exact matching logic already proven in VB-22/VB-25 (`matchingRateCardsForGroup`, `defaultConvertedQuantity`, `selectAutoMaterialRateConversion` in `client/src/lib/vendorBillRateSelection.ts`) rather than reimplementing.
+b. If exactly ONE unambiguous rate-card match exists for the new unit, automatically convert the quantity and update the rate to match that card, then recalculate the amount — same behavior/outcome as the existing pull-in-time conversion, just triggered by an inline edit instead.
+c. If no match, or more than one ambiguous match, exists: do NOT guess or silently change anything. Instead, show a clear visual warning on that row (e.g. a highlighted border/icon with a tooltip like "Unit changed — qty/rate may no longer match this vendor's rate card; use Set Rates to review") so the person notices and can act, either manually or via the existing Set Rates dialog.
+d. This must work identically whether the vendor is linked to a Vendor Master record (Part A) or still only identified by free-text name — do not make this fix depend on Part A being complete first.
+
+WHAT NOT TO DO (Part B)
+- Do not silently change qty/rate when the match is ambiguous or absent — warn instead, per the person's explicit choice.
+- Do not remove or change the existing "Set Rates" bulk dialog — this is an additional, complementary path for the single-row inline-edit case.
+- Do not touch DPR-02 through DPR-13, VB-18 through VB-26, PI-01, PI-02, PI-02B, MAT-01, MAT-02, or PR-01.
+
+SCHEMA SAFETY (Part B)
+No schema change — logic only, reusing existing rate-card data.
+
+TESTS (Part B)
+B1. On an already-pulled bill line item, change the Unit dropdown to a unit for which the vendor has exactly one rate card. Confirm qty, rate, and amount all auto-update correctly, matching what the pull-in-time conversion would have produced.
+B2. Repeat with a unit that has NO matching rate card for that vendor. Confirm qty/rate are left unchanged and a clear warning appears on the row.
+B3. Repeat with a unit that has MULTIPLE ambiguous rate-card matches. Confirm the same safe warning behavior (no guessing).
+B4. Confirm this works the same whether or not the vendor has been linked to a Vendor Master record from Part A.
+B5. Confirm the existing Set Rates bulk dialog still works exactly as before — no regression.
+
+============================================================
+PART C — OPTIONAL PURCHASE ORDER PDF EXPORT (ANY INDENT TYPE)
+============================================================
+BACKGROUND (confirmed by direct code review)
+No Purchase Order concept exists anywhere in this codebase, separate from Purchase Indents' internal approval workflow. The "Order Placed" step (`client/src/pages/PurchaseIndents.tsx` ~4048-4085) already captures qty, vendor, order/PO number (free text), rate, expected delivery date, payment mode, remarks — as in-app data only, with no PDF or vendor-facing export. The person has confirmed: this should be available for ANY Purchase Indent type (bulk material or store/stock item), but must be entirely OPTIONAL — an on-demand export action, never a required/blocking step in the ordering workflow, since forcing it would slow down quick store-item purchases where that formality isn't needed.
+
+FIX C1 — OPTIONAL "EXPORT PURCHASE ORDER" ACTION
+a. Add an "Export Purchase Order (PDF)" button/action on the PI item's "Order Placed" panel, available once an item has moved to "Ordered" status — for BOTH Bulk Material and Store indent types, since the person wants it usable for either, not gated by type.
+b. This must be purely optional/on-demand — do not add any validation, required field, or workflow gate that blocks marking an item as "Ordered" if this PDF hasn't been generated. It's a convenience export action, nothing more.
+c. Reuse an existing PDF-generation pattern from this codebase (server-side `pdfkit`, matching the Vendor Bills PDF export pattern, or client-side `jsPDF`, matching the Equipment Hire bill export pattern) — your judgment on which fits better given the surrounding code, but do not build a third, new PDF mechanism from scratch.
+
+FIX C2 — SIMPLE PURCHASE ORDER FORMAT
+a. The exported PDF should contain, at minimum: company letterhead/name (reuse whatever branding convention Vendor Bills' PDF already uses), Purchase Indent reference number, vendor name (and, if linked via Part A, business name/GST/PAN/address — gracefully omit these fields if the vendor isn't yet linked to a Vendor Master record, do not block export or show blank/broken fields), item/material description, quantity, unit, ex-rate (clearly labeled, e.g. "Ex-Crusher" or "Ex-Site" if that distinction matters — confirm with reasonable defaulting if the exact source location isn't separately captured today), supply duration/expected delivery window (from the existing `expectedDelivery` field), payment terms (from the existing `paymentMode` field), and a place for site/delivery destination.
+b. Keep the format simple and clean — a single-page document suitable for sending via WhatsApp as an attachment (the person will handle the actual sending themselves outside the app; this fix only needs to produce the downloadable PDF, not any WhatsApp integration).
+c. If the vendor for this item happens to be linked to a Vendor Master record (Part A), pull GST/PAN/address/bank details automatically into the document; if not linked, simply omit those fields gracefully (no blank placeholders, no error) — this fix must work correctly even before Part A's linking work is complete for a given vendor.
+
+WHAT NOT TO DO (Part C)
+- Do not make PO export mandatory or blocking for any indent type or workflow step.
+- Do not build a new PDF-generation mechanism — reuse an existing pattern.
+- Do not attempt any actual send/delivery integration (WhatsApp, email, etc.) — export only.
+- Do not touch DPR-02 through DPR-13, VB-18 through VB-26, PI-01, PI-02, PI-02B, MAT-01, MAT-02, or PR-01.
+
+SCHEMA SAFETY (Part C)
+No schema change expected — this reads existing PI item fields (plus optionally Part A's vendor master fields, if linked). If a genuinely new field is needed (e.g. a distinct "ex-rate location" field not currently captured), flag it in your report before adding it rather than silently expanding scope.
+
+TESTS (Part C)
+C1. Order a Bulk Material item, export its Purchase Order PDF, confirm all expected fields render correctly and the document is clean/single-page.
+C2. Order a Store item, confirm the same export action is available and works correctly (not gated by indent type).
+C3. Confirm marking an item as "Ordered" works completely normally whether or not a PO PDF is ever exported — no blocking, no required step.
+C4. Export a PO for a vendor already linked to a Vendor Master record (Part A) and confirm GST/PAN/address/bank details appear correctly in the document.
+C5. Export a PO for a vendor NOT yet linked to a Vendor Master record and confirm those fields are simply omitted gracefully, with no errors or blank placeholders.
+
+REPORT BACK
+1. After Part A: confirm Fix A1/A2 with Test A1-A5 evidence (screenshots). STOP and wait for review before proceeding to Part B.
+2. After Part B: confirm Fix B1 with Test B1-B5 evidence (screenshots). STOP and wait for review before proceeding to Part C.
+3. After Part C: confirm Fix C1/C2 with Test C1-C5 evidence (screenshots).
+4. At each stage, note anything discovered but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch. DO NOT proceed to the next Part without confirmation, given the size of this batch.

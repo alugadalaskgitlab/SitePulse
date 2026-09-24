@@ -874,9 +874,11 @@ export const siteMaterialTrips = pgTable("site_material_trips", {
   site: text("site").notNull(), // Site name
   material: text("material").notNull(), // Material name
   supplier: text("supplier"), // Supplier name
+  supplierVendorId: integer("supplier_vendor_id").references(() => vendors.id, { onDelete: "set null" }),
   // The seller/owner of the material is independent from `supplier`, which
   // remains the vehicle/transporter-side vendor.
   materialSourceSupplier: text("material_source_supplier"),
+  materialSourceVendorId: integer("material_source_vendor_id").references(() => vendors.id, { onDelete: "set null" }),
   vehicleNumber: text("vehicle_number"), // Vehicle registration
   // DPR-01 Parts 8/9: null preserves historical trips whose transport source
   // was not recorded. New entries classify the trip without overloading supplier.
@@ -1176,7 +1178,7 @@ export const insertStockBalanceSchema = createInsertSchema(stockBalances).omit({
 export const insertStockLedgerSchema = createInsertSchema(stockLedger).omit({ id: true, createdAt: true });
 export const insertMaterialIssueSchema = createInsertSchema(materialIssues).omit({ id: true, createdAt: true });
 export const insertMaterialReturnSchema = createInsertSchema(materialReturns).omit({ id: true, createdAt: true });
-export const insertSiteMaterialTripSchema = createInsertSchema(siteMaterialTrips).omit({ id: true, createdAt: true });
+export const insertSiteMaterialTripSchema = createInsertSchema(siteMaterialTrips).omit({ id: true, createdAt: true, supplierVendorId: true, materialSourceVendorId: true });
 export const insertStockReconciliationSessionSchema = createInsertSchema(stockReconciliationSessions).omit({ id: true, postedAt: true });
 export const insertStockReconciliationItemSchema = createInsertSchema(stockReconciliationItems).omit({ id: true, createdAt: true });
 
@@ -1874,6 +1876,7 @@ export const purchaseIndentItems = pgTable("purchase_indent_items", {
   qtyPurchased: real("qty_purchased"),
   deliveredQty: real("delivered_qty").notNull().default(0),
   vendor: text("vendor"),
+  vendorId: integer("vendor_id").references(() => vendors.id, { onDelete: "set null" }),
   billNo: text("bill_no"),
   rate: real("rate"),
   amount: real("amount"),
@@ -1939,7 +1942,7 @@ export const purchaseIndentItemHistoryRelations = relations(purchaseIndentItemHi
 }));
 
 export const insertPurchaseIndentSchema = createInsertSchema(purchaseIndents).omit({ id: true, createdAt: true });
-export const insertPurchaseIndentItemSchema = createInsertSchema(purchaseIndentItems).omit({ id: true, deliveredQty: true });
+export const insertPurchaseIndentItemSchema = createInsertSchema(purchaseIndentItems).omit({ id: true, deliveredQty: true, vendorId: true });
 export const insertPurchaseIndentItemHistorySchema = createInsertSchema(purchaseIndentItemHistory).omit({ id: true, actionAt: true });
 export type PurchaseIndent = typeof purchaseIndents.$inferSelect;
 export type PurchaseIndentItem = typeof purchaseIndentItems.$inferSelect;
@@ -2254,6 +2257,7 @@ export const vendorBills = pgTable("vendor_bills", {
   billNo: text("bill_no").notNull(),
   billType: text("bill_type").notNull(),
   vendorName: text("vendor_name").notNull(),
+  vendorId: integer("vendor_id").references(() => vendors.id, { onDelete: "set null" }),
   periodFrom: date("period_from"),
   periodTo: date("period_to"),
   status: text("status").default("draft").notNull(),
@@ -2435,7 +2439,7 @@ export const hireStatementExceptionsRelations = relations(hireStatementException
   statement: one(hireStatements, { fields: [hireStatementExceptions.statementId], references: [hireStatements.id] }),
 }));
 
-export const insertVendorBillSchema = createInsertSchema(vendorBills).omit({ id: true, createdAt: true });
+export const insertVendorBillSchema = createInsertSchema(vendorBills).omit({ id: true, createdAt: true, vendorId: true });
 export const insertVendorBillItemSchema = createInsertSchema(vendorBillItems).omit({ id: true });
 export const insertHireStatementSchema = createInsertSchema(hireStatements).omit({ id: true, createdAt: true });
 export const insertHireStatementExceptionSchema = createInsertSchema(hireStatementExceptions).omit({ id: true, createdAt: true });
@@ -2557,6 +2561,27 @@ export const vendorAliases = pgTable("vendor_aliases", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const vendors = pgTable("vendors", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  businessName: text("business_name"),
+  gstNumber: text("gst_number"),
+  panNumber: text("pan_number"),
+  address: text("address"),
+  bankAccountName: text("bank_account_name"),
+  bankAccountNumber: text("bank_account_number"),
+  bankIfsc: text("bank_ifsc"),
+  bankName: text("bank_name"),
+  contactPersonName: text("contact_person_name"),
+  contactPhone: text("contact_phone"),
+  contactEmail: text("contact_email"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true, createdAt: true, updatedAt: true });
+export type Vendor = typeof vendors.$inferSelect;
+
 export const insertVendorAliasSchema = createInsertSchema(vendorAliases).omit({ id: true, createdAt: true });
 export type VendorAlias = typeof vendorAliases.$inferSelect;
 export type InsertVendorAlias = z.infer<typeof insertVendorAliasSchema>;
@@ -2631,6 +2656,7 @@ export type InsertConcreteEstimateV2 = z.infer<typeof insertConcreteEstimateV2Sc
 export const vendorRateCards = pgTable("vendor_rate_cards", {
   id: serial("id").primaryKey(),
   vendorName: text("vendor_name").notNull(),
+  vendorId: integer("vendor_id").references(() => vendors.id, { onDelete: "set null" }),
   category: text("category").notNull(),
   itemKey: text("item_key").notNull(),
   itemLabel: text("item_label"),
@@ -2640,7 +2666,7 @@ export const vendorRateCards = pgTable("vendor_rate_cards", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertVendorRateCardSchema = createInsertSchema(vendorRateCards).omit({ id: true, updatedAt: true });
+export const insertVendorRateCardSchema = createInsertSchema(vendorRateCards).omit({ id: true, updatedAt: true, vendorId: true });
 export type VendorRateCard = typeof vendorRateCards.$inferSelect;
 export type InsertVendorRateCard = z.infer<typeof insertVendorRateCardSchema>;
 

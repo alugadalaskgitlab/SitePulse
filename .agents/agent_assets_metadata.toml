@@ -2565,3 +2565,87 @@ mtime_ms = 1790177768213
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c0c014e9-0e32-493a-8826-dd0591cc16b9/c28343df-992d-4580-8403-9cc3b943684f"
 storage_version_token = "1790177917754253"
 content_type = "image/png"
+
+[[outputs]]
+id = "u9_bRLaB5NutVTwcJN9Ky"
+uri = "file://tests/fixtures/vendor-master-part-a/evidence/A1-full-fields-before-save-synthetic.png"
+type = "image"
+title = "Vendor Master — structured details"
+description = "Actual Vendor Master component with labelled synthetic APIs and data. No live business records were created or linked for these screenshots."
+logical_id = "9ce061cd-c66c-4b61-9044-b2ebbb8fda60"
+content_hash = "sha256:fbcf7d77aab6eca4088762ee7ca782d02c64737429b22b3f72bf54e17a043096"
+size = 80899
+mtime_ms = 1790219763595
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/9ce061cd-c66c-4b61-9044-b2ebbb8fda60/9fc8e97b-252b-41ca-a78c-05e578de99a6"
+storage_version_token = "1790220188178720"
+content_type = "image/png"
+
+[[outputs]]
+id = "75w_enEEED7HrWNKZaedP"
+uri = "file://tests/fixtures/vendor-master-part-a/evidence/A1-edited-detail-synthetic.png"
+type = "image"
+title = "Vendor Master — saved and edited details"
+description = "Actual Vendor Master component with labelled synthetic APIs and data. No live business records were created or linked for these screenshots."
+logical_id = "5bde82f1-8284-44ed-bae3-51783ea75660"
+content_hash = "sha256:5670b956452ebdca7816ea999e16247b1dcafef23241eeeeb9ed495467d349e5"
+size = 99922
+mtime_ms = 1790219764067
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/5bde82f1-8284-44ed-bae3-51783ea75660/b1924f28-7ef1-4ab4-98de-197e6572cc19"
+storage_version_token = "1790220190336324"
+content_type = "image/png"
+
+[[outputs]]
+id = "EtWE4n20tIRmFhi5mhkws"
+uri = "file://tests/fixtures/vendor-master-part-a/evidence/A2-proposals-alias-hint-synthetic.png"
+type = "image"
+title = "Link Vendors — alias suggestions for review"
+description = "Actual Vendor Master component with labelled synthetic APIs and data. No live business records were created or linked for these screenshots."
+logical_id = "d14cae65-7013-4aaa-b151-cfb68ee8d107"
+content_hash = "sha256:44ac1bb6e986fcaffd2bd61c73d42f071064a65a008958f1ffcbb82a4f11344d"
+size = 72080
+mtime_ms = 1790219764315
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d14cae65-7013-4aaa-b151-cfb68ee8d107/4b2e4b13-7b3d-408e-b158-e25b8646e326"
+storage_version_token = "1790220191959621"
+content_type = "image/png"
+
+[[outputs]]
+id = "P5j53GaPwlkYiK68Y7B1I"
+uri = "file://tests/fixtures/vendor-master-part-a/evidence/A3-confirmed-link-synthetic.png"
+type = "image"
+title = "Link Vendors — explicit confirmation"
+description = "Actual Vendor Master component with labelled synthetic APIs and data. No live business records were created or linked for these screenshots."
+logical_id = "722ea6f3-a8f9-492d-96c9-8d967fedc3ee"
+content_hash = "sha256:8a99b7b463390576a2c3124f55cb7c501c20344bbc0e40bdc3720cdf2f45a526"
+size = 62090
+mtime_ms = 1790219764527
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/722ea6f3-a8f9-492d-96c9-8d967fedc3ee/be1f22b9-43aa-4085-ba4a-ef9b4926102f"
+storage_version_token = "1790220193597761"
+content_type = "image/png"
+
+[[outputs]]
+id = "pkpgPYghl-yc-gXPxPcJ5"
+uri = "file://tests/fixtures/vendor-master-part-a/evidence/A4-inline-create-synthetic.png"
+type = "image"
+title = "Link Vendors — create a new master inline"
+description = "Actual Vendor Master component with labelled synthetic APIs and data. No live business records were created or linked for these screenshots."
+logical_id = "82f94bcd-d8e5-4292-90fb-64b56524d44e"
+content_hash = "sha256:936e47405497fb284b44fdec35914a70aaf32f1b9b4d73e32f36f8a5e4e634dd"
+size = 78343
+mtime_ms = 1790219764791
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/82f94bcd-d8e5-4292-90fb-64b56524d44e/88e4ee7c-625b-4e3f-9695-f98a0c45f758"
+storage_version_token = "1790220195236460"
+content_type = "image/png"
+
+[[outputs]]
+id = "hG7yxBYM2mAzLIO-9H-er"
+uri = "file://tests/fixtures/vendor-master-part-a/evidence/A5-site-summary-synthetic.png"
+type = "image"
+title = "Vendor Master — activity grouped by site"
+description = "Actual Vendor Master component with labelled synthetic APIs and data. No live business records were created or linked for these screenshots."
+logical_id = "427de7a6-d110-4e9c-9927-feba0ea26523"
+content_hash = "sha256:e47725c55aa84409bf381a5d99deeeeb3db2cd3de8d1269e92d7e08b034820a8"
+size = 114371
+mtime_ms = 1790219765239
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/427de7a6-d110-4e9c-9927-feba0ea26523/b75f3d0d-725e-4b75-9f97-b512ec2fd975"
+storage_version_token = "1790220197137054"
+content_type = "image/png"
