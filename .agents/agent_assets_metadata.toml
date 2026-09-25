@@ -3083,3 +3083,73 @@ mtime_ms = 1790267953924
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/1a05971b-184f-4890-a122-3e9feec0280a/89ced5fb-7fd0-4b2e-ac80-a3fd9aa86728"
 storage_version_token = "1790268078227751"
 content_type = "image/png"
+
+[[outputs]]
+id = "BaxzQRmJqLnY7082ZJ2ZK"
+uri = "file://reports/perm01/A-purchase-granular.png"
+type = "image"
+title = "A — PI granular permission checks"
+description = "Permission-test evidence. A–D are isolated check results, not live UI transactions; E uses real permissions read without changes."
+logical_id = "fe243d5e-3dc1-461e-97dd-a25e4a1bb10d"
+content_hash = "sha256:641c0a297f919fcae9436eeddcaa8d56704532fd9aab0e92836a0a81def255ed"
+size = 38254
+mtime_ms = 1790335429127
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/fe243d5e-3dc1-461e-97dd-a25e4a1bb10d/a9193406-d346-4287-be2c-47cdef224b3d"
+storage_version_token = "1790335471369296"
+content_type = "image/png"
+
+[[outputs]]
+id = "q6R5DHeFoEMTtEfb-3en1"
+uri = "file://reports/perm01/B-purchase-legacy.png"
+type = "image"
+title = "B — PI legacy access retained"
+description = "Permission-test evidence. A–D are isolated check results, not live UI transactions; E uses real permissions read without changes."
+logical_id = "3c94ad49-0614-4128-8089-f265bd9c637a"
+content_hash = "sha256:e221c4b88e13fc7797dc64f575b20ed0b4102ba7e9398f8819a03c8242f5490e"
+size = 39718
+mtime_ms = 1790335430211
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/3c94ad49-0614-4128-8089-f265bd9c637a/c6f0ea34-19d4-48a0-86d3-98bb4e88061d"
+storage_version_token = "1790335472810661"
+content_type = "image/png"
+
+[[outputs]]
+id = "-jQ5dpEe6rZb7cFKfXHhl"
+uri = "file://reports/perm01/C-diesel.png"
+type = "image"
+title = "C — Diesel granular and legacy checks"
+description = "Permission-test evidence. A–D are isolated check results, not live UI transactions; E uses real permissions read without changes."
+logical_id = "c809cb5e-1559-4129-92d2-3bbb50e18d8e"
+content_hash = "sha256:7fd226982dbd4b5fdd18cd54007d5b56a8495794b2f5f7462781e0156b07fa1b"
+size = 37952
+mtime_ms = 1790335431347
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c809cb5e-1559-4129-92d2-3bbb50e18d8e/a20c7182-d30d-4e7b-87c8-da8aeeb3c996"
+storage_version_token = "1790335474286800"
+content_type = "image/png"
+
+[[outputs]]
+id = "EuF55vpQ4DOCZlj3ROjdH"
+uri = "file://reports/perm01/D-vendor.png"
+type = "image"
+title = "D — Three Vendor Bills route checks"
+description = "Permission-test evidence. A–D are isolated check results, not live UI transactions; E uses real permissions read without changes."
+logical_id = "7391c1ab-2dee-46c9-a935-a528d5c1dce7"
+content_hash = "sha256:22541a1bb2a97ae481c3d7690108991d9a6c647bbd9eebfcb89957097b5d5bfc"
+size = 41576
+mtime_ms = 1790335433119
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/7391c1ab-2dee-46c9-a935-a528d5c1dce7/67f8df16-e859-40ae-8d16-1b8ef34d5e11"
+storage_version_token = "1790335475737836"
+content_type = "image/png"
+
+[[outputs]]
+id = "GpeS6S1LolTPVpNtxrEIf"
+uri = "file://reports/perm01/E-real-user-comparison.png"
+type = "image"
+title = "E — Existing-user before/after comparison"
+description = "Permission-test evidence. A–D are isolated check results, not live UI transactions; E uses real permissions read without changes."
+logical_id = "d2727a34-7294-496b-b9d6-2971ad5f8ef7"
+content_hash = "sha256:c0a14f2b55d9ddeda62e8c6958efc485c44fc0c781a00e3ab46035a029d11bb5"
+size = 40640
+mtime_ms = 1790335434256
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d2727a34-7294-496b-b9d6-2971ad5f8ef7/f38a184b-37e8-445d-8bf8-056b48c7fde2"
+storage_version_token = "1790335477098430"
+content_type = "image/png"

@@ -378,7 +378,7 @@ export default function PlantMaterialReceipts() {
     return m?.name || "";
   }, [materials, materialId]);
   const isSelectedDiesel = /^(diesel|hsd)$/i.test(selectedMaterialName.trim());
-  const canRecordStandaloneDiesel = isOwnerOrAdmin || sectionCan("site_diesel", "edit");
+  const canRecordStandaloneDiesel = isOwnerOrAdmin || sectionCan("site_diesel", "edit") || sectionCan("diesel_req_raise", "edit");
   const { data: dieselRequirements = [] } = useQuery<any[]>({
     queryKey: ["/api/diesel-requirements"],
     enabled: dialogOpen && isSelectedDiesel,

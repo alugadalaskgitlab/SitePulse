@@ -19,6 +19,12 @@ description: Architecture decisions for the expanded 85-key permission matrix wi
 
 **How to apply:** When adding a new granular key for a route that previously used a broad key, always use `gatedEither` with both new + old key. Only drop the old fallback once all users have been re-permissioned by the admin.
 
+Granular Raise rows retain separate Create and Edit actions; never use the granular Create checkbox to enable an Edit-only server action.
+
+**Why:** A client-only OR against Create can expose an edit button while the server correctly requires Edit. Supporting list/detail reads must also allow the raiser, or an additive write gate alone still leaves the form unusable.
+
+**How to apply:** Verify client and server action parity, supporting reads, and successful mocked-storage create/edit requests for both legacy-only and granular-only users. Preserve approval and site restrictions independently.
+
 ## assertApprove
 
 Exported from `server/auth-routes.ts`. Works identically to `assertEdit` but checks `m[section].approve`. Admins always pass. Use on approval/rejection endpoints.

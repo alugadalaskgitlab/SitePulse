@@ -387,7 +387,7 @@ function DieselPurchaseSummary({ requirement }: { requirement: DieselRequirement
   const paymentRecordedBy = (requirement as any).paymentRecordedBy as string | null;
   const [showMarkPaid, setShowMarkPaid] = useState(false);
   const { sectionCan } = useAuth();
-  const canEditDiesel = sectionCan("site_diesel", "edit");
+  const canEditDiesel = sectionCan("site_diesel", "edit") || sectionCan("diesel_req_raise", "edit");
 
   return (
     <Card data-testid="card-purchase-summary">
@@ -521,9 +521,9 @@ export default function DieselRequirements() {
   const [rejectionReason, setRejectionReason] = useState("");
 
   const { sectionCan, isAdmin } = useAuth();
-  const canEdit = sectionCan("site_diesel", "edit");
-  const canCreate = sectionCan("site_diesel", "create");
-  const canApprove = sectionCan("site_diesel", "edit");
+  const canEdit = sectionCan("site_diesel", "edit") || sectionCan("diesel_req_raise", "edit");
+  const canCreate = sectionCan("site_diesel", "create") || sectionCan("diesel_req_raise", "create");
+  const canApprove = sectionCan("site_diesel", "edit") || sectionCan("diesel_req_approve", "approve");
   const canDelete = isAdmin;
 
   const [purchaseQty, setPurchaseQty] = useState("");

@@ -82,7 +82,8 @@ function UrgencyDot({ items }: { items: InternalRequisitionWithItems["items"] })
 function ProcurementQueueTab() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const canProcure = useAuth().sectionCan("site_procurement", "create");
+  const { sectionCan } = useAuth();
+  const canProcure = sectionCan("site_procurement", "create") || sectionCan("purchase_indents_raise", "create");
 
   const { data: queueItems, isLoading } = useQuery<ProcurementQueueItem[]>({
     queryKey: ["/api/irn/procurement-queue"],

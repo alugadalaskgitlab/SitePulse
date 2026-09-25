@@ -1,0 +1,87 @@
+{
+  "label": "PERM-01 Part A — isolated guard scenarios A-D and read-only live-matrix comparison E",
+  "caveat": "A-D simulate permission decisions and verify changed route source; no UI action or business record was created/edited. E uses actual active-user permission rows in one read-only DB snapshot; no credentials, IDs, or matrices retained.",
+  "baseline": "git HEAD:server/routes.ts",
+  "sourceGuardsVerified": {
+    "vendor_bills_targeted_routes": 3,
+    "site_procurement": 17,
+    "site_diesel": 6
+  },
+  "scenarios": [
+    {
+      "action": "Purchase Indents create",
+      "baselineGranularOnly": "denied",
+      "widenedGranularOnly": "allowed",
+      "legacyBeforeAndAfter": "allowed"
+    },
+    {
+      "action": "Purchase Indents edit",
+      "baselineGranularOnly": "denied",
+      "widenedGranularOnly": "allowed",
+      "legacyBeforeAndAfter": "allowed"
+    },
+    {
+      "action": "Diesel Requirements create",
+      "baselineGranularOnly": "denied",
+      "widenedGranularOnly": "allowed",
+      "legacyBeforeAndAfter": "allowed"
+    },
+    {
+      "action": "Diesel Requirements edit",
+      "baselineGranularOnly": "denied",
+      "widenedGranularOnly": "allowed",
+      "legacyBeforeAndAfter": "allowed"
+    },
+    {
+      "action": "Vendor Bills duplicate check",
+      "baselineGranularOnly": "denied",
+      "widenedGranularOnly": "allowed",
+      "legacyBeforeAndAfter": "allowed"
+    },
+    {
+      "action": "Vendor Bills draft edit",
+      "baselineGranularOnly": "denied",
+      "widenedGranularOnly": "allowed",
+      "legacyBeforeAndAfter": "allowed"
+    },
+    {
+      "action": "Vendor Bills equipment hire discovery",
+      "baselineGranularOnly": "denied",
+      "widenedGranularOnly": "allowed",
+      "legacyBeforeAndAfter": "allowed"
+    }
+  ],
+  "realUsers": [
+    {
+      "displayName": "K V Babu",
+      "adminOrOwnerBypass": false,
+      "checkedActions": 7,
+      "previouslyAllowed": 7,
+      "nowAllowed": 7,
+      "losses": 0,
+      "unchangedBaseMatrixDecisions": 664,
+      "baseMatrixLosses": 0
+    },
+    {
+      "displayName": "Ramesh",
+      "adminOrOwnerBypass": false,
+      "checkedActions": 7,
+      "previouslyAllowed": 0,
+      "nowAllowed": 2,
+      "losses": 0,
+      "unchangedBaseMatrixDecisions": 664,
+      "baseMatrixLosses": 0
+    },
+    {
+      "displayName": "Administrator",
+      "adminOrOwnerBypass": true,
+      "checkedActions": 7,
+      "previouslyAllowed": 7,
+      "nowAllowed": 7,
+      "losses": 0,
+      "unchangedBaseMatrixDecisions": 664,
+      "baseMatrixLosses": 0
+    }
+  ],
+  "conclusion": "No sampled user lost access across targeted Part A actions"
+}

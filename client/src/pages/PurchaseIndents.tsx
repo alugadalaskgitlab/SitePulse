@@ -673,8 +673,8 @@ export default function PurchaseIndents() {
   const { toast } = useToast();
   const { sectionCan, isAdmin, canApprove, user: currentUser } = useAuth();
   const { rmcEnabled } = useFeatureFlags();
-  const canCreate = sectionCan("site_procurement", "create");
-  const canEdit = sectionCan("site_procurement", "edit") || isAdmin;
+  const canCreate = sectionCan("site_procurement", "create") || sectionCan("purchase_indents_raise", "create");
+  const canEdit = sectionCan("site_procurement", "edit") || sectionCan("purchase_indents_raise", "edit") || isAdmin;
   const canViewStores = sectionCan("stores_inventory", "view");
   const canCreateStores = sectionCan("stores_inventory", "create");
   const isApprover = canApprove("purchase_indents_approve");

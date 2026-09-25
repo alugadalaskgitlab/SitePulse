@@ -99,6 +99,7 @@ import {
   registerAuthRoutes,
   assertAdmin,
   assertEdit,
+  assertEditEither,
   assertView,
   assertViewEither,
   assertAuthed,
@@ -216,7 +217,12 @@ export async function registerRoutes(
       req.authUser.isAdmin ||
       req.authUser.isOwner ||
       req.authPermissions?.site_diesel?.view ||
-      req.authPermissions?.stores_inventory?.view
+      req.authPermissions?.stores_inventory?.view ||
+      req.authPermissions?.site_diesel?.create ||
+      req.authPermissions?.site_diesel?.edit ||
+      req.authPermissions?.diesel_req_raise?.view ||
+      req.authPermissions?.diesel_req_raise?.create ||
+      req.authPermissions?.diesel_req_raise?.edit
     );
     if (!canView) {
       res.status(403).json({ error: "forbidden", action: "view" });
@@ -1332,7 +1338,7 @@ export async function registerRoutes(
       }
       // Diesel purchase evidence changes the purchase record's audit trail.
       // Stores inventory visibility is intentionally not sufficient to mutate it.
-      if (parsed.moduleType === "diesel_purchase" && !assertEdit(req, res, "site_diesel")) return;
+      if (parsed.moduleType === "diesel_purchase" && !assertEditEither(req, res, "site_diesel", "diesel_req_raise")) return;
       if (parsed.moduleType === "equipment_breakdown") {
         if (!assertCreateOrEdit(req, res, "plant_equipment")) return;
         if (!(await assertMaintenanceRecordAccess(req, res, parsed.linkedRecordId, true))) return;
@@ -1381,7 +1387,7 @@ export async function registerRoutes(
       const attachment = await storage.getAttachment(id);
       if (!attachment) return res.status(404).json({ message: "Attachment not found" });
       // Match the diesel purchase-update authority for removing its evidence.
-      if (attachment.moduleType === "diesel_purchase" && !assertEdit(req, res, "site_diesel")) return;
+      if (attachment.moduleType === "diesel_purchase" && !assertEditEither(req, res, "site_diesel", "diesel_req_raise")) return;
       if (attachment.moduleType === "equipment_breakdown") {
         if (!assertEdit(req, res, "plant_equipment")) return;
         if (!(await assertMaintenanceRecordAccess(req, res, attachment.linkedRecordId, true))) return;
@@ -8730,9 +8736,23 @@ export async function registerRoutes(
   // PURCHASE INDENTS
   // ============================================
 
+  function assertPiRaiserRead(req: Express.Request, res: Response): boolean {
+    if (!req.authUser) {
+      res.status(401).json({ error: "not_authenticated" });
+      return false;
+    }
+    const m = req.authPermissions;
+    if (req.authUser.isAdmin || req.authUser.isOwner ||
+        m?.purchase_indents_view?.view ||
+        m?.site_procurement?.view || m?.site_procurement?.create || m?.site_procurement?.edit ||
+        m?.purchase_indents_raise?.view || m?.purchase_indents_raise?.create || m?.purchase_indents_raise?.edit) return true;
+    res.status(403).json({ error: "forbidden", action: "view" });
+    return false;
+  }
+
   app.get("/api/purchase-indents", async (req, res) => {
     try {
-      if (!assertView(req, res, "purchase_indents_view")) return;
+      if (!assertPiRaiserRead(req, res)) return;
       const filters = {
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
@@ -8811,7 +8831,7 @@ export async function registerRoutes(
 
   app.get("/api/purchase-indents/route-corrections", async (req, res) => {
     try {
-      if (!assertView(req, res, "purchase_indents_view")) return;
+      if (!assertPiRaiserRead(req, res)) return;
       const permitted = await getPermittedSiteNames(req);
       const rows = await storage.scanPurchaseIndentRouteCorrections(permitted ?? undefined);
       res.json(rows);
@@ -8823,8 +8843,8 @@ export async function registerRoutes(
 
   app.post("/api/purchase-indents/route-corrections/apply", async (req, res) => {
     try {
-      if (!assertView(req, res, "purchase_indents_view")) return;
-      if (!assertEdit(req, res, "site_procurement")) return;
+      if (!assertPiRaiserRead(req, res)) return;
+      if (!assertEditEither(req, res, "site_procurement", "purchase_indents_raise")) return;
       const body = z.object({
         items: z.array(z.object({
           itemId: z.number().int().positive(),
@@ -8875,7 +8895,7 @@ export async function registerRoutes(
 
   app.patch("/api/purchase-indents/:id/items/:itemId/destination", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "site_procurement")) return;
+      if (!assertEditEither(req, res, "site_procurement", "purchase_indents_raise")) return;
       const indentId = Number(req.params.id), itemId = Number(req.params.itemId);
       if (!await assertPiDeliveryScope(req, res, indentId, [req.body])) return;
       await storage.setPurchaseIndentDestination(indentId, itemId, req.body.receivingLocation, req.body.receivingSiteId, req.authUser?.id ?? 0, currentUserName(req));
@@ -8888,7 +8908,7 @@ export async function registerRoutes(
   app.get("/api/purchase-indents/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
-      if (!assertView(req, res, "purchase_indents_view")) return;
+      if (!assertPiRaiserRead(req, res)) return;
       if (!await assertPiDeliveryScope(req, res, id)) return;
       const indent = await storage.getPurchaseIndent(id);
       if (!indent) {
@@ -8981,7 +9001,7 @@ export async function registerRoutes(
 
   app.get("/api/purchase-indents/:id/items/:itemId/purchase-order", async (req, res) => {
     try {
-      if (!assertView(req, res, "purchase_indents_view")) return;
+      if (!assertPiRaiserRead(req, res)) return;
       const scoped = await scopedPoItem(req, res);
       if (!scoped) return;
       const [order] = await activePo(scoped.item.id);
@@ -9006,7 +9026,7 @@ export async function registerRoutes(
 
   app.post("/api/purchase-indents/:id/items/:itemId/purchase-order", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "site_procurement")) return;
+      if (!assertCreateEither(req, res, "site_procurement", "purchase_indents_raise")) return;
       const scoped = await scopedPoItem(req, res);
       if (!scoped) return;
       // An approved PI item can get a PO before or after its independent order-recording action.
@@ -9033,7 +9053,7 @@ export async function registerRoutes(
 
   app.patch("/api/purchase-indents/:id/items/:itemId/purchase-order", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "site_procurement")) return;
+      if (!assertCreateEither(req, res, "site_procurement", "purchase_indents_raise")) return;
       const scoped = await scopedPoItem(req, res);
       if (!scoped) return;
       const fields = poFields.parse(req.body);
@@ -9057,7 +9077,7 @@ export async function registerRoutes(
 
   app.post("/api/purchase-indents/:id/items/:itemId/purchase-order/submit", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "site_procurement")) return;
+      if (!assertCreateEither(req, res, "site_procurement", "purchase_indents_raise")) return;
       const scoped = await scopedPoItem(req, res);
       if (!scoped) return;
       const [order] = await db.update(purchaseOrders).set({ status: "submitted", submittedAt: new Date(), updatedAt: new Date() })
@@ -9095,7 +9115,7 @@ export async function registerRoutes(
   // The former instant-export URL now enforces approval, even for direct callers.
   app.get("/api/purchase-indents/:id/items/:itemId/purchase-order.pdf", async (req, res) => {
     try {
-      if (!assertView(req, res, "purchase_indents_view")) return;
+      if (!assertPiRaiserRead(req, res)) return;
       const scoped = await scopedPoItem(req, res);
       if (!scoped) return;
       const [order] = await activePo(scoped.item.id);
@@ -9114,7 +9134,7 @@ export async function registerRoutes(
 
   app.post("/api/purchase-indents", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "site_procurement")) return;
+      if (!assertCreateEither(req, res, "site_procurement", "purchase_indents_raise")) return;
       const input = createPurchaseIndentRequestSchema.parse(req.body);
       const indent = await storage.createPurchaseIndent(input);
       sendPushToSection("purchase_indents_view", "New Purchase Indent", `${indent.indentNo} raised by ${indent.raisedBy}`, "/plant/purchase-indents").catch(() => {});
@@ -9254,7 +9274,7 @@ export async function registerRoutes(
   app.post("/api/purchase-indents/:id/place-order", async (req, res) => {
     try {
       const id = Number(req.params.id);
-      if (!assertCreate(req, res, "site_procurement")) return;
+      if (!assertCreateEither(req, res, "site_procurement", "purchase_indents_raise")) return;
       const actionBy = currentUserName(req);
       const { items } = req.body;
       if (!await assertPiDeliveryScope(req, res, id, items || [])) return;
@@ -9270,7 +9290,7 @@ export async function registerRoutes(
   app.post("/api/purchase-indents/:id/record-material-receipt", async (req, res) => {
     try {
       const id = Number(req.params.id);
-      if (!assertCreate(req, res, "site_procurement")) return;
+      if (!assertCreateEither(req, res, "site_procurement", "purchase_indents_raise")) return;
       const actionBy = currentUserName(req);
       const { items } = req.body;
       if (!items?.length) return res.status(400).json({ message: "items array is required" });
@@ -9298,14 +9318,15 @@ export async function registerRoutes(
   app.patch("/api/purchase-indents/items/:itemId/link-receipt", async (req, res) => {
     try {
       if (!assertAuthed(req, res)) return;
-      // Require create rights on either plant_stock (receipt creators) or site_procurement
+      // Receipt creators or PI raisers may link an existing receipt to a PI item.
       {
         const user = req.authUser!;
         const m = req.authPermissions;
         const ok = user.isAdmin
           || (m?.["plant_stock"]?.create)
-          || (m?.["site_procurement"]?.create);
-        if (!ok) return res.status(403).json({ error: "forbidden", message: "Requires plant_stock:create or site_procurement:create" });
+          || (m?.["site_procurement"]?.create)
+          || (m?.["purchase_indents_raise"]?.create);
+        if (!ok) return res.status(403).json({ error: "forbidden", message: "Requires plant_stock:create, site_procurement:create, or purchase_indents_raise:create" });
       }
       const itemId = Number(req.params.itemId);
       const { receiptId } = req.body;
@@ -9403,7 +9424,7 @@ export async function registerRoutes(
   // Creates a PI from all queued/partially-issued items on an approved IRN.
   app.post("/api/irn/:id/raise-pi", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "site_procurement")) return;
+      if (!assertCreateEither(req, res, "site_procurement", "purchase_indents_raise")) return;
       const irnId = Number(req.params.id);
       if (isNaN(irnId)) return res.status(400).json({ message: "Invalid IRN id" });
 
@@ -9945,7 +9966,7 @@ export async function registerRoutes(
 
   app.patch("/api/purchase-indent-items/:id/procure", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "site_procurement")) return;
+      if (!assertEditEither(req, res, "site_procurement", "purchase_indents_raise")) return;
       const itemId = Number(req.params.id);
       const procureSchema = z.object({
         action: z.enum(["ordered", "received"]),
@@ -9975,7 +9996,7 @@ export async function registerRoutes(
 
   app.post("/api/purchase-indents/:id/notify", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "site_procurement")) return;
+      if (!assertEditEither(req, res, "site_procurement", "purchase_indents_raise")) return;
       const id = Number(req.params.id);
       const customMessage = typeof req.body?.message === "string" ? req.body.message.trim() : "";
       const indent = await storage.getPurchaseIndent(id);
@@ -10013,7 +10034,7 @@ export async function registerRoutes(
 
   app.get("/api/purchase-indent-items/recent-items", async (req, res) => {
     try {
-      if (!assertView(req, res, "site_procurement")) return;
+      if (!assertPiRaiserRead(req, res)) return;
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 5;
       const ids = await storage.getRecentIndentItemIds(limit);
       res.json(ids);
@@ -10025,7 +10046,7 @@ export async function registerRoutes(
 
   app.patch("/api/purchase-indent-items/:id/purchase-update", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "site_procurement")) return;
+      if (!assertEditEither(req, res, "site_procurement", "purchase_indents_raise")) return;
       const itemId = Number(req.params.id);
       const updateSchema = z.object({
         purchaseStatus: z.string().optional(),
@@ -10087,7 +10108,7 @@ export async function registerRoutes(
 
   app.patch("/api/purchase-indent-items/:id/reviewer-note", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "site_procurement")) return;
+      if (!assertEditEither(req, res, "site_procurement", "purchase_indents_raise")) return;
       const itemId = Number(req.params.id);
       const note = typeof req.body?.note === "string" ? req.body.note : "";
       await storage.setItemReviewerNote(itemId, note);
@@ -10132,11 +10153,9 @@ export async function registerRoutes(
       const existing = await storage.getPurchaseIndent(id);
       if (!existing) return res.status(404).json({ message: "Purchase indent not found" });
 
-      // Permission check: the Permission Panel's site_procurement.edit right
-      // governs edits (admins/owners bypass inside assertEdit). Finalized
-      // (non-pending) indents reach this route via the EditPermissionButton
-      // direct-edit flow, which is gated by the same section on the client.
-      if (!assertEdit(req, res, "site_procurement")) return;
+      // PI raisers or legacy procurement editors can edit; other status/site
+      // restrictions remain enforced by the existing workflow.
+      if (!assertEditEither(req, res, "site_procurement", "purchase_indents_raise")) return;
 
       const validatedData = createPurchaseIndentRequestSchema.parse(data);
       const indent = await storage.updatePurchaseIndent(id, validatedData);
@@ -10193,7 +10212,7 @@ export async function registerRoutes(
 
   app.post("/api/purchase-indents/:id/purchaser-action", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "site_procurement")) return;
+      if (!assertEditEither(req, res, "site_procurement", "purchase_indents_raise")) return;
       const indentId = Number(req.params.id);
       const actionBy = currentUserName(req);
       const userId = req.authUser?.id;
@@ -10244,7 +10263,7 @@ export async function registerRoutes(
 
   app.post("/api/purchase-indent-items/:id/record-delivery", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "site_procurement")) return;
+      if (!assertEditEither(req, res, "site_procurement", "purchase_indents_raise")) return;
       const itemId = Number(req.params.id);
       const { deliveredQty, deliveryDate, challanNo, paymentMode, paidBy, remarks } = req.body;
       if (!deliveredQty || Number(deliveredQty) <= 0) {
@@ -10361,7 +10380,7 @@ export async function registerRoutes(
 
   app.post("/api/purchase-indents/:id/bulk-receipt", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "site_procurement")) return;
+      if (!assertEditEither(req, res, "site_procurement", "purchase_indents_raise")) return;
       const indentId = Number(req.params.id);
       const actionBy = currentUserName(req);
       const createdByUserId = req.authUser?.id ?? 0;
@@ -10586,7 +10605,7 @@ export async function registerRoutes(
 
   app.post("/api/diesel-requirements", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "site_diesel")) return;
+      if (!assertCreateEither(req, res, "site_diesel", "diesel_req_raise")) return;
       const input = createDieselRequirementRequestSchema.parse(req.body);
       const requirement = await storage.createDieselRequirement(input);
       sendPushToSection("diesel_req_approve", "New Diesel Requirement", `${requirement.date} - ${requirement.totalPlanned} L planned`, "/plant/diesel-requirements").catch(() => {});
@@ -10660,7 +10679,7 @@ export async function registerRoutes(
 
   app.patch("/api/diesel-requirements/:id/purchase-update", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "site_diesel")) return;
+      if (!assertEditEither(req, res, "site_diesel", "diesel_req_raise")) return;
       const id = Number(req.params.id);
       const updateSchema = z.object({
         qtyPurchased: z.number().optional(),
@@ -10705,7 +10724,7 @@ export async function registerRoutes(
   // paid. Touches ONLY payment fields; timestamp + recorder are server-set.
   app.patch("/api/diesel-requirements/:id/payment-status", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "site_diesel")) return;
+      if (!assertEditEither(req, res, "site_diesel", "diesel_req_raise")) return;
       const id = Number(req.params.id);
       const paymentSchema = z.object({
         paymentStatus: z.literal("paid").optional(),
@@ -10789,7 +10808,7 @@ export async function registerRoutes(
       if (existing.status !== "pending") {
         if (!assertAdmin(req, res)) return;
       } else {
-        if (!assertEdit(req, res, "site_diesel")) return;
+        if (!assertEditEither(req, res, "site_diesel", "diesel_req_raise")) return;
       }
 
       const validatedData = createDieselRequirementRequestSchema.parse(data);
@@ -11247,7 +11266,7 @@ export async function registerRoutes(
   // every other vendor-bill type.
   app.get("/api/vendor-bills/equipment-hire-discovery", async (req, res) => {
     try {
-      if (!assertView(req, res, "vendor_bills")) return;
+      if (!assertViewEither(req, res, "vendor_bills", "vendor_bills_raise")) return;
       const query = z.object({
         periodFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         periodTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -11365,7 +11384,8 @@ export async function registerRoutes(
         || !!req.authPermissions?.vendor_bills?.view
         // Diesel payment editors need the shared account selector even when
         // their role is intentionally limited to editing diesel payments.
-        || !!req.authPermissions?.site_diesel?.edit;
+        || !!req.authPermissions?.site_diesel?.edit
+        || !!req.authPermissions?.diesel_req_raise?.edit;
       if (!canRead) {
         res.status(403).json({ error: "forbidden", sections: ["vendor_bills", "site_diesel"], action: "view" });
         return;
@@ -11485,7 +11505,7 @@ export async function registerRoutes(
         if (!assertAdmin(req, res)) return;
         input.status = "draft";
       } else {
-        if (!assertEdit(req, res, "vendor_bills")) return;
+        if (!assertEditEither(req, res, "vendor_bills", "vendor_bills_raise")) return;
       }
 
       const bill = await storage.updateVendorBill(id, input);
@@ -12064,7 +12084,7 @@ export async function registerRoutes(
 
   app.post("/api/vendor-bills/check-duplicates", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "vendor_bills")) return;
+      if (!assertCreateEither(req, res, "vendor_bills", "vendor_bills_raise")) return;
       const { vendorName, items, excludeBillId } = req.body;
       if (!vendorName || !items) return res.status(400).json({ message: "vendorName and items required" });
       const duplicates = await storage.checkDuplicateBilledItems(vendorName, items, excludeBillId ? Number(excludeBillId) : undefined);

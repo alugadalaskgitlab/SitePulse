@@ -1,0 +1,96 @@
+INSTRUCTION PERM-01: Permissions system is confusing and partly mis-wired — some "granular" permission toggles the person sees in the UI don't actually control anything (the old "legacy" key silently does the real work instead), and every section shows all 8 action columns (View/Create/Edit/Delete/Reports/Export/Approve/Notify) even when most of them don't apply to that section (e.g. a Hub entry-page row, which has nothing to create/edit/delete). Fix both: make the granular keys the real, functioning gate (keeping legacy keys working too, for safety), and make the Permissions screen only show checkboxes that actually do something for each section.
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This touches the authorization system — treat it as security-sensitive. The prime directive: after this fix, NO EXISTING USER should lose any access they currently have. Every change here must be ADDITIVE (OR logic alongside what already exists), never a replacement that could narrow anyone's current permissions. Four parts, increasing in scope — STOP after each Part and report back before starting the next. Do not touch VENDOR-01, VENDOR-02, VENDOR-03, or any other prior instruction. Do not publish automatically.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+1. `shared/permissions.ts` defines two overlapping generations of permission keys for the same real features: older "legacy/broad" keys (e.g. `site_procurement`, `site_diesel`, `vendor_bills`, `admin_settings`) and newer "granular" keys meant to replace them (e.g. `purchase_indents_view`, `purchase_indents_raise`, `purchase_indents_approve`, `diesel_req_raise`, `vendor_bills_raise`). The Permissions UI (`client/src/pages/UserManagement.tsx`, `PermMatrix` component) shows both generations as separate rows, and a "Legacy / Broad Keys (backward compat)" group at the bottom.
+2. CONFIRMED: for Purchase Indents and Diesel Requirements, the migration to granular keys was never actually finished in the server/client CHECK logic — the granular "Raise" keys (`purchase_indents_raise`, `diesel_req_raise`) are only used to decide whether a shortcut TILE is shown on a dashboard; the actual create/edit routes and buttons still check ONLY the old legacy key (`site_procurement`/`site_diesel`). This means a person could have "Purchase Indents — Raise" checked and still be unable to actually raise one, because only the legacy "Purchase Indents (legacy)" key is truly gating that action — a very confusing trap.
+3. CONFIRMED: for Vendor Bills, most routes were correctly migrated to check `vendor_bills_raise` OR the legacy `vendor_bills` key (a safe, additive pattern — see `assertCreateEither`, `server/auth-routes.ts`), but three routes were missed and still check ONLY the legacy key: duplicate-checking, editing a draft bill, and the equipment-hire-discovery endpoint (`server/routes.ts` ~lines 11250, 11488, 12067).
+4. CONFIRMED: "Admin Settings (legacy)" is the ONLY gate for a wide bundle of unrelated admin actions that have no granular equivalent key at all today: site create/edit, plant create/edit, admin notifications, vendor aliases, vendor rate cards, and concrete estimates (`server/routes.ts` ~lines 1058, 1072, 1096, 1649, 3565, 3612, 11201, 12025, 12441, 12515). This is the most confusing one for an admin trying to reason about what a person can/can't do, since it's one broad switch covering many distinct real capabilities.
+5. CONFIRMED: six of the ten legacy keys shown in the "Legacy / Broad Keys" group are fully INERT — checked nowhere in the current codebase: RMC Operations (legacy), HMP Operations (legacy), Reports & Analysis (legacy), Estimates Manager (legacy), App Management (legacy), and Reports (legacy) is checked but always OR'd with other keys already, never standalone-load-bearing.
+6. CONFIRMED: the Permissions matrix UI (`PermMatrix` in `UserManagement.tsx`) renders the SAME fixed 8 action columns for every single section, with no per-section filtering of which actions are actually meaningful. For "Hub (entry page)" rows specifically, ALL of View/Create/Edit/Delete/Reports/Export/Approve independently do the exact same single thing (make the hub visible in the sidebar — `sectionVisible()`'s OR logic in `client/src/lib/auth-context.tsx` ~lines 156-161), and "Notify" does nothing at all for any hub row.
+7. Permission checks throughout this app use simple OR logic when multiple keys are involved (`assertCreateEither`, `gatedEither`, etc.) — there is NO AND logic anywhere requiring two permissions simultaneously, and NO pattern where a legacy key can override/cancel a granular grant. This means Fix Part A/B below (adding a granular OR-check alongside the existing legacy check) is safe and cannot narrow anyone's current access — it can only ever add a new way to gain the SAME access, or leave it unchanged for people who don't have the new granular key checked.
+
+============================================================
+PART A — FINISH WIRING PURCHASE INDENTS, DIESEL REQUIREMENTS, AND VENDOR BILLS GRANULAR KEYS
+============================================================
+FIX A1 — Purchase Indents
+a. Every current create/edit check for Purchase Indents that checks ONLY `site_procurement` (client: `PurchaseIndents.tsx` ~676-677, `IrnListPage.tsx` ~85; server: `server/routes.ts`, all `assertCreate(req,res,"site_procurement")`/`assertEdit(...)` calls, ~lines 8827-10364) must be changed to check `site_procurement` OR `purchase_indents_raise` (use the existing `assertCreateEither`/`assertEditEither` pattern already used for Vendor Bills — do not invent a new mechanism).
+b. Where an "approve" action for Purchase Indents exists, confirm/wire it against `purchase_indents_approve` OR the legacy key similarly, if not already correctly isolated (the approval-specific key may already be correctly wired — verify before changing, per PERM-01's earlier investigation on the PO approval workflow which reused this exact key correctly).
+c. Do not remove the legacy `site_procurement` check — keep it as one side of the OR, so no existing role assignment loses access.
+
+FIX A2 — Diesel Requirements
+a. Same pattern: every create/edit check currently checking ONLY `site_diesel` (server: `server/routes.ts` ~1335, 1384, 10589, 10663, 10708, 10792, 11370; client: `DieselRequirements.tsx`, `PlantMaterialReceipts.tsx` ~381) must become `site_diesel` OR `diesel_req_raise`.
+
+FIX A3 — Vendor Bills (the three missed routes)
+a. `server/routes.ts` ~line 11250 (equipment-hire-discovery), ~line 11488 (draft-bill edit), and ~line 12067 (duplicate-check) currently check ONLY the legacy `vendor_bills` key — bring these in line with the rest of the already-correctly-migrated Vendor Bills routes by widening them to `vendor_bills` OR `vendor_bills_raise`, matching the pattern already used elsewhere in this same file (e.g. line 4180, 11397).
+
+WHAT NOT TO DO (Part A)
+- Do not remove or weaken any existing legacy-key check — every change here is "add an OR", never "replace."
+- Do not touch Admin Settings in this part — that's Part B, it's larger and needs new keys defined first.
+
+SCHEMA SAFETY (Part A)
+No schema change — this widens existing permission CHECK logic only, using permission keys that already exist in the schema/config.
+
+TESTS (Part A)
+A. Take a test user with ONLY `purchase_indents_raise` checked and `site_procurement` (legacy) UNCHECKED. Confirm they can now actually raise/edit a Purchase Indent (this currently fails — confirm the fix resolves it).
+B. Take a test user with ONLY `site_procurement` (legacy) checked and `purchase_indents_raise` UNCHECKED (i.e., today's typical working setup). Confirm they can STILL raise/edit exactly as before — no regression.
+C. Repeat A and B for Diesel Requirements (`diesel_req_raise` vs `site_diesel`).
+D. Repeat A and B for the three Vendor Bills routes identified in Fix A3 (`vendor_bills_raise` vs `vendor_bills` legacy).
+E. Confirm K V Babu's (or any existing real user's) effective permissions are IDENTICAL or a superset of what they have today — run a before/after comparison for at least 2-3 real existing users if test data allows, to directly prove no one lost access.
+
+============================================================
+PART B — ADMIN SETTINGS: SPLIT INTO REAL GRANULAR KEYS (BIGGER, DO CAREFULLY)
+============================================================
+BACKGROUND
+"Admin Settings (legacy)" currently bundles several genuinely distinct admin capabilities behind one switch: (1) Sites & Plants management (create/edit), (2) Vendor Aliases & Vendor Rate Cards management, (3) Concrete Estimates (v1/v2), (4) Admin Notifications. An admin reasoning about "what can this person do" has no way to grant just one of these without granting all of them.
+
+FIX B1
+a. Define new granular permission keys for each distinct capability bundled under `admin_settings` today — your judgment on exact naming, but something like: `sites_plants_manage`, `vendor_masters_manage` (aliases + rate cards — these are closely related, can stay together), `concrete_estimates_manage`, `admin_notifications_manage`. Add these to `shared/permissions.ts` in a sensible group (not dumped into "Legacy/Broad Keys" — put them in an appropriate real group, e.g. alongside Masters Hub or Admin Hub).
+b. Widen every corresponding route (`server/routes.ts` ~1058, 1072, 1096, 1649, 3565, 3612, 11201, 12025, 12441, 12515 — map each to the correct new key based on what it actually does) to check the new specific key OR the legacy `admin_settings` key — same additive OR pattern as Part A.
+c. Confirm no existing admin/PM who currently has `admin_settings` checked loses any of these four capabilities — they should retain ALL of them via the legacy-key side of the OR, exactly as today, unless/until someone deliberately reassigns their permissions using the new finer-grained keys instead.
+
+WHAT NOT TO DO (Part B)
+- Do not remove `admin_settings` from the schema or from any existing role — it must keep working exactly as it does today for anyone who currently has it.
+- Do not silently reassign any existing user's permissions as part of this fix — this is a code/schema change only, not a data migration of who has what.
+
+SCHEMA SAFETY (Part B)
+Additive only — new permission section keys added to the config/schema, no existing keys removed or altered, no destructive migration.
+
+TESTS (Part B)
+A. Confirm a user with only the new `sites_plants_manage` key (and NOT legacy `admin_settings`) can create/edit sites and plants but nothing else from the old bundle.
+B. Confirm a user with only legacy `admin_settings` checked (today's typical setup) retains ALL four capabilities exactly as before — no regression.
+C. Confirm the same before/after comparison as Part A Test E for at least one real admin/PM user.
+
+============================================================
+PART C — CLEAN UP THE PERMISSIONS MATRIX UI: ONLY SHOW CHECKBOXES THAT DO SOMETHING
+============================================================
+FIX C1
+a. In `PermMatrix` (`client/src/pages/UserManagement.tsx`), stop rendering the same fixed 8-column grid for every section regardless of type. Define, per section (or per section TYPE), which of the 8 actions are actually meaningful, and only render/enable those columns for that row; gray out or omit the rest (your judgment on visual treatment — graying out with a tooltip like "Not used for this section" is friendlier than hiding entirely, since hiding could make the grid's column alignment confusing across rows).
+b. Specifically for Hub (entry page) rows: collapse the 7 aliased actions (View/Create/Edit/Delete/Reports/Export/Approve, which all currently do the identical single thing) down to ONE visible control, e.g. a single "Access" checkbox that maps internally to the `view` field (or whichever field the existing data model treats as canonical — your judgment, but pick one and be consistent). "Notify" should be hidden/disabled for all hub rows since it does nothing there.
+c. For "Home Dashboard": only show View and Edit as active; gray out/hide Create, Delete, Reports, Export, Approve, Notify.
+d. For the six confirmed-fully-inert legacy keys (RMC Operations, HMP Operations, Reports & Analysis, Estimates Manager, App Management, and Reports if it's never standalone-load-bearing after Part A/B) — since Parts A and B will have finished properly wiring the OTHER four legacy keys into real granular equivalents, consider whether these six should simply be labeled clearly as "not currently used by any feature" rather than presented as if every checkbox matters. Do not delete them from the schema — just make the UI honest about their current inertness.
+e. After Parts A and B are complete, the four previously-load-bearing legacy keys (Purchase Indents, Diesel Requirements, Vendor Bills, Admin Settings) should ideally show a small note like "kept for backward compatibility — the equivalent granular permissions above now control this too" so the person understands they no longer need to touch the legacy row for new users, while it stays safely in place for existing ones.
+
+WHAT NOT TO DO (Part C)
+- Do not change any permission-CHECKING logic in this part — Part C is UI/display only, built on top of whatever Parts A/B already wired correctly.
+- Do not remove any row/column from the underlying data model — only change what's visually shown/enabled.
+
+SCHEMA SAFETY (Part C)
+No schema change — display logic only.
+
+TESTS (Part C)
+A. Open the Permissions panel for a user. Confirm Hub rows now show a single meaningful "Access" control instead of 7 redundant checkboxes plus one inert one.
+B. Confirm Home Dashboard shows only View/Edit as active.
+C. Confirm the four newly-properly-wired legacy rows (Purchase Indents, Diesel Requirements, Vendor Bills, Admin Settings) still function exactly as before but now have explanatory context.
+D. Confirm the six inert legacy rows are clearly marked as unused, without being deleted.
+E. Confirm saving permissions for a user whose hub rows were collapsed to a single control still correctly translates back to the underlying data fields Grant/Revoke expects — no save/load corruption.
+
+REPORT BACK
+1. Confirm Part A with Test A-E evidence (screenshots), specifically the before/after comparison proving no existing user lost access.
+2. Confirm Part B with Test A-C evidence (screenshots), including the before/after comparison for a real admin/PM.
+3. Confirm Part C with Test A-E evidence (screenshots) showing the cleaned-up Permissions UI.
+4. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch. STOP after each Part and report back before continuing to the next.

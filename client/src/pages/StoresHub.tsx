@@ -33,7 +33,7 @@ export default function StoresHub() {
   const canStores = sectionVisible("stores_inventory");
   const canBulk = sectionVisible("plant_materials");
   const canIrn = sectionVisible("irn_view") || sectionVisible("irn_raise");
-  const canPi = sectionVisible("purchase_indents_view") || sectionVisible("site_procurement");
+  const canPi = sectionVisible("purchase_indents_view") || sectionVisible("site_procurement") || sectionVisible("purchase_indents_raise");
   const canDieselRegister = sectionVisible("diesel_req_view") || sectionVisible("site_diesel") || canStores;
 
   const { data: stock = [] } = useQuery<any[]>({

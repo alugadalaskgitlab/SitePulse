@@ -335,8 +335,8 @@ function AuthedShell() {
           <Route path="/plant/ldo-reconciliation" component={gatedEither(PlantLdoReconciliation, "plant_ldo_reconciliation", "plant_stock")} />
 
           {/* Finance / procurement pages */}
-          <Route path="/plant/purchase-indents" component={gatedEither(PurchaseIndents, "purchase_indents_view", "site_procurement")} />
-          <Route path="/plant/diesel-requirements" component={gatedEither(DieselRequirements, "diesel_req_view", "site_diesel")} />
+          <Route path="/plant/purchase-indents" component={gatedEither(PurchaseIndents, "purchase_indents_view", "site_procurement", "purchase_indents_raise")} />
+          <Route path="/plant/diesel-requirements" component={gatedEither(DieselRequirements, "diesel_req_view", "site_diesel", "diesel_req_raise")} />
           <Route path="/plant/vendor-bills" component={gatedEither(VendorBills, "vendor_bills_view", "vendor_bills")} />
           <Route path="/finance/vendor-bills" component={gatedEither(VendorBills, "vendor_bills_view", "vendor_bills")} />
           <Route path="/plant/rate-cards" component={gatedEither(RateCards, "rate_cards", "admin_settings")} />
