@@ -3153,3 +3153,45 @@ mtime_ms = 1790335434256
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d2727a34-7294-496b-b9d6-2971ad5f8ef7/f38a184b-37e8-445d-8bf8-056b48c7fde2"
 storage_version_token = "1790335477098430"
 content_type = "image/png"
+
+[[outputs]]
+id = "GoodLJs8nAMM7i7RbrrZU"
+uri = "file://reports/perm01/B-sites-plants-handlers.png"
+type = "image"
+title = "Part B — Site and plant-report permission tests"
+description = "Labelled test-result evidence: mocked-storage HTTP tests and read-only real-user permission comparison, not live UI transactions."
+logical_id = "d5fff4bd-28fa-4fb2-8627-6fcb7c12a3bf"
+content_hash = "sha256:558289168d7328b21367cde68def41e6886fcd0cca350937e0d0a560a77cfa64"
+size = 47263
+mtime_ms = 1790338633174
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d5fff4bd-28fa-4fb2-8627-6fcb7c12a3bf/a1bf8dfb-4c6d-4149-882a-b9ff33dd9067"
+storage_version_token = "1790338692945140"
+content_type = "image/png"
+
+[[outputs]]
+id = "BIS4zs9iK8gC-Y7ArDVPj"
+uri = "file://reports/perm01/B-other-handlers.png"
+type = "image"
+title = "Part B — Granular isolation and legacy access tests"
+description = "Labelled test-result evidence: mocked-storage HTTP tests and read-only real-user permission comparison, not live UI transactions."
+logical_id = "d800023a-3a6d-4813-b1a5-608059cd8f25"
+content_hash = "sha256:b4e2c686f0bbfdc315780a1ef67356424cd8023b4303b60c924a4cf65e640042"
+size = 46742
+mtime_ms = 1790338634674
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d800023a-3a6d-4813-b1a5-608059cd8f25/39e3695d-bf79-4ec6-a6bb-455f162ea4ee"
+storage_version_token = "1790338694880545"
+content_type = "image/png"
+
+[[outputs]]
+id = "vXsPnP79_9ESMBVu054yi"
+uri = "file://reports/perm01/B-real-admin-pm-comparison.png"
+type = "image"
+title = "Part B — Existing admin/PM access comparison"
+description = "Labelled test-result evidence: mocked-storage HTTP tests and read-only real-user permission comparison, not live UI transactions."
+logical_id = "470f0983-67d6-4135-8917-3d883984aed4"
+content_hash = "sha256:24b1b96fff2c9e3ab93665f20b2b31bb64cf265f992b9b6d3025121f0ef9a2d4"
+size = 53960
+mtime_ms = 1790338636392
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/470f0983-67d6-4135-8917-3d883984aed4/211de8e6-4499-4725-9031-5ac4d5695cb3"
+storage_version_token = "1790338696388887"
+content_type = "image/png"

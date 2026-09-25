@@ -2136,7 +2136,7 @@ function MastersTab() {
     <div className="space-y-6">
       {isAdmin && <div id="plant-config"><PlantTypeConfigSection /></div>}
       {sectionVisible("master_parties") && <div id="party-master"><PartyMaster /></div>}
-      {sectionVisible("master_parties") && <div id="site-master"><SitesMasterSection /></div>}
+      {(sectionVisible("master_parties") || sectionVisible("sites_plants_manage") || sectionVisible("admin_settings")) && <div id="site-master"><SitesMasterSection /></div>}
       {sectionVisible("master_materials") && <div id="material-master"><MaterialMaster /></div>}
       {sectionVisible("master_materials") && <div id="mix-templates"><MixTemplateMaster /></div>}
       {sectionVisible("master_equipment") && <div id="equipment-master"><EquipmentMasterSection /></div>}
@@ -2148,8 +2148,8 @@ function MastersTab() {
 export function SitesMasterSection() {
   const { toast } = useToast();
   const { sectionCan, isAdmin } = useAuth();
-  const canEdit = sectionCan("master_parties", "edit");
-  const canCreate = sectionCan("master_parties", "create");
+  const canEdit = sectionCan("master_parties", "edit") || sectionCan("sites_plants_manage", "edit") || sectionCan("admin_settings", "edit");
+  const canCreate = sectionCan("master_parties", "create") || sectionCan("sites_plants_manage", "create") || sectionCan("admin_settings", "create");
   const canDelete = isAdmin;
 
   const [newSiteName, setNewSiteName] = useState("");

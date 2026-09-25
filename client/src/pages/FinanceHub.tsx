@@ -169,7 +169,7 @@ export default function FinanceHub() {
               description="Equipment, material, transport & labour rate cards for billing"
               accent="violet"
               iconBg="bg-violet-100"
-              enabled={sectionVisible("admin_settings")}
+              enabled={sectionVisible("admin_settings") || sectionVisible("vendor_masters_manage")}
             />
           </div>
         </div>

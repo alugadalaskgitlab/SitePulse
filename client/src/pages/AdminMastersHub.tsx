@@ -40,7 +40,7 @@ export default function AdminMastersHub() {
               description="Add and manage site locations linked to parties"
               accent="emerald"
               iconBg="bg-emerald-50"
-              enabled={sectionVisible("master_parties")}
+              enabled={sectionVisible("master_parties") || sectionVisible("sites_plants_manage") || sectionVisible("admin_settings")}
             />
             <HubActionTile
               href="/masters/vendors"

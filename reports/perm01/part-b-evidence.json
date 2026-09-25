@@ -1,0 +1,43 @@
+{
+  "label": "PERM-01 Part B — additive route verification and existing admin/PM comparison",
+  "baseline": "git HEAD:server/routes.ts",
+  "caveat": "Source verifies guards; 15 mocked-storage HTTP tests executed successfully in this evidence run. Existing users compared in a read-only DB snapshot; no business actions executed.",
+  "mockedHandlerTestsPassed": 15,
+  "verifiedRoutes": 13,
+  "comparisons": [
+    {
+      "displayName": "Administrator",
+      "adminOrOwnerBypass": true,
+      "legacyCreate": true,
+      "legacyEdit": true,
+      "targetedBefore": 13,
+      "targetedAfter": 13,
+      "targetedChecks": 13,
+      "losses": 0,
+      "baseLosses": 0
+    },
+    {
+      "displayName": "Sunil Kumar",
+      "adminOrOwnerBypass": true,
+      "legacyCreate": true,
+      "legacyEdit": true,
+      "targetedBefore": 13,
+      "targetedAfter": 13,
+      "targetedChecks": 13,
+      "losses": 0,
+      "baseLosses": 0
+    },
+    {
+      "displayName": "K V Babu",
+      "adminOrOwnerBypass": false,
+      "legacyCreate": true,
+      "legacyEdit": true,
+      "targetedBefore": 13,
+      "targetedAfter": 13,
+      "targetedChecks": 13,
+      "losses": 0,
+      "baseLosses": 0
+    }
+  ],
+  "conclusion": "No sampled admin/PM lost access"
+}

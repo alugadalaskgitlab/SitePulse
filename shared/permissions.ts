@@ -106,6 +106,10 @@ export const SECTION_KEYS = [
   // ── Admin & System Tools (split from legacy admin_settings) ───────────────
   "admin_settings",              // legacy broad key — kept for backward compat
   "site_management",
+  "sites_plants_manage",
+  "vendor_masters_manage",
+  "concrete_estimates_manage",
+  "admin_notifications_manage",
   "admin_ldo_tools",
   "admin_ledger_tools",
   "data_sync",
@@ -229,6 +233,10 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
   // Admin tools
   admin_settings: "Admin Settings (legacy)",
   site_management: "Sites & Plants — Add / Configure",
+  sites_plants_manage: "Sites & Plant Reports — Manage",
+  vendor_masters_manage: "Vendor Aliases & Rate Cards — Manage",
+  concrete_estimates_manage: "Concrete Estimates — Manage",
+  admin_notifications_manage: "Admin Notifications — Create",
   admin_ldo_tools: "LDO Backfill & Reconciliation Tools",
   admin_ledger_tools: "Stock Ledger Rebuild / Reassign / Transfer",
   data_sync: "Data Export / Import (Admin Tool)",
@@ -588,7 +596,7 @@ export const PERMISSION_GROUPS: { id: string; label: string; sections: SectionKe
   {
     id: "admin_tools",
     label: "Admin & System Tools",
-    sections: ["site_management", "admin_ldo_tools", "admin_ledger_tools", "data_sync"],
+    sections: ["site_management", "sites_plants_manage", "vendor_masters_manage", "concrete_estimates_manage", "admin_notifications_manage", "admin_ldo_tools", "admin_ledger_tools", "data_sync"],
   },
   {
     id: "access",

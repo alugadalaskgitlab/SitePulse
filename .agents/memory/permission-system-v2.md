@@ -25,6 +25,12 @@ Granular Raise rows retain separate Create and Edit actions; never use the granu
 
 **How to apply:** Verify client and server action parity, supporting reads, and successful mocked-storage create/edit requests for both legacy-only and granular-only users. Preserve approval and site restrictions independently.
 
+Do not interpret the legacy Admin Settings "plants" scope as permission to configure physical plants.
+
+**Why:** The requested split referred to legacy-gated plant reports; physical plant settings are separately admin-only. Broadening those would exceed the intended additive split.
+
+**How to apply:** Keep plant-report management and physical plant configuration distinct when refining permission labels or controls.
+
 ## assertApprove
 
 Exported from `server/auth-routes.ts`. Works identically to `assertEdit` but checks `m[section].approve`. Admins always pass. Use on approval/rejection endpoints.

@@ -69,7 +69,7 @@ export default function RateCards() {
   const preselectedVendor = params.get("vendorName") || "";
   const _backHref = params.get("returnTo") || "/finance/hub";
 
-  // Page-level access enforced via <RequireAuth section="admin_settings"> in App.tsx.
+  // Page-level access enforced by the rate-card/vendor-master/legacy route gate.
   const [selectedVendor, setSelectedVendor] = useState(preselectedVendor);
   const [rates, setRates] = useState<Record<string, number | string>>({});
   const [unitOverrides, setUnitOverrides] = useState<Record<string, string>>({});

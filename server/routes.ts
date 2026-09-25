@@ -1061,7 +1061,7 @@ export async function registerRoutes(
 
   app.post("/api/sites", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "admin_settings")) return;
+      if (!assertCreateEither(req, res, "sites_plants_manage", "admin_settings")) return;
       const input = insertSiteSchema.parse(req.body);
       const site = await storage.createSite(input);
       res.status(201).json(site);
@@ -1075,7 +1075,7 @@ export async function registerRoutes(
 
   app.patch("/api/sites/:id", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "admin_settings")) return;
+      if (!assertEditEither(req, res, "sites_plants_manage", "admin_settings")) return;
       const id = parseInt(req.params.id);
       const site = await storage.updateSite(id, req.body);
       if (!site) return res.status(404).json({ message: "Site not found" });
@@ -1099,7 +1099,7 @@ export async function registerRoutes(
 
   app.post("/api/sites/seed", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "admin_settings")) return;
+      if (!assertCreateEither(req, res, "sites_plants_manage", "admin_settings")) return;
       const count = await storage.seedSitesFromDprs();
       res.json({ seeded: count });
     } catch (err) {
@@ -1652,7 +1652,7 @@ export async function registerRoutes(
 
   app.post("/api/notifications", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "admin_settings")) return;
+      if (!assertCreateEither(req, res, "admin_notifications_manage", "admin_settings")) return;
       const input = insertAdminNotificationSchema.parse(req.body);
       const notification = await storage.createNotification(input);
       res.status(201).json(notification);
@@ -3568,7 +3568,7 @@ export async function registerRoutes(
 
   app.post("/api/plant", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "admin_settings")) return;
+      if (!assertCreateEither(req, res, "sites_plants_manage", "admin_settings")) return;
       const input = createPlantReportRequestSchema.parse(req.body);
       const report = await storage.createPlantReport(input);
       sendPushToSection("plant_daily_reports", "Plant Report Created", `Plant report for ${input.date}`, "/plant").catch(() => {});
@@ -3615,7 +3615,7 @@ export async function registerRoutes(
 
   app.patch("/api/plant/:id", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "admin_settings")) return;
+      if (!assertEditEither(req, res, "sites_plants_manage", "admin_settings")) return;
       const id = Number(req.params.id);
       const input = createPlantReportRequestSchema.parse(req.body);
       const updated = await storage.updatePlantReport(id, input);
@@ -11217,7 +11217,7 @@ export async function registerRoutes(
 
   app.post("/api/vendor-aliases", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "admin_settings")) return;
+      if (!assertCreateEither(req, res, "vendor_masters_manage", "admin_settings")) return;
       const { canonicalName, alias } = req.body;
       if (!canonicalName || !alias) {
         return res.status(400).json({ message: "canonicalName and alias are required" });
@@ -12042,7 +12042,7 @@ export async function registerRoutes(
 
   app.post("/api/vendor-rate-cards", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "admin_settings")) return;
+      if (!assertCreateEither(req, res, "vendor_masters_manage", "admin_settings")) return;
       const card = await storage.upsertVendorRateCard(req.body);
       res.status(201).json(card);
     } catch (err) {
@@ -12053,7 +12053,7 @@ export async function registerRoutes(
 
   app.post("/api/vendor-rate-cards/bulk-upsert", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "admin_settings")) return;
+      if (!assertCreateEither(req, res, "vendor_masters_manage", "admin_settings")) return;
       const items = req.body.items as any[];
       const results = [];
       for (const item of items) {
@@ -12458,7 +12458,7 @@ export async function registerRoutes(
 
   app.post("/api/concrete-estimates", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "admin_settings")) return;
+      if (!assertCreateEither(req, res, "concrete_estimates_manage", "admin_settings")) return;
       const { name, contractor, structureType, grade, state, totalCum, totalAmt } = req.body;
       if (!name || !state) return res.status(400).json({ message: "name and state required" });
       const createdBy = req.authUser?.id ?? null;
@@ -12472,7 +12472,7 @@ export async function registerRoutes(
 
   app.patch("/api/concrete-estimates/:id", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "admin_settings")) return;
+      if (!assertEditEither(req, res, "concrete_estimates_manage", "admin_settings")) return;
       const id = parseInt(req.params.id);
       const existing = await storage.getConcreteEstimate(id);
       if (!existing) return res.status(404).json({ message: "Estimate not found" });
@@ -12532,7 +12532,7 @@ export async function registerRoutes(
 
   app.post("/api/concrete/v2/estimates", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "admin_settings")) return;
+      if (!assertCreateEither(req, res, "concrete_estimates_manage", "admin_settings")) return;
       const { name, contractor, structureType, state, totalLengthM, totalRmAmt } = req.body;
       if (!name || !state) return res.status(400).json({ message: "name and state required" });
       const createdBy = req.authUser?.id ?? null;
@@ -12546,7 +12546,7 @@ export async function registerRoutes(
 
   app.patch("/api/concrete/v2/estimates/:id", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "admin_settings")) return;
+      if (!assertEditEither(req, res, "concrete_estimates_manage", "admin_settings")) return;
       const id = parseInt(req.params.id);
       const existing = await storage.getConcreteEstimateV2(id);
       if (!existing) return res.status(404).json({ message: "Estimate not found" });

@@ -100,7 +100,7 @@ export default function PlantMasters() {
     );
   }
 
-  if (!isAdmin && !sectionVisible(config.permission)) {
+  if (!isAdmin && !sectionVisible(config.permission) && !(section === "sites" && (sectionVisible("sites_plants_manage") || sectionVisible("admin_settings")))) {
     return (
       <div className="mx-auto max-w-md text-center py-20 space-y-3">
         <h2 className="text-xl font-semibold">No access</h2>

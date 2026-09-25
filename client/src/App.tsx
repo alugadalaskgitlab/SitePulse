@@ -292,7 +292,7 @@ function AuthedShell() {
           {/* Plant pages */}
           <Route path="/plant" component={PlantHome} />
           <Route path="/plant/dashboard" component={Plant} />
-          <Route path="/plant/new" component={gatedEither(PlantNew, "site_management", "admin_settings")} />
+          <Route path="/plant/new" component={gatedEither(PlantNew, "site_management", "sites_plants_manage", "admin_settings")} />
           <Route path="/plant/material-receipts" component={gated(PlantMaterialReceipts, "plant_materials")} />
           <Route path="/plant/material-issues" component={gated(PlantMaterialIssues, "plant_materials")} />
           <Route path="/plant/material-returns" component={gated(PlantMaterialReturns, "plant_materials")} />
@@ -339,10 +339,10 @@ function AuthedShell() {
           <Route path="/plant/diesel-requirements" component={gatedEither(DieselRequirements, "diesel_req_view", "site_diesel", "diesel_req_raise")} />
           <Route path="/plant/vendor-bills" component={gatedEither(VendorBills, "vendor_bills_view", "vendor_bills")} />
           <Route path="/finance/vendor-bills" component={gatedEither(VendorBills, "vendor_bills_view", "vendor_bills")} />
-          <Route path="/plant/rate-cards" component={gatedEither(RateCards, "rate_cards", "admin_settings")} />
+          <Route path="/plant/rate-cards" component={gatedEither(RateCards, "rate_cards", "vendor_masters_manage", "admin_settings")} />
           <Route path="/equipment/hire-billing" component={gated(EquipmentHireBilling, "plant_equipment")} />
           <Route path="/plant/data-sync" component={gatedEither(DataSync, "data_sync", "admin_settings")} />
-          <Route path="/plant/:id" component={gatedEither(PlantDetails, "site_management", "admin_settings")} />
+          <Route path="/plant/:id" component={gatedEither(PlantDetails, "site_management", "sites_plants_manage", "admin_settings")} />
 
           {/* IRN pages */}
           <Route path="/irn" component={gatedEither(IrnListPage, "irn_view", "irn_raise")} />
@@ -383,11 +383,11 @@ function AuthedShell() {
           <Route path="/admin/devices" component={gated(DeviceApproval, "device_approval")} />
           <Route path="/admin/reports" component={gatedEither(AdminReports, "report_management", "reports")} />
           <Route path="/admin/management-report" component={gatedEither(ManagementReport, "report_management", "reports", "admin_settings")} />
-          <Route path="/admin/concrete-estimates" component={gatedEither(ConcreteEstimates, "concrete_calculator", "reports")} />
+          <Route path="/admin/concrete-estimates" component={gatedEither(ConcreteEstimates, "concrete_calculator", "concrete_estimates_manage", "reports")} />
 
           {/* Masters */}
           <Route path="/masters/vendors" component={gated(VendorMaster, "master_parties")} />
-          <Route path="/masters/section/:section" component={gatedEither(PlantMasters, "master_parties", "master_materials", "master_equipment", "master_personnel")} />
+          <Route path="/masters/section/:section" component={gatedEither(PlantMasters, "master_parties", "master_materials", "master_equipment", "master_personnel", "sites_plants_manage", "admin_settings")} />
 
           {/* Edit requests — /edit-requests is the admin review queue; /mine is open to any authenticated user */}
           <Route path="/edit-requests" component={gatedEither(EditRequestsPage, "admin_settings", "user_management")} />
