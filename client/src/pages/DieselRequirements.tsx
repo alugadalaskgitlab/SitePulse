@@ -25,10 +25,14 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { AttachmentUploader } from "@/components/AttachmentUploader";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
 import type { Attachment } from "@shared/schema";
+import { computeEquipmentUsage } from "@shared/equipmentUsage";
+
+let nextDieselFormRowId = 1;
 
 type ViewMode = "list" | "form" | "detail" | "update" | "report";
 
 interface FormItem {
+  rowId: number;
   equipmentId: number | null;
   equipmentName: string;
   purpose: string;
@@ -510,8 +514,10 @@ export default function DieselRequirements() {
   const [formSiteId, setFormSiteId] = useState<number | null>(null);
   const [formRaisedFrom, setFormRaisedFrom] = useState<string | null>(null);
   const [formItems, setFormItems] = useState<FormItem[]>([
-    { equipmentId: null, equipmentName: "", purpose: "", estHours: "", norm: "", normType: "hourly", plannedQty: "", manualQty: false },
+    { rowId: nextDieselFormRowId++, equipmentId: null, equipmentName: "", purpose: "", estHours: "", norm: "", normType: "hourly", plannedQty: "", manualQty: false },
   ]);
+  const [normDrafts, setNormDrafts] = useState<Record<string, string>>({});
+  const [savingNormRow, setSavingNormRow] = useState<number | null>(null);
 
 
   const [editId, setEditId] = useState<number | null>(null);
@@ -731,11 +737,11 @@ export default function DieselRequirements() {
     setFormRemarks("");
     setFormSiteId(null);
     setFormRaisedFrom(null);
-    setFormItems([{ equipmentId: null, equipmentName: "", purpose: "", estHours: "", norm: "", normType: "hourly", plannedQty: "", manualQty: false }]);
+    setFormItems([{ rowId: nextDieselFormRowId++, equipmentId: null, equipmentName: "", purpose: "", estHours: "", norm: "", normType: "hourly", plannedQty: "", manualQty: false }]);
   };
 
   const addFormRow = () => {
-    setFormItems([...formItems, { equipmentId: null, equipmentName: "", purpose: "", estHours: "", norm: "", normType: "hourly", plannedQty: "", manualQty: false }]);
+    setFormItems([...formItems, { rowId: nextDieselFormRowId++, equipmentId: null, equipmentName: "", purpose: "", estHours: "", norm: "", normType: "hourly", plannedQty: "", manualQty: false }]);
   };
 
   const removeFormRow = (index: number) => {
@@ -753,16 +759,58 @@ export default function DieselRequirements() {
     return String(Math.ceil(workQty * norm));
   };
 
+  const saveEquipmentNorm = async (item: FormItem) => {
+    if (!item.equipmentId) return;
+    const draftKey = `${item.rowId}:${item.equipmentId}`;
+    const draft = normDrafts[draftKey]?.trim() ?? "";
+    const value = Number(draft);
+    if (!draft || !Number.isFinite(value) || value <= 0) {
+      toast({ title: "Invalid consumption norm", description: "Enter a positive, finite number.", variant: "destructive" });
+      return;
+    }
+    setSavingNormRow(item.rowId);
+    try {
+      const response = await apiRequest("PATCH", `/api/diesel-requirements/equipment/${item.equipmentId}/consumption-norm`, { consumptionNorm: value });
+      const saved = await response.json();
+      if (saved.id !== item.equipmentId || saved.consumptionNorm !== value) throw new Error("Equipment master did not confirm the saved norm");
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment"] });
+      setFormItems(current => current.map(row => {
+        // A pending save must never overwrite a newly selected equipment or a manual quantity.
+        if (row.rowId !== item.rowId || row.equipmentId !== item.equipmentId) return row;
+        const updated = { ...row, norm: String(saved.consumptionNorm) };
+        if (!updated.manualQty) updated.plannedQty = calcPlannedQty(updated);
+        return updated;
+      }));
+      setNormDrafts(current => {
+        const next = { ...current };
+        delete next[draftKey];
+        return next;
+      });
+      toast({ title: "Consumption norm saved to equipment master" });
+    } catch (error) {
+      toast({ title: "Could not save consumption norm", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setSavingNormRow(current => current === item.rowId ? null : current);
+    }
+  };
+
   const updateFormItem = (index: number, field: keyof FormItem, value: any) => {
     const updated = [...formItems];
     (updated[index] as any)[field] = value;
 
     if (field === "equipmentId") {
+      setNormDrafts(current => {
+        const next = { ...current };
+        for (const key of Object.keys(next)) {
+          if (key.startsWith(`${updated[index].rowId}:`)) delete next[key];
+        }
+        return next;
+      });
       const eq = equipment?.find((e) => e.id === Number(value));
       if (eq) {
         updated[index].equipmentName = eq.name + (eq.registrationNumber ? ` (${eq.registrationNumber})` : "") + ` | ${(eq as any).ownership === "hired" ? `HIRED: ${(eq as any).vendorName || "—"}` : "HLC OWN"}`;
         updated[index].norm = String(eq.consumptionNorm || "");
-        const newNormType = (eq as any).meterType === "hour_meter" ? "hourly" : "distance";
+        const newNormType = eq.meterType === "odometer" ? "distance" : "hourly";
         updated[index].normType = newNormType;
         updated[index].estHours = "";
         updated[index].plannedQty = "";
@@ -890,6 +938,7 @@ export default function DieselRequirements() {
     setFormSiteId((selectedRequirement as any).siteId ?? null);
     setFormRaisedFrom((selectedRequirement as any).raisedFrom ?? null);
     setFormItems(selectedRequirement.items.map(item => ({
+      rowId: nextDieselFormRowId++,
       equipmentId: item.equipmentId,
       equipmentName: item.equipmentName,
       purpose: item.purpose || "",
@@ -1311,8 +1360,10 @@ export default function DieselRequirements() {
                     const isDistance = item.normType === "distance";
                     const normVal = parseFloat(item.norm) || 0;
                     const mileageHint = isDistance && normVal > 0 ? `${(1 / normVal).toFixed(2)} km/L` : null;
+                    const master = equipment?.find(e => e.id === item.equipmentId);
+                    const normUnit = computeEquipmentUsage(master, {}).efficiencyUnit;
                     return (
-                    <tr key={i} className="border-b last:border-b-0">
+                    <tr key={item.rowId} className="border-b last:border-b-0">
                       <td className="p-2 text-muted-foreground">{i + 1}</td>
                       <td className="p-2">
                         <Select
@@ -1381,7 +1432,29 @@ export default function DieselRequirements() {
                         <p className="text-[12px] text-muted-foreground mt-0.5">{isDistance ? "Est. km" : "Est. hours"}</p>
                       </td>
                       <td className="p-2 text-muted-foreground text-sm">
-                        <p>{normVal > 0 ? `${item.norm} ${isDistance ? "L/km" : "L/hr"}` : "—"}</p>
+                        {normVal > 0 ? <p>{item.norm} {normUnit}</p> : item.equipmentId ? (
+                          <div className="space-y-1 min-w-[175px]">
+                            <p className="text-amber-700 dark:text-amber-400 font-medium" role="alert" data-testid={`warning-norm-${i}`}>
+                              No consumption norm set for this equipment — enter one below to calculate.
+                            </p>
+                            <div className="flex items-center gap-1">
+                              <Input type="number" min="0" step="any" value={normDrafts[`${item.rowId}:${item.equipmentId}`] ?? ""}
+                                onChange={e => setNormDrafts(current => ({ ...current, [`${item.rowId}:${item.equipmentId}`]: e.target.value }))}
+                                placeholder={`Norm (${normUnit})`} aria-label={`Consumption norm ${normUnit}`}
+                                data-testid={`input-norm-${i}`} />
+                              <span className="whitespace-nowrap">{normUnit}</span>
+                            </div>
+                            <Button type="button" size="sm" variant="outline" disabled={savingNormRow !== null}
+                              onClick={() => saveEquipmentNorm(item)} data-testid={`save-norm-${i}`}>
+                              {savingNormRow === item.rowId ? "Saving…" : "Save to equipment master"}
+                            </Button>
+                          </div>
+                        ) : <p>—</p>}
+                        {item.equipmentId && normVal > 0 && !item.estHours && !item.manualQty && (
+                          <p className="text-[12px] text-muted-foreground" data-testid={`hint-work-qty-${i}`}>
+                            Enter estimated {normUnit === "L/km" ? "km" : "hours"} to calculate.
+                          </p>
+                        )}
                         {mileageHint && <p className="text-[12px] text-blue-600 font-medium">({mileageHint})</p>}
                       </td>
                       <td className="p-2 bg-amber-50 dark:bg-amber-900/10">
@@ -1392,7 +1465,7 @@ export default function DieselRequirements() {
                           value={item.plannedQty}
                           onChange={(e) => updateFormItem(i, "plannedQty", e.target.value)}
                           className="text-right font-bold w-full"
-                          placeholder="0"
+                          placeholder={item.equipmentId && normVal <= 0 && !item.manualQty ? "" : "0"}
                           data-testid={`input-planned-qty-${i}`}
                         />
                       </td>

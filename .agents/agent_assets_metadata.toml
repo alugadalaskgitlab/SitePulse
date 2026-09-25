@@ -3307,3 +3307,59 @@ mtime_ms = 1790342959665
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/f0d667b2-73a7-4e8a-a2d2-0cc90e5663cf/ac6463a5-bfe8-4aaa-b29d-f3c35c93e0ec"
 storage_version_token = "1790343016249494"
 content_type = "image/png"
+
+[[outputs]]
+id = "NgPJW9IPOTVZD7LoSUasq"
+uri = "file://tests/fixtures/diesel03/evidence/diesel04-A-missing-norm.png"
+type = "image"
+title = "A — Missing-norm warning and inline entry"
+description = "Actual Diesel Requirements component with isolated in-memory test data; no live equipment records changed."
+logical_id = "0ffdfa35-830c-4b31-b5b8-dd1158217c81"
+content_hash = "sha256:de9b903e7f5322f54ea1830331648573207820ffba69844038b6c4c2e0b5079e"
+size = 70734
+mtime_ms = 1790379602146
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/0ffdfa35-830c-4b31-b5b8-dd1158217c81/94dc1581-ffd3-4665-80c0-ebc2d53d0fce"
+storage_version_token = "1790379730479861"
+content_type = "image/png"
+
+[[outputs]]
+id = "OtZwed2XrZESx3LnkxN0b"
+uri = "file://tests/fixtures/diesel03/evidence/diesel04-B-saved-ceil.png"
+type = "image"
+title = "B — Norm saved: 2.5 × 3 rounds up to 8 L"
+description = "Actual Diesel Requirements component with isolated in-memory test data; no live equipment records changed."
+logical_id = "c5fab760-6edd-4747-9225-a4091a184f15"
+content_hash = "sha256:0070354e860c144993ba4966862a256374b9c532d7fb8ac871f9e966f6929819"
+size = 58602
+mtime_ms = 1790379602414
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c5fab760-6edd-4747-9225-a4091a184f15/1e3edcd0-64d0-41ad-a378-43557f94bcb6"
+storage_version_token = "1790379732125017"
+content_type = "image/png"
+
+[[outputs]]
+id = "u35y252ElTUiifF77QCcs"
+uri = "file://tests/fixtures/diesel03/evidence/diesel04-C-preset.png"
+type = "image"
+title = "C — Existing norm still calculates normally"
+description = "Actual Diesel Requirements component with isolated in-memory test data; no live equipment records changed."
+logical_id = "81992deb-621a-4e89-9a9a-dc290afb3ae1"
+content_hash = "sha256:ca9e5fb2686ba469d7be6fbcc1ec2acc5324e20644ce24af68347a246ce35a83"
+size = 58592
+mtime_ms = 1790379602514
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/81992deb-621a-4e89-9a9a-dc290afb3ae1/18a823f2-f61d-4995-8a15-7f490a9a18e1"
+storage_version_token = "1790379734044973"
+content_type = "image/png"
+
+[[outputs]]
+id = "lxFdCdBYLInrv1Qo3IzqD"
+uri = "file://tests/fixtures/diesel03/evidence/diesel04-D-manual-km.png"
+type = "image"
+title = "D — Manual quantity remains available"
+description = "Actual Diesel Requirements component with isolated in-memory test data; no live equipment records changed."
+logical_id = "61dba41f-679c-4672-86c9-5beeafb1eb3a"
+content_hash = "sha256:118956ca961f40cd34c67f8538975d55e70a954990e5bfa0eb3a63546962a543"
+size = 71489
+mtime_ms = 1790379602618
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/61dba41f-679c-4672-86c9-5beeafb1eb3a/d95b4492-b4a0-4c10-8ec4-8a367b8ddc2a"
+storage_version_token = "1790379735664132"
+content_type = "image/png"

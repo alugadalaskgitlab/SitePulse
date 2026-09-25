@@ -149,6 +149,15 @@ const fixtureState = {
   paymentPayloads: [] as Array<{ id: number; payload: any }>,
   persistedPaymentAccountKeys: [] as Array<{ id: number; value: string | null }>,
   toastMessages: [] as Array<{ title: string; description?: string }>,
+  normSaveFails: new URLSearchParams(window.location.search).has("fail"),
+  normSaveDelayMs: 0,
+  normSaves: [] as Array<{ id: number; consumptionNorm: number }>,
+  equipment: [
+    { id: 1701, name: "DIESEL04 NO NORM", ownership: "owned", consumptionNorm: null as number | null, meterType: "hour_meter", isActive: 1 },
+    { id: 1702, name: "DIESEL04 PRESET NORM", ownership: "owned", consumptionNorm: 3, meterType: "hour_meter", isActive: 1 },
+    { id: 1703, name: "DIESEL04 ODOMETER", ownership: "owned", consumptionNorm: null as number | null, meterType: "odometer", isActive: 1 },
+    { id: 1704, name: "DIESEL04 ZERO NORM", ownership: "owned", consumptionNorm: 0 as number | null, meterType: "hour_meter", isActive: 1 },
+  ],
 };
 
 declare global {
@@ -242,6 +251,7 @@ window.fetch = async (input, init) => {
     return json(copy(accounts));
   }
   if (pathname === "/api/plant-module/equipment" && method === "GET") {
+    if (fixtureState.scenario === "diesel04") return json(copy(fixtureState.equipment));
     return json([{
       id: 1701,
       name: "DIESEL03 EXCAVATOR",
@@ -250,6 +260,16 @@ window.fetch = async (input, init) => {
       consumptionNorm: 2.5,
       meterType: "hour_meter",
     }]);
+  }
+  const normMatch = pathname.match(/^\/api\/diesel-requirements\/equipment\/(\d+)\/consumption-norm$/);
+  if (fixtureState.scenario === "diesel04" && normMatch && method === "PATCH") {
+    if (fixtureState.normSaveDelayMs) await new Promise(resolve => setTimeout(resolve, fixtureState.normSaveDelayMs));
+    if (fixtureState.normSaveFails) return json({ message: "Fixture write rejected" }, 500);
+    const master = fixtureState.equipment.find(e => e.id === Number(normMatch[1]));
+    if (!master) return json({ message: "Equipment not found" }, 404);
+    master.consumptionNorm = body.consumptionNorm;
+    fixtureState.normSaves.push({ id: master.id, consumptionNorm: master.consumptionNorm! });
+    return json({ id: master.id, consumptionNorm: master.consumptionNorm });
   }
   if (pathname === "/api/diesel-requirements/recent-items" && method === "GET") return json([]);
   if (pathname === "/api/sites" && method === "GET") return json([{ id: 903, name: "DIESEL03 ROAD" }]);

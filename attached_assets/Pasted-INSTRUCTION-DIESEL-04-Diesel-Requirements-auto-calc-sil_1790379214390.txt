@@ -1,0 +1,100 @@
+INSTRUCTION DIESEL-04: Diesel Requirements auto-calc silently fails when equipment has no consumption norm (needs a warning + inline fix), the Receipt Log header should also show Issued and Present Stock, and the Planned vs Purchased vs Actual Issued comparison report needs a real Planned-vs-Issued figure plus a working equipment-wise drill-down (single date and range) with export
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Three parts, all within Diesel Requirements / diesel reporting. STOP after each Part and report back before starting the next. Do not touch PERM-01 (currently in progress separately), VENDOR-01/02/03, or any other prior instruction. Do not publish automatically.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+1. `client/src/pages/DieselRequirements.tsx`'s `calcPlannedQty` (~lines 746-753) already correctly computes `Math.ceil(hours × norm)` — the ceiling-rounding behavior the person wants (7.5 → 8) is already correct and does NOT need to change. The bug is elsewhere: `calcPlannedQty` silently returns `""` (no error, no visible hint) whenever the selected equipment's `consumptionNorm` is missing/null (~line 749: `if (!workQty || !norm) return "";`). `consumptionNorm` is optional/nullable on `equipmentMaster` (`shared/schema.ts` ~line 527) and there's no required-field validation anywhere forcing it to be set. The Diesel Requirements form only shows `item.norm` as READ-ONLY text (~line 1383) — there's no way to enter/fix a missing norm from this screen today.
+2. Diesel stock/inventory is genuinely incremented the moment a receipt is CREATED (`createMaterialReceipt`, `server/storage.ts` ~lines 5771-5867, `_adjustStockBalance` runs unconditionally in the same transaction as the insert, ~line 5823) — NOT gated on `documentStatus` reaching "submitted"/Final Submitted. A receipt still showing "PI Pending"/"Pending Document" already counts toward present stock. This matches the app's own delete-dialog warning text ("This receipt added ... to Plant Stock") which already applies unconditionally.
+3. A "present stock" figure already exists and is fetchable via `GET /api/plant-module/stock-balances` (`server/storage.ts` `getStockBalances()` ~line 8183). An "issued" figure (diesel issued to equipment) is already computed in `client/src/pages/PlantDieselProcurementReport.tsx` (~line 111, `totalIssued`). Both can be reused/queried filtered to DIESEL rather than rebuilt from scratch.
+4. The "Filtered Totals" header block the person wants to extend lives in `client/src/pages/PlantMaterialReceipts.tsx` (~lines 1700-1714), fed by a `filteredTotals` `useMemo` (~lines 847-858) that currently only sums `quantity` across filtered receipts.
+5. The comparison report (`client/src/pages/DieselRequirements.tsx`, `view === "report"`, ~line 1943 onward; backend `GET /api/diesel-requirements/comparison` → `storage.getDieselComparisonReport`, `server/storage.ts` ~lines 19153-19212) genuinely and correctly sums "Actual Issued" from two real sources: per-DPR `equipmentLogs.diesel` (joined to non-superseded DPRs) and standalone `equipmentUsage.dieselIssued` (plant/HMP/RMC tracking) — confirmed accurate, no change needed to this aggregation itself.
+6. The report currently shows only two comparison columns: "Planned vs Purchased" and "Purchased vs Issued" — there is NO "Planned vs Actual Issued" column, even though both `planned` and `actual` values are already present in the same API response (`comparisonReport.dateWise[]`), so this can be added with no new query.
+7. An "EQUIPMENT-WISE DIESEL BREAKDOWN" table already exists in the UI (~line 2073 onward) but is permanently empty and non-functional — the backend route hardcodes `equipmentWise: []` (`server/routes.ts` ~line 10504), so the condition gating that block's rendering is always false. No date/row is clickable anywhere in the table (`table-report-datewise`, ~lines 2027-2071 — plain `<tr>`s, no handlers).
+8. No export (PDF or Excel) exists on this page today. Other pages in this app already have a working, reusable client-side export pattern using `XLSX`/`jsPDF` directly in the component (`client/src/pages/PlantDieselProcurementReport.tsx`, `AdminReports.tsx`, `MixComparativeReport.tsx`) — reuse this pattern, do not introduce a new export mechanism or a server-side PDF route for this.
+
+Decisions already made (do not re-litigate):
+- When a selected equipment has no consumption norm, show a clear warning AND let the person enter a norm right there on the Diesel Requirements screen — this entry should also save back to that equipment's master record (`equipmentMaster.consumptionNorm`) so it's set for next time, not just a one-off override.
+- The equipment-wise breakdown drill-down must work for BOTH a single clicked date AND the whole selected date range (clicking the range's Total Actual Issued summary card).
+- The drill-down opens as a popup/modal over the same page, not an inline row expansion or a page navigation.
+
+============================================================
+PART A — WARN AND ALLOW INLINE NORM ENTRY WHEN CONSUMPTION NORM IS MISSING
+============================================================
+FIX A1
+a. In `DieselRequirements.tsx`, when `calcPlannedQty` would return `""` specifically because `norm` is missing/zero (not because `workQty` is missing — keep those two cases visually distinct), show a clear, visible warning inline next to that item's row, e.g. "No consumption norm set for this equipment — enter one below to calculate."
+b. Add an editable Norm input for that row (currently read-only text at ~line 1383) that becomes active/prominent specifically when the norm is missing, allowing the person to type a value (with the correct unit label — L/Hr or L/Km depending on `meterType`, reusing the existing meterType-driven unit logic already correct elsewhere in this codebase, do not reimplement).
+c. When the person enters a norm this way, save it back to `equipmentMaster.consumptionNorm` (e.g. a small inline "Save to equipment master" confirmation, or auto-save on blur with a toast — your judgment on the friendliest flow) so future Diesel Requirement entries for that same equipment auto-calculate without repeating this step. Also apply it immediately to calculate this row's `plannedQty` via the existing `calcPlannedQty`/ceiling logic.
+d. Do not change `calcPlannedQty`'s existing ceiling-rounding math — it's already correct.
+
+WHAT NOT TO DO (Part A)
+- Do not make norm entry mandatory/blocking for submitting a diesel requirement — a person should still be able to manually type a planned quantity directly if they don't want to set up the norm right now (confirm the existing manual-quantity-entry path, gated by `manualQty`, ~line 779, still works unchanged).
+- Do not touch Part B or C in this pass.
+
+SCHEMA SAFETY (Part A)
+No schema change — `consumptionNorm` already exists on `equipmentMaster`; this only adds a write path to it from a new screen.
+
+TESTS (Part A)
+A. Select an equipment with NO consumption norm set, enter hours. Confirm the warning appears and quantity stays blank/unsuggested until a norm is provided.
+B. Enter a norm inline, confirm it saves to that equipment's master record (verify by checking Equipment Master afterward) and the quantity auto-calculates correctly with ceiling rounding (e.g. 2.5×3=7.5 → 8).
+C. Select an equipment that already HAS a norm set. Confirm auto-calc still works exactly as before, no warning shown, no regression.
+D. Confirm manual quantity entry (bypassing norm/auto-calc entirely) still works unchanged.
+
+============================================================
+PART B — RECEIPT LOG HEADER: ADD ISSUED AND PRESENT STOCK ALONGSIDE FILTERED TOTALS
+============================================================
+FIX B1
+a. In `client/src/pages/PlantMaterialReceipts.tsx`, alongside the existing "Filtered Totals" badge (~lines 1700-1714), add two more info badges specifically for DIESEL (or whatever material is currently filtered): "Issued: X Liters" and "Present Stock: X Liters".
+b. Source Present Stock from the existing `GET /api/plant-module/stock-balances` data (already used in `PlantStock.tsx`), filtered to the diesel material/site in scope. Source Issued by reusing the same calculation approach already used in `PlantDieselProcurementReport.tsx`'s `totalIssued` — do not reimplement the underlying stock-ledger math, call/reuse the existing logic or expose it as a small shared helper if that's cleaner.
+c. These are informational only — read-only badges, no new interaction/editing behavior.
+
+WHAT NOT TO DO (Part B)
+- Do not change how "Filtered Totals" itself is computed — this only adds two new adjacent figures.
+- Do not touch the stock-adjustment logic itself (`_adjustStockBalance`) — that's already confirmed correct (stock updates on receipt creation, not on Final Submit) and must not change.
+
+SCHEMA SAFETY (Part B)
+No schema change — this reads existing stock-balance/ledger data.
+
+TESTS (Part B)
+A. Open the Receipt Log filtered to DIESEL. Confirm "Issued" and "Present Stock" badges appear alongside "Filtered Totals," with plausible values.
+B. Create a new diesel receipt (leave it in draft/pending status, don't Final Submit). Confirm Present Stock increases immediately, matching the confirmed behavior that stock updates on creation, not on submission.
+
+============================================================
+PART C — COMPARISON REPORT: PLANNED VS ACTUAL ISSUED COLUMN + WORKING EQUIPMENT-WISE DRILL-DOWN + EXPORT
+============================================================
+FIX C1 — Add a real "Planned vs Actual Issued" figure
+a. Add a new comparison column/figure (alongside the existing "Planned vs Purchased" and "Purchased vs Issued") showing Planned vs Actual Issued, for both each date-wise row AND the top-level range totals ("Total Planned"/"Total Purchased"/"Total Actual Issued" summary cards) — this needs no new query, `planned` and `actual` are already present in the existing API response; compute the difference client-side (or add it to the totals object server-side if cleaner — your judgment).
+
+FIX C2 — Make the equipment-wise breakdown actually work
+a. `server/routes.ts`'s comparison route (~line 10504) currently hardcodes `equipmentWise: []`. Replace this with a real query that, for a given date OR date range, returns per-equipment Planned vs Actual Issued — reuse the SAME underlying data sources already confirmed correct for the date-wise totals (`equipmentLogs`/DPR diesel entries and `equipmentUsage.dieselIssued`), just grouped by equipment instead of (or in addition to) by date.
+b. Clicking a single date's "Actual Issued" figure in the date-wise table opens a modal showing that date's equipment-wise Planned vs Actual Issued breakdown.
+c. Clicking the top "Total Actual Issued" summary card opens a modal showing the equipment-wise breakdown SUMMED across the entire currently-selected date range.
+d. Both modals should clearly label which scope (single date vs range) they're showing.
+
+FIX C3 — Export
+a. Add PDF and/or Excel export (your judgment on offering both or just one, but reuse the EXISTING client-side `XLSX`/`jsPDF` pattern already used in `PlantDieselProcurementReport.tsx`/`AdminReports.tsx`/`MixComparativeReport.tsx` — do not build a new server-side PDF route or introduce a different export library).
+b. Exporting the main report always includes the full date-wise comparison table (with the new Planned vs Actual Issued column) for the selected range.
+c. If an equipment-wise drill-down modal (single date or range) is currently open when export is triggered, include that breakdown as an additional sheet (Excel) or additional page/section (PDF) in the same export — your judgment on the cleanest way to signal this to the person (e.g. an "Export this view" option within the open modal, separate from a general "Export report" button).
+
+WHAT NOT TO DO (Part C)
+- Do not change the underlying "Actual Issued" aggregation logic (DPR + Plant equipment usage) — it's already confirmed correct, only ADD the equipment-level grouping and the new comparison column on top of it.
+- Do not touch Parts A or B in this pass.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY (Part C)
+No schema change — this adds new query grouping and client-side derived figures/export using data that already exists.
+
+TESTS (Part C)
+A. Open the comparison report for a date range. Confirm a Planned vs Actual Issued figure now shows for each date row and for the range totals.
+B. Click a single date's Actual Issued figure. Confirm a modal opens showing real equipment-wise Planned vs Actual Issued data for that specific date (not empty, not hardcoded).
+C. Click the range's Total Actual Issued summary card. Confirm a modal opens showing equipment-wise data summed across the whole selected range.
+D. Export the main report. Confirm the downloaded file contains the full date-wise table including the new comparison column.
+E. With a drill-down modal open, export again. Confirm the equipment-wise breakdown is included in the export alongside the main table.
+
+REPORT BACK
+1. Confirm Part A with Test A-D evidence (screenshots).
+2. Confirm Part B with Test A/B evidence (screenshots).
+3. Confirm Part C with Test A-E evidence (screenshots), including the export file itself if possible.
+4. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch. STOP after each Part and report back before continuing to the next.

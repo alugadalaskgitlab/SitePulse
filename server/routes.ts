@@ -10588,6 +10588,45 @@ export async function registerRoutes(
     }
   });
 
+  // A narrow write for the diesel planning form. Do not grant general equipment-master editing.
+  app.patch("/api/diesel-requirements/equipment/:id/consumption-norm", async (req, res) => {
+    try {
+      if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
+      const allowed = req.authUser.isAdmin || req.authUser.isOwner ||
+        ["site_diesel", "diesel_req_raise"].some(section =>
+          req.authPermissions?.[section as "site_diesel" | "diesel_req_raise"]?.create ||
+          req.authPermissions?.[section as "site_diesel" | "diesel_req_raise"]?.edit);
+      if (!allowed) return res.status(403).json({ error: "forbidden", action: "create_or_edit" });
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id <= 0 ||
+          !req.body || Object.keys(req.body).length !== 1 ||
+          !Object.prototype.hasOwnProperty.call(req.body, "consumptionNorm") ||
+          typeof req.body.consumptionNorm !== "number" ||
+          !Number.isFinite(req.body.consumptionNorm) || req.body.consumptionNorm <= 0) {
+        return res.status(400).json({ message: "Only a positive finite consumptionNorm is allowed" });
+      }
+      const master = (await storage.getEquipmentMaster(true)).find(e => e.id === id);
+      if (!master) return res.status(404).json({ message: "Equipment not found" });
+      if (!req.authUser.isAdmin && !req.authUser.isOwner) {
+        const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id);
+        if (permittedIds !== null) {
+          // A shared/unassigned equipment has no site to authorize against.
+          // Restricted users (including those with zero permitted sites) must fail closed.
+          const plant = master.plantName ? await storage.getPlantSettings(master.plantName) : null;
+          if (!plant?.siteId || !permittedIds.includes(plant.siteId)) {
+            return res.status(403).json({ error: "forbidden", message: "Equipment is outside your permitted site scope" });
+          }
+        }
+      }
+      const equipment = await storage.updateEquipment(id, { consumptionNorm: req.body.consumptionNorm });
+      if (!equipment) return res.status(404).json({ message: "Equipment not found" });
+      res.json({ id: equipment.id, consumptionNorm: equipment.consumptionNorm });
+    } catch (err) {
+      console.error("Error saving diesel consumption norm:", err);
+      res.status(500).json({ message: "Failed to save equipment consumption norm" });
+    }
+  });
+
   app.get("/api/diesel-requirements/:id", async (req, res) => {
     try {
       if (!assertDieselOrStoresView(req, res)) return;
