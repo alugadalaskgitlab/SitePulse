@@ -31,6 +31,12 @@ Do not interpret the legacy Admin Settings "plants" scope as permission to confi
 
 **How to apply:** Keep plant-report management and physical plant configuration distinct when refining permission labels or controls.
 
+Legacy Reports and RMC Operations must not be labelled inert merely because their checks occur in OR expressions.
+
+**Why:** Either key can independently grant page entry; Reports also grants server report access. Hiding their working controls would misrepresent existing access.
+
+**How to apply:** Audit actual callers before marking legacy keys unused. Preserve hidden saved bits on ordinary matrix saves; hub visibility can originate from any of seven historical action bits.
+
 ## assertApprove
 
 Exported from `server/auth-routes.ts`. Works identically to `assertEdit` but checks `m[section].approve`. Admins always pass. Use on approval/rejection endpoints.

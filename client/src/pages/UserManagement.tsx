@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -74,6 +75,93 @@ type SafeUser = {
   canManagePermissions: boolean;
   permissionManagerScope: "full" | "partial" | null;
   createdAt?: string;
+};
+
+// Display metadata only. These are the actions checked by the corresponding
+// routes/buttons (plus View for page entry via sectionVisible). Keep all other
+// persisted fields intact: older matrices can contain grants in inactive cells.
+const HUB_ACTIONS: Action[] = ["view", "create", "edit", "delete", "view_reports", "export", "approve"];
+const SECTION_ACTIONS: Record<SectionKey, readonly Action[]> = {
+  dashboard: ["view", "edit"],
+  hmp_hub: ["view"], site_hub: ["view"], equipment_hub: ["view"],
+  reports_hub: ["view"], stores_hub: ["view"], finance_hub: ["view"],
+  masters_hub: ["view"], admin_hub: ["view"], rmc_hub: ["view"],
+  site_dprs: ["view", "create", "edit", "view_reports", "notify"],
+  site_materials: ["view", "create", "edit", "notify"],
+  site_procurement: ["view", "create", "edit"],
+  purchase_indents_view: ["view", "notify"],
+  purchase_indents_raise: ["view", "create", "edit"],
+  purchase_indents_approve: ["view", "approve"],
+  site_diesel: ["view", "create", "edit", "view_reports", "notify"],
+  diesel_req_view: ["view"],
+  diesel_req_raise: ["view", "create", "edit", "notify"],
+  diesel_req_approve: ["view", "edit", "approve", "notify"],
+  irn_view: ["view", "notify"], irn_raise: ["view", "create"],
+  irn_approve: ["view", "create", "approve"],
+  plant_shift_logs: ["view", "create", "edit", "notify"],
+  plant_manpower_review: ["view"],
+  plant_heating: ["view", "create", "edit"],
+  plant_heating_trends: ["view"],
+  plant_equipment: ["view", "create", "edit", "view_reports", "notify"],
+  plant_generator_logs: ["view", "notify"],
+  plant_maintenance: ["view"],
+  plant_production: ["view", "create", "edit", "view_reports", "notify"],
+  plant_materials: ["view", "create", "edit", "notify"],
+  plant_bitumen: ["view", "create", "edit", "notify"],
+  plant_ldo: ["view", "create", "edit", "notify"],
+  plant_daily_reports: ["view", "edit", "notify"],
+  plant_stock: ["view", "create", "edit", "view_reports", "notify"],
+  plant_ldo_reconciliation: ["view"], plant_variance: ["view"],
+  plant_audit: ["view"], plant_diesel_proc: ["view"],
+  stock_reconciliation: ["view", "create"],
+  equipment_performance_report: ["view", "view_reports"],
+  rmc_operations: ["view"],
+  rmc_batch_records: ["view"], rmc_mix_designs: ["view"],
+  rmc_cube_tests: ["view"], rmc_raw_materials: ["view"],
+  rmc_delivery_challans: ["view"], rmc_daily_report: ["view"],
+  vendor_bills: ["view", "create", "edit", "view_reports"],
+  vendor_bills_view: ["view", "view_reports", "notify"],
+  vendor_bills_raise: ["view", "create", "edit", "notify"],
+  vendor_bills_verify: ["view", "edit", "approve"],
+  vendor_bills_approve: ["view", "edit", "approve", "notify"],
+  vendor_bill_aliases: ["view"],
+  reports: ["view"], report_management: ["view"],
+  report_site_purchases: ["view", "edit"],
+  stores_inventory: ["view", "create", "edit", "approve", "notify"],
+  labour_management: ["view", "create"],
+  estimator_portal: ["view"], mix_calculator: ["view", "create", "edit"],
+  concrete_calculator: ["view"], qto_boq: ["view", "edit", "approve"],
+  project_scope: ["view", "edit", "approve"], rate_cards: ["view"],
+  master_parties: ["view", "create", "edit", "view_reports"],
+  master_materials: ["view", "create", "edit", "view_reports"],
+  master_equipment: ["view", "create", "edit", "view_reports"],
+  master_personnel: ["view", "create", "edit"],
+  admin_settings: ["view", "create", "edit", "view_reports"],
+  site_management: ["view"], sites_plants_manage: ["view", "create", "edit"],
+  vendor_masters_manage: ["view", "create"],
+  concrete_estimates_manage: ["view", "create", "edit"],
+  admin_notifications_manage: ["view", "create"],
+  admin_ldo_tools: ["view"], admin_ledger_tools: ["view"],
+  data_sync: ["view"], user_management: ["view", "create", "edit"],
+  permission_manager: ["view"], device_approval: ["view", "edit"],
+  push_notifications: ["view"],
+  hmp_operations: [], reports_analysis: [], estimates_manager: [], app_management: [],
+};
+const HUB_SECTIONS = new Set<SectionKey>([
+  "hmp_hub", "site_hub", "equipment_hub", "reports_hub", "stores_hub",
+  "finance_hub", "masters_hub", "admin_hub", "rmc_hub",
+]);
+const LEGACY_NOTES: Partial<Record<SectionKey, string>> = {
+  site_procurement: "Compatibility: Purchase Indents View / Raise / Approve above also control these features.",
+  site_diesel: "Compatibility: Diesel Requirements View / Raise / Approve above also control these features.",
+  vendor_bills: "Compatibility: Vendor Bills View / Raise / Verify / Approve above also control these features.",
+  admin_settings: "Compatibility: Sites & Plant Reports, Vendor Masters, Concrete Estimates and Admin Notifications above also control these features.",
+  reports: "Compatibility: still grants access to reports and management reports on its own.",
+  rmc_operations: "Compatibility: still grants access to RMC pages when enabled.",
+  hmp_operations: "Not currently used by a feature.",
+  reports_analysis: "Not currently used by a feature.",
+  estimates_manager: "Not currently used by a feature.",
+  app_management: "Not currently used by a feature.",
 };
 
 function friendlyUserError(raw: string): string {
@@ -767,7 +855,7 @@ function EditUserDialog({ userId, users, onClose }: { userId: number; users: Saf
   );
 }
 
-function PermissionsDialog({ userId, users, onClose }: { userId: number; users: SafeUser[]; onClose: () => void }) {
+export function PermissionsDialog({ userId, users, onClose }: { userId: number; users: SafeUser[]; onClose: () => void }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { isAdmin: currentIsAdmin, canManagePermissions, permissionManagerScope, permissions: myPerms } = useAuth();
@@ -793,6 +881,12 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
     if (!isPartialManager) return true;
     return !!myPerms[section]?.[action];
   }
+
+  // The existing PUT endpoint caps every field to the partial manager's own
+  // grants, including unchanged fields. Block that request rather than silently
+  // erasing grants outside this manager's scope.
+  const hasUnmanagedGrants = isPartialManager && SECTION_KEYS.some((s) =>
+    ACTIONS.some((a) => matrix[s]?.[a] && !canGrantAction(s, a)));
 
   const save = useMutation({
     mutationFn: async () => {
@@ -825,43 +919,71 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
   });
 
   function toggleCell(section: SectionKey, action: Action) {
-    if (!canGrantAction(section, action)) return;
+    if (!SECTION_ACTIONS[section].includes(action) || !canGrantAction(section, action)) return;
     setMatrix((prev) => ({
       ...prev,
       [section]: { ...prev[section], [action]: !prev[section][action] },
     }));
   }
 
+  function hubChecked(section: SectionKey): boolean {
+    return HUB_ACTIONS.some((a) => matrix[section][a]);
+  }
+
+  function canToggleHub(section: SectionKey): boolean {
+    // An unowned alias keeps the hub visible; do not offer a revoke that
+    // cannot actually revoke it (or clear a grant the manager does not own).
+    return HUB_ACTIONS.some((a) => canGrantAction(section, a)) &&
+      (!hubChecked(section) || HUB_ACTIONS.every((a) => !matrix[section][a] || canGrantAction(section, a)));
+  }
+
+  function setHubAccess(section: SectionKey, enabled: boolean) {
+    if (!canToggleHub(section)) return;
+    setMatrix((prev) => {
+      const row = { ...prev[section] };
+      if (enabled) {
+        // Prefer View when grantable; a partial manager with only a different
+        // alias can grant that alias instead without exceeding their own scope.
+        const action = canGrantAction(section, "view")
+          ? "view" : HUB_ACTIONS.find((a) => canGrantAction(section, a));
+        if (action) row[action] = true;
+      } else {
+        for (const action of HUB_ACTIONS) {
+          if (canGrantAction(section, action)) row[action] = false;
+        }
+      }
+      return { ...prev, [section]: row };
+    });
+  }
+
   function setAllForSection(section: SectionKey, value: boolean) {
-    setMatrix((prev) => ({
-      ...prev,
-      [section]: {
-        view: value && canGrantAction(section, "view"),
-        create: value && canGrantAction(section, "create"),
-        edit: value && canGrantAction(section, "edit"),
-        delete: value && canGrantAction(section, "delete"),
-        view_reports: value && canGrantAction(section, "view_reports"),
-        export: value && canGrantAction(section, "export"),
-        approve: value && canGrantAction(section, "approve"),
-        notify: prev[section].notify, // "All" never toggles Notify — must be opted-in explicitly
-      },
-    }));
+    if (HUB_SECTIONS.has(section)) { setHubAccess(section, value); return; }
+    setMatrix((prev) => {
+      const row = { ...prev[section] };
+      for (const action of SECTION_ACTIONS[section]) {
+        if (action !== "notify" && canGrantAction(section, action)) row[action] = value;
+      }
+      return { ...prev, [section]: row };
+    });
   }
 
   function setAllForGroup(sections: SectionKey[], value: boolean) {
     setMatrix((prev) => {
       const next = { ...prev };
       for (const s of sections) {
-        next[s] = {
-          view: value && canGrantAction(s, "view"),
-          create: value && canGrantAction(s, "create"),
-          edit: value && canGrantAction(s, "edit"),
-          delete: value && canGrantAction(s, "delete"),
-          view_reports: value && canGrantAction(s, "view_reports"),
-          export: value && canGrantAction(s, "export"),
-          approve: value && canGrantAction(s, "approve"),
-          notify: prev[s].notify, // preserve — "Grant all" for group never toggles Notify
-        };
+        const row = { ...prev[s] };
+        if (HUB_SECTIONS.has(s)) {
+          const owned = HUB_ACTIONS.filter((a) => canGrantAction(s, a));
+          const unownedGrant = HUB_ACTIONS.some((a) => row[a] && !canGrantAction(s, a));
+          if (!value && unownedGrant) continue;
+          if (value && owned.length) row[owned.includes("view") ? "view" : owned[0]] = true;
+          if (!value) for (const a of owned) row[a] = false;
+        } else {
+          for (const a of SECTION_ACTIONS[s]) {
+            if (a !== "notify" && canGrantAction(s, a)) row[a] = value;
+          }
+        }
+        next[s] = row;
       }
       return next;
     });
@@ -871,8 +993,10 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
 
   // Skip the legacy group unless admin is viewing.
   const visibleGroups = PERMISSION_GROUPS.filter((g) => g.id !== "legacy" || currentIsAdmin);
-  // Notify is excluded from the "All" checkbox — it must be opted-in per section.
-  const NON_NOTIFY_ACTIONS = ACTIONS.filter((a) => a !== "notify");
+  const grantableActions = (s: SectionKey): Action[] =>
+    HUB_SECTIONS.has(s)
+      ? (HUB_ACTIONS.some((a) => canGrantAction(s, a)) ? ["view"] : [])
+      : SECTION_ACTIONS[s].filter((a) => a !== "notify" && canGrantAction(s, a));
 
   function PermMatrix({ sections }: { sections: SectionKey[] }) {
     return (
@@ -892,7 +1016,7 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
                       <AlertTriangle className="h-3 w-3" />
                     </span>
                   ) : (
-                    ACTION_LABELS[a]
+                    a === "view" && sections.every((s) => HUB_SECTIONS.has(s)) ? "Access" : ACTION_LABELS[a]
                   )}
                 </th>
               ))}
@@ -903,34 +1027,46 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
             {sections.map((s) => {
               const row = matrix[s];
               // "All" checkbox only covers non-notify actions — Notify must be opted-in explicitly.
-              const allGrantable = NON_NOTIFY_ACTIONS.filter((a) => canGrantAction(s, a));
+              const allGrantable = grantableActions(s);
               const allChecked = allGrantable.length > 0 && allGrantable.every((a) => row[a]);
               return (
                 <tr key={s} className="border-t hover:bg-muted/30" data-testid={`row-perm-${s}`}>
-                  <td className="px-3 py-1.5 font-medium text-sm leading-tight">{SECTION_LABELS[s]}</td>
+                  <td className="px-3 py-1.5 font-medium text-sm leading-tight">
+                    {SECTION_LABELS[s]}
+                    {LEGACY_NOTES[s] && <span className="block text-xs font-normal text-muted-foreground" data-testid={`note-${s}`}>{LEGACY_NOTES[s]}</span>}
+                  </td>
                   {ACTIONS.map((a) => {
-                    const grantable = canGrantAction(s, a);
+                    const hub = HUB_SECTIONS.has(s);
+                    const active = SECTION_ACTIONS[s].includes(a);
+                    const grantable = hub ? canToggleHub(s) : canGrantAction(s, a);
                     return (
                       <td
                         key={a}
-                        className="text-center px-2 py-1.5"
+                        className={`text-center px-2 py-1.5 ${!active ? "bg-muted/40 text-muted-foreground" : ""}`}
+                        title={!active ? "Not used for this section" : !grantable ? "You cannot change this grant" : undefined}
+                        data-testid={`cell-${s}-${a}`}
                       >
-                        <Checkbox
-                          checked={!!row[a]}
-                          disabled={!grantable}
-                          onCheckedChange={() => toggleCell(s, a)}
-                          data-testid={`checkbox-${s}-${a}`}
-                          className={!grantable ? "opacity-30" : ""}
-                        />
+                        {active ? (
+                          <Checkbox
+                            checked={hub ? hubChecked(s) : !!row[a]}
+                            disabled={!grantable}
+                            aria-label={`${SECTION_LABELS[s]} — ${hub ? "Access" : ACTION_LABELS[a]}`}
+                            onCheckedChange={(v) => hub ? setHubAccess(s, !!v) : toggleCell(s, a)}
+                            data-testid={`checkbox-${s}-${hub ? "access" : a}`}
+                            className={!grantable ? "opacity-30" : ""}
+                          />
+                        ) : <span aria-label="Not used for this section">—</span>}
                       </td>
                     );
                   })}
                   <td className="text-center px-2 py-1.5">
-                    <Checkbox
-                      checked={allChecked}
-                      onCheckedChange={(v) => setAllForSection(s, !!v)}
-                      data-testid={`checkbox-${s}-all`}
-                    />
+                    {!HUB_SECTIONS.has(s) && allGrantable.length > 0 && (
+                      <Checkbox
+                        checked={allChecked}
+                        onCheckedChange={(v) => setAllForSection(s, !!v)}
+                        data-testid={`checkbox-${s}-all`}
+                      />
+                    )}
                   </td>
                 </tr>
               );
@@ -945,6 +1081,10 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
     return (
       <Dialog open={true} onOpenChange={(v) => !v && onClose()}>
         <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>Loading permissions</DialogTitle>
+            <DialogDescription>Loading this user's section permissions.</DialogDescription>
+          </DialogHeader>
           <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin" /></div>
         </DialogContent>
       </Dialog>
@@ -961,6 +1101,7 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
               <span className="text-sm font-normal text-muted-foreground ml-2">(Partial manager — can only grant permissions you have)</span>
             )}
           </DialogTitle>
+          <DialogDescription>Choose section actions, then save permissions. Grey cells are not used by that section.</DialogDescription>
         </DialogHeader>
 
         {notifyMismatch && (
@@ -973,6 +1114,11 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
               Push notifications are disabled for this user — Notify checkboxes won't fire until enabled.
             </span>
           </div>
+        )}
+        {hasUnmanagedGrants && (
+          <p className="text-sm text-amber-700" data-testid="warning-unmanaged-grants">
+            Saving is unavailable: this user has grants outside your scope. An administrator or full permission manager must edit these permissions to avoid removing existing access.
+          </p>
         )}
 
         <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -1022,28 +1168,29 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
           <Accordion type="multiple" defaultValue={visibleGroups.filter((g) => g.id !== "legacy").map((g) => g.id)}>
             {visibleGroups.map((group) => {
               const allGrantableInGroup = group.sections.flatMap((s) =>
-                NON_NOTIFY_ACTIONS.filter((a) => canGrantAction(s, a)).map((a) => ({ s, a }))
+                grantableActions(s).map((a) => ({ s, a }))
               );
-              const allChecked = allGrantableInGroup.length > 0 && allGrantableInGroup.every(({ s, a }) => matrix[s][a]);
+              const allChecked = allGrantableInGroup.length > 0 && allGrantableInGroup.every(({ s, a }) =>
+                HUB_SECTIONS.has(s) ? hubChecked(s) : matrix[s][a]);
               return (
                 <AccordionItem key={group.id} value={group.id}>
-                  <AccordionTrigger className="py-2 px-1 hover:no-underline">
-                    <div className="flex items-center gap-3 flex-1 mr-3">
-                      <span className="text-sm font-semibold">{group.label}</span>
-                      <span className="text-sm text-muted-foreground">({group.sections.length} sections)</span>
-                      <label
-                        className="flex items-center gap-1.5 ml-auto cursor-pointer normal-case font-normal text-sm tracking-normal"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Checkbox
-                          checked={allChecked}
-                          onCheckedChange={(v) => setAllForGroup(group.sections, !!v)}
-                          data-testid={`checkbox-group-${group.id}-all`}
-                        />
-                        Grant all
-                      </label>
-                    </div>
-                  </AccordionTrigger>
+                  <div className="flex items-center gap-2">
+                    <AccordionTrigger className="py-2 px-1 hover:no-underline">
+                      <span className="flex items-center gap-3">
+                        <span className="text-sm font-semibold">{group.label}</span>
+                        <span className="text-sm text-muted-foreground">({group.sections.length} sections)</span>
+                      </span>
+                    </AccordionTrigger>
+                    <label className="flex items-center gap-1.5 ml-auto pr-2 cursor-pointer normal-case font-normal text-sm tracking-normal">
+                      <Checkbox
+                        checked={allChecked}
+                        disabled={allGrantableInGroup.length === 0}
+                        onCheckedChange={(v) => setAllForGroup(group.sections, !!v)}
+                        data-testid={`checkbox-group-${group.id}-all`}
+                      />
+                      Grant all
+                    </label>
+                  </div>
                   <AccordionContent className="pt-0 pb-3">
                     {group.sections.length > 0 ? (
                       <PermMatrix sections={group.sections} />
@@ -1068,7 +1215,7 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
 
         <DialogFooter className="pt-3 border-t mt-2">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={() => save.mutate()} disabled={save.isPending} data-testid="button-save-perms">
+           <Button onClick={() => save.mutate()} disabled={save.isPending || hasUnmanagedGrants} data-testid="button-save-perms">
             {save.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
             Save permissions
           </Button>

@@ -3237,3 +3237,73 @@ mtime_ms = 1790340639506
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b855c5d0-b496-4830-b823-41a45209f4fb/7ace2cee-7703-4f03-8b06-378756841008"
 storage_version_token = "1790340780128583"
 content_type = "text/plain"
+
+[[outputs]]
+id = "PMJAZAANzI6G2FQ936gj_"
+uri = "file://tests/fixtures/perm01-matrix/evidence/A-hub-access.png"
+type = "image"
+title = "A — One Access control per hub"
+description = "Actual Permissions dialog rendered in an isolated browser fixture with synthetic permissions. No live user permissions changed."
+logical_id = "161607f2-3b56-49e2-a1e6-b412f86a86ed"
+content_hash = "sha256:7a034405ffd2d863339fc7153cf5047668ef8ff02208253c7d7ed922ab7c4aae"
+size = 102670
+mtime_ms = 1790342954237
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/161607f2-3b56-49e2-a1e6-b412f86a86ed/6c9f1be2-1bb2-4526-9e30-aa97f154cee0"
+storage_version_token = "1790343007153140"
+content_type = "image/png"
+
+[[outputs]]
+id = "DMvon7l0x75XMD2y-C_mp"
+uri = "file://tests/fixtures/perm01-matrix/evidence/B-home-view-edit.png"
+type = "image"
+title = "B — Home View/Edit only"
+description = "Actual Permissions dialog rendered in an isolated browser fixture with synthetic permissions. No live user permissions changed."
+logical_id = "3df0b5b4-3cf6-4b8c-b6ce-3fe231da8c48"
+content_hash = "sha256:7e1c20367291847eeebe7d54237cd91f44007be44f8316d4d3aac8d8e7ea846c"
+size = 102624
+mtime_ms = 1790342955069
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/3df0b5b4-3cf6-4b8c-b6ce-3fe231da8c48/e26aeea6-5f33-4638-bb44-37c284e73e96"
+storage_version_token = "1790343009129392"
+content_type = "image/png"
+
+[[outputs]]
+id = "XZSXhzVbJZLvaXWU8hWSF"
+uri = "file://tests/fixtures/perm01-matrix/evidence/C-legacy-compatibility.png"
+type = "image"
+title = "C — Legacy compatibility notes"
+description = "Actual Permissions dialog rendered in an isolated browser fixture with synthetic permissions. No live user permissions changed."
+logical_id = "f1000004-b36b-4729-b92c-5eac9facc166"
+content_hash = "sha256:33027668f5f3a344e6ad0f8e27b1165674be3dccb19cb1265a98aafcb003aaa9"
+size = 126757
+mtime_ms = 1790342956466
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/f1000004-b36b-4729-b92c-5eac9facc166/d7c7e2ec-4511-42f5-9c83-368be99c5bd1"
+storage_version_token = "1790343011663961"
+content_type = "image/png"
+
+[[outputs]]
+id = "qJKAF0tX9I0z5rpdzOhum"
+uri = "file://tests/fixtures/perm01-matrix/evidence/D-unused-legacy.png"
+type = "image"
+title = "D — Unused legacy sections labelled"
+description = "Actual Permissions dialog rendered in an isolated browser fixture with synthetic permissions. No live user permissions changed."
+logical_id = "fa169ef2-f921-496f-9434-1d00235363d7"
+content_hash = "sha256:73115ced2d71eb0911ddbd070b5ec2600ccbf56ed68421dc0408ddc34fc831ad"
+size = 124957
+mtime_ms = 1790342957885
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/fa169ef2-f921-496f-9434-1d00235363d7/ed48e01c-43ac-4bb9-8c3c-f820cead8f32"
+storage_version_token = "1790343013968781"
+content_type = "image/png"
+
+[[outputs]]
+id = "XXpOZ1emUuIja_-QFErzv"
+uri = "file://tests/fixtures/perm01-matrix/evidence/E-save-revoke-roundtrip.png"
+type = "image"
+title = "E — Saved hub revoke after reload"
+description = "Actual Permissions dialog rendered in an isolated browser fixture with synthetic permissions. No live user permissions changed."
+logical_id = "f0d667b2-73a7-4e8a-a2d2-0cc90e5663cf"
+content_hash = "sha256:399386a8bb7715bb60796c0c258923d403253864d23917d1ccda704598531d1d"
+size = 102426
+mtime_ms = 1790342959665
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/f0d667b2-73a7-4e8a-a2d2-0cc90e5663cf/ac6463a5-bfe8-4aaa-b29d-f3c35c93e0ec"
+storage_version_token = "1790343016249494"
+content_type = "image/png"
