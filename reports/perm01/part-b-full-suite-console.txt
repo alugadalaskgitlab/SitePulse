@@ -1,0 +1,671 @@
+
+> rest-express@1.0.0 test
+> vitest run
+
+
+ RUN  v4.1.5 /home/runner/workspace
+
+ ❯ tests/mat01MaterialsReceivedQueries.test.ts (2 tests | 1 failed) 5632ms
+     × executes the received query with source-or-transporter matching and returns the source field 10ms
+ ❯ tests/vendorBillHireIntegration07c.test.ts (17 tests | 1 failed) 38ms
+     × keeps source-qualified auto evidence read-only and visibly marked as auto 11ms
+stdout | tests/vehicleSupplierAssociationPostgres.integration.test.ts > vehicle supplier association PostgreSQL transactions > VB24: commits all 114 Soil trips over 15–22 September (direct SQL evidence)
+dprs: boq_project_id column ensured, orphaned entries re-linked, backfill complete
+
+stdout | tests/vehicleSupplierAssociationPostgres.integration.test.ts > vehicle supplier association PostgreSQL transactions > VB24: commits all 114 Soil trips over 15–22 September (direct SQL evidence)
+boq_items: item_name column ensured and backfilled
+
+stdout | tests/vehicleSupplierAssociationPostgres.integration.test.ts > vehicle supplier association PostgreSQL transactions > VB24: commits all 114 Soil trips over 15–22 September (direct SQL evidence)
+progress_entries.entry_key / attachments.progress_entry_key ensured
+
+stdout | tests/vehicleSupplierAssociationPostgres.integration.test.ts > vehicle supplier association PostgreSQL transactions > VB24: commits all 114 Soil trips over 15–22 September (direct SQL evidence)
+progress_entries.layer_no ensured
+
+stdout | tests/vehicleSupplierAssociationPostgres.integration.test.ts > vehicle supplier association PostgreSQL transactions > VB24: commits all 114 Soil trips over 15–22 September (direct SQL evidence)
+boq_items: dpr_conversion_factor column ensured
+
+stderr | tests/vehicleSupplierAssociationPostgres.integration.test.ts > vehicle supplier association PostgreSQL transactions > VB24: commits all 114 Soil trips over 15–22 September (direct SQL evidence)
+seedSnlItems failed: Error: SNL startup seeding disabled in isolated trip integration suite
+    at /home/runner/workspace/tests/vehicleSupplierAssociationPostgres.integration.test.ts:142:55
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+
+stdout | tests/vehicleSupplierAssociationPostgres.integration.test.ts > vehicle supplier association PostgreSQL transactions > VB24: commits all 114 Soil trips over 15–22 September (direct SQL evidence)
+migrateSupersededDprs: Marked 111 DPRs as superseded
+
+stdout | tests/vehicleSupplierAssociationPostgres.integration.test.ts > vehicle supplier association PostgreSQL transactions > VB24: commits all 114 Soil trips over 15–22 September (direct SQL evidence)
+Startup: Marked 111 DPRs as superseded, 0 errors
+
+stdout | tests/vehicleSupplierAssociationPostgres.integration.test.ts > vehicle supplier association PostgreSQL transactions > VB24: commits all 114 Soil trips over 15–22 September (direct SQL evidence)
+migrateEngineerNamesToPersonnelFormat: Updated 0, unmatched 129, errors 0
+
+stdout | tests/vehicleSupplierAssociationPostgres.integration.test.ts > vehicle supplier association PostgreSQL transactions > VB24: commits all 114 Soil trips over 15–22 September (direct SQL evidence)
+Startup: Engineer names migration - updated: 0, unmatched: 129, errors: 0
+
+stderr | tests/vehicleSupplierAssociationPostgres.integration.test.ts > vehicle supplier association PostgreSQL transactions > VB24: commits all 114 Soil trips over 15–22 September (direct SQL evidence)
+Error fetching site material trips: error: column "supplier_vendor_id" does not exist
+    at /home/runner/workspace/node_modules/pg-pool/index.js:45:11
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at file:///home/runner/workspace/node_modules/drizzle-orm/node-postgres/session.js:83:22
+    at DatabaseStorage.getSiteMaterialTrips (/home/runner/workspace/server/storage.ts:12348:19)
+    at /home/runner/workspace/server/routes.ts:740:21 {
+  length: 118,
+  severity: 'ERROR',
+  code: '42703',
+  detail: undefined,
+  hint: undefined,
+  position: '62',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '3727',
+  routine: 'errorMissingColumn'
+}
+
+stderr | tests/vehicleSupplierAssociationPostgres.integration.test.ts > vehicle supplier association PostgreSQL transactions > VB24: preserves edit/site restrictions and exposes case-mismatched permitted names as zero, not success
+Error updating site material trip: error: column "supplier_vendor_id" does not exist
+    at /home/runner/workspace/node_modules/pg-pool/index.js:45:11
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at file:///home/runner/workspace/node_modules/drizzle-orm/node-postgres/session.js:83:22
+    at DatabaseStorage.getSiteMaterialTripById (/home/runner/workspace/server/storage.ts:12783:20)
+    at /home/runner/workspace/server/routes.ts:929:24 {
+  length: 118,
+  severity: 'ERROR',
+  code: '42703',
+  detail: undefined,
+  hint: undefined,
+  position: '62',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '3727',
+  routine: 'errorMissingColumn'
+}
+
+stderr | tests/vehicleSupplierAssociationPostgres.integration.test.ts > vehicle supplier association PostgreSQL transactions > VB24: fill blanks, per-trip history, single edit and clear, and single audit rollback
+Error updating site material trip: error: column "supplier_vendor_id" does not exist
+    at /home/runner/workspace/node_modules/pg-pool/index.js:45:11
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at file:///home/runner/workspace/node_modules/drizzle-orm/node-postgres/session.js:83:22
+    at DatabaseStorage.getSiteMaterialTripById (/home/runner/workspace/server/storage.ts:12783:20)
+    at /home/runner/workspace/server/routes.ts:929:24 {
+  length: 118,
+  severity: 'ERROR',
+  code: '42703',
+  detail: undefined,
+  hint: undefined,
+  position: '62',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '3727',
+  routine: 'errorMissingColumn'
+}
+
+stdout | tests/vehicleSupplierAssociationPostgres.integration.test.ts > vehicle supplier association PostgreSQL transactions > serializes two concurrent DatabaseStorage creates on real pooled connections
+migrateDprPlantStockDieselToLedger: Rebuilt 64 old dpr_equipment_usage entries with a guarded net delta
+
+stderr | tests/vehicleSupplierAssociationPostgres.integration.test.ts > vehicle supplier association PostgreSQL transactions > serializes two concurrent DatabaseStorage creates on real pooled connections
+migrateDprPlantStockDieselToLedger: Fatal error: InsufficientPlantStockError: INSUFFICIENT_PLANT_STOCK
+    at assertNonnegativeDieselLedgerNet (/home/runner/workspace/server/storage.ts:2223:9)
+    at reconcile (/home/runner/workspace/server/storage.ts:10616:9)
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at NodePgSession.transaction (file:///home/runner/workspace/node_modules/drizzle-orm/node-postgres/session.js:142:22)
+    at DatabaseStorage.migrateDprPlantStockDieselToLedger (/home/runner/workspace/server/storage.ts:11210:7)
+    at seedDatabase (/home/runner/workspace/server/routes.ts:22375:29) {
+  code: 'INSUFFICIENT_PLANT_STOCK',
+  payload: {
+    material: 'DIESEL',
+    source: 'ledger_reconciliation',
+    materialId: 8,
+    partyId: 1,
+    requestedQty: 4085.7400000000002,
+    availableQty: 2751.968,
+    shortageQty: 1333.772
+  }
+}
+
+stdout | tests/vehicleSupplierAssociationPostgres.integration.test.ts > vehicle supplier association PostgreSQL transactions > serializes two concurrent DatabaseStorage creates on real pooled connections
+Startup: Migrated DPR plant_stock diesel to ledger (cutoff: Feb 1, 2026) - created: 64, skipped: 0, errors: 1
+
+stdout | tests/vehicleSupplierAssociationPostgres.integration.test.ts > vehicle supplier association PostgreSQL transactions > pins an old pair through an ordinary edit and keeps complete-history conflict
+Startup: Fix null contractor labels - updated: 0
+
+ ❯ tests/vehicleSupplierAssociationPostgres.integration.test.ts (8 tests | 5 failed) 11175ms
+     × VB24: commits all 114 Soil trips over 15–22 September (direct SQL evidence) 806ms
+     × VB24: preserves edit/site restrictions and exposes case-mismatched permitted names as zero, not success 212ms
+     × VB24: fill blanks, per-trip history, single edit and clear, and single audit rollback 188ms
+     × serializes two concurrent DatabaseStorage creates on real pooled connections 422ms
+     × pins an old pair through an ordinary edit and keeps complete-history conflict 416ms
+ ❯ tests/vendorBillsEquipmentHire07b.test.tsx (17 tests | 2 failed) 8542ms
+     × Test A/B/C: groups mixed activity, pulls equipment only, then adds one material group without disturbing it 892ms
+     × Test D/E/F: Pull All applies rates and duplicate flags, clears the blank row, and retains Added groups 529ms
+stderr | tests/purchaseOrderPartC.test.ts > optional PO lifecycle with isolated PostgreSQL fixture > A: an order is recorded without raising a PO, for bulk and stores
+ensureDprBoqProjectColumn failed: error: relation "dprs" does not exist
+    at pe.Ue (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/chunk-2BOC2OMW.js:1:17897)
+    at pe.tt (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/chunk-2BOC2OMW.js:1:15285)
+    at pe.parse (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/chunk-2BOC2OMW.js:1:13959)
+    at N.qe (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/index.js:5:1762)
+    at file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/index.js:5:1155
+    at null.<anonymous> (wasm://wasm/0267bb86:1:5921938)
+    at null.<anonymous> (wasm://wasm/0267bb86:1:2615982)
+    at null.<anonymous> (wasm://wasm/0267bb86:1:2648468)
+    at null.<anonymous> (wasm://wasm/0267bb86:1:2649072)
+    at null.<anonymous> (wasm://wasm/0267bb86:1:5569808) {
+  length: 102,
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'namespace.c',
+  line: '639',
+  routine: 'RangeVarGetRelidExtended',
+  query: 'ALTER TABLE dprs ADD COLUMN IF NOT EXISTS boq_project_id integer',
+  params: [],
+  queryOptions: {
+    rowMode: 'object',
+    parsers: {
+      '1082': [Function: 1082],
+      '1114': [Function: 1114],
+      '1184': [Function: 1184],
+      '1186': [Function: 1186]
+    }
+  }
+}
+
+stderr | tests/purchaseOrderPartC.test.ts > optional PO lifecycle with isolated PostgreSQL fixture > A: an order is recorded without raising a PO, for bulk and stores
+ensureBoqItemNameColumn failed: error: relation "boq_items" does not exist
+    at pe.Ue (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/chunk-2BOC2OMW.js:1:17897)
+    at pe.tt (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/chunk-2BOC2OMW.js:1:15285)
+    at pe.parse (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/chunk-2BOC2OMW.js:1:13959)
+    at N.qe (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/index.js:5:1762)
+    at file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/index.js:5:1155
+    at null.<anonymous> (wasm://wasm/0267bb86:1:5921938)
+    at null.<anonymous> (wasm://wasm/0267bb86:1:2615982)
+    at null.<anonymous> (wasm://wasm/0267bb86:1:2648468)
+    at null.<anonymous> (wasm://wasm/0267bb86:1:2649072)
+    at null.<anonymous> (wasm://wasm/0267bb86:1:5569808) {
+  length: 107,
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'namespace.c',
+  line: '639',
+  routine: 'RangeVarGetRelidExtended',
+  query: 'ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS item_name text',
+  params: [],
+  queryOptions: {
+    rowMode: 'object',
+    parsers: {
+      '1082': [Function: 1082],
+      '1114': [Function: 1114],
+      '1184': [Function: 1184],
+      '1186': [Function: 1186]
+    }
+  }
+}
+
+stderr | tests/purchaseOrderPartC.test.ts > optional PO lifecycle with isolated PostgreSQL fixture > A: an order is recorded without raising a PO, for bulk and stores
+ensureDprEntryKeyColumns failed: error: relation "progress_entries" does not exist
+    at pe.Ue (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/chunk-2BOC2OMW.js:1:17897)
+    at pe.tt (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/chunk-2BOC2OMW.js:1:15285)
+    at pe.parse (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/chunk-2BOC2OMW.js:1:13959)
+    at N.qe (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/index.js:5:1762)
+    at file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/index.js:5:1155
+    at null.<anonymous> (wasm://wasm/0267bb86:1:5921938)
+    at null.<anonymous> (wasm://wasm/0267bb86:1:2615982)
+    at null.<anonymous> (wasm://wasm/0267bb86:1:2648468)
+    at null.<anonymous> (wasm://wasm/0267bb86:1:2649072)
+    at null.<anonymous> (wasm://wasm/0267bb86:1:5569808) {
+  length: 114,
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'namespace.c',
+  line: '639',
+  routine: 'RangeVarGetRelidExtended',
+  query: 'ALTER TABLE progress_entries ADD COLUMN IF NOT EXISTS entry_key text',
+  params: [],
+  queryOptions: {
+    rowMode: 'object',
+    parsers: {
+      '1082': [Function: 1082],
+      '1114': [Function: 1114],
+      '1184': [Function: 1184],
+      '1186': [Function: 1186]
+    }
+  }
+}
+
+stderr | tests/purchaseOrderPartC.test.ts > optional PO lifecycle with isolated PostgreSQL fixture > A: an order is recorded without raising a PO, for bulk and stores
+ensureProgressLayerNoColumn failed: error: relation "progress_entries" does not exist
+    at pe.Ue (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/chunk-2BOC2OMW.js:1:17897)
+    at pe.tt (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/chunk-2BOC2OMW.js:1:15285)
+    at pe.parse (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/chunk-2BOC2OMW.js:1:13959)
+    at N.qe (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/index.js:5:1762)
+    at file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/index.js:5:1155
+    at null.<anonymous> (wasm://wasm/0267bb86:1:5921938)
+    at null.<anonymous> (wasm://wasm/0267bb86:1:2615982)
+    at null.<anonymous> (wasm://wasm/0267bb86:1:2648468)
+    at null.<anonymous> (wasm://wasm/0267bb86:1:2649072)
+    at null.<anonymous> (wasm://wasm/0267bb86:1:5569808) {
+  length: 114,
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'namespace.c',
+  line: '639',
+  routine: 'RangeVarGetRelidExtended',
+  query: 'ALTER TABLE progress_entries ADD COLUMN IF NOT EXISTS layer_no integer',
+  params: [],
+  queryOptions: {
+    rowMode: 'object',
+    parsers: {
+      '1082': [Function: 1082],
+      '1114': [Function: 1114],
+      '1184': [Function: 1184],
+      '1186': [Function: 1186]
+    }
+  }
+}
+
+stderr | tests/purchaseOrderPartC.test.ts > optional PO lifecycle with isolated PostgreSQL fixture > A: an order is recorded without raising a PO, for bulk and stores
+ensureBoqDprConversionFactor failed: error: relation "boq_items" does not exist
+    at pe.Ue (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/chunk-2BOC2OMW.js:1:17897)
+    at pe.tt (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/chunk-2BOC2OMW.js:1:15285)
+    at pe.parse (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/chunk-2BOC2OMW.js:1:13959)
+    at N.qe (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/index.js:5:1762)
+    at file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/index.js:5:1155
+    at null.<anonymous> (wasm://wasm/0267bb86:1:5921938)
+    at null.<anonymous> (wasm://wasm/0267bb86:1:2615982)
+    at null.<anonymous> (wasm://wasm/0267bb86:1:2648468)
+    at null.<anonymous> (wasm://wasm/0267bb86:1:2649072)
+    at null.<anonymous> (wasm://wasm/0267bb86:1:5569808) {
+  length: 107,
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'namespace.c',
+  line: '639',
+  routine: 'RangeVarGetRelidExtended',
+  query: 'ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS dpr_conversion_factor real',
+  params: [],
+  queryOptions: {
+    rowMode: 'object',
+    parsers: {
+      '1082': [Function: 1082],
+      '1114': [Function: 1114],
+      '1184': [Function: 1184],
+      '1186': [Function: 1186]
+    }
+  }
+}
+
+stdout | tests/purchaseOrderPartC.test.ts > optional PO lifecycle with isolated PostgreSQL fixture > A: an order is recorded without raising a PO, for bulk and stores
+Seeding database with example DPR...
+Seeding plant master data...
+Seeding planning equipment & labour type masters...
+SNL: version mismatch (have "null", want "v4-sdb-multi-sector"), re-seeding in-memory items...
+
+stderr | tests/purchaseOrderPartC.test.ts > optional PO lifecycle with isolated PostgreSQL fixture > A: an order is recorded without raising a PO, for bulk and stores
+seedSnlItems failed: TypeError: Cannot read properties of undefined (reading 'code')
+    at seedSnlItems (/home/runner/workspace/server/routes.ts:22529:92)
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+
+stdout | tests/purchaseOrderPartC.test.ts > optional PO lifecycle with isolated PostgreSQL fixture > A: an order is recorded without raising a PO, for bulk and stores
+Startup: Fix null contractor labels - updated: undefined
+
+stdout | tests/purchaseOrderPartC.test.ts > optional PO lifecycle with isolated PostgreSQL fixture > A: an order is recorded without raising a PO, for bulk and stores
+Startup: Fix bad stock balance entries - fixed: undefined rows
+
+stdout | tests/purchaseOrderPartC.test.ts > optional PO lifecycle with isolated PostgreSQL fixture > A: an order is recorded without raising a PO, for bulk and stores
+Plant master data seeded successfully
+
+stdout | tests/purchaseOrderPartC.test.ts > optional PO lifecycle with isolated PostgreSQL fixture > A: an order is recorded without raising a PO, for bulk and stores
+Planning masters seeded: 19 equipment types, 14 labour types
+
+stderr | tests/purchaseOrderPartC.test.ts > optional PO lifecycle with isolated PostgreSQL fixture > A: an order is recorded without raising a PO, for bulk and stores
+POST /api/purchase-indents/:id/purchaser-action: Error: [vitest] No "assertEditEither" export is defined on the "../server/auth-routes" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///home/runner/workspace/node_modules/vitest/dist/chunks/startVitestModuleRunner.bRl2_oI_.js:62:17)
+    at Object.get (file:///home/runner/workspace/node_modules/vitest/dist/chunks/startVitestModuleRunner.bRl2_oI_.js:324:16)
+    at /home/runner/workspace/server/routes.ts:10215:12
+    at Layer.handle [as handle_request] (/home/runner/workspace/node_modules/express/lib/router/layer.js:95:5)
+    at next (/home/runner/workspace/node_modules/express/lib/router/route.js:149:13)
+    at Route.dispatch (/home/runner/workspace/node_modules/express/lib/router/route.js:119:3)
+    at Layer.handle [as handle_request] (/home/runner/workspace/node_modules/express/lib/router/layer.js:95:5)
+    at /home/runner/workspace/node_modules/express/lib/router/index.js:284:15
+    at param (/home/runner/workspace/node_modules/express/lib/router/index.js:365:14)
+    at param (/home/runner/workspace/node_modules/express/lib/router/index.js:376:14) {
+  codeFrame: 'vi.mock(import("../server/auth-routes"), async (importOriginal) => {\n' +
+    '  const actual = await importOriginal()\n' +
+    '  return {\n' +
+    '    ...actual,\n' +
+    '    // your mocked methods\n' +
+    '  }\n' +
+    '})'
+}
+
+stderr | tests/purchaseOrderPartC.test.ts > optional PO lifecycle with isolated PostgreSQL fixture > denies unauthenticated, no-create, no-view, and out-of-site calls
+Purchase Order request failed: TypeError: Cannot read properties of null (reading 'id')
+    at /home/runner/workspace/server/routes.ts:9046:39
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+
+ ❯ tests/purchaseOrderPartC.test.ts (9 tests | 5 failed) 10067ms
+     × A: an order is recorded without raising a PO, for bulk and stores 184ms
+     × B-G: material snapshot, lock, approver, approved PDF and role access 28ms
+     × B-G: stores snapshot, lock, approver, approved PDF and role access 17ms
+     × reject permits re-raise; only one active PO even on concurrent requests 174ms
+     × denies unauthenticated, no-create, no-view, and out-of-site calls 27ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 14 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/mat01MaterialsReceivedQueries.test.ts > MAT-01 Materials Received database queries > executes the received query with source-or-transporter matching and returns the source field
+error: column "supplier_vendor_id" does not exist
+ ❯ pe.Ue node_modules/@electric-sql/pg-protocol/src/parser.ts:433:47
+ ❯ pe.tt node_modules/@electric-sql/pg-protocol/src/parser.ts:218:8
+ ❯ pe.parse node_modules/@electric-sql/pg-protocol/src/parser.ts:99:38
+ ❯ N.qe node_modules/@electric-sql/pglite/src/pglite.ts:753:25
+ ❯ node_modules/@electric-sql/pglite/src/pglite.ts:706:13
+ ❯ null.<anonymous> wasm:/wasm/0267bb86:1:5921938
+ ❯ null.<anonymous> wasm:/wasm/0267bb86:1:2615982
+ ❯ null.<anonymous> wasm:/wasm/0267bb86:1:2648468
+ ❯ null.<anonymous> wasm:/wasm/0267bb86:1:2649072
+ ❯ null.<anonymous> wasm:/wasm/0267bb86:1:5569808
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/14]⎯
+
+ FAIL  tests/purchaseOrderPartC.test.ts > optional PO lifecycle with isolated PostgreSQL fixture > A: an order is recorded without raising a PO, for bulk and stores
+AssertionError: expected 500 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 500
+
+ ❯ tests/purchaseOrderPartC.test.ts:90:217
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/14]⎯
+
+ FAIL  tests/purchaseOrderPartC.test.ts > optional PO lifecycle with isolated PostgreSQL fixture > B-G: material snapshot, lock, approver, approved PDF and role access
+ FAIL  tests/purchaseOrderPartC.test.ts > optional PO lifecycle with isolated PostgreSQL fixture > B-G: stores snapshot, lock, approver, approved PDF and role access
+AssertionError: expected 403 to be 409 // Object.is equality
+
+- Expected
++ Received
+
+- 409
++ 403
+
+ ❯ tests/purchaseOrderPartC.test.ts:97:60
+     95|   it.each(["material", "stores"])("B-G: %s snapshot, lock, approver, a…
+     96|     fx.indent.piType = type;
+     97|     expect((await request(app).get(`${base}.pdf`)).status).toBe(409);
+       |                                                            ^
+     98|     const created = await request(app).post(base).send(draft);
+     99|     expect(created.status).toBe(201);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/14]⎯
+
+ FAIL  tests/purchaseOrderPartC.test.ts > optional PO lifecycle with isolated PostgreSQL fixture > reject permits re-raise; only one active PO even on concurrent requests
+AssertionError: expected 403 to be 409 // Object.is equality
+
+- Expected
++ Received
+
+- 409
++ 403
+
+ ❯ tests/purchaseOrderPartC.test.ts:144:60
+    142|     fx.user = { id: 8, isAdmin: false, isOwner: false }; fx.permission…
+    143|     expect((await request(app).post(`${base}/decision`).send({ action:…
+    144|     expect((await request(app).get(`${base}.pdf`)).status).toBe(409);
+       |                                                            ^
+    145|     fx.user = { id: 7, isAdmin: false, isOwner: false };
+    146|     expect((await request(app).post(base).send(draft)).status).toBe(20…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/14]⎯
+
+ FAIL  tests/purchaseOrderPartC.test.ts > optional PO lifecycle with isolated PostgreSQL fixture > denies unauthenticated, no-create, no-view, and out-of-site calls
+AssertionError: expected 500 to be 401 // Object.is equality
+
+- Expected
++ Received
+
+- 401
++ 500
+
+ ❯ tests/purchaseOrderPartC.test.ts:165:64
+    163|   it("denies unauthenticated, no-create, no-view, and out-of-site call…
+    164|     fx.user = null;
+    165|     expect((await request(app).post(base).send(draft)).status).toBe(40…
+       |                                                                ^
+    166|     fx.user = { id: 7, isAdmin: false, isOwner: false }; fx.permission…
+    167|     expect((await request(app).post(base).send(draft)).status).toBe(40…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/14]⎯
+
+ FAIL  tests/vehicleSupplierAssociationPostgres.integration.test.ts > vehicle supplier association PostgreSQL transactions > VB24: commits all 114 Soil trips over 15–22 September (direct SQL evidence)
+AssertionError: expected 500 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 500
+
+ ❯ tests/vehicleSupplierAssociationPostgres.integration.test.ts:214:27
+    212|       dateFrom: "2026-09-15", dateTo: "2026-09-22",
+    213|     });
+    214|     expect(listed.status).toBe(200);
+       |                           ^
+    215|     expect(listed.body).toHaveLength(114);
+    216|     expect(listed.body.every((row: any) => row.materialSourceSupplier …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/14]⎯
+
+ FAIL  tests/vehicleSupplierAssociationPostgres.integration.test.ts > vehicle supplier association PostgreSQL transactions > VB24: preserves edit/site restrictions and exposes case-mismatched permitted names as zero, not success
+AssertionError: expected 500 to be 403 // Object.is equality
+
+- Expected
++ Received
+
+- 403
++ 500
+
+ ❯ tests/vehicleSupplierAssociationPostgres.integration.test.ts:265:120
+    263|     authState.admin = false;
+    264|     expect((await request(app).post("/api/site-material-trips/material…
+    265|     expect((await request(app).patch("/api/site-material-trips/3").sen…
+       |                                                                                                                        ^
+    266|     const result = await request(app).post("/api/site-material-trips/m…
+    267|     expect(result.body.updatedCount).toBe(1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/14]⎯
+
+ FAIL  tests/vehicleSupplierAssociationPostgres.integration.test.ts > vehicle supplier association PostgreSQL transactions > VB24: fill blanks, per-trip history, single edit and clear, and single audit rollback
+AssertionError: expected 500 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 500
+
+ ❯ tests/vehicleSupplierAssociationPostgres.integration.test.ts:288:27
+    286|     for (const value of ["EDITED", ""]) {
+    287|       const edit = await request(app).patch("/api/site-material-trips/…
+    288|       expect(edit.status).toBe(200);
+       |                           ^
+    289|       expect(edit.body.materialSourceSupplier).toBe(value || null);
+    290|       expect((await testPool!.query(`SELECT material_source_supplier F…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/14]⎯
+
+ FAIL  tests/vehicleSupplierAssociationPostgres.integration.test.ts > vehicle supplier association PostgreSQL transactions > serializes two concurrent DatabaseStorage creates on real pooled connections
+error: column "supplier_vendor_id" of relation "site_material_trips" does not exist
+ ❯ node_modules/pg/lib/client.js:545:17
+ ❯ node_modules/src/node-postgres/session.ts:104:18
+ ❯ DatabaseStorage._mutatePiDeliverySourceWithinTx server/storage.ts:2575:20
+    2573|       if (before && (kind === "receipt" || before.indentItemId === ite…
+    2574|     }
+    2575|     const result = await mutate();
+       |                    ^
+    2576|     // Insert callers return their inserted row; updates/deletes reloa…
+    2577|     const [after] = id == null ? [Array.isArray(result) ? result[0] : …
+ ❯ server/storage.ts:12714:28
+ ❯ NodePgSession.transaction node_modules/src/node-postgres/session.ts:193:18
+ ❯ DatabaseStorage.createSiteMaterialTrip server/storage.ts:12688:20
+ ❯ tests/vehicleSupplierAssociationPostgres.integration.test.ts:309:37
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/14]⎯
+
+ FAIL  tests/vehicleSupplierAssociationPostgres.integration.test.ts > vehicle supplier association PostgreSQL transactions > pins an old pair through an ordinary edit and keeps complete-history conflict
+error: column "supplier_vendor_id" of relation "site_material_trips" does not exist
+ ❯ node_modules/pg/lib/client.js:545:17
+ ❯ node_modules/src/node-postgres/session.ts:104:18
+ ❯ DatabaseStorage._mutatePiDeliverySourceWithinTx server/storage.ts:2575:20
+    2573|       if (before && (kind === "receipt" || before.indentItemId === ite…
+    2574|     }
+    2575|     const result = await mutate();
+       |                    ^
+    2576|     // Insert callers return their inserted row; updates/deletes reloa…
+    2577|     const [after] = id == null ? [Array.isArray(result) ? result[0] : …
+ ❯ server/storage.ts:12714:28
+ ❯ NodePgSession.transaction node_modules/src/node-postgres/session.ts:193:18
+ ❯ DatabaseStorage.createSiteMaterialTrip server/storage.ts:12688:20
+ ❯ tests/vehicleSupplierAssociationPostgres.integration.test.ts:355:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/14]⎯
+
+ FAIL  tests/vendorBillHireIntegration07c.test.ts > 07C vendor-bill hire transaction wiring > keeps source-qualified auto evidence read-only and visibly marked as auto
+AssertionError: expected [ …(4) ] to have a length of 3 but got 4
+
+- Expected
++ Received
+
+- 3
++ 4
+
+ ❯ tests/vendorBillHireIntegration07c.test.ts:78:70
+     76|   it("keeps source-qualified auto evidence read-only and visibly marke…
+     77|     expect(client).toContain('const isAutoLineSource = (source: string…
+     78|     expect(client.match(/isGeneratedEvidenceLine\(item\.source\)/g)).t…
+       |                                                                      ^
+     79|     expect(client).toContain("isAutoLineSource(item.source) ? \"AUTO\"…
+     80|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/14]⎯
+
+ FAIL  tests/vendorBillsEquipmentHire07b.test.tsx > VB-11 grouped ordinary activity pull > Test A/B/C: groups mixed activity, pulls equipment only, then adds one material group without disturbing it
+AssertionError: expected '' to be '250' // Object.is equality
+
+- Expected
++ Received
+
+- 250
+
+ ❯ tests/vendorBillsEquipmentHire07b.test.tsx:398:86
+    396|     expect(screen.getByTestId(groupRowId(vb11GroupIds.soil)).textConte…
+    397|     expect(screen.getByTestId("badge-billed-1")).toBeTruthy();
+    398|     expect((screen.getAllByTestId(/input-item-rate-/)[0] as HTMLInputE…
+       |                                                                                      ^
+    399|     expect(screen.queryByTestId("input-item-desc-0")).toBeNull();
+    400|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/14]⎯
+
+ FAIL  tests/vendorBillsEquipmentHire07b.test.tsx > VB-11 grouped ordinary activity pull > Test D/E/F: Pull All applies rates and duplicate flags, clears the blank row, and retains Added groups
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/vendorBillsEquipmentHire07b.test.tsx:444:125
+    442|     await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/…
+    443|     expect(screen.queryByTestId("input-item-desc-0")).toBeNull();
+    444|     expect(screen.getAllByTestId(/input-item-rate-/).slice(0, 2).every…
+       |                                                                                                                             ^
+    445|     expect(screen.getByTestId("badge-billed-2")).toBeTruthy();
+    446|     Object.values(vb11GroupIds).forEach(id => expect(screen.getByTestI…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/14]⎯
+
+
+ Test Files  5 failed | 246 passed | 1 skipped (252)
+      Tests  14 failed | 3734 passed | 1 skipped (3749)
+   Start at  12:50:18
+   Duration  103.99s (transform 21.72s, setup 0ms, import 90.32s, tests 134.43s, environment 36.25s)
+

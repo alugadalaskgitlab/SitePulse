@@ -3195,3 +3195,45 @@ mtime_ms = 1790338636392
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/470f0983-67d6-4135-8917-3d883984aed4/211de8e6-4499-4725-9031-5ac4d5695cb3"
 storage_version_token = "1790338696388887"
 content_type = "image/png"
+
+[[outputs]]
+id = "4L9CaDUlCMev9o0L3uya1"
+uri = "file://reports/perm01/part-b-full-suite-console.txt"
+type = "text"
+title = "Full npm test console output"
+description = "Plain-text evidence from the actual test run or read-only saved-permissions comparison; not a generated screenshot."
+logical_id = "8e979b88-dde1-476a-b936-5d7d9a515bea"
+content_hash = "sha256:b33196d5fa9c367e1c19791c1d0c97c40cb65fafa96be9d7f0225209751d4c50"
+size = 33883
+mtime_ms = 1790340739790
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8e979b88-dde1-476a-b936-5d7d9a515bea/b114b743-6754-442d-9268-fc23fa21f7f8"
+storage_version_token = "1790340776899028"
+content_type = "text/plain"
+
+[[outputs]]
+id = "NkSDF92RJO48bi__T28M5"
+uri = "file://reports/perm01/part-b-focused-console.txt"
+type = "text"
+title = "Focused Part B test console output"
+description = "Plain-text evidence from the actual test run or read-only saved-permissions comparison; not a generated screenshot."
+logical_id = "441c8b32-0b84-4cd9-b8d4-b4031fcdf714"
+content_hash = "sha256:d7033c4510116b32b32f23438764469df143a9cb6cdf290d880952cfd4d8a6f5"
+size = 210
+mtime_ms = 1790340739793
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/441c8b32-0b84-4cd9-b8d4-b4031fcdf714/5e36c430-3545-4661-94b6-edc8353dafe1"
+storage_version_token = "1790340778751650"
+content_type = "text/plain"
+
+[[outputs]]
+id = "dxWmxDNxGZ-CFPPHpxJTC"
+uri = "file://reports/perm01/part-b-evidence.txt"
+type = "text"
+title = "Actual-user per-action permission comparison"
+description = "Plain-text evidence from the actual test run or read-only saved-permissions comparison; not a generated screenshot."
+logical_id = "b855c5d0-b496-4830-b823-41a45209f4fb"
+content_hash = "sha256:1c4beb07f1c70e818752c26cfe6f4f76efd1ed6f6014f97ef494d1a8df0c000b"
+size = 8397
+mtime_ms = 1790340639506
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b855c5d0-b496-4830-b823-41a45209f4fb/7ace2cee-7703-4f03-8b06-378756841008"
+storage_version_token = "1790340780128583"
+content_type = "text/plain"

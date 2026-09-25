@@ -383,7 +383,7 @@ function AuthedShell() {
           <Route path="/admin/devices" component={gated(DeviceApproval, "device_approval")} />
           <Route path="/admin/reports" component={gatedEither(AdminReports, "report_management", "reports")} />
           <Route path="/admin/management-report" component={gatedEither(ManagementReport, "report_management", "reports", "admin_settings")} />
-          <Route path="/admin/concrete-estimates" component={gatedEither(ConcreteEstimates, "concrete_calculator", "concrete_estimates_manage", "reports")} />
+          <Route path="/admin/concrete-estimates" component={gatedEither(ConcreteEstimates, "concrete_calculator", "concrete_estimates_manage", "reports", "admin_settings")} />
 
           {/* Masters */}
           <Route path="/masters/vendors" component={gated(VendorMaster, "master_parties")} />

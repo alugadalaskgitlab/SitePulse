@@ -1,0 +1,53 @@
+PERM-01 B — real-user per-action comparison (no business operations)
+Pinned pre-B source commit ce8212da79907ffbde97a49827d668b5edaef486; current working-tree sources. Same CURRENT saved permissions evaluated under both code paths; NOT a historical user-permission snapshot.
+Server: before = bypass OR legacy same-action; after = before OR granular same-action.
+Client: before/after = bypass OR visibility of each source-verified entry key.
+HTTP tests: 15/15 mocked-storage handlers passed.
+
+Administrator [admin=true, owner=false]: 14/14 before -> 14/14 after; losses=0
+  POST /api/sites [create]: legacy admin_settings=true, granular sites_plants_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  PATCH /api/sites/:id [edit]: legacy admin_settings=true, granular sites_plants_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  POST /api/sites/seed [create]: legacy admin_settings=true, granular sites_plants_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  POST /api/plant [create]: legacy admin_settings=true, granular sites_plants_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  PATCH /api/plant/:id [edit]: legacy admin_settings=true, granular sites_plants_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  POST /api/notifications [create]: legacy admin_settings=true, granular admin_notifications_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  POST /api/vendor-aliases [create]: legacy admin_settings=true, granular vendor_masters_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  POST /api/vendor-rate-cards [create]: legacy admin_settings=true, granular vendor_masters_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  POST /api/vendor-rate-cards/bulk-upsert [create]: legacy admin_settings=true, granular vendor_masters_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  POST /api/concrete-estimates [create]: legacy admin_settings=true, granular concrete_estimates_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  PATCH /api/concrete-estimates/:id [edit]: legacy admin_settings=true, granular concrete_estimates_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  POST /api/concrete/v2/estimates [create]: legacy admin_settings=true, granular concrete_estimates_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  PATCH /api/concrete/v2/estimates/:id [edit]: legacy admin_settings=true, granular concrete_estimates_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  CLIENT /admin/concrete-estimates [entry]: legacy admin_settings=true, granular concrete_estimates_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+
+Sunil Kumar [admin=true, owner=false]: 14/14 before -> 14/14 after; losses=0
+  POST /api/sites [create]: legacy admin_settings=true, granular sites_plants_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  PATCH /api/sites/:id [edit]: legacy admin_settings=true, granular sites_plants_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  POST /api/sites/seed [create]: legacy admin_settings=true, granular sites_plants_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  POST /api/plant [create]: legacy admin_settings=true, granular sites_plants_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  PATCH /api/plant/:id [edit]: legacy admin_settings=true, granular sites_plants_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  POST /api/notifications [create]: legacy admin_settings=true, granular admin_notifications_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  POST /api/vendor-aliases [create]: legacy admin_settings=true, granular vendor_masters_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  POST /api/vendor-rate-cards [create]: legacy admin_settings=true, granular vendor_masters_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  POST /api/vendor-rate-cards/bulk-upsert [create]: legacy admin_settings=true, granular vendor_masters_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  POST /api/concrete-estimates [create]: legacy admin_settings=true, granular concrete_estimates_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  PATCH /api/concrete-estimates/:id [edit]: legacy admin_settings=true, granular concrete_estimates_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  POST /api/concrete/v2/estimates [create]: legacy admin_settings=true, granular concrete_estimates_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  PATCH /api/concrete/v2/estimates/:id [edit]: legacy admin_settings=true, granular concrete_estimates_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+  CLIENT /admin/concrete-estimates [entry]: legacy admin_settings=true, granular concrete_estimates_manage=false, bypass=true, before=true, after=true; admin/owner bypass before and after
+
+K V Babu [admin=false, owner=false]: 14/14 before -> 14/14 after; losses=0
+  POST /api/sites [create]: legacy admin_settings=true, granular sites_plants_manage=false, bypass=false, before=true, after=true; admin_settings.create grants both versions
+  PATCH /api/sites/:id [edit]: legacy admin_settings=true, granular sites_plants_manage=false, bypass=false, before=true, after=true; admin_settings.edit grants both versions
+  POST /api/sites/seed [create]: legacy admin_settings=true, granular sites_plants_manage=false, bypass=false, before=true, after=true; admin_settings.create grants both versions
+  POST /api/plant [create]: legacy admin_settings=true, granular sites_plants_manage=false, bypass=false, before=true, after=true; admin_settings.create grants both versions
+  PATCH /api/plant/:id [edit]: legacy admin_settings=true, granular sites_plants_manage=false, bypass=false, before=true, after=true; admin_settings.edit grants both versions
+  POST /api/notifications [create]: legacy admin_settings=true, granular admin_notifications_manage=false, bypass=false, before=true, after=true; admin_settings.create grants both versions
+  POST /api/vendor-aliases [create]: legacy admin_settings=true, granular vendor_masters_manage=false, bypass=false, before=true, after=true; admin_settings.create grants both versions
+  POST /api/vendor-rate-cards [create]: legacy admin_settings=true, granular vendor_masters_manage=false, bypass=false, before=true, after=true; admin_settings.create grants both versions
+  POST /api/vendor-rate-cards/bulk-upsert [create]: legacy admin_settings=true, granular vendor_masters_manage=false, bypass=false, before=true, after=true; admin_settings.create grants both versions
+  POST /api/concrete-estimates [create]: legacy admin_settings=true, granular concrete_estimates_manage=false, bypass=false, before=true, after=true; admin_settings.create grants both versions
+  PATCH /api/concrete-estimates/:id [edit]: legacy admin_settings=true, granular concrete_estimates_manage=false, bypass=false, before=true, after=true; admin_settings.edit grants both versions
+  POST /api/concrete/v2/estimates [create]: legacy admin_settings=true, granular concrete_estimates_manage=false, bypass=false, before=true, after=true; admin_settings.create grants both versions
+  PATCH /api/concrete/v2/estimates/:id [edit]: legacy admin_settings=true, granular concrete_estimates_manage=false, bypass=false, before=true, after=true; admin_settings.edit grants both versions
+  CLIENT /admin/concrete-estimates [entry]: legacy admin_settings=true, granular concrete_estimates_manage=false, bypass=false, before=true, after=true; pre-existing entry gate (concrete_calculator, reports) grants both versions
