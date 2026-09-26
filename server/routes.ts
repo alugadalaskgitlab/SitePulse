@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import type { Server } from "http";
 import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, InvalidDieselPhysicalStockError, InvalidStockTransferQuantityError, InvalidDieselSourceError, DieselReceiptExceedsRemainingError, InvalidLinkedDieselRequirementError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError, InitialScopeCorrectionBlockedError, ScopeChangedDuringPlanningError, DprProjectMismatchError, PushSubscriptionOwnershipError, PurchaseIndentRouteCorrectionConflictError, assertValidDieselPhysicalStock } from "./storage";
+import { buildEquipmentComparison } from "./dieselComparisonEquipment";
 import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection, classifyBoqItem, getSectorMultiplier } from "./snlAutoMapper";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -10506,10 +10507,12 @@ export async function registerRoutes(
       if (!assertDieselOrStoresView(req, res)) return;
       const dateFrom = req.query.dateFrom as string | undefined;
       const dateTo = req.query.dateTo as string | undefined;
-      if (!dateFrom || !dateTo) {
-        return res.status(400).json({ message: "dateFrom and dateTo are required" });
+      const validDate = (d: string | undefined) => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) && new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d;
+      const scopeDate = req.query.scopeDate as string | undefined;
+      if (!validDate(dateFrom) || !validDate(dateTo) || dateFrom! > dateTo! || (scopeDate != null && (!validDate(scopeDate) || scopeDate < dateFrom! || scopeDate > dateTo!))) {
+        return res.status(400).json({ message: "Valid dateFrom/dateTo (and optional scopeDate within range) are required" });
       }
-      const rawRows = await storage.getDieselComparisonReport(dateFrom, dateTo);
+      const rawRows = await storage.getDieselComparisonReport(dateFrom!, dateTo!);
       const dateWise = rawRows.map((row: any) => ({
         date: row.date,
         planned: row.totalPlanned,
@@ -10521,7 +10524,9 @@ export async function registerRoutes(
         totalPurchased: dateWise.reduce((s: number, r: any) => s + (r.purchased || 0), 0),
         totalActual: dateWise.reduce((s: number, r: any) => s + (r.actual || 0), 0),
       };
-      res.json({ dateWise, totals, equipmentWise: [] });
+      const sources = await storage.getDieselComparisonEquipmentSources(dateFrom!, dateTo!);
+      const equipmentWise = buildEquipmentComparison({ ...sources, dateWise }, scopeDate || dateFrom!, scopeDate || dateTo!);
+      res.json({ dateWise, totals, equipmentWise });
     } catch (err) {
       console.error("Error fetching diesel comparison report:", err);
       res.status(500).json({ message: "Failed to fetch diesel comparison report" });

@@ -26,6 +26,8 @@ import { AttachmentUploader } from "@/components/AttachmentUploader";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
 import type { Attachment } from "@shared/schema";
 import { computeEquipmentUsage } from "@shared/equipmentUsage";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import * as XLSX from "xlsx";
 
 let nextDieselFormRowId = 1;
 
@@ -547,6 +549,7 @@ export default function DieselRequirements() {
   const [reportDateFrom, setReportDateFrom] = useState("");
   const [reportDateTo, setReportDateTo] = useState("");
   const [reportGenerated, setReportGenerated] = useState(false);
+  const [drillDate, setDrillDate] = useState<string | null>(null);
 
   const buildQueryString = () => {
     const params = new URLSearchParams();
@@ -631,6 +634,48 @@ export default function DieselRequirements() {
     queryKey: ["/api/diesel-requirements/comparison?dateFrom=" + reportDateFrom + "&dateTo=" + reportDateTo],
     enabled: reportGenerated && !!reportDateFrom && !!reportDateTo,
   });
+  const { data: datedBreakdown, isLoading: breakdownLoading, isError: breakdownError } = useQuery<any>({
+    queryKey: ["/api/diesel-requirements/comparison?dateFrom=" + reportDateFrom + "&dateTo=" + reportDateTo + "&scopeDate=" + drillDate],
+    enabled: reportGenerated && !!drillDate && !!comparisonReport,
+  });
+  const exportComparison = (includeBreakdown: boolean) => {
+    if (!comparisonReport) return;
+    const wb = XLSX.utils.book_new();
+    const dateRows = (comparisonReport.dateWise || []).map((r: any) => ({
+      Date: r.date, "Planned (L)": r.planned, "Purchased (L)": r.purchased,
+      "Actual Issued (L)": r.actual,
+      "Planned vs Purchased (L)": r.purchased - r.planned,
+      "Purchased vs Issued (L)": r.purchased - r.actual,
+      "Planned vs Actual Issued (L)": r.planned - r.actual,
+    }));
+    dateRows.push({
+      Date: "TOTAL", "Planned (L)": comparisonReport.totals.totalPlanned,
+      "Purchased (L)": comparisonReport.totals.totalPurchased,
+      "Actual Issued (L)": comparisonReport.totals.totalActual,
+      "Planned vs Purchased (L)": comparisonReport.totals.totalPurchased - comparisonReport.totals.totalPlanned,
+      "Purchased vs Issued (L)": comparisonReport.totals.totalPurchased - comparisonReport.totals.totalActual,
+      "Planned vs Actual Issued (L)": comparisonReport.totals.totalPlanned - comparisonReport.totals.totalActual,
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dateRows), "Date-wise");
+    if (includeBreakdown) {
+      const rows = drillDate ? datedBreakdown?.equipmentWise : comparisonReport.equipmentWise;
+      if (!rows) return;
+      const scope = drillDate ? `Date ${drillDate}` : `Range ${reportDateFrom} to ${reportDateTo}`;
+      const sheet = XLSX.utils.aoa_to_sheet([
+        ["Scope", scope],
+        ["Attribution", "Only single-machine requirement purchases attributed; multiple-machine/header purchases remain unattributed. Names matched only when unique; IDs take priority."],
+        ["Gap threshold", "Only attributable equipment: Purchased - Issued > max(5 L, 10% of Purchased); informational only."],
+      ]);
+      XLSX.utils.sheet_add_json(sheet, rows.map((r: any) => ({
+        Equipment: r.equipmentName, "Equipment ID": r.equipmentId ?? "",
+        Attribution: r.attribution, "Planned (L)": r.planned, "Purchased (L)": r.purchased,
+        "Actual Issued (L)": r.actual, "Planned minus Actual (L)": r.planned - r.actual,
+        "Purchased not issued flag": r.gapFlag ? "YES" : "",
+      })), { origin: "A5" });
+      XLSX.utils.book_append_sheet(wb, sheet, "Equipment breakdown");
+    }
+    XLSX.writeFile(wb, `diesel-comparison-${reportDateFrom}-${reportDateTo}.xlsx`);
+  };
 
   const createMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/diesel-requirements", data),
@@ -2033,18 +2078,18 @@ export default function DieselRequirements() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <Label className="text-sm">DATE FROM</Label>
-                  <Input type="date" value={reportDateFrom} onChange={(e) => { setReportDateFrom(e.target.value); setReportGenerated(false); }} data-testid="input-report-date-from" />
+                  <Input type="date" value={reportDateFrom} onChange={(e) => { setReportDateFrom(e.target.value); setReportGenerated(false); setDrillDate(null); }} data-testid="input-report-date-from" />
                 </div>
                 <div>
                   <Label className="text-sm">DATE TO</Label>
-                  <Input type="date" value={reportDateTo} onChange={(e) => { setReportDateTo(e.target.value); setReportGenerated(false); }} data-testid="input-report-date-to" />
+                  <Input type="date" value={reportDateTo} onChange={(e) => { setReportDateTo(e.target.value); setReportGenerated(false); setDrillDate(null); }} data-testid="input-report-date-to" />
                 </div>
                 <div className="flex items-end">
                   <Button
                     variant="outline"
                     className="w-full"
                     onClick={() => setReportGenerated(true)}
-                    disabled={!reportDateFrom || !reportDateTo}
+                    disabled={!reportDateFrom || !reportDateTo || reportDateFrom > reportDateTo}
                     data-testid="button-generate-report"
                   >
                     GENERATE REPORT
@@ -2058,6 +2103,9 @@ export default function DieselRequirements() {
             <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 animate-spin" /></div>
           ) : comparisonReport && reportGenerated ? (
             <>
+              <div className="flex justify-end">
+                <Button variant="outline" onClick={() => exportComparison(false)} data-testid="button-export-comparison">EXPORT EXCEL</Button>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <Card data-testid="card-report-planned">
                   <CardContent className="p-4 text-center">
@@ -2077,11 +2125,12 @@ export default function DieselRequirements() {
                     </p>
                   </CardContent>
                 </Card>
-                <Card data-testid="card-report-actual">
+                <Card data-testid="card-report-actual" role="button" tabIndex={0} className="cursor-pointer hover:border-green-500" onClick={() => setDrillDate("")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDrillDate(""); } }}>
                   <CardContent className="p-4 text-center">
                     <p className="text-[12px] font-semibold text-muted-foreground uppercase">TOTAL ACTUAL ISSUED</p>
                     <p className="text-2xl font-bold mt-1 text-green-600">{Math.round(comparisonReport.totals?.totalActual || 0).toLocaleString()} L</p>
                     <p className="text-xs text-muted-foreground">From equipment logs</p>
+                    <p className="text-xs font-semibold">Planned minus Actual: {Math.round((comparisonReport.totals?.totalPlanned || 0) - (comparisonReport.totals?.totalActual || 0))} L · View equipment</p>
                   </CardContent>
                 </Card>
               </div>
@@ -2101,6 +2150,7 @@ export default function DieselRequirements() {
                         <th className="text-right text-[12px] font-bold text-muted-foreground uppercase p-2">ACTUAL ISSUED (L)</th>
                         <th className="text-right text-[12px] font-bold text-muted-foreground uppercase p-2">PLANNED VS PURCHASED</th>
                         <th className="text-right text-[12px] font-bold text-muted-foreground uppercase p-2">PURCHASED VS ISSUED</th>
+                        <th className="text-right text-[12px] font-bold text-muted-foreground uppercase p-2">PLANNED VS ACTUAL ISSUED (L)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2112,13 +2162,14 @@ export default function DieselRequirements() {
                             <td className="p-2 font-semibold">{formatDate(row.date)}</td>
                             <td className="p-2 text-right">{Math.round(row.planned)}</td>
                             <td className="p-2 text-right">{row.purchased != null ? Math.round(row.purchased) : "\u2014"}</td>
-                            <td className="p-2 text-right">{row.actual != null ? Math.round(row.actual) : "\u2014"}</td>
+                            <td className="p-2 text-right"><button type="button" className="text-green-600 underline font-semibold" onClick={() => setDrillDate(row.date)} data-testid={`button-report-actual-${row.date}`}>{row.actual != null ? Math.round(row.actual) : "\u2014"}</button></td>
                             <td className={`p-2 text-right ${pvp == null ? "text-muted-foreground" : pvp >= 0 ? "text-green-600" : "text-red-600"}`}>
                               {pvp == null ? "Pending" : pvp === 0 ? "0 (exact)" : pvp > 0 ? `+${Math.round(pvp)} L` : `${Math.round(pvp)} L`}
                             </td>
                             <td className={`p-2 text-right ${pvi == null ? "text-muted-foreground" : pvi >= 0 ? "text-green-600" : "text-red-600"}`}>
                               {pvi == null ? "\u2014" : pvi === 0 ? "0 (exact)" : pvi > 0 ? `+${Math.round(pvi)} L surplus` : `${Math.round(pvi)} L deficit`}
                             </td>
+                            <td className="p-2 text-right font-semibold">{Math.round(row.planned - (row.actual || 0))} L</td>
                           </tr>
                         );
                       })}
@@ -2136,6 +2187,7 @@ export default function DieselRequirements() {
                           <td className={`p-3 text-right font-bold ${(comparisonReport.totals.totalPurchased - comparisonReport.totals.totalActual) >= 0 ? "text-green-600" : "text-red-600"}`}>
                             {Math.round(comparisonReport.totals.totalPurchased - comparisonReport.totals.totalActual)} L
                           </td>
+                          <td className="p-3 text-right font-bold">{Math.round(comparisonReport.totals.totalPlanned - comparisonReport.totals.totalActual)} L</td>
                         </tr>
                       </tfoot>
                     )}
@@ -2143,41 +2195,49 @@ export default function DieselRequirements() {
                 </CardContent>
               </Card>
 
-              {comparisonReport.equipmentWise && comparisonReport.equipmentWise.length > 0 && (
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between gap-2">
-                    <CardTitle className="text-base">EQUIPMENT-WISE DIESEL BREAKDOWN</CardTitle>
-                    <p className="text-xs text-muted-foreground">Aggregated for the selected period</p>
-                  </CardHeader>
-                  <CardContent className="p-0 overflow-x-auto">
-                    <table className="w-full text-sm" data-testid="table-report-equipment">
-                      <thead>
-                        <tr className="border-b">
-                          <th className="text-left text-[12px] font-bold text-muted-foreground uppercase p-2">EQUIPMENT / DG</th>
-                          <th className="text-right text-[12px] font-bold text-muted-foreground uppercase p-2">PLANNED (L)</th>
-                          <th className="text-right text-[12px] font-bold text-muted-foreground uppercase p-2">ACTUAL ISSUED (L)</th>
-                          <th className="text-right text-[12px] font-bold text-muted-foreground uppercase p-2">VARIANCE</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {comparisonReport.equipmentWise.map((eq: any, i: number) => {
-                          const variance = (eq.actual || 0) - (eq.planned || 0);
-                          return (
-                            <tr key={i} className="border-b last:border-b-0">
-                              <td className="p-2 font-semibold">{eq.equipmentName || eq.name}</td>
-                              <td className="p-2 text-right">{Math.round(eq.planned || 0)}</td>
-                              <td className="p-2 text-right">{Math.round(eq.actual || 0)}</td>
-                              <td className={`p-2 text-right ${variance <= 0 ? "text-green-600" : "text-red-600"}`}>
-                                {variance === 0 ? "0" : variance > 0 ? `+${Math.round(variance)} (used more)` : `${Math.round(variance)} (used less)`}
-                              </td>
+              <Dialog open={drillDate !== null} onOpenChange={(open) => { if (!open) setDrillDate(null); }}>
+                <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto" data-testid="dialog-report-equipment">
+                  <DialogHeader>
+                    <DialogTitle>EQUIPMENT-WISE DIESEL BREAKDOWN</DialogTitle>
+                    <DialogDescription data-testid="text-report-equipment-scope">
+                      {drillDate ? `Single date: ${drillDate}` : `Selected range: ${reportDateFrom} to ${reportDateTo}`}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <p className="text-xs text-muted-foreground">
+                    Purchased is attributed only when a requirement covers one identifiable machine. Multi-machine purchase totals and unidentified records stay in Unattributed / unassigned; they are not divided across machines. IDs take priority; names match only a unique equipment master. Planned minus Actual is positive when issued is below planned.
+                  </p>
+                  <p className="text-xs text-muted-foreground">Informational gap flag: attributable purchased minus issued exceeds max(5 L, 10% of purchased). Timing differences may be normal.</p>
+                  {breakdownLoading && drillDate ? <Loader2 className="animate-spin" /> : breakdownError && drillDate ? (
+                    <p className="text-red-600">Unable to load equipment breakdown.</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm" data-testid="table-report-equipment">
+                        <thead><tr className="border-b">
+                          <th className="p-2 text-left">EQUIPMENT / DG</th>
+                          <th className="p-2 text-right">PLANNED (L)</th>
+                          <th className="p-2 text-right">PURCHASED (L)</th>
+                          <th className="p-2 text-right">ACTUAL ISSUED (L)</th>
+                          <th className="p-2 text-right">PLANNED MINUS ACTUAL (L)</th>
+                          <th className="p-2 text-left">PURCHASE GAP</th>
+                        </tr></thead>
+                        <tbody>
+                          {((drillDate ? datedBreakdown?.equipmentWise : comparisonReport.equipmentWise) || []).map((eq: any, i: number) => (
+                            <tr key={eq.equipmentId ?? `unassigned-${i}`} className={`border-b ${eq.gapFlag ? "bg-amber-50 dark:bg-amber-900/20" : ""}`}>
+                              <td className="p-2 font-semibold">{eq.equipmentName}</td>
+                              <td className="p-2 text-right">{eq.planned}</td>
+                              <td className="p-2 text-right">{eq.purchased}</td>
+                              <td className="p-2 text-right">{eq.actual}</td>
+                              <td className="p-2 text-right">{eq.planned - eq.actual}</td>
+                              <td className="p-2">{eq.gapFlag && <Badge variant="outline" className="text-amber-700">Purchased but not logged as issued</Badge>}</td>
                             </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </CardContent>
-                </Card>
-              )}
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  <Button variant="outline" disabled={!!drillDate && (!datedBreakdown || breakdownLoading || breakdownError)} onClick={() => exportComparison(true)} data-testid="button-export-comparison-equipment">EXPORT REPORT + EQUIPMENT EXCEL</Button>
+                </DialogContent>
+              </Dialog>
             </>
           ) : reportGenerated ? (
             <Card>

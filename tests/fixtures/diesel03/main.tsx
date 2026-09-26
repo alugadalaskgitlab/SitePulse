@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import DieselRequirements from "../../../client/src/pages/DieselRequirements";
+import { buildEquipmentComparison, type ComparisonInput } from "../../../server/dieselComparisonEquipment";
 import { queryClient } from "../../../client/src/lib/queryClient";
 import "../../../client/src/index.css";
 
@@ -191,6 +192,24 @@ window.fetch = async (input, init) => {
   const pathname = requestUrl.pathname;
   const body = init?.body ? JSON.parse(String(init.body)) : undefined;
   fixtureState.requests.push({ method, path: `${pathname}${requestUrl.search}`, ...(body ? { body } : {}) });
+  if (pathname === "/api/diesel-requirements/comparison" && method === "GET") {
+    const from = requestUrl.searchParams.get("dateFrom") || "";
+    const to = requestUrl.searchParams.get("dateTo") || "";
+    const scope = requestUrl.searchParams.get("scopeDate");
+    const valid = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v)) && new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v;
+    if (!valid(from) || !valid(to) || from > to || (scope && (!valid(scope) || scope < from || scope > to))) return json({ message: "Invalid comparison date" }, 400);
+    const sources: ComparisonInput = {
+      masters: [{ id: 1701, name: "Roller", registrationNumber: "R1" }, { id: 1702, name: "Roller", registrationNumber: "R2" }],
+      requirements: [{ id: 1, date: "2026-09-15", totalPlanned: 100, qtyPurchased: 100 }, { id: 2, date: "2026-09-16", totalPlanned: 60, qtyPurchased: 60 }],
+      items: [{ requirementId: 1, equipmentId: 1701, equipmentName: "Roller", plannedQty: 100 }, { requirementId: 2, equipmentId: 1701, equipmentName: "Roller", plannedQty: 30 }, { requirementId: 2, equipmentId: 1702, equipmentName: "Roller", plannedQty: 30 }],
+      usage: [{ date: "2026-09-15", equipmentId: 1701, dieselIssued: 20 }, { date: "2026-09-16", equipmentId: 1702, dieselIssued: 35 }],
+      logs: [{ date: "2026-09-15", equipmentId: 1702, machine: "Roller", diesel: 5 }, { date: "2026-09-16", equipmentId: null, machine: "Roller", diesel: 10 }],
+      dateWise: [{ date: "2026-09-15", planned: 100, purchased: 100, actual: 25 }, { date: "2026-09-16", planned: 60, purchased: 60, actual: 45 }],
+    };
+    const dateWise = sources.dateWise.filter(r => r.date >= from && r.date <= to);
+    const totals = { totalPlanned: dateWise.reduce((n, r) => n + r.planned, 0), totalPurchased: dateWise.reduce((n, r) => n + (r.purchased || 0), 0), totalActual: dateWise.reduce((n, r) => n + (r.actual || 0), 0) };
+    return json({ dateWise, totals, equipmentWise: buildEquipmentComparison({ ...sources, dateWise }, scope || from, scope || to) });
+  }
 
   if ((pathname === "/api/diesel-requirements" || pathname === "/api/diesel-requirements/") && method === "GET") {
     return json(copy(requirements));

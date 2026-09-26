@@ -3391,3 +3391,87 @@ mtime_ms = 1790389866779
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/26297412-331f-42b5-b9a6-18138a1c1f61/a4e805ab-cbed-4ed9-9c25-8d6a057030f5"
 storage_version_token = "1790389968029048"
 content_type = "image/png"
+
+[[outputs]]
+id = "9bEoKb8yUa-aGb4eENwHb"
+uri = "file://tests/fixtures/diesel03/evidence/diesel04-c-A-datewise-range.png"
+type = "image"
+title = "A — Date-wise report and range totals"
+description = "Actual report component with isolated synthetic API data; no live business records changed."
+logical_id = "938fc177-ad19-4595-989e-98ad38f3d5a2"
+content_hash = "sha256:34889ec834dfa0444c1b795cee2d924444d33204eb5806bbcd0b74c4eeca06fc"
+size = 74869
+mtime_ms = 1790396350774
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/938fc177-ad19-4595-989e-98ad38f3d5a2/8fad82d3-15fd-40ce-baad-5a28ff85b43f"
+storage_version_token = "1790396510309204"
+content_type = "image/png"
+
+[[outputs]]
+id = "Ym7HbSCYwT_7mWVisYeJJ"
+uri = "file://tests/fixtures/diesel03/evidence/diesel04-c-B-single-date-gap.png"
+type = "image"
+title = "B — Single-date breakdown and purchase gap"
+description = "Actual report component with isolated synthetic API data; no live business records changed."
+logical_id = "82c43bd7-5afb-451e-a87e-43ee510ce78a"
+content_hash = "sha256:b6b78a41e3038364ca85a203c89d968b95054459ca4a1444dd25062939881ed0"
+size = 85640
+mtime_ms = 1790396351986
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/82c43bd7-5afb-451e-a87e-43ee510ce78a/1e474fa8-d638-48b8-873a-4d996c04e08e"
+storage_version_token = "1790396512009511"
+content_type = "image/png"
+
+[[outputs]]
+id = "n8ot6TUTqqMDKuunocQpg"
+uri = "file://tests/fixtures/diesel03/evidence/diesel04-c-C-range.png"
+type = "image"
+title = "C — Whole-range equipment breakdown"
+description = "Actual report component with isolated synthetic API data; no live business records changed."
+logical_id = "033e1f91-0c16-40ae-8bbf-1f4db1c076c7"
+content_hash = "sha256:e674898300160c0b59c70f5ff2c4a6e8bc9efe4a84a91ccdbeaab321d34a47c5"
+size = 90542
+mtime_ms = 1790396353266
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/033e1f91-0c16-40ae-8bbf-1f4db1c076c7/ad4aec6d-baac-40c9-8338-5a5affc1a663"
+storage_version_token = "1790396513681021"
+content_type = "image/png"
+
+[[outputs]]
+id = "iJdw6bCWVc8X_n1d21wE1"
+uri = "file://tests/fixtures/diesel03/evidence/diesel04-c-D-export-main.png"
+type = "image"
+title = "D — Main-report Excel export"
+description = "Actual report component with isolated synthetic API data; no live business records changed."
+logical_id = "a1eb1db5-867c-4a22-8d23-a5beeeed70b2"
+content_hash = "sha256:34889ec834dfa0444c1b795cee2d924444d33204eb5806bbcd0b74c4eeca06fc"
+size = 74869
+mtime_ms = 1790396351370
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/a1eb1db5-867c-4a22-8d23-a5beeeed70b2/41187214-2ef0-4f78-b8d7-6c66eec66f60"
+storage_version_token = "1790396515333990"
+content_type = "image/png"
+
+[[outputs]]
+id = "weOoiVhU2YDuKEWzSUoc3"
+uri = "file://tests/fixtures/diesel03/evidence/diesel04-c-E-export-range.png"
+type = "image"
+title = "E — Report plus equipment export"
+description = "Actual report component with isolated synthetic API data; no live business records changed."
+logical_id = "b60b820f-e23a-4eb8-b544-78737ad9f219"
+content_hash = "sha256:e674898300160c0b59c70f5ff2c4a6e8bc9efe4a84a91ccdbeaab321d34a47c5"
+size = 90542
+mtime_ms = 1790396353874
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b60b820f-e23a-4eb8-b544-78737ad9f219/95231c04-e637-47fb-813a-a2b38097fe52"
+storage_version_token = "1790396517043763"
+content_type = "image/png"
+
+[[outputs]]
+id = "hQfbwfTdqDXMXjRSMGyfi"
+uri = "file://tests/fixtures/diesel03/evidence/diesel-comparison-2026-09-15-2026-09-16.xlsx"
+type = "table"
+title = "Sample diesel report — Excel export"
+description = "Synthetic test data. Includes full date-wise comparison and range equipment breakdown, attribution notes and gap flags."
+logical_id = "d81e6132-a648-447e-ba78-346982c298f2"
+content_hash = "sha256:31ba7082956b1589faff5a96723f2b21ba3348d8b0c2685833c1cf90c2a0d121"
+size = 19383
+mtime_ms = 1790396353319
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d81e6132-a648-447e-ba78-346982c298f2/6298c6c0-a181-48d8-9aee-e55d360de7a6"
+storage_version_token = "1790396518357058"
+content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

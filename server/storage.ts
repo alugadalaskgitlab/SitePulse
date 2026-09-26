@@ -1538,6 +1538,7 @@ export interface IStorage {
   updateDieselPurchase(id: number, purchaseData: { qtyPurchased?: number; supplier?: string; billNo?: string; rate?: number; amount?: number; purchasedAt?: string; purchaseRemarks?: string }): Promise<DieselRequirementWithItems | undefined>;
   updateDieselPaymentStatus(id: number, data: { paymentStatus?: "paid"; paymentMode?: string; paidBy?: string; paymentAccountKey?: string | null }, actor: string): Promise<DieselRequirementWithItems | undefined>;
   getDieselComparisonReport(dateFrom: string, dateTo: string): Promise<{ date: string; totalPlanned: number; totalApproved: number; totalPurchased: number; totalActualIssued: number }[]>;
+  getDieselComparisonEquipmentSources(dateFrom: string, dateTo: string): Promise<Omit<import("./dieselComparisonEquipment").ComparisonInput, "dateWise">>;
   updateDieselRequirement(id: number, data: CreateDieselRequirementRequest): Promise<DieselRequirementWithItems | undefined>;
   deleteDieselRequirement(id: number): Promise<boolean>;
   getRecentDieselItemIds(limit?: number): Promise<number[]>;
@@ -19148,6 +19149,30 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return result;
+  }
+
+  async getDieselComparisonEquipmentSources(dateFrom: string, dateTo: string): Promise<Omit<import("./dieselComparisonEquipment").ComparisonInput, "dateWise">> {
+    const requirements = await db.select({
+      id: dieselRequirements.id, date: dieselRequirements.date,
+      totalPlanned: dieselRequirements.totalPlanned, qtyPurchased: dieselRequirements.qtyPurchased,
+    }).from(dieselRequirements).where(and(gte(dieselRequirements.date, dateFrom), lte(dieselRequirements.date, dateTo)));
+    const items = requirements.length ? await db.select({
+      requirementId: dieselRequirementItems.requirementId, equipmentId: dieselRequirementItems.equipmentId,
+      equipmentName: dieselRequirementItems.equipmentName, plannedQty: dieselRequirementItems.plannedQty,
+    }).from(dieselRequirementItems).where(inArray(dieselRequirementItems.requirementId, requirements.map(r => r.id))) : [];
+    const masters = await db.select({
+      id: equipmentMaster.id, name: equipmentMaster.name, registrationNumber: equipmentMaster.registrationNumber,
+    }).from(equipmentMaster);
+    const usage = await db.select({
+      date: equipmentUsage.date, equipmentId: equipmentUsage.equipmentId, dieselIssued: equipmentUsage.dieselIssued,
+    }).from(equipmentUsage).where(and(gte(equipmentUsage.date, dateFrom), lte(equipmentUsage.date, dateTo)));
+    const logs = await db.select({
+      date: dprs.date, equipmentId: equipmentLogs.equipmentId, machine: equipmentLogs.machine, diesel: equipmentLogs.diesel,
+    }).from(equipmentLogs).innerJoin(dprs, eq(dprs.id, equipmentLogs.dprId)).where(and(
+      gte(dprs.date, dateFrom), lte(dprs.date, dateTo),
+      or(eq(dprs.isSuperseded, false), isNull(dprs.isSuperseded)),
+    ));
+    return { requirements, items, masters, usage, logs };
   }
 
   async getDieselComparisonReport(dateFrom: string, dateTo: string): Promise<{ date: string; totalPlanned: number; totalApproved: number; totalPurchased: number; totalActualIssued: number }[]> {
