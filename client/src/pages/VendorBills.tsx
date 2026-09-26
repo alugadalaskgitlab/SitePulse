@@ -39,6 +39,7 @@ import {
 import DraftEquipmentHireCalendar, { SavedEquipmentCalendarExport } from "@/components/vendor-bills/DraftEquipmentHireCalendar";
 import HireActivityBreakdownCalendar from "@/components/vendor-bills/HireActivityBreakdownCalendar";
 import { BillDateGroupControls, BillDateGroupRows } from "@/components/vendor-bills/BillDateGroups";
+import RateCards from "@/pages/RateCards";
 
 const formatDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return "-";
@@ -797,6 +798,9 @@ export default function VendorBills() {
   const [aliasCanonical, setAliasCanonical] = useState("");
   const [aliasValue, setAliasValue] = useState("");
   const [showSetRatesDialog, setShowSetRatesDialog] = useState(false);
+  const [showDraftRateCards, setShowDraftRateCards] = useState(false);
+  const draftScrollRef = useRef(0);
+  const pendingRateToastRef = useRef<{ title: string; description?: string } | null>(null);
   const [bulkRates, setBulkRates] = useState<Record<string, BulkRateSelection>>({});
   const [showBulkRateConfirmation, setShowBulkRateConfirmation] = useState(false);
   const unitEditGeneration = useRef(0);
@@ -1948,6 +1952,7 @@ export default function VendorBills() {
       };
     });
     setBulkRates(initialRates);
+    setShowBulkRateConfirmation(false);
     setShowSetRatesDialog(true);
   };
 
@@ -1970,48 +1975,45 @@ export default function VendorBills() {
       const selection = bulkRates[group.key];
       return selection?.targetUnit && isDifferentBillingUnit(selection.targetUnit, group.unit);
     });
-    setLineItems(prev => {
-      const updated = [...prev];
-      for (let i = 0; i < updated.length; i++) {
-        const item = updated[i];
-        if (["hire_group", "hire_statement"].includes(String(item.source || "").toLowerCase())) continue;
-        const key = groupRateItems([item])[0]?.key;
-        if (!key) continue;
-        const rateData = bulkRates[key];
-        if (rateData && rateData.rate > 0) {
-          const convertingUnit = rateData.targetUnit && isDifferentBillingUnit(rateData.targetUnit, item.unit);
-          const newItem = {
-            ...item,
-            ...(convertingUnit ? {
-              unit: rateData.targetUnit,
-              qty: defaultConvertedQuantity(rateData.targetUnit),
-              // Set Rates is itself a reviewed conversion. Retain the
-              // original physical evidence for later inline restoration,
-              // without changing its existing qty/rate/application rules.
-              physicalQuantity: item.physicalQuantity ?? item.qty,
-              physicalUnit: item.physicalUnit ?? item.unit,
-            } : {}),
-            rate: rateData.rate,
-            unitRateWarning: undefined,
-          };
-          if (item.category === "transport" && rateData.leadDistance > 0) {
-            newItem.leadDistance = rateData.leadDistance;
-          }
-          newItem.amount = calcAmount(newItem);
-          updated[i] = newItem;
-          applied++;
+    const updated = [...lineItems];
+    for (let i = 0; i < updated.length; i++) {
+      const item = updated[i];
+      if (["hire_group", "hire_statement"].includes(String(item.source || "").toLowerCase())) continue;
+      const key = groupRateItems([item])[0]?.key;
+      if (!key) continue;
+      const rateData = bulkRates[key];
+      if (rateData && rateData.rate > 0) {
+        const convertingUnit = rateData.targetUnit && isDifferentBillingUnit(rateData.targetUnit, item.unit);
+        const newItem = {
+          ...item,
+          ...(convertingUnit ? {
+            unit: rateData.targetUnit,
+            qty: defaultConvertedQuantity(rateData.targetUnit),
+            // Set Rates is itself a reviewed conversion. Retain the
+            // original physical evidence for later inline restoration,
+            // without changing its existing qty/rate/application rules.
+            physicalQuantity: item.physicalQuantity ?? item.qty,
+            physicalUnit: item.physicalUnit ?? item.unit,
+          } : {}),
+          rate: rateData.rate,
+          unitRateWarning: undefined,
+        };
+        if (item.category === "transport" && rateData.leadDistance > 0) {
+          newItem.leadDistance = rateData.leadDistance;
         }
+        newItem.amount = calcAmount(newItem);
+        updated[i] = newItem;
+        applied++;
       }
-      return updated;
-    });
+    }
+    setLineItems(updated);
     setShowSetRatesDialog(false);
-    setShowBulkRateConfirmation(false);
-    toast({
+    pendingRateToastRef.current = {
       title: hasUnitConversion
         ? `Rates and billing units applied to ${applied} item${applied !== 1 ? "s" : ""}`
         : `Rates applied to ${applied} item${applied !== 1 ? "s" : ""}`,
       description: hasUnitConversion ? "Changes remain in this bill until you save it." : undefined,
-    });
+    };
 
     // Set Rates is a bill-editor operation only. Both rate-only and
     // unit-conversion selections stay in memory; the ordinary Save action
@@ -2605,7 +2607,14 @@ export default function VendorBills() {
 
   if (view === "form") {
     return (
-      <div className="max-w-5xl mx-auto space-y-4 p-4">
+      <>
+      {showDraftRateCards && <RateCards draftVendor={vendorName} onReturnToDraft={() => {
+        setShowDraftRateCards(false);
+        requestAnimationFrame(() => window.scrollTo(0, draftScrollRef.current));
+      }} />}
+      {/* Keep the complete editor subtree mounted, including child-local state,
+          refs and unsaved inputs. No route change or dirty-guard bypass. */}
+      <div className="max-w-5xl mx-auto space-y-4 p-4" hidden={showDraftRateCards}>
         <div className="flex items-center gap-4 flex-wrap">
           <Button variant="ghost" size="icon" onClick={() => { resetForm(); setView("list"); }} data-testid="button-back-form">
             <ChevronLeft className="w-5 h-5" />
@@ -3422,11 +3431,13 @@ export default function VendorBills() {
         {!isHistoricalHireEdit && <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2">
             <div className="flex gap-2 flex-wrap">
-              <Link href={`/plant/rate-cards?vendorName=${encodeURIComponent(vendorName)}`}>
-                <Button variant="outline" size="sm" data-testid="button-manage-rate-cards">
+                <Button variant="outline" size="sm" disabled={!isAdmin && !sectionVisible("rate_cards") && !sectionVisible("vendor_masters_manage") && !sectionVisible("admin_settings")} onClick={() => {
+                  draftScrollRef.current = window.scrollY;
+                  setShowDraftRateCards(true);
+                  window.scrollTo(0, 0);
+                }} data-testid="button-manage-rate-cards">
                   <Settings className="w-4 h-4 mr-1" /> RATE CARDS
                 </Button>
-              </Link>
               {uniqueRateGroups.length > 0 && (
                 <Button variant="outline" size="sm" onClick={openSetRatesDialog} data-testid="button-set-rates">
                   <span className="font-bold mr-1">₹</span> SET RATES
@@ -4109,7 +4120,15 @@ export default function VendorBills() {
         </Card>}
 
         <Dialog open={showSetRatesDialog} onOpenChange={setShowSetRatesDialog}>
-          <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogContent className={`${showBulkRateConfirmation ? "max-w-2xl" : "max-w-lg"} max-h-[80vh] overflow-y-auto`}
+            onCloseAutoFocus={() => {
+              // Radix fires after Presence has removed the closing content,
+              // including its exit animation. Never toast over confirmation.
+              const message = pendingRateToastRef.current;
+              pendingRateToastRef.current = null;
+              if (message) toast(message);
+            }}>
+            {!showBulkRateConfirmation ? <>
             <DialogHeader>
               <DialogTitle>SET RATES</DialogTitle>
             </DialogHeader>
@@ -4212,10 +4231,7 @@ export default function VendorBills() {
                 </Button>
               </div>
             </div>
-          </DialogContent>
-        </Dialog>
-        <Dialog open={showBulkRateConfirmation} onOpenChange={setShowBulkRateConfirmation}>
-          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+            </> : <>
             <DialogHeader>
               <DialogTitle>CONFIRM BILLING UNIT CONVERSION</DialogTitle>
             </DialogHeader>
@@ -4252,9 +4268,11 @@ export default function VendorBills() {
                 </Button>
               </div>
             </div>
+            </>}
           </DialogContent>
         </Dialog>
       </div>
+      </>
     );
   }
 

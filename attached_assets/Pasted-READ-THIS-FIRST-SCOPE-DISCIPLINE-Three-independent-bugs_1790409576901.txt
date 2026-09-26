@@ -1,0 +1,18 @@
+READ THIS FIRST — SCOPE DISCIPLINE
+Three independent bugs, three independent fixes. Do not touch DIESEL-04 Parts D/E/F, DIESEL-05, VENDOR-01/02/03, or PERM-01/02. Do not publish automatically. STOP after this and report back.
+
+PART A — Overlapping modals in Vendor Bill "Set Rates"
+While building a new Vendor Bill (vendor NARASIMHULU, Takkadpally-Sirur site, Aug 2026), after pulling billable items and opening "SET RATES" to change a group's billing unit (CFT→TRIP) and rate, clicking "APPLY RATES" opens a second dialog ("Confirm Billing Unit Conversion") layered ON TOP of the first one instead of replacing it — both dialogs are visible simultaneously, semi-transparent, with overlapping text and two sets of Cancel/Apply buttons at once. A "Rates and billing units applied" success toast then appears while the confirmation dialog is still visibly open behind it. Find the "Set Rates" and "Confirm Billing Unit Conversion" dialog components (Vendor Bill new/edit page, line-items "SET RATES" action) and confirm whether they're two separately-mounted modals that can both be open at once, or one dialog swapping content mid-transition without unmounting cleanly. Fix so only one modal is ever visible at a time, and the toast only appears after the confirmation dialog has fully closed.
+
+PART B — Editing Rate Cards from within a Vendor Bill draft loses the draft
+While filling in a new Vendor Bill (items already pulled, values being edited), opening "RATE CARDS" from within that draft, editing 17 rates, and saving returns you to the Procurement & Billing hub, not back to the in-progress Vendor Bill draft — forcing a restart from scratch with the pulled items lost. Find where "RATE CARDS" is triggered from inside the New/Edit Vendor Bill page and where it navigates after save. Fix so saving Rate Cards from within an in-progress draft returns to that same draft with pulled items/edits intact. If the draft has no ID yet (never saved) and can't be preserved across the round-trip via temporary/session state, at minimum land back on New Vendor Bill with the same vendor/site/period pre-filled rather than the hub — and say so in the report.
+
+PART C — "Loading page..." stuck screen on HMP Operations
+Clicking "HMP Operations" in the sidebar correctly highlights it, but the content area shows only "Loading page..." and stays there instead of loading the dashboard. Reproduce by clicking into HMP Operations from several different starting pages (Dashboard, Stores & Inventory, Procurement & Billing), repeatedly. Check the console/network tab for a failed or slow request, and check whether it correlates with a race condition (navigating here while another page's fetch is still in flight). Fix the root cause if found; if not reproducible, report exactly what was tried rather than guessing at a fix.
+
+TESTS
+A1. Pull items, open Set Rates, change unit/rate, Apply Rates — confirm only one dialog visible at a time, toast appears only after confirmation dialog closes.
+B1. Start a new bill, pull items, edit values, open Rate Cards, save — confirm you land back on the same draft with edits intact (or report exactly what you land on instead).
+C1. Navigate to HMP Operations from 3+ starting pages, several times each — report reproduction rate and fix, or honest non-reproduction.
+
+REPORT BACK: Confirm each part separately with evidence. Note anything else found but not touched. DO NOT START ANOTHER FEATURE after completing this batch.

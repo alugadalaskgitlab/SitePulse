@@ -62,11 +62,11 @@ const getCategoryBadgeClass = (cat: string) => {
   }
 };
 
-export default function RateCards() {
+export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendor?: string; onReturnToDraft?: () => void } = {}) {
   const { toast } = useToast();
   const searchString = useSearch();
   const params = new URLSearchParams(searchString);
-  const preselectedVendor = params.get("vendorName") || "";
+  const preselectedVendor = draftVendor ?? params.get("vendorName") ?? "";
   const _backHref = params.get("returnTo") || "/finance/hub";
 
   // Page-level access enforced by the rate-card/vendor-master/legacy route gate.
@@ -220,6 +220,7 @@ export default function RateCards() {
       queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards/discover", selectedVendor] });
       const savedCount = variables.filter((i: any) => i.rate && i.rate > 0).length;
       toast({ title: `${savedCount} rate(s) saved` });
+      onReturnToDraft?.();
     },
     onError: (err: any) => toast({ title: err.message || "Failed to save rates", variant: "destructive" }),
   });
@@ -586,11 +587,15 @@ export default function RateCards() {
   return (
     <div className="max-w-5xl mx-auto space-y-4 p-4">
       <div className="flex items-center gap-4 flex-wrap">
-        <Link href={_backHref}>
+        {onReturnToDraft ? (
+          <Button variant="ghost" onClick={onReturnToDraft} data-testid="button-back-rate-cards">
+            <ChevronLeft className="w-5 h-5" /> BACK TO BILL
+          </Button>
+        ) : <Link href={_backHref}>
           <Button variant="ghost" size="icon" data-testid="button-back-rate-cards">
             <ChevronLeft className="w-5 h-5" />
           </Button>
-        </Link>
+        </Link>}
         <h1 className="text-xl font-bold" data-testid="text-rate-cards-title">VENDOR RATE CARDS</h1>
       </div>
 

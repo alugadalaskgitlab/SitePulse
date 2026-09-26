@@ -1,0 +1,62 @@
+[
+  {
+    "id": "dashboard-normal-1",
+    "pass": false,
+    "error": "Error: Timeout dashboard-normal-1: !![...document.querySelectorAll('a[href=\"/plant/hub\"]')].find(a=>a.getBoundingClientRect().width>0) && !document.body.innerText.includes(\"Loading page\")"
+  },
+  {
+    "id": "dashboard-normal-2",
+    "pass": false,
+    "error": "Error: Timeout dashboard-normal-2: !![...document.querySelectorAll('a[href=\"/plant/hub\"]')].find(a=>a.getBoundingClientRect().width>0) && !document.body.innerText.includes(\"Loading page\")"
+  },
+  {
+    "id": "dashboard-normal-3",
+    "pass": false,
+    "error": "Error: Timeout dashboard-normal-3: !![...document.querySelectorAll('a[href=\"/plant/hub\"]')].find(a=>a.getBoundingClientRect().width>0) && !document.body.innerText.includes(\"Loading page\")"
+  },
+  {
+    "id": "dashboard-prior-fetch-delayed-1",
+    "pass": false,
+    "error": "Error: Timeout dashboard-prior-fetch-delayed-1: !![...document.querySelectorAll('a[href=\"/plant/hub\"]')].find(a=>a.getBoundingClientRect().width>0) && !document.body.innerText.includes(\"Loading page\")"
+  },
+  {
+    "id": "dashboard-prior-fetch-delayed-2",
+    "pass": false,
+    "error": "Error: Timeout dashboard-prior-fetch-delayed-2: !![...document.querySelectorAll('a[href=\"/plant/hub\"]')].find(a=>a.getBoundingClientRect().width>0) && !document.body.innerText.includes(\"Loading page\")"
+  },
+  {
+    "id": "dashboard-prior-fetch-delayed-3",
+    "pass": false,
+    "error": "Error: Timeout dashboard-prior-fetch-delayed-3: !![...document.querySelectorAll('a[href=\"/plant/hub\"]')].find(a=>a.getBoundingClientRect().width>0) && !document.body.innerText.includes(\"Loading page\")"
+  },
+  {
+    "id": "stores-normal-1",
+    "pass": false,
+    "error": "Error: {\"exceptionId\":1,\"text\":\"Uncaught\",\"lineNumber\":0,\"columnNumber\":122,\"scriptId\":\"95\",\"stackTrace\":{\"callFrames\":[{\"functionName\":\"\",\"scriptId\":\"95\",\"url\":\"\",\"lineNumber\":0,\"columnNumber\":122},{\"functionName\":\"\",\"scriptId\":\"95\",\"url\":\"\",\"lineNumber\":0,\"columnNumber\":189}]},\"exception\":{\"type\":\"object\",\"subtype\":\"error\",\"className\":\"TypeError\",\"description\":\"TypeError: Cannot read properties of undefined (reading 'getBoundingClientRect')\\n    at <anonymous>:1:123\\n    at <anonymous>:1:190\",\"objectId\":\"-5922664133744245755.3.2\"}}"
+  },
+  {
+    "id": "stores-normal-2",
+    "pass": false,
+    "error": "Error: {\"exceptionId\":1,\"text\":\"Uncaught\",\"lineNumber\":0,\"columnNumber\":122,\"scriptId\":\"96\",\"stackTrace\":{\"callFrames\":[{\"functionName\":\"\",\"scriptId\":\"96\",\"url\":\"\",\"lineNumber\":0,\"columnNumber\":122},{\"functionName\":\"\",\"scriptId\":\"96\",\"url\":\"\",\"lineNumber\":0,\"columnNumber\":189}]},\"exception\":{\"type\":\"object\",\"subtype\":\"error\",\"className\":\"TypeError\",\"description\":\"TypeError: Cannot read properties of undefined (reading 'getBoundingClientRect')\\n    at <anonymous>:1:123\\n    at <anonymous>:1:190\",\"objectId\":\"-9183895469287104341.3.2\"}}"
+  },
+  {
+    "id": "stores-normal-3",
+    "pass": false,
+    "error": "Error: {\"exceptionId\":1,\"text\":\"Uncaught\",\"lineNumber\":0,\"columnNumber\":122,\"scriptId\":\"96\",\"stackTrace\":{\"callFrames\":[{\"functionName\":\"\",\"scriptId\":\"96\",\"url\":\"\",\"lineNumber\":0,\"columnNumber\":122},{\"functionName\":\"\",\"scriptId\":\"96\",\"url\":\"\",\"lineNumber\":0,\"columnNumber\":189}]},\"exception\":{\"type\":\"object\",\"subtype\":\"error\",\"className\":\"TypeError\",\"description\":\"TypeError: Cannot read properties of undefined (reading 'getBoundingClientRect')\\n    at <anonymous>:1:123\\n    at <anonymous>:1:190\",\"objectId\":\"-8468663223817587097.3.2\"}}"
+  },
+  {
+    "id": "stores-prior-fetch-delayed-1",
+    "pass": false,
+    "error": "Error: Required prior-page fetch was not intercepted"
+  },
+  {
+    "id": "stores-prior-fetch-delayed-2",
+    "pass": false,
+    "error": "Error: Required prior-page fetch was not intercepted"
+  },
+  {
+    "id": "stores-prior-fetch-delayed-3",
+    "pass": false,
+    "error": "Error: Required prior-page fetch was not intercepted"
+  }
+]

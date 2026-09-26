@@ -3587,3 +3587,73 @@ mtime_ms = 1790404653678
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/aee5a7bb-bac8-4be0-8a00-a94295989125/0db05508-30a4-4806-b569-d9f604e8f338"
 storage_version_token = "1790404749712412"
 content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+[[outputs]]
+id = "bYJsOFORt4cShRfmFH7k3"
+uri = "file://screenshots/vendor-bill-draft-rates/A1-one-confirmation-SYNTHETIC.png"
+type = "image"
+title = "A — One conversion dialog"
+description = "Actual production components exercised in Chromium with synthetic API data. No live bill saves."
+logical_id = "dabdba1d-877f-459a-b217-2091e4e069b2"
+content_hash = "sha256:1f4a5d42419f893c0611605c081fff18dd253db1fbe03ecb36033e8a2c4c5255"
+size = 141336
+mtime_ms = 1790410027196
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/dabdba1d-877f-459a-b217-2091e4e069b2/8f299943-cb96-4773-bc2c-2d623689e90e"
+storage_version_token = "1790410276877351"
+content_type = "image/png"
+
+[[outputs]]
+id = "ZqrHeutm1mtK5HIgCkExl"
+uri = "file://screenshots/vendor-bill-draft-rates/A1-success-toast-after-dialog-removed-SYNTHETIC.png"
+type = "image"
+title = "A — Toast after dialog closes"
+description = "Actual production components exercised in Chromium with synthetic API data. No live bill saves."
+logical_id = "17cd6388-9e2d-46b5-8f25-45bd9b0f81f3"
+content_hash = "sha256:6f7deb9912aa087392e986c28ac9ae8944961dc8143fcf9da03041a765e92020"
+size = 130770
+mtime_ms = 1790410027828
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/17cd6388-9e2d-46b5-8f25-45bd9b0f81f3/405cd945-b0cf-44f5-98c9-879a654d244a"
+storage_version_token = "1790410278906620"
+content_type = "image/png"
+
+[[outputs]]
+id = "m-1KYmqGgSSYJdZ6yx9rk"
+uri = "file://screenshots/vendor-bill-draft-rates/B1-returned-same-unsaved-draft-SYNTHETIC.png"
+type = "image"
+title = "B — Same unsaved bill restored"
+description = "Actual production components exercised in Chromium with synthetic API data. No live bill saves."
+logical_id = "59aa7bb3-e403-491b-8156-76bb71f8d1e0"
+content_hash = "sha256:06370565717c8f2b11987993ee379438d3bc39f32ce334a96b5654e312c54b78"
+size = 124975
+mtime_ms = 1790410029956
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/59aa7bb3-e403-491b-8156-76bb71f8d1e0/7d38c257-57cf-472b-8f76-a815740c8261"
+storage_version_token = "1790410280898649"
+content_type = "image/png"
+
+[[outputs]]
+id = "aS5pNM9wFlcD7wZs8EEvC"
+uri = "file://screenshots/vendor-bill-draft-rates/B1-returned-same-edit-draft-SYNTHETIC.png"
+type = "image"
+title = "B — Existing bill edits preserved"
+description = "Actual production components exercised in Chromium with synthetic API data. No live bill saves."
+logical_id = "e0899c70-ad41-41ed-ac4c-fa05fb12f807"
+content_hash = "sha256:c7e27962b0ef756157368623acbda45506a8e3d04519dd1a459a85e26c13fdfd"
+size = 125545
+mtime_ms = 1790410031720
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e0899c70-ad41-41ed-ac4c-fa05fb12f807/f68a90c7-4e4f-4fcb-a425-e580969130da"
+storage_version_token = "1790410282894063"
+content_type = "image/png"
+
+[[outputs]]
+id = "_jirP73zPNDdLEnwztISc"
+uri = "file://tests/fixtures/hmp-loading/evidence/procurement-prior-fetch-delayed-3.png"
+type = "image"
+title = "C — HMP loads while previous requests are pending"
+description = "Unchanged production App/router/HMP screen in an isolated harness with mock admin authentication and read-only API data. Not deployed-app reproduction evidence."
+logical_id = "e5cb5c06-1c81-4ba4-a4c2-b0c9c719df19"
+content_hash = "sha256:85de846cd805a9363108d56d7430694882f88a281e2ef6a8c999fbd4588284db"
+size = 155329
+mtime_ms = 1790410183200
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e5cb5c06-1c81-4ba4-a4c2-b0c9c719df19/abb8fd59-c677-4828-ae83-6fdeb3d73f1c"
+storage_version_token = "1790410285103567"
+content_type = "image/png"

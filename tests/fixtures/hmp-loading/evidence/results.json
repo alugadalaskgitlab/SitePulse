@@ -1,0 +1,476 @@
+[
+  {
+    "id": "dashboard-normal-1",
+    "start": "Dashboard",
+    "mode": "normal",
+    "attempt": 1,
+    "before": {
+      "path": "/",
+      "headings": [
+        "Home Dashboard",
+        "Welcome back, HMP"
+      ]
+    },
+    "priorRequestsInFlight": 0,
+    "hmpRenderMs": 357,
+    "renderedWhilePriorPending": true,
+    "after": {
+      "path": "/plant/hub",
+      "loading": false,
+      "hmp": true,
+      "text": " Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nSettings\nHB\n\nHMP Browser Fixture\n\nAdmin\n\nSign Out\nDashboard\nHMP Operations\n\nHot-mix plant — shift logs, fuel tracking & procurement\n\nRefresh\n\nSHIFTS TODAY\n\n0\n\nlogged\n\nMT DISPATCHED\n\n0\n\nmetric tonnes\n\nLDO CONSUMED\n\n—\n\ntoday\n\nDATE\n\n26 Sep\n\n2026\n\nEQUIPMENT USAGE — TODAY BY LOCATION\n\nNo equipment entries logged today\n\nOPERATIONS & ACTIONS\nBitumen Heating Sessions\n\nLog boiler runs & track hot-oil temperatures\n\nPlant Shift Log\n\nRecord shift details, personnel & production\n\nProduction & Dispatches\n\nLog truck loads with mix data & tonnage\n\nFUEL & BITUMEN TRACKING\nBitumen Stock Tracker\n\nDip readings, tank levels & bitumen stock balance\n\nLDO Flow Meter\n\nLDO meter readings, dip logs & fuel consumption\n\nLDO Book vs Physical\n\nReconcile book stock against physical dip readings\n\nPROCUREMENT\nPurchase Indent\n\nRaise and track purchase indents for HMP materials & spares\n\nDaily Diesel Requirement\n\nPlan & approve diesel allocation for HMP plant operations\n\nRaise Requisition (IRN)\n\nRequest materials from stores for HMP plant operations"
+    },
+    "screenshot": "dashboard-normal-1.png",
+    "pass": true
+  },
+  {
+    "id": "dashboard-normal-2",
+    "start": "Dashboard",
+    "mode": "normal",
+    "attempt": 2,
+    "before": {
+      "path": "/",
+      "headings": [
+        "Home Dashboard",
+        "Welcome back, HMP"
+      ]
+    },
+    "priorRequestsInFlight": 0,
+    "hmpRenderMs": 310,
+    "renderedWhilePriorPending": true,
+    "after": {
+      "path": "/plant/hub",
+      "loading": false,
+      "hmp": true,
+      "text": " Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nSettings\nHB\n\nHMP Browser Fixture\n\nAdmin\n\nSign Out\nDashboard\nHMP Operations\n\nHot-mix plant — shift logs, fuel tracking & procurement\n\nRefresh\n\nSHIFTS TODAY\n\n0\n\nlogged\n\nMT DISPATCHED\n\n0\n\nmetric tonnes\n\nLDO CONSUMED\n\n—\n\ntoday\n\nDATE\n\n26 Sep\n\n2026\n\nEQUIPMENT USAGE — TODAY BY LOCATION\n\nNo equipment entries logged today\n\nOPERATIONS & ACTIONS\nBitumen Heating Sessions\n\nLog boiler runs & track hot-oil temperatures\n\nPlant Shift Log\n\nRecord shift details, personnel & production\n\nProduction & Dispatches\n\nLog truck loads with mix data & tonnage\n\nFUEL & BITUMEN TRACKING\nBitumen Stock Tracker\n\nDip readings, tank levels & bitumen stock balance\n\nLDO Flow Meter\n\nLDO meter readings, dip logs & fuel consumption\n\nLDO Book vs Physical\n\nReconcile book stock against physical dip readings\n\nPROCUREMENT\nPurchase Indent\n\nRaise and track purchase indents for HMP materials & spares\n\nDaily Diesel Requirement\n\nPlan & approve diesel allocation for HMP plant operations\n\nRaise Requisition (IRN)\n\nRequest materials from stores for HMP plant operations"
+    },
+    "screenshot": "dashboard-normal-2.png",
+    "pass": true
+  },
+  {
+    "id": "dashboard-normal-3",
+    "start": "Dashboard",
+    "mode": "normal",
+    "attempt": 3,
+    "before": {
+      "path": "/",
+      "headings": [
+        "Home Dashboard",
+        "Welcome back, HMP"
+      ]
+    },
+    "priorRequestsInFlight": 0,
+    "hmpRenderMs": 310,
+    "renderedWhilePriorPending": true,
+    "after": {
+      "path": "/plant/hub",
+      "loading": false,
+      "hmp": true,
+      "text": " Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nSettings\nHB\n\nHMP Browser Fixture\n\nAdmin\n\nSign Out\nDashboard\nHMP Operations\n\nHot-mix plant — shift logs, fuel tracking & procurement\n\nRefresh\n\nSHIFTS TODAY\n\n0\n\nlogged\n\nMT DISPATCHED\n\n0\n\nmetric tonnes\n\nLDO CONSUMED\n\n—\n\ntoday\n\nDATE\n\n26 Sep\n\n2026\n\nEQUIPMENT USAGE — TODAY BY LOCATION\n\nNo equipment entries logged today\n\nOPERATIONS & ACTIONS\nBitumen Heating Sessions\n\nLog boiler runs & track hot-oil temperatures\n\nPlant Shift Log\n\nRecord shift details, personnel & production\n\nProduction & Dispatches\n\nLog truck loads with mix data & tonnage\n\nFUEL & BITUMEN TRACKING\nBitumen Stock Tracker\n\nDip readings, tank levels & bitumen stock balance\n\nLDO Flow Meter\n\nLDO meter readings, dip logs & fuel consumption\n\nLDO Book vs Physical\n\nReconcile book stock against physical dip readings\n\nPROCUREMENT\nPurchase Indent\n\nRaise and track purchase indents for HMP materials & spares\n\nDaily Diesel Requirement\n\nPlan & approve diesel allocation for HMP plant operations\n\nRaise Requisition (IRN)\n\nRequest materials from stores for HMP plant operations"
+    },
+    "screenshot": "dashboard-normal-3.png",
+    "pass": true
+  },
+  {
+    "id": "dashboard-prior-fetch-delayed-1",
+    "start": "Dashboard",
+    "mode": "prior-fetch-delayed",
+    "attempt": 1,
+    "before": {
+      "path": "/",
+      "headings": [
+        "Home Dashboard",
+        "Welcome back, HMP"
+      ]
+    },
+    "priorRequestsInFlight": 2,
+    "hmpRenderMs": 263,
+    "renderedWhilePriorPending": true,
+    "after": {
+      "path": "/plant/hub",
+      "loading": false,
+      "hmp": true,
+      "text": " Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nSettings\nHB\n\nHMP Browser Fixture\n\nAdmin\n\nSign Out\nDashboard\nHMP Operations\n\nHot-mix plant — shift logs, fuel tracking & procurement\n\nRefresh\n\nSHIFTS TODAY\n\n0\n\nlogged\n\nMT DISPATCHED\n\n0\n\nmetric tonnes\n\nLDO CONSUMED\n\n—\n\ntoday\n\nDATE\n\n26 Sep\n\n2026\n\nEQUIPMENT USAGE — TODAY BY LOCATION\n\nNo equipment entries logged today\n\nOPERATIONS & ACTIONS\nBitumen Heating Sessions\n\nLog boiler runs & track hot-oil temperatures\n\nPlant Shift Log\n\nRecord shift details, personnel & production\n\nProduction & Dispatches\n\nLog truck loads with mix data & tonnage\n\nFUEL & BITUMEN TRACKING\nBitumen Stock Tracker\n\nDip readings, tank levels & bitumen stock balance\n\nLDO Flow Meter\n\nLDO meter readings, dip logs & fuel consumption\n\nLDO Book vs Physical\n\nReconcile book stock against physical dip readings\n\nPROCUREMENT\nPurchase Indent\n\nRaise and track purchase indents for HMP materials & spares\n\nDaily Diesel Requirement\n\nPlan & approve diesel allocation for HMP plant operations\n\nRaise Requisition (IRN)\n\nRequest materials from stores for HMP plant operations"
+    },
+    "screenshot": "dashboard-prior-fetch-delayed-1.png",
+    "pass": true
+  },
+  {
+    "id": "dashboard-prior-fetch-delayed-2",
+    "start": "Dashboard",
+    "mode": "prior-fetch-delayed",
+    "attempt": 2,
+    "before": {
+      "path": "/",
+      "headings": [
+        "Home Dashboard",
+        "Welcome back, HMP"
+      ]
+    },
+    "priorRequestsInFlight": 2,
+    "hmpRenderMs": 228,
+    "renderedWhilePriorPending": true,
+    "after": {
+      "path": "/plant/hub",
+      "loading": false,
+      "hmp": true,
+      "text": " Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nSettings\nHB\n\nHMP Browser Fixture\n\nAdmin\n\nSign Out\nDashboard\nHMP Operations\n\nHot-mix plant — shift logs, fuel tracking & procurement\n\nRefresh\n\nSHIFTS TODAY\n\n0\n\nlogged\n\nMT DISPATCHED\n\n0\n\nmetric tonnes\n\nLDO CONSUMED\n\n—\n\ntoday\n\nDATE\n\n26 Sep\n\n2026\n\nEQUIPMENT USAGE — TODAY BY LOCATION\n\nNo equipment entries logged today\n\nOPERATIONS & ACTIONS\nBitumen Heating Sessions\n\nLog boiler runs & track hot-oil temperatures\n\nPlant Shift Log\n\nRecord shift details, personnel & production\n\nProduction & Dispatches\n\nLog truck loads with mix data & tonnage\n\nFUEL & BITUMEN TRACKING\nBitumen Stock Tracker\n\nDip readings, tank levels & bitumen stock balance\n\nLDO Flow Meter\n\nLDO meter readings, dip logs & fuel consumption\n\nLDO Book vs Physical\n\nReconcile book stock against physical dip readings\n\nPROCUREMENT\nPurchase Indent\n\nRaise and track purchase indents for HMP materials & spares\n\nDaily Diesel Requirement\n\nPlan & approve diesel allocation for HMP plant operations\n\nRaise Requisition (IRN)\n\nRequest materials from stores for HMP plant operations"
+    },
+    "screenshot": "dashboard-prior-fetch-delayed-2.png",
+    "pass": true
+  },
+  {
+    "id": "dashboard-prior-fetch-delayed-3",
+    "start": "Dashboard",
+    "mode": "prior-fetch-delayed",
+    "attempt": 3,
+    "before": {
+      "path": "/",
+      "headings": [
+        "Home Dashboard",
+        "Welcome back, HMP"
+      ]
+    },
+    "priorRequestsInFlight": 2,
+    "hmpRenderMs": 261,
+    "renderedWhilePriorPending": true,
+    "after": {
+      "path": "/plant/hub",
+      "loading": false,
+      "hmp": true,
+      "text": " Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nSettings\nHB\n\nHMP Browser Fixture\n\nAdmin\n\nSign Out\nDashboard\nHMP Operations\n\nHot-mix plant — shift logs, fuel tracking & procurement\n\nRefresh\n\nSHIFTS TODAY\n\n0\n\nlogged\n\nMT DISPATCHED\n\n0\n\nmetric tonnes\n\nLDO CONSUMED\n\n—\n\ntoday\n\nDATE\n\n26 Sep\n\n2026\n\nEQUIPMENT USAGE — TODAY BY LOCATION\n\nNo equipment entries logged today\n\nOPERATIONS & ACTIONS\nBitumen Heating Sessions\n\nLog boiler runs & track hot-oil temperatures\n\nPlant Shift Log\n\nRecord shift details, personnel & production\n\nProduction & Dispatches\n\nLog truck loads with mix data & tonnage\n\nFUEL & BITUMEN TRACKING\nBitumen Stock Tracker\n\nDip readings, tank levels & bitumen stock balance\n\nLDO Flow Meter\n\nLDO meter readings, dip logs & fuel consumption\n\nLDO Book vs Physical\n\nReconcile book stock against physical dip readings\n\nPROCUREMENT\nPurchase Indent\n\nRaise and track purchase indents for HMP materials & spares\n\nDaily Diesel Requirement\n\nPlan & approve diesel allocation for HMP plant operations\n\nRaise Requisition (IRN)\n\nRequest materials from stores for HMP plant operations"
+    },
+    "screenshot": "dashboard-prior-fetch-delayed-3.png",
+    "pass": true
+  },
+  {
+    "id": "stores-normal-1",
+    "start": "Stores & Inventory",
+    "mode": "normal",
+    "attempt": 1,
+    "before": {
+      "path": "/stores/hub",
+      "headings": [
+        "Stores & Inventory",
+        "Store Items",
+        "Internal Requisitions",
+        "Purchase Indents",
+        "Bulk Materials (Plant)",
+        "Site Requirements",
+        "Advanced / Troubleshooting"
+      ]
+    },
+    "priorRequestsInFlight": 0,
+    "hmpRenderMs": 223,
+    "renderedWhilePriorPending": true,
+    "after": {
+      "path": "/plant/hub",
+      "loading": false,
+      "hmp": true,
+      "text": " Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nSettings\nHB\n\nHMP Browser Fixture\n\nAdmin\n\nSign Out\nDashboard\nHMP Operations\n\nHot-mix plant — shift logs, fuel tracking & procurement\n\nRefresh\n\nSHIFTS TODAY\n\n0\n\nlogged\n\nMT DISPATCHED\n\n0\n\nmetric tonnes\n\nLDO CONSUMED\n\n—\n\ntoday\n\nDATE\n\n26 Sep\n\n2026\n\nEQUIPMENT USAGE — TODAY BY LOCATION\n\nNo equipment entries logged today\n\nOPERATIONS & ACTIONS\nBitumen Heating Sessions\n\nLog boiler runs & track hot-oil temperatures\n\nPlant Shift Log\n\nRecord shift details, personnel & production\n\nProduction & Dispatches\n\nLog truck loads with mix data & tonnage\n\nFUEL & BITUMEN TRACKING\nBitumen Stock Tracker\n\nDip readings, tank levels & bitumen stock balance\n\nLDO Flow Meter\n\nLDO meter readings, dip logs & fuel consumption\n\nLDO Book vs Physical\n\nReconcile book stock against physical dip readings\n\nPROCUREMENT\nPurchase Indent\n\nRaise and track purchase indents for HMP materials & spares\n\nDaily Diesel Requirement\n\nPlan & approve diesel allocation for HMP plant operations\n\nRaise Requisition (IRN)\n\nRequest materials from stores for HMP plant operations"
+    },
+    "screenshot": "stores-normal-1.png",
+    "pass": true
+  },
+  {
+    "id": "stores-normal-2",
+    "start": "Stores & Inventory",
+    "mode": "normal",
+    "attempt": 2,
+    "before": {
+      "path": "/stores/hub",
+      "headings": [
+        "Stores & Inventory",
+        "Store Items",
+        "Internal Requisitions",
+        "Purchase Indents",
+        "Bulk Materials (Plant)",
+        "Site Requirements",
+        "Advanced / Troubleshooting"
+      ]
+    },
+    "priorRequestsInFlight": 0,
+    "hmpRenderMs": 131,
+    "renderedWhilePriorPending": true,
+    "after": {
+      "path": "/plant/hub",
+      "loading": false,
+      "hmp": true,
+      "text": " Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nSettings\nHB\n\nHMP Browser Fixture\n\nAdmin\n\nSign Out\nDashboard\nHMP Operations\n\nHot-mix plant — shift logs, fuel tracking & procurement\n\nRefresh\n\nSHIFTS TODAY\n\n0\n\nlogged\n\nMT DISPATCHED\n\n0\n\nmetric tonnes\n\nLDO CONSUMED\n\n—\n\ntoday\n\nDATE\n\n26 Sep\n\n2026\n\nEQUIPMENT USAGE — TODAY BY LOCATION\n\nNo equipment entries logged today\n\nOPERATIONS & ACTIONS\nBitumen Heating Sessions\n\nLog boiler runs & track hot-oil temperatures\n\nPlant Shift Log\n\nRecord shift details, personnel & production\n\nProduction & Dispatches\n\nLog truck loads with mix data & tonnage\n\nFUEL & BITUMEN TRACKING\nBitumen Stock Tracker\n\nDip readings, tank levels & bitumen stock balance\n\nLDO Flow Meter\n\nLDO meter readings, dip logs & fuel consumption\n\nLDO Book vs Physical\n\nReconcile book stock against physical dip readings\n\nPROCUREMENT\nPurchase Indent\n\nRaise and track purchase indents for HMP materials & spares\n\nDaily Diesel Requirement\n\nPlan & approve diesel allocation for HMP plant operations\n\nRaise Requisition (IRN)\n\nRequest materials from stores for HMP plant operations"
+    },
+    "screenshot": "stores-normal-2.png",
+    "pass": true
+  },
+  {
+    "id": "stores-normal-3",
+    "start": "Stores & Inventory",
+    "mode": "normal",
+    "attempt": 3,
+    "before": {
+      "path": "/stores/hub",
+      "headings": [
+        "Stores & Inventory",
+        "Store Items",
+        "Internal Requisitions",
+        "Purchase Indents",
+        "Bulk Materials (Plant)",
+        "Site Requirements",
+        "Advanced / Troubleshooting"
+      ]
+    },
+    "priorRequestsInFlight": 0,
+    "hmpRenderMs": 224,
+    "renderedWhilePriorPending": true,
+    "after": {
+      "path": "/plant/hub",
+      "loading": false,
+      "hmp": true,
+      "text": " Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nSettings\nHB\n\nHMP Browser Fixture\n\nAdmin\n\nSign Out\nDashboard\nHMP Operations\n\nHot-mix plant — shift logs, fuel tracking & procurement\n\nRefresh\n\nSHIFTS TODAY\n\n0\n\nlogged\n\nMT DISPATCHED\n\n0\n\nmetric tonnes\n\nLDO CONSUMED\n\n—\n\ntoday\n\nDATE\n\n26 Sep\n\n2026\n\nEQUIPMENT USAGE — TODAY BY LOCATION\n\nNo equipment entries logged today\n\nOPERATIONS & ACTIONS\nBitumen Heating Sessions\n\nLog boiler runs & track hot-oil temperatures\n\nPlant Shift Log\n\nRecord shift details, personnel & production\n\nProduction & Dispatches\n\nLog truck loads with mix data & tonnage\n\nFUEL & BITUMEN TRACKING\nBitumen Stock Tracker\n\nDip readings, tank levels & bitumen stock balance\n\nLDO Flow Meter\n\nLDO meter readings, dip logs & fuel consumption\n\nLDO Book vs Physical\n\nReconcile book stock against physical dip readings\n\nPROCUREMENT\nPurchase Indent\n\nRaise and track purchase indents for HMP materials & spares\n\nDaily Diesel Requirement\n\nPlan & approve diesel allocation for HMP plant operations\n\nRaise Requisition (IRN)\n\nRequest materials from stores for HMP plant operations"
+    },
+    "screenshot": "stores-normal-3.png",
+    "pass": true
+  },
+  {
+    "id": "stores-prior-fetch-delayed-1",
+    "start": "Stores & Inventory",
+    "mode": "prior-fetch-delayed",
+    "attempt": 1,
+    "before": {
+      "path": "/stores/hub",
+      "headings": [
+        "Stores & Inventory",
+        "Store Items",
+        "Internal Requisitions",
+        "Purchase Indents",
+        "Bulk Materials (Plant)",
+        "Site Requirements",
+        "Advanced / Troubleshooting"
+      ]
+    },
+    "priorRequestsInFlight": 1,
+    "hmpRenderMs": 399,
+    "renderedWhilePriorPending": true,
+    "after": {
+      "path": "/plant/hub",
+      "loading": false,
+      "hmp": true,
+      "text": " Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nSettings\nHB\n\nHMP Browser Fixture\n\nAdmin\n\nSign Out\nDashboard\nHMP Operations\n\nHot-mix plant — shift logs, fuel tracking & procurement\n\nRefresh\n\nSHIFTS TODAY\n\n0\n\nlogged\n\nMT DISPATCHED\n\n0\n\nmetric tonnes\n\nLDO CONSUMED\n\n—\n\ntoday\n\nDATE\n\n26 Sep\n\n2026\n\nEQUIPMENT USAGE — TODAY BY LOCATION\n\nNo equipment entries logged today\n\nOPERATIONS & ACTIONS\nBitumen Heating Sessions\n\nLog boiler runs & track hot-oil temperatures\n\nPlant Shift Log\n\nRecord shift details, personnel & production\n\nProduction & Dispatches\n\nLog truck loads with mix data & tonnage\n\nFUEL & BITUMEN TRACKING\nBitumen Stock Tracker\n\nDip readings, tank levels & bitumen stock balance\n\nLDO Flow Meter\n\nLDO meter readings, dip logs & fuel consumption\n\nLDO Book vs Physical\n\nReconcile book stock against physical dip readings\n\nPROCUREMENT\nPurchase Indent\n\nRaise and track purchase indents for HMP materials & spares\n\nDaily Diesel Requirement\n\nPlan & approve diesel allocation for HMP plant operations\n\nRaise Requisition (IRN)\n\nRequest materials from stores for HMP plant operations"
+    },
+    "screenshot": "stores-prior-fetch-delayed-1.png",
+    "pass": true
+  },
+  {
+    "id": "stores-prior-fetch-delayed-2",
+    "start": "Stores & Inventory",
+    "mode": "prior-fetch-delayed",
+    "attempt": 2,
+    "before": {
+      "path": "/stores/hub",
+      "headings": [
+        "Stores & Inventory",
+        "Store Items",
+        "Internal Requisitions",
+        "Purchase Indents",
+        "Bulk Materials (Plant)",
+        "Site Requirements",
+        "Advanced / Troubleshooting"
+      ]
+    },
+    "priorRequestsInFlight": 1,
+    "hmpRenderMs": 225,
+    "renderedWhilePriorPending": true,
+    "after": {
+      "path": "/plant/hub",
+      "loading": false,
+      "hmp": true,
+      "text": " Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nSettings\nHB\n\nHMP Browser Fixture\n\nAdmin\n\nSign Out\nDashboard\nHMP Operations\n\nHot-mix plant — shift logs, fuel tracking & procurement\n\nRefresh\n\nSHIFTS TODAY\n\n0\n\nlogged\n\nMT DISPATCHED\n\n0\n\nmetric tonnes\n\nLDO CONSUMED\n\n—\n\ntoday\n\nDATE\n\n26 Sep\n\n2026\n\nEQUIPMENT USAGE — TODAY BY LOCATION\n\nNo equipment entries logged today\n\nOPERATIONS & ACTIONS\nBitumen Heating Sessions\n\nLog boiler runs & track hot-oil temperatures\n\nPlant Shift Log\n\nRecord shift details, personnel & production\n\nProduction & Dispatches\n\nLog truck loads with mix data & tonnage\n\nFUEL & BITUMEN TRACKING\nBitumen Stock Tracker\n\nDip readings, tank levels & bitumen stock balance\n\nLDO Flow Meter\n\nLDO meter readings, dip logs & fuel consumption\n\nLDO Book vs Physical\n\nReconcile book stock against physical dip readings\n\nPROCUREMENT\nPurchase Indent\n\nRaise and track purchase indents for HMP materials & spares\n\nDaily Diesel Requirement\n\nPlan & approve diesel allocation for HMP plant operations\n\nRaise Requisition (IRN)\n\nRequest materials from stores for HMP plant operations"
+    },
+    "screenshot": "stores-prior-fetch-delayed-2.png",
+    "pass": true
+  },
+  {
+    "id": "stores-prior-fetch-delayed-3",
+    "start": "Stores & Inventory",
+    "mode": "prior-fetch-delayed",
+    "attempt": 3,
+    "before": {
+      "path": "/stores/hub",
+      "headings": [
+        "Stores & Inventory",
+        "Store Items",
+        "Internal Requisitions",
+        "Purchase Indents",
+        "Bulk Materials (Plant)",
+        "Site Requirements",
+        "Advanced / Troubleshooting"
+      ]
+    },
+    "priorRequestsInFlight": 1,
+    "hmpRenderMs": 263,
+    "renderedWhilePriorPending": true,
+    "after": {
+      "path": "/plant/hub",
+      "loading": false,
+      "hmp": true,
+      "text": " Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nSettings\nHB\n\nHMP Browser Fixture\n\nAdmin\n\nSign Out\nDashboard\nHMP Operations\n\nHot-mix plant — shift logs, fuel tracking & procurement\n\nRefresh\n\nSHIFTS TODAY\n\n0\n\nlogged\n\nMT DISPATCHED\n\n0\n\nmetric tonnes\n\nLDO CONSUMED\n\n—\n\ntoday\n\nDATE\n\n26 Sep\n\n2026\n\nEQUIPMENT USAGE — TODAY BY LOCATION\n\nNo equipment entries logged today\n\nOPERATIONS & ACTIONS\nBitumen Heating Sessions\n\nLog boiler runs & track hot-oil temperatures\n\nPlant Shift Log\n\nRecord shift details, personnel & production\n\nProduction & Dispatches\n\nLog truck loads with mix data & tonnage\n\nFUEL & BITUMEN TRACKING\nBitumen Stock Tracker\n\nDip readings, tank levels & bitumen stock balance\n\nLDO Flow Meter\n\nLDO meter readings, dip logs & fuel consumption\n\nLDO Book vs Physical\n\nReconcile book stock against physical dip readings\n\nPROCUREMENT\nPurchase Indent\n\nRaise and track purchase indents for HMP materials & spares\n\nDaily Diesel Requirement\n\nPlan & approve diesel allocation for HMP plant operations\n\nRaise Requisition (IRN)\n\nRequest materials from stores for HMP plant operations"
+    },
+    "screenshot": "stores-prior-fetch-delayed-3.png",
+    "pass": true
+  },
+  {
+    "id": "procurement-normal-1",
+    "start": "Procurement & Billing",
+    "mode": "normal",
+    "attempt": 1,
+    "before": {
+      "path": "/finance/hub",
+      "headings": [
+        "Procurement & Billing",
+        "Procurement",
+        "Internal Requisitions",
+        "Vendor Billing"
+      ]
+    },
+    "priorRequestsInFlight": 0,
+    "hmpRenderMs": 179,
+    "renderedWhilePriorPending": true,
+    "after": {
+      "path": "/plant/hub",
+      "loading": false,
+      "hmp": true,
+      "text": " Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nSettings\nHB\n\nHMP Browser Fixture\n\nAdmin\n\nSign Out\nDashboard\nHMP Operations\n\nHot-mix plant — shift logs, fuel tracking & procurement\n\nRefresh\n\nSHIFTS TODAY\n\n0\n\nlogged\n\nMT DISPATCHED\n\n0\n\nmetric tonnes\n\nLDO CONSUMED\n\n—\n\ntoday\n\nDATE\n\n26 Sep\n\n2026\n\nEQUIPMENT USAGE — TODAY BY LOCATION\n\nNo equipment entries logged today\n\nOPERATIONS & ACTIONS\nBitumen Heating Sessions\n\nLog boiler runs & track hot-oil temperatures\n\nPlant Shift Log\n\nRecord shift details, personnel & production\n\nProduction & Dispatches\n\nLog truck loads with mix data & tonnage\n\nFUEL & BITUMEN TRACKING\nBitumen Stock Tracker\n\nDip readings, tank levels & bitumen stock balance\n\nLDO Flow Meter\n\nLDO meter readings, dip logs & fuel consumption\n\nLDO Book vs Physical\n\nReconcile book stock against physical dip readings\n\nPROCUREMENT\nPurchase Indent\n\nRaise and track purchase indents for HMP materials & spares\n\nDaily Diesel Requirement\n\nPlan & approve diesel allocation for HMP plant operations\n\nRaise Requisition (IRN)\n\nRequest materials from stores for HMP plant operations"
+    },
+    "screenshot": "procurement-normal-1.png",
+    "pass": true
+  },
+  {
+    "id": "procurement-normal-2",
+    "start": "Procurement & Billing",
+    "mode": "normal",
+    "attempt": 2,
+    "before": {
+      "path": "/finance/hub",
+      "headings": [
+        "Procurement & Billing",
+        "Procurement",
+        "Internal Requisitions",
+        "Vendor Billing"
+      ]
+    },
+    "priorRequestsInFlight": 0,
+    "hmpRenderMs": 310,
+    "renderedWhilePriorPending": true,
+    "after": {
+      "path": "/plant/hub",
+      "loading": false,
+      "hmp": true,
+      "text": " Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nSettings\nHB\n\nHMP Browser Fixture\n\nAdmin\n\nSign Out\nDashboard\nHMP Operations\n\nHot-mix plant — shift logs, fuel tracking & procurement\n\nRefresh\n\nSHIFTS TODAY\n\n0\n\nlogged\n\nMT DISPATCHED\n\n0\n\nmetric tonnes\n\nLDO CONSUMED\n\n—\n\ntoday\n\nDATE\n\n26 Sep\n\n2026\n\nEQUIPMENT USAGE — TODAY BY LOCATION\n\nNo equipment entries logged today\n\nOPERATIONS & ACTIONS\nBitumen Heating Sessions\n\nLog boiler runs & track hot-oil temperatures\n\nPlant Shift Log\n\nRecord shift details, personnel & production\n\nProduction & Dispatches\n\nLog truck loads with mix data & tonnage\n\nFUEL & BITUMEN TRACKING\nBitumen Stock Tracker\n\nDip readings, tank levels & bitumen stock balance\n\nLDO Flow Meter\n\nLDO meter readings, dip logs & fuel consumption\n\nLDO Book vs Physical\n\nReconcile book stock against physical dip readings\n\nPROCUREMENT\nPurchase Indent\n\nRaise and track purchase indents for HMP materials & spares\n\nDaily Diesel Requirement\n\nPlan & approve diesel allocation for HMP plant operations\n\nRaise Requisition (IRN)\n\nRequest materials from stores for HMP plant operations"
+    },
+    "screenshot": "procurement-normal-2.png",
+    "pass": true
+  },
+  {
+    "id": "procurement-normal-3",
+    "start": "Procurement & Billing",
+    "mode": "normal",
+    "attempt": 3,
+    "before": {
+      "path": "/finance/hub",
+      "headings": [
+        "Procurement & Billing",
+        "Procurement",
+        "Internal Requisitions",
+        "Vendor Billing"
+      ]
+    },
+    "priorRequestsInFlight": 0,
+    "hmpRenderMs": 223,
+    "renderedWhilePriorPending": true,
+    "after": {
+      "path": "/plant/hub",
+      "loading": false,
+      "hmp": true,
+      "text": " Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nSettings\nHB\n\nHMP Browser Fixture\n\nAdmin\n\nSign Out\nDashboard\nHMP Operations\n\nHot-mix plant — shift logs, fuel tracking & procurement\n\nRefresh\n\nSHIFTS TODAY\n\n0\n\nlogged\n\nMT DISPATCHED\n\n0\n\nmetric tonnes\n\nLDO CONSUMED\n\n—\n\ntoday\n\nDATE\n\n26 Sep\n\n2026\n\nEQUIPMENT USAGE — TODAY BY LOCATION\n\nNo equipment entries logged today\n\nOPERATIONS & ACTIONS\nBitumen Heating Sessions\n\nLog boiler runs & track hot-oil temperatures\n\nPlant Shift Log\n\nRecord shift details, personnel & production\n\nProduction & Dispatches\n\nLog truck loads with mix data & tonnage\n\nFUEL & BITUMEN TRACKING\nBitumen Stock Tracker\n\nDip readings, tank levels & bitumen stock balance\n\nLDO Flow Meter\n\nLDO meter readings, dip logs & fuel consumption\n\nLDO Book vs Physical\n\nReconcile book stock against physical dip readings\n\nPROCUREMENT\nPurchase Indent\n\nRaise and track purchase indents for HMP materials & spares\n\nDaily Diesel Requirement\n\nPlan & approve diesel allocation for HMP plant operations\n\nRaise Requisition (IRN)\n\nRequest materials from stores for HMP plant operations"
+    },
+    "screenshot": "procurement-normal-3.png",
+    "pass": true
+  },
+  {
+    "id": "procurement-prior-fetch-delayed-1",
+    "start": "Procurement & Billing",
+    "mode": "prior-fetch-delayed",
+    "attempt": 1,
+    "before": {
+      "path": "/finance/hub",
+      "headings": [
+        "Procurement & Billing",
+        "Procurement",
+        "Internal Requisitions",
+        "Vendor Billing"
+      ]
+    },
+    "priorRequestsInFlight": 1,
+    "hmpRenderMs": 242,
+    "renderedWhilePriorPending": true,
+    "after": {
+      "path": "/plant/hub",
+      "loading": false,
+      "hmp": true,
+      "text": " Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nSettings\nHB\n\nHMP Browser Fixture\n\nAdmin\n\nSign Out\nDashboard\nHMP Operations\n\nHot-mix plant — shift logs, fuel tracking & procurement\n\nRefresh\n\nSHIFTS TODAY\n\n0\n\nlogged\n\nMT DISPATCHED\n\n0\n\nmetric tonnes\n\nLDO CONSUMED\n\n—\n\ntoday\n\nDATE\n\n26 Sep\n\n2026\n\nEQUIPMENT USAGE — TODAY BY LOCATION\n\nNo equipment entries logged today\n\nOPERATIONS & ACTIONS\nBitumen Heating Sessions\n\nLog boiler runs & track hot-oil temperatures\n\nPlant Shift Log\n\nRecord shift details, personnel & production\n\nProduction & Dispatches\n\nLog truck loads with mix data & tonnage\n\nFUEL & BITUMEN TRACKING\nBitumen Stock Tracker\n\nDip readings, tank levels & bitumen stock balance\n\nLDO Flow Meter\n\nLDO meter readings, dip logs & fuel consumption\n\nLDO Book vs Physical\n\nReconcile book stock against physical dip readings\n\nPROCUREMENT\nPurchase Indent\n\nRaise and track purchase indents for HMP materials & spares\n\nDaily Diesel Requirement\n\nPlan & approve diesel allocation for HMP plant operations\n\nRaise Requisition (IRN)\n\nRequest materials from stores for HMP plant operations"
+    },
+    "screenshot": "procurement-prior-fetch-delayed-1.png",
+    "pass": true
+  },
+  {
+    "id": "procurement-prior-fetch-delayed-2",
+    "start": "Procurement & Billing",
+    "mode": "prior-fetch-delayed",
+    "attempt": 2,
+    "before": {
+      "path": "/finance/hub",
+      "headings": [
+        "Procurement & Billing",
+        "Procurement",
+        "Internal Requisitions",
+        "Vendor Billing"
+      ]
+    },
+    "priorRequestsInFlight": 1,
+    "hmpRenderMs": 257,
+    "renderedWhilePriorPending": true,
+    "after": {
+      "path": "/plant/hub",
+      "loading": false,
+      "hmp": true,
+      "text": " Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nSettings\nHB\n\nHMP Browser Fixture\n\nAdmin\n\nSign Out\nDashboard\nHMP Operations\n\nHot-mix plant — shift logs, fuel tracking & procurement\n\nRefresh\n\nSHIFTS TODAY\n\n0\n\nlogged\n\nMT DISPATCHED\n\n0\n\nmetric tonnes\n\nLDO CONSUMED\n\n—\n\ntoday\n\nDATE\n\n26 Sep\n\n2026\n\nEQUIPMENT USAGE — TODAY BY LOCATION\n\nNo equipment entries logged today\n\nOPERATIONS & ACTIONS\nBitumen Heating Sessions\n\nLog boiler runs & track hot-oil temperatures\n\nPlant Shift Log\n\nRecord shift details, personnel & production\n\nProduction & Dispatches\n\nLog truck loads with mix data & tonnage\n\nFUEL & BITUMEN TRACKING\nBitumen Stock Tracker\n\nDip readings, tank levels & bitumen stock balance\n\nLDO Flow Meter\n\nLDO meter readings, dip logs & fuel consumption\n\nLDO Book vs Physical\n\nReconcile book stock against physical dip readings\n\nPROCUREMENT\nPurchase Indent\n\nRaise and track purchase indents for HMP materials & spares\n\nDaily Diesel Requirement\n\nPlan & approve diesel allocation for HMP plant operations\n\nRaise Requisition (IRN)\n\nRequest materials from stores for HMP plant operations"
+    },
+    "screenshot": "procurement-prior-fetch-delayed-2.png",
+    "pass": true
+  },
+  {
+    "id": "procurement-prior-fetch-delayed-3",
+    "start": "Procurement & Billing",
+    "mode": "prior-fetch-delayed",
+    "attempt": 3,
+    "before": {
+      "path": "/finance/hub",
+      "headings": [
+        "Procurement & Billing",
+        "Procurement",
+        "Internal Requisitions",
+        "Vendor Billing"
+      ]
+    },
+    "priorRequestsInFlight": 1,
+    "hmpRenderMs": 299,
+    "renderedWhilePriorPending": true,
+    "after": {
+      "path": "/plant/hub",
+      "loading": false,
+      "hmp": true,
+      "text": " Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nSettings\nHB\n\nHMP Browser Fixture\n\nAdmin\n\nSign Out\nDashboard\nHMP Operations\n\nHot-mix plant — shift logs, fuel tracking & procurement\n\nRefresh\n\nSHIFTS TODAY\n\n0\n\nlogged\n\nMT DISPATCHED\n\n0\n\nmetric tonnes\n\nLDO CONSUMED\n\n—\n\ntoday\n\nDATE\n\n26 Sep\n\n2026\n\nEQUIPMENT USAGE — TODAY BY LOCATION\n\nNo equipment entries logged today\n\nOPERATIONS & ACTIONS\nBitumen Heating Sessions\n\nLog boiler runs & track hot-oil temperatures\n\nPlant Shift Log\n\nRecord shift details, personnel & production\n\nProduction & Dispatches\n\nLog truck loads with mix data & tonnage\n\nFUEL & BITUMEN TRACKING\nBitumen Stock Tracker\n\nDip readings, tank levels & bitumen stock balance\n\nLDO Flow Meter\n\nLDO meter readings, dip logs & fuel consumption\n\nLDO Book vs Physical\n\nReconcile book stock against physical dip readings\n\nPROCUREMENT\nPurchase Indent\n\nRaise and track purchase indents for HMP materials & spares\n\nDaily Diesel Requirement\n\nPlan & approve diesel allocation for HMP plant operations\n\nRaise Requisition (IRN)\n\nRequest materials from stores for HMP plant operations"
+    },
+    "screenshot": "procurement-prior-fetch-delayed-3.png",
+    "pass": true
+  }
+]

@@ -1,0 +1,822 @@
+{
+  "disclosure": "Real production components and Chromium interactions; synthetic API fixture only, no live business writes.",
+  "A1": {
+    "frames": [
+      {
+        "time": 1326.800000000745,
+        "count": 0,
+        "titles": [],
+        "states": []
+      },
+      {
+        "time": 1357.4000000003725,
+        "count": 0,
+        "titles": [],
+        "states": []
+      },
+      {
+        "time": 1367.6000000014901,
+        "count": 0,
+        "titles": [],
+        "states": []
+      },
+      {
+        "time": 1379.5,
+        "count": 0,
+        "titles": [],
+        "states": []
+      },
+      {
+        "time": 1429.4000000003725,
+        "count": 1,
+        "titles": [
+          "SET RATES"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1431.9000000003725,
+        "count": 1,
+        "titles": [
+          "SET RATES"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1455.300000000745,
+        "count": 1,
+        "titles": [
+          "SET RATES"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1460.4000000003725,
+        "count": 1,
+        "titles": [
+          "SET RATES"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1493.5,
+        "count": 1,
+        "titles": [
+          "SET RATES"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1510.300000000745,
+        "count": 1,
+        "titles": [
+          "SET RATES"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1529.9000000003725,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1545.300000000745,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1559.800000000745,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1585.2000000011176,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1594,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1620,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1627.9000000003725,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1644.7000000011176,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1663.5,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1676.6000000014901,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1697.300000000745,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1737,
+        "count": 1,
+        "titles": [
+          "SET RATES"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1739,
+        "count": 1,
+        "titles": [
+          "SET RATES"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1744,
+        "count": 1,
+        "titles": [
+          "SET RATES"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1763.9000000003725,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1784.6000000014901,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "closed"
+        ]
+      },
+      {
+        "time": 1793.6000000014901,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "closed"
+        ]
+      },
+      {
+        "time": 1810,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "closed"
+        ]
+      },
+      {
+        "time": 1828.7000000011176,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "closed"
+        ]
+      },
+      {
+        "time": 1847.2000000011176,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "closed"
+        ]
+      },
+      {
+        "time": 1861.7000000011176,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "closed"
+        ]
+      },
+      {
+        "time": 1876.1000000014901,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "closed"
+        ]
+      },
+      {
+        "time": 1894.2000000011176,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "closed"
+        ]
+      },
+      {
+        "time": 1912,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "closed"
+        ]
+      },
+      {
+        "time": 1928.2000000011176,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "closed"
+        ]
+      },
+      {
+        "time": 1943.5,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "closed"
+        ]
+      },
+      {
+        "time": 1968.4000000003725,
+        "count": 0,
+        "titles": [],
+        "states": []
+      },
+      {
+        "time": 1976.1000000014901,
+        "count": 0,
+        "titles": [],
+        "states": []
+      },
+      {
+        "time": 1993.1000000014901,
+        "count": 0,
+        "titles": [],
+        "states": []
+      },
+      {
+        "time": 2009.4000000003725,
+        "count": 0,
+        "titles": [],
+        "states": []
+      },
+      {
+        "time": 2025.9000000003725,
+        "count": 0,
+        "titles": [],
+        "states": []
+      },
+      {
+        "time": 2042.6000000014901,
+        "count": 0,
+        "titles": [],
+        "states": []
+      },
+      {
+        "time": 2059.9000000003725,
+        "count": 0,
+        "titles": [],
+        "states": []
+      },
+      {
+        "time": 2076.10000000149,
+        "count": 0,
+        "titles": [],
+        "states": []
+      },
+      {
+        "time": 2092.60000000149,
+        "count": 0,
+        "titles": [],
+        "states": []
+      },
+      {
+        "time": 2109.300000000745,
+        "count": 0,
+        "titles": [],
+        "states": []
+      },
+      {
+        "time": 2128.7000000011176,
+        "count": 0,
+        "titles": [],
+        "states": []
+      },
+      {
+        "time": 2143,
+        "count": 0,
+        "titles": [],
+        "states": []
+      },
+      {
+        "time": 2159.5,
+        "count": 0,
+        "titles": [],
+        "states": []
+      },
+      {
+        "time": 2175.9000000003725,
+        "count": 0,
+        "titles": [],
+        "states": []
+      },
+      {
+        "time": 2192.60000000149,
+        "count": 0,
+        "titles": [],
+        "states": []
+      },
+      {
+        "time": 2212.10000000149,
+        "count": 0,
+        "titles": [],
+        "states": []
+      }
+    ],
+    "toasts": [
+      {
+        "title": "Rates and billing units applied to 1 item",
+        "description": "Changes remain in this bill until you save it.",
+        "time": 1954.1000000014901,
+        "dialogCount": 0
+      }
+    ]
+  },
+  "B1": {
+    "sameDOM": true,
+    "sameURL": true,
+    "quantity": "3",
+    "rate": "1100",
+    "notes": "UNSAVED draft preserved across 17 rate edits",
+    "periodFrom": "2027-02-14",
+    "periodTo": "2027-02-14",
+    "site": "VB22 TEST ROAD",
+    "title": "NEW VENDOR BILL",
+    "writes": [
+      {
+        "method": "POST",
+        "path": "/api/vendor-bills/check-duplicates",
+        "body": {
+          "vendorName": "VB22 BORROW OWNER",
+          "items": [
+            {
+              "date": "2027-02-14",
+              "equipmentId": null,
+              "description": "SOIL (SITE)",
+              "category": "material",
+              "siteName": "VB22 TEST ROAD",
+              "source": "auto:site_material_trip_material:2201",
+              "sourceType": "site_material_trip_material",
+              "sourceId": 2201
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/api/vendor-bills/check-duplicates",
+        "body": {
+          "vendorName": "VB22 BORROW OWNER",
+          "items": [
+            {
+              "date": "2027-02-14",
+              "equipmentId": null,
+              "description": "SOIL (SITE)",
+              "category": "material",
+              "siteName": "VB22 TEST ROAD",
+              "source": "auto:site_material_trip_material:2201",
+              "sourceType": "site_material_trip_material",
+              "sourceId": 2201
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/api/vendor-rate-cards/bulk-upsert",
+        "body": {
+          "items": [
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_0_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 1",
+              "unit": "CFT",
+              "rate": 100
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_1_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 2",
+              "unit": "CFT",
+              "rate": 101
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_2_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 3",
+              "unit": "CFT",
+              "rate": 102
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_3_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 4",
+              "unit": "CFT",
+              "rate": 103
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_4_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 5",
+              "unit": "CFT",
+              "rate": 104
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_5_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 6",
+              "unit": "CFT",
+              "rate": 105
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_6_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 7",
+              "unit": "CFT",
+              "rate": 106
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_7_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 8",
+              "unit": "CFT",
+              "rate": 107
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_8_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 9",
+              "unit": "CFT",
+              "rate": 108
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_9_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 10",
+              "unit": "CFT",
+              "rate": 109
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_10_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 11",
+              "unit": "CFT",
+              "rate": 110
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_11_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 12",
+              "unit": "CFT",
+              "rate": 111
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_12_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 13",
+              "unit": "CFT",
+              "rate": 112
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_13_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 14",
+              "unit": "CFT",
+              "rate": 113
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_14_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 15",
+              "unit": "CFT",
+              "rate": 114
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_15_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 16",
+              "unit": "CFT",
+              "rate": 115
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_16_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 17",
+              "unit": "CFT",
+              "rate": 116
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "editDraft": {
+    "sameDOM": true,
+    "quantity": "777",
+    "notes": "UNSAVED EDIT bill preserved",
+    "title": "EDIT VENDOR BILL",
+    "writes": [
+      {
+        "method": "POST",
+        "path": "/api/vendor-bills/check-duplicates",
+        "body": {
+          "vendorName": "VB22 BORROW OWNER",
+          "excludeBillId": 22999,
+          "items": [
+            {
+              "date": "2027-02-14",
+              "equipmentId": null,
+              "description": "SOIL (SITE)",
+              "category": "material",
+              "siteName": "VB22 TEST ROAD",
+              "source": "auto:site_material_trip_material:2201",
+              "sourceType": "site_material_trip_material",
+              "sourceId": 2201
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/api/vendor-rate-cards/bulk-upsert",
+        "body": {
+          "items": [
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_0_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 1",
+              "unit": "CFT",
+              "rate": 432
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_1_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 2",
+              "unit": "CFT",
+              "rate": 2
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_2_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 3",
+              "unit": "CFT",
+              "rate": 3
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_3_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 4",
+              "unit": "CFT",
+              "rate": 4
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_4_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 5",
+              "unit": "CFT",
+              "rate": 5
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_5_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 6",
+              "unit": "CFT",
+              "rate": 6
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_6_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 7",
+              "unit": "CFT",
+              "rate": 7
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_7_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 8",
+              "unit": "CFT",
+              "rate": 8
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_8_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 9",
+              "unit": "CFT",
+              "rate": 9
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_9_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 10",
+              "unit": "CFT",
+              "rate": 10
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_10_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 11",
+              "unit": "CFT",
+              "rate": 11
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_11_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 12",
+              "unit": "CFT",
+              "rate": 12
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_12_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 13",
+              "unit": "CFT",
+              "rate": 13
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_13_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 14",
+              "unit": "CFT",
+              "rate": 14
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_14_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 15",
+              "unit": "CFT",
+              "rate": 15
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_15_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 16",
+              "unit": "CFT",
+              "rate": 16
+            },
+            {
+              "vendorName": "VB22 BORROW OWNER",
+              "category": "material",
+              "itemKey": "MAT_FIXTURE_16_CFT",
+              "itemLabel": "SYNTHETIC MATERIAL 17",
+              "unit": "CFT",
+              "rate": 17
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

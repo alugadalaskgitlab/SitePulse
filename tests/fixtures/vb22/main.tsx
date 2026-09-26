@@ -6,6 +6,7 @@ import { useLocation } from "wouter";
 import SiteMaterialTrips from "../../../client/src/pages/SiteMaterialTrips";
 import SiteMaterialsReceived from "../../../client/src/pages/SiteMaterialsReceived";
 import VendorBills from "../../../client/src/pages/VendorBills";
+import { Toaster } from "../../../client/src/components/ui/toaster";
 import "../../../client/src/index.css";
 
 const SOURCE = "VB22 BORROW OWNER";
@@ -45,6 +46,15 @@ declare global {
 window.__VB22Fixture = fixtureState;
 let trips = initialTrips.map(row => ({ ...row }));
 let bills: AnyRow[] = [];
+if (new URLSearchParams(window.location.search).get("scenario") === "draft-rates"
+  && new URLSearchParams(window.location.search).has("editing")) {
+  bills = [{
+    id: 22999, billNo: "SYNTHETIC-EDIT-22999", billDate: DATE, billType: "all",
+    vendorName: SOURCE, periodFrom: DATE, periodTo: DATE, siteId: 220,
+    status: "draft", totalAmount: 1200, notes: "Synthetic persisted bill",
+    items: tripItems(SOURCE).map((item, i) => ({ ...item, id: 229990 + i, rate: 2, amount: item.qty * 2 })),
+  }];
+}
 let nextTripId = 2290;
 let nextBillId = 22900;
 
@@ -217,6 +227,9 @@ window.fetch = async (input, init) => {
   }
 
   if (pathname === "/api/vendor-bills" && method === "GET") return json(bills);
+  if (/^\/api\/vendor-bills\/\d+$/.test(pathname) && method === "GET") {
+    return json(bills.find(bill => bill.id === Number(pathname.split("/").pop())) || {}, 200);
+  }
   if (pathname === "/api/audit-logs" && method === "GET") return json([
     {
       id: 24002, module: "site_material_trips", transactionId: Number(request.url.searchParams.get("transactionId")),
@@ -255,9 +268,20 @@ window.fetch = async (input, init) => {
   });
   if (pathname === "/api/vendor-rate-cards" && method === "GET") {
     const vendor = request.url.searchParams.get("vendorName");
+    if (new URLSearchParams(window.location.search).get("scenario") === "draft-rates") {
+      return json([
+        { id: 22000, vendorName: SOURCE, category: "material", itemKey: "MAT_SOIL_CFT", itemLabel: "SOIL", unit: "CFT", rate: 2 },
+        { id: 22001, vendorName: SOURCE, category: "material", itemKey: "MAT_SOIL_TRIP", itemLabel: "SOIL", unit: "TRIP", rate: 800 },
+      ]);
+    }
     return json(vendor === SOURCE ? [{ id: 22001, vendorName: SOURCE, category: "material", itemKey: "MAT_SOIL_TRIP", itemLabel: "SOIL", unit: "TRIP", rate: 800, notes: null }] : []);
   }
-  if (pathname === "/api/vendor-rate-cards/discover" && method === "GET") return json([]);
+  if (pathname === "/api/vendor-rate-cards/discover" && method === "GET") return json(
+    new URLSearchParams(window.location.search).get("scenario") === "draft-rates"
+      ? Array.from({ length: 17 }, (_, i) => ({
+        itemKey: `MAT_FIXTURE_${i}_CFT`, itemLabel: `SYNTHETIC MATERIAL ${i + 1}`,
+        category: "material", unit: "CFT", rate: i + 1, rateCardId: 23000 + i,
+      })) : []);
   if (pathname === "/api/vendor-rate-cards/bulk-upsert" && method === "POST") return json(body?.items || []);
   if (pathname === "/api/equipment-master/canonical-types" && method === "GET") return json([]);
   if (pathname === "/api/plant-materials" && method === "GET") return json([{ name: "SOIL" }, { name: "DUST" }]);
@@ -300,6 +324,7 @@ function FixtureRoute() {
   const vb24Scenario = new URLSearchParams(window.location.search).get("scenario") === "vb24";
   const mat01Scenario = new URLSearchParams(window.location.search).get("scenario") === "mat01";
   return <>
+    {new URLSearchParams(window.location.search).get("scenario") === "draft-rates" && <Toaster />}
     <div className={`${vb24Scenario ? "fixed inset-x-0 top-0" : "sticky top-0"} z-[200] border-b border-purple-300 bg-purple-50 px-4 py-2 text-center text-xs font-bold text-purple-900`} data-testid="vb22-fixture-disclosure">
       {mat01Scenario
         ? "MAT-01 REAL MATERIALS RECEIVED COMPONENT — SYNTHETIC FIXTURE DATA — NO LIVE API OR DATABASE WRITES"

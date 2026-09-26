@@ -14,3 +14,9 @@ Touch-picker verification must cover both sides of responsive breakpoints and fi
 **Why:** The BOQ picker uses a Drawer below 768px but a Popover at iPad widths. A list could reach its mathematical scroll bottom while its last option remained below the screen; mobile-only testing missed this.
 
 **How to apply:** Test portrait and landscape tablet sizes in realistic page containment, drag to the bottom and tap the final item. Distinguish Chromium touch evidence from physical iPad Safari verification; do not infer a Safari root cause from CSS alone.
+
+Treat modal closure as a completed lifecycle event, not merely setting `open=false`, when a success notification must follow it.
+
+**Why:** Radix keeps closing content mounted during its exit animation. An immediate toast can overlap it even though React state says the dialog is closed.
+
+**How to apply:** Use the dialog's close/unmount lifecycle rather than an arbitrary timeout; verify visible-dialog count and notification timing in a real browser across animation frames.
