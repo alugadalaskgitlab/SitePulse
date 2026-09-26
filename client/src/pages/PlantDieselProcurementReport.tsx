@@ -14,6 +14,7 @@ import { stockOwnerLabel } from "@shared/stockOwnerLabel";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { dieselTotalIssued } from "@/lib/dieselIssued";
 
 interface DieselProcurementData {
   receipts: Array<{
@@ -108,7 +109,7 @@ export default function PlantDieselProcurementReport() {
   const totalPlantReceipts = plantStockReceipts.reduce((sum, r) => sum + (r.quantity || 0), 0);
   const totalDirectPurchases = directPurchaseEntries.reduce((sum, e) => sum + (e.quantityIn || 0), 0);
   const totalProcured = totalPlantReceipts + totalDirectPurchases;
-  const totalIssued = equipmentUsageEntries.reduce((sum, e) => sum + (e.quantityOut || 0), 0) + totalDirectPurchases;
+  const totalIssued = dieselTotalIssued((ledgerEntries || []) as StockLedgerEntry[]);
 
   const totalAmountPaid = directPurchaseEntries.reduce((sum, entry) => {
     const match = entry.notes?.match(/Rs\.\s*([\d.]+)/);

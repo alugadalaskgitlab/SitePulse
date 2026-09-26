@@ -30,12 +30,13 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
-import type { Party, PlantMaterial, MaterialReceipt } from "@shared/schema";
+import type { Party, PlantMaterial, MaterialReceipt, StockLedgerEntry } from "@shared/schema";
 import { UOM_OPTIONS } from "@shared/schema";
 import { materialReceiptTransactionDate } from "@shared/materialReceiptDates";
 import { decidePiAutoSelect, submitBlockedByPi, showPiIndentBlock, showPiPendingBadge, showRegulariseIndentNotice, receiptClosureStatus } from "@shared/dieselReceiptSource";
 import { stockOwnerLabel } from "@shared/stockOwnerLabel";
 import type { DieselReceiptState } from "@shared/dieselReceiptStatus";
+import { dieselTotalIssued } from "@/lib/dieselIssued";
 
 function invalidateDieselRequirementQueries() {
   return Promise.all([
@@ -179,6 +180,43 @@ export default function PlantMaterialReceipts() {
   const setFilterPartyId = (v: string) => setReceiptPersistedFilters((f) => ({ ...f, filterPartyId: v }));
   const setFilterMaterialId = (v: string) => setReceiptPersistedFilters((f) => ({ ...f, filterMaterialId: v }));
   const setFilterUnapprovedIndent = (v: boolean) => setReceiptPersistedFilters((f) => ({ ...f, filterUnapprovedIndent: v }));
+
+  // Stock is a current balance, not a historical balance as of the date filter.
+  // No site filter exists on this receipt log; avoid showing global figures when
+  // a party/indent filter would make the adjacent receipt totals narrower.
+  const selectedDieselMaterial = materials?.find(
+    m => String(m.id) === filterMaterialId && /^(diesel|hsd)$/i.test(m.name.trim()),
+  );
+  const showDieselFigures = !!selectedDieselMaterial && filterPartyId === "all" && !filterUnapprovedIndent;
+  const { data: dieselBalances, isPending: balancesPending, isFetching: balancesFetching, isError: balancesError } = useQuery<
+    { materialId: number; balance: number; uom: string | null }[]
+  >({
+    queryKey: ["/api/plant-module/stock-balances"],
+    enabled: showDieselFigures,
+  });
+  const { data: dieselLedger, isPending: ledgerPending, isFetching: ledgerFetching, isError: ledgerError } = useQuery<StockLedgerEntry[]>({
+    queryKey: ["/api/plant-module/stock-ledger", selectedDieselMaterial?.id, filterDateFrom, filterDateTo],
+    queryFn: async () => {
+      const params = new URLSearchParams({ materialId: String(selectedDieselMaterial!.id) });
+      if (filterDateFrom) params.set("dateFrom", filterDateFrom);
+      if (filterDateTo) params.set("dateTo", filterDateTo);
+      const response = await fetch(`/api/plant-module/stock-ledger?${params}`);
+      if (!response.ok) throw new Error(`Diesel issue data unavailable (${response.status})`);
+      return response.json();
+    },
+    enabled: showDieselFigures,
+  });
+  const isLiters = (uom: string | null | undefined) => !!uom && /^(l|liters?|ltr|ltrs)$/i.test(uom.trim());
+  const stockRows = dieselBalances?.filter(row => row.materialId === selectedDieselMaterial?.id) ?? [];
+  const scopedLedger = dieselLedger?.filter(row => row.materialId === selectedDieselMaterial?.id) ?? [];
+  const stockInvalid = stockRows.some(row => !isLiters(row.uom) || !Number.isFinite(Number(row.balance)));
+  const issuedInvalid = scopedLedger.some(row =>
+    !isLiters(row.uom) || !Number.isFinite(Number(row.quantityIn ?? 0)) || !Number.isFinite(Number(row.quantityOut ?? 0)),
+  );
+  const presentStock = stockRows.reduce((sum, row) => sum + Number(row.balance), 0);
+  const issued = dieselTotalIssued(scopedLedger);
+  const issuedDisplay = ledgerError ? "Unavailable" : ledgerPending || ledgerFetching ? "Loading…" : issuedInvalid ? "Unavailable (units/data)" : `${issued.toFixed(3)} Liters`;
+  const stockDisplay = balancesError ? "Unavailable" : balancesPending || balancesFetching ? "Loading…" : stockInvalid ? "Unavailable (units/data)" : `${presentStock.toFixed(3)} Liters`;
   
   // Form state
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -1698,7 +1736,7 @@ export default function PlantMaterialReceipts() {
       </Dialog>
 
       {/* Totals Summary */}
-      {filteredTotals.length > 0 && (
+      {(filteredTotals.length > 0 || showDieselFigures) && (
         <Card className="bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
           <CardContent className="py-4">
             <div className="flex flex-wrap items-center gap-4">
@@ -1708,6 +1746,16 @@ export default function PlantMaterialReceipts() {
                   {t.materialName}: {t.total.toFixed(3)} {t.uom}
                 </Badge>
               ))}
+              {showDieselFigures && (
+                <>
+                  <Badge variant="outline" data-testid="diesel-issued-badge" title="Diesel issued to equipment plus direct site purchases; all parties/sites, within the selected receipt date range (ledger dates)." className="text-green-700 dark:text-green-300 border-green-400 dark:border-green-600 text-sm px-3 py-1">
+                    Issued (all sites, selected dates): {issuedDisplay}
+                  </Badge>
+                  <Badge variant="outline" data-testid="diesel-stock-badge" title="Current diesel plant stock across all parties (not direct-purchase site stock); not restricted by the receipt date range. Includes receipts immediately on creation, even before Final Submit." className="text-green-700 dark:text-green-300 border-green-400 dark:border-green-600 text-sm px-3 py-1">
+                    Present Stock (current plant, all parties): {stockDisplay}
+                  </Badge>
+                </>
+              )}
             </div>
           </CardContent>
         </Card>

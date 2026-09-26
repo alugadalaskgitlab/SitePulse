@@ -3363,3 +3363,31 @@ mtime_ms = 1790379602618
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/61dba41f-679c-4672-86c9-5beeafb1eb3a/d95b4492-b4a0-4c10-8ec4-8a367b8ddc2a"
 storage_version_token = "1790379735664132"
 content_type = "image/png"
+
+[[outputs]]
+id = "_6cLrTQl-RzII_fqbrhqd"
+uri = "file://tests/fixtures/diesel04-part-b/evidence/A-before-pending-receipt-mock-api-actual-component.png"
+type = "image"
+title = "A — Diesel receipt totals, issued and present stock"
+description = "Actual Receipt Log component with an in-memory mock API. Synthetic figures; no live receipts created."
+logical_id = "f6ae78a4-fa70-4cbe-bdfc-471c9fbfc6e9"
+content_hash = "sha256:8e72f2d481a9138127e297aebdd42ea062e03712d5389256526cf5885949355b"
+size = 79045
+mtime_ms = 1790389866055
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/f6ae78a4-fa70-4cbe-bdfc-471c9fbfc6e9/daad747e-65f2-41f4-82f5-caf1b4e7aa5f"
+storage_version_token = "1790389965944569"
+content_type = "image/png"
+
+[[outputs]]
+id = "7A-kmErwkpt7IMTg1LCsU"
+uri = "file://tests/fixtures/diesel04-part-b/evidence/B-after-pending-receipt-mock-api-actual-component.png"
+type = "image"
+title = "B — Stock refreshed after saving a pending receipt"
+description = "Actual Receipt Log component with an in-memory mock API. Synthetic figures; no live receipts created."
+logical_id = "26297412-331f-42b5-b9a6-18138a1c1f61"
+content_hash = "sha256:b7bc8bcbf6f42cd74812b61cb60c551fe2b9944aceaea148c34ea46d8c9a960f"
+size = 120463
+mtime_ms = 1790389866779
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/26297412-331f-42b5-b9a6-18138a1c1f61/a4e805ab-cbed-4ed9-9c25-8d6a057030f5"
+storage_version_token = "1790389968029048"
+content_type = "image/png"
