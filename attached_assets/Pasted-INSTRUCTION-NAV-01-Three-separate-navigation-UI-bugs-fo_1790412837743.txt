@@ -1,0 +1,42 @@
+INSTRUCTION NAV-01: Three separate navigation/UI bugs found by direct screen-recording review — overlapping modals in Vendor Bill "Set Rates," losing an in-progress Vendor Bill draft after editing Rate Cards, and a stuck "Loading page..." screen when opening HMP Operations
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Three independent bugs, three independent fixes. Do not let a fix for one part touch the others. Do not touch DIESEL-04 Parts D/E/F, DIESEL-05, VENDOR-01/02/03, or PERM-01/02. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct screen-recording review — do not re-derive)
+This was found by extracting and reviewing frames from two screen recordings the person provided (scene-change frames, not a uniform sample) while they were working in Vendor Bills and navigating the HMP Operations/Stores & Inventory area.
+
+PART A — Overlapping modals in Vendor Bill "Set Rates"
+1. While building a new Vendor Bill (vendor NARASIMHULU, Takkadpally-Sirur site, Aug 2026 period), after pulling billable items and opening "SET RATES" to change a group's billing unit (CFT to TRIP) and rate, clicking "APPLY RATES" opens a second confirmation dialog ("Confirm Billing Unit Conversion").
+2. In the recording, this second dialog appears layered ON TOP of the first "Set Rates" dialog rather than replacing it — for multiple consecutive frames both dialogs are visible simultaneously, semi-transparent and overlapping, with both dialogs' text overlapping illegibly and both sets of Cancel/Apply buttons visible at once.
+3. A "Rates and billing units applied to 111 items" success toast appears while the confirmation dialog is still visibly on screen behind it, suggesting the conversion completes before or during the dialog's own close transition, not cleanly after it.
+4. Find the component(s) responsible for the "Set Rates" dialog and the "Confirm Billing Unit Conversion" dialog (in the Vendor Bill new/edit page, likely near the bill's line-items "SET RATES" action). Confirm whether these are two separately-mounted modal/dialog components that can both be open at once, or a single dialog whose content swaps mid-transition without properly unmounting the first view. Fix so that opening the confirmation dialog fully closes/replaces the "Set Rates" dialog first — only one modal should ever be visibly on screen at a time — and the success toast should only appear after the confirmation dialog has fully closed.
+
+PART B — Editing Rate Cards from within a Vendor Bill draft loses the draft
+1. While filling in a NEW Vendor Bill (items already pulled, values already being edited), the person opened "RATE CARDS" from within that in-progress bill, edited 17 rates, and saved.
+2. After saving, they landed on the Procurement & Billing hub page — not back on the in-progress Vendor Bill draft they were editing. They had to return to Vendor Bills and start a new bill from scratch, losing the pulled items and edits already made.
+3. Find where "RATE CARDS" is triggered from within the New/Edit Vendor Bill page and where the Rate Cards editor navigates to after a successful save. Fix so that saving Rate Cards from within an in-progress Vendor Bill draft returns the person to that same draft (with their pulled items and any entered values intact), not to the Procurement & Billing hub. If the in-progress draft was truly unsaved (no draft ID yet), work out whether it can be preserved across the Rate Cards round-trip (e.g. via a temporary in-memory/session state) — if that's not feasible, at minimum land back on the New Vendor Bill page with the same vendor/site/period pre-filled rather than the hub, and say so in your report so the person can decide if that's good enough.
+
+PART C — "Loading page..." stuck screen when opening HMP Operations
+1. In the recording, clicking "HMP Operations" in the left sidebar correctly highlights that sidebar item, but the content area shows only "Loading page..." and stays on that state rather than loading the HMP Operations dashboard.
+2. Reproduce this: click into HMP Operations from various starting pages (Dashboard, Stores & Inventory, Procurement & Billing) and check whether the dashboard reliably loads, or whether it sometimes hangs on "Loading page...". Check the browser console/network tab for a failed or slow request tied to this page's load, and check whether this correlates with navigating to HMP Operations shortly after another page's data fetch was still in flight (a possible race condition) or after being on a particular prior page.
+3. Fix the root cause once found (whether it's a slow/failing API call, a race condition between navigations, or a rendering bug). If you cannot reliably reproduce it, report exactly what you tried and did not manage to reproduce, rather than guessing at a fix — this one may need the person to note exactly which page they navigated from next time it happens.
+
+WHAT NOT TO DO
+- Do not touch DIESEL-04, DIESEL-05, VENDOR-01/02/03, or PERM-01/02.
+- Do not change the Set Rates/Rate Cards features' actual rate-calculation logic — Parts A and B are about dialog stacking and post-save navigation only, not the math.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change expected for any of the three parts — these are UI/navigation-state fixes.
+
+TESTS
+A1. Open a Vendor Bill, pull items, open Set Rates, change unit and rate, click Apply Rates. Confirm only one dialog is ever visible at a time, the confirmation dialog fully replaces (not overlaps) the Set Rates dialog, and the success toast appears only after the confirmation dialog is closed.
+B1. Start a new Vendor Bill, pull items, partially edit values, then open Rate Cards from within that draft, edit and save rates. Confirm you land back on the same in-progress draft with pulled items/edits intact (or, if not feasible, report exactly what you land on instead).
+C1. Navigate to HMP Operations from at least three different starting pages, several times each. Report the reproduction rate and, if found, the root cause and fix; if not reproducible, report what was tried.
+
+REPORT BACK
+1. Confirm each part separately with evidence (screenshots/screen recording of the fixed flow for A and B; investigation notes plus fix or honest non-reproduction for C).
+2. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
