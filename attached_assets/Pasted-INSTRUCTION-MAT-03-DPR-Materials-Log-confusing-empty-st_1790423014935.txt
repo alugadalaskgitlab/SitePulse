@@ -1,0 +1,58 @@
+INSTRUCTION MAT-03: DPR "Materials Log" confusing empty state, Work Type not saved on new trips, missing Cum conversion display, and Site Material Stock silently showing zero due to a missing conversion density
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Four separate, independently-confirmed issues. Do not let a fix for one part touch the others. Do not touch DIESEL-04/05, NAV-01, VB-27, VENDOR-01/02/03, or PERM-01/02. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+
+PART A — "Materials Log: No materials recorded" despite linked trips being shown right above it
+1. On the DPR page (`client/src/pages/SiteEdit.tsx` ~lines 3241-3256), the "Bulk deliveries already recorded today (Site Material Trips)" banner (`DprDayTripsPanel.tsx`) correctly reads from the real `siteMaterialTrips` table and shows e.g. "Soil 4600 CFT · 7 trips [all linked]". Directly below it, the "Materials Log" card shows "No materials recorded" when `dpr.materials` (a separate, manually-entered array, unrelated to trips) is empty.
+2. This is NOT a data bug — `DprDayTripsPanel.tsx`'s own code comment confirms it is intentionally read-only/display-only, added specifically so trips wouldn't need to be re-entered by hand. But showing "No materials recorded" directly beneath a banner listing 4600 CFT of linked material reads as contradictory and is exactly the kind of confusion the person is reporting.
+3. Fix: change the empty-state copy so it can't be misread as "nothing was delivered." Something like "No manually-added materials for today" (distinguishing it from the trips already shown above), or merge the two into one clearly-labelled view ("Site Material Trips" section + a separate, clearly-labelled "Manually Added Materials" section, only the latter showing an empty state). Pick whichever reads more clearly and is less work, and say which you chose.
+
+PART B — Work Type not showing on Site Material Trips
+1. The Work Type field ("road"/"structure") on `siteMaterialTrips` (`shared/schema.ts` ~line 895) has no default, and the display components (`SiteMaterialsReceived.tsx`'s `WorkTypeBadge`, the read-only detail modal) already correctly render it when present — this is confirmed working once a trip is edited and saved via "Materials Received."
+2. The real gap: the trip CREATION form, `client/src/pages/SiteMaterialTrips.tsx` (the quick-entry page used to log a delivery in the field), has NO Work Type field at all in its create form/payload (~lines 255-272). Every trip is therefore born with `workType = NULL` and stays blank until someone separately opens and re-saves it via Materials Received — which most people never do.
+3. Fix: add a Work Type field (same "Road"/"Structure" options already used elsewhere) to the Site Material Trips creation form, included in the create payload, so it's captured at the point of entry rather than requiring a second edit step later. Confirm the already-working display path (WorkTypeBadge, detail modal) continues to work unchanged.
+
+PART C — Show the received quantity converted into the linked BOQ item's own unit (not just a fixed CFT-to-Cum display)
+1. The person's actual intent is broader than a fixed CFT-to-Cum label: when a trip is linked to a BOQ item ("BOQ Item / Intended Activity"), the converted quantity shown should be in THAT BOQ item's own material unit (from `boqItemMaterials.uom` for that BOQ item + material), not always Cum. Confirmed by direct investigation: no such "convert received qty into a specific BOQ item's unit" capability exists anywhere in the codebase today — only a generic, fixed CFT↔CUM↔MT conversion exists (`shared/uomConvert.ts`'s `convertSolidQty(qty, fromUom, toUom, bulkDensity?)`, using the material's own `bulkDensity` from `plantMaterials` and the constant `CFT_PER_CUM = 35.3147`). `boqItemMaterials.qtyPerBoqUnit`/`uom` is a consumption RECIPE (material needed per 1 unit of BOQ work), which is the opposite direction from what's needed here, and no code today inverts it into a plain unit-conversion.
+2. Fix: when a Site Material Trip is linked to a BOQ item, look up that BOQ item's material recipe entry (`boqItemMaterials`, matched by BOQ item + this material) to get its `uom`, then call the EXISTING `convertSolidQty(receivedQty, receivedUom, thatBoqItemMaterialUom, material.bulkDensity)` to get the converted figure — do not invent a new conversion constant, and do not build a new BOQ-recipe-based unit-conversion table; this is purely composing the two things that already exist (the recipe's target unit + the existing volume/mass converter). Display it clearly labelled with the target unit, e.g. "800 CFT (≈X Cum, BOQ unit)".
+3. When a trip is NOT linked to a BOQ item (or the material has no `bulkDensity` set, so conversion isn't possible), fall back to showing the quantity in its own entered unit only, with no fabricated conversion — do not guess a unit or density.
+4. Apply this consistently everywhere a site material trip's quantity is currently shown (list, detail modal, any report), reusing one shared conversion-lookup function rather than duplicating this logic per screen.
+
+PART E — Unloading point ("stretch"/"yard") field is missing from the edit form people actually use
+1. This field genuinely exists (`unloadedAt`/`yardLabel`, `shared/schema.ts` ~lines 909-913) but ONLY in `SiteMaterialTrips.tsx`'s CREATE form (~lines 687-711, desktop page, create-only, no edit path at all in that file). It is completely absent — not just hidden, but missing from the `TripEditForm` interface itself — in `SiteMaterialsReceived.tsx`, which is the "Material Entry — {material}" edit dialog people are actually using (confirmed to be the exact modal in the person's screenshots, with Date/Time, Site, Material, Quantity/UOM, Vehicle No., Supplier/Party, Work Type, Receipt/Challan No., Remarks, BOQ linking, Cancel/Save Changes).
+2. Fix: add `unloadedAt` (Stretch/Yard select) and the conditional `yardLabel` input to `SiteMaterialsReceived.tsx`'s edit form — same field/options already used in `SiteMaterialTrips.tsx`'s create form, reused not reinvented — including it in `startEditingFields()`'s initial state and in the save payload, so it can be set or corrected after a trip already exists, not only at creation.
+
+PART D — Site Material Stock showing Ordered/Delivered/Consumed all as 0 despite real trips existing
+1. This is NOT because of a missing "delivered to stretch vs yard" field — that field (`unloadedAt`, schema.ts ~lines 909-913) already exists in the schema AND in the `SiteMaterialTrips.tsx` form (~lines 687-695), and the stock calculation already counts a trip toward "Delivered" regardless of its `unloadedAt` value (defaults to "stretch" if unset) — confirmed in `storage.ts`'s `getSiteMaterialReconciliation()` ~lines 12919-12921. Nothing needs to change here for that specific concern — say so plainly in your report so the person understands this part of their theory wasn't the actual cause.
+2. The REAL cause: `getSiteMaterialReconciliation()` (`server/storage.ts` ~lines 12869-13020) converts every trip/order/consumption quantity to MT via `toMTsafe`/`convertSolidQty`, and converting FROM CFT or CUM TO MT requires a non-null `bulkDensity` on that material's `plantMaterials` row (`shared/schema.ts` ~line 446, user-entered, optional). If a material's `bulkDensity` is not set, `convertSolidQty` returns `null`, and the code SILENTLY skips that record (`if (mt == null) continue;`, ~line 12914) with no warning anywhere — so a material with real trips, real purchase indents, and real DPR consumption can still show 0/0/0 across the board if its `bulkDensity` was never configured, and there is currently no way for anyone to know that's why.
+3. Fix:
+   a. Check whether "Soil" (and ideally all currently-used materials) has a `bulkDensity` set in `plantMaterials`. If not, this explains the exact 0/0/0 the person is seeing — confirm this concretely with real data before writing any code fix, and report the actual finding.
+   b. Add a visible warning/flag on the Site Material Stock view when a material has trips/orders/consumption that exist but were skipped due to a missing `bulkDensity` — so this silent-zero situation is never invisible again. Do not silently estimate a density — surface the gap so the person can fill in the correct density themselves (this is a real physical property per material and should not be guessed by the system).
+   c. If reasonable, add `bulkDensity` entry directly to wherever materials are managed (Item Master / plant materials admin) if it isn't already editable there — check first whether it already is, and only add it if genuinely missing.
+
+WHAT NOT TO DO
+- Do not touch DIESEL-04/05, NAV-01, VB-27, VENDOR-01/02/03, or PERM-01/02.
+- Do not change how `unloadedAt` affects the Site Material Stock calculation in Part D (it correctly counts toward Delivered regardless of value, and that is not the cause of the zeros) — Part E only adds the missing UI/edit-field, it does not change what the stock calculation does with it.
+- Do not invent a new conversion constant for Part C — reuse `shared/uomConvert.ts`'s `convertSolidQty` exactly, composed with the BOQ item's own `boqItemMaterials.uom` as the target unit.
+- Do not silently guess/default a `bulkDensity` value for Part D — surface the gap, don't paper over it.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change expected for Parts A, B, C, or E (E reuses existing `unloadedAt`/`yardLabel` columns, just exposes them in a second form). Part D may involve setting `bulkDensity` data values (not a schema change) for specific materials once confirmed missing — do this only after confirming with real data, and list exactly which materials/values you set.
+
+TESTS
+A1. Confirm the Materials Log empty-state copy (or layout) no longer reads as contradictory when trips exist but no manual materials do.
+B1. Create a new Site Material Trip with Work Type set to "Road" via the creation form. Confirm it displays correctly in both the detail modal and the table without needing a separate edit/re-save.
+C1. Link a trip to a BOQ item whose material recipe uses a specific unit (e.g. Cum). Confirm the trip's quantity now shows converted into that BOQ item's unit, matching `convertSolidQty`'s math by hand-check. Confirm an unlinked trip (or one whose material has no `bulkDensity`) shows no fabricated conversion.
+D1. Confirm whether Soil's `bulkDensity` was actually missing (report the real before value). After setting it (if applicable), confirm Site Material Stock now shows real, non-zero Delivered/Consumed/Ordered figures for Soil where trips/orders/consumption genuinely exist.
+D2. Confirm the new warning/flag correctly appears for a material still missing `bulkDensity`, and does NOT appear for one that has it set.
+E1. Open an existing trip via the "Material Entry" edit dialog (`SiteMaterialsReceived.tsx`). Confirm the Stretch/Yard field is now present, correctly shows the trip's existing value (or blank if never set), can be changed and saved, and the conditional Yard Label field behaves the same as it does on the create form.
+
+REPORT BACK
+1. Confirm each part separately with evidence (screenshots, and for Part D the actual before/after Site Material Stock numbers for Soil).
+2. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

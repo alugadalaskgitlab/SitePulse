@@ -1,0 +1,9 @@
+
+ RUN  v4.1.5 /home/runner/workspace
+
+
+ Test Files  2 passed (2)
+      Tests  7 passed (7)
+   Start at  11:55:04
+   Duration  2.15s (transform 1.53s, setup 0ms, import 2.06s, tests 14ms, environment 0ms)
+

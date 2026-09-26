@@ -1,3 +1,4 @@
+import { formatTripQuantity } from "@shared/tripQuantityDisplay";
 // Batch 06E — compact material-receipt strip for a billable DPR activity.
 // Shows: applicable Execution Arrangement, Required today (approved priority,
 // NO prorating), Received today (active linked site_material_trips), Executed
@@ -724,7 +725,7 @@ function SuggestionBlock({ trips, ctx, testIdPrefix }: { trips: SiteMaterialTrip
       </div>
       {trips.map((t) => (
         <div key={t.id} className="flex items-center justify-between gap-2 text-xs">
-          <span>{t.time ?? ""} · {t.material} · {t.quantity} {t.uom}{t.vehicleNumber ? ` · ${t.vehicleNumber}` : ""}</span>
+          <span>{t.time ?? ""} · {t.material} · {formatTripQuantity(t)}{t.vehicleNumber ? ` · ${t.vehicleNumber}` : ""}</span>
           <Button variant="ghost" size="sm" className="h-6 px-2" disabled={linkMutation.isPending} onClick={() => linkMutation.mutate(t.id)} data-testid={`${testIdPrefix}-link-trip-${t.id}`}>
             Link
           </Button>
@@ -743,7 +744,7 @@ function ViewReceiptsDialog({ open, onOpenChange, trips, testIdPrefix }: { open:
         {trips.map((t) => (
           <div key={t.id} className="rounded border p-2 text-sm space-y-1" data-testid={`${testIdPrefix}-receipt-${t.id}`}>
             <div className="flex justify-between">
-              <span className="font-medium">{t.material} · {t.quantity} {t.uom}</span>
+              <span className="font-medium">{t.material} · {formatTripQuantity(t)}</span>
               <span className="text-muted-foreground text-xs">{t.time ?? ""}</span>
             </div>
             <p className="text-xs text-muted-foreground">

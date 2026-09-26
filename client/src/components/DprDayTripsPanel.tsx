@@ -1,3 +1,4 @@
+import { formatTripQuantity } from "@shared/tripQuantityDisplay";
 // 06T §5 — read-only view of the day's Site Material Trips inside the DPR
 // Materials section. Bulk road materials (soil, GSB, aggregate…) delivered by
 // truck are recorded as Site Material Trips; before this panel the DPR
@@ -76,7 +77,7 @@ export function DprDayTripsPanel({ siteName, date, testIdPrefix }: {
               className="rounded border bg-background/60 px-2 py-1.5 text-xs grid gap-x-3 gap-y-1 sm:grid-cols-3"
               data-testid={`${testIdPrefix}-day-trip-${trip.id}`}
             >
-              <span className="font-medium">{trip.material} · {Number(trip.quantity || 0)} {trip.uom}</span>
+              <span className="font-medium">{trip.material} · {formatTripQuantity(trip)}</span>
               <span>{destination}</span>
               <span>Vehicle: {trip.vehicleNumber || "Not recorded"}</span>
               <span>Transport: {transportLabel}</span>

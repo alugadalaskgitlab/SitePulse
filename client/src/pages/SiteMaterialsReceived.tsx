@@ -1,3 +1,4 @@
+import { formatTripQuantity } from "@shared/tripQuantityDisplay";
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -46,6 +47,8 @@ const MATERIAL_OPTIONS = [
 const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs", "Tons"];
 
 interface TripEditForm {
+  unloadedAt: string;
+  yardLabel: string;
   date: string;
   time: string;
   site: string;
@@ -225,6 +228,8 @@ export default function SiteMaterialsReceived() {
       receiptNumber: trip.receiptNumber || "",
       notes: trip.notes || "",
       workType: trip.workType || "",
+      unloadedAt: trip.unloadedAt || "",
+      yardLabel: trip.yardLabel || "",
       workContext: {
         boqProjectId: trip.boqProjectId ?? null,
         boqItemId: trip.boqItemId ?? null,
@@ -253,6 +258,8 @@ export default function SiteMaterialsReceived() {
       receiptNumber: editForm.receiptNumber.trim() || null,
       notes: editForm.notes.trim() || null,
       workType: editForm.workType || null,
+      unloadedAt: editForm.unloadedAt || null,
+      yardLabel: editForm.unloadedAt === "yard" ? editForm.yardLabel.trim() || null : null,
       boqProjectId: editForm.workContext.boqProjectId,
       boqItemId: editForm.workContext.boqItemId,
       programmeBarId: editForm.workContext.programmeBarId,
@@ -421,7 +428,7 @@ export default function SiteMaterialsReceived() {
                           {trip.material || "-"}
                           {trip.source === "trip" && <TripWorkContextSummary trip={trip} testIdPrefix="received-list-ctx" />}
                         </td>
-                        <td className="p-2 border text-sm text-right">{trip.quantity} {trip.uom}</td>
+                        <td className="p-2 border text-sm text-right">{formatTripQuantity(trip)}</td>
                         <td className="p-2 border text-sm" data-testid={`cell-material-source-${trip.source}-${trip.id}`}>
                           {trip.materialSourceSupplier || "–"}
                         </td>
@@ -635,7 +642,7 @@ export default function SiteMaterialsReceived() {
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs uppercase tracking-wide text-muted-foreground">Work Type</Label>
-                      <Select value={editForm.workType || "road"} onValueChange={(v) => setEditForm(f => f && { ...f, workType: v })}>
+                      <Select value={editForm.workType} onValueChange={(v) => setEditForm(f => f && { ...f, workType: v })}>
                         <SelectTrigger data-testid="select-edit-worktype"><SelectValue placeholder="Select work type" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="road">Road</SelectItem>
@@ -643,6 +650,22 @@ export default function SiteMaterialsReceived() {
                         </SelectContent>
                       </Select>
                     </div>
+                    <div className="space-y-1">
+                      <Label>Unloaded at</Label>
+                      <Select value={editForm.unloadedAt} onValueChange={(v) => setEditForm(f => f && { ...f, unloadedAt: v })}>
+                        <SelectTrigger data-testid="select-edit-unloaded-at"><SelectValue placeholder="Select unloading point" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="stretch">Work Stretch</SelectItem>
+                          <SelectItem value="yard">Temporary Yard</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {editForm.unloadedAt === "yard" && (
+                      <div className="space-y-1">
+                        <Label>Yard Label</Label>
+                        <Input value={editForm.yardLabel} onChange={(e) => setEditForm(f => f && { ...f, yardLabel: e.target.value })} data-testid="input-edit-yard-label" />
+                      </div>
+                    )}
                     <div className="space-y-1 col-span-2">
                       <Label className="text-xs uppercase tracking-wide text-muted-foreground">Receipt / Challan No.</Label>
                       <Input
@@ -707,7 +730,7 @@ export default function SiteMaterialsReceived() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Quantity</p>
-                    <p className="font-semibold mt-0.5">{selectedTrip.quantity} {selectedTrip.uom}</p>
+                    <p className="font-semibold mt-0.5">{formatTripQuantity(selectedTrip)}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Vehicle No.</p>

@@ -1,0 +1,182 @@
+{
+  "synthetic": true,
+  "noLiveWrites": true,
+  "handcheck": {
+    "formula": "800 / 35.3147",
+    "result": 22.653455926285652,
+    "displayed": "22.653 Cum"
+  },
+  "create": [
+    {
+      "method": "POST",
+      "payload": {
+        "date": "2026-09-26",
+        "time": "11:55",
+        "site": "MAT02 SYNTHETIC SITE",
+        "material": "WMM",
+        "supplier": "SYNTHETIC TRANSPORTER",
+        "materialSourceSupplier": "",
+        "vehicleNumber": "SYNTHETIC-03",
+        "transportType": "agency_vendor",
+        "internalEquipmentId": null,
+        "quantity": 800,
+        "uom": "CFT",
+        "location": "",
+        "receiptNumber": "",
+        "enteredBy": "",
+        "notes": "",
+        "workType": "road",
+        "unloadedAt": "stretch",
+        "boqProjectId": 31,
+        "boqItemId": 32
+      },
+      "returned": {
+        "date": "2026-09-26",
+        "time": "11:55",
+        "site": "MAT02 SYNTHETIC SITE",
+        "material": "WMM",
+        "supplier": "SYNTHETIC TRANSPORTER",
+        "materialSourceSupplier": "",
+        "vehicleNumber": "SYNTHETIC-03",
+        "transportType": "agency_vendor",
+        "internalEquipmentId": null,
+        "quantity": 800,
+        "uom": "CFT",
+        "location": "",
+        "receiptNumber": "",
+        "enteredBy": "",
+        "notes": "",
+        "workType": "road",
+        "unloadedAt": "stretch",
+        "boqProjectId": 31,
+        "boqItemId": 32,
+        "id": 13022,
+        "source": "trip",
+        "isCancelled": false,
+        "boqQuantity": {
+          "quantity": 22.653455926285652,
+          "uom": "Cum"
+        }
+      }
+    }
+  ],
+  "edits": [
+    {
+      "method": "PATCH",
+      "payload": {
+        "date": "2026-09-26",
+        "time": "11:55",
+        "site": "MAT02 SYNTHETIC SITE",
+        "material": "WMM",
+        "quantity": 800,
+        "uom": "CFT",
+        "vehicleNumber": "SYNTHETIC-03",
+        "supplier": "SYNTHETIC TRANSPORTER",
+        "materialSourceSupplier": null,
+        "receiptNumber": null,
+        "notes": null,
+        "workType": "road",
+        "unloadedAt": "yard",
+        "yardLabel": "SYNTHETIC SAVED YARD",
+        "boqProjectId": 31,
+        "boqItemId": 32,
+        "programmeBarId": null,
+        "earthworkArrangementId": null
+      },
+      "returned": {
+        "date": "2026-09-26",
+        "time": "11:55",
+        "site": "MAT02 SYNTHETIC SITE",
+        "material": "WMM",
+        "supplier": "SYNTHETIC TRANSPORTER",
+        "materialSourceSupplier": null,
+        "vehicleNumber": "SYNTHETIC-03",
+        "transportType": "agency_vendor",
+        "internalEquipmentId": null,
+        "quantity": 800,
+        "uom": "CFT",
+        "location": "",
+        "receiptNumber": null,
+        "enteredBy": "",
+        "notes": null,
+        "workType": "road",
+        "unloadedAt": "yard",
+        "boqProjectId": 31,
+        "boqItemId": 32,
+        "id": 13022,
+        "source": "trip",
+        "isCancelled": false,
+        "boqQuantity": {
+          "quantity": 22.653455926285652,
+          "uom": "Cum"
+        },
+        "yardLabel": "SYNTHETIC SAVED YARD",
+        "programmeBarId": null,
+        "earthworkArrangementId": null
+      }
+    },
+    {
+      "method": "PATCH",
+      "payload": {
+        "date": "2026-09-26",
+        "time": "11:55",
+        "site": "MAT02 SYNTHETIC SITE",
+        "material": "WMM",
+        "quantity": 800,
+        "uom": "CFT",
+        "vehicleNumber": "SYNTHETIC-03",
+        "supplier": "SYNTHETIC TRANSPORTER",
+        "materialSourceSupplier": null,
+        "receiptNumber": null,
+        "notes": null,
+        "workType": "road",
+        "unloadedAt": "stretch",
+        "yardLabel": null,
+        "boqProjectId": 31,
+        "boqItemId": 32,
+        "programmeBarId": null,
+        "earthworkArrangementId": null
+      },
+      "returned": {
+        "date": "2026-09-26",
+        "time": "11:55",
+        "site": "MAT02 SYNTHETIC SITE",
+        "material": "WMM",
+        "supplier": "SYNTHETIC TRANSPORTER",
+        "materialSourceSupplier": null,
+        "vehicleNumber": "SYNTHETIC-03",
+        "transportType": "agency_vendor",
+        "internalEquipmentId": null,
+        "quantity": 800,
+        "uom": "CFT",
+        "location": "",
+        "receiptNumber": null,
+        "enteredBy": "",
+        "notes": null,
+        "workType": "road",
+        "unloadedAt": "stretch",
+        "boqProjectId": 31,
+        "boqItemId": 32,
+        "id": 13022,
+        "source": "trip",
+        "isCancelled": false,
+        "boqQuantity": {
+          "quantity": 22.653455926285652,
+          "uom": "Cum"
+        },
+        "yardLabel": null,
+        "programmeBarId": null,
+        "earthworkArrangementId": null
+      }
+    }
+  ],
+  "rendered": {
+    "tripTableText": "11:55MAT02 SYNTHETIC SITEWMMLinked Work: SYNTHETIC WMM FILLSYNTHETIC TRANSPORTER-SYNTHETIC-03800 (≈22.653 Cum, BOQ unit)CFT--",
+    "receivedTableText": "26-SEP-202611:55MAT02 SYNTHETIC SITESYNTHETIC TRANSPORTERSYNTHETIC-03WMMLinked Work: SYNTHETIC WMM FILL800 CFT (≈22.653 Cum, BOQ unit)–-ROADTRIP—",
+    "detailText": "Material Entry — WMMRequest EditDate26 Sep 2026 · 11:55SiteMAT02 SYNTHETIC SITEMaterialWMMQuantity800 CFT (≈22.653 Cum, BOQ unit)Vehicle No.SYNTHETIC-03Supplier / PartySYNTHETIC TRANSPORTERMaterial Source / Supplier—Receipt / Challan No.—Work TypeROADSourceTRIPLinked Work ContextLinked Work: SYNTHETIC WMM FILLPhotosCameraAdd PhotoNo photos attached to this entry.Delete EntryClose",
+    "legacyUnloadingText": "Select unloading point",
+    "dprManualEmpty": true,
+    "unlinked": "WMM · 800 CFTSYNTHETIC OLD YARDVehicle: SYNTHETIC UNLINKEDTransport: Agency / VendorSupplier: MAT02 SYNTHETIC TRANSPORTERReceipt: MAT02-CH-001",
+    "missingDensity": "Soil · 800 CFTSYNTHETIC OLD YARDVehicle: SYNTHETIC NO DENSITYTransport: Agency / VendorSupplier: MAT02 SYNTHETIC TRANSPORTERReceipt: MAT02-CH-001"
+  }
+}

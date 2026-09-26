@@ -5,11 +5,14 @@ import { ChevronLeft, Boxes, AlertTriangle, Calendar, ExternalLink, Info } from 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { format, subDays, startOfMonth } from "date-fns";
+import type { DensitySkips } from "@shared/siteMaterialStockWarnings";
+import { StockDensityWarning } from "@/components/StockDensityWarning";
 
 type Row = {
   site: string; material: string; matched: boolean; uom: string;
   ordered: number; delivered: number; consumed: number; toSupply: number; lying: number;
   lastDeliveryDate: string | null;
+  densitySkips?: DensitySkips;
 };
 
 const n = (v: number) => v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -144,6 +147,7 @@ export default function SiteMaterialStock() {
                                   Last delivery: {format(new Date(r.lastDeliveryDate + "T00:00:00"), "d MMM yyyy")}
                                 </span>
                               )}
+                              <StockDensityWarning skips={r.densitySkips} matched={r.matched} />
                             </div>
                           </td>
                           <td className="px-3 py-2.5 text-right font-mono text-slate-500">{n(r.ordered)}</td>
@@ -176,7 +180,7 @@ export default function SiteMaterialStock() {
             </span>
           </div>
           <p className="text-xs text-muted-foreground">
-            All quantities in MT. <span className="text-red-600 font-medium">Negative "Lying at Site"</span> means
+            Stock totals are in MT; skipped quantities in warnings retain their source units. <span className="text-red-600 font-medium">Negative "Lying at Site"</span> means
             the consumption estimate exceeds recorded deliveries — check that all delivery challans are being logged.
           </p>
         </div>

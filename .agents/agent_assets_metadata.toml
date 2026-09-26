@@ -3727,3 +3727,87 @@ mtime_ms = 1790419204679
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b47aadc6-1327-4e98-a2f1-3e50d32bea7c/9ff45480-6d82-40b6-85e2-cf9f34ef8253"
 storage_version_token = "1790419315270195"
 content_type = "image/png"
+
+[[outputs]]
+id = "Ey0xPKTkac7YQ-nuBQS8w"
+uri = "file://screenshots/mat03/AC-dpr-trips-and-manual-empty-SYNTHETIC.png"
+type = "image"
+title = "A/C — DPR materials wording and BOQ-unit display"
+description = "Production components exercised with explicitly labelled synthetic API data; no live business writes."
+logical_id = "a9bcf77d-493f-4791-88f9-3828b0a91a4d"
+content_hash = "sha256:14bdf9e644acac1ecbcfe2645e596321b522b2e5e41d22bc16101bf73e65d264"
+size = 123461
+mtime_ms = 1790423748226
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/a9bcf77d-493f-4791-88f9-3828b0a91a4d/b7e9c32a-a117-4cab-98b9-5d08b59cae63"
+storage_version_token = "1790423830413310"
+content_type = "image/png"
+
+[[outputs]]
+id = "1ZeY_LnD3dITL9EnOeZUM"
+uri = "file://screenshots/mat03/B-create-road-SYNTHETIC.png"
+type = "image"
+title = "B — Work Type at trip creation"
+description = "Production components exercised with explicitly labelled synthetic API data; no live business writes."
+logical_id = "e4d4a2f0-ad2e-4f5a-8e94-5843761a8b38"
+content_hash = "sha256:11334414872f7078af25c5ad3a2fd845cf079507a8a781de9c9ae2c22fb03d75"
+size = 162475
+mtime_ms = 1790423745774
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e4d4a2f0-ad2e-4f5a-8e94-5843761a8b38/c3622602-13e8-46a9-80fd-2297c7c78c0b"
+storage_version_token = "1790423832549820"
+content_type = "image/png"
+
+[[outputs]]
+id = "n97LPqT4_4Vw531mz0Lh6"
+uri = "file://screenshots/mat03/BC-detail-road-conversion-SYNTHETIC.png"
+type = "image"
+title = "B/C — Road badge and converted quantity"
+description = "Production components exercised with explicitly labelled synthetic API data; no live business writes."
+logical_id = "22d35b02-f3e9-4796-8f46-204d8f9f9049"
+content_hash = "sha256:561be65f321d71c8a377c5ba88a6b27cf159a2ed6a63947ec579316aa4f14272"
+size = 139319
+mtime_ms = 1790423746598
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/22d35b02-f3e9-4796-8f46-204d8f9f9049/596928e6-81b4-4f0c-926a-ba54cc1363fb"
+storage_version_token = "1790423834469539"
+content_type = "image/png"
+
+[[outputs]]
+id = "YDOz6HvCk3dfQsNZTCo0y"
+uri = "file://screenshots/mat03/E-saved-yard-reopened-SYNTHETIC.png"
+type = "image"
+title = "E — Saved unloading point reopened"
+description = "Production components exercised with explicitly labelled synthetic API data; no live business writes."
+logical_id = "f3126565-14fe-4a16-8009-ebf89be6cc66"
+content_hash = "sha256:5fc0f1775532c55ea27fd5b5bac85a4badc813989223bd261b595afa808d06bb"
+size = 131600
+mtime_ms = 1790423747054
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/f3126565-14fe-4a16-8009-ebf89be6cc66/3a4c1b2b-09d1-4e6b-a3ce-4db988665932"
+storage_version_token = "1790423836442555"
+content_type = "image/png"
+
+[[outputs]]
+id = "wzhV45EgCO03nfDZV1mGT"
+uri = "file://screenshots/mat03/E-legacy-unloading-blank-SYNTHETIC.png"
+type = "image"
+title = "E — Legacy unset unloading point"
+description = "Production components exercised with explicitly labelled synthetic API data; no live business writes."
+logical_id = "eca84cbc-9827-4396-9c38-f2427d943f05"
+content_hash = "sha256:a21dd732436a07a9708eb19d71b44800b0fdf38bb4394f289da67775dbf8de98"
+size = 176011
+mtime_ms = 1790423747650
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/eca84cbc-9827-4396-9c38-f2427d943f05/1e2fc967-fe99-43c3-a020-d8fbf869b634"
+storage_version_token = "1790423838430262"
+content_type = "image/png"
+
+[[outputs]]
+id = "l8yZReRQccUwlx16H0Rg7"
+uri = "file://artifacts/mat03-stock-synthetic.jpg"
+type = "image"
+title = "D — Missing-density warning"
+description = "Production stock screen with synthetic missing-density and configured-density cases. Real development Soil findings are reported separately."
+logical_id = "134aff04-8575-4e55-b40d-c0dc5478b7ec"
+content_hash = "sha256:7e324ea88d0292f7b8eabd166d9503d9a9fe89bb0bf9a7cdd3c584803b432ea4"
+size = 87268
+mtime_ms = 1790423164078
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/134aff04-8575-4e55-b40d-c0dc5478b7ec/44c5d655-ba77-47b9-ad07-f5bc5217ceb2"
+storage_version_token = "1790423840161244"
+content_type = "image/jpeg"

@@ -19,6 +19,14 @@ description: How bulk material receipts (site_material_trips) link to earthwork 
 - **arrangementType relevance:** reused_excavated → no receipt prompt; client_supplied → context badge, not an HLC payable; Record Receipt reuses the existing site-material-trip endpoint (no DPR duplicate).
 - Multi-item arrangements have boqItemId NULL + jsonb `boqItemAllocations`; `getEarthworkArrangementsForItem` must include them (JS filter), or they silently vanish from the strip.
 
+## Linked-trip quantity annotations
+
+The linked BOQ quantity annotation requires an exact, unambiguous BOQ-item/material recipe match and a verified positive material density, even for volume-to-volume pairs.
+
+**Why:** This is an explicit display safeguard requested for trip annotations, stricter than the generic converter's mathematical requirements. The recipe supplies only the target UOM; its consumption rate must never be inverted into a conversion factor.
+
+**How to apply:** Keep generic receipt-comparison conversion behaviour separate. Missing metadata leaves the entered trip quantity visible without an annotation; never guess density or the BOQ target unit.
+
 ## Known future gap (reported, not built)
 Vendor billing tie-in: arrangements store agencyName as free text (no vendor master FK); `getVendorBillAutoItems` matches supplier text only.
 

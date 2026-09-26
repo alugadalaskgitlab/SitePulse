@@ -1,3 +1,4 @@
+import { formatTripQuantity } from "@shared/tripQuantityDisplay";
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useSearch, useLocation } from "wouter";
@@ -99,6 +100,7 @@ export default function SiteMaterialTrips() {
     receiptNumber: "",
     enteredBy: "",
     notes: "",
+    workType: "",
     // 06S §6: where the truck actually unloaded — permanent physical fact.
     unloadedAt: "stretch",
     yardLabel: "",
@@ -278,7 +280,9 @@ export default function SiteMaterialTrips() {
         queryClient.invalidateQueries({ queryKey: ["/api/attachments", "site_material_trip", trip.id] });
       }
       setStagedPhotos([]);
-      queryClient.invalidateQueries({ queryKey: ["/api/site-material-trips"] });
+      queryClient.invalidateQueries({ predicate: (q) =>
+        typeof q.queryKey[0] === "string" && q.queryKey[0].startsWith("/api/site-material-trips")
+      });
       // The submitted site is captured in the mutation payload; invalidate
       // all scoped entries so a quick site switch while saving cannot leave
       // either the old or new site's list stale.
@@ -302,6 +306,7 @@ export default function SiteMaterialTrips() {
           quantity: "",
           receiptNumber: "",
           notes: "",
+          workType: "",
         }));
       } else if (keepContext) {
         // 06G rapid repeat-trip: keep site/material/supplier/location/UoM +
@@ -683,6 +688,16 @@ export default function SiteMaterialTrips() {
                   </div>
                 )}
                 <div>
+                  <Label className="text-sm">Work Type</Label>
+                  <Select value={newTrip.workType} onValueChange={(v) => setNewTrip({ ...newTrip, workType: v })}>
+                    <SelectTrigger data-testid="select-trip-worktype"><SelectValue placeholder="Select work type" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="road">Road</SelectItem>
+                      <SelectItem value="structure">Structure</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
                   <Label className="text-sm">Unloaded At</Label>
                   <Select value={newTrip.unloadedAt} onValueChange={(v) => setNewTrip({ ...newTrip, unloadedAt: v })}>
                     <SelectTrigger data-testid="select-trip-unloaded-at"><SelectValue /></SelectTrigger>
@@ -1003,7 +1018,7 @@ export default function SiteMaterialTrips() {
                         <td className="p-2">{trip.supplier || '-'}</td>
                         <td className="p-2" data-testid={`trip-material-source-${trip.id}`}>{trip.materialSourceSupplier?.trim() || '-'}</td>
                         <td className="p-2">{trip.vehicleNumber || '-'}</td>
-                        <td className="p-2 text-right font-mono">{trip.quantity?.toFixed(3)}</td>
+                        <td className="p-2 text-right font-mono">{formatTripQuantity(trip, false)}</td>
                         <td className="p-2">{trip.uom}</td>
                         <td className="p-2">{trip.location || '-'}</td>
                         <td className="p-2">

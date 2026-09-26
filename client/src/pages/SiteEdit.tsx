@@ -3253,7 +3253,7 @@ export default function SiteEdit() {
             <DprDayTripsPanel siteName={header.site} date={header.date} testIdPrefix="edit-materials" />
           )}
           {materials.length === 0 ? (
-            <p className="text-muted-foreground text-sm text-center py-4">No materials recorded.</p>
+            <p className="text-muted-foreground text-sm text-center py-4">No manually-added materials for today.</p>
           ) : (
             materials.map((m, idx) => (
               <div key={idx} className="grid grid-cols-1 md:grid-cols-8 gap-3 items-end p-4 bg-muted/30 rounded-lg relative transition-all duration-500" data-dpr-row-key={dprRowKey("materials", idx)} data-testid={`material-row-${idx}`}>

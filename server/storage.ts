@@ -1,3 +1,4 @@
+import { lookupTripBoqQuantity } from "../shared/tripQuantityDisplay";
 import { db } from "./db";
 import { formatPurchaseIndentNumber, reconcileDeliveryEvidence, validateDeliveryDestination, isBulkPiDeliveryItem, type DeliveryEvidence } from "../shared/purchaseIndentDelivery";
 import { calculateEquipmentHireFinancials, calculateHireGroup, getHireReviewGaps, isEquipmentHireBillEligible, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
@@ -446,6 +447,7 @@ import { shouldCreateDprEquipmentDieselLedger } from "@shared/dprPlantLink";
 import { dprProgressReviewFactsChanged, resolveDprProgressSources } from "@shared/dprProgressIdentity";
 import { normaliseUnit, computeRequirementStatus, isContractCutToFillDescription } from "@shared/planningEngine";
 import { convertSolidQty } from "@shared/uomConvert";
+import { emptyDensitySkips, needsStockDensity, recordDensitySkip, type DensitySkips } from "@shared/siteMaterialStockWarnings";
 import { canonMaterialName } from "@shared/materialMatch";
 import { suggestWorkCategory, suggestWorkCategoryFromDescription } from "@shared/boqWorkCategories";
 import { canonicalizeUnit } from "@shared/boqNormalise";
@@ -1404,6 +1406,7 @@ export interface IStorage {
   getSiteMaterialReconciliation(filters?: { permittedSiteNames?: string[]; dateFrom?: string; dateTo?: string }): Promise<{
     site: string; material: string; matched: boolean; uom: string;
     ordered: number; delivered: number; consumed: number; toSupply: number; lying: number;
+    densitySkips: DensitySkips;
     lastDeliveryDate: string | null;
   }[]>;
 
@@ -12351,7 +12354,19 @@ export class DatabaseStorage implements IStorage {
       .where(and(...conditions))
       .orderBy(desc(siteMaterialTrips.date), desc(siteMaterialTrips.createdAt));
     
-    return trips;
+    return this.withTripBoqQuantities(trips);
+  }
+
+  /** Enrich only already-authorized trip rows, never expose recipe/master lists. */
+  private async withTripBoqQuantities<T extends SiteMaterialTrip>(trips: T[]) {
+    const ids = Array.from(new Set(trips.flatMap(t => t.boqItemId == null ? [] : [t.boqItemId])));
+    if (!ids.length) return trips.map(t => ({ ...t, boqQuantity: null }));
+    const names = Array.from(new Set(trips.map(t => t.material)));
+    const [recipes, materials] = await Promise.all([
+      db.select().from(boqItemMaterials).where(inArray(boqItemMaterials.boqItemId, ids)),
+      db.select({ name: plantMaterials.name, bulkDensity: plantMaterials.bulkDensity }).from(plantMaterials).where(inArray(plantMaterials.name, names)),
+    ]);
+    return trips.map(t => ({ ...t, boqQuantity: lookupTripBoqQuantity(t, recipes, materials) }));
   }
 
   /**
@@ -12734,7 +12749,7 @@ export class DatabaseStorage implements IStorage {
         console.error("checkSiteDeliveryCompletion error:", e)
       );
     }
-    return trip;
+    return (await this.withTripBoqQuantities([trip]))[0];
   }
 
   private async checkSiteDeliveryCompletion(indentItemId: number): Promise<void> {
@@ -12858,7 +12873,7 @@ export class DatabaseStorage implements IStorage {
         }
         return [updated] as const;
     });
-    return trip!;
+    return trip ? (await this.withTripBoqQuantities([trip]))[0] : trip!;
   }
 
   async deleteSiteMaterialTrip(id: number): Promise<void> {
@@ -12872,6 +12887,7 @@ export class DatabaseStorage implements IStorage {
     site: string; material: string; matched: boolean; uom: string;
     ordered: number; delivered: number; deliveredAtStretch: number; deliveredAtYard: number;
     consumed: number; toSupply: number; lying: number;
+    densitySkips: DensitySkips;
     lastDeliveryDate: string | null;
   }[]> {
     const permitted = filters?.permittedSiteNames;
@@ -12889,12 +12905,12 @@ export class DatabaseStorage implements IStorage {
     const toMTsafe = (qty: number, uom: string | null | undefined, density: number | null) =>
       convertSolidQty(qty, uom, "MT", density);
 
-    type Row = { site: string; material: string; matched: boolean; ordered: number; delivered: number; deliveredAtStretch: number; deliveredAtYard: number; consumed: number; lastDeliveryDate: string | null };
+    type Row = { site: string; material: string; matched: boolean; ordered: number; delivered: number; deliveredAtStretch: number; deliveredAtYard: number; consumed: number; lastDeliveryDate: string | null; densitySkips: DensitySkips };
     const map = new Map<string, Row>();
     const bucket = (site: string, materialName: string, matched: boolean): Row => {
       const k = `${site.toUpperCase().trim()}||${canonMaterialName(materialName)}`;
       let r = map.get(k);
-      if (!r) { r = { site, material: materialName, matched, ordered: 0, delivered: 0, deliveredAtStretch: 0, deliveredAtYard: 0, consumed: 0, lastDeliveryDate: null }; map.set(k, r); }
+      if (!r) { r = { site, material: materialName, matched, ordered: 0, delivered: 0, deliveredAtStretch: 0, deliveredAtYard: 0, consumed: 0, lastDeliveryDate: null, densitySkips: emptyDensitySkips() }; map.set(k, r); }
       return r;
     };
 
@@ -12909,7 +12925,12 @@ export class DatabaseStorage implements IStorage {
       if (!t.material || !t.site) continue;
       const m = resolve(t.material);
       const mt = toMTsafe(t.quantity ?? 0, t.uom, m?.bulkDensity ?? null);
-      if (mt == null) continue;
+      if (mt == null) {
+        if (needsStockDensity(t.uom, m?.bulkDensity ?? null)) {
+          recordDensitySkip(bucket(t.site, m?.name ?? t.material, !!m).densitySkips, "delivered", t.quantity ?? 0, t.uom);
+        }
+        continue;
+      }
       const row = bucket(t.site, m?.name ?? t.material, !!m);
       row.delivered += mt;
       // 06S §7: split delivered by ORIGINAL unloading destination — purely
@@ -12947,7 +12968,12 @@ export class DatabaseStorage implements IStorage {
         if (reqInRecipeUom <= 0) continue;
         const m = resolve(rec.materialName);
         const mt = toMTsafe(reqInRecipeUom, rec.uom, m?.bulkDensity ?? null);
-        if (mt == null) continue;
+        if (mt == null) {
+          if (needsStockDensity(rec.uom, m?.bulkDensity ?? null)) {
+            recordDensitySkip(bucket(p.site, m?.name ?? rec.materialName, !!m).densitySkips, "consumed", reqInRecipeUom, rec.uom);
+          }
+          continue;
+        }
         bucket(p.site, m?.name ?? rec.materialName, !!m).consumed += mt;
       }
     }
@@ -12973,7 +12999,12 @@ export class DatabaseStorage implements IStorage {
       const displayName = m?.name ?? it.description;
       const density = m?.bulkDensity ?? null;
       const mt = toMTsafe(it.approvedQty ?? it.qty ?? 0, it.uom, density);
-      if (mt == null) continue;
+      if (mt == null) {
+        if (needsStockDensity(it.uom, density)) {
+          recordDensitySkip(bucket(siteName, displayName, !!m).densitySkips, "ordered", it.approvedQty ?? it.qty ?? 0, it.uom);
+        }
+        continue;
+      }
       bucket(siteName, displayName, !!m).ordered += mt;
     }
 
@@ -12987,6 +13018,7 @@ export class DatabaseStorage implements IStorage {
         toSupply: round(Math.max(r.ordered - r.delivered, 0)),
         lying: round(r.delivered - r.consumed),
         lastDeliveryDate: r.lastDeliveryDate,
+        densitySkips: r.densitySkips,
       }))
       .sort((a, b) => a.site.localeCompare(b.site) || a.material.localeCompare(b.material));
   }
@@ -13066,7 +13098,7 @@ export class DatabaseStorage implements IStorage {
       workType: row.workType || null,
     }));
 
-    let tripResults = trips.map(t => ({
+    let tripResults = (await this.withTripBoqQuantities(trips)).map(t => ({
       id: t.id,
       source: "trip" as const,
       date: t.date,
@@ -13083,6 +13115,9 @@ export class DatabaseStorage implements IStorage {
       time: t.time || null,
       notes: t.notes || null,
       workType: t.workType || null,
+      unloadedAt: t.unloadedAt ?? null,
+      yardLabel: t.yardLabel ?? null,
+      boqQuantity: t.boqQuantity,
       // 06E-F: work-context linkage pass-through so the materials-received
       // view can show the linked-work summary on trip rows.
       boqProjectId: t.boqProjectId ?? null,
