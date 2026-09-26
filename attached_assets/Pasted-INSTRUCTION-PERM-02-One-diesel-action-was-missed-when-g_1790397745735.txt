@@ -1,0 +1,51 @@
+INSTRUCTION PERM-02: One diesel action was missed when granular permissions were wired in PERM-01 — saving a standalone diesel/HSD receipt still only checks the legacy `site_diesel` permission, so a user with only the newer `diesel_req_raise` permission granted gets "Only Owner/Admin/PM may link a standalone Diesel/HSD receipt" even though they should be allowed
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a precise, one-function fix. Do not touch DIESEL-04 Parts A-F, VENDOR-01/02/03, or PERM-01's other already-completed work. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+1. The error "Only Owner/Admin/PM may link a standalone Diesel/HSD receipt to a Daily Diesel Requirement" comes from `validateDieselReceiptControl()` (`server/routes.ts` ~lines 4279-4360), specifically the gate at ~lines 4273-4277:
+```js
+const canRecordStandaloneDieselReceipt = (req: any) => !!(
+  req.authUser?.isOwner ||
+  req.authUser?.isAdmin ||
+  req.authPermissions?.site_diesel?.edit
+);
+```
+This is called from both the standalone-receipt create route (~line 4417) and the update route (~line 4561), producing the `DIESEL_STANDALONE_NOT_AUTHORISED` (~line 4315) and `DIESEL_REGULARISATION_NOT_AUTHORISED` (~line 4328) error responses.
+2. This app has NO "PM role" — `users` (`shared/schema.ts` ~lines 2716-2732) only has boolean `isAdmin`/`isOwner` flags, no `role` column. "Owner/Admin/PM" in the error message is misleading label text, not an actual role check beyond isOwner/isAdmin.
+3. This is the ONE diesel-related permission check in the codebase that PERM-01 (Part A) missed widening. Every other diesel create/edit route was correctly updated to check `site_diesel` OR `diesel_req_raise` (e.g. `assertEditEither(req, res, "site_diesel", "diesel_req_raise")` at `server/routes.ts` ~lines 1341, 10647, 10721, 10766, 10850) — but `canRecordStandaloneDieselReceipt` still only reads `site_diesel?.edit`, with no fallback to `diesel_req_raise` at all.
+4. This is why a user who has ONLY the newer `diesel_req_raise` permission granted (and not the legacy `site_diesel` checkbox) is blocked here specifically, even though every other diesel action correctly works for them — it's not about their role, it's that this one function was never taught to look at the newer permission key.
+
+FIX
+a. In `server/routes.ts`, update `canRecordStandaloneDieselReceipt` (~lines 4273-4277) to also accept `req.authPermissions?.diesel_req_raise?.edit`, matching the exact OR-pattern already used everywhere else for diesel actions:
+```js
+const canRecordStandaloneDieselReceipt = (req: any) => !!(
+  req.authUser?.isOwner ||
+  req.authUser?.isAdmin ||
+  req.authPermissions?.site_diesel?.edit ||
+  req.authPermissions?.diesel_req_raise?.edit
+);
+```
+b. Apply this to BOTH call sites (the standalone-receipt create route ~line 4417 and the update/regularisation route ~line 4561) — confirm both paths use the same updated function rather than duplicating the check inline somewhere.
+c. Do NOT remove the `isOwner`/`isAdmin`/`site_diesel` checks — this is purely additive, same principle as every other PERM-01 fix: no existing user should lose access, only gain the missing path.
+
+WHAT NOT TO DO
+- Do not touch any other permission check in this file — this is the one specific function identified above.
+- Do not rename or restructure `canRecordStandaloneDieselReceipt` beyond adding the OR condition.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change — this widens an existing in-memory permission check using a permission key that already exists.
+
+TESTS
+A. Take a test user with ONLY `diesel_req_raise.edit` granted (no `site_diesel`, not Owner/Admin). Confirm they can now save a standalone diesel receipt and confirm/regularise one — this currently fails, confirm the fix resolves it.
+B. Take a test user with ONLY `site_diesel.edit` granted (today's typical working setup). Confirm they can STILL save/regularise exactly as before — no regression.
+C. Confirm Owner and Admin users are unaffected either way (their access came from `isOwner`/`isAdmin`, untouched by this fix).
+D. Confirm a user with NEITHER permission still correctly gets the "not authorised" error — the fix must not make this route open to everyone.
+
+REPORT BACK
+1. Confirm the fix with Test A-D evidence (screenshots), specifically showing a `diesel_req_raise`-only user successfully saving a standalone receipt where it previously failed.
+2. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

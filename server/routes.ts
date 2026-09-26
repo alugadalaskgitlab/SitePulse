@@ -4274,7 +4274,8 @@ export async function registerRoutes(
   const canRecordStandaloneDieselReceipt = (req: any) => !!(
     req.authUser?.isOwner ||
     req.authUser?.isAdmin ||
-    req.authPermissions?.site_diesel?.edit
+    req.authPermissions?.site_diesel?.edit ||
+    req.authPermissions?.diesel_req_raise?.edit
   );
 
   async function validateDieselReceiptControl(

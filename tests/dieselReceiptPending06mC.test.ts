@@ -35,7 +35,7 @@ vi.mock("../server/push", () => ({
 vi.mock("../server/auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../server/auth")>();
   const inject = (req: any, _res: any, next: any) => {
-    req.authUser = { id: 9, username: "test-user", isAdmin: fx.auth.isAdmin, isActive: true };
+    req.authUser = { id: 9, username: "test-user", isAdmin: fx.auth.isAdmin, isOwner: fx.auth.isOwner, isActive: true };
     req.authPermissions = fx.auth.permissions;
     req.session = { role: "admin", username: "test-user", userId: 9 };
     next();
@@ -48,7 +48,7 @@ const fx: {
   linkedReceipts: any[];
   adjustCalls: any[];
   receipt: any;
-  auth: { isAdmin: boolean; permissions: any };
+  auth: { isAdmin: boolean; isOwner?: boolean; permissions: any };
 } = {
   requirement: { id: 77, status: "purchased", qtyPurchased: 600, supplier: "ABC FUELS", items: [] },
   linkedReceipts: [],
@@ -105,6 +105,61 @@ const R = (id: number, quantity: number, extra: any = {}) => ({
   id, quantity, uom: "Liters", date: "2026-08-15", time: null, supplier: "ABC FUELS",
   challanNumber: "CH-1", receiptNo: null, isCancelled: false, isDeleted: false,
   finalSubmittedBy: null, linkedDieselRequirementId: 77, ...extra,
+});
+
+describe("PERM-02 standalone diesel permission matrix", () => {
+  for (const [label, grant, allowed] of [
+    ["A granular-only", { diesel_req_raise: { edit: true } }, true],
+    ["B legacy-only", { site_diesel: { edit: true } }, true],
+    ["C Owner", {}, true],
+    ["C Admin", {}, true],
+    ["D neither", {}, false],
+  ] as const) {
+    it(`${label}: standalone create and regularisation`, async () => {
+      const originalAuth = fx.auth;
+      const originalReceipt = fx.receipt;
+      const originalLinked = fx.linkedReceipts;
+      const { storage } = await import("../server/storage");
+      try {
+        fx.auth = {
+          isAdmin: label === "C Admin", isOwner: label === "C Owner",
+          permissions: { plant_materials: { create: true, edit: true }, ...grant },
+        };
+        fx.linkedReceipts = [];
+        fx.receipt = {
+          id: 501, materialId: 12, quantity: 100, uom: "Liters", date: "2026-08-15",
+          documentStatus: "draft", linkedDieselRequirementId: null, dieselExceptionReason: "Emergency delivery",
+        };
+        const creates = (storage.createMaterialReceipt as any).mock.calls.length;
+        const updates = (storage.updateMaterialReceipt as any).mock.calls.length;
+        const create = await request(app).post("/api/plant-module/material-receipts").send({
+          date: "2026-08-15", materialId: 12, quantity: 100, uom: "Liters",
+          partyId: null, isPlantCommon: 1, dieselExceptionReason: "Emergency delivery",
+        });
+        const update = await request(app).put("/api/plant-module/material-receipts/501").send({
+          linkedDieselRequirementId: 77,
+        });
+        console.log(`PERM-02 ${label}: POST=${create.status} ${create.body.code || ""}; PUT=${update.status} ${update.body.code || ""}`);
+        expect(create.status).toBe(allowed ? 201 : 403);
+        expect(update.status).toBe(allowed ? 200 : 403);
+        expect((storage.createMaterialReceipt as any).mock.calls.length - creates).toBe(allowed ? 1 : 0);
+        expect((storage.updateMaterialReceipt as any).mock.calls.length - updates).toBe(allowed ? 1 : 0);
+        if (allowed) {
+          expect(create.body.dieselExceptionReason).toBe("Emergency delivery");
+          expect((storage.updateMaterialReceipt as any).mock.calls.at(-1)[1].linkedDieselRequirementId).toBe(77);
+        } else {
+          expect(create.body.code).toBe("DIESEL_STANDALONE_NOT_AUTHORISED");
+          expect(update.body.code).toBe("DIESEL_REGULARISATION_NOT_AUTHORISED");
+        }
+      } finally {
+        fx.auth = originalAuth;
+        fx.receipt = originalReceipt;
+        fx.linkedReceipts = originalLinked;
+        (storage.createMaterialReceipt as any).mockClear();
+        (storage.updateMaterialReceipt as any).mockClear();
+      }
+    });
+  }
 });
 
 // ---------------------------------------------------------------------------
