@@ -1,0 +1,5 @@
+A PASS: today rows independently match existing Comparison API values (isolated fixture).
+B PASS: seven calendar sections, only today expanded by default.
+D FIXTURE ONLY: four source-reachable flags observed; Issued but not logged tested by status unit test, not fabricated as source data. Real-data evidence is separate.
+C PASS: selected Excavator only on its two active dates; five empty dates retained, inactive rows omitted; totals 130/100/20 L, 2 issues.
+E PASS: browser downloaded actual PDF/XLSX. Opened workbook cells exactly match every date, row, flag and totals; pdftotext checked every PDF row/date/flag and totals; pdftoppm rendered actual PDF page, opened in browser. Full range 215/185/75 L; 6 flagged equipment-days.

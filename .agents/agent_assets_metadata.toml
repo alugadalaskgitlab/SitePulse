@@ -3475,3 +3475,115 @@ mtime_ms = 1790396353319
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d81e6132-a648-447e-ba78-346982c298f2/6298c6c0-a181-48d8-9aee-e55d360de7a6"
 storage_version_token = "1790396518357058"
 content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+[[outputs]]
+id = "S3cMywlG-ktEuGE-gJg4d"
+uri = "file://tests/fixtures/diesel03/evidence/diesel05/A-today.png"
+type = "image"
+title = "A — Today’s daily report"
+description = "Production report component tested with explicitly labelled synthetic data; no live records changed."
+logical_id = "865ad8da-0b7d-4c72-a9e0-ebc427656cde"
+content_hash = "sha256:770c4b6a85b7ff5eb73deccf52317d642ee1baff201cc753c1eff3232479ff86"
+size = 88685
+mtime_ms = 1790404651470
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/865ad8da-0b7d-4c72-a9e0-ebc427656cde/53771bcc-71d9-4783-b657-89808c9e5b61"
+storage_version_token = "1790404736052999"
+content_type = "image/png"
+
+[[outputs]]
+id = "CGKZp5xoBAfk0esOm9qka"
+uri = "file://tests/fixtures/diesel03/evidence/diesel05/B-seven-days.png"
+type = "image"
+title = "B — Seven-day report"
+description = "Production report component tested with explicitly labelled synthetic data; no live records changed."
+logical_id = "d33fd9d5-8ab8-43a6-a5bd-d5e1f4184a2d"
+content_hash = "sha256:c12b7a49b1e40743f7f5412b597474e00859ce174cb1c28b10d7f0325a5ed4c2"
+size = 108286
+mtime_ms = 1790404652686
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d33fd9d5-8ab8-43a6-a5bd-d5e1f4184a2d/b7c1ed99-9835-4e72-a5fc-ec27e96976e4"
+storage_version_token = "1790404738198298"
+content_type = "image/png"
+
+[[outputs]]
+id = "Ng8WM-ZfN-F7s29VpRgy3"
+uri = "file://tests/fixtures/diesel03/evidence/diesel05/C-filtered-seven-days.png"
+type = "image"
+title = "C — Equipment filter across dates"
+description = "Production report component tested with explicitly labelled synthetic data; no live records changed."
+logical_id = "f794b5ec-2c6a-4252-8f4d-6be0fcc12413"
+content_hash = "sha256:f561c06c6fcc2355e0ca552d58b5a65afbf26c4769741411e90caf25b928d534"
+size = 130558
+mtime_ms = 1790404653154
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/f794b5ec-2c6a-4252-8f4d-6be0fcc12413/147c4102-8bbc-4a7e-af21-19b5b9413525"
+storage_version_token = "1790404740525997"
+content_type = "image/png"
+
+[[outputs]]
+id = "7at8hKKj0ungVn0YF5k_Z"
+uri = "file://tests/fixtures/diesel03/evidence/diesel05/D-all-date-flags.png"
+type = "image"
+title = "D — Status flags (test data)"
+description = "Production report component tested with explicitly labelled synthetic data; no live records changed."
+logical_id = "4e6b2108-8bda-4ccf-afec-9ee19bcc2a15"
+content_hash = "sha256:df4d8c1f29c77041e6cc5efe83a091ec8b4f7c455fb4359c0c9e690a9022b8d9"
+size = 160197
+mtime_ms = 1790404653634
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/4e6b2108-8bda-4ccf-afec-9ee19bcc2a15/ac9a8668-4bb5-4bb0-9825-3015a987abeb"
+storage_version_token = "1790404742957068"
+content_type = "image/png"
+
+[[outputs]]
+id = "g-V67rPF_Nhn8hW28O03Y"
+uri = "file://tests/fixtures/diesel03/evidence/diesel05/E-opened-excel-browser.png"
+type = "image"
+title = "E — Opened Excel export"
+description = "Production report component tested with explicitly labelled synthetic data; no live records changed."
+logical_id = "8c96a4c1-8bd4-41d0-ac2f-84701293bb84"
+content_hash = "sha256:cca98cc7581602d600fbe52e17c230c1f62b559ae623cf28ebe9457297590b75"
+size = 130491
+mtime_ms = 1790404654762
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8c96a4c1-8bd4-41d0-ac2f-84701293bb84/893cfa53-18f3-451b-8553-c8c374ea83bf"
+storage_version_token = "1790404744881288"
+content_type = "image/png"
+
+[[outputs]]
+id = "wpKl16IgAdq_mMv02Iwqj"
+uri = "file://tests/fixtures/diesel03/evidence/diesel05/E-opened-pdf-page1.png"
+type = "image"
+title = "E — Opened PDF export"
+description = "Production report component tested with explicitly labelled synthetic data; no live records changed."
+logical_id = "8452013c-5b1e-4552-9462-ed7c1e1e3e76"
+content_hash = "sha256:00a13938ef3e1009bf40baeaf7d0bc0553b14269c5b033bcabb0413916999f71"
+size = 148245
+mtime_ms = 1790404654146
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8452013c-5b1e-4552-9462-ed7c1e1e3e76/536889c9-956f-4330-b35a-5e446cccbe8e"
+storage_version_token = "1790404746915722"
+content_type = "image/png"
+
+[[outputs]]
+id = "ztsfDf8IoUWAKJUFowwWq"
+uri = "file://tests/fixtures/diesel03/evidence/diesel05/daily-diesel-2026-09-20-2026-09-26.pdf"
+type = "pdf"
+title = "Daily Diesel Report — PDF"
+description = "Actual browser-downloaded sample export. Date groups, equipment values and status flags checked against the screen; synthetic test data."
+logical_id = "079864e0-3d00-46bf-8eb5-232cb802c6cf"
+content_hash = "sha256:41365d71102cce8e9648312c64666a76f76e951dc5712bbc3b159e4a89142c48"
+size = 35018
+mtime_ms = 1790404653705
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/079864e0-3d00-46bf-8eb5-232cb802c6cf/5eb5168b-afd8-4695-b2ed-44e627a29e48"
+storage_version_token = "1790404748317020"
+content_type = "application/pdf"
+
+[[outputs]]
+id = "tu9EcuPtluSMsbwE2MvjM"
+uri = "file://tests/fixtures/diesel03/evidence/diesel05/daily-diesel-2026-09-20-2026-09-26.xlsx"
+type = "table"
+title = "Daily Diesel Report — XLSX"
+description = "Actual browser-downloaded sample export. Date groups, equipment values and status flags checked against the screen; synthetic test data."
+logical_id = "aee5a7bb-bac8-4be0-8a00-a94295989125"
+content_hash = "sha256:31622b6243ae705d8a3405fe2993ae16ca8409fbbea0b59ce506e2b99ce1469c"
+size = 20845
+mtime_ms = 1790404653678
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/aee5a7bb-bac8-4be0-8a00-a94295989125/0db05508-30a4-4806-b569-d9f604e8f338"
+storage_version_token = "1790404749712412"
+content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

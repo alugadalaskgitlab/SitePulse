@@ -19,21 +19,25 @@ export interface EquipmentComparisonRow {
 
 // Header purchase quantities have no per-item allocations. Never distribute a
 // multi-machine requirement's purchase based on planned quantities.
-export function buildEquipmentComparison(input: ComparisonInput, from: string, to: string): EquipmentComparisonRow[] {
-  const masterById = new Map(input.masters.map(m => [m.id, m]));
+function equipmentIdentity(masters: ComparisonInput["masters"]) {
   const idsByName = new Map<string, Set<number>>();
   const normalize = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
-  for (const m of input.masters) for (const label of [m.name, m.registrationNumber]) {
+  for (const m of masters) for (const label of [m.name, m.registrationNumber]) {
     if (!label?.trim()) continue;
     const key = normalize(label);
     if (!idsByName.has(key)) idsByName.set(key, new Set());
     idsByName.get(key)!.add(m.id);
   }
-  const identify = (id: number | null | undefined, label?: string | null): number | null => {
+  return (id: number | null | undefined, label?: string | null): number | null => {
     if (id != null) return id;
     const candidates = idsByName.get(normalize(label || ""));
     return candidates?.size === 1 ? Array.from(candidates)[0] : null;
   };
+}
+
+export function buildEquipmentComparison(input: ComparisonInput, from: string, to: string): EquipmentComparisonRow[] {
+  const masterById = new Map(input.masters.map(m => [m.id, m]));
+  const identify = equipmentIdentity(input.masters);
   const buckets = new Map<number | null, EquipmentComparisonRow>();
   const bucket = (id: number | null) => {
     if (!buckets.has(id)) {
@@ -81,6 +85,55 @@ export function buildEquipmentComparison(input: ComparisonInput, from: string, t
     unassigned.actual += remainder.actual;
   }
   return Array.from(buckets.values()).filter(r => r.equipmentId !== null || !!(r.planned || r.purchased || r.actual))
-    .map(r => ({ ...r, gapFlag: r.equipmentId != null && r.purchased > 0 && r.purchased - r.actual > Math.max(5, r.purchased * 0.1) }))
+    .map(r => ({ ...r, gapFlag: r.equipmentId != null && hasDieselPurchaseGap(r.purchased, r.actual) }))
     .sort((a, b) => a.equipmentId == null ? 1 : b.equipmentId == null ? -1 : a.equipmentName.localeCompare(b.equipmentName));
+}
+
+function hasDieselPurchaseGap(purchased: number, issued: number) {
+  return purchased > 0 && purchased - issued > Math.max(5, purchased * 0.1);
+}
+
+export function dailyDieselStatus(planned: number, purchased: number, issued: number, loggedWork: boolean) {
+  if (planned > 0 && purchased === 0) return "Not purchased";
+  if (hasDieselPurchaseGap(purchased, issued)) return "Purchased not issued";
+  if (issued > 0 && !loggedWork) return "Issued but not logged";
+  if (loggedWork && issued === 0 && planned > 0) return "Worked but no diesel issued";
+  return "OK";
+}
+
+export function buildDailyDieselEquipmentReport(input: ComparisonInput, from: string, to: string, equipmentId?: number) {
+  const identify = equipmentIdentity(input.masters);
+  const groups = [];
+  const totals = { planned: 0, purchased: 0, issued: 0, issueCount: 0 };
+  const end = new Date(`${to}T00:00:00Z`).getTime();
+  for (let day = new Date(`${from}T00:00:00Z`); day.getTime() <= end; day.setUTCDate(day.getUTCDate() + 1)) {
+    const date = day.toISOString().slice(0, 10);
+    const worked = new Set<number | null>([
+      ...input.usage.filter(r => r.date === date).map(r => identify(r.equipmentId)),
+      ...input.logs.filter(r => r.date === date).map(r => identify(r.equipmentId, r.machine)),
+    ]);
+    const comparison = buildEquipmentComparison(input, date, date);
+    // Keep zero-diesel DPR activity visible, using exactly the comparison identity resolver.
+    for (const id of Array.from(worked)) if (!comparison.some(r => r.equipmentId === id)) {
+      const master = input.masters.find(m => m.id === id);
+      comparison.push({
+        equipmentId: id,
+        equipmentName: id == null ? "Unattributed / unassigned" : master ? `${master.name}${master.registrationNumber ? ` (${master.registrationNumber})` : ""} [#${id}]` : `Equipment #${id}`,
+        attribution: "", planned: 0, purchased: 0, actual: 0, gapFlag: false,
+      });
+    }
+    const rows = comparison.filter(r => equipmentId === undefined || r.equipmentId === equipmentId).map(r => ({
+      equipmentId: r.equipmentId, equipmentName: r.equipmentName,
+      planned: r.planned, purchased: r.purchased, issued: r.actual,
+      loggedWork: worked.has(r.equipmentId),
+      statusFlag: dailyDieselStatus(r.planned, r.purchased, r.actual, worked.has(r.equipmentId)),
+    }));
+    const issueCount = rows.filter(r => r.statusFlag !== "OK").length;
+    for (const row of rows) {
+      totals.planned += row.planned; totals.purchased += row.purchased; totals.issued += row.issued;
+    }
+    totals.issueCount += issueCount;
+    groups.push({ date, rows, issueCount });
+  }
+  return { groups, totals };
 }

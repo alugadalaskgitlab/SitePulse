@@ -1,0 +1,122 @@
+{
+  "fixture": "Isolated synthetic API data; production DieselRequirements and DailyDieselReport components",
+  "today": "2026-09-26",
+  "start": "2026-09-20",
+  "fullRange": {
+    "groups": [
+      {
+        "date": "2026-09-20",
+        "rows": [],
+        "issueCount": 0
+      },
+      {
+        "date": "2026-09-21",
+        "rows": [],
+        "issueCount": 0
+      },
+      {
+        "date": "2026-09-22",
+        "rows": [],
+        "issueCount": 0
+      },
+      {
+        "date": "2026-09-23",
+        "rows": [],
+        "issueCount": 0
+      },
+      {
+        "date": "2026-09-24",
+        "rows": [],
+        "issueCount": 0
+      },
+      {
+        "date": "2026-09-25",
+        "rows": [
+          {
+            "equipmentId": 1701,
+            "equipmentName": "Fixture Excavator (FX-01) [#1701]",
+            "planned": 30,
+            "purchased": 0,
+            "issued": 0,
+            "loggedWork": false,
+            "statusFlag": "Not purchased"
+          },
+          {
+            "equipmentId": 1702,
+            "equipmentName": "Fixture Roller (FX-02) [#1702]",
+            "planned": 30,
+            "purchased": 0,
+            "issued": 35,
+            "loggedWork": true,
+            "statusFlag": "Not purchased"
+          },
+          {
+            "equipmentId": null,
+            "equipmentName": "Unattributed / unassigned",
+            "planned": 0,
+            "purchased": 60,
+            "issued": 0,
+            "loggedWork": false,
+            "statusFlag": "Purchased not issued"
+          }
+        ],
+        "issueCount": 3
+      },
+      {
+        "date": "2026-09-26",
+        "rows": [
+          {
+            "equipmentId": 1701,
+            "equipmentName": "Fixture Excavator (FX-01) [#1701]",
+            "planned": 100,
+            "purchased": 100,
+            "issued": 20,
+            "loggedWork": true,
+            "statusFlag": "Purchased not issued"
+          },
+          {
+            "equipmentId": 1704,
+            "equipmentName": "Fixture Loader (FX-04) [#1704]",
+            "planned": 20,
+            "purchased": 20,
+            "issued": 20,
+            "loggedWork": true,
+            "statusFlag": "OK"
+          },
+          {
+            "equipmentId": 1703,
+            "equipmentName": "Fixture Mixer (FX-03) [#1703]",
+            "planned": 5,
+            "purchased": 5,
+            "issued": 0,
+            "loggedWork": true,
+            "statusFlag": "Worked but no diesel issued"
+          },
+          {
+            "equipmentId": 1702,
+            "equipmentName": "Fixture Roller (FX-02) [#1702]",
+            "planned": 30,
+            "purchased": 0,
+            "issued": 0,
+            "loggedWork": false,
+            "statusFlag": "Not purchased"
+          }
+        ],
+        "issueCount": 3
+      }
+    ],
+    "totals": {
+      "planned": 215,
+      "purchased": 185,
+      "issued": 75,
+      "issueCount": 6
+    }
+  },
+  "results": [
+    "A PASS: today rows independently match existing Comparison API values (isolated fixture).",
+    "B PASS: seven calendar sections, only today expanded by default.",
+    "D FIXTURE ONLY: four source-reachable flags observed; Issued but not logged tested by status unit test, not fabricated as source data. Real-data evidence is separate.",
+    "C PASS: selected Excavator only on its two active dates; five empty dates retained, inactive rows omitted; totals 130/100/20 L, 2 issues.",
+    "E PASS: browser downloaded actual PDF/XLSX. Opened workbook cells exactly match every date, row, flag and totals; pdftotext checked every PDF row/date/flag and totals; pdftoppm rendered actual PDF page, opened in browser. Full range 215/185/75 L; 6 flagged equipment-days."
+  ]
+}

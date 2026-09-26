@@ -1,7 +1,8 @@
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import DieselRequirements from "../../../client/src/pages/DieselRequirements";
-import { buildEquipmentComparison, type ComparisonInput } from "../../../server/dieselComparisonEquipment";
+import { buildEquipmentComparison, buildDailyDieselEquipmentReport, type ComparisonInput } from "../../../server/dieselComparisonEquipment";
+import { diesel05Sources } from "./diesel05-data";
 import { queryClient } from "../../../client/src/lib/queryClient";
 import "../../../client/src/index.css";
 
@@ -192,13 +193,19 @@ window.fetch = async (input, init) => {
   const pathname = requestUrl.pathname;
   const body = init?.body ? JSON.parse(String(init.body)) : undefined;
   fixtureState.requests.push({ method, path: `${pathname}${requestUrl.search}`, ...(body ? { body } : {}) });
+  if (fixtureState.scenario === "diesel05" && pathname === "/api/diesel-requirements/daily-report" && method === "GET") {
+    const from = requestUrl.searchParams.get("from") || "";
+    const to = requestUrl.searchParams.get("to") || "";
+    const id = requestUrl.searchParams.get("equipmentId");
+    return json(buildDailyDieselEquipmentReport(diesel05Sources, from, to, id ? Number(id) : undefined));
+  }
   if (pathname === "/api/diesel-requirements/comparison" && method === "GET") {
     const from = requestUrl.searchParams.get("dateFrom") || "";
     const to = requestUrl.searchParams.get("dateTo") || "";
     const scope = requestUrl.searchParams.get("scopeDate");
     const valid = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v)) && new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v;
     if (!valid(from) || !valid(to) || from > to || (scope && (!valid(scope) || scope < from || scope > to))) return json({ message: "Invalid comparison date" }, 400);
-    const sources: ComparisonInput = {
+    const sources: ComparisonInput = fixtureState.scenario === "diesel05" ? diesel05Sources : {
       masters: [{ id: 1701, name: "Roller", registrationNumber: "R1" }, { id: 1702, name: "Roller", registrationNumber: "R2" }],
       requirements: [{ id: 1, date: "2026-09-15", totalPlanned: 100, qtyPurchased: 100 }, { id: 2, date: "2026-09-16", totalPlanned: 60, qtyPurchased: 60 }],
       items: [{ requirementId: 1, equipmentId: 1701, equipmentName: "Roller", plannedQty: 100 }, { requirementId: 2, equipmentId: 1701, equipmentName: "Roller", plannedQty: 30 }, { requirementId: 2, equipmentId: 1702, equipmentName: "Roller", plannedQty: 30 }],
@@ -270,6 +277,7 @@ window.fetch = async (input, init) => {
     return json(copy(accounts));
   }
   if (pathname === "/api/plant-module/equipment" && method === "GET") {
+    if (fixtureState.scenario === "diesel05") return json(diesel05Sources.masters.map(m => ({ ...m, ownership: "owned", isActive: 1 })));
     if (fixtureState.scenario === "diesel04") return json(copy(fixtureState.equipment));
     return json([{
       id: 1701,
@@ -330,6 +338,7 @@ window.fetch = async (input, init) => {
 queryClient.clear();
 createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={queryClient}>
+    {fixtureState.scenario === "diesel05" && <div style={{ padding: 12, background: "#fef3c7", color: "#78350f", fontWeight: "bold" }}>DIESEL-05 — ISOLATED API FIXTURE · Production component · Synthetic data, not live records</div>}
     <DieselRequirements />
   </QueryClientProvider>,
 );

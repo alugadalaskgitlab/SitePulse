@@ -3,13 +3,76 @@ import express from "express";
 import { createServer } from "http";
 import request from "supertest";
 
-const fx = { user: null as null | { id: number; isAdmin: boolean }, permissions: {} as Record<string, Record<string, boolean>> };
+const fx = { user: null as null | { id: number; isAdmin: boolean; isOwner?: boolean }, permissions: {} as Record<string, Record<string, boolean>> };
 vi.mock("../server/auth", async (importOriginal) => {
   const original = await importOriginal<typeof import("../server/auth")>();
   const inject = (req: any, _res: any, next: any) => {
     req.authUser = fx.user; req.authPermissions = fx.permissions; next();
   };
   return { ...original, requireAuth: inject, optionalAuth: inject };
+});
+describe("DIESEL-05 real daily route", () => {
+  const daily = "/api/diesel-requirements/daily-report?from=2026-09-10&to=2026-09-16";
+  it("returns seven groups, filtered totals, and unchanged comparison values", async () => {
+    const result = await request(app).get(daily);
+    expect(result.status).toBe(200);
+    expect(result.body.groups).toHaveLength(7);
+    expect(result.body.totals).toEqual({ planned: 160, purchased: 160, issued: 60, issueCount: 2 });
+    expect(result.body.groups[0]).toEqual({ date: "2026-09-10", rows: [], issueCount: 0 });
+    expect((await request(app).get(`${daily}&equipmentId=1`)).body).toEqual(result.body);
+    const empty = await request(app).get(`${daily}&equipmentId=999`);
+    expect(empty.body.groups).toHaveLength(7);
+    expect(empty.body.totals).toEqual({ planned: 0, purchased: 0, issued: 0, issueCount: 0 });
+    const comparison = await request(app).get(path);
+    expect(comparison.body.equipmentWise[0].actual).toBe(result.body.totals.issued);
+  });
+  it("validates dates/IDs and explicitly rejects unsupported location filtering before storage", async () => {
+    for (const url of [
+      "/api/diesel-requirements/daily-report?from=2026-09-31&to=2026-10-01",
+      "/api/diesel-requirements/daily-report?from=2026-09-16&to=2026-09-15",
+      "/api/diesel-requirements/daily-report",
+      `${daily}&equipmentId=0`, `${daily}&equipmentId=-1`, `${daily}&equipmentId=1x`,
+      `${daily}&equipmentId=1.5`, `${daily}&equipmentId=1&equipmentId=2`,
+      `${daily}&equipmentId=9007199254740992`, `${daily}&locationId=1`,
+      `${daily}&locationId=bad`, `${daily}&locationId=`,
+    ]) expect((await request(app).get(url)).status).toBe(400);
+    expect(storage.getDieselComparisonReport).not.toHaveBeenCalled();
+    expect(storage.getDieselComparisonEquipmentSources).not.toHaveBeenCalled();
+  });
+  it("matches comparison authentication and denied-view errors without aggregation", async () => {
+    for (const user of [null, { id: 7, isAdmin: false }]) {
+      fx.user = user;
+      fx.permissions = {};
+      const dailyResult = await request(app).get(daily);
+      const existing = await request(app).get(path);
+      expect(dailyResult.status).toBe(user ? 403 : 401);
+      expect(dailyResult.body).toEqual(existing.body);
+    }
+    expect(storage.getDieselComparisonReport).not.toHaveBeenCalled();
+    expect(storage.getDieselComparisonEquipmentSources).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["site_diesel", "view"], ["stores_inventory", "view"],
+    ["site_diesel", "create"], ["site_diesel", "edit"],
+    ["diesel_req_raise", "view"], ["diesel_req_raise", "create"], ["diesel_req_raise", "edit"],
+  ])("allows existing permission %s.%s without setup", async (section, action) => {
+    fx.permissions = { [section]: { [action]: true } };
+    expect((await request(app).get(daily)).status).toBe(200);
+    expect((await request(app).get(path)).status).toBe(200);
+  });
+  it("allows administrators without a new permission", async () => {
+    fx.user = { id: 7, isAdmin: true }; fx.permissions = {};
+    expect((await request(app).get(daily)).status).toBe(200);
+  });
+  it("allows owners but does not substitute view_reports for the existing view gate", async () => {
+    fx.user = { id: 7, isAdmin: false, isOwner: true }; fx.permissions = {};
+    expect((await request(app).get(daily)).status).toBe(200);
+    fx.user = { id: 7, isAdmin: false };
+    fx.permissions = { site_diesel: { view_reports: true } };
+    const result = await request(app).get(daily);
+    expect(result.status).toBe(403);
+    expect(result.body).toEqual((await request(app).get(path)).body);
+  });
 });
 vi.mock("../server/push", () => ({
   sendPushToAll: vi.fn(), sendPushToAudience: vi.fn(), sendPushToSection: vi.fn(), sendPushToRaiser: vi.fn(), sendTestPush: vi.fn(),

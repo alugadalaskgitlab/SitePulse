@@ -28,10 +28,11 @@ import type { Attachment } from "@shared/schema";
 import { computeEquipmentUsage } from "@shared/equipmentUsage";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import * as XLSX from "xlsx";
+import { DailyDieselReport } from "@/components/DailyDieselReport";
 
 let nextDieselFormRowId = 1;
 
-type ViewMode = "list" | "form" | "detail" | "update" | "report";
+type ViewMode = "list" | "form" | "detail" | "update" | "report" | "daily-report";
 
 interface FormItem {
   rowId: number;
@@ -1136,6 +1137,7 @@ export default function DieselRequirements() {
         </Card>
       )}
 
+      {view === "daily-report" && <DailyDieselReport equipment={equipment || []} onBack={() => setView("list")} />}
       {view === "list" && (
         <>
           <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -1154,6 +1156,9 @@ export default function DieselRequirements() {
               </div>
             </div>
             <div className="flex gap-2">
+              {isAdmin || sectionCan("site_diesel", "view") || sectionCan("stores_inventory", "view") || sectionCan("site_diesel", "create") || sectionCan("site_diesel", "edit") || sectionCan("diesel_req_raise", "view") || sectionCan("diesel_req_raise", "create") || sectionCan("diesel_req_raise", "edit") ? (
+                <Button variant="outline" size="sm" onClick={() => setView("daily-report")} data-testid="button-daily-report">DAILY REPORT</Button>
+              ) : null}
               {sectionCan("site_diesel", "view_reports") && (
                 <Button variant="outline" size="sm" onClick={() => { setView("report"); setReportGenerated(false); }} data-testid="button-comparison-report">
                   COMPARISON REPORT

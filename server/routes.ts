@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import type { Server } from "http";
 import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, InvalidDieselPhysicalStockError, InvalidStockTransferQuantityError, InvalidDieselSourceError, DieselReceiptExceedsRemainingError, InvalidLinkedDieselRequirementError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError, InitialScopeCorrectionBlockedError, ScopeChangedDuringPlanningError, DprProjectMismatchError, PushSubscriptionOwnershipError, PurchaseIndentRouteCorrectionConflictError, assertValidDieselPhysicalStock } from "./storage";
-import { buildEquipmentComparison } from "./dieselComparisonEquipment";
+import { buildEquipmentComparison, buildDailyDieselEquipmentReport } from "./dieselComparisonEquipment";
 import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection, classifyBoqItem, getSectorMultiplier } from "./snlAutoMapper";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -10500,6 +10500,27 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Error fetching diesel requirement summary:", err);
       res.status(500).json({ message: "Failed to fetch diesel requirement summary" });
+    }
+  });
+
+  app.get("/api/diesel-requirements/daily-report", async (req, res) => {
+    try {
+      if (!assertDieselOrStoresView(req, res)) return;
+      const { from, to, equipmentId, locationId } = req.query;
+      const validDate = (d: unknown): d is string => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) && new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d;
+      if (!validDate(from) || !validDate(to) || from > to) return res.status(400).json({ message: "Valid from/to dates are required" });
+      if (locationId !== undefined) return res.status(400).json({ message: "Location filtering is not supported by this report. Remove locationId." });
+      if (equipmentId !== undefined && (typeof equipmentId !== "string" || !/^[1-9]\d*$/.test(equipmentId) || !Number.isSafeInteger(Number(equipmentId)))) {
+        return res.status(400).json({ message: "equipmentId must be a positive integer" });
+      }
+      const sources = await storage.getDieselComparisonEquipmentSources(from, to);
+      const dateWise = (await storage.getDieselComparisonReport(from, to)).map(r => ({
+        date: r.date, planned: r.totalPlanned, purchased: r.totalPurchased, actual: r.totalActualIssued,
+      }));
+      res.json(buildDailyDieselEquipmentReport({ ...sources, dateWise }, from, to, equipmentId === undefined ? undefined : Number(equipmentId)));
+    } catch (err) {
+      console.error("Error fetching daily diesel report:", err);
+      res.status(500).json({ message: "Failed to fetch daily diesel report" });
     }
   });
 

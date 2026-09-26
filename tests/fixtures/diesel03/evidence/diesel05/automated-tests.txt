@@ -1,0 +1,79 @@
+
+ RUN  v4.1.5 /home/runner/workspace
+
+ ✓ tests/dieselComparisonEquipment.test.ts > diesel comparison equipment attribution > reconciles day and range to unchanged date totals including unattributed purchases 11ms
+ ✓ tests/dieselComparisonEquipment.test.ts > diesel comparison equipment attribution > retains distinct same-name equipment by ID; ambiguous names stay unassigned 2ms
+ ✓ tests/dieselComparisonEquipment.test.ts > diesel comparison equipment attribution > does not flag exact, negative, or sub-threshold purchase gaps 1ms
+ ✓ tests/dieselDailyReport.test.ts > DIESEL-05 daily aggregation > retains all seven calendar groups including empty dates and reconciles unchanged comparison values 28ms
+ ✓ tests/dieselDailyReport.test.ts > DIESEL-05 daily aggregation > filters every date and totals, omitting inactive equipment rows without dropping dates 3ms
+ ✓ tests/dieselDailyReport.test.ts > DIESEL-05 daily aggregation > uses ID priority, unique normalized names/registration, ambiguity and zero-diesel DPR/usage entries 1ms
+ ✓ tests/dieselDailyReport.test.ts > DIESEL-05 daily aggregation > groups across leap day and year boundary 1ms
+ ✓ tests/dieselDailyReport.test.ts > DIESEL-05 daily aggregation > status priority/strict threshold 10/0/0/true → Not purchased 0ms
+ ✓ tests/dieselDailyReport.test.ts > DIESEL-05 daily aggregation > status priority/strict threshold 10/0/10/false → Not purchased 0ms
+ ✓ tests/dieselDailyReport.test.ts > DIESEL-05 daily aggregation > status priority/strict threshold 10/100/20/false → Purchased not issued 0ms
+ ✓ tests/dieselDailyReport.test.ts > DIESEL-05 daily aggregation > status priority/strict threshold 0/0/10/false → Issued but not logged 0ms
+ ✓ tests/dieselDailyReport.test.ts > DIESEL-05 daily aggregation > status priority/strict threshold 5/5/0/true → Worked but no diesel issued 0ms
+ ✓ tests/dieselDailyReport.test.ts > DIESEL-05 daily aggregation > status priority/strict threshold 100/100/90/true → OK 1ms
+ ✓ tests/dieselDailyReport.test.ts > DIESEL-05 daily aggregation > status priority/strict threshold 100/100/89.99/true → Purchased not issued 0ms
+ ✓ tests/dieselDailyReport.test.ts > DIESEL-05 daily aggregation > status priority/strict threshold 10/10/5/true → OK 0ms
+ ✓ tests/dieselDailyReport.test.ts > DIESEL-05 daily aggregation > status priority/strict threshold 10/10/4.99/true → Purchased not issued 0ms
+ ✓ tests/dieselDailyReport.test.ts > DIESEL-05 daily aggregation > status priority/strict threshold 0/0/0/false → OK 1ms
+stdout | tests/dieselComparisonRoute.test.ts > DIESEL-05 real daily route > validates dates/IDs and explicitly rejects unsupported location filtering before storage
+dprs: boq_project_id column ensured, orphaned entries re-linked, backfill complete
+
+stdout | tests/dieselComparisonRoute.test.ts > DIESEL-05 real daily route > validates dates/IDs and explicitly rejects unsupported location filtering before storage
+boq_items: item_name column ensured and backfilled
+
+ ✓ tests/dieselComparisonRoute.test.ts > DIESEL-05 real daily route > returns seven groups, filtered totals, and unchanged comparison values 58ms
+stdout | tests/dieselComparisonRoute.test.ts > DIESEL-05 real daily route > validates dates/IDs and explicitly rejects unsupported location filtering before storage
+progress_entries.entry_key / attachments.progress_entry_key ensured
+
+stdout | tests/dieselComparisonRoute.test.ts > DIESEL-05 real daily route > validates dates/IDs and explicitly rejects unsupported location filtering before storage
+progress_entries.layer_no ensured
+
+stdout | tests/dieselComparisonRoute.test.ts > DIESEL-05 real daily route > matches comparison authentication and denied-view errors without aggregation
+boq_items: dpr_conversion_factor column ensured
+
+stdout | tests/dieselComparisonRoute.test.ts > DIESEL-05 real daily route > matches comparison authentication and denied-view errors without aggregation
+Seeding database with example DPR...
+Seeding plant master data...
+Seeding planning equipment & labour type masters...
+SNL: version mismatch (have "", want "v4-sdb-multi-sector"), re-seeding in-memory items...
+
+stderr | tests/dieselComparisonRoute.test.ts > DIESEL-05 real daily route > matches comparison authentication and denied-view errors without aggregation
+seedSnlItems failed: TypeError: Cannot read properties of undefined (reading 'code')
+    at seedSnlItems (/home/runner/workspace/server/routes.ts:22595:92)
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+
+stdout | tests/dieselComparisonRoute.test.ts > DIESEL-05 real daily route > matches comparison authentication and denied-view errors without aggregation
+Startup: Fix null contractor labels - updated: undefined
+
+stdout | tests/dieselComparisonRoute.test.ts > DIESEL-05 real daily route > matches comparison authentication and denied-view errors without aggregation
+Startup: Fix bad stock balance entries - fixed: undefined rows
+
+stdout | tests/dieselComparisonRoute.test.ts > DIESEL-05 real daily route > matches comparison authentication and denied-view errors without aggregation
+Plant master data seeded successfully
+
+stdout | tests/dieselComparisonRoute.test.ts > DIESEL-05 real daily route > matches comparison authentication and denied-view errors without aggregation
+Planning masters seeded: 19 equipment types, 14 labour types
+
+ ✓ tests/dieselComparisonRoute.test.ts > DIESEL-05 real daily route > validates dates/IDs and explicitly rejects unsupported location filtering before storage 68ms
+ ✓ tests/dieselComparisonRoute.test.ts > DIESEL-05 real daily route > matches comparison authentication and denied-view errors without aggregation 72ms
+ ✓ tests/dieselComparisonRoute.test.ts > DIESEL-05 real daily route > allows existing permission site_diesel.view without setup 6ms
+ ✓ tests/dieselComparisonRoute.test.ts > DIESEL-05 real daily route > allows existing permission stores_inventory.view without setup 11ms
+ ✓ tests/dieselComparisonRoute.test.ts > DIESEL-05 real daily route > allows existing permission site_diesel.create without setup 9ms
+ ✓ tests/dieselComparisonRoute.test.ts > DIESEL-05 real daily route > allows existing permission site_diesel.edit without setup 6ms
+ ✓ tests/dieselComparisonRoute.test.ts > DIESEL-05 real daily route > allows existing permission diesel_req_raise.view without setup 8ms
+ ✓ tests/dieselComparisonRoute.test.ts > DIESEL-05 real daily route > allows existing permission diesel_req_raise.create without setup 6ms
+ ✓ tests/dieselComparisonRoute.test.ts > DIESEL-05 real daily route > allows existing permission diesel_req_raise.edit without setup 8ms
+ ✓ tests/dieselComparisonRoute.test.ts > DIESEL-05 real daily route > allows administrators without a new permission 6ms
+ ✓ tests/dieselComparisonRoute.test.ts > DIESEL-05 real daily route > allows owners but does not substitute view_reports for the existing view gate 10ms
+ ✓ tests/dieselComparisonRoute.test.ts > DIESEL-04 C real comparison route > keeps existing date totals and reconciles range and single date 9ms
+ ✓ tests/dieselComparisonRoute.test.ts > DIESEL-04 C real comparison route > rejects invalid dates and out-of-range scope before storage access 10ms
+ ✓ tests/dieselComparisonRoute.test.ts > DIESEL-04 C real comparison route > requires authentication and view permission before any aggregation 7ms
+
+ Test Files  3 passed (3)
+      Tests  32 passed (32)
+   Start at  06:36:50
+   Duration  4.13s (transform 2.47s, setup 0ms, import 655ms, tests 3.61s, environment 0ms)
+

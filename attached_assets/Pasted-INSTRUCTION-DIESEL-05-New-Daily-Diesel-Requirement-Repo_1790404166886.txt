@@ -1,0 +1,63 @@
+INSTRUCTION DIESEL-05: New "Daily Diesel Requirement Report" — per-equipment, per-day breakdown of Planned/Purchased/Issued/Logged-work, with date-range grouping and an equipment filter
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a new report screen. Do not touch DIESEL-04 Parts D/E/F (still separately pending — stock-on-raise-form, summary tile, approver edit button), VENDOR-01/02/03, or PERM-01/PERM-02. Do not modify the existing Comparison Report's route, calculations, or UI in any way — this is an ADDITIONAL screen, reusing its logic, not a replacement. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+1. The Comparison Report (`client/src/pages/DieselRequirements.tsx`, `view === "report"`, ~line 1943 onward) already computes, for a selected date range as a TOTAL, per-equipment Planned/Purchased/Actual-Issued via `buildEquipmentComparison()` in `server/dieselComparisonEquipment.ts` (built in DIESEL-04 Part C). That function honestly attributes Purchased to a specific equipment only when a diesel requirement's items resolve to exactly one equipment ID (otherwise bucketed as "Unattributed / unassigned"), and computes a gap flag: `gapFlag = equipmentId != null && purchased > 0 && purchased - actual > Math.max(5, purchased * 0.1)`.
+2. `server/storage.ts`'s `getDieselComparisonReport()` (~lines 19153-19212) already queries `equipmentLogs`/DPR diesel entries plus `equipmentUsage.dieselIssued` to work out Actual Issued per equipment per date — this is also where the underlying signal for "did this equipment log any work that day" lives (an equipment has a DPR/usage entry for that site+date, independent of whether diesel was involved). This has never been surfaced as its own field before.
+3. Today there is NO single screen that shows, per equipment, per day: Planned, Purchased, Issued, whether the equipment logged work that day, and a plain status flag explaining any gap. The person has to cross-reference the Comparison Report's per-date drill-down, the Receipt Log, and the stock ledger by hand to get this. This instruction closes that gap with one dedicated report the person can open directly, filter by date range, and filter by a single equipment.
+4. Agreed design (confirmed with the person before drafting this instruction):
+   - A new "Daily Diesel Requirement Report" screen, reachable from the Diesel Requirements page via a new button alongside the existing "COMPARISON REPORT" button.
+   - Defaults to today, but supports a From/To date range (e.g. last 7 days, last 30 days, custom).
+   - Results grouped by date as collapsible sections — today's date expanded by default, other dates collapsed, each date header showing the date and a count of flagged issues for that day.
+   - An equipment filter (dropdown/search) that narrows every date in the range down to just that one equipment's row, so a single machine can be tracked across the whole range.
+   - A range-level summary: total planned/purchased/issued across the range, plus a count of equipment-days with a problem flag.
+   - Export to PDF/Excel, preserving the date grouping and flags.
+
+FIX
+a. Backend — new aggregation function, e.g. `buildDailyDieselEquipmentReport()` in `server/dieselComparisonEquipment.ts`. For a given date range (and optional single `equipmentId` filter), return an array of per-date groups, each containing:
+   - `date`
+   - an array of equipment rows: `{ equipmentId, equipmentName, planned, purchased, issued, loggedWork: boolean, statusFlag }`
+   - `issueCount` for that date (count of rows with a non-"OK" statusFlag)
+   Reuse the existing per-equipment Planned/Purchased/Actual honest-attribution logic already in `buildEquipmentComparison()` — do not reimplement the attribution/rounding logic, adapt it to loop per calendar date within the range instead of summing the whole range into one total.
+b. Determine `loggedWork` by reusing the same DPR/equipment-usage query `getDieselComparisonReport()` already runs (does this equipment have a logged usage/DPR entry for that site+date, regardless of diesel amount) — do not build a second, separate detection method for this.
+c. Status flag per equipment-per-day (compute in this priority order, first match wins, else "OK"):
+   1. "Not purchased" — planned > 0 and purchased = 0
+   2. "Purchased not issued" — purchased > 0 and `purchased - issued > Math.max(5, purchased * 0.1)` (same threshold already used for the existing gap flag — reuse it, do not invent a new one)
+   3. "Issued but not logged" — issued > 0 and loggedWork = false
+   4. "Worked but no diesel issued" — loggedWork = true and issued = 0 and planned > 0
+   5. else "OK"
+d. New route, e.g. `GET /api/diesel-requirements/daily-report?from=&to=&equipmentId=(optional)&locationId=(optional)`. Gate it with the exact same permission check already used on the existing Comparison Report endpoint (`GET /api/diesel-requirements/comparison`, ~lines 10504-10528) — mirror that check exactly, do not invent a new permission key.
+e. Range-level summary (total planned/purchased/issued + total flagged equipment-days) computed in the same response, not a separate call.
+f. Frontend — new button "DAILY REPORT" on the Diesel Requirements page next to "COMPARISON REPORT", opening the new view:
+   - Date range picker, default = today only.
+   - Equipment filter dropdown, reusing the existing equipment list/source already used elsewhere on this page — do not build a new equipment-lookup.
+   - Collapsible per-date sections (today expanded by default, others collapsed), each header showing the date and its issue count.
+   - Expanded section shows the equipment table: Equipment | Planned | Purchased | Issued | Logged Work (Yes/No) | Status flag (color-coded badge).
+   - Range summary bar at the top (totals + flagged-day count).
+g. Export (PDF/Excel) for this new report, following the exact same client-side export pattern already established for the Comparison Report's `exportComparison()` (~lines 641-678) — reuse the pattern, do not build a new export mechanism from scratch. Exported output must preserve the date grouping and status flags.
+
+WHAT NOT TO DO
+- Do not modify the existing Comparison Report's route, UI, calculations, or its own drill-down modal — this is a new, additional screen only.
+- Do not change the existing gap-flag threshold formula — reuse it exactly as-is.
+- Do not touch DIESEL-04 Parts D, E, or F, or any VENDOR/PERM instruction.
+- Do not invent a new permission key — mirror the Comparison Report endpoint's existing permission check.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change is expected — this reads existing diesel requirement, purchase, issue, and DPR/equipment-usage data. If you find you cannot compute `loggedWork` or the per-date breakdown efficiently without a schema change, STOP and report back with the specific reason before making one — do not make a schema change unilaterally.
+
+TESTS
+A. Open the report for today only. Confirm the equipment rows' Planned/Purchased/Issued match what's already independently visible elsewhere in the app (e.g. today's row on the Diesel Requirements list, or today's date drill-down on the Comparison Report) for the same equipment.
+B. Select a 7-day range. Confirm 7 collapsible date sections appear, correctly grouped, with today's expanded by default and the rest collapsed.
+C. Apply the equipment filter for one specific machine across the 7-day range. Confirm only that equipment's row appears under each date, with correct values, and that days where it had no activity are handled sensibly (either omitted or shown as zero — note which behavior you chose).
+D. Confirm at least one real example of each status flag — "Not purchased," "Purchased not issued," "Issued but not logged," "Worked but no diesel issued," and "OK" — occurs correctly for real data, or explain if the current data doesn't happen to contain an example of a particular flag.
+E. Export the selected range to PDF and Excel. Confirm the exported file's actual data (open it, don't just trust a success message) matches the on-screen date grouping, equipment rows, and flags.
+F. Confirm the permission gate: a user without the Comparison Report's existing view permission is blocked from this new endpoint the same way; existing report viewers can access it without any new setup.
+
+REPORT BACK
+1. Confirm the fix with Test A-F evidence (screenshots of the screen itself, plus the actual opened export file for Test E).
+2. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

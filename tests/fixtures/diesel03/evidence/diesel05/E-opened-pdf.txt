@@ -1,0 +1,46 @@
+Daily Diesel Requirement Report
+2026-09-20 to 2026-09-26 | Equipment: All
+Purchases are attributed only to single identifiable equipment; all other purchases remain unattributed.
+Planned: 215 L | Purchased: 185 L | Issued: 75 L | Flagged equipment-days: 6
+
+
+ Date               Equipment                                    Planned (L)          Purchased (L)        Issued (L)   Logged Work   Status
+
+ 2026-09-20         0 issues
+
+ 2026-09-20         No activity
+
+ 2026-09-21         0 issues
+
+ 2026-09-21         No activity
+
+ 2026-09-22         0 issues
+
+ 2026-09-22         No activity
+
+ 2026-09-23         0 issues
+
+ 2026-09-23         No activity
+
+ 2026-09-24         0 issues
+
+ 2026-09-24         No activity
+
+ 2026-09-25         3 issues
+
+ 2026-09-25         Fixture Excavator (FX-01) [#1701]            30                   0                    0            No            Not purchased
+
+ 2026-09-25         Fixture Roller (FX-02) [#1702]               30                   0                    35           Yes           Not purchased
+
+ 2026-09-25         Unattributed / unassigned                    0                    60                   0            No            Purchased not issued
+
+ 2026-09-26         3 issues
+
+ 2026-09-26         Fixture Excavator (FX-01) [#1701]            100                  100                  20           Yes           Purchased not issued
+
+ 2026-09-26         Fixture Loader (FX-04) [#1704]               20                   20                   20           Yes           OK
+
+ 2026-09-26         Fixture Mixer (FX-03) [#1703]                5                    5                    0            Yes           Worked but no diesel issued
+
+ 2026-09-26         Fixture Roller (FX-02) [#1702]               30                   0                    0            No            Not purchased
+
