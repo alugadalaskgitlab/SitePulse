@@ -3811,3 +3811,17 @@ mtime_ms = 1790423164078
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/134aff04-8575-4e55-b40d-c0dc5478b7ec/44c5d655-ba77-47b9-ad07-f5bc5217ceb2"
 storage_version_token = "1790423840161244"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "fhjyXnLHXe7m0Vd8vxgd_"
+uri = "file://screenshots/mat04-stock-development-readonly.jpg"
+type = "image"
+title = "MAT-04 — Delivered split"
+description = "Actual Site Material Stock component showing a read-only development-data snapshot: 84.95 MT Delivered = 84.95 Stretch + 0 Yard. Historical counts in the report were queried separately from production."
+logical_id = "6f77fb29-0e82-4b81-b00c-a7b5d201251d"
+content_hash = "sha256:75be625a4813dad7efb2d427795627ebf53b131d3baa131c55461e9859b3f01e"
+size = 84727
+mtime_ms = 1790425489962
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/6f77fb29-0e82-4b81-b00c-a7b5d201251d/2b4b3096-4596-4ae6-aa2d-50845d67c209"
+storage_version_token = "1790425511001569"
+content_type = "image/jpeg"

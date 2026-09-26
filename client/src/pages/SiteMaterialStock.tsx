@@ -10,7 +10,8 @@ import { StockDensityWarning } from "@/components/StockDensityWarning";
 
 type Row = {
   site: string; material: string; matched: boolean; uom: string;
-  ordered: number; delivered: number; consumed: number; toSupply: number; lying: number;
+  ordered: number; delivered: number; deliveredAtStretch: number; deliveredAtYard: number;
+  consumed: number; toSupply: number; lying: number;
   lastDeliveryDate: string | null;
   densitySkips?: DensitySkips;
 };
@@ -151,7 +152,12 @@ export default function SiteMaterialStock() {
                             </div>
                           </td>
                           <td className="px-3 py-2.5 text-right font-mono text-slate-500">{n(r.ordered)}</td>
-                          <td className="px-3 py-2.5 text-right font-mono text-green-700">{n(r.delivered)}</td>
+                          <td className="px-3 py-2.5 text-right font-mono text-green-700">
+                            <div>{n(r.delivered)}</div>
+                            <div className="text-[10px] text-muted-foreground whitespace-nowrap" data-testid={`delivered-split-${site}-${r.material}`}>
+                              Of Delivered (MT): Stretch {n(r.deliveredAtStretch)} · Yard {n(r.deliveredAtYard)}
+                            </div>
+                          </td>
                           <td className="px-3 py-2.5 text-right font-mono text-blue-700">{n(r.toSupply)}</td>
                           <td className="px-3 py-2.5 text-right font-mono text-orange-700">{n(r.consumed)}</td>
                           <td className={`px-3 py-2.5 text-right font-mono font-bold ${r.lying < 0 ? "text-red-600" : ""}`}>
@@ -182,6 +188,10 @@ export default function SiteMaterialStock() {
           <p className="text-xs text-muted-foreground">
             Stock totals are in MT; skipped quantities in warnings retain their source units. <span className="text-red-600 font-medium">Negative "Lying at Site"</span> means
             the consumption estimate exceeds recorded deliveries — check that all delivery challans are being logged.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            The Delivered breakdown follows the existing stock reconciliation: deliveries with no unloading location recorded are included under Stretch.
+            The Materials Received report shows those entries as "Not recorded" instead of inferring a location.
           </p>
         </div>
 

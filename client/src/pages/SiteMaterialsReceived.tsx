@@ -38,6 +38,7 @@ import {
 import { VehicleSupplierAssociationNotice } from "@/components/VehicleSupplierAssociationNotice";
 import type { Site } from "@shared/schema";
 import { isEditableMaterialReceiptSource } from "@shared/materialReceiptSummary";
+import { summarizeReceived, unloadingLabel } from "@/lib/materialUnloadingSummary";
 
 const MATERIAL_OPTIONS = [
   "WMM", "GSB", "Soil", "Dust", "6MM DOWN", "10/12MM", "20MM", "BC Mix", "DBM Mix",
@@ -163,17 +164,7 @@ export default function SiteMaterialsReceived() {
     return Array.from(s).sort();
   }, [trips]);
 
-  const byMaterial = useMemo(() => {
-    const grouped: Record<string, { count: number; totalQty: number; uom: string }> = {};
-    trips.forEach((t: any) => {
-      const k = t.material;
-      if (!k) return;
-      if (!grouped[k]) grouped[k] = { count: 0, totalQty: 0, uom: t.uom || "" };
-      grouped[k].count++;
-      grouped[k].totalQty += Number(t.quantity) || 0;
-    });
-    return grouped;
-  }, [trips]);
+  const byMaterial = useMemo(() => summarizeReceived(trips), [trips]);
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/site-material-trips/${id}`),
@@ -359,15 +350,19 @@ export default function SiteMaterialsReceived() {
         </Card>
 
         {/* Summary Cards */}
-        {Object.keys(byMaterial).length > 0 && (
+        {byMaterial.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {Object.entries(byMaterial).map(([material, data]) => (
-              <Card key={material} data-testid={`card-material-${material}`}>
+            {byMaterial.map((data) => (
+              <Card key={`${data.material}-${data.uom}`} data-testid={`card-material-${data.material}-${data.uom}`}>
                 <CardContent className="p-4 text-center">
                   <div className="text-2xl font-bold">{data.totalQty.toFixed(2)}</div>
-                  <div className="text-sm text-muted-foreground">{data.uom}</div>
-                  <div className="font-medium mt-1">{material}</div>
-                  <div className="text-sm text-muted-foreground">{data.count} trip{data.count !== 1 ? "s" : ""}</div>
+                  <div className="text-sm text-muted-foreground">{data.uom || "Unit not set"}</div>
+                  <div className="font-medium mt-1">{data.material}</div>
+                  <div className="text-sm text-muted-foreground">{data.count} entr{data.count !== 1 ? "ies" : "y"}</div>
+                  <div className="text-xs text-muted-foreground mt-2" data-testid={`unloading-summary-${data.material}-${data.uom}`}>
+                    Trip unloading: Stretch {data.stretch.toFixed(2)} · Yard {data.yard.toFixed(2)} · Not recorded {data.unset.toFixed(2)}
+                    {data.other !== 0 && <> · Other entries (DPR/equipment) {data.other.toFixed(2)}</>}
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -398,6 +393,7 @@ export default function SiteMaterialsReceived() {
                       <th className="text-left p-2 border text-sm">Transporter</th>
                       <th className="text-left p-2 border text-sm">Material</th>
                       <th className="text-right p-2 border text-sm">Qty / UOM</th>
+                      <th className="text-left p-2 border text-sm">Unloaded at</th>
                       <th className="text-left p-2 border text-sm">Material Source</th>
                       <th className="text-left p-2 border text-sm">Receipt No.</th>
                       <th className="text-center p-2 border text-sm">Work Type</th>
@@ -429,6 +425,9 @@ export default function SiteMaterialsReceived() {
                           {trip.source === "trip" && <TripWorkContextSummary trip={trip} testIdPrefix="received-list-ctx" />}
                         </td>
                         <td className="p-2 border text-sm text-right">{formatTripQuantity(trip)}</td>
+                        <td className="p-2 border text-sm" data-testid={`unloading-${trip.source}-${trip.id}`}>
+                          {unloadingLabel(trip)}{trip.source === "trip" && trip.unloadedAt === "yard" && trip.yardLabel ? ` · ${trip.yardLabel}` : ""}
+                        </td>
                         <td className="p-2 border text-sm" data-testid={`cell-material-source-${trip.source}-${trip.id}`}>
                           {trip.materialSourceSupplier || "–"}
                         </td>
@@ -731,6 +730,10 @@ export default function SiteMaterialsReceived() {
                   <div>
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Quantity</p>
                     <p className="font-semibold mt-0.5">{formatTripQuantity(selectedTrip)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Unloaded at</p>
+                    <p className="font-semibold mt-0.5">{unloadingLabel(selectedTrip)}{selectedTrip.source === "trip" && selectedTrip.unloadedAt === "yard" && selectedTrip.yardLabel ? ` · ${selectedTrip.yardLabel}` : ""}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Vehicle No.</p>

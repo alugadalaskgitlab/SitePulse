@@ -1,0 +1,42 @@
+INSTRUCTION MAT-04: Show the stretch-vs-yard unloading split in Site Material Stock / Materials Received reports going forward, and check the real database for existing historical unloading records before assuming there are none
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a follow-up to MAT-03 (already delivered and confirmed correct) — do not re-touch MAT-03's five parts, or NAV-01, VB-27, DIESEL-04/05, VENDOR-01/02/03, or PERM-01/02. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+1. `server/storage.ts`'s `getSiteMaterialReconciliation()` already computes a `deliveredAtStretch`/`deliveredAtYard` split per material from each trip's `unloadedAt` value, and `GET /api/site-material-stock` already returns both fields in its response.
+2. Nothing in the current UI displays this split anywhere. `client/src/pages/SiteMaterialStock.tsx` defines its own local `Row` type that explicitly omits `deliveredAtStretch`/`deliveredAtYard`, and its table only renders `ordered`, `delivered`, `consumed`, `lying` — the two fields are silently dropped client-side even though the server already sends them. No other report reads them either.
+3. The person recalls the "stretch" unloading option existing earlier and being recorded for a specific site ("FDR KK Road"), but has no direct evidence/screenshot of this. Before concluding whether historical unloading data exists or not, check the REAL database — do not assume it's empty, and do not assume it's populated. Report the actual finding either way.
+
+FIX
+
+PART A — Display the stretch/yard split going forward
+a. In `client/src/pages/SiteMaterialStock.tsx`, extend the local `Row` type to include `deliveredAtStretch`/`deliveredAtYard` (matching what the API already returns — do not change the API response shape, it's already correct) and add these as visible columns/sub-figures next to "Delivered" (e.g. "Delivered: 4600 CFT (Stretch: 4600 · Yard: 0)"), clearly labelled so it reads as a breakdown of Delivered, not a separate total.
+b. If there is a separate "Materials Received" report/export (check whether one exists distinct from the Site Material Trips list itself — confirm this before building anything for a report that might not exist), add the same stretch/yard breakdown there too, reusing the same data rather than re-querying.
+c. This is purely a display addition — do not change how `unloadedAt` affects any total (it should keep counting fully toward Delivered regardless of value, exactly as today).
+
+PART B — Check the real database for existing historical unloading data before assuming there's none
+a. Query the actual production/current database directly (not just the code) for `site_material_trips` rows where `site` (or the relevant site-name/site-id field) matches "FDR KK Road" (or the closest matching site name in the real data — list what you find if the exact name doesn't match anything, rather than reporting a false negative). Report exactly how many such rows exist, and for each, whether `unloaded_at` is set (to "stretch", "yard", or null/blank), with `yard_label` where applicable.
+b. Do the same for a broader sample — count, across ALL site_material_trips rows in the real database, how many have `unloaded_at` set vs null/blank, and note the earliest and latest `created_at`/date of a trip that DOES have `unloaded_at` set, if any. This will tell us concretely whether this field was ever actually populated historically, or whether it has always been blank/defaulted regardless of what the UI may have shown at some point.
+c. Report the real, exact findings — do not round, estimate, or guess. If the answer is "the field is set on 0 historical rows," say that plainly; if it's populated for some real number of rows, report the count and give a few example site names/dates.
+
+WHAT NOT TO DO
+- Do not touch MAT-03's five already-delivered parts, NAV-01, VB-27, DIESEL-04/05, VENDOR-01/02/03, or PERM-01/02.
+- Do not change what counts toward "Delivered" — Part A is display-only.
+- Do not backfill, correct, or guess `unloaded_at` values for any historical row based on assumption — Part B is investigation/reporting only, no data changes.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change. Part A is a client-side display change reading data the API already returns. Part B is a read-only database investigation, no writes.
+
+TESTS
+A1. Open Site Material Stock for a site with real trips. Confirm the stretch/yard breakdown now shows next to Delivered, with numbers that sum correctly to the existing Delivered total.
+A2. Confirm this does not change the Delivered/Consumed/Ordered totals themselves versus before this change.
+B1. Report the exact real-database findings from Part B(a) and B(b) as described — this is itself the deliverable for Part B, not a pass/fail test.
+
+REPORT BACK
+1. Confirm Part A with a screenshot showing the new breakdown.
+2. Report Part B's real findings in full — exact counts, site names, dates, whatever the database actually shows, even if the answer is "nothing found."
+3. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
