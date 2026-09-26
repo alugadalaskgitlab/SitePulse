@@ -49,6 +49,7 @@ type BillDateGroupRowsProps<T extends { date?: string | null; amount?: number | 
   expansionMode: "auto" | "expanded" | "collapsed";
   expansionOverrides: Record<string, boolean>;
   onToggle: (key: string, expanded: boolean) => void;
+  onRemoveGroup?: (items: Array<IndexedBillItem<T>>, label: string) => void;
   renderRow: (item: T, idx: number) => ReactNode;
   formatDate: (date: string | null | undefined) => string;
   formatAmount: (amount: number) => string;
@@ -62,6 +63,7 @@ export function BillDateGroupRows<T extends { date?: string | null; amount?: num
   expansionMode,
   expansionOverrides,
   onToggle,
+  onRemoveGroup,
   renderRow,
   formatDate,
   formatAmount,
@@ -97,6 +99,13 @@ export function BillDateGroupRows<T extends { date?: string | null; amount?: num
                     Rs. {formatAmount(group.subtotal)}
                   </span>
                 </Button>
+                {onRemoveGroup && (
+                  <Button type="button" variant="ghost" size="sm" className="text-destructive"
+                    data-testid={`button-remove-date-group-${scope}-${group.key}`}
+                    onClick={() => onRemoveGroup(group.items, group.date ? formatDate(group.date) : "Missing date")}>
+                    Remove Group
+                  </Button>
+                )}
               </td>
             </tr>
             {expanded && group.items.map(({ item, idx }) => renderRow(item, idx))}

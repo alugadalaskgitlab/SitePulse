@@ -246,6 +246,37 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
     },
   });
 
+  const deleteDiscoveredMutation = useMutation({
+    mutationFn: (item: DiscoveredItem) => apiRequest("DELETE", `/api/vendor-rate-cards/${item.rateCardId}`),
+    onSuccess: (_, item) => {
+      setRates(previous => ({ ...previous, [item.itemKey]: "" }));
+      setUnitOverrides(previous => {
+        const next = { ...previous };
+        delete next[item.itemKey];
+        return next;
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards/discover", selectedVendor] });
+      toast({ title: "Saved rate removed. Historical item remains available." });
+    },
+    onError: (err: Error) => toast({ title: err.message || "Failed to remove saved rate", variant: "destructive" }),
+  });
+
+  const handleResetDiscoveredRow = (item: DiscoveredItem) => {
+    if (item.rateCardId != null) {
+      if (window.confirm(`Remove saved rate for ${item.itemLabel}? The historical item will remain available.`)) {
+        deleteDiscoveredMutation.mutate(item);
+      }
+      return;
+    }
+    setRates(previous => ({ ...previous, [item.itemKey]: "" }));
+    setUnitOverrides(previous => {
+      const next = { ...previous };
+      delete next[item.itemKey];
+      return next;
+    });
+  };
+
   const visibleDiscoveredItems = useMemo(
     () => discoveredItems.filter(item =>
       !item.isManual &&
@@ -520,7 +551,16 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
           data-testid={`input-rate-${idx}`}
         />
       </td>
-      <td className="px-3 py-2 w-16" />
+      <td className="px-3 py-2 w-16">
+        <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive"
+          disabled={deleteDiscoveredMutation.isPending}
+          aria-label={`${item.rateCardId != null ? "Remove saved rate for" : "Reset unsaved rate for"} ${item.itemLabel}`}
+          title={item.rateCardId != null ? "Delete saved rate (historical item remains)" : "Reset local rate only"}
+          onClick={() => handleResetDiscoveredRow(item)}
+          data-testid={`button-remove-discovered-${idx}`}>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </td>
     </tr>
   );
 
@@ -914,7 +954,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
             <Button
               size="lg"
               onClick={handleSaveAll}
-              disabled={bulkSaveMutation.isPending}
+              disabled={bulkSaveMutation.isPending || deleteDiscoveredMutation.isPending}
               data-testid="button-save-all-rates"
             >
               {bulkSaveMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}

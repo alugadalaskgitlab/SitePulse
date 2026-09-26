@@ -3657,3 +3657,73 @@ mtime_ms = 1790410183200
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e5cb5c06-1c81-4ba4-a4c2-b0c9c719df19/abb8fd59-c677-4828-ae83-6fdeb3d73f1c"
 storage_version_token = "1790410285103567"
 content_type = "image/png"
+
+[[outputs]]
+id = "hLm7PvFy6vuc7gPdbP_DY"
+uri = "file://screenshots/vb27/A1-saved-discovered-and-manual-controls-SYNTHETIC.png"
+type = "image"
+title = "A1 — Saved-rate delete controls"
+description = "Real production components tested in Chromium with synthetic API data; no live business writes."
+logical_id = "508a837a-840a-46ba-a961-6e34a524616d"
+content_hash = "sha256:c2bec6d4f1c0dcd6e699aeb3c361539d65afda0155327c18ba2d08ead075a245"
+size = 89688
+mtime_ms = 1790419201511
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/508a837a-840a-46ba-a961-6e34a524616d/6976f5c9-e3ee-4a6c-9645-1184358afc78"
+storage_version_token = "1790419306742009"
+content_type = "image/png"
+
+[[outputs]]
+id = "M_df_Lxw37tG8oVhEKXnW"
+uri = "file://screenshots/vb27/A2-deleted-rate-local-reset-SYNTHETIC.png"
+type = "image"
+title = "A2 — Unsaved rate reset"
+description = "Real production components tested in Chromium with synthetic API data; no live business writes."
+logical_id = "38781c58-30d6-401e-b38a-8158d7e42793"
+content_hash = "sha256:876df0bb2ef30d5fecf1d78574f50d0750dfd7e842264ec63326d79b0b681349"
+size = 88382
+mtime_ms = 1790419201715
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/38781c58-30d6-401e-b38a-8158d7e42793/f4d243a1-4e10-494e-a571-60cf9ead6238"
+storage_version_token = "1790419308837680"
+content_type = "image/png"
+
+[[outputs]]
+id = "L1nNWIlo4BxjHssUURxW4"
+uri = "file://screenshots/vb27/B1-large-group-remove-control-SYNTHETIC.png"
+type = "image"
+title = "B1 — Remove a 111-row group"
+description = "Real production components tested in Chromium with synthetic API data; no live business writes."
+logical_id = "6c04c4cf-061b-47f3-ab5f-8dc3d527f214"
+content_hash = "sha256:2fad8ef13f79f2d4964fa724351ae34bf21f89d3de9d6bcdd31c0c10e272be40"
+size = 114697
+mtime_ms = 1790419202887
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/6c04c4cf-061b-47f3-ab5f-8dc3d527f214/5b851d90-c858-41dd-afab-c64ce8314333"
+storage_version_token = "1790419311222531"
+content_type = "image/png"
+
+[[outputs]]
+id = "4ASb-yUh7En542xuq9kt5"
+uri = "file://screenshots/vb27/B2-other-date-preserved-after-repull-SYNTHETIC.png"
+type = "image"
+title = "B2 — Other dates preserved after re-pull"
+description = "Real production components tested in Chromium with synthetic API data; no live business writes."
+logical_id = "4f0457cd-45b4-4787-8b3c-568f35d7fbf2"
+content_hash = "sha256:f18c7523aee6c52708712ff31d99ea9496ba9c647f874eb2fa4e179119137388"
+size = 124115
+mtime_ms = 1790419203891
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/4f0457cd-45b4-4787-8b3c-568f35d7fbf2/dc792a3d-2c3a-4e6e-8c56-6efc536823f4"
+storage_version_token = "1790419313365317"
+content_type = "image/png"
+
+[[outputs]]
+id = "gcztagViSlDwMWRluoczh"
+uri = "file://screenshots/vb27/B4-saved-bill-without-blank-row-SYNTHETIC.png"
+type = "image"
+title = "B3/B4 — Blank excluded, filled row saved"
+description = "Real production components tested in Chromium with synthetic API data; no live business writes."
+logical_id = "b47aadc6-1327-4e98-a2f1-3e50d32bea7c"
+content_hash = "sha256:10aae5ce42253a09e8dce8d7f852c69a87972344f404b691829ebf5c28635bbe"
+size = 82084
+mtime_ms = 1790419204679
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b47aadc6-1327-4e98-a2f1-3e50d32bea7c/9ff45480-6d82-40b6-85e2-cf9f34ef8253"
+storage_version_token = "1790419315270195"
+content_type = "image/png"

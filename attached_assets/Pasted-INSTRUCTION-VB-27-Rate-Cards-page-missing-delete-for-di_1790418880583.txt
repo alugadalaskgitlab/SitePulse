@@ -1,0 +1,46 @@
+INSTRUCTION VB-27: Rate Cards page — missing delete for discovered rows; Vendor Bill draft — no way to bulk-remove a whole pulled group, and blank added rows can be saved silently
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Two related but separate fixes on two different pages. Do not touch DIESEL-04/05, NAV-01, VENDOR-01/02/03, or PERM-01/02. Do not publish automatically. STOP after this and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+1. There is no "group" entity in the Rate Cards master page (`client/src/pages/RateCards.tsx`) — rows sit under 4 fixed categories (Equipment/Material/Transport/Labour) which are hardcoded constants, not something a user creates, renames, or deletes. What the person is seeing as "empty groups" there is really just a category with zero saved rows, which is cosmetic. Do not build any group create/rename/delete feature on this page — there is nothing to attach it to.
+2. On this same page, rows come from two sources: (a) "discovered" rows, synthesized live from real DPR/vendor-bill usage history (`storage.discoverVendorItems`) — not persisted until a rate is actually entered and saved, and (b) "manual" rows the person adds directly, tagged `RATE_CARD_MANUAL_ROW`. Manual rows already have a working delete (Trash2 icon → `handleRemoveManualRow` → `DELETE /api/vendor-rate-cards/:id`, `RateCards.tsx` ~lines 431-440, 228-247). Discovered rows have NO delete control at all — the cell is a literally empty `<td>` (~line 523) — because an unsaved discovered row has nothing to delete yet, but once a rate has been entered and saved for a discovered item (it now has a real database id), there is still no way to remove it if it was added by mistake.
+3. Separately, in a Vendor Bill draft (`client/src/pages/VendorBills.tsx`), items pulled in from billable records are grouped visually by date section (e.g. "13-AUG-2026, 25 items") with Expand All/Collapse All, and each individual row has a working delete (Trash2 → `removeLineItem`, ~line 3676/1507). But there is NO way to remove an entire group at once — no bulk delete on a date-group header, and no bulk delete for e.g. all rows of one material/vehicle pulled together. If 111 rows get pulled in by mistake (or the person wants to drop one whole group before saving), the only current option is clicking the trash icon 111 times.
+4. Also in the Vendor Bill draft, clicking "ADD ITEM" (`addLineItem`, ~line 1479-1486) adds one blank manual row. Nothing currently stops the bill from being saved with that row still blank (qty 0, rate 0, description empty) — it saves as a real, junk zero-value line item unless the person remembers to delete it first. This matches the person's report of rows "added but left open/empty."
+
+FIX
+
+PART A — Rate Cards page: delete for discovered/saved rows
+a. Add a delete control (same Trash2 icon/style as the manual-row delete) to discovered rows that have been saved (i.e. have a real database `id` — check however the code currently distinguishes a saved-and-persisted discovered row from a not-yet-saved one; if a discovered row has no id yet, there's nothing to delete server-side — in that case the control should simply clear/reset that row's entered rate locally rather than calling the delete API, and say so in your report if you need to add a way to tell the two states apart in the UI).
+b. Wire the saved-discovered-row delete to the SAME existing `DELETE /api/vendor-rate-cards/:id` route already used for manual rows — do not build a second delete route, and do NOT change that route's permission gate (leave it exactly as it is today) — just expose it in the UI for this row type too.
+c. Do not build any group-level create/rename/delete on this page — there is no group entity to act on, as explained above. If the person meant something else by "groups" here, note that in your report rather than guessing further.
+
+PART B — Vendor Bill draft: bulk-remove a whole pulled group, and stop blank added rows from saving silently
+a. Add a "Remove Group" action to each date-group header (next to or near the existing Expand/Collapse control in `BillDateGroupControls`/`BillDateGroupRows` in `client/src/components/vendor-bills/BillDateGroups.tsx`) that removes every row under that date group in one action, with a confirmation showing the row count (e.g. "Remove all 25 items from 13-AUG-2026?"). Reuse the existing `removeLineItem` logic per row under the hood (including the existing `suppressedAutoItemsRef` tracking so auto-pulled rows don't silently reappear on the next Pull) rather than writing a new removal path.
+b. In addition, if items are commonly pulled and displayed grouped by material/vehicle name within a date (as seen for "SOIL" in the recording) rather than only by date, add the same bulk-remove action at that grouping level too — investigate the actual current grouping structure in the item table and add the control wherever a named group of rows is rendered together. If date is the only grouping level that actually exists in the table today, Part B(a) alone covers it — say which is the case in your report.
+c. For "ADD ITEM": before allowing the bill to be saved, check each manual row for being fully blank (no description, qty 0, rate 0). If any such row exists, either block save with a clear message telling the person which row(s) to fill in or remove, or (preferred, less disruptive) automatically drop fully-blank manual rows from the payload on save without asking, since an empty row carries no information worth keeping. Pick whichever approach is simpler to implement correctly and say which one you chose — do not silently save blank rows as real line items either way.
+
+WHAT NOT TO DO
+- Do not build a group create/rename/delete feature on the Rate Cards page — there is no group entity there.
+- Do not change any permission gate on the existing `DELETE /api/vendor-rate-cards/:id` route.
+- Do not touch DIESEL-04/05, NAV-01, VENDOR-01/02/03, or PERM-01/02.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change expected — Part A reuses the existing rate-card delete route; Part B is client-side removal logic plus a pre-save check, both operating on data structures that already exist.
+
+TESTS
+A1. On the Rate Cards page, enter and save a rate for a discovered (not-manual) item. Confirm a delete control now appears for it and correctly removes it via the existing delete route. Confirm manual-row delete still works unchanged.
+A2. Confirm an unsaved discovered row (no rate entered yet) behaves sensibly when its new control is used (reset, not a failed delete call).
+B1. Pull a large group of items into a Vendor Bill draft. Use the new group-level remove control on one date group. Confirm all rows under that group are removed together, the confirmation shows the correct count, and the removed auto-pulled rows do not reappear if you pull again.
+B2. Confirm removing one group does not affect other groups' rows.
+B3. Click ADD ITEM, leave the row blank, and try to save. Confirm the blank row is either blocked with a clear message or automatically dropped (whichever approach was chosen) — either way, confirm no blank/zero-value line item ends up saved in the bill.
+B4. Confirm a manual row that IS filled in still saves correctly and is not mistaken for blank.
+
+REPORT BACK
+1. Confirm each part with evidence (screenshots of the new controls in use, plus which approach was chosen for B(c)).
+2. Confirm whether Part B(b)'s named-group-level bulk remove was needed/added, or whether date-level was the only grouping that exists.
+3. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

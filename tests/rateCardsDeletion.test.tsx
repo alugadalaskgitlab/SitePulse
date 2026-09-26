@@ -43,6 +43,7 @@ beforeEach(() => {
     if (url.includes("/api/vendor-rate-cards/discover")) {
       return new Response(JSON.stringify([
         { itemKey: "EQ_HARVESTER_HRS", itemLabel: "HARVESTER - HOURLY HIRE", category: "equipment", unit: "HRS", rate: 500, rateCardId: 20, isManual: false },
+        { itemKey: "EQ_UNSAVED_HRS", itemLabel: "UNSAVED EQUIPMENT", category: "equipment", unit: "HRS", rate: null, rateCardId: null, isManual: false },
         { itemKey: "MAT_LEGACY_SAND_TRIP", itemLabel: "LEGACY SAND", category: "material", unit: "TRIP", rate: 450, rateCardId: 15, isManual: true },
       ]));
     }
@@ -74,6 +75,36 @@ afterEach(() => {
 });
 
 describe("Rate Cards manual row deletion", () => {
+  it("deletes saved discovered rates through the existing route", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    render(<QueryClientProvider client={makeClient()}><RateCards /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole("button", { name: "Remove saved rate for HARVESTER - HOURLY HIRE" }));
+    await waitFor(() => expect(screen.getByTestId("input-rate-0")).toHaveValue(null));
+    expect((fetch as ReturnType<typeof vi.fn>).mock.calls.some(([url, init]) =>
+      String(url) === "/api/vendor-rate-cards/20" && init?.method === "DELETE")).toBe(true);
+  });
+  it("resets an unsaved discovered edit without DELETE or confirmation", async () => {
+    const confirm = vi.fn();
+    vi.stubGlobal("confirm", confirm);
+    render(<QueryClientProvider client={makeClient()}><RateCards /></QueryClientProvider>);
+    const button = await screen.findByRole("button", { name: "Reset unsaved rate for UNSAVED EQUIPMENT" });
+    const rate = within(button.closest("tr")!).getByRole("spinbutton");
+    fireEvent.change(rate, { target: { value: "42" } });
+    fireEvent.click(button);
+    expect(rate).toHaveValue(null);
+    expect(confirm).not.toHaveBeenCalled();
+    expect((fetch as ReturnType<typeof vi.fn>).mock.calls.some(([, init]) => init?.method === "DELETE")).toBe(false);
+  });
+  it("retains a saved discovered edit when DELETE fails", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    failingDeleteId = 20;
+    render(<QueryClientProvider client={makeClient()}><RateCards /></QueryClientProvider>);
+    const button = await screen.findByRole("button", { name: "Remove saved rate for HARVESTER - HOURLY HIRE" });
+    fireEvent.change(screen.getByTestId("input-rate-0"), { target: { value: "777" } });
+    fireEvent.click(button);
+    await waitFor(() => expect(button).not.toBeDisabled());
+    expect(screen.getByTestId("input-rate-0")).toHaveValue(777);
+  });
   it("confirms and deletes persisted manual rows in every section without hiding discovered rows", async () => {
     const client = makeClient();
     const confirm = vi.fn(() => false);

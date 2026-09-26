@@ -6,6 +6,7 @@ import { useLocation } from "wouter";
 import SiteMaterialTrips from "../../../client/src/pages/SiteMaterialTrips";
 import SiteMaterialsReceived from "../../../client/src/pages/SiteMaterialsReceived";
 import VendorBills from "../../../client/src/pages/VendorBills";
+import RateCards from "../../../client/src/pages/RateCards";
 import { Toaster } from "../../../client/src/components/ui/toaster";
 import "../../../client/src/index.css";
 
@@ -45,6 +46,16 @@ declare global {
 
 window.__VB22Fixture = fixtureState;
 let trips = initialTrips.map(row => ({ ...row }));
+const vb27 = new URLSearchParams(window.location.search).get("scenario") === "vb27";
+let vb27Cards: AnyRow[] = [
+  { id: 27001, vendorName: SOURCE, category: "material", itemKey: "MAT_SOIL_CFT", itemLabel: "SOIL", unit: "CFT", rate: 2, notes: null },
+  { id: 27002, vendorName: SOURCE, category: "material", itemKey: "MAT_MANUAL_CFT", itemLabel: "MANUAL MATERIAL", unit: "CFT", rate: 3, notes: "RATE_CARD_MANUAL_ROW" },
+];
+if (vb27) trips = [
+  ...Array.from({ length: 111 }, (_, i) => ({ ...initialTrips[0], id: 27000 + i, receiptNumber: `SYNTHETIC-${i}`, vehicleNumber: `TEST-${i}` })),
+  { ...initialTrips[0], id: 27999, date: "2027-02-15", receiptNumber: "OTHER-DATE" },
+  { ...initialTrips[0], id: 27998, date: "2027-02-15", material: "DUST", receiptNumber: "LATER-PULL" },
+];
 let bills: AnyRow[] = [];
 if (new URLSearchParams(window.location.search).get("scenario") === "draft-rates"
   && new URLSearchParams(window.location.search).has("editing")) {
@@ -70,8 +81,8 @@ function requestDetails(input: RequestInfo | URL) {
 
 function tripItems(vendor: string) {
   if (vendor === SOURCE) {
-    return trips.filter(row => row.materialSourceSupplier === SOURCE && row.material.toUpperCase() === "SOIL").map(row => ({
-      date: row.date, category: "material", description: "SOIL (SITE)", qty: row.quantity, unit: row.uom,
+    return trips.filter(row => row.materialSourceSupplier === SOURCE && (vb27 || row.material.toUpperCase() === "SOIL")).map(row => ({
+      date: row.date, category: "material", description: `${row.material.toUpperCase()} (SITE)`, qty: row.quantity, unit: row.uom,
       rate: 0, amount: 0, source: "auto", sourceId: row.id,
       sourceType: "site_material_trip_material", siteName: row.site,
       transporter: row.supplier, vehicleNumber: row.vehicleNumber, receiptNumber: row.receiptNumber,
@@ -267,6 +278,7 @@ window.fetch = async (input, init) => {
     reviewRows: [], events: [], fleet: [], projects: [],
   });
   if (pathname === "/api/vendor-rate-cards" && method === "GET") {
+    if (vb27) return json(vb27Cards);
     const vendor = request.url.searchParams.get("vendorName");
     if (new URLSearchParams(window.location.search).get("scenario") === "draft-rates") {
       return json([
@@ -275,6 +287,24 @@ window.fetch = async (input, init) => {
       ]);
     }
     return json(vendor === SOURCE ? [{ id: 22001, vendorName: SOURCE, category: "material", itemKey: "MAT_SOIL_TRIP", itemLabel: "SOIL", unit: "TRIP", rate: 800, notes: null }] : []);
+  }
+  if (vb27 && pathname === "/api/vendor-rate-cards/discover") return json([
+    ...["SOIL", "DUST"].map(name => {
+      const card = vb27Cards.find(c => c.itemKey === `MAT_${name}_CFT`);
+      return { itemKey: `MAT_${name}_CFT`, itemLabel: name, category: "material", unit: "CFT", rate: card?.rate ?? null, rateCardId: card?.id ?? null };
+    }),
+  ]);
+  if (vb27 && /^\/api\/vendor-rate-cards\/\d+$/.test(pathname) && method === "DELETE") {
+    vb27Cards = vb27Cards.filter(c => c.id !== Number(pathname.split("/").pop()));
+    return json({ success: true });
+  }
+  if (vb27 && pathname === "/api/vendor-rate-cards/bulk-upsert" && method === "POST") {
+    for (const item of body.items) {
+      const old = vb27Cards.find(c => c.itemKey === item.itemKey && c.unit === item.unit);
+      if (old) Object.assign(old, item);
+      else vb27Cards.push({ ...item, id: 28000 + vb27Cards.length });
+    }
+    return json(body.items);
   }
   if (pathname === "/api/vendor-rate-cards/discover" && method === "GET") return json(
     new URLSearchParams(window.location.search).get("scenario") === "draft-rates"
@@ -326,7 +356,7 @@ function FixtureRoute() {
   return <>
     {new URLSearchParams(window.location.search).get("scenario") === "draft-rates" && <Toaster />}
     <div className={`${vb24Scenario ? "fixed inset-x-0 top-0" : "sticky top-0"} z-[200] border-b border-purple-300 bg-purple-50 px-4 py-2 text-center text-xs font-bold text-purple-900`} data-testid="vb22-fixture-disclosure">
-      {mat01Scenario
+      {vb27 ? "VB-27 PRODUCTION COMPONENTS — SYNTHETIC API FIXTURE — NO LIVE WRITES" : mat01Scenario
         ? "MAT-01 REAL MATERIALS RECEIVED COMPONENT — SYNTHETIC FIXTURE DATA — NO LIVE API OR DATABASE WRITES"
         : vb24Scenario
         ? "VB-24 REAL-COMPONENT FIXTURE — SYNTHETIC API + AUDIT HISTORY — NO LIVE API OR DATABASE WRITES"
@@ -335,7 +365,7 @@ function FixtureRoute() {
     {(duplicateScenario || duplicateMessage) && <div className="border-b border-red-400 bg-red-50 px-4 py-2 text-center text-sm font-bold text-red-800" data-testid="vb22-duplicate-simulation">
       {duplicateMessage || "SYNTHETIC SAME-ROLE DUPLICATE API SIMULATION — expected pull block only for the same material-source vendor"}
     </div>}
-    {location.startsWith("/site/materials-received")
+    {location.startsWith("/finance/rate-cards") ? <RateCards draftVendor={SOURCE} /> : location.startsWith("/site/materials-received")
       ? <SiteMaterialsReceived />
       : location.startsWith("/site/material-trips")
         ? <SiteMaterialTrips />

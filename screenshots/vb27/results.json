@@ -1,0 +1,2548 @@
+{
+  "scenario": "SYNTHETIC production-component browser evidence, no live writes",
+  "confirmations": [
+    "Remove all 111 items from 14-FEB-2027?",
+    "Remove all 111 items from 14-FEB-2027?"
+  ],
+  "savedBill": {
+    "billDate": "2026-09-26",
+    "billNo": "AUTO-1790419204496",
+    "billType": "all",
+    "siteId": null,
+    "vendorName": "VB22 BORROW OWNER",
+    "periodFrom": "2027-02-14",
+    "periodTo": "2027-02-15",
+    "status": "draft",
+    "notes": null,
+    "totalAmount": 1221,
+    "adjustmentLabel": null,
+    "adjustmentAmount": 0,
+    "additionalAdjustments": [],
+    "gstRateEquipment": null,
+    "gstRateMaterial": null,
+    "gstRateTransport": null,
+    "gstRateLabour": null,
+    "tdsRate": null,
+    "hireBillingMode": "historical",
+    "items": [
+      {
+        "date": "2027-02-15",
+        "category": "material",
+        "description": "SOIL (SITE)",
+        "qty": 600,
+        "unit": "CFT",
+        "rate": 2,
+        "amount": 1200,
+        "source": "auto:site_material_trip_material:27999",
+        "sourceType": "site_material_trip_material",
+        "sourceId": 27999,
+        "equipmentId": null,
+        "leadDistance": null,
+        "siteName": "VB22 TEST ROAD",
+        "suppliedTo": null,
+        "transporter": "VB22 ROAD TRANSPORT"
+      },
+      {
+        "date": "2027-02-15",
+        "category": "material",
+        "description": "DUST (SITE)",
+        "qty": 600,
+        "unit": "CFT",
+        "rate": 0,
+        "amount": 0,
+        "source": "auto:site_material_trip_material:27998",
+        "sourceType": "site_material_trip_material",
+        "sourceId": 27998,
+        "equipmentId": null,
+        "leadDistance": null,
+        "siteName": "VB22 TEST ROAD",
+        "suppliedTo": null,
+        "transporter": "VB22 ROAD TRANSPORT"
+      },
+      {
+        "date": null,
+        "category": "other",
+        "description": "SYNTHETIC FILLED MANUAL",
+        "qty": 3,
+        "unit": "HRS",
+        "rate": 7,
+        "amount": 21,
+        "source": "manual",
+        "sourceType": null,
+        "sourceId": null,
+        "equipmentId": null,
+        "leadDistance": null,
+        "siteName": null,
+        "suppliedTo": null,
+        "transporter": null
+      }
+    ],
+    "id": 22900,
+    "createdAt": "2026-09-26T10:40:04.497Z"
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/vendor-bills"
+    },
+    {
+      "method": "GET",
+      "path": "/api/vendor-bills/summary"
+    },
+    {
+      "method": "GET",
+      "path": "/api/vendor-bills/vendor-names"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sites"
+    },
+    {
+      "method": "GET",
+      "path": "/api/vendor-aliases"
+    },
+    {
+      "method": "GET",
+      "path": "/api/vendor-bills/discover-vendors?billType=all&periodFrom=2027-02-14&periodTo=2027-02-15"
+    },
+    {
+      "method": "GET",
+      "path": "/api/vendor-bills/auto-items?vendorName=VB22%20BORROW%20OWNER&billType=all&periodFrom=2027-02-14&periodTo=2027-02-15"
+    },
+    {
+      "method": "GET",
+      "path": "/api/vendor-bills/hire-activities?vendorName=VB22%20BORROW%20OWNER&periodFrom=2027-02-14&periodTo=2027-02-15"
+    },
+    {
+      "method": "POST",
+      "path": "/api/vendor-bills/check-duplicates",
+      "body": {
+        "vendorName": "VB22 BORROW OWNER",
+        "items": [
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27000",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27000
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27001",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27001
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27002",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27002
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27003",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27003
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27004",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27004
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27005",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27005
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27006",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27006
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27007",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27007
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27008",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27008
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27009",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27009
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27010",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27010
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27011",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27011
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27012",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27012
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27013",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27013
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27014",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27014
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27015",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27015
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27016",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27016
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27017",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27017
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27018",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27018
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27019",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27019
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27020",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27020
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27021",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27021
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27022",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27022
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27023",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27023
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27024",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27024
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27025",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27025
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27026",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27026
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27027",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27027
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27028",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27028
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27029",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27029
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27030",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27030
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27031",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27031
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27032",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27032
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27033",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27033
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27034",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27034
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27035",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27035
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27036",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27036
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27037",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27037
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27038",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27038
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27039",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27039
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27040",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27040
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27041",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27041
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27042",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27042
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27043",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27043
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27044",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27044
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27045",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27045
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27046",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27046
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27047",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27047
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27048",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27048
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27049",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27049
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27050",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27050
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27051",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27051
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27052",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27052
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27053",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27053
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27054",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27054
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27055",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27055
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27056",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27056
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27057",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27057
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27058",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27058
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27059",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27059
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27060",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27060
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27061",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27061
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27062",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27062
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27063",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27063
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27064",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27064
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27065",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27065
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27066",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27066
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27067",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27067
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27068",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27068
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27069",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27069
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27070",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27070
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27071",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27071
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27072",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27072
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27073",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27073
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27074",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27074
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27075",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27075
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27076",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27076
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27077",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27077
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27078",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27078
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27079",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27079
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27080",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27080
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27081",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27081
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27082",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27082
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27083",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27083
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27084",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27084
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27085",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27085
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27086",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27086
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27087",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27087
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27088",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27088
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27089",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27089
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27090",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27090
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27091",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27091
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27092",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27092
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27093",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27093
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27094",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27094
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27095",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27095
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27096",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27096
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27097",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27097
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27098",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27098
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27099",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27099
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27100",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27100
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27101",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27101
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27102",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27102
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27103",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27103
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27104",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27104
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27105",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27105
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27106",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27106
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27107",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27107
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27108",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27108
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27109",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27109
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27110",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27110
+          },
+          {
+            "date": "2027-02-15",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27999",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27999
+          },
+          {
+            "date": "2027-02-15",
+            "equipmentId": null,
+            "description": "DUST (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27998",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27998
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/vendor-rate-cards?vendorName=VB22%20BORROW%20OWNER"
+    },
+    {
+      "method": "POST",
+      "path": "/api/vendor-bills/check-duplicates",
+      "body": {
+        "vendorName": "VB22 BORROW OWNER",
+        "items": [
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27000",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27000
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27001",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27001
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27002",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27002
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27003",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27003
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27004",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27004
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27005",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27005
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27006",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27006
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27007",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27007
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27008",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27008
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27009",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27009
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27010",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27010
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27011",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27011
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27012",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27012
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27013",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27013
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27014",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27014
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27015",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27015
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27016",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27016
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27017",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27017
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27018",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27018
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27019",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27019
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27020",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27020
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27021",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27021
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27022",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27022
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27023",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27023
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27024",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27024
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27025",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27025
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27026",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27026
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27027",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27027
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27028",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27028
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27029",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27029
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27030",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27030
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27031",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27031
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27032",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27032
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27033",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27033
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27034",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27034
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27035",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27035
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27036",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27036
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27037",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27037
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27038",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27038
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27039",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27039
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27040",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27040
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27041",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27041
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27042",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27042
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27043",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27043
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27044",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27044
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27045",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27045
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27046",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27046
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27047",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27047
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27048",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27048
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27049",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27049
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27050",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27050
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27051",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27051
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27052",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27052
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27053",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27053
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27054",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27054
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27055",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27055
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27056",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27056
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27057",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27057
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27058",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27058
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27059",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27059
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27060",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27060
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27061",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27061
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27062",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27062
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27063",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27063
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27064",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27064
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27065",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27065
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27066",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27066
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27067",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27067
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27068",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27068
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27069",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27069
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27070",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27070
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27071",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27071
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27072",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27072
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27073",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27073
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27074",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27074
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27075",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27075
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27076",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27076
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27077",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27077
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27078",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27078
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27079",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27079
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27080",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27080
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27081",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27081
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27082",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27082
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27083",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27083
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27084",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27084
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27085",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27085
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27086",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27086
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27087",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27087
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27088",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27088
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27089",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27089
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27090",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27090
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27091",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27091
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27092",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27092
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27093",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27093
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27094",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27094
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27095",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27095
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27096",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27096
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27097",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27097
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27098",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27098
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27099",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27099
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27100",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27100
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27101",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27101
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27102",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27102
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27103",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27103
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27104",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27104
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27105",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27105
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27106",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27106
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27107",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27107
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27108",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27108
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27109",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27109
+          },
+          {
+            "date": "2027-02-14",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27110",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27110
+          },
+          {
+            "date": "2027-02-15",
+            "equipmentId": null,
+            "description": "SOIL (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27999",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27999
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/vendor-bills/check-duplicates",
+      "body": {
+        "vendorName": "VB22 BORROW OWNER",
+        "items": [
+          {
+            "date": "2027-02-15",
+            "equipmentId": null,
+            "description": "DUST (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27998",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27998
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/vendor-rate-cards?vendorName=VB22%20BORROW%20OWNER"
+    },
+    {
+      "method": "POST",
+      "path": "/api/vendor-bills/check-duplicates",
+      "body": {
+        "vendorName": "VB22 BORROW OWNER",
+        "items": [
+          {
+            "date": "2027-02-15",
+            "equipmentId": null,
+            "description": "DUST (SITE)",
+            "category": "material",
+            "siteName": "VB22 TEST ROAD",
+            "source": "auto:site_material_trip_material:27998",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27998
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/vendor-rate-cards/bulk-upsert",
+      "body": {
+        "items": [
+          {
+            "vendorName": "VB22 BORROW OWNER",
+            "category": "material",
+            "itemKey": "MAT_SOIL_CFT",
+            "itemLabel": "SOIL (SITE)",
+            "unit": "CFT",
+            "rate": 2,
+            "notes": null
+          },
+          {
+            "vendorName": "VB22 BORROW OWNER",
+            "category": "other",
+            "itemKey": "SYNTHETIC FILLED MANUAL",
+            "itemLabel": "SYNTHETIC FILLED MANUAL",
+            "unit": "HRS",
+            "rate": 7,
+            "notes": null
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/vendor-bills",
+      "body": {
+        "billDate": "2026-09-26",
+        "billNo": "AUTO-1790419204496",
+        "billType": "all",
+        "siteId": null,
+        "vendorName": "VB22 BORROW OWNER",
+        "periodFrom": "2027-02-14",
+        "periodTo": "2027-02-15",
+        "status": "draft",
+        "notes": null,
+        "totalAmount": 1221,
+        "adjustmentLabel": null,
+        "adjustmentAmount": 0,
+        "additionalAdjustments": [],
+        "gstRateEquipment": null,
+        "gstRateMaterial": null,
+        "gstRateTransport": null,
+        "gstRateLabour": null,
+        "tdsRate": null,
+        "hireBillingMode": "historical",
+        "items": [
+          {
+            "date": "2027-02-15",
+            "category": "material",
+            "description": "SOIL (SITE)",
+            "qty": 600,
+            "unit": "CFT",
+            "rate": 2,
+            "amount": 1200,
+            "source": "auto:site_material_trip_material:27999",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27999,
+            "equipmentId": null,
+            "leadDistance": null,
+            "siteName": "VB22 TEST ROAD",
+            "suppliedTo": null,
+            "transporter": "VB22 ROAD TRANSPORT"
+          },
+          {
+            "date": "2027-02-15",
+            "category": "material",
+            "description": "DUST (SITE)",
+            "qty": 600,
+            "unit": "CFT",
+            "rate": 0,
+            "amount": 0,
+            "source": "auto:site_material_trip_material:27998",
+            "sourceType": "site_material_trip_material",
+            "sourceId": 27998,
+            "equipmentId": null,
+            "leadDistance": null,
+            "siteName": "VB22 TEST ROAD",
+            "suppliedTo": null,
+            "transporter": "VB22 ROAD TRANSPORT"
+          },
+          {
+            "date": null,
+            "category": "other",
+            "description": "SYNTHETIC FILLED MANUAL",
+            "qty": 3,
+            "unit": "HRS",
+            "rate": 7,
+            "amount": 21,
+            "source": "manual",
+            "sourceType": null,
+            "sourceId": null,
+            "equipmentId": null,
+            "leadDistance": null,
+            "siteName": null,
+            "suppliedTo": null,
+            "transporter": null
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/vendor-bills"
+    }
+  ],
+  "passed": [
+    "A1 saved discovered delete",
+    "A2 local reset without DELETE",
+    "manual deletion",
+    "B1 111-row confirmation and cancel",
+    "B2 batched group removal, other date retained, actual second pull of DUST without SOIL resurrection",
+    "B3 blank manual row excluded from saved payload",
+    "B4 filled manual row saved with quantity/rate/amount intact"
+  ]
+}

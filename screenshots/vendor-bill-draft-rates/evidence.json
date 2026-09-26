@@ -3,31 +3,31 @@
   "A1": {
     "frames": [
       {
-        "time": 1326.800000000745,
+        "time": 1066.9000000022352,
         "count": 0,
         "titles": [],
         "states": []
       },
       {
-        "time": 1357.4000000003725,
+        "time": 1067.199999999255,
         "count": 0,
         "titles": [],
         "states": []
       },
       {
-        "time": 1367.6000000014901,
+        "time": 1069.4000000022352,
         "count": 0,
         "titles": [],
         "states": []
       },
       {
-        "time": 1379.5,
+        "time": 1085.300000000745,
         "count": 0,
         "titles": [],
         "states": []
       },
       {
-        "time": 1429.4000000003725,
+        "time": 1140.6000000014901,
         "count": 1,
         "titles": [
           "SET RATES"
@@ -37,7 +37,7 @@
         ]
       },
       {
-        "time": 1431.9000000003725,
+        "time": 1142.4000000022352,
         "count": 1,
         "titles": [
           "SET RATES"
@@ -47,7 +47,7 @@
         ]
       },
       {
-        "time": 1455.300000000745,
+        "time": 1152.300000000745,
         "count": 1,
         "titles": [
           "SET RATES"
@@ -57,7 +57,7 @@
         ]
       },
       {
-        "time": 1460.4000000003725,
+        "time": 1168.9000000022352,
         "count": 1,
         "titles": [
           "SET RATES"
@@ -67,7 +67,7 @@
         ]
       },
       {
-        "time": 1493.5,
+        "time": 1192.800000000745,
         "count": 1,
         "titles": [
           "SET RATES"
@@ -77,7 +77,7 @@
         ]
       },
       {
-        "time": 1510.300000000745,
+        "time": 1208.1000000014901,
         "count": 1,
         "titles": [
           "SET RATES"
@@ -87,117 +87,7 @@
         ]
       },
       {
-        "time": 1529.9000000003725,
-        "count": 1,
-        "titles": [
-          "CONFIRM BILLING UNIT CONVERSION"
-        ],
-        "states": [
-          "open"
-        ]
-      },
-      {
-        "time": 1545.300000000745,
-        "count": 1,
-        "titles": [
-          "CONFIRM BILLING UNIT CONVERSION"
-        ],
-        "states": [
-          "open"
-        ]
-      },
-      {
-        "time": 1559.800000000745,
-        "count": 1,
-        "titles": [
-          "CONFIRM BILLING UNIT CONVERSION"
-        ],
-        "states": [
-          "open"
-        ]
-      },
-      {
-        "time": 1585.2000000011176,
-        "count": 1,
-        "titles": [
-          "CONFIRM BILLING UNIT CONVERSION"
-        ],
-        "states": [
-          "open"
-        ]
-      },
-      {
-        "time": 1594,
-        "count": 1,
-        "titles": [
-          "CONFIRM BILLING UNIT CONVERSION"
-        ],
-        "states": [
-          "open"
-        ]
-      },
-      {
-        "time": 1620,
-        "count": 1,
-        "titles": [
-          "CONFIRM BILLING UNIT CONVERSION"
-        ],
-        "states": [
-          "open"
-        ]
-      },
-      {
-        "time": 1627.9000000003725,
-        "count": 1,
-        "titles": [
-          "CONFIRM BILLING UNIT CONVERSION"
-        ],
-        "states": [
-          "open"
-        ]
-      },
-      {
-        "time": 1644.7000000011176,
-        "count": 1,
-        "titles": [
-          "CONFIRM BILLING UNIT CONVERSION"
-        ],
-        "states": [
-          "open"
-        ]
-      },
-      {
-        "time": 1663.5,
-        "count": 1,
-        "titles": [
-          "CONFIRM BILLING UNIT CONVERSION"
-        ],
-        "states": [
-          "open"
-        ]
-      },
-      {
-        "time": 1676.6000000014901,
-        "count": 1,
-        "titles": [
-          "CONFIRM BILLING UNIT CONVERSION"
-        ],
-        "states": [
-          "open"
-        ]
-      },
-      {
-        "time": 1697.300000000745,
-        "count": 1,
-        "titles": [
-          "CONFIRM BILLING UNIT CONVERSION"
-        ],
-        "states": [
-          "open"
-        ]
-      },
-      {
-        "time": 1737,
+        "time": 1218.800000000745,
         "count": 1,
         "titles": [
           "SET RATES"
@@ -207,7 +97,127 @@
         ]
       },
       {
-        "time": 1739,
+        "time": 1235.199999999255,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1251.9000000022352,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1268.699999999255,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1285.300000000745,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1302.300000000745,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1331.300000000745,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1366.6000000014901,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1371.4000000022352,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1400,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1407.199999999255,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1423.300000000745,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1439.199999999255,
+        "count": 1,
+        "titles": [
+          "CONFIRM BILLING UNIT CONVERSION"
+        ],
+        "states": [
+          "open"
+        ]
+      },
+      {
+        "time": 1463.5,
         "count": 1,
         "titles": [
           "SET RATES"
@@ -217,7 +227,7 @@
         ]
       },
       {
-        "time": 1744,
+        "time": 1469.199999999255,
         "count": 1,
         "titles": [
           "SET RATES"
@@ -227,7 +237,7 @@
         ]
       },
       {
-        "time": 1763.9000000003725,
+        "time": 1485,
         "count": 1,
         "titles": [
           "CONFIRM BILLING UNIT CONVERSION"
@@ -237,7 +247,7 @@
         ]
       },
       {
-        "time": 1784.6000000014901,
+        "time": 1503.6000000014901,
         "count": 1,
         "titles": [
           "CONFIRM BILLING UNIT CONVERSION"
@@ -247,7 +257,7 @@
         ]
       },
       {
-        "time": 1793.6000000014901,
+        "time": 1518.199999999255,
         "count": 1,
         "titles": [
           "CONFIRM BILLING UNIT CONVERSION"
@@ -257,7 +267,7 @@
         ]
       },
       {
-        "time": 1810,
+        "time": 1535.199999999255,
         "count": 1,
         "titles": [
           "CONFIRM BILLING UNIT CONVERSION"
@@ -267,7 +277,7 @@
         ]
       },
       {
-        "time": 1828.7000000011176,
+        "time": 1551.699999999255,
         "count": 1,
         "titles": [
           "CONFIRM BILLING UNIT CONVERSION"
@@ -277,7 +287,7 @@
         ]
       },
       {
-        "time": 1847.2000000011176,
+        "time": 1568.300000000745,
         "count": 1,
         "titles": [
           "CONFIRM BILLING UNIT CONVERSION"
@@ -287,7 +297,7 @@
         ]
       },
       {
-        "time": 1861.7000000011176,
+        "time": 1584.9000000022352,
         "count": 1,
         "titles": [
           "CONFIRM BILLING UNIT CONVERSION"
@@ -297,7 +307,7 @@
         ]
       },
       {
-        "time": 1876.1000000014901,
+        "time": 1601.6000000014901,
         "count": 1,
         "titles": [
           "CONFIRM BILLING UNIT CONVERSION"
@@ -307,7 +317,7 @@
         ]
       },
       {
-        "time": 1894.2000000011176,
+        "time": 1618.300000000745,
         "count": 1,
         "titles": [
           "CONFIRM BILLING UNIT CONVERSION"
@@ -317,7 +327,7 @@
         ]
       },
       {
-        "time": 1912,
+        "time": 1636.199999999255,
         "count": 1,
         "titles": [
           "CONFIRM BILLING UNIT CONVERSION"
@@ -327,7 +337,7 @@
         ]
       },
       {
-        "time": 1928.2000000011176,
+        "time": 1651.6000000014901,
         "count": 1,
         "titles": [
           "CONFIRM BILLING UNIT CONVERSION"
@@ -337,7 +347,7 @@
         ]
       },
       {
-        "time": 1943.5,
+        "time": 1669.199999999255,
         "count": 1,
         "titles": [
           "CONFIRM BILLING UNIT CONVERSION"
@@ -347,97 +357,91 @@
         ]
       },
       {
-        "time": 1968.4000000003725,
+        "time": 1692.9000000022352,
         "count": 0,
         "titles": [],
         "states": []
       },
       {
-        "time": 1976.1000000014901,
+        "time": 1701.800000000745,
         "count": 0,
         "titles": [],
         "states": []
       },
       {
-        "time": 1993.1000000014901,
+        "time": 1718.300000000745,
         "count": 0,
         "titles": [],
         "states": []
       },
       {
-        "time": 2009.4000000003725,
+        "time": 1734.9000000022352,
         "count": 0,
         "titles": [],
         "states": []
       },
       {
-        "time": 2025.9000000003725,
+        "time": 1751.4000000022352,
         "count": 0,
         "titles": [],
         "states": []
       },
       {
-        "time": 2042.6000000014901,
+        "time": 1768.1000000014901,
         "count": 0,
         "titles": [],
         "states": []
       },
       {
-        "time": 2059.9000000003725,
+        "time": 1785.300000000745,
         "count": 0,
         "titles": [],
         "states": []
       },
       {
-        "time": 2076.10000000149,
+        "time": 1801.5,
         "count": 0,
         "titles": [],
         "states": []
       },
       {
-        "time": 2092.60000000149,
+        "time": 1818.300000000745,
         "count": 0,
         "titles": [],
         "states": []
       },
       {
-        "time": 2109.300000000745,
+        "time": 1834.699999999255,
         "count": 0,
         "titles": [],
         "states": []
       },
       {
-        "time": 2128.7000000011176,
+        "time": 1851.699999999255,
         "count": 0,
         "titles": [],
         "states": []
       },
       {
-        "time": 2143,
+        "time": 1868.199999999255,
         "count": 0,
         "titles": [],
         "states": []
       },
       {
-        "time": 2159.5,
+        "time": 1884.699999999255,
         "count": 0,
         "titles": [],
         "states": []
       },
       {
-        "time": 2175.9000000003725,
+        "time": 1901.4000000022352,
         "count": 0,
         "titles": [],
         "states": []
       },
       {
-        "time": 2192.60000000149,
-        "count": 0,
-        "titles": [],
-        "states": []
-      },
-      {
-        "time": 2212.10000000149,
+        "time": 1918,
         "count": 0,
         "titles": [],
         "states": []
@@ -447,7 +451,7 @@
       {
         "title": "Rates and billing units applied to 1 item",
         "description": "Changes remain in this bill until you save it.",
-        "time": 1954.1000000014901,
+        "time": 1677.199999999255,
         "dialogCount": 0
       }
     ]

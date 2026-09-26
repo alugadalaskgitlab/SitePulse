@@ -15,6 +15,23 @@ type Item = { date?: string | null; amount: number; category?: string; source?: 
 
 afterEach(cleanup);
 
+it("offers removal only in editable groups and passes original indices while collapsed", () => {
+  const rows = [{ item: { date: "2027-02-14", amount: 1 }, idx: 2 }, { item: { date: "2027-02-14", amount: 2 }, idx: 9 }];
+  const removals: unknown[] = [];
+  const props = {
+    items: rows, scope: "test", totalColumns: 2, totalBillItems: 111,
+    expansionMode: "collapsed" as const, expansionOverrides: {}, onToggle: () => {},
+    renderRow: () => null, formatDate: (date: string | null | undefined) => date || "",
+    formatAmount: String,
+  };
+  const { rerender } = render(<table><tbody><BillDateGroupRows {...props}
+    onRemoveGroup={(items, label) => removals.push({ items, label })} /></tbody></table>);
+  fireEvent.click(screen.getByText("Remove Group"));
+  expect(removals).toEqual([{ items: rows, label: "2027-02-14" }]);
+  rerender(<table><tbody><BillDateGroupRows {...props} /></tbody></table>);
+  expect(screen.queryByText("Remove Group")).toBeNull();
+});
+
 function Harness({ items }: { items: Item[] }) {
   const [mode, setMode] = useState<"auto" | "expanded" | "collapsed">("auto");
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});

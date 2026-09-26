@@ -39,6 +39,7 @@ import {
 import DraftEquipmentHireCalendar, { SavedEquipmentCalendarExport } from "@/components/vendor-bills/DraftEquipmentHireCalendar";
 import HireActivityBreakdownCalendar from "@/components/vendor-bills/HireActivityBreakdownCalendar";
 import { BillDateGroupControls, BillDateGroupRows } from "@/components/vendor-bills/BillDateGroups";
+import { isTrulyBlankManualBillRow } from "@/lib/vendorBillBlankRows";
 import RateCards from "@/pages/RateCards";
 
 const formatDate = (dateStr: string | null | undefined) => {
@@ -1425,6 +1426,7 @@ export default function VendorBills() {
       }
 
       const uniqueMapped = mapped.filter((item, index, all) =>
+        !suppressedAutoItemsRef.current.has(autoBillItemIdentity(item)) &&
         all.findIndex(candidate => autoBillItemIdentity(candidate) === autoBillItemIdentity(item)) === index
       );
 
@@ -1515,6 +1517,17 @@ export default function VendorBills() {
     });
   };
 
+  const removeItemGroup = (items: Array<{ item: LineItem; idx: number }>, label: string) => {
+    if (items.some(({ item }) => ["hire_group", "hire_statement"].includes(item.source))) {
+      toast({ title: "Remove generated hire items through their hire selection", variant: "destructive" });
+      return;
+    }
+    if (!window.confirm(`Remove all ${items.length} items from ${label}?`)) return;
+    // Each functional update sees the prior removal. Descending original indices
+    // keep later removals stable and reuse per-row auto-source suppression.
+    [...items].sort((a, b) => b.idx - a.idx).forEach(({ idx }) => removeLineItem(idx));
+  };
+
   const calcAmount = (item: LineItem) => {
     if (item.category === "transport" && item.leadDistance && item.leadDistance > 0) {
       return item.leadDistance * 2 * (item.rate || 0);
@@ -1585,7 +1598,8 @@ export default function VendorBills() {
     [hireCalculated],
   );
   const availableOtherItems = useMemo(
-    () => availableOtherBillItems(mappedAutoItems, lineItems, includedHireGroups),
+    () => availableOtherBillItems(mappedAutoItems, lineItems, includedHireGroups)
+      .filter(item => !suppressedAutoItemsRef.current.has(autoBillItemIdentity(item))),
     [mappedAutoItems, lineItems, includedHireGroups],
   );
   const billedLineItemCount = useMemo(
@@ -1648,12 +1662,10 @@ export default function VendorBills() {
         .map(item => autoBillItemIdentity(item)),
     );
   }, [availableOtherItems, duplicatePreflight.data, duplicatePreflight.isSuccess]);
-  // Keep every eligible source group visible after it has been pulled. Its
-  // pending count is derived separately, so deleting a source-qualified row
-  // makes just that row available to pull again without disturbing edits to
-  // the remaining rows.
+  // Deleted source identities remain suppressed for this draft context.
   const candidatePullGroups = useMemo(() => {
-    const candidates = availableOtherBillItems(mappedAutoItems, [], includedHireGroups);
+    const candidates = availableOtherBillItems(mappedAutoItems, [], includedHireGroups)
+      .filter(item => !suppressedAutoItemsRef.current.has(autoBillItemIdentity(item)));
     return groupRateItems(candidates).map(group => ({
       ...group,
       pendingItems: availableOtherBillItems(group.items, lineItems, includedHireGroups),
@@ -2042,8 +2054,9 @@ export default function VendorBills() {
     }
     // Historical hire edits are persisted through hireGroups/statements and
     // intentionally strip the generated hire line before those groups are
-    // rehydrated. Only the shared itemized flow requires a description here.
-    if (includedHireGroups.length === 0 && (lineItems.length === 0 || lineItems.every(i => !i.description))) {
+    // rehydrated. The itemized flow requires at least one meaningful row;
+    // quantity-only/manual metadata and source evidence are not blank rows.
+    if (includedHireGroups.length === 0 && (lineItems.length === 0 || lineItems.every(isTrulyBlankManualBillRow))) {
       toast({ title: "Please add at least one line item", variant: "destructive" });
       return;
     }
@@ -2166,7 +2179,7 @@ export default function VendorBills() {
          adjustments: group.adjustments, calculatedQuantity: result!.calculatedQuantity,
         calculatedGrossAmount: result!.calculatedGrossAmount, netAmount: result!.netAmount,
       })) } : {}),
-      items: lineItems.filter(i => i.description).map(item => ({
+      items: lineItems.filter(i => !isTrulyBlankManualBillRow(i)).map(item => ({
         date: item.date || null,
         category: item.category || null,
         description: item.description.toUpperCase(),
@@ -3779,11 +3792,14 @@ export default function VendorBills() {
                                           <span className="text-muted-foreground normal-case">
                                             {grp.items.length} row{grp.items.length !== 1 ? "s" : ""} · Rs. {formatCurrency(grpTotal)}
                                           </span>
+                                          <Button type="button" variant="ghost" size="sm" className="text-destructive"
+                                            onClick={() => removeItemGroup(grp.items, grp.label)}>Remove Group</Button>
                                         </td>
                                       </tr>
                                       <BillDateGroupRows
                                         items={grp.items}
                                         scope={`edit-${cat}-labour-${grp.key}`}
+                                        onRemoveGroup={removeItemGroup}
                                         totalColumns={totalColSpan}
                                         totalBillItems={lineItems.length}
                                         expansionMode={dateGroupExpansionMode}
@@ -3800,6 +3816,7 @@ export default function VendorBills() {
                                 <BillDateGroupRows
                                   items={catItems}
                                   scope={`edit-${cat}`}
+                                  onRemoveGroup={removeItemGroup}
                                   totalColumns={totalColSpan}
                                   totalBillItems={lineItems.length}
                                   expansionMode={dateGroupExpansionMode}
@@ -3830,6 +3847,7 @@ export default function VendorBills() {
                           return getLabourSource(item) === labourFilter;
                           })}
                         scope="edit-all"
+                        onRemoveGroup={removeItemGroup}
                         totalColumns={totalColSpan}
                         totalBillItems={lineItems.length}
                         expansionMode={dateGroupExpansionMode}
