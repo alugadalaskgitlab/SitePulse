@@ -3127,6 +3127,7 @@ export default function SiteEdit() {
                   } : row))}
                 />
                 <BreakdownStoppageEditor
+                draftOnly={isDraftMode}
                 value={entry.breakdowns ?? []}
                 onChange={(breakdowns) => setEquipment(rows => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, breakdowns } : row))}
                 testId={`edit-equipment-breakdown-${idx}`}

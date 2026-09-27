@@ -57,9 +57,9 @@ async function navigate(path, ready = "(document.body.innerText.includes('Road W
   await call("Page.navigate", { url: base + path });
   await wait(`!window.__Dpr13Navigating && !!window.__Dpr13Fixture && (${ready})`);
 }
-async function screenshot(name) {
+async function screenshot(name, fullPage = true) {
   mkdirSync("tests/fixtures/dpr-site-entry/evidence", { recursive: true });
-  const shot = await call("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
+  const shot = await call("Page.captureScreenshot", { format: "png", captureBeyondViewport: fullPage });
   writeFileSync(`tests/fixtures/dpr-site-entry/evidence/${name}.png`, Buffer.from(shot.data, "base64"));
 }
 const contextPath = "/fixture/dpr13?site=NARASIMHULU%20ROAD&date=2026-08-05&type=road";
@@ -213,6 +213,12 @@ try {
       {...common, id:18102,machine:'SYNTHETIC LEGACY ALLOCATION', activityAllocations:[{id:18401,boqItemId:8801,programmeBarId:null,startTime:'08:00',endTime:'12:00',hoursWorked:4}]},
     ];
     snapshot.dpr.materials[0] = {...snapshot.dpr.materials[0],supplier:'SYNTHETIC SUPPLIER',vehicleNumber:'SYNTH-MAT',receiptNumber:'SYNTH-REC',structureId:'SYNTHETIC-STRUCTURE',boqItemId:8801};
+    snapshot.dpr.equipment[0].breakdowns = [{
+      clientKey:'synthetic-existing-stoppage', maintenanceLogId:18801,
+      fromTime:'09:00', toTime:'09:30', description:'SYNTHETIC EXISTING STOPPAGE',
+      responsibility:'vendor', repairScope:'hlc', debitableToVendor:true, remarks:'SYNTHETIC ORIGINAL REMARK',
+      attachment:{fileName:'synthetic-existing.pdf',objectPath:'/synthetic/existing.pdf',mimeType:'application/pdf',fileSize:42},
+    }];
     window.__Dpr13Fixture.seed(snapshot);
   })()`);
   await navigate(structurePath + "&boqProjectId=5501");
@@ -231,6 +237,63 @@ try {
       && rows[0].activitySegments[0].persistedId===18201 && rows[0].activitySegments[0].boqItems[0].persistedId===18301
       && rows[1].activityAllocations[0].persistedId===18401;
   })()`))) throw new Error("Equipment hydration/save lost persisted fields, segments, or allocations");
+  // Stoppages use the unchanged breakdowns shape. This adapter demonstrates
+  // frontend fidelity only; real draft-vs-ledger lifecycle is backend-tested.
+  await click("equipment", false);
+  await wait("document.querySelector('[data-testid=\"equipment-breakdown-0-reason-0\"]')?.value === 'SYNTHETIC EXISTING STOPPAGE'");
+  if (!(await evaluate("document.body.innerText.includes('Draft saves do not create or update maintenance ledger entries.') && document.querySelector('[data-testid=\"equipment-breakdown-0-attachment-0\"]').textContent.includes('synthetic-existing.pdf')"))) throw new Error("Draft stoppage messaging or saved evidence missing");
+  await evaluate("document.querySelector('[data-testid=\"equipment-breakdown-0-add\"]').click()");
+  await input('[data-testid="equipment-breakdown-0-from-1"]', "10:00");
+  await input('[data-testid="equipment-breakdown-0-to-1"]', "11:15");
+  await input('[data-testid="equipment-breakdown-0-reason-1"]', "SYNTHETIC DRAFT STOPPAGE");
+  await input('[data-testid="equipment-breakdown-0-remarks-1"]', "SYNTHETIC DRAFT REMARK");
+  for (const [field, label] of [["responsibility", "Vendor"], ["scope", "HLC's scope"]]) {
+    await evaluate(`document.querySelector('[data-testid="equipment-breakdown-0-${field}-1"]').click()`);
+    await wait(`Array.from(document.querySelectorAll('[role="option"]')).some(n=>n.textContent===${q(label)})`);
+    await evaluate(`Array.from(document.querySelectorAll('[role="option"]')).find(n=>n.textContent===${q(label)}).click()`);
+  }
+  await evaluate(`(() => {
+    document.querySelector('[data-testid="equipment-breakdown-0-debitable-1"]').click();
+    const transfer=new DataTransfer();
+    transfer.items.add(new File(['SYNTHETIC STOPPAGE EVIDENCE'],'synthetic-stoppage.txt',{type:'text/plain'}));
+    const node=document.querySelector('[data-testid="equipment-breakdown-0-file-1"]');
+    node.files=transfer.files; node.dispatchEvent(new Event('change',{bubbles:true}));
+    window.__Dpr13Fixture.failPhotoNext=true;
+  })()`);
+  const beforeStoppageSave = await evaluate("window.__Dpr13Fixture.requests.filter(r=>r.method==='PUT').length");
+  await click("Save & return");
+  await wait("!window.__Dpr13Fixture.failPhotoNext && !Array.from(document.querySelectorAll('button')).find(n=>n.textContent==='Save Section')?.disabled");
+  if (!(await evaluate(`window.__Dpr13Fixture.requests.filter(r=>r.method==='PUT').length===${beforeStoppageSave} && document.querySelector('[data-testid="equipment-breakdown-0-attachment-1"]').textContent.includes('Selected: synthetic-stoppage.txt')`))) throw new Error("Failed stoppage evidence upload saved/dropped local data");
+  await click("Save & return");
+  await wait("window.__Dpr13Fixture.snapshot.dpr.equipment[0].breakdowns.length===2 && !document.querySelector('[data-testid=\"equipment-breakdown-0-from-1\"]')");
+  const stoppageIdentity = await evaluate("window.__Dpr13Fixture.snapshot.dpr.equipment[0].breakdowns[1].clientKey");
+  await navigate(structurePath + "&boqProjectId=5501");
+  await click("Open sections");
+  await click("equipment", false);
+  await wait("document.querySelector('[data-testid=\"equipment-breakdown-0-reason-1\"]')?.value === 'SYNTHETIC DRAFT STOPPAGE'");
+  await evaluate("document.querySelector('[data-testid=\"equipment-breakdown-0-editor\"]').scrollIntoView()");
+  await screenshot("dpr13-stoppage-draft-reopened", false);
+  await input('[data-testid="equipment-breakdown-0-to-1"]', "11:45");
+  await input('[data-testid="equipment-breakdown-0-remarks-1"]', "SYNTHETIC CORRECTED REMARK");
+  await input('[data-testid="equipment-breakdown-0-reason-0"]', "SYNTHETIC EXISTING CORRECTED");
+  await click("Save & return");
+  await wait("!document.querySelector('[data-testid=\"equipment-breakdown-0-from-1\"]')");
+  if (!(await evaluate(`(() => {
+    const [old,row]=window.__Dpr13Fixture.snapshot.dpr.equipment[0].breakdowns;
+    return old.clientKey==='synthetic-existing-stoppage' && old.maintenanceLogId===18801
+      && old.description==='SYNTHETIC EXISTING CORRECTED' && old.attachment.objectPath==='/synthetic/existing.pdf'
+      && old.attachment.fileSize===42 && old.responsibility==='vendor' && old.repairScope==='hlc' && old.debitableToVendor
+      && row.clientKey===${q(stoppageIdentity)} && row.maintenanceLogId==null
+      && row.fromTime==='10:00' && row.toTime==='11:45' && row.remarks==='SYNTHETIC CORRECTED REMARK'
+      && row.responsibility==='vendor' && row.repairScope==='hlc' && row.debitableToVendor
+      && row.attachment.fileName==='synthetic-stoppage.txt' && row.attachment.mimeType==='text/plain'
+      && row.attachment.fileSize===27 && !!row.attachment.objectPath;
+  })()`))) throw new Error("Stoppage save/reopen/edit lost fields, client identity, maintenance linkage or attachment metadata");
+  await click("equipment", false);
+  await wait("document.querySelector('[data-testid=\"equipment-breakdown-0-to-1\"]')?.value === '11:45'");
+  await evaluate("document.querySelector('[data-testid=\"equipment-breakdown-0-editor\"]').scrollIntoView()");
+  await screenshot("dpr13-stoppage-draft-corrected", false);
+  await click("Return to sections");
   await click("materials", false);
   await wait("document.querySelector('[data-testid=\"input-material-qty-0\"]')?.value === '4.25'");
   await click("Save & return");
@@ -308,5 +371,5 @@ try {
   mkdirSync("tests/fixtures/dpr-site-entry/evidence", { recursive: true });
   const shot = await call("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
   writeFileSync("tests/fixtures/dpr-site-entry/evidence/dpr13.png", Buffer.from(shot.data, "base64"));
-  console.log("PASS DPR-13 synthetic browser fixture: independent sections/purchases, canonical reopen, null-project BOQ recovery, dirty/conflict/stale-submit guards, explicit chooser, photo retry identities, field hydration/continuity, legacy SiteEdit/Guided snapshot-token PATCH then submit.");
+  console.log("PASS DPR-13 synthetic browser fixture: independent sections/purchases, canonical reopen, null-project BOQ recovery, dirty/conflict/stale-submit guards, explicit chooser, photo retry identities, stoppage save/reopen/edit with evidence retry and preserved identities/metadata, field hydration/continuity, legacy SiteEdit/Guided snapshot-token PATCH then submit.");
 } finally { socket.close(); }

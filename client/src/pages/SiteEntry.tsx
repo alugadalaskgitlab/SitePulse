@@ -1680,7 +1680,9 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
       });
       const clientTimestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
        const normalizedEquipment = meaningfulEquipmentRows(
-         equipment.map(contractorDieselTankFieldsCleared),
+         (!sectionEditor || sectionEditor.section === "equipment"
+           ? await prepareBreakdownAttachments(equipment)
+           : equipment).map(contractorDieselTankFieldsCleared),
        ).map(eq => {
         const preview = computeEquipmentUsage(
           activeEquipment.find((item) => item.id === eq.equipmentId) ??
@@ -3581,6 +3583,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                    onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, ...patch } as EquipmentEntry : row))}
                 />
                 <BreakdownStoppageEditor
+                  draftOnly={!!sectionEditor}
                   value={entry.breakdowns ?? []}
                   onChange={(breakdowns) => setEquipment(current => current.map((row, rowIndex) => rowIndex === idx ? { ...row, breakdowns } : row))}
                   testId={`equipment-breakdown-${idx}`}

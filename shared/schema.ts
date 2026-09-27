@@ -241,6 +241,25 @@ export const equipmentLogs = pgTable("equipment_logs", {
   usageStatusReason: text("usage_status_reason"),
 });
 
+// Draft-only evidence. Never read by operational maintenance/hire queries.
+export const dprDraftStoppages = pgTable("dpr_draft_stoppages", {
+  id: serial("id").primaryKey(),
+  equipmentLogId: integer("equipment_log_id").notNull().references(() => equipmentLogs.id, { onDelete: "cascade" }),
+  clientKey: text("client_key").notNull(),
+  maintenanceLogId: integer("maintenance_log_id"),
+  fromTime: text("from_time"),
+  toTime: text("to_time"),
+  description: text("description"),
+  responsibility: text("responsibility"),
+  repairScope: text("repair_scope"),
+  debitableToVendor: boolean("debitable_to_vendor"),
+  remarks: text("remarks"),
+  fileName: text("file_name"),
+  objectPath: text("object_path"),
+  mimeType: text("mime_type"),
+  fileSize: integer("file_size"),
+});
+
 // One physical equipment row may be attributed across several BOQ activities.
 // Machine identity, meters, diesel, hire billing, breakdowns, and plantUsageId
 // remain authoritative on equipment_logs and are never duplicated here.

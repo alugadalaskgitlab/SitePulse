@@ -57,7 +57,7 @@ beforeAll(async () => {
     });
     await pg.exec(`CREATE TABLE "${config.name}" (${columns.join(",")})`);
   }
-  for (const table of [schema.equipmentActivitySegments, schema.equipmentActivityAllocations, schema.equipmentActivitySegmentBoqItems, schema.activityPersonnel]) {
+  for (const table of [schema.dprDraftStoppages, schema.equipmentActivitySegments, schema.equipmentActivityAllocations, schema.equipmentActivitySegmentBoqItems, schema.activityPersonnel]) {
     const config = getTableConfig(table);
     for (const fk of config.foreignKeys) {
       const reference = fk.reference();
@@ -317,17 +317,209 @@ describe("DPR-13 normalized SQL section transactions", () => {
     expect((await request(app).patch(`/api/dprs/${created.body.id}/draft`).send(payload)).status).toBe(409);
   });
 
-  it("explicitly rejects unsupported stoppage staging atomically instead of dropping draft fields", async () => {
+  it("stages, reopens, edits and submits stoppages with evidence atomically and exactly once", async () => {
     const ctx = { ...context, date: "2026-09-29" };
+    const attachment = { fileName: "synthetic.pdf", objectPath: "/objects/synthetic-stoppage.pdf", mimeType: "application/pdf", fileSize: 123 };
     const response = await request(app).put("/api/dpr-sections/equipment").send({
       context: ctx, data: { engineer: "SYNTHETIC", equipment: [{
-        machine: "SYNTHETIC", equipmentId: 1, openingReading: 1,
-        breakdowns: [{ clientKey: "SYNTHETIC-STOPPAGE", description: "SYNTHETIC STAGED STOPPAGE", fromTime: "08:00", toTime: "09:00" }],
+        machine: "SYNTHETIC", equipmentId: 1, openingReading: 1, closingReading: 3,
+        breakdowns: [{ clientKey: "SYNTHETIC-STOPPAGE", description: "SYNTHETIC STAGED STOPPAGE", fromTime: "08:00", toTime: "09:00",
+          responsibility: "vendor", repairScope: "hlc", debitableToVendor: true, remarks: "SYNTHETIC REMARK", attachment }],
       }] },
     });
-    expect(response.status).toBe(422);
-    expect(response.body.message).toMatch(/cannot stage maintenance/);
-    expect(await findSectionDrafts(state.db, ctx)).toHaveLength(0);
+    expect(response.status).toBe(200);
     expect(await state.db.select().from(schema.equipmentMaintenanceLogs)).toHaveLength(0);
+    expect(await state.db.select().from(schema.attachments)).toHaveLength(0);
+    const reopened = await request(app).get(`/api/dpr-sections/${response.body.dpr.id}`);
+    expect(reopened.body.dpr.equipment[0].breakdowns[0].attachment).toEqual(attachment);
+    const snap = reopened.body;
+    const edited = await request(app).put("/api/dpr-sections/equipment").send({
+      context: ctx, dprId: snap.dpr.id, sectionToken: snap.sectionTokens.equipment, headerToken: snap.headerToken,
+      data: { equipment: snap.dpr.equipment.map((e: any) => ({ ...e, breakdowns: e.breakdowns.map((b: any) => ({ ...b, toTime: "09:30" })) })) },
+    });
+    expect(edited.status).toBe(200);
+    expect((await state.db.select().from(schema.dprDraftStoppages))[0].toTime).toBe("09:30");
+    expect((await request(app).put("/api/dpr-sections/equipment").send({
+      context: ctx, dprId: snap.dpr.id, sectionToken: snap.sectionTokens.equipment, headerToken: snap.headerToken,
+      data: { equipment: [] },
+    })).status).toBe(409);
+    // Force failure AFTER maintenance/attachment insert and staging deletion.
+    const finalize = vi.spyOn(storage, "finalizeDprEquipmentUsageTx").mockRejectedValueOnce(new Error("SYNTHETIC FINALIZE FAILURE"));
+    const endpoint = `/api/dpr-sections/${snap.dpr.id}/submit`;
+    const tokenBody = { sectionTokens: edited.body.sectionTokens, headerToken: edited.body.headerToken };
+    expect((await request(app).post(endpoint).send(tokenBody)).status).toBe(500);
+    finalize.mockRestore();
+    expect((await fresh(snap.dpr.id)).dpr.dprStatus).toBe("draft");
+    expect(await state.db.select().from(schema.dprDraftStoppages)).toHaveLength(1);
+    expect(await state.db.select().from(schema.equipmentMaintenanceLogs)).toHaveLength(0);
+    expect(await state.db.select().from(schema.attachments)).toHaveLength(0);
+    const results = await Promise.all([request(app).post(endpoint).send(tokenBody), request(app).post(endpoint).send(tokenBody)]);
+    expect(results.filter(r => r.status === 200)).toHaveLength(1);
+    const [maintenance] = await state.db.select().from(schema.equipmentMaintenanceLogs);
+    expect(maintenance).toMatchObject({ description: "SYNTHETIC STAGED STOPPAGE", fromTime: "08:00", toTime: "09:30",
+      downtimeHours: 1.5, responsibility: "vendor", repairScope: "hlc", debitableToVendor: true, remarks: "SYNTHETIC REMARK",
+      sourceType: "dpr_log", sourceRecordId: snap.dpr.equipment[0].id, status: "open" });
+    const evidence = await state.db.select().from(schema.attachments);
+    expect(evidence).toHaveLength(1);
+    expect(evidence[0]).toMatchObject({ ...attachment, moduleType: "equipment_breakdown", linkedRecordId: maintenance.id });
+    expect(await state.db.select().from(schema.dprDraftStoppages)).toHaveLength(0);
+  });
+
+  it("preserves staging through legacy omitted nested PATCH, removes explicitly and cascades equipment deletion", async () => {
+    const ctx = { ...context, date: "2026-09-30" };
+    const created = await request(app).post("/api/dprs").send({ ...ctx, engineer: "SYNTHETIC", dprStatus: "draft",
+      equipment: [{ machine: "SYNTHETIC", equipmentId: 1, openingReading: 5, closingReading: 6,
+        breakdowns: [{ clientKey: "legacy-stage", description: "SYNTHETIC", fromTime: "10:00", toTime: "11:00" }] }] });
+    expect(created.status).toBe(201);
+    expect(created.body.equipment[0].breakdowns).toHaveLength(1);
+    const { breakdowns, ...withoutNested } = created.body.equipment[0];
+    const patched = await request(app).patch(`/api/dprs/${created.body.id}/draft`).send({
+      ...created.body, equipment: [withoutNested],
+    });
+    expect(patched.status).toBe(200);
+    expect(patched.body.equipment[0].breakdowns).toEqual(breakdowns);
+    const fetched = await request(app).get(`/api/dprs/${created.body.id}`);
+    expect(fetched.body.equipment[0].breakdowns).toEqual(breakdowns);
+    const initial = await fresh(created.body.id);
+    const cleared = await save("equipment", { equipment: initial.dpr.equipment.map((e: any) => ({ ...e, breakdowns: [] })) }, initial, ctx);
+    expect(await state.db.select().from(schema.dprDraftStoppages)).toHaveLength(0);
+    const restaged = await save("equipment", { equipment: cleared.dpr.equipment.map((e: any) => ({ ...e, breakdowns })) }, cleared, ctx);
+    await save("equipment", { equipment: [] }, restaged, ctx);
+    expect(await state.db.select().from(schema.dprDraftStoppages)).toHaveLength(0);
+  });
+
+  it("rejects incomplete staged stoppages at submit without losing draft data", async () => {
+    const ctx = { ...context, date: "2026-10-01" };
+    const initial = await save("equipment", { equipment: [{ machine: "SYNTHETIC", equipmentId: 1, openingReading: 1, closingReading: 2,
+      breakdowns: [{ clientKey: "incomplete", description: "SYNTHETIC" }] }] }, undefined, ctx);
+    const result = await request(app).post(`/api/dpr-sections/${initial.dpr.id}/submit`).send({
+      sectionTokens: initial.sectionTokens, headerToken: initial.headerToken,
+    });
+    expect(result.status).toBe(422);
+    expect((await fresh(initial.dpr.id)).dpr.equipment[0].breakdowns[0].clientKey).toBe("incomplete");
+    await save("equipment", { equipment: [] }, initial, ctx);
+  });
+
+  it("legacy submit uses saved staged evidence and ignores unsaved client replacements", async () => {
+    const ctx = { ...context, date: "2026-10-02" };
+    const first = await save("equipment", { equipment: [{ machine: "SYNTHETIC", equipmentId: 1, openingReading: 1, closingReading: 2,
+      breakdowns: [{ clientKey: "legacy-submit", description: "SAVED LEGACY EVIDENCE", fromTime: "12:00", toTime: "13:00" }] }] }, undefined, ctx);
+    const missingIdentity = await request(app).patch(`/api/dprs/${first.dpr.id}/draft`).send({
+      ...ctx, engineer: "SYNTHETIC", dprStatus: "draft", headerToken: first.headerToken, sectionTokens: first.sectionTokens,
+      equipment: [{ machine: "SYNTHETIC", equipmentId: 1, openingReading: 1, closingReading: 2 }],
+    });
+    expect(missingIdentity.status, JSON.stringify(missingIdentity.body)).toBe(409);
+    const response = await request(app).post(`/api/dprs/${first.dpr.id}/submit`).send({
+      headerToken: first.headerToken, sectionTokens: first.sectionTokens, equipment: [],
+    });
+    expect(response.status).toBe(200);
+    expect(await state.db.select().from(schema.dprDraftStoppages)).toHaveLength(0);
+    const rows = await state.db.select().from(schema.equipmentMaintenanceLogs)
+      .where(eq(schema.equipmentMaintenanceLogs.sourceRecordId, first.dpr.equipment[0].id));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].description).toBe("SAVED LEGACY EVIDENCE");
+  });
+
+  it("rejects forged maintenance ownership and invalid evidence without changing saved staging", async () => {
+    const ctx = { ...context, date: "2026-10-03" };
+    const initial = await save("equipment", { equipment: [{ machine: "SYNTHETIC", equipmentId: 1, openingReading: 1,
+      breakdowns: [{ clientKey: "protected", description: "SYNTHETIC" }] }] }, undefined, ctx);
+    await expect(save("equipment", { equipment: initial.dpr.equipment.map((e: any) => ({ ...e,
+      breakdowns: [{ clientKey: "forged", maintenanceLogId: 1, description: "SYNTHETIC" }] })) }, initial, ctx)).rejects.toBeInstanceOf(DprSectionConflict);
+    await expect(save("equipment", { equipment: initial.dpr.equipment.map((e: any) => ({ ...e,
+      breakdowns: [{ clientKey: "invalid", attachment: { fileName: "bad.pdf", objectPath: "https://invalid.example/evidence" } }] })) }, initial, ctx)).rejects.toThrow(/Invalid breakdown attachment/);
+    expect((await fresh(initial.dpr.id)).sectionTokens.equipment).toBe(initial.sectionTokens.equipment);
+    await save("equipment", { equipment: [] }, initial, ctx);
+  });
+
+  it("stages an owned maintenance reference without changing the operational record until submit", async () => {
+    const ctx = { ...context, date: "2026-10-04" };
+    const initial = await save("equipment", { equipment: [{ machine: "SYNTHETIC", equipmentId: 1, openingReading: 1, closingReading: 2 }] }, undefined, ctx);
+    const [existing] = await state.db.insert(schema.equipmentMaintenanceLogs).values({
+      equipmentId: 1, date: ctx.date, eventType: "breakdown", status: "resolved", description: "ORIGINAL",
+      fromTime: "14:00", toTime: "15:00", downtimeHours: 1, sourceType: "dpr_log", sourceRecordId: initial.dpr.equipment[0].id,
+    }).returning();
+    const snapshot = await fresh(initial.dpr.id);
+    const edited = await save("equipment", { equipment: snapshot.dpr.equipment.map((e: any) => ({
+      ...e, breakdowns: e.breakdowns.map((b: any) => ({ ...b, description: "STAGED EDIT" })),
+    })) }, snapshot, ctx);
+    expect((await state.db.select().from(schema.equipmentMaintenanceLogs).where(eq(schema.equipmentMaintenanceLogs.id, existing.id)))[0].description).toBe("ORIGINAL");
+    const legacy = await request(app).patch(`/api/dprs/${initial.dpr.id}/draft`).send({
+      ...ctx, engineer: "SYNTHETIC", dprStatus: "draft", equipment: edited.dpr.equipment,
+      headerToken: edited.headerToken, sectionTokens: edited.sectionTokens,
+    });
+    expect(legacy.status).toBe(200);
+    expect(legacy.body.equipment[0].id).toBe(initial.dpr.equipment[0].id);
+    expect((await state.db.select().from(schema.equipmentMaintenanceLogs).where(eq(schema.equipmentMaintenanceLogs.id, existing.id)))[0].description).toBe("ORIGINAL");
+    const beforeRemoval = await fresh(initial.dpr.id);
+    const removal = await request(app).patch(`/api/dprs/${initial.dpr.id}/draft`).send({
+      ...ctx, engineer: "MUST ROLLBACK", dprStatus: "draft",
+      equipment: beforeRemoval.dpr.equipment.map((e: any) => ({ ...e, operator: "MUST ROLLBACK", breakdowns: [] })),
+      headerToken: beforeRemoval.headerToken, sectionTokens: beforeRemoval.sectionTokens,
+    });
+    expect(removal.status).toBe(409);
+    expect(removal.body.message).toMatch(/operational maintenance cannot be removed/);
+    expect(await fresh(initial.dpr.id)).toEqual(beforeRemoval);
+    await expect(save("equipment", { equipment: beforeRemoval.dpr.equipment.map((e: any) => ({ ...e, breakdowns: [] })) },
+      beforeRemoval, ctx)).rejects.toThrow(/operational maintenance cannot be removed/);
+    expect(await fresh(initial.dpr.id)).toEqual(beforeRemoval);
+    expect((await request(app).post(`/api/dpr-sections/${initial.dpr.id}/submit`).send({
+      headerToken: legacy.body.headerToken, sectionTokens: legacy.body.sectionTokens,
+    })).status).toBe(200);
+    const updated = await state.db.select().from(schema.equipmentMaintenanceLogs).where(eq(schema.equipmentMaintenanceLogs.sourceRecordId, initial.dpr.equipment[0].id));
+    expect(updated).toHaveLength(1);
+    expect(updated[0]).toMatchObject({ id: existing.id, description: "STAGED EDIT", status: "resolved" });
+    expect(await state.db.select().from(schema.dprDraftStoppages)).toHaveLength(0);
+  });
+
+  it("legacy PATCH preserves omitted and edited allocation, segment and BOQ-link identities", async () => {
+    const [site] = await state.db.insert(schema.sites).values({ name: "SYNTHETIC LEGACY ASSIGNMENTS SITE" }).returning();
+    const [project] = await state.db.insert(schema.boqProjects).values({ name: "SYNTHETIC ASSIGNMENTS", siteId: site.id }).returning();
+    const items = await state.db.insert(schema.boqItems).values([1, 2].map(n => ({
+      boqProjectId: project.id, description: `SYNTHETIC WORK ${n}`, unit: "CUM",
+    }))).returning();
+    const ctx = { ...context, site: "synthetic legacy assignments site", date: "2026-10-05", boqProjectId: project.id };
+    const first = await save("equipment", { equipment: [
+      { machine: "SYNTHETIC SEGMENT", startTime: "08:00", endTime: "10:00",
+        activitySegments: [{ startTime: "08:00", endTime: "10:00", boqItems: [{ boqItemId: items[0].id }] }] },
+      { machine: "SYNTHETIC ALLOCATION", startTime: "08:00", endTime: "10:00",
+        activityAllocations: [{ startTime: "08:00", endTime: "10:00", boqItemId: items[0].id }] },
+    ] }, undefined, ctx);
+    const patch = (snap: any, equipment: any[]) => request(app).patch(`/api/dprs/${first.dpr.id}/draft`).send({
+      ...ctx, engineer: "SYNTHETIC", dprStatus: "draft", equipment,
+      headerToken: snap.headerToken, sectionTokens: snap.sectionTokens,
+    });
+    const omitted = await patch(first, first.dpr.equipment.map((row: any) => {
+      const { activitySegments, activityAllocations, ...fields } = row;
+      return { ...fields, operator: "SYNTHETIC OPERATOR" };
+    }));
+    expect(omitted.status, JSON.stringify(omitted.body)).toBe(200);
+    const next = await fresh(first.dpr.id);
+    expect(next.dpr.equipment[0].activitySegments).toEqual(first.dpr.equipment[0].activitySegments);
+    expect(next.dpr.equipment[1].activityAllocations).toEqual(first.dpr.equipment[1].activityAllocations);
+    const edited = await patch(next, next.dpr.equipment.map((e: any) => ({
+      ...e, startTime: "09:00", endTime: "11:00",
+      ...(e.activitySegments ? { activitySegments: e.activitySegments.map((s: any) => ({
+        ...s, startTime: "09:00", endTime: "11:00",
+        boqItems: s.boqItems.map((b: any) => ({ ...b, boqItemId: items[1].id })),
+      })) } : {}),
+      ...(e.activityAllocations ? { activityAllocations: e.activityAllocations.map((a: any) => ({
+        ...a, startTime: "09:00", endTime: "11:00", boqItemId: items[1].id,
+      })) } : {}),
+    })));
+    expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+    const final = await fresh(first.dpr.id);
+    expect(final.dpr.equipment[0].activitySegments).toHaveLength(1);
+    expect(final.dpr.equipment[0].activitySegments[0]).toMatchObject({
+      id: first.dpr.equipment[0].activitySegments[0].id, startTime: "09:00", endTime: "11:00",
+    });
+    expect(final.dpr.equipment[0].activitySegments[0].boqItems).toHaveLength(1);
+    expect(final.dpr.equipment[0].activitySegments[0].boqItems[0]).toMatchObject({
+      id: first.dpr.equipment[0].activitySegments[0].boqItems[0].id, boqItemId: items[1].id,
+    });
+    expect(final.dpr.equipment[1].activityAllocations).toHaveLength(1);
+    expect(final.dpr.equipment[1].activityAllocations[0]).toMatchObject({
+      id: first.dpr.equipment[1].activityAllocations[0].id, startTime: "09:00", endTime: "11:00", boqItemId: items[1].id,
+    });
   });
 });

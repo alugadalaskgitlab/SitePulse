@@ -3881,3 +3881,17 @@ mtime_ms = 1790484506421
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e1a611a5-a82c-43f1-aceb-b56da80f716f/f0fa5bbb-c2a9-4c73-bf8f-709e54b85e1f"
 storage_version_token = "1790484658160446"
 content_type = "image/png"
+
+[[outputs]]
+id = "TCR8Ia6DBC1seUrfSPoaj"
+uri = "file://tests/fixtures/dpr-site-entry/evidence/dpr13-stoppage-draft-corrected.png"
+type = "image"
+title = "Part B — draft stoppages reopened after editing"
+description = "Production UI components with synthetic test data: corrected times, remarks and uploaded evidence retained after saving and reopening. Database transfer and cleanup verified separately by SQL/API tests."
+logical_id = "bd51a51a-1bbd-4f4f-a0d8-fe22817f877a"
+content_hash = "sha256:c99f7577e87f1c0d5bd3b49112117fce872ffca9a6ac96775c0ea3d2b1945970"
+size = 93232
+mtime_ms = 1790491676096
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/bd51a51a-1bbd-4f4f-a0d8-fe22817f877a/9256c263-be89-4ac8-b0f2-27eaf7d19ae2"
+storage_version_token = "1790491874536236"
+content_type = "image/png"

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { dprs, sites, sitePurchases, progressEntries, equipmentLogs, equipmentMaintenanceLogs, labourLogs, materialLogs, dprStructureItems,
-  activityPersonnel, cutFillConsumptions, equipmentActivityAllocations, equipmentActivitySegments,
+  activityPersonnel, cutFillConsumptions, equipmentActivityAllocations, equipmentActivitySegments, dprDraftStoppages,
   equipmentActivitySegmentBoqItems, createDprRequestSchema } from "../shared/schema";
 import { DPR_SECTIONS, normalizeDprSectionContext, pickDprSectionPayload,
   dprSectionStates, type DprSection, type DprSectionContext, type DprSectionSnapshot } from "../shared/dprSections";
@@ -32,6 +32,63 @@ export async function lockDprIdentity(tx: any, context: any) {
 export async function findSectionDrafts(tx: any, context: DprSectionContext) {
   const rows = await tx.select().from(dprs).where(and(eq(dprs.date, context.date), eq(dprs.dprStatus, "draft")));
   return rows.filter((row: any) => activeDraft(row) && sameContext(row, context));
+}
+export async function readDraftStoppages(tx: any, equipmentIds: number[]) {
+  const rows = equipmentIds.length ? await tx.select().from(dprDraftStoppages)
+    .where(inArray(dprDraftStoppages.equipmentLogId, equipmentIds)) : [];
+  return rows.sort((a: any, b: any) => a.id - b.id).map((row: any) => ({
+    equipmentLogId: row.equipmentLogId,
+    breakdown: {
+      clientKey: row.clientKey, maintenanceLogId: row.maintenanceLogId ?? undefined,
+      fromTime: row.fromTime ?? undefined, toTime: row.toTime ?? undefined,
+      description: row.description ?? undefined, responsibility: row.responsibility ?? undefined,
+      repairScope: row.repairScope ?? undefined, debitableToVendor: row.debitableToVendor ?? undefined,
+      remarks: row.remarks ?? undefined,
+      ...(row.objectPath ? { attachment: { fileName: row.fileName, objectPath: row.objectPath,
+        mimeType: row.mimeType ?? undefined, fileSize: row.fileSize ?? undefined } } : {}),
+    },
+  }));
+}
+export async function stageDraftStoppages(tx: any, rows: any[], inputs: any[]) {
+  for (let index = 0; index < rows.length; index++) {
+    const input = inputs[index];
+    if (!Array.isArray(input?.breakdowns)) continue;
+    // The approved staging shape has no deletion intent/tombstone. Refuse an
+    // operational removal rather than report success and resurrect it on GET.
+    const linked = await tx.select().from(equipmentMaintenanceLogs).where(and(
+      eq(equipmentMaintenanceLogs.sourceType, "dpr_log"),
+      eq(equipmentMaintenanceLogs.sourceRecordId, rows[index].id),
+      eq(equipmentMaintenanceLogs.isCancelled, false), eq(equipmentMaintenanceLogs.isDeleted, false),
+    ));
+    if (linked.some((record: any) => !input.breakdowns.some((b: any) => b.maintenanceLogId === record.id))) {
+      throw new DprSectionConflict("Existing operational maintenance cannot be removed through a draft. Use the maintenance workflow.");
+    }
+    const keys = new Set<string>();
+    for (const breakdown of input.breakdowns) {
+      if (keys.has(breakdown.clientKey)) throw Object.assign(new Error("Duplicate stoppage client key."), { status: 422 });
+      keys.add(breakdown.clientKey);
+      if (breakdown.maintenanceLogId != null) {
+        const [linked] = await tx.select().from(equipmentMaintenanceLogs).where(and(
+          eq(equipmentMaintenanceLogs.id, breakdown.maintenanceLogId),
+          eq(equipmentMaintenanceLogs.sourceType, "dpr_log"),
+          eq(equipmentMaintenanceLogs.sourceRecordId, input.persistedId ?? rows[index].id),
+          eq(equipmentMaintenanceLogs.isCancelled, false), eq(equipmentMaintenanceLogs.isDeleted, false),
+        ));
+        if (!linked) throw new DprSectionConflict("Stoppage does not belong to this equipment row.");
+      }
+      const attachment = breakdown.attachment;
+      if (attachment && (!attachment.objectPath.startsWith("/objects/") ||
+        (attachment.mimeType && !["image/", "application/pdf"].some(prefix => attachment.mimeType.startsWith(prefix))) ||
+        (attachment.fileSize != null && attachment.fileSize > 15 * 1024 * 1024))) {
+        throw Object.assign(new Error("Invalid breakdown attachment metadata."), { status: 422 });
+      }
+    }
+    await tx.delete(dprDraftStoppages).where(eq(dprDraftStoppages.equipmentLogId, rows[index].id));
+    if (input.breakdowns.length) await tx.insert(dprDraftStoppages).values(input.breakdowns.map((breakdown: any) => {
+      const { attachment, ...fields } = breakdown;
+      return { ...fields, ...attachment, equipmentLogId: rows[index].id };
+    }));
+  }
 }
 export async function readSectionAggregate(tx: any, id: number) {
   const dpr = await tx.query.dprs.findFirst({ where: eq(dprs.id, id), with: {
@@ -66,6 +123,13 @@ export async function readSectionAggregate(tx: any, id: number) {
       description: b.description, responsibility: b.responsibility ?? "", repairScope: b.repairScope ?? "",
       debitableToVendor: !!b.debitableToVendor, remarks: b.remarks ?? "",
     }));
+  if (dpr.dprStatus === "draft") {
+    const staged = await readDraftStoppages(tx, equipmentIds);
+    for (const row of dpr.equipment) {
+      const own = staged.filter((s: any) => s.equipmentLogId === row.id).map((s: any) => s.breakdown);
+      row.breakdowns = [...row.breakdowns.filter((b: any) => !own.some((s: any) => s.maintenanceLogId === b.maintenanceLogId)), ...own];
+    }
+  }
   const ids = dpr.progress.map((r: any) => r.id);
   const personnel = ids.length ? await tx.select().from(activityPersonnel).where(inArray(activityPersonnel.progressEntryId, ids)) : [];
   dpr.progress.forEach((r: any) => { r.personnelIds = personnel.filter((p: any) => p.progressEntryId === r.id).map((p: any) => p.personnelId).sort((a: number, b: number) => a - b); });
@@ -94,7 +158,7 @@ export function assertSectionTokens(snapshot: DprSectionSnapshot, expected: any,
 
 // Reconcile only owned rows. In-place updates retain serial identities, photo
 // entry keys and references from other DPRs. Never delete another section.
-async function reconcileRows(tx: any, table: any, id: number, old: any[], incoming: any[], transform?: (row: any, saved?: any) => Promise<any>, ownerKey = "dprId") {
+export async function reconcileRows(tx: any, table: any, id: number, old: any[], incoming: any[], transform?: (row: any, saved?: any) => Promise<any>, ownerKey = "dprId") {
   const used = new Set<number>();
   const result: any[] = [];
   for (const input of incoming) {
@@ -130,6 +194,44 @@ async function reconcileRows(tx: any, table: any, id: number, old: any[], incomi
     await tx.delete(table).where(inArray(table.id, removed));
   }
   return result;
+}
+
+export async function reconcileDraftEquipmentAssignments(tx: any, rows: any[], inputs: any[]) {
+  for (let i = 0; i < rows.length; i++) {
+    const input = inputs[i];
+    if (input?._preserveActivityAssignment ||
+      (input?.activityAllocations === undefined && input?.activitySegments === undefined)) continue;
+    const row = rows[i];
+    const segmentsExplicit = Array.isArray(input.activitySegments)
+      && (input.activitySegments.length > 0 || !Array.isArray(input.activityAllocations));
+    if (segmentsExplicit) {
+      const oldSegments = await tx.select().from(equipmentActivitySegments).where(eq(equipmentActivitySegments.equipmentLogId, row.id));
+      const oldLinks = oldSegments.length ? await tx.select().from(equipmentActivitySegmentBoqItems)
+        .where(inArray(equipmentActivitySegmentBoqItems.segmentId, oldSegments.map((s: any) => s.id))) : [];
+      await tx.delete(equipmentActivityAllocations).where(eq(equipmentActivityAllocations.equipmentLogId, row.id));
+      const segments = validateEquipmentActivitySegments(input.activitySegments, resolveEquipmentAllocationParentHours(row), row).segments;
+      const savedSegments = await reconcileRows(tx, equipmentActivitySegments, row.id, oldSegments,
+        segments.map((segment, index) => {
+          const { boqItems, ...fields } = segment;
+          return { ...fields, persistedId: input.activitySegments[index].persistedId ?? input.activitySegments[index].id };
+        }), undefined, "equipmentLogId");
+      for (let index = 0; index < savedSegments.length; index++) {
+        await reconcileRows(tx, equipmentActivitySegmentBoqItems, savedSegments[index].id,
+          oldLinks.filter((link: any) => link.segmentId === savedSegments[index].id),
+          segments[index].boqItems.map((item, itemIndex) => ({
+            ...item, persistedId: input.activitySegments[index].boqItems[itemIndex].persistedId ?? input.activitySegments[index].boqItems[itemIndex].id,
+          })), undefined, "segmentId");
+      }
+    } else {
+      const oldAllocations = await tx.select().from(equipmentActivityAllocations).where(eq(equipmentActivityAllocations.equipmentLogId, row.id));
+      await tx.delete(equipmentActivitySegments).where(eq(equipmentActivitySegments.equipmentLogId, row.id));
+      const allocations = validateEquipmentActivityAllocations(input.activityAllocations, resolveEquipmentAllocationParentHours(row), row).allocations;
+      await reconcileRows(tx, equipmentActivityAllocations, row.id, oldAllocations,
+        allocations.map((allocation, index) => ({
+          ...allocation, persistedId: input.activityAllocations[index].persistedId ?? input.activityAllocations[index].id,
+        })), undefined, "equipmentLogId");
+    }
+  }
 }
 
 export async function saveDprSection(database: any, storage: any, request: any, actorId: number | null,
@@ -219,45 +321,12 @@ export async function saveDprSection(database: any, storage: any, request: any, 
       await reconcileRows(tx, dprStructureItems, id, old.structureItems, input.structureItems ?? []);
     } else if (section === "equipment") {
       const incoming = meaningfulEquipmentRows(input.equipment as any[]);
-      if (incoming.some((row: any) => row.breakdowns !== undefined && contentToken(row.breakdowns)
-        !== contentToken(old.equipment.find((saved: any) => saved.id === row.persistedId)?.breakdowns ?? []))) {
-        throw Object.assign(new Error("Save new or changed stoppages through the existing maintenance workflow; section drafts cannot stage maintenance records."), { status: 422 });
-      }
       storage.assertValidDprEquipmentDieselSources(incoming);
       const preserved = await storage.preserveOmittedEquipmentAllocationsTx(tx, old.equipment, incoming);
       const normalized = await storage.normaliseDprEquipmentRowsTx(tx, preserved, context.boqProjectId);
       const rows = await reconcileRows(tx, equipmentLogs, id, old.equipment, normalized.map((r: any, i: number) => ({ ...r, persistedId: incoming[i].persistedId })));
-      for (let i = 0; i < rows.length; i++) {
-        // Omitted assignments are genuinely preserved, including their ids.
-        if (incoming[i].activityAllocations === undefined && incoming[i].activitySegments === undefined) continue;
-        const row = rows[i];
-        const oldRow = old.equipment.find((r: any) => r.id === row.id);
-        const segmentsExplicit = Array.isArray(incoming[i].activitySegments)
-          && (incoming[i].activitySegments.length > 0 || !Array.isArray(incoming[i].activityAllocations));
-        if (segmentsExplicit) {
-          await tx.delete(equipmentActivityAllocations).where(eq(equipmentActivityAllocations.equipmentLogId, row.id));
-          const segments = validateEquipmentActivitySegments(incoming[i].activitySegments, resolveEquipmentAllocationParentHours(row), row).segments;
-          const savedSegments = await reconcileRows(tx, equipmentActivitySegments, row.id, oldRow?.activitySegments ?? [],
-            segments.map((segment, index) => {
-              const { boqItems, ...fields } = segment;
-              return { ...fields, persistedId: incoming[i].activitySegments[index].persistedId };
-            }), undefined, "equipmentLogId");
-          for (let index = 0; index < savedSegments.length; index++) {
-            const savedSegment = savedSegments[index];
-            const oldSegment = oldRow?.activitySegments?.find((s: any) => s.id === savedSegment.id);
-            await reconcileRows(tx, equipmentActivitySegmentBoqItems, savedSegment.id, oldSegment?.boqItems ?? [],
-              segments[index].boqItems.map((item, itemIndex) => ({
-                ...item, persistedId: incoming[i].activitySegments[index].boqItems[itemIndex].persistedId,
-              })), undefined, "segmentId");
-          }
-        } else {
-          await tx.delete(equipmentActivitySegments).where(eq(equipmentActivitySegments.equipmentLogId, row.id));
-          const allocations = validateEquipmentActivityAllocations(incoming[i].activityAllocations, resolveEquipmentAllocationParentHours(row), row).allocations;
-          await reconcileRows(tx, equipmentActivityAllocations, row.id, oldRow?.activityAllocations ?? [],
-            allocations.map((allocation, index) => ({ ...allocation, persistedId: incoming[i].activityAllocations[index].persistedId })),
-            undefined, "equipmentLogId");
-        }
-      }
+      await stageDraftStoppages(tx, rows, incoming);
+      await reconcileDraftEquipmentAssignments(tx, rows, incoming);
     } else {
       const table = section === "labour" ? labourLogs : materialLogs;
       await reconcileRows(tx, table, id, old[section], (input as any)[section] ?? []);

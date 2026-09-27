@@ -2733,6 +2733,7 @@ export default function GuidedDpr() {
                           : row))}
                       />
                       <BreakdownStoppageEditor
+                        draftOnly
                         value={(pt.breakdowns ?? []) as StagedBreakdown[]}
                         onChange={(breakdowns) => setEquipment(rows => rows.map((row, rowIndex) =>
                           rowIndex === i ? { ...row, passthrough: { ...row.passthrough, breakdowns } } : row,

@@ -1,6 +1,6 @@
 import { lookupTripBoqQuantity } from "../shared/tripQuantityDisplay";
 import { db } from "./db";
-import { assertSectionTokens, DprSectionConflict, findSectionDrafts, lockDprIdentity, readSectionAggregate, sameContext, sectionSnapshot } from "./dprSections";
+import { assertSectionTokens, DprSectionConflict, findSectionDrafts, lockDprIdentity, readSectionAggregate, readDraftStoppages, stageDraftStoppages, reconcileRows, reconcileDraftEquipmentAssignments, sameContext, sectionSnapshot } from "./dprSections";
 import { normalizeDprSectionContext } from "../shared/dprSections";
 import { formatPurchaseIndentNumber, reconcileDeliveryEvidence, validateDeliveryDestination, isBulkPiDeliveryItem, type DeliveryEvidence } from "../shared/purchaseIndentDelivery";
 import { calculateEquipmentHireFinancials, calculateHireGroup, getHireReviewGaps, isEquipmentHireBillEligible, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
@@ -16,6 +16,7 @@ import {
   progressEntries,
   dprStructureItems,
   equipmentLogs,
+  dprDraftStoppages,
   equipmentActivityAllocations,
   equipmentActivitySegments,
   equipmentActivitySegmentBoqItems,
@@ -3275,6 +3276,15 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  private assertCompleteStagedStoppages(rows: any[]): void {
+    for (const row of rows) for (const b of row.breakdowns ?? []) {
+      const validTime = (value: any) => typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+      if (!row.equipmentId || !b.description?.trim() || !validTime(b.fromTime) || !validTime(b.toTime) || b.toTime <= b.fromTime) {
+        throw Object.assign(new Error("Complete staged stoppage equipment, description and increasing from/to times before submitting."), { status: 422 });
+      }
+    }
+  }
+
   async createDpr(
     dprData: CreateDprRequest,
     clientTimestamp?: string,
@@ -3379,6 +3389,7 @@ export class DatabaseStorage implements IStorage {
           }))
         ).returning();
         await this.persistEquipmentActivityAllocationsTx(tx, insertedEquipLogs, dprData.equipment as any[]);
+        if (dprStatusVal === "draft") await stageDraftStoppages(tx, insertedEquipLogs, dprData.equipment as any[]);
         if (dprStatusVal !== "draft") {
           // Operational effects start only on Final Submit. Keep the stock
           // sufficiency check first so an expected rejection does not even
@@ -3895,6 +3906,10 @@ export class DatabaseStorage implements IStorage {
           await this.persistCutFillConsumptionsTx(tx, submitted, aggregate.progress, aggregate, [id]);
           await this.validateCutFillSourceCapacitiesTx(tx, progressIds, [id]);
           await this.processDprEquipmentDieselLedger(tx, aggregate.equipment, submitted.date, submitted.site);
+          this.assertCompleteStagedStoppages(aggregate.equipment);
+          await this.reconcileDprBreakdownsTx(tx, aggregate.equipment, aggregate.equipment, aggregate.equipment, submitted.date);
+          const equipmentIds = aggregate.equipment.map((row: any) => row.id);
+          if (equipmentIds.length) await tx.delete(dprDraftStoppages).where(inArray(dprDraftStoppages.equipmentLogId, equipmentIds));
           await this.finalizeDprEquipmentUsageTx(tx, submitted, aggregate.equipment, audit);
           return submitted;
         }
@@ -3905,6 +3920,21 @@ export class DatabaseStorage implements IStorage {
       // addressed equipment row can preserve omitted nested BOQ children.
       const oldEquipmentRows = await tx.select().from(equipmentLogs)
         .where(eq(equipmentLogs.dprId, id));
+      // Whole-body draft PATCH may omit nested stoppages. Carry them across
+      // replacement by stable equipment identity before the cascade deletes
+      // the old staging rows. Explicit lists (including []) remain authoritative.
+      const stagedStoppages = await readDraftStoppages(tx, oldEquipmentRows.map(row => row.id));
+      if (stagedStoppages.length && dprData.equipment === undefined) {
+        dprData = { ...dprData, equipment: (await readSectionAggregate(tx, id)).equipment };
+      }
+      dprData = { ...dprData, equipment: (dprData.equipment ?? []).map((row: any) => {
+        if (stagedStoppages.length && row.persistedId == null && row.id == null && row.breakdowns === undefined) {
+          throw new DprSectionConflict("Reload saved equipment identities before replacing equipment with staged stoppages.");
+        }
+        const staged = stagedStoppages.filter((s: any) => s.equipmentLogId === (row.persistedId ?? row.id));
+        return row.breakdowns === undefined && staged.length
+          ? { ...row, breakdowns: staged.map((s: any) => s.breakdown) } : row;
+      }) };
       const preservedEquipmentInputs = await this.preserveOmittedEquipmentAllocationsTx(
         tx,
         oldEquipmentRows,
@@ -4017,7 +4047,10 @@ export class DatabaseStorage implements IStorage {
           .where(inArray(cutFillConsumptions.id, externalSourceLinks.map(x => x.id)));
       }
       await tx.delete(progressEntries).where(eq(progressEntries.dprId, id));
-      await tx.delete(equipmentLogs).where(eq(equipmentLogs.dprId, id));
+      // Draft equipment keeps its identity, including staged evidence and any
+      // historical maintenance linkage. Submitted correction paths below keep
+      // their existing replacement semantics.
+      if (isSubmitting) await tx.delete(equipmentLogs).where(eq(equipmentLogs.dprId, id));
       await tx.delete(labourLogs).where(eq(labourLogs.dprId, id));
       await tx.delete(materialLogs).where(eq(materialLogs.dprId, id));
       await tx.delete(sitePurchases).where(eq(sitePurchases.dprId, id));
@@ -4048,16 +4081,28 @@ export class DatabaseStorage implements IStorage {
       if (dprData.equipment?.length) {
         this.assertValidDprEquipmentDieselSources(dprData.equipment);
         const normalisedEquipment = await this.normaliseDprEquipmentRowsTx(tx, equipmentInputs, updated.boqProjectId);
-        insertedEquipLogs = await tx.insert(equipmentLogs).values(
-          normalisedEquipment.map((e: any) => ({ ...e, dprId: id, machine: e.machine?.toUpperCase() || e.machine, operator: e.operator?.toUpperCase() || e.operator, task: e.task?.toUpperCase() || e.task }))
-        ).returning();
-        await this.persistEquipmentActivityAllocationsTx(tx, insertedEquipLogs, equipmentInputs);
+        const values = normalisedEquipment.map((e: any, index: number) => ({
+          ...e, machine: e.machine?.toUpperCase() || e.machine,
+          operator: e.operator?.toUpperCase() || e.operator, task: e.task?.toUpperCase() || e.task,
+          persistedId: equipmentInputs[index]?.persistedId,
+        }));
+        insertedEquipLogs = isSubmitting
+          ? await tx.insert(equipmentLogs).values(values.map(({ persistedId, ...e }: any) => ({ ...e, dprId: id }))).returning()
+          : await reconcileRows(tx, equipmentLogs, id, oldEquipmentRows, values);
+        if (isSubmitting) await this.persistEquipmentActivityAllocationsTx(tx, insertedEquipLogs, equipmentInputs);
+        else await reconcileDraftEquipmentAssignments(tx, insertedEquipLogs, equipmentInputs);
         if (isSubmitting) {
           await this.processDprEquipmentDieselLedger(tx, insertedEquipLogs, dprData.date, dprData.site);
         }
       }
+      if (!isSubmitting && !dprData.equipment?.length) {
+        await reconcileRows(tx, equipmentLogs, id, oldEquipmentRows, []);
+      }
       if (isSubmitting) {
+        this.assertCompleteStagedStoppages(dprData.equipment ?? []);
         await this.reconcileDprBreakdownsTx(tx, oldEquipmentRows, insertedEquipLogs, dprData.equipment as any[], dprData.date);
+      } else {
+        await stageDraftStoppages(tx, insertedEquipLogs, dprData.equipment as any[] ?? []);
       }
       if (dprData.labour?.length) {
         await tx.insert(labourLogs).values(dprData.labour.map(l => ({ ...l, dprId: id })));

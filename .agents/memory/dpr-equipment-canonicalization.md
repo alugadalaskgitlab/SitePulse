@@ -15,4 +15,4 @@ Independent section saves retain the draft-versus-submission effects boundary, i
 
 **Why:** The approved morning-entry workflow records evidence without posting operational effects. Maintenance and billing readers can observe maintenance rows even if a new, unrecognised status is used to label them as drafts.
 
-**How to apply:** Draft stoppages need explicitly approved isolated persistence; only final submission may materialize operational records. A storage gap must be surfaced, not solved by silently dropping the existing fields.
+**How to apply:** The user approved one normalized draft-stoppage staging table linked to the draft equipment row. Transfer its facts to normal maintenance/attachment records and remove staging within the same final-submission transaction; failure must roll back both. Existing submitted-DPR maintenance semantics remain unchanged. This is not blanket approval for other schema additions: surface any further gap before changing schema.
