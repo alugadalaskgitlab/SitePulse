@@ -1,0 +1,54 @@
+INSTRUCTION DPR-13: Let Activity, Equipment, and Labour be opened and saved independently within a DPR instead of one big form, and clean up how stale drafts are shown
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a genuinely large change to the core DPR entry flow — bigger and riskier than our usual batches. Part A is a design/architecture step, not straight to full implementation. Do not touch HOME-01, DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, or PERM-01/02. Do not publish automatically. STOP after Part A and share your plan before writing any code for it — this is not optional for this instruction. STOP after each subsequent part too and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+1. Today, clicking "Road Works DPR" or "Structure DPR" opens one continuous screen (`GuidedDpr.tsx` or `SiteEntry.tsx`/`SiteEdit.tsx` depending on entry mode) covering site header, activity/progress, equipment, and labour together, saved via a SINGLE combined mutation (`SiteEntry.tsx`'s `draftMutation`, one `POST /api/dprs` call with everything nested in one payload). There is no way today to save just equipment readings, or just labour, independently.
+2. However, the DATABASE is already properly normalized for this: `dprs` (header row only) relates to separate child tables — `progressEntries` (activity/progress), `dprStructureItems`, `equipmentLogs` (+ `equipmentActivityAllocations`/`equipmentActivitySegments`), `labourLogs`, `materialLogs` — all keyed by `dprId`, via `dprsRelations` in `shared/schema.ts`. The data model already supports independent pieces; only the UI/API layer currently forces them together.
+3. The person's actual workflow need: at the start of a shift, record equipment openings (diesel issued, opening tank/meter readings, pre-filled from the equipment's own previous closing readings) and labour present, without being forced to also describe the day's activity/progress at that moment — then come back later (or at day's end) to record progress and close out equipment, independently, as the day's information actually becomes known.
+4. Draft mechanism today: a "draft" DPR is a REAL, normalized `dprs` row (with `dprStatus = "draft"`) with its already-saved child rows — not a JSON blob — but the Home Dashboard's "Unfinished Draft DPR" list only shows a bare "site — date — engineer — Open" link with no indication of what's actually in it (no last-edited time, no preview of which sections are filled), for any draft up to 7 days old. A SEPARATE, unrelated client-side autosave mechanism (`client/src/lib/autosave.ts`) also exists, storing a full form snapshot in the browser, with its own `draftAge` metadata that is never shown on this dashboard list.
+
+FIX
+
+PART A — Design step (STOP after this, share the plan, wait for go-ahead before building)
+Propose a concrete design for splitting DPR entry into independent, separately-saveable sections — Activity/Progress, Equipment, Labour (and Materials, since `materialLogs` is also already separate) — reachable from a menu when "Road Works DPR" / "Structure DPR" is clicked, instead of one continuous form. Your plan should cover:
+a. How a DPR "shell" (the `dprs` header row for a given site+date) gets created the first time ANY section is saved for that site+date (so saving just Equipment first thing in the morning creates/attaches to the right underlying DPR record, and later opening Activity or Labour for that same site+date attaches to the SAME record, not a new one).
+b. What each section's own save action looks like (e.g. an "Equipment" screen that only shows equipment-related fields, saves via its own request against the relevant child table(s), independent of whether Activity or Labour are filled yet).
+c. How the person sees, at a glance, which sections are done vs still open for a given site+date (e.g. a simple status menu: Activity ✓ / Equipment ✓ / Labour — not yet).
+d. How final submission works — is there still one explicit "Submit DPR" action that finalizes the day's record once the person considers it complete (checking whatever sections they consider mandatory), or does it auto-finalize under some condition? Recommend an approach and explain why.
+e. Confirm you are REUSING the existing form sections/fields from the current `SiteEntry.tsx`/`GuidedDpr.tsx` screens for each piece (equipment fields, labour fields, activity fields) rather than rebuilding them from scratch — this should be a restructuring of how they're entered and saved, not a rewrite of what they contain.
+f. Flag any real risk or edge case you see (e.g. what happens if someone opens Equipment for a site+date, then someone else opens Activity for the same site+date at the same time — any conflict handling needed?).
+Do not write implementation code for this part — text/diagram plan only, for review.
+
+PART B — Build (only after Part A's plan is reviewed and approved)
+Implement the approved design. Reuse existing field components/validation from the current DPR screens wherever possible.
+
+PART C — Draft list cleanup on Home Dashboard
+a. For a DPR draft (or, once Part B lands, a not-yet-fully-completed DPR shell), show a real "last edited" time and a brief content summary (e.g. "Equipment ✓, Labour ✓, Activity — not yet") in the "Unfinished Draft DPR" list, instead of a bare "Open" link with no context — reuse the section-status concept from Part A(c) if Part B has landed, or at minimum surface a real last-edited timestamp now even before Part B if that's readily available.
+b. Anything older than 3 days should no longer appear prominently in this list (which currently reaches back 7 days) — move it to a separate, lower-priority "Older Drafts" list the person can check deliberately, rather than it nagging on the main dashboard indefinitely.
+c. Do not touch the separate client-side autosave mechanism (`client/src/lib/autosave.ts`) in this instruction — that's a distinct, unrelated safety net, out of scope here.
+
+WHAT NOT TO DO
+- Do not skip Part A's plan-and-wait step — this is a core-flow change and needs sign-off before code.
+- Do not rebuild the existing Activity/Equipment/Labour field sets from scratch — reuse them, just change how/when they're saved.
+- Do not touch the client-side autosave mechanism.
+- Do not touch HOME-01, DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, or PERM-01/02.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+The child tables already exist and are already related correctly — no schema change expected for the data model itself. If your Part A plan concludes a schema change IS needed (e.g. a new "section completion status" field), propose it as part of the Part A plan for review, not decide it unilaterally mid-build.
+
+TESTS (for Part B, once built)
+B1. Start a new DPR by saving only Equipment for a site+date. Confirm a DPR shell is created, and separately opening Activity or Labour for the SAME site+date attaches to that same record, not a duplicate.
+B2. Fill Equipment and Labour on different days/sessions (simulate a real gap in time) for the same site+date, confirm both persist independently and the status menu correctly shows what's done.
+B3. Confirm final submission behaves as designed in the approved plan.
+C1. Confirm the Home Dashboard's draft list now shows real last-edited/status info per draft, and that anything older than 3 days is moved out of the main list.
+
+REPORT BACK
+1. After Part A: your written plan, and explicitly wait for approval before proceeding.
+2. After Part B: confirm with evidence.
+3. After Part C: confirm with evidence.
+4. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

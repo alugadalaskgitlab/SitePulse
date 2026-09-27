@@ -11,6 +11,7 @@ import FieldHome from "@/pages/FieldHome";
 import { getWorkspaceMode, setWorkspaceMode, type WorkspaceMode } from "@/lib/workspaceMode";
 import { format, parseISO, subDays } from "date-fns";
 import { roadDprDraftHref } from "@/lib/dprEntryMode";
+import { normalizeSiteName } from "@shared/siteName";
 
 
 export default function Home() {
@@ -69,8 +70,14 @@ function HomeDashboard({
   const continueDraftHref = (d: any): string =>
     d?.workType === "structure" ? `/site/edit/${d.id}?draft` : roadDprDraftHref(d.id, "/", { complete: true });
 
-  const todayStr = format(new Date(), "yyyy-MM-dd");
-  const todayDisplay = format(new Date(), "EEEE, d MMMM yyyy");
+  const [localNow, setLocalNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setLocalNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const todayStr = format(localNow, "yyyy-MM-dd");
+  const todayDisplay = format(localNow, "EEEE, d MMMM yyyy");
+  const afterDprCutoff = localNow.getHours() >= 18;
   const firstName = user?.fullName?.split(" ")[0] ?? "";
 
   // ── Real data queries ──
@@ -141,7 +148,20 @@ function HomeDashboard({
 
   // ── Derived values ──
   const activeSites = sites.filter((s: any) => s.isActive !== 0);
-  const dprSiteNames = new Set(todayDprs.map((d: any) => d.site));
+  // A saved draft is not a filing. Multiple DPRs on the same site count as
+  // one reported site; a submitted DPR always wins over a draft.
+  const siteDprStatus = new Map<string, { filed?: any; draft?: any }>();
+  for (const dpr of todayDprs) {
+    if (dpr.isSuperseded || dpr.isCancelled || dpr.isDeleted) continue;
+    const name = normalizeSiteName(dpr.site ?? "");
+    const status = siteDprStatus.get(name) ?? {};
+    if (dpr.dprStatus === "draft") status.draft ??= dpr;
+    else if (dpr.dprStatus === "submitted") status.filed ??= dpr;
+    siteDprStatus.set(name, status);
+  }
+  const filedSiteCount = activeSites.filter((site: any) =>
+    siteDprStatus.get(normalizeSiteName(site.name ?? ""))?.filed
+  ).length;
 
   const pendingDiesel = dieselReqs.filter(
     (d: any) => d.status === "pending" || d.status === "submitted"
@@ -203,31 +223,7 @@ function HomeDashboard({
         </div>
 
         {/* ── Stat cards ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* DPRs Today */}
-          <div className="bg-white rounded-xl border border-amber-200 p-4 flex flex-col gap-3 relative overflow-hidden" data-testid="stat-dprs">
-            {todayDprs.length < activeSites.length && activeSites.length > 0 && (
-              <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-rose-500" />
-            )}
-            <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center">
-              <FileText className="w-4 h-4 text-amber-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900 leading-none">
-                {todayDprs.length}
-                {activeSites.length > 0 && (
-                  <span className="text-sm font-normal text-slate-400"> / {activeSites.length}</span>
-                )}
-              </p>
-              <p className="text-sm text-slate-700 mt-1 font-medium">DPRs Filed Today</p>
-              <p className={`text-xs mt-0.5 font-medium ${activeSites.length > todayDprs.length ? "text-rose-500" : "text-teal-600"}`}>
-                {activeSites.length > todayDprs.length
-                  ? `${activeSites.length - todayDprs.length} site${activeSites.length - todayDprs.length > 1 ? "s" : ""} pending`
-                  : "All sites filed"}
-              </p>
-            </div>
-          </div>
-
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           {/* Dispatches — plant/HMP metric; hidden for field-engineer-only viewers */}
           {!isFieldEngineer && (
             <div className="bg-white rounded-xl border border-teal-200 p-4 flex flex-col gap-3" data-testid="stat-dispatches">
@@ -273,7 +269,9 @@ function HomeDashboard({
               <p className="text-2xl font-bold text-slate-900 leading-none">{activeSites.length}</p>
               <p className="text-sm text-slate-700 mt-1 font-medium">Active Sites</p>
               <p className="text-xs mt-0.5 font-medium text-slate-500">
-                {dprSiteNames.size} reported today
+                {afterDprCutoff
+                  ? `${filedSiteCount} filed today · active records in sites master`
+                  : "Active records in sites master · reporting in progress"}
               </p>
             </div>
           </div>
@@ -344,42 +342,45 @@ function HomeDashboard({
               </div>
             )}
 
-            {/* Site DPR Status */}
+            {/* One per-site view of today's DPR reporting (not a second aggregate KPI). */}
             {canSeeSite && (
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden" data-testid="panel-today-dpr-status">
                 <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
                   <div className="flex items-center gap-2">
                     <HardHat className="w-4 h-4 text-slate-400" />
                     <h3 className="text-sm font-semibold text-slate-800">Today's Site DPR Status</h3>
                   </div>
-                  <Link href="/site/hub">
-                    <a className="text-sm text-orange-500 hover:text-orange-600 font-medium flex items-center gap-0.5">
-                      View all <ChevronRight className="w-3 h-3" />
-                    </a>
+                  <Link href="/site/dashboard" className="text-sm text-orange-500 hover:text-orange-600 font-medium flex items-center gap-0.5" data-testid="link-today-dpr-history">
+                    View all <ChevronRight className="w-3 h-3" />
                   </Link>
                 </div>
                 {activeSites.length === 0 ? (
                   <div className="px-5 py-6 text-center text-sm text-slate-400">No active sites configured</div>
                 ) : (
                   <div className="divide-y divide-slate-50">
-                    {activeSites.slice(0, 6).map((site: any) => {
-                      const dpr = todayDprs.find((d: any) => d.site === site.name);
+                    {activeSites.map((site: any) => {
+                      const { filed, draft } = siteDprStatus.get(normalizeSiteName(site.name ?? "")) ?? {};
+                      const needsAttention = afterDprCutoff && !filed;
                       return (
                         <div key={site.id} className="flex items-center gap-3 px-5 py-3.5" data-testid={`dpr-status-${site.id}`}>
-                          {dpr
+                          {filed
                             ? <CheckCircle2 className="w-4 h-4 text-teal-500 flex-shrink-0" />
-                            : <Clock className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                            : <Clock className={`w-4 h-4 flex-shrink-0 ${needsAttention ? "text-rose-500" : "text-slate-400"}`} />
                           }
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-slate-800 truncate">{site.name}</p>
-                            {dpr
-                              ? <p className="text-sm text-slate-500 mt-0.5">Filed by {dpr.engineer || "—"}</p>
-                              : <p className="text-sm text-amber-500 font-medium mt-0.5">DPR not yet filed</p>
+                            {filed
+                              ? <p className="text-sm text-slate-500 mt-0.5">Filed by {filed.engineer || "—"}</p>
+                              : <p className={`text-sm mt-0.5 ${needsAttention ? "text-rose-600 font-medium" : "text-slate-500"}`}>
+                                  {draft ? "Saved as draft, not submitted" : "No DPR submitted yet"}
+                                </p>
                             }
                           </div>
-                          {dpr
+                          {filed
                             ? <span className="text-xs px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200 font-medium flex-shrink-0">Filed</span>
-                            : <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-medium flex-shrink-0">Pending</span>
+                            : <span className={`text-xs px-2 py-0.5 rounded-full border font-medium flex-shrink-0 ${needsAttention ? "bg-rose-50 text-rose-700 border-rose-200" : "bg-slate-50 text-slate-600 border-slate-200"}`}>
+                                {draft ? "In draft" : "Not yet filed"}
+                              </span>
                           }
                         </div>
                       );
@@ -396,10 +397,8 @@ function HomeDashboard({
                   <Activity className="w-4 h-4 text-slate-400" />
                   <h3 className="text-sm font-semibold text-slate-800">Recent DPRs</h3>
                 </div>
-                <Link href="/site/hub">
-                  <a className="text-sm text-orange-500 hover:text-orange-600 font-medium flex items-center gap-0.5">
-                    View all <ChevronRight className="w-3 h-3" />
-                  </a>
+                <Link href="/site/dashboard" className="text-sm text-orange-500 hover:text-orange-600 font-medium flex items-center gap-0.5" data-testid="link-recent-dpr-history">
+                  View all <ChevronRight className="w-3 h-3" />
                 </Link>
               </div>
               {recentActivity.length === 0 ? (

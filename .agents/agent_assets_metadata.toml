@@ -3825,3 +3825,31 @@ mtime_ms = 1790425489962
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/6f77fb29-0e82-4b81-b00c-a7b5d201251d/2b4b3096-4596-4ae6-aa2d-50845d67c209"
 storage_version_token = "1790425511001569"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "6JD0eBKSs7e8BAyyGePF_"
+uri = "file://tests/fixtures/home01-part-a/evidence/morning-actual-home.png"
+type = "image"
+title = "HOME-01 Part A — Morning, neutral statuses"
+description = "Actual Home component with labelled synthetic test data. Submitted, draft and unfiled cases verified; no business data changed."
+logical_id = "e9672482-4199-4f99-8fe3-14ff4a0b09fb"
+content_hash = "sha256:339f264ae3ef5f20402a3dc215313cb61aefb371dae921f2d6587dda6fd2d522"
+size = 147432
+mtime_ms = 1790481909658
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e9672482-4199-4f99-8fe3-14ff4a0b09fb/4a955ad9-1590-4066-8ec3-9bb70bb4bdf3"
+storage_version_token = "1790481960772459"
+content_type = "image/png"
+
+[[outputs]]
+id = "pE8X9dJRETzDw871DJvUu"
+uri = "file://tests/fixtures/home01-part-a/evidence/late-actual-home.png"
+type = "image"
+title = "HOME-01 Part A — After 6 PM, unfiled statuses flagged"
+description = "Actual Home component with labelled synthetic test data. Submitted, draft and unfiled cases verified; no business data changed."
+logical_id = "c6f3c0ed-ff55-4568-8e61-ca0712d7754e"
+content_hash = "sha256:e22c80eefe2ab06e4586286c0c6af3afd73e3226c200b4180b728ea460d187de"
+size = 147434
+mtime_ms = 1790481910182
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c6f3c0ed-ff55-4568-8e61-ca0712d7754e/df95f855-05f7-4124-a8fc-9f1a802372f6"
+storage_version_token = "1790481962953944"
+content_type = "image/png"

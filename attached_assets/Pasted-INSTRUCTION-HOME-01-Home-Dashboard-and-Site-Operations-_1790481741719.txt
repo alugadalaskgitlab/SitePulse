@@ -1,0 +1,56 @@
+INSTRUCTION HOME-01: Home Dashboard and Site Operations hub — misleading zero counts, duplicate sections, and two navigation links that go to the wrong destination
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is display/copy/navigation cleanup on the EXISTING Home Dashboard and Site Operations hub pages. The landing page itself does NOT change — everyone still lands on the Home Dashboard exactly as today; do not add any project/site "gateway" or redirect logic, that was explicitly discussed and rejected for now. Do not touch DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, or PERM-01/02. Do not publish automatically. STOP after each Part and report back.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+1. `client/src/pages/Home.tsx`: "DPRs Filed Today" (X/Y) and "Active Sites" (with "N reported today") both read from the SAME two arrays — `todayDprs` (today's DPRs, any status) and `activeSites` (every site flagged active in the sites master, no time window) — just displayed two different ways. Both are guaranteed to show 0 for most of the morning, which reads as an alarm when nothing is actually wrong yet.
+2. "Today's Site DPR Status" (further down the page) is a third rendering of the exact same `todayDprs`/`activeSites` data, per-site instead of aggregate — genuinely duplicate information with the top card.
+3. "Pending Approvals" (top card) and the "Pending Actions" panel (right side) both read from the same underlying `pendingDiesel`/`pendingIndents` queries — not two independent sources, just two different renderings.
+4. The diesel item under "Pending Actions" → "Review →" links to `/plant/diesel-requirements?returnTo=/` — the full Diesel Requirements list, with no specific item id — confirmed it does NOT go to the specific pending item.
+5. "Recent DPRs" → "View all" links to `/site/hub` (the Site Operations hub) — confirmed it does NOT go to a DPR list/history page. A real DPR History page already exists at `/site/dashboard` (linked from within `SiteHub.tsx`) — this "View all" should use that existing page, not a new one.
+6. "Today's Site DPR Status"'s own "View all" link also points to `/site/hub` — same wrong-destination bug.
+7. `SiteHub.tsx` (Site Operations hub)'s own "Active Sites" KPI is defined DIFFERENTLY from Home.tsx's "Active Sites" — SiteHub counts only sites with a DPR filed today, while Home counts every active site in the master regardless of today's activity. Same label, two different meanings across pages — confirmed inconsistency.
+8. "Tomorrow's Site Plans" links to `/site/requirements?context=dashboard&returnTo=/` (`SiteRequirementsList.tsx`) — this is a materials/equipment/labour REQUIREMENT/arrangement queue (per-requirement cards with fulfilment status), not a simple flat "which sites have a plan for tomorrow, which don't" board. It does show planned activities per requirement, but only for requirements that have actually been raised — it cannot show "not planned" for a site that never had a requirement raised at all.
+
+FIX
+
+PART A — Stop the misleading zero-count alarm; merge duplicate sections
+a. Remove the standalone "DPRs Filed Today" (X/Y) card and the separate "Today's Site DPR Status" list — merge them into ONE section: a single per-site list showing each active site's actual status today (Filed / Not yet filed / In draft), with no bare aggregate fraction shown on its own.
+b. Do not style this section as an alert/warning (red dot, red text) purely because it's early in the day and nothing has been filed yet. Only visually flag it as needing attention once it's reasonably late in the day (use a sensible cutoff, e.g. after a certain local hour) AND still unfiled — until then it should read as neutral status information, not a problem.
+c. Fix this merged section's own "View all" link (and the removed card's, if it had one) to point to the existing DPR History page (`/site/dashboard`) instead of `/site/hub`.
+d. Apply the same "don't alarm before it's actually late" treatment to "Active Sites" — keep it, but make clear what it's counting (see Part C for definition alignment) and don't pair it with a red/alarming "0 reported today" sub-line during normal morning hours.
+
+PART B — Unify Pending Approvals with Pending Actions, and fix the deep-link
+a. Remove the separate "Pending Approvals" card (top row) since it duplicates the "Pending Actions" panel with less detail — keep ONE place for this, the more detailed Pending Actions panel.
+b. In Pending Actions, sort each category's items oldest-first (not just a count), and show how long each has been pending (age), so something genuinely old stands out rather than blending in with same-day items.
+c. Fix the diesel "Review →" link (and any other pending-item link in this panel with the same pattern) to navigate to the SPECIFIC pending item/detail, not the full list page. Check whether a per-item detail route/modal already exists elsewhere in the app (e.g. reachable by clicking a row inside the Diesel Requirements list itself) and reuse that exact destination/pattern — do not invent a new detail view if one already exists.
+
+PART C — Reconcile "Active Sites" meaning between Home Dashboard and Site Operations hub
+a. These currently mean two different things with the same label. Pick ONE consistent definition and use it, OR keep them intentionally different but give them different labels so it's never ambiguous — e.g. Home's card could read "Total Active Sites" (all sites in the master) while the Site Operations hub's reads "Sites Reporting Today" (distinct sites with a DPR filed today). Decide which is clearer and implement it consistently; report which you chose.
+b. Apply the same "don't alarm before it's actually late in the day" treatment from Part A(b) to the Site Operations hub's own "DPRs Filed" and "Workforce" KPIs, which are also guaranteed to start at 0 each day.
+
+PART D — "Tomorrow's Site Plans" — make the copy match what it actually shows
+a. Do not build a new flat "all sites: planned / not planned" board in this batch — that would require a different data model (a plan/requirement raised for every single active site, not just the ones with one). Instead, fix the tile's title/description so it accurately describes what it opens (a requirements/arrangement queue), so it doesn't imply something it doesn't do.
+b. If a true "which of my active sites have NOT raised anything for tomorrow yet" view is wanted, note that as a distinct, larger feature for a future separate instruction — do not attempt to build it here.
+
+WHAT NOT TO DO
+- Do not change the landing page/route for any role — everyone still lands on Home Dashboard exactly as today.
+- Do not touch DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, or PERM-01/02.
+- Do not build a new all-sites planned/not-planned board in Part D — only fix the copy.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change expected — this is UI/copy/navigation-link work on existing data already being fetched.
+
+TESTS
+A1. Confirm the merged per-site DPR status section shows correctly, with no misleading alert styling in the morning, and its "View all" goes to the real DPR History page.
+B1. Confirm Pending Approvals card is gone and Pending Actions shows age-sorted items with working per-item deep links (test with a real pending diesel item — confirm it opens that specific item, not the list).
+C1. Confirm "Active Sites" (or its renamed labels) means one consistent, clearly-labelled thing on each page.
+D1. Confirm "Tomorrow's Site Plans" tile copy accurately describes the requirements queue it opens.
+
+REPORT BACK
+1. Confirm each part separately with screenshots.
+2. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
