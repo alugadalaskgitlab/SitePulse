@@ -1,4 +1,15 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { pickDprSectionPayload, type DprSection, type DprSectionContext, type DprSectionSnapshot } from "@shared/dprSections";
+import { mapDprToFormState } from "./SiteEdit";
+
+export interface DprSectionEditorProps {
+  section: DprSection;
+  context: DprSectionContext;
+  snapshot?: DprSectionSnapshot;
+  engineer: string;
+  onSave: (data: any, engineer: string, recoveredProjectId?: number | null) => Promise<DprSectionSnapshot>;
+  onReturn: () => void;
+}
 import { useLocation, useSearch } from "wouter";
 import { useBeforeUnload } from "@/hooks/use-before-unload";
 import { useOrigin } from "@/hooks/use-origin";
@@ -198,6 +209,7 @@ interface MaterialEntry {
 const MATERIAL_TYPE_OPTIONS = ["Received", "Issued"];
 
 interface SitePurchaseEntry {
+  persistedId?: number;
   itemDescription: string;
   vendor: string;
   billNo: string;
@@ -276,7 +288,7 @@ function formatTimeDuration(start: string, end: string): string | null {
 import { boqItemDisplayName } from "@shared/boqItemName";
 import { layerFieldLabel, showLayerField } from "@shared/layerDisplay";
 
-export default function SiteEntry() {
+export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectionEditorProps } = {}) {
   const [, setLocation] = useLocation();
   const searchStr = useSearch();
   const { toast } = useToast();
@@ -471,6 +483,7 @@ export default function SiteEntry() {
     projectId: resolvedBoqProjectId,
     items: siteBoqItems,
     catalogueItems: siteBoqCatalogueItems,
+    projects: siteBoqProjects,
     projectsLoaded: boqProjectsLoaded,
     evidenceProjectId,
     requestEvidenceRecovery,
@@ -901,6 +914,7 @@ export default function SiteEntry() {
   const [sitePurchases, setSitePurchases] = useState<SitePurchaseEntry[]>([]);
 
   const lockedWorkType = useMemo(() => {
+    if (sectionEditor) return sectionEditor.context.workType;
     const t = new URLSearchParams(window.location.search).get("type");
     return t === "structure" ? "structure" : t === "road" ? "road" : null;
   }, []);
@@ -947,17 +961,19 @@ export default function SiteEntry() {
   const siteEntryNullCataloguePreview = boqProjectPreference.resolved
     && boqProjectPreference.projectId === null
     && !siteEntryHasBoqReferences
-    && !siteEntryHasMeaningfulNonBoqWork;
+    && (sectionEditor ? siteBoqProjects.length === 1 : !siteEntryHasMeaningfulNonBoqWork);
   useEffect(() => {
     setBoqCataloguePreviewEligible(
       boqCataloguePreviewReady
       && !siteEntryHasBoqReferences
-      && !siteEntryHasMeaningfulNonBoqWork,
+      && (sectionEditor ? siteBoqProjects.length === 1 : !siteEntryHasMeaningfulNonBoqWork),
     );
   }, [
     boqCataloguePreviewReady,
     siteEntryHasBoqReferences,
     siteEntryHasMeaningfulNonBoqWork,
+    siteBoqProjects.length,
+    sectionEditor?.section,
   ]);
   const siteEntryBoqItemsForPicker = siteBoqItems.length > 0
     ? siteBoqItems
@@ -1127,13 +1143,48 @@ export default function SiteEntry() {
     setBoqCataloguePreviewReady(true);
   }, []);
 
+  const [sectionDirty, setSectionDirty] = useState(false);
+  const sectionBaseline = useRef<string | null>(null);
+  const [sectionHydrated, setSectionHydrated] = useState(false);
+  useEffect(() => {
+    if (!sectionEditor) return;
+    const { snapshot, context, engineer } = sectionEditor;
+    if (snapshot) {
+      const mapped = mapDprToFormState(snapshot.dpr);
+      handleRestoreDraft({
+        ...mapped,
+        header: { ...mapped.header, ...context },
+        labour: snapshot.dpr.labour?.length ? mapped.labour : [],
+        sitePurchases: mapped.sitePurchases.map((row: any, index: number) => ({ ...row, persistedId: snapshot.dpr.sitePurchases?.[index]?.id })),
+        structureItems: mapped.structureItems.map((row: any) => ({ ...row, programmeStructureId: row.structureId })),
+      } as SiteEntryFormData);
+      setRemarksNote(snapshot.dpr.remarks ?? "");
+    } else {
+      setHeader({ ...context, engineer });
+      setWorkType(context.workType);
+      setBoqProjectPreference({ resolved: true, projectId: context.boqProjectId });
+      setBoqCataloguePreviewReady(true);
+    }
+    setSectionHydrated(true);
+  }, []);
+  const sectionFingerprint = JSON.stringify(sectionEditor ? {
+    ...pickDprSectionPayload(sectionEditor.section, { ...formData, remarks: remarksNote }),
+    photos: stagedPhotos.map(f => [f.name, f.size]), entryPhotos,
+  } : null);
+  useEffect(() => {
+    if (!sectionEditor || !sectionHydrated) return;
+    if (sectionBaseline.current === null) sectionBaseline.current = sectionFingerprint;
+    setSectionDirty(sectionBaseline.current !== sectionFingerprint);
+  }, [sectionFingerprint, sectionHydrated]);
+
   const { hasDraft, draftAge, lastSavedAt, isDirty, restoreDraft, discardDraft, clearDraft } = useAutosave<SiteEntryFormData>({
     formKey: "site-entry-new",
     data: formData,
     onRestore: handleRestoreDraft,
+    enabled: !sectionEditor,
   });
 
-  const { confirmLeave } = useBeforeUnload(isDirty);
+  const { confirmLeave } = useBeforeUnload(sectionEditor ? sectionDirty : isDirty);
 
   // Road-progress length is always the physical chainage span. Invalid or
   // incomplete chainage deliberately produces no length.
@@ -1643,7 +1694,7 @@ export default function SiteEntry() {
           dieselNorm: preview.efficiencyValue ?? eq.dieselNorm ?? null,
         };
       });
-      const response = await apiRequest("POST", "/api/dprs", {
+      const draftPayload = {
         date: header.date,
         site: header.site,
         engineer: header.engineer,
@@ -1662,12 +1713,49 @@ export default function SiteEntry() {
         labour,
         materials: materials.filter(m => m.material),
         sitePurchases: sitePurchases.filter(sp => sp.itemDescription),
-        remarks: remarksNote.trim() || undefined,
+        remarks: sectionEditor ? remarksNote.trim() : remarksNote.trim() || undefined,
         clientTimestamp,
-      });
+      };
+      if (sectionEditor) {
+        if (siteEntryHasBoqReferences && siteEntryPayloadBoqProjectId == null) {
+          throw new Error("BOQ ownership is still resolving or is ambiguous. Wait for the linked item's project to resolve before saving.");
+        }
+        const snapshot = await sectionEditor.onSave(pickDprSectionPayload(sectionEditor.section, draftPayload), header.engineer, siteEntryPayloadBoqProjectId);
+        // The section is already durable even if a subsequent photo upload
+        // fails. Rebase row IDs now so retry never recreates those child rows.
+        const mapped = mapDprToFormState(snapshot.dpr);
+        const restored = {
+          ...mapped,
+          header: { ...mapped.header, ...snapshot.context },
+          labour: snapshot.dpr.labour?.length ? mapped.labour : [],
+          sitePurchases: mapped.sitePurchases.map((row: any, index: number) => ({ ...row, persistedId: snapshot.dpr.sitePurchases?.[index]?.id })),
+          structureItems: mapped.structureItems.map((row: any) => ({ ...row, programmeStructureId: row.structureId })),
+        } as SiteEntryFormData;
+        sectionBaseline.current = JSON.stringify({
+          ...pickDprSectionPayload(sectionEditor.section, { ...restored, remarks: snapshot.dpr.remarks ?? "" }),
+          photos: [], entryPhotos: {},
+        });
+        handleRestoreDraft(restored);
+        setRemarksNote(snapshot.dpr.remarks ?? "");
+        if (sectionEditor.section === "activity" && (stagedPhotos.length || Object.values(entryPhotos).some(files => files.length))) {
+          const { failed, failedByEntry } = await uploadStagedPhotos(snapshot.dpr.id);
+          setStagedPhotos(failed);
+          setEntryPhotos(failedByEntry);
+          if (failed.length || Object.values(failedByEntry).some(files => files.length)) {
+            throw new Error("Section saved, but photos failed. Keep this screen open and retry Save Section.");
+          }
+        }
+        setSectionDirty(false);
+        return snapshot;
+      }
+      const response = await apiRequest("POST", "/api/dprs", draftPayload);
       return response.json();
     },
     onSuccess: async (data) => {
+      if (sectionEditor) {
+        toast({ title: "Section saved", description: "Other DPR sections were not changed." });
+        return;
+      }
       await clearDraft();
       // Batch 05 (spec §10): the server draft is now authoritative — clear a
       // stale Guided "new DPR" blob for the same draft/site/date context.
@@ -1960,6 +2048,13 @@ export default function SiteEntry() {
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-20">
       <InsufficientDieselDialog payload={dieselShortage} onClose={() => setDieselShortage(null)} />
+      {sectionEditor && <div className="rounded-lg border p-4 space-y-2">
+        <h1 className="text-2xl font-bold capitalize">{sectionEditor.section === "materials" ? "Materials / Site Purchases" : sectionEditor.section}</h1>
+        <p>{sectionEditor.context.site} · {sectionEditor.context.date} · {sectionEditor.context.workType} · Project {sectionEditor.context.boqProjectId ?? "none"}</p>
+        <Button variant="outline" disabled={draftMutation.isPending} onClick={() => confirmLeave(sectionEditor.onReturn)}>Return to sections</Button>
+        {sectionDirty && <span className="ml-3 text-sm">Unsaved changes</span>}
+      </div>}
+      {!sectionEditor && <>
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => confirmLeave(() => setLocation(backLink))} data-testid="button-back">
           <ChevronLeft className="w-5 h-5" />
@@ -2008,9 +2103,11 @@ export default function SiteEntry() {
           onDiscard={discardDraft}
         />
       )}
+      </>}
 
+      <fieldset disabled={sectionEditor ? draftMutation.isPending : false} className="space-y-6 min-w-0">
       {/* Header Section */}
-      {(
+      {!sectionEditor && (
       <Card>
         <CardHeader>
           <CardTitle>Report Details</CardTitle>
@@ -2078,7 +2175,7 @@ export default function SiteEntry() {
       )}
 
       {/* Activity Progress */}
-      {(
+      {(!sectionEditor || sectionEditor.section === "activity") && (
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
@@ -2987,7 +3084,7 @@ export default function SiteEntry() {
       )}
 
       {/* Equipment Log */}
-      {(
+      {(!sectionEditor || sectionEditor.section === "equipment") && (
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle>Equipment Log</CardTitle>
@@ -3503,7 +3600,7 @@ export default function SiteEntry() {
       )}
 
       {/* Labour Strength */}
-      {(
+      {(!sectionEditor || sectionEditor.section === "labour") && (
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle>Labour Strength</CardTitle>
@@ -3685,7 +3782,7 @@ export default function SiteEntry() {
       )}
 
       {/* Materials Consumed/Issued (linked to work item for Plan vs Actual) */}
-      {(
+      {(!sectionEditor || sectionEditor.section === "materials") && (
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle className="text-teal-600">Materials Consumed / Issued</CardTitle>
@@ -3850,7 +3947,7 @@ export default function SiteEntry() {
       )}
 
       {/* Site Purchases */}
-      {(
+      {(!sectionEditor || sectionEditor.section === "materials") && (
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle className="text-teal-600">Site Purchases</CardTitle>
@@ -3949,7 +4046,7 @@ export default function SiteEntry() {
 
       {/* Remarks & general photos (previously only reachable via the removed
           internal wizard — kept as a normal Classic-form section) */}
-      {(
+      {(!sectionEditor || sectionEditor.section === "activity") && (
         <Card>
           <CardHeader>
             <CardTitle>Remarks & Review</CardTitle>
@@ -4018,13 +4115,21 @@ export default function SiteEntry() {
               <p className="text-xs text-muted-foreground mt-1">Photos are uploaded once you save the report.</p>
             </div>
             <p className="text-sm text-muted-foreground">
-              Review your entries above, then tap Preview Report to finish.
+              {sectionEditor ? "Save this section, then return to the section menu to review and submit the DPR." : "Review your entries above, then tap Preview Report to finish."}
             </p>
           </CardContent>
         </Card>
       )}
 
       {/* Action Buttons - sticky on mobile so Save/Preview stay reachable while scrolling a long form */}
+      </fieldset>
+      {sectionEditor ? <div className="sticky bottom-0 z-10 flex gap-3 border-t bg-background p-4">
+        <Button disabled={draftMutation.isPending} onClick={() => draftMutation.mutate()}>Save Section</Button>
+        <Button variant="outline" disabled={draftMutation.isPending} onClick={async () => {
+          try { await draftMutation.mutateAsync(); sectionEditor.onReturn(); }
+          catch { /* Retain fields after failure. */ }
+        }}>Save &amp; return</Button>
+      </div> : (
       <div className="sticky bottom-0 left-0 right-0 z-10 -mx-4 sm:mx-0 mt-2 flex flex-wrap items-center justify-end gap-3 border-t bg-background/95 backdrop-blur px-4 py-3 sm:static sm:border-0 sm:bg-transparent sm:backdrop-blur-0 sm:px-0 sm:py-0">
         <AutoSaveIndicator lastSavedAt={lastSavedAt} isDirty={isDirty} className="mr-auto" />
         {(
@@ -4052,6 +4157,7 @@ export default function SiteEntry() {
         )}
       </div>
 
+      )}
       <Dialog
         open={addPersonnelOpen}
         onOpenChange={(open) => {

@@ -1,5 +1,7 @@
 import { lookupTripBoqQuantity } from "../shared/tripQuantityDisplay";
 import { db } from "./db";
+import { assertSectionTokens, DprSectionConflict, findSectionDrafts, lockDprIdentity, readSectionAggregate, sameContext, sectionSnapshot } from "./dprSections";
+import { normalizeDprSectionContext } from "../shared/dprSections";
 import { formatPurchaseIndentNumber, reconcileDeliveryEvidence, validateDeliveryDestination, isBulkPiDeliveryItem, type DeliveryEvidence } from "../shared/purchaseIndentDelivery";
 import { calculateEquipmentHireFinancials, calculateHireGroup, getHireReviewGaps, isEquipmentHireBillEligible, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
 import { hasCumulativeVendorPayment } from "../shared/vendorBillPayment";
@@ -658,8 +660,8 @@ export interface IStorage {
     audit?: DprEquipmentClosureAudit,
     options?: { reuseExistingDraft?: boolean; scopeVersionToken?: string | null },
   ): Promise<Dpr>;
-  updateDraftDpr(id: number, dpr: CreateDprRequest, actorUserId?: number | null, scopeVersionToken?: string | null, _legacyRecoveryHint?: boolean): Promise<Dpr | undefined>;
-  submitDraftDpr(id: number, dpr: CreateDprRequest, clientTimestamp?: string, audit?: DprEquipmentClosureAudit, scopeVersionToken?: string | null, _legacyRecoveryHint?: boolean): Promise<Dpr | undefined>;
+  updateDraftDpr(id: number, dpr: CreateDprRequest, actorUserId?: number | null, scopeVersionToken?: string | null, _legacyRecoveryHint?: boolean, sectionGuard?: any): Promise<Dpr | undefined>;
+  submitDraftDpr(id: number, dpr: CreateDprRequest, clientTimestamp?: string, audit?: DprEquipmentClosureAudit, scopeVersionToken?: string | null, _legacyRecoveryHint?: boolean, sectionGuard?: any): Promise<Dpr | undefined>;
   getProjectScopeVersionToken(boqProjectId: number): Promise<string>;
   assertProjectScopeVersionToken(boqProjectId: number, expectedToken: string): Promise<void>;
   getProjectScopeSegments(boqProjectId: number): Promise<ProjectScopeSegment[]>;
@@ -3312,21 +3314,17 @@ export class DatabaseStorage implements IStorage {
       // relationship is never draft-lenient: accepting a cross-project item
       // here would bypass the same project mutex used by correction.
       await this.assertDprProjectLinksTx(tx, 0, projectId, dprData, dprData.equipment as any[] | undefined);
-      if (dprStatusVal === "draft" && options?.reuseExistingDraft) {
-        // Field Home's Start action is a transactional get-or-create. The
-        // advisory lock closes the simultaneous-user/tab race without changing
-        // normal draft creation in the established editors.
-        const identityKey = `${dprData.date}|${dprData.site.trim().toLowerCase()}`;
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(1437, hashtext(${identityKey}))`);
-        const [existingDraft] = await tx.select().from(dprs).where(and(
-          eq(dprs.date, dprData.date),
-          sql`lower(trim(${dprs.site})) = lower(trim(${dprData.site}))`,
-          eq(dprs.dprStatus, "draft"),
-          or(eq(dprs.isSuperseded, false), isNull(dprs.isSuperseded)),
-          or(eq(dprs.isDeleted, false), isNull(dprs.isDeleted)),
-          or(eq(dprs.isCancelled, false), isNull(dprs.isCancelled)),
-        )).orderBy(asc(dprs.id)).limit(1);
-        if (existingDraft) return existingDraft;
+      if (dprStatusVal === "draft") {
+        // Legacy create/resume and section-first creation share one identity
+        // mutex. Resume is read/reuse only; ordinary duplicate creation must
+        // return a conflict instead of overwriting or manufacturing a shell.
+        await lockDprIdentity(tx, dprData);
+        const candidates = await findSectionDrafts(tx, normalizeDprSectionContext(dprData));
+        if (candidates.length > 1) throw new DprSectionConflict("Multiple drafts exist. Choose a draft explicitly.");
+        if (candidates.length) {
+          if (options?.reuseExistingDraft) return candidates[0];
+          throw new DprSectionConflict("A draft already exists. Open its saved sections rather than creating another.");
+        }
       }
 
       // 1. Insert DPR Header with submission timestamp (uppercase text fields)
@@ -3446,17 +3444,17 @@ export class DatabaseStorage implements IStorage {
     actorUserId?: number | null,
     scopeVersionToken?: string | null,
     _legacyRecoveryHint = false,
+    sectionGuard?: any,
   ): Promise<Dpr | undefined> {
-    // Canonical draft identity rule (intentionally unchanged): the id returned
-    // by the initial POST is the draft's sole identity. Every autosave replaces
-    // children under that same dprs.id; there is no site/date/user deduplication
-    // and no new DPR/version row until the explicit version/clone workflows.
+    // Legacy whole-body replacement stays under the same returned DPR id.
+    // Section editors use in-place owned-row reconciliation instead. The token
+    // guard supplied by the route is rechecked under the transaction row lock.
     const existing = await this.getDpr(id);
     if (!existing || (existing as any).dprStatus !== "draft") return undefined;
     return await this._replaceDprChildRecords(id, dprData, {
       lastEditedByUserId: actorUserId ?? null,
       lastEditedAt: new Date(),
-    }, undefined, scopeVersionToken, _legacyRecoveryHint);
+    }, undefined, scopeVersionToken, _legacyRecoveryHint, sectionGuard);
   }
 
   private async getProjectScopeVersionTokenTx(tx: any, boqProjectId: number): Promise<string> {
@@ -3566,6 +3564,7 @@ export class DatabaseStorage implements IStorage {
     audit?: DprEquipmentClosureAudit,
     scopeVersionToken?: string | null,
     _legacyRecoveryHint = false,
+    sectionGuard?: any,
   ): Promise<Dpr | undefined> {
     const existing = await this.getDpr(id);
     if (!existing || (existing as any).dprStatus !== "draft") return undefined;
@@ -3582,6 +3581,7 @@ export class DatabaseStorage implements IStorage {
       audit,
       scopeVersionToken,
       _legacyRecoveryHint,
+      sectionGuard,
     );
   }
 
@@ -3812,6 +3812,7 @@ export class DatabaseStorage implements IStorage {
     audit?: DprEquipmentClosureAudit,
     scopeVersionToken?: string | null,
     _legacyRecoveryHint = false,
+    sectionGuard?: any,
   ): Promise<Dpr | undefined> {
     return await db.transaction(async (tx) => {
       const isSubmitting = headerOverrides.dprStatus === "submitted";
@@ -3847,15 +3848,56 @@ export class DatabaseStorage implements IStorage {
         }
         throw err;
       }
+      // Whole-draft edits may still move a legacy header. Serialize the target
+      // identity with section first-save and legacy create/reuse before the
+      // DPR lock, so moving a header cannot manufacture a duplicate shell.
+      await lockDprIdentity(tx, dprData);
       const [savedHeader] = await tx.select({
         id: dprs.id,
         dprStatus: dprs.dprStatus,
         boqProjectId: dprs.boqProjectId,
         site: dprs.site,
       }).from(dprs).where(eq(dprs.id, id)).for("update").limit(1);
+      if (savedHeader?.dprStatus !== "draft") return undefined;
       const savedProjectId = savedHeader?.boqProjectId != null ? Number(savedHeader.boqProjectId) : null;
       if (savedProjectId !== optimisticSavedProjectId) {
         throw new DprProjectMismatchError(id, optimisticSavedProjectId, savedProjectId);
+      }
+      if (sectionGuard) {
+        const aggregate = await readSectionAggregate(tx, id);
+        assertSectionTokens(sectionSnapshot(aggregate), sectionGuard);
+        if (!sameContext(aggregate, dprData)) {
+          const candidates = await findSectionDrafts(tx, normalizeDprSectionContext(dprData));
+          if (candidates.some((candidate: any) => candidate.id !== id)) throw new DprSectionConflict("A draft already exists for the requested header context.");
+        }
+        if (sectionGuard.stored) {
+          // Server-assembled submit: preserve all child identities and issue
+          // operational effects once, under the same project -> header locks.
+          if (!isSubmitting) throw new DprSectionConflict();
+          const validated = await sectionGuard.validate?.(aggregate, id);
+          if (validated) {
+            // Route validators stamp authoritative scope/review/quantity facts.
+            // Persist those without replacing rows or personnel/photo links.
+            for (let index = 0; index < (validated.progress ?? []).length; index++) {
+              const { persistedId: _persistedId, personnelIds: _personnelIds, uomOverrideReason: _reason, ...values } = validated.progress[index];
+              await tx.update(progressEntries).set(values).where(and(eq(progressEntries.id, aggregate.progress[index].id), eq(progressEntries.dprId, id)));
+              aggregate.progress[index] = { ...aggregate.progress[index], ...values };
+            }
+          }
+          await this.assertDprProjectLinksTx(tx, id, aggregate.boqProjectId, aggregate, aggregate.equipment);
+          const [submitted] = await tx.update(dprs).set({
+            ...headerOverrides, lastEditedAt: new Date(), lastEditedByUserId: audit?.userId ?? null,
+          }).where(and(eq(dprs.id, id), eq(dprs.dprStatus, "draft"))).returning();
+          if (!submitted) throw new DprSectionConflict();
+          await this.cleanupDprEquipmentDieselLedger(tx, id);
+          const progressIds = aggregate.progress.map((row: any) => row.id);
+          if (progressIds.length) await tx.delete(cutFillConsumptions).where(inArray(cutFillConsumptions.fillProgressEntryId, progressIds));
+          await this.persistCutFillConsumptionsTx(tx, submitted, aggregate.progress, aggregate, [id]);
+          await this.validateCutFillSourceCapacitiesTx(tx, progressIds, [id]);
+          await this.processDprEquipmentDieselLedger(tx, aggregate.equipment, submitted.date, submitted.site);
+          await this.finalizeDprEquipmentUsageTx(tx, submitted, aggregate.equipment, audit);
+          return submitted;
+        }
       }
       // Work out the child rows that this replacement will actually retain
       // before authorizing a null-project recovery. Progress, labour,

@@ -1092,7 +1092,10 @@ export const createDprRequestSchema = insertDprSchema.extend({
   materials: z.array(insertMaterialSchema.extend({
     persistedId: z.number().int().positive().optional(),
   })).optional(),
-  sitePurchases: z.array(insertSitePurchaseSchema).optional(),
+  sitePurchases: z.array(insertSitePurchaseSchema.extend({
+    // Transient row identity for independent Materials draft reconciliation.
+    persistedId: z.number().int().positive().optional(),
+  })).optional(),
   structureItems: z.array(insertDprStructureItemSchema.extend({
     persistedId: z.number().int().positive().optional(),
   })).optional(),

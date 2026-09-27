@@ -16,6 +16,7 @@
  * This screen deliberately does NOT modify SiteEntry.tsx (Detailed DPR).
  */
 import { useState, useMemo, useEffect, useRef } from "react";
+import { readDprWriteTokens, requireDprWriteTokens, type DprWriteTokens } from "@/lib/dprSectionTokens";
 import { useLocation, useSearch } from "wouter";
 import { Link } from "wouter";
 import {
@@ -284,6 +285,7 @@ export default function GuidedDpr() {
   // Instruction 031 Part A: once a draft is saved, later saves UPDATE the same
   // record (PATCH) and submit promotes it — never a duplicate row.
   const [draftId, setDraftId] = useState<number | null>(null);
+  const draftWriteTokensRef = useRef<DprWriteTokens | null>(null);
   // A fresh DPR deliberately leaves this unresolved so the BOQ hook keeps its
   // existing active-with-programme fallback. Once a saved DPR/autosave carries
   // a preference, `resolved: true` also preserves an explicit null (a saved
@@ -325,6 +327,7 @@ export default function GuidedDpr() {
     date: string; siteName: string; engineer: string;
     entries: GuidedEntry[]; equipment: SimpleEquipmentRow[]; labour: SimpleLabourRow[];
     remarks: string; draftId: number | null;
+    writeTokens?: DprWriteTokens | null;
     // Optional keeps pre-DPR-04 local blobs valid. Presence matters: null is
     // an intentionally saved "no project" value, while omission means that
     // the old blob never resolved a BOQ project.
@@ -342,17 +345,19 @@ export default function GuidedDpr() {
   // Hydrate from an existing server draft (Classic → Guided switch). Only
   // once, and only if the autosave restore hasn't already loaded this draft.
   const hydratedRef = useRef(false);
+  const serverDraftId = urlDraftId ?? draftId;
   const { data: urlDraftDpr } = useQuery<any>({
-    queryKey: ["/api/dprs", urlDraftId],
+    queryKey: ["/api/dprs", serverDraftId],
     queryFn: async () => {
-      const res = await fetch(`/api/dprs/${urlDraftId}`, { credentials: "include" });
+      const res = await fetch(`/api/dprs/${serverDraftId}`, { credentials: "include" });
       if (!res.ok) throw new Error("draft_load_failed");
       return res.json();
     },
-    enabled: urlDraftId != null,
+    enabled: serverDraftId != null,
   });
   useEffect(() => {
     if (!urlDraftDpr || hydratedRef.current) return;
+    draftWriteTokensRef.current = readDprWriteTokens(urlDraftDpr);
     hydratedRef.current = true;
     serverDraftHydratedRef.current = true;
     // `hasOwn` is intentional. A nullable value returned by the server is a
@@ -781,6 +786,7 @@ export default function GuidedDpr() {
       : autosaveBoqProjectId;
   const autosaveData: GuidedFormState = {
     date, siteName, engineer, entries, equipment, labour, remarks, draftId,
+    writeTokens: draftWriteTokensRef.current,
     ...(autosaveProjectId !== undefined
       ? { boqProjectId: autosaveProjectId }
       : {}),
@@ -795,6 +801,12 @@ export default function GuidedDpr() {
     formKey: (urlDraftId ?? draftId) != null ? `guided-dpr-${urlDraftId ?? draftId}` : "guided-dpr-new",
     data: autosaveData,
     onRestore: (d) => {
+      if (d.draftId != null) {
+        // Restoring local fields also restores their original concurrency
+        // baseline; a later GET must not silently authorize stale local data.
+        draftWriteTokensRef.current = readDprWriteTokens(d.writeTokens);
+        hydratedRef.current = true;
+      }
       setDate(d.date); setSiteName(d.siteName); setEngineer(d.engineer);
       // Do not turn a missing field in a legacy blob into an explicit null.
       // New DPRs retain the normal project fallback, while an explicitly
@@ -1462,16 +1474,32 @@ export default function GuidedDpr() {
       payload.equipment = (await prepareBreakdownAttachments(payloadRows)).map((row) => buildGuidedEquipmentPayload(row)) as any[];
       // Part A: reuse the saved draft record instead of creating duplicates.
       let res;
-      if (draftId != null && asDraft) {
-        res = await apiRequest("PATCH", `/api/dprs/${draftId}/draft`, payload);
-      } else if (draftId != null && !asDraft) {
-        res = await apiRequest("POST", `/api/dprs/${draftId}/submit`, payload);
+      if (draftId != null) {
+        const savedResponse = await apiRequest("PATCH", `/api/dprs/${draftId}/draft`, {
+          ...payload, dprStatus: "draft", ...requireDprWriteTokens(draftWriteTokensRef.current),
+        });
+        const saved = await savedResponse.json();
+        draftWriteTokensRef.current = readDprWriteTokens(saved);
+        // Advance only on a successful persist, never from background refetch.
+        setEquipment((saved.equipment ?? []).map((row: any) => splitGuidedEquipmentRow(row)));
+        unmanagedSectionsRef.current = {
+          materials: saved.materials ?? [], sitePurchases: saved.sitePurchases ?? [], structureItems: saved.structureItems ?? [],
+        };
+        if (asDraft) return { data: saved, asDraft };
+        res = await apiRequest("POST", `/api/dprs/${draftId}/submit`, {
+          ...requireDprWriteTokens(draftWriteTokensRef.current), clientTimestamp: payload.clientTimestamp,
+        });
       } else {
         res = await apiRequest("POST", "/api/dprs", payload);
       }
       return { data: await res.json(), asDraft };
     },
     onSuccess: async ({ data, asDraft }) => {
+      if (asDraft) {
+        draftWriteTokensRef.current = readDprWriteTokens(data);
+        hydratedRef.current = true;
+        setDraftId(data.id);
+      }
       // Pin the server's canonical project before photo work starts. A draft
       // save is still successful when one or more staged photos need retry;
       // that later in-page retry must not re-resolve the project from order.

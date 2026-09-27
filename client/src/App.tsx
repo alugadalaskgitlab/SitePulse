@@ -14,6 +14,9 @@ import { HubShell } from "@/components/HubShell";
 // ── Core pages (kept eager: always needed on first render) ───────────────────
 import Login from "@/pages/Login";
 import NotFound from "@/pages/not-found";
+const DprSections = lazy(() => import("@/pages/DprSections"));
+const DprEditEntry = lazy(() => import("@/pages/DprSections").then(module => ({ default: module.DprEditEntry })));
+const DprWorkEntry = lazy(() => import("@/pages/DprSections").then(module => ({ default: module.DprWorkEntry })));
 
 // ── Lazy page imports ────────────────────────────────────────────────────────
 
@@ -274,10 +277,10 @@ function AuthedShell() {
           {/* Site pages */}
           <Route path="/site" component={SiteHome} />
           <Route path="/site/dashboard" component={gated(SiteDashboard, "site_dprs")} />
-          <Route path="/site/new" component={gated(SiteEntry, "site_dprs")} />
-          <Route path="/site/guided" component={gated(GuidedDpr, "site_dprs")} />
-          <Route path="/site/work/:id" component={gated(DprWorkHub, "site_dprs")} />
-          <Route path="/site/edit/:id" component={gated(SiteEdit, "site_dprs")} />
+          <Route path="/site/new" component={gated(DprSections, "site_dprs")} />
+          <Route path="/site/guided" component={gated(DprSections, "site_dprs")} />
+          <Route path="/site/work/:id" component={gated(DprWorkEntry, "site_dprs")} />
+          <Route path="/site/edit/:id" component={gated(DprEditEntry, "site_dprs")} />
           <Route path="/site/success/:id" component={gated(SiteSuccess, "site_dprs")} />
           <Route path="/site/report/:id" component={gated(SiteReport, "site_dprs")} />
           <Route path="/reports/progress" component={gated(ProgressReport, "site_dprs")} />

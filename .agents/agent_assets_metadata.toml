@@ -3853,3 +3853,31 @@ mtime_ms = 1790481910182
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c6f3c0ed-ff55-4568-8e61-ca0712d7754e/df95f855-05f7-4124-a8fc-9f1a802372f6"
 storage_version_token = "1790481962953944"
 content_type = "image/png"
+
+[[outputs]]
+id = "-NGuo7wYyjX4ia2SHB_1c"
+uri = "file://tests/fixtures/dpr-site-entry/evidence/dpr13-equipment-first-menu.png"
+type = "image"
+title = "Part B progress — Equipment-first shared DPR"
+description = "Actual section menu with synthetic test data. Equipment saved while Activity and Labour remain empty. Part B still awaits the draft-stoppage storage decision."
+logical_id = "12abfbb7-2328-4c72-bc93-13d00886bb43"
+content_hash = "sha256:96c3772be6d5863064aba4fc0cd7bef8e32b2f19172c9d80f7a4bd3a767b1f4e"
+size = 59094
+mtime_ms = 1790484502737
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/12abfbb7-2328-4c72-bc93-13d00886bb43/c2fff9e6-9cad-4eb0-9640-03a139ad1b01"
+storage_version_token = "1790484656403676"
+content_type = "image/png"
+
+[[outputs]]
+id = "TlqQorb-8tJ--V_AjilS0"
+uri = "file://tests/fixtures/dpr-site-entry/evidence/dpr13-explicit-chooser.png"
+type = "image"
+title = "Part B progress — explicit draft chooser"
+description = "Actual UI with synthetic duplicate candidates; no arbitrary draft selection."
+logical_id = "e1a611a5-a82c-43f1-aceb-b56da80f716f"
+content_hash = "sha256:d7e5c44f867e480de80a0030963ac6c2d1112dc3c3f2132c755fb1c9690e5882"
+size = 66800
+mtime_ms = 1790484506421
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e1a611a5-a82c-43f1-aceb-b56da80f716f/f0fa5bbb-c2a9-4c73-bf8f-709e54b85e1f"
+storage_version_token = "1790484658160446"
+content_type = "image/png"

@@ -1,3 +1,5 @@
+import { DPR_SECTIONS, DPR_SECTION_FIELDS, normalizeDprSectionContext } from "../shared/dprSections";
+import { assertSectionTokens, DprSectionConflict, findSectionDrafts, readSectionAggregate, saveDprSection, sectionSnapshot } from "./dprSections";
 import type { Express, Request, Response } from "express";
 import type { Server } from "http";
 import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, InvalidDieselPhysicalStockError, InvalidStockTransferQuantityError, InvalidDieselSourceError, DieselReceiptExceedsRemainingError, InvalidLinkedDieselRequirementError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError, InitialScopeCorrectionBlockedError, ScopeChangedDuringPlanningError, DprProjectMismatchError, PushSubscriptionOwnershipError, PurchaseIndentRouteCorrectionConflictError, assertValidDieselPhysicalStock } from "./storage";
@@ -1850,6 +1852,13 @@ export async function registerRoutes(
       ...p,
       personnelIds: actPersonnel.filter(ap => ap.progressEntryId === p.id).map(ap => ap.personnelId),
     }));
+    if ((dpr as any).dprStatus === "draft") {
+      const snapshot = await db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT id FROM dprs WHERE id = ${dprIdNum} FOR SHARE`);
+        return sectionSnapshot(await readSectionAggregate(tx, dprIdNum));
+      });
+      return res.json({ ...snapshot.dpr, sectionTokens: snapshot.sectionTokens, headerToken: snapshot.headerToken });
+    }
     res.json({ ...dpr, progress: enrichedProgress });
   });
 
@@ -2417,6 +2426,102 @@ export async function registerRoutes(
       && Number(normalizedMatches[0]?.id) === Number(project.siteId);
   };
 
+  const sectionContextSchema = z.object({
+    site: z.string().trim().min(1),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    workType: z.enum(["road", "structure", "protective", "misc"]).default("road"),
+    boqProjectId: z.number().int().positive().nullable().default(null),
+  });
+  const loadSectionSnapshot = async (id: number) => db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM dprs WHERE id = ${id} FOR SHARE`);
+    const row = await readSectionAggregate(tx, id);
+    return row ? sectionSnapshot(row) : undefined;
+  });
+  const sectionFailure = (err: any, res: Response) => {
+    if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join(".") });
+    if (err instanceof DprSectionConflict) return res.status(409).json({ message: err.message, code: err.code });
+    if (handleInsufficientPlantStock(err, res) || handleEquipmentLifecycleConflict(err, res) || handleEquipmentActivityAllocationError(err, res)) return;
+    if (err?.code === "SCOPE_CHANGED_DURING_PLANNING") return res.status(409).json({ code: err.code, message: err.message });
+    if (err instanceof InvalidDieselSourceError || err instanceof CutFillValidationError || err instanceof DprProjectMismatchError) {
+      return res.status(422).json({ code: err.code, message: err.message });
+    }
+    if (err instanceof CutFillInsufficientAvailabilityError) return res.status(409).json({ code: err.code, message: err.message });
+    if (err?.status) return res.status(err.status).json({ code: err.code, message: err.message, mandatory: err.mandatory, advisories: err.advisories });
+    console.error("[DPR section] save failed", dprSaveErrorMetadata(err));
+    return res.status(500).json({ message: "Failed to save DPR section" });
+  };
+  const validateSectionAggregate = async (input: any, req: any, id: number, draft: boolean) => {
+    const permitted = await getPermittedSiteNames(req);
+    if (permitted !== null && !siteMatchesPermitted(input.site, permitted)) throw Object.assign(new Error("Access denied for this site"), { status: 403 });
+    for (const [validator, code] of [
+      [validateProgressProgrammeLinks, "PROGRAMME_LINK_INVALID"],
+      [validateProgressQuantitySources, "QUANTITY_SOURCE_INVALID"],
+      [validateProgressMaterialOutcomes, "MATERIAL_OUTCOME_INVALID"],
+    ] as const) {
+      const message = await validator(input, { draft });
+      if (message) throw Object.assign(new Error(message), { code, status: 400 });
+    }
+    const scope = await validateProgressScope(input, req, { draft });
+    if (scope) throw Object.assign(new Error(scope.error), { code: scope.code, status: 422 });
+    if (!draft) {
+      const readiness = evaluateDprSubmitReadiness(input);
+      const mandatory = [...readiness.mandatory, ...await evaluateChainageOverlapIssues(input, id)];
+      if (mandatory.length) throw Object.assign(new Error("DPR is not ready to submit"), {
+        code: "DPR_NOT_READY", status: 422, mandatory, advisories: readiness.advisories,
+      });
+    }
+  };
+  app.post("/api/dpr-sections/resolve", async (req, res) => {
+    try {
+      if (!assertView(req, res, "site_dprs")) return;
+      const context = normalizeDprSectionContext(sectionContextSchema.parse(req.body.context));
+      const permitted = await getPermittedSiteNames(req);
+      if (permitted !== null && !siteMatchesPermitted(context.site, permitted)) return res.status(403).json({ message: "Access denied for this site" });
+      const candidates = await findSectionDrafts(db, context);
+      if (!candidates.length) return res.json({ kind: "new" });
+      if (candidates.length === 1) return res.json({ kind: "existing", snapshot: await loadSectionSnapshot(candidates[0].id) });
+      return res.json({ kind: "choose", candidates: candidates.map((row: any) => ({
+        id: row.id, site: row.site, date: row.date, workType: row.workType, boqProjectId: row.boqProjectId,
+        engineer: row.engineer, lastEditedAt: row.lastEditedAt, createdAt: row.createdAt,
+      })) });
+    } catch (err) { sectionFailure(err, res); }
+  });
+  app.get("/api/dpr-sections/:id", async (req, res) => {
+    try {
+      if (!assertView(req, res, "site_dprs")) return;
+      const id = z.coerce.number().int().positive().parse(req.params.id);
+      const snapshot = await loadSectionSnapshot(id);
+      if (!snapshot) return res.status(404).json({ message: "DPR not found" });
+      const permitted = await getPermittedSiteNames(req);
+      if (permitted !== null && !siteMatchesPermitted(snapshot.dpr.site, permitted)) return res.status(403).json({ message: "Access denied for this site" });
+      return res.json(snapshot);
+    } catch (err) { sectionFailure(err, res); }
+  });
+  app.put("/api/dpr-sections/:section", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "site_dprs")) return;
+      const section = z.enum(DPR_SECTIONS).parse(req.params.section);
+      const context = normalizeDprSectionContext(sectionContextSchema.parse(req.body.context));
+      const dprId = z.number().int().positive().optional().parse(req.body.dprId);
+      const data = z.record(z.unknown()).parse(req.body.data);
+      const allowed = new Set([...DPR_SECTION_FIELDS[section], "engineer"]);
+      if (Object.keys(data).some(key => !allowed.has(key))) return res.status(400).json({ message: "Payload contains fields owned by a different section" });
+      if (!dprId) z.string().trim().min(1).parse(data.engineer);
+      const permitted = await getPermittedSiteNames(req);
+      if (permitted !== null && !siteMatchesPermitted(context.site, permitted)) return res.status(403).json({ message: "Access denied for this site" });
+      if (dprId) {
+        const existing = await storage.getDpr(dprId);
+        if (!existing) return res.status(404).json({ message: "DPR not found" });
+        if (permitted !== null && !siteMatchesPermitted(existing.site, permitted)) return res.status(403).json({ message: "Access denied for this site" });
+      }
+      const scopeToken = context.boqProjectId == null ? null : await storage.getProjectScopeVersionToken(context.boqProjectId);
+      const snapshot = await saveDprSection(db, storage, {
+        section, context, dprId, data, sectionToken: req.body.sectionToken, headerToken: req.body.headerToken,
+      }, req.authUser?.id ?? null, (input, id) => validateSectionAggregate(input, req, id, true), scopeToken);
+      return res.json(snapshot);
+    } catch (err) { sectionFailure(err, res); }
+  });
+
   app.post(api.dprs.create.path, async (req, res) => {
     let requestedDprStatus: string | undefined;
     try {
@@ -2471,8 +2576,14 @@ export async function registerRoutes(
         await storage.createNotification({ type: "success", title: "New DPR Submitted", message: `${input.engineer || 'Engineer'} submitted DPR for ${input.site} (${input.date})`, isRead: 0 });
         sendPushToSection("site_dprs", "New DPR Submitted", `${input.engineer || 'Engineer'} - ${input.site} - ${input.date}`, "/site-reports").catch(() => {});
       }
+      if (isDraft) {
+        const snapshot = await loadSectionSnapshot(dpr.id);
+        if (!snapshot) throw new DprSectionConflict("The created DPR is no longer available.");
+        return res.status(201).json({ ...snapshot.dpr, headerToken: snapshot.headerToken, sectionTokens: snapshot.sectionTokens });
+      }
       res.status(201).json(dpr);
     } catch (err) {
+      if (err instanceof DprSectionConflict) return sectionFailure(err, res);
       if ((err as any)?.code === "SCOPE_CHANGED_DURING_SUBMIT" || (err as any)?.code === "SCOPE_CHANGED_DURING_PLANNING") {
         const code = requestedDprStatus === "draft"
           ? "SCOPE_CHANGED_DURING_PLANNING"
@@ -2514,6 +2625,9 @@ export async function registerRoutes(
       if (permittedSiteNames !== null && !siteMatchesPermitted(existing.site, permittedSiteNames)) {
         return res.status(403).json({ message: "Access denied for this site" });
       }
+      const draftSnapshot = await loadSectionSnapshot(id);
+      if (!draftSnapshot) return res.status(404).json({ message: "DPR not found" });
+      assertSectionTokens(draftSnapshot, req.body);
       let input = createDprRequestSchema.parse(req.body);
       if (permittedSiteNames !== null && !siteMatchesPermitted(input.site, permittedSiteNames)) {
         return res.status(403).json({ message: "Access denied for this site" });
@@ -2563,10 +2677,17 @@ export async function registerRoutes(
       if (scopeError) return res.status(422).json({ message: scopeError.error, code: scopeError.code });
       // storage.updateDraftDpr(id, input, req.authUser?.id ?? null)
       // (scopeVersionToken is the fourth argument for the project-mutex handoff)
-      const updated = await storage.updateDraftDpr(id, input, req.authUser?.id ?? null, scopeVersionToken, projectRecoveryAllowed);
+      const updated = await storage.updateDraftDpr(id, input, req.authUser?.id ?? null, scopeVersionToken, projectRecoveryAllowed, {
+        headerToken: req.body.headerToken, sectionTokens: req.body.sectionTokens,
+      });
       if (!updated) return res.status(404).json({ message: "DPR not found or not a draft" });
-      res.json(updated);
+      const savedSnapshot = await loadSectionSnapshot(id);
+      if (!savedSnapshot) throw new DprSectionConflict("The saved DPR is no longer available. Reload before continuing.");
+      res.json({
+        ...savedSnapshot.dpr, sectionTokens: savedSnapshot.sectionTokens, headerToken: savedSnapshot.headerToken,
+      });
     } catch (err) {
+      if (err instanceof DprSectionConflict) return sectionFailure(err, res);
       if ((err as any)?.code === "SCOPE_CHANGED_DURING_PLANNING") {
         return res.status(409).json({ code: "SCOPE_CHANGED_DURING_PLANNING", message: (err as any).message });
       }
@@ -2596,7 +2717,7 @@ export async function registerRoutes(
   });
 
   // Submit a draft DPR (change to submitted, fire notification)
-  app.post("/api/dprs/:id/submit", async (req, res) => {
+  app.post(["/api/dprs/:id/submit", "/api/dpr-sections/:id/submit"], async (req, res) => {
     try {
       if (!assertCreate(req, res, "site_dprs")) return;
       const id = Number(req.params.id);
@@ -2607,7 +2728,12 @@ export async function registerRoutes(
       if (permittedSiteNames !== null && !siteMatchesPermitted(existing.site, permittedSiteNames)) {
         return res.status(403).json({ message: "Access denied for this site" });
       }
-      let input = createDprRequestSchema.parse(req.body);
+      const snapshot = await loadSectionSnapshot(id);
+      if (!snapshot) return res.status(404).json({ message: "DPR not found" });
+      assertSectionTokens(snapshot, req.body);
+      // Both legacy and section submissions now finalize saved content only.
+      // Unsaved form data must first be explicitly saved with its tokens.
+      let input = createDprRequestSchema.parse(snapshot.dpr);
       if (permittedSiteNames !== null && !siteMatchesPermitted(input.site, permittedSiteNames)) {
         return res.status(403).json({ message: "Access denied for this site" });
       }
@@ -2675,12 +2801,20 @@ export async function registerRoutes(
         userId: req.authUser?.id ?? null,
         userName: req.authUser ? currentUserName(req) : input.engineer,
         closedAt: new Date(),
-      }, scopeVersionToken, projectRecoveryAllowed);
+      }, scopeVersionToken, projectRecoveryAllowed, {
+        headerToken: req.body.headerToken, sectionTokens: req.body.sectionTokens, stored: true,
+        validate: async (aggregate: any, dprId: number) => {
+          const validated = createDprRequestSchema.parse(aggregate);
+          await validateSectionAggregate(validated, req, dprId, false);
+          return validated;
+        },
+      });
       if (!submitted) return res.status(404).json({ message: "DPR not found or not a draft" });
       await storage.createNotification({ type: "success", title: "New DPR Submitted", message: `${submitted.engineer || 'Engineer'} submitted DPR for ${submitted.site} (${submitted.date})`, isRead: 0 });
       sendPushToSection("site_dprs", "New DPR Submitted", `${submitted.engineer || 'Engineer'} - ${submitted.site} - ${submitted.date}`, "/site-reports").catch(() => {});
       res.json(submitted);
     } catch (err) {
+      if (err instanceof DprSectionConflict || (err as any)?.status) return sectionFailure(err, res);
       if ((err as any)?.code === "SCOPE_CHANGED_DURING_SUBMIT" || (err as any)?.code === "SCOPE_CHANGED_DURING_PLANNING") {
         return res.status(409).json({ code: "SCOPE_CHANGED_DURING_SUBMIT", message: (err as any).message });
       }

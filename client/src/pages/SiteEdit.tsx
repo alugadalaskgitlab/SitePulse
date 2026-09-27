@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { readDprWriteTokens, requireDprWriteTokens, type DprWriteTokens } from "@/lib/dprSectionTokens";
 import { useLocation, useRoute, Link } from "wouter";
 import { useAuth } from "@/lib/auth-context";
 import { ChevronLeft, Plus, Trash2, Save, Loader2, UserPlus, X, Shield, Check, Send, Camera, Image as ImageIcon, Paperclip } from "lucide-react";
@@ -225,7 +226,7 @@ const STRUCTURE_UOM_OPTIONS = ["m³", "m²", "m", "MT", "Nos", "RM"];
 
 // Shared mapping from a raw DPR object to typed form state.
 // Used for initial load, draft comparison, and discard-draft restore.
-function mapDprToFormState(dpr: any) {
+export function mapDprToFormState(dpr: any) {
   const baseSite = dpr.site.replace(/ – (Edited by|Copy by) .+$/, '').trim();
   const header = {
     date: dpr.date,
@@ -468,6 +469,8 @@ export default function SiteEdit() {
   const formInitializedRef = useRef(false);
   // JSON snapshot of the server-provided form state; used to detect real user edits before saving a draft
   const serverSnapshotRef = useRef<string | null>(null);
+  const draftWriteTokensRef = useRef<DprWriteTokens | null>(null);
+  const draftSnapshotHydratedRef = useRef(false);
 
   const { data: equipmentMaster } = useQuery<EquipmentMasterType[]>({
     queryKey: ["/api/plant-module/equipment", "all"],
@@ -601,7 +604,7 @@ export default function SiteEdit() {
   const [progress, setProgress] = useState<ProgressEntry[]>([
     { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", lengthOverrideReason: "", uomOverrideReason: "", executedBy: "", layerNo: null, isIncidental: false, incidentalDescription: "" }
   ]);
-  const isDraftDpr = (dpr as any)?.dprStatus === "draft";
+  const isDraftDpr = (dpr as any)?.dprStatus === "draft" || draftSnapshotHydratedRef.current;
 
   // Batch 06B — chainage duplicate/overlap guard (same neutral shared helper
   // as Guided/Detailed entry, Progress Report and the server recheck). The
@@ -829,6 +832,13 @@ export default function SiteEdit() {
 
   useEffect(() => {
     if (!dpr) return;
+    // Do not silently advance a mounted draft's baseline on query refetch.
+    // Its fields and tokens must describe the same snapshot the user reviewed.
+    if (draftSnapshotHydratedRef.current && formInitializedRef.current) return;
+    if (dpr.dprStatus === "draft") {
+      draftSnapshotHydratedRef.current = true;
+      draftWriteTokensRef.current = readDprWriteTokens(dpr);
+    }
 
     // Compute and store the canonical server-side form state for dirty-checking
     const serverState = mapDprToFormState(dpr);
@@ -844,9 +854,12 @@ export default function SiteEdit() {
     const savedDraft = sessionStorage.getItem(DRAFT_KEY);
     if (savedDraft) {
       try {
-        const draft = JSON.parse(savedDraft);
+        const { _writeTokens, ...draft } = JSON.parse(savedDraft);
         // Only restore the draft if it actually differs from the server state
         if (JSON.stringify(draft) !== serverJson) {
+          // A restored local form must carry its own original server baseline,
+          // never borrow newer tokens from today's GET.
+          if (dpr.dprStatus === "draft") draftWriteTokensRef.current = readDprWriteTokens(_writeTokens);
           setHeader(draft.header || serverState.header);
           const hasDraftProject = Object.prototype.hasOwnProperty.call(draft, "boqProjectId");
           const draftProjectId = draft.boqProjectId;
@@ -943,7 +956,7 @@ export default function SiteEdit() {
       sessionStorage.removeItem(DRAFT_KEY);
       return;
     }
-    sessionStorage.setItem(DRAFT_KEY, draftJson);
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ ...draft, _writeTokens: draftWriteTokensRef.current }));
   }, [
     dpr,
     header,
@@ -1428,14 +1441,31 @@ export default function SiteEdit() {
     sitePurchases: sitePurchases.filter(sp => sp.itemDescription),
   });
 
+  const adoptPersistedDraft = (data: any) => {
+    draftWriteTokensRef.current = readDprWriteTokens(data);
+    const state = mapDprToFormState(data);
+    setHeader(state.header);
+    setWorkType(state.workType);
+    setStructureItems(state.structureItems);
+    setProgress(state.progress);
+    setEquipment(state.equipment);
+    setLabour(state.labour);
+    setMaterials(state.materials);
+    setSitePurchases(state.sitePurchases);
+    setBoqProjectPreference({ resolved: true, projectId: data.boqProjectId ?? null });
+    serverSnapshotRef.current = JSON.stringify({ ...state, boqProjectId: data.boqProjectId ?? null });
+    setDraftRestored(false);
+  };
+
   const draftSaveMutation = useMutation({
     mutationFn: async (payload: any) => {
       const response = await apiRequest("PATCH", `/api/dprs/${id}/draft`, {
-        ...payload, equipment: await prepareBreakdownAttachments(payload.equipment),
+        ...payload, ...requireDprWriteTokens(draftWriteTokensRef.current), equipment: await prepareBreakdownAttachments(payload.equipment),
       });
       return response.json();
     },
-    onSuccess: async () => {
+    onSuccess: async (data) => {
+      adoptPersistedDraft(data);
       sessionStorage.removeItem(DRAFT_KEY);
       // Batch 06C §22: draft saves keep the same DPR id — upload staged
       // per-activity photos now so they survive close/reopen.
@@ -1484,8 +1514,13 @@ export default function SiteEdit() {
   const submitDraftMutation = useMutation({
     mutationFn: async (payload: any) => {
       const clientTimestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+      const saved = await apiRequest("PATCH", `/api/dprs/${id}/draft`, {
+        ...payload, ...requireDprWriteTokens(draftWriteTokensRef.current),
+        equipment: await prepareBreakdownAttachments(payload.equipment),
+      });
+      adoptPersistedDraft(await saved.json());
       const response = await apiRequest("POST", `/api/dprs/${id}/submit`, {
-        ...payload, equipment: await prepareBreakdownAttachments(payload.equipment), clientTimestamp,
+        ...requireDprWriteTokens(draftWriteTokensRef.current), clientTimestamp,
       });
       return response.json();
     },
@@ -1740,6 +1775,10 @@ export default function SiteEdit() {
               sessionStorage.removeItem(DRAFT_KEY);
               setDraftRestored(false);
               if (dpr) {
+                if (dpr.dprStatus === "draft") {
+                  adoptPersistedDraft(dpr);
+                  return;
+                }
                 const serverState = mapDprToFormState(dpr);
                 const hasSavedProject = Object.prototype.hasOwnProperty.call(dpr, "boqProjectId");
                 setBoqProjectPreference(

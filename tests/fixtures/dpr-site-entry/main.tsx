@@ -1,6 +1,8 @@
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import SiteEntry from "../../../client/src/pages/SiteEntry";
+import DprSections from "../../../client/src/pages/DprSections";
+import { installDpr13Adapter } from "./dpr13-adapter";
 import SiteEdit from "../../../client/src/pages/SiteEdit";
 import SiteSuccess from "../../../client/src/pages/SiteSuccess";
 import SiteMaterialTrips from "../../../client/src/pages/SiteMaterialTrips";
@@ -2009,6 +2011,7 @@ window.history.pushState = ((state: any, title: string, url?: string | URL | nul
 }) as typeof window.history.pushState;
 
 const mount = () => {
+  installDpr13Adapter();
   queryClient.clear();
   const isEdit = window.location.pathname.startsWith("/site/edit/");
   const isSiteSuccess = window.location.pathname.startsWith("/site/success/");
@@ -2023,12 +2026,16 @@ const mount = () => {
   appRoot = createRoot(document.getElementById("root")!);
   appRoot.render(
     <QueryClientProvider client={queryClient}>
+      {new URLSearchParams(window.location.search).has("dpr13Legacy") && <header className="border border-amber-500 bg-amber-50 p-4">DPR-13 synthetic legacy-token fixture — real Guided/SiteEdit components, intercepted API only.</header>}
       <Dpr07EvidenceBanner />
         <Dpr10EvidenceBanner />
         <Dpr08EvidenceBanner />
         <Dpr09EvidenceBanner />
         <DprNullEvidenceBanner />
-      {isGuidedReport
+      {window.location.pathname.includes("dpr13") ? <>
+        <header className="border border-amber-500 bg-amber-50 p-4 mb-5">DPR-13 synthetic intercepted-backend fixture — actual production menu and section cards. No production data or writes.</header>
+        <DprSections />
+      </> : isGuidedReport
         ? <FixtureSavedReport />
         : isSiteSuccess
           ? <SiteSuccess />
