@@ -3951,3 +3951,17 @@ mtime_ms = 1790565863491
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/eac55574-3593-4764-96bd-0de51de91299/44833dc9-05c7-4c1d-bdc8-4819e1acef64"
 storage_version_token = "1790566007509533"
 content_type = "image/png"
+
+[[outputs]]
+id = "MPU9sX88vkvmqjRD4cH1L"
+uri = "file://screenshots/dpr14-desktop-initial.png"
+type = "image"
+title = "DPR-14 — condensed DPR mockup"
+description = "Mockup only, illustrative sample data. Missing-item banner, collapsed activities and one compact equipment summary."
+logical_id = "cb233e38-e6c6-4397-8411-69f037383d7f"
+content_hash = "sha256:a7d69b1ab8d25db888022e9f004ad329190d35b9bf9de033964b37f155c64351"
+size = 125291
+mtime_ms = 1790611845157
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/cb233e38-e6c6-4397-8411-69f037383d7f/396bea9f-b2b0-48bd-a2a2-a0860c5413ef"
+storage_version_token = "1790611916198830"
+content_type = "image/png"
