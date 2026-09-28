@@ -1,0 +1,39 @@
+INSTRUCTION DPR-14: Build a MOCKUP-ONLY prototype of a condensed Activity/Equipment layout plus a submit-readiness banner — for review, not for wiring into the real DPR yet
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a design-review step, same as DPR-13 Part A. Build a working, clickable PROTOTYPE screen only — do not wire it into the real DPR save/submit flow, do not touch DprSections.tsx, SiteEntry.tsx, SiteEdit.tsx, DprEquipmentCompact.tsx, evaluateDprSubmitReadiness, or any real API route. The prototype can live at a new, separate route (e.g. `/internal/dpr-mockup` or similar, gated so it's not reachable by field users) and can use hardcoded/sample data modeled on real DPR-342's actual values (given below) — it does not need to hit the database. Do not touch HOME-01, DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, PERM-01/02, or DPR-13's already-delivered work. Do not publish automatically. STOP after this and report back with a link/screenshot for review — do NOT proceed to real implementation until told to.
+
+BACKGROUND (confirmed by direct code review — do not re-derive)
+1. Today's real Activity Progress section and Equipment Log section (rendered in the DPR view/edit screens) are very tall per row: each activity shows a full always-expanded form (BOQ dropdown, side/chainage/L-W-T grid, a programme-context paragraph, a selected-reach row, layer/lift + UOM + physical qty row, a large outcome box, personnel, photos), and each equipment entry shows Equipment / Usage Start / Usage End / a separate "Usage Summary" block / Fuel / Fuel Performance / Work Assignment. Most of this is either empty, read-only, or genuinely duplicated.
+2. CONFIRMED real duplication: `client/src/components/DprEquipmentCompact.tsx`, in the `!editable` (view) branch — "Meter Working Hours" and "Clock Duration" are rendered once inside the "Usage End" block (~line 270) and rendered AGAIN with the identical computed values inside a separate "Usage Summary" block (~lines 273-286). Same values, two places, no added information.
+3. The "Draft — not submitted" badge (`client/src/pages/DprDetails.tsx` ~line 237, also shown on `SiteDashboard.tsx`/`Home.tsx`/`ReportHeader.tsx`) is generic everywhere it appears — none of these components call `evaluateDprSubmitReadiness` (`shared/dprSubmitReadiness.ts`), so nobody sees WHY a DPR is still draft except deep inside `DprSections.tsx`'s "Review & Submit" panel (~line 195-199), which does correctly list per-activity issues (`readiness.mandatory.map(issue => issue.label + issue.message)`) — but only there, after clicking Review.
+4. The "material outcome" (fully_reusable/partly_reusable/unsuitable) mandatory check ONLY applies to activities flagged `isRoadwayExcavation` (`shared/dprSubmitReadiness.ts` ~line 172, `client/src/lib/cutFillLedger.ts`'s `isRoadwayExcavationRow`) — embankment/fill activities never need this field, so a DPR can be fully ready with only its excavation row's outcome set.
+5. Separately, and NOT to be confused with the above: the "Actual outcome: Not recorded" / outcome-history text seen on the read-only DPR View page comes from a completely different, unrelated feature — `client/src/components/ProgrammeBarOutcomeHistory.tsx`, a read-only programme-schedule tracker (`client/src/pages/SiteReport.tsx` ~lines 531, 564) — it has no connection to `evaluateDprSubmitReadiness` or the `materialOutcome` field, despite using similar wording. This is a genuine source of confusion worth fixing in copy, not logic.
+6. The confusing note "This is embankment/fill work. To track cut material usage, link this activity to an Execution Arrangement set to 'Reused excavated' with an excavation source" (seen in the current Activity form) is jargon that doesn't tell the person what to actually do.
+
+FIX — build these three things as a static/prototype screen (sample data is fine, real API wiring is NOT required for this step)
+
+PART A — Submit-readiness banner
+At the top of the mockup DPR screen, show a compact banner (only when something is actually missing) listing each specific blocking item in plain language with a "Fix →" link that would jump to that field (in the mockup, the link can just scroll to/highlight the relevant section — no need to wire real navigation yet). Example content, modeled on real DPR-342 data: "Roadway excavation — material outcome not set" and "Excavator — closing tank reading not confirmed." When nothing is missing, show nothing (no banner clutter on a ready DPR).
+
+PART B — Condensed Activity section
+Each activity as a single-line collapsed summary by default: activity name + reach/chainage + recorded quantity, with a status chip (e.g. "Outcome needed" in amber, or a checkmark when complete). Tapping/clicking expands to show the full detail (side/chainage/L-W-T, physical qty, personnel, photos) only when the person wants it. For embankment/fill rows that pull from an excavation source, replace the "link this activity to an Execution Arrangement..." jargon with a plain sentence: "Material source: [Roadway excavation, Reach 2]" with a "Change" link — no mention of "Execution Arrangement" in the visible copy.
+
+PART C — Condensed Equipment Log section
+Each machine as one compact card: header row (machine, operator, hire status, working/idle chip), then a single stat grid (Meter hours, Clock duration, Diesel issued, Tank-confirm status) shown ONCE each — no separate "Usage Summary" repeating the same numbers. Opening/closing tank values and consumption shown below the grid, with a clear inline note when consumption is "Incomplete" explaining why (e.g. "tank not confirmed") rather than a bare "Incomplete" label.
+
+WHAT NOT TO DO
+- Do not wire this into the real DPR save/submit flow, real API routes, or evaluateDprSubmitReadiness in this step — mockup/prototype only, sample data is fine.
+- Do not touch DprSections.tsx, SiteEntry.tsx, SiteEdit.tsx, DprEquipmentCompact.tsx, or ProgrammeBarOutcomeHistory.tsx's real logic.
+- Do not touch HOME-01, DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, PERM-01/02, or DPR-13.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change. No real data writes. Sample/hardcoded data only for this prototype.
+
+REPORT BACK
+1. A link to the mockup screen (and/or screenshots) showing Part A, B, and C.
+2. Explicitly wait for review and approval before any of this is turned into a real implementation instruction.
+3. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
