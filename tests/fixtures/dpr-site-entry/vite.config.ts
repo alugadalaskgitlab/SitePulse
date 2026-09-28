@@ -6,6 +6,9 @@ const fixtureRoot = path.resolve(import.meta.dirname);
 const clientRoot = path.resolve(fixtureRoot, "../../../client/src");
 
 export default defineConfig({
+  // Fixture and production dev server must not invalidate one another's
+  // dependency optimizer hashes when both run during browser verification.
+  cacheDir: path.resolve(fixtureRoot, "../../../.cache/dpr-site-entry-vite"),
   plugins: [react()],
   resolve: {
     alias: [

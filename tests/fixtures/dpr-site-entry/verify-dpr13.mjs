@@ -10,12 +10,15 @@ await new Promise(resolve => socket.once("open", resolve));
 let seq = 0;
 const pending = new Map();
 const browserErrors = [];
+const networkFailures = [];
 let acceptDialogs = true;
 let dialogCount = 0;
 socket.on("message", raw => {
   const msg = JSON.parse(raw);
   if (msg.method === "Page.javascriptDialogOpening") { dialogCount++; void call("Page.handleJavaScriptDialog", { accept: acceptDialogs }); }
   if (msg.method === "Runtime.exceptionThrown") browserErrors.push(msg.params.exceptionDetails);
+  if (msg.method === "Network.loadingFailed") networkFailures.push(msg.params);
+  if (msg.method === "Network.responseReceived" && msg.params.response.status >= 400) networkFailures.push({ url: msg.params.response.url, status: msg.params.response.status });
   if (pending.has(msg.id)) {
     const { resolve, reject, timer } = pending.get(msg.id);
     clearTimeout(timer); pending.delete(msg.id);
@@ -38,7 +41,7 @@ async function evaluate(expression) {
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function wait(expression) {
   for (let i = 0; i < 200; i++) { if (await evaluate(expression)) return; await sleep(70); }
-  throw new Error(`Timeout: ${expression}\n${await evaluate("document.body.innerText")}`);
+  throw new Error(`Timeout: ${expression}\n${await evaluate("document.body.innerText")}\nRuntime exceptions: ${JSON.stringify(browserErrors)}\nNetwork failures: ${JSON.stringify(networkFailures)}\nFixture trace: ${JSON.stringify(await evaluate("window.__Dpr13Fixture?.requests"))}`);
 }
 const q = JSON.stringify;
 async function click(text, exact = true) {
@@ -64,10 +67,26 @@ async function screenshot(name, fullPage = true) {
 }
 const contextPath = "/fixture/dpr13?site=NARASIMHULU%20ROAD&date=2026-08-05&type=road";
 try {
-  await call("Page.enable"); await call("Runtime.enable");
+  await call("Page.enable"); await call("Runtime.enable"); await call("Network.enable");
+  await call("Network.setCacheDisabled", { cacheDisabled: true });
   await call("Emulation.setDeviceMetricsOverride", { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
   await navigate(contextPath);
   await evaluate("window.__Dpr13Fixture.reset()");
+  await input("#dpr-engineer", "SYNTHETIC FALLBACK ENGINEER");
+  await screenshot("dpr13-deliberate-fallback-menu");
+  await click("Use combined Detailed editor");
+  await wait("location.pathname === '/site/combined' && document.body.innerText.includes('Detailed DPR')");
+  await wait("document.querySelector('[data-testid=\"input-date\"]')?.value === '2026-08-05'");
+  await screenshot("dpr13-combined-detailed-fallback");
+  await evaluate("document.querySelector('[data-testid=\"button-back\"]').click()");
+  await wait("location.pathname === '/site/new' && !!document.querySelector('#dpr-engineer')");
+  await click("Use combined Guided editor");
+  await wait("location.pathname === '/site/guided/combined' && document.body.innerText.includes('Guided DPR')");
+  await wait("document.querySelector('[data-testid=\"input-date\"]')?.value === '2026-08-05'");
+  await screenshot("dpr13-combined-guided-fallback");
+  await evaluate("document.querySelector('[data-testid=\"button-back\"]').click()");
+  await wait("location.pathname === '/site/new' && !!document.querySelector('#dpr-engineer')");
+  await navigate(contextPath);
   await input("#dpr-engineer", "SYNTHETIC ENGINEER");
   await click("Open sections");
   await click("equipment", false);
@@ -77,10 +96,26 @@ try {
   await evaluate("Array.from(document.querySelectorAll('[role=\"option\"]')).find(n=>n.textContent.includes('Other / Unlisted')).click()");
   await input('[data-testid="input-equipment-other-0"]', "SYNTHETIC ROLLER");
   await input('[data-testid="input-equipment-opening-0"]', "100");
+  await evaluate("window.__Dpr13Fixture.loseNextReceipt=true");
+  await click("Save & return");
+  await wait("window.__Dpr13Fixture.snapshot?.dpr.equipment?.[0]?.openingReading === 100 && document.body.innerText.includes('Synthetic response lost after commit')");
+  await wait("!Array.from(document.querySelectorAll('button')).find(n=>n.textContent==='Save Section')?.disabled");
   await click("Save & return");
   await wait("window.__Dpr13Fixture.snapshot?.dpr.equipment?.[0]?.openingReading === 100");
+  await wait("!document.querySelector('[data-testid=\"input-equipment-opening-0\"]')");
+  if (!(await evaluate("(() => {const writes=window.__Dpr13Fixture.requests.filter(r=>r.method==='PUT');return writes.length===2 && !!writes[0].body.clientKey && writes[0].body.clientKey===writes[1].body.clientKey && JSON.stringify(writes[0].body)===JSON.stringify(writes[1].body)})()"))) throw new Error("Ambiguous section retry did not preserve exact write/key");
   await screenshot("dpr13-equipment-first-menu");
   if (!(await evaluate("location.search.includes('dprId=1301')"))) throw new Error("First save did not publish canonical id");
+  await click("Use combined Detailed editor");
+  await wait("location.pathname === '/site/edit/1301' && location.search.includes('combined=1') && !!document.querySelector('[data-testid=\"button-save-draft-progress\"]')");
+  await screenshot("dpr13-existing-draft-combined-detailed");
+  await evaluate("document.querySelector('[data-testid=\"button-back\"]').click()");
+  await wait("location.pathname === '/site/work/1301' && document.body.innerText.includes('DPR #1301')");
+  await click("Use combined Guided editor");
+  await wait("location.pathname === '/site/guided/combined' && document.body.innerText.includes('Draft #1301')");
+  await screenshot("dpr13-existing-draft-combined-guided");
+  await evaluate("document.querySelector('[data-testid=\"button-back\"]').click()");
+  await wait("location.pathname === '/site/work/1301' && document.body.innerText.includes('DPR #1301')");
   await click("Activity / Progress", false);
   await wait("document.body.innerText.includes('Road Works Progress')");
   if (await evaluate("!!document.querySelector('[data-testid=\"select-equipment-0\"]')")) throw new Error("Equipment fields leaked into activity");
@@ -332,6 +367,51 @@ try {
   await wait("window.__Dpr13Fixture.snapshot.context.boqProjectId === 5501");
   if (!(await evaluate("window.__Dpr13Fixture.snapshot.dpr.id === 1301 && window.__Dpr13Fixture.snapshot.dpr.equipment[0].openingReading === 432 && window.__Dpr13Fixture.snapshot.dpr.progress[0].boqItemId === 8801"))) throw new Error("Null-project Equipment-first draft did not recover its unique BOQ project without losing Equipment");
   await screenshot("dpr13-null-project-recovery");
+  // Synthetic persisted Activity assignments must survive a round-trip through
+  // the real Guided editor, which deliberately has no personnel controls.
+  await evaluate(`(() => {
+    const s=structuredClone(window.__Dpr13Fixture.snapshot);
+    Object.assign(s.dpr.progress[0],{entryKey:'synthetic-personnel-work',personnelIds:[77101,77102],
+      chainageFrom:'0+000',chainageTo:'0+020',length:17,lengthOverrideReason:'Synthetic measured length',
+      quantity:17,width:1,quantitySource:'measured'});
+    s.dpr.progress.push({id:19102,entryKey:'synthetic-personnel-no-work',activity:'NO SITE WORK',
+      noSiteWork:true,noSiteWorkDescription:'Synthetic rain',personnelIds:[77103],quantity:null,uom:'SQM'});
+    s.dpr.labour=[{id:19201,category:'',gender:'female',count:3,contractor:'',task:'SYNTHETIC PENDING CATEGORY',boqItemId:null,structureId:null}];
+    s.dpr.materials=[{id:19301,type:'Received',material:'SYNTHETIC GUIDED CEMENT',quantity:2,uom:'MT',supplier:'SYNTHETIC SUPPLIER',vehicleNumber:'SYNTH-MAT',receiptNumber:'SYNTH-REC',location:'SYNTHETIC LOCATION',boqItemId:null,structureId:null}];
+    s.dpr.sitePurchases=[{id:19401,itemDescription:'SYNTHETIC GUIDED PURCHASE',vendor:'SYNTHETIC VENDOR',billNo:'SYNTH-BILL',amount:125,quantity:5,uom:'NOS'}];
+    window.__Dpr13Fixture.seed(s);
+  })()`);
+  await navigate(contextPath + "&boqProjectId=5501");
+  await click("Open sections");
+  await click("Activity / Progress", false);
+  await click("Save & return");
+  await wait("!document.querySelector('[data-testid=\"progress-0-item-select\"]')");
+  if (!(await evaluate("JSON.stringify(window.__Dpr13Fixture.snapshot.dpr.progress.map(p=>p.personnelIds))==='[[77101,77102],[77103]]'"))) throw new Error("Activity save lost synthetic personnel assignments");
+  // Separately emulate a persisted Detailed manual-length correction; the
+  // section form normalizes its own geometry when saving above.
+  await evaluate("(() => { const s=structuredClone(window.__Dpr13Fixture.snapshot); s.dpr.progress[0].length=17; window.__Dpr13Fixture.seed(s); })()");
+  await click("Use combined Guided editor");
+  await wait("document.body.innerText.includes('Draft #1301')");
+  await evaluate("document.querySelector('[data-testid=\"button-save-draft\"]').click()");
+  await wait("location.pathname === '/site/work/1301' && document.body.innerText.includes('DPR #1301')");
+  if (!(await evaluate("(() => {const r=window.__Dpr13Fixture.requests.find(r=>r.method==='PATCH');return JSON.stringify(r.body.progress.map(p=>p.personnelIds))==='[[77101,77102],[77103]]' && r.body.progress[0].length===17 && r.body.progress[0].lengthOverrideReason==='Synthetic measured length'})()"))) throw new Error("Guided PATCH erased Activity personnel or manual length: " + JSON.stringify(await evaluate("window.__Dpr13Fixture.requests.find(r=>r.method==='PATCH')?.body.progress")));
+  if (!(await evaluate("(() => {const b=window.__Dpr13Fixture.requests.find(r=>r.method==='PATCH').body;return b.labour[0].category==='' && b.labour[0].count===3 && b.labour[0].task==='SYNTHETIC PENDING CATEGORY' && b.materials[0].receiptNumber==='SYNTH-REC' && b.materials[0].supplier==='SYNTHETIC SUPPLIER' && b.sitePurchases[0].billNo==='SYNTH-BILL' && b.sitePurchases[0].amount===125})()"))) throw new Error("Guided roundtrip lost partial labour or unmanaged receipt/purchase fields");
+  await click("Activity / Progress", false);
+  await wait("!!document.querySelector('[data-testid=\"progress-0-item-select\"]')");
+  if (!(await evaluate("JSON.stringify(window.__Dpr13Fixture.snapshot.dpr.progress.map(p=>p.personnelIds))==='[[77101,77102],[77103]]'"))) throw new Error("Activity reopen lost personnel after Guided save");
+  await screenshot("dpr13-activity-guided-personnel-roundtrip");
+  await click("Return to sections");
+  // The established Detailed switch is deliberately restricted to its
+  // compatible subset; use a compatible empty draft to verify its route.
+  await evaluate(`(() => {
+    const s=structuredClone(window.__Dpr13Fixture.snapshot);
+    for(const key of ['progress','equipment','labour','materials','sitePurchases','structureItems']) s.dpr[key]=[];
+    window.__Dpr13Fixture.seed(s);
+  })()`);
+  await navigate("/site/edit/1301?combined=1&returnTo=%2Fsite%2Fwork%2F1301", "!!document.querySelector('[data-testid=\"button-switch-guided\"]')");
+  await evaluate("document.querySelector('[data-testid=\"button-switch-guided\"]').click()");
+  await wait("location.pathname === '/site/guided/combined' && document.body.innerText.includes('Draft #1301')");
+  await screenshot("dpr13-detailed-guided-switch");
 
   const seedLegacy = async () => evaluate(`(() => {
     const s=structuredClone(window.__Dpr13Fixture.snapshot);
@@ -357,19 +437,40 @@ try {
   await wait("window.__Dpr13Fixture.snapshot.dpr.dprStatus === 'submitted'");
   if (!(await evaluate("window.__Dpr13Fixture.requests.filter(r=>r.method==='PATCH').length===1 && window.__Dpr13Fixture.requests.find(r=>r.path.endsWith('/submit')).body.sectionTokens.equipment.endsWith('legacy') && window.__Dpr13Fixture.snapshot.dpr.remarks === 'SYNTHETIC LEGACY SUBMIT'"))) throw new Error("Legacy SiteEdit submit did not persist then use returned tokens");
   await seedLegacy();
-  await navigate("/guided?draftId=1301&section=review&dpr13Legacy=1", "!!document.querySelector('[data-testid=\"button-submit\"]')");
+  await navigate("/guided?draftId=1301&section=review&dpr13Legacy=1", "!!document.querySelector('[data-testid=\"button-submit\"]') && !!document.querySelector('[data-testid=\"badge-editing-draft\"]')");
   await evaluate("window.__Dpr13Fixture.remoteChange(); document.querySelector('[data-testid=\"button-save-draft\"]').click()");
   await wait("window.__Dpr13Fixture.requests.some(r=>r.method==='PATCH')");
   if (!(await evaluate("window.__Dpr13Fixture.requests.find(r=>r.method==='PATCH').body.sectionTokens.equipment === 'legacy-e0'"))) throw new Error("Legacy Guided masked stale token");
   if (!(await evaluate("window.__Dpr13Fixture.requests.filter(r=>r.method==='GET' && r.path==='/api/dprs/1301').length===1"))) throw new Error("Legacy Guided fetched a fresh baseline at save");
   await evaluate("sessionStorage.clear()");
-  await navigate("/guided?draftId=1301&section=review&dpr13Legacy=1", "!!document.querySelector('[data-testid=\"button-submit\"]')");
+  await navigate("/guided?draftId=1301&section=review&dpr13Legacy=1", "!!document.querySelector('[data-testid=\"button-submit\"]') && !!document.querySelector('[data-testid=\"badge-editing-draft\"]')");
   await evaluate("document.querySelector('[data-testid=\"button-submit\"]').click()");
   await wait("window.__Dpr13Fixture.snapshot.dpr.dprStatus === 'submitted'");
   if (!(await evaluate("window.__Dpr13Fixture.requests.filter(r=>r.method==='PATCH').length===1 && window.__Dpr13Fixture.requests.find(r=>r.path.endsWith('/submit')).body.sectionTokens.equipment.endsWith('legacy')"))) throw new Error("Legacy Guided submit did not use returned PATCH tokens");
+  await evaluate("window.__Dpr13Fixture.reset(); sessionStorage.clear()");
+  await navigate(contextPath);
+  await input("#dpr-engineer", "SYNTHETIC PHOTO RETRY ENGINEER");
+  await click("Use combined Detailed editor");
+  await wait("location.pathname === '/site/combined'");
+  await evaluate("document.querySelector('[data-testid=\"select-equipment-0\"]').click()");
+  await wait("Array.from(document.querySelectorAll('[role=\"option\"]')).some(n=>n.textContent.includes('Other / Unlisted'))");
+  await evaluate("Array.from(document.querySelectorAll('[role=\"option\"]')).find(n=>n.textContent.includes('Other / Unlisted')).click()");
+  await input('[data-testid="input-equipment-other-0"]', "SYNTHETIC PHOTO RETRY MACHINE");
+  await input('[data-testid="input-equipment-opening-0"]', "200");
+  await evaluate(`(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='), c => c.charCodeAt(0))], 'synthetic-combined-photo.png', {type:'image/png'}));
+    const node=document.querySelector('[data-testid="input-dpr-photo-gallery"]');
+    node.files=transfer.files; node.dispatchEvent(new Event('change',{bubbles:true}));
+    window.__Dpr13Fixture.failPhotoNext=true;
+  })()`);
+  await evaluate("document.querySelector('[data-testid=\"button-save-draft\"]').click()");
+  await wait("location.pathname==='/site/edit/1301' && location.search.includes('combined=1') && !!document.querySelector('[data-testid=\"button-save-draft-progress\"]')");
+  if (!(await evaluate("window.__Dpr13Fixture.snapshot.dpr.equipment[0].openingReading===200 && window.__Dpr13Fixture.requests.filter(r=>r.path==='/api/dprs' && r.method==='POST').length===1"))) throw new Error("Combined photo failure did not retain the one canonical draft");
+  await screenshot("dpr13-combined-photo-failure-editor");
   if (browserErrors.length) throw new Error(JSON.stringify(browserErrors));
   mkdirSync("tests/fixtures/dpr-site-entry/evidence", { recursive: true });
   const shot = await call("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
   writeFileSync("tests/fixtures/dpr-site-entry/evidence/dpr13.png", Buffer.from(shot.data, "base64"));
-  console.log("PASS DPR-13 synthetic browser fixture: independent sections/purchases, canonical reopen, null-project BOQ recovery, dirty/conflict/stale-submit guards, explicit chooser, photo retry identities, stoppage save/reopen/edit with evidence retry and preserved identities/metadata, field hydration/continuity, legacy SiteEdit/Guided snapshot-token PATCH then submit.");
+  console.log("PASS DPR-13 synthetic browser fixture: default sections and combined fallbacks, cross-mode personnel/manual-length/partial-labour/receipt preservation, combined photo-failure and Guided-switch routes, exact clientKey retry, purchases, BOQ recovery, conflict guards, chooser, photo/stoppage identities, continuity, legacy snapshot-token PATCH then submit.");
 } finally { socket.close(); }

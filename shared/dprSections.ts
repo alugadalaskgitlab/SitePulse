@@ -6,6 +6,16 @@ import { isMeaningfulEquipmentRow } from "./equipmentUsage";
 export const DPR_SECTIONS = ["activity", "equipment", "labour", "materials"] as const;
 export type DprSection = typeof DPR_SECTIONS[number];
 export type DprSectionContext = { site: string; date: string; workType: string; boqProjectId: number | null };
+export type DprSectionSaveRequest = {
+  section: DprSection;
+  context: DprSectionContext;
+  dprId?: number;
+  data: Partial<CreateDprRequest>;
+  headerToken?: string;
+  sectionToken?: string;
+  /** Stable per exact attempt, including tokens/body; reuse only for network retry. */
+  clientKey?: string;
+};
 export type DprSectionState = { state: "empty" | "incomplete" | "ready"; label: string; issues?: any[] };
 export type DprSectionSnapshot = {
   dpr: any;

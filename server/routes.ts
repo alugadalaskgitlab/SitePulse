@@ -2517,6 +2517,8 @@ export async function registerRoutes(
       const scopeToken = context.boqProjectId == null ? null : await storage.getProjectScopeVersionToken(context.boqProjectId);
       const snapshot = await saveDprSection(db, storage, {
         section, context, dprId, data, sectionToken: req.body.sectionToken, headerToken: req.body.headerToken,
+        clientKey: z.string().min(16).max(128).optional().parse(req.body.clientKey),
+        actorName: req.authUser?.fullName,
       }, req.authUser?.id ?? null, (input, id) => validateSectionAggregate(input, req, id, true), scopeToken);
       return res.json(snapshot);
     } catch (err) { sectionFailure(err, res); }

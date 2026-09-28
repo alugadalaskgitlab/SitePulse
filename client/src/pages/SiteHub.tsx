@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import {
   FileText, Package, ClipboardList, TrendingUp, Fuel, ShoppingCart, Boxes,
@@ -9,7 +10,6 @@ import { roadDprHref } from "@/lib/dprEntryMode";
 import { HubActionTile } from "@/components/HubActionTile";
 import { useAuth } from "@/lib/auth-context";
 
-const TODAY = format(new Date(), "yyyy-MM-dd");
 const HUB = "/site/hub";
 
 function KpiCard({ label, value, sub, highlight }: {
@@ -36,19 +36,27 @@ function KpiCard({ label, value, sub, highlight }: {
 
 export default function SiteHub() {
   const { sectionVisible } = useAuth();
+  const [localNow, setLocalNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setLocalNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const today = format(localNow, "yyyy-MM-dd");
+  const afterDprCutoff = localNow.getHours() >= 18;
 
   const { data: dprs = [] } = useQuery<any[]>({
-    queryKey: ["/api/dprs/with-details", TODAY],
+    queryKey: ["/api/dprs/with-details", today],
     queryFn: async () => {
-      const res = await fetch(`/api/dprs/with-details?dateFrom=${TODAY}&dateTo=${TODAY}`);
+      const res = await fetch(`/api/dprs/with-details?dateFrom=${today}&dateTo=${today}`);
       if (!res.ok) return [];
       return res.json();
     },
     enabled: sectionVisible("site_dprs"),
   });
 
-  const activeSites = new Set(dprs.map((d: any) => d.site).filter(Boolean)).size || (dprs.length > 0 ? 1 : 0);
-  const totalWorkforce = dprs.reduce((sum: number, d: any) =>
+  const filedDprs = dprs.filter((d: any) => d.dprStatus !== "draft" && !d.isSuperseded && !d.isCancelled && !d.isDeleted);
+  const sitesReportingToday = new Set(filedDprs.map((d: any) => d.site).filter(Boolean)).size;
+  const totalWorkforce = filedDprs.reduce((sum: number, d: any) =>
     sum + (parseInt(d.totalWorkers ?? d.manpowerCount ?? d.workforce ?? "0") || 0), 0
   );
 
@@ -64,25 +72,26 @@ export default function SiteHub() {
         {/* KPI ribbon */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <KpiCard
-            label="Active Sites"
-            value={sectionVisible("site_dprs") ? activeSites : undefined}
-            sub="with DPR today"
+             label="Sites Reporting Today"
+             value={sectionVisible("site_dprs") ? sitesReportingToday : undefined}
+             sub={afterDprCutoff ? "distinct sites with DPR filed today" : "reporting in progress"}
           />
           <KpiCard
             label="DPRs Filed"
-            value={sectionVisible("site_dprs") ? dprs.length : undefined}
-            sub="today"
-            highlight={dprs.length > 0 ? "green" : "amber"}
+             value={sectionVisible("site_dprs") ? filedDprs.length : undefined}
+             sub={afterDprCutoff ? "filed today" : "filing in progress"}
+             highlight={filedDprs.length > 0 ? "green" : afterDprCutoff ? "amber" : undefined}
           />
           <KpiCard
             label="Workforce"
-            value={sectionVisible("site_dprs") ? (totalWorkforce > 0 ? totalWorkforce : "—") : undefined}
-            sub="workers on site"
+             value={sectionVisible("site_dprs") ? totalWorkforce : undefined}
+             sub={afterDprCutoff ? "workers reported today" : "workforce reporting in progress"}
+             highlight={totalWorkforce === 0 && afterDprCutoff && filedDprs.length === 0 ? "amber" : undefined}
           />
           <KpiCard
             label="Date"
-            value={format(new Date(), "dd MMM")}
-            sub={format(new Date(), "yyyy")}
+             value={format(localNow, "dd MMM")}
+             sub={format(localNow, "yyyy")}
           />
         </div>
 
@@ -201,17 +210,17 @@ export default function SiteHub() {
           </div>
         </div>
 
-        {/* Tomorrow's Plans & Site Requirements Queue */}
+        {/* Requirements raised for tomorrow or immediate needs (not an all-sites plan board). */}
         <div>
           <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
-            Tomorrow's Plans & Requirements
+            Site Requirements & Arrangements
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <HubActionTile
               href="/site/requirements?returnTo=/site/hub"
               icon={CalendarCheck}
               title="Site Requirements Queue"
-              description="Review all tomorrow's plans, immediate requirements, material & equipment needs — update allocation and arrangement status"
+               description="Review raised requirements for tomorrow and immediate needs — update material, equipment and labour arrangement status"
               accent="teal"
               iconBg="bg-teal-100"
               enabled={

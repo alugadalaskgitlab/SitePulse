@@ -736,6 +736,18 @@ export default function PurchaseIndents() {
 
   const [view, setView] = useState<ViewMode>(() => (fromIrnId || prefill ? "form" : "list"));
   const [selectedIndentId, setSelectedIndentId] = useState<number | null>(null);
+  const linkedIndentId = useMemo(() => {
+    const value = new URLSearchParams(searchString).get("indentId");
+    if (!value || !/^\d+$/.test(value)) return null;
+    const id = Number(value);
+    return Number.isSafeInteger(id) && id > 0 ? id : null;
+  }, [searchString]);
+  const openedLinkedIndent = useRef<number | null>(null);
+  useEffect(() => {
+    if (linkedIndentId == null || fromIrnId || prefill) return;
+    setSelectedIndentId(linkedIndentId);
+    setView("detail");
+  }, [linkedIndentId]);
   const [sourceIrnId, setSourceIrnId] = useState<number | null>(fromIrnId);
   const [showRouteCorrections, setShowRouteCorrections] = useState(false);
   const [selectedRouteCorrections, setSelectedRouteCorrections] = useState<Set<number>>(new Set());
@@ -1972,6 +1984,14 @@ export default function PurchaseIndents() {
       setView("detail");
     }
   };
+
+  // A Home pending-item link opens the same detail/approval flow as clicking
+  // its row in this list; fetching by id also works with saved list filters.
+  useEffect(() => {
+    if (!selectedIndent || selectedIndent.id !== linkedIndentId || openedLinkedIndent.current === linkedIndentId) return;
+    openedLinkedIndent.current = linkedIndentId;
+    openDetail(selectedIndent);
+  }, [selectedIndent, linkedIndentId]);
 
   const handleApprove = () => {
     const approvedItems = Object.entries(approvedQtys).map(([itemId, qty]) => ({

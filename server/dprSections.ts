@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { dprs, sites, sitePurchases, progressEntries, equipmentLogs, equipmentMaintenanceLogs, labourLogs, materialLogs, dprStructureItems,
+import { dprs, sites, sitePurchases, progressEntries, equipmentLogs, equipmentMaintenanceLogs, labourLogs, materialLogs, dprStructureItems, auditLogs,
   activityPersonnel, cutFillConsumptions, equipmentActivityAllocations, equipmentActivitySegments, dprDraftStoppages,
   equipmentActivitySegmentBoqItems, createDprRequestSchema } from "../shared/schema";
 import { DPR_SECTIONS, normalizeDprSectionContext, pickDprSectionPayload,
@@ -238,6 +238,26 @@ export async function saveDprSection(database: any, storage: any, request: any, 
   validate: (input: any, id: number) => Promise<void>, scopeToken?: string | null) {
   const { section, context, dprId } = request;
   return database.transaction(async (tx: any) => {
+    // A successful section edit's normal transaction audit event also records
+    // its request identity (hash only, never a draft blob). This is committed
+    // atomically with the edit and survives response loss/process restart.
+    // Key mutex is acquired before the existing project/identity/header order.
+    let receipt: any;
+    const fingerprint = request.clientKey ? contentToken({
+      section, context, dprId: dprId ?? null, data: request.data,
+      headerToken: request.headerToken ?? null, sectionToken: request.sectionToken ?? null,
+    }) : null;
+    if (request.clientKey) {
+      if (actorId == null) throw Object.assign(new Error("Authenticated actor required for retry-safe saves."), { status: 403 });
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(1438, hashtext(${`${actorId}:${request.clientKey}`}))`);
+      [receipt] = await tx.select().from(auditLogs).where(and(
+        eq(auditLogs.module, "dpr"), eq(auditLogs.userId, actorId),
+        sql`${auditLogs.newValues}->'sectionSaveReceipt'->>'clientKey' = ${request.clientKey}`,
+      )).limit(1);
+      if (receipt && receipt.newValues.sectionSaveReceipt.fingerprint !== fingerprint) {
+        throw new DprSectionConflict("This save key was already used for a different request. Use a new key for a new save.");
+      }
+    }
     // Discover the old identity before locking; never acquire another project
     // after a header lock. The locked reread/token check below is authoritative.
     const [optimistic] = dprId ? await tx.select().from(dprs).where(eq(dprs.id, dprId)) : [];
@@ -254,7 +274,7 @@ export async function saveDprSection(database: any, storage: any, request: any, 
     if (optimistic && optimistic.boqProjectId == null && context.boqProjectId != null) identities.push({ ...context, boqProjectId: null });
     identities.sort((a, b) => contentToken(normalizeDprSectionContext(a)).localeCompare(contentToken(normalizeDprSectionContext(b))));
     for (const identity of identities) await lockDprIdentity(tx, identity);
-    let id = dprId;
+    let id = receipt?.transactionId ?? dprId;
     let created = false;
     if (!id) {
       const candidates = await findSectionDrafts(tx, context);
@@ -271,6 +291,12 @@ export async function saveDprSection(database: any, storage: any, request: any, 
     const old = await readSectionAggregate(tx, id);
     if (!old || !activeDraft(old)) throw new DprSectionConflict("The selected DPR is no longer an active draft in this context.");
     const snapshot = sectionSnapshot(old);
+    if (receipt) {
+      if (!sameContext(old, context)) throw new DprSectionConflict("The saved DPR context changed. Reload it before continuing.");
+      // Return today's locked aggregate, not the original response: a retry
+      // must never roll a sibling or a later edit back in the client's state.
+      return snapshot;
+    }
     if (dprId) assertSectionTokens(snapshot, { headerToken: request.headerToken, sectionTokens: { [section]: request.sectionToken } }, [section]);
     else if (!created && snapshot.sections[section as DprSection].state !== "empty") {
       throw new DprSectionConflict("This section was already saved. Open its saved draft before editing.");
@@ -339,6 +365,12 @@ export async function saveDprSection(database: any, storage: any, request: any, 
     await tx.update(dprs).set({ lastEditedAt: new Date(), lastEditedByUserId: actorId,
       ...(recoveringProject ? { boqProjectId: context.boqProjectId } : {}),
       ...(section === "activity" ? { remarks: input.remarks ?? null } : {}) }).where(eq(dprs.id, id));
+    if (request.clientKey) await tx.insert(auditLogs).values({
+      module: "dpr", transactionId: id, action: created ? "create" : "edit",
+      userId: actorId, userName: request.actorName || `User #${actorId}`,
+      newValues: { sectionSaveReceipt: { version: 1, clientKey: request.clientKey, fingerprint, section } },
+      reason: `Saved DPR ${section} section`,
+    });
     return sectionSnapshot(await readSectionAggregate(tx, id));
   });
 }

@@ -459,10 +459,10 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
   const activeEquipment = equipmentMaster?.filter(e => e.isActive) || [];
 
   const [header, setHeader] = useState({
-    date: format(new Date(), "yyyy-MM-dd"),
-    site: "",
-    engineer: "",
-    boqProjectId: null as number | null,
+    date: _urlParams.get("date") || format(new Date(), "yyyy-MM-dd"),
+    site: _urlParams.get("site") || "",
+    engineer: _urlParams.get("engineer") || "",
+    boqProjectId: Number(_urlParams.get("boqProjectId")) || null as number | null,
   });
   // A fresh DPR has no project preference until the BOQ query resolves.  A
   // restored autosave may intentionally contain null, which must remain
@@ -470,7 +470,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
   const [boqProjectPreference, setBoqProjectPreference] = useState<{
     resolved: boolean;
     projectId: number | null;
-  }>({ resolved: false, projectId: null });
+  }>({ resolved: _urlParams.has("boqProjectId"), projectId: Number(_urlParams.get("boqProjectId")) || null });
   // Saved/local form rows must hydrate before an explicit-null catalogue
   // request is eligible; initial placeholders fail closed.
   const [boqCataloguePreviewReady, setBoqCataloguePreviewReady] = useState(false);
@@ -1782,8 +1782,8 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
           variant: "destructive",
         });
         const draftUrl = returnTo
-          ? `/site/edit/${data.id}?draft&returnTo=${encodeURIComponent(returnTo)}`
-          : `/site/edit/${data.id}?draft`;
+          ? `/site/edit/${data.id}?draft&combined=1&returnTo=${encodeURIComponent(returnTo)}`
+          : `/site/edit/${data.id}?draft&combined=1`;
         setLocation(draftUrl);
         return;
       }
@@ -2072,7 +2072,10 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
             onClick={() => confirmLeave(() => {
               // Batch 05 (spec §4): a view switch never changes the persistent
               // default — only the explicit control below does.
-              setLocation(returnTo ? `/site/guided?returnTo=${encodeURIComponent(returnTo)}` : "/site/guided");
+              setLocation(`/site/guided/combined?${new URLSearchParams({
+                site: header.site, date: header.date, engineer: header.engineer,
+                returnTo: backLink, ...(header.boqProjectId == null ? {} : { boqProjectId: String(header.boqProjectId) }),
+              })}`);
             })}
             data-testid="button-switch-guided"
           >

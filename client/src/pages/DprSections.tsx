@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useRoute, useSearch } from "wouter";
+import { useLocation, useRoute, useSearch } from "wouter";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,8 @@ import { evaluateDprSubmitReadiness } from "@shared/dprSubmitReadiness";
 import { DPR_SECTIONS, normalizeDprSectionContext, type DprSection, type DprSectionContext, type DprSectionSnapshot, type DprSectionResolution } from "@shared/dprSections";
 import SiteEntry from "./SiteEntry";
 import SiteEdit from "./SiteEdit";
+import { DPR_REGISTER_PATH, resolveReturnTo } from "@/lib/progressReportNav";
+import { createDprSectionSaveAttempt } from "@/lib/dprSectionSaveAttempt";
 
 async function request<T>(url: string, method = "GET", body?: unknown): Promise<T> {
   const response = await fetch(url, {
@@ -27,12 +29,14 @@ async function request<T>(url: string, method = "GET", body?: unknown): Promise<
 
 /** The original registered draft URL stays valid; submitted/version edits keep their original editor. */
 export function DprEditEntry() {
+  const search = useSearch();
   const [, params] = useRoute("/site/edit/:id");
   const id = Number(params?.id);
   const query = useDpr(id);
   if (query.isLoading) return <p>Loading DPR…</p>;
   if (query.error || !query.data) return <p role="alert">Could not load DPR. Reload to retry.</p>;
-  return query.data.dprStatus === "draft" ? <DprSections initialId={id} /> : <SiteEdit />;
+  return query.data.dprStatus === "draft" && new URLSearchParams(search).get("combined") !== "1"
+    ? <DprSections initialId={id} /> : <SiteEdit />;
 }
 
 export function DprWorkEntry() {
@@ -41,6 +45,7 @@ export function DprWorkEntry() {
 }
 
 export default function DprSections({ initialId }: { initialId?: number } = {}) {
+  const [, setLocation] = useLocation();
   const search = useSearch();
   const params = new URLSearchParams(search);
   const initial = initialId ?? (Number(params.get("dprId") || params.get("draftId")) || undefined);
@@ -49,9 +54,10 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
     workType: params.get("type") === "structure" ? "structure" : "road",
     boqProjectId: params.get("boqProjectId"),
   }));
-  const [engineer, setEngineer] = useState("");
+  const [engineer, setEngineer] = useState(params.get("engineer") ?? "");
   const [snapshot, setSnapshot] = useState<DprSectionSnapshot>();
   const snapshotRef = useRef<DprSectionSnapshot>();
+  const saveAttempt = useRef(createDprSectionSaveAttempt());
   const [resolved, setResolved] = useState(false);
   const [candidates, setCandidates] = useState<DprSectionResolution["candidates"]>();
   const [section, setSection] = useState<DprSection>();
@@ -95,12 +101,12 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
     const current = snapshotRef.current;
     if (!section) throw new Error("Choose a section first.");
     try {
-      const next = await request<DprSectionSnapshot>(`/api/dpr-sections/${section}`, "PUT", {
+      const next = await request<DprSectionSnapshot>(`/api/dpr-sections/${section}`, "PUT", saveAttempt.current({
         dprId: current?.dpr.id, context: context.boqProjectId == null && recoveredProjectId != null
           ? { ...context, boqProjectId: recoveredProjectId } : context,
         sectionToken: current?.sectionTokens[section], headerToken: current?.headerToken,
         data: { ...(data as Record<string, unknown>), ...(!current ? { engineer: firstEngineer } : {}) },
-      });
+      }, section));
       adopt(next);
       setError("");
       return next;
@@ -111,6 +117,29 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
   };
   const final = snapshot && (snapshot.dpr.dprStatus !== "draft" || snapshot.dpr.isDeleted || snapshot.dpr.isCancelled || snapshot.dpr.isSuperseded);
   const readiness = snapshot ? evaluateDprSubmitReadiness(snapshot.dpr) : null;
+  const openCombined = async (guided: boolean) => {
+    if (!resolved) {
+      const result = await request<DprSectionResolution>("/api/dpr-sections/resolve", "POST", { context });
+      if (result.kind === "choose") { setCandidates(result.candidates); return; }
+      if (result.kind === "existing" && result.snapshot) adopt(result.snapshot);
+      else setResolved(true);
+    }
+    const current = snapshotRef.current;
+    const routeContext = current?.context ?? context;
+    const routeSite = (sites.data ?? []).find(site => normalizeDprSectionContext({ site: site.name }).site === routeContext.site)?.name ?? routeContext.site;
+    const back = current ? `/site/work/${current.dpr.id}?returnTo=${encodeURIComponent(resolveReturnTo(search, DPR_REGISTER_PATH))}`
+      : `/site/new?${new URLSearchParams({ site: context.site, date: context.date, type: context.workType, engineer,
+        ...(context.boqProjectId == null ? {} : { boqProjectId: String(context.boqProjectId) }),
+        returnTo: resolveReturnTo(search, DPR_REGISTER_PATH) })}`;
+    const query = new URLSearchParams({ returnTo: back, site: routeSite, date: routeContext.date,
+      type: routeContext.workType, engineer: current?.dpr.engineer ?? engineer, boqProjectId: routeContext.boqProjectId == null ? "" : String(routeContext.boqProjectId) });
+    if (current) {
+      query.set("draftId", String(current.dpr.id));
+      query.set("combined", "1");
+      query.set("draft", "1");
+    }
+    setLocation(`${guided ? "/site/guided/combined" : current ? `/site/edit/${current.dpr.id}` : "/site/combined"}?${query}`);
+  };
   return <main className="max-w-5xl mx-auto space-y-5 pb-16">
     {error && <div role="alert" className="border border-destructive rounded p-4 space-y-3">
       <p>{error}</p>
@@ -127,7 +156,15 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
       section, context, snapshot, engineer, onSave: save, onReturn: () => { setSection(undefined); setReview(false); },
     }} /> : <>
       <h1 className="text-2xl font-bold">{context.workType === "structure" ? "Structure DPR" : "Road Works DPR"}</h1>
+      <Button variant="ghost" onClick={() => setLocation(resolveReturnTo(search, DPR_REGISTER_PATH))}>Back to DPRs</Button>
       <p className="text-muted-foreground">Save each section independently. Only Review &amp; Submit finalizes the DPR.</p>
+      {!final && !candidates && <div className="rounded border p-4 space-y-2">
+        <p className="text-sm">Prefer the earlier combined entry? These optional editors remain available. Independent sections are the default.</p>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" disabled={busy || !context.site || (!!initial && !snapshot)} onClick={() => void run(() => openCombined(false))} data-testid="open-combined-detailed">Use combined Detailed editor</Button>
+          {context.workType === "road" && <Button variant="outline" disabled={busy || !context.site || (!!initial && !snapshot)} onClick={() => void run(() => openCombined(true))} data-testid="open-combined-guided">Use combined Guided editor</Button>}
+        </div>
+      </div>}
       {!resolved && !initial && <div className="grid sm:grid-cols-2 gap-4 rounded-lg border p-5">
         <div><Label htmlFor="dpr-site">Site</Label><select id="dpr-site" className="w-full border rounded p-2" value={context.site} onChange={e => setContext({ ...context, site: e.target.value, boqProjectId: null })}>
           <option value="">Choose site</option>{(sites.data ?? []).filter(s => s.isActive !== false && s.isActive !== 0).map(s => <option key={s.id} value={normalizeDprSectionContext({ site: s.name }).site}>{s.name}</option>)}

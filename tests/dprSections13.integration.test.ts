@@ -522,4 +522,56 @@ describe("DPR-13 normalized SQL section transactions", () => {
       id: first.dpr.equipment[1].activityAllocations[0].id, startTime: "09:00", endTime: "11:00", boqItemId: items[1].id,
     });
   });
+
+  it("makes exact keyed concurrent saves and lost-response retries no-ops without returning stale sibling state", async () => {
+    const ctx = { ...context, date: "2026-10-06" };
+    const body = {
+      context: ctx, clientKey: "synthetic-network-attempt-1",
+      data: { engineer: "SYNTHETIC", equipment: [{ machine: "SYNTHETIC RETRY", openingReading: 1 }] },
+    };
+    const responses = await Promise.all([
+      request(app).put("/api/dpr-sections/equipment").send(body),
+      request(app).put("/api/dpr-sections/equipment").send(body),
+    ]);
+    expect(responses.map(r => r.status)).toEqual([200, 200]);
+    expect(responses[0].body).toEqual(responses[1].body);
+    expect(await findSectionDrafts(state.db, ctx)).toHaveLength(1);
+    const first = responses[0].body;
+    const sibling = await save("labour", { labour: [{ category: "Unskilled", count: 8, gender: "Male" }] }, first, ctx);
+    // Client never received the successful first response; retry exact body
+    // after another section changed. Do not replay the old response snapshot.
+    const replay = await request(app).put("/api/dpr-sections/equipment").send(body);
+    expect(replay.status).toBe(200);
+    expect(replay.body.sectionTokens).toEqual(sibling.sectionTokens);
+    expect(replay.body.dpr.labour[0].count).toBe(8);
+    expect(replay.body.dpr.equipment).toHaveLength(1);
+    expect(replay.body.dpr.equipment[0].id).toBe(first.dpr.equipment[0].id);
+    expect(replay.body.dpr.lastEditedAt).toBe(sibling.dpr.lastEditedAt.toISOString());
+    const mismatch = await request(app).put("/api/dpr-sections/equipment").send({
+      ...body, data: { ...body.data, equipment: [{ machine: "DIFFERENT", openingReading: 9 }] },
+    });
+    expect(mismatch.status).toBe(409);
+    expect(mismatch.body.message).toMatch(/save key was already used/);
+    const editBody = {
+      context: ctx, dprId: first.dpr.id, clientKey: "synthetic-network-attempt-2",
+      headerToken: replay.body.headerToken, sectionToken: replay.body.sectionTokens.equipment,
+      data: { equipment: replay.body.dpr.equipment.map((e: any) => ({ ...e, closingReading: 2 })) },
+    };
+    const edit = await request(app).put("/api/dpr-sections/equipment").send(editBody);
+    expect(edit.status).toBe(200);
+    const stale = await request(app).put("/api/dpr-sections/equipment").send({
+      ...editBody, clientKey: "synthetic-genuine-stale-edit",
+      data: { equipment: replay.body.dpr.equipment.map((e: any) => ({ ...e, closingReading: 3 })) },
+    });
+    expect(stale.status).toBe(409);
+    expect((await request(app).put("/api/dpr-sections/equipment").send(editBody)).status).toBe(200);
+    // Even an old successful first-save retry after a later SAME-section edit
+    // acknowledges the prior operation while returning the latest aggregate.
+    const oldRetry = await request(app).put("/api/dpr-sections/equipment").send(body);
+    expect(oldRetry.status).toBe(200);
+    expect(oldRetry.body.dpr.equipment[0].closingReading).toBe(2);
+    expect(oldRetry.body.sectionTokens).toEqual(edit.body.sectionTokens);
+    const receipts = await state.db.select().from(schema.auditLogs).where(eq(schema.auditLogs.transactionId, first.dpr.id));
+    expect(receipts.filter((r: any) => r.newValues?.sectionSaveReceipt)).toHaveLength(2);
+  });
 });

@@ -1,17 +1,22 @@
-import { dprSectionStates, DPR_SECTIONS, type DprSectionSnapshot } from "../../../shared/dprSections";
+import { dprSectionStates, DPR_SECTIONS, normalizeDprSectionContext, type DprSectionSnapshot } from "../../../shared/dprSections";
 
 /** Isolated synthetic service, never imported by the application. */
 export function installDpr13Adapter() {
-  if (!window.location.pathname.includes("dpr13") && !new URLSearchParams(window.location.search).has("dpr13Legacy")) return;
+  if (window.location.pathname.includes("dpr13") || new URLSearchParams(window.location.search).has("dpr13Legacy")) sessionStorage.setItem("dpr13-fixture-active", "1");
+  if (!sessionStorage.getItem("dpr13-fixture-active")) return;
   const previousFetch = window.fetch.bind(window);
   const key = "dpr13-synthetic-canonical";
   let snapshot: DprSectionSnapshot | undefined = JSON.parse(localStorage.getItem(key) ?? "null") ?? undefined;
-  const requests: any[] = [];
+  // Preserve evidence through in-document success/back navigation; a full
+  // Page.navigate still starts a fresh request trace for its loaded baseline.
+  const requests: any[] = (window as any).__Dpr13Fixture?.requests ?? [];
+  const receipts = new Map<string, { fingerprint: string; snapshot: DprSectionSnapshot }>();
   const fixture = {
     requests,
     conflictNext: false,
     chooseNext: false,
     failPhotoNext: false,
+    loseNextReceipt: false,
     priorClosing: null as number | null,
     remoteChange() { if (snapshot) { snapshot.sectionTokens.equipment += "remote"; persist(); } },
     get snapshot() { return snapshot; },
@@ -30,6 +35,19 @@ export function installDpr13Adapter() {
     if (url.pathname === "/api/uploads/request-url" && fixture.failPhotoNext) {
       fixture.failPhotoNext = false;
       return response({ message: "Synthetic photo upload failure — retry is expected" }, 500);
+    }
+    if (url.pathname === "/api/dprs" && init?.method === "POST") {
+      const body = JSON.parse(String(init.body));
+      requests.push({ method: "POST", path: url.pathname, body });
+      snapshot = {
+        dpr: { ...body, id: 1301 },
+        context: normalizeDprSectionContext(body),
+        headerToken: "created-h0",
+        sectionTokens: { activity: "created-a0", equipment: "created-e0", labour: "created-l0", materials: "created-m0" },
+        sections: dprSectionStates(body),
+      };
+      persist();
+      return response({ ...snapshot.dpr, headerToken: snapshot.headerToken, sectionTokens: snapshot.sectionTokens }, 201);
     }
     if (/^\/api\/dprs\/1301(?:\/draft|\/submit)?$/.test(url.pathname)) {
       const method = init?.method ?? "GET";
@@ -77,6 +95,10 @@ export function installDpr13Adapter() {
     }
     const section = url.pathname.split("/").pop() as typeof DPR_SECTIONS[number];
     if (!DPR_SECTIONS.includes(section)) return response({ message: "Unknown synthetic section" }, 400);
+    const fingerprint = JSON.stringify([section, body]);
+    const receipt = receipts.get(body.clientKey);
+    if (receipt) return receipt.fingerprint === fingerprint
+      ? response(snapshot ?? receipt.snapshot) : response({ message: "Changed request cannot reuse a client key" }, 409);
     if (!snapshot) snapshot = {
       dpr: { id: 1301, ...body.context, engineer: body.data.engineer, dprStatus: "draft", progress: [], equipment: [], labour: [], materials: [], structureItems: [], cutFillConsumptions: [] },
       context: body.context,
@@ -106,6 +128,11 @@ export function installDpr13Adapter() {
     snapshot.sectionTokens[section] += "1";
     snapshot.sections = dprSectionStates(snapshot.dpr);
     persist();
+    if (body.clientKey) receipts.set(body.clientKey, { fingerprint, snapshot: structuredClone(snapshot) });
+    if (fixture.loseNextReceipt) {
+      fixture.loseNextReceipt = false;
+      throw new TypeError("Synthetic response lost after commit");
+    }
     return response(snapshot);
   };
 }

@@ -109,6 +109,12 @@ interface GuidedEntry {
   // Task #1409: stable client-generated key — survives the wholesale
   // progress-row replacement on draft PATCH; per-activity photos link to it.
   entryKey: string;
+  // Guided has no personnel or manual-length editor: retain Detailed/section
+  // values rather than treating their absent controls as a request to clear.
+  personnelIds?: number[];
+  lengthOverrideReason?: string | null;
+  scopeOverrideReason?: string | null;
+  savedGeometry?: { length: number | null; from: string; to: string };
   // Task #1409: per-activity "No Site Work" (rain / suspension / non-billable
   // rework like re-clearing vegetation). Mirrors the Detailed DPR semantics:
   // clears geometry/quantity, excluded from BOQ progress and overlap checks.
@@ -202,6 +208,7 @@ function fmtCh(km: number | null | undefined): string {
 export default function GuidedDpr() {
   const [, setLocation] = useLocation();
   const searchStr = useSearch();
+  const entryParams = new URLSearchParams(searchStr);
   const { toast } = useToast();
   const { uploadFile } = useUpload();
   const prepareBreakdownAttachments = async (rows: SimpleEquipmentRow[]) => Promise.all(rows.map(async (row) => {
@@ -256,11 +263,11 @@ export default function GuidedDpr() {
   // "Set … as my default" control on the Detailed screen.
 
   const today = format(new Date(), "yyyy-MM-dd");
-  const [date, setDate] = useState(today);
+  const [date, setDate] = useState(entryParams.get("date") || today);
   // 06M-B: structured shortage from the server's plant-stock diesel guard
   const [dieselShortage, setDieselShortage] = useState<InsufficientPlantStockPayload | null>(null);
-  const [siteName, setSiteName] = useState("");
-  const [engineer, setEngineer] = useState("");
+  const [siteName, setSiteName] = useState(entryParams.get("site") || "");
+  const [engineer, setEngineer] = useState(entryParams.get("engineer") || "");
   const [entries, setEntries] = useState<GuidedEntry[]>([]);
   const [equipment, setEquipment] = useState<SimpleEquipmentRow[]>([]);
   const [otherEquipmentRows, setOtherEquipmentRows] = useState<Set<number>>(() => new Set());
@@ -293,7 +300,7 @@ export default function GuidedDpr() {
   const [boqProjectPreference, setBoqProjectPreference] = useState<{
     resolved: boolean;
     projectId: number | null;
-  }>({ resolved: false, projectId: null });
+  }>({ resolved: entryParams.has("boqProjectId"), projectId: Number(entryParams.get("boqProjectId")) || null });
   // Catalogue preview is fail-closed until the server/local form has
   // hydrated; the eligibility state is then derived from the current rows.
   const [boqCataloguePreviewReady, setBoqCataloguePreviewReady] = useState(false);
@@ -394,6 +401,10 @@ export default function GuidedDpr() {
      setEntries(hydrateCutFillConsumptions((urlDraftDpr.progress ?? [])
       .map((p: any): GuidedEntry => ({
         entryKey: p.entryKey || newEntryKey(),
+        personnelIds: [...(p.personnelIds ?? [])],
+        lengthOverrideReason: p.lengthOverrideReason ?? null,
+        scopeOverrideReason: p.scopeOverrideReason ?? null,
+        savedGeometry: { length: p.length ?? null, from: p.chainageFrom || "", to: p.chainageTo || "" },
         noSiteWork: !!p.noSiteWork,
         noSiteWorkDescription: p.noSiteWorkDescription || "",
         activity: p.activity || "",
@@ -1320,7 +1331,7 @@ export default function GuidedDpr() {
           noSiteWorkDescription: e.noSiteWorkDescription,
           isIncidental: false,
           incidentalDescription: null,
-          personnelIds: [] as number[],
+          personnelIds: e.personnelIds ?? [],
           boqItemId: e.boqItemId,
           programmeBarId: e.programmeBarId,
           earthworkArrangementId: null,
@@ -1342,7 +1353,8 @@ export default function GuidedDpr() {
         chainageTo: e.chainageTo,
         // 06T §1: persist the chainage-derived length (Guided has no manual
         // Length field) so downstream views never show a blank/zero Length.
-        length: calculateLengthFromChainage(e.chainageFrom, e.chainageTo),
+        length: e.savedGeometry && e.savedGeometry.from === e.chainageFrom && e.savedGeometry.to === e.chainageTo
+          ? e.savedGeometry.length : calculateLengthFromChainage(e.chainageFrom, e.chainageTo),
         width: e.width,
         thickness: e.thickness,
         quantity: e.quantity,
@@ -1356,7 +1368,9 @@ export default function GuidedDpr() {
         noSiteWorkDescription: "",
         isIncidental: e.isIncidental,
         incidentalDescription: e.isIncidental ? (e.incidentalDescription.trim() || null) : null,
-        personnelIds: [] as number[],
+        personnelIds: e.personnelIds ?? [],
+        lengthOverrideReason: e.lengthOverrideReason ?? null,
+        scopeOverrideReason: e.scopeOverrideReason ?? null,
         boqItemId: e.boqItemId,
         programmeBarId: e.programmeBarId,
         // 06T §3: resolved arrangement travels with the row as a historical fact.
@@ -1437,7 +1451,7 @@ export default function GuidedDpr() {
         }),
       // Batch 06C §12: real values round-trip — gender / work-item / structure
       // links are never wiped by a Guided save.
-      labour: labour.filter((l) => l.category).map((l) => ({
+      labour: labour.filter((l) => l.category || l.count != null || l.task || l.contractor || l.boqItemId != null || l.structureId).map((l) => ({
         category: l.category, gender: l.gender, count: l.count ?? 0, task: l.task,
         contractor: l.contractor, boqItemId: l.boqItemId, structureId: l.structureId,
       })),
@@ -1450,6 +1464,9 @@ export default function GuidedDpr() {
 
   const saveMutation = useMutation({
     mutationFn: async (asDraft: boolean) => {
+      if (urlDraftDpr?.workType === "structure") {
+        throw new Error("Structure drafts must be edited in the Detailed editor. No changes have been sent.");
+      }
       const missingFuelSource = equipment.some((row) =>
         Number(row.passthrough?.diesel ?? 0) > 0 && !row.passthrough?.dieselSource
       );
@@ -1702,13 +1719,14 @@ export default function GuidedDpr() {
   // explicit control on the Detailed screen.
   const switchToDetailed = () => {
     if (draftId != null) {
-      setLocation(`/site/edit/${draftId}?draft&returnTo=${encodeURIComponent(returnTo)}`);
+      setLocation(`/site/edit/${draftId}?draft&combined=1&returnTo=${encodeURIComponent(returnTo)}`);
       return;
     }
     if (entries.length > 0 && !window.confirm("You have unsaved activities. They stay locally autosaved on this screen, but the Detailed DPR starts fresh — save a draft first to continue it there. Switch anyway?")) {
       return;
     }
-    setLocation(`/site/new?type=road&returnTo=${encodeURIComponent(returnTo)}`);
+    setLocation(`/site/combined?${new URLSearchParams({ type: "road", site: siteName, date, engineer, returnTo,
+      ...(boqProjectId == null ? {} : { boqProjectId: String(boqProjectId) }) })}`);
   };
 
   // ── Render ────────────────────────────────────────────────────────────────

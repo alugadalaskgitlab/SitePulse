@@ -3895,3 +3895,59 @@ mtime_ms = 1790491676096
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/bd51a51a-1bbd-4f4f-a0d8-fe22817f877a/9256c263-be89-4ac8-b0f2-27eaf7d19ae2"
 storage_version_token = "1790491874536236"
 content_type = "image/png"
+
+[[outputs]]
+id = "G0Zt--gSMY3vRv3NPAz0a"
+uri = "file://tests/fixtures/home01-part-a/evidence/part-b-pending-actions.png"
+type = "image"
+title = "HOME-01 B — Pending Actions"
+description = "Synthetic-data browser verification: duplicate card removed; pending items ordered oldest-first with ages and item-specific links."
+logical_id = "ee1bca53-792a-49fc-92b3-3b8cbc76e8a2"
+content_hash = "sha256:7e3ac04692715aaf7b644d7a3fe9f785d3e18be276dd830f29ae76cee73142d7"
+size = 161887
+mtime_ms = 1790565039354
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/ee1bca53-792a-49fc-92b3-3b8cbc76e8a2/6ae1409d-b38e-489c-a133-4ed808db47ba"
+storage_version_token = "1790566001497490"
+content_type = "image/png"
+
+[[outputs]]
+id = "56fVMv1V3HSoPVR73TJrI"
+uri = "file://tests/fixtures/home01-part-a/evidence/morning-actual-site-hub.png"
+type = "image"
+title = "HOME-01 C — Site Operations morning status"
+description = "Synthetic-data browser verification: Sites Reporting Today is distinct from Total Active Sites; morning KPIs remain neutral."
+logical_id = "53f5e7f5-ed13-4442-aff4-c24347bc04cf"
+content_hash = "sha256:94421ac7547ed81df4a08b07e4b0bb5b644cef24949e993fc1106e33ca055708"
+size = 129766
+mtime_ms = 1790565040878
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/53f5e7f5-ed13-4442-aff4-c24347bc04cf/7c71e6b7-0ccd-4f86-b954-6adace831530"
+storage_version_token = "1790566003742124"
+content_type = "image/png"
+
+[[outputs]]
+id = "MxL6j929QtgtJDIx-RuHB"
+uri = "file://tests/fixtures/home01-part-a/evidence/part-d-requirements-tile.png"
+type = "image"
+title = "HOME-01 D — Requirements queue copy"
+description = "Site Requirements & Arrangements accurately describes the existing destination; no all-sites planning board added."
+logical_id = "8a08aa33-5a4b-49c9-9a54-58c4fd5b09b2"
+content_hash = "sha256:7e3ac04692715aaf7b644d7a3fe9f785d3e18be276dd830f29ae76cee73142d7"
+size = 161887
+mtime_ms = 1790565039358
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8a08aa33-5a4b-49c9-9a54-58c4fd5b09b2/6966a2fd-8006-4f87-b850-e73fbd219c67"
+storage_version_token = "1790566005966155"
+content_type = "image/png"
+
+[[outputs]]
+id = "Q45uBKwqQA-0S8hjG2jjI"
+uri = "file://tests/fixtures/dpr-site-entry/evidence/dpr13-deliberate-fallback-menu.png"
+type = "image"
+title = "DPR-13 — Combined-form fallbacks restored"
+description = "Synthetic-data browser verification: independent sections remain default; explicit links open the existing Detailed and Guided combined editors."
+logical_id = "eac55574-3593-4764-96bd-0de51de91299"
+content_hash = "sha256:b344ca57dfec715aff6e789994345c050d549f0ae90d11e81fa43bef191ec23d"
+size = 61828
+mtime_ms = 1790565863491
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/eac55574-3593-4764-96bd-0de51de91299/44833dc9-05c7-4c1d-bdc8-4819e1acef64"
+storage_version_token = "1790566007509533"
+content_type = "image/png"

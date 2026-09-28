@@ -12,7 +12,7 @@ import { getWorkspaceMode, setWorkspaceMode, type WorkspaceMode } from "@/lib/wo
 import { format, parseISO, subDays } from "date-fns";
 import { roadDprDraftHref } from "@/lib/dprEntryMode";
 import { normalizeSiteName } from "@shared/siteName";
-
+import { oldestPendingFirst, pendingAge, pendingDieselHref, pendingIndentHref, pendingIrnHref } from "@/lib/homePendingActions";
 
 export default function Home() {
   const { isFieldEngineer, user } = useAuth();
@@ -163,14 +163,15 @@ function HomeDashboard({
     siteDprStatus.get(normalizeSiteName(site.name ?? ""))?.filed
   ).length;
 
-  const pendingDiesel = dieselReqs.filter(
+  const pendingDiesel = oldestPendingFirst(dieselReqs.filter(
     (d: any) => d.status === "pending" || d.status === "submitted"
-  );
-  const pendingIndents = purchaseIndents.filter(
+  ));
+  const pendingIndents = oldestPendingFirst(purchaseIndents.filter(
     (p: any) => p.status === "pending" || p.status === "submitted" || p.status === "stores_check"
-  );
-  const pendingIRN = canSeeIrn && Array.isArray(internalRequisitions) ? internalRequisitions.length : 0;
-  const totalPending = pendingDiesel.length + pendingIndents.length + pendingIRN;
+  ));
+  const pendingIrns = canSeeIrn && Array.isArray(internalRequisitions)
+    ? oldestPendingFirst(internalRequisitions) : [];
+  const totalPending = pendingDiesel.length + pendingIndents.length + pendingIrns.length;
 
   const todayDispatchCount = Array.isArray(dispatches) ? dispatches.length : 0;
   const todayDispatchMT = Array.isArray(dispatches)
@@ -240,34 +241,14 @@ function HomeDashboard({
             </div>
           )}
 
-          {/* Pending Approvals */}
-          <div className="bg-white rounded-xl border border-rose-200 p-4 flex flex-col gap-3 relative overflow-hidden" data-testid="stat-pending">
-            {totalPending > 0 && (
-              <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-rose-500" />
-            )}
-            <div className="w-9 h-9 rounded-lg bg-rose-50 flex items-center justify-center">
-              <AlertTriangle className="w-4 h-4 text-rose-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900 leading-none">{totalPending}</p>
-              <p className="text-sm text-slate-700 mt-1 font-medium">Pending Approvals</p>
-              <p className={`text-xs mt-0.5 font-medium ${totalPending > 0 ? "text-rose-500" : "text-slate-500"}`}>
-                {pendingDiesel.length > 0 && `${pendingDiesel.length} diesel`}
-                {pendingDiesel.length > 0 && pendingIndents.length > 0 && " · "}
-                {pendingIndents.length > 0 && `${pendingIndents.length} indent`}
-                {totalPending === 0 && "All clear"}
-              </p>
-            </div>
-          </div>
-
-          {/* Active Sites */}
+          {/* Total active records in the sites master (not today's reporting count). */}
           <div className="bg-white rounded-xl border border-blue-200 p-4 flex flex-col gap-3" data-testid="stat-sites">
             <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
               <HardHat className="w-4 h-4 text-blue-600" />
             </div>
             <div>
               <p className="text-2xl font-bold text-slate-900 leading-none">{activeSites.length}</p>
-              <p className="text-sm text-slate-700 mt-1 font-medium">Active Sites</p>
+              <p className="text-sm text-slate-700 mt-1 font-medium">Total Active Sites</p>
               <p className="text-xs mt-0.5 font-medium text-slate-500">
                 {afterDprCutoff
                   ? `${filedSiteCount} filed today · active records in sites master`
@@ -293,8 +274,8 @@ function HomeDashboard({
                         <CalendarCheck className="w-4 h-4 text-teal-600" />
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-slate-800">Tomorrow's Site Plans</p>
-                        <p className="text-xs text-slate-400 mt-0.5">Review & arrange — materials, equipment, labour</p>
+                         <p className="text-sm font-semibold text-slate-800">Site Requirements & Arrangements</p>
+                         <p className="text-xs text-slate-400 mt-0.5">Review raised requirements for tomorrow & immediate needs — materials, equipment, labour</p>
                       </div>
                     </div>
                     <ChevronRight className="w-4 h-4 text-teal-500 group-hover:translate-x-0.5 transition-transform flex-shrink-0" />
@@ -454,13 +435,12 @@ function HomeDashboard({
                     <p className={`text-xs mt-0.5 leading-snug ${pendingIndents.length > 0 ? "text-rose-500 font-medium" : "text-slate-400"}`}>
                       {pendingIndents.length > 0 ? `${pendingIndents.length} awaiting approval` : "All clear"}
                     </p>
-                    {pendingIndents.length > 0 && (
-                      <Link href="/plant/purchase-indents?returnTo=/">
-                        <a className="mt-1.5 text-xs font-medium text-orange-500 hover:text-orange-600 flex items-center gap-0.5" data-testid="link-review-indents">
-                          Review <ArrowUpRight className="w-3 h-3" />
-                        </a>
-                      </Link>
-                    )}
+                     {pendingIndents.map((indent: any) => (
+                       <Link key={indent.id} href={pendingIndentHref(indent.id)} className="mt-2 flex items-center justify-between gap-2 text-xs hover:text-orange-600" data-testid={`link-review-indent-${indent.id}`}>
+                         <span className="truncate text-slate-700">{indent.indentNo || `Indent #${indent.id}`}</span>
+                         <span className="flex-shrink-0 text-orange-600">{pendingAge(indent, localNow)} <ArrowUpRight className="inline w-3 h-3" /></span>
+                       </Link>
+                     ))}
                   </div>
                 </div>
 
@@ -479,13 +459,12 @@ function HomeDashboard({
                     <p className={`text-xs mt-0.5 leading-snug ${pendingDiesel.length > 0 ? "text-amber-600 font-medium" : "text-slate-400"}`}>
                       {pendingDiesel.length > 0 ? `${pendingDiesel.length} awaiting approval` : "All clear"}
                     </p>
-                    {pendingDiesel.length > 0 && (
-                      <Link href="/plant/diesel-requirements?returnTo=/">
-                        <a className="mt-1.5 text-xs font-medium text-orange-500 hover:text-orange-600 flex items-center gap-0.5" data-testid="link-review-diesel">
-                          Review <ArrowUpRight className="w-3 h-3" />
-                        </a>
-                      </Link>
-                    )}
+                     {pendingDiesel.map((requirement: any) => (
+                       <Link key={requirement.id} href={pendingDieselHref(requirement.id)} className="mt-2 flex items-center justify-between gap-2 text-xs hover:text-orange-600" data-testid={`link-review-diesel-${requirement.id}`}>
+                         <span className="truncate text-slate-700">{requirement.date || `Diesel #${requirement.id}`} · #{requirement.id}</span>
+                         <span className="flex-shrink-0 text-orange-600">{pendingAge(requirement, localNow)} <ArrowUpRight className="inline w-3 h-3" /></span>
+                       </Link>
+                     ))}
                   </div>
                 </div>
 
@@ -548,20 +527,19 @@ function HomeDashboard({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium text-slate-800 leading-snug">Internal Requisitions</p>
-                      <span className={`text-[12px] font-semibold px-1.5 py-0.5 rounded-full border ${pendingIRN > 0 ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-slate-50 text-slate-500 border-slate-200"}`}>
-                        {pendingIRN > 0 ? `${pendingIRN} pending` : "0"}
+                       <span className={`text-[12px] font-semibold px-1.5 py-0.5 rounded-full border ${pendingIrns.length > 0 ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-slate-50 text-slate-500 border-slate-200"}`}>
+                         {pendingIrns.length > 0 ? `${pendingIrns.length} pending` : "0"}
                       </span>
                     </div>
-                    <p className={`text-xs mt-0.5 leading-snug ${pendingIRN > 0 ? "text-indigo-600 font-medium" : "text-slate-400"}`}>
-                      {pendingIRN > 0 ? `${pendingIRN} awaiting approval` : "All clear"}
+                     <p className={`text-xs mt-0.5 leading-snug ${pendingIrns.length > 0 ? "text-indigo-600 font-medium" : "text-slate-400"}`}>
+                       {pendingIrns.length > 0 ? `${pendingIrns.length} awaiting approval` : "All clear"}
                     </p>
-                    {pendingIRN > 0 && (
-                      <Link href="/irn?status=pending_stores">
-                        <a className="mt-1.5 text-xs font-medium text-orange-500 hover:text-orange-600 flex items-center gap-0.5" data-testid="link-review-irn">
-                          Review <ArrowUpRight className="w-3 h-3" />
-                        </a>
+                     {pendingIrns.map((irn: any) => (
+                       <Link key={irn.id} href={pendingIrnHref(irn.id)} className="mt-2 flex items-center justify-between gap-2 text-xs hover:text-orange-600" data-testid={`link-review-irn-${irn.id}`}>
+                         <span className="truncate text-slate-700">{irn.irnNo || `IRN #${irn.id}`}</span>
+                         <span className="flex-shrink-0 text-orange-600">{pendingAge(irn, localNow)} <ArrowUpRight className="inline w-3 h-3" /></span>
                       </Link>
-                    )}
+                     ))}
                   </div>
                 </div>
                 )}

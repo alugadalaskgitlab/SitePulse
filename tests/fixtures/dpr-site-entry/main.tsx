@@ -1,7 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import SiteEntry from "../../../client/src/pages/SiteEntry";
-import DprSections from "../../../client/src/pages/DprSections";
+import DprSections, { DprEditEntry, DprWorkEntry } from "../../../client/src/pages/DprSections";
 import { installDpr13Adapter } from "./dpr13-adapter";
 import SiteEdit from "../../../client/src/pages/SiteEdit";
 import SiteSuccess from "../../../client/src/pages/SiteSuccess";
@@ -2021,7 +2021,7 @@ const mount = () => {
   const isVehicleSupplierInline = window.location.pathname.startsWith("/fixture/vehicle-supplier-inline");
   const isPlantEquipmentUsage = window.location.pathname.startsWith("/plant/equipment-usage");
   const isGuidedReport = window.location.pathname.startsWith("/guided/report");
-  const isGuided = window.location.pathname.startsWith("/guided");
+  const isGuided = window.location.pathname.startsWith("/guided") || window.location.pathname === "/site/guided/combined";
   appRoot?.unmount();
   appRoot = createRoot(document.getElementById("root")!);
   appRoot.render(
@@ -2032,10 +2032,10 @@ const mount = () => {
         <Dpr08EvidenceBanner />
         <Dpr09EvidenceBanner />
         <DprNullEvidenceBanner />
-      {window.location.pathname.includes("dpr13") ? <>
+      {window.location.pathname.includes("dpr13") || window.location.pathname === "/site/new" || window.location.pathname === "/site/guided" ? <>
         <header className="border border-amber-500 bg-amber-50 p-4 mb-5">DPR-13 synthetic intercepted-backend fixture — actual production menu and section cards. No production data or writes.</header>
         <DprSections />
-      </> : isGuidedReport
+      </> : window.location.pathname.startsWith("/site/work/") ? <DprWorkEntry /> : isGuidedReport
         ? <FixtureSavedReport />
         : isSiteSuccess
           ? <SiteSuccess />
@@ -2052,7 +2052,7 @@ const mount = () => {
               : isPlantEquipmentUsage
                 ? <PlantEquipmentUsage />
                 : isEdit
-                  ? <SiteEdit />
+                  ? sessionStorage.getItem("dpr13-fixture-active") && !new URLSearchParams(window.location.search).has("dpr13Legacy") ? <DprEditEntry /> : <SiteEdit />
                   : <SiteEntry />}
     </QueryClientProvider>,
   );

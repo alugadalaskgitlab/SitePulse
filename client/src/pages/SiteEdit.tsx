@@ -1720,7 +1720,7 @@ export default function SiteEdit() {
                 onClick={() => {
                   // Batch 05 (spec §4): view switch only — never changes the
                   // persistent default entry mode.
-                  setLocation(`/site/guided?draftId=${id}${_returnTo ? `&returnTo=${encodeURIComponent(_validatedReturnTo)}` : ""}`);
+                  setLocation(`/site/guided/combined?draftId=${id}${_returnTo ? `&returnTo=${encodeURIComponent(_validatedReturnTo)}` : ""}`);
                 }}
                 className="gap-2"
                 data-testid="button-switch-guided"

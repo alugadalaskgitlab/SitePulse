@@ -16,3 +16,9 @@ Independent section saves retain the draft-versus-submission effects boundary, i
 **Why:** The approved morning-entry workflow records evidence without posting operational effects. Maintenance and billing readers can observe maintenance rows even if a new, unrecognised status is used to label them as drafts.
 
 **How to apply:** The user approved one normalized draft-stoppage staging table linked to the draft equipment row. Transfer its facts to normal maintenance/attachment records and remove staging within the same final-submission transaction; failure must roll back both. Existing submitted-DPR maintenance semantics remain unchanged. This is not blanket approval for other schema additions: surface any further gap before changing schema.
+
+Keep section-save receipt-bearing audit events retained. Their request fingerprints are durable retry receipts, not merely optional diagnostic history.
+
+**Why:** Exact client-key retries must be silent no-ops even after a server restart, without another schema addition. Purging these audit events would turn a previously successful network retry into a conflict.
+
+**How to apply:** Any future audit retention/archive work must preserve lookup of these receipts. Return the current saved aggregate on replay, not an old response that could overwrite later sibling edits in the client.

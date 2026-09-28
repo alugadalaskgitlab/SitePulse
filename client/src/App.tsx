@@ -279,6 +279,8 @@ function AuthedShell() {
           <Route path="/site/dashboard" component={gated(SiteDashboard, "site_dprs")} />
           <Route path="/site/new" component={gated(DprSections, "site_dprs")} />
           <Route path="/site/guided" component={gated(DprSections, "site_dprs")} />
+          <Route path="/site/combined" component={gated(SiteEntry, "site_dprs")} />
+          <Route path="/site/guided/combined" component={gated(GuidedDpr, "site_dprs")} />
           <Route path="/site/work/:id" component={gated(DprWorkEntry, "site_dprs")} />
           <Route path="/site/edit/:id" component={gated(DprEditEntry, "site_dprs")} />
           <Route path="/site/success/:id" component={gated(SiteSuccess, "site_dprs")} />
