@@ -136,12 +136,33 @@ async function layout(width) {
 async function run() {
   const desktop = await layout(1440);
   assert.equal(await datum(false, "Owner / vendor"), "Sahyadri Earthmovers");
+  assert.equal(await datum(true, "Master default hire type"), "Hourly Hire");
+  assert.equal(await datum(true, "Ownership"), null);
+  assert.equal(await datum(true, "Entry / hire type"), null);
+  assert.equal(await datum(true, "Master hire terms"), null);
+  assert.equal(await evaluate(`document.querySelectorAll(${JSON.stringify(`${scope(true)} [aria-label="Hire type for this DPR row"]`)}).length`), 1);
+  assert.equal(await evaluate(`!!document.querySelector(${JSON.stringify(`${scope(true)} select option[value="working"]`)})`), false);
+  assert.match(await text(false), /Daily status: Working/);
+  assert.doesNotMatch(await text(false), /Breakdown information|None recorded/);
+  const statusSelector = `${scope(true)} .subarea select:has(option[value="idle_no_work"])`;
+  await select(statusSelector, "idle_no_work");
+  assert.match(await text(true), /A reason is required for this status/);
+  assert.equal(await evaluate(`document.querySelector(${JSON.stringify(scope(true))})?.querySelector('input[aria-required="true"]')?.getAttribute('aria-invalid')`), "true");
+  await select(statusSelector, "idle_no_operator");
+  assert.equal(await evaluate(`document.querySelector(${JSON.stringify(scope(true))})?.querySelector('input[aria-required="true"]') ?? null`), null);
+  assert.match(await text(false), /Daily status: Idle · Operator Unavailable/);
+  await select(statusSelector, "");
+  assert.match(await text(false), /Daily status: Working/);
+  await setField("Closing meter", "1482.4");
+  assert.match(await text(false), /Daily status: Not specified/);
+  await setField("Closing meter", "1490.1");
+  assert.match(await text(false), /Daily status: Working/);
   assert.equal(await datum(false, "Diesel source"), "Plant stock");
   const initial = await shot("desktop-initial");
 
   await select('[aria-label="Select equipment"]', 58);
   assert.equal(await datum(false, "Equipment"), "Tata Signa Tipper");
-  assert.equal(await datum(false, "Owner / vendor"), "HLC own");
+  assert.equal(await datum(false, "Ownership"), "HLC own");
   assert.equal(await datum(false, "Opening odometer"), "38106.2");
   assert.equal(await datum(false, "Diesel source"), "Direct purchase");
   assert.equal(await datum(false, "Actual consumed"), "—");
@@ -152,6 +173,10 @@ async function run() {
   await select('[aria-label="Select equipment"]', 63);
   assert.equal(await datum(false, "Owner / vendor"), "Kedar Plant Hire");
   assert.equal(await datum(false, "Diesel source"), "Contractor");
+  assert.match(await text(false), /Daily status: Working/);
+  assert.match(await text(false), /BREAKDOWN INFORMATION/);
+  await select(statusSelector, "breakdown");
+  assert.match(await text(true), /A reason is required for this status/);
   await select('[aria-label="Select equipment"]', 41);
   assert.equal(await datum(false, "Diesel source"), "Plant stock");
   assert.equal(await datum(false, "Closing meter"), "1490.1");

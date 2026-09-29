@@ -20,6 +20,12 @@ The user explicitly distinguished hiding unconfirmed consumption from styling: r
 
 **How to apply:** Separate layout reuse from visibility changes and validation changes when proposing further DPR work.
 
+In the equipment-row prototype, a machine-day Breakdown status is distinct from a timed stoppage record: a partial-day stoppage should not imply the whole day was a breakdown. A positive closing-minus-opening meter reading may display “Working” without storing or offering Working as a manual status; no positive meter evidence means “Not specified” unless an explicit idle/breakdown disposition exists.
+
+**Why:** The user wants daily status to describe the day without duplicating incident detail or requiring a manual working flag. A timed repair can coexist with real work on the same day.
+
+**How to apply:** Preserve the status/incident distinction if a later, separately approved production integration adopts the prototype; do not treat mockup approval as permission to change current production status validation.
+
 The user confirmed classic readiness reuse and Preview Fix state preservation on 2026-09-29, and required explicit separation of tank-display gating from equipment layout props.
 
 **Why:** Identically named props for unrelated presentation behaviors make accidental behavior changes likely even when today's call sites are correct.
