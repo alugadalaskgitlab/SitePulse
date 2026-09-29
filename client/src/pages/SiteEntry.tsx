@@ -62,6 +62,7 @@ import {
   hasDprMeaningfulNonBoqWork,
 } from "@shared/dprBoqSelection";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
+import { equipmentStatusRequiresReason } from "@shared/equipmentStatus";
 import { barSideLabel, isDprSideCompatible, isBarSide, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
 import { chainageOutsideBar, normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import { checkQuantitySourceRow, quantitiesMatch, MANUAL_QUANTITY_SOURCES, boqProgressQty, dprMeasurementSummary, resolveBoqDisplayUnit, resolveDprUnitConversion } from "@shared/dprGeometry";
@@ -1710,7 +1711,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
     }
     for (const e of equipment) {
       if (!e.machine) continue;
-      if (e.usageStatus && e.usageStatus !== "working" && !e.usageStatusReason?.trim()) return false;
+      if (equipmentStatusRequiresReason(e.usageStatus) && !e.usageStatusReason?.trim()) return false;
       if (e.openingReading !== null && e.closingReading === null) return false;
       if (e.startTime && !e.endTime) return false;
     }

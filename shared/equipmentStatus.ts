@@ -70,6 +70,11 @@ export function isEquipmentUsageStatus(value: unknown): value is EquipmentUsageS
     && (EQUIPMENT_USAGE_STATUSES as readonly string[]).includes(value);
 }
 
+/** Only Idle — No Work needs an explanatory reason. */
+export function equipmentStatusRequiresReason(status: unknown): boolean {
+  return status === "idle_no_work";
+}
+
 export function equipmentStatusInputError(input: {
   usageStatus?: unknown;
   usageStatusReason?: unknown;
@@ -77,8 +82,8 @@ export function equipmentStatusInputError(input: {
   const status = input.usageStatus;
   if (status == null || status === "") return null;
   if (!isEquipmentUsageStatus(status)) return "Invalid equipment usage status";
-  if (status !== "working" && !String(input.usageStatusReason ?? "").trim()) {
-    return "A reason is required when equipment is idle or broken down";
+  if (equipmentStatusRequiresReason(status) && !String(input.usageStatusReason ?? "").trim()) {
+    return "A reason is required for Idle — No Work status";
   }
   return null;
 }

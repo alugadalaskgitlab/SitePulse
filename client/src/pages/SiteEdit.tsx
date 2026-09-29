@@ -71,6 +71,7 @@ import { normalizeExcavationMaterialOutcome } from "@shared/cutFillReconciliatio
 import { APPLICABLE_ARRANGEMENT_STATUSES, blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
+import { equipmentStatusRequiresReason } from "@shared/equipmentStatus";
 import { withEquipmentCreationStartTime, meaningfulEquipmentRows } from "@shared/equipmentUsage";
 import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arrangementStatusHistory";
 import { transitionDieselSource, validateDieselTankBalance } from "@shared/dieselEntryValidation";
@@ -1349,7 +1350,7 @@ export default function SiteEdit() {
     }
     for (const e of equipment) {
       if (!e.machine) continue;
-      if (e.usageStatus && e.usageStatus !== "working" && !e.usageStatusReason?.trim()) return false;
+      if (equipmentStatusRequiresReason(e.usageStatus) && !e.usageStatusReason?.trim()) return false;
       if (e.openingReading !== null && e.closingReading === null) return false;
       if (e.startTime && !e.endTime) return false;
     }

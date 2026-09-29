@@ -2,7 +2,7 @@ import { pgTable, text, serial, real, integer, timestamp, date, boolean, index, 
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations, sql } from "drizzle-orm";
-import { equipmentStatusInputError } from "./equipmentStatus";
+import { equipmentStatusInputError, equipmentStatusRequiresReason } from "./equipmentStatus";
 
 // === TABLE DEFINITIONS ===
 
@@ -1133,7 +1133,7 @@ export const createDprRequestSchema = insertDprSchema.extend({
     if (message) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["equipment", index, row.usageStatus && row.usageStatus !== "working"
+        path: ["equipment", index, equipmentStatusRequiresReason(row.usageStatus)
           ? "usageStatusReason" : "usageStatus"],
         message,
       });

@@ -19,6 +19,7 @@
  *  - Fully blank placeholder rows are ignored entirely (no false positives).
  */
 import { excavationMaterialOutcomeIssue } from "./cutFillReconciliation";
+import { equipmentStatusRequiresReason } from "./equipmentStatus";
 import { isMeaningfulEquipmentRow } from "./equipmentUsage";
 
 export type DprReadinessSection = "activities" | "equipment" | "labour" | "materials";
@@ -209,11 +210,11 @@ export function evaluateDprSubmitReadiness(input: DprReadinessInput): DprReadine
         rowIndex: i,
       });
     }
-    if (e.usageStatus != null && e.usageStatus !== "working" && !hasText(e.usageStatusReason)) {
+    if (equipmentStatusRequiresReason(e.usageStatus) && !hasText(e.usageStatusReason)) {
       mandatory.push({
         section: "equipment",
         label,
-        message: "reason required for Idle or Breakdown status",
+        message: "reason required for Idle — No Work status",
         rowIndex: i,
       });
     }

@@ -22,7 +22,7 @@ describe("DPR16 B3 shared read-only equipment card", () => {
     expect(screen.queryByText("Usage Summary")).toBeNull();
     expect(screen.getAllByText("Meter Working Hours")).toHaveLength(1);
     expect(screen.getAllByText("Clock Duration")).toHaveLength(1);
-    expect(screen.getByTestId("equipment-compact-readonly-0").querySelectorAll(".grid")).toHaveLength(1);
+    expect(screen.getByTestId("equipment-compact-readonly-0").querySelectorAll(".grid")).toHaveLength(4);
     expect(valueFor("Opening Meter")).toContain("100");
     expect(valueFor("Closing Meter")).toContain("106");
     expect(valueFor("Start Time")).toContain("8:00 AM");
@@ -38,7 +38,7 @@ describe("DPR16 B3 shared read-only equipment card", () => {
     expect(valueFor("Expected")).toContain("30.00 L");
     expect(valueFor("Variance")).toContain("-5.00 L");
     expect(valueFor("Actual Consumption Rate · from confirmed tank dip")).toContain("4.17 L/hr");
-    expect(screen.getByText("Idle · No Work")).toBeTruthy();
+    expect(screen.getAllByText("Idle · No Work Available")).toHaveLength(2);
     expect(valueFor("Status Reason")).toContain("Rain stopped work");
     expect(screen.getByText("EXCAVATOR")).toBeTruthy();
     expect(screen.getByText(/FIX-01 · RAVI/)).toBeTruthy();

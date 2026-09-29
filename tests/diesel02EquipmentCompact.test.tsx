@@ -136,7 +136,7 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
     );
     expect(screen.queryByText("DAILY HIRE ROLLER")).toBeNull();
     expect(screen.queryByTestId("equipment-owner-0")).toBeNull();
-    expect(screen.getByText("Operating")).toBeTruthy();
+    expect(screen.getByTestId("equipment-compact-status-chip-0").textContent).toContain("Not specified");
   });
 
   it("shows tank observations and confirmation only for editable plant-stock fuel", () => {
@@ -490,7 +490,7 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
     expect(onChange).not.toHaveBeenCalledWith(expect.objectContaining({ diesel: 0 }));
   });
 
-  it("requires a reason for breakdown without defaulting readings or fuel", () => {
+  it("does not require a reason for breakdown or default readings or fuel", () => {
     const onChange = vi.fn();
     render(
       <DprEquipmentCompact
@@ -500,9 +500,7 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
       />,
     );
 
-    const reason = screen.getByTestId("equipment-compact-usage-reason-0") as HTMLTextAreaElement;
-    expect(reason.required).toBe(true);
-    expect(reason.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByTestId("equipment-compact-usage-reason-0")).toBeNull();
     expect(onChange).not.toHaveBeenCalled();
   });
 

@@ -12,6 +12,10 @@ import { calculateEquipmentClockDuration, computeEquipmentFuelSummary, formatEqu
 import { isVisibleEquipmentRow } from "@shared/equipmentUsage";
 import { EquipmentActivityAllocationEditor, type EquipmentActivitySegment } from "@/components/EquipmentActivityAllocationEditor";
 import { groupLegacyEquipmentActivityAllocations, resolveEquipmentAllocationParentDuration } from "@shared/equipmentActivityAllocations";
+import { breakdownDurationHours } from "@/components/BreakdownStoppageEditor";
+import { AttachmentViewer } from "@/components/AttachmentViewer";
+import type { Attachment } from "@shared/schema";
+import { equipmentStatusInputError, equipmentStatusRequiresReason } from "@shared/equipmentStatus";
 
 export type DprEquipmentFields = {
   machine?: string; vehicleNo?: string; operator?: string; task?: string; entryType?: string; startTime?: string; endTime?: string;
@@ -19,7 +23,12 @@ export type DprEquipmentFields = {
   tripDistance?: number | null; diesel?: number | null; openingDiesel?: number | null;
   dieselBalanceInTank?: number | null; dieselBalanceConfirmed?: boolean | null; dieselNorm?: number | null;
   expectedDiesel?: number | null; hoursWorked?: number | null; totalKm?: number | null;
-  equipmentId?: number | null; plantUsageId?: number | null; dieselSource?: string | null; breakdowns?: Array<{ description?: string }>;
+  equipmentId?: number | null; plantUsageId?: number | null; dieselSource?: string | null; breakdowns?: Array<{
+    clientKey?: string; id?: number; fromTime?: string; toTime?: string; downtimeHours?: number | null;
+    description?: string; responsibility?: string | null; repairScope?: string | null;
+    debitableToVendor?: boolean | null; remarks?: string | null;
+    file?: File; attachment?: { fileName: string; objectPath: string; mimeType?: string; fileSize?: number } | Attachment;
+  }>;
   usageStatus?: "working" | "idle_no_work" | "idle_no_operator" | "breakdown" | null;
   usageStatusReason?: string | null;
   activitySegments?: EquipmentActivitySegment[];
@@ -45,9 +54,33 @@ function SectionHeading({ children }: { children: ReactNode }) {
   return <div className="mb-2 text-xs font-bold uppercase tracking-[0.12em] text-slate-700 dark:text-slate-200">{children}</div>;
 }
 
-export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignmentChange, editable = true, index = 0, beforeDate, site, boqItems, programmeBars, showTankBalance = true, enableTankContinuity = true, hideIdentity = false, allowLinkedSourceEdit = false, sectionPresentation = false }: {
+function Group({ title, children, testId, hidden = false }: { title: string; children: ReactNode; testId?: string; hidden?: boolean }) {
+  return <section className={`border-t border-slate-200 px-3 py-3 dark:border-slate-700 sm:px-4 ${hidden ? "hidden" : ""}`} data-testid={testId}>
+    <SectionHeading>{title}</SectionHeading>{children}
+  </section>;
+}
+
+// Draft DPR stoppages carry only upload metadata; submitted maintenance rows
+// normally carry no attachment at all. Only actual attachment API records have
+// enough identity/context for the existing viewer.
+function isViewableAttachment(value: unknown): value is Attachment {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  return typeof item.id === "number" && Number.isInteger(item.id) && item.id > 0
+    && typeof item.moduleType === "string" && !!item.moduleType
+    && typeof item.linkedRecordId === "number" && Number.isInteger(item.linkedRecordId)
+    && typeof item.fileName === "string" && !!item.fileName
+    && typeof item.objectPath === "string" && !!item.objectPath;
+}
+
+const statusLabel = (status: DprEquipmentFields["usageStatus"]) => status === "working" ? "Working"
+  : status === "idle_no_work" ? "Idle · No Work Available"
+  : status === "idle_no_operator" ? "Idle · Operator Unavailable"
+  : status === "breakdown" ? "Breakdown" : "Not specified";
+
+export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignmentChange, editable = true, index = 0, beforeDate, site, boqItems, programmeBars, showTankBalance = true, enableTankContinuity = true, hideIdentity = false, allowLinkedSourceEdit = false, sectionPresentation = false, equipmentPickerSlot, ownerTypeSlot, dieselSourceSlot, stoppageSlot }: {
   row: DprEquipmentFields;
-  equipment?: { meterType?: string | null; consumptionNorm?: number | null; ownership?: string | null; vendorName?: string | null } | null;
+  equipment?: { meterType?: string | null; consumptionNorm?: number | null; ownership?: string | null; vendorName?: string | null; entryType?: string | null } | null;
   onChange?: (patch: Partial<DprEquipmentFields>) => void;
   onWorkAssignmentChange?: (activitySegments: EquipmentActivitySegment[]) => void;
   editable?: boolean; index?: number; beforeDate?: string; site?: string;
@@ -70,6 +103,11 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
   hideIdentity?: boolean;
   /** Opt-in section editor layout. Classic and read-only render paths are unchanged. */
   sectionPresentation?: boolean;
+  /** Caller-owned controls; the compact component does not choose equipment or edit stoppages. */
+  equipmentPickerSlot?: ReactNode;
+  ownerTypeSlot?: ReactNode;
+  dieselSourceSlot?: ReactNode;
+  stoppageSlot?: ReactNode;
   /**
    * Linked canonical usage rows are immutable for ordinary editors. Admin
    * corrections still pass through the version transaction; lifecycle IDs
@@ -90,9 +128,11 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
   const tankNeedsConfirmation = isPlantStock && (row.openingDiesel != null || row.dieselBalanceInTank != null) && !row.dieselBalanceConfirmed;
   const isIdle = row.usageStatus === "idle_no_work" || row.usageStatus === "idle_no_operator";
   const visibleWarning = isIdle ? null : preview.warning;
-  const statusReasonRequired = row.usageStatus != null && row.usageStatus !== "working";
+  const statusReasonRequired = equipmentStatusRequiresReason(row.usageStatus);
+  const statusError = equipmentStatusInputError(row);
   const rowLooksComplete = !!row.machine && !!row.endTime && row.closingReading != null && !row.breakdowns?.length && !visibleWarning && !tankNeedsConfirmation && (!statusReasonRequired || !!row.usageStatusReason?.trim());
   const [expanded, setExpanded] = useState(sectionPresentation ? false : index === 0 || !rowLooksComplete);
+  const [viewedAttachment, setViewedAttachment] = useState<Attachment | null>(null);
   const summaryUsage = useMemo(() => ({
     ...preview,
     runtime: preview.runtime,
@@ -192,6 +232,17 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
 
   const setNumber = (key: keyof DprEquipmentFields, value: string) =>
     onChange?.({ [key]: value === "" ? null : Number(value) } as Partial<DprEquipmentFields>);
+  const changeStatus = (value: string) => {
+    const usageStatus = value === "unspecified" ? null : value as DprEquipmentFields["usageStatus"];
+    const idle = usageStatus === "idle_no_work" || usageStatus === "idle_no_operator";
+    const patch: Partial<DprEquipmentFields> = { usageStatus };
+    if (idle) {
+      if (row.closingReading == null && row.openingReading != null && !closingReadingEdited.current) patch.closingReading = row.openingReading;
+      if (row.diesel == null && !dieselIssuedEdited.current && !linkedSourceLocked) patch.diesel = 0;
+      if (isPlantStock && row.dieselBalanceInTank == null && row.openingDiesel != null && !closingTankEdited.current) patch.dieselBalanceInTank = row.openingDiesel;
+    }
+    onChange?.(patch);
+  };
 
   if (!visibleRow) {
     return editable ? (
@@ -209,7 +260,17 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
            <div className="min-w-0"><div className="truncate text-sm font-bold tracking-[0.03em] text-slate-950 dark:text-slate-50 sm:text-base">{dash(row.machine)}</div><div className="truncate text-xs font-medium text-slate-500">{dash(row.vehicleNo)}{row.operator ? ` · ${row.operator}` : ""} · Machine day {index + 1}</div>{hiredVendorLabel && <div className="truncate text-xs font-semibold text-amber-800 dark:text-amber-300" data-testid={`equipment-owner-${index}`}>{hiredVendorLabel}</div>}</div>
          </div>}
         <div className="flex items-center gap-1.5">
-            {row.breakdowns?.length ? <Badge variant="destructive" className="text-xs">{row.breakdowns.length} breakdown{row.breakdowns.length > 1 ? "s" : ""}</Badge> : row.usageStatus ? <Badge variant="outline" className="text-xs">{row.usageStatus === "working" ? "Working" : row.usageStatus === "idle_no_work" ? "Idle · No Work" : row.usageStatus === "idle_no_operator" ? "Idle · No Operator" : "Breakdown"}</Badge> : <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-xs text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">Operating</Badge>}
+            {editable && !expanded ? <Select value={row.usageStatus ?? "unspecified"} onValueChange={changeStatus}>
+              <SelectTrigger aria-label={`Daily status for ${dash(row.machine)}`} className="h-9 w-auto min-w-28 rounded-full border-slate-300 text-xs" data-testid={`equipment-compact-status-chip-${index}`}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="unspecified">Not specified</SelectItem>
+                <SelectItem value="working">Working</SelectItem>
+                <SelectItem value="idle_no_work">Idle · No Work Available</SelectItem>
+                <SelectItem value="idle_no_operator">Idle · Operator Unavailable</SelectItem>
+                <SelectItem value="breakdown">Breakdown</SelectItem>
+              </SelectContent>
+            </Select> : <Badge variant="outline" className="text-xs" data-testid={`equipment-compact-status-chip-${index}`}>{statusLabel(row.usageStatus)}</Badge>}
+            {!!row.breakdowns?.length && <Badge variant="destructive" className="text-xs">{row.breakdowns.length} breakdown{row.breakdowns.length > 1 ? "s" : ""}</Badge>}
            {visibleWarning && <span title={visibleWarning} className="text-amber-700 dark:text-amber-400"><CircleAlert className="h-4 w-4" /></span>}
           {editable && <button type="button" onClick={() => setExpanded(value => !value)} className="grid h-11 w-11 place-items-center rounded-md text-slate-600 transition hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 sm:h-9 sm:w-9 dark:text-slate-300 dark:hover:bg-slate-700" aria-expanded={expanded} aria-label={expanded ? `Collapse ${dash(row.machine)}` : `Expand ${dash(row.machine)}`}>
             {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -217,7 +278,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
         </div>
       </header>
 
-      {editable && sectionPresentation && <div className="grid grid-cols-2 gap-3 px-3 py-3 text-sm sm:grid-cols-4" data-testid={`section-equipment-summary-${index}`}>
+       {editable && sectionPresentation && <div className="grid grid-cols-2 gap-3 px-3 py-3 text-sm sm:grid-cols-4" data-testid={`section-equipment-summary-${index}`}>
         <div><span className="text-xs text-muted-foreground">{usageQuantity.label}</span><p className="font-semibold tabular-nums">{usageQuantity.value}</p></div>
         <div><span className="text-xs text-muted-foreground">Clock duration</span><p className="font-semibold tabular-nums">{formatEquipmentDuration(clockHours)}</p></div>
         <div><span className="text-xs text-muted-foreground">Diesel issued</span><p className="font-semibold tabular-nums">{number(row.diesel)} L</p></div>
@@ -231,20 +292,20 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
       </button>}
 
        {(!editable || expanded) && <>
+         {editable && equipmentPickerSlot != null && <Group title="01 / Equipment picker" testId={`equipment-compact-group-picker-${index}`}>
+           {equipmentPickerSlot}
+         </Group>}
+         {editable && <Group title="02 / Owner, hire type & daily status" testId={`equipment-compact-group-owner-${index}`}>
+           <div className="mb-3 grid gap-3 text-sm sm:grid-cols-3">
+             <Detail label="Owner / vendor" value={equipment?.ownership === "hired" ? hiredVendorLabel ?? "Hired" : equipment?.ownership === "owned" ? "HLC own" : "—"} />
+             <Detail label="Master default hire type" value={equipment?.entryType ? equipment.entryType.replaceAll("_", " ") : "—"} />
+             <Detail label="Effective hire / entry type" value={dash(row.entryType).replaceAll("_", " ")} />
+           </div>
+           {ownerTypeSlot}
          {editable && <section className="grid gap-3 border-b border-slate-200 bg-slate-50/70 px-3 py-3 dark:border-slate-700 dark:bg-slate-950/20 sm:grid-cols-2">
            <div>
              <Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Daily Status</Label>
-             <Select value={row.usageStatus ?? "unspecified"} onValueChange={(value) => {
-               const usageStatus = value === "unspecified" ? null : value as DprEquipmentFields["usageStatus"];
-               const idle = usageStatus === "idle_no_work" || usageStatus === "idle_no_operator";
-               const patch: Partial<DprEquipmentFields> = { usageStatus };
-               if (idle) {
-                 if (row.closingReading == null && row.openingReading != null && !closingReadingEdited.current) patch.closingReading = row.openingReading;
-                 if (row.diesel == null && !dieselIssuedEdited.current && !linkedSourceLocked) patch.diesel = 0;
-                 if (isPlantStock && row.dieselBalanceInTank == null && row.openingDiesel != null && !closingTankEdited.current) patch.dieselBalanceInTank = row.openingDiesel;
-               }
-               onChange?.(patch);
-             }}>
+             <Select value={row.usageStatus ?? "unspecified"} onValueChange={changeStatus}>
                <SelectTrigger className="mt-1 h-11 bg-white sm:h-9 dark:bg-slate-900" data-testid={`equipment-compact-usage-status-${index}`}>
                  <SelectValue />
                </SelectTrigger>
@@ -257,12 +318,14 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
                </SelectContent>
              </Select>
            </div>
-           <div>
+            {(statusReasonRequired || !!row.usageStatusReason?.trim()) && <div>
              <Label htmlFor={`equipment-compact-usage-reason-${index}`} className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Reason {statusReasonRequired ? "(required)" : "(optional)"}</Label>
-             <Textarea id={`equipment-compact-usage-reason-${index}`} className="mt-1 min-h-11 bg-white py-2 text-sm dark:bg-slate-900" value={row.usageStatusReason ?? ""} onChange={event => onChange?.({ usageStatusReason: event.target.value })} required={statusReasonRequired} aria-invalid={statusReasonRequired && !row.usageStatusReason?.trim()} placeholder={statusReasonRequired ? "Explain today's idle or breakdown status" : "Optional note"} data-testid={`equipment-compact-usage-reason-${index}`} />
-             {statusReasonRequired && !row.usageStatusReason?.trim() && <p className="mt-1 text-xs font-medium text-red-600">A reason is required for this status.</p>}
-           </div>
+              <Textarea id={`equipment-compact-usage-reason-${index}`} className="mt-1 min-h-11 bg-white py-2 text-sm dark:bg-slate-900" value={row.usageStatusReason ?? ""} onChange={event => onChange?.({ usageStatusReason: event.target.value })} required={statusReasonRequired} aria-invalid={!!statusError} placeholder={statusReasonRequired ? "Explain why no work was available" : "Historical status note"} data-testid={`equipment-compact-usage-reason-${index}`} />
+              {statusError && <p className="mt-1 text-xs font-medium text-red-600">{statusError}</p>}
+            </div>}
          </section>}
+         </Group>}
+         {editable && <Group title="03 / Readings & times" testId={`equipment-compact-group-readings-${index}`}>
         {editable && <section className="grid grid-cols-2 border-b border-slate-200 bg-slate-50/70 text-xs dark:border-slate-700 dark:bg-slate-950/20 sm:grid-cols-6">
            <div className="border-b border-r border-slate-200 px-3 py-2 sm:border-b-0 dark:border-slate-700"><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{equipment?.meterType === "odometer" ? "Opening Odometer" : "Opening Meter"}</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-900" type="number" step="0.1" value={row.openingReading ?? ""} disabled={linkedSourceLocked} onChange={event => setNumber("openingReading", event.target.value)} placeholder="Not recorded" data-testid={`equipment-compact-opening-meter-${index}`} /></div>
            <div className="border-b border-slate-200 px-3 py-2 sm:border-b-0 sm:border-r dark:border-slate-700"><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{equipment?.meterType === "odometer" ? "Closing Odometer" : "Closing Meter"}</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-900" type="number" step="0.1" value={row.closingReading ?? ""} onChange={event => { closingReadingEdited.current = true; setNumber("closingReading", event.target.value); }} placeholder="Not recorded" data-testid={`equipment-compact-closing-meter-${index}`} /></div>
@@ -271,17 +334,22 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
         {!sectionPresentation && <div className="col-span-2 px-3 py-2 sm:col-span-1"><div className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Clock Duration</div><div className="mt-2 text-sm font-bold tabular-nums text-slate-900 dark:text-slate-100">{formatEquipmentDuration(clockHours)}</div></div>}
          {!sectionPresentation && <div className="col-span-2 px-3 py-2 sm:col-span-1"><div className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{usageQuantity.label}</div><div className="mt-2 text-sm font-bold tabular-nums text-slate-900 dark:text-slate-100" data-testid={`equipment-compact-working-hours-${index}`}>{usageQuantity.value}</div></div>}
       </section>}
+         </Group>}
 
-       {!editable && <section className="p-3 sm:p-4" data-testid={`equipment-compact-readonly-${index}`}>
+       {!editable && <div data-testid={`equipment-compact-readonly-${index}`}>
+         <Group title="01 / Equipment / owner / type" testId={`equipment-compact-read-group-identity-${index}`}>
          <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
            {hideIdentity && <Detail label="Machine" value={dash(row.machine)} emphasis />}
            <Detail label="Registration / equipment no." value={dash(row.vehicleNo)} />
            <Detail label="Operator" value={dash(row.operator)} />
            {hiredVendorLabel && <Detail label="Owner / vendor" value={hiredVendorLabel} />}
            <Detail label="Entry / Hire Type" value={dash(row.entryType).replaceAll("_", " ")} />
-           {!row.usageStatus && <Detail label="Daily Status" value="Not specified" />}
+            <Detail label="Daily Status" value={statusLabel(row.usageStatus)} />
            {row.usageStatusReason && <Detail label="Status Reason" value={row.usageStatusReason} />}
-           <div className="col-span-full border-t border-slate-200 pt-3 dark:border-slate-700"><SectionHeading>Usage</SectionHeading></div>
+          </div>
+         </Group>
+         <Group title="02 / Readings & times" testId={`equipment-compact-read-group-readings-${index}`}>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
            <Detail label={equipment?.meterType === "odometer" ? "Opening Odometer" : "Opening Meter"} value={dash(row.openingReading)} />
            <Detail label={equipment?.meterType === "odometer" ? "Closing Odometer" : "Closing Meter"} value={dash(row.closingReading)} />
            <Detail label="Start Time" value={formatEquipmentTime(row.startTime)} emphasis />
@@ -295,6 +363,10 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
                  ? "Meter Working Hours come from the opening and closing meter difference. Clock duration is shown separately."
                  : "No hour-meter difference is available. Clock duration is shown separately and is not labelled as meter working time."}
            </p>
+          </div>
+         </Group>
+         {showTankBalance && <Group title="03 / Diesel & tank" testId={`equipment-compact-read-group-diesel-${index}`}>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
            {showTankBalance && <>
              <div className="col-span-full border-t border-slate-200 pt-3 dark:border-slate-700" data-testid={`equipment-compact-fuel-${index}`}><SectionHeading><span className="flex items-center gap-2"><Fuel className="h-4 w-4 text-amber-700 dark:text-amber-400" /> Fuel</span></SectionHeading></div>
              <Detail label="Diesel Issued / Added" value={`${number(row.diesel)} L`} />
@@ -305,6 +377,10 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
                <Detail label="Physical Tank Balance" value={row.dieselBalanceConfirmed ? "Confirmed" : tankKnown ? "Pending confirmation" : "—"} emphasis />
              </>}
            </>}
+          </div>
+         </Group>}
+         {isPlantStock && <Group title="04 / Fuel performance" testId={`equipment-compact-read-group-performance-${index}`}>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
            {isPlantStock && <>
              <div className="col-span-full border-t border-slate-200 pt-3 dark:border-slate-700"><SectionHeading><span className="flex items-center gap-2"><Droplets className="h-4 w-4 text-amber-700 dark:text-amber-400" /> Fuel Performance</span></SectionHeading></div>
              <Detail label="Actual Consumed" value={fuel.actualConsumed == null ? "Awaiting tank dip" : `${number(fuel.actualConsumed)} L`} emphasis />
@@ -314,9 +390,11 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
              <p className="col-span-full text-xs text-slate-600 dark:text-slate-400">Variance is actual consumed minus expected; a positive value means more fuel was consumed than expected.</p>
            </>}
          </div>
-       </section>}
-
-        {editable && showTankBalance && <section className="border-t border-slate-200 px-3 py-3 sm:px-4 dark:border-slate-700" data-testid={`equipment-compact-fuel-${index}`}>
+         </Group>}
+         </div>}
+         {editable && (showTankBalance || dieselSourceSlot != null) && <Group title="04 / Diesel & tank" testId={`equipment-compact-group-diesel-${index}`}>
+           {dieselSourceSlot}
+         {editable && showTankBalance && <section className="border-t border-slate-200 px-3 py-3 sm:px-4 dark:border-slate-700" data-testid={`equipment-compact-fuel-${index}`}>
         <SectionHeading><span className="flex items-center gap-2"><Fuel className="h-4 w-4 text-amber-700 dark:text-amber-400" /> Fuel</span></SectionHeading>
           {editable && onChange ? <><div className="mb-2 text-[11px] text-slate-500">Diesel source: <strong className="text-slate-700 dark:text-slate-200">{dash(row.dieselSource).replaceAll("_", " ")}</strong></div><div className={`grid grid-cols-2 gap-2 ${isPlantStock ? "lg:grid-cols-[140px_160px_140px_minmax(190px,1fr)]" : "lg:grid-cols-[140px]"} lg:items-end`}>
            {isPlantStock && <><div><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Opening Tank (L)</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-950/50" type="number" step="0.1" value={row.openingDiesel ?? ""} onChange={e => setNumber("openingDiesel", e.target.value)} placeholder="Not recorded" data-testid={`equipment-compact-opening-tank-${index}`} /></div>
@@ -325,9 +403,14 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
            {isPlantStock && <label className={`col-span-2 flex h-11 items-center gap-2 rounded-md border px-2.5 text-xs font-semibold sm:h-9 lg:col-span-1 ${row.dieselBalanceConfirmed ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300" : "border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300"}`}><Checkbox checked={!!row.dieselBalanceConfirmed} onCheckedChange={checked => onChange({ dieselBalanceConfirmed: checked === true })} data-testid={`equipment-compact-tank-confirmed-${index}`} /><span>{row.dieselBalanceConfirmed && <Check className="mr-1 inline h-4 w-4 text-emerald-600" />}Physical Tank Balance Confirmed</span></label>}
          </div></> : <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"><Detail label="Diesel Issued / Added" value={`${number(row.diesel)} L`} /><Detail label="Diesel Source" value={dash(row.dieselSource).replace("_", " ")} />{isPlantStock && <><Detail label="Opening Tank (L)" value={`${number(row.openingDiesel)} L`} /><Detail label="Closing Tank / Physical Dip (L)" value={`${number(row.dieselBalanceInTank)} L`} /><Detail label="Physical Tank Balance" value={row.dieselBalanceConfirmed ? "Confirmed" : tankKnown ? "Pending confirmation" : "—"} emphasis /></>}</div>}
        </section>}
+         </Group>}
 
       {!editable && tankKnown && !row.dieselBalanceConfirmed && <div className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-300">Physical tank balance has not been confirmed.</div>}
       </>}
+       {editable && stoppageSlot != null && <Group title="05 / Breakdown / stoppage" testId={`equipment-compact-group-stoppage-${index}`} hidden={!expanded}>
+         <p className="mb-2 text-xs text-muted-foreground">Timed interruptions are separate from the machine-day daily status.</p>{stoppageSlot}
+       </Group>}
+       <Group title={editable ? "06 / Work / BOQ assignment" : "05 / Work / BOQ assignment"} testId={`equipment-compact-group-work-${index}`} hidden={editable && !expanded}>
       <div className={editable && !expanded ? "hidden" : undefined}>
        {editable ? <section className="border-t border-slate-200 px-3 py-3 sm:px-4 dark:border-slate-700" data-testid={`equipment-compact-incidental-work-${index}`}>
          <div>
@@ -350,6 +433,28 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
        </section> : null}
       <EquipmentActivityAllocationEditor value={activitySegments} onChange={editable && (onWorkAssignmentChange || onChange) ? activitySegments => onWorkAssignmentChange ? onWorkAssignmentChange(activitySegments) : onChange?.({ activitySegments, activityAllocations: undefined }) : undefined} parentHours={allocationParent.hours} parentStartTime={row.startTime} parentEndTime={row.endTime} boqItems={boqItems} programmeBars={programmeBars} editable={editable} preserveInitialValueUntilChange={usingLegacyActivityAssignment} />
       </div>
+       </Group>
+       {!editable && !!row.breakdowns?.length && <Group title="06 / Breakdown information" testId={`equipment-compact-read-group-breakdowns-${index}`}>
+         <div className="space-y-3">
+           {row.breakdowns.map((stop, stopIndex) => {
+             const duration = breakdownDurationHours(stop.fromTime ?? "", stop.toTime ?? "") ?? stop.downtimeHours;
+             const savedAttachment = stop.attachment;
+             return <div key={stop.clientKey ?? stop.id ?? stopIndex} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700" data-testid={`equipment-compact-breakdown-${index}-${stopIndex}`}>
+               <p className="font-semibold">{dash(stop.description)}</p>
+               <p>{formatEquipmentTime(stop.fromTime)}–{formatEquipmentTime(stop.toTime)} · {formatEquipmentDuration(duration)}</p>
+               <p>Responsibility: {dash(stop.responsibility)} · Repair/payment scope: {dash(stop.repairScope)} · Debitable to vendor: {stop.debitableToVendor ? "Yes" : "No"}</p>
+               {!!stop.remarks && <p className="whitespace-pre-wrap">Remarks: {stop.remarks}</p>}
+               {stop.file && <p>Selected: {stop.file.name} (not uploaded)</p>}
+               {!stop.file && savedAttachment && (isViewableAttachment(savedAttachment)
+                 ? <button type="button" className="text-amber-700 underline" onClick={() => setViewedAttachment(savedAttachment)}>View attachment: {savedAttachment.fileName}</button>
+                 : typeof savedAttachment === "object" && typeof savedAttachment.fileName === "string"
+                   ? <p>Saved attachment: {savedAttachment.fileName}</p>
+                   : null)}
+             </div>;
+           })}
+         </div>
+       </Group>}
+       <AttachmentViewer attachment={viewedAttachment} onClose={() => setViewedAttachment(null)} />
     </article>
   );
 }

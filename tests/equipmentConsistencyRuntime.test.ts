@@ -190,7 +190,6 @@ describe("equipment consistency storage runtime", () => {
       equipment: [{
         machine: "",
         usageStatus: "idle_no_operator",
-        usageStatusReason: "Operator on approved leave",
       }],
     } as any);
     const equipmentInsert = fx.writes.find((write) =>
@@ -198,7 +197,6 @@ describe("equipment consistency storage runtime", () => {
     expect(equipmentInsert).toEqual([
       expect.objectContaining({
         usageStatus: "idle_no_operator",
-        usageStatusReason: "Operator on approved leave",
       }),
     ]);
     expect(visibleEquipmentRows(equipmentInsert)).toHaveLength(1);
@@ -228,21 +226,21 @@ describe("equipment consistency storage runtime", () => {
     );
     const updated = await storage.updateEquipmentUsage(created.id, {
       usageStatus: "breakdown",
-      usageStatusReason: "Hydraulic hose failed",
+      usageStatusReason: null,
     } as any);
     expect(updated).toMatchObject({
       usageStatus: "breakdown",
-      usageStatusReason: "Hydraulic hose failed",
+      usageStatusReason: null,
     });
 
     fx.queue.push([updated]);
     await expect(storage.getEquipmentUsageById(created.id)).resolves.toMatchObject({
       usageStatus: "breakdown",
-      usageStatusReason: "Hydraulic hose failed",
+      usageStatusReason: null,
     });
   });
 
-  it("rejects missing non-working reasons at every direct DPR and plant write seam", async () => {
+  it("rejects missing Idle — No Work reasons at every direct DPR and plant write seam", async () => {
     const storage = new DatabaseStorage();
     await expect(storage.createDpr({
       date: "2026-09-05", site: "SITE A", engineer: "Engineer", dprStatus: "draft",
@@ -250,14 +248,14 @@ describe("equipment consistency storage runtime", () => {
     } as any)).rejects.toThrow(/reason/i);
     await expect(storage.createEquipmentUsage({
       equipmentId: 2, date: "2026-09-05",
-      usageStatus: "idle_no_operator",
+      usageStatus: "idle_no_work",
     } as any)).rejects.toThrow(/reason/i);
 
     fx.queue.push(
       [{ id: 7, equipmentId: 2, dieselIssued: 0, usageStatus: "working", usageStatusReason: null }],
     );
     await expect(storage.updateEquipmentUsage(7, {
-      usageStatus: "breakdown",
+      usageStatus: "idle_no_work",
     } as any)).rejects.toThrow(/reason/i);
   });
 

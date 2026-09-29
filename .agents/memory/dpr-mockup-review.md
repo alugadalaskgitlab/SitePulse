@@ -26,6 +26,12 @@ In the equipment-row prototype, a machine-day Breakdown status is distinct from 
 
 **How to apply:** Preserve the status/incident distinction if a later, separately approved production integration adopts the prototype; do not treat mockup approval as permission to change current production status validation.
 
+Production equipment integration explicitly supersedes the prototype's derived Working policy: use stored status, preserve legacy null and linked statuses, and introduce Working defaults only for genuinely new identified entries in the separately approved parent-screen stage. The approved reason requirement is only for idle-no-work, including all existing validation gates.
+
+**Why:** The user approved these distinctions after investigation found that current new rows can lack status, Fleet distinguishes unspecified from working, and independent readiness checks would otherwise retain the old reason requirement.
+
+**How to apply:** Do not derive or rewrite historical status from meter readings. Shared-component approval is not approval to wire parent layouts or initialize new rows; stop for approval between shared component, edit-screen wiring and read-only verification.
+
 The user confirmed classic readiness reuse and Preview Fix state preservation on 2026-09-29, and required explicit separation of tank-display gating from equipment layout props.
 
 **Why:** Identically named props for unrelated presentation behaviors make accidental behavior changes likely even when today's call sites are correct.

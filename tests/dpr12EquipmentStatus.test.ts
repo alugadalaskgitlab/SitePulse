@@ -3,6 +3,8 @@ import fs from "node:fs";
 import {
   buildFleetEquipmentStatus,
   equipmentStatusInputError,
+  equipmentStatusRequiresReason,
+  normalizeEquipmentStatusFields,
   resolveFleetStatusDay,
   type EquipmentStatusRecord,
 } from "../shared/equipmentStatus";
@@ -26,18 +28,30 @@ const record = (
 });
 
 describe("DPR-12 equipment status contract", () => {
-  it("requires a backend reason for every explicit non-working status", () => {
+  it("requires a backend reason only for Idle — No Work", () => {
+    expect(equipmentStatusRequiresReason("idle_no_work")).toBe(true);
+    for (const status of ["working", "idle_no_operator", "breakdown", null, "parked"]) {
+      expect(equipmentStatusRequiresReason(status)).toBe(false);
+    }
     expect(equipmentStatusInputError({ usageStatus: "working" })).toBeNull();
     expect(equipmentStatusInputError({ usageStatus: null })).toBeNull();
     expect(equipmentStatusInputError({
       usageStatus: "idle_no_work",
       usageStatusReason: " ",
-    })).toMatch(/reason/i);
+    })).toMatch(/Idle.*No Work/i);
+    expect(equipmentStatusInputError({
+      usageStatus: "idle_no_work",
+      usageStatusReason: "Waiting for work front",
+    })).toBeNull();
+    expect(equipmentStatusInputError({ usageStatus: "idle_no_operator" })).toBeNull();
+    expect(equipmentStatusInputError({ usageStatus: "breakdown" })).toBeNull();
     expect(equipmentStatusInputError({
       usageStatus: "breakdown",
       usageStatusReason: "Hydraulic hose",
     })).toBeNull();
     expect(equipmentStatusInputError({ usageStatus: "parked" })).toMatch(/invalid/i);
+    expect(normalizeEquipmentStatusFields({ usageStatus: "idle_no_operator", usageStatusReason: " " }))
+      .toEqual({ usageStatus: "idle_no_operator", usageStatusReason: null });
   });
 
   it("retains a status-only row as meaningful operational evidence", () => {
@@ -45,7 +59,7 @@ describe("DPR-12 equipment status contract", () => {
     expect(isVisibleEquipmentRow({ usageStatus: "idle_no_operator" })).toBe(true);
   });
 
-  it("blocks final submit without a non-working reason but does not flag a reasoned idle row as missing usage", () => {
+  it("blocks final submit without an Idle — No Work reason but allows other status-only rows", () => {
     const missingReason = evaluateDprSubmitReadiness({
       equipment: [{ equipmentId: 7, machine: "EXCAVATOR 01", usageStatus: "idle_no_work" }],
     });
@@ -53,16 +67,18 @@ describe("DPR-12 equipment status contract", () => {
       expect.objectContaining({ section: "equipment", message: expect.stringMatching(/reason required/i) }),
     ]));
 
-    const reasonedIdle = evaluateDprSubmitReadiness({
-      equipment: [{
-        equipmentId: 7,
-        machine: "EXCAVATOR 01",
-        usageStatus: "idle_no_operator",
-        usageStatusReason: "Operator on leave",
-      }],
+    for (const status of ["idle_no_operator", "breakdown"] as const) {
+      const optionalReason = evaluateDprSubmitReadiness({
+        equipment: [{ equipmentId: 7, machine: "EXCAVATOR 01", usageStatus: status }],
+      });
+      expect(optionalReason.mandatory).toHaveLength(0);
+      expect(optionalReason.advisories).toHaveLength(0);
+    }
+    const working = evaluateDprSubmitReadiness({
+      equipment: [{ equipmentId: 7, machine: "EXCAVATOR 01", usageStatus: "working" }],
     });
-    expect(reasonedIdle.mandatory).toHaveLength(0);
-    expect(reasonedIdle.advisories).toHaveLength(0);
+    expect(working.mandatory).toHaveLength(0);
+    expect(working.advisories).toHaveLength(1);
   });
 
   it("round-trips status-only Guided draft fields through its passthrough payload", () => {
