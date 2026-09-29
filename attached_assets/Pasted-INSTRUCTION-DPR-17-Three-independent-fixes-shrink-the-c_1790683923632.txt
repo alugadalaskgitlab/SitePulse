@@ -1,0 +1,64 @@
+INSTRUCTION DPR-17: Three independent fixes — shrink the combined-editor buttons to icons, add a per-day Materials Received summary to the DPR view page, and produce a NEW clickable mockup for a simplified equipment log
+
+READ THIS FIRST — SCOPE DISCIPLINE
+These are three separate, independently-approved pieces of work. Treat them as three sub-batches — build and report Part A, wait for go-ahead, then Part B, wait for go-ahead, then Part C. Part C is a MOCKUP ONLY, same discipline as DPR-14: standalone, sample-data, NOT wired into real save/submit logic, until a future separate instruction approves real implementation. Do not touch HOME-01, DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, PERM-01/02, DPR-13, or any DPR-16 real-screen logic beyond what's explicitly described below. Do not publish automatically.
+
+BACKGROUND — confirmed by direct code review
+
+Part A: `client/src/pages/DprSections.tsx` lines ~195-204 currently render two `variant="outline"` buttons, "Use combined Detailed editor" and "Use combined Guided editor" (`data-testid="open-combined-detailed"`/`"open-combined-guided"`), inside a bordered box directly under the page title — the first interactive content on the page, ahead of the actual site/date form and section buttons. Their handler (`openCombined`, lines ~146-163) and everything the combined editors do must NOT change — this is a pure visual relocation/shrink, zero logic change.
+
+Part B: The Materials Received page (`client/src/pages/SiteMaterialsReceived.tsx`) already computes per-material summary cards (total qty, entry count, unloading-location breakdown) via `summarizeReceived()` in `client/src/lib/materialUnloadingSummary.ts`, fed by `GET /api/site-material-trips?site=&dateFrom=&dateTo=` (already used the same way by `ActivityReceiptStrip.tsx` for a single activity). Neither `DprDetails.tsx` nor `SiteReport.tsx` (the two read-only DPR view surfaces) currently show any site-wide, per-day materials summary — only the legacy free-text `materialLogs` abstract and, buried per-activity, the narrower Required/Received/Executed strip. BOQ-unit conversion, where possible, already exists via `lookupTripBoqQuantity()` in `shared/tripQuantityDisplay.ts` (needs a `boq_item_materials` recipe row + the material's `bulkDensity`; returns null if unavailable — do not invent a conversion when this returns null).
+
+Part C: `client/src/components/DprEquipmentCompact.tsx` currently spreads equipment information across a Daily Status block, a readings/time grid, a fuel grid (diesel source + all tank figures + confirm checkbox together), an incidental-work textarea, and a BOQ-allocation editor — this is the component DPR-16 already condensed once. The owner wants a further, more disciplined regrouping into fixed rows (see Part C below), reusing all the same underlying data/fields — this is again a REORGANIZATION, not new data.
+
+FIX
+
+PART A — Shrink the combined-editor entry point to icons with a hover tooltip
+Replace the two outline buttons and their explanatory sentence with two small icon-only buttons (e.g. a "list/rows" icon for Detailed, a "wand/steps" icon for Guided — your choice of a sensible lucide-react icon for each), each wrapped in a tooltip (shadcn `Tooltip`/`TooltipTrigger`/`TooltipContent`, since no existing icon+tooltip pattern exists elsewhere in this app to copy — build it fresh, standard shadcn usage) showing on hover: "Use combined Detailed editor" / "Use combined Guided editor" respectively. Keep both `data-testid`s unchanged. Move this icon pair to a less dominant position — e.g. a small corner of the header row rather than a full-width box directly under the title — so it no longer reads as the first thing the user must decide. Do not change `openCombined`, its disabled-condition logic, or anything about what the combined editors themselves do.
+
+PART B — Add a per-day Materials Received summary to the DPR view page(s)
+On both `DprDetails.tsx` and `SiteReport.tsx`, add a new card section (placed logically near the top of the page, above or alongside Activity Progress — your call on exact position, but it should not require scrolling past everything else to find) showing that specific DPR's site + date only (not a date range):
+- One summary card per material, matching the Materials Received page's card style: total qty + trip UOM, entry count, and the unloading-location breakdown line (Stretch / Yard / Not recorded) — reuse `summarizeReceived()` from `materialUnloadingSummary.ts` exactly, do not reimplement the grouping/bucketing math.
+- Where `lookupTripBoqQuantity()` can resolve a BOQ-unit conversion for that material, show it as a secondary line under the card (e.g. "≈ 440 CUM"); when it returns null, show nothing extra — do not guess a conversion.
+- Below the cards, a compact read-only table of that day's individual trips for the site: Time, Transporter, Material, Qty/UOM, Unloaded at, Material Source, Receipt No. No edit/delete controls, no filter panel — the DPR's own site+date is the filter, fetched via the existing `GET /api/site-material-trips?site=&dateFrom=&dateTo=` route (or `/api/materials-received` with the same params if you need the DPR/equipment-sourced rows too — your call, explain which you used and why in your report).
+- If there are zero trips for that site+date, show a brief "No materials received this day" note rather than an empty card grid.
+- Do not touch the existing legacy `materialLogs` abstract rendering or the per-activity `ActivityReceiptStrip` — both stay exactly as they are; this is a new, additional section.
+
+PART C — New equipment-log mockup: fixed row groups, both edit and view modes
+Build a NEW standalone mockup route (same pattern as DPR-14 — sample data only, e.g. `/__mockup/preview/dpr17/EquipmentRows`), showing BOTH an editable view and a read-only view of one equipment card, restructured into these fixed row groups, in this order:
+
+EDIT MODE:
+1. Equipment picker (select the machine).
+2. Owner / Hire type row (from `equipment.ownership`/`vendorName`/hire-terms fields — currently only shown in read-only mode; show it here too, read-only display is fine since ownership is a master-data property, not something edited per DPR row).
+3. Opening reading, Closing reading, Start time, End time — one row.
+4. Diesel source, Opening tank, Diesel issued, Closing tank, Confirmation control — one row.
+5. Breakdown / stoppage button, and whatever the existing breakdown/stoppage entry flow or links currently are (find and reuse the real trigger — do not invent a new breakdown flow; if it lives outside this component today, mock its entry point faithfully, e.g. a button matching its real label, without needing to build the full flow behind it in this mockup).
+6. Work/BOQ assignment rows (the existing allocation editor) stays below, unchanged in content.
+
+VIEW MODE (read-only):
+1. Equipment, Owner, Type — one row.
+2. Readings and times — one row.
+3. Diesel source, Opening tank, Issued, Closing tank, Confirmation (only if applicable) — one row.
+4. Norm, Expected liters, Actual liters, Consumption rate (L/hr or km/L etc., matching whatever unit the real `managementMetrics()`/consumption logic already computes) — one row.
+5. Work/BOQ assignment rows.
+6. Breakdown information, if any.
+
+Make the mockup genuinely clickable/interactive with sample data — selecting a different sample machine should update the displayed values, the confirm-tank control should be clickable, an expand/collapse should work if you use one — this should feel like a real screen to review, not a static image.
+
+WHAT NOT TO DO
+- Do not wire Part C into the real DPR save/submit flow, DprSections.tsx, SiteEntry.tsx, SiteEdit.tsx, or DprEquipmentCompact.tsx itself — sample data only, same rule as every prior mockup.
+- Do not change breakdown/stoppage logic itself in Part C — only faithfully represent its existing entry point.
+- Do not alter `summarizeReceived()`, `lookupTripBoqQuantity()`, or any trip/materials data logic in Part B — read-only reuse.
+- Do not remove the DPR-14/15 mockup route or any DPR-16 real-screen behavior.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change expected for any part. Part B and C both reuse existing fields/tables exactly.
+
+REPORT BACK
+1. After Part A: screenshot/description of the new icon+tooltip pair and its new position.
+2. After Part B: screenshot/description of the new card + table on both DprDetails.tsx and SiteReport.tsx, and confirm which endpoint you used and why.
+3. After Part C: link/route to the new clickable mockup, and confirm it does not touch any real save/submit path.
+4. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

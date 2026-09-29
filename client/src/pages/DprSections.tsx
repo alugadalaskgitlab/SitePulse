@@ -3,6 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation, useRoute, useSearch } from "wouter";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
+import { List, WandSparkles } from "lucide-react";
+import { Portal as TooltipPortal } from "@radix-ui/react-tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useDpr } from "@/hooks/use-dprs";
@@ -182,7 +185,29 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
       section, context, snapshot, engineer, onSave: save, onReturn: () => { setSection(undefined); setReview(false); },
       target, onFixOtherSection: fix,
     }} /> : <>
-      <h1 className="text-2xl font-bold">{context.workType === "structure" ? "Structure DPR" : "Road Works DPR"}</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold">{context.workType === "structure" ? "Structure DPR" : "Road Works DPR"}</h1>
+        {!final && !candidates && <TooltipProvider>
+          <div className="flex shrink-0 items-center gap-1" role="group" aria-label="Optional combined editors">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex">
+                  <Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground" aria-label="Use combined Detailed editor" disabled={busy || !context.site || (!!initial && !snapshot)} onClick={() => void run(() => openCombined(false))} data-testid="open-combined-detailed"><List className="h-4 w-4" aria-hidden="true" /></Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipPortal><TooltipContent side="bottom">Use combined Detailed editor</TooltipContent></TooltipPortal>
+            </Tooltip>
+            {context.workType === "road" && <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex">
+                  <Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground" aria-label="Use combined Guided editor" disabled={busy || !context.site || (!!initial && !snapshot)} onClick={() => void run(() => openCombined(true))} data-testid="open-combined-guided"><WandSparkles className="h-4 w-4" aria-hidden="true" /></Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipPortal><TooltipContent side="bottom">Use combined Guided editor</TooltipContent></TooltipPortal>
+            </Tooltip>}
+          </div>
+        </TooltipProvider>}
+      </div>
       <Button variant="ghost" onClick={() => setLocation(resolveReturnTo(search, DPR_REGISTER_PATH))}>Back to DPRs</Button>
       <p className="text-muted-foreground">Save each section independently. Only Review &amp; Submit finalizes the DPR.</p>
       {snapshot && !final && (readiness
@@ -195,13 +220,6 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
                 ? "A saved activity's BOQ item could not be resolved; submission readiness is unavailable."
               : "Checking submission readiness against BOQ items…"}
         </p>)}
-      {!final && !candidates && <div className="rounded border p-4 space-y-2">
-        <p className="text-sm">Prefer the earlier combined entry? These optional editors remain available. Independent sections are the default.</p>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" disabled={busy || !context.site || (!!initial && !snapshot)} onClick={() => void run(() => openCombined(false))} data-testid="open-combined-detailed">Use combined Detailed editor</Button>
-          {context.workType === "road" && <Button variant="outline" disabled={busy || !context.site || (!!initial && !snapshot)} onClick={() => void run(() => openCombined(true))} data-testid="open-combined-guided">Use combined Guided editor</Button>}
-        </div>
-      </div>}
       {!resolved && !initial && <div className="grid sm:grid-cols-2 gap-4 rounded-lg border p-5">
         <div><Label htmlFor="dpr-site">Site</Label><select id="dpr-site" className="w-full border rounded p-2" value={context.site} onChange={e => setContext({ ...context, site: e.target.value, boqProjectId: null })}>
           <option value="">Choose site</option>{(sites.data ?? []).filter(s => s.isActive !== false && s.isActive !== 0).map(s => <option key={s.id} value={normalizeDprSectionContext({ site: s.name }).site}>{s.name}</option>)}
