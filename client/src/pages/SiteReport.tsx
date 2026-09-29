@@ -19,6 +19,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { DprPhotoGroups } from "@/components/DprPhotoGroups";
+import { DprMaterialsReceived } from "@/components/DprMaterialsReceived";
 import type { Personnel, Site } from "@shared/schema";
 import {
   lifecycleByUsageId,
@@ -427,6 +428,8 @@ export default function SiteReport() {
           </Card>
         )}
       </div>
+
+      <DprMaterialsReceived site={dpr.site} date={dpr.date} />
 
       {/* Activity Progress / Structure Items */}
       <Card>

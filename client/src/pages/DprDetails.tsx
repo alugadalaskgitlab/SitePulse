@@ -20,6 +20,7 @@ import { dprMeasurementSummary, resolveBoqDisplayUnit } from "@shared/dprGeometr
 import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { DprActivityReadOnly } from "@/components/DprActivityReadOnly";
+import { DprMaterialsReceived } from "@/components/DprMaterialsReceived";
 import { visibleEquipmentRows } from "@shared/equipmentUsage";
 import { formatDprReference } from "@/lib/dprReference";
 
@@ -295,6 +296,8 @@ export default function DprDetails() {
         submittedByName={(dpr as any).submittedByName}
         workType={(dpr as any).workType}
       />
+
+      <DprMaterialsReceived site={dpr.site} date={dpr.date} />
 
       {/* Activity Progress */}
       <Card>

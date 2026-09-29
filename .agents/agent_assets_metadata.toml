@@ -4161,3 +4161,31 @@ mtime_ms = 1790676480696
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c26267d1-ecc0-43d0-8f9a-944f74ef4cd8/babc128b-4837-4f9a-856c-0c2c41204373"
 storage_version_token = "1790676483419893"
 content_type = "text/html"
+
+[[outputs]]
+id = "AZvbtW528X1OWHieou5Mi"
+uri = "file://tests/fixtures/dpr17-materials/evidence/DprDetails-populated-1280.png"
+type = "image"
+title = "DPR Details — Materials Received"
+description = "Actual report page with isolated sample data; new daily cards and read-only table above Activity Progress."
+logical_id = "8028e342-6dbf-44b7-9cbe-7e2f1b3540bc"
+content_hash = "sha256:60b95606eb328b84078b279a583508065b45592c6afc1f63d7ac3fb6bc2632d6"
+size = 176405
+mtime_ms = 1790685097500
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8028e342-6dbf-44b7-9cbe-7e2f1b3540bc/1f5c6a43-a7bd-43c8-8c7a-64a1072f22b5"
+storage_version_token = "1790685108630028"
+content_type = "image/png"
+
+[[outputs]]
+id = "_8UzD8k0pJSIUnVAU3qYy"
+uri = "file://tests/fixtures/dpr17-materials/evidence/SiteReport-populated-1280.png"
+type = "image"
+title = "Site Report — Materials Received"
+description = "Actual Site Report page with isolated sample data; matching daily summary and entries table."
+logical_id = "d06ea1fe-c842-4805-b2ff-f772f8d4409a"
+content_hash = "sha256:c59c5612afb67c9e714a05ab1974f261999cf200faa8623ab26017d4410ed901"
+size = 191420
+mtime_ms = 1790685098264
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d06ea1fe-c842-4805-b2ff-f772f8d4409a/4d1be15a-bf7f-4269-867a-db6c805c2f11"
+storage_version_token = "1790685111047264"
+content_type = "image/png"

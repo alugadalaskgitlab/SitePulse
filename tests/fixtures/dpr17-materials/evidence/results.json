@@ -1,0 +1,50 @@
+{
+  "fixtureOnly": true,
+  "realPages": [
+    "DprDetails",
+    "SiteReport"
+  ],
+  "productionWrites": false,
+  "results": [
+    {
+      "pathname": "/dpr/1701",
+      "image": "/home/runner/workspace/tests/fixtures/dpr17-materials/evidence/DprDetails-populated-1280.png",
+      "query": "/api/materials-received?site=DPR17+TEST+SITE&dateFrom=2026-09-15&dateTo=2026-09-15",
+      "rows": 5,
+      "cards": 3,
+      "validBoq": "≈ 7.500 CUM (BOQ unit)"
+    },
+    {
+      "pathname": "/site/report/1701",
+      "image": "/home/runner/workspace/tests/fixtures/dpr17-materials/evidence/SiteReport-populated-1280.png",
+      "query": "/api/materials-received?site=DPR17+TEST+SITE&dateFrom=2026-09-15&dateTo=2026-09-15",
+      "rows": 5,
+      "cards": 3,
+      "validBoq": "≈ 7.500 CUM (BOQ unit)"
+    },
+    {
+      "pathname": "/dpr/1702",
+      "image": "/home/runner/workspace/tests/fixtures/dpr17-materials/evidence/DprDetails-empty-1280.png",
+      "query": "/api/materials-received?site=DPR17+TEST+SITE&dateFrom=2026-09-16&dateTo=2026-09-16",
+      "rows": 0,
+      "cards": 0,
+      "validBoq": null
+    },
+    {
+      "pathname": "/site/report/1702",
+      "image": "/home/runner/workspace/tests/fixtures/dpr17-materials/evidence/SiteReport-empty-1280.png",
+      "query": "/api/materials-received?site=DPR17+TEST+SITE&dateFrom=2026-09-16&dateTo=2026-09-16",
+      "rows": 0,
+      "cards": 0,
+      "validBoq": null
+    },
+    {
+      "pathname": "/site/report/1701",
+      "image": "/home/runner/workspace/tests/fixtures/dpr17-materials/evidence/SiteReport-populated-390.png",
+      "query": "/api/materials-received?site=DPR17+TEST+SITE&dateFrom=2026-09-15&dateTo=2026-09-15",
+      "rows": 5,
+      "cards": 3,
+      "validBoq": "≈ 7.500 CUM (BOQ unit)"
+    }
+  ]
+}
