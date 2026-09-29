@@ -3993,3 +3993,45 @@ mtime_ms = 1790640209910
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e956c7e1-a573-4808-9e40-136db6782c58/11cb4d2b-1ba6-46aa-b201-5172a85836d3"
 storage_version_token = "1790640265326085"
 content_type = "image/png"
+
+[[outputs]]
+id = "NuBVhfm31ljvoVH1Bruh8"
+uri = "file://screenshots/dpr15-complete-desktop.png"
+type = "image"
+title = "DPR-15 — complete refined mockup"
+description = "Parts A–C retained with the source-matched named personnel picker for Part D."
+logical_id = "4efa136e-68a2-47c0-8d5b-17c8a5d424e2"
+content_hash = "sha256:6c020d76675e9357a7ca583648914b3812181b673efc356a5c781d90ec2de955"
+size = 182102
+mtime_ms = 1790641947766
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/4efa136e-68a2-47c0-8d5b-17c8a5d424e2/e79af757-bb04-4c2f-85e2-6390ebf9bca2"
+storage_version_token = "1790641992857671"
+content_type = "image/png"
+
+[[outputs]]
+id = "ErEnJLXT5aQwElJEKitkv"
+uri = "file://screenshots/dpr15-personnel-picker.png"
+type = "image"
+title = "Personnel dropdown"
+description = "Named sample personnel with roles and the New Personnel option."
+logical_id = "6972428e-7a4b-4575-91a4-a14222a64c87"
+content_hash = "sha256:ac7b0e3d800e1be192432f87438f59e07a4f40bcb64e7cac3613b3b79bdc2ae9"
+size = 121932
+mtime_ms = 1790641943506
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/6972428e-7a4b-4575-91a4-a14222a64c87/d51a066c-b4b1-4360-b0b4-5df3b164ff2d"
+storage_version_token = "1790641994779015"
+content_type = "image/png"
+
+[[outputs]]
+id = "sPMgBsyZrAyvTFkOp0by_"
+uri = "file://screenshots/dpr15-personnel-dialog.png"
+type = "image"
+title = "New Personnel — sample-only dialog"
+description = "Name, role and optional phone, matching the existing SiteEntry flow; no real records are created."
+logical_id = "f823243a-7380-48b3-b966-65df999befb5"
+content_hash = "sha256:b46e790fb252af3173b998486dc1e9f2801cfd87b72ce89cb3886e64bd388dc0"
+size = 101572
+mtime_ms = 1790641944530
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/f823243a-7380-48b3-b966-65df999befb5/f0bc4a11-3390-464e-b42b-ba78d41ef543"
+storage_version_token = "1790641996664199"
+content_type = "image/png"

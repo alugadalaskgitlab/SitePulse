@@ -1,8 +1,21 @@
 import { useRef, useState } from "react";
-import { AlertTriangle, Camera, Check, ChevronDown, ClipboardList, Gauge, HardHat, RotateCcw, X } from "lucide-react";
+import { AlertTriangle, Camera, Check, ChevronDown, ClipboardList, Gauge, HardHat, RotateCcw, UserPlus, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import "./condensed-dpr.css";
 
 type Outcome = "" | "Fully reusable" | "Partly reusable" | "Unsuitable";
+type Personnel = { id: number; name: string; role: string; phone?: string };
+const personnelRoles = ["Engineer", "Supervisor", "Assistant", "Foreman", "Other"] as const;
+const seedPersonnel: Personnel[] = [
+  { id: 1, name: "A. PATIL", role: "Engineer" },
+  { id: 2, name: "M. DESHMUKH", role: "Supervisor" },
+  { id: 3, name: "S. KUMAR", role: "Foreman" },
+];
 type Activity = {
   id: string;
   name: string;
@@ -14,13 +27,13 @@ type Activity = {
   width: string;
   thickness: string;
   layer: string;
-  personnel: string;
+  personnelIds: number[];
   photos: string[];
 };
 
 const seedActivities: Activity[] = [
-  { id: "excavation", name: "Roadway excavation", reach: "Reach 2", from: "1+180", to: "1+360", side: "Full width", length: "180", width: "7", thickness: "0.35", layer: "—", personnel: "Excavation crew · 6", photos: [] },
-  { id: "embankment", name: "Embankment filling", reach: "Reach 3", from: "1+360", to: "1+520", side: "Full width", length: "160", width: "7", thickness: "0.25", layer: "1", personnel: "Earthworks crew · 8", photos: [] },
+  { id: "excavation", name: "Roadway excavation", reach: "Reach 2", from: "1+180", to: "1+360", side: "Full width", length: "180", width: "7", thickness: "0.35", layer: "—", personnelIds: [1], photos: [] },
+  { id: "embankment", name: "Embankment filling", reach: "Reach 3", from: "1+360", to: "1+520", side: "Full width", length: "160", width: "7", thickness: "0.25", layer: "1", personnelIds: [2], photos: [] },
 ];
 
 const materialSources = ["Roadway excavation, Reach 2", "Approved external borrow", "Existing stockpile"];
@@ -31,7 +44,14 @@ const formatQty = (activity: Activity) => {
 };
 
 export function CondensedDpr() {
-  const [activities, setActivities] = useState<Activity[]>(() => seedActivities.map(a => ({ ...a, photos: [] })));
+  const [activities, setActivities] = useState<Activity[]>(() => seedActivities.map(a => ({ ...a, personnelIds: [...a.personnelIds], photos: [] })));
+  const [personnelList, setPersonnelList] = useState<Personnel[]>(() => [...seedPersonnel]);
+  const [addPersonnelOpen, setAddPersonnelOpen] = useState(false);
+  const [personnelAddTarget, setPersonnelAddTarget] = useState<string | null>(null);
+  const [newPersonnelName, setNewPersonnelName] = useState("");
+  const [newPersonnelRole, setNewPersonnelRole] = useState("Engineer");
+  const [newPersonnelPhone, setNewPersonnelPhone] = useState("");
+  const [duplicatePersonnel, setDuplicatePersonnel] = useState<Personnel | null>(null);
   const [expanded, setExpanded] = useState<string[]>([]);
   const [outcome, setOutcome] = useState<Outcome>("");
   const [reusableQty, setReusableQty] = useState("");
@@ -45,6 +65,46 @@ export function CondensedDpr() {
 
   const updateActivity = (id: string, patch: Partial<Activity>) =>
     setActivities(current => current.map(activity => activity.id === id ? { ...activity, ...patch } : activity));
+
+  const attachPersonnel = (activityId: string, person: Personnel) =>
+    setActivities(current => current.map(activity =>
+      activity.id === activityId && !activity.personnelIds.includes(person.id)
+        ? { ...activity, personnelIds: [...activity.personnelIds, person.id] }
+        : activity
+    ));
+
+  const closePersonnelDialog = () => {
+    setAddPersonnelOpen(false);
+    setPersonnelAddTarget(null);
+    setNewPersonnelName("");
+    setNewPersonnelRole("Engineer");
+    setNewPersonnelPhone("");
+    setDuplicatePersonnel(null);
+  };
+
+  const useExistingPersonnel = (person: Personnel) => {
+    if (personnelAddTarget) attachPersonnel(personnelAddTarget, person);
+    closePersonnelDialog();
+  };
+
+  const savePersonnel = () => {
+    const name = newPersonnelName.trim();
+    if (!name || !personnelAddTarget) return;
+    // Mirrors the real POST /api/personnel name conflict check, including people
+    // already assigned to another activity. Reuse the master record, don't clone it.
+    const existing = personnelList.find(p => p.name.trim().toLowerCase() === name.toLowerCase());
+    if (existing) {
+      setDuplicatePersonnel(existing);
+      return;
+    }
+    const created: Personnel = {
+      id: Math.max(0, ...personnelList.map(p => p.id)) + 1,
+      name, role: newPersonnelRole, phone: newPersonnelPhone.trim() || undefined,
+    };
+    setPersonnelList(current => [...current, created]);
+    attachPersonnel(personnelAddTarget, created);
+    closePersonnelDialog();
+  };
 
   const toggleActivity = (id: string) =>
     setExpanded(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id]);
@@ -61,7 +121,9 @@ export function CondensedDpr() {
   };
 
   const reset = () => {
-    setActivities(seedActivities.map(a => ({ ...a, photos: [] })));
+    setActivities(seedActivities.map(a => ({ ...a, personnelIds: [...a.personnelIds], photos: [] })));
+    setPersonnelList([...seedPersonnel]);
+    closePersonnelDialog();
     setExpanded([]);
     setOutcome("");
     setReusableQty("");
@@ -172,9 +234,42 @@ export function CondensedDpr() {
                           )}
                         </div>
                         <div className="dpr14-detail-pane">
-                          <label className="dpr14-detail-label" htmlFor={`dpr14-crew-${activity.id}`}>Personnel on activity</label>
-                          <input className="dpr14-input" id={`dpr14-crew-${activity.id}`} value={activity.personnel} onChange={e => updateActivity(activity.id, { personnel: e.target.value })} />
-                          <p className="dpr14-helper">Local sample entry; not saved to a report.</p>
+                          <Label className="dpr14-detail-label">Personnel on activity</Label>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {activity.personnelIds.map(pid => {
+                              const person = personnelList.find(p => p.id === pid);
+                              return person ? (
+                                <Badge key={pid} variant="secondary" className="text-sm gap-1">
+                                  {person.name}
+                                  <X className="w-3 h-3 cursor-pointer" role="button" tabIndex={0} aria-label={`Remove ${person.name} from ${activity.name}`} onClick={() => updateActivity(activity.id, { personnelIds: activity.personnelIds.filter(id => id !== pid) })} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); updateActivity(activity.id, { personnelIds: activity.personnelIds.filter(id => id !== pid) }); } }} />
+                                </Badge>
+                              ) : null;
+                            })}
+                            <Select
+                              value=""
+                              onValueChange={val => {
+                                if (val === "__add_new__") {
+                                  setPersonnelAddTarget(activity.id);
+                                  setAddPersonnelOpen(true);
+                                  return;
+                                }
+                                const person = personnelList.find(p => p.id === Number(val));
+                                if (person) attachPersonnel(activity.id, person);
+                              }}
+                            >
+                              <SelectTrigger className="w-[140px] h-7 text-sm" data-testid={`select-personnel-${index}`} aria-label={`Add personnel to ${activity.name}`}>
+                                <SelectValue placeholder="+ Add person" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {personnelList.filter(p => !activity.personnelIds.includes(p.id)).map(p => (
+                                  <SelectItem key={p.id} value={String(p.id)}>{p.name} ({p.role})</SelectItem>
+                                ))}
+                                <SelectItem value="__add_new__" className="text-primary font-medium">
+                                  <span className="flex items-center gap-1"><UserPlus className="h-3 w-3" /> New Personnel</span>
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </div>
                       </div>
                       <div className="dpr14-extra">
@@ -195,6 +290,38 @@ export function CondensedDpr() {
             })}
           </div>
         </section>
+        <Dialog open={addPersonnelOpen} onOpenChange={open => { if (!open) closePersonnelDialog(); else setAddPersonnelOpen(true); }}>
+           <DialogContent className="sm:max-w-[400px] !animate-none">
+            <DialogHeader><DialogTitle>Add New Personnel</DialogTitle></DialogHeader>
+            <div className="space-y-4 py-2">
+              <div>
+                <Label htmlFor="dpr14-new-personnel-name">Name</Label>
+                <Input id="dpr14-new-personnel-name" value={newPersonnelName} onChange={e => { setNewPersonnelName(e.target.value.toUpperCase()); setDuplicatePersonnel(null); }} placeholder="Full name" className="uppercase" data-testid="input-new-personnel-name" />
+              </div>
+              <div>
+                <Label>Role</Label>
+                <Select value={newPersonnelRole} onValueChange={setNewPersonnelRole}>
+                  <SelectTrigger data-testid="select-new-personnel-role"><SelectValue /></SelectTrigger>
+                   <SelectContent className="max-h-[200px] !animate-none">{personnelRoles.map(role => <SelectItem key={role} value={role}>{role}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="dpr14-new-personnel-phone">Phone (optional)</Label>
+                <Input id="dpr14-new-personnel-phone" value={newPersonnelPhone} onChange={e => setNewPersonnelPhone(e.target.value.toUpperCase())} placeholder="Phone number" className="uppercase" data-testid="input-new-personnel-phone" />
+              </div>
+              {duplicatePersonnel && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 flex items-center justify-between gap-2" data-testid="alert-duplicate-personnel">
+                  <span>{duplicatePersonnel.name} already exists ({duplicatePersonnel.role}).</span>
+                  <Button type="button" size="sm" variant="outline" onClick={() => useExistingPersonnel(duplicatePersonnel)} data-testid="button-use-existing-personnel">Use this person</Button>
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={closePersonnelDialog}>Cancel</Button>
+              <Button disabled={!newPersonnelName.trim()} onClick={savePersonnel} data-testid="button-save-new-personnel">Save</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <section className="dpr14-section" aria-labelledby="dpr14-equipment-heading">
           <div className="dpr14-section-heading">

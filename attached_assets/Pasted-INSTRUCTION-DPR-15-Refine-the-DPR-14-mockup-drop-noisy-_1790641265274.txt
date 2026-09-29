@@ -1,0 +1,47 @@
+INSTRUCTION DPR-15: Refine the DPR-14 mockup — drop noisy badges, put all activity fields in one row, add a quantity field for "Partly reusable"
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a refinement of the DPR-14 mockup ONLY (`/__mockup/preview/dpr14/CondensedDpr` or wherever it now lives) — still a standalone prototype with sample data, still NOT wired into the real DPR save/submit flow, DprSections.tsx, SiteEntry.tsx, SiteEdit.tsx, DprEquipmentCompact.tsx, or evaluateDprSubmitReadiness. Do not touch HOME-01, DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, PERM-01/02, or DPR-13's already-delivered work. Do not publish automatically. STOP after this and report back — real implementation is still a separate future step, not this one.
+
+BACKGROUND
+The mockup was reviewed live. Four specific visual/behavioral points need fixing; everything else in the mockup (the readiness banner, the "Fix →" links disappearing as each issue is resolved, the equipment "Confirm tank reading" button, the condensed equipment card layout itself) was reviewed and confirmed to already work correctly — do not change those. The equipment log reorganization from DPR-14 (one compact card per machine, single stat grid, no duplicate Usage Summary block) is DONE and confirmed good — this instruction does not touch equipment layout again, only the items below.
+
+5. CONFIRMED by direct code review — the mockup's "Personnel on activity" field is currently a free-text input ("Excavation crew · 6", with helper text "Local sample entry; not saved to a report") standing in for a REAL feature that already exists in the app and should be used as-is instead of invented:
+   - `client/src/pages/SiteEntry.tsx` has a real `personnelIds: number[]` field per activity/progress row, rendered as a `<Select>` picker (`select-personnel-${idx}`, ~line 3015) populated from a real Personnel master table via `GET /api/personnel` (~line 785-786), plus an inline "+ New Personnel" flow (~lines 789-874) that creates a personnel record and attaches it to that specific row. The same pattern exists in `client/src/pages/SiteEdit.tsx` (~lines 95, 276, 582+) and `GuidedDpr.tsx` (~lines 114, 404, 1334, 1371, picker ~1806).
+   - `shared/schema.ts`'s `personnel` table (~lines 1259-1268: id, name, role — Engineer/Supervisor/Assistant/Foreman/Other, phone, isActive) is the real master list this picker reads from — not free text.
+   - The per-activity link already exists via the `activityPersonnel` junction table (`progressEntryId` + `personnelId`, schema.ts ~lines 1270-1274), actively used in `server/dprSections.ts` and `server/storage.ts` to persist which personnel are attached to which specific activity row. This link already exists for every activity today — no new linking work is needed for this field.
+   - Separately, confirmed: `labourLogs` (the DPR's day-level general labour/headcount section — category, gender, count, task, contractor) ALSO already has an optional per-activity link via `boqItemId`/`structureId` (schema.ts ~lines 330-334, added for "Plan vs Actual linkage"). This is a different, already-existing mechanism from `activityPersonnel` and is NOT part of this instruction — it's noted here only so it isn't confused with the Personnel field being fixed below, and so no one re-builds a link that already exists.
+
+FIX
+
+PART A — Remove noisy badges above the activity field grid
+Each activity row currently shows three pill badges above its field grid: "BOQ progress", "Quantity from sample geometry", "Unit: CUM". Remove the first two — they add no information the person needs. Keep a BOQ-unit indicator only if the unit isn't otherwise obvious from the Physical Qty field's own label (e.g. if the qty field is already labelled "Physical qty (CUM)", a separate "Unit: CUM" badge is redundant too — use judgment, but default to removing all three unless you find a real case where the unit would be ambiguous without it).
+
+PART B — One row for all activity fields
+Currently Side / From (Ch.) / To (Ch.) / Length (m) / Width (m) / Thickness (m) are one row, and Layer/lift no. / Physical qty (CUM) sit on a second row below. Combine all eight fields (side, from, to, length, width, thickness, layer/lift, physical qty) into a single row, adjusting column widths so it stays readable (narrower columns for short fields like Side/Layer, proportionally more space for numeric fields). Confirm this still reads cleanly at the mockup's normal viewport width — if eight columns genuinely can't fit without becoming illegible, say so in your report and propose the best compromise (e.g. wrapping to two rows only when the viewport is narrow) rather than forcing it and producing a broken layout.
+While doing this, verify the auto-calculation is real and live, not a static sample string: changing Length, Width, or Thickness should recompute Physical Qty (= L × W × T) immediately in the mockup, and changing Physical Qty directly (if that's still allowed) should not silently get overwritten. Confirm which of these two behaviors the mockup currently has and report it plainly — fix it to be a genuine live calculation if it currently is not.
+
+PART C — "Partly reusable" needs a quantity field
+When "Partly reusable" is selected in Material outcome, show a free-text or numeric field asking what quantity is reusable (e.g. "Reusable quantity (CUM)"), appearing only when this option is selected — "Fully reusable" and "Unsuitable" should continue to show no extra field, exactly as they do now.
+
+PART D — Replace the "Personnel on activity" free-text field with the real personnel picker
+Replace the mockup's free-text "Personnel on activity" input with the SAME picker pattern already used in the real app for this exact purpose: a `<Select>` dropdown of named personnel (Engineer/Supervisor/Assistant/Foreman/Other) sourced from the real Personnel master concept, with an inline "+ New Personnel" option to add someone not yet listed — mirroring `SiteEntry.tsx`'s existing `select-personnel-${idx}` + "+ New Personnel" flow exactly (same interaction, same fields: name + role + phone for a new entry). Sample/mock personnel data is fine for the mockup (no real API call required), but the UI and interaction pattern must match the real one so this becomes a faithful preview of the real feature, not a new invented pattern. No per-activity linking logic needs to be designed — that link already exists in the real app (`activityPersonnel`) and this mockup only needs to preview the picker UI faithfully, not reimplement the link.
+
+WHAT NOT TO DO
+- Do not wire any of this into the real DPR save/submit flow or real API routes — mockup/sample data only, same as DPR-14.
+- Do not change the readiness banner, the per-issue "Fix →" links, the equipment tank-confirm button, or the equipment card's overall layout — these were reviewed and confirmed correct as-is.
+- Do not invent a new personnel-entry pattern for Part D — replicate the existing one exactly.
+- Do not touch `labourLogs`/general labour headcount or its existing `boqItemId`/`structureId` linkage — out of scope for this instruction.
+- Do not touch HOME-01, DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, PERM-01/02, or DPR-13.
+- Do not start any other task on your own initiative, and do not begin real implementation of this design into the live app yet — that will be a separate instruction after final sign-off.
+
+SCHEMA SAFETY
+No schema change. No real data writes. Sample/hardcoded data only, same as DPR-14.
+
+REPORT BACK
+1. Confirm Part A, B, C, and D with screenshots.
+2. For Part B specifically: confirm whether the L×W×T → Physical Qty calculation was already live or you had to make it live, and confirm the one-row layout holds up at normal width.
+3. For Part D specifically: confirm the picker pattern genuinely matches SiteEntry.tsx's real personnel flow (dropdown + "+ New Personnel" with name/role/phone), not a simplified stand-in.
+4. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
