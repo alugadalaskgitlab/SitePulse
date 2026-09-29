@@ -4147,3 +4147,17 @@ mtime_ms = 1790660096070
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/cc33a5ea-6bca-453f-9018-c0265aa6118a/9317f922-9f7d-405d-86fe-56579c2cd986"
 storage_version_token = "1790660231133667"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "TOkZwEZwnx9QueN0VbtWi"
+uri = "file://reports/dpr16-failure-audit.html"
+type = "html"
+title = "DPR16 — all 41 failures with baseline comparison"
+description = "Exact full test names, observed errors, and pre-DPR16 comparison. 40 reproduce on baseline; one newly failing source-contract assertion."
+logical_id = "c26267d1-ecc0-43d0-8f9a-944f74ef4cd8"
+content_hash = "sha256:77f52d0206992580255726dfeba747ed1fbc0abfb72d38dccd2ec9dc4ad28b95"
+size = 14749
+mtime_ms = 1790676480696
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c26267d1-ecc0-43d0-8f9a-944f74ef4cd8/babc128b-4837-4f9a-856c-0c2c41204373"
+storage_version_token = "1790676483419893"
+content_type = "text/html"
