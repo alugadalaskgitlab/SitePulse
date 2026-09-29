@@ -10,6 +10,8 @@ export interface EquipmentTankBalancePatch {
 
 interface EquipmentTankBalanceInputsProps {
   index: number;
+  /** Section editor only: distinguish an unconfirmed dip from actual consumption. */
+  sectionPresentation?: boolean;
   openingDiesel?: number | null;
   dieselBalanceInTank?: number | null;
   dieselBalanceConfirmed?: boolean | null;
@@ -29,6 +31,7 @@ const finite = (value: unknown): value is number =>
  */
 export function EquipmentTankBalanceInputs({
   index,
+  sectionPresentation = false,
   openingDiesel,
   dieselBalanceInTank,
   dieselBalanceConfirmed,
@@ -102,7 +105,17 @@ export function EquipmentTankBalanceInputs({
         </Label>
       </div>
 
-      {hasActualConsumption && (
+      {sectionPresentation && dieselBalanceConfirmed !== true && (
+        <div className="p-2 bg-blue-100/50 dark:bg-blue-900/20 rounded text-sm" data-testid={`panel-consumption-incomplete-${index}`}>
+          Actual Consumption: Incomplete — tank balance not confirmed. Confirm the physical tank balance to show consumption and L/Hr.
+        </div>
+      )}
+      {sectionPresentation && dieselBalanceConfirmed === true && !hasActualConsumption && (
+        <div className="p-2 bg-blue-100/50 dark:bg-blue-900/20 rounded text-sm" data-testid={`panel-consumption-incomplete-${index}`}>
+          Actual Consumption: Incomplete — opening diesel, diesel issued and closing tank balance are required.
+        </div>
+      )}
+      {hasActualConsumption && (!sectionPresentation || dieselBalanceConfirmed === true) && (
         <div className="p-2 bg-blue-100/50 dark:bg-blue-900/20 rounded text-sm space-y-1" data-testid={`panel-actual-consumption-${index}`}>
           <p>
             Actual Consumption (L):{" "}

@@ -2,7 +2,9 @@ import { dprSectionStates, DPR_SECTIONS, normalizeDprSectionContext, type DprSec
 
 /** Isolated synthetic service, never imported by the application. */
 export function installDpr13Adapter() {
-  if (window.location.pathname.includes("dpr13") || new URLSearchParams(window.location.search).has("dpr13Legacy")) sessionStorage.setItem("dpr13-fixture-active", "1");
+  if (new URLSearchParams(window.location.search).has("dpr16")) sessionStorage.setItem("dpr16-fixture-active", "1");
+  const dpr16 = sessionStorage.getItem("dpr16-fixture-active") === "1";
+  if (window.location.pathname.includes("dpr13") || new URLSearchParams(window.location.search).has("dpr13Legacy") || dpr16) sessionStorage.setItem("dpr13-fixture-active", "1");
   if (!sessionStorage.getItem("dpr13-fixture-active")) return;
   const previousFetch = window.fetch.bind(window);
   const key = "dpr13-synthetic-canonical";
@@ -28,6 +30,20 @@ export function installDpr13Adapter() {
   const response = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
   window.fetch = async (input, init) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, window.location.origin);
+    // B1's isolated browser scenario needs a road-excavation BOQ item. Keep
+    // the older fixture catalogue unchanged outside the explicit dpr16 route.
+    if (dpr16 && /^\/api\/boq\/projects\/5501\/items$/.test(url.pathname) && (!init?.method || init.method === "GET")) {
+      const original = await previousFetch(input, init);
+      if (!original.ok) return original;
+      const items = await original.json();
+      return response([...items, {
+        id: 8816, itemCode: "B1.1", itemName: "ROADWAY EXCAVATION",
+        description: "Roadway excavation in cutting",
+        displayName: "ROADWAY EXCAVATION", unit: "CUM",
+        categoryName: "Road Work", planningWorkType: "road",
+        dprMeasurementMethod: "geometry", includeInDpr: true,
+      }]);
+    }
     if (/^\/api\/equipment\/\d+\/latest-closing$/.test(url.pathname) && fixture.priorClosing != null) {
       requests.push({ method: "GET", path: url.pathname, search: url.search });
       return response({ closingReading: fixture.priorClosing, sourceDate: "2026-08-04", source: "dpr" });

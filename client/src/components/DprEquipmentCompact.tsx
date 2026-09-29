@@ -45,7 +45,7 @@ function SectionHeading({ children }: { children: ReactNode }) {
   return <div className="mb-2 text-xs font-bold uppercase tracking-[0.12em] text-slate-700 dark:text-slate-200">{children}</div>;
 }
 
-export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignmentChange, editable = true, index = 0, beforeDate, site, boqItems, programmeBars, showTankBalance = true, enableTankContinuity = true, hideIdentity = false, allowLinkedSourceEdit = false }: {
+export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignmentChange, editable = true, index = 0, beforeDate, site, boqItems, programmeBars, showTankBalance = true, enableTankContinuity = true, hideIdentity = false, allowLinkedSourceEdit = false, sectionPresentation = false }: {
   row: DprEquipmentFields;
   equipment?: { meterType?: string | null; consumptionNorm?: number | null; ownership?: string | null; vendorName?: string | null } | null;
   onChange?: (patch: Partial<DprEquipmentFields>) => void;
@@ -68,6 +68,8 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
    * those callers to avoid showing the same identity twice.
    */
   hideIdentity?: boolean;
+  /** Opt-in section editor layout. Classic and read-only render paths are unchanged. */
+  sectionPresentation?: boolean;
   /**
    * Linked canonical usage rows are immutable for ordinary editors. Admin
    * corrections still pass through the version transaction; lifecycle IDs
@@ -90,7 +92,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
   const visibleWarning = isIdle ? null : preview.warning;
   const statusReasonRequired = row.usageStatus != null && row.usageStatus !== "working";
   const rowLooksComplete = !!row.machine && !!row.endTime && row.closingReading != null && !row.breakdowns?.length && !visibleWarning && !tankNeedsConfirmation && (!statusReasonRequired || !!row.usageStatusReason?.trim());
-  const [expanded, setExpanded] = useState(index === 0 || !rowLooksComplete);
+  const [expanded, setExpanded] = useState(sectionPresentation ? false : index === 0 || !rowLooksComplete);
   const summaryUsage = useMemo(() => ({
     ...preview,
     runtime: preview.runtime,
@@ -215,7 +217,13 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
         </div>
       </header>
 
-      {editable && !expanded && <button type="button" onClick={() => setExpanded(true)} className="grid min-h-11 w-full grid-cols-2 gap-x-3 gap-y-1 px-3 py-2 text-left text-xs text-slate-600 hover:bg-slate-50 sm:grid-cols-4 dark:text-slate-300 dark:hover:bg-slate-800/40">
+      {editable && sectionPresentation && <div className="grid grid-cols-2 gap-3 px-3 py-3 text-sm sm:grid-cols-4" data-testid={`section-equipment-summary-${index}`}>
+        <div><span className="text-xs text-muted-foreground">{usageQuantity.label}</span><p className="font-semibold tabular-nums">{usageQuantity.value}</p></div>
+        <div><span className="text-xs text-muted-foreground">Clock duration</span><p className="font-semibold tabular-nums">{formatEquipmentDuration(clockHours)}</p></div>
+        <div><span className="text-xs text-muted-foreground">Diesel issued</span><p className="font-semibold tabular-nums">{number(row.diesel)} L</p></div>
+        <div><span className="text-xs text-muted-foreground">Tank status</span><p className="font-semibold">{!isPlantStock ? "Not applicable" : row.dieselBalanceConfirmed ? "Confirmed" : "Not confirmed"}</p></div>
+      </div>}
+      {editable && !sectionPresentation && !expanded && <button type="button" onClick={() => setExpanded(true)} className="grid min-h-11 w-full grid-cols-2 gap-x-3 gap-y-1 px-3 py-2 text-left text-xs text-slate-600 hover:bg-slate-50 sm:grid-cols-4 dark:text-slate-300 dark:hover:bg-slate-800/40">
         <span><strong className="text-slate-900 dark:text-slate-100">{formatEquipmentTime(row.startTime)}–{formatEquipmentTime(row.endTime)}</strong></span>
         <span>Clock <strong className="text-slate-900 dark:text-slate-100">{formatEquipmentDuration(clockHours)}</strong></span>
         <span>Fuel <strong className="text-slate-900 dark:text-slate-100">{number(row.diesel)} L</strong></span>
@@ -260,8 +268,8 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
            <div className="border-b border-slate-200 px-3 py-2 sm:border-b-0 sm:border-r dark:border-slate-700"><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{equipment?.meterType === "odometer" ? "Closing Odometer" : "Closing Meter"}</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-900" type="number" step="0.1" value={row.closingReading ?? ""} onChange={event => { closingReadingEdited.current = true; setNumber("closingReading", event.target.value); }} placeholder="Not recorded" data-testid={`equipment-compact-closing-meter-${index}`} /></div>
          <div className="border-r border-slate-200 px-3 py-2 dark:border-slate-700"><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Start</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-900" type="time" value={row.startTime ?? ""} disabled={linkedSourceLocked} onChange={event => onChange?.({ startTime: event.target.value })} data-testid={`equipment-compact-start-${index}`} /></div>
          <div className="border-r border-slate-200 px-3 py-2 dark:border-slate-700"><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">End</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-900" type="time" value={row.endTime ?? ""} onChange={event => onChange?.({ endTime: event.target.value })} data-testid={`equipment-compact-end-${index}`} /></div>
-        <div className="col-span-2 px-3 py-2 sm:col-span-1"><div className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Clock Duration</div><div className="mt-2 text-sm font-bold tabular-nums text-slate-900 dark:text-slate-100">{formatEquipmentDuration(clockHours)}</div></div>
-         <div className="col-span-2 px-3 py-2 sm:col-span-1"><div className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{usageQuantity.label}</div><div className="mt-2 text-sm font-bold tabular-nums text-slate-900 dark:text-slate-100" data-testid={`equipment-compact-working-hours-${index}`}>{usageQuantity.value}</div></div>
+        {!sectionPresentation && <div className="col-span-2 px-3 py-2 sm:col-span-1"><div className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Clock Duration</div><div className="mt-2 text-sm font-bold tabular-nums text-slate-900 dark:text-slate-100">{formatEquipmentDuration(clockHours)}</div></div>}
+         {!sectionPresentation && <div className="col-span-2 px-3 py-2 sm:col-span-1"><div className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{usageQuantity.label}</div><div className="mt-2 text-sm font-bold tabular-nums text-slate-900 dark:text-slate-100" data-testid={`equipment-compact-working-hours-${index}`}>{usageQuantity.value}</div></div>}
       </section>}
 
       {!editable && <div className="grid divide-y divide-slate-200 dark:divide-slate-700 lg:grid-cols-3 lg:divide-x lg:divide-y-0">

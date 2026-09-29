@@ -4035,3 +4035,45 @@ mtime_ms = 1790641944530
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/f823243a-7380-48b3-b966-65df999befb5/f0bc4a11-3390-464e-b42b-ba78d41ef543"
 storage_version_token = "1790641996664199"
 content_type = "image/png"
+
+[[outputs]]
+id = "RSF6WTKuq_Xsg_Apzim91"
+uri = "file://tests/fixtures/dpr-site-entry/evidence/dpr16-b1-desktop-activity-fix.png"
+type = "image"
+title = "B1 — Activity section and readiness Fix"
+description = "Real section-editor React UI with isolated synthetic test data; not an operational DPR."
+logical_id = "e3216734-c651-4f03-bba9-9481cefaa8d5"
+content_hash = "sha256:b1967c8af88a7f2936431aee72c4709bd1b6315452a114ffef262b303084cc7f"
+size = 145759
+mtime_ms = 1790650871968
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e3216734-c651-4f03-bba9-9481cefaa8d5/1888f889-bb6c-4603-a7da-e787a3fe7bdd"
+storage_version_token = "1790651190439829"
+content_type = "image/png"
+
+[[outputs]]
+id = "XAe9xqrlK3ZKrel9djKOj"
+uri = "file://tests/fixtures/dpr-site-entry/evidence/dpr16-b1-desktop-equipment.png"
+type = "image"
+title = "B1 — Condensed equipment section"
+description = "Single statistics grid, visible tank confirmation and unconfirmed-consumption explanation. Isolated test fixture."
+logical_id = "a8289a83-b458-486e-b836-56f19ac6e027"
+content_hash = "sha256:572b0f567a50764216d84d5519c71d628d0b6422499a851053deee118cd8e5a4"
+size = 72229
+mtime_ms = 1790651147624
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/a8289a83-b458-486e-b836-56f19ac6e027/c8911892-daeb-4e04-b0e5-423f1263342b"
+storage_version_token = "1790651192185715"
+content_type = "image/png"
+
+[[outputs]]
+id = "cyjhchJcsyBqvubC8X2s3"
+uri = "file://tests/fixtures/dpr-site-entry/evidence/dpr16-b1-mobile-equipment.png"
+type = "image"
+title = "B1 — Mobile equipment after reload"
+description = "Confirmed tank and calculated consumption after fixture-backed save/reload."
+logical_id = "8667c95c-fbbe-4469-be34-152b1e7bb66c"
+content_hash = "sha256:694c6cc372626edb3a00cb10c73c852432f1c4ce785e1c4175c20dcd48e97f35"
+size = 62284
+mtime_ms = 1790651148364
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8667c95c-fbbe-4469-be34-152b1e7bb66c/684385fb-f2b8-4b69-8c82-c20798076312"
+storage_version_token = "1790651193862871"
+content_type = "image/png"

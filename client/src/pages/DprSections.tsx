@@ -7,12 +7,27 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useDpr } from "@/hooks/use-dprs";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
-import { evaluateDprSubmitReadiness } from "@shared/dprSubmitReadiness";
+import type { DprReadinessIssue } from "@shared/dprSubmitReadiness";
+import { evaluateSectionReadiness } from "@/lib/dprSectionReadiness";
 import { DPR_SECTIONS, normalizeDprSectionContext, type DprSection, type DprSectionContext, type DprSectionSnapshot, type DprSectionResolution } from "@shared/dprSections";
 import SiteEntry from "./SiteEntry";
 import SiteEdit from "./SiteEdit";
 import { DPR_REGISTER_PATH, resolveReturnTo } from "@/lib/progressReportNav";
 import { createDprSectionSaveAttempt } from "@/lib/dprSectionSaveAttempt";
+
+const editorSection = (section: DprReadinessIssue["section"]): DprSection =>
+  section === "activities" ? "activity" : section;
+
+function MissingItems({ issues, onFix }: { issues: DprReadinessIssue[]; onFix: (issue: DprReadinessIssue) => void }) {
+  if (!issues.length) return null;
+  return <aside role="status" aria-label="Items needed before submission" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950 space-y-2" data-testid="section-readiness-banner">
+    <h2 className="font-semibold">{issues.length} {issues.length === 1 ? "item" : "items"} to resolve before submission</h2>
+    {issues.map((issue, index) => <div key={`${issue.section}-${issue.rowIndex ?? issue.rowKey ?? index}-${issue.message}`} className="flex flex-wrap items-center gap-2 text-sm">
+      <span>• {issue.label}: {issue.message}</span>
+      <Button type="button" size="sm" variant="outline" onClick={() => onFix(issue)}>Fix →</Button>
+    </div>)}
+  </aside>;
+}
 
 async function request<T>(url: string, method = "GET", body?: unknown): Promise<T> {
   const response = await fetch(url, {
@@ -63,10 +78,11 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
   const [section, setSection] = useState<DprSection>();
   const [generation, setGeneration] = useState(0);
   const [review, setReview] = useState(false);
+  const [target, setTarget] = useState<{ issue: DprReadinessIssue; token: number }>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const sites = useQuery<any[]>({ queryKey: ["/api/sites"] });
-  const boq = useDprBoqItems({ siteName: context.site, sites: sites.data ?? [], preferredProjectId: context.boqProjectId });
+  const boq = useDprBoqItems({ siteName: context.site, sites: sites.data ?? [], preferredProjectId: context.boqProjectId, recoveryEvidence: snapshot?.dpr });
   useEffect(() => {
     if (initial || resolved || context.site) return;
     const available = (sites.data ?? []).filter(site => site.isActive !== false && site.isActive !== 0);
@@ -116,7 +132,17 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
     }
   };
   const final = snapshot && (snapshot.dpr.dprStatus !== "draft" || snapshot.dpr.isDeleted || snapshot.dpr.isCancelled || snapshot.dpr.isSuperseded);
-  const readiness = snapshot ? evaluateDprSubmitReadiness(snapshot.dpr) : null;
+  // Never call the evaluator with unresolved BOQ items: that would incorrectly
+  // report a saved roadway excavation as complete before its catalogue loads.
+  const boqReady = boq.projectsLoaded && !boq.projectsLoading && !boq.projectsError && !boq.itemsLoading && !boq.itemsError
+    && (boq.projectId == null || boq.itemsLoaded) && (context.boqProjectId == null || boq.projectId === context.boqProjectId)
+    && (snapshot?.dpr.progress ?? []).every((row: any) => row.boqItemId == null || boq.items.some(item => Number(item.id) === Number(row.boqItemId)));
+  const readiness = snapshot && boqReady ? evaluateSectionReadiness(snapshot.dpr, boq.items) : null;
+  const fix = (issue: DprReadinessIssue) => {
+    setReview(false);
+    setTarget(previous => ({ issue, token: (previous?.token ?? 0) + 1 }));
+    setSection(editorSection(issue.section));
+  };
   const openCombined = async (guided: boolean) => {
     if (!resolved) {
       const result = await request<DprSectionResolution>("/api/dpr-sections/resolve", "POST", { context });
@@ -154,10 +180,21 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
     </div>}
     {section && !final ? <SiteEntry key={`${section}-${generation}`} sectionEditor={{
       section, context, snapshot, engineer, onSave: save, onReturn: () => { setSection(undefined); setReview(false); },
+      target, onFixOtherSection: fix,
     }} /> : <>
       <h1 className="text-2xl font-bold">{context.workType === "structure" ? "Structure DPR" : "Road Works DPR"}</h1>
       <Button variant="ghost" onClick={() => setLocation(resolveReturnTo(search, DPR_REGISTER_PATH))}>Back to DPRs</Button>
       <p className="text-muted-foreground">Save each section independently. Only Review &amp; Submit finalizes the DPR.</p>
+      {snapshot && !final && (readiness
+        ? <MissingItems issues={readiness.mandatory} onFix={fix} />
+        : <p role="status" className="rounded border border-amber-200 p-3 text-sm">
+          {boq.itemsError || boq.projectsError ? `BOQ items could not be loaded: ${String(boq.itemsError ?? boq.projectsError)}`
+            : context.boqProjectId != null && boq.projectsLoaded && boq.projectId !== context.boqProjectId
+              ? "Saved DPR BOQ project could not be resolved; submission readiness is unavailable."
+              : boq.itemsLoaded && (snapshot.dpr.progress ?? []).some((row: any) => row.boqItemId != null && !boq.items.some(item => Number(item.id) === Number(row.boqItemId)))
+                ? "A saved activity's BOQ item could not be resolved; submission readiness is unavailable."
+              : "Checking submission readiness against BOQ items…"}
+        </p>)}
       {!final && !candidates && <div className="rounded border p-4 space-y-2">
         <p className="text-sm">Prefer the earlier combined entry? These optional editors remain available. Independent sections are the default.</p>
         <div className="flex flex-wrap gap-2">

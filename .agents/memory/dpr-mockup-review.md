@@ -7,3 +7,9 @@ The user confirmed the condensed DPR prototype's disappearing readiness issues, 
 **Why:** Review approval concerned isolated sample-data behavior, not permission to change production DPR submission or validation.
 
 **How to apply:** Keep prototype refinements isolated. Treat production integration as a separate instruction, not an automatic next step after visual approval.
+
+Production rollout approval is surface-specific: section-based DPR first, classic combined forms second, read-only views last, with an explicit review stop between surfaces. Preserve the approved mockup unchanged as the reference.
+
+**Why:** Shared editors and equipment components can otherwise change unapproved surfaces during a supposedly isolated rollout.
+
+**How to apply:** Gate shared presentation changes by the approved surface; approval of the mapping plan or one surface does not authorize the next.

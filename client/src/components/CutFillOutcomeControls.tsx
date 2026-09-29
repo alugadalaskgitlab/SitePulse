@@ -30,6 +30,8 @@ type Props = {
   projectId?: number | null;
   sourceBoqItemId?: number | null;
   fillMode?: boolean;
+  condensedFill?: boolean;
+  onViewSource?: () => void;
   arrangementId?: number | null;
   boqItemDescription?: string | null;
   formRows?: Array<{ entryKey: string; boqItemId: number | null; quantity: number | null; allocations?: LedgerAllocation[]; reusableQty?: number | null }>;
@@ -50,6 +52,8 @@ export function CutFillOutcomeControls({
   projectId,
   sourceBoqItemId,
   fillMode = false,
+  condensedFill = false,
+  onViewSource,
   arrangementId,
   boqItemDescription,
   formRows = [],
@@ -118,12 +122,16 @@ export function CutFillOutcomeControls({
   if (fillMode && (!arrangement || arrangement.arrangementType !== "reused_excavated" || arrangement.sourceExcavationBoqItemId == null)) {
     return (
       <div className="mt-2 rounded border border-amber-200 bg-amber-50/60 p-2 text-[11px] text-amber-900" data-testid="cut-fill-link-prompt">
-        This is embankment/fill work. To track cut material usage, link this activity to an Execution Arrangement set to “Reused excavated” with an excavation source.
+        {condensedFill ? "Material source: No reused-excavation arrangement linked. Link this activity to an Execution Arrangement with an excavation source to track cut material usage." : "This is embankment/fill work. To track cut material usage, link this activity to an Execution Arrangement set to “Reused excavated” with an excavation source."}
       </div>
     );
   }
   return (
     <div className="mt-2 rounded border border-amber-200 bg-amber-50/60 p-2 space-y-2" data-testid="cut-fill-controls">
+      {fillMode && condensedFill && <div className="text-xs text-amber-900">
+        Material source: <strong>{arrangement.sourceExcavationBoqItemLabel || `BOQ item #${arrangement.sourceExcavationBoqItemId}`}</strong>
+        {onViewSource && <button type="button" className="ml-2 underline font-medium" onClick={onViewSource}>View source</button>}
+      </div>}
       <div className="flex items-center justify-between gap-2">
         <Label className="text-[11px] font-semibold text-amber-900">{fillMode ? "Reused excavation consumption" : "Excavated material outcome"}</Label>
         <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-800">Physical ledger only</Badge>
@@ -134,7 +142,7 @@ export function CutFillOutcomeControls({
           const normalized = normalizeExcavationMaterialOutcome(quantity, next, reusableQty);
           onOutcomeChange(normalized.materialOutcome, normalized.reusableQty);
         }}>
-          <SelectTrigger className="h-8 text-[11px] bg-white"><SelectValue placeholder="Select outcome" /></SelectTrigger>
+          <SelectTrigger className="h-8 text-[11px] bg-white" data-testid="select-cut-fill-outcome"><SelectValue placeholder="Select outcome" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="unset">Not recorded</SelectItem>
             <SelectItem value="fully_reusable">Fully reusable</SelectItem>

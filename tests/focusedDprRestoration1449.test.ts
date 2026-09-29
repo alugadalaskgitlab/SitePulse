@@ -35,7 +35,11 @@ describe("focused DPR restoration", () => {
     for (const source of [siteEntry, siteEdit, guided]) {
       expect(source).not.toContain("Chainage changed — recalculated length");
     }
-    expect(siteEntry).toContain("<details open className=\"group\">");
+    // DPR16 B1 keeps classic details open; the section equipment summary
+    // deliberately starts collapsed without removing the underlying editors.
+    expect(siteEntry).toContain('<details {...(!sectionEditor ? { open: true } : {})} className="group peer">');
+    expect(siteEntry).toContain("{sectionEditor && compactEquipment}");
+    expect(siteEntry).toContain("{!sectionEditor && compactEquipment}");
     for (const source of [siteEdit, guided]) {
       expect(source).not.toContain("Equipment setup and additional usage details");
       expect(source).toContain("hideIdentity");

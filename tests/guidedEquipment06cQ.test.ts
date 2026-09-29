@@ -127,9 +127,11 @@ describe("EQUIP-01 routed DPR source contract", () => {
   const classic = readFileSync("client/src/pages/SiteEntry.tsx", "utf8");
   const guided = readFileSync("client/src/pages/GuidedDpr.tsx", "utf8");
 
-  it("covers the two DPR equipment-entry pages that App actually routes", () => {
-    expect(app).toContain('path="/site/new" component={gated(SiteEntry');
-    expect(app).toContain('path="/site/guided" component={gated(GuidedDpr');
+  it("keeps the two DPR equipment-entry pages reachable behind the section hub", () => {
+    expect(app).toContain('path="/site/new" component={gated(DprSections');
+    expect(app).toContain('path="/site/guided" component={gated(DprSections');
+    expect(app).toContain('path="/site/combined" component={gated(SiteEntry');
+    expect(app).toContain('path="/site/guided/combined" component={gated(GuidedDpr');
   });
 
   it("keeps master selection primary and exposes free text only for Other", () => {
