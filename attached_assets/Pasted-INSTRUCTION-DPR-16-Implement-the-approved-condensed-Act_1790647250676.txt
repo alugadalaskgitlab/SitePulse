@@ -1,0 +1,51 @@
+INSTRUCTION DPR-16: Implement the approved condensed Activity/Equipment design (from the DPR-14/DPR-15 mockup) into the real app — Guided DPR, classic Detailed DPR, and the read-only View page
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a genuinely large change touching three live, core screens at once. Same discipline as DPR-13: Part A is a design/mapping plan, not straight to code. STOP after Part A and share your plan before writing any implementation code — this is not optional. STOP after each subsequent part too and report back before moving to the next surface. Do not touch HOME-01, DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, PERM-01/02, or the mockup route from DPR-14/DPR-15 (leave it in place, untouched, as a live reference until this work is fully signed off). Do not publish automatically.
+
+BACKGROUND — the approved design
+The mockup at the DPR-14/DPR-15 route (apply DPR-15's fixes first if not already done, then treat that final mockup as the exact visual/interaction spec) established: a top readiness banner naming specific blocking items with jump links that disappear as each is resolved; activities collapsed to a single summary row by default (name, chainage, recorded qty, status chip) with all fields — side, from, to, length, width, thickness, layer, physical qty — in one row when expanded; a plain-language "Material source: X — Change" line replacing jargon on fill-type activities; a real personnel picker; and a condensed equipment card (one stat grid, no duplicate figures) with a working tank-confirmation control.
+
+CRITICAL — confirmed by direct code review: most of this already exists as real, working code. This is a REORGANIZATION and REUSE job, not new feature-building. Specifically:
+1. `client/src/components/CutFillOutcomeControls.tsx` (used today by both `SiteEntry.tsx` and `SiteEdit.tsx`) ALREADY implements: the Material outcome selector (Fully reusable/Partly reusable/Unsuitable), a working "Reusable quantity" input that appears only for Partly reusable (`data-testid="input-reusable-qty"`, ~line 146-165, backed by real validation in `shared/cutFillReconciliation.ts`'s `excavationMaterialOutcomeIssue`), and the fill-mode message (~line 118-123) that is the literal source of the "link this activity to an Execution Arrangement..." text seen in the mockup's "before" state. REUSE this component as-is — restyle its container to fit the new one-row/condensed layout and reword ONLY the fill-mode message (~line 121) to the plain-language "Material source: [X] — Change" pattern. Do not reimplement the outcome/reusableQty logic, validation, or the allocation ledger below it (~lines 166-192) — that is real, working, unrelated logic and must be preserved exactly.
+2. `client/src/components/DprEquipmentCompact.tsx` ALREADY implements the tank-confirmation control (`dieselBalanceConfirmed` checkbox, "Physical Tank Balance Confirmed") and all the real usage/fuel data. Its only real defect (confirmed earlier this batch) is the literal duplicate render of "Meter Working Hours" and "Clock Duration" between its "Usage End" and "Usage Summary" blocks (view-mode, ~lines 270 and 273-286). REUSE this component's data and logic as-is — remove the duplicate block, restyle into the condensed single stat-grid layout, keep the confirm checkbox exactly as it works today.
+3. The real personnel picker (`select-personnel-${idx}` dropdown + "+ New Personnel" inline flow, `SiteEntry.tsx` ~lines 785-874/3015, same pattern in `SiteEdit.tsx`/`GuidedDpr.tsx`) already exists and is already linked per-activity via `activityPersonnel`. REUSE it exactly — this instruction only asks for it to appear inside the new condensed activity row layout, not for any change to its behavior.
+4. `shared/dprSubmitReadiness.ts`'s `evaluateDprSubmitReadiness` already returns exactly the structured, per-item issue list (`mandatory[]` with `label`/`message`) the readiness banner needs. REUSE this as the banner's ONLY data source on every surface — do not hardcode or duplicate readiness logic per screen.
+
+FIX
+
+PART A — Design/mapping plan (STOP after this, share the plan, wait for go-ahead before building)
+For EACH of the three real surfaces below, explain exactly how the approved mockup design maps onto that screen's real data and save mechanics, and flag any genuine differences or risks:
+a. Guided DPR / section-based flow (`client/src/pages/DprSections.tsx`, from DPR-13). This flow already saves each section independently and already has a Review & Submit panel listing `readiness.mandatory` issues — explain how the top-level readiness banner (visible before entering Review & Submit, not just inside it) will be added, and how the condensed activity-row/equipment-card layout fits into this flow's existing section screens.
+b. Classic Detailed DPR (`client/src/pages/SiteEntry.tsx`, `client/src/pages/SiteEdit.tsx`). This flow saves everything in one combined mutation — explain whether the readiness banner here reads a live client-side evaluation of `evaluateDprSubmitReadiness` against current in-progress form state (recommended, so it updates as the person fills things in) or only after a save, and confirm this doesn't change when/how the actual save happens.
+c. Read-only DPR View page (`client/src/pages/DprDetails.tsx` and wherever `DprEquipmentCompact.tsx`'s `!editable` branch is used, e.g. `SiteReport.tsx`). No banner or editable controls needed here — confirm the ONLY change on this surface is removing the duplicate Usage Summary block and adopting the condensed visual layout for reading, not editing.
+d. Confirm for all three: the `CutFillOutcomeControls`, `DprEquipmentCompact`, personnel picker, and `evaluateDprSubmitReadiness` reuse described in BACKGROUND above — do not propose rebuilding any of these.
+e. Flag any real risk (e.g. a live client-side readiness check on the classic form needing to stay cheap/fast as someone types; any visual inconsistency risk between the three surfaces if they diverge in small ways).
+Do not write implementation code for this part — text/diagram plan only, for review.
+
+PART B — Build, one surface at a time (only after Part A is approved)
+Implement in this order, STOPPING after each for report and confirmation before starting the next:
+B1. Guided DPR / DprSections.tsx.
+B2. Classic Detailed DPR / SiteEntry.tsx + SiteEdit.tsx.
+B3. Read-only View page (DprDetails.tsx / SiteReport.tsx's DprEquipmentCompact usage).
+
+WHAT NOT TO DO
+- Do not skip Part A's plan-and-wait step.
+- Do not reimplement CutFillOutcomeControls, DprEquipmentCompact, the personnel picker, or evaluateDprSubmitReadiness — reuse them exactly, per BACKGROUND above.
+- Do not change any real save/submit/validation behavior beyond what's needed for the visual reorganization — this is a re-skin of existing, working screens.
+- Do not remove or alter the DPR-14/DPR-15 mockup route — leave it live as a reference until sign-off is complete.
+- Do not touch HOME-01, DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, or PERM-01/02.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change expected — every field involved (materialOutcome, reusableQty, dieselBalanceConfirmed, personnelIds/activityPersonnel) already exists and is already used by the components being reused. If your Part A plan concludes a schema change IS genuinely needed, propose it as part of the Part A plan for review, not decide it unilaterally mid-build — same rule as DPR-13.
+
+TESTS (for each part of Part B, once built)
+B1/B2/B3 common: confirm a real DPR can still be saved and submitted end-to-end on each surface with no change to what gets persisted. Confirm the readiness banner on each surface reflects real `evaluateDprSubmitReadiness` output (test with a real DPR that has a genuine missing material outcome, and confirm the banner item disappears once fixed). Confirm the Partly reusable quantity field still validates via the real `excavationMaterialOutcomeIssue` logic unchanged. Confirm the equipment tank-confirm checkbox still saves `dieselBalanceConfirmed` correctly. Confirm the personnel picker still persists via `activityPersonnel` correctly. Confirm the View page (B3) no longer shows Meter Working Hours/Clock Duration twice.
+
+REPORT BACK
+1. After Part A: your written plan, and explicitly wait for approval before proceeding.
+2. After B1, B2, and B3 each: confirm with evidence before starting the next.
+3. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
