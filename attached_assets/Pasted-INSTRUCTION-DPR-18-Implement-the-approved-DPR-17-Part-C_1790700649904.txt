@@ -1,0 +1,56 @@
+INSTRUCTION DPR-18: Implement the approved DPR-17 Part C equipment-log mockup (grouped rows, simplified Daily Status, trimmed Owner/Hire Type, conditional Breakdown display) into the real app
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This touches a shared, already-verified real component (`DprEquipmentCompact.tsx`) used across multiple live screens, plus a status field with real stored data and real downstream consumers (Fleet Status report, submit-readiness checks). Same discipline as DPR-13/DPR-16: Part A is a design/mapping plan, not straight to code. STOP after Part A and share your plan before writing any implementation code — not optional. STOP after each subsequent part too. Do not touch HOME-01, DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, PERM-01/02, or any already-completed DPR-13/14/15/16 real-screen work beyond what's explicitly described below. Do not publish automatically.
+
+BACKGROUND — the approved design (DPR-17 Part C mockup, as refined and confirmed)
+The final, approved mockup (`/__mockup/preview/dpr17/EquipmentRows` or wherever it now lives) established, for BOTH edit and read-only equipment-log rendering:
+EDIT MODE row groups, in order: (1) equipment picker, (2) a single trimmed owner/hire-type display (owner/vendor + default hire type shown once, not repeated three times) plus the existing editable per-row hire-type control, (3) opening/closing reading + start/end time in one row, (4) diesel source/opening tank/issued/closing tank/confirmation in one row, (5) breakdown/stoppage entry point reusing the real `BreakdownStoppageEditor` trigger, (6) work/BOQ assignment.
+Daily Status: DECIDED — "Working" stays exactly as the real stored default value; nothing changes about what gets written to `usageStatus` for the normal/working case. The change is presentational only: the field now shows as a compact, collapsed control pre-set to "Working" (e.g. a small label/chip reading "Working" with a dropdown arrow), not an open Select the user must actively choose from. Clicking the arrow expands/opens it to reveal the other real options (`idle_no_work`, `idle_no_operator`, `breakdown`) for the rare case they're needed. This removes the need for any backend/data-migration handling — "Working" is still explicitly selected, just via a pre-set default instead of a manual pick. "Idle — No Operator" needs no reason field. "Idle — No Work" requires a reason (mandatory, not optional — this DOES change `equipmentStatusInputError`'s current rule, which today requires a reason for any non-"working" status; narrow it to require a reason only for `idle_no_work`). Whether "Breakdown" remains available in this same collapsed dropdown alongside the separate Breakdown/Stoppage section is still open — Part A must state Replit's own recommendation with reasoning, given both exist in real schema/UI today (`usageStatus = "breakdown"` vs. the separate `dprDraftStoppages` table/`BreakdownStoppageEditor`) — this is not yet decided, propose it for approval.
+READ-ONLY MODE row groups, in order: (1) equipment/owner/type, (2) readings & times, (3) diesel source/tank figures/confirmation, (4) norm/expected/actual/consumption rate, (5) work/BOQ assignment, (6) breakdown information — but ONLY rendered when a breakdown actually exists for that machine day; when there is none, the entire Breakdown section (header included) must be omitted, not shown with a "none recorded" placeholder.
+
+CRITICAL — confirmed by direct code review, read before planning
+1. `usageStatus`/`usageStatusReason` exist on BOTH `equipmentLogs` (DPR-linked) and `equipmentUsage` (plant-usage) tables in `shared/schema.ts`, governed by `shared/equipmentStatus.ts`'s `EQUIPMENT_USAGE_STATUSES` = `working | idle_no_work | idle_no_operator | breakdown` (plain text columns, no DB enum). DECIDED: "working" keeps being written exactly as today — the only change is that the Select now opens pre-set to "Working" instead of blank/unspecified, so no fallback or migration handling is needed, and the Fleet Status report / submit-readiness logic (`shared/dprSubmitReadiness.ts` `equipmentHasUsage`, `server/storage.ts` `resolveFleetStatusDay`/`buildFleetEquipmentStatus`) require NO changes. `equipmentStatusInputError`/`normalizeEquipmentStatusFields` (same file) currently require a reason for any non-"working" status — this rule DOES need to change to "reason required only for idle_no_work"; confirm your plan updates this one function, not a duplicate/parallel check.
+2. `shared/equipmentStatus.ts` values are `idle_no_work`, `idle_no_operator` (NOT `idle_operator_unavailable` — use the real field values in code; any user-facing label wording you choose is separate from the stored value).
+3. The breakdown/stoppage mechanism is a separate real table `dprDraftStoppages` (schema.ts ~line 245, FK to `equipmentLogs.id`) entered via `<BreakdownStoppageEditor>`, already embedded per-row in `SiteEntry.tsx` (~lines 3728-3733) and `SiteEdit.tsx` (~lines 3228-3229) — REUSE this component and its trigger exactly for the mockup's "Breakdown/Stoppage" entry point; do not build a new breakdown flow.
+4. `DprEquipmentCompact.tsx`'s current Daily Status Select (~lines 236-259) and Reason Textarea (~261-263) are the real target for the collapsed-default-"Working"/required-reason changes; the read-only rendering (~lines 212, 282-283) is the target for the "omit Breakdown section when empty" fix — the breakdown-count badge itself (~line 212, `row.breakdowns?.length`) already knows whether breakdowns exist, reuse that same data rather than a new query.
+5. The row-grouping reorganization (readings/times together, diesel fields together, etc.) is presentation-only reuse of already-existing fields — no new data needed for groups 1, 3, 4 (edit) or 1, 2, 3, 5 (read-only) in the BACKGROUND section above.
+
+FIX
+
+PART A — Design/mapping plan (STOP after this, share the plan, wait for go-ahead before building)
+For the real equipment log across its real surfaces (`SiteEntry.tsx`, `SiteEdit.tsx`, `GuidedDpr.tsx` edit-mode call sites of `DprEquipmentCompact`, and the read-only usage in `DprDetails.tsx`/`SiteReport.tsx`), explain:
+a. Exactly how the Daily Status control will present as collapsed/pre-set to "Working" by default, expanding on click to reveal the other options — confirm this is presentation-only (the field still explicitly holds `"working"` as its value unless changed) and touches no backend/fleet-report/readiness logic, per CRITICAL point 1.
+b. Your recommendation on whether "Breakdown" stays available in this same dropdown alongside the separate Breakdown/Stoppage section, with reasoning, per BACKGROUND above.
+c. How the row-grouping reorganization maps onto each of the three edit surfaces and the two read-only surfaces, confirming no data/save-logic changes beyond the narrowed required-reason rule.
+d. Confirm the Owner/Hire Type trim keeps the one real, already-existing editable per-row hire-type control from `SiteEntry.tsx` and does not remove or reimplement it.
+e. Confirm the Breakdown/Stoppage entry point in edit mode reuses `BreakdownStoppageEditor` exactly, and the read-only Breakdown section reuses the existing `row.breakdowns` data, per CRITICAL points 3-4.
+f. Any real risk you foresee (e.g. anywhere the required-reason validation change could block a previously-valid draft from saving; any place a "blank/unspecified" Select value was relied on that a pre-set default might now hide).
+Do not write implementation code for this part — text/diagram plan only, for review.
+
+PART B — Build, one surface at a time (only after Part A is approved)
+Implement in this order, STOPPING after each for report and confirmation before starting the next:
+B1. `DprEquipmentCompact.tsx` itself (the shared component: row grouping for both edit and read-only branches, Daily Status dropdown/reason changes, conditional Breakdown section).
+B2. Wire-through/verification on `SiteEntry.tsx` + `SiteEdit.tsx` + `GuidedDpr.tsx` (confirm nothing else needed changing beyond using the updated component, or make the minimal necessary adjustments if a call site needs updating for the new props/behavior).
+B3. Read-only surfaces `DprDetails.tsx`/`SiteReport.tsx` (confirm the conditional Breakdown omission renders correctly there too).
+
+WHAT NOT TO DO
+- Do not skip Part A's plan-and-wait step.
+- Do not invent a new breakdown-entry flow — reuse `BreakdownStoppageEditor` exactly.
+- Do not silently change what `usageStatus` values mean for existing stored rows without the explicit plan in Part A(a) being approved first.
+- Do not touch HOME-01, DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, PERM-01/02, or unrelated DPR-13/14/15/16 work.
+- Do not start any other task on your own initiative.
+- Do not remove the DPR-14/15/17 mockup routes — leave them live as reference.
+
+SCHEMA SAFETY
+No new columns expected — `usageStatus`/`usageStatusReason` already exist on both tables. If Part A concludes a schema change is genuinely needed (e.g. to distinguish "no status recorded" from "confirmed normal operation" going forward), propose it for approval, not decide it unilaterally — same rule as DPR-13/16.
+
+TESTS
+Confirm a real DPR with equipment rows can still be saved and submitted end-to-end with no unintended change to what gets persisted, except the narrowed required-reason rule. Confirm a row left on the default "Working" state still saves `usageStatus: "working"` exactly as before, and the Fleet Status report / submit-readiness checks are unaffected. Confirm the required-reason rule now applies only to "Idle — No Work" (not "Idle — No Operator"). Confirm the read-only view shows no Breakdown section for a machine day with zero breakdowns, and shows it correctly for one with breakdowns recorded.
+
+REPORT BACK
+1. After Part A: your written plan, and explicitly wait for approval before proceeding.
+2. After B1, B2, B3 each: confirm with evidence before starting the next.
+3. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
