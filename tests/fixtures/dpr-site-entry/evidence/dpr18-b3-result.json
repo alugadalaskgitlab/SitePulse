@@ -1,0 +1,93 @@
+{
+  "source": "isolated fixture, not customer DB",
+  "result": [
+    {
+      "url": "http://127.0.0.1:4178/dpr/6291?dpr18b3=1",
+      "device": "desktop",
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr18-b3-details-draft-desktop.png",
+      "breakdownScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr18-b3-details-draft-desktop-breakdown.png",
+      "breakdownSections": [
+        false,
+        true,
+        false
+      ]
+    },
+    {
+      "url": "http://127.0.0.1:4178/dpr/6291?dpr18b3=1",
+      "device": "mobile",
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr18-b3-details-draft-mobile.png",
+      "breakdownScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr18-b3-details-draft-mobile-breakdown.png",
+      "breakdownSections": [
+        false,
+        true,
+        false
+      ]
+    },
+    {
+      "url": "http://127.0.0.1:4178/dpr/6292?dpr18b3=1",
+      "device": "desktop",
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr18-b3-details-submitted-desktop.png",
+      "breakdownScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr18-b3-details-submitted-desktop-breakdown.png",
+      "breakdownSections": [
+        false,
+        true,
+        false
+      ]
+    },
+    {
+      "url": "http://127.0.0.1:4178/dpr/6292?dpr18b3=1",
+      "device": "mobile",
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr18-b3-details-submitted-mobile.png",
+      "breakdownScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr18-b3-details-submitted-mobile-breakdown.png",
+      "breakdownSections": [
+        false,
+        true,
+        false
+      ]
+    },
+    {
+      "url": "http://127.0.0.1:4178/site/report/6291?dpr18b3=1",
+      "device": "desktop",
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr18-b3-site-report-draft-desktop.png",
+      "breakdownScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr18-b3-site-report-draft-desktop-breakdown.png",
+      "breakdownSections": [
+        false,
+        true,
+        false
+      ]
+    },
+    {
+      "url": "http://127.0.0.1:4178/site/report/6291?dpr18b3=1",
+      "device": "mobile",
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr18-b3-site-report-draft-mobile.png",
+      "breakdownScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr18-b3-site-report-draft-mobile-breakdown.png",
+      "breakdownSections": [
+        false,
+        true,
+        false
+      ]
+    },
+    {
+      "url": "http://127.0.0.1:4178/site/report/6292?dpr18b3=1",
+      "device": "desktop",
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr18-b3-site-report-submitted-desktop.png",
+      "breakdownScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr18-b3-site-report-submitted-desktop-breakdown.png",
+      "breakdownSections": [
+        false,
+        true,
+        false
+      ]
+    },
+    {
+      "url": "http://127.0.0.1:4178/site/report/6292?dpr18b3=1",
+      "device": "mobile",
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr18-b3-site-report-submitted-mobile.png",
+      "breakdownScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr18-b3-site-report-submitted-mobile-breakdown.png",
+      "breakdownSections": [
+        false,
+        true,
+        false
+      ]
+    }
+  ]
+}

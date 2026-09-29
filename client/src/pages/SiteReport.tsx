@@ -228,12 +228,15 @@ export default function SiteReport() {
   // One child-aware collection drives every report count/card/table. Legacy
   // untouched placeholder logs never appear as a resource, while a blank
   // parent with a linked stoppage remains visible.
-  const visibleEquipment = dpr.equipment.filter((item: any) =>
-    isVisibleEquipmentRow({
+  const visibleEquipment = dpr.equipment
+    .map((item: any) => ({
       ...item,
+      // The DPR detail response includes both draft and submitted stoppages.
+      // Older responses without that field can use the already-loaded linked
+      // maintenance rows; an explicitly empty list is still authoritative.
       breakdowns: item.breakdowns ?? breakdownsBySourceId.get(Number(item.id)) ?? [],
-    }),
-  );
+    }))
+    .filter(isVisibleEquipmentRow);
   const totalDiesel = visibleEquipment.reduce((sum: number, e: any) => sum + (e.diesel || 0), 0);
 
   return (

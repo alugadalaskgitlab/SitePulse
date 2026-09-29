@@ -11,6 +11,8 @@ import SiteMaterialsReceived from "../../../client/src/pages/SiteMaterialsReceiv
 import PlantEquipmentUsage from "../../../client/src/pages/PlantEquipmentUsage";
 import GuidedDpr from "../../../client/src/pages/GuidedDpr";
 import { DprEquipmentCompact } from "../../../client/src/components/DprEquipmentCompact";
+import DprDetails from "../../../client/src/pages/DprDetails";
+import SiteReport from "../../../client/src/pages/SiteReport";
 import { DprActivityReadOnly } from "../../../client/src/components/DprActivityReadOnly";
 import { ActivityReceiptStrip } from "../../../client/src/components/ActivityReceiptStrip";
 import { queryClient } from "../../../client/src/lib/queryClient";
@@ -1135,6 +1137,42 @@ const dpr18B2Linked = {
   equipment: [{ ...dpr18B2Base.equipment[0], id: 7280, plantUsageId: 8101, usageStatus: null, usageStatusReason: null }],
 };
 
+// DPR18 B3: isolated GET-only DPR detail responses. These are not added to
+// the editable/saved fixture record store or any customer-backed endpoint.
+const dpr18B3Reports: Record<number, any> = Object.fromEntries(
+  (["draft", "submitted"] as const).map((status, index) => {
+    const id = 6291 + index;
+    const baseRow = {
+      ...storedDpr.equipment[0], id: 7291 + index, plantUsageId: null,
+      machine: "SYNTHETIC DPR18 B3 EXCAVATOR", vehicleNo: "FIX-B3-01",
+      entryType: "hourly", task: "Incidental diversion, not BOQ",
+      usageStatus: "working", activitySegments: [{
+        startTime: "08:00", endTime: "12:00",
+        boqItems: [{ boqItemId: 8801, programmeBarId: 9901 }],
+      }],
+    };
+    return [id, {
+      ...storedDpr, id, dprStatus: status,
+      equipment: [
+        { ...baseRow, breakdowns: [] },
+        {
+          ...baseRow, id: 7391 + index, equipmentId: 7702, machine: "SYNTHETIC B3 TANKER",
+          vehicleNo: "FIX-B3-02", entryType: "daily", usageStatus: "breakdown",
+          dieselSource: "contractor", task: "", breakdowns: [{
+            clientKey: "synthetic-stoppage", fromTime: "10:00", toTime: "11:30",
+            description: "Synthetic hydraulic hose", responsibility: "vendor",
+            repairScope: "vendor", debitableToVendor: true, remarks: "Synthetic repair",
+          }],
+        },
+        {
+          id: 7491 + index, machine: "SYNTHETIC B3 STATUS ONLY", vehicleNo: "",
+          entryType: "time_meter", usageStatus: "breakdown", breakdowns: [],
+        },
+      ],
+    }];
+  }),
+);
+
 const fixtureState = {
   requests: [] as RequestRecord[],
   seedDpr18: null as null | ((id: number, equipmentPatch?: Record<string, unknown>) => void),
@@ -1743,6 +1781,9 @@ window.fetch = async (input, init) => {
   const dprGetMatch = pathname.match(/^\/api\/dprs\/(\d+)$/);
   if (dprGetMatch && method === "GET") {
     const requestedId = Number(dprGetMatch[1]);
+    if (new URLSearchParams(window.location.search).has("dpr18b3") && dpr18B3Reports[requestedId]) {
+      return json(dpr18B3Reports[requestedId]);
+    }
     if (isB2FixtureRequest()) {
       const saved = guidedDprRecords[requestedId] ?? (requestedId === currentDpr.id ? currentDpr : null);
       if (!saved) return json({ message: "Synthetic DPR not found" }, 404);
@@ -2180,6 +2221,8 @@ const mount = () => {
   const isEdit = window.location.pathname.startsWith("/site/edit/");
   const isSiteSuccess = window.location.pathname.startsWith("/site/success/");
   const isSiteReport = window.location.pathname.startsWith("/site/report/");
+  const isDpr18B3Report = new URLSearchParams(window.location.search).has("dpr18b3");
+  const isDpr18B3Details = isDpr18B3Report && window.location.pathname.startsWith("/dpr/");
   const isSiteMaterialTrips = window.location.pathname.startsWith("/site/material-trips");
   const isSiteMaterialsReceived = window.location.pathname.startsWith("/site/materials-received");
   const isVehicleSupplierInline = window.location.pathname.startsWith("/fixture/vehicle-supplier-inline");
@@ -2190,6 +2233,7 @@ const mount = () => {
   appRoot = createRoot(document.getElementById("root")!);
   appRoot.render(
     <QueryClientProvider client={queryClient}>
+      {isDpr18B3Report && <header className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">DPR18 B3 · isolated synthetic read-only response · no customer database</header>}
       {new URLSearchParams(window.location.search).has("dpr13Legacy") && <header className="border border-amber-500 bg-amber-50 p-4">DPR-13 synthetic legacy-token fixture — real Guided/SiteEdit components, intercepted API only.</header>}
       <Dpr16B2EvidenceBanner />
       <Dpr07EvidenceBanner />
@@ -2197,7 +2241,7 @@ const mount = () => {
         <Dpr08EvidenceBanner />
         <Dpr09EvidenceBanner />
         <DprNullEvidenceBanner />
-      {window.location.pathname === "/fixture/dpr16-b3-activity" ? (
+      {isDpr18B3Details ? <DprDetails /> : window.location.pathname === "/fixture/dpr16-b3-activity" ? (
         <main className="mx-auto max-w-4xl space-y-4 p-6">
           <h1 className="text-xl font-semibold">DPR16 B3 · isolated synthetic activity summary</h1>
           <p>Fixture only; this uses the same read-only activity component as both report routes.</p>
@@ -2216,7 +2260,7 @@ const mount = () => {
         : isSiteSuccess
           ? <SiteSuccess />
           : isSiteReport
-            ? <FixtureSubmittedReport />
+            ? isDpr18B3Report ? <SiteReport /> : <FixtureSubmittedReport />
             : isVehicleSupplierInline
               ? <VehicleSupplierInlineFixture />
               : isSiteMaterialTrips
