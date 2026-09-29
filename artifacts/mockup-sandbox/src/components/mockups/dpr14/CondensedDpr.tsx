@@ -10,7 +10,7 @@ type Activity = {
   from: string;
   to: string;
   side: string;
-  length: number;
+  length: string;
   width: string;
   thickness: string;
   layer: string;
@@ -19,14 +19,14 @@ type Activity = {
 };
 
 const seedActivities: Activity[] = [
-  { id: "excavation", name: "Roadway excavation", reach: "Reach 2", from: "1+180", to: "1+360", side: "Full width", length: 180, width: "7", thickness: "0.35", layer: "—", personnel: "Excavation crew · 6", photos: [] },
-  { id: "embankment", name: "Embankment filling", reach: "Reach 3", from: "1+360", to: "1+520", side: "Full width", length: 160, width: "7", thickness: "0.25", layer: "1", personnel: "Earthworks crew · 8", photos: [] },
+  { id: "excavation", name: "Roadway excavation", reach: "Reach 2", from: "1+180", to: "1+360", side: "Full width", length: "180", width: "7", thickness: "0.35", layer: "—", personnel: "Excavation crew · 6", photos: [] },
+  { id: "embankment", name: "Embankment filling", reach: "Reach 3", from: "1+360", to: "1+520", side: "Full width", length: "160", width: "7", thickness: "0.25", layer: "1", personnel: "Earthworks crew · 8", photos: [] },
 ];
 
 const materialSources = ["Roadway excavation, Reach 2", "Approved external borrow", "Existing stockpile"];
 const outcomes: Exclude<Outcome, "">[] = ["Fully reusable", "Partly reusable", "Unsuitable"];
 const formatQty = (activity: Activity) => {
-  const qty = activity.length * Number(activity.width || 0) * Number(activity.thickness || 0);
+  const qty = Number(activity.length || 0) * Number(activity.width || 0) * Number(activity.thickness || 0);
   return Number.isFinite(qty) ? qty.toLocaleString("en-IN", { maximumFractionDigits: 2 }) : "0";
 };
 
@@ -34,6 +34,7 @@ export function CondensedDpr() {
   const [activities, setActivities] = useState<Activity[]>(() => seedActivities.map(a => ({ ...a, photos: [] })));
   const [expanded, setExpanded] = useState<string[]>([]);
   const [outcome, setOutcome] = useState<Outcome>("");
+  const [reusableQty, setReusableQty] = useState("");
   const [source, setSource] = useState(materialSources[0]);
   const [sourceOpen, setSourceOpen] = useState(false);
   const [closingTank, setClosingTank] = useState("42");
@@ -63,6 +64,7 @@ export function CondensedDpr() {
     setActivities(seedActivities.map(a => ({ ...a, photos: [] })));
     setExpanded([]);
     setOutcome("");
+    setReusableQty("");
     setSource(materialSources[0]);
     setSourceOpen(false);
     setClosingTank("42");
@@ -139,12 +141,11 @@ export function CondensedDpr() {
                   </button>
                   {isOpen && (
                     <div className="dpr14-details" id={`dpr14-detail-${activity.id}`}>
-                      <div className="dpr14-detail-top"><span>BOQ progress</span><span>Quantity from sample geometry</span><span>Unit: CUM</span></div>
                       <div className="dpr14-fields">
                         <div className="dpr14-field"><label htmlFor={`dpr14-side-${activity.id}`}>Side</label><select className="dpr14-select" id={`dpr14-side-${activity.id}`} value={activity.side} onChange={e => updateActivity(activity.id, { side: e.target.value })}><option>Full width</option><option>LHS</option><option>RHS</option><option>Both sides</option></select></div>
                         <div className="dpr14-field"><label htmlFor={`dpr14-from-${activity.id}`}>From (Ch.)</label><input className="dpr14-input" id={`dpr14-from-${activity.id}`} value={activity.from} onChange={e => updateActivity(activity.id, { from: e.target.value })} /></div>
                         <div className="dpr14-field"><label htmlFor={`dpr14-to-${activity.id}`}>To (Ch.)</label><input className="dpr14-input" id={`dpr14-to-${activity.id}`} value={activity.to} onChange={e => updateActivity(activity.id, { to: e.target.value })} /></div>
-                        <div className="dpr14-field"><label>Length (m)</label><input className="dpr14-input" value={activity.length} readOnly aria-label={`${activity.name} sample length in metres`} /><p className="dpr14-field-note">Sample reach length</p></div>
+                        <div className="dpr14-field"><label htmlFor={`dpr14-length-${activity.id}`}>Length (m)</label><input className="dpr14-input" id={`dpr14-length-${activity.id}`} type="number" min="0" step="0.01" value={activity.length} onChange={e => updateActivity(activity.id, { length: e.target.value })} /></div>
                         <div className="dpr14-field"><label htmlFor={`dpr14-width-${activity.id}`}>Width (m)</label><input className="dpr14-input" id={`dpr14-width-${activity.id}`} type="number" min="0" step="0.01" value={activity.width} onChange={e => updateActivity(activity.id, { width: e.target.value })} /></div>
                         <div className="dpr14-field"><label htmlFor={`dpr14-depth-${activity.id}`}>Thickness (m)</label><input className="dpr14-input" id={`dpr14-depth-${activity.id}`} type="number" min="0" step="0.01" value={activity.thickness} onChange={e => updateActivity(activity.id, { thickness: e.target.value })} /></div>
                         <div className="dpr14-field"><label htmlFor={`dpr14-layer-${activity.id}`}>Layer / lift no.</label><input className="dpr14-input" id={`dpr14-layer-${activity.id}`} value={activity.layer} onChange={e => updateActivity(activity.id, { layer: e.target.value })} /></div>
@@ -160,6 +161,7 @@ export function CondensedDpr() {
                                 {outcomes.map((option, optionIndex) => <button key={option} id={optionIndex === 0 ? "dpr14-outcome-first" : undefined} type="button" className={`dpr14-outcome ${outcome === option ? "selected" : ""}`} aria-pressed={outcome === option} onClick={() => setOutcome(option)}><span className="dpr14-radio" />{option}</button>)}
                               </div>
                               <p className="dpr14-helper">Required for roadway excavation only. Choose what happened to the excavated material.</p>
+                              {outcome === "Partly reusable" && <div className="dpr14-reusable-field"><label className="dpr14-detail-label" htmlFor="dpr14-reusable-qty">Reusable quantity (CUM)</label><input className="dpr14-input" id="dpr14-reusable-qty" type="number" min="0" step="0.01" value={reusableQty} onChange={e => setReusableQty(e.target.value)} /></div>}
                             </>
                           ) : (
                             <>

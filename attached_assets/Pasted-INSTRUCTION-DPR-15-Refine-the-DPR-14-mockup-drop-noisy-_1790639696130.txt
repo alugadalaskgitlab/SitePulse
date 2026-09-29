@@ -1,0 +1,35 @@
+INSTRUCTION DPR-15: Refine the DPR-14 mockup — drop noisy badges, put all activity fields in one row, add a quantity field for "Partly reusable"
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a refinement of the DPR-14 mockup ONLY (`/__mockup/preview/dpr14/CondensedDpr` or wherever it now lives) — still a standalone prototype with sample data, still NOT wired into the real DPR save/submit flow, DprSections.tsx, SiteEntry.tsx, SiteEdit.tsx, DprEquipmentCompact.tsx, or evaluateDprSubmitReadiness. Do not touch HOME-01, DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, PERM-01/02, or DPR-13's already-delivered work. Do not publish automatically. STOP after this and report back — real implementation is still a separate future step, not this one.
+
+BACKGROUND
+The mockup was reviewed live. Three specific visual/behavioral points need fixing; everything else in the mockup (the readiness banner, the "Fix →" links disappearing as each issue is resolved, the equipment "Confirm tank reading" button) was reviewed and confirmed to already work correctly — do not change those.
+
+FIX
+
+PART A — Remove noisy badges above the activity field grid
+Each activity row currently shows three pill badges above its field grid: "BOQ progress", "Quantity from sample geometry", "Unit: CUM". Remove the first two — they add no information the person needs. Keep a BOQ-unit indicator only if the unit isn't otherwise obvious from the Physical Qty field's own label (e.g. if the qty field is already labelled "Physical qty (CUM)", a separate "Unit: CUM" badge is redundant too — use judgment, but default to removing all three unless you find a real case where the unit would be ambiguous without it).
+
+PART B — One row for all activity fields
+Currently Side / From (Ch.) / To (Ch.) / Length (m) / Width (m) / Thickness (m) are one row, and Layer/lift no. / Physical qty (CUM) sit on a second row below. Combine all eight fields (side, from, to, length, width, thickness, layer/lift, physical qty) into a single row, adjusting column widths so it stays readable (narrower columns for short fields like Side/Layer, proportionally more space for numeric fields). Confirm this still reads cleanly at the mockup's normal viewport width — if eight columns genuinely can't fit without becoming illegible, say so in your report and propose the best compromise (e.g. wrapping to two rows only when the viewport is narrow) rather than forcing it and producing a broken layout.
+While doing this, verify the auto-calculation is real and live, not a static sample string: changing Length, Width, or Thickness should recompute Physical Qty (= L × W × T) immediately in the mockup, and changing Physical Qty directly (if that's still allowed) should not silently get overwritten. Confirm which of these two behaviors the mockup currently has and report it plainly — fix it to be a genuine live calculation if it currently is not.
+
+PART C — "Partly reusable" needs a quantity field
+When "Partly reusable" is selected in Material outcome, show a free-text or numeric field asking what quantity is reusable (e.g. "Reusable quantity (CUM)"), appearing only when this option is selected — "Fully reusable" and "Unsuitable" should continue to show no extra field, exactly as they do now.
+
+WHAT NOT TO DO
+- Do not wire any of this into the real DPR save/submit flow or real API routes — mockup/sample data only, same as DPR-14.
+- Do not change the readiness banner, the per-issue "Fix →" links, or the equipment tank-confirm button — these were reviewed and confirmed correct as-is.
+- Do not touch HOME-01, DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, PERM-01/02, or DPR-13.
+- Do not start any other task on your own initiative, and do not begin real implementation of this design into the live app yet — that will be a separate instruction after final sign-off.
+
+SCHEMA SAFETY
+No schema change. No real data writes. Sample/hardcoded data only, same as DPR-14.
+
+REPORT BACK
+1. Confirm Part A, B, and C with screenshots.
+2. For Part B specifically: confirm whether the L×W×T → Physical Qty calculation was already live or you had to make it live, and confirm the one-row layout holds up at normal width.
+3. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

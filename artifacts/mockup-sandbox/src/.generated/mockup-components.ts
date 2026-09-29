@@ -2,13 +2,13 @@
 type ModuleMap = Record<string, () => Promise<Record<string, unknown>>>;
 export const modules: ModuleMap = {
   "./components/mockups/app-home/AppHome.tsx": () => import("../components/mockups/app-home/AppHome.tsx"),
+  "./components/mockups/dpr14/CondensedDpr.tsx": () => import("../components/mockups/dpr14/CondensedDpr.tsx"),
   "./components/mockups/concrete-calc/ConcreteCalcBottom.tsx": () => import("../components/mockups/concrete-calc/ConcreteCalcBottom.tsx"),
   "./components/mockups/concrete-calc/ConcreteCalcTop.tsx": () => import("../components/mockups/concrete-calc/ConcreteCalcTop.tsx"),
   "./components/mockups/concrete-calc/ConcreteEstimatesList.tsx": () => import("../components/mockups/concrete-calc/ConcreteEstimatesList.tsx"),
   "./components/mockups/concrete-calc/ConcreteScenarios.tsx": () => import("../components/mockups/concrete-calc/ConcreteScenarios.tsx"),
   "./components/mockups/concrete-calc/LoginHub.tsx": () => import("../components/mockups/concrete-calc/LoginHub.tsx"),
   "./components/mockups/concrete-calc/ReportsTab.tsx": () => import("../components/mockups/concrete-calc/ReportsTab.tsx"),
-  "./components/mockups/dpr14/CondensedDpr.tsx": () => import("../components/mockups/dpr14/CondensedDpr.tsx"),
   "./components/mockups/equipment-entry/Compact.tsx": () => import("../components/mockups/equipment-entry/Compact.tsx"),
   "./components/mockups/equipment-entry/Current.tsx": () => import("../components/mockups/equipment-entry/Current.tsx"),
   "./components/mockups/home-dashboard/HomeDashboard.tsx": () => import("../components/mockups/home-dashboard/HomeDashboard.tsx"),
@@ -53,7 +53,7 @@ export const modules: ModuleMap = {
   "./components/mockups/route-a-procurement/RouteAStep2PurchaserForm.tsx": () => import("../components/mockups/route-a-procurement/RouteAStep2PurchaserForm.tsx"),
   "./components/mockups/route-a-procurement/RouteAStep3Handover.tsx": () => import("../components/mockups/route-a-procurement/RouteAStep3Handover.tsx"),
   "./components/mockups/route-a-procurement/RouteAStep4GrnPreview.tsx": () => import("../components/mockups/route-a-procurement/RouteAStep4GrnPreview.tsx"),
+  "./components/mockups/site-report-home/Dashboard.tsx": () => import("../components/mockups/site-report-home/Dashboard.tsx"),
   "./components/mockups/sitepulse-login/LoginScreen.tsx": () => import("../components/mockups/sitepulse-login/LoginScreen.tsx"),
-  "./components/mockups/sitepulse-splash/SplashScreen.tsx": () => import("../components/mockups/sitepulse-splash/SplashScreen.tsx"),
-  "./components/mockups/site-report-home/Dashboard.tsx": () => import("../components/mockups/site-report-home/Dashboard.tsx")
+  "./components/mockups/sitepulse-splash/SplashScreen.tsx": () => import("../components/mockups/sitepulse-splash/SplashScreen.tsx")
 };

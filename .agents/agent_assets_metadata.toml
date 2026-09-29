@@ -3965,3 +3965,31 @@ mtime_ms = 1790611845157
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/cb233e38-e6c6-4397-8411-69f037383d7f/396bea9f-b2b0-48bd-a2a2-a0860c5413ef"
 storage_version_token = "1790611916198830"
 content_type = "image/png"
+
+[[outputs]]
+id = "nnDv9uXsAmjZInp0Ut8l6"
+uri = "file://screenshots/dpr15-partly-desktop.png"
+type = "image"
+title = "DPR-15 — refined desktop mockup"
+description = "Eight activity fields on one row, redundant badges removed, and Partly reusable quantity shown."
+logical_id = "26db5de0-eb08-4c31-92f2-4d6e9dc3d341"
+content_hash = "sha256:d706a206c718817eb659ee82fef685c6cccb0500d30951b4ca9bab5c059f933f"
+size = 197119
+mtime_ms = 1790640209112
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/26db5de0-eb08-4c31-92f2-4d6e9dc3d341/c237f29b-73d8-4dde-ab0b-92db959f8a5b"
+storage_version_token = "1790640263077691"
+content_type = "image/png"
+
+[[outputs]]
+id = "RezQKTEdbOlwAApbdjSym"
+uri = "file://screenshots/dpr15-mobile.png"
+type = "image"
+title = "DPR-15 — mobile layout"
+description = "Activity fields wrap on narrow screens without horizontal overflow."
+logical_id = "e956c7e1-a573-4808-9e40-136db6782c58"
+content_hash = "sha256:fd9a2659c2d8eaeb3be7a95e45e9ebb51d63896c948bfcbfaf1e8767c9a0dbc8"
+size = 192348
+mtime_ms = 1790640209910
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e956c7e1-a573-4808-9e40-136db6782c58/11cb4d2b-1ba6-46aa-b201-5172a85836d3"
+storage_version_token = "1790640265326085"
+content_type = "image/png"

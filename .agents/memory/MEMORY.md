@@ -94,3 +94,4 @@
 - [Vendor payment validation](vendor-payment-validation.md) — test actual payment save before paid transition; synthetic UI success cannot prove server eligibility.
 - [Vendor master identity](vendor-master-identity.md) — review-first links remain separate from name matching; name changes invalidate associations independently by role.
 - [Diesel comparison attribution](diesel-comparison-attribution.md) — never invent equipment purchase splits; keep purchase-gap warnings report-only.
+- [Condensed DPR mockup review](dpr-mockup-review.md) — reviewed readiness/Fix/tank interactions stay stable; visual approval is not production-integration approval.
