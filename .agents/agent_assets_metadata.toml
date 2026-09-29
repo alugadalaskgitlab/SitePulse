@@ -4077,3 +4077,45 @@ mtime_ms = 1790651148364
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8667c95c-fbbe-4469-be34-152b1e7bb66c/684385fb-f2b8-4b69-8c82-c20798076312"
 storage_version_token = "1790651193862871"
 content_type = "image/png"
+
+[[outputs]]
+id = "pdKVuJoG0IlMuVXflHjxd"
+uri = "file://screenshots/dpr16-b2-edit-reloaded-desktop.png"
+type = "image"
+title = "B2 — classic edit after save and reload"
+description = "Real classic React screen with isolated synthetic API data; not operational-database evidence."
+logical_id = "bbf6af62-2c7e-49e0-b041-b245d1b7962c"
+content_hash = "sha256:076ba067dcdbc8e66eed6f829657fd5b1c00ee0cd9285612853d102629354e96"
+size = 326451
+mtime_ms = 1790655350995
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/bbf6af62-2c7e-49e0-b041-b245d1b7962c/a86f2593-5fb2-4167-83b0-1e747f224bbc"
+storage_version_token = "1790655395553236"
+content_type = "image/png"
+
+[[outputs]]
+id = "Nd6eLsxDl1I-_kbON8iGR"
+uri = "file://screenshots/dpr16-b2-create-preview.png"
+type = "image"
+title = "B2 — live readiness in Preview"
+description = "Shared readiness output with Fix links back to the live form, verified using isolated test data."
+logical_id = "b89873af-a9f7-4a83-a5b4-2ea069ff016a"
+content_hash = "sha256:d117f4465d271642450d89db5cea8bda85fe19111c6d5544a2d73fabcf67b2a5"
+size = 107067
+mtime_ms = 1790655353827
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b89873af-a9f7-4a83-a5b4-2ea069ff016a/ca4aad97-258c-4353-a36a-649a344e8d93"
+storage_version_token = "1790655397606414"
+content_type = "image/png"
+
+[[outputs]]
+id = "KuUU6JfzNxYTRgyy5r9zd"
+uri = "file://screenshots/dpr16-b2-create-mobile.png"
+type = "image"
+title = "B2 — mobile classic entry"
+description = "Responsive condensed activity layout using synthetic test data."
+logical_id = "60ab6171-1b8d-4552-a378-0aa28106598b"
+content_hash = "sha256:98fd58e2fd245faed1a700673609089bdf225d6ff8b900b79742b1f900129804"
+size = 290006
+mtime_ms = 1790655354891
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/60ab6171-1b8d-4552-a378-0aa28106598b/cbde9e37-b322-4ce6-ba28-2a12c1fc8f94"
+storage_version_token = "1790655400192266"
+content_type = "image/png"

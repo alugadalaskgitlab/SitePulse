@@ -3,6 +3,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import SiteEntry from "../../../client/src/pages/SiteEntry";
 import DprSections, { DprEditEntry, DprWorkEntry } from "../../../client/src/pages/DprSections";
 import { installDpr13Adapter } from "./dpr13-adapter";
+import { DPR_SECTIONS, normalizeDprSectionContext, pickDprSectionPayload } from "../../../shared/dprSections";
 import SiteEdit from "../../../client/src/pages/SiteEdit";
 import SiteSuccess from "../../../client/src/pages/SiteSuccess";
 import SiteMaterialTrips from "../../../client/src/pages/SiteMaterialTrips";
@@ -1056,6 +1057,49 @@ const dprBoqNoBarEdit = {
   sitePurchases: [],
 };
 
+// DPR16 B2: in-memory classic create/edit verification; never an operational DPR.
+const dpr16B2ClassicEdit = {
+  ...storedDpr,
+  id: 6258,
+  dprStatus: "draft",
+  remarks: "SYNTHETIC DPR16 B2 classic edit only.",
+  progress: [{
+    ...storedDpr.progress[0],
+    id: 7358,
+    entryKey: "b2-classic-excavation",
+    activity: "ROADWAY EXCAVATION",
+    boqItemId: 8816,
+    programmeBarId: null,
+    chainageFrom: "0+000",
+    chainageTo: "0+100",
+    length: 100,
+    width: 1,
+    thickness: 1,
+    quantity: 100,
+    uom: "CUM",
+    materialOutcome: null,
+    reusableQty: null,
+    personnelIds: [],
+  }],
+  equipment: [{
+    ...storedDpr.equipment[0],
+    id: 7258,
+    plantUsageId: null,
+    equipmentId: null,
+    machine: "SYNTHETIC B2 EXCAVATOR",
+    openingReading: 100,
+    closingReading: 106,
+    startTime: "08:00",
+    endTime: "16:00",
+    diesel: 20,
+    dieselBalanceInTank: 25,
+    dieselBalanceConfirmed: false,
+  }],
+  labour: [],
+  materials: [],
+  sitePurchases: [],
+};
+
 const fixtureState = {
   requests: [] as RequestRecord[],
   dprCreatePayloads: [] as any[],
@@ -1124,6 +1168,7 @@ const persistedDprState = (() => {
 })();
 let currentDpr: any = persistedDprState.current ?? { ...storedDpr };
 const guidedDprRecords: Record<number, any> = {
+  [dpr16B2ClassicEdit.id]: dpr16B2ClassicEdit,
   [guidedContractorDpr.id]: guidedContractorDpr,
   [guidedPlantStockDpr.id]: guidedPlantStockDpr,
   [siteEditContractorDpr.id]: siteEditContractorDpr,
@@ -1305,6 +1350,38 @@ function copyDprWithPayload(id: number, payload: any, status: string) {
   fixtureState.dprRecoveryPayloads.push({ id, status, payload: updated });
   persistDprFixtureRecords();
   return updated;
+}
+
+// Mirror server/dprSections.sectionSnapshot for B2's isolated HTTP storage.
+// Real SiteEdit refuses to save a draft without these server-issued tokens.
+// This adapter also checks them on PATCH; it does not relax client validation.
+const canonicalB2 = (value: any): any => {
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map(canonicalB2);
+  if (value && typeof value === "object") return Object.fromEntries(
+    Object.keys(value).sort().filter(key => value[key] !== undefined).map(key => [key, canonicalB2(value[key])]),
+  );
+  return value;
+};
+async function b2ContentToken(value: any): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(canonicalB2(value)));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
+async function b2SnapshotTokens(dpr: any) {
+  const context = normalizeDprSectionContext(dpr);
+  return {
+    headerToken: await b2ContentToken({
+      context, engineer: dpr.engineer, status: dpr.dprStatus,
+      deleted: dpr.isDeleted, cancelled: dpr.isCancelled, superseded: dpr.isSuperseded,
+    }),
+    sectionTokens: Object.fromEntries(await Promise.all(DPR_SECTIONS.map(async section =>
+      [section, await b2ContentToken(pickDprSectionPayload(section, dpr))],
+    ))),
+  };
+}
+function isB2FixtureRequest() {
+  return new URLSearchParams(window.location.search).has("dpr16b2");
 }
 
 const originalFetch = window.fetch.bind(window);
@@ -1546,7 +1623,14 @@ window.fetch = async (input, init) => {
       Number(projectItemsMatch[1]) === alternateBoqProject.id
         || Number(projectItemsMatch[1]) === alternateNullRecoveryBoqProject.id
         ? alternateBoqItems
-        : boqItems,
+        : new URLSearchParams(window.location.search).has("dpr16b2")
+          ? [...boqItems, {
+              id: 8816, itemCode: "B2.1", itemName: "ROADWAY EXCAVATION",
+              description: "Roadway excavation in cutting", displayName: "ROADWAY EXCAVATION",
+              unit: "CUM", categoryName: "Road Work", planningWorkType: "road",
+              dprMeasurementMethod: "geometry", includeInDpr: true,
+            }]
+          : boqItems,
     );
   }
   const projectArrangementItemMatch = pathname.match(/^\/api\/boq\/projects\/(\d+)\/earthwork-arrangements\/item\/(\d+)$/);
@@ -1607,6 +1691,11 @@ window.fetch = async (input, init) => {
   const dprGetMatch = pathname.match(/^\/api\/dprs\/(\d+)$/);
   if (dprGetMatch && method === "GET") {
     const requestedId = Number(dprGetMatch[1]);
+    if (isB2FixtureRequest()) {
+      const saved = guidedDprRecords[requestedId] ?? (requestedId === currentDpr.id ? currentDpr : null);
+      if (!saved) return json({ message: "Synthetic DPR not found" }, 404);
+      return json(saved.dprStatus === "draft" ? { ...saved, ...await b2SnapshotTokens(saved) } : saved);
+    }
     if (requestedId === 6101) return json({ ...storedDpr, id: 6101 });
     if (guidedDprRecords[requestedId]) return json(guidedDprRecords[requestedId]);
     return requestedId === currentDpr.id ? json(currentDpr) : json({}, 404);
@@ -1671,14 +1760,29 @@ window.fetch = async (input, init) => {
         // fixture's read-only evidence route; the request itself is complete.
       }
     }
-    return json(copyDprWithPayload(id, persistedBody, status), 201);
+    const created = copyDprWithPayload(id, persistedBody, status);
+    return json(isB2FixtureRequest() && status === "draft"
+      ? { ...created, ...await b2SnapshotTokens(created) }
+      : created, 201);
   }
 
   const draftMatch = pathname.match(/^\/api\/dprs\/(\d+)\/draft$/);
   if (draftMatch && method === "PATCH") {
-    fixtureState.dprDraftPayloads.push({ id: Number(draftMatch[1]), payload: body || {} });
-    fixtureState.draftPayloads.push({ id: Number(draftMatch[1]), payload: body || {} });
-    return json(copyDprWithPayload(Number(draftMatch[1]), body || {}, "draft"));
+    const id = Number(draftMatch[1]);
+    if (isB2FixtureRequest()) {
+      const saved = guidedDprRecords[id] ?? (id === currentDpr.id ? currentDpr : null);
+      if (!saved || saved.dprStatus !== "draft") return json({ message: "Synthetic draft not found" }, 404);
+      const expected = await b2SnapshotTokens(saved);
+      if (body?.headerToken !== expected.headerToken ||
+        DPR_SECTIONS.some(section => body?.sectionTokens?.[section] !== expected.sectionTokens[section])) {
+        return json({ code: "DPR_SECTION_CONFLICT", message: "Synthetic draft version changed. Reload its saved sections before saving again." }, 409);
+      }
+    }
+    fixtureState.dprDraftPayloads.push({ id, payload: body || {} });
+    fixtureState.draftPayloads.push({ id, payload: body || {} });
+    const { headerToken: _headerToken, sectionTokens: _sectionTokens, ...draftData } = body || {};
+    const updated = copyDprWithPayload(id, isB2FixtureRequest() ? draftData : body || {}, "draft");
+    return json(isB2FixtureRequest() ? { ...updated, ...await b2SnapshotTokens(updated) } : updated);
   }
   const versionMatch = pathname.match(/^\/api\/dprs\/(\d+)\/version$/);
   if (versionMatch && method === "POST") {
@@ -2001,6 +2105,14 @@ function Dpr10EvidenceBanner() {
   );
 }
 
+function Dpr16B2EvidenceBanner() {
+  if (!new URLSearchParams(window.location.search).has("dpr16b2")) return null;
+  return <header className="mx-auto mb-5 max-w-5xl rounded-lg border border-amber-300 bg-amber-50 px-5 py-4 text-amber-950 shadow-sm" data-testid="dpr16-b2-fixture-banner">
+    <h1 className="font-semibold">DPR16 B2 · synthetic classic route fixture</h1>
+    <p className="text-sm">Real SiteEntry / SiteEdit React controls with intercepted auth, BOQ and in-memory API. No operational database or customer DPR.</p>
+  </header>;
+}
+
 // wouter's setLocation uses history.pushState. The isolated fixture routes the
 // real SiteEntry success navigation to SiteSuccess without changing production
 // navigation code.
@@ -2027,6 +2139,7 @@ const mount = () => {
   appRoot.render(
     <QueryClientProvider client={queryClient}>
       {new URLSearchParams(window.location.search).has("dpr13Legacy") && <header className="border border-amber-500 bg-amber-50 p-4">DPR-13 synthetic legacy-token fixture — real Guided/SiteEdit components, intercepted API only.</header>}
+      <Dpr16B2EvidenceBanner />
       <Dpr07EvidenceBanner />
         <Dpr10EvidenceBanner />
         <Dpr08EvidenceBanner />
@@ -2052,7 +2165,9 @@ const mount = () => {
               : isPlantEquipmentUsage
                 ? <PlantEquipmentUsage />
                 : isEdit
-                  ? sessionStorage.getItem("dpr13-fixture-active") && !new URLSearchParams(window.location.search).has("dpr13Legacy") ? <DprEditEntry /> : <SiteEdit />
+                  ? new URLSearchParams(window.location.search).has("dpr16b2")
+                    ? <SiteEdit />
+                    : sessionStorage.getItem("dpr13-fixture-active") && !new URLSearchParams(window.location.search).has("dpr13Legacy") ? <DprEditEntry /> : <SiteEdit />
                   : <SiteEntry />}
     </QueryClientProvider>,
   );

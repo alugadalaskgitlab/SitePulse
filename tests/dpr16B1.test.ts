@@ -47,12 +47,13 @@ describe("DPR16 B1 section presentation and evaluator", () => {
     expect(sectionIssueFieldTestId(issue("equipment", "closing meter reading required"))).toBe("equipment-compact-closing-meter-2");
     expect(sectionIssueFieldTestId(issue("equipment", "end time required"))).toBe("equipment-compact-end-2");
   });
-  it("only section editors opt into collapsed activity and fill presentation; classic and view stay untouched", () => {
+  it("shares the approved condensed activity UI with classic while keeping section-only navigation and persistence", () => {
     const entry = readFileSync("client/src/pages/SiteEntry.tsx", "utf8");
     const hub = readFileSync("client/src/pages/DprSections.tsx", "utf8");
-    expect(entry).toContain("sectionEditor && <button type=\"button\"");
-    expect(entry).toContain("sectionEditor && !expandedActivities.includes(entry.entryKey)");
-    expect(entry).toContain("condensedFill={!!sectionEditor}");
+    expect(entry).toContain("condensedActivityPresentation && <button type=\"button\"");
+    expect(entry).toContain("condensedActivityPresentation && !expandedActivities.includes(entry.entryKey)");
+    expect(entry).toContain("condensedFill={condensedActivityPresentation}");
+    expect(entry).toContain("pickDprSectionPayload(sectionEditor.section, draftPayload)");
     expect(entry).toContain("confirmLeave(() => sectionEditor.onFixOtherSection?.(issue))");
     expect(entry).toContain("data-testid={`select-personnel-${idx}`}");
     expect(entry).toContain("data-testid={`input-progress-width-${idx}`}");

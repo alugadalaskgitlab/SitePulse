@@ -294,6 +294,9 @@ import { boqItemDisplayName } from "@shared/boqItemName";
 import { layerFieldLabel, showLayerField } from "@shared/layerDisplay";
 
 export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectionEditorProps } = {}) {
+  // The same collapsed activity presentation is used in section and classic
+  // editors; sectionEditor still exclusively controls section save mechanics.
+  const condensedActivityPresentation = true;
   const [expandedActivities, setExpandedActivities] = useState<string[]>([]);
   const [receiptReveal, setReceiptReveal] = useState<string[]>([]);
   const [, setLocation] = useLocation();
@@ -2053,6 +2056,15 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
       onClose={() => setReadiness(null)}
       onSubmitAnyway={continueSubmitAfterReadiness}
       onSaveDraft={handleSaveDraft}
+      onMandatoryIssue={(issue) => {
+        setReadiness(null);
+        if (showPreview) {
+          setShowPreview(false);
+          window.setTimeout(() => focusSectionIssue(issue), 80);
+        } else {
+          focusSectionIssue(issue);
+        }
+      }}
     />
   );
 
@@ -2107,10 +2119,49 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
       ...(sectionEditor.section === "labour" ? { labour } : {}),
       ...(sectionEditor.section === "materials" ? { materials, sitePurchases } : {}),
     }) : null;
+  // Match the final-submit evaluator's inputs, including BOQ-enriched cut/fill
+  // rows and the physical quantity the form would actually submit. This is
+  // display-only: saves and authoritative submit checks remain untouched.
+  const classicBoqReady = boqProjectsLoaded && !boqProjectsLoading && !boqProjectsError
+    && !boqItemsLoading && !boqItemsError && (siteBoqProjectId == null || boqItemsLoaded)
+    && progress.every(row => row.boqItemId == null || siteBoqItems.some(item => Number(item.id) === Number(row.boqItemId)));
+  const classicReadiness = !sectionEditor && classicBoqReady
+    ? evaluateDprSubmitReadiness({
+      workType,
+      progress: workType === "structure" ? [] : withCutFillReadinessContext(progress.map(p => ({
+        ...p,
+        length: getEffectiveLength(p),
+        quantity: p.quantity ?? calculateQuantity(p),
+        uom: progressUom(p) ?? p.uom,
+      })), siteBoqItems),
+      equipment, labour, materials,
+    }) : null;
+  const classicReadinessBanner = !sectionEditor && (classicReadiness ? classicReadiness.mandatory.length > 0
+    ? <aside role="status" aria-label="Items needed before submission" className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-2" data-testid="classic-readiness-banner">
+      <h2 className="font-semibold">{classicReadiness.mandatory.length} {classicReadiness.mandatory.length === 1 ? "item" : "items"} to resolve before submission</h2>
+      {classicReadiness.mandatory.map((issue, index) => <div key={`${issue.section}-${issue.rowIndex ?? issue.rowKey ?? index}-${issue.message}`} className="flex flex-wrap items-center gap-2 text-sm">
+        <span>• {issue.label}: {issue.message}</span>
+        <Button type="button" size="sm" variant="outline" onClick={() => {
+          if (showPreview) {
+            setShowPreview(false);
+            window.setTimeout(() => focusSectionIssue(issue), 80);
+          } else {
+            focusSectionIssue(issue);
+          }
+        }}>Fix →</Button>
+      </div>)}
+    </aside> : null
+    : <p role="status" className="rounded border p-3 text-sm" data-testid="classic-readiness-unavailable">
+      {boqItemsError || boqProjectsError ? `BOQ items could not be loaded: ${String(boqItemsError ?? boqProjectsError)}`
+        : progress.some(row => row.boqItemId != null && !siteBoqItems.some(item => Number(item.id) === Number(row.boqItemId))) && boqItemsLoaded
+          ? "An activity's BOQ item could not be resolved; submission readiness is unavailable."
+          : "Checking submission readiness against BOQ items…"}
+    </p>);
 
   if (showPreview) {
     return (
       <>
+        <div className="max-w-5xl mx-auto mb-4">{classicReadinessBanner}</div>
         <SitePreview
           data={getPreviewData()}
           onBack={() => setShowPreview(false)}
@@ -2153,6 +2204,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                 ? "An activity's BOQ item could not be resolved; submission readiness is unavailable."
               : "Checking submission readiness against BOQ items…"}
         </p>)}
+      {classicReadinessBanner}
       {!sectionEditor && <>
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => confirmLeave(() => setLocation(backLink))} data-testid="button-back">
@@ -2537,19 +2589,19 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
             })
           ) : (
           progress.map((entry, idx) => (
-            <div key={sectionEditor ? entry.entryKey : idx} className="p-4 border rounded-lg bg-muted/30 space-y-3 transition-all duration-500" data-dpr-row-key={dprRowKey("activities", idx)} data-testid={`progress-row-${idx}`}>
-              {sectionEditor && <button type="button" className="w-full flex flex-wrap items-center gap-3 text-left py-2" aria-expanded={expandedActivities.includes(entry.entryKey)} aria-controls={`section-activity-details-${entry.entryKey}`}
+            <div key={entry.entryKey} className="p-4 border rounded-lg bg-muted/30 space-y-3 transition-all duration-500" data-dpr-row-key={dprRowKey("activities", idx)} data-testid={`progress-row-${idx}`}>
+              {condensedActivityPresentation && <button type="button" className="w-full flex flex-wrap items-center gap-3 text-left py-2" aria-expanded={expandedActivities.includes(entry.entryKey)} aria-controls={`section-activity-details-${entry.entryKey}`}
                 onClick={() => setExpandedActivities(previous => previous.includes(entry.entryKey) ? previous.filter(key => key !== entry.entryKey) : [...previous, entry.entryKey])}
                 data-testid={`section-activity-toggle-${idx}`}>
                 <span className="font-semibold flex-1 min-w-36">{entry.activity || `Activity ${idx + 1}`}</span>
                 <span className="text-sm text-muted-foreground">Chainage: {entry.chainageFrom || "—"} – {entry.chainageTo || "—"}</span>
                 <span className="text-sm tabular-nums">Physical qty: {(entry.quantity ?? calculateQuantity(entry))?.toLocaleString() ?? "—"} {progressUom(entry) ?? entry.uom}</span>
-                <span className={`text-xs rounded-full border px-2 py-1 ${sectionReadiness?.mandatory.some(issue => issue.section === "activities" && issue.rowIndex === idx) ? "border-amber-300 text-amber-800" : "border-emerald-300 text-emerald-800"}`}>
-                  {!sectionReadiness ? "Checking…" : sectionReadiness.mandatory.some(issue => issue.section === "activities" && issue.rowIndex === idx) ? "Needs attention" : "Recorded"}
+                <span className={`text-xs rounded-full border px-2 py-1 ${(sectionEditor ? sectionReadiness : classicReadiness)?.mandatory.some(issue => issue.section === "activities" && issue.rowIndex === idx) ? "border-amber-300 text-amber-800" : "border-emerald-300 text-emerald-800"}`}>
+                  {!(sectionEditor ? sectionReadiness : classicReadiness) ? "Checking…" : (sectionEditor ? sectionReadiness : classicReadiness)?.mandatory.some(issue => issue.section === "activities" && issue.rowIndex === idx) ? "Needs attention" : "Recorded"}
                 </span>
                 <span aria-hidden="true">{expandedActivities.includes(entry.entryKey) ? "⌃" : "⌄"}</span>
               </button>}
-              <div id={`section-activity-details-${entry.entryKey}`} className={`space-y-3 ${sectionEditor && !expandedActivities.includes(entry.entryKey) ? "hidden" : ""}`}>
+              <div id={`section-activity-details-${entry.entryKey}`} className={`space-y-3 ${condensedActivityPresentation && !expandedActivities.includes(entry.entryKey) ? "hidden" : ""}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
@@ -2787,7 +2839,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                       />
                     )}
                   </div>
-                  <DprSectionGeometryGrid condensed={!!sectionEditor} index={idx}>
+                  <DprSectionGeometryGrid condensed={condensedActivityPresentation} index={idx}>
                   <div>
                     <Label className="text-sm">Side</Label>
                     <Select
@@ -2912,9 +2964,8 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                     />
                   </div>
                   )}
-                  {!sectionEditor && renderProgressUnit(entry, idx)}
                   <div>
-                    <Label className="text-sm">Physical Qty {sectionEditor ? `(${progressUom(entry) ?? entry.uom})` : progressUom(entry) ? `(${progressUom(entry)})` : ""}</Label>
+                    <Label className="text-sm">Physical Qty ({progressUom(entry) ?? entry.uom})</Label>
                     <Input
                       type="number"
                       step="0.01"
@@ -3039,7 +3090,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                     })()}
                   </div>
                   </DprSectionGeometryGrid>
-                  {sectionEditor && renderProgressUnit(entry, idx)}
+                  {renderProgressUnit(entry, idx)}
                 </div>
                 <div className="space-y-2 border-t pt-2" data-testid={`activity-material-source-block-${idx}`}>
                   {entry.boqItemId != null && classifyWorkType(String(siteBoqItems.find(i => i.id === entry.boqItemId)?.description ?? ""), String(siteBoqItems.find(i => i.id === entry.boqItemId)?.unit ?? "")) === "roadway_excavation" ? (
@@ -3048,19 +3099,19 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                   ) : usesCutMaterialSource(entry.boqItemId) ? (
                     <>
                     <CutFillOutcomeControls fillMode projectId={siteBoqProjectId} arrangementId={operationalCutFillArrangementId(entry.earthworkArrangementId)}
-                      condensedFill={!!sectionEditor} onViewSource={sectionEditor ? () => {
+                      condensedFill={condensedActivityPresentation} onViewSource={() => {
                         setReceiptReveal(previous => previous.includes(entry.entryKey) ? previous : [...previous, entry.entryKey]);
                         window.setTimeout(() => {
                           const source = document.querySelector<HTMLElement>(`[data-testid="section-fill-source-${idx}"]`);
                           source?.scrollIntoView({ behavior: "smooth", block: "center" });
                           source?.focus({ preventScroll: true });
                         }, 60);
-                      } : undefined}
+                      }}
                       boqItemDescription={entry.boqItemId != null ? String(siteBoqItems.find(i => i.id === entry.boqItemId)?.description ?? siteBoqItems.find(i => i.id === entry.boqItemId)?.displayName ?? "") : ""}
                       quantity={entry.quantity} outcome={null} reusableQty={null} allocations={entry.allocations as any}
                       currentEntryKey={entry.entryKey} formRows={progress as any} boqItems={siteBoqItems}
                       onOutcomeChange={() => undefined} onAllocationsChange={allocations => { const updated = [...progress]; updated[idx] = { ...updated[idx], allocations: allocations as any }; setProgress(updated); }} />
-                    {sectionEditor && receiptReveal.includes(entry.entryKey) && entry.boqItemId != null && siteBoqProjectId != null && header.site &&
+                    {receiptReveal.includes(entry.entryKey) && entry.boqItemId != null && siteBoqProjectId != null && header.site &&
                       <div tabIndex={-1} data-testid={`section-fill-source-${idx}`}>
                         <ActivityReceiptStrip siteName={header.site} date={header.date} boqProjectId={siteBoqProjectId}
                           boqItemId={entry.boqItemId} programmeBarId={entry.programmeBarId} readOnly
@@ -3214,7 +3265,6 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
             const isTimeMeter = !entry.entryType || entry.entryType === "time_meter" || entry.entryType === "hourly";
             const isTripBased = entry.entryType === "trip_based";
             const isDailyOrMonthly = entry.entryType === "daily" || entry.entryType === "monthly";
-            const calculatedTotalKm = computeTripTotalKm(entry.numberOfTrips, entry.tripDistance);
             const isWaterTanker = (entry.machine || '').toUpperCase().includes('WATER') || (entry.machine || '').toUpperCase().includes('TANKER');
             const linkedUsage = openPlantMap[entry.equipmentId ?? -1] as OpenUsageLike | undefined;
             const handoffContext = entry.plantUsageId != null && linkedUsage
@@ -3233,7 +3283,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
               }] : [])}
               showTankBalance={false}
               enableTankContinuity={entry.dieselSource === "plant_stock"}
-              sectionPresentation={!!sectionEditor}
+              sectionPresentation
               onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, ...patch } as EquipmentEntry : row))}
             />;
             
@@ -3241,7 +3291,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
               <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative transition-all duration-500" data-dpr-row-key={dprRowKey("equipment", idx)}
                 data-dpr-equipment-identity={JSON.stringify([entry.equipmentId, entry.plantUsageId, entry.machine, entry.vehicleNo, entry.openingReading, entry.startTime])}
                 data-testid={"equipment-row-" + idx}>
-                {sectionEditor && compactEquipment}
+                {compactEquipment}
                 {sectionEditor && entry.dieselSource === "plant_stock" && <EquipmentTankBalanceInputs
                   sectionPresentation
                   index={idx} openingDiesel={entry.openingDiesel} dieselBalanceInTank={entry.dieselBalanceInTank}
@@ -3468,27 +3518,6 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                     </div>}
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      {!sectionEditor && <div>
-                        <Label className="text-sm">{isOdometer ? "KM Run" : "Working Hours"}</Label>
-                        <div 
-                          className="bg-primary/10 px-3 py-2 rounded border border-primary/20 font-semibold text-primary text-sm"
-                          data-testid={`display-working-hours-${idx}`}
-                        >
-                          {usage.runtime > 0 ? `${usage.runtime.toFixed(isOdometer ? 1 : 3)} ${isOdometer ? "km" : "hrs"}` : "-"}
-                        </div>
-                      </div>}
-                      <div>
-                        <Label className="text-sm text-muted-foreground">Expected Diesel</Label>
-                        <div className="bg-muted px-3 py-2 rounded border font-semibold text-sm" data-testid={`display-expected-diesel-${idx}`}>
-                          {usage.expectedDiesel != null ? `${usage.expectedDiesel.toFixed(1)} L` : "-"}
-                        </div>
-                      </div>
-                      <div>
-                        <Label className="text-sm text-muted-foreground">Norm</Label>
-                        <div className="bg-muted px-3 py-2 rounded border font-semibold text-sm" data-testid={`display-efficiency-${idx}`}>
-                          {usage.efficiencyLabel ?? "-"}
-                        </div>
-                      </div>
                       <div>
                         <Label className="text-sm">Diesel Issued (L)</Label>
                         <Input
@@ -3552,15 +3581,6 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                           data-testid={`input-equipment-trip-distance-${idx}`}
                         />
                       </div>
-                      {!sectionEditor && <div>
-                        <Label className="text-sm">Total KM (round trip)</Label>
-                        <div 
-                          className="bg-primary/10 px-3 py-2 rounded border border-primary/20 font-semibold text-primary text-sm"
-                          data-testid={`display-total-km-${idx}`}
-                        >
-                          {calculatedTotalKm > 0 ? `${calculatedTotalKm.toFixed(1)} km` : "-"}
-                        </div>
-                      </div>}
                       <div>
                         <Label className="text-sm">Diesel Issued (L)</Label>
                         <Input
@@ -3705,7 +3725,6 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                 </div>
                 </details>
                 <div className={sectionEditor ? "hidden peer-open:block space-y-3" : "contents"}>
-                {!sectionEditor && compactEquipment}
                 <BreakdownStoppageEditor
                   draftOnly={!!sectionEditor}
                   value={entry.breakdowns ?? []}

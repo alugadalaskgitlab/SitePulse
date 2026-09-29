@@ -25,7 +25,7 @@ import type { EquipmentMasterType, Site, Personnel } from "@shared/schema";
 import { PERSONNEL_ROLES } from "@shared/schema";
 import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@shared/structureHierarchy";
 import { calculateDprQuantity, quantitiesMatch, MANUAL_QUANTITY_SOURCES, calculateLengthFromChainage, resolveBoqUomProfile, boqProgressQty, dprMeasurementSummary, resolveBoqDisplayUnit, resolveDprUnitConversion } from "@shared/dprGeometry";
-import { evaluateDprSubmitReadiness, type DprReadinessResult } from "@shared/dprSubmitReadiness";
+import { evaluateDprSubmitReadiness, type DprReadinessIssue, type DprReadinessResult } from "@shared/dprSubmitReadiness";
 import { DprReadinessDialog } from "@/components/DprReadinessDialog";
 import { isBarSide, parseChainageKm, QUANTITY_SOURCES, QUANTITY_SOURCE_LABELS } from "@shared/barSide";
 import { normalizeDprSideKey } from "@shared/dprProgrammeLink";
@@ -513,9 +513,15 @@ export default function SiteEdit() {
   };
   const {
     projectId: siteBoqProjectId,
+    siteResolutionError,
     items: siteBoqItems,
     catalogueItems: siteBoqCatalogueItems,
     projectsLoaded: boqProjectsLoaded,
+    projectsLoading: boqProjectsLoading,
+    projectsError: boqProjectsError,
+    itemsLoaded: boqItemsLoaded,
+    itemsLoading: boqItemsLoading,
+    itemsError: boqItemsError,
     evidenceProjectId,
     requestEvidenceRecovery,
   } = useDprBoqItems<SiteEditBoqItem>({
@@ -974,6 +980,8 @@ export default function SiteEdit() {
   // Batch 06V: ?progressEntryId= deep-link — scroll to and briefly highlight
   // the named row after the form is loaded (identified by DB id or entryKey).
   const [highlightedEntry, setHighlightedEntry] = useState<string | null>(null);
+  const [expandedActivities, setExpandedActivities] = useState<string[]>([]);
+  const [receiptReveal, setReceiptReveal] = useState<string[]>([]);
   const [incidentalConfirm, setIncidentalConfirm] = useState<{ idx: number; qty: number | null; uom: string } | null>(null);
   const overlapIntentAppliedRef = useRef(false);
   useEffect(() => {
@@ -1633,6 +1641,52 @@ export default function SiteEdit() {
     updateMutation.mutate(payload);
   };
 
+  // Display-only: use the same normalized physical quantities and BOQ cut/fill
+  // context as final submit. calculateQuantity can set a UOM on its argument,
+  // so pass a copy; rendering the banner must never edit the live form.
+  const readinessBoqReady = formInitializedRef.current && boqProjectsLoaded && !boqProjectsLoading
+    && !boqProjectsError && !boqItemsLoading && !boqItemsError
+    && (siteBoqProjectId == null || boqItemsLoaded)
+    && progress.every(p => p.boqItemId == null || siteBoqItems.some(item => Number(item.id) === Number(p.boqItemId)));
+  const liveReadiness = readinessBoqReady
+    ? evaluateDprSubmitReadiness({
+      workType,
+      progress: workType === "road" ? withCutFillReadinessContext(progress.map(p => {
+        const quantity = p.quantity ?? calculateQuantity({ ...p });
+        return {
+          ...p,
+          length: getEffectiveLength(p),
+          quantity,
+          uom: progressUom(p),
+          ...normalizeExcavationMaterialOutcome(quantity, p.materialOutcome, p.reusableQty),
+        };
+      }), siteBoqItems) : [],
+      equipment, labour, materials,
+    }) : null;
+  const focusReadinessIssue = (issue: DprReadinessIssue) => {
+    const rowIndex = issue.rowIndex ?? (typeof issue.rowKey === "number" ? issue.rowKey : null);
+    if (rowIndex == null) return;
+    const row = document.querySelector<HTMLElement>(`[data-dpr-row-key="${dprRowKey(issue.section, rowIndex)}"]`);
+    if (!row) return;
+    const entryKey = issue.section === "activities" ? progress[rowIndex]?.entryKey : null;
+    const equipmentIdentity = row.getAttribute("data-dpr-equipment-identity");
+    if (issue.section === "activities") {
+      if (!entryKey || row.getAttribute("data-entry-key") !== entryKey) return;
+      setExpandedActivities(previous => previous.includes(entryKey) ? previous : [...previous, entryKey]);
+    } else if (issue.section === "equipment") {
+      row.querySelector<HTMLButtonElement>(`[data-testid="equipment-compact-${rowIndex}"] button[aria-label^="Expand"]`)?.click();
+    }
+    window.setTimeout(() => {
+      if (!row.isConnected || row.getAttribute("data-dpr-row-key") !== dprRowKey(issue.section, rowIndex)
+        || (entryKey && row.getAttribute("data-entry-key") !== entryKey)
+        || (issue.section === "equipment" && row.getAttribute("data-dpr-equipment-identity") !== equipmentIdentity)) return;
+      scrollAndHighlightRow({ section: issue.section, rowIndex, rowKey: issue.rowKey ?? null });
+      if (issue.section === "activities") {
+        row.querySelector<HTMLElement>(`[data-testid="input-qty-${rowIndex}"], [data-testid="input-progress-activity-${rowIndex}"]`)?.focus({ preventScroll: true });
+      }
+    }, 80);
+  };
+
   if (isLoading) {
     return (
       <div className="flex justify-center p-20">
@@ -1685,6 +1739,21 @@ export default function SiteEdit() {
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-20 animate-in fade-in duration-300">
       <InsufficientDieselDialog payload={dieselShortage} onClose={() => setDieselShortage(null)} />
+      {liveReadiness ? liveReadiness.mandatory.length > 0 && (
+        <aside role="status" aria-label="Items needed before submission" className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-2" data-testid="classic-edit-readiness-banner">
+          <h2 className="font-semibold">{liveReadiness.mandatory.length} {liveReadiness.mandatory.length === 1 ? "item" : "items"} to resolve before submission</h2>
+          {liveReadiness.mandatory.map((issue, index) => <div key={`${issue.section}-${issue.rowIndex ?? issue.rowKey ?? index}-${issue.message}`} className="flex flex-wrap items-center gap-2 text-sm">
+            <span>• {issue.label}: {issue.message}</span>
+            <Button type="button" size="sm" variant="outline" onClick={() => focusReadinessIssue(issue)}>Fix →</Button>
+          </div>)}
+        </aside>
+      ) : <p role="status" className="rounded border p-3 text-sm" data-testid="classic-edit-readiness-unavailable">
+        {sitesQuery.error || boqProjectsError || boqItemsError || siteResolutionError
+          ? `Submission readiness unavailable: ${String(sitesQuery.error ?? boqProjectsError ?? boqItemsError ?? siteResolutionError)}`
+          : boqItemsLoaded && progress.some(p => p.boqItemId != null && !siteBoqItems.some(item => Number(item.id) === Number(p.boqItemId)))
+            ? "An activity's BOQ item could not be resolved; submission readiness is unavailable."
+            : "Checking submission readiness against BOQ items…"}
+      </p>}
       {isDraftMode && (
         <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
           <Shield className="w-4 h-4 shrink-0" />
@@ -2051,12 +2120,25 @@ export default function SiteEdit() {
           ) : null}
           {workType === "road" && progress.map((entry, idx) => (
             <div
-              key={idx}
+              key={entry.entryKey}
               className={`p-4 border rounded-lg bg-muted/30 space-y-3 transition-all duration-500${highlightedEntry === entry.entryKey ? " ring-2 ring-primary ring-offset-2" : ""}`}
               data-entry-key={entry.entryKey}
               data-testid={`progress-row-${idx}`}
               data-dpr-row-key={dprRowKey("activities", idx)}
             >
+              <button type="button" className="w-full flex flex-wrap items-center gap-3 text-left py-2"
+                aria-expanded={expandedActivities.includes(entry.entryKey)} aria-controls={`edit-activity-details-${entry.entryKey}`}
+                onClick={() => setExpandedActivities(previous => previous.includes(entry.entryKey) ? previous.filter(key => key !== entry.entryKey) : [...previous, entry.entryKey])}
+                data-testid={`edit-activity-toggle-${idx}`}>
+                <span className="font-semibold flex-1 min-w-36">{entry.activity || `Activity ${idx + 1}`}</span>
+                <span className="text-sm text-muted-foreground">Chainage: {entry.chainageFrom || "—"} – {entry.chainageTo || "—"}</span>
+                <span className="text-sm tabular-nums">Physical qty: {(entry.quantity ?? calculateQuantity({ ...entry }))?.toLocaleString() ?? "—"} {progressUom(entry)}</span>
+                <span className={`text-xs rounded-full border px-2 py-1 ${liveReadiness?.mandatory.some(issue => issue.section === "activities" && issue.rowIndex === idx) ? "border-amber-300 text-amber-800" : "border-emerald-300 text-emerald-800"}`}>
+                  {!liveReadiness ? "Checking…" : liveReadiness.mandatory.some(issue => issue.section === "activities" && issue.rowIndex === idx) ? "Needs attention" : "Recorded"}
+                </span>
+                <span aria-hidden="true">{expandedActivities.includes(entry.entryKey) ? "⌃" : "⌄"}</span>
+              </button>
+              <div id={`edit-activity-details-${entry.entryKey}`} className={`space-y-3 ${!expandedActivities.includes(entry.entryKey) ? "hidden" : ""}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
@@ -2307,6 +2389,7 @@ export default function SiteEdit() {
                       testidPrefix={`progress-${idx}`}
                     />
                   </div>
+                  <div className="col-span-full grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8" data-testid={`edit-activity-geometry-${idx}`}>
                   <div>
                     <Label className="text-sm">Side</Label>
                     <Select
@@ -2435,44 +2518,6 @@ export default function SiteEdit() {
                     />
                   </div>
                   <div>
-                    <Label className="text-sm flex items-center gap-1">
-                      UOM
-                      {deriveDprUom(getEffectiveLength(entry), entry.width, entry.thickness) && (
-                        <span className="text-[10px] font-semibold px-1 py-0.5 rounded bg-teal-50 border border-teal-200 text-teal-700">auto</span>
-                      )}
-                    </Label>
-                    <Select
-                      value={progressUom(entry)}
-                      disabled={!isAdmin && (!!entryBoqItem(entry) || !!deriveDprUom(getEffectiveLength(entry), entry.width, entry.thickness))}
-                      onValueChange={(val) => {
-                        const updated = [...progress];
-                        updated[idx].uom = val;
-                        applyCalc(updated[idx]);
-                        setProgress(updated);
-                      }}
-                    >
-                      <SelectTrigger data-testid={`select-uom-${idx}`}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {UOM_OPTIONS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    {isAdmin && (
-                      <Input
-                        className="mt-1 h-8 text-xs"
-                        value={entry.uomOverrideReason}
-                        onChange={(e) => {
-                          const updated = [...progress];
-                          updated[idx].uomOverrideReason = e.target.value;
-                          setProgress(updated);
-                        }}
-                        placeholder="Admin UOM conversion reason (optional)"
-                        data-testid={`input-uom-override-reason-${idx}`}
-                      />
-                    )}
-                  </div>
-                  <div>
                     <Label className="text-sm">Physical Qty ({progressUom(entry)})</Label>
                     <Input
                       type="number"
@@ -2570,6 +2615,45 @@ export default function SiteEdit() {
                       </>
                     ) : null}
                   </div>
+                  </div>
+                  <div className="col-span-full max-w-xs">
+                    <Label className="text-sm flex items-center gap-1">
+                      UOM
+                      {deriveDprUom(getEffectiveLength(entry), entry.width, entry.thickness) && (
+                        <span className="text-[10px] font-semibold px-1 py-0.5 rounded bg-teal-50 border border-teal-200 text-teal-700">auto</span>
+                      )}
+                    </Label>
+                    <Select
+                      value={progressUom(entry)}
+                      disabled={!isAdmin && (!!entryBoqItem(entry) || !!deriveDprUom(getEffectiveLength(entry), entry.width, entry.thickness))}
+                      onValueChange={(val) => {
+                        const updated = [...progress];
+                        updated[idx].uom = val;
+                        applyCalc(updated[idx]);
+                        setProgress(updated);
+                      }}
+                    >
+                      <SelectTrigger data-testid={`select-uom-${idx}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {UOM_OPTIONS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    {isAdmin && (
+                      <Input
+                        className="mt-1 h-8 text-xs"
+                        value={entry.uomOverrideReason}
+                        onChange={(e) => {
+                          const updated = [...progress];
+                          updated[idx].uomOverrideReason = e.target.value;
+                          setProgress(updated);
+                        }}
+                        placeholder="Admin UOM conversion reason (optional)"
+                        data-testid={`input-uom-override-reason-${idx}`}
+                      />
+                    )}
+                  </div>
                 </div>
                 {entry.boqItemId != null && (
                   <div className="space-y-2 border-t pt-2" data-testid={`activity-material-source-block-${idx}`}>
@@ -2577,12 +2661,21 @@ export default function SiteEdit() {
                       <CutFillOutcomeControls quantity={entry.quantity} uom={progressUom(entry)} outcome={entry.materialOutcome ?? null} reusableQty={entry.reusableQty ?? null}
                         onOutcomeChange={(materialOutcome, reusableQty) => { const updated = [...progress]; updated[idx] = { ...updated[idx], materialOutcome, reusableQty }; setProgress(updated); }} />
                     ) : usesCutMaterialSource(entry.boqItemId) ? (
+                    <>
                     <CutFillOutcomeControls fillMode projectId={siteBoqProjectId} arrangementId={operationalCutFillArrangementId(entry.earthworkArrangementId)}
+                      condensedFill onViewSource={() => setReceiptReveal(previous => previous.includes(entry.entryKey) ? previous : [...previous, entry.entryKey])}
                       boqItemDescription={entry.boqItemId != null ? String(siteBoqItems.find(i => i.id === entry.boqItemId)?.description ?? siteBoqItems.find(i => i.id === entry.boqItemId)?.displayName ?? "") : ""}
                       quantity={entry.quantity} outcome={null} reusableQty={null} allocations={entry.allocations as any}
                       currentEntryKey={entry.entryKey} formRows={progress as any} boqItems={siteBoqItems}
                       editOriginalConsumptions={(dpr as any)?.dprStatus === "submitted" ? ((dpr as any)?.cutFillConsumptions ?? []) : []}
                       onOutcomeChange={() => undefined} onAllocationsChange={allocations => { const updated = [...progress]; updated[idx] = { ...updated[idx], allocations: allocations as any }; setProgress(updated); }} />
+                    {receiptReveal.includes(entry.entryKey) && siteBoqProjectId != null && header.site && (
+                      <ActivityReceiptStrip siteName={header.site} date={header.date} boqProjectId={siteBoqProjectId}
+                        boqItemId={entry.boqItemId} programmeBarId={entry.programmeBarId}
+                        readOnly persistedArrangementId={entry.earthworkArrangementId}
+                        activityMaterialHint={entry.activity || null} testIdPrefix={`edit-fill-source-${idx}`} />
+                    )}
+                    </>
                     ) : siteBoqProjectId != null && header.site ? (
                       <ActivityReceiptStrip siteName={header.site} date={header.date} boqProjectId={siteBoqProjectId}
                         boqItemId={entry.boqItemId} programmeBarId={entry.programmeBarId}
@@ -2690,6 +2783,7 @@ export default function SiteEdit() {
                 )}
               </div>
               </div>
+              </div>
             </div>
           ))}
           {workType === "road" && (
@@ -2787,7 +2881,9 @@ export default function SiteEdit() {
             const isWaterTanker = (entry.machine || '').toUpperCase().includes('WATER') || (entry.machine || '').toUpperCase().includes('TANKER');
 
             return (
-            <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative transition-all duration-500" data-dpr-row-key={dprRowKey("equipment", idx)} data-testid={"equipment-row-" + idx}>
+            <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative transition-all duration-500" data-dpr-row-key={dprRowKey("equipment", idx)}
+              data-dpr-equipment-identity={JSON.stringify([entry.persistedId, entry.equipmentId, entry.plantUsageId, entry.machine, entry.vehicleNo, entry.openingReading, entry.startTime])}
+              data-testid={"equipment-row-" + idx}>
               <Button
                 size="icon"
                 variant="ghost"
@@ -3106,6 +3202,7 @@ export default function SiteEdit() {
                   row={entry}
                   equipment={activeEquipment.find((item) => item.id === entry.equipmentId)}
                   hideIdentity
+                  sectionPresentation
                   index={idx}
                   beforeDate={header.date}
                   site={header.site}
