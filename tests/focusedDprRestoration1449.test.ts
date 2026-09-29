@@ -38,8 +38,9 @@ describe("focused DPR restoration", () => {
     // DPR16 B1 keeps classic details open; the section equipment summary
     // deliberately starts collapsed without removing the underlying editors.
     expect(siteEntry).toContain('<details {...(!sectionEditor ? { open: true } : {})} className="group peer">');
-    expect(siteEntry).toContain("{sectionEditor && compactEquipment}");
-    expect(siteEntry).toContain("{!sectionEditor && compactEquipment}");
+    expect(siteEntry).toContain('{(!sectionEditor || sectionEditor.section === "equipment") && (');
+    expect(siteEntry.match(/\{compactEquipment\}/g)).toHaveLength(1);
+    expect(siteEntry).toMatch(/const compactEquipment = <DprEquipmentCompact\b(?:(?!\/>;)[\s\S])*?\bsectionPresentation\b/);
     for (const source of [siteEdit, guided]) {
       expect(source).not.toContain("Equipment setup and additional usage details");
       expect(source).toContain("hideIdentity");
