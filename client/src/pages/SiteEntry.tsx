@@ -97,7 +97,7 @@ import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { EquipmentTankBalanceInputs } from "@/components/EquipmentTankBalanceInputs";
 import { aggregateStructureActualCredits, dprActualBalance, exceedsKnownActualBalance, type DprActualBalance } from "@/lib/dprActualBalance";
 import { DPR_REGISTER_PATH, resolveReturnTo } from "@/lib/progressReportNav";
-import { calculateEquipmentClockDuration, formatEquipmentDuration, withEquipmentCreationStartTime, meaningfulEquipmentRows } from "@shared/equipmentUsage";
+import { withEquipmentCreationStartTime, withNewEquipmentWorkingDefault, meaningfulEquipmentRows, isVisibleEquipmentRow } from "@shared/equipmentUsage";
 import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arrangementStatusHistory";
 import { transitionDieselSource, validateDieselTankBalance } from "@shared/dieselEntryValidation";
 
@@ -136,7 +136,17 @@ interface ProgressEntry {
   allocations?: Array<{ sourceEntryKey?: string | null; openingBalanceId?: number | null; quantity: number }>;
 }
 
+// A symbol survives in-memory row spreads and index shifts, but is excluded from
+// autosave and API JSON. Restored rows have no provenance and retain null status.
+const newEquipmentRow = Symbol("new DPR equipment row");
+const autoWorkingStatus = Symbol("auto-selected working status");
+const equipmentRowToken = Symbol("DPR equipment row identity");
 interface EquipmentEntry {
+  [newEquipmentRow]?: true;
+  [autoWorkingStatus]?: true;
+  // Hydrated form-state types originate in SiteEdit; the state boundary below
+  // assigns a fresh token to every row before any async picker work starts.
+  [equipmentRowToken]?: symbol;
   machine: string;
   vehicleNo: string;
   operator: string;
@@ -282,11 +292,6 @@ interface SiteEntryFormData {
 
 // parseChainageToMeters and calculateLengthFromChainage are imported from @/lib/dprCalculations.
 // Do not re-implement here — the shared module is the single source of truth.
-
-function formatTimeDuration(start: string, end: string): string | null {
-  const hours = calculateEquipmentClockDuration(start, end);
-  return hours == null ? null : formatEquipmentDuration(hours);
-}
 
 // BOQ item display naming — shared single source of truth (shared/boqItemName.ts).
 // Operational screens show the item's short name; the full imported description
@@ -915,7 +920,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
 
   const [openPlantMap, setOpenPlantMap] = useState<Record<number, any>>({});
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
-    { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null }
+    { [equipmentRowToken]: Symbol("equipment row"), [newEquipmentRow]: true, machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null }
   ]);
   const [otherEquipmentRows, setOtherEquipmentRows] = useState<Set<number>>(() => new Set());
 
@@ -1152,7 +1157,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
       ...normalizeExcavationMaterialOutcome(row.quantity, row.materialOutcome, row.reusableQty),
     })));
     if (data.structureItems) setStructureItems(data.structureItems);
-    setEquipment(data.equipment);
+    setEquipment(data.equipment.map(row => ({ ...row, [equipmentRowToken]: Symbol("equipment row") })));
     setLabour(data.labour);
     if (data.materials) setMaterials(data.materials);
     if (data.sitePurchases) setSitePurchases(data.sitePurchases);
@@ -1342,13 +1347,6 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
     return diff >= 0 ? diff : null;
   };
 
-  // Get working hours - prefer meter reading if available, else time
-  const getWorkingHours = (entry: EquipmentEntry): number => {
-    const meterHours = calculateMeterHours(entry.openingReading, entry.closingReading);
-    if (meterHours !== null) return meterHours;
-    return calculateHours(entry.startTime, entry.endTime);
-  };
-
   // Batch 06C-Q: shared helper — same total the Guided wizard displays.
   const getTotalDiesel = (): number => computeTotalDiesel(equipment);
 
@@ -1391,7 +1389,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
     if (section === 'progress') {
       setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", isIncidental: false, incidentalDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }]);
     } else if (section === 'equipment') {
-      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] }]);
+      setEquipment([...equipment, { [equipmentRowToken]: Symbol("equipment row"), [newEquipmentRow]: true, machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] }]);
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: null, task: "", contractor: "", boqItemId: null, structureId: null }]);
     } else if (section === 'materials') {
@@ -1471,7 +1469,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
       incidentalDescription: "",
     })));
     const blankEq = { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] as StagedBreakdown[] };
-    if (st.equipment.length > 0) setEquipment(st.equipment.map(e => ({ ...blankEq, ...e })) as any);
+    if (st.equipment.length > 0) setEquipment(st.equipment.map(e => ({ ...blankEq, ...e, [equipmentRowToken]: Symbol("equipment row") })) as EquipmentEntry[]);
     if (st.labour.length > 0) setLabour(st.labour.map(l => ({ category: l.category, gender: "", count: l.count, task: l.task, contractor: l.contractor, boqItemId: null, structureId: null })) as any);
     setShowYesterdayPreview(false);
     toast({ title: "Structure copied", description: "Yesterday's work items and crew copied. Enter today's chainage and quantities." });
@@ -1607,10 +1605,10 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
   // Batch 6: fetch open plant equipment_usage record for a given equipment on today's date
   // 06X: must pass header.site and credentials so the server can scope results
   // to the current site (same as GuidedDpr's useQuery-based fetch).
-  const fetchOpenPlantRecord = async (equipmentId: number, rowIdx: number) => {
+  const fetchOpenPlantRecord = async (equipmentId: number, rowIdx: number, rowToken: symbol) => {
     if (!header.date || !equipmentId) return;
-    // Continuity fallback still guards `row.equipmentId === equipmentId` and
-    // `row.openingReading === null` before applying an asynchronous response;
+    // Both branches check the row's nonpersisted token as well as equipmentId.
+    // Deletion/re-addition or hydration can reuse the same index and machine.
     // it calls the site-scoped `fetchLatestPriorClosing` only after
     // the same-day open-record branch returns.
     // 06X-HF2: surface missing site context explicitly rather than silently
@@ -1663,11 +1661,12 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
           // A successor/dispatch usage has one exact plantUsageId: never put it
           // on a second DPR row just because selection was repeated.
           const linkedElsewhere = updated.some((row, idx) => idx !== rowIdx && row.plantUsageId === record.id);
-          if (updated[rowIdx] && updated[rowIdx].equipmentId === equipmentId && !linkedElsewhere) {
+          if (updated[rowIdx]?.[equipmentRowToken] === rowToken && updated[rowIdx].equipmentId === equipmentId && !linkedElsewhere) {
             updated[rowIdx] = {
               ...updated[rowIdx],
               openingReading: record.openingReading ?? updated[rowIdx].openingReading,
               plantUsageId: record.id,
+              ...(updated[rowIdx][autoWorkingStatus] ? { usageStatus: null, [autoWorkingStatus]: undefined } : {}),
             };
           }
           return updated;
@@ -1684,6 +1683,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
         const row = updated[rowIdx];
         if (
           row &&
+          row[equipmentRowToken] === rowToken &&
           row.equipmentId === equipmentId &&
           row.plantUsageId == null &&
           (row.openingReading === null || row.openingReading === undefined)
@@ -3261,9 +3261,6 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
           {equipment.map((entry, idx) => {
             const selectedEquipForRow = activeEquipment.find(e => e.id === entry.equipmentId);
             const usage = computeEquipmentUsage(selectedEquipForRow, entry);
-            const isOdometer = usage.meterType === "odometer";
-            const workingHours = getWorkingHours(entry);
-            const isTimeMeter = !entry.entryType || entry.entryType === "time_meter" || entry.entryType === "hourly";
             const isTripBased = entry.entryType === "trip_based";
             const isDailyOrMonthly = entry.entryType === "daily" || entry.entryType === "monthly";
             const isWaterTanker = (entry.machine || '').toUpperCase().includes('WATER') || (entry.machine || '').toUpperCase().includes('TANKER');
@@ -3271,6 +3268,140 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
             const handoffContext = entry.plantUsageId != null && linkedUsage
               ? openUsageHandoffContext(linkedUsage)
               : null;
+            const equipmentPicker = <div>
+              <Label className="text-sm">Equipment</Label>
+              <Select value={entry.equipmentId ? String(entry.equipmentId) : (entry.machine ? OTHER_EQUIPMENT_VALUE : "")}
+                disabled={entry.plantUsageId != null}
+                onValueChange={(val) => {
+                  if (val === OTHER_EQUIPMENT_VALUE) {
+                    setEquipment(rows => rows.map((row, i) => i === idx
+                      ? applyEquipmentMasterSelection({
+                        ...row, ...(row[autoWorkingStatus] ? { usageStatus: null, [autoWorkingStatus]: undefined } : {}),
+                      }, null) : row));
+                    setOtherEquipmentRows(rows => new Set(rows).add(idx));
+                    return;
+                  }
+                  const selected = activeEquipment.find(eq => eq.id === Number(val));
+                  if (!selected) return;
+                  setEquipment(rows => rows.map((row, i) => {
+                    if (i !== idx) return row;
+                    let next = withEquipmentCreationStartTime(applyEquipmentMasterSelection(row, selected));
+                    if (selected.ownership !== "hired") next = { ...next, entryType: "time_meter", numberOfTrips: null, tripDistance: null, totalKm: null };
+                    const defaulted = withNewEquipmentWorkingDefault(next, { isNew: row[newEquipmentRow] === true });
+                    return defaulted !== next ? { ...defaulted, [autoWorkingStatus]: true } : defaulted;
+                  }));
+                  setOtherEquipmentRows(rows => {
+                    const next = new Set(rows);
+                    next.delete(idx);
+                    return next;
+                  });
+                  const rowToken = entry[equipmentRowToken];
+                  if (!rowToken) {
+                    toast({ title: "Equipment linkage unavailable", description: "This equipment row lost its local identity. Reload the draft before linking Plant usage.", variant: "destructive" });
+                    return;
+                  }
+                  fetchOpenPlantRecord(selected.id, idx, rowToken);
+                }}>
+                <SelectTrigger data-testid={`select-equipment-${idx}`}><SelectValue placeholder="Select equipment..." /></SelectTrigger>
+                <SelectContent>
+                  {activeEquipment.map(eq => <SelectItem key={eq.id} value={String(eq.id)}>
+                    {eq.name} {eq.registrationNumber ? `(${eq.registrationNumber})` : ""} — {eq.ownership === "hired" ? `HIRED: ${eq.vendorName}` : "HLC OWN"}
+                  </SelectItem>)}
+                  <SelectItem value={OTHER_EQUIPMENT_VALUE}>Other / Unlisted equipment</SelectItem>
+                </SelectContent>
+              </Select>
+              {!entry.equipmentId && (otherEquipmentRows.has(idx) || !!entry.machine) && <Input className="mt-2"
+                value={entry.machine} placeholder="Enter equipment name" aria-label="Other / Unlisted equipment name"
+                data-testid={`input-equipment-other-${idx}`}
+                onChange={event => setEquipment(rows => rows.map((row, i) => {
+                  if (i !== idx) return row;
+                  const next = { ...row, machine: event.target.value, equipmentId: null };
+                  const defaulted = withNewEquipmentWorkingDefault(next, { isNew: row[newEquipmentRow] === true });
+                  if (!event.target.value.trim() && row[autoWorkingStatus]) return { ...next, usageStatus: null, [autoWorkingStatus]: undefined };
+                  return defaulted !== next ? { ...defaulted, [autoWorkingStatus]: true } : defaulted;
+                }))} />}
+              {entry.equipmentId && entry.vehicleNo && <p className="mt-1 text-sm text-muted-foreground">Reg: {entry.vehicleNo}</p>}
+              {handoffContext && <p className="mt-2 text-xs text-blue-700 dark:text-blue-300" data-testid={`text-equipment-handoff-${idx}`}>{handoffContext}</p>}
+            </div>;
+            const ownerType = <div className="grid gap-3 sm:grid-cols-2">
+              {selectedEquipForRow?.ownership === "hired" && <div>
+                <Label className="text-sm">Entry Type</Label>
+                <Select value={entry.entryType ?? "time_meter"} onValueChange={val => setEquipment(rows => rows.map((row, i) =>
+                  i !== idx ? row : {
+                    ...row, entryType: val,
+                    ...(val !== "trip_based" ? { numberOfTrips: null, tripDistance: null, totalKm: null } : {}),
+                  }))}>
+                  <SelectTrigger data-testid={`select-entry-type-${idx}`}><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="time_meter">Time / Meter Reading</SelectItem>
+                    <SelectItem value="hourly">Hourly Hire</SelectItem>
+                    <SelectItem value="daily">Daily Hire</SelectItem>
+                    <SelectItem value="trip_based">Trip Based</SelectItem>
+                    <SelectItem value="monthly">Monthly Hire</SelectItem>
+                  </SelectContent>
+                </Select>
+                {isDailyOrMonthly && <Badge variant="outline" className="mt-2" data-testid={`badge-entry-type-${idx}`}>
+                  {entry.entryType === "daily" ? "DAILY HIRE" : "MONTHLY HIRE"}
+                </Badge>}
+              </div>}
+              <div><Label className="text-sm">Operator</Label>
+                <Input placeholder="Operator name" value={entry.operator} className="uppercase"
+                  onChange={event => setEquipment(rows => rows.map((row, i) => i === idx ? { ...row, operator: event.target.value.toUpperCase() } : row))}
+                  data-testid={`input-equipment-operator-${idx}`} />
+              </div>
+            </div>;
+            const dieselSource = <div className="grid grid-cols-2 gap-3 px-3 py-3 md:grid-cols-4">
+              <div><Label className="text-sm">Diesel Source</Label>
+                <Select value={entry.dieselSource ?? ""} disabled={entry.plantUsageId != null}
+                  onValueChange={value => setEquipment(rows => rows.map((row, i) => i === idx ? transitionDieselSource(row, value) : row))}>
+                  <SelectTrigger data-testid={`select-diesel-source-${idx}`}><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="plant_stock">Plant Stock</SelectItem>
+                    <SelectItem value="direct_purchase">Direct Site Purchase</SelectItem>
+                    <SelectItem value="contractor">Contractor</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div><Label className="text-sm">Diesel Issued (L)</Label>
+                <Input type="number" step="0.1" value={entry.diesel ?? ""} disabled={entry.plantUsageId != null && entry.dieselSource === "plant_stock"}
+                  data-testid={`input-equipment-diesel-${idx}`}
+                  onChange={event => setEquipment(rows => rows.map((row, i) => i === idx
+                    ? { ...row, diesel: event.target.value ? Number(event.target.value) : null } : row))} /></div>
+              {entry.dieselSource === "direct_purchase" && <>
+                <div><Label className="text-sm">Fuel Station</Label><Input value={entry.fuelStation || ""} placeholder="HP / BPCL" className="uppercase"
+                  data-testid={`input-fuel-station-${idx}`} onChange={e => setEquipment(rows => rows.map((row, i) => i === idx ? { ...row, fuelStation: e.target.value.toUpperCase() } : row))} /></div>
+                <div><Label className="text-sm">Bill No.</Label><Input value={entry.billNumber || ""} placeholder="Receipt #" className="uppercase"
+                  data-testid={`input-bill-number-${idx}`} onChange={e => setEquipment(rows => rows.map((row, i) => i === idx ? { ...row, billNumber: e.target.value.toUpperCase() } : row))} /></div>
+                <div><Label className="text-sm">Amount (Rs)</Label><Input type="number" step="0.01" value={entry.amountPaid ?? ""}
+                  data-testid={`input-amount-paid-${idx}`} onChange={e => setEquipment(rows => rows.map((row, i) => i === idx ? { ...row, amountPaid: e.target.value ? Number(e.target.value) : null } : row))} /></div>
+              </>}
+              {isTripBased && <>
+                <div><Label className="text-sm">No. of Trips</Label><Input type="number" step="1" value={entry.numberOfTrips ?? ""}
+                  data-testid={`input-equipment-trips-${idx}`} onChange={e => setEquipment(rows => rows.map((row, i) => {
+                    if (i !== idx) return row;
+                    const numberOfTrips = e.target.value ? parseInt(e.target.value) : null;
+                    return { ...row, numberOfTrips, totalKm: (numberOfTrips || 0) * (row.tripDistance || 0) * 2 };
+                  }))} /></div>
+                <div><Label className="text-sm">Trip Distance (km one-way)</Label><Input type="number" step="0.1" value={entry.tripDistance ?? ""}
+                  data-testid={`input-equipment-trip-distance-${idx}`} onChange={e => setEquipment(rows => rows.map((row, i) => {
+                    if (i !== idx) return row;
+                    const tripDistance = e.target.value ? parseFloat(e.target.value) : null;
+                    return { ...row, tripDistance, totalKm: (row.numberOfTrips || 0) * (tripDistance || 0) * 2 };
+                  }))} /></div>
+              </>}
+              {isWaterTanker && <><div><Label className="text-sm">Water Quantity (Liters)</Label>
+                <Input type="number" step="1" value={entry.waterQuantity ?? ""} data-testid={`input-equipment-water-qty-${idx}`}
+                  onChange={e => setEquipment(rows => rows.map((row, i) => i === idx ? { ...row, waterQuantity: e.target.value ? Number(e.target.value) : null } : row))} /></div>
+                <div><Label className="text-sm">No. of Trips</Label><Input type="number" step="1" value={entry.numberOfTrips ?? ""}
+                  data-testid={`input-equipment-water-trips-${idx}`} onChange={e => setEquipment(rows => rows.map((row, i) => i === idx ? { ...row, numberOfTrips: e.target.value ? parseInt(e.target.value) : null } : row))} /></div></>}
+              {entry.dieselSource === "plant_stock" && <EquipmentTankBalanceInputs
+                requireConfirmationForConsumption={!!sectionEditor}
+                index={idx} openingDiesel={entry.openingDiesel} dieselBalanceInTank={entry.dieselBalanceInTank}
+                dieselBalanceConfirmed={entry.dieselBalanceConfirmed} dieselIssued={entry.diesel}
+                expectedDiesel={usage.expectedDiesel} runtime={usage.runtime}
+                onChange={patch => setEquipment(rows => rows.map((row, i) => i === idx ? { ...row, ...patch } : row))}
+              />}
+            </div>;
             const compactEquipment = <DprEquipmentCompact
               row={entry}
               equipment={selectedEquipForRow}
@@ -3285,21 +3416,22 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
               showTankBalance={false}
               enableTankContinuity={entry.dieselSource === "plant_stock"}
               sectionPresentation
-              onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, ...patch } as EquipmentEntry : row))}
+              equipmentPickerSlot={equipmentPicker}
+              ownerTypeSlot={ownerType}
+              dieselSourceSlot={dieselSource}
+              stoppageSlot={<BreakdownStoppageEditor draftOnly={!!sectionEditor} value={entry.breakdowns ?? []}
+                onChange={breakdowns => setEquipment(rows => rows.map((row, i) => i === idx ? { ...row, breakdowns } : row))}
+                testId={`equipment-breakdown-${idx}`} />}
+              onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx
+                ? { ...row, ...patch, ...("usageStatus" in patch ? { [autoWorkingStatus]: undefined } : {}) } as EquipmentEntry : row))}
             />;
             
             return (
               <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative transition-all duration-500" data-dpr-row-key={dprRowKey("equipment", idx)}
                 data-dpr-equipment-identity={JSON.stringify([entry.equipmentId, entry.plantUsageId, entry.machine, entry.vehicleNo, entry.openingReading, entry.startTime])}
                 data-testid={"equipment-row-" + idx}>
+                {!isVisibleEquipmentRow({ ...entry }) && equipmentPicker}
                 {compactEquipment}
-                {sectionEditor && entry.dieselSource === "plant_stock" && <EquipmentTankBalanceInputs
-                  requireConfirmationForConsumption
-                  index={idx} openingDiesel={entry.openingDiesel} dieselBalanceInTank={entry.dieselBalanceInTank}
-                  dieselBalanceConfirmed={entry.dieselBalanceConfirmed} dieselIssued={entry.diesel}
-                  expectedDiesel={usage.expectedDiesel} runtime={usage.runtime}
-                  onChange={(patch) => setEquipment(rows => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, ...patch } : row))}
-                />}
                 <Button 
                   size="icon" 
                   variant="ghost" 
@@ -3311,428 +3443,6 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                   <Trash2 className="w-4 h-4" />
                 </Button>
                 
-                <details {...(!sectionEditor ? { open: true } : {})} className="group peer">
-                <summary className="mb-2 cursor-pointer list-none text-xs font-semibold text-muted-foreground after:ml-2 after:content-['Edit_Usage_Details'] group-open:after:content-['Close_Usage_Details']" />
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="col-span-2">
-                    <Label className="text-sm">Equipment</Label>
-                    <Select
-                      value={entry.equipmentId ? String(entry.equipmentId) : (entry.machine ? OTHER_EQUIPMENT_VALUE : "")}
-                      onValueChange={(val) => {
-                        const updated = [...equipment];
-                        if (val === OTHER_EQUIPMENT_VALUE) {
-                          updated[idx] = applyEquipmentMasterSelection(updated[idx], null);
-                          setOtherEquipmentRows((rows) => new Set(rows).add(idx));
-                          setEquipment(updated);
-                          return;
-                        }
-                        const selectedEquip = activeEquipment.find(e => e.id === Number(val));
-                        if (selectedEquip) {
-                          updated[idx] = withEquipmentCreationStartTime(
-                            applyEquipmentMasterSelection(updated[idx], selectedEquip),
-                          );
-                          setOtherEquipmentRows((rows) => {
-                            const next = new Set(rows);
-                            next.delete(idx);
-                            return next;
-                          });
-                          if (selectedEquip.ownership !== "hired") {
-                            updated[idx].entryType = "time_meter";
-                            updated[idx].numberOfTrips = null;
-                            updated[idx].tripDistance = null;
-                            updated[idx].totalKm = null;
-                          }
-                        }
-                        setEquipment(updated);
-                        // Batch 6: check if there's an open plant record for this equipment today
-                        if (selectedEquip) fetchOpenPlantRecord(selectedEquip.id, idx);
-                      }}
-                    >
-                      <SelectTrigger data-testid={`select-equipment-${idx}`}>
-                        <SelectValue placeholder="Select equipment..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {activeEquipment.map((eq) => (
-                          <SelectItem key={eq.id} value={String(eq.id)}>
-                            {eq.name} {eq.registrationNumber ? `(${eq.registrationNumber})` : ""} — {eq.ownership === "hired" ? `HIRED: ${eq.vendorName}` : "HLC OWN"}
-                          </SelectItem>
-                        ))}
-                        <SelectItem value={OTHER_EQUIPMENT_VALUE}>Other / Unlisted equipment</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {!entry.equipmentId && (otherEquipmentRows.has(idx) || !!entry.machine) && (
-                      <Input
-                        className="mt-2"
-                        value={entry.machine}
-                        onChange={(e) => {
-                          const updated = [...equipment];
-                          updated[idx] = { ...updated[idx], machine: e.target.value, equipmentId: null };
-                          setEquipment(updated);
-                        }}
-                        placeholder="Enter equipment name"
-                        aria-label="Other / Unlisted equipment name"
-                        data-testid={`input-equipment-other-${idx}`}
-                      />
-                    )}
-                    {entry.equipmentId && entry.vehicleNo && (
-                      <p className="text-sm text-muted-foreground mt-1">Reg: {entry.vehicleNo}</p>
-                    )}
-                    {(() => {
-                      const selectedEquipForType = activeEquipment.find(e => e.id === entry.equipmentId);
-                      if (!selectedEquipForType || selectedEquipForType.ownership !== "hired") return null;
-                      return (
-                        <div className="mt-2">
-                          <Label className="text-sm">Entry Type</Label>
-                          <div className="flex items-center gap-2">
-                            <Select
-                              value={entry.entryType ?? "time_meter"}
-                              onValueChange={(val) => {
-                                const updated = [...equipment];
-                                updated[idx].entryType = val;
-                                if (val !== "trip_based") {
-                                  updated[idx].numberOfTrips = null;
-                                  updated[idx].tripDistance = null;
-                                  updated[idx].totalKm = null;
-                                }
-                                setEquipment(updated);
-                              }}
-                            >
-                              <SelectTrigger data-testid={`select-entry-type-${idx}`} className="w-48">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="time_meter">Time / Meter Reading</SelectItem>
-                                <SelectItem value="hourly">Hourly Hire</SelectItem>
-                                <SelectItem value="daily">Daily Hire</SelectItem>
-                                <SelectItem value="trip_based">Trip Based</SelectItem>
-                                <SelectItem value="monthly">Monthly Hire</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            {isDailyOrMonthly && (
-                              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 px-3 py-1.5" data-testid={`badge-entry-type-${idx}`}>
-                                {entry.entryType === "daily" ? "DAILY HIRE" : "MONTHLY HIRE"}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                  <div>
-                    <Label className="text-sm">Operator</Label>
-                    <Input
-                      placeholder="Operator name"
-                      value={entry.operator}
-                      onChange={(e) => {
-                        const updated = [...equipment];
-                        updated[idx].operator = e.target.value.toUpperCase();
-                        setEquipment(updated);
-                      }}
-                      className="uppercase"
-                      data-testid={`input-equipment-operator-${idx}`}
-                    />
-                  </div>
-                </div>
-                {handoffContext && (
-                  <p className="text-xs text-blue-700 dark:text-blue-300" data-testid={`text-equipment-handoff-${idx}`}>{handoffContext}</p>
-                )}
-
-                <>
-                    {!sectionEditor && <p className="text-sm font-semibold text-muted-foreground border-b pb-1">
-                      {entry.entryType === "hourly" ? "Hourly Hire — Time Entry" : "Time / Meter Entry"}
-                    </p>}
-                    {!sectionEditor && <p className="text-sm text-muted-foreground italic">Enter opening reading and diesel in the morning. Closing reading and end time can be added later.</p>}
-                    
-                    {!sectionEditor && <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                      <div>
-                        <Label className="text-sm">Start Time</Label>
-                        <Input
-                          type="time"
-                          value={entry.startTime}
-                          onChange={(e) => {
-                            const updated = [...equipment];
-                            updated[idx].startTime = e.target.value;
-                            setEquipment(updated);
-                          }}
-                          className="h-12 text-base"
-                          data-testid={`input-equipment-start-${idx}`}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-sm">End Time</Label>
-                        <Input
-                          type="time"
-                          value={entry.endTime}
-                          onChange={(e) => {
-                            const updated = [...equipment];
-                            updated[idx].endTime = e.target.value;
-                            setEquipment(updated);
-                          }}
-                          className="h-12 text-base"
-                          data-testid={`input-equipment-end-${idx}`}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-sm text-muted-foreground">Duration</Label>
-                        <div className="bg-amber-50 dark:bg-amber-900/20 px-3 py-2 rounded border border-amber-200 dark:border-amber-700 font-semibold text-amber-700 dark:text-amber-400 text-sm" data-testid={`display-time-duration-${idx}`}>
-                          {formatTimeDuration(entry.startTime, entry.endTime) ?? "-"}
-                        </div>
-                      </div>
-                      <div>
-                        <Label className="text-sm">
-                          {isOdometer ? "Opening Odometer (km)" : "Opening Hour Meter"}
-                          {entry.plantUsageId && (
-                            <span className="ml-2 text-xs font-normal text-amber-600 dark:text-amber-400">(from plant — locked)</span>
-                          )}
-                        </Label>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          placeholder={isOdometer ? "e.g. 45230" : "e.g. 1234.5"}
-                          value={entry.openingReading ?? ""}
-                          readOnly={!!entry.plantUsageId}
-                          className={entry.plantUsageId ? "bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-600 cursor-not-allowed" : ""}
-                          onChange={(e) => {
-                            if (entry.plantUsageId) return; // locked — comes from plant record
-                            const updated = [...equipment];
-                            updated[idx].openingReading = e.target.value ? parseFloat(e.target.value) : null;
-                            setEquipment(updated);
-                          }}
-                          data-testid={`input-equipment-opening-${idx}`}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-sm">{isOdometer ? "Closing Odometer (km)" : "Closing Hour Meter"}</Label>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          placeholder={isOdometer ? "e.g. 45310" : "e.g. 1238.0"}
-                          value={entry.closingReading ?? ""}
-                          onChange={(e) => {
-                            const updated = [...equipment];
-                            updated[idx].closingReading = e.target.value ? parseFloat(e.target.value) : null;
-                            setEquipment(updated);
-                          }}
-                          data-testid={`input-equipment-closing-${idx}`}
-                        />
-                      </div>
-                    </div>}
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <div>
-                        <Label className="text-sm">Diesel Issued (L)</Label>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          placeholder="0"
-                          value={entry.diesel ?? ""}
-                          onChange={(e) => {
-                            const updated = [...equipment];
-                            updated[idx].diesel = e.target.value ? parseFloat(e.target.value) : null;
-                            setEquipment(updated);
-                          }}
-                          data-testid={`input-equipment-diesel-${idx}`}
-                        />
-                      </div>
-                    </div>
-                    {usage.warning && entry.usageStatus !== "idle_no_work" && entry.usageStatus !== "idle_no_operator" && (
-                      <p className="text-sm text-amber-600 dark:text-amber-400 flex items-center gap-1" data-testid={`warning-equipment-${idx}`}>
-                        ⚠ {usage.warning}
-                      </p>
-                    )}
-                </>
-
-                {isTripBased && (
-                  <>
-                    <p className="text-sm font-semibold text-muted-foreground border-b pb-1">Trip Based Entry</p>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <div>
-                        <Label className="text-sm">No. of Trips</Label>
-                        <Input
-                          type="number"
-                          step="1"
-                          placeholder="0"
-                          value={entry.numberOfTrips ?? ""}
-                          onChange={(e) => {
-                            const updated = [...equipment];
-                            updated[idx].numberOfTrips = e.target.value ? parseInt(e.target.value) : null;
-                            const trips = updated[idx].numberOfTrips || 0;
-                            const dist = updated[idx].tripDistance || 0;
-                            updated[idx].totalKm = trips * dist * 2;
-                            setEquipment(updated);
-                          }}
-                          data-testid={`input-equipment-trips-${idx}`}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-sm">Trip Distance (km one-way)</Label>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          placeholder="0"
-                          value={entry.tripDistance ?? ""}
-                          onChange={(e) => {
-                            const updated = [...equipment];
-                            updated[idx].tripDistance = e.target.value ? parseFloat(e.target.value) : null;
-                            const trips = updated[idx].numberOfTrips || 0;
-                            const dist = updated[idx].tripDistance || 0;
-                            updated[idx].totalKm = trips * dist * 2;
-                            setEquipment(updated);
-                          }}
-                          data-testid={`input-equipment-trip-distance-${idx}`}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-sm">Diesel Issued (L)</Label>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          placeholder="0"
-                          value={entry.diesel ?? ""}
-                          onChange={(e) => {
-                            const updated = [...equipment];
-                            updated[idx].diesel = e.target.value ? parseFloat(e.target.value) : null;
-                            setEquipment(updated);
-                          }}
-                          data-testid={`input-equipment-diesel-${idx}`}
-                        />
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {isWaterTanker && (
-                  <>
-                    <p className="text-sm font-semibold text-blue-600 border-b border-blue-200 pb-1">Water Delivery</p>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <div>
-                        <Label className="text-sm">Water Quantity (Liters)</Label>
-                        <Input
-                          type="number"
-                          step="1"
-                          placeholder="0"
-                          value={entry.waterQuantity ?? ""}
-                          onChange={(e) => {
-                            const updated = [...equipment];
-                            updated[idx].waterQuantity = e.target.value ? parseFloat(e.target.value) : null;
-                            setEquipment(updated);
-                          }}
-                          data-testid={`input-equipment-water-qty-${idx}`}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-sm">No. of Trips</Label>
-                        <Input
-                          type="number"
-                          step="1"
-                          placeholder="0"
-                          value={entry.numberOfTrips ?? ""}
-                          onChange={(e) => {
-                            const updated = [...equipment];
-                            updated[idx].numberOfTrips = e.target.value ? parseInt(e.target.value) : null;
-                            setEquipment(updated);
-                          }}
-                          data-testid={`input-equipment-water-trips-${idx}`}
-                        />
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div>
-                    <Label className="text-sm">Diesel Source</Label>
-                    <Select 
-                      value={entry.dieselSource ?? ""}
-                      onValueChange={(value) => {
-                        const updated = [...equipment];
-                        updated[idx] = transitionDieselSource(updated[idx], value);
-                        setEquipment(updated);
-                      }}
-                    >
-                      <SelectTrigger data-testid={`select-diesel-source-${idx}`}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="plant_stock">Plant Stock</SelectItem>
-                        <SelectItem value="direct_purchase">Direct Site Purchase</SelectItem>
-                        <SelectItem value="contractor">Contractor</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {entry.dieselSource === "direct_purchase" && (
-                    <>
-                      <div>
-                        <Label className="text-sm">Fuel Station</Label>
-                        <Input
-                          placeholder="HP / BPCL"
-                          value={entry.fuelStation || ""}
-                          onChange={(e) => {
-                            const updated = [...equipment];
-                            updated[idx].fuelStation = e.target.value.toUpperCase();
-                            setEquipment(updated);
-                          }}
-                          className="uppercase"
-                          data-testid={`input-fuel-station-${idx}`}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-sm">Bill No.</Label>
-                        <Input
-                          placeholder="Receipt #"
-                          value={entry.billNumber || ""}
-                          onChange={(e) => {
-                            const updated = [...equipment];
-                            updated[idx].billNumber = e.target.value.toUpperCase();
-                            setEquipment(updated);
-                          }}
-                          className="uppercase"
-                          data-testid={`input-bill-number-${idx}`}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-sm">Amount (Rs)</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder="0"
-                          value={entry.amountPaid ?? ""}
-                          onChange={(e) => {
-                            const updated = [...equipment];
-                            updated[idx].amountPaid = e.target.value ? parseFloat(e.target.value) : null;
-                            setEquipment(updated);
-                          }}
-                          data-testid={`input-amount-paid-${idx}`}
-                        />
-                      </div>
-                    </>
-                  )}
-                  {!sectionEditor && entry.dieselSource === "plant_stock" && (
-                    <EquipmentTankBalanceInputs
-                      index={idx}
-                      openingDiesel={entry.openingDiesel}
-                      dieselBalanceInTank={entry.dieselBalanceInTank}
-                      dieselBalanceConfirmed={entry.dieselBalanceConfirmed}
-                      dieselIssued={entry.diesel}
-                      expectedDiesel={usage.expectedDiesel}
-                      runtime={usage.runtime}
-                      onChange={(patch) => {
-                        const updated = [...equipment];
-                        updated[idx] = { ...updated[idx], ...patch };
-                        setEquipment(updated);
-                      }}
-                    />
-                  )}
-                </div>
-                </details>
-                <div className={sectionEditor ? "hidden peer-open:block space-y-3" : "contents"}>
-                <BreakdownStoppageEditor
-                  draftOnly={!!sectionEditor}
-                  value={entry.breakdowns ?? []}
-                  onChange={(breakdowns) => setEquipment(current => current.map((row, rowIndex) => rowIndex === idx ? { ...row, breakdowns } : row))}
-                  testId={`equipment-breakdown-${idx}`}
-                />
-                </div>
               </div>
             );
           })}

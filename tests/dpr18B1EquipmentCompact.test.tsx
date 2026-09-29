@@ -12,6 +12,16 @@ const base: DprEquipmentFields = {
 };
 
 describe("DPR18 B1 grouped equipment card", () => {
+  it("uses the real master hire basis and does not duplicate the editable override", () => {
+    const { rerender } = render(<DprEquipmentCompact row={base} onChange={vi.fn()}
+      equipment={{ ownership: "hired", hireBillingBasis: "monthly" }}
+      ownerTypeSlot={<button>Existing hire override</button>} />);
+    expect(screen.getByText("monthly")).toBeTruthy();
+    expect(screen.queryByText("Effective hire / entry type")).toBeNull();
+    rerender(<DprEquipmentCompact row={base} onChange={vi.fn()}
+      equipment={{ ownership: "hired" }} ownerTypeSlot={<button>Existing hire override</button>} />);
+    expect(screen.getByText("Not configured")).toBeTruthy();
+  });
   it.each([undefined, null, "working"] as const)("shows stored status %s without writing on mount", usageStatus => {
     const onChange = vi.fn();
     render(<DprEquipmentCompact row={{ ...base, usageStatus }} sectionPresentation onChange={onChange} />);

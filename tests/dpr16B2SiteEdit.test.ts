@@ -67,10 +67,14 @@ describe("DPR16 B2 classic SiteEdit", () => {
   });
 
   it("uses compact equipment presentation without changing its linked controls, tank confirmation or persistence", () => {
-    const compact = edit.slice(edit.indexOf("<DprEquipmentCompact", edit.indexOf("<CardTitle>Equipment Log")), edit.indexOf("<BreakdownStoppageEditor", edit.indexOf("<DprEquipmentCompact", edit.indexOf("<CardTitle>Equipment Log"))));
+    const compactStart = edit.indexOf("<DprEquipmentCompact", edit.indexOf("<CardTitle>Equipment Log"));
+    const compact = edit.slice(compactStart, edit.indexOf("/>", compactStart) + 2);
     expect(compact).toContain("sectionPresentation");
     expect(compact).toContain('enableTankContinuity={entry.dieselSource === "plant_stock"}');
     expect(compact).toContain("allowLinkedSourceEdit={isAdmin}");
+    expect(compact).toContain("stoppageSlot={stoppageSlot}");
+    expect(edit).toContain("const stoppageSlot = (");
+    expect(edit).toContain("value={entry.breakdowns ?? []}");
     expect(compact).not.toContain("showTankBalance={false}");
     expect(edit).toContain("dieselBalanceConfirmed?: boolean | null");
     expect(edit).toContain("normalizeSiteEditEquipmentPayload");

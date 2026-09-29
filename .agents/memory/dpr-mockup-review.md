@@ -32,6 +32,12 @@ Production equipment integration explicitly supersedes the prototype's derived W
 
 **How to apply:** Do not derive or rewrite historical status from meter readings. Shared-component approval is not approval to wire parent layouts or initialize new rows; stop for approval between shared component, edit-screen wiring and read-only verification.
 
+New-row defaulting must distinguish a new placeholder inside an existing draft from a hydrated historical equipment row. Asynchronous plant-link and continuity responses must also retain the identity of the originating editor row, not merely its array position and machine.
+
+**Why:** An empty draft's fallback placeholder initially missed the creation provenance needed for Working, while deleting and re-adding the same machine could let an older request update the replacement row.
+
+**How to apply:** Include empty-draft fallbacks in creation-path tests; preserve historical null statuses, strip UI provenance from persistence, and test deletion/replacement while continuity requests are pending.
+
 The user confirmed classic readiness reuse and Preview Fix state preservation on 2026-09-29, and required explicit separation of tank-display gating from equipment layout props.
 
 **Why:** Identically named props for unrelated presentation behaviors make accidental behavior changes likely even when today's call sites are correct.

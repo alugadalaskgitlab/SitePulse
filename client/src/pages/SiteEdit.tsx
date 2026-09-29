@@ -72,7 +72,7 @@ import { APPLICABLE_ARRANGEMENT_STATUSES, blocksExternalReceiptsForBoqItem } fro
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { equipmentStatusRequiresReason } from "@shared/equipmentStatus";
-import { withEquipmentCreationStartTime, meaningfulEquipmentRows } from "@shared/equipmentUsage";
+import { withEquipmentCreationStartTime, withNewEquipmentWorkingDefault, meaningfulEquipmentRows, isVisibleEquipmentRow } from "@shared/equipmentUsage";
 import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arrangementStatusHistory";
 import { transitionDieselSource, validateDieselTankBalance } from "@shared/dieselEntryValidation";
 import { normalizeSiteEditEquipmentPayload, normalizeSiteEditProgressPayload } from "@/lib/siteEditPayload";
@@ -153,10 +153,10 @@ interface EquipmentEntry {
   activitySegments?: Array<{ persistedId?: number; startTime: string; endTime: string; hoursWorked?: number; boqItems: Array<{ persistedId?: number; boqItemId: number; programmeBarId?: number | null }> }>;
   activityAllocations?: Array<{ persistedId?: number; boqItemId: number; programmeBarId?: number | null; startTime: string; endTime: string; hoursWorked?: number }>;
   workAssignmentEdited?: boolean;
-  // 06Q (client-only, stripped from the payload): true for rows added during
-  // this edit session — only those get opening-reading continuity. Rows
-  // loaded from the stored DPR NEVER have their opening recalculated on load.
+  // Client-only provenance for rows created in this mounted editor. Neither
+  // persisted DPRs nor restored drafts are new machine days.
   isNew?: boolean;
+  editCreationKey?: string;
 }
 
 const contractorDieselTankFieldsCleared = (row: EquipmentEntry): EquipmentEntry =>
@@ -344,7 +344,7 @@ export function mapDprToFormState(dpr: any) {
         })) : undefined,
         breakdowns: e.breakdowns ?? [],
       }))
-    : [{ machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, isNew: true }];
+    : [{ machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, isNew: true, editCreationKey: newEntryKey() }];
 
   const labour: LabourEntry[] = dpr.labour?.length
     ? dpr.labour.map((l: any) => ({
@@ -659,7 +659,7 @@ export default function SiteEdit() {
   const overlapHits = useChainageOverlapHits(overlapCandidateRows, overlapPriors, unchangedOverlapRowKeys);
 
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
-    { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null }
+    { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, isNew: true, editCreationKey: newEntryKey() }
   ]);
   // 06X-HF6: submitted DPRs can pre-date a later dispatch to the same
   // site/date. Reuse the Guided/Detailed open-today discovery contract.
@@ -888,7 +888,7 @@ export default function SiteEdit() {
               ...normalizeExcavationMaterialOutcome(p.quantity, p.materialOutcome, p.reusableQty),
             })),
           );
-          if (draft.equipment?.length) setEquipment(draft.equipment);
+          if (draft.equipment?.length) setEquipment((draft.equipment as EquipmentEntry[]).map(({ isNew: _isNew, editCreationKey: _key, ...row }) => row));
           if (draft.labour?.length) setLabour(draft.labour);
           setMaterials(draft.materials || []);
           setSitePurchases(draft.sitePurchases || []);
@@ -951,7 +951,7 @@ export default function SiteEdit() {
       workType,
       structureItems,
       progress,
-      equipment,
+      equipment: equipment.map(({ isNew: _isNew, editCreationKey: _editCreationKey, ...row }) => row),
       labour,
       materials,
       sitePurchases,
@@ -1279,7 +1279,7 @@ export default function SiteEdit() {
     } else if (section === 'equipment') {
       // 06Q: rows added during the edit session are flagged isNew — they get
       // opening-reading continuity when equipment is selected.
-      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, isNew: true }]);
+      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, isNew: true, editCreationKey: newEntryKey() }]);
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null }]);
     }
@@ -1418,6 +1418,7 @@ export default function SiteEdit() {
       // 06Q: isNew is client-session state only — never sent to the server.
       const {
         isNew: _isNew,
+        editCreationKey: _editCreationKey,
         workAssignmentEdited,
         activitySegments,
         activityAllocations,
@@ -2877,25 +2878,10 @@ export default function SiteEdit() {
           )}
           {equipment.map((entry, idx) => {
             const isTripBased = entry.entryType === "trip_based";
-            const isDailyOrMonthly = entry.entryType === "daily" || entry.entryType === "monthly";
             const calculatedTotalKm = (entry.numberOfTrips && entry.tripDistance) ? entry.numberOfTrips * entry.tripDistance * 2 : 0;
             const isWaterTanker = (entry.machine || '').toUpperCase().includes('WATER') || (entry.machine || '').toUpperCase().includes('TANKER');
 
-            return (
-            <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative transition-all duration-500" data-dpr-row-key={dprRowKey("equipment", idx)}
-              data-dpr-equipment-identity={JSON.stringify([entry.persistedId, entry.equipmentId, entry.plantUsageId, entry.machine, entry.vehicleNo, entry.openingReading, entry.startTime])}
-              data-testid={"equipment-row-" + idx}>
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => removeRow('equipment', idx)}
-                disabled={equipment.length === 1}
-                className="absolute right-2 top-2 text-muted-foreground hover:text-destructive"
-                data-testid={`button-remove-equipment-${idx}`}
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
-              <div className="space-y-3">
+            const equipmentPickerSlot = (
               <div>
                 <Label className="text-sm">Equipment</Label>
                 <Select
@@ -2912,7 +2898,12 @@ export default function SiteEdit() {
                       updated[idx].equipmentId = selectedEquip.id;
                       updated[idx].machine = selectedEquip.name;
                       updated[idx].vehicleNo = selectedEquip.registrationNumber || "";
-                      if (updated[idx].isNew) updated[idx] = withEquipmentCreationStartTime(updated[idx]);
+                      if (updated[idx].isNew && updated[idx].editCreationKey) {
+                        updated[idx] = withNewEquipmentWorkingDefault(
+                          withEquipmentCreationStartTime(updated[idx]),
+                          { isNew: true },
+                        );
+                      }
                       if (selectedEquip.ownership !== "hired") {
                         updated[idx].entryType = "time_meter";
                         updated[idx].numberOfTrips = null;
@@ -2924,7 +2915,8 @@ export default function SiteEdit() {
                       // this edit session (isNew). Existing historical rows are
                       // NEVER silently recalculated — changing equipment on an
                       // existing row asks for explicit confirmation first.
-                      const runContinuity = entry.isNew
+                      const creationKey = entry.editCreationKey;
+                      const runContinuity = entry.isNew && creationKey
                         ? true
                         : wasExistingWithReading
                           ? window.confirm("You changed the equipment on an existing entry. Replace its stored Opening Reading with this equipment's latest prior closing reading? Cancel keeps the stored value.")
@@ -2941,7 +2933,9 @@ export default function SiteEdit() {
                             // this equipment. New rows only fill a blank
                             // opening (manual entry is never overwritten);
                             // confirmed existing-row changes replace it.
-                            if (!row || row.equipmentId !== selectedEquip.id || row.plantUsageId != null) return prev;
+                            if (!row || row.equipmentId !== selectedEquip.id || row.plantUsageId != null
+                              || row.editCreationKey !== creationKey
+                              || row.persistedId !== entry.persistedId) return prev;
                             if (row.isNew && row.openingReading != null) return prev;
                             next[idx] = { ...row, openingReading: latest.closingReading };
                             return next;
@@ -2969,12 +2963,6 @@ export default function SiteEdit() {
                 {entry.equipmentId && entry.vehicleNo && (
                   <p className="text-sm text-muted-foreground mt-1" data-testid={`text-equipment-reg-${idx}`}>Reg: {entry.vehicleNo}</p>
                 )}
-                {entry.equipmentId && (() => {
-                  const selEquip = activeEquipment.find(e => e.id === entry.equipmentId) || equipmentMaster?.find(e => e.id === entry.equipmentId);
-                  if (!selEquip) return null;
-                  const ownerLabel = selEquip.ownership === "hired" ? `HIRED: ${selEquip.vendorName || "VENDOR"}` : "HLC OWN";
-                  return <p className="text-sm text-muted-foreground mt-0.5" data-testid={`text-equipment-owner-${idx}`}>{ownerLabel}</p>;
-                })()}
                 {entry.plantUsageId != null && (
                   <Badge variant="outline" className="mt-1 bg-blue-50 text-blue-700 border-blue-200">
                     Linked dispatch #{entry.plantUsageId}
@@ -2986,6 +2974,9 @@ export default function SiteEdit() {
                   return handoff ? <p className="mt-1 text-xs text-blue-700 dark:text-blue-300">{handoff}</p> : null;
                 })()}
               </div>
+            );
+            const ownerTypeSlot = (
+              <>
               {(() => {
                 const selectedEquipForType = activeEquipment.find(e => e.id === entry.equipmentId);
                 if (!selectedEquipForType || selectedEquipForType.ownership !== "hired") return null;
@@ -3017,11 +3008,6 @@ export default function SiteEdit() {
                           <SelectItem value="monthly">Monthly Hire</SelectItem>
                         </SelectContent>
                       </Select>
-                      {isDailyOrMonthly && (
-                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 px-3 py-1.5" data-testid={`badge-entry-type-${idx}`}>
-                          {entry.entryType === "daily" ? "DAILY HIRE" : "MONTHLY HIRE"}
-                        </Badge>
-                      )}
                     </div>
                   </div>
                 );
@@ -3040,7 +3026,10 @@ export default function SiteEdit() {
                   data-testid={`input-operator-${idx}`}
                 />
               </div>
-              </div>
+              </>
+            );
+            const dieselSourceSlot = (
+              <>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div>
                   <Label className="text-sm">Diesel Source</Label>
@@ -3198,12 +3187,42 @@ export default function SiteEdit() {
                   </div>
                 </>
               )}
-
+              </>
+            );
+            const stoppageSlot = (
+              <BreakdownStoppageEditor
+                draftOnly={isDraftMode}
+                value={entry.breakdowns ?? []}
+                onChange={(breakdowns) => setEquipment(rows => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, breakdowns } : row))}
+                testId={`edit-equipment-breakdown-${idx}`}
+              />
+            );
+            return (
+            <div key={entry.editCreationKey ?? entry.persistedId ?? idx} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative transition-all duration-500" data-dpr-row-key={dprRowKey("equipment", idx)}
+              data-dpr-equipment-identity={JSON.stringify([entry.persistedId, entry.equipmentId, entry.plantUsageId, entry.machine, entry.vehicleNo, entry.openingReading, entry.startTime])}
+              data-testid={"equipment-row-" + idx}>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => removeRow('equipment', idx)}
+                disabled={equipment.length === 1}
+                className="absolute right-2 top-2 text-muted-foreground hover:text-destructive"
+                data-testid={`button-remove-equipment-${idx}`}
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+              {/* The compact card hides itself for untouched placeholders; their
+                  picker must remain available until an actual row is identified. */}
+              {!isVisibleEquipmentRow({ ...entry }) && equipmentPickerSlot}
                 <DprEquipmentCompact
                   row={entry}
                   equipment={activeEquipment.find((item) => item.id === entry.equipmentId)}
                   hideIdentity
                   sectionPresentation
+                  equipmentPickerSlot={isVisibleEquipmentRow({ ...entry }) ? equipmentPickerSlot : undefined}
+                  ownerTypeSlot={ownerTypeSlot}
+                  dieselSourceSlot={dieselSourceSlot}
+                  stoppageSlot={stoppageSlot}
                   index={idx}
                   beforeDate={header.date}
                   site={header.site}
@@ -3224,12 +3243,6 @@ export default function SiteEdit() {
                     workAssignmentEdited: true,
                   } : row))}
                 />
-                <BreakdownStoppageEditor
-                draftOnly={isDraftMode}
-                value={entry.breakdowns ?? []}
-                onChange={(breakdowns) => setEquipment(rows => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, breakdowns } : row))}
-                testId={`edit-equipment-breakdown-${idx}`}
-              />
             </div>
             );
           })}

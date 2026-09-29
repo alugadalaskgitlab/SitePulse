@@ -1101,8 +1101,43 @@ const dpr16B2ClassicEdit = {
   sitePurchases: [],
 };
 
+// DPR18 B2 browser-only records: all writes remain intercepted in sessionStorage.
+// Keep the status absent on the legacy row and explicitly null on a linked row
+// to catch accidental migration-by-render or migration-by-save.
+const dpr18B2Base = {
+  ...dpr16B2ClassicEdit,
+  progress: [{
+    id: 7381, entryKey: "synthetic-dpr18-no-site-work", activity: "NO SITE WORK",
+    noSiteWork: true, noSiteWorkDescription: "SYNTHETIC OTHER WORK", quantity: null, uom: "SQM",
+  }],
+  equipment: [{
+    ...dpr16B2ClassicEdit.equipment[0],
+    machine: "SYNTHETIC DPR18 EXCAVATOR",
+    dieselBalanceConfirmed: true,
+    dieselBalanceInTank: 25,
+    breakdowns: [],
+  }],
+};
+const dpr18B2Edit = {
+  ...dpr18B2Base, id: 6278,
+  equipment: [],
+};
+const dpr18B2Guided = {
+  ...dpr18B2Base, id: 6281,
+  equipment: [],
+};
+const dpr18B2Legacy = {
+  ...dpr18B2Base, id: 6279,
+  equipment: [{ ...dpr18B2Base.equipment[0], id: 7279, usageStatus: null, usageStatusReason: null }],
+};
+const dpr18B2Linked = {
+  ...dpr18B2Base, id: 6280,
+  equipment: [{ ...dpr18B2Base.equipment[0], id: 7280, plantUsageId: 8101, usageStatus: null, usageStatusReason: null }],
+};
+
 const fixtureState = {
   requests: [] as RequestRecord[],
+  seedDpr18: null as null | ((id: number, equipmentPatch?: Record<string, unknown>) => void),
   dprCreatePayloads: [] as any[],
   dprCreateRecords: [] as any[],
   dpr09LiteralCreatePayloads: [] as any[],
@@ -1170,6 +1205,10 @@ const persistedDprState = (() => {
 let currentDpr: any = persistedDprState.current ?? { ...storedDpr };
 const guidedDprRecords: Record<number, any> = {
   [dpr16B2ClassicEdit.id]: dpr16B2ClassicEdit,
+  [dpr18B2Edit.id]: dpr18B2Edit,
+  [dpr18B2Guided.id]: dpr18B2Guided,
+  [dpr18B2Legacy.id]: dpr18B2Legacy,
+  [dpr18B2Linked.id]: dpr18B2Linked,
   [guidedContractorDpr.id]: guidedContractorDpr,
   [guidedPlantStockDpr.id]: guidedPlantStockDpr,
   [siteEditContractorDpr.id]: siteEditContractorDpr,
@@ -1210,6 +1249,18 @@ function persistDprFixtureRecords() {
     // is only the fixture's cross-navigation persistence layer.
   }
 }
+
+// An isolated browser scenario may restore its own synthetic baseline between
+// assertions; this never calls a backend and never changes another fixture.
+fixtureState.seedDpr18 = (id: number, equipmentPatch: Record<string, unknown> = {}) => {
+  const baseline = id === 6278 ? dpr18B2Edit : id === 6279 ? dpr18B2Legacy : id === 6280 ? dpr18B2Linked : id === 6281 ? dpr18B2Guided : null;
+  if (!baseline) throw new Error(`Unknown synthetic DPR18 fixture id: ${id}`);
+  guidedDprRecords[id] = {
+    ...baseline,
+    equipment: baseline.equipment.length ? [{ ...baseline.equipment[0], ...equipmentPatch }] : [],
+  };
+  persistDprFixtureRecords();
+};
 
 function json(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {

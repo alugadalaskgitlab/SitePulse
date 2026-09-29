@@ -34,11 +34,12 @@ describe("DPR16 B2 classic SiteEntry", () => {
     expect(entry).toContain("condensedActivityPresentation && <button");
     expect(entry).toContain("condensed={condensedActivityPresentation}");
     expect(entry).toContain("condensedFill={condensedActivityPresentation}");
-    expect(entry).toContain("sectionPresentation\n              onChange");
-    expect(entry).toContain("!sectionEditor && entry.dieselSource === \"plant_stock\"");
-    const classicTank = entry.slice(entry.indexOf('{!sectionEditor && entry.dieselSource === "plant_stock"'), entry.indexOf("</details>", entry.indexOf('{!sectionEditor && entry.dieselSource === "plant_stock"')));
-    expect(classicTank).not.toContain("requireConfirmationForConsumption");
-    expect(entry).toContain("requireConfirmationForConsumption\n                  index={idx}");
+    // DPR18 moved the existing tank editor inside compact's Diesel group.
+    // Its classic and section-specific consumption rules remain distinct.
+    expect(entry).toContain("sectionPresentation\n              equipmentPickerSlot={equipmentPicker}");
+    expect(entry).toContain('entry.dieselSource === "plant_stock" && <EquipmentTankBalanceInputs');
+    expect(entry).toContain("requireConfirmationForConsumption={!!sectionEditor}");
+    expect(entry).toContain("showTankBalance={false}");
     expect(entry).toContain("dieselBalanceConfirmed={entry.dieselBalanceConfirmed}");
     expect(entry).toContain("pickDprSectionPayload(sectionEditor.section, draftPayload)");
     expect(entry).toContain("data-testid={`select-personnel-${idx}`}");

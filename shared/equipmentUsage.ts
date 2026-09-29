@@ -171,6 +171,31 @@ export function meaningfulEquipmentRows<T>(rows: T[] | null | undefined): T[] {
 export function visibleEquipmentRows<T>(rows: T[] | null | undefined): T[] {
   return (rows ?? []).filter((row) => isVisibleEquipmentRow({ ...(row as object) }));
 }
+
+/**
+ * Assign the normal daily status only at an explicit new-row creation boundary,
+ * after a machine has been identified. Never infer "working" when hydrating a
+ * draft, editing a persisted row, or linking an existing Plant Usage record:
+ * their unspecified (null) status is historical data, not a default to repair.
+ * The caller owns isNew provenance; it must not be persisted as a row field.
+ */
+export function withNewEquipmentWorkingDefault<T extends {
+  equipmentId?: unknown;
+  machine?: unknown;
+  vehicleNo?: unknown;
+  plantUsageId?: unknown;
+  id?: unknown;
+  persistedId?: unknown;
+  usageStatus?: string | null;
+}>(row: T, { isNew }: { isNew: boolean }): T {
+  if (!isNew || row.id != null || row.persistedId != null
+    || row.plantUsageId != null || row.usageStatus != null
+    || (!positiveIdentifier(row.equipmentId)
+      && !meaningfulText(row.machine)
+      && !meaningfulText(row.vehicleNo))) return row;
+  return { ...row, usageStatus: "working" };
+}
+
 export const AVERAGE_SPEED_KMPH = 25;
 
 export function calculateEquipmentClockDuration(start?: string | null, end?: string | null): number | null {

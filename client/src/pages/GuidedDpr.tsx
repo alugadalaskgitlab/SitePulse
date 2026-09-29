@@ -84,7 +84,7 @@ import { normalizeExcavationMaterialOutcome } from "@shared/cutFillReconciliatio
 import { APPLICABLE_ARRANGEMENT_STATUSES, blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
-import { currentLocalEquipmentTime, isMeaningfulEquipmentRow, isVisibleEquipmentRow } from "@shared/equipmentUsage";
+import { currentLocalEquipmentTime, isMeaningfulEquipmentRow, isVisibleEquipmentRow, withNewEquipmentWorkingDefault } from "@shared/equipmentUsage";
 import { DPR_REGISTER_PATH, resolveReturnTo } from "@/lib/progressReportNav";
 import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arrangementStatusHistory";
 import { transitionDieselSource, validateDieselTankBalance } from "@shared/dieselEntryValidation";
@@ -155,7 +155,15 @@ interface GuidedEntry {
 
 // Batch 04 save fidelity: Guided edits 4 fields but must round-trip every
 // other equipment field untouched (shared/guidedEquipment.ts).
-type SimpleEquipmentRow = GuidedEquipmentRow;
+// Local-only provenance: unsaved hydrated drafts are NOT new machine days.
+// This flag lives outside passthrough and is never sent in the save payload.
+type SimpleEquipmentRow = GuidedEquipmentRow & {
+  newlyCreatedInGuided?: true;
+  workingDefaultedInGuided?: true;
+};
+const createGuidedEquipmentRow = (): SimpleEquipmentRow => ({
+  ...newGuidedEquipmentRowForCreation(), newlyCreatedInGuided: true,
+});
 // Batch 06C §12–13: Guided labour carries the SAME fields as Detailed —
 // gender, task and the optional Work Item linkage are preserved, never
 // hard-coded away on save.
@@ -796,7 +804,9 @@ export default function GuidedDpr() {
       ? boqProjectId
       : autosaveBoqProjectId;
   const autosaveData: GuidedFormState = {
-    date, siteName, engineer, entries, equipment, labour, remarks, draftId,
+    date, siteName, engineer, entries,
+    equipment: equipment.map(({ newlyCreatedInGuided, workingDefaultedInGuided, ...row }) => row),
+    labour, remarks, draftId,
     writeTokens: draftWriteTokensRef.current,
     ...(autosaveProjectId !== undefined
       ? { boqProjectId: autosaveProjectId }
@@ -851,7 +861,10 @@ export default function GuidedDpr() {
         allocations: e.allocations ?? [],
       })));
       if (!completeIntent) setStep(clampGuidedStep(d.step));
-      setEquipment((d.equipment ?? []).map((e: any) => ({ ...newGuidedEquipmentRow(), ...e, passthrough: e.passthrough ?? {} })));
+      setEquipment((d.equipment ?? []).map((e: any) => {
+        const { newlyCreatedInGuided, workingDefaultedInGuided, ...restored } = e;
+        return { ...newGuidedEquipmentRow(), ...restored, passthrough: e.passthrough ?? {} };
+      }));
       setLabour((d.labour ?? []).map((l: any) => ({ ...newLabourRow(), ...l })));
       setRemarks(d.remarks ?? ""); setDraftId(d.draftId ?? null);
       if (urlDraftId == null) setBoqCataloguePreviewReady(true);
@@ -2427,7 +2440,6 @@ export default function GuidedDpr() {
                   const isHired = master?.ownership === "hired";
                   const entryType = (pt.entryType as string) || "time_meter";
                   const isTripBased = entryType === "trip_based";
-                  const isDailyOrMonthly = entryType === "daily" || entryType === "monthly";
                   // Robustness: a linked/draft row can carry a hired-only
                   // entryType while the master list is still loading (or the
                   // master row was retired) — keep the selector visible so the
@@ -2435,10 +2447,8 @@ export default function GuidedDpr() {
                   const showEntryType = isHired || entryType !== "time_meter";
                   const isWaterTanker = isWaterTankerName(eq.machine);
                   const isDirectPurchase = pt.dieselSource === "direct_purchase";
-                  return (
-                    <div key={i} className="mb-3 p-3 border rounded-lg bg-muted/20 space-y-2 transition-all duration-500" data-dpr-row-key={dprRowKey("equipment", i)} data-testid={"equipment-row-" + String(i)}>
-                      {/* Equipment identity and usage setup stay visible while the
-                          compact editor below retains its completed-row accordion. */}
+                   const equipmentPickerSlot = (
+                     <>
                       <div className="grid grid-cols-[1fr_auto] gap-2">
                         {/* Batch 06C §8: machine comes from the Equipment & Fleet
                             master (same selector as Detailed) — no free-typed
@@ -2467,7 +2477,7 @@ export default function GuidedDpr() {
                               // New rows get their convenience start time only
                               // after the engineer deliberately identifies a
                               // machine. Hydrated history is never modified.
-                              if (r.persistedId == null && !nextPt.startTime) nextPt.startTime = currentLocalEquipmentTime();
+                              if (r.newlyCreatedInGuided && !nextPt.startTime) nextPt.startTime = currentLocalEquipmentTime();
                               // Same rule as Detailed: owned equipment is always
                               // Time / Meter — trip fields don't apply.
                               if (sel.ownership !== "hired") {
@@ -2486,7 +2496,18 @@ export default function GuidedDpr() {
                                 nextPt.plantUsageId = open.id;
                                 if (open.openingReading != null) nextPt.openingReading = open.openingReading;
                               }
-                              return { ...selectedRow, passthrough: nextPt };
+                              // A default from a previous selection is not
+                              // evidence of the newly linked usage's status.
+                              if (open && r.workingDefaultedInGuided) delete nextPt.usageStatus;
+                              const defaultedPt = withNewEquipmentWorkingDefault(nextPt, {
+                                isNew: !!r.newlyCreatedInGuided && nextPt.plantUsageId == null,
+                              });
+                              return {
+                                ...selectedRow,
+                                workingDefaultedInGuided: open ? undefined
+                                  : r.workingDefaultedInGuided || (nextPt.usageStatus == null && defaultedPt.usageStatus === "working") || undefined,
+                                passthrough: defaultedPt,
+                              };
                             }));
                             // 06Q priority 2: otherwise the canonical resolver —
                             // latest valid closing strictly before this DPR's
@@ -2544,7 +2565,25 @@ export default function GuidedDpr() {
                           value={eq.machine}
                           onChange={(e) => setEquipment((p) => p.map((r, j) =>
                             j === i
-                              ? { ...r, machine: e.target.value, passthrough: { ...r.passthrough, equipmentId: null } }
+                              ? {
+                                  ...r, machine: e.target.value,
+                                   workingDefaultedInGuided: r.workingDefaultedInGuided
+                                     || (!!r.newlyCreatedInGuided && r.passthrough.usageStatus == null
+                                       && !!e.target.value.trim() && r.passthrough.plantUsageId == null) || undefined,
+                                   passthrough: {
+                                     ...r.passthrough, equipmentId: null,
+                                     ...(withNewEquipmentWorkingDefault(
+                                       {
+                                         ...r.passthrough, equipmentId: null, machine: e.target.value,
+                                         usageStatus: typeof r.passthrough.usageStatus === "string"
+                                           || r.passthrough.usageStatus === null
+                                           ? r.passthrough.usageStatus : undefined,
+                                       },
+                                       { isNew: !!r.newlyCreatedInGuided && r.passthrough.plantUsageId == null },
+                                     ).usageStatus === "working" && r.passthrough.usageStatus == null
+                                       ? { usageStatus: "working" } : {}),
+                                   },
+                                }
                               : r))}
                           placeholder="Enter equipment name"
                           aria-label="Other / Unlisted equipment name"
@@ -2554,15 +2593,10 @@ export default function GuidedDpr() {
                       {eq.vehicleNo && (
                         <p className="text-xs text-muted-foreground" data-testid={`text-eq-reg-${i}`}>Reg: {eq.vehicleNo}</p>
                       )}
-                      {master && (
-                        <Badge
-                          variant="outline"
-                          className="w-fit text-[10px] border-amber-300 text-amber-700 dark:text-amber-300"
-                          data-testid={`badge-eq-owner-${i}`}
-                        >
-                          {master.ownership === "hired" ? `HIRED: ${master.vendorName || "VENDOR"}` : "HLC OWN"}
-                        </Badge>
-                      )}
+                     </>
+                   );
+                   const ownerTypeSlot = (
+                     <>
                       {linked && (() => {
                         const usage = openUsages.find((u) => u.id === pt.plantUsageId);
                         const handoff = usage && openUsageHandoffContext(usage);
@@ -2599,11 +2633,6 @@ export default function GuidedDpr() {
                               </SelectContent>
                             </Select>
                           </div>
-                          {isDailyOrMonthly && (
-                            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 mt-4" data-testid={`badge-eq-entry-type-${i}`}>
-                              {entryType === "daily" ? "DAILY HIRE" : "MONTHLY HIRE"}
-                            </Badge>
-                          )}
                         </div>
                       )}
                       {/* B. Work */}
@@ -2613,7 +2642,11 @@ export default function GuidedDpr() {
                           <Input placeholder="Operator name" value={eq.operator} onChange={(ev) => setEquipment((p) => p.map((r, j) => j === i ? { ...r, operator: ev.target.value } : r))} data-testid={`input-eq-operator-${i}`} />
                         </div>
                       </div>
-                      {/* D. Source and purchase evidence. Diesel quantity and
+                     </>
+                   );
+                   const dieselSourceSlot = (
+                     <>
+                       {/* D. Source and purchase evidence. Diesel quantity and
                           source-gated tank readings live once in the compact
                           component below. */}
                       <div>
@@ -2705,21 +2738,36 @@ export default function GuidedDpr() {
                               onChange={(ev) => setPassthroughField(i, "waterQuantity", ev.target.value, true)}
                               data-testid={`input-eq-water-qty-${i}`} />
                           </div>
-                          <div>
+                           {!isTripBased && <div>
                             <Label className="text-xs text-muted-foreground">No. of Trips</Label>
                             <Input type="number" inputMode="numeric" placeholder="0" value={pt.numberOfTrips ?? ""}
                               onChange={(ev) => setPassthroughField(i, "numberOfTrips", ev.target.value, true)}
                               data-testid={`input-eq-water-trips-${i}`} />
-                          </div>
+                           </div>}
                         </div>
                       )}
                       {advisory && (
                         <p className="text-xs text-amber-700 dark:text-amber-400" data-testid={`text-eq-dup-advisory-${i}`}>{advisory}</p>
                       )}
+                     </>
+                   );
+                   return (
+                     <div key={i} className="mb-3 p-3 border rounded-lg bg-muted/20 space-y-2 transition-all duration-500" data-dpr-row-key={dprRowKey("equipment", i)} data-testid={"equipment-row-" + String(i)}>
+                       {!isVisibleEquipmentRow({ ...pt, machine: eq.machine, vehicleNo: eq.vehicleNo, operator: eq.operator, task: eq.task }) && equipmentPickerSlot}
                       <DprEquipmentCompact
-                        row={{ ...pt, machine: eq.machine, vehicleNo: eq.vehicleNo, task: eq.task }}
+                         row={{ ...pt, machine: eq.machine, vehicleNo: eq.vehicleNo, operator: eq.operator, task: eq.task }}
                         equipment={master}
-                        hideIdentity
+                         equipmentPickerSlot={equipmentPickerSlot}
+                         ownerTypeSlot={ownerTypeSlot}
+                         dieselSourceSlot={dieselSourceSlot}
+                         stoppageSlot={<BreakdownStoppageEditor
+                           draftOnly
+                           value={(pt.breakdowns ?? []) as StagedBreakdown[]}
+                           onChange={(breakdowns) => setEquipment(rows => rows.map((row, rowIndex) =>
+                             rowIndex === i ? { ...row, passthrough: { ...row.passthrough, breakdowns } } : row,
+                           ))}
+                           testId={`guided-equipment-breakdown-${i}`}
+                         />}
                         index={i}
                         beforeDate={date}
                         site={siteName}
@@ -2734,6 +2782,7 @@ export default function GuidedDpr() {
                            const { task, ...passthroughPatch } = patch;
                            return {
                              ...row,
+                              ...(Object.prototype.hasOwnProperty.call(patch, "usageStatus") ? { workingDefaultedInGuided: undefined } : {}),
                              ...(task === undefined ? {} : { task }),
                              passthrough: { ...row.passthrough, ...passthroughPatch },
                            };
@@ -2750,14 +2799,6 @@ export default function GuidedDpr() {
                             }
                           : row))}
                       />
-                      <BreakdownStoppageEditor
-                        draftOnly
-                        value={(pt.breakdowns ?? []) as StagedBreakdown[]}
-                        onChange={(breakdowns) => setEquipment(rows => rows.map((row, rowIndex) =>
-                          rowIndex === i ? { ...row, passthrough: { ...row.passthrough, breakdowns } } : row,
-                        ))}
-                        testId={`guided-equipment-breakdown-${i}`}
-                      />
                     </div>
                   );
                 })}
@@ -2766,7 +2807,7 @@ export default function GuidedDpr() {
                     Total Diesel: {computeTotalDiesel(equipment.map((e) => e.passthrough)).toFixed(3)} L
                   </p>
                 )}
-                <Button variant="outline" size="sm" onClick={() => setEquipment((p) => [...p, newGuidedEquipmentRowForCreation()])} data-testid="button-add-equipment">
+                <Button variant="outline" size="sm" onClick={() => setEquipment((p) => [...p, createGuidedEquipmentRow()])} data-testid="button-add-equipment">
                   <Plus className="w-3.5 h-3.5 mr-1" />Add Equipment
                 </Button>
               </div>

@@ -18,7 +18,7 @@ describe("equipment usage form reorganisation contracts", () => {
     expect(guided).toContain("...newGuidedEquipmentRow(), ...e");
     expect(detailed).toContain("withEquipmentCreationStartTime(");
     expect(edit).toContain("withEquipmentCreationStartTime(");
-    expect(edit).toContain("setEquipment(draft.equipment)");
+    expect(edit).toContain("setEquipment((draft.equipment as EquipmentEntry[]).map(({ isNew: _isNew, editCreationKey: _key, ...row }) => row))");
   });
 
   it("keeps the canonical continuity lookup in Guided, Detailed and Edit DPR", () => {
@@ -72,7 +72,7 @@ describe("equipment usage form reorganisation contracts", () => {
   it("shows distinct usage and fuel performance facts in the condensed read-only grid", () => {
     expect(compact).toContain("Meter Working Hours");
     expect(compact).toContain("Clock Duration");
-    expect(compact).toContain("<SectionHeading>Usage</SectionHeading>");
+    expect(compact).toContain('testId={`equipment-compact-read-group-readings-${index}`}');
     expect(compact).not.toContain("<SectionHeading>Usage Summary</SectionHeading>");
     expect(compact).toContain("Fuel Performance");
     expect(compact).not.toContain('label={preview.totalKm != null ? "Distance" : "Operating time"}');
@@ -87,7 +87,9 @@ describe("equipment usage form reorganisation contracts", () => {
   it("shows the same parent equipment summary in both submitted DPR views", () => {
     expect(submitted).toContain("<DprEquipmentCompact");
     expect(report).toContain("<DprEquipmentCompact");
-    expect(compact).toContain('!editable && <section className="p-3 sm:p-4" data-testid={`equipment-compact-readonly-${index}`}');
+    expect(compact).toContain('!editable && <div data-testid={`equipment-compact-readonly-${index}`}');
+    expect(compact).toContain('testId={`equipment-compact-read-group-identity-${index}`}');
+    expect(compact).toContain('testId={`equipment-compact-read-group-readings-${index}`}');
     expect(compact).toContain('className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 lg:grid-cols-4"');
     expect(compact).toContain("<EquipmentActivityAllocationEditor");
     expect(compact).toContain("editable={editable}");
@@ -100,68 +102,55 @@ describe("equipment usage form reorganisation contracts", () => {
       expect(source).not.toContain("Equipment setup and additional usage details");
       expect(source).not.toContain('<details className="group">');
       expect(source).not.toContain("<summary");
-      expect(source).toContain("hideIdentity");
+      expect(source).toContain("equipmentPickerSlot=");
     }
+    expect(edit).toContain("hideIdentity");
+    expect(guided).not.toContain("hideIdentity");
     // SiteEntry is intentionally outside Fix 2 and must not opt into the
     // identity-suppression prop.
     expect(detailed).not.toContain("hideIdentity");
   });
 
-  it("renders identity once at the top, then hire type/operator/source before compact usage", () => {
-    const sectionBeforeCompact = (source: string, anchor: string) => {
-      const sectionStart = source.indexOf(anchor);
-      expect(sectionStart, `missing equipment-row anchor: ${anchor}`).toBeGreaterThanOrEqual(0);
-      const compactStart = source.indexOf("<DprEquipmentCompact", sectionStart);
-      expect(compactStart, `missing compact editor after: ${anchor}`).toBeGreaterThan(sectionStart);
-      return source.slice(sectionStart, compactStart);
+  it("keeps picker, hire/operator and diesel controls ordered in distinct compact slots", () => {
+    const slotSection = (source: string, anchor: string) => {
+      const start = source.indexOf(anchor);
+      expect(start, `missing equipment-row anchor: ${anchor}`).toBeGreaterThanOrEqual(0);
+      const end = source.indexOf("<DprEquipmentCompact", start);
+      expect(end, `missing compact editor after: ${anchor}`).toBeGreaterThan(start);
+      return source.slice(start, end);
     };
-    const guidedEquipment = sectionBeforeCompact(guided, "const master = activeEquipmentMaster.find");
-    const editEquipment = sectionBeforeCompact(edit, "const isTripBased = entry.entryType");
-
-    const guidedMachine = guidedEquipment.indexOf("select-eq-machine-${i}");
-    const guidedRegistration = guidedEquipment.indexOf("text-eq-reg-${i}");
-    const guidedOwner = guidedEquipment.indexOf("badge-eq-owner-${i}");
-    const guidedHireType = guidedEquipment.indexOf("Deployment / Usage Type");
-    const guidedOperator = guidedEquipment.indexOf("input-eq-operator-${i}");
-    const guidedSource = guidedEquipment.indexOf("select-eq-diesel-source-${i}");
-    const guidedPurchase = guidedEquipment.indexOf("section-eq-purchase-${i}");
-    const guidedTrip = guidedEquipment.indexOf("section-eq-trip-${i}");
-    const guidedWater = guidedEquipment.indexOf("section-eq-water-${i}");
-    expect(guidedMachine).toBeGreaterThanOrEqual(0);
-    expect(guidedMachine).toBeLessThan(guidedRegistration);
-    expect(guidedRegistration).toBeLessThan(guidedOwner);
-    expect(guidedOwner).toBeLessThan(guidedHireType);
-    expect(guidedHireType).toBeLessThan(guidedOperator);
-    expect(guidedOperator).toBeLessThan(guidedSource);
-    expect(guidedSource).toBeLessThan(guidedPurchase);
-    expect(guidedPurchase).toBeLessThan(guidedTrip);
-    expect(guidedSource).toBeLessThan(guidedWater);
-
-    const editMachine = editEquipment.indexOf("select-equipment-${idx}");
-    const editRegistration = editEquipment.indexOf("text-equipment-reg-${idx}");
-    const editOwner = editEquipment.indexOf("text-equipment-owner-${idx}");
-    const editHireType = editEquipment.indexOf("select-entry-type-${idx}");
-    const editOperator = editEquipment.indexOf("input-operator-${idx}");
-    const editSource = editEquipment.indexOf("select-diesel-source-${idx}");
-    const editPurchase = editEquipment.indexOf("input-fuel-station-${idx}");
-    const editTrip = editEquipment.indexOf("input-equipment-trips-${idx}");
-    const editWater = editEquipment.indexOf("input-equipment-water-qty-${idx}");
-    expect(editMachine).toBeGreaterThanOrEqual(0);
-    expect(editMachine).toBeLessThan(editRegistration);
-    expect(editRegistration).toBeLessThan(editOwner);
-    expect(editOwner).toBeLessThan(editHireType);
-    expect(editHireType).toBeLessThan(editOperator);
-    expect(editOperator).toBeLessThan(editSource);
-    expect(editSource).toBeLessThan(editPurchase);
-    expect(editPurchase).toBeLessThan(editTrip);
-    expect(editSource).toBeLessThan(editWater);
-
-    // The outer parent owns the identity presentation; compact only receives
-    // hideIdentity here. These exact test ids do not occur in SiteEntry or the
-    // shared compact editor, so this guards against a duplicated outer header.
+    const guidedEquipment = slotSection(guided, "const equipmentPickerSlot = (");
+    const editEquipment = slotSection(edit, "const equipmentPickerSlot = (");
+    for (const [section, machine, registration, hire, operator, source, purchase, trip, water] of [
+      [guidedEquipment, "select-eq-machine-${i}", "text-eq-reg-${i}", "select-eq-entry-type-${i}",
+        "input-eq-operator-${i}", "select-eq-diesel-source-${i}", "section-eq-purchase-${i}",
+        "section-eq-trip-${i}", "section-eq-water-${i}"],
+      [editEquipment, "select-equipment-${idx}", "text-equipment-reg-${idx}", "select-entry-type-${idx}",
+        "input-operator-${idx}", "select-diesel-source-${idx}", "input-fuel-station-${idx}",
+        "input-equipment-trips-${idx}", "input-equipment-water-qty-${idx}"],
+    ]) {
+      const positions = [machine, registration, hire, operator, source, purchase, trip, water].map(label => section.indexOf(label));
+      expect(positions.every(position => position >= 0)).toBe(true);
+      expect(positions.slice(1, 6)).toEqual([...positions.slice(1, 6)].sort((a, b) => a - b));
+      expect(positions[5]).toBeLessThan(positions[6]);
+      expect(positions[4]).toBeLessThan(positions[7]);
+      expect(section).toContain("const ownerTypeSlot = (");
+      expect(section).toContain("const dieselSourceSlot = (");
+      expect(section).not.toContain("badge-eq-owner-");
+      expect(section).not.toContain("text-equipment-owner-");
+    }
+    for (const source of [guided, edit]) {
+      expect(source).toContain("equipmentPickerSlot=");
+      expect(source).toContain("ownerTypeSlot={ownerTypeSlot}");
+      expect(source).toContain("dieselSourceSlot={dieselSourceSlot}");
+    }
+    // Registration is only displayed once; owner/vendor is shown by compact,
+    // rather than duplicated alongside the parent picker.
     expect((guided.match(/text-eq-reg-/g) ?? []).length).toBe(1);
     expect((edit.match(/text-equipment-reg-/g) ?? []).length).toBe(1);
-    expect(guided).toContain("hideIdentity");
+    expect(compact).toContain('label="Owner / vendor"');
+    expect(compact).toContain('label="Master default hire type"');
+    expect(guided).not.toContain("hideIdentity");
     expect(edit).toContain("hideIdentity");
   });
 });

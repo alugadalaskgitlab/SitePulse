@@ -255,7 +255,7 @@ describe("06Q Test S — SiteEdit (source pins)", () => {
     expect(s).toContain("window.confirm(");
     expect(s).toMatch(/wasExistingWithReading[\s\S]{0,400}window\.confirm/);
   });
-  it("isNew is client-only — stripped from the save payload", () => {
-    expect(s).toMatch(/const \{\s*isNew: _isNew,\s*workAssignmentEdited,\s*activitySegments,\s*activityAllocations,\s*\.\.\.rest\s*\} = eq;/);
+  it("new-row provenance is client-only — stripped from the save payload", () => {
+    expect(s).toMatch(/const \{\s*isNew: _isNew,\s*editCreationKey: _editCreationKey,\s*workAssignmentEdited,\s*activitySegments,\s*activityAllocations,\s*\.\.\.rest\s*\} = eq;/);
   });
 });

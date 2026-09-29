@@ -80,7 +80,7 @@ const statusLabel = (status: DprEquipmentFields["usageStatus"]) => status === "w
 
 export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignmentChange, editable = true, index = 0, beforeDate, site, boqItems, programmeBars, showTankBalance = true, enableTankContinuity = true, hideIdentity = false, allowLinkedSourceEdit = false, sectionPresentation = false, equipmentPickerSlot, ownerTypeSlot, dieselSourceSlot, stoppageSlot }: {
   row: DprEquipmentFields;
-  equipment?: { meterType?: string | null; consumptionNorm?: number | null; ownership?: string | null; vendorName?: string | null; entryType?: string | null } | null;
+  equipment?: { meterType?: string | null; consumptionNorm?: number | null; ownership?: string | null; vendorName?: string | null; entryType?: string | null; hireBillingBasis?: string | null } | null;
   onChange?: (patch: Partial<DprEquipmentFields>) => void;
   onWorkAssignmentChange?: (activitySegments: EquipmentActivitySegment[]) => void;
   editable?: boolean; index?: number; beforeDate?: string; site?: string;
@@ -298,8 +298,8 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
          {editable && <Group title="02 / Owner, hire type & daily status" testId={`equipment-compact-group-owner-${index}`}>
            <div className="mb-3 grid gap-3 text-sm sm:grid-cols-3">
              <Detail label="Owner / vendor" value={equipment?.ownership === "hired" ? hiredVendorLabel ?? "Hired" : equipment?.ownership === "owned" ? "HLC own" : "—"} />
-             <Detail label="Master default hire type" value={equipment?.entryType ? equipment.entryType.replaceAll("_", " ") : "—"} />
-             <Detail label="Effective hire / entry type" value={dash(row.entryType).replaceAll("_", " ")} />
+             <Detail label="Master default hire type" value={equipment?.ownership === "owned" ? "Not applicable" : (equipment?.hireBillingBasis ?? equipment?.entryType)?.replaceAll("_", " ") || "Not configured"} />
+             {ownerTypeSlot == null && <Detail label="Effective hire / entry type" value={dash(row.entryType).replaceAll("_", " ")} />}
            </div>
            {ownerTypeSlot}
          {editable && <section className="grid gap-3 border-b border-slate-200 bg-slate-50/70 px-3 py-3 dark:border-slate-700 dark:bg-slate-950/20 sm:grid-cols-2">
