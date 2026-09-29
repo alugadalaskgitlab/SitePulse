@@ -157,9 +157,12 @@ describe("operational screens use the shared helper (source regression scan)", (
 
   it("DPR Details passes displayName/itemName through to the label (saved override honoured)", () => {
     const src = read("client/src/pages/DprDetails.tsx");
+    const shared = read("client/src/components/DprActivityReadOnly.tsx");
     expect(src).toContain("displayName: (item as any).displayName ?? null");
     expect(src).toContain("canonicalDisplayName: (item as any).canonicalDisplayName ?? null");
-    expect(src).toContain("boqItemDisplayName(boqItemMap.get(item.boqItemId)!)");
+    expect(src).toContain("boqItem={boqItem}");
+    expect(shared).toContain("boqItemDisplayName(boqItem)");
+    expect(shared).not.toMatch(/canonicalDisplayName\s*\|\|/);
   });
 
   it("Work Demand and Resource Review use short/display names, not full descriptions", () => {

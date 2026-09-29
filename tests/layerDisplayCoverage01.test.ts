@@ -11,7 +11,7 @@ const bar = {
 describe("LAYER-01 DPR layer/lift display", () => {
   it.each([
     ["client/src/components/DprPreviewDialog.tsx", "layerDisplayName(p.activity, p.layerNo)"],
-    ["client/src/pages/DprDetails.tsx", "layerDisplayName(item.activity, item.layerNo)"],
+    ["client/src/components/DprActivityReadOnly.tsx", "layerDisplayName(item.activity, item.layerNo)"],
     ["client/src/pages/SitePreview.tsx", "layerDisplayName(item.activity, item.layerNo)"],
     ["client/src/pages/GuidedDpr.tsx", "layerDisplayName(e.activity, e.layerNo)"],
   ])("shows the recorded layer conditionally in %s", (file, displayCall) => {
@@ -19,6 +19,11 @@ describe("LAYER-01 DPR layer/lift display", () => {
     expect(source).toContain("layerNo != null");
     expect(source).toContain(displayCall);
     expect(source).not.toMatch(/layerNo\s*\?\?\s*1/);
+  });
+  it("DPR Details routes progress through the shared read-only activity renderer", () => {
+    const source = readFileSync("client/src/pages/DprDetails.tsx", "utf8");
+    expect(source).toContain("<DprActivityReadOnly");
+    expect(source).toContain("item={item}");
   });
 });
 

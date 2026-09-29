@@ -11,6 +11,7 @@ import SiteMaterialsReceived from "../../../client/src/pages/SiteMaterialsReceiv
 import PlantEquipmentUsage from "../../../client/src/pages/PlantEquipmentUsage";
 import GuidedDpr from "../../../client/src/pages/GuidedDpr";
 import { DprEquipmentCompact } from "../../../client/src/components/DprEquipmentCompact";
+import { DprActivityReadOnly } from "../../../client/src/components/DprActivityReadOnly";
 import { ActivityReceiptStrip } from "../../../client/src/components/ActivityReceiptStrip";
 import { queryClient } from "../../../client/src/lib/queryClient";
 import "../../../client/src/index.css";
@@ -2145,7 +2146,18 @@ const mount = () => {
         <Dpr08EvidenceBanner />
         <Dpr09EvidenceBanner />
         <DprNullEvidenceBanner />
-      {window.location.pathname.includes("dpr13") || window.location.pathname === "/site/new" || window.location.pathname === "/site/guided" ? <>
+      {window.location.pathname === "/fixture/dpr16-b3-activity" ? (
+        <main className="mx-auto max-w-4xl space-y-4 p-6">
+          <h1 className="text-xl font-semibold">DPR16 B3 · isolated synthetic activity summary</h1>
+          <p>Fixture only; this uses the same read-only activity component as both report routes.</p>
+          <DprActivityReadOnly index={0} item={{
+            entryKey: "fixture-activity-1", activity: "Excavation", chainageFrom: "1.000", chainageTo: "1.200",
+            side: "LHS", length: 200, width: 6, thickness: 0.5, layerNo: 2,
+            quantity: 600, uom: "Cum", materialOutcome: "partly_reusable", reusableQty: 320,
+            earthworkArrangementId: 13, boqItemId: 44, personnelIds: [7],
+          }} boqItem={{ id: 44, itemCode: "BOQ-44", description: "Excavation", displayName: "Excavation", unit: "Cum" }} personnelNames="Ravi Kumar" />
+        </main>
+      ) : window.location.pathname.includes("dpr13") || window.location.pathname === "/site/new" || window.location.pathname === "/site/guided" ? <>
         <header className="border border-amber-500 bg-amber-50 p-4 mb-5">DPR-13 synthetic intercepted-backend fixture — actual production menu and section cards. No production data or writes.</header>
         <DprSections />
       </> : window.location.pathname.startsWith("/site/work/") ? <DprWorkEntry /> : isGuidedReport

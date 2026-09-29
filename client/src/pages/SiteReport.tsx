@@ -20,7 +20,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { DprPhotoGroups } from "@/components/DprPhotoGroups";
 import type { Personnel, Site } from "@shared/schema";
-import { shortItemName } from "@/lib/itemName";
 import {
   lifecycleByUsageId,
   lifecycleLabel,
@@ -29,6 +28,7 @@ import {
 } from "@/lib/equipmentLifecycle";
 import { ProgrammeBarOutcomeHistory } from "@/components/ProgrammeBarOutcomeHistory";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
+import { DprActivityReadOnly } from "@/components/DprActivityReadOnly";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
 import { isVisibleEquipmentRow } from "@shared/equipmentUsage";
 import { getBaseSiteName } from "@shared/siteName";
@@ -504,111 +504,25 @@ export default function SiteReport() {
           ) : dpr.progress.length === 0 ? (
             <p className="text-muted-foreground italic">No activities recorded.</p>
           ) : (
-            <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Activity</TableHead>
-                  <TableHead>Side</TableHead>
-                  <TableHead>From</TableHead>
-                  <TableHead>To</TableHead>
-                  <TableHead className="text-right">Length (m)</TableHead>
-                  <TableHead className="text-right">Width (m)</TableHead>
-                  <TableHead className="text-right">Thickness (m)</TableHead>
-                  <TableHead className="text-right">Physical measurement</TableHead>
-                  <TableHead className="text-right">BOQ credit</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <div className="space-y-2">
                 {dpr.progress.map((item: any, i: number) => {
                   const personnelNames = getPersonnelNames(item.personnelIds);
-                  if (item.noSiteWork) {
-                    return (
-                      <TableRow key={i} data-testid={`row-progress-${i}`}>
-                        <TableCell className="font-medium max-w-[320px]">
-                          <div title={item.activity}>{shortItemName(item.activity) || item.activity}</div>
-                          {item.programmeBarId != null && (
-                            <ProgrammeBarOutcomeHistory
-                              projectId={(dpr as any).boqProjectId}
-                              boqItemId={item.boqItemId}
-                              programmeBarId={Number(item.programmeBarId)}
-                              testidPrefix={`progress-${i}`}
-                            />
-                          )}
-                          {item.noSiteWorkDescription && (
-                            <div className="text-sm text-muted-foreground mt-1">{item.noSiteWorkDescription}</div>
-                          )}
-                          {personnelNames && (
-                            <div className="text-sm text-muted-foreground mt-1">Personnel: {personnelNames}</div>
-                          )}
-                        </TableCell>
-                        <TableCell colSpan={8} className="text-muted-foreground italic">No site work</TableCell>
-                      </TableRow>
-                    );
-                  }
-
-                  const derivedLength = (!item.length && item.chainageFrom && item.chainageTo) 
-                    ? Math.abs((parseFloat(item.chainageTo) - parseFloat(item.chainageFrom)) * 1000)
-                    : null;
-                  const displayLength = item.length || (derivedLength ? derivedLength.toFixed(0) : null);
                   const boqItem = item.boqItemId != null
                     ? reportBoqItems.find((candidate: any) => candidate.id === item.boqItemId) ?? null
                     : null;
-                  const measurement = dprMeasurementSummary(item, boqItem);
-                  
                   return (
-                    <TableRow key={i} data-testid={`row-progress-${i}`}>
-                      <TableCell className="font-medium max-w-[320px]">
-                        <div title={item.activity}>{shortItemName(item.activity) || item.activity}</div>
-                          {item.programmeBarId != null && (
-                            <ProgrammeBarOutcomeHistory
-                              projectId={(dpr as any).boqProjectId}
-                              boqItemId={item.boqItemId}
-                              programmeBarId={Number(item.programmeBarId)}
-                              testidPrefix={`progress-${i}`}
-                            />
-                          )}
-                        {/* Batch 06V: incidental badge — shown in the activity cell */}
-                        {item.isIncidental && (
-                          <div className="mt-1">
-                            <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-400">
-                              Incidental / Non-BOQ · No BOQ Credit
-                            </Badge>
-                            {item.incidentalDescription && (
-                              <div className="text-xs text-muted-foreground mt-0.5">{item.incidentalDescription}</div>
-                            )}
-                          </div>
-                        )}
-                        {personnelNames && (
-                          <div className="text-sm text-muted-foreground mt-1">Personnel: {personnelNames}</div>
-                        )}
-                      </TableCell>
-                      <TableCell><Badge variant="outline">{item.side || '-'}</Badge></TableCell>
-                      <TableCell>{item.chainageFrom || '-'}</TableCell>
-                      <TableCell>{item.chainageTo || '-'}</TableCell>
-                      <TableCell className="text-right">{displayLength || '-'}</TableCell>
-                      <TableCell className="text-right">{item.width || '-'}</TableCell>
-                      <TableCell className="text-right">{item.thickness || '-'}</TableCell>
-                      <TableCell className="text-right font-semibold whitespace-nowrap" data-testid={`text-report-physical-${i}`}>
-                        {measurement.measuredQty != null
-                          ? `${Number(measurement.measuredQty.toFixed(3))} ${measurement.measuredUom ?? "(unit unavailable)"}`
-                          : "-"}
-                      </TableCell>
-                      <TableCell className="text-right whitespace-nowrap" data-testid={`text-report-boq-credit-${i}`}>
-                        {item.isIncidental
-                          ? <span className="text-amber-700">No BOQ credit</span>
-                          : measurement.boqQty != null
-                            ? `${Number(measurement.boqQty.toFixed(6))} ${measurement.boqUom ?? "(BOQ unit unavailable)"}`
-                            : <span className="text-amber-700">Needs unit review</span>}
-                        {measurement.warnings.length > 0 && (
-                          <div className="text-[10px] text-amber-700 whitespace-normal max-w-64">{measurement.warnings.join(" · ")}</div>
-                        )}
-                      </TableCell>
-                    </TableRow>
+                    <DprActivityReadOnly key={item.entryKey ?? item.id ?? i} item={item} index={i} boqItem={boqItem} personnelNames={personnelNames} nameStyle="activity">
+                      {item.programmeBarId != null && (
+                        <ProgrammeBarOutcomeHistory
+                          projectId={(dpr as any).boqProjectId}
+                          boqItemId={item.boqItemId}
+                          programmeBarId={Number(item.programmeBarId)}
+                          testidPrefix={`progress-${i}`}
+                        />
+                      )}
+                    </DprActivityReadOnly>
                   );
                 })}
-              </TableBody>
-            </Table>
             </div>
           )}
         </CardContent>

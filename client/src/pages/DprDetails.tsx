@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useDpr } from "@/hooks/use-dprs";
 import { Link, useRoute, useLocation } from "wouter";
 import { ChevronLeft, Loader2, Printer, Edit, Trash2 } from "lucide-react";
@@ -14,12 +14,12 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { InsufficientDieselDialog, parseInsufficientPlantStock, type InsufficientPlantStockPayload } from "@/components/InsufficientDieselDialog";
 import { useToast } from "@/hooks/use-toast";
 import { DprPhotoGroups } from "@/components/DprPhotoGroups";
-import type { EquipmentMasterType, Site } from "@shared/schema";
+import type { EquipmentMasterType, Personnel, Site } from "@shared/schema";
 import { boqItemDisplayName } from "@shared/boqItemName";
 import { dprMeasurementSummary, resolveBoqDisplayUnit } from "@shared/dprGeometry";
 import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
-import { layerDisplayName } from "@shared/layerDisplay";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
+import { DprActivityReadOnly } from "@/components/DprActivityReadOnly";
 import { visibleEquipmentRows } from "@shared/equipmentUsage";
 import { formatDprReference } from "@/lib/dprReference";
 
@@ -32,6 +32,7 @@ export default function DprDetails() {
   const canEdit = sectionCan("site_dprs", "edit");
   const canDelete = isAdmin;
   const { toast } = useToast();
+  const { data: personnelList = [] } = useQuery<Personnel[]>({ queryKey: ["/api/personnel"] });
 
   const { data: equipmentList = [] } = useQuery<EquipmentMasterType[]>({
     queryKey: ["/api/plant-module/equipment", "all"],
@@ -304,94 +305,37 @@ export default function DprDetails() {
           {dpr.progress.length === 0 ? (
             <p className="text-muted-foreground italic">No activities recorded.</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Activity</TableHead>
-                  <TableHead>Side</TableHead>
-                  <TableHead>From</TableHead>
-                  <TableHead>To</TableHead>
-                  <TableHead>Layer / Lift</TableHead>
-                  <TableHead>Dimensions</TableHead>
-                  <TableHead className="text-right">Measured</TableHead>
-                  <TableHead className="text-right">BOQ Progress</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <div className="space-y-2">
                 {dpr.progress.map((item: any, i: number) => {
-                  // Batch 04: ONE shared measurement representation (same
-                  // helper as Summary/exports). Physical measurement stays in
-                  // its own unit; BOQ progress is factor-converted separately.
                   const boqItem = item.boqItemId != null ? boqItemMap.get(item.boqItemId) ?? null : null;
                   const m = dprMeasurementSummary(item, boqItem);
-                  
                   return (
-                    <Fragment key={item.id ?? item.entryKey ?? i}>
-                      <TableRow data-testid={`row-progress-${i}`}>
-                        <TableCell className="font-medium">
-                        {item.boqItemId && boqItemMap.has(item.boqItemId) ? (
-                          <span className="flex items-center gap-1.5 flex-wrap">
-                            {boqItemMap.get(item.boqItemId)!.itemCode && (
-                              <Badge variant="outline" className="text-[12px] h-4 px-1 font-mono text-teal-700 border-teal-300 bg-teal-50 shrink-0">
-                                {boqItemMap.get(item.boqItemId)!.itemCode}
-                              </Badge>
-                            )}
-                            <span title={boqItemMap.get(item.boqItemId)!.description}>{boqItemDisplayName(boqItemMap.get(item.boqItemId)!)}</span>
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1.5">
-                            {item.activity}
-                            {item.boqItemId && (
-                              <Badge variant="outline" className="text-[12px] h-4 px-1 text-blue-600 border-blue-300">BOQ</Badge>
-                            )}
-                          </span>
-                        )}
-                         {item.isIncidental && (
-                           <Badge variant="outline" className="mt-1 text-[12px] h-4 px-1 text-amber-700 border-amber-300 bg-amber-50">Incidental</Badge>
-                         )}
-                        </TableCell>
-                        <TableCell><Badge variant="outline">{item.side || '-'}</Badge></TableCell>
-                        <TableCell>{item.chainageFrom || '-'}</TableCell>
-                        <TableCell>{item.chainageTo || '-'}</TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          {item.layerNo != null ? layerDisplayName(item.activity, item.layerNo) : null}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap">{m.dims ?? '-'}</TableCell>
-                        <TableCell className="text-right font-semibold whitespace-nowrap" data-testid={`text-measured-${i}`}>
-                          {m.measuredQty != null ? `${m.measuredQty} ${m.measuredUom ?? ''}`.trim() : '-'}
-                        </TableCell>
-                        <TableCell className="text-right whitespace-nowrap" data-testid={`text-boq-progress-${i}`}>
-                          {m.converted && m.boqQty != null
-                             ? `${Number(m.boqQty.toFixed(4))} ${m.boqUom ?? "(BOQ unit unavailable)"}`
-                             : m.boqQty != null ? `${Number(m.boqQty.toFixed(3))} ${m.boqUom ?? ''}`.trim()
-                             : <span className="text-amber-700 whitespace-normal" title={m.warnings.join(" · ")}>Needs unit review</span>}
-                          {m.warnings.length > 0 && <div className="text-[10px] text-amber-700 whitespace-normal max-w-64">{m.warnings.join(" · ")}</div>}
-                        </TableCell>
-                      </TableRow>
+                    <DprActivityReadOnly
+                      key={item.entryKey ?? item.id ?? i}
+                      item={item}
+                      index={i}
+                      boqItem={boqItem}
+                      personnelNames={item.personnelIds?.map((personId: number) => personnelList.find((person) => person.id === personId)?.name).filter(Boolean).join(", ")}
+                    >
                       {boqProjectId != null && item.boqItemId != null && (
-                        <TableRow className="hover:bg-transparent">
-                          <TableCell colSpan={8} className="pt-0">
-                            <ActivityReceiptStrip
-                              siteName={resolvedDprSiteName}
-                              date={dpr.date}
-                              boqProjectId={boqProjectId}
-                              boqItemId={item.boqItemId}
-                              programmeBarId={item.programmeBarId ?? null}
-                              persistedArrangementId={item.earthworkArrangementId ?? null}
-                              executedQty={m.boqQty ?? null}
-                              executedUom={m.boqUom ?? resolveBoqDisplayUnit(boqItem) ?? null}
-                              activityMaterialHint={boqItem ? boqItemDisplayName(boqItem) : item.activity}
-                              readOnly
-                              testIdPrefix={`dpr-detail-${item.entryKey ?? i}`}
-                            />
-                          </TableCell>
-                        </TableRow>
+                        <ActivityReceiptStrip
+                          siteName={resolvedDprSiteName}
+                          date={dpr.date}
+                          boqProjectId={boqProjectId}
+                          boqItemId={item.boqItemId}
+                          programmeBarId={item.programmeBarId ?? null}
+                          persistedArrangementId={item.earthworkArrangementId ?? null}
+                          executedQty={m.boqQty ?? null}
+                          executedUom={m.boqUom ?? resolveBoqDisplayUnit(boqItem) ?? null}
+                          activityMaterialHint={boqItem ? boqItemDisplayName(boqItem) : item.activity}
+                          readOnly
+                          testIdPrefix={`dpr-detail-${item.entryKey ?? i}`}
+                        />
                       )}
-                    </Fragment>
+                    </DprActivityReadOnly>
                   );
                 })}
-              </TableBody>
-            </Table>
+            </div>
           )}
         </CardContent>
       </Card>

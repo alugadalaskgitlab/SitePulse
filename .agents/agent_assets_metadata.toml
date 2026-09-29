@@ -4133,3 +4133,17 @@ mtime_ms = 1790658956262
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/21acf9d8-2947-4050-999f-08a62df76590/0ccfe00b-f47d-47ba-b82d-0b2ad5528832"
 storage_version_token = "1790658988864395"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "j7ioA2J51AdgKFz5nwLo9"
+uri = "file://screenshots/dpr16-b3-activity.jpg"
+type = "image"
+title = "B3 — compact read-only activity summary"
+description = "The shared activity component used by both View pages, shown with isolated test data. Expand Details to view the existing facts."
+logical_id = "cc33a5ea-6bca-453f-9018-c0265aa6118a"
+content_hash = "sha256:7b817b145508fcbb0902d788325c3048c9a09898582ae17fa17e5dabc066c213"
+size = 25485
+mtime_ms = 1790660096070
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/cc33a5ea-6bca-453f-9018-c0265aa6118a/9317f922-9f7d-405d-86fe-56579c2cd986"
+storage_version_token = "1790660231133667"
+content_type = "image/jpeg"
