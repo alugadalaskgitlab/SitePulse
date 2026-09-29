@@ -13,7 +13,11 @@ const reports = {
   1701: {
     id: 1701, site, date, engineer: "Fixture Engineer", workType: "road",
     dprStatus: "submitted", submittedAt: "2026-09-15T18:00:00Z",
-    progress: [], equipment: [], labour: [], materials: [], sitePurchases: [],
+    progress: [], equipment: [], labour: [],
+    materials: [
+      { id: 105, type: "Received", material: "Cement", quantity: 4, uom: "BAG", receiptNumber: "DPR-105", location: "Old stockyard" },
+      { id: 106, type: "Issued", material: "Cement", quantity: 1, uom: "BAG", receiptNumber: "ISS-106", location: "Pier 2" },
+    ], sitePurchases: [],
     structureItems: [], boqProjectId: null, remarks: "",
   },
   1702: {

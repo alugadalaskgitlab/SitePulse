@@ -225,26 +225,6 @@ export default function SiteReport() {
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="animate-spin w-8 h-8" /></div>;
   if (error || !dpr) return <div className="p-20 text-center text-red-500">Failed to load report.</div>;
 
-  // Materials Abstract: Group by Material + UOM
-  const materialsAbstract = dpr.materials.reduce((acc: any[], m: any) => {
-    if (!m.material) return acc;
-    const key = `${m.material}|${m.uom}`;
-    const existing = acc.find(item => item.key === key);
-    if (existing) {
-      existing.total += m.quantity || 0;
-      existing.trips += 1;
-    } else {
-      acc.push({
-        key,
-        material: m.material,
-        uom: m.uom,
-        total: m.quantity || 0,
-        trips: 1,
-      });
-    }
-    return acc;
-  }, []);
-
   // One child-aware collection drives every report count/card/table. Legacy
   // untouched placeholder logs never appear as a resource, while a blank
   // parent with a linked stoppage remains visible.
@@ -428,8 +408,6 @@ export default function SiteReport() {
           </Card>
         )}
       </div>
-
-      <DprMaterialsReceived site={dpr.site} date={dpr.date} />
 
       {/* Activity Progress / Structure Items */}
       <Card>
@@ -783,10 +761,12 @@ export default function SiteReport() {
           <CardTitle>Materials Log</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
+          <DprMaterialsReceived site={dpr.site} date={dpr.date} />
           {dpr.materials.length === 0 ? (
             <p className="text-muted-foreground italic">No materials recorded.</p>
           ) : (
-            <>
+            <div className="border-t pt-4">
+              <h3 className="font-semibold mb-4">DPR material records</h3>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -819,30 +799,7 @@ export default function SiteReport() {
                   ))}
                 </TableBody>
               </Table>
-
-              {/* Materials Abstract Summary */}
-              <div className="pt-4 border-t">
-                <h4 className="text-sm font-semibold text-muted-foreground mb-3">Materials Summary</h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {materialsAbstract.map((item: any, i: number) => (
-                    <div 
-                      key={i} 
-                      className="p-3 bg-muted/50 border rounded-lg"
-                      data-testid={`card-material-abstract-${i}`}
-                    >
-                      <p className="text-sm font-medium">{item.material}</p>
-                      <div className="flex items-baseline gap-1 mt-1">
-                        <p className="text-xl font-bold text-primary">{item.total.toFixed(3)}</p>
-                        <p className="text-sm text-muted-foreground">{item.uom}</p>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {item.trips} trip{item.trips > 1 ? 's' : ''}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </>
+            </div>
           )}
         </CardContent>
       </Card>

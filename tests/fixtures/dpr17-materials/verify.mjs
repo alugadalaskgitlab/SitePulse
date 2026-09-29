@@ -97,13 +97,23 @@ async function verify(page, empty, width = 1280) {
   );
   const state = await evaluate(`(() => {
     const section = document.querySelector('[data-testid="dpr-materials-received"]');
+    const materialsLog = section.parentElement.parentElement;
     const progress = [...document.querySelectorAll('*')].find(el =>
       !el.children.length && el.textContent.trim() === 'Activity Progress');
+    const entries = [...section.querySelectorAll('h3')].find(el => el.textContent.startsWith('Material Entries'));
     return {
       title: document.querySelector('h1')?.innerText,
       sectionText: section.innerText,
       html: section.outerHTML,
-      beforeProgress: !!progress && !!(section.compareDocumentPosition(progress) & Node.DOCUMENT_POSITION_FOLLOWING),
+      inMaterialsLog: !!materialsLog.querySelector('*') && [...materialsLog.querySelectorAll('*')].some(el =>
+        !el.children.length && el.textContent.trim() === 'Materials Log'),
+      afterProgress: !!progress && !!(progress.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING),
+      summaryBeforeEntries: !entries || !!(section.querySelector('[data-testid^="card-material-"]')?.compareDocumentPosition(entries) & Node.DOCUMENT_POSITION_FOLLOWING),
+      receivedSections: document.querySelectorAll('[data-testid="dpr-materials-received"]').length,
+      oldSummaryCount: document.querySelectorAll('[data-testid^="card-material-abstract-"], [data-testid^="card-material-summary-"]').length,
+      legacyRows: [...materialsLog.querySelectorAll('[data-testid^="row-material-"]')]
+        .filter(el => !section.contains(el)).map(el => el.innerText),
+      receiptOccurrences: (materialsLog.innerText.match(/DPR-105/g) || []).length,
       inputs: section.querySelectorAll('button, input, select, textarea, [contenteditable="true"]').length,
       rows: [...section.querySelectorAll('tbody tr')].map(row => row.innerText),
       cards: [...section.querySelectorAll('[data-testid^="card-material-"]')].map(card => card.innerText),
@@ -114,7 +124,11 @@ async function verify(page, empty, width = 1280) {
     };
   })()`);
   assert.match(state.title, page === "DprDetails" ? /Report Details/ : /Site Report/, `${page} real page heading`);
-  assert(state.beforeProgress, `${page}: Materials Received must precede Activity Progress`);
+  assert(state.inMaterialsLog, `${page}: Materials Received must be inside Materials Log`);
+  assert(state.afterProgress, `${page}: Materials Log must follow Activity Progress`);
+  assert(state.summaryBeforeEntries, `${page}: richer summary must precede Material Entries`);
+  assert.equal(state.receivedSections, 1, `${page}: one received section`);
+  assert.equal(state.oldSummaryCount, 0, `${page}: no old mini-summary`);
   assert.equal(state.inputs, 0, `${page}: receipt section must be read-only`);
   assert.deepEqual(state.blocked, [], `${page}: unexpected API calls or writes`);
   assert.deepEqual(state.requests.filter(r => r.path.startsWith("/api/materials-received")), [
@@ -125,6 +139,7 @@ async function verify(page, empty, width = 1280) {
     assert.match(state.sectionText, /No materials received this day\./);
     assert.equal(state.rows.length, 0);
     assert.equal(state.cards.length, 0);
+    assert.equal(state.legacyRows.length, 0);
   } else {
     assert.equal(state.rows.length, 5);
     assert.equal(state.cards.length, 3);
@@ -137,6 +152,19 @@ async function verify(page, empty, width = 1280) {
     assert.match(state.rows[4], /Not applicable/);
     assert.equal(state.validBoq, "≈ 7.500 CUM (BOQ unit)");
     assert.equal(state.invalidBoq, null, `${page}: incomplete conversion must not display a partial BOQ total`);
+    if (page === "SiteReport") {
+      assert.equal(state.legacyRows.length, 2, `${page}: preserve both received and issued DPR records`);
+      assert.match(state.legacyRows[0], /DPR-105/);
+      assert.match(state.legacyRows[0], /Old stockyard/);
+      assert.match(state.legacyRows[1], /ISS-106/);
+      assert.match(state.legacyRows[1], /Pier 2/);
+      assert.equal(state.receiptOccurrences, 2, `${page}: receipt retained in both historical and day views`);
+    } else {
+      assert.equal(state.legacyRows.length, 1, `${page}: preserve supplier-grouped DPR abstract`);
+      assert.match(state.legacyRows[0], /Cement/);
+      assert.match(state.legacyRows[0], /5\.000/);
+      assert.equal(state.receiptOccurrences, 1, `${page}: receipt shown in day view`);
+    }
     assert(state.cards.some(c => /12\.00[\s\S]*MT[\s\S]*Aggregate/.test(c)), `${page}: native MT total`);
     assert(state.cards.some(c => /5\.00[\s\S]*MT[\s\S]*Sand/.test(c)), `${page}: invalid BOQ does not discard native quantity`);
   }

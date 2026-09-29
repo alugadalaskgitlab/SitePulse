@@ -200,25 +200,6 @@ export default function DprDetails() {
     return acc;
   }, []);
 
-  // Group by material for summary cards
-  const materialSummary = dpr.materials.reduce((acc: any[], m: any) => {
-    const key = `${m.material}|${m.uom}`;
-    const existing = acc.find(item => item.key === key);
-    if (existing) {
-      existing.totalQty += m.quantity || 0;
-      existing.trips += 1;
-    } else {
-      acc.push({
-        key,
-        material: m.material,
-        uom: m.uom,
-        totalQty: m.quantity || 0,
-        trips: 1,
-      });
-    }
-    return acc;
-  }, []);
-
   return (
     <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-300 print:p-0">
       <InsufficientDieselDialog payload={dieselShortage} onClose={() => setDieselShortage(null)} />
@@ -296,8 +277,6 @@ export default function DprDetails() {
         submittedByName={(dpr as any).submittedByName}
         workType={(dpr as any).workType}
       />
-
-      <DprMaterialsReceived site={dpr.site} date={dpr.date} />
 
       {/* Activity Progress */}
       <Card>
@@ -414,17 +393,18 @@ export default function DprDetails() {
         </Card>
       </div>
 
-      {/* Materials Abstract */}
+      {/* Materials Log */}
       <Card>
         <CardHeader>
-          <CardTitle>Material Abstract</CardTitle>
+          <CardTitle>Materials Log</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
+          <DprMaterialsReceived site={dpr.site} date={dpr.date} />
           {dpr.materials.length === 0 ? (
             <p className="text-muted-foreground italic">No materials recorded.</p>
           ) : (
-            <>
-              {/* Detailed Table with Supplier-wise Breakdown */}
+            <div className="border-t pt-4">
+              <h3 className="font-semibold mb-4">DPR material records · Supplier breakdown</h3>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -449,24 +429,7 @@ export default function DprDetails() {
                   ))}
                 </TableBody>
               </Table>
-
-              {/* Summary Cards by Material */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {materialSummary.map((item: any, i: number) => (
-                  <div 
-                    key={i} 
-                    className="p-4 bg-muted/50 border rounded-lg"
-                    data-testid={`card-material-summary-${i}`}
-                  >
-                    <p className="text-sm font-medium">{item.material}</p>
-                    <p className="text-2xl font-bold">{item.totalQty.toFixed(3)} <span className="text-sm font-normal text-muted-foreground">{item.uom}</span></p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {item.trips} trip{item.trips > 1 ? 's' : ''}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </>
+            </div>
           )}
         </CardContent>
       </Card>

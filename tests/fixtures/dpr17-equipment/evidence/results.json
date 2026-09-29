@@ -1,0 +1,46 @@
+{
+  "mockupOnly": true,
+  "productionApiWrites": false,
+  "desktop": {
+    "viewport": 1440,
+    "documentWidth": 1425,
+    "bodyWidth": 1425,
+    "overflowing": [],
+    "cards": [
+      {
+        "title": "Edit machine day",
+        "width": 631
+      },
+      {
+        "title": "Read-only machine day",
+        "width": 631
+      }
+    ]
+  },
+  "mobile": {
+    "viewport": 390,
+    "documentWidth": 390,
+    "bodyWidth": 390,
+    "overflowing": [],
+    "cards": [
+      {
+        "title": "Edit machine day",
+        "width": 358
+      },
+      {
+        "title": "Read-only machine day",
+        "width": 358
+      }
+    ]
+  },
+  "screenshots": [
+    "/home/runner/workspace/tests/fixtures/dpr17-equipment/evidence/desktop-initial.png",
+    "/home/runner/workspace/tests/fixtures/dpr17-equipment/evidence/desktop-tipper-edited.png",
+    "/home/runner/workspace/tests/fixtures/dpr17-equipment/evidence/desktop-tank-confirmed.png",
+    "/home/runner/workspace/tests/fixtures/dpr17-equipment/evidence/desktop-boq-added.png",
+    "/home/runner/workspace/tests/fixtures/dpr17-equipment/evidence/desktop-local-stoppage.png",
+    "/home/runner/workspace/tests/fixtures/dpr17-equipment/evidence/mobile-initial.png"
+  ],
+  "apiRequests": [],
+  "exceptions": []
+}
