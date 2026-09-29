@@ -69,10 +69,11 @@ describe("equipment usage form reorganisation contracts", () => {
     expect(edit).toContain("programmeBars={progress.flatMap");
   });
 
-  it("shows separate readable usage and fuel performance blocks", () => {
+  it("shows distinct usage and fuel performance facts in the condensed read-only grid", () => {
     expect(compact).toContain("Meter Working Hours");
     expect(compact).toContain("Clock Duration");
-    expect(compact).toContain("Usage Summary");
+    expect(compact).toContain("<SectionHeading>Usage</SectionHeading>");
+    expect(compact).not.toContain("<SectionHeading>Usage Summary</SectionHeading>");
     expect(compact).toContain("Fuel Performance");
     expect(compact).not.toContain('label={preview.totalKm != null ? "Distance" : "Operating time"}');
     expect(allocation).toContain("Assignment validation uses the machine-day Clock Duration");
@@ -86,7 +87,8 @@ describe("equipment usage form reorganisation contracts", () => {
   it("shows the same parent equipment summary in both submitted DPR views", () => {
     expect(submitted).toContain("<DprEquipmentCompact");
     expect(report).toContain("<DprEquipmentCompact");
-    expect(compact).toContain('!editable && <div className="grid divide-y');
+    expect(compact).toContain('!editable && <section className="p-3 sm:p-4" data-testid={`equipment-compact-readonly-${index}`}');
+    expect(compact).toContain('className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 lg:grid-cols-4"');
     expect(compact).toContain("<EquipmentActivityAllocationEditor");
     expect(compact).toContain("editable={editable}");
   });

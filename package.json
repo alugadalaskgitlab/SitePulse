@@ -75,7 +75,7 @@
     "idb-keyval": "^6.2.2",
     "input-otp": "^1.4.2",
     "jsdom": "^29.0.2",
-    "jspdf": "^4.0.0",
+    "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
     "lucide-react": "^0.453.0",
     "memorystore": "^1.6.7",

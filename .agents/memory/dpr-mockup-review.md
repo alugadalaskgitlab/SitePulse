@@ -19,3 +19,9 @@ The user explicitly distinguished hiding unconfirmed consumption from styling: r
 **Why:** Tank-confirmation is not a mandatory readiness rule; changing what users can see still requires disclosure and approval even when calculations and persistence are unchanged.
 
 **How to apply:** Separate layout reuse from visibility changes and validation changes when proposing further DPR work.
+
+The user confirmed classic readiness reuse and Preview Fix state preservation on 2026-09-29, and required explicit separation of tank-display gating from equipment layout props.
+
+**Why:** Identically named props for unrelated presentation behaviors make accidental behavior changes likely even when today's call sites are correct.
+
+**How to apply:** Keep visibility-control names specific to what they hide; never infer approval of tank gating from approval of compact equipment layout.

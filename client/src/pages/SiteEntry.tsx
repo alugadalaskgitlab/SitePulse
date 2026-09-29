@@ -3293,7 +3293,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                 data-testid={"equipment-row-" + idx}>
                 {compactEquipment}
                 {sectionEditor && entry.dieselSource === "plant_stock" && <EquipmentTankBalanceInputs
-                  sectionPresentation
+                  requireConfirmationForConsumption
                   index={idx} openingDiesel={entry.openingDiesel} dieselBalanceInTank={entry.dieselBalanceInTank}
                   dieselBalanceConfirmed={entry.dieselBalanceConfirmed} dieselIssued={entry.diesel}
                   expectedDiesel={usage.expectedDiesel} runtime={usage.runtime}

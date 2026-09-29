@@ -4119,3 +4119,17 @@ mtime_ms = 1790655354891
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/60ab6171-1b8d-4552-a378-0aa28106598b/cbde9e37-b322-4ce6-ba28-2a12c1fc8f94"
 storage_version_token = "1790655400192266"
 content_type = "image/png"
+
+[[outputs]]
+id = "xX1pdPGRRJCKttJxqp4LE"
+uri = "file://screenshots/dpr16-b3-readonly.jpg"
+type = "image"
+title = "B3 — condensed read-only equipment"
+description = "Screenshot of the shared read-only component with isolated fixture data, not an authenticated customer DPR."
+logical_id = "21acf9d8-2947-4050-999f-08a62df76590"
+content_hash = "sha256:4a66812ea6e05ead2d973e03e21f93b0294b1998dd0b1be12d13ea843317b5a8"
+size = 63767
+mtime_ms = 1790658956262
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/21acf9d8-2947-4050-999f-08a62df76590/0ccfe00b-f47d-47ba-b82d-0b2ad5528832"
+storage_version_token = "1790658988864395"
+content_type = "image/jpeg"

@@ -50,6 +50,7 @@ describe("DPR16 B1 section presentation and evaluator", () => {
   it("shares the approved condensed activity UI with classic while keeping section-only navigation and persistence", () => {
     const entry = readFileSync("client/src/pages/SiteEntry.tsx", "utf8");
     const hub = readFileSync("client/src/pages/DprSections.tsx", "utf8");
+    expect(entry).toContain("requireConfirmationForConsumption\n                  index={idx}");
     expect(entry).toContain("condensedActivityPresentation && <button type=\"button\"");
     expect(entry).toContain("condensedActivityPresentation && !expandedActivities.includes(entry.entryKey)");
     expect(entry).toContain("condensedFill={condensedActivityPresentation}");

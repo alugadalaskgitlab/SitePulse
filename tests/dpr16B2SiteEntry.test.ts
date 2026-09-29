@@ -37,7 +37,8 @@ describe("DPR16 B2 classic SiteEntry", () => {
     expect(entry).toContain("sectionPresentation\n              onChange");
     expect(entry).toContain("!sectionEditor && entry.dieselSource === \"plant_stock\"");
     const classicTank = entry.slice(entry.indexOf('{!sectionEditor && entry.dieselSource === "plant_stock"'), entry.indexOf("</details>", entry.indexOf('{!sectionEditor && entry.dieselSource === "plant_stock"')));
-    expect(classicTank).not.toContain("sectionPresentation");
+    expect(classicTank).not.toContain("requireConfirmationForConsumption");
+    expect(entry).toContain("requireConfirmationForConsumption\n                  index={idx}");
     expect(entry).toContain("dieselBalanceConfirmed={entry.dieselBalanceConfirmed}");
     expect(entry).toContain("pickDprSectionPayload(sectionEditor.section, draftPayload)");
     expect(entry).toContain("data-testid={`select-personnel-${idx}`}");

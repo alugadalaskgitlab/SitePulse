@@ -36,7 +36,7 @@ describe("DPR16 B1 rendered section-only presentation", () => {
       const patch = (update: any) => setValue(old => ({ ...old, ...update }));
       return <>
         <DprEquipmentCompact row={value} equipment={{ meterType: "hour_meter" }} sectionPresentation showTankBalance={false} onChange={patch} />
-        <EquipmentTankBalanceInputs index={0} sectionPresentation openingDiesel={value.openingDiesel} dieselBalanceInTank={value.dieselBalanceInTank}
+        <EquipmentTankBalanceInputs index={0} requireConfirmationForConsumption openingDiesel={value.openingDiesel} dieselBalanceInTank={value.dieselBalanceInTank}
           dieselBalanceConfirmed={value.dieselBalanceConfirmed} dieselIssued={value.diesel}
           expectedDiesel={10} runtime={6} onChange={patch} />
       </>;
