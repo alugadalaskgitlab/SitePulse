@@ -1,0 +1,48 @@
+INSTRUCTION LABOUR-01: Let each Labour Log row optionally record individual worker names, for both a contractor's crew and one-off individual local labour
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This needs a new child table — genuinely new schema, not a reuse of something existing. Part A is a design/mapping plan — STOP after Part A and share it, including the exact proposed schema, before writing any implementation code. Do not touch HOME-01, DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, PERM-01/02, the `personnel`/`activityPersonnel` tables, or any DPR-13 through DPR-19 real-screen work beyond what's explicitly described below. Do not publish automatically.
+
+BACKGROUND — confirmed by direct code review
+`shared/schema.ts`'s `labourLogs` table (lines ~322-335: `dprId`, `category`, `gender`, `count`, `task`, `contractor`, `boqItemId`, `structureId`) is a pure aggregate headcount — there is no field anywhere for an individual worker's name, and no informal workaround exists in any other field (confirmed — placeholders on `task`/`contractor` are clearly scoped to their own purpose). The real entry screen is `client/src/pages/GuidedDpr.tsx`'s Step 4 "Labour" (~lines 2819-2870, row type `SimpleLabourRow` ~lines 170-175). A separate, older `LabourSection` also exists in `client/src/components/DprForm.tsx` (~lines 708-812) with fewer fields (category/gender/count only, no task/contractor/link) — Part A must confirm whether this older component is still actually reachable/used anywhere live, or dead code, before deciding whether it also needs this feature.
+
+The closest existing precedent in the app is the Plant Shift Log's manpower feature: `plantShiftLogManpower` (schema.ts ~lines 1444-1452) is a simple child table (`shiftLogId`, `name`, `role`, `contractorName`, `category`, `gender`) recording individual names against a parent shift-log record, with optional dedup/relabel infrastructure (`plantShiftLogManpowerRelabelBatches`/`Snapshots`/`DismissedDups`/`CustomAliases`) for when names get typed inconsistently. This is a proven pattern for the same underlying problem — REUSE THE SHAPE of this approach, not the dedup/alias machinery (that's explicitly out of scope for this instruction, see WHAT NOT TO DO).
+
+WHAT THIS SHOULD DO
+Each Labour Strength row (Category/Gender/Count/Task/Contractor as they exist today) gets an optional way to list individual worker names under it — free text, typed fresh, not a persistent master roster to maintain ahead of time (matching the Plant Shift Log manpower's free-text approach, minus its dedup tooling for now). This should cover, with the SAME mechanism, both real cases:
+- A contractor's crew: one row (Contractor = "Raju Gang", Count = 10), with up to 10 names optionally listed underneath.
+- Local/individual labour for the day: a row with Count = 1 (or a small number) and one or more names, exactly as free as any other row — no special "individual mode" needed, it's the same feature used minimally.
+Count remains the source of truth for headcount reporting/analytics — names are a supplementary, fully optional detail. Nothing should require names to be entered; a person must still be able to just enter a Count and move on, exactly as today.
+
+FIX
+
+PART A — Design/mapping plan (STOP after this, share the plan, wait for go-ahead before building)
+a. Propose the exact new schema: a child table (e.g. `labourLogWorkers`: `id`, `labourLogId` FK, `name`, `createdAt`) — confirm this is additive only (no changes to the existing `labourLogs` columns), and confirm cascade-delete behavior when a parent labour row is removed.
+b. Confirm whether `client/src/components/DprForm.tsx`'s older `LabourSection` is still live/reachable anywhere today. If yes, propose whether it also needs this feature or can be left untouched (flagging why); if it's dead code, say so and leave it alone either way — do not silently modify unreachable code as part of this batch.
+c. Propose the UI: how names are added/removed under a Labour Strength row (e.g. an expandable "+ Add name" list under each row, chip/tag style or simple repeatable text inputs — your call, propose the cleanest fit for the existing card layout in the screenshot), and confirm it's collapsed/hidden by default when no names are entered, so rows that don't use this feature look exactly as they do today.
+d. Confirm no validation forces name-count to equal `count` — names are optional and can be fewer than, equal to, or (flag if you think it should be blocked) more than the numeric Count. Propose your own reasonable rule here (e.g. a soft warning if names entered exceed Count, not a hard block) and explain it.
+e. Confirm how this data surfaces on read-only views (DPR View page's Labour section, if any currently exists there — check and report) — should names be visible there too, and if so, in what compact form?
+f. Confirm submit-readiness (`evaluateDprSubmitReadiness`/`evaluateSectionReadiness`) is NOT changed — this is additive descriptive data, not a new mandatory field.
+
+PART B — Build (only after Part A is approved)
+Implement per the approved plan. Single stage is fine given the scope, but stop and report with evidence before considering this done.
+
+WHAT NOT TO DO
+- Do not build the dedup/relabel/alias infrastructure from `plantShiftLogManpower` — that's real complexity this instruction doesn't need; a plain free-text name list is sufficient for now. If names turn out messy in practice, that can be a future instruction.
+- Do not touch the `personnel`/`activityPersonnel` tables or their UI — this is a separate, distinct concept (named permanent-ish site staff vs. variable daily labour headcount) and must not be conflated or merged.
+- Do not make names mandatory or block saving/submitting a labour row without them.
+- Do not touch HOME-01, DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, PERM-01/02, or unrelated DPR-13 through DPR-19 work.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+A new additive child table is expected and pre-approved in principle (per BACKGROUND/Part A(a)) — but the exact column list and migration must still be proposed in Part A for review before being written, not assumed.
+
+TESTS
+Confirm a labour row can be saved with zero names (unchanged existing behavior). Confirm names can be added, edited, and removed, and persist correctly across save/reload. Confirm deleting a labour row also removes its names (no orphaned rows). Confirm existing labour rows from before this change display correctly with no names (nothing breaks for historical data).
+
+REPORT BACK
+1. After Part A: your written plan including the exact proposed schema, and explicitly wait for approval before proceeding.
+2. After the build: confirm with evidence.
+3. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
