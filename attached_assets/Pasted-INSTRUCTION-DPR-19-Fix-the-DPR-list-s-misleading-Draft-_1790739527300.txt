@@ -1,0 +1,52 @@
+INSTRUCTION DPR-19: Fix the DPR list's misleading "Draft — not submitted" + "Complete" button, and fix accidental equipment-row deletion caused by control overlap
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Two independent fixes. Part A is a design/mapping plan for BOTH — STOP after Part A and share your plan before writing any implementation code, not optional, because Fix 1 touches a page that has never called the real readiness evaluator before (real integration work, not a copy) and has a genuine performance question (evaluating readiness for potentially many DPRs on one list page). STOP after each subsequent part too. Do not touch HOME-01, DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, PERM-01/02, or any DPR-13 through DPR-18 real-screen behavior beyond what's explicitly described below. Do not publish automatically.
+
+BACKGROUND — confirmed by direct code review
+
+Fix 1: `client/src/pages/SiteDashboard.tsx` currently renders a "Draft — not submitted" badge (lines ~1260-1265, condition `dpr.dprStatus === "draft" && !dpr.isCancelled && !dpr.isDeleted`) and, separately, a "Complete" button (lines ~1301-1307) gated on a COMPLETELY UNRELATED condition: `pendingClosingCount > 0`, where `pendingClosingCount` = equipment rows that have an opening reading but no closing reading yet. The button has nothing to do with whether the DPR is actually ready to submit — it only ever addresses one narrow gap (a missing closing meter reading). `SiteDashboard.tsx` never imports or calls `evaluateDprSubmitReadiness` (confirmed via repo-wide search — only `GuidedDpr.tsx`, `SiteEntry.tsx`, `SiteEdit.tsx` use it today). This is why some drafts show the button (they happen to have a pending closing reading) and others don't (their blocking issue is something else entirely — a missing material outcome, an unfinished guided section, a mandatory field) — there's no general-purpose "what's wrong and how do I fix it" signal on the list today.
+
+Fix 2: `client/src/components/DprEquipmentCompact.tsx`'s header (lines ~257-279) renders the Daily Status chip and the expand/collapse toggle button, but the delete-row button is NOT part of this component — each parent screen draws it separately as an absolutely-positioned sibling (`SiteEntry.tsx` ~lines 3438-3441, `SiteEdit.tsx` ~lines 3207-3210: `className="absolute right-2 top-2 ..."`), landing directly on top of where the expand/collapse button sits in the card's top-right corner. There is no deliberate spacing between them (they're not flex-adjacent, one is absolutely positioned over the other), and deletion is immediate on a single click (`removeRow('equipment', idx)` directly filters the row out — no `window.confirm`, no undo, only disabled when it's the last remaining row). `GuidedDpr.tsx`'s equipment rows have no delete button at all, which is why this only affects the classic/detailed entry flow (`SiteEntry.tsx`/`SiteEdit.tsx`).
+
+FIX
+
+PART A — Design/mapping plan (STOP after this, share the plan, wait for go-ahead before building)
+For Fix 1, explain:
+a. How you will compute real readiness per DPR row on the list page. Is the data `evaluateDprSubmitReadiness` needs already present in whatever the list page currently fetches per DPR, or would this require an additional fetch per row (flag any N+1-query risk explicitly, and propose how to avoid it — e.g. a single batched endpoint, or computing readiness only on-demand when a row is expanded/hovered rather than for the whole list eagerly)?
+b. How readiness computation differs for a guided/sectioned DPR (`DprSections.tsx`'s per-section saved state) versus a classic DPR (`SiteEntry.tsx`/`SiteEdit.tsx`'s combined form) — confirm you're reusing each flow's existing real readiness logic (`evaluateSectionReadiness` for guided, `evaluateDprSubmitReadiness` for classic) rather than inventing a third computation for the list page.
+c. What the new "Fix" action does: does it deep-link into the right screen (Edit for classic, DprSections hub for guided) and, ideally, straight to the first blocking issue, or does it just open Edit generally? Propose the best real achievable behavior and flag if deep-linking to a specific issue isn't feasible without more work — a plain "open Edit" is an acceptable fallback if flagged honestly.
+d. Confirm the plan to replace the narrow `pendingClosingCount`-gated "Complete" button with something reflecting genuine readiness — either a "Fix →" link/button that appears whenever the DPR isn't ready (listing or linking to the actual blocking reason(s)), or, if genuinely too costly to compute for every list row, propose the best available middle ground (e.g. a lightweight indicator that doesn't require the full evaluator) and explain the tradeoff honestly.
+e. Confirm the badge text changes from "Draft — not submitted" to plain "Draft".
+f. Confirm nothing about actual submission behavior, save behavior, or the real readiness rules themselves changes — this is a list-page presentation/discovery fix only.
+
+For Fix 2, explain:
+g. How you'll give the delete button real, deliberate spacing from the expand/collapse toggle (e.g. moving it into the same component as a proper flex-adjacent sibling with a visible gap, or relocating it to a clearly separate position — your call, propose the cleanest fix) on both `SiteEntry.tsx` and `SiteEdit.tsx`.
+h. What confirmation step you'll add before a row is actually removed (e.g. a small inline "Remove this equipment row?" confirm/undo, or a short-lived undo toast) — propose one, this should be lightweight, not a heavy modal dialog, but must prevent one accidental click from silently destroying entered data.
+i. Confirm this doesn't change equipment-row data logic, save behavior, or anything about `DprEquipmentCompact.tsx`'s DPR-18 work beyond the header layout and the parent screens' delete-button placement/confirmation.
+
+PART B — Build (only after Part A is approved)
+B1. Fix 1 (DPR list readiness/Complete button + badge text).
+B2. Fix 2 (equipment delete spacing + confirmation).
+Stop after each for report and confirmation before starting the next.
+
+WHAT NOT TO DO
+- Do not skip Part A's plan-and-wait step.
+- Do not invent new readiness logic — reuse `evaluateDprSubmitReadiness`/`evaluateSectionReadiness` exactly.
+- Do not change what "ready to submit" actually means, or any save/submit behavior.
+- Do not touch GuidedDpr.tsx's equipment rows (no delete button exists there — out of scope).
+- Do not touch HOME-01, DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, PERM-01/02, or unrelated DPR-13 through DPR-18 work.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change expected. If Part A concludes one is genuinely needed, propose it for approval, not decide it unilaterally.
+
+TESTS
+Confirm the list page shows plain "Draft" (not "Draft — not submitted") for all draft DPRs. Confirm a "Fix"-style action appears and works correctly for a draft DPR with a real blocking issue unrelated to closing readings (e.g. a missing material outcome), and confirm it still works for the original closing-reading case too. Confirm a fully-ready draft shows no false "Fix" prompt. Confirm the equipment delete button can no longer be hit by a mis-click aimed at expand/collapse (real spacing, not just visual overlap avoidance by luck), and confirm a genuine delete now requires the added confirmation step and can't happen from a single accidental click.
+
+REPORT BACK
+1. After Part A: your written plan, and explicitly wait for approval before proceeding.
+2. After B1 and B2 each: confirm with evidence before starting the next.
+3. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
