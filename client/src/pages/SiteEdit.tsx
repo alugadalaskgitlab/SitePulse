@@ -70,6 +70,7 @@ import {
 import { normalizeExcavationMaterialOutcome } from "@shared/cutFillReconciliation";
 import { APPLICABLE_ARRANGEMENT_STATUSES, blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
+import { EquipmentRowRemove, resolveEquipmentRemovalIndex } from "@/components/EquipmentRowRemove";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { equipmentStatusRequiresReason } from "@shared/equipmentStatus";
 import { withEquipmentCreationStartTime, withNewEquipmentWorkingDefault, meaningfulEquipmentRows, isVisibleEquipmentRow } from "@shared/equipmentUsage";
@@ -158,6 +159,9 @@ interface EquipmentEntry {
   isNew?: boolean;
   editCreationKey?: string;
 }
+
+const equipmentEditIdentity = (row: EquipmentEntry) => row.persistedId != null
+  ? `saved:${row.persistedId}` : row.editCreationKey != null ? `new:${row.editCreationKey}` : undefined;
 
 const contractorDieselTankFieldsCleared = (row: EquipmentEntry): EquipmentEntry =>
   row.dieselSource === "contractor"
@@ -295,6 +299,7 @@ export function mapDprToFormState(dpr: any) {
   const equipment: EquipmentEntry[] = dpr.equipment?.length
     ? dpr.equipment.map((e: any) => ({
         persistedId: e.id != null ? Number(e.id) : undefined,
+        ...(e.id == null ? { editCreationKey: newEntryKey() } : {}),
         machine: e.machine || "",
         vehicleNo: e.vehicleNo || "",
         operator: e.operator || "",
@@ -661,6 +666,8 @@ export default function SiteEdit() {
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
     { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, isNew: true, editCreationKey: newEntryKey() }
   ]);
+  const equipmentRowsRef = useRef(equipment);
+  equipmentRowsRef.current = equipment;
   // 06X-HF6: submitted DPRs can pre-date a later dispatch to the same
   // site/date. Reuse the Guided/Detailed open-today discovery contract.
   const { data: openUsages = [] } = useQuery<OpenUsageLike[]>({
@@ -888,7 +895,8 @@ export default function SiteEdit() {
               ...normalizeExcavationMaterialOutcome(p.quantity, p.materialOutcome, p.reusableQty),
             })),
           );
-          if (draft.equipment?.length) setEquipment((draft.equipment as EquipmentEntry[]).map(({ isNew: _isNew, editCreationKey: _key, ...row }) => row));
+          if (draft.equipment?.length) setEquipment((draft.equipment as EquipmentEntry[]).map(({ isNew: _isNew, editCreationKey: _key, ...row }) =>
+            ({ ...row, ...(row.persistedId == null ? { editCreationKey: newEntryKey() } : {}) })));
           if (draft.labour?.length) setLabour(draft.labour);
           setMaterials(draft.materials || []);
           setSitePurchases(draft.sitePurchases || []);
@@ -1285,11 +1293,13 @@ export default function SiteEdit() {
     }
   };
 
-  const removeRow = (section: 'progress' | 'equipment' | 'labour', index: number) => {
+  const removeRow = (section: 'progress' | 'equipment' | 'labour', index: number, expectedEquipmentIdentity?: string) => {
     if (section === 'progress' && progress.length > 1) {
       setProgress(progress.filter((_, i) => i !== index));
-    } else if (section === 'equipment' && equipment.length > 1) {
-      setEquipment(equipment.filter((_, i) => i !== index));
+    } else if (section === 'equipment' && equipmentRowsRef.current.length > 1
+      && expectedEquipmentIdentity != null && equipmentEditIdentity(equipmentRowsRef.current[index]) === expectedEquipmentIdentity) {
+      setEquipment(rows => rows.length > 1 && equipmentEditIdentity(rows[index]) === expectedEquipmentIdentity
+        ? rows.filter((_, i) => i !== index) : rows);
     } else if (section === 'labour' && labour.length > 1) {
       setLabour(labour.filter((_, i) => i !== index));
     }
@@ -3197,29 +3207,36 @@ export default function SiteEdit() {
                 testId={`edit-equipment-breakdown-${idx}`}
               />
             );
+            const rowIdentity = equipmentEditIdentity(entry);
+            const visible = isVisibleEquipmentRow({ ...entry });
             return (
-            <div key={entry.editCreationKey ?? entry.persistedId ?? idx} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative transition-all duration-500" data-dpr-row-key={dprRowKey("equipment", idx)}
+            <EquipmentRowRemove key={rowIdentity ?? idx} identity={rowIdentity} index={idx}
+              label={entry.machine?.trim() || `Equipment ${idx + 1}`} disabled={equipment.length <= 1}
+              onRemove={() => {
+                const latest = equipmentRowsRef.current;
+                const currentIndex = resolveEquipmentRemovalIndex(latest, rowIdentity, equipmentEditIdentity);
+                if (rowIdentity != null && currentIndex >= 0 && latest.length > 1) removeRow("equipment", currentIndex, rowIdentity);
+              }}>
+            {({ action, prompt, dismiss }) => <div className="p-4 border rounded-lg bg-muted/30 space-y-4 transition-all duration-500" data-dpr-row-key={dprRowKey("equipment", idx)}
               data-dpr-equipment-identity={JSON.stringify([entry.persistedId, entry.equipmentId, entry.plantUsageId, entry.machine, entry.vehicleNo, entry.openingReading, entry.startTime])}
               data-testid={"equipment-row-" + idx}>
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => removeRow('equipment', idx)}
-                disabled={equipment.length === 1}
-                className="absolute right-2 top-2 text-muted-foreground hover:text-destructive"
-                data-testid={`button-remove-equipment-${idx}`}
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
               {/* The compact card hides itself for untouched placeholders; their
                   picker must remain available until an actual row is identified. */}
-              {!isVisibleEquipmentRow({ ...entry }) && equipmentPickerSlot}
+              {!visible && equipmentPickerSlot}
+              {!visible && <div className="rounded-lg border bg-background">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                  <span className="text-sm font-medium">Equipment {idx + 1}</span>{action}
+                </div>{prompt}
+              </div>}
                 <DprEquipmentCompact
                   row={entry}
+                  headerActionSlot={visible ? action : undefined}
+                  headerConfirmationSlot={visible ? prompt : undefined}
+                  onToggle={dismiss}
                   equipment={activeEquipment.find((item) => item.id === entry.equipmentId)}
                   hideIdentity
                   sectionPresentation
-                  equipmentPickerSlot={isVisibleEquipmentRow({ ...entry }) ? equipmentPickerSlot : undefined}
+                  equipmentPickerSlot={visible ? equipmentPickerSlot : undefined}
                   ownerTypeSlot={ownerTypeSlot}
                   dieselSourceSlot={dieselSourceSlot}
                   stoppageSlot={stoppageSlot}
@@ -3243,7 +3260,8 @@ export default function SiteEdit() {
                     workAssignmentEdited: true,
                   } : row))}
                 />
-            </div>
+            </div>}
+            </EquipmentRowRemove>
             );
           })}
           <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg">

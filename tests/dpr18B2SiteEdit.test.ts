@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 import { withNewEquipmentWorkingDefault } from "../shared/equipmentUsage";
 
 const source = readFileSync("client/src/pages/SiteEdit.tsx", "utf8");
-const editor = source.slice(source.indexOf("const equipmentPickerSlot = ("), source.indexOf("return (\n            <div key={entry.editCreationKey", source.indexOf("const equipmentPickerSlot = (")));
-const card = source.slice(source.indexOf("return (\n            <div key={entry.editCreationKey"), source.indexOf('data-testid={"equipment-row-" + idx}', source.indexOf("return (\n            <div key={entry.editCreationKey")) + 6000);
+const editor = source.slice(source.indexOf("const equipmentPickerSlot = ("), source.indexOf("const rowIdentity = equipmentEditIdentity(entry)", source.indexOf("const equipmentPickerSlot = (")));
+const card = source.slice(source.indexOf("const rowIdentity = equipmentEditIdentity(entry)"), source.indexOf('data-testid={"equipment-row-" + idx}', source.indexOf("const rowIdentity = equipmentEditIdentity(entry)")) + 6000);
 
 describe("DPR18 B2 SiteEdit equipment wiring", () => {
   it("places each existing editor in the intended compact group without rendering a second copy", () => {
@@ -19,8 +19,8 @@ describe("DPR18 B2 SiteEdit equipment wiring", () => {
       expect(editor).toContain(field);
     }
     expect(editor).not.toContain("text-equipment-owner");
-    expect(card).toContain("equipmentPickerSlot={isVisibleEquipmentRow({ ...entry }) ? equipmentPickerSlot : undefined}");
-    expect(card).toContain("{!isVisibleEquipmentRow({ ...entry }) && equipmentPickerSlot}");
+    expect(card).toContain("equipmentPickerSlot={visible ? equipmentPickerSlot : undefined}");
+    expect(card).toContain("{!visible && equipmentPickerSlot}");
     expect(card).toContain("ownerTypeSlot={ownerTypeSlot}");
     expect(card).toContain("dieselSourceSlot={dieselSourceSlot}");
     expect(card).toContain("stoppageSlot={stoppageSlot}");
@@ -44,7 +44,7 @@ describe("DPR18 B2 SiteEdit equipment wiring", () => {
     expect(source).toContain("editCreationKey: newEntryKey()");
     expect(source).toContain("row.editCreationKey !== creationKey");
     expect(source).toContain("row.persistedId !== entry.persistedId");
-    expect(source).toContain("(draft.equipment as EquipmentEntry[]).map(({ isNew: _isNew, editCreationKey: _key, ...row }) => row)");
+    expect(source).toContain("(draft.equipment as EquipmentEntry[]).map(({ isNew: _isNew, editCreationKey: _key, ...row }) =>");
     expect(source).toContain("equipment: equipment.map(({ isNew: _isNew, editCreationKey: _editCreationKey, ...row }) => row)");
     expect(source).toContain("editCreationKey: _editCreationKey,");
   });
@@ -55,7 +55,7 @@ describe("DPR18 B2 SiteEdit equipment wiring", () => {
     const [hydrated, fallback] = mapped.split("\n    : [{");
     expect(hydrated).toContain("usageStatus: e.usageStatus ?? null");
     expect(hydrated).not.toContain("isNew: true");
-    expect(hydrated).not.toContain("editCreationKey:");
+    expect(hydrated).toContain("e.id == null ? { editCreationKey: newEntryKey() }");
     expect(fallback).toContain("isNew: true, editCreationKey: newEntryKey()");
     expect(source).toContain("if (updated[idx].isNew && updated[idx].editCreationKey)");
     expect(source).toContain("withNewEquipmentWorkingDefault(");

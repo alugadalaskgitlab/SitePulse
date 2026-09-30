@@ -78,7 +78,7 @@ const statusLabel = (status: DprEquipmentFields["usageStatus"]) => status === "w
   : status === "idle_no_operator" ? "Idle · Operator Unavailable"
   : status === "breakdown" ? "Breakdown" : "Not specified";
 
-export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignmentChange, editable = true, index = 0, beforeDate, site, boqItems, programmeBars, showTankBalance = true, enableTankContinuity = true, hideIdentity = false, allowLinkedSourceEdit = false, sectionPresentation = false, equipmentPickerSlot, ownerTypeSlot, dieselSourceSlot, stoppageSlot }: {
+export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignmentChange, editable = true, index = 0, beforeDate, site, boqItems, programmeBars, showTankBalance = true, enableTankContinuity = true, hideIdentity = false, allowLinkedSourceEdit = false, sectionPresentation = false, equipmentPickerSlot, ownerTypeSlot, dieselSourceSlot, stoppageSlot, headerActionSlot, headerConfirmationSlot, onToggle }: {
   row: DprEquipmentFields;
   equipment?: { meterType?: string | null; consumptionNorm?: number | null; ownership?: string | null; vendorName?: string | null; entryType?: string | null; hireBillingBasis?: string | null } | null;
   onChange?: (patch: Partial<DprEquipmentFields>) => void;
@@ -108,6 +108,10 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
   ownerTypeSlot?: ReactNode;
   dieselSourceSlot?: ReactNode;
   stoppageSlot?: ReactNode;
+  /** Optional caller-owned header action and confirmation; no action on read-only cards. */
+  headerActionSlot?: ReactNode;
+  headerConfirmationSlot?: ReactNode;
+  onToggle?: () => void;
   /**
    * Linked canonical usage rows are immutable for ordinary editors. Admin
    * corrections still pass through the version transaction; lifecycle IDs
@@ -259,7 +263,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
           <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-400"><Gauge className="h-4 w-4" /></span>
            <div className="min-w-0"><div className="truncate text-sm font-bold tracking-[0.03em] text-slate-950 dark:text-slate-50 sm:text-base">{dash(row.machine)}</div><div className="truncate text-xs font-medium text-slate-500">{dash(row.vehicleNo)}{row.operator ? ` · ${row.operator}` : ""} · Machine day {index + 1}</div>{hiredVendorLabel && <div className="truncate text-xs font-semibold text-amber-800 dark:text-amber-300" data-testid={`equipment-owner-${index}`}>{hiredVendorLabel}</div>}</div>
          </div>}
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
             {editable && !expanded ? <Select value={row.usageStatus ?? "unspecified"} onValueChange={changeStatus}>
               <SelectTrigger aria-label={`Daily status for ${dash(row.machine)}`} className="h-9 w-auto min-w-28 rounded-full border-slate-300 text-xs" data-testid={`equipment-compact-status-chip-${index}`}><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -272,11 +276,13 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
             </Select> : <Badge variant="outline" className="text-xs" data-testid={`equipment-compact-status-chip-${index}`}>{statusLabel(row.usageStatus)}</Badge>}
             {!!row.breakdowns?.length && <Badge variant="destructive" className="text-xs">{row.breakdowns.length} breakdown{row.breakdowns.length > 1 ? "s" : ""}</Badge>}
            {visibleWarning && <span title={visibleWarning} className="text-amber-700 dark:text-amber-400"><CircleAlert className="h-4 w-4" /></span>}
-          {editable && <button type="button" onClick={() => setExpanded(value => !value)} className="grid h-11 w-11 place-items-center rounded-md text-slate-600 transition hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 sm:h-9 sm:w-9 dark:text-slate-300 dark:hover:bg-slate-700" aria-expanded={expanded} aria-label={expanded ? `Collapse ${dash(row.machine)}` : `Expand ${dash(row.machine)}`}>
+           {editable && headerActionSlot}
+           {editable && <button type="button" onClick={() => { onToggle?.(); setExpanded(value => !value); }} className={`grid h-11 w-11 shrink-0 place-items-center rounded-md text-slate-600 transition hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${headerActionSlot == null ? "sm:h-9 sm:w-9" : ""} dark:text-slate-300 dark:hover:bg-slate-700`} aria-expanded={expanded} aria-label={expanded ? `Collapse ${dash(row.machine)}` : `Expand ${dash(row.machine)}`}>
             {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>}
         </div>
       </header>
+      {editable && headerConfirmationSlot}
 
        {editable && sectionPresentation && <div className="grid grid-cols-2 gap-3 px-3 py-3 text-sm sm:grid-cols-4" data-testid={`section-equipment-summary-${index}`}>
         <div><span className="text-xs text-muted-foreground">{usageQuantity.label}</span><p className="font-semibold tabular-nums">{usageQuantity.value}</p></div>
@@ -284,7 +290,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
         <div><span className="text-xs text-muted-foreground">Diesel issued</span><p className="font-semibold tabular-nums">{number(row.diesel)} L</p></div>
         <div><span className="text-xs text-muted-foreground">Tank status</span><p className="font-semibold">{!isPlantStock ? "Not applicable" : row.dieselBalanceConfirmed ? "Confirmed" : "Not confirmed"}</p></div>
       </div>}
-      {editable && !sectionPresentation && !expanded && <button type="button" onClick={() => setExpanded(true)} className="grid min-h-11 w-full grid-cols-2 gap-x-3 gap-y-1 px-3 py-2 text-left text-xs text-slate-600 hover:bg-slate-50 sm:grid-cols-4 dark:text-slate-300 dark:hover:bg-slate-800/40">
+       {editable && !sectionPresentation && !expanded && <button type="button" onClick={() => { onToggle?.(); setExpanded(true); }} className="grid min-h-11 w-full grid-cols-2 gap-x-3 gap-y-1 px-3 py-2 text-left text-xs text-slate-600 hover:bg-slate-50 sm:grid-cols-4 dark:text-slate-300 dark:hover:bg-slate-800/40">
         <span><strong className="text-slate-900 dark:text-slate-100">{formatEquipmentTime(row.startTime)}–{formatEquipmentTime(row.endTime)}</strong></span>
         <span>Clock <strong className="text-slate-900 dark:text-slate-100">{formatEquipmentDuration(clockHours)}</strong></span>
         <span>Fuel <strong className="text-slate-900 dark:text-slate-100">{number(row.diesel)} L</strong></span>

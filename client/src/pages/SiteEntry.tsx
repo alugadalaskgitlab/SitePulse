@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useState, useMemo, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { pickDprSectionPayload, type DprSection, type DprSectionContext, type DprSectionSnapshot } from "@shared/dprSections";
 import type { DprReadinessIssue } from "@shared/dprSubmitReadiness";
 import { evaluateSectionReadiness, sectionIssueFieldTestId } from "@/lib/dprSectionReadiness";
@@ -94,6 +94,7 @@ import {
 import { normalizeExcavationMaterialOutcome } from "@shared/cutFillReconciliation";
 import { APPLICABLE_ARRANGEMENT_STATUSES, blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
+import { EquipmentRowRemove, committedEquipmentRemovalIndex, resolveEquipmentRemovalIndex } from "@/components/EquipmentRowRemove";
 import { EquipmentTankBalanceInputs } from "@/components/EquipmentTankBalanceInputs";
 import { aggregateStructureActualCredits, dprActualBalance, exceedsKnownActualBalance, type DprActualBalance } from "@/lib/dprActualBalance";
 import { DPR_REGISTER_PATH, resolveReturnTo } from "@/lib/progressReportNav";
@@ -923,6 +924,28 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
     { [equipmentRowToken]: Symbol("equipment row"), [newEquipmentRow]: true, machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null }
   ]);
   const [otherEquipmentRows, setOtherEquipmentRows] = useState<Set<number>>(() => new Set());
+  const equipmentRowsRef = useRef(equipment);
+  equipmentRowsRef.current = equipment;
+  const previousEquipmentRowsRef = useRef(equipment);
+  const pendingEquipmentRemovalRef = useRef<symbol | null>(null);
+  useLayoutEffect(() => {
+    const previous = previousEquipmentRowsRef.current;
+    const token = pendingEquipmentRemovalRef.current;
+    if (token != null) {
+      const removedIndex = committedEquipmentRemovalIndex(previous, equipment, token, row => row[equipmentRowToken]);
+      if (removedIndex >= 0) {
+        setOtherEquipmentRows(rows => new Set(
+          Array.from(rows).filter(i => i !== removedIndex).map(i => i > removedIndex ? i - 1 : i),
+        ));
+      }
+      // An intervening update can commit before the guarded removal. Keep the
+      // token until it either disappears or its actual removal is committed.
+      if (removedIndex >= 0 || !equipment.some(row => row[equipmentRowToken] === token)) {
+        pendingEquipmentRemovalRef.current = null;
+      }
+    }
+    previousEquipmentRowsRef.current = equipment;
+  }, [equipment]);
 
   const [labour, setLabour] = useState<LabourEntry[]>([]);
 
@@ -1397,14 +1420,14 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
     }
   };
 
-  const removeRow = (section: 'progress' | 'equipment' | 'labour' | 'materials', index: number) => {
+  const removeRow = (section: 'progress' | 'equipment' | 'labour' | 'materials', index: number, expectedEquipmentToken?: symbol) => {
     if (section === 'progress' && progress.length > 1) {
       setProgress(progress.filter((_, i) => i !== index));
-    } else if (section === 'equipment' && equipment.length > 1) {
-      setEquipment(equipment.filter((_, i) => i !== index));
-      setOtherEquipmentRows((rows) => new Set(
-        Array.from(rows).filter((i) => i !== index).map((i) => i > index ? i - 1 : i),
-      ));
+    } else if (section === 'equipment' && equipmentRowsRef.current.length > 1
+      && expectedEquipmentToken != null && equipmentRowsRef.current[index]?.[equipmentRowToken] === expectedEquipmentToken) {
+      pendingEquipmentRemovalRef.current = expectedEquipmentToken;
+      setEquipment(rows => rows.length > 1 && rows[index]?.[equipmentRowToken] === expectedEquipmentToken
+        ? rows.filter((_, i) => i !== index) : rows);
     } else if (section === 'labour' && labour.length > 1) {
       setLabour(labour.filter((_, i) => i !== index));
     } else if (section === 'materials') {
@@ -3402,8 +3425,11 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                 onChange={patch => setEquipment(rows => rows.map((row, i) => i === idx ? { ...row, ...patch } : row))}
               />}
             </div>;
-            const compactEquipment = <DprEquipmentCompact
+            const compactEquipment = (action: React.ReactNode, prompt: React.ReactNode, dismiss: () => void) => <DprEquipmentCompact
               row={entry}
+              headerActionSlot={action}
+              headerConfirmationSlot={prompt}
+              onToggle={dismiss}
               equipment={selectedEquipForRow}
               index={idx}
               beforeDate={header.date}
@@ -3426,24 +3452,29 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                 ? { ...row, ...patch, ...("usageStatus" in patch ? { [autoWorkingStatus]: undefined } : {}) } as EquipmentEntry : row))}
             />;
             
+            const rowToken = entry[equipmentRowToken];
             return (
-              <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative transition-all duration-500" data-dpr-row-key={dprRowKey("equipment", idx)}
+              <EquipmentRowRemove key={idx} identity={rowToken} index={idx} label={entry.machine?.trim() || `Equipment ${idx + 1}`}
+                disabled={equipment.length <= 1} onRemove={() => {
+                  const latest = equipmentRowsRef.current;
+                  const currentIndex = resolveEquipmentRemovalIndex(latest, rowToken, row => row[equipmentRowToken]);
+                  if (rowToken != null && currentIndex >= 0 && latest.length > 1) removeRow("equipment", currentIndex, rowToken);
+                }}>
+              {({ action, prompt, dismiss }) => <div className="p-4 border rounded-lg bg-muted/30 space-y-4 transition-all duration-500" data-dpr-row-key={dprRowKey("equipment", idx)}
                 data-dpr-equipment-identity={JSON.stringify([entry.equipmentId, entry.plantUsageId, entry.machine, entry.vehicleNo, entry.openingReading, entry.startTime])}
                 data-testid={"equipment-row-" + idx}>
                 {!isVisibleEquipmentRow({ ...entry }) && equipmentPicker}
-                {compactEquipment}
-                <Button 
-                  size="icon" 
-                  variant="ghost" 
-                  onClick={() => removeRow('equipment', idx)}
-                  disabled={equipment.length === 1}
-                  className="absolute right-2 top-2 text-muted-foreground hover:text-destructive"
-                  data-testid={`button-remove-equipment-${idx}`}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-                
-              </div>
+                {isVisibleEquipmentRow({ ...entry }) ? compactEquipment(action, prompt, dismiss)
+                  : <>
+                    {compactEquipment(null, null, dismiss)}
+                    <div className="mt-2 rounded-lg border bg-background">
+                    <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                      <span className="text-sm font-medium">Equipment {idx + 1}</span>{action}
+                    </div>
+                    {prompt}
+                  </div></>}
+              </div>}
+              </EquipmentRowRemove>
             );
           })}
           <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg">

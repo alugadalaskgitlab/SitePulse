@@ -1,0 +1,500 @@
+{
+  "source": "actual pages / synthetic fixture only; no customer writes",
+  "findings": [
+    {
+      "page": "entry",
+      "type": "equipment",
+      "device": "desktop",
+      "geometry": {
+        "row": {
+          "left": 229,
+          "right": 1203,
+          "top": 239,
+          "bottom": 415,
+          "width": 974,
+          "height": 176
+        },
+        "trigger": {
+          "left": 1129,
+          "right": 1173,
+          "top": 273,
+          "bottom": 317,
+          "width": 44,
+          "height": 44
+        },
+        "delete": {
+          "left": 1077,
+          "right": 1121,
+          "top": 273,
+          "bottom": 317,
+          "width": 44,
+          "height": 44
+        },
+        "viewport": 1440,
+        "scrollWidth": 1432,
+        "overflowSources": []
+      },
+      "confirmationGeometry": {
+        "cancelTop": 342,
+        "headerBottom": 317,
+        "inside": true,
+        "textRect": [
+          {
+            "left": 259,
+            "right": 316.046875,
+            "top": 355,
+            "bottom": 372
+          },
+          {
+            "left": 316.046875,
+            "right": 448.484375,
+            "top": 355,
+            "bottom": 372
+          },
+          {
+            "left": 448.484375,
+            "right": 484.21875,
+            "top": 355,
+            "bottom": 372
+          }
+        ],
+        "controls": [
+          {
+            "left": 968.0625,
+            "right": 1048.546875,
+            "top": 342,
+            "bottom": 386
+          },
+          {
+            "left": 1056.546875,
+            "right": 1173,
+            "top": 342,
+            "bottom": 386
+          }
+        ],
+        "textOverlapsControls": false
+      },
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr19-fix2-entry-equipment-desktop.png"
+    },
+    {
+      "page": "entry",
+      "device": "desktop",
+      "save": {
+        "equipment": [
+          {
+            "machine": "DAILY HIRE LOADER",
+            "vehicleNo": "FIX-HIRE-02",
+            "operator": "SYNTHETIC KEEP OPERATOR",
+            "task": "",
+            "entryType": "time_meter",
+            "startTime": "05:40",
+            "endTime": "",
+            "openingReading": null,
+            "closingReading": null,
+            "diesel": null,
+            "openingDiesel": null,
+            "dieselBalanceInTank": null,
+            "dieselBalanceConfirmed": false,
+            "equipmentId": 7704,
+            "dieselSource": "",
+            "fuelStation": "",
+            "billNumber": "",
+            "amountPaid": null,
+            "numberOfTrips": null,
+            "tripDistance": null,
+            "totalKm": null,
+            "waterQuantity": null,
+            "boqItemId": null,
+            "structureId": null,
+            "plantUsageId": null,
+            "breakdowns": [],
+            "usageStatus": "working",
+            "hoursWorked": null,
+            "expectedDiesel": null,
+            "dieselNorm": null
+          }
+        ]
+      },
+      "writes": [
+        "/api/dprs"
+      ]
+    },
+    {
+      "page": "edit",
+      "type": "equipment",
+      "device": "desktop",
+      "geometry": {
+        "row": {
+          "left": 319.671875,
+          "right": 1112.328125,
+          "top": 841.671875,
+          "bottom": 1005.671875,
+          "width": 792.65625,
+          "height": 164
+        },
+        "trigger": {
+          "left": 527.34375,
+          "right": 571.34375,
+          "top": 869.671875,
+          "bottom": 913.671875,
+          "width": 44,
+          "height": 44
+        },
+        "delete": {
+          "left": 475.34375,
+          "right": 519.34375,
+          "top": 869.671875,
+          "bottom": 913.671875,
+          "width": 44,
+          "height": 44
+        },
+        "viewport": 1440,
+        "scrollWidth": 1432,
+        "overflowSources": []
+      },
+      "confirmationGeometry": {
+        "cancelTop": 926.703125,
+        "headerBottom": 907.703125,
+        "inside": true,
+        "textRect": [
+          {
+            "left": 343.703125,
+            "right": 400.75,
+            "top": 939.703125,
+            "bottom": 956.703125
+          },
+          {
+            "left": 400.75,
+            "right": 622.5,
+            "top": 939.703125,
+            "bottom": 956.703125
+          },
+          {
+            "left": 622.5,
+            "right": 658.234375,
+            "top": 939.703125,
+            "bottom": 956.703125
+          }
+        ],
+        "controls": [
+          {
+            "left": 883.359375,
+            "right": 963.84375,
+            "top": 926.703125,
+            "bottom": 970.703125
+          },
+          {
+            "left": 971.84375,
+            "right": 1088.296875,
+            "top": 926.703125,
+            "bottom": 970.703125
+          }
+        ],
+        "textOverlapsControls": false
+      },
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr19-fix2-edit-equipment-desktop.png"
+    },
+    {
+      "page": "edit",
+      "device": "desktop",
+      "save": {
+        "equipment": [
+          {
+            "machine": "SYNTHETIC KEEP EXCAVATOR",
+            "vehicleNo": "FIX2-KEEP",
+            "operator": "SYNTHETIC KEEP OPERATOR",
+            "task": "DRESSING",
+            "entryType": "time_meter",
+            "startTime": "08:00",
+            "endTime": "16:00",
+            "openingReading": 100,
+            "closingReading": 106,
+            "diesel": 23,
+            "openingDiesel": 30,
+            "dieselBalanceInTank": 25,
+            "dieselBalanceConfirmed": true,
+            "dieselNorm": 5,
+            "expectedDiesel": 30,
+            "hoursWorked": 6,
+            "equipmentId": null,
+            "plantUsageId": null,
+            "usageStatus": null,
+            "usageStatusReason": null,
+            "dieselSource": "plant_stock",
+            "fuelStation": "",
+            "billNumber": "",
+            "amountPaid": null,
+            "numberOfTrips": null,
+            "tripDistance": null,
+            "totalKm": null,
+            "waterQuantity": null,
+            "boqItemId": null,
+            "structureId": null,
+            "persistedId": 7441,
+            "breakdowns": []
+          }
+        ]
+      },
+      "writes": [
+        "/api/dprs/6340/draft"
+      ]
+    },
+    {
+      "page": "entry",
+      "type": "equipment",
+      "device": "mobile",
+      "geometry": {
+        "row": {
+          "left": 25,
+          "right": 357,
+          "top": 507,
+          "bottom": 783,
+          "width": 332,
+          "height": 276
+        },
+        "trigger": {
+          "left": 251,
+          "right": 295,
+          "top": 595,
+          "bottom": 639,
+          "width": 44,
+          "height": 44
+        },
+        "delete": {
+          "left": 199,
+          "right": 243,
+          "top": 595,
+          "bottom": 639,
+          "width": 44,
+          "height": 44
+        },
+        "viewport": 390,
+        "scrollWidth": 428,
+        "overflowSources": [
+          {
+            "tag": "BUTTON",
+            "testid": "button-set-default-mode",
+            "className": "inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium focus-visible:outline-no",
+            "right": 427.5
+          },
+          {
+            "tag": "DIV",
+            "testid": null,
+            "className": "sticky bottom-0 left-0 right-0 z-10 -mx-4 sm:mx-0 mt-2 flex flex-wrap items-center justify-end gap-3",
+            "right": 398
+          }
+        ]
+      },
+      "confirmationGeometry": {
+        "cancelTop": 686,
+        "headerBottom": 639,
+        "inside": true,
+        "textRect": [
+          {
+            "left": 55,
+            "right": 112.046875,
+            "top": 659,
+            "bottom": 676
+          },
+          {
+            "left": 112.046875,
+            "right": 244.484375,
+            "top": 659,
+            "bottom": 676
+          },
+          {
+            "left": 244.484375,
+            "right": 280.21875,
+            "top": 659,
+            "bottom": 676
+          }
+        ],
+        "controls": [
+          {
+            "left": 55,
+            "right": 187,
+            "top": 686,
+            "bottom": 730
+          },
+          {
+            "left": 195,
+            "right": 327,
+            "top": 686,
+            "bottom": 730
+          }
+        ],
+        "textOverlapsControls": false
+      },
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr19-fix2-entry-equipment-mobile.png"
+    },
+    {
+      "page": "entry",
+      "device": "mobile",
+      "save": {
+        "equipment": [
+          {
+            "machine": "DAILY HIRE LOADER",
+            "vehicleNo": "FIX-HIRE-02",
+            "operator": "SYNTHETIC KEEP OPERATOR",
+            "task": "",
+            "entryType": "time_meter",
+            "startTime": "05:40",
+            "endTime": "",
+            "openingReading": null,
+            "closingReading": null,
+            "diesel": null,
+            "openingDiesel": null,
+            "dieselBalanceInTank": null,
+            "dieselBalanceConfirmed": false,
+            "equipmentId": 7704,
+            "dieselSource": "",
+            "fuelStation": "",
+            "billNumber": "",
+            "amountPaid": null,
+            "numberOfTrips": null,
+            "tripDistance": null,
+            "totalKm": null,
+            "waterQuantity": null,
+            "boqItemId": null,
+            "structureId": null,
+            "plantUsageId": null,
+            "breakdowns": [],
+            "usageStatus": "working",
+            "hoursWorked": null,
+            "expectedDiesel": null,
+            "dieselNorm": null
+          }
+        ]
+      },
+      "writes": [
+        "/api/dprs"
+      ]
+    },
+    {
+      "page": "edit",
+      "type": "equipment",
+      "device": "mobile",
+      "geometry": {
+        "row": {
+          "left": 45.71875,
+          "right": 336.28125,
+          "top": 1293.71875,
+          "bottom": 1509.71875,
+          "width": 290.5625,
+          "height": 216
+        },
+        "trigger": {
+          "left": 253.390625,
+          "right": 297.390625,
+          "top": 1321.71875,
+          "bottom": 1365.71875,
+          "width": 44,
+          "height": 44
+        },
+        "delete": {
+          "left": 201.390625,
+          "right": 245.390625,
+          "top": 1321.71875,
+          "bottom": 1365.71875,
+          "width": 44,
+          "height": 44
+        },
+        "viewport": 390,
+        "scrollWidth": 382,
+        "overflowSources": []
+      },
+      "confirmationGeometry": {
+        "cancelTop": 1432.71875,
+        "headerBottom": 1365.71875,
+        "inside": true,
+        "textRect": [
+          {
+            "left": 75.71875,
+            "right": 132.765625,
+            "top": 1385.71875,
+            "bottom": 1402.71875
+          },
+          {
+            "left": 132.765625,
+            "right": 268.921875,
+            "top": 1385.71875,
+            "bottom": 1402.71875
+          },
+          {
+            "left": 75.71875,
+            "right": 157.375,
+            "top": 1405.71875,
+            "bottom": 1422.71875
+          },
+          {
+            "left": 157.375,
+            "right": 193.109375,
+            "top": 1405.71875,
+            "bottom": 1422.71875
+          }
+        ],
+        "controls": [
+          {
+            "left": 75.71875,
+            "right": 187,
+            "top": 1432.71875,
+            "bottom": 1476.71875
+          },
+          {
+            "left": 195,
+            "right": 306.28125,
+            "top": 1432.71875,
+            "bottom": 1476.71875
+          }
+        ],
+        "textOverlapsControls": false
+      },
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr19-fix2-edit-equipment-mobile.png"
+    },
+    {
+      "page": "edit",
+      "device": "mobile",
+      "save": {
+        "equipment": [
+          {
+            "machine": "SYNTHETIC KEEP EXCAVATOR",
+            "vehicleNo": "FIX2-KEEP",
+            "operator": "SYNTHETIC KEEP OPERATOR",
+            "task": "DRESSING",
+            "entryType": "time_meter",
+            "startTime": "08:00",
+            "endTime": "16:00",
+            "openingReading": 100,
+            "closingReading": 106,
+            "diesel": 23,
+            "openingDiesel": 30,
+            "dieselBalanceInTank": 25,
+            "dieselBalanceConfirmed": true,
+            "dieselNorm": 5,
+            "expectedDiesel": 30,
+            "hoursWorked": 6,
+            "equipmentId": null,
+            "plantUsageId": null,
+            "usageStatus": null,
+            "usageStatusReason": null,
+            "dieselSource": "plant_stock",
+            "fuelStation": "",
+            "billNumber": "",
+            "amountPaid": null,
+            "numberOfTrips": null,
+            "tripDistance": null,
+            "totalKm": null,
+            "waterQuantity": null,
+            "boqItemId": null,
+            "structureId": null,
+            "persistedId": 7441,
+            "breakdowns": []
+          }
+        ]
+      },
+      "writes": [
+        "/api/dprs/6340/draft"
+      ]
+    }
+  ]
+}

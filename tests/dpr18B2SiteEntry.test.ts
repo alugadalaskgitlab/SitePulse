@@ -19,7 +19,7 @@ describe("DPR18 B2 SiteEntry equipment integration", () => {
     expect(siteEntry).toContain("disabled={entry.plantUsageId != null}");
     expect(siteEntry).toContain("...(updated[rowIdx][autoWorkingStatus] ? { usageStatus: null");
     expect(siteEntry).toContain('setEquipment(data.equipment.map(row => ({ ...row, [equipmentRowToken]: Symbol("equipment row") })))');
-    expect(siteEntry).toContain("setEquipment(equipment.filter((_, i) => i !== index))");
+    expect(siteEntry).toContain("rows.filter((_, i) => i !== index)");
     expect(siteEntry).toContain("const rowToken = entry[equipmentRowToken]");
     expect(siteEntry).toContain("fetchOpenPlantRecord(selected.id, idx, rowToken)");
   });

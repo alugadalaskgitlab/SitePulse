@@ -1176,6 +1176,18 @@ const dpr18B2Linked = {
   equipment: [{ ...dpr18B2Base.equipment[0], id: 7280, plantUsageId: 8101, usageStatus: null, usageStatusReason: null }],
 };
 
+// DPR19 Fix2 browser-only edit record: two independently identifiable,
+// populated equipment rows. The intercepted fixture never contacts a DB.
+const dpr19Fix2Edit = {
+  ...dpr18B2Base, id: 6340,
+  equipment: [
+    { ...dpr18B2Base.equipment[0], id: 7440, machine: "SYNTHETIC DELETE EXCAVATOR",
+      vehicleNo: "FIX2-DEL", operator: "SYNTHETIC DELETE OPERATOR", diesel: 11 },
+    { ...dpr18B2Base.equipment[0], id: 7441, machine: "SYNTHETIC KEEP EXCAVATOR",
+      vehicleNo: "FIX2-KEEP", operator: "SYNTHETIC KEEP OPERATOR", diesel: 23 },
+  ],
+};
+
 // DPR18 B3: isolated GET-only DPR detail responses. These are not added to
 // the editable/saved fixture record store or any customer-backed endpoint.
 const dpr18B3Reports: Record<number, any> = Object.fromEntries(
@@ -1282,6 +1294,7 @@ const persistedDprState = (() => {
 let currentDpr: any = persistedDprState.current ?? { ...storedDpr };
 const guidedDprRecords: Record<number, any> = {
   [dpr16B2ClassicEdit.id]: dpr16B2ClassicEdit,
+  [dpr19Fix2Edit.id]: dpr19Fix2Edit,
   [dpr18B2Edit.id]: dpr18B2Edit,
   [dpr18B2Guided.id]: dpr18B2Guided,
   [dpr18B2Legacy.id]: dpr18B2Legacy,
