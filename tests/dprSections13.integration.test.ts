@@ -57,7 +57,7 @@ beforeAll(async () => {
     });
     await pg.exec(`CREATE TABLE "${config.name}" (${columns.join(",")})`);
   }
-  for (const table of [schema.dprDraftStoppages, schema.equipmentActivitySegments, schema.equipmentActivityAllocations, schema.equipmentActivitySegmentBoqItems, schema.activityPersonnel]) {
+  for (const table of [schema.dprDraftStoppages, schema.equipmentActivitySegments, schema.equipmentActivityAllocations, schema.equipmentActivitySegmentBoqItems, schema.activityPersonnel, schema.labourLogWorkers]) {
     const config = getTableConfig(table);
     for (const fk of config.foreignKeys) {
       const reference = fk.reference();
@@ -75,6 +75,23 @@ beforeAll(async () => {
 afterAll(async () => { await pg?.close(); });
 
 describe("DPR-13 normalized SQL section transactions", () => {
+  it("persists optional names on a labour section row, preserves omission and cascades row deletion", async () => {
+    const ctx = { ...context, date: "2026-10-13" };
+    const first = await save("labour", { labour: [{ category: "Unskilled", count: 1, workerNames: [" Alice ", "Alice"] }] }, undefined, ctx);
+    expect(first.dpr.labour[0].workerNames).toEqual(["Alice", "Alice"]);
+    const persistedId = first.dpr.labour[0].id;
+    const retained = await save("labour", { labour: [{ category: "Unskilled", count: 2, persistedId }] }, first, ctx);
+    expect(retained.dpr.labour[0]).toMatchObject({ id: persistedId, count: 2, workerNames: ["Alice", "Alice"] });
+    const replaced = await save("labour", { labour: [{ category: "Unskilled", count: 2, persistedId, workerNames: ["Bea"] }] }, retained, ctx);
+    expect(replaced.dpr.labour[0].workerNames).toEqual(["Bea"]);
+    const cleared = await save("labour", { labour: [{ category: "Unskilled", count: 2, persistedId, workerNames: [] }] }, replaced, ctx);
+    expect(cleared.dpr.labour[0].workerNames).toEqual([]);
+    const named = await save("labour", { labour: [{ category: "Unskilled", count: 2, persistedId, workerNames: ["Child"] }] }, cleared, ctx);
+    const removed = await save("labour", { labour: [] }, named, ctx);
+    expect(removed.dpr.labour).toEqual([]);
+    expect(await state.db.select().from(schema.labourLogWorkers).where(eq(schema.labourLogWorkers.labourLogId, persistedId))).toEqual([]);
+  });
+
   it("resolves without creating, equipment first creates one shell, sibling writes retain rows and tokens", async () => {
     expect(await findSectionDrafts(state.db, context)).toHaveLength(0);
     const first = await save("equipment", { equipment: [{ machine: "SYNTHETIC ROLLER", openingReading: 10 }] });
@@ -305,16 +322,27 @@ describe("DPR-13 normalized SQL section transactions", () => {
   it("returns create tokens and accepts a token-bearing legacy PATCH without allowing stale overwrite", async () => {
     const ctx = { ...context, date: "2026-09-28" };
     const created = await request(app).post("/api/dprs").send({ ...ctx, engineer: "SYNTHETIC", dprStatus: "draft",
-      labour: [{ category: "Unskilled", count: 1, gender: "Male" }] });
+      labour: [{ category: "Unskilled", count: 1, gender: "Male", workerNames: ["Asha", " Beena "] }] });
     expect(created.status).toBe(201);
     expect(created.body.headerToken).toBeTruthy();
-    const payload = { ...ctx, engineer: "SYNTHETIC", dprStatus: "draft", labour: [{ category: "Unskilled", count: 2, gender: "Male" }],
+    const initial = await fresh(created.body.id);
+    expect(initial.dpr.labour[0].workerNames).toEqual(["Asha", "Beena"]);
+    const payload = { ...ctx, engineer: "SYNTHETIC", dprStatus: "draft", labour: [{
+      category: "Unskilled", count: 2, gender: "Male", persistedId: initial.dpr.labour[0].id,
+    }],
       headerToken: created.body.headerToken, sectionTokens: created.body.sectionTokens };
     const saved = await request(app).patch(`/api/dprs/${created.body.id}/draft`).send(payload);
     expect(saved.status).toBe(200);
     expect(saved.body.labour[0].count).toBe(2);
+    expect(saved.body.labour[0].workerNames).toEqual(["Asha", "Beena"]);
     expect(saved.body.sectionTokens.labour).not.toBe(created.body.sectionTokens.labour);
     expect((await request(app).patch(`/api/dprs/${created.body.id}/draft`).send(payload)).status).toBe(409);
+    const explicit = await request(app).patch(`/api/dprs/${created.body.id}/draft`).send({
+      ...payload, sectionTokens: saved.body.sectionTokens, headerToken: saved.body.headerToken,
+      labour: [{ category: "Unskilled", count: 2, gender: "Male", persistedId: saved.body.labour[0].id, workerNames: [] }],
+    });
+    expect(explicit.status).toBe(200);
+    expect(explicit.body.labour[0].workerNames).toEqual([]);
   });
 
   it("stages, reopens, edits and submits stoppages with evidence atomically and exactly once", async () => {

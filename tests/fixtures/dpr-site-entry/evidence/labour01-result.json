@@ -1,0 +1,1710 @@
+{
+  "entry-mobile": {
+    "save": {
+      "id": 6103,
+      "payload": {
+        "date": "2026-09-30",
+        "site": "NARASIMHULU ROAD",
+        "engineer": "SURESH KUMAR - ENGINEER",
+        "role": "engineer",
+        "workType": "road",
+        "boqProjectId": 5501,
+        "dprStatus": "draft",
+        "progress": [
+          {
+            "entryKey": "pe_1790749559828_q0znrpyw",
+            "activity": "",
+            "side": "",
+            "chainageFrom": "1+000",
+            "chainageTo": "",
+            "length": null,
+            "width": null,
+            "thickness": null,
+            "quantity": null,
+            "uom": "SQM",
+            "noSiteWork": false,
+            "noSiteWorkDescription": "",
+            "isIncidental": false,
+            "incidentalDescription": "",
+            "personnelIds": [],
+            "boqItemId": null,
+            "programmeBarId": null,
+            "earthworkArrangementId": null,
+            "quantitySource": null,
+            "quantitySourceNote": null,
+            "chainageOverrideReason": null,
+            "executedBy": null,
+            "layerNo": null,
+            "materialOutcome": null,
+            "reusableQty": null,
+            "chainageFromKm": 1,
+            "chainageToKm": null
+          }
+        ],
+        "cutFillConsumptions": [],
+        "structureItems": [],
+        "equipment": [],
+        "labour": [
+          {
+            "category": "Skilled",
+            "gender": "Male",
+            "count": 1,
+            "task": "",
+            "contractor": "",
+            "boqItemId": null,
+            "structureId": null,
+            "workerNames": [
+              "Local Fixture"
+            ]
+          }
+        ],
+        "materials": [],
+        "sitePurchases": [],
+        "clientTimestamp": "2026-09-30 06:26:01"
+      }
+    }
+  },
+  "edit-mobile": {
+    "save": {
+      "id": 6351,
+      "payload": {
+        "date": "2026-08-05",
+        "site": "NARASIMHULU ROAD",
+        "engineer": "SURESH KUMAR",
+        "remarks": "LABOUR-01 synthetic fixture only; no customer record.",
+        "boqProjectId": 5501,
+        "workType": "road",
+        "structureItems": [],
+        "progress": [
+          {
+            "entryKey": "synthetic-dpr18-no-site-work",
+            "activity": "NO SITE WORK",
+            "side": "",
+            "chainageFrom": "",
+            "chainageTo": "",
+            "length": null,
+            "width": null,
+            "thickness": null,
+            "quantity": null,
+            "uom": "SQM",
+            "noSiteWork": true,
+            "noSiteWorkDescription": "SYNTHETIC OTHER WORK",
+            "boqItemId": null,
+            "programmeBarId": null,
+            "earthworkArrangementId": null,
+            "quantitySource": null,
+            "quantitySourceNote": null,
+            "chainageOverrideReason": null,
+            "lengthOverrideReason": null,
+            "executedBy": null,
+            "layerNo": null,
+            "isIncidental": false,
+            "incidentalDescription": null,
+            "materialOutcome": null,
+            "reusableQty": null,
+            "chainageFromKm": null,
+            "chainageToKm": null,
+            "persistedId": 7381,
+            "personnelIds": []
+          }
+        ],
+        "cutFillConsumptions": [],
+        "equipment": [
+          {
+            "machine": "SYNTHETIC DPR18 EXCAVATOR",
+            "vehicleNo": "FIX-JCB-01",
+            "operator": "RAJU",
+            "task": "DRESSING",
+            "entryType": "time_meter",
+            "startTime": "08:00",
+            "endTime": "16:00",
+            "openingReading": 100,
+            "closingReading": 106,
+            "diesel": 20,
+            "openingDiesel": 30,
+            "dieselBalanceInTank": 25,
+            "dieselBalanceConfirmed": true,
+            "dieselNorm": 5,
+            "expectedDiesel": 30,
+            "hoursWorked": 6,
+            "equipmentId": null,
+            "plantUsageId": null,
+            "usageStatus": null,
+            "usageStatusReason": null,
+            "dieselSource": "plant_stock",
+            "fuelStation": "",
+            "billNumber": "",
+            "amountPaid": null,
+            "numberOfTrips": null,
+            "tripDistance": null,
+            "totalKm": null,
+            "waterQuantity": null,
+            "boqItemId": null,
+            "structureId": null,
+            "persistedId": 7258,
+            "breakdowns": []
+          }
+        ],
+        "labour": [
+          {
+            "persistedId": 7351,
+            "workerNames": [
+              "Raju Fixture Edited",
+              "Lata Fixture",
+              "Third Fixture"
+            ],
+            "category": "Skilled",
+            "gender": "Male",
+            "count": 2,
+            "task": "GSB LAYING",
+            "contractor": "SYNTHETIC CONTRACTOR CREW",
+            "boqItemId": 8801,
+            "structureId": null
+          },
+          {
+            "persistedId": 7352,
+            "workerNames": [],
+            "category": "Skilled",
+            "gender": "Male",
+            "count": 1,
+            "task": "GSB LAYING",
+            "contractor": "SYNTHETIC LOCAL LABOUR",
+            "boqItemId": 8801,
+            "structureId": null
+          }
+        ],
+        "materials": [],
+        "sitePurchases": [],
+        "headerToken": "82fce50df30ccb8e5bc437bb340575c9df70d35eb44a9d7acbe779d5185d55e7",
+        "sectionTokens": {
+          "activity": "8307c665273a3e64a6f69d48f1c5f90367d8bb68a49658eb64bf377859c8af3f",
+          "equipment": "eaf8f7676dce2f2ae0ea5868dd637396dc431327df4f02c8222f1c103a745177",
+          "labour": "3b13fef829e7a399e2e6f21bb9d693d900724a7a8d0e3ca9b358fb895f4a04e6",
+          "materials": "ceba8f6796ccbc716944b21dc12493f66e47f15c9696a913f7ae27ea9619703c"
+        }
+      }
+    },
+    "consecutive": {
+      "id": 6351,
+      "payload": {
+        "date": "2026-08-05",
+        "site": "NARASIMHULU ROAD",
+        "engineer": "SURESH KUMAR",
+        "remarks": "LABOUR-01 synthetic fixture only; no customer record.",
+        "boqProjectId": 5501,
+        "workType": "road",
+        "structureItems": [],
+        "progress": [
+          {
+            "entryKey": "synthetic-dpr18-no-site-work",
+            "activity": "NO SITE WORK",
+            "side": "",
+            "chainageFrom": "",
+            "chainageTo": "",
+            "length": null,
+            "width": null,
+            "thickness": null,
+            "quantity": null,
+            "uom": "SQM",
+            "noSiteWork": true,
+            "noSiteWorkDescription": "SYNTHETIC OTHER WORK",
+            "boqItemId": null,
+            "programmeBarId": null,
+            "earthworkArrangementId": null,
+            "quantitySource": null,
+            "quantitySourceNote": null,
+            "chainageOverrideReason": null,
+            "lengthOverrideReason": null,
+            "executedBy": null,
+            "layerNo": null,
+            "isIncidental": false,
+            "incidentalDescription": null,
+            "materialOutcome": null,
+            "reusableQty": null,
+            "chainageFromKm": null,
+            "chainageToKm": null,
+            "personnelIds": []
+          }
+        ],
+        "cutFillConsumptions": [],
+        "equipment": [
+          {
+            "machine": "SYNTHETIC DPR18 EXCAVATOR",
+            "vehicleNo": "FIX-JCB-01",
+            "operator": "RAJU",
+            "task": "DRESSING",
+            "entryType": "time_meter",
+            "startTime": "08:00",
+            "endTime": "16:00",
+            "openingReading": 100,
+            "closingReading": 106,
+            "diesel": 20,
+            "openingDiesel": 30,
+            "dieselBalanceInTank": 25,
+            "dieselBalanceConfirmed": true,
+            "dieselNorm": 5,
+            "expectedDiesel": 30,
+            "hoursWorked": 6,
+            "equipmentId": null,
+            "plantUsageId": null,
+            "usageStatus": null,
+            "usageStatusReason": null,
+            "dieselSource": "plant_stock",
+            "fuelStation": "",
+            "billNumber": "",
+            "amountPaid": null,
+            "numberOfTrips": null,
+            "tripDistance": null,
+            "totalKm": null,
+            "waterQuantity": null,
+            "boqItemId": null,
+            "structureId": null,
+            "breakdowns": []
+          }
+        ],
+        "labour": [
+          {
+            "persistedId": 8351,
+            "workerNames": [
+              "Raju Fixture Edited",
+              "Lata Fixture",
+              "Third Fixture"
+            ],
+            "category": "Skilled",
+            "gender": "Male",
+            "count": 2,
+            "task": "GSB LAYING",
+            "contractor": "SYNTHETIC CONTRACTOR CREW",
+            "boqItemId": 8801,
+            "structureId": null
+          },
+          {
+            "persistedId": 8352,
+            "workerNames": [],
+            "category": "Skilled",
+            "gender": "Male",
+            "count": 1,
+            "task": "GSB LAYING",
+            "contractor": "SYNTHETIC LOCAL LABOUR",
+            "boqItemId": 8801,
+            "structureId": null
+          }
+        ],
+        "materials": [],
+        "sitePurchases": [],
+        "headerToken": "82fce50df30ccb8e5bc437bb340575c9df70d35eb44a9d7acbe779d5185d55e7",
+        "sectionTokens": {
+          "activity": "767d3ccec8cd5fe5412bb7afe93a90bc351326a8e2ae54f3a9024a0078c9670a",
+          "equipment": "976f48854d91343a3e99ed53e1466b8b902b50c4fc9f116865770caf55c504d4",
+          "labour": "20c077754ee86158f0fbb1485acd934032c1406bd8511e8513eb01f6e5bab097",
+          "materials": "ceba8f6796ccbc716944b21dc12493f66e47f15c9696a913f7ae27ea9619703c"
+        }
+      }
+    },
+    "geometry": {
+      "viewport": 390,
+      "documentWidth": 390,
+      "row": {
+        "x": 25,
+        "y": 1797,
+        "width": 340,
+        "height": 620,
+        "top": 1797,
+        "right": 365,
+        "bottom": 2417,
+        "left": 25
+      },
+      "controls": [
+        {
+          "label": "Worker names (3)",
+          "x": 42,
+          "y": 2102,
+          "width": 120.609375,
+          "height": 44,
+          "top": 2102,
+          "right": 162.609375,
+          "bottom": 2146,
+          "left": 42
+        },
+        {
+          "label": "Worker name 1",
+          "x": 51,
+          "y": 2155,
+          "width": 236,
+          "height": 36,
+          "top": 2155,
+          "right": 287,
+          "bottom": 2191,
+          "left": 51
+        },
+        {
+          "label": "Remove worker name 1",
+          "x": 295,
+          "y": 2155,
+          "width": 44,
+          "height": 44,
+          "top": 2155,
+          "right": 339,
+          "bottom": 2199,
+          "left": 295
+        },
+        {
+          "label": "Worker name 2",
+          "x": 51,
+          "y": 2207,
+          "width": 236,
+          "height": 36,
+          "top": 2207,
+          "right": 287,
+          "bottom": 2243,
+          "left": 51
+        },
+        {
+          "label": "Remove worker name 2",
+          "x": 295,
+          "y": 2207,
+          "width": 44,
+          "height": 44,
+          "top": 2207,
+          "right": 339,
+          "bottom": 2251,
+          "left": 295
+        },
+        {
+          "label": "Worker name 3",
+          "x": 51,
+          "y": 2259,
+          "width": 236,
+          "height": 36,
+          "top": 2259,
+          "right": 287,
+          "bottom": 2295,
+          "left": 51
+        },
+        {
+          "label": "Remove worker name 3",
+          "x": 295,
+          "y": 2259,
+          "width": 44,
+          "height": 44,
+          "top": 2259,
+          "right": 339,
+          "bottom": 2303,
+          "left": 295
+        },
+        {
+          "label": "Add name",
+          "x": 51,
+          "y": 2311,
+          "width": 112.203125,
+          "height": 44,
+          "top": 2311,
+          "right": 163.203125,
+          "bottom": 2355,
+          "left": 51
+        }
+      ]
+    }
+  },
+  "guided-mobile": {
+    "save": {
+      "id": 6351,
+      "payload": {
+        "date": "2026-08-05",
+        "site": "NARASIMHULU ROAD",
+        "engineer": "SURESH KUMAR",
+        "role": "engineer",
+        "workType": "road",
+        "boqProjectId": 5501,
+        "dprStatus": "draft",
+        "progress": [
+          {
+            "entryKey": "synthetic-dpr18-no-site-work",
+            "activity": "NO SITE WORK",
+            "side": "",
+            "chainageFrom": "",
+            "chainageTo": "",
+            "length": null,
+            "width": null,
+            "thickness": null,
+            "quantity": null,
+            "uom": "SQM",
+            "noSiteWork": true,
+            "noSiteWorkDescription": "SYNTHETIC OTHER WORK",
+            "isIncidental": false,
+            "incidentalDescription": null,
+            "personnelIds": [],
+            "boqItemId": null,
+            "programmeBarId": null,
+            "earthworkArrangementId": null,
+            "chainageFromKm": null,
+            "chainageToKm": null,
+            "quantitySource": null,
+            "quantitySourceNote": null,
+            "chainageOverrideReason": null,
+            "executedBy": null
+          }
+        ],
+        "cutFillConsumptions": [],
+        "structureItems": [],
+        "equipment": [
+          {
+            "persistedId": 7258,
+            "entryType": "time_meter",
+            "startTime": "08:00",
+            "endTime": "16:00",
+            "openingReading": 100,
+            "closingReading": 106,
+            "hoursWorked": null,
+            "diesel": 20,
+            "dieselNorm": 5,
+            "expectedDiesel": null,
+            "equipmentId": null,
+            "plantUsageId": null,
+            "dieselSource": "plant_stock",
+            "openingDiesel": 30,
+            "dieselBalanceInTank": 25,
+            "dieselBalanceConfirmed": true,
+            "fuelStation": "",
+            "billNumber": "",
+            "amountPaid": null,
+            "numberOfTrips": null,
+            "tripDistance": null,
+            "totalKm": null,
+            "waterQuantity": null,
+            "boqItemId": null,
+            "structureId": null,
+            "breakdowns": [],
+            "machine": "SYNTHETIC DPR18 EXCAVATOR",
+            "vehicleNo": "FIX-JCB-01",
+            "operator": "RAJU",
+            "task": "DRESSING"
+          }
+        ],
+        "labour": [
+          {
+            "persistedId": 7351,
+            "workerNames": [
+              "Raju Fixture Edited",
+              "Lata Fixture",
+              "Third Fixture"
+            ],
+            "category": "Skilled",
+            "gender": "Male",
+            "count": 2,
+            "task": "GSB LAYING",
+            "contractor": "SYNTHETIC CONTRACTOR CREW",
+            "boqItemId": 8801,
+            "structureId": null
+          },
+          {
+            "persistedId": 7352,
+            "workerNames": [],
+            "category": "Skilled",
+            "gender": "Male",
+            "count": 1,
+            "task": "GSB LAYING",
+            "contractor": "SYNTHETIC LOCAL LABOUR",
+            "boqItemId": 8801,
+            "structureId": null
+          }
+        ],
+        "materials": [],
+        "sitePurchases": [],
+        "remarks": "LABOUR-01 synthetic fixture only; no customer record.",
+        "clientTimestamp": "2026-09-30 06:25:58",
+        "headerToken": "82fce50df30ccb8e5bc437bb340575c9df70d35eb44a9d7acbe779d5185d55e7",
+        "sectionTokens": {
+          "activity": "8307c665273a3e64a6f69d48f1c5f90367d8bb68a49658eb64bf377859c8af3f",
+          "equipment": "eaf8f7676dce2f2ae0ea5868dd637396dc431327df4f02c8222f1c103a745177",
+          "labour": "3b13fef829e7a399e2e6f21bb9d693d900724a7a8d0e3ca9b358fb895f4a04e6",
+          "materials": "ceba8f6796ccbc716944b21dc12493f66e47f15c9696a913f7ae27ea9619703c"
+        }
+      }
+    },
+    "consecutive": {
+      "id": 6351,
+      "payload": {
+        "date": "2026-08-05",
+        "site": "NARASIMHULU ROAD",
+        "engineer": "SURESH KUMAR",
+        "role": "engineer",
+        "workType": "road",
+        "boqProjectId": 5501,
+        "dprStatus": "draft",
+        "progress": [
+          {
+            "entryKey": "synthetic-dpr18-no-site-work",
+            "activity": "NO SITE WORK",
+            "side": "",
+            "chainageFrom": "",
+            "chainageTo": "",
+            "length": null,
+            "width": null,
+            "thickness": null,
+            "quantity": null,
+            "uom": "SQM",
+            "noSiteWork": true,
+            "noSiteWorkDescription": "SYNTHETIC OTHER WORK",
+            "isIncidental": false,
+            "incidentalDescription": null,
+            "personnelIds": [],
+            "boqItemId": null,
+            "programmeBarId": null,
+            "earthworkArrangementId": null,
+            "chainageFromKm": null,
+            "chainageToKm": null,
+            "quantitySource": null,
+            "quantitySourceNote": null,
+            "chainageOverrideReason": null,
+            "executedBy": null
+          }
+        ],
+        "cutFillConsumptions": [],
+        "structureItems": [],
+        "equipment": [
+          {
+            "persistedId": 7258,
+            "entryType": "time_meter",
+            "startTime": "08:00",
+            "endTime": "16:00",
+            "openingReading": 100,
+            "closingReading": 106,
+            "hoursWorked": null,
+            "diesel": 20,
+            "dieselNorm": 5,
+            "expectedDiesel": null,
+            "equipmentId": null,
+            "plantUsageId": null,
+            "dieselSource": "plant_stock",
+            "openingDiesel": 30,
+            "dieselBalanceInTank": 25,
+            "dieselBalanceConfirmed": true,
+            "fuelStation": "",
+            "billNumber": "",
+            "amountPaid": null,
+            "numberOfTrips": null,
+            "tripDistance": null,
+            "totalKm": null,
+            "waterQuantity": null,
+            "boqItemId": null,
+            "structureId": null,
+            "breakdowns": [],
+            "machine": "SYNTHETIC DPR18 EXCAVATOR",
+            "vehicleNo": "FIX-JCB-01",
+            "operator": "RAJU",
+            "task": "DRESSING"
+          }
+        ],
+        "labour": [
+          {
+            "persistedId": 8355,
+            "workerNames": [
+              "Raju Fixture Edited",
+              "Lata Fixture",
+              "Third Fixture"
+            ],
+            "category": "Skilled",
+            "gender": "Male",
+            "count": 2,
+            "task": "GSB LAYING",
+            "contractor": "SYNTHETIC CONTRACTOR CREW",
+            "boqItemId": 8801,
+            "structureId": null
+          },
+          {
+            "persistedId": 8356,
+            "workerNames": [],
+            "category": "Skilled",
+            "gender": "Male",
+            "count": 1,
+            "task": "GSB LAYING",
+            "contractor": "SYNTHETIC LOCAL LABOUR",
+            "boqItemId": 8801,
+            "structureId": null
+          }
+        ],
+        "materials": [],
+        "sitePurchases": [],
+        "remarks": "LABOUR-01 synthetic fixture only; no customer record.",
+        "clientTimestamp": "2026-09-30 06:25:58",
+        "headerToken": "82fce50df30ccb8e5bc437bb340575c9df70d35eb44a9d7acbe779d5185d55e7",
+        "sectionTokens": {
+          "activity": "0a44e235fb3eead744ebaed4dbd7e268292db45c8a9a39ad63075bf2887ba707",
+          "equipment": "344b85abbd499320aa47d350a2acc6f7b9a2c216e2fd262ce7fa5984b170bace",
+          "labour": "93f7e8a5544120959db27cd2957ce9b9f1e22fe160e2ae66a175685e20589b5c",
+          "materials": "ceba8f6796ccbc716944b21dc12493f66e47f15c9696a913f7ae27ea9619703c"
+        }
+      }
+    },
+    "geometry": {
+      "viewport": 390,
+      "documentWidth": 390,
+      "row": {
+        "x": 25,
+        "y": 567.5,
+        "width": 340,
+        "height": 424,
+        "top": 567.5,
+        "right": 365,
+        "bottom": 991.5,
+        "left": 25
+      },
+      "controls": [
+        {
+          "label": "Worker names (3)",
+          "x": 25,
+          "y": 693.5,
+          "width": 120.609375,
+          "height": 44,
+          "top": 693.5,
+          "right": 145.609375,
+          "bottom": 737.5,
+          "left": 25
+        },
+        {
+          "label": "Worker name 1",
+          "x": 34,
+          "y": 746.5,
+          "width": 270,
+          "height": 36,
+          "top": 746.5,
+          "right": 304,
+          "bottom": 782.5,
+          "left": 34
+        },
+        {
+          "label": "Remove worker name 1",
+          "x": 312,
+          "y": 746.5,
+          "width": 44,
+          "height": 44,
+          "top": 746.5,
+          "right": 356,
+          "bottom": 790.5,
+          "left": 312
+        },
+        {
+          "label": "Worker name 2",
+          "x": 34,
+          "y": 798.5,
+          "width": 270,
+          "height": 36,
+          "top": 798.5,
+          "right": 304,
+          "bottom": 834.5,
+          "left": 34
+        },
+        {
+          "label": "Remove worker name 2",
+          "x": 312,
+          "y": 798.5,
+          "width": 44,
+          "height": 44,
+          "top": 798.5,
+          "right": 356,
+          "bottom": 842.5,
+          "left": 312
+        },
+        {
+          "label": "Worker name 3",
+          "x": 34,
+          "y": 850.5,
+          "width": 270,
+          "height": 36,
+          "top": 850.5,
+          "right": 304,
+          "bottom": 886.5,
+          "left": 34
+        },
+        {
+          "label": "Remove worker name 3",
+          "x": 312,
+          "y": 850.5,
+          "width": 44,
+          "height": 44,
+          "top": 850.5,
+          "right": 356,
+          "bottom": 894.5,
+          "left": 312
+        },
+        {
+          "label": "Add name",
+          "x": 34,
+          "y": 902.5,
+          "width": 112.203125,
+          "height": 44,
+          "top": 902.5,
+          "right": 146.203125,
+          "bottom": 946.5,
+          "left": 34
+        }
+      ]
+    },
+    "cleared": {
+      "id": 6351,
+      "payload": {
+        "date": "2026-08-05",
+        "site": "NARASIMHULU ROAD",
+        "engineer": "SURESH KUMAR",
+        "role": "engineer",
+        "workType": "road",
+        "boqProjectId": 5501,
+        "dprStatus": "draft",
+        "progress": [
+          {
+            "entryKey": "synthetic-dpr18-no-site-work",
+            "activity": "NO SITE WORK",
+            "side": "",
+            "chainageFrom": "",
+            "chainageTo": "",
+            "length": null,
+            "width": null,
+            "thickness": null,
+            "quantity": null,
+            "uom": "SQM",
+            "noSiteWork": true,
+            "noSiteWorkDescription": "SYNTHETIC OTHER WORK",
+            "isIncidental": false,
+            "incidentalDescription": null,
+            "personnelIds": [],
+            "boqItemId": null,
+            "programmeBarId": null,
+            "earthworkArrangementId": null,
+            "chainageFromKm": null,
+            "chainageToKm": null,
+            "quantitySource": null,
+            "quantitySourceNote": null,
+            "chainageOverrideReason": null,
+            "executedBy": null
+          }
+        ],
+        "cutFillConsumptions": [],
+        "structureItems": [],
+        "equipment": [
+          {
+            "persistedId": 7258,
+            "entryType": "time_meter",
+            "startTime": "08:00",
+            "endTime": "16:00",
+            "openingReading": 100,
+            "closingReading": 106,
+            "hoursWorked": null,
+            "diesel": 20,
+            "dieselNorm": 5,
+            "expectedDiesel": null,
+            "equipmentId": null,
+            "plantUsageId": null,
+            "dieselSource": "plant_stock",
+            "openingDiesel": 30,
+            "dieselBalanceInTank": 25,
+            "dieselBalanceConfirmed": true,
+            "fuelStation": "",
+            "billNumber": "",
+            "amountPaid": null,
+            "numberOfTrips": null,
+            "tripDistance": null,
+            "totalKm": null,
+            "waterQuantity": null,
+            "boqItemId": null,
+            "structureId": null,
+            "breakdowns": [],
+            "machine": "SYNTHETIC DPR18 EXCAVATOR",
+            "vehicleNo": "FIX-JCB-01",
+            "operator": "RAJU",
+            "task": "DRESSING"
+          }
+        ],
+        "labour": [
+          {
+            "persistedId": 8357,
+            "workerNames": [],
+            "category": "Skilled",
+            "gender": "Male",
+            "count": 2,
+            "task": "GSB LAYING",
+            "contractor": "SYNTHETIC CONTRACTOR CREW",
+            "boqItemId": 8801,
+            "structureId": null
+          },
+          {
+            "persistedId": 8358,
+            "workerNames": [],
+            "category": "Skilled",
+            "gender": "Male",
+            "count": 1,
+            "task": "GSB LAYING",
+            "contractor": "SYNTHETIC LOCAL LABOUR",
+            "boqItemId": 8801,
+            "structureId": null
+          }
+        ],
+        "materials": [],
+        "sitePurchases": [],
+        "remarks": "LABOUR-01 synthetic fixture only; no customer record.",
+        "clientTimestamp": "2026-09-30 06:25:58",
+        "headerToken": "82fce50df30ccb8e5bc437bb340575c9df70d35eb44a9d7acbe779d5185d55e7",
+        "sectionTokens": {
+          "activity": "0a44e235fb3eead744ebaed4dbd7e268292db45c8a9a39ad63075bf2887ba707",
+          "equipment": "344b85abbd499320aa47d350a2acc6f7b9a2c216e2fd262ce7fa5984b170bace",
+          "labour": "d3a7fcbe35bfac9b81e32d7d738cda4fe87c5b8f05b61fd7173ed7eb1b7b8266",
+          "materials": "ceba8f6796ccbc716944b21dc12493f66e47f15c9696a913f7ae27ea9619703c"
+        }
+      }
+    }
+  },
+  "entry-desktop": {
+    "save": {
+      "id": 6103,
+      "payload": {
+        "date": "2026-09-30",
+        "site": "NARASIMHULU ROAD",
+        "engineer": "SURESH KUMAR - ENGINEER",
+        "role": "engineer",
+        "workType": "road",
+        "boqProjectId": 5501,
+        "dprStatus": "draft",
+        "progress": [
+          {
+            "entryKey": "pe_1790749576477_i509r1cy",
+            "activity": "",
+            "side": "",
+            "chainageFrom": "1+000",
+            "chainageTo": "",
+            "length": null,
+            "width": null,
+            "thickness": null,
+            "quantity": null,
+            "uom": "SQM",
+            "noSiteWork": false,
+            "noSiteWorkDescription": "",
+            "isIncidental": false,
+            "incidentalDescription": "",
+            "personnelIds": [],
+            "boqItemId": null,
+            "programmeBarId": null,
+            "earthworkArrangementId": null,
+            "quantitySource": null,
+            "quantitySourceNote": null,
+            "chainageOverrideReason": null,
+            "executedBy": null,
+            "layerNo": null,
+            "materialOutcome": null,
+            "reusableQty": null,
+            "chainageFromKm": 1,
+            "chainageToKm": null
+          }
+        ],
+        "cutFillConsumptions": [],
+        "structureItems": [],
+        "equipment": [],
+        "labour": [
+          {
+            "category": "Skilled",
+            "gender": "Male",
+            "count": 1,
+            "task": "",
+            "contractor": "",
+            "boqItemId": null,
+            "structureId": null,
+            "workerNames": [
+              "Local Fixture"
+            ]
+          }
+        ],
+        "materials": [],
+        "sitePurchases": [],
+        "clientTimestamp": "2026-09-30 06:26:17"
+      }
+    }
+  },
+  "edit-desktop": {
+    "save": {
+      "id": 6351,
+      "payload": {
+        "date": "2026-08-05",
+        "site": "NARASIMHULU ROAD",
+        "engineer": "SURESH KUMAR",
+        "remarks": "LABOUR-01 synthetic fixture only; no customer record.",
+        "boqProjectId": 5501,
+        "workType": "road",
+        "structureItems": [],
+        "progress": [
+          {
+            "entryKey": "synthetic-dpr18-no-site-work",
+            "activity": "NO SITE WORK",
+            "side": "",
+            "chainageFrom": "",
+            "chainageTo": "",
+            "length": null,
+            "width": null,
+            "thickness": null,
+            "quantity": null,
+            "uom": "SQM",
+            "noSiteWork": true,
+            "noSiteWorkDescription": "SYNTHETIC OTHER WORK",
+            "boqItemId": null,
+            "programmeBarId": null,
+            "earthworkArrangementId": null,
+            "quantitySource": null,
+            "quantitySourceNote": null,
+            "chainageOverrideReason": null,
+            "lengthOverrideReason": null,
+            "executedBy": null,
+            "layerNo": null,
+            "isIncidental": false,
+            "incidentalDescription": null,
+            "materialOutcome": null,
+            "reusableQty": null,
+            "chainageFromKm": null,
+            "chainageToKm": null,
+            "persistedId": 7381,
+            "personnelIds": []
+          }
+        ],
+        "cutFillConsumptions": [],
+        "equipment": [
+          {
+            "machine": "SYNTHETIC DPR18 EXCAVATOR",
+            "vehicleNo": "FIX-JCB-01",
+            "operator": "RAJU",
+            "task": "DRESSING",
+            "entryType": "time_meter",
+            "startTime": "08:00",
+            "endTime": "16:00",
+            "openingReading": 100,
+            "closingReading": 106,
+            "diesel": 20,
+            "openingDiesel": 30,
+            "dieselBalanceInTank": 25,
+            "dieselBalanceConfirmed": true,
+            "dieselNorm": 5,
+            "expectedDiesel": 30,
+            "hoursWorked": 6,
+            "equipmentId": null,
+            "plantUsageId": null,
+            "usageStatus": null,
+            "usageStatusReason": null,
+            "dieselSource": "plant_stock",
+            "fuelStation": "",
+            "billNumber": "",
+            "amountPaid": null,
+            "numberOfTrips": null,
+            "tripDistance": null,
+            "totalKm": null,
+            "waterQuantity": null,
+            "boqItemId": null,
+            "structureId": null,
+            "persistedId": 7258,
+            "breakdowns": []
+          }
+        ],
+        "labour": [
+          {
+            "persistedId": 7351,
+            "workerNames": [
+              "Raju Fixture Edited",
+              "Lata Fixture",
+              "Third Fixture"
+            ],
+            "category": "Skilled",
+            "gender": "Male",
+            "count": 2,
+            "task": "GSB LAYING",
+            "contractor": "SYNTHETIC CONTRACTOR CREW",
+            "boqItemId": 8801,
+            "structureId": null
+          },
+          {
+            "persistedId": 7352,
+            "workerNames": [],
+            "category": "Skilled",
+            "gender": "Male",
+            "count": 1,
+            "task": "GSB LAYING",
+            "contractor": "SYNTHETIC LOCAL LABOUR",
+            "boqItemId": 8801,
+            "structureId": null
+          }
+        ],
+        "materials": [],
+        "sitePurchases": [],
+        "headerToken": "82fce50df30ccb8e5bc437bb340575c9df70d35eb44a9d7acbe779d5185d55e7",
+        "sectionTokens": {
+          "activity": "8307c665273a3e64a6f69d48f1c5f90367d8bb68a49658eb64bf377859c8af3f",
+          "equipment": "eaf8f7676dce2f2ae0ea5868dd637396dc431327df4f02c8222f1c103a745177",
+          "labour": "3b13fef829e7a399e2e6f21bb9d693d900724a7a8d0e3ca9b358fb895f4a04e6",
+          "materials": "ceba8f6796ccbc716944b21dc12493f66e47f15c9696a913f7ae27ea9619703c"
+        }
+      }
+    },
+    "consecutive": {
+      "id": 6351,
+      "payload": {
+        "date": "2026-08-05",
+        "site": "NARASIMHULU ROAD",
+        "engineer": "SURESH KUMAR",
+        "remarks": "LABOUR-01 synthetic fixture only; no customer record.",
+        "boqProjectId": 5501,
+        "workType": "road",
+        "structureItems": [],
+        "progress": [
+          {
+            "entryKey": "synthetic-dpr18-no-site-work",
+            "activity": "NO SITE WORK",
+            "side": "",
+            "chainageFrom": "",
+            "chainageTo": "",
+            "length": null,
+            "width": null,
+            "thickness": null,
+            "quantity": null,
+            "uom": "SQM",
+            "noSiteWork": true,
+            "noSiteWorkDescription": "SYNTHETIC OTHER WORK",
+            "boqItemId": null,
+            "programmeBarId": null,
+            "earthworkArrangementId": null,
+            "quantitySource": null,
+            "quantitySourceNote": null,
+            "chainageOverrideReason": null,
+            "lengthOverrideReason": null,
+            "executedBy": null,
+            "layerNo": null,
+            "isIncidental": false,
+            "incidentalDescription": null,
+            "materialOutcome": null,
+            "reusableQty": null,
+            "chainageFromKm": null,
+            "chainageToKm": null,
+            "personnelIds": []
+          }
+        ],
+        "cutFillConsumptions": [],
+        "equipment": [
+          {
+            "machine": "SYNTHETIC DPR18 EXCAVATOR",
+            "vehicleNo": "FIX-JCB-01",
+            "operator": "RAJU",
+            "task": "DRESSING",
+            "entryType": "time_meter",
+            "startTime": "08:00",
+            "endTime": "16:00",
+            "openingReading": 100,
+            "closingReading": 106,
+            "diesel": 20,
+            "openingDiesel": 30,
+            "dieselBalanceInTank": 25,
+            "dieselBalanceConfirmed": true,
+            "dieselNorm": 5,
+            "expectedDiesel": 30,
+            "hoursWorked": 6,
+            "equipmentId": null,
+            "plantUsageId": null,
+            "usageStatus": null,
+            "usageStatusReason": null,
+            "dieselSource": "plant_stock",
+            "fuelStation": "",
+            "billNumber": "",
+            "amountPaid": null,
+            "numberOfTrips": null,
+            "tripDistance": null,
+            "totalKm": null,
+            "waterQuantity": null,
+            "boqItemId": null,
+            "structureId": null,
+            "breakdowns": []
+          }
+        ],
+        "labour": [
+          {
+            "persistedId": 8351,
+            "workerNames": [
+              "Raju Fixture Edited",
+              "Lata Fixture",
+              "Third Fixture"
+            ],
+            "category": "Skilled",
+            "gender": "Male",
+            "count": 2,
+            "task": "GSB LAYING",
+            "contractor": "SYNTHETIC CONTRACTOR CREW",
+            "boqItemId": 8801,
+            "structureId": null
+          },
+          {
+            "persistedId": 8352,
+            "workerNames": [],
+            "category": "Skilled",
+            "gender": "Male",
+            "count": 1,
+            "task": "GSB LAYING",
+            "contractor": "SYNTHETIC LOCAL LABOUR",
+            "boqItemId": 8801,
+            "structureId": null
+          }
+        ],
+        "materials": [],
+        "sitePurchases": [],
+        "headerToken": "82fce50df30ccb8e5bc437bb340575c9df70d35eb44a9d7acbe779d5185d55e7",
+        "sectionTokens": {
+          "activity": "767d3ccec8cd5fe5412bb7afe93a90bc351326a8e2ae54f3a9024a0078c9670a",
+          "equipment": "976f48854d91343a3e99ed53e1466b8b902b50c4fc9f116865770caf55c504d4",
+          "labour": "20c077754ee86158f0fbb1485acd934032c1406bd8511e8513eb01f6e5bab097",
+          "materials": "ceba8f6796ccbc716944b21dc12493f66e47f15c9696a913f7ae27ea9619703c"
+        }
+      }
+    },
+    "geometry": {
+      "viewport": 1440,
+      "documentWidth": 1432,
+      "row": {
+        "x": 293,
+        "y": 1319,
+        "width": 846,
+        "height": 460,
+        "top": 1319,
+        "right": 1139,
+        "bottom": 1779,
+        "left": 293
+      },
+      "controls": [
+        {
+          "label": "Worker names (3)",
+          "x": 310,
+          "y": 1480,
+          "width": 120.609375,
+          "height": 44,
+          "top": 1480,
+          "right": 430.609375,
+          "bottom": 1524,
+          "left": 310
+        },
+        {
+          "label": "Worker name 1",
+          "x": 319,
+          "y": 1533,
+          "width": 742,
+          "height": 36,
+          "top": 1533,
+          "right": 1061,
+          "bottom": 1569,
+          "left": 319
+        },
+        {
+          "label": "Remove worker name 1",
+          "x": 1069,
+          "y": 1533,
+          "width": 44,
+          "height": 44,
+          "top": 1533,
+          "right": 1113,
+          "bottom": 1577,
+          "left": 1069
+        },
+        {
+          "label": "Worker name 2",
+          "x": 319,
+          "y": 1585,
+          "width": 742,
+          "height": 36,
+          "top": 1585,
+          "right": 1061,
+          "bottom": 1621,
+          "left": 319
+        },
+        {
+          "label": "Remove worker name 2",
+          "x": 1069,
+          "y": 1585,
+          "width": 44,
+          "height": 44,
+          "top": 1585,
+          "right": 1113,
+          "bottom": 1629,
+          "left": 1069
+        },
+        {
+          "label": "Worker name 3",
+          "x": 319,
+          "y": 1637,
+          "width": 742,
+          "height": 36,
+          "top": 1637,
+          "right": 1061,
+          "bottom": 1673,
+          "left": 319
+        },
+        {
+          "label": "Remove worker name 3",
+          "x": 1069,
+          "y": 1637,
+          "width": 44,
+          "height": 44,
+          "top": 1637,
+          "right": 1113,
+          "bottom": 1681,
+          "left": 1069
+        },
+        {
+          "label": "Add name",
+          "x": 319,
+          "y": 1689,
+          "width": 112.203125,
+          "height": 44,
+          "top": 1689,
+          "right": 431.203125,
+          "bottom": 1733,
+          "left": 319
+        }
+      ]
+    }
+  },
+  "guided-desktop": {
+    "save": {
+      "id": 6351,
+      "payload": {
+        "date": "2026-08-05",
+        "site": "NARASIMHULU ROAD",
+        "engineer": "SURESH KUMAR",
+        "role": "engineer",
+        "workType": "road",
+        "boqProjectId": 5501,
+        "dprStatus": "draft",
+        "progress": [
+          {
+            "entryKey": "synthetic-dpr18-no-site-work",
+            "activity": "NO SITE WORK",
+            "side": "",
+            "chainageFrom": "",
+            "chainageTo": "",
+            "length": null,
+            "width": null,
+            "thickness": null,
+            "quantity": null,
+            "uom": "SQM",
+            "noSiteWork": true,
+            "noSiteWorkDescription": "SYNTHETIC OTHER WORK",
+            "isIncidental": false,
+            "incidentalDescription": null,
+            "personnelIds": [],
+            "boqItemId": null,
+            "programmeBarId": null,
+            "earthworkArrangementId": null,
+            "chainageFromKm": null,
+            "chainageToKm": null,
+            "quantitySource": null,
+            "quantitySourceNote": null,
+            "chainageOverrideReason": null,
+            "executedBy": null
+          }
+        ],
+        "cutFillConsumptions": [],
+        "structureItems": [],
+        "equipment": [
+          {
+            "persistedId": 7258,
+            "entryType": "time_meter",
+            "startTime": "08:00",
+            "endTime": "16:00",
+            "openingReading": 100,
+            "closingReading": 106,
+            "hoursWorked": null,
+            "diesel": 20,
+            "dieselNorm": 5,
+            "expectedDiesel": null,
+            "equipmentId": null,
+            "plantUsageId": null,
+            "dieselSource": "plant_stock",
+            "openingDiesel": 30,
+            "dieselBalanceInTank": 25,
+            "dieselBalanceConfirmed": true,
+            "fuelStation": "",
+            "billNumber": "",
+            "amountPaid": null,
+            "numberOfTrips": null,
+            "tripDistance": null,
+            "totalKm": null,
+            "waterQuantity": null,
+            "boqItemId": null,
+            "structureId": null,
+            "breakdowns": [],
+            "machine": "SYNTHETIC DPR18 EXCAVATOR",
+            "vehicleNo": "FIX-JCB-01",
+            "operator": "RAJU",
+            "task": "DRESSING"
+          }
+        ],
+        "labour": [
+          {
+            "persistedId": 7351,
+            "workerNames": [
+              "Raju Fixture Edited",
+              "Lata Fixture",
+              "Third Fixture"
+            ],
+            "category": "Skilled",
+            "gender": "Male",
+            "count": 2,
+            "task": "GSB LAYING",
+            "contractor": "SYNTHETIC CONTRACTOR CREW",
+            "boqItemId": 8801,
+            "structureId": null
+          },
+          {
+            "persistedId": 7352,
+            "workerNames": [],
+            "category": "Skilled",
+            "gender": "Male",
+            "count": 1,
+            "task": "GSB LAYING",
+            "contractor": "SYNTHETIC LOCAL LABOUR",
+            "boqItemId": 8801,
+            "structureId": null
+          }
+        ],
+        "materials": [],
+        "sitePurchases": [],
+        "remarks": "LABOUR-01 synthetic fixture only; no customer record.",
+        "clientTimestamp": "2026-09-30 06:26:15",
+        "headerToken": "82fce50df30ccb8e5bc437bb340575c9df70d35eb44a9d7acbe779d5185d55e7",
+        "sectionTokens": {
+          "activity": "8307c665273a3e64a6f69d48f1c5f90367d8bb68a49658eb64bf377859c8af3f",
+          "equipment": "eaf8f7676dce2f2ae0ea5868dd637396dc431327df4f02c8222f1c103a745177",
+          "labour": "3b13fef829e7a399e2e6f21bb9d693d900724a7a8d0e3ca9b358fb895f4a04e6",
+          "materials": "ceba8f6796ccbc716944b21dc12493f66e47f15c9696a913f7ae27ea9619703c"
+        }
+      }
+    },
+    "consecutive": {
+      "id": 6351,
+      "payload": {
+        "date": "2026-08-05",
+        "site": "NARASIMHULU ROAD",
+        "engineer": "SURESH KUMAR",
+        "role": "engineer",
+        "workType": "road",
+        "boqProjectId": 5501,
+        "dprStatus": "draft",
+        "progress": [
+          {
+            "entryKey": "synthetic-dpr18-no-site-work",
+            "activity": "NO SITE WORK",
+            "side": "",
+            "chainageFrom": "",
+            "chainageTo": "",
+            "length": null,
+            "width": null,
+            "thickness": null,
+            "quantity": null,
+            "uom": "SQM",
+            "noSiteWork": true,
+            "noSiteWorkDescription": "SYNTHETIC OTHER WORK",
+            "isIncidental": false,
+            "incidentalDescription": null,
+            "personnelIds": [],
+            "boqItemId": null,
+            "programmeBarId": null,
+            "earthworkArrangementId": null,
+            "chainageFromKm": null,
+            "chainageToKm": null,
+            "quantitySource": null,
+            "quantitySourceNote": null,
+            "chainageOverrideReason": null,
+            "executedBy": null
+          }
+        ],
+        "cutFillConsumptions": [],
+        "structureItems": [],
+        "equipment": [
+          {
+            "persistedId": 7258,
+            "entryType": "time_meter",
+            "startTime": "08:00",
+            "endTime": "16:00",
+            "openingReading": 100,
+            "closingReading": 106,
+            "hoursWorked": null,
+            "diesel": 20,
+            "dieselNorm": 5,
+            "expectedDiesel": null,
+            "equipmentId": null,
+            "plantUsageId": null,
+            "dieselSource": "plant_stock",
+            "openingDiesel": 30,
+            "dieselBalanceInTank": 25,
+            "dieselBalanceConfirmed": true,
+            "fuelStation": "",
+            "billNumber": "",
+            "amountPaid": null,
+            "numberOfTrips": null,
+            "tripDistance": null,
+            "totalKm": null,
+            "waterQuantity": null,
+            "boqItemId": null,
+            "structureId": null,
+            "breakdowns": [],
+            "machine": "SYNTHETIC DPR18 EXCAVATOR",
+            "vehicleNo": "FIX-JCB-01",
+            "operator": "RAJU",
+            "task": "DRESSING"
+          }
+        ],
+        "labour": [
+          {
+            "persistedId": 8355,
+            "workerNames": [
+              "Raju Fixture Edited",
+              "Lata Fixture",
+              "Third Fixture"
+            ],
+            "category": "Skilled",
+            "gender": "Male",
+            "count": 2,
+            "task": "GSB LAYING",
+            "contractor": "SYNTHETIC CONTRACTOR CREW",
+            "boqItemId": 8801,
+            "structureId": null
+          },
+          {
+            "persistedId": 8356,
+            "workerNames": [],
+            "category": "Skilled",
+            "gender": "Male",
+            "count": 1,
+            "task": "GSB LAYING",
+            "contractor": "SYNTHETIC LOCAL LABOUR",
+            "boqItemId": 8801,
+            "structureId": null
+          }
+        ],
+        "materials": [],
+        "sitePurchases": [],
+        "remarks": "LABOUR-01 synthetic fixture only; no customer record.",
+        "clientTimestamp": "2026-09-30 06:26:15",
+        "headerToken": "82fce50df30ccb8e5bc437bb340575c9df70d35eb44a9d7acbe779d5185d55e7",
+        "sectionTokens": {
+          "activity": "0a44e235fb3eead744ebaed4dbd7e268292db45c8a9a39ad63075bf2887ba707",
+          "equipment": "344b85abbd499320aa47d350a2acc6f7b9a2c216e2fd262ce7fa5984b170bace",
+          "labour": "93f7e8a5544120959db27cd2957ce9b9f1e22fe160e2ae66a175685e20589b5c",
+          "materials": "ceba8f6796ccbc716944b21dc12493f66e47f15c9696a913f7ae27ea9619703c"
+        }
+      }
+    },
+    "geometry": {
+      "viewport": 1440,
+      "documentWidth": 1432,
+      "row": {
+        "x": 357,
+        "y": 443.5,
+        "width": 718,
+        "height": 408,
+        "top": 443.5,
+        "right": 1075,
+        "bottom": 851.5,
+        "left": 357
+      },
+      "controls": [
+        {
+          "label": "Worker names (3)",
+          "x": 357,
+          "y": 569.5,
+          "width": 120.609375,
+          "height": 44,
+          "top": 569.5,
+          "right": 477.609375,
+          "bottom": 613.5,
+          "left": 357
+        },
+        {
+          "label": "Worker name 1",
+          "x": 366,
+          "y": 622.5,
+          "width": 648,
+          "height": 36,
+          "top": 622.5,
+          "right": 1014,
+          "bottom": 658.5,
+          "left": 366
+        },
+        {
+          "label": "Remove worker name 1",
+          "x": 1022,
+          "y": 622.5,
+          "width": 44,
+          "height": 44,
+          "top": 622.5,
+          "right": 1066,
+          "bottom": 666.5,
+          "left": 1022
+        },
+        {
+          "label": "Worker name 2",
+          "x": 366,
+          "y": 674.5,
+          "width": 648,
+          "height": 36,
+          "top": 674.5,
+          "right": 1014,
+          "bottom": 710.5,
+          "left": 366
+        },
+        {
+          "label": "Remove worker name 2",
+          "x": 1022,
+          "y": 674.5,
+          "width": 44,
+          "height": 44,
+          "top": 674.5,
+          "right": 1066,
+          "bottom": 718.5,
+          "left": 1022
+        },
+        {
+          "label": "Worker name 3",
+          "x": 366,
+          "y": 726.5,
+          "width": 648,
+          "height": 36,
+          "top": 726.5,
+          "right": 1014,
+          "bottom": 762.5,
+          "left": 366
+        },
+        {
+          "label": "Remove worker name 3",
+          "x": 1022,
+          "y": 726.5,
+          "width": 44,
+          "height": 44,
+          "top": 726.5,
+          "right": 1066,
+          "bottom": 770.5,
+          "left": 1022
+        },
+        {
+          "label": "Add name",
+          "x": 366,
+          "y": 778.5,
+          "width": 112.203125,
+          "height": 44,
+          "top": 778.5,
+          "right": 478.203125,
+          "bottom": 822.5,
+          "left": 366
+        }
+      ]
+    },
+    "cleared": {
+      "id": 6351,
+      "payload": {
+        "date": "2026-08-05",
+        "site": "NARASIMHULU ROAD",
+        "engineer": "SURESH KUMAR",
+        "role": "engineer",
+        "workType": "road",
+        "boqProjectId": 5501,
+        "dprStatus": "draft",
+        "progress": [
+          {
+            "entryKey": "synthetic-dpr18-no-site-work",
+            "activity": "NO SITE WORK",
+            "side": "",
+            "chainageFrom": "",
+            "chainageTo": "",
+            "length": null,
+            "width": null,
+            "thickness": null,
+            "quantity": null,
+            "uom": "SQM",
+            "noSiteWork": true,
+            "noSiteWorkDescription": "SYNTHETIC OTHER WORK",
+            "isIncidental": false,
+            "incidentalDescription": null,
+            "personnelIds": [],
+            "boqItemId": null,
+            "programmeBarId": null,
+            "earthworkArrangementId": null,
+            "chainageFromKm": null,
+            "chainageToKm": null,
+            "quantitySource": null,
+            "quantitySourceNote": null,
+            "chainageOverrideReason": null,
+            "executedBy": null
+          }
+        ],
+        "cutFillConsumptions": [],
+        "structureItems": [],
+        "equipment": [
+          {
+            "persistedId": 7258,
+            "entryType": "time_meter",
+            "startTime": "08:00",
+            "endTime": "16:00",
+            "openingReading": 100,
+            "closingReading": 106,
+            "hoursWorked": null,
+            "diesel": 20,
+            "dieselNorm": 5,
+            "expectedDiesel": null,
+            "equipmentId": null,
+            "plantUsageId": null,
+            "dieselSource": "plant_stock",
+            "openingDiesel": 30,
+            "dieselBalanceInTank": 25,
+            "dieselBalanceConfirmed": true,
+            "fuelStation": "",
+            "billNumber": "",
+            "amountPaid": null,
+            "numberOfTrips": null,
+            "tripDistance": null,
+            "totalKm": null,
+            "waterQuantity": null,
+            "boqItemId": null,
+            "structureId": null,
+            "breakdowns": [],
+            "machine": "SYNTHETIC DPR18 EXCAVATOR",
+            "vehicleNo": "FIX-JCB-01",
+            "operator": "RAJU",
+            "task": "DRESSING"
+          }
+        ],
+        "labour": [
+          {
+            "persistedId": 8357,
+            "workerNames": [],
+            "category": "Skilled",
+            "gender": "Male",
+            "count": 2,
+            "task": "GSB LAYING",
+            "contractor": "SYNTHETIC CONTRACTOR CREW",
+            "boqItemId": 8801,
+            "structureId": null
+          },
+          {
+            "persistedId": 8358,
+            "workerNames": [],
+            "category": "Skilled",
+            "gender": "Male",
+            "count": 1,
+            "task": "GSB LAYING",
+            "contractor": "SYNTHETIC LOCAL LABOUR",
+            "boqItemId": 8801,
+            "structureId": null
+          }
+        ],
+        "materials": [],
+        "sitePurchases": [],
+        "remarks": "LABOUR-01 synthetic fixture only; no customer record.",
+        "clientTimestamp": "2026-09-30 06:26:15",
+        "headerToken": "82fce50df30ccb8e5bc437bb340575c9df70d35eb44a9d7acbe779d5185d55e7",
+        "sectionTokens": {
+          "activity": "0a44e235fb3eead744ebaed4dbd7e268292db45c8a9a39ad63075bf2887ba707",
+          "equipment": "344b85abbd499320aa47d350a2acc6f7b9a2c216e2fd262ce7fa5984b170bace",
+          "labour": "d3a7fcbe35bfac9b81e32d7d738cda4fe87c5b8f05b61fd7173ed7eb1b7b8266",
+          "materials": "ceba8f6796ccbc716944b21dc12493f66e47f15c9696a913f7ae27ea9619703c"
+        }
+      }
+    }
+  }
+}

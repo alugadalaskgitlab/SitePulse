@@ -334,6 +334,15 @@ export const labourLogs = pgTable("labour_logs", {
   structureId: text("structure_id"),
 });
 
+export const labourLogWorkers = pgTable("labour_log_workers", {
+  id: serial("id").primaryKey(),
+  labourLogId: integer("labour_log_id").notNull().references(() => labourLogs.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, table => ({
+  labourLogIdIdx: index("labour_log_workers_labour_log_id_idx").on(table.labourLogId),
+}));
+
 // Materials Log
 export const materialLogs = pgTable("material_logs", {
   id: serial("id").primaryKey(),
@@ -996,8 +1005,13 @@ export const equipmentActivityAllocationRelations = relations(equipmentActivityA
   programmeBar: one(workProgramBars, { fields: [equipmentActivityAllocations.programmeBarId], references: [workProgramBars.id] }),
 }));
 
-export const labourRelations = relations(labourLogs, ({ one }) => ({
+export const labourRelations = relations(labourLogs, ({ one, many }) => ({
   dpr: one(dprs, { fields: [labourLogs.dprId], references: [dprs.id] }),
+  workers: many(labourLogWorkers),
+}));
+
+export const labourWorkerRelations = relations(labourLogWorkers, ({ one }) => ({
+  labourLog: one(labourLogs, { fields: [labourLogWorkers.labourLogId], references: [labourLogs.id] }),
 }));
 
 export const materialRelations = relations(materialLogs, ({ one }) => ({
@@ -1107,6 +1121,7 @@ export const createDprRequestSchema = insertDprSchema.extend({
   })).optional(),
   labour: z.array(insertLabourSchema.extend({
     persistedId: z.number().int().positive().optional(),
+    workerNames: z.array(z.string()).optional(),
   })).optional(),
   materials: z.array(insertMaterialSchema.extend({
     persistedId: z.number().int().positive().optional(),
@@ -1152,7 +1167,7 @@ export type DprWithDetails = Dpr & {
     activitySegments?: Array<EquipmentActivitySegment & { boqItems: EquipmentActivitySegmentBoqItem[] }>;
     activityAllocations?: EquipmentActivityAllocation[];
   }>;
-  labour: LabourLog[];
+  labour: Array<LabourLog & { workerNames: string[] }>;
   materials: MaterialLog[];
   sitePurchases: SitePurchase[];
   structureItems: DprStructureItem[];

@@ -4,6 +4,7 @@ import { Link, useRoute, useLocation, useSearch } from "wouter";
 import { DPR_REGISTER_PATH, resolveReturnTo, withReturnTo } from "@/lib/progressReportNav";
 import { ChevronLeft, Loader2, Printer, Trash2, Fuel, Home, ShoppingCart, History, Ban } from "lucide-react";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
+import { LabourWorkerNamesReadOnly } from "@/components/LabourWorkerNames";
 import CancelDialog from "@/components/CancelDialog";
 import HistoryDialog from "@/components/HistoryDialog";
 import { ReportHeader } from "@/components/ReportHeader";
@@ -744,7 +745,7 @@ export default function SiteReport() {
                 <TableBody>
                   {dpr.labour.map((item: any, i: number) => (
                     <TableRow key={i} data-testid={`row-labour-${i}`}>
-                      <TableCell>{item.category}</TableCell>
+                      <TableCell>{item.category}<LabourWorkerNamesReadOnly row={item} /></TableCell>
                       <TableCell>{item.gender}</TableCell>
                       <TableCell className="text-right font-mono font-bold">{item.count}</TableCell>
                       <TableCell>{item.task || '-'}</TableCell>

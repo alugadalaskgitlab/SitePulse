@@ -1,5 +1,6 @@
 import { lookupTripBoqQuantity } from "../shared/tripQuantityDisplay";
 import { db } from "./db";
+import { insertLabourWithWorkers, readWorkerNames } from "./labourWorkers";
 import { assertSectionTokens, DprSectionConflict, findSectionDrafts, lockDprIdentity, readSectionAggregate, readDraftStoppages, stageDraftStoppages, reconcileRows, reconcileDraftEquipmentAssignments, sameContext, sectionSnapshot } from "./dprSections";
 import { normalizeDprSectionContext } from "../shared/dprSections";
 import { formatPurchaseIndentNumber, reconcileDeliveryEvidence, validateDeliveryDestination, isBulkPiDeliveryItem, type DeliveryEvidence } from "../shared/purchaseIndentDelivery";
@@ -21,6 +22,7 @@ import {
   equipmentActivitySegments,
   equipmentActivitySegmentBoqItems,
   labourLogs,
+  labourLogWorkers,
   materialLogs,
   plantReports,
   plantProduction,
@@ -2879,8 +2881,11 @@ export class DatabaseStorage implements IStorage {
       });
       breakdownsByEquipmentLog.set(sourceId, sourceBreakdowns);
     }
+    const namedLabour = await readWorkerNames(db, rows.flatMap(dpr => dpr.labour));
+    const labourById = new Map(namedLabour.map(row => [row.id, row]));
     return rows.map((dpr: any) => ({
       ...dpr,
+      labour: dpr.labour.map((row: any) => labourById.get(row.id)),
       equipment: dpr.equipment.map((row: any) => {
         const breakdowns = breakdownsByEquipmentLog.get(row.id) ?? [];
         if (row.activitySegments?.length) return { ...row, activityAllocations: undefined, breakdowns };
@@ -2903,6 +2908,7 @@ export class DatabaseStorage implements IStorage {
       }
     });
     if (!dpr) return undefined;
+    const labourWithNames = await readWorkerNames(db, dpr.labour);
     dpr.equipment = dpr.equipment.map((row: any) => {
       if (row.activitySegments?.length) return { ...row, activityAllocations: undefined };
       if (row.activityAllocations?.length) return { ...row, activitySegments: undefined };
@@ -2957,6 +2963,7 @@ export class DatabaseStorage implements IStorage {
     }
     return {
       ...dpr,
+      labour: labourWithNames,
       authorName: actorName(dpr.authorUserId),
       lastEditedByName: actorName(dpr.lastEditedByUserId),
       submittedByName: actorName(dpr.submittedByUserId),
@@ -3402,9 +3409,7 @@ export class DatabaseStorage implements IStorage {
 
       // 4. Insert Labour Logs
       if (dprData.labour?.length) {
-        await tx.insert(labourLogs).values(
-          dprData.labour.map(l => ({ ...l, dprId }))
-        );
+        await insertLabourWithWorkers(tx, dprId, dprData.labour);
       }
 
       // 5. Insert Material Logs with uppercase text fields
@@ -4051,6 +4056,7 @@ export class DatabaseStorage implements IStorage {
       // historical maintenance linkage. Submitted correction paths below keep
       // their existing replacement semantics.
       if (isSubmitting) await tx.delete(equipmentLogs).where(eq(equipmentLogs.dprId, id));
+      const oldLabourRows = await readWorkerNames(tx, await tx.select().from(labourLogs).where(eq(labourLogs.dprId, id)));
       await tx.delete(labourLogs).where(eq(labourLogs.dprId, id));
       await tx.delete(materialLogs).where(eq(materialLogs.dprId, id));
       await tx.delete(sitePurchases).where(eq(sitePurchases.dprId, id));
@@ -4105,7 +4111,7 @@ export class DatabaseStorage implements IStorage {
         await stageDraftStoppages(tx, insertedEquipLogs, dprData.equipment as any[] ?? []);
       }
       if (dprData.labour?.length) {
-        await tx.insert(labourLogs).values(dprData.labour.map(l => ({ ...l, dprId: id })));
+        await insertLabourWithWorkers(tx, id, dprData.labour, oldLabourRows);
       }
       if (dprData.materials?.length) {
         await tx.insert(materialLogs).values(dprData.materials.map(m => ({ ...m, dprId: id, vehicleNumber: m.vehicleNumber?.toUpperCase() || m.vehicleNumber, supplier: m.supplier?.toUpperCase() || m.supplier, location: m.location?.toUpperCase() || m.location })));
@@ -4161,6 +4167,7 @@ export class DatabaseStorage implements IStorage {
       // Delete old entries and insert new ones
       await tx.delete(progressEntries).where(eq(progressEntries.dprId, id));
       await tx.delete(equipmentLogs).where(eq(equipmentLogs.dprId, id));
+      const oldLabourRows = await readWorkerNames(tx, await tx.select().from(labourLogs).where(eq(labourLogs.dprId, id)));
       await tx.delete(labourLogs).where(eq(labourLogs.dprId, id));
       await tx.delete(materialLogs).where(eq(materialLogs.dprId, id));
       await tx.delete(sitePurchases).where(eq(sitePurchases.dprId, id));
@@ -4205,9 +4212,7 @@ export class DatabaseStorage implements IStorage {
       await this.reconcileDprBreakdownsTx(tx, oldEquipmentRows, insertedEquipLogs, dprData.equipment as any[], dprData.date);
 
       if (dprData.labour?.length) {
-        await tx.insert(labourLogs).values(
-          dprData.labour.map(l => ({ ...l, dprId: id }))
-        );
+        await insertLabourWithWorkers(tx, id, dprData.labour, oldLabourRows);
       }
 
       if (dprData.materials?.length) {
@@ -4468,14 +4473,13 @@ export class DatabaseStorage implements IStorage {
 
       // Copy labour logs
       if (original.labour?.length) {
-        await tx.insert(labourLogs).values(
-          original.labour.map(l => ({
-            dprId,
+        await insertLabourWithWorkers(tx, dprId, original.labour.map(l => ({
             category: l.category,
             gender: l.gender,
             count: l.count,
-          }))
-        );
+            task: l.task, contractor: l.contractor, boqItemId: l.boqItemId,
+            structureId: l.structureId, workerNames: l.workerNames,
+          })));
       }
 
       // Copy material logs with uppercase
@@ -4778,9 +4782,10 @@ export class DatabaseStorage implements IStorage {
 
       // Insert edited labour logs
       if (dprData.labour?.length) {
-        await tx.insert(labourLogs).values(
-          dprData.labour.map(({ persistedId: _persistedId, ...l }: any) => ({ ...l, dprId }))
-        );
+        const oldLabourRows = dprData.labour.some(row => row.workerNames === undefined)
+          ? await readWorkerNames(tx, await tx.select().from(labourLogs).where(eq(labourLogs.dprId, originalId)))
+          : [];
+        await insertLabourWithWorkers(tx, dprId, dprData.labour, oldLabourRows);
       }
 
       // Insert edited material logs with uppercase text fields
@@ -21840,7 +21845,8 @@ export class DatabaseStorage implements IStorage {
         const eqLogs = await db.select().from(equipmentLogs);
         const matLogs = await db.select().from(materialLogs);
         const labLogs = await db.select().from(labourLogs);
-        return { dprs: dprRows, progressEntries: progress, equipmentLogs: eqLogs, materialLogs: matLogs, labourLogs: labLogs };
+        const labWorkers = await db.select().from(labourLogWorkers);
+        return { dprs: dprRows, progressEntries: progress, equipmentLogs: eqLogs, materialLogs: matLogs, labourLogs: labLogs, labourLogWorkers: labWorkers };
       }
       case "stock_ledger":
         return db.select().from(stockLedger);
@@ -22142,6 +22148,7 @@ export class DatabaseStorage implements IStorage {
       if (data.dprs.equipmentLogs) await upsertRows(equipmentLogs, data.dprs.equipmentLogs, "equipment_logs");
       if (data.dprs.materialLogs) await upsertRows(materialLogs, data.dprs.materialLogs, "material_logs");
       if (data.dprs.labourLogs) await upsertRows(labourLogs, data.dprs.labourLogs, "labour_logs");
+      if (data.dprs.labourLogWorkers) await upsertRows(labourLogWorkers, data.dprs.labourLogWorkers, "labour_log_workers");
     }
 
     if (data.stock_ledger) await upsertRows(stockLedger, data.stock_ledger, "stock_ledger");

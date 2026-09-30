@@ -4,6 +4,7 @@ import type { DprReadinessIssue } from "@shared/dprSubmitReadiness";
 import { evaluateSectionReadiness, sectionIssueFieldTestId } from "@/lib/dprSectionReadiness";
 import { DprSectionGeometryGrid } from "@/components/DprSectionGeometryGrid";
 import { mapDprToFormState } from "./SiteEdit";
+import { LabourWorkerNames, prepareLabourWorkerRow, adoptLabourRowIds, newLabourRowKey } from "@/components/LabourWorkerNames";
 
 export interface DprSectionEditorProps {
   section: DprSection;
@@ -197,6 +198,9 @@ const contractorDieselTankFieldsCleared = (row: EquipmentEntry): EquipmentEntry 
     : row;
 
 interface LabourEntry {
+  persistedId?: number;
+  editCreationKey?: string;
+  workerNames?: string[];
   category: string;
   gender: string;
   count: number | null;
@@ -1130,7 +1134,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
     progress,
     structureItems,
     equipment,
-    labour,
+    labour: labour.map(prepareLabourWorkerRow),
     materials,
     sitePurchases,
   }), [
@@ -1156,7 +1160,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
         ? null
         : undefined;
 
-  const handleRestoreDraft = useCallback((data: SiteEntryFormData) => {
+  const handleRestoreDraft = useCallback((data: SiteEntryFormData, preserveLabourEdits = false) => {
     // A deliberate restore supersedes any transient project recovered from
     // the pre-restore form state; current restored rows must prove it again.
     evidenceRecoveredProjectRef.current = null;
@@ -1181,7 +1185,9 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
     })));
     if (data.structureItems) setStructureItems(data.structureItems);
     setEquipment(data.equipment.map(row => ({ ...row, [equipmentRowToken]: Symbol("equipment row") })));
-    setLabour(data.labour);
+    if (!preserveLabourEdits) setLabour(data.labour.map(row => ({
+      ...row, editCreationKey: row.persistedId == null ? row.editCreationKey ?? newLabourRowKey() : undefined,
+    })));
     if (data.materials) setMaterials(data.materials);
     if (data.sitePurchases) setSitePurchases(data.sitePurchases);
     setBoqCataloguePreviewReady(true);
@@ -1414,7 +1420,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
     } else if (section === 'equipment') {
       setEquipment([...equipment, { [equipmentRowToken]: Symbol("equipment row"), [newEquipmentRow]: true, machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] }]);
     } else if (section === 'labour') {
-      setLabour([...labour, { category: "Skilled", gender: "Male", count: null, task: "", contractor: "", boqItemId: null, structureId: null }]);
+      setLabour([...labour, { category: "Skilled", gender: "Male", count: null, task: "", contractor: "", boqItemId: null, structureId: null, workerNames: [], editCreationKey: newLabourRowKey() }]);
     } else if (section === 'materials') {
       setMaterials([...materials, { type: "Issued", material: "", quantity: null, uom: "", vehicleNumber: "", supplier: "", location: "", receiptNumber: "", boqItemId: null, structureId: null }]);
     }
@@ -1493,7 +1499,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
     })));
     const blankEq = { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] as StagedBreakdown[] };
     if (st.equipment.length > 0) setEquipment(st.equipment.map(e => ({ ...blankEq, ...e, [equipmentRowToken]: Symbol("equipment row") })) as EquipmentEntry[]);
-    if (st.labour.length > 0) setLabour(st.labour.map(l => ({ category: l.category, gender: "", count: l.count, task: l.task, contractor: l.contractor, boqItemId: null, structureId: null })) as any);
+    if (st.labour.length > 0) setLabour(st.labour.map(l => ({ category: l.category, gender: "", count: l.count, task: l.task, contractor: l.contractor, boqItemId: null, structureId: null, workerNames: l.workerNames ?? [], editCreationKey: newLabourRowKey() })) as LabourEntry[]);
     setShowYesterdayPreview(false);
     toast({ title: "Structure copied", description: "Yesterday's work items and crew copied. Enter today's chainage and quantities." });
   };
@@ -1571,7 +1577,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
             }))
           : [],
         equipment: normalizedEquipment,
-        labour,
+        labour: labour.map(prepareLabourWorkerRow),
         materials: materials.filter(m => m.material),
         sitePurchases: sitePurchases.filter(sp => sp.itemDescription),
         remarks: remarksNote.trim() || undefined,
@@ -1797,7 +1803,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
             }))
           : [],
         equipment: normalizedEquipment,
-        labour,
+        labour: labour.map(prepareLabourWorkerRow),
         materials: materials.filter(m => m.material),
         sitePurchases: sitePurchases.filter(sp => sp.itemDescription),
         remarks: sectionEditor ? remarksNote.trim() : remarksNote.trim() || undefined,
@@ -1822,7 +1828,10 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
           ...pickDprSectionPayload(sectionEditor.section, { ...restored, remarks: snapshot.dpr.remarks ?? "" }),
           photos: [], entryPhotos: {},
         });
-        handleRestoreDraft(restored);
+        if (sectionEditor.section === "labour") {
+          setLabour(current => adoptLabourRowIds(current, labour, restored.labour.map(row => ({ id: row.persistedId ?? 0 }))));
+        }
+        handleRestoreDraft(restored, sectionEditor.section === "labour");
         setRemarksNote(snapshot.dpr.remarks ?? "");
         if (sectionEditor.section === "activity" && (stagedPhotos.length || Object.values(entryPhotos).some(files => files.length))) {
           const { failed, failedByEntry } = await uploadStagedPhotos(snapshot.dpr.id);
@@ -2140,7 +2149,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
         structureItems,
       } : {}),
       ...(sectionEditor.section === "equipment" ? { equipment } : {}),
-      ...(sectionEditor.section === "labour" ? { labour } : {}),
+      ...(sectionEditor.section === "labour" ? { labour: labour.map(prepareLabourWorkerRow) } : {}),
       ...(sectionEditor.section === "materials" ? { materials, sitePurchases } : {}),
     }) : null;
   // Match the final-submit evaluator's inputs, including BOQ-enriched cut/fill
@@ -3661,6 +3670,10 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                   })()}
                 </div>
               )}
+              <div className="col-span-2 md:col-span-6">
+                <LabourWorkerNames names={entry.workerNames} count={entry.count} rowIndex={idx}
+                  onChange={workerNames => setLabour(rows => rows.map((row, i) => i === idx ? { ...row, workerNames } : row))} />
+              </div>
             </div>
           ))}
           <Button size="sm" variant="outline" className="w-full border-dashed" onClick={() => addRow('labour')} data-testid="button-add-labour-bottom">

@@ -19,7 +19,7 @@ import {
   DprDraftMutationError,
   storage,
 } from "../server/storage";
-import { boqProjects, dprs } from "@shared/schema";
+import { boqProjects, dprs, labourLogs, labourLogWorkers } from "@shared/schema";
 
 const DPR_ID = 901;
 const PROJECT_ID = 77;
@@ -45,8 +45,10 @@ function source(overrides: Record<string, unknown> = {}) {
   } as any;
 }
 
-function setupTransaction(status: "draft" | "submitted", mode: "clone" | "version") {
+function setupTransaction(status: "draft" | "submitted", mode: "clone" | "version",
+  savedLabour?: { id: number; category: string; count: number; workerNames: string[] }) {
   const events: string[] = [];
+  const labourWrites: Array<{ table: any; rows: any }> = [];
   const lockedSource = {
     id: DPR_ID,
     dprStatus: status,
@@ -59,12 +61,18 @@ function setupTransaction(status: "draft" | "submitted", mode: "clone" | "versio
     : [[lockedSource], [{ id: PROJECT_ID }], [lockedSource]];
   let selectCalls = 0;
   const select = vi.fn(() => {
-    const result = selectResults[selectCalls] ?? [];
+    let result: any[] = selectResults[selectCalls] ?? [];
     selectCalls += 1;
     const q: any = {
       from(table: any) {
         if (table === boqProjects) events.push("project-select");
         if (table === dprs) events.push("dpr-select");
+        if (table === labourLogs) events.push("labour-select");
+        if (table === labourLogWorkers) events.push("workers-select");
+        if (savedLabour && table === labourLogs) result = [savedLabour];
+        if (savedLabour && table === labourLogWorkers) result = savedLabour.workerNames.map((name, i) => ({
+          id: i + 1, labourLogId: savedLabour.id, name,
+        }));
         return q;
       },
       where() { return q; },
@@ -85,11 +93,14 @@ function setupTransaction(status: "draft" | "submitted", mode: "clone" | "versio
   const insert = vi.fn((table: any) => {
     if (table === dprs) events.push("dpr-insert");
     const q: any = {
-      values() { return q; },
+      values(rows: any) {
+        if (table === labourLogs || table === labourLogWorkers) labourWrites.push({ table, rows });
+        return q;
+      },
       returning: vi.fn(async () => table === dprs ? [{
         id: DPR_ID + 1,
         ...source({ id: DPR_ID + 1 }),
-      }] : []),
+      }] : table === labourLogs ? [{ id: 1473 }] : []),
     };
     return q;
   });
@@ -103,7 +114,7 @@ function setupTransaction(status: "draft" | "submitted", mode: "clone" | "versio
   });
   const tx = { select, insert, update };
   fx.transaction.mockImplementationOnce(async (callback: (value: any) => Promise<unknown>) => callback(tx));
-  return { events, insert };
+  return { events, insert, labourWrites };
 }
 
 beforeEach(() => {
@@ -149,6 +160,44 @@ describe("DPR clone/version draft prohibition", () => {
 });
 
 describe("submitted clone/version project mutex", () => {
+  it("copies names onto the cloned labour row without changing its reported headcount", async () => {
+    vi.spyOn(storage, "getDpr").mockResolvedValueOnce(source({
+      labour: [{ id: 31, category: "Skilled", count: 1, workerNames: ["Ana", "Bea"] }],
+    }));
+    const tx = setupTransaction("submitted", "clone");
+    await storage.cloneDpr(DPR_ID, "manager");
+    expect(tx.labourWrites).toEqual([
+      { table: labourLogs, rows: [{ dprId: DPR_ID + 1, category: "Skilled", gender: undefined, count: 1,
+        task: undefined, contractor: undefined, boqItemId: undefined, structureId: undefined }] },
+      { table: labourLogWorkers, rows: [{ labourLogId: 1473, name: "Ana" }, { labourLogId: 1473, name: "Bea" }] },
+    ]);
+  });
+
+  it("carries names in the version's replacement labour input", async () => {
+    const tx = setupTransaction("submitted", "version");
+    await storage.createVersionDpr(DPR_ID, source({ id: undefined, labour: [
+      { category: "Unskilled", count: 4, workerNames: ["Mira"] },
+    ] }), "manager");
+    expect(tx.labourWrites).toEqual([
+      { table: labourLogs, rows: [{ category: "Unskilled", count: 4, dprId: DPR_ID + 1 }] },
+      { table: labourLogWorkers, rows: [{ labourLogId: 1473, name: "Mira" }] },
+    ]);
+  });
+
+  it("carries source names on an identified version row when an older client omits names", async () => {
+    const tx = setupTransaction("submitted", "version", {
+      id: 31, category: "Unskilled", count: 4, workerNames: ["Mira"],
+    });
+    await storage.createVersionDpr(DPR_ID, source({ id: undefined, labour: [
+      { persistedId: 31, category: "Unskilled", count: 5 },
+    ] }), "manager");
+    expect(tx.events).toContain("workers-select");
+    expect(tx.labourWrites).toEqual([
+      { table: labourLogs, rows: [{ category: "Unskilled", count: 5, dprId: DPR_ID + 1 }] },
+      { table: labourLogWorkers, rows: [{ labourLogId: 1473, name: "Mira" }] },
+    ]);
+  });
+
   it("locks the project before a submitted clone INSERT", async () => {
     vi.spyOn(storage, "getDpr").mockResolvedValueOnce(source());
     const tx = setupTransaction("submitted", "clone");

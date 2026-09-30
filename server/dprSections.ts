@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readWorkerNames, replaceLabourWorkers } from "./labourWorkers";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { dprs, sites, sitePurchases, progressEntries, equipmentLogs, equipmentMaintenanceLogs, labourLogs, materialLogs, dprStructureItems, auditLogs,
   activityPersonnel, cutFillConsumptions, equipmentActivityAllocations, equipmentActivitySegments, dprDraftStoppages,
@@ -100,6 +101,7 @@ export async function readSectionAggregate(tx: any, id: number) {
     dpr[key].sort((a: any, b: any) => a.id - b.id);
     dpr[key] = dpr[key].map((row: any) => ({ ...row, persistedId: row.id }));
   }
+  dpr.labour = await readWorkerNames(tx, dpr.labour);
   for (const row of dpr.equipment) {
     if (row.activitySegments.length) {
       row.activitySegments.sort((a: any, b: any) => a.id - b.id);
@@ -355,7 +357,14 @@ export async function saveDprSection(database: any, storage: any, request: any, 
       await reconcileDraftEquipmentAssignments(tx, rows, incoming);
     } else {
       const table = section === "labour" ? labourLogs : materialLogs;
-      await reconcileRows(tx, table, id, old[section], (input as any)[section] ?? []);
+      if (section === "labour") {
+        const inputs = (input as any).labour ?? [];
+        const rows = await reconcileRows(tx, table, id, old.labour, inputs,
+          async ({ workerNames: _workerNames, ...row }: any) => row);
+        await replaceLabourWorkers(tx, rows, inputs);
+      } else {
+        await reconcileRows(tx, table, id, old[section], (input as any)[section] ?? []);
+      }
       if (section === "materials") {
         await reconcileRows(tx, sitePurchases, id, old.sitePurchases, input.sitePurchases ?? [], async row => ({
           ...row, documentStatus: "draft",

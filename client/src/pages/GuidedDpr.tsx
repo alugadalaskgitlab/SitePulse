@@ -24,6 +24,7 @@ import {
   ChevronLeft, CalendarDays, History, LayoutList, Info, AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LabourWorkerNames, readLabourWorkerNames, prepareLabourWorkerRow, adoptLabourRowIds, newLabourRowKey } from "@/components/LabourWorkerNames";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
@@ -168,11 +169,14 @@ const createGuidedEquipmentRow = (): SimpleEquipmentRow => ({
 // gender, task and the optional Work Item linkage are preserved, never
 // hard-coded away on save.
 interface SimpleLabourRow {
+  persistedId?: number;
+  editCreationKey?: string;
+  workerNames?: string[];
   category: string; gender: string; count: number | null; contractor: string; task: string;
   boqItemId: number | null; structureId: string | null;
 }
 const newLabourRow = (): SimpleLabourRow =>
-  ({ category: "", gender: "", count: null, contractor: "", task: "", boqItemId: null, structureId: null });
+  ({ category: "", gender: "", count: null, contractor: "", task: "", boqItemId: null, structureId: null, workerNames: [], editCreationKey: newLabourRowKey() });
 const GENDER_OPTIONS = ["Male", "Female"];
 
 // Batch 1: actual-execution-side choices come from the shared matrix — the
@@ -453,6 +457,9 @@ export default function GuidedDpr() {
       structureItems: (urlDraftDpr.structureItems ?? []).map(({ id, dprId, ...rest }: any) => rest),
     };
     setLabour((urlDraftDpr.labour ?? []).map((l: any): SimpleLabourRow => ({
+      persistedId: l.persistedId ?? l.id,
+      editCreationKey: l.persistedId ?? l.id ? undefined : newLabourRowKey(),
+      workerNames: readLabourWorkerNames(l),
       category: l.category || "", gender: l.gender || "",
       count: l.count != null ? Number(l.count) : null,
       contractor: l.contractor || "", task: l.task || "",
@@ -865,7 +872,7 @@ export default function GuidedDpr() {
         const { newlyCreatedInGuided, workingDefaultedInGuided, ...restored } = e;
         return { ...newGuidedEquipmentRow(), ...restored, passthrough: e.passthrough ?? {} };
       }));
-      setLabour((d.labour ?? []).map((l: any) => ({ ...newLabourRow(), ...l })));
+      setLabour((d.labour ?? []).map((l: any) => ({ ...newLabourRow(), ...l, persistedId: l.persistedId ?? l.id, workerNames: readLabourWorkerNames(l) })));
       setRemarks(d.remarks ?? ""); setDraftId(d.draftId ?? null);
       if (urlDraftId == null) setBoqCataloguePreviewReady(true);
       deriveNeededRef.current = true;
@@ -1217,7 +1224,7 @@ export default function GuidedDpr() {
     // Yesterday copy is structure-only: seeds carry the 4 edited fields and an
     // empty passthrough (no readings/times are ever copied across days).
     setEquipment(st.equipment.map((e: any) => ({ ...newGuidedEquipmentRow(), ...e, passthrough: {} })));
-    setLabour(st.labour.map((l: any) => ({ ...newLabourRow(), ...l })));
+    setLabour(st.labour.map((l: any) => ({ ...newLabourRow(), ...l, workerNames: readLabourWorkerNames(l) ?? [] })));
     // photos / readings / remarks / submit status intentionally NOT copied
     setRemarks("");
     setStagedPhotos([]);
@@ -1464,7 +1471,9 @@ export default function GuidedDpr() {
         }),
       // Batch 06C §12: real values round-trip — gender / work-item / structure
       // links are never wiped by a Guided save.
-      labour: labour.filter((l) => l.category || l.count != null || l.task || l.contractor || l.boqItemId != null || l.structureId).map((l) => ({
+      labour: labour.filter((l) => l.category || l.count != null || l.task || l.contractor || l.boqItemId != null || l.structureId || l.workerNames?.some(name => name.trim())).map((l) => prepareLabourWorkerRow({
+        ...(l.persistedId != null ? { persistedId: l.persistedId } : {}),
+        ...(l.workerNames !== undefined ? { workerNames: l.workerNames } : {}),
         category: l.category, gender: l.gender, count: l.count ?? 0, task: l.task,
         contractor: l.contractor, boqItemId: l.boqItemId, structureId: l.structureId,
       })),
@@ -1498,6 +1507,7 @@ export default function GuidedDpr() {
         throw new Error(dieselTankError);
       }
       const payload = buildPayload(asDraft);
+      const sentLabour = labour.filter((l) => l.category || l.count != null || l.task || l.contractor || l.boqItemId != null || l.structureId || l.workerNames?.some(name => name.trim()));
       const payloadRows = equipment.filter((e) =>
         isMeaningfulEquipmentRow({ ...e.passthrough, machine: e.machine, vehicleNo: e.vehicleNo, operator: e.operator, task: e.task }),
       );
@@ -1510,25 +1520,27 @@ export default function GuidedDpr() {
         });
         const saved = await savedResponse.json();
         draftWriteTokensRef.current = readDprWriteTokens(saved);
+        setLabour(current => adoptLabourRowIds(current, sentLabour, saved.labour ?? []));
         // Advance only on a successful persist, never from background refetch.
         setEquipment((saved.equipment ?? []).map((row: any) => splitGuidedEquipmentRow(row)));
         unmanagedSectionsRef.current = {
           materials: saved.materials ?? [], sitePurchases: saved.sitePurchases ?? [], structureItems: saved.structureItems ?? [],
         };
-        if (asDraft) return { data: saved, asDraft };
+        if (asDraft) return { data: saved, asDraft, sentLabour: undefined };
         res = await apiRequest("POST", `/api/dprs/${draftId}/submit`, {
           ...requireDprWriteTokens(draftWriteTokensRef.current), clientTimestamp: payload.clientTimestamp,
         });
       } else {
         res = await apiRequest("POST", "/api/dprs", payload);
       }
-      return { data: await res.json(), asDraft };
+      return { data: await res.json(), asDraft, sentLabour };
     },
-    onSuccess: async ({ data, asDraft }) => {
+    onSuccess: async ({ data, asDraft, sentLabour }) => {
       if (asDraft) {
         draftWriteTokensRef.current = readDprWriteTokens(data);
         hydratedRef.current = true;
         setDraftId(data.id);
+        if (sentLabour) setLabour(current => adoptLabourRowIds(current, sentLabour, data.labour ?? []));
       }
       // Pin the server's canonical project before photo work starts. A draft
       // save is still successful when one or more staged photos need retry;
@@ -2858,6 +2870,8 @@ export default function GuidedDpr() {
                         ))}
                       </SelectContent>
                     </Select>
+                    <LabourWorkerNames names={l.workerNames} count={l.count} rowIndex={i}
+                      onChange={workerNames => setLabour(p => p.map((row, j) => j === i ? { ...row, workerNames } : row))} />
                   </div>
                 ))}
                 <Button variant="outline" size="sm" onClick={() => setLabour((p) => [...p, newLabourRow()])} data-testid="button-add-labour">

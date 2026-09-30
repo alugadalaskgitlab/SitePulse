@@ -18,7 +18,7 @@ export type YesterdayProgressSeed = {
   uom: string;
 };
 export type YesterdayEquipmentSeed = { machine: string; vehicleNo: string; operator: string; task: string };
-export type YesterdayLabourSeed = { category: string; count: number | null; contractor: string; task: string };
+export type YesterdayLabourSeed = { category: string; count: number | null; contractor: string; task: string; workerNames?: string[] };
 
 export type YesterdayStructure = {
   progress: YesterdayProgressSeed[];
@@ -56,6 +56,11 @@ export function extractYesterdayStructure(dpr: {
         count: l.count ?? null,
         contractor: l.contractor ?? "",
         task: l.task ?? "",
+        ...(Array.isArray(l.workerNames)
+          ? { workerNames: l.workerNames.filter((name: unknown): name is string => typeof name === "string") }
+          : Array.isArray(l.workers)
+            ? { workerNames: l.workers.map((worker: any) => worker?.name).filter((name: unknown): name is string => typeof name === "string") }
+            : {}),
       })),
   };
 }

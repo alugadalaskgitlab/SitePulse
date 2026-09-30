@@ -21,6 +21,7 @@ import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { DprActivityReadOnly } from "@/components/DprActivityReadOnly";
 import { DprMaterialsReceived } from "@/components/DprMaterialsReceived";
+import { LabourWorkerNamesReadOnly } from "@/components/LabourWorkerNames";
 import { visibleEquipmentRows } from "@shared/equipmentUsage";
 import { formatDprReference } from "@/lib/dprReference";
 
@@ -381,7 +382,7 @@ export default function DprDetails() {
                 <TableBody>
                   {dpr.labour.map((item: any, i: number) => (
                     <TableRow key={i} data-testid={`row-labour-${i}`}>
-                      <TableCell>{item.category}</TableCell>
+                      <TableCell>{item.category}<LabourWorkerNamesReadOnly row={item} /></TableCell>
                       <TableCell>{item.gender}</TableCell>
                       <TableCell className="text-right font-mono font-bold">{item.count}</TableCell>
                     </TableRow>

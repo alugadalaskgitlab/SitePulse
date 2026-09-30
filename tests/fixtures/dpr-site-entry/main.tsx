@@ -1188,6 +1188,19 @@ const dpr19Fix2Edit = {
   ],
 };
 
+// LABOUR-01: isolated synthetic draft. The first crew has persisted names;
+// the historical count-only row exercises the pre-feature read contract.
+const labour01Draft = {
+  ...dpr18B2Base, id: 6351, dprStatus: "draft",
+  remarks: "LABOUR-01 synthetic fixture only; no customer record.",
+  labour: [
+    { ...storedDpr.labour[0], id: 7351, count: 2,
+      contractor: "SYNTHETIC CONTRACTOR CREW", workerNames: ["Raju Fixture", "Sita Fixture"] },
+    { ...storedDpr.labour[0], id: 7352, count: 1,
+      contractor: "SYNTHETIC LOCAL LABOUR", workerNames: [] },
+  ],
+};
+
 // DPR18 B3: isolated GET-only DPR detail responses. These are not added to
 // the editable/saved fixture record store or any customer-backed endpoint.
 const dpr18B3Reports: Record<number, any> = Object.fromEntries(
@@ -1293,6 +1306,7 @@ const persistedDprState = (() => {
 })();
 let currentDpr: any = persistedDprState.current ?? { ...storedDpr };
 const guidedDprRecords: Record<number, any> = {
+  [labour01Draft.id]: labour01Draft,
   [dpr16B2ClassicEdit.id]: dpr16B2ClassicEdit,
   [dpr19Fix2Edit.id]: dpr19Fix2Edit,
   [dpr18B2Edit.id]: dpr18B2Edit,
@@ -1323,6 +1337,13 @@ const guidedDprRecords: Record<number, any> = {
 };
 for (const [id, record] of Object.entries(persistedDprState.records)) {
   if (record && typeof record === "object") guidedDprRecords[Number(id)] = record;
+}
+// Explicit browser-only reset between independent LABOUR-01 scenarios.
+// Ordinary reloads intentionally do not reset, so they exercise persistence.
+if (new URLSearchParams(location.search).has("labour01seed")) {
+  delete persistedDprState.records[String(labour01Draft.id)];
+  sessionStorage.setItem(persistedDprStorageKey, JSON.stringify(persistedDprState));
+  guidedDprRecords[labour01Draft.id] = labour01Draft;
 }
 let nextPlantUsageId = 8102;
 let plantUsageRecords: any[] = [{ ...initialPlantUsage }];
@@ -1492,6 +1513,31 @@ function copyDprWithPayload(id: number, payload: any, status: string) {
   fixtureState.dprRecoveryPayloads.push({ id, status, payload: updated });
   persistDprFixtureRecords();
   return updated;
+}
+
+const labour01SequenceKey = "__dprSiteFixtureLabour01NextParentId";
+let nextLabour01ParentId = Number(sessionStorage.getItem(labour01SequenceKey)) || 8351;
+// Mirror storage.updateDprDraft's delete/reinsert of labour_logs on full
+// PATCH. A second save with the old parent id must conflict, not silently
+// attach names to a different row. This branch is synthetic-fixture only.
+function labour01ReplacePayload(payload: any, saved: any): any {
+  if (!new URLSearchParams(location.search).has("labour01") || !Array.isArray(payload.labour)) return payload;
+  const previous = saved?.labour ?? [];
+  for (const row of payload.labour) {
+    const reference = row.persistedId ?? row.id;
+    if (reference != null && previous.length && !previous.some((old: any) => old.id === reference)) {
+      return null;
+    }
+  }
+  return {
+    ...payload,
+    labour: payload.labour.map((row: any) => {
+      const old = previous.find((candidate: any) => candidate.id === (row.persistedId ?? row.id));
+      const id = nextLabour01ParentId++;
+      sessionStorage.setItem(labour01SequenceKey, String(nextLabour01ParentId));
+      return { ...row, id, persistedId: id, workerNames: row.workerNames ?? old?.workerNames ?? [] };
+    }),
+  };
 }
 
 // Mirror server/dprSections.sectionSnapshot for B2's isolated HTTP storage.
@@ -1931,7 +1977,9 @@ window.fetch = async (input, init) => {
     fixtureState.dprDraftPayloads.push({ id, payload: body || {} });
     fixtureState.draftPayloads.push({ id, payload: body || {} });
     const { headerToken: _headerToken, sectionTokens: _sectionTokens, ...draftData } = body || {};
-    const updated = copyDprWithPayload(id, isB2FixtureRequest() ? draftData : body || {}, "draft");
+    const prepared = labour01ReplacePayload(isB2FixtureRequest() ? draftData : body || {}, guidedDprRecords[id]);
+    if (!prepared) return json({ code: "DPR_SECTION_CONFLICT", message: "A saved labour row no longer belongs to this DPR." }, 409);
+    const updated = copyDprWithPayload(id, prepared, "draft");
     return json(isB2FixtureRequest() ? { ...updated, ...await b2SnapshotTokens(updated) } : updated);
   }
   const versionMatch = pathname.match(/^\/api\/dprs\/(\d+)\/version$/);
@@ -2268,6 +2316,11 @@ function Dpr16B2EvidenceBanner() {
 // navigation code.
 const originalPushState = window.history.pushState.bind(window.history);
 window.history.pushState = ((state: any, title: string, url?: string | URL | null) => {
+  // LABOUR-01 save-pair probe: the production draft UI intentionally parks to
+  // Field Home after saving. Hold this synthetic fixture on the mounted form
+  // so a second immediate Save can reveal stale replacement-row identities.
+  if (new URLSearchParams(window.location.search).has("labour01stay")
+    && String(url ?? "").startsWith("/site/dashboard")) return;
   originalPushState(state, title, url);
   window.dispatchEvent(new PopStateEvent("popstate"));
 }) as typeof window.history.pushState;
@@ -2281,7 +2334,8 @@ const mount = () => {
   const isSiteSuccess = window.location.pathname.startsWith("/site/success/");
   const isSiteReport = window.location.pathname.startsWith("/site/report/");
   const isDpr18B3Report = new URLSearchParams(window.location.search).has("dpr18b3");
-  const isDpr18B3Details = isDpr18B3Report && window.location.pathname.startsWith("/dpr/");
+  const isLabour01 = new URLSearchParams(window.location.search).has("labour01");
+  const isDpr18B3Details = (isDpr18B3Report || isLabour01) && window.location.pathname.startsWith("/dpr/");
   const isSiteMaterialTrips = window.location.pathname.startsWith("/site/material-trips");
   const isSiteMaterialsReceived = window.location.pathname.startsWith("/site/materials-received");
   const isVehicleSupplierInline = window.location.pathname.startsWith("/fixture/vehicle-supplier-inline");
@@ -2293,6 +2347,7 @@ const mount = () => {
   appRoot.render(
     <QueryClientProvider client={queryClient}>
       {isDpr18B3Report && <header className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">DPR18 B3 · isolated synthetic read-only response · no customer database</header>}
+      {isLabour01 && <header className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">LABOUR-01 · isolated synthetic DPR · intercepted API · no customer database</header>}
       {new URLSearchParams(window.location.search).has("dpr13Legacy") && <header className="border border-amber-500 bg-amber-50 p-4">DPR-13 synthetic legacy-token fixture — real Guided/SiteEdit components, intercepted API only.</header>}
       <Dpr16B2EvidenceBanner />
       {isDpr19B1Dashboard && <header data-testid="dpr19-b1-fixture-banner" className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">DPR19 B1 · isolated synthetic GET responses · actual SiteDashboard · no customer database</header>}
@@ -2320,7 +2375,7 @@ const mount = () => {
         : isSiteSuccess
           ? <SiteSuccess />
           : isSiteReport
-            ? isDpr18B3Report ? <SiteReport /> : <FixtureSubmittedReport />
+            ? isDpr18B3Report || isLabour01 ? <SiteReport /> : <FixtureSubmittedReport />
             : isVehicleSupplierInline
               ? <VehicleSupplierInlineFixture />
               : isSiteMaterialTrips

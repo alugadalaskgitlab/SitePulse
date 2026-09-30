@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth-context";
 import { ChevronLeft, Plus, Trash2, Save, Loader2, UserPlus, X, Shield, Check, Send, Camera, Image as ImageIcon, Paperclip } from "lucide-react";
 import { useUpload } from "@/hooks/use-upload";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
+import { LabourWorkerNames, readLabourWorkerNames, prepareLabourWorkerRow, adoptLabourRowIds, newLabourRowKey } from "@/components/LabourWorkerNames";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -175,6 +176,8 @@ const contractorDieselTankFieldsCleared = (row: EquipmentEntry): EquipmentEntry 
 
 interface LabourEntry {
   persistedId?: number;
+  editCreationKey?: string;
+  workerNames?: string[];
   category: string;
   gender: string;
   count: number;
@@ -354,6 +357,8 @@ export function mapDprToFormState(dpr: any) {
   const labour: LabourEntry[] = dpr.labour?.length
     ? dpr.labour.map((l: any) => ({
         persistedId: l.id != null ? Number(l.id) : undefined,
+        editCreationKey: l.id == null ? newLabourRowKey() : undefined,
+        workerNames: readLabourWorkerNames(l),
         category: l.category || "Skilled",
         gender: l.gender || "Male",
         count: l.count,
@@ -362,7 +367,7 @@ export function mapDprToFormState(dpr: any) {
         boqItemId: l.boqItemId ?? null,
         structureId: l.structureId ?? null,
       }))
-    : [{ category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null }];
+    : [{ category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null, workerNames: [], editCreationKey: newLabourRowKey() }];
 
   const materials: MaterialEntry[] = dpr.materials
     ? dpr.materials.map((m: any) => ({
@@ -750,7 +755,7 @@ export default function SiteEdit() {
   };
 
   const [labour, setLabour] = useState<LabourEntry[]>([
-    { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null }
+    { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null, workerNames: [], editCreationKey: newLabourRowKey() }
   ]);
 
   const [materials, setMaterials] = useState<MaterialEntry[]>([]);
@@ -1289,7 +1294,7 @@ export default function SiteEdit() {
       // opening-reading continuity when equipment is selected.
       setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, isNew: true, editCreationKey: newEntryKey() }]);
     } else if (section === 'labour') {
-      setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null }]);
+      setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null, workerNames: [], editCreationKey: newLabourRowKey() }]);
     }
   };
 
@@ -1371,7 +1376,9 @@ export default function SiteEdit() {
     ? dpr.boqProjectId
     : undefined;
 
-  const buildPayload = () => ({
+  const labourSubmissionRef = useRef(new WeakMap<object, LabourEntry[]>());
+  const buildPayload = () => {
+    const payload = ({
     ...header,
     // Preserve the server link while the site/project request is loading or
     // has failed. This is the previous contract with a saved-DPR fallback:
@@ -1451,7 +1458,7 @@ export default function SiteEdit() {
         dieselNorm: preview.efficiencyValue ?? eq.dieselNorm ?? null,
       });
     }),
-    labour: labour.filter(l => l.count > 0),
+    labour: labour.filter(l => l.count > 0).map(prepareLabourWorkerRow),
     materials: materials.filter(m => m.material).map(m => ({
       type: m.type, material: m.material, quantity: m.quantity, uom: m.uom,
       vehicleNumber: m.vehicleNumber || undefined, supplier: m.supplier || undefined,
@@ -1459,9 +1466,12 @@ export default function SiteEdit() {
       boqItemId: m.boqItemId ?? null, structureId: m.structureId ?? null,
     })),
     sitePurchases: sitePurchases.filter(sp => sp.itemDescription),
-  });
+    });
+    labourSubmissionRef.current.set(payload, labour.filter(l => l.count > 0));
+    return payload;
+  };
 
-  const adoptPersistedDraft = (data: any) => {
+  const adoptPersistedDraft = (data: any, sentLabour?: LabourEntry[]) => {
     draftWriteTokensRef.current = readDprWriteTokens(data);
     const state = mapDprToFormState(data);
     setHeader(state.header);
@@ -1469,7 +1479,8 @@ export default function SiteEdit() {
     setStructureItems(state.structureItems);
     setProgress(state.progress);
     setEquipment(state.equipment);
-    setLabour(state.labour);
+    if (sentLabour) setLabour(current => adoptLabourRowIds(current, sentLabour, data.labour ?? []));
+    else setLabour(state.labour);
     setMaterials(state.materials);
     setSitePurchases(state.sitePurchases);
     setBoqProjectPreference({ resolved: true, projectId: data.boqProjectId ?? null });
@@ -1484,8 +1495,8 @@ export default function SiteEdit() {
       });
       return response.json();
     },
-    onSuccess: async (data) => {
-      adoptPersistedDraft(data);
+    onSuccess: async (data, payload) => {
+      adoptPersistedDraft(data, labourSubmissionRef.current.get(payload));
       sessionStorage.removeItem(DRAFT_KEY);
       // Batch 06C §22: draft saves keep the same DPR id — upload staged
       // per-activity photos now so they survive close/reopen.
@@ -1538,7 +1549,7 @@ export default function SiteEdit() {
         ...payload, ...requireDprWriteTokens(draftWriteTokensRef.current),
         equipment: await prepareBreakdownAttachments(payload.equipment),
       });
-      adoptPersistedDraft(await saved.json());
+      adoptPersistedDraft(await saved.json(), labourSubmissionRef.current.get(payload));
       const response = await apiRequest("POST", `/api/dprs/${id}/submit`, {
         ...requireDprWriteTokens(draftWriteTokensRef.current), clientTimestamp,
       });
@@ -3399,6 +3410,10 @@ export default function SiteEdit() {
                   </Select>
                 </div>
               )}
+              <div className="col-span-2 md:col-span-6">
+                <LabourWorkerNames names={entry.workerNames} count={entry.count} rowIndex={idx}
+                  onChange={workerNames => setLabour(rows => rows.map((row, i) => i === idx ? { ...row, workerNames } : row))} />
+              </div>
             </div>
           ))}
           <Button size="sm" variant="outline" className="w-full border-dashed" onClick={() => addRow('labour')} data-testid="button-add-labour-bottom">
