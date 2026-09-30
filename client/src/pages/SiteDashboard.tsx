@@ -64,6 +64,7 @@ import {
 } from "@/lib/activityFilter";
 import { visibleEquipmentRows } from "@shared/equipmentUsage";
 import { dprMatchesReference, formatDprReference } from "@/lib/dprReference";
+import type { DraftReadiness } from "@shared/dprDraftReadiness";
 
 const MATERIAL_OPTIONS = [
   "WMM", "GSB", "Soil", "Dust", "6MM DOWN", "10/12MM", "20MM", "BC Mix", "DBM Mix", "Water", "Bitumen", "Emulsion", "Diesel"
@@ -79,6 +80,7 @@ export default function SiteDashboard() {
   const { sectionCan, isAdmin } = useAuth();
   const { companyName, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("site_dprs", "create");
+  const canEdit = sectionCan("site_dprs", "edit");
   const canExport = sectionCan("site_dprs", "view_reports");
   const [expandedReports, setExpandedReports] = useState<Set<number>>(new Set());
   // DPR filter state — persisted across visits in localStorage so the page
@@ -1237,12 +1239,17 @@ export default function SiteDashboard() {
                   const pendingClosingCount = dpr.visibleEquipment.filter(
                     (e: any) => e.machine && e.openingReading != null && e.closingReading == null
                   ).length;
+                  const isDraftDisplay = dpr.dprStatus === "draft" && !dpr.isCancelled && !dpr.isDeleted;
+                  const isActiveDraft = isDraftDisplay && !dpr.isSuperseded;
+                  const readiness: DraftReadiness | undefined = dpr.draftReadiness;
+                  const readinessState = readiness?.state ?? "unavailable";
+                  const blockingIssues = readinessState === "blocked" ? readiness?.mandatory ?? [] : [];
                   
                   return (
-                    <Card key={dpr.id} className={`transition-all ${pendingClosingCount > 0 ? 'border-amber-400 dark:border-amber-500' : ''}`} data-testid={`card-report-${dpr.id}`}>
+                    <Card key={dpr.id} className={`transition-all ${isActiveDraft && readinessState === "blocked" ? 'border-amber-400 dark:border-amber-500' : ''}`} data-testid={`card-report-${dpr.id}`}>
                       <CardContent className="p-4">
-                        <div className="flex items-center justify-between gap-4">
-                          <div className="flex items-center gap-4 flex-1 min-w-0">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4" data-testid={`header-report-${dpr.id}`}>
+                          <div className="flex items-center gap-4 flex-1 min-w-0 w-full md:w-auto">
                             <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
                               <Calendar className="w-6 h-6 text-primary" />
                             </div>
@@ -1260,10 +1267,21 @@ export default function SiteDashboard() {
                                 ) : (
                                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-semibold border bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700 whitespace-nowrap" data-testid={`badge-worktype-${dpr.id}`}>Road</span>
                                 )}
-                                {dpr.dprStatus === "draft" && !dpr.isCancelled && !dpr.isDeleted && (
+                                {isDraftDisplay && (
                                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-sm font-semibold border bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-900/30 dark:text-rose-400 dark:border-rose-700 whitespace-nowrap" data-testid={`badge-draft-${dpr.id}`}>
                                     <Pencil className="w-3 h-3" />
-                                    Draft — not submitted
+                                    Draft
+                                  </span>
+                                )}
+                                {isActiveDraft && (
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-sm font-medium border ${
+                                    readinessState === "blocked"
+                                      ? "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400"
+                                      : readinessState === "ready"
+                                        ? "bg-green-100 text-green-800 border-green-300 dark:bg-green-900/30 dark:text-green-400"
+                                        : "bg-muted text-muted-foreground"
+                                  }`} data-testid={`badge-readiness-${dpr.id}`}>
+                                    {readinessState === "blocked" ? "Not ready" : readinessState === "ready" ? "No readiness blockers" : "Readiness unavailable"}
                                   </span>
                                 )}
                                 {pendingClosingCount > 0 && (
@@ -1291,13 +1309,23 @@ export default function SiteDashboard() {
                               </div>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            {pendingClosingCount > 0 && (
-                              <Button size="sm" variant="default" className="gap-1 bg-amber-500 hover:bg-amber-600 text-white" data-testid={`button-complete-${dpr.id}`}
-                                onClick={() => { saveDashboardState(); setLocation(appendOrigin(`/site/edit/${dpr.id}?complete=true`)); }}>
-                                <Pencil className="w-3 h-3" />
-                                Complete
-                              </Button>
+                          <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 md:w-auto md:flex-nowrap" data-testid={`actions-report-${dpr.id}`}>
+                            {isActiveDraft && readinessState === "blocked" && (
+                              <div className="flex w-full min-w-0 flex-col items-start gap-1 md:w-auto md:items-end">
+                                {blockingIssues.length > 0 && (
+                                  <span className="text-xs text-amber-800 dark:text-amber-400 break-words w-full md:max-w-64 md:text-right" data-testid={`readiness-reason-${dpr.id}`}>
+                                    {blockingIssues[0].message}
+                                    {blockingIssues.length > 1 && ` (+${blockingIssues.length - 1} more)`}
+                                  </span>
+                                )}
+                                {canEdit && (
+                                  <Button size="sm" variant="default" className="gap-1 bg-amber-500 hover:bg-amber-600 text-white" data-testid={`button-fix-${dpr.id}`}
+                                    onClick={() => { saveDashboardState(); setLocation(appendOrigin(`/site/edit/${dpr.id}`)); }}>
+                                    <Pencil className="w-3 h-3" />
+                                    Fix
+                                  </Button>
+                                )}
+                              </div>
                             )}
                             <Button 
                               size="sm" 

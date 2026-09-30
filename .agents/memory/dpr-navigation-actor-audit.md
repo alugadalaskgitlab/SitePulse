@@ -15,6 +15,12 @@ Keep the existing `DPR-{saved record id}` convention rather than introducing a s
 
 ## Navigation rule
 
+Do not infer a DPR's original entry mode from section tokens. Draft register repair actions should use the existing draft-entry route rather than guess classic versus guided origin.
+
+**Why:** There is no persisted origin-mode marker, and section tokens describe saved content/concurrency, not how a draft was created. The approved register repair flow deliberately delegates editor selection to the existing route.
+
+**How to apply:** Preserve the register origin and let the draft hub expose its existing section-level issue navigation; do not silently add first-field auto-focus or bypass the hub.
+
 Every DPR form, draft hub, report, success page, and submitted edit uses a validated root-relative return target. Preserve the complete originating register URL, including filters and tabs, through nested transitions. If no safe origin exists, return to the DPR register rather than a home page or unrelated hub.
 
 **Why:** DPR entry points previously chose different hardcoded destinations, so Back could lose the user's filtered register context or lead somewhere unrelated.

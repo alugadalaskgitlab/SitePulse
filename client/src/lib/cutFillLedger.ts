@@ -3,6 +3,8 @@ import {
   excavationMaterialOutcomeIssue,
   type CutFillConsumptionInput,
 } from "@shared/cutFillReconciliation";
+import { isRoadwayExcavationRow, withCutFillReadinessContext } from "@shared/cutFillReadiness";
+export { isRoadwayExcavationRow, withCutFillReadinessContext } from "@shared/cutFillReadiness";
 
 export type ChainageCandidate = {
   id: number;
@@ -66,37 +68,18 @@ export type CutFillFormRow = {
   materialOutcome?: string | null; reusableQty?: number | null;
   earthworkArrangementId?: number | null; allocations?: LedgerAllocation[];
 };
-export type CutFillOutcomeRow = Pick<
-  CutFillFormRow,
-  "entryKey" | "boqItemId" | "quantity" | "materialOutcome" | "reusableQty"
->;
+export type { CutFillOutcomeRow } from "@shared/cutFillReadiness";
+import type { CutFillOutcomeRow } from "@shared/cutFillReadiness";
 export type CutFillArrangement = { id: number; arrangementType: string; sourceExcavationBoqItemId?: number | null };
 export type CutFillFormContext = {
   sources: CutFillSourceOption[];
   rowLedger: Record<string, ReturnType<typeof projectFormLedger>[number]>;
 };
 
-export function isRoadwayExcavationRow(row: CutFillOutcomeRow, boqItems: any[]): boolean {
-  const item = boqItems.find(candidate => Number(candidate.id) === Number(row.boqItemId));
-  return !!item
-    && classifyWorkType(String(item.description ?? item.itemName ?? ""), String(item.unit ?? "")) === "roadway_excavation";
-}
-
 export function cutFillOutcomeReadinessIssue(row: CutFillOutcomeRow, boqItems: any[]): string | null {
   if (!isRoadwayExcavationRow(row, boqItems)) return null;
   const item = boqItems.find(candidate => Number(candidate.id) === Number(row.boqItemId));
   return excavationMaterialOutcomeIssue(row.quantity, row.materialOutcome, row.reusableQty, item?.unit);
-}
-
-export function withCutFillReadinessContext<T extends CutFillOutcomeRow>(rows: T[], boqItems: any[]) {
-  return rows.map(row => {
-    const item = boqItems.find(candidate => Number(candidate.id) === Number(row.boqItemId));
-    return {
-      ...row,
-      isRoadwayExcavation: isRoadwayExcavationRow(row, boqItems),
-      uom: item?.unit ?? (row as any).uom ?? null,
-    };
-  });
 }
 
 export function buildCutFillFormContext(

@@ -89,6 +89,8 @@ import {
   resolveBoqUomProfile,
 } from "@shared/dprGeometry";
 import { evaluateDprSubmitReadiness, type DprReadinessIssue } from "@shared/dprSubmitReadiness";
+import { evaluateSavedDraftReadiness } from "@shared/dprDraftReadiness";
+import { collectDprBoqItemIds } from "@shared/dprBoqSelection";
 import { chainageOverlapReadinessIssues, isChainageGuardRow, unchangedChainageRowKeys, type CandidateChainageRow } from "@shared/chainageOverlap";
 import { blocksExternalReceiptsForBoqItem, mergeMaterialTripLinkage, reusedExcavationConfigurationIssue } from "@shared/materialReceiptSummary";
 import { excavationMaterialOutcomeIssue } from "@shared/cutFillReconciliation";
@@ -539,6 +541,7 @@ export async function registerRoutes(
         // suffix in `site` and must stay visible to site-restricted users.
         dprs = dprs.filter((d) => siteMatchesPermitted(d.site, permittedSiteNames));
       }
+      const activeDrafts = dprs.filter(d => d.dprStatus === "draft" && !d.isDeleted && !d.isCancelled && !d.isSuperseded);
       const boqItemIds = Array.from(new Set(
         dprs.flatMap((dpr) =>
           (Array.isArray(dpr.progress) ? dpr.progress : [])
@@ -546,9 +549,17 @@ export async function registerRoutes(
             .filter((id): id is number => id != null),
         ),
       ));
-      const linkedBoqItems = boqItemIds.length > 0
+      // Extend the existing BOQ lookup for all authorized drafts, not one
+      // request per DPR or project. Other BOQ references must also resolve.
+      const readinessItemIds = activeDrafts.flatMap(dpr => collectDprBoqItemIds({
+        progress: dpr.progress, equipment: dpr.equipment, labour: dpr.labour, structureItems: dpr.structureItems,
+      }));
+      const allBoqItemIds = Array.from(new Set([...boqItemIds, ...readinessItemIds]));
+      const linkedBoqItems = allBoqItemIds.length > 0
         ? await db.select({
             id: boqItems.id,
+            boqProjectId: boqItems.boqProjectId,
+            unit: boqItems.unit,
             displayName: boqItems.displayName,
             itemName: boqItems.itemName,
             description: boqItems.description,
@@ -561,14 +572,34 @@ export async function registerRoutes(
             .from(boqItems)
             .leftJoin(snlBoqMappings, eq(snlBoqMappings.boqItemId, boqItems.id))
             .leftJoin(snlItems, eq(snlItems.id, snlBoqMappings.snlItemId))
-            .where(drizzleInArray(boqItems.id, boqItemIds))
+            .where(drizzleInArray(boqItems.id, allBoqItemIds))
         : [];
+      const draftProjectIds = Array.from(new Set(activeDrafts.map(d => d.boqProjectId).filter((id): id is number => id != null)));
+      const draftProjects = draftProjectIds.length ? await db.select({
+        id: boqProjectsTable.id, siteName: sitesTable.name,
+      }).from(boqProjectsTable)
+        .leftJoin(sitesTable, eq(sitesTable.id, boqProjectsTable.siteId))
+        .where(drizzleInArray(boqProjectsTable.id, draftProjectIds)) : [];
+      const readinessItemsById = new Map(linkedBoqItems.map(item => [item.id, item]));
+      const readinessProjectsById = new Map(draftProjects.map(project => [project.id, project]));
+      const activeDraftIds = new Set(activeDrafts.map(d => d.id));
       const boqItemById = new Map(linkedBoqItems.map((item) => [item.id, {
-        ...item,
+        id: item.id,
+        displayName: item.displayName,
+        itemName: item.itemName,
+        description: item.description,
+        mappingStatus: item.mappingStatus,
+        snlShortLabel: item.snlShortLabel,
+        snlMappedBy: item.snlMappedBy,
+        snlMappingIsAuto: item.snlMappingIsAuto,
+        snlConfidence: item.snlConfidence,
         canonicalDisplayName: trustedCanonicalBoqName(item) || null,
       }]));
       const response = dprs.map((dpr) => ({
         ...dpr,
+        ...(activeDraftIds.has(dpr.id) ? {
+          draftReadiness: evaluateSavedDraftReadiness(dpr, readinessItemsById, readinessProjectsById),
+        } : {}),
         progress: dpr.progress.map((entry) => ({
           ...entry,
           boqItem: entry.boqItemId != null ? boqItemById.get(entry.boqItemId) ?? null : null,

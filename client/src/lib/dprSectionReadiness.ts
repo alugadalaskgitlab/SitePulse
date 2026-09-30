@@ -1,19 +1,5 @@
-import { evaluateDprSubmitReadiness } from "@shared/dprSubmitReadiness";
 import type { DprReadinessIssue } from "@shared/dprSubmitReadiness";
-import { withCutFillReadinessContext } from "./cutFillLedger";
-
-/** Display-only evaluation. The server remains authoritative at submit time. */
-export function evaluateSectionReadiness(
-  saved: Record<string, any>,
-  boqItems: any[],
-  local: Partial<Record<"progress" | "structureItems" | "equipment" | "labour" | "materials" | "sitePurchases", any>> = {},
-) {
-  const merged: Record<string, any> = { ...saved, ...local };
-  return evaluateDprSubmitReadiness({
-    ...merged,
-    progress: merged.workType === "structure" ? [] : withCutFillReadinessContext(merged.progress ?? [], boqItems),
-  });
-}
+export { evaluateSectionReadiness } from "@shared/dprSectionReadiness";
 
 /** DOM focus only: never changes evaluator rules or issue indexes. */
 export function sectionIssueFieldTestId(issue: DprReadinessIssue, chainageFrom = ""): string | null {

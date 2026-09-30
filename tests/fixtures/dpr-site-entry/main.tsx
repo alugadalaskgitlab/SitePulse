@@ -4,6 +4,7 @@ import SiteEntry from "../../../client/src/pages/SiteEntry";
 import DprSections, { DprEditEntry, DprWorkEntry } from "../../../client/src/pages/DprSections";
 import { installDpr13Adapter } from "./dpr13-adapter";
 import { DPR_SECTIONS, normalizeDprSectionContext, pickDprSectionPayload } from "../../../shared/dprSections";
+import { evaluateSavedDraftReadiness } from "../../../shared/dprDraftReadiness";
 import SiteEdit from "../../../client/src/pages/SiteEdit";
 import SiteSuccess from "../../../client/src/pages/SiteSuccess";
 import SiteMaterialTrips from "../../../client/src/pages/SiteMaterialTrips";
@@ -13,6 +14,7 @@ import GuidedDpr from "../../../client/src/pages/GuidedDpr";
 import { DprEquipmentCompact } from "../../../client/src/components/DprEquipmentCompact";
 import DprDetails from "../../../client/src/pages/DprDetails";
 import SiteReport from "../../../client/src/pages/SiteReport";
+import SiteDashboard from "../../../client/src/pages/SiteDashboard";
 import { DprActivityReadOnly } from "../../../client/src/components/DprActivityReadOnly";
 import { ActivityReceiptStrip } from "../../../client/src/components/ActivityReceiptStrip";
 import { queryClient } from "../../../client/src/lib/queryClient";
@@ -445,6 +447,43 @@ const storedDpr = {
   remarks: "Fixture DPR — representative data only.",
   createdAt: "2026-08-05T16:00:00.000Z",
 };
+
+// DPR19 B1: isolated, labelled GET response for the real dashboard. Derive
+// ordinary states from the same saved-draft evaluator as the backend, never
+// from handwritten "ready" flags. The unavailable case models failed server
+// evaluation (not an empty mandatory list masquerading as ready).
+const dpr19B1Records = (() => {
+  const base = { ...storedDpr, dprStatus: "draft", progress: [{ ...storedDpr.progress[0] }],
+    equipment: [{ ...storedDpr.equipment[0] }], labour: [{ ...storedDpr.labour[0] }],
+    materials: [{ ...storedDpr.materials[0] }] };
+  const rows: any[] = [
+    { ...base, id: 6311, remarks: "Synthetic B1 roadway excavation material outcome", progress: [{
+      ...storedDpr.progress[0], activity: "Synthetic roadway excavation", quantity: 75,
+      boqItemId: 8899, uom: "CUM", materialOutcome: null,
+    }] },
+    { ...base, id: 6312, remarks: "Synthetic B1 pending closing meter", equipment: [{
+      ...storedDpr.equipment[0], machine: "Synthetic meter roller", openingReading: 100,
+      closingReading: null,
+    }] },
+    { ...base, id: 6313, remarks: "Synthetic B1 ready" },
+    { ...base, id: 6314, remarks: "Synthetic B1 advisory only", equipment: [{
+      machine: "Synthetic idle unrecorded machine", equipmentId: 7702,
+      openingReading: null, closingReading: null, startTime: "", endTime: "",
+    }] },
+    { ...base, id: 6315, boqProjectId: 9999, remarks: "Synthetic B1 unresolved project evaluation unavailable" },
+    { ...base, id: 6316, isCancelled: true, remarks: "Synthetic B1 cancelled" },
+    { ...base, id: 6317, isDeleted: true, remarks: "Synthetic B1 deleted" },
+    { ...base, id: 6318, dprStatus: "submitted", remarks: "Synthetic B1 submitted" },
+  ];
+  const itemsById = new Map([
+    [8801, { id: 8801, boqProjectId: 5501, description: boqItems[0].description, unit: boqItems[0].unit }],
+    [8899, { id: 8899, boqProjectId: 5501, description: "Roadway excavation in ordinary soil", unit: "CUM" }],
+  ]);
+  const projectsById = new Map([[5501, { id: 5501, siteName: site.name }]]);
+  return rows.map(row => row.dprStatus === "draft" && !row.isCancelled && !row.isDeleted
+    ? { ...row, draftReadiness: evaluateSavedDraftReadiness(row, itemsById, projectsById) }
+    : row);
+})();
 
 // Task 1479 browser record: actual SiteEdit renders both authoritative cases
 // from synthetic, read-only fixture data (no database writes).
@@ -1618,7 +1657,10 @@ window.fetch = async (input, init) => {
     fixtureState.siteMaterialTripUpdatePayloads.push({ id, payload: body || {} });
     return json({ ...receivedVehicleSupplierTrip, id, ...(body || {}) });
   }
-  if (pathname === "/api/dprs/with-details" && method === "GET") return json([]);
+  if (pathname === "/api/dprs/with-details" && method === "GET") {
+    return json(url.searchParams.has("dpr19b1") || new URLSearchParams(window.location.search).get("dpr19b1") === "1"
+      ? dpr19B1Records : []);
+  }
   if (pathname === "/api/dprs/chainage-overlap-context" && method === "GET") {
     if (isDpr10Route()) {
       fixtureState.dpr10OverlapContextRequests.push({
@@ -1781,6 +1823,8 @@ window.fetch = async (input, init) => {
   const dprGetMatch = pathname.match(/^\/api\/dprs\/(\d+)$/);
   if (dprGetMatch && method === "GET") {
     const requestedId = Number(dprGetMatch[1]);
+    const dpr19B1Record = dpr19B1Records.find(record => record.id === requestedId);
+    if (dpr19B1Record) return json(dpr19B1Record);
     if (new URLSearchParams(window.location.search).has("dpr18b3") && dpr18B3Reports[requestedId]) {
       return json(dpr18B3Reports[requestedId]);
     }
@@ -2219,6 +2263,8 @@ const mount = () => {
   installDpr13Adapter();
   queryClient.clear();
   const isEdit = window.location.pathname.startsWith("/site/edit/");
+  const isDpr19B1Dashboard = window.location.pathname === "/site/dashboard"
+    && new URLSearchParams(window.location.search).get("dpr19b1") === "1";
   const isSiteSuccess = window.location.pathname.startsWith("/site/success/");
   const isSiteReport = window.location.pathname.startsWith("/site/report/");
   const isDpr18B3Report = new URLSearchParams(window.location.search).has("dpr18b3");
@@ -2236,12 +2282,13 @@ const mount = () => {
       {isDpr18B3Report && <header className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">DPR18 B3 · isolated synthetic read-only response · no customer database</header>}
       {new URLSearchParams(window.location.search).has("dpr13Legacy") && <header className="border border-amber-500 bg-amber-50 p-4">DPR-13 synthetic legacy-token fixture — real Guided/SiteEdit components, intercepted API only.</header>}
       <Dpr16B2EvidenceBanner />
+      {isDpr19B1Dashboard && <header data-testid="dpr19-b1-fixture-banner" className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">DPR19 B1 · isolated synthetic GET responses · actual SiteDashboard · no customer database</header>}
       <Dpr07EvidenceBanner />
         <Dpr10EvidenceBanner />
         <Dpr08EvidenceBanner />
         <Dpr09EvidenceBanner />
         <DprNullEvidenceBanner />
-      {isDpr18B3Details ? <DprDetails /> : window.location.pathname === "/fixture/dpr16-b3-activity" ? (
+      {isDpr19B1Dashboard ? <SiteDashboard /> : isDpr18B3Details ? <DprDetails /> : window.location.pathname === "/fixture/dpr16-b3-activity" ? (
         <main className="mx-auto max-w-4xl space-y-4 p-6">
           <h1 className="text-xl font-semibold">DPR16 B3 · isolated synthetic activity summary</h1>
           <p>Fixture only; this uses the same read-only activity component as both report routes.</p>

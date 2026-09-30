@@ -1,0 +1,229 @@
+{
+  "source": "isolated fixture, no customer DB",
+  "findings": [
+    {
+      "device": "desktop",
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr19-b1-dashboard-desktop.png",
+      "rows": {
+        "6311": {
+          "present": true,
+          "draft": "Draft",
+          "readiness": "Not ready",
+          "reason": "record whether the excavated material is fully reusable, partly reusable, or unsuitable.",
+          "fix": "Fix",
+          "pending": null,
+          "bounds": {
+            "left": 204,
+            "right": 1228
+          }
+        },
+        "6312": {
+          "present": true,
+          "draft": "Draft",
+          "readiness": "Not ready",
+          "reason": "closing meter reading required",
+          "fix": "Fix",
+          "pending": "Pending Closing (1)",
+          "bounds": {
+            "left": 204,
+            "right": 1228
+          }
+        },
+        "6313": {
+          "present": true,
+          "draft": "Draft",
+          "readiness": "No readiness blockers",
+          "reason": null,
+          "fix": null,
+          "pending": null,
+          "bounds": {
+            "left": 204,
+            "right": 1228
+          }
+        },
+        "6314": {
+          "present": true,
+          "draft": "Draft",
+          "readiness": "No readiness blockers",
+          "reason": null,
+          "fix": null,
+          "pending": null,
+          "bounds": {
+            "left": 204,
+            "right": 1228
+          }
+        },
+        "6315": {
+          "present": true,
+          "draft": "Draft",
+          "readiness": "Readiness unavailable",
+          "reason": null,
+          "fix": null,
+          "pending": null,
+          "bounds": {
+            "left": 204,
+            "right": 1228
+          }
+        },
+        "6316": {
+          "present": true,
+          "draft": null,
+          "readiness": null,
+          "reason": null,
+          "fix": null,
+          "pending": null,
+          "bounds": {
+            "left": 204,
+            "right": 1228
+          }
+        },
+        "6317": {
+          "present": true,
+          "draft": null,
+          "readiness": null,
+          "reason": null,
+          "fix": null,
+          "pending": null,
+          "bounds": {
+            "left": 204,
+            "right": 1228
+          }
+        },
+        "6318": {
+          "present": true,
+          "draft": null,
+          "readiness": null,
+          "reason": null,
+          "fix": null,
+          "pending": null,
+          "bounds": {
+            "left": 204,
+            "right": 1228
+          }
+        }
+      },
+      "navigation": {
+        "path": "/site/edit/6311?origin=portal",
+        "saved": {
+          "expandedReports": [
+            6311
+          ],
+          "scrollY": 410
+        },
+        "dprGet": true
+      }
+    },
+    {
+      "device": "mobile",
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr19-b1-dashboard-mobile.png",
+      "rows": {
+        "6311": {
+          "present": true,
+          "draft": "Draft",
+          "readiness": "Not ready",
+          "reason": "record whether the excavated material is fully reusable, partly reusable, or unsuitable.",
+          "fix": "Fix",
+          "pending": null,
+          "bounds": {
+            "left": 0,
+            "right": 382
+          }
+        },
+        "6312": {
+          "present": true,
+          "draft": "Draft",
+          "readiness": "Not ready",
+          "reason": "closing meter reading required",
+          "fix": "Fix",
+          "pending": "Pending Closing (1)",
+          "bounds": {
+            "left": 0,
+            "right": 382
+          }
+        },
+        "6313": {
+          "present": true,
+          "draft": "Draft",
+          "readiness": "No readiness blockers",
+          "reason": null,
+          "fix": null,
+          "pending": null,
+          "bounds": {
+            "left": 0,
+            "right": 382
+          }
+        },
+        "6314": {
+          "present": true,
+          "draft": "Draft",
+          "readiness": "No readiness blockers",
+          "reason": null,
+          "fix": null,
+          "pending": null,
+          "bounds": {
+            "left": 0,
+            "right": 382
+          }
+        },
+        "6315": {
+          "present": true,
+          "draft": "Draft",
+          "readiness": "Readiness unavailable",
+          "reason": null,
+          "fix": null,
+          "pending": null,
+          "bounds": {
+            "left": 0,
+            "right": 382
+          }
+        },
+        "6316": {
+          "present": true,
+          "draft": null,
+          "readiness": null,
+          "reason": null,
+          "fix": null,
+          "pending": null,
+          "bounds": {
+            "left": 0,
+            "right": 382
+          }
+        },
+        "6317": {
+          "present": true,
+          "draft": null,
+          "readiness": null,
+          "reason": null,
+          "fix": null,
+          "pending": null,
+          "bounds": {
+            "left": 0,
+            "right": 382
+          }
+        },
+        "6318": {
+          "present": true,
+          "draft": null,
+          "readiness": null,
+          "reason": null,
+          "fix": null,
+          "pending": null,
+          "bounds": {
+            "left": 0,
+            "right": 382
+          }
+        }
+      },
+      "navigation": {
+        "path": "/site/edit/6311?origin=portal",
+        "saved": {
+          "expandedReports": [
+            6311
+          ],
+          "scrollY": 1250
+        },
+        "dprGet": true
+      }
+    }
+  ]
+}
