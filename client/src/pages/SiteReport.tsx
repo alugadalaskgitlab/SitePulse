@@ -29,13 +29,100 @@ import {
   type EquipmentDestinationType,
 } from "@/lib/equipmentLifecycle";
 import { ProgrammeBarOutcomeHistory } from "@/components/ProgrammeBarOutcomeHistory";
-import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
+import { buildDprEquipmentTableDetails, DprEquipmentTableDetails, DprEquipmentTableBreakdowns } from "@/components/DprEquipmentTableDetails";
 import { DprActivityReadOnly } from "@/components/DprActivityReadOnly";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
 import { isVisibleEquipmentRow } from "@shared/equipmentUsage";
 import { getBaseSiteName } from "@shared/siteName";
 import { dprMeasurementSummary } from "@shared/dprGeometry";
 import { formatDprReference } from "@/lib/dprReference";
+
+// Only the equipment audit table needs dense, wrapping print layout. Do not
+// change the document's page size/orientation or other report sections.
+const equipmentAuditPrintCss = `
+@media print {
+  .dpr-equipment-audit {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+    box-shadow: none !important;
+  }
+  .dpr-equipment-audit .dpr-equipment-audit-content {
+    padding: 0 !important;
+    min-width: 0 !important;
+  }
+  .dpr-equipment-audit .overflow-auto {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+  .dpr-equipment-audit table {
+    table-layout: fixed !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+  .dpr-equipment-audit thead { display: table-header-group !important; }
+  .dpr-equipment-audit tbody,
+  .dpr-equipment-audit tr,
+  .dpr-equipment-audit td {
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+  }
+  .dpr-equipment-audit th,
+  .dpr-equipment-audit td {
+    padding: 1.2mm 0.8mm !important;
+    height: auto !important;
+    vertical-align: top !important;
+  }
+  .dpr-equipment-audit th,
+  .dpr-equipment-audit td,
+  .dpr-equipment-audit td * {
+    min-width: 0 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: normal !important;
+    font-size: 9pt !important;
+    line-height: 1.35 !important;
+  }
+  .dpr-equipment-audit th:nth-child(1) { width: 10%; }
+  .dpr-equipment-audit th:nth-child(2) { width: 6%; }
+  .dpr-equipment-audit th:nth-child(3) { width: 6%; }
+  .dpr-equipment-audit th:nth-child(4) { width: 14%; }
+  .dpr-equipment-audit th:nth-child(5) { width: 10%; }
+  .dpr-equipment-audit th:nth-child(6) { width: 6%; }
+  .dpr-equipment-audit th:nth-child(7) { width: 9%; }
+  .dpr-equipment-audit th:nth-child(8) { width: 7%; }
+  .dpr-equipment-audit th:nth-child(9) { width: 12%; }
+  .dpr-equipment-audit th:nth-child(10) { width: 14%; }
+  .dpr-equipment-audit th:nth-child(11) { width: 6%; }
+  .dpr-equipment-audit [data-testid^="equipment-table-work-"] section,
+  .dpr-equipment-audit [data-testid^="equipment-table-work-"] .grid > div {
+    padding: 1mm 0 !important;
+  }
+  .dpr-equipment-audit [data-testid^="equipment-table-work-"] .grid {
+    display: block !important;
+  }
+  .dpr-equipment-audit [data-testid^="equipment-table-work-"] .flex {
+    flex-wrap: wrap !important;
+    gap: 1mm !important;
+  }
+  .dpr-equipment-audit td svg {
+    width: 9pt !important;
+    height: 9pt !important;
+    flex-shrink: 0 !important;
+  }
+  /* Preserve an attachment's filename as printed audit text; this narrow
+     override never exposes Lifecycle buttons or other interactive controls. */
+  .dpr-equipment-audit [data-testid^="equipment-table-breakdowns-"] button {
+    display: inline !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: none !important;
+  }
+}
+`;
 
 export default function SiteReport() {
   const [, params] = useRoute("/site/report/:id");
@@ -515,33 +602,16 @@ export default function SiteReport() {
 
       {/* Two Column Layout for Resources */}
       <div className="grid grid-cols-1 gap-8">
-        <Card>
+        <Card className="dpr-equipment-audit">
+          <style data-testid="equipment-audit-print-style">{equipmentAuditPrintCss}</style>
           <CardHeader>
             <CardTitle>Equipment Log</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="dpr-equipment-audit-content">
             {visibleEquipment.length === 0 ? (
               <p className="text-muted-foreground italic">No equipment usage recorded.</p>
             ) : (
               <div className="space-y-2">
-              <div className="space-y-2">
-                {visibleEquipment.map((item: any, i: number) => (
-                  <DprEquipmentCompact
-                    key={i}
-                    row={item}
-                    equipment={equipmentById.get(item.equipmentId)}
-                    editable={false}
-                    index={i}
-                    boqItems={reportBoqItems}
-                    programmeBars={(dpr.progress ?? []).flatMap((entry: any) => entry.programmeBarId != null && entry.boqItemId != null ? [{
-                      id: Number(entry.programmeBarId),
-                      boqItemId: Number(entry.boqItemId),
-                      reachLabel: [entry.chainageFrom, entry.chainageTo].filter(Boolean).join("–") || null,
-                      side: entry.side || null,
-                    }] : [])}
-                  />
-                ))}
-              </div>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -569,16 +639,11 @@ export default function SiteReport() {
                     const persistedExpected = item.expectedDiesel != null ? Number(item.expectedDiesel) : null;
                     const persistedNorm = item.dieselNorm != null ? Number(item.dieselNorm) : null;
                     const persistedNormUnit = item.totalKm != null ? "L/km" : item.hoursWorked != null ? "L/hr" : "";
-                    
-                    const hasReading = item.openingReading != null && item.closingReading != null;
-                    const hasTime = item.startTime && item.endTime;
-                    const readingSource = hasReading 
-                      ? `Meter: ${item.openingReading} - ${item.closingReading}`
-                      : (hasTime ? `Time: ${item.startTime} - ${item.endTime}` : '-');
+                    const tableDetails = buildDprEquipmentTableDetails(item, equipmentById.get(item.equipmentId));
 
                     const dieselSourceLabel = item.dieselSource === 'direct_purchase' ? 'Direct Purchase'
                       : item.dieselSource === 'contractor' ? 'Contractor'
-                      : item.dieselSource === 'plant_stock' ? 'Plant Stock' : '-';
+                      : item.dieselSource === 'plant_stock' ? 'Plant Stock' : String(item.dieselSource || '-').replace("_", " ");
                     const usageId = linkedUsageId(item);
                     const usageLifecycle = usageId != null ? lifecycle.get(usageId) : undefined;
                     const lifecycleText = lifecycleLabel(usageLifecycle);
@@ -596,22 +661,39 @@ export default function SiteReport() {
                           {et === "daily" && <Badge variant="outline" className="ml-1 text-[12px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Daily Hire</Badge>}
                           {et === "monthly" && <Badge variant="outline" className="ml-1 text-[12px] bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-700">Monthly Hire</Badge>}
                           {et === "trip_based" && <Badge variant="outline" className="ml-1 text-[12px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700">Trip Based</Badge>}
+                          <DprEquipmentTableDetails section="identity" row={item} details={tableDetails} index={i} />
                         </TableCell>
                         <TableCell>{item.vehicleNo || '-'}</TableCell>
                         <TableCell>{item.operator || '-'}</TableCell>
-                        <TableCell className="text-sm">{item.task || '-'}</TableCell>
                         <TableCell className="text-sm">
-                          {readingSource}
+                          <span className="whitespace-pre-wrap">{item.task || '-'}</span>
+                          <DprEquipmentTableDetails section="work" row={item} details={tableDetails} index={i}
+                            boqItems={reportBoqItems}
+                            programmeBars={(dpr.progress ?? []).flatMap((entry: any) => entry.programmeBarId != null && entry.boqItemId != null ? [{
+                              id: Number(entry.programmeBarId),
+                              boqItemId: Number(entry.boqItemId),
+                              reachLabel: [entry.chainageFrom, entry.chainageTo].filter(Boolean).join("–") || null,
+                              side: entry.side || null,
+                            }] : [])} />
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          <DprEquipmentTableDetails section="readings" row={item} details={tableDetails} index={i} />
                           {isTripBased && item.numberOfTrips && item.tripDistance && (
                             <div className="text-[12px] text-muted-foreground">{item.numberOfTrips} trips × {item.tripDistance} km</div>
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          {operatingQuantity}
+                          <span className="text-xs text-muted-foreground">Saved quantity: </span>{operatingQuantity}
+                          <DprEquipmentTableDetails section="quantity" row={item} details={tableDetails} index={i} />
                         </TableCell>
-                        <TableCell className="text-right">{item.diesel || '-'}</TableCell>
                         <TableCell className="text-right">
+                          {item.diesel ?? '-'}
+                          <DprEquipmentTableDetails section="tank" row={item} details={tableDetails} index={i} />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <span className="text-xs text-muted-foreground">Saved expected: </span>
                           {persistedExpected != null ? `${persistedExpected.toFixed(3)} L` : "—"}
+                          <DprEquipmentTableDetails section="expected" row={item} details={tableDetails} index={i} />
                         </TableCell>
                         <TableCell className="text-sm">
                           {persistedNorm != null ? `${persistedNorm.toFixed(3)}${persistedNormUnit ? ` ${persistedNormUnit}` : ""}` : "—"}
@@ -620,15 +702,10 @@ export default function SiteReport() {
                               Actual variance: {(Number(item.diesel) - persistedExpected).toFixed(3)} L
                             </div>
                           )}
+                          <DprEquipmentTableDetails section="performance" row={item} details={tableDetails} index={i} />
                         </TableCell>
                         <TableCell className="text-sm">
-                          {linkedRows.length === 0 ? "-" : linkedRows.map((log: any) => (
-                            <div key={log.id} className="mb-1">
-                              <Badge variant={log.status === "resolved" ? "outline" : "secondary"}>{log.status}</Badge>
-                              <span className="ml-1">{log.fromTime && log.toTime ? `${log.fromTime}–${log.toTime} (${log.downtimeHours ?? "-"} h)` : `${log.downtimeHours ?? "-"} h`}</span>
-                              <div className="text-xs text-muted-foreground">{log.description}{log.responsibility ? ` · ${String(log.responsibility).toUpperCase()}` : ""}</div>
-                            </div>
-                          ))}
+                          <DprEquipmentTableBreakdowns stops={item.breakdowns} linkedRows={linkedRows} index={i} />
                         </TableCell>
                         <TableCell>
                           <span className="text-sm">{dieselSourceLabel}</span>

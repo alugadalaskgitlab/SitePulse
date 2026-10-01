@@ -5,29 +5,31 @@ export function useAuth() {
   const role = typeof window !== "undefined"
     ? new URLSearchParams(window.location.search).get("role")
     : null;
-  const isAdmin = role !== "manager";
+  const viewer = typeof window !== "undefined"
+    && new URLSearchParams(window.location.search).has("dpr20b1") && role === "viewer";
+  const isAdmin = role !== "manager" && !viewer;
   return {
     isAdmin,
-    sectionCan: () => true,
+    sectionCan: (_section?: string, action?: string) => !viewer || action === "view",
     sectionVisible: () => true,
-    canApprove: () => true,
+    canApprove: () => !viewer,
     isAuthenticated: true,
     isLoading: false,
-    isOwner: true,
-    isManager: !isAdmin,
-    isFieldEngineer: true,
-    canManagePermissions: true,
+    isOwner: !viewer,
+    isManager: !isAdmin && !viewer,
+    isFieldEngineer: !viewer,
+    canManagePermissions: !viewer,
     permissionManagerScope: "full" as const,
     user: {
       id: 606,
       email: "dpr-fixture@example.invalid",
-      fullName: isAdmin ? "DPR Fixture Admin" : "DPR Fixture Manager",
+       fullName: viewer ? "DPR Fixture Viewer" : isAdmin ? "DPR Fixture Admin" : "DPR Fixture Manager",
       isAdmin,
       isOwner: isAdmin,
       isActive: true,
-      isFieldEngineer: !isAdmin,
+       isFieldEngineer: !isAdmin && !viewer,
       sessionPolicy: "sticky" as const,
-      canManagePermissions: true,
+       canManagePermissions: !viewer,
       permissionManagerScope: "full" as const,
     },
     permissions: {},

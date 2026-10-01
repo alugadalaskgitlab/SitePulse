@@ -1,0 +1,748 @@
+DPR Browser Fixture DailyProgressReport Submitted Road
+DPR-20601
+DPR Browser Fixture
+Date
+August 5th, 2026
+Site Name
+NARASIMHULU
+ROAD
+Engineer
+SURESH KUMAR
+Draft created by User
+unavailable — Aug 5,
+2026, 4:00 PM
+Road
+1
+Activities
+4
+Equipment
+2
+Workers
+30.000
+L
+Total Diesel
+1
+Purchases
+Activity Progress Road DPR
+GSB LAYING Details ▾
+12+000 → 12+100 Measured: 700 SQM BOQ: 700 Sqm
+Equipment Log
+Machine Vehicl
+e No
+Opera
+tor
+Task Time/Mete
+r
+Opera
+ting
+Quant
+ity
+Diesel (L) Expect
+ed
+Diesel
+Norm /
+Efficiency
+Breakdown /
+Stoppage
+Diesel
+Sourc
+e
+SYNTHETI
+C DPR20
+HIRE
+ROLLER
+Hourl
+y Hire
+Machine
+day: 1
+Owner /
+vendor:
+Hired: FASI
+UDDIN
+Entry / Hire
+Type:
+hourly
+Daily
+Status:
+Working
+Status
+Reason:
+Synthetic
+shift note
+Breakdown
+s: 1
+SYN-
+D20-
+01
+RAJU Synthetic
+incidental
+diversion
+Non-BOQ /
+Incidental Work
+— Not a BOQ
+item — not
+payable
+progress.
+WORK
+ASSIGNMENT
+GSB LAYING
+8:00 AM →
+10:00 AM
+2 h
+Assigned: 2 h
+Unassigned: 2 h
+Machine Day: 4
+h
+Assignment
+validation uses
+the machine-
+day Clock
+Duration (4 h).
+Assignment
+segments are
+clock times;
+gaps and partial
+assignment are
+allowed.
+Opening
+Meter: 100
+Closing
+Meter: 108
+Start Time:
+8:00 AM
+End Time:
+12:00 PM
+Clock
+Duration: 4
+h
+Meter
+Working
+Hours
+come from
+the
+opening
+and
+closing
+meter
+difference.
+Clock
+duration is
+shown
+separately.
+Saved
+quanti
+ty:
+8.000
+h
+Meter
+Worki
+ng
+Hours
+: 8.00
+h
+20
+Diesel
+Issued /
+Added:
+20.00 L
+Opening
+Tank (L):
+30.00 L
+Closing
+Tank /
+Physical
+Dip (L):
+20.00 L
+Physical
+Tank
+Balance:
+Confirme
+d
+Saved
+expect
+ed:
+40.000
+L
+Fuel-
+summa
+ry
+expect
+ed:
+40.00
+L
+5.000 L/hr
+Actual
+variance:
+-20.000 L
+Actual
+Consumed:
+30.00 L
+Consumed −
+expected
+variance:
+-10.00 L
+Actual
+Consumption
+Rate · from
+confirmed
+tank dip: 3.75
+L/hr
+Variance is
+actual
+consumed
+minus
+expected; a
+positive value
+means more
+fuel was
+consumed
+than
+expected.
+Synthetic
+authoritative
+hydraulic hose
+10:00 AM–11:30
+AM · 1 h 30 min
+Responsibility:
+vendor ·
+Repair/payment
+scope: vendor ·
+Debitable to
+vendor: Yes
+Remarks:
+Synthetic repair
+paid by vendor.
+Synthetic long
+audit note
+preserves
+responsibility,
+work
+assignment,
+fuel evidence
+and repair
+history across
+printed page
+boundaries.
+Synthetic long
+audit note
+preserves
+responsibility,
+work
+assignment,
+fuel evidence
+and repair
+history across
+printed page
+boundaries.
+Synthetic long
+audit note
+preserves
+responsibility,
+work
+assignment,
+fuel evidence
+and repair
+history across
+printed page
+boundaries.
+Synthetic long
+audit note
+preserves
+responsibility,
+work
+assignment,
+fuel evidence
+and repair
+history across
+printed page
+boundaries.
+Plant
+Stock
+Machine Vehicl
+e No
+Opera
+tor
+Task Time/Mete
+r
+Opera
+ting
+Quant
+ity
+Diesel (L) Expect
+ed
+Diesel
+Norm /
+Efficiency
+Breakdown /
+Stoppage
+Diesel
+Sourc
+e
+Synthetic long
+audit note
+preserves
+responsibility,
+work
+assignment,
+fuel evidence
+and repair
+history across
+printed page
+boundaries.
+Synthetic long
+audit note
+preserves
+responsibility,
+work
+assignment,
+fuel evidence
+and repair
+history across
+printed page
+boundaries.
+SYNTHETIC_DP
+R20_LONG_REF
+ERENCE_ABCD
+EFGHIJKLMNO
+PQRSTUVWXYZ
+_0123456789_A
+BCDEFGHIJKLM
+NOPQRSTUVW
+XYZ
+DPR20_LONG_N
+OTE_END
+View
+attachment:
+synthetic-
+dpr20-hose.svg
+Linked
+maintenance
+record
+completed
+14:00–14:45 (-
+h)
+Synthetic stale
+linked detail ·
+HLC
+SYNTHETI
+C DPR20
+MISSING
+VENDOR
+Daily
+Hire
+Machine
+day: 2
+Owner /
+vendor:
+SYN-
+D20-
+02
+RAJU -
+WORK
+ASSIGNMENT
+No BOQ
+item
+assigned
+to this
+Opening
+Odometer:
+200
+Closing
+Odometer:
+240
+Start Time:
+1:00 PM
+End Time:
+5:00 PM
+Saved
+quanti
+ty:
+40.00
+0 km
+Calcul
+ated
+Dista
+nce:
+40.00
+km
+0
+Diesel
+Issued /
+Added:
+0.00 L
+Opening
+Tank (L):
+20.00 L
+Closing
+Tank /
+Physical
+Saved
+expect
+ed:
+12.000
+L
+Fuel-
+summa
+ry
+expect
+ed:
+12.00 L
+5.000 L/km
+Actual
+variance:
+-12.000 L
+Actual
+Consumed:
+5.00 L
+Consumed −
+expected
+variance:
+-7.00 L
+— Plant
+Stock
+Machine Vehicl
+e No
+Opera
+tor
+Task Time/Mete
+r
+Opera
+ting
+Quant
+ity
+Diesel (L) Expect
+ed
+Diesel
+Norm /
+Efficiency
+Breakdown /
+Stoppage
+Diesel
+Sourc
+e
+Hired:
+Vendor not
+recorded
+Entry / Hire
+Type: daily
+Daily
+Status: Idle
+· Operator
+Unavailabl
+e
+Status
+Reason:
+Synthetic
+operator
+unavailable
+machine
+day.
+Assigned: 0
+min
+Unassigned: 4 h
+Machine Day: 4
+h
+Assignment
+validation uses
+the machine-
+day Clock
+Duration (4 h).
+Assignment
+segments are
+clock times;
+gaps and partial
+assignment are
+allowed.
+Clock
+Duration: 4
+h
+Distance
+comes
+from the
+odometer
+or trip
+calculation
+. Clock
+duration is
+shown
+separately.
+Dip (L):
+15.00 L
+Physical
+Tank
+Balance:
+Pending
+confirmati
+on
+Physical
+tank
+balance
+has not
+been
+confirme
+d.
+Expected
+Consumption
+Rate · from
+norm, actual
+unavailable:
+3.00 L/km
+Variance is
+actual
+consumed
+minus
+expected; a
+positive value
+means more
+fuel was
+consumed
+than
+expected.
+SYNTHETI
+C DPR20
+LINKED
+FALLBACK
+Machine
+day: 3
+Entry / Hire
+Type: time
+meter
+Daily
+Status:
+Breakdown
+Breakdown
+s: 1
+SYN-
+D20-
+03
+- -
+WORK
+ASSIGNMENT
+No BOQ
+item
+assigned
+to this
+machine
+day.
+Assigned: 0
+min
+Unassigned: 3 h
+Machine Day: 3
+h
+Assignment
+validation uses
+the machine-
+day Clock
+Duration (3 h).
+Assignment
+segments are
+clock times;
+gaps and partial
+assignment are
+allowed.
+Opening
+Meter: 310
+Closing
+Meter: 312
+Start Time:
+2:00 PM
+End Time:
+5:00 PM
+Clock
+Duration: 3
+h
+Meter
+Working
+Hours
+come from
+the
+opening
+and
+closing
+meter
+difference.
+Clock
+duration is
+shown
+separately.
+Saved
+quanti
+ty: —
+Meter
+Worki
+ng
+Hours
+: 2.00
+h
+4
+Diesel
+Issued /
+Added:
+4.00 L
+Saved
+expect
+ed: —
+5.000 Synthetic
+linked-
+maintenance
+fallback
+2:00 PM–2:45
+PM · 45 min
+Responsibility:
+hlc ·
+Repair/payment
+scope: hlc ·
+Debitable to
+vendor: No
+Remarks:
+Synthetic
+fallback
+remarks
+completed
+Linked
+maintenance:
+14:00–14:45 (-
+h)
+Direct
+Purch
+ase
+Synth
+etic
+statio
+n |
+Bill:
+SYN-
+D20-
+BILL |
+Rs.
+400
+SYNTHETI
+C DPR20
+- - Synthetic
+independent
+hauling
+Opening
+Meter: —
+Closing
+Meter: —
+Saved
+quanti
+ty:
+6
+Diesel
+Issued /
+Saved
+expect
+ed: —
+— — Contr
+actor
+Labour Strength
+Materials Log
+MaterialsReceived
+NARASIMHULU ROAD · 2026-08-05
+Machine Vehicl
+e No
+Opera
+tor
+Task Time/Mete
+r
+Opera
+ting
+Quant
+ity
+Diesel (L) Expect
+ed
+Diesel
+Norm /
+Efficiency
+Breakdown /
+Stoppage
+Diesel
+Sourc
+e
+FREE TEXT
+Trip
+Based
+Machine
+day: 4
+Entry / Hire
+Type: trip
+based
+Daily
+Status:
+Working
+Non-BOQ /
+Incidental Work
+— Not a BOQ
+item — not
+payable
+progress.
+WORK
+ASSIGNMENT
+No BOQ
+item
+assigned
+to this
+machine
+day.
+Assigned: 0
+min
+Unassigned: 2 h
+Machine Day: 2
+h
+Assignment
+validation uses
+the machine-
+day Clock
+Duration (2 h).
+Assignment
+segments are
+clock times;
+gaps and partial
+assignment are
+allowed.
+Start Time:
+9:00 AM
+End Time:
+11:00 AM
+Clock
+Duration: 2
+h
+No hour-
+meter
+difference
+is
+available.
+Clock
+duration is
+shown
+separately
+and is not
+labelled as
+meter
+working
+time.
+3 trips × 5
+km
+15.00
+0 km
+Calcul
+ated
+Dista
+nce:
+30.00
+km
+Added:
+6.00 L
+Category Gender Count Task/Work Contractor/Gang
+Skilled Male 2 GSB LAYING FIXTURE GANG
+No materials received this day.
+DPRmaterialrecords
+Site Purchases
+Activity Photos
+No photos attached
+Type Material Quantity UOM Vehicle No. Supplier Location/Task Receipt No.
+Issued GSB 10.000 MT FIX-TRUCK-01 FIXTURE SUPPLIER KM 12 FIX-REC-01
+Item Description Vendor Bill No Amount Qty UOM
+DIESEL FOR CLEANING FIXTURE FUEL FIX-BILL-01 1500.000 15.000 LITRES
+

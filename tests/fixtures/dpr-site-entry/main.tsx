@@ -18,6 +18,7 @@ import SiteDashboard from "../../../client/src/pages/SiteDashboard";
 import { DprActivityReadOnly } from "../../../client/src/components/DprActivityReadOnly";
 import { ActivityReceiptStrip } from "../../../client/src/components/ActivityReceiptStrip";
 import { queryClient } from "../../../client/src/lib/queryClient";
+import { ATTACHMENT_VIEWER_HISTORY_KEY } from "../../../client/src/hooks/use-before-unload";
 import "../../../client/src/index.css";
 
 type RequestRecord = {
@@ -1237,6 +1238,74 @@ const dpr18B3Reports: Record<number, any> = Object.fromEntries(
   }),
 );
 
+// DPR20 B1: isolated read-only parity data. Deliberately not registered in
+// editable fixture stores. Every API request under dpr20b1 is intercepted.
+const dpr20B1Attachment = {
+  id: 20991, fileName: "synthetic-dpr20-hose.svg", mimeType: "image/svg+xml",
+  objectPath: "/objects/dpr20b1-hose.svg", fileSize: 180,
+  moduleType: "maintenance", linkedRecordId: 20881,
+};
+const dpr20B1Maintenance = [{
+  id: 20882, sourceRecordId: 20722, sourceType: "dpr_log", status: "completed",
+  fromTime: "14:00", toTime: "14:45", downtimeMinutes: 45,
+  description: "Synthetic linked-maintenance fallback", responsibility: "hlc",
+  repairScope: "hlc", debitableToVendor: false, remarks: "Synthetic fallback remarks",
+}];
+const dpr20B1Report = {
+  ...storedDpr, id: 20601, remarks: "DPR20 B1 — synthetic isolated parity evidence",
+  equipment: [
+    {
+      ...storedDpr.equipment[0], id: 20720, plantUsageId: 20801, equipmentId: 7703,
+      machine: "SYNTHETIC DPR20 HIRE ROLLER", vehicleNo: "SYN-D20-01",
+      entryType: "hourly", usageStatus: "working", usageStatusReason: "Synthetic shift note",
+      startTime: "08:00", endTime: "12:00", openingReading: 100, closingReading: 108,
+      hoursWorked: 8, diesel: 20, openingDiesel: 30, dieselBalanceInTank: 20,
+      dieselBalanceConfirmed: true, expectedDiesel: 40,
+      task: "Synthetic incidental diversion", isIncidental: true,
+      activitySegments: [{
+        startTime: "08:00", endTime: "10:00",
+        boqItems: [{ boqItemId: 8801, programmeBarId: 9901 }],
+      }],
+      breakdowns: [{
+        id: 20881, clientKey: "dpr20-draft-stop", fromTime: "10:00", toTime: "11:30",
+        description: "Synthetic authoritative hydraulic hose", responsibility: "vendor",
+        repairScope: "vendor", debitableToVendor: true,
+        remarks: "Synthetic repair paid by vendor. "
+          + "Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. ".repeat(6)
+          + "SYNTHETIC_DPR20_LONG_REFERENCE_ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789_ABCDEFGHIJKLMNOPQRSTUVWXYZ "
+          + "DPR20_LONG_NOTE_END",
+        attachment: dpr20B1Attachment,
+      }],
+    },
+    {
+      ...storedDpr.equipment[0], id: 20721, plantUsageId: 20802, equipmentId: 7702,
+      machine: "SYNTHETIC DPR20 MISSING VENDOR", vehicleNo: "SYN-D20-02",
+      entryType: "daily", usageStatus: "idle_no_operator",
+      usageStatusReason: "Synthetic operator unavailable",
+      openingReading: 200, closingReading: 240, startTime: "13:00", endTime: "17:00",
+      diesel: 0, openingDiesel: 20, dieselBalanceInTank: 15, dieselBalanceConfirmed: false,
+      expectedDiesel: 12, totalKm: 40, hoursWorked: null, task: "",
+      breakdowns: [],
+    },
+    // Omitted breakdowns exercises the existing linked-maintenance fallback.
+    {
+      id: 20722, plantUsageId: 20803, equipmentId: 7701,
+      machine: "SYNTHETIC DPR20 LINKED FALLBACK", vehicleNo: "SYN-D20-03",
+      entryType: "time_meter", usageStatus: "breakdown",
+      startTime: "14:00", endTime: "17:00", openingReading: 310, closingReading: 312,
+      diesel: 4, dieselNorm: 5, dieselSource: "direct_purchase",
+      fuelStation: "Synthetic station", billNumber: "SYN-D20-BILL", amountPaid: 400,
+    },
+    {
+      id: 20723, plantUsageId: null,
+      machine: "SYNTHETIC DPR20 FREE TEXT", entryType: "trip_based", usageStatus: "working",
+      task: "Synthetic independent hauling", numberOfTrips: 3, tripDistance: 5, totalKm: 15,
+      startTime: "09:00", endTime: "11:00", diesel: 6, dieselSource: "contractor",
+      breakdowns: [],
+    },
+  ],
+};
+
 const fixtureState = {
   requests: [] as RequestRecord[],
   seedDpr18: null as null | ((id: number, equipmentPatch?: Record<string, unknown>) => void),
@@ -1579,6 +1648,31 @@ window.fetch = async (input, init) => {
   const body = parseBody(init);
   const pathname = url.pathname;
   fixtureState.requests.push({ method, path: `${pathname}${url.search}`, body });
+
+  if (new URLSearchParams(window.location.search).has("dpr20b1")) {
+    if (pathname === "/api/dprs/20601" && method === "GET") return json(dpr20B1Report);
+    if (pathname === "/api/equipment-usage/lifecycle" && method === "GET") return json([
+      { id: 20801, status: "closed", successorId: null, closedByUserName: "Synthetic operator" },
+      { id: 20802, status: "open", successorId: null, destinationType: "site", destinationSite: site.name },
+      { id: 20803, status: "closed", successorId: 20804, destinationType: "hmp" },
+    ]);
+    if (pathname === "/api/equipment-usage/20801/move" && method === "POST") {
+      return json({ id: 20805, ...body }, 201);
+    }
+    if (pathname === "/api/maintenance/logs" && method === "GET") return json([
+      ...dpr20B1Maintenance,
+      // A stale linked row must not replace authoritative detail children.
+      { ...dpr20B1Maintenance[0], id: 20883, sourceRecordId: 20720,
+        description: "Synthetic stale linked detail" },
+    ]);
+    if (pathname.startsWith("/api/") && method !== "GET") {
+      return json({ message: "DPR20 B1 fixture blocks all other writes" }, 405);
+    }
+    // Unhandled APIs never reach a customer-backed endpoint.
+    if (pathname.startsWith("/api/") && ![
+      "/api/sites", "/api/personnel", "/api/plant-module/equipment", "/api/config",
+    ].includes(pathname) && !pathname.startsWith("/api/boq/")) return json([]);
+  }
 
   if (pathname === "/api/sites" && method === "GET") {
     return json(
@@ -2078,6 +2172,9 @@ window.fetch = async (input, init) => {
   // Unused API routes are intentionally successful, so the isolated fixture
   // does not depend on an application server or a production database.
   if (pathname.startsWith("/api/")) return json([]);
+  if (new URLSearchParams(window.location.search).has("dpr20b1") && pathname.startsWith("/api/")) {
+    return json({ message: `Unhandled isolated DPR20 fixture API: ${method} ${pathname}` }, 404);
+  }
   return originalFetch(input, init);
 };
 
@@ -2322,6 +2419,11 @@ window.history.pushState = ((state: any, title: string, url?: string | URL | nul
   if (new URLSearchParams(window.location.search).has("labour01stay")
     && String(url ?? "").startsWith("/site/dashboard")) return;
   originalPushState(state, title, url);
+  // Viewer history entries do not route/remount the production application.
+  // Keep that behavior in this narrow fixture too, instead of unmounting the
+  // report synchronously while its attachment-opening effect is executing.
+  if (new URLSearchParams(window.location.search).has("dpr20b1")
+    && typeof state?.[ATTACHMENT_VIEWER_HISTORY_KEY] === "string") return;
   window.dispatchEvent(new PopStateEvent("popstate"));
 }) as typeof window.history.pushState;
 
@@ -2334,6 +2436,7 @@ const mount = () => {
   const isSiteSuccess = window.location.pathname.startsWith("/site/success/");
   const isSiteReport = window.location.pathname.startsWith("/site/report/");
   const isDpr18B3Report = new URLSearchParams(window.location.search).has("dpr18b3");
+  const isDpr20B1Report = new URLSearchParams(window.location.search).has("dpr20b1");
   const isLabour01 = new URLSearchParams(window.location.search).has("labour01");
   const isDpr18B3Details = (isDpr18B3Report || isLabour01) && window.location.pathname.startsWith("/dpr/");
   const isSiteMaterialTrips = window.location.pathname.startsWith("/site/material-trips");
@@ -2347,6 +2450,7 @@ const mount = () => {
   appRoot.render(
     <QueryClientProvider client={queryClient}>
       {isDpr18B3Report && <header className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">DPR18 B3 · isolated synthetic read-only response · no customer database</header>}
+      {isDpr20B1Report && <header data-testid="dpr20-b1-fixture-banner" className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">DPR20 B1 · synthetic isolated API · actual SiteReport · no customer database or writes</header>}
       {isLabour01 && <header className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">LABOUR-01 · isolated synthetic DPR · intercepted API · no customer database</header>}
       {new URLSearchParams(window.location.search).has("dpr13Legacy") && <header className="border border-amber-500 bg-amber-50 p-4">DPR-13 synthetic legacy-token fixture — real Guided/SiteEdit components, intercepted API only.</header>}
       <Dpr16B2EvidenceBanner />
@@ -2375,7 +2479,7 @@ const mount = () => {
         : isSiteSuccess
           ? <SiteSuccess />
           : isSiteReport
-            ? isDpr18B3Report || isLabour01 ? <SiteReport /> : <FixtureSubmittedReport />
+            ? isDpr18B3Report || isDpr20B1Report || isLabour01 ? <SiteReport /> : <FixtureSubmittedReport />
             : isVehicleSupplierInline
               ? <VehicleSupplierInlineFixture />
               : isSiteMaterialTrips

@@ -1,0 +1,239 @@
+{
+  "source": "isolated synthetic fixture, real SiteReport and move UI, intercepted APIs, no customer database",
+  "result": [
+    {
+      "device": "desktop",
+      "evidence": {
+        "equipmentTables": 1,
+        "compactCards": 0,
+        "nestedEquipmentTables": 0,
+        "headers": [
+          "Machine",
+          "Vehicle No",
+          "Operator",
+          "Task",
+          "Time/Meter",
+          "Operating Quantity",
+          "Diesel (L)",
+          "Expected Diesel",
+          "Norm / Efficiency",
+          "Breakdown / Stoppage",
+          "Diesel Source",
+          "Lifecycle"
+        ],
+        "rows": [
+          "SYNTHETIC DPR20 HIRE ROLLERHourly HireMachine day: 1Owner / vendor: Hired: FASI UDDINEntry / Hire Type: hourlyDaily Status: WorkingStatus Reason: Synthetic shift noteBreakdowns: 1SYN-D20-01RAJUSynthetic incidental diversionNon-BOQ / Incidental Work — Not a BOQ item — not payable progress. Work AssignmentGSB LAYING8:00 AM → 10:00 AM2 hAssigned: 2 hUnassigned: 2 hMachine Day: 4 hAssignment validation uses the machine-day Clock Duration (4 h). Assignment segments are clock times; gaps and partial assignment are allowed.Opening Meter: 100Closing Meter: 108Start Time: 8:00 AMEnd Time: 12:00 PMClock Duration: 4 hMeter Working Hours come from the opening and closing meter difference. Clock duration is shown separately.Saved quantity: 8.000 hMeter Working Hours: 8.00 h20Diesel Issued / Added: 20.00 LOpening Tank (L): 30.00 LClosing Tank / Physical Dip (L): 20.00 LPhysical Tank Balance: ConfirmedSaved expected: 40.000 LFuel-summary expected: 40.00 L5.000 L/hrActual variance: -20.000 LActual Consumed: 30.00 LConsumed − expected variance: -10.00 LActual Consumption Rate · from confirmed tank dip: 3.75 L/hrVariance is actual consumed minus expected; a positive value means more fuel was consumed than expected.Synthetic authoritative hydraulic hose10:00 AM–11:30 AM · 1 h 30 minResponsibility: vendor · Repair/payment scope: vendor · Debitable to vendor: YesRemarks: Synthetic repair paid by vendor. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. SYNTHETIC_DPR20_LONG_REFERENCE_ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789_ABCDEFGHIJKLMNOPQRSTUVWXYZ DPR20_LONG_NOTE_ENDView attachment: synthetic-dpr20-hose.svgLinked maintenance recordcompleted14:00–14:45 (- h)Synthetic stale linked detail · HLCPlant StockClosed by Synthetic operatorSend onward",
+          "SYNTHETIC DPR20 MISSING VENDORDaily HireMachine day: 2Owner / vendor: Hired: Vendor not recordedEntry / Hire Type: dailyDaily Status: Idle · Operator UnavailableStatus Reason: Synthetic operator unavailableSYN-D20-02RAJU- Work AssignmentNo BOQ item assigned to this machine day.Assigned: 0 minUnassigned: 4 hMachine Day: 4 hAssignment validation uses the machine-day Clock Duration (4 h). Assignment segments are clock times; gaps and partial assignment are allowed.Opening Odometer: 200Closing Odometer: 240Start Time: 1:00 PMEnd Time: 5:00 PMClock Duration: 4 hDistance comes from the odometer or trip calculation. Clock duration is shown separately.Saved quantity: 40.000 kmCalculated Distance: 40.00 km0Diesel Issued / Added: 0.00 LOpening Tank (L): 20.00 LClosing Tank / Physical Dip (L): 15.00 LPhysical Tank Balance: Pending confirmationPhysical tank balance has not been confirmed.Saved expected: 12.000 LFuel-summary expected: 12.00 L5.000 L/kmActual variance: -12.000 LActual Consumed: 5.00 LConsumed − expected variance: -7.00 LExpected Consumption Rate · from norm, actual unavailable: 3.00 L/kmVariance is actual consumed minus expected; a positive value means more fuel was consumed than expected.—Plant StockPending at SITE: NARASIMHULU ROAD",
+          "SYNTHETIC DPR20 LINKED FALLBACKMachine day: 3Entry / Hire Type: time meterDaily Status: BreakdownBreakdowns: 1SYN-D20-03-- Work AssignmentNo BOQ item assigned to this machine day.Assigned: 0 minUnassigned: 3 hMachine Day: 3 hAssignment validation uses the machine-day Clock Duration (3 h). Assignment segments are clock times; gaps and partial assignment are allowed.Opening Meter: 310Closing Meter: 312Start Time: 2:00 PMEnd Time: 5:00 PMClock Duration: 3 hMeter Working Hours come from the opening and closing meter difference. Clock duration is shown separately.Saved quantity: —Meter Working Hours: 2.00 h4Diesel Issued / Added: 4.00 LSaved expected: —5.000Synthetic linked-maintenance fallback2:00 PM–2:45 PM · 45 minResponsibility: hlc · Repair/payment scope: hlc · Debitable to vendor: NoRemarks: Synthetic fallback remarkscompletedLinked maintenance: 14:00–14:45 (- h)Direct PurchaseSynthetic station | Bill: SYN-D20-BILL | Rs. 400Completed at HMP",
+          "SYNTHETIC DPR20 FREE TEXTTrip BasedMachine day: 4Entry / Hire Type: trip basedDaily Status: Working--Synthetic independent haulingNon-BOQ / Incidental Work — Not a BOQ item — not payable progress. Work AssignmentNo BOQ item assigned to this machine day.Assigned: 0 minUnassigned: 2 hMachine Day: 2 hAssignment validation uses the machine-day Clock Duration (2 h). Assignment segments are clock times; gaps and partial assignment are allowed.Opening Meter: —Closing Meter: —Start Time: 9:00 AMEnd Time: 11:00 AMClock Duration: 2 hNo hour-meter difference is available. Clock duration is shown separately and is not labelled as meter working time.3 trips × 5 kmSaved quantity: 15.000 kmCalculated Distance: 30.00 km6Diesel Issued / Added: 6.00 LSaved expected: ———Contractor—"
+        ],
+        "row0Cells": [
+          "SYNTHETIC DPR20 HIRE ROLLERHourly HireMachine day: 1Owner / vendor: Hired: FASI UDDINEntry / Hire Type: hourlyDaily Status: WorkingStatus Reason: Synthetic shift noteBreakdowns: 1",
+          "SYN-D20-01",
+          "RAJU",
+          "Synthetic incidental diversionNon-BOQ / Incidental Work — Not a BOQ item — not payable progress. Work AssignmentGSB LAYING8:00 AM → 10:00 AM2 hAssigned: 2 hUnassigned: 2 hMachine Day: 4 hAssignment validation uses the machine-day Clock Duration (4 h). Assignment segments are clock times; gaps and partial assignment are allowed.",
+          "Opening Meter: 100Closing Meter: 108Start Time: 8:00 AMEnd Time: 12:00 PMClock Duration: 4 hMeter Working Hours come from the opening and closing meter difference. Clock duration is shown separately.",
+          "Saved quantity: 8.000 hMeter Working Hours: 8.00 h",
+          "20Diesel Issued / Added: 20.00 LOpening Tank (L): 30.00 LClosing Tank / Physical Dip (L): 20.00 LPhysical Tank Balance: Confirmed",
+          "Saved expected: 40.000 LFuel-summary expected: 40.00 L",
+          "5.000 L/hrActual variance: -20.000 LActual Consumed: 30.00 LConsumed − expected variance: -10.00 LActual Consumption Rate · from confirmed tank dip: 3.75 L/hrVariance is actual consumed minus expected; a positive value means more fuel was consumed than expected.",
+          "Synthetic authoritative hydraulic hose10:00 AM–11:30 AM · 1 h 30 minResponsibility: vendor · Repair/payment scope: vendor · Debitable to vendor: YesRemarks: Synthetic repair paid by vendor. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. SYNTHETIC_DPR20_LONG_REFERENCE_ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789_ABCDEFGHIJKLMNOPQRSTUVWXYZ DPR20_LONG_NOTE_ENDView attachment: synthetic-dpr20-hose.svgLinked maintenance recordcompleted14:00–14:45 (- h)Synthetic stale linked detail · HLC",
+          "Plant Stock",
+          "Closed by Synthetic operatorSend onward"
+        ],
+        "moveButtons": [
+          true,
+          false,
+          false,
+          false
+        ],
+        "lifecycle": [
+          "Closed by Synthetic operator",
+          "Pending at SITE: NARASIMHULU ROAD",
+          "Completed at HMP",
+          "—"
+        ],
+        "writes": [],
+        "viewport": 1440,
+        "tableScrollable": true
+      },
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b1-desktop.png"
+    },
+    {
+      "device": "desktop",
+      "attachmentScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b1-desktop-attachment.png"
+    },
+    {
+      "device": "mobile",
+      "evidence": {
+        "equipmentTables": 1,
+        "compactCards": 0,
+        "nestedEquipmentTables": 0,
+        "headers": [
+          "Machine",
+          "Vehicle No",
+          "Operator",
+          "Task",
+          "Time/Meter",
+          "Operating Quantity",
+          "Diesel (L)",
+          "Expected Diesel",
+          "Norm / Efficiency",
+          "Breakdown / Stoppage",
+          "Diesel Source",
+          "Lifecycle"
+        ],
+        "rows": [
+          "SYNTHETIC DPR20 HIRE ROLLERHourly HireMachine day: 1Owner / vendor: Hired: FASI UDDINEntry / Hire Type: hourlyDaily Status: WorkingStatus Reason: Synthetic shift noteBreakdowns: 1SYN-D20-01RAJUSynthetic incidental diversionNon-BOQ / Incidental Work — Not a BOQ item — not payable progress. Work AssignmentGSB LAYING8:00 AM → 10:00 AM2 hAssigned: 2 hUnassigned: 2 hMachine Day: 4 hAssignment validation uses the machine-day Clock Duration (4 h). Assignment segments are clock times; gaps and partial assignment are allowed.Opening Meter: 100Closing Meter: 108Start Time: 8:00 AMEnd Time: 12:00 PMClock Duration: 4 hMeter Working Hours come from the opening and closing meter difference. Clock duration is shown separately.Saved quantity: 8.000 hMeter Working Hours: 8.00 h20Diesel Issued / Added: 20.00 LOpening Tank (L): 30.00 LClosing Tank / Physical Dip (L): 20.00 LPhysical Tank Balance: ConfirmedSaved expected: 40.000 LFuel-summary expected: 40.00 L5.000 L/hrActual variance: -20.000 LActual Consumed: 30.00 LConsumed − expected variance: -10.00 LActual Consumption Rate · from confirmed tank dip: 3.75 L/hrVariance is actual consumed minus expected; a positive value means more fuel was consumed than expected.Synthetic authoritative hydraulic hose10:00 AM–11:30 AM · 1 h 30 minResponsibility: vendor · Repair/payment scope: vendor · Debitable to vendor: YesRemarks: Synthetic repair paid by vendor. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. SYNTHETIC_DPR20_LONG_REFERENCE_ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789_ABCDEFGHIJKLMNOPQRSTUVWXYZ DPR20_LONG_NOTE_ENDView attachment: synthetic-dpr20-hose.svgLinked maintenance recordcompleted14:00–14:45 (- h)Synthetic stale linked detail · HLCPlant StockClosed by Synthetic operatorSend onward",
+          "SYNTHETIC DPR20 MISSING VENDORDaily HireMachine day: 2Owner / vendor: Hired: Vendor not recordedEntry / Hire Type: dailyDaily Status: Idle · Operator UnavailableStatus Reason: Synthetic operator unavailableSYN-D20-02RAJU- Work AssignmentNo BOQ item assigned to this machine day.Assigned: 0 minUnassigned: 4 hMachine Day: 4 hAssignment validation uses the machine-day Clock Duration (4 h). Assignment segments are clock times; gaps and partial assignment are allowed.Opening Odometer: 200Closing Odometer: 240Start Time: 1:00 PMEnd Time: 5:00 PMClock Duration: 4 hDistance comes from the odometer or trip calculation. Clock duration is shown separately.Saved quantity: 40.000 kmCalculated Distance: 40.00 km0Diesel Issued / Added: 0.00 LOpening Tank (L): 20.00 LClosing Tank / Physical Dip (L): 15.00 LPhysical Tank Balance: Pending confirmationPhysical tank balance has not been confirmed.Saved expected: 12.000 LFuel-summary expected: 12.00 L5.000 L/kmActual variance: -12.000 LActual Consumed: 5.00 LConsumed − expected variance: -7.00 LExpected Consumption Rate · from norm, actual unavailable: 3.00 L/kmVariance is actual consumed minus expected; a positive value means more fuel was consumed than expected.—Plant StockPending at SITE: NARASIMHULU ROAD",
+          "SYNTHETIC DPR20 LINKED FALLBACKMachine day: 3Entry / Hire Type: time meterDaily Status: BreakdownBreakdowns: 1SYN-D20-03-- Work AssignmentNo BOQ item assigned to this machine day.Assigned: 0 minUnassigned: 3 hMachine Day: 3 hAssignment validation uses the machine-day Clock Duration (3 h). Assignment segments are clock times; gaps and partial assignment are allowed.Opening Meter: 310Closing Meter: 312Start Time: 2:00 PMEnd Time: 5:00 PMClock Duration: 3 hMeter Working Hours come from the opening and closing meter difference. Clock duration is shown separately.Saved quantity: —Meter Working Hours: 2.00 h4Diesel Issued / Added: 4.00 LSaved expected: —5.000Synthetic linked-maintenance fallback2:00 PM–2:45 PM · 45 minResponsibility: hlc · Repair/payment scope: hlc · Debitable to vendor: NoRemarks: Synthetic fallback remarkscompletedLinked maintenance: 14:00–14:45 (- h)Direct PurchaseSynthetic station | Bill: SYN-D20-BILL | Rs. 400Completed at HMP",
+          "SYNTHETIC DPR20 FREE TEXTTrip BasedMachine day: 4Entry / Hire Type: trip basedDaily Status: Working--Synthetic independent haulingNon-BOQ / Incidental Work — Not a BOQ item — not payable progress. Work AssignmentNo BOQ item assigned to this machine day.Assigned: 0 minUnassigned: 2 hMachine Day: 2 hAssignment validation uses the machine-day Clock Duration (2 h). Assignment segments are clock times; gaps and partial assignment are allowed.Opening Meter: —Closing Meter: —Start Time: 9:00 AMEnd Time: 11:00 AMClock Duration: 2 hNo hour-meter difference is available. Clock duration is shown separately and is not labelled as meter working time.3 trips × 5 kmSaved quantity: 15.000 kmCalculated Distance: 30.00 km6Diesel Issued / Added: 6.00 LSaved expected: ———Contractor—"
+        ],
+        "row0Cells": [
+          "SYNTHETIC DPR20 HIRE ROLLERHourly HireMachine day: 1Owner / vendor: Hired: FASI UDDINEntry / Hire Type: hourlyDaily Status: WorkingStatus Reason: Synthetic shift noteBreakdowns: 1",
+          "SYN-D20-01",
+          "RAJU",
+          "Synthetic incidental diversionNon-BOQ / Incidental Work — Not a BOQ item — not payable progress. Work AssignmentGSB LAYING8:00 AM → 10:00 AM2 hAssigned: 2 hUnassigned: 2 hMachine Day: 4 hAssignment validation uses the machine-day Clock Duration (4 h). Assignment segments are clock times; gaps and partial assignment are allowed.",
+          "Opening Meter: 100Closing Meter: 108Start Time: 8:00 AMEnd Time: 12:00 PMClock Duration: 4 hMeter Working Hours come from the opening and closing meter difference. Clock duration is shown separately.",
+          "Saved quantity: 8.000 hMeter Working Hours: 8.00 h",
+          "20Diesel Issued / Added: 20.00 LOpening Tank (L): 30.00 LClosing Tank / Physical Dip (L): 20.00 LPhysical Tank Balance: Confirmed",
+          "Saved expected: 40.000 LFuel-summary expected: 40.00 L",
+          "5.000 L/hrActual variance: -20.000 LActual Consumed: 30.00 LConsumed − expected variance: -10.00 LActual Consumption Rate · from confirmed tank dip: 3.75 L/hrVariance is actual consumed minus expected; a positive value means more fuel was consumed than expected.",
+          "Synthetic authoritative hydraulic hose10:00 AM–11:30 AM · 1 h 30 minResponsibility: vendor · Repair/payment scope: vendor · Debitable to vendor: YesRemarks: Synthetic repair paid by vendor. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. Synthetic long audit note preserves responsibility, work assignment, fuel evidence and repair history across printed page boundaries. SYNTHETIC_DPR20_LONG_REFERENCE_ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789_ABCDEFGHIJKLMNOPQRSTUVWXYZ DPR20_LONG_NOTE_ENDView attachment: synthetic-dpr20-hose.svgLinked maintenance recordcompleted14:00–14:45 (- h)Synthetic stale linked detail · HLC",
+          "Plant Stock",
+          "Closed by Synthetic operatorSend onward"
+        ],
+        "moveButtons": [
+          true,
+          false,
+          false,
+          false
+        ],
+        "lifecycle": [
+          "Closed by Synthetic operator",
+          "Pending at SITE: NARASIMHULU ROAD",
+          "Completed at HMP",
+          "—"
+        ],
+        "writes": [],
+        "viewport": 390,
+        "tableScrollable": true
+      },
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b1-mobile.png"
+    },
+    {
+      "device": "mobile",
+      "attachmentScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b1-mobile-attachment.png"
+    },
+    {
+      "print": {
+        "tables": 1,
+        "visibleHeaders": [
+          "Machine",
+          "Vehicle No",
+          "Operator",
+          "Task",
+          "Time/Meter",
+          "Operating Quantity",
+          "Diesel (L)",
+          "Expected Diesel",
+          "Norm / Efficiency",
+          "Breakdown / Stoppage",
+          "Diesel Source"
+        ],
+        "lifecycleHidden": true,
+        "detailsPresent": true
+      },
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b1-print.png"
+    },
+    {
+      "printAudit": {
+        "requiredTokens": 46,
+        "allTokensPresent": true,
+        "longNoteCount": 6,
+        "coordinateAudit": {
+          "pages": 6,
+          "page_sizes": [
+            [
+              594.9599609375,
+              841.9199829101562
+            ],
+            [
+              594.9599609375,
+              841.9199829101562
+            ],
+            [
+              594.9599609375,
+              841.9199829101562
+            ],
+            [
+              594.9599609375,
+              841.9199829101562
+            ],
+            [
+              594.9599609375,
+              841.9199829101562
+            ],
+            [
+              594.9599609375,
+              841.9199829101562
+            ]
+          ],
+          "out_of_page_words": []
+        },
+        "pageCount": 6
+      }
+    },
+    {
+      "viewer": {
+        "moves": 0,
+        "closed": "Closed by Synthetic operator",
+        "deletes": 0,
+        "writes": []
+      }
+    },
+    {
+      "destination": "HMP Plant",
+      "writes": [
+        {
+          "method": "POST",
+          "path": "/api/equipment-usage/20801/move",
+          "body": {
+            "destinationType": "hmp",
+            "successorDate": "2026-08-06"
+          }
+        }
+      ],
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b1-send-hmp.png"
+    },
+    {
+      "destination": "RMC Plant",
+      "writes": [
+        {
+          "method": "POST",
+          "path": "/api/equipment-usage/20801/move",
+          "body": {
+            "destinationType": "rmc",
+            "successorDate": "2026-08-06"
+          }
+        }
+      ],
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b1-send-rmc.png"
+    },
+    {
+      "destination": "NARASIMHULU ROAD",
+      "writes": [
+        {
+          "method": "POST",
+          "path": "/api/equipment-usage/20801/move",
+          "body": {
+            "destinationType": "site",
+            "destinationSite": "NARASIMHULU ROAD",
+            "successorDate": "2026-08-06"
+          }
+        }
+      ],
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b1-send-site.png"
+    }
+  ]
+}
