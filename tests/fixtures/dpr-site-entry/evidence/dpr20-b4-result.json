@@ -1,0 +1,710 @@
+{
+  "source": "isolated synthetic scenario GETs, actual SiteReport/DprDetails/DprSections; no customer writes",
+  "reportCases": 12,
+  "hubCases": 6,
+  "printDomCases": 12,
+  "blockedNativeApiRequests": [],
+  "exceptions": [],
+  "results": [
+    {
+      "device": "desktop",
+      "page": "SiteReport",
+      "scenario": "trips-only",
+      "evidence": {
+        "heading": "Materials Consumed / Issued",
+        "note": "Bulk vehicle deliveries are tracked separately in Materials Received.",
+        "consumed": "Materials Consumed / Issued\n\nBulk vehicle deliveries are tracked separately in Materials Received.\n\nNo materials consumed or issued recorded.",
+        "received": "Materials Received\n\nNARASIMHULU ROAD · 2026-08-05\n\n20.00\nMT\nB4 RECEIVED GSB\n2 entries\nTrip unloading: Stretch 12.50 · Yard 7.50 · Not recorded 0.00\nMaterial Entries (2)\nTime\tTransporter\tMaterial\tQty/UOM\tUnloaded at\tMaterial Source\tReceipt No.\n10:15\t\nB4 HAULER\nB4-TRIP-01\n\tB4 RECEIVED GSB\t12.5 MT\tStretch\tB4 QUARRY\tB4-TRIP-REC-01\n10:15\t\nB4 HAULER\nB4-TRIP-02\n\tB4 RECEIVED GSB\t7.5 MT\tYard · B4 STORAGE YARD\tB4 QUARRY\tB4-TRIP-REC-02",
+        "receivedHeading": "Materials Received",
+        "receivedRows": [
+          [
+            "10:15",
+            "B4 HAULERB4-TRIP-01",
+            "B4 RECEIVED GSB",
+            "12.5 MT",
+            "Stretch",
+            "B4 QUARRY",
+            "B4-TRIP-REC-01"
+          ],
+          [
+            "10:15",
+            "B4 HAULERB4-TRIP-02",
+            "B4 RECEIVED GSB",
+            "7.5 MT",
+            "Yard · B4 STORAGE YARD",
+            "B4 QUARRY",
+            "B4-TRIP-REC-02"
+          ]
+        ],
+        "legacyRows": [],
+        "purchases": [],
+        "visible": {
+          "heading": true,
+          "note": true,
+          "consumed": true,
+          "received": true
+        },
+        "ambiguous": false,
+        "writes": [],
+        "receivedRequests": [
+          "/api/materials-received?site=NARASIMHULU+ROAD&dateFrom=2026-08-05&dateTo=2026-08-05"
+        ],
+        "supplierBreakdown": null
+      },
+      "printVisibilityPassed": true,
+      "receivedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-desktop-SiteReport-trips-only-received.png",
+      "consumedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-desktop-SiteReport-trips-only-consumed.png"
+    },
+    {
+      "device": "desktop",
+      "page": "SiteReport",
+      "scenario": "populated",
+      "evidence": {
+        "heading": "Materials Consumed / Issued",
+        "note": "Bulk vehicle deliveries are tracked separately in Materials Received.",
+        "consumed": "Materials Consumed / Issued\n\nBulk vehicle deliveries are tracked separately in Materials Received.\n\nType\tMaterial\tQuantity\tUOM\tVehicle No.\tSupplier\tLocation/Task\tReceipt No.\nIssued\tB4 CEMENT ISSUED\t3.500\tMT\tB4-ISSUE-VEHICLE\tB4 SITE STORE\tB4 concrete work\tB4-ISSUE-RECEIPT",
+        "received": "Materials Received\n\nNARASIMHULU ROAD · 2026-08-05\n\n20.00\nMT\nB4 RECEIVED GSB\n2 entries\nTrip unloading: Stretch 12.50 · Yard 7.50 · Not recorded 0.00\nMaterial Entries (2)\nTime\tTransporter\tMaterial\tQty/UOM\tUnloaded at\tMaterial Source\tReceipt No.\n10:15\t\nB4 HAULER\nB4-TRIP-01\n\tB4 RECEIVED GSB\t12.5 MT\tStretch\tB4 QUARRY\tB4-TRIP-REC-01\n10:15\t\nB4 HAULER\nB4-TRIP-02\n\tB4 RECEIVED GSB\t7.5 MT\tYard · B4 STORAGE YARD\tB4 QUARRY\tB4-TRIP-REC-02",
+        "receivedHeading": "Materials Received",
+        "receivedRows": [
+          [
+            "10:15",
+            "B4 HAULERB4-TRIP-01",
+            "B4 RECEIVED GSB",
+            "12.5 MT",
+            "Stretch",
+            "B4 QUARRY",
+            "B4-TRIP-REC-01"
+          ],
+          [
+            "10:15",
+            "B4 HAULERB4-TRIP-02",
+            "B4 RECEIVED GSB",
+            "7.5 MT",
+            "Yard · B4 STORAGE YARD",
+            "B4 QUARRY",
+            "B4-TRIP-REC-02"
+          ]
+        ],
+        "legacyRows": [
+          [
+            "Issued",
+            "B4 CEMENT ISSUED",
+            "3.500",
+            "MT",
+            "B4-ISSUE-VEHICLE",
+            "B4 SITE STORE",
+            "B4 concrete work",
+            "B4-ISSUE-RECEIPT"
+          ]
+        ],
+        "purchases": [
+          [
+            "B4 STORE PURCHASE",
+            "B4 LOCAL VENDOR",
+            "B4-BILL-01",
+            "525.000",
+            "5.000",
+            "Nos"
+          ]
+        ],
+        "visible": {
+          "heading": true,
+          "note": true,
+          "consumed": true,
+          "received": true
+        },
+        "ambiguous": false,
+        "writes": [],
+        "receivedRequests": [
+          "/api/materials-received?site=NARASIMHULU+ROAD&dateFrom=2026-08-05&dateTo=2026-08-05"
+        ],
+        "supplierBreakdown": null
+      },
+      "printVisibilityPassed": true,
+      "receivedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-desktop-SiteReport-populated-received.png",
+      "consumedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-desktop-SiteReport-populated-consumed.png"
+    },
+    {
+      "device": "desktop",
+      "page": "SiteReport",
+      "scenario": "empty",
+      "evidence": {
+        "heading": "Materials Consumed / Issued",
+        "note": "Bulk vehicle deliveries are tracked separately in Materials Received.",
+        "consumed": "Materials Consumed / Issued\n\nBulk vehicle deliveries are tracked separately in Materials Received.\n\nNo materials consumed or issued recorded.",
+        "received": "Materials Received\n\nNARASIMHULU ROAD · 2026-08-05\n\nNo materials received this day.",
+        "receivedHeading": "Materials Received",
+        "receivedRows": [],
+        "legacyRows": [],
+        "purchases": [],
+        "visible": {
+          "heading": true,
+          "note": true,
+          "consumed": true,
+          "received": true
+        },
+        "ambiguous": false,
+        "writes": [],
+        "receivedRequests": [
+          "/api/materials-received?site=NARASIMHULU+ROAD&dateFrom=2026-08-05&dateTo=2026-08-05"
+        ],
+        "supplierBreakdown": null
+      },
+      "printVisibilityPassed": true,
+      "receivedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-desktop-SiteReport-empty-received.png",
+      "consumedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-desktop-SiteReport-empty-consumed.png"
+    },
+    {
+      "device": "desktop",
+      "page": "DprDetails",
+      "scenario": "trips-only",
+      "evidence": {
+        "heading": "Materials Consumed / Issued",
+        "note": "Bulk vehicle deliveries are tracked separately in Materials Received.",
+        "consumed": "Materials Consumed / Issued\n\nBulk vehicle deliveries are tracked separately in Materials Received.\n\nNo materials consumed or issued recorded.",
+        "received": "Materials Received\n\nNARASIMHULU ROAD · 2026-08-05\n\n20.00\nMT\nB4 RECEIVED GSB\n2 entries\nTrip unloading: Stretch 12.50 · Yard 7.50 · Not recorded 0.00\nMaterial Entries (2)\nTime\tTransporter\tMaterial\tQty/UOM\tUnloaded at\tMaterial Source\tReceipt No.\n10:15\t\nB4 HAULER\nB4-TRIP-01\n\tB4 RECEIVED GSB\t12.5 MT\tStretch\tB4 QUARRY\tB4-TRIP-REC-01\n10:15\t\nB4 HAULER\nB4-TRIP-02\n\tB4 RECEIVED GSB\t7.5 MT\tYard · B4 STORAGE YARD\tB4 QUARRY\tB4-TRIP-REC-02",
+        "receivedHeading": "Materials Received",
+        "receivedRows": [
+          [
+            "10:15",
+            "B4 HAULERB4-TRIP-01",
+            "B4 RECEIVED GSB",
+            "12.5 MT",
+            "Stretch",
+            "B4 QUARRY",
+            "B4-TRIP-REC-01"
+          ],
+          [
+            "10:15",
+            "B4 HAULERB4-TRIP-02",
+            "B4 RECEIVED GSB",
+            "7.5 MT",
+            "Yard · B4 STORAGE YARD",
+            "B4 QUARRY",
+            "B4-TRIP-REC-02"
+          ]
+        ],
+        "legacyRows": [],
+        "purchases": [],
+        "visible": {
+          "heading": true,
+          "note": true,
+          "consumed": true,
+          "received": true
+        },
+        "ambiguous": false,
+        "writes": [],
+        "receivedRequests": [
+          "/api/materials-received?site=NARASIMHULU+ROAD&dateFrom=2026-08-05&dateTo=2026-08-05"
+        ],
+        "supplierBreakdown": null
+      },
+      "printVisibilityPassed": true,
+      "receivedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-desktop-DprDetails-trips-only-received.png",
+      "consumedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-desktop-DprDetails-trips-only-consumed.png"
+    },
+    {
+      "device": "desktop",
+      "page": "DprDetails",
+      "scenario": "populated",
+      "evidence": {
+        "heading": "Materials Consumed / Issued",
+        "note": "Bulk vehicle deliveries are tracked separately in Materials Received.",
+        "consumed": "Materials Consumed / Issued\n\nBulk vehicle deliveries are tracked separately in Materials Received.\n\nSupplier breakdown\nMaterial\tUOM\tSupplier\tTotal Quantity\tTrips\nB4 CEMENT ISSUED\tMT\tB4 SITE STORE\t3.500\t1",
+        "received": "Materials Received\n\nNARASIMHULU ROAD · 2026-08-05\n\n20.00\nMT\nB4 RECEIVED GSB\n2 entries\nTrip unloading: Stretch 12.50 · Yard 7.50 · Not recorded 0.00\nMaterial Entries (2)\nTime\tTransporter\tMaterial\tQty/UOM\tUnloaded at\tMaterial Source\tReceipt No.\n10:15\t\nB4 HAULER\nB4-TRIP-01\n\tB4 RECEIVED GSB\t12.5 MT\tStretch\tB4 QUARRY\tB4-TRIP-REC-01\n10:15\t\nB4 HAULER\nB4-TRIP-02\n\tB4 RECEIVED GSB\t7.5 MT\tYard · B4 STORAGE YARD\tB4 QUARRY\tB4-TRIP-REC-02",
+        "receivedHeading": "Materials Received",
+        "receivedRows": [
+          [
+            "10:15",
+            "B4 HAULERB4-TRIP-01",
+            "B4 RECEIVED GSB",
+            "12.5 MT",
+            "Stretch",
+            "B4 QUARRY",
+            "B4-TRIP-REC-01"
+          ],
+          [
+            "10:15",
+            "B4 HAULERB4-TRIP-02",
+            "B4 RECEIVED GSB",
+            "7.5 MT",
+            "Yard · B4 STORAGE YARD",
+            "B4 QUARRY",
+            "B4-TRIP-REC-02"
+          ]
+        ],
+        "legacyRows": [
+          [
+            "B4 CEMENT ISSUED",
+            "MT",
+            "B4 SITE STORE",
+            "3.500",
+            "1"
+          ]
+        ],
+        "purchases": [],
+        "visible": {
+          "heading": true,
+          "note": true,
+          "consumed": true,
+          "received": true
+        },
+        "ambiguous": false,
+        "writes": [],
+        "receivedRequests": [
+          "/api/materials-received?site=NARASIMHULU+ROAD&dateFrom=2026-08-05&dateTo=2026-08-05"
+        ],
+        "supplierBreakdown": "Supplier breakdown"
+      },
+      "printVisibilityPassed": true,
+      "receivedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-desktop-DprDetails-populated-received.png",
+      "consumedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-desktop-DprDetails-populated-consumed.png"
+    },
+    {
+      "device": "desktop",
+      "page": "DprDetails",
+      "scenario": "empty",
+      "evidence": {
+        "heading": "Materials Consumed / Issued",
+        "note": "Bulk vehicle deliveries are tracked separately in Materials Received.",
+        "consumed": "Materials Consumed / Issued\n\nBulk vehicle deliveries are tracked separately in Materials Received.\n\nNo materials consumed or issued recorded.",
+        "received": "Materials Received\n\nNARASIMHULU ROAD · 2026-08-05\n\nNo materials received this day.",
+        "receivedHeading": "Materials Received",
+        "receivedRows": [],
+        "legacyRows": [],
+        "purchases": [],
+        "visible": {
+          "heading": true,
+          "note": true,
+          "consumed": true,
+          "received": true
+        },
+        "ambiguous": false,
+        "writes": [],
+        "receivedRequests": [
+          "/api/materials-received?site=NARASIMHULU+ROAD&dateFrom=2026-08-05&dateTo=2026-08-05"
+        ],
+        "supplierBreakdown": null
+      },
+      "printVisibilityPassed": true,
+      "receivedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-desktop-DprDetails-empty-received.png",
+      "consumedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-desktop-DprDetails-empty-consumed.png"
+    },
+    {
+      "device": "desktop",
+      "page": "hub",
+      "scenario": "trips-only",
+      "evidence": {
+        "title": "Materials Consumed / Issued & Site Purchases",
+        "paragraphs": [
+          "Bulk vehicle deliveries are tracked separately in Materials Received.",
+          "empty — Not yet entered"
+        ],
+        "state": {
+          "state": "empty",
+          "label": "Not yet entered",
+          "issues": []
+        },
+        "receivedCount": 2,
+        "disabled": false,
+        "writes": [],
+        "loads": 1
+      },
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-desktop-hub-trips-only.png"
+    },
+    {
+      "device": "desktop",
+      "page": "hub",
+      "scenario": "populated",
+      "evidence": {
+        "title": "Materials Consumed / Issued & Site Purchases",
+        "paragraphs": [
+          "Bulk vehicle deliveries are tracked separately in Materials Received.",
+          "ready — Ready"
+        ],
+        "state": {
+          "state": "ready",
+          "label": "Ready",
+          "issues": []
+        },
+        "receivedCount": 2,
+        "disabled": false,
+        "writes": [],
+        "loads": 1
+      },
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-desktop-hub-populated.png"
+    },
+    {
+      "device": "desktop",
+      "page": "hub",
+      "scenario": "empty",
+      "evidence": {
+        "title": "Materials Consumed / Issued & Site Purchases",
+        "paragraphs": [
+          "Bulk vehicle deliveries are tracked separately in Materials Received.",
+          "empty — Not yet entered"
+        ],
+        "state": {
+          "state": "empty",
+          "label": "Not yet entered",
+          "issues": []
+        },
+        "receivedCount": 0,
+        "disabled": false,
+        "writes": [],
+        "loads": 1
+      },
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-desktop-hub-empty.png"
+    },
+    {
+      "device": "mobile",
+      "page": "SiteReport",
+      "scenario": "trips-only",
+      "evidence": {
+        "heading": "Materials Consumed / Issued",
+        "note": "Bulk vehicle deliveries are tracked separately in Materials Received.",
+        "consumed": "Materials Consumed / Issued\n\nBulk vehicle deliveries are tracked separately in Materials Received.\n\nNo materials consumed or issued recorded.",
+        "received": "Materials Received\n\nNARASIMHULU ROAD · 2026-08-05\n\n20.00\nMT\nB4 RECEIVED GSB\n2 entries\nTrip unloading: Stretch 12.50 · Yard 7.50 · Not recorded 0.00\nMaterial Entries (2)\nTime\tTransporter\tMaterial\tQty/UOM\tUnloaded at\tMaterial Source\tReceipt No.\n10:15\t\nB4 HAULER\nB4-TRIP-01\n\tB4 RECEIVED GSB\t12.5 MT\tStretch\tB4 QUARRY\tB4-TRIP-REC-01\n10:15\t\nB4 HAULER\nB4-TRIP-02\n\tB4 RECEIVED GSB\t7.5 MT\tYard · B4 STORAGE YARD\tB4 QUARRY\tB4-TRIP-REC-02",
+        "receivedHeading": "Materials Received",
+        "receivedRows": [
+          [
+            "10:15",
+            "B4 HAULERB4-TRIP-01",
+            "B4 RECEIVED GSB",
+            "12.5 MT",
+            "Stretch",
+            "B4 QUARRY",
+            "B4-TRIP-REC-01"
+          ],
+          [
+            "10:15",
+            "B4 HAULERB4-TRIP-02",
+            "B4 RECEIVED GSB",
+            "7.5 MT",
+            "Yard · B4 STORAGE YARD",
+            "B4 QUARRY",
+            "B4-TRIP-REC-02"
+          ]
+        ],
+        "legacyRows": [],
+        "purchases": [],
+        "visible": {
+          "heading": true,
+          "note": true,
+          "consumed": true,
+          "received": true
+        },
+        "ambiguous": false,
+        "writes": [],
+        "receivedRequests": [
+          "/api/materials-received?site=NARASIMHULU+ROAD&dateFrom=2026-08-05&dateTo=2026-08-05"
+        ],
+        "supplierBreakdown": null
+      },
+      "printVisibilityPassed": true,
+      "receivedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-mobile-SiteReport-trips-only-received.png",
+      "consumedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-mobile-SiteReport-trips-only-consumed.png"
+    },
+    {
+      "device": "mobile",
+      "page": "SiteReport",
+      "scenario": "populated",
+      "evidence": {
+        "heading": "Materials Consumed / Issued",
+        "note": "Bulk vehicle deliveries are tracked separately in Materials Received.",
+        "consumed": "Materials Consumed / Issued\n\nBulk vehicle deliveries are tracked separately in Materials Received.\n\nType\tMaterial\tQuantity\tUOM\tVehicle No.\tSupplier\tLocation/Task\tReceipt No.\nIssued\tB4 CEMENT ISSUED\t3.500\tMT\tB4-ISSUE-VEHICLE\tB4 SITE STORE\tB4 concrete work\tB4-ISSUE-RECEIPT",
+        "received": "Materials Received\n\nNARASIMHULU ROAD · 2026-08-05\n\n20.00\nMT\nB4 RECEIVED GSB\n2 entries\nTrip unloading: Stretch 12.50 · Yard 7.50 · Not recorded 0.00\nMaterial Entries (2)\nTime\tTransporter\tMaterial\tQty/UOM\tUnloaded at\tMaterial Source\tReceipt No.\n10:15\t\nB4 HAULER\nB4-TRIP-01\n\tB4 RECEIVED GSB\t12.5 MT\tStretch\tB4 QUARRY\tB4-TRIP-REC-01\n10:15\t\nB4 HAULER\nB4-TRIP-02\n\tB4 RECEIVED GSB\t7.5 MT\tYard · B4 STORAGE YARD\tB4 QUARRY\tB4-TRIP-REC-02",
+        "receivedHeading": "Materials Received",
+        "receivedRows": [
+          [
+            "10:15",
+            "B4 HAULERB4-TRIP-01",
+            "B4 RECEIVED GSB",
+            "12.5 MT",
+            "Stretch",
+            "B4 QUARRY",
+            "B4-TRIP-REC-01"
+          ],
+          [
+            "10:15",
+            "B4 HAULERB4-TRIP-02",
+            "B4 RECEIVED GSB",
+            "7.5 MT",
+            "Yard · B4 STORAGE YARD",
+            "B4 QUARRY",
+            "B4-TRIP-REC-02"
+          ]
+        ],
+        "legacyRows": [
+          [
+            "Issued",
+            "B4 CEMENT ISSUED",
+            "3.500",
+            "MT",
+            "B4-ISSUE-VEHICLE",
+            "B4 SITE STORE",
+            "B4 concrete work",
+            "B4-ISSUE-RECEIPT"
+          ]
+        ],
+        "purchases": [
+          [
+            "B4 STORE PURCHASE",
+            "B4 LOCAL VENDOR",
+            "B4-BILL-01",
+            "525.000",
+            "5.000",
+            "Nos"
+          ]
+        ],
+        "visible": {
+          "heading": true,
+          "note": true,
+          "consumed": true,
+          "received": true
+        },
+        "ambiguous": false,
+        "writes": [],
+        "receivedRequests": [
+          "/api/materials-received?site=NARASIMHULU+ROAD&dateFrom=2026-08-05&dateTo=2026-08-05"
+        ],
+        "supplierBreakdown": null
+      },
+      "printVisibilityPassed": true,
+      "receivedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-mobile-SiteReport-populated-received.png",
+      "consumedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-mobile-SiteReport-populated-consumed.png"
+    },
+    {
+      "device": "mobile",
+      "page": "SiteReport",
+      "scenario": "empty",
+      "evidence": {
+        "heading": "Materials Consumed / Issued",
+        "note": "Bulk vehicle deliveries are tracked separately in Materials Received.",
+        "consumed": "Materials Consumed / Issued\n\nBulk vehicle deliveries are tracked separately in Materials Received.\n\nNo materials consumed or issued recorded.",
+        "received": "Materials Received\n\nNARASIMHULU ROAD · 2026-08-05\n\nNo materials received this day.",
+        "receivedHeading": "Materials Received",
+        "receivedRows": [],
+        "legacyRows": [],
+        "purchases": [],
+        "visible": {
+          "heading": true,
+          "note": true,
+          "consumed": true,
+          "received": true
+        },
+        "ambiguous": false,
+        "writes": [],
+        "receivedRequests": [
+          "/api/materials-received?site=NARASIMHULU+ROAD&dateFrom=2026-08-05&dateTo=2026-08-05"
+        ],
+        "supplierBreakdown": null
+      },
+      "printVisibilityPassed": true,
+      "receivedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-mobile-SiteReport-empty-received.png",
+      "consumedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-mobile-SiteReport-empty-consumed.png"
+    },
+    {
+      "device": "mobile",
+      "page": "DprDetails",
+      "scenario": "trips-only",
+      "evidence": {
+        "heading": "Materials Consumed / Issued",
+        "note": "Bulk vehicle deliveries are tracked separately in Materials Received.",
+        "consumed": "Materials Consumed / Issued\n\nBulk vehicle deliveries are tracked separately in Materials Received.\n\nNo materials consumed or issued recorded.",
+        "received": "Materials Received\n\nNARASIMHULU ROAD · 2026-08-05\n\n20.00\nMT\nB4 RECEIVED GSB\n2 entries\nTrip unloading: Stretch 12.50 · Yard 7.50 · Not recorded 0.00\nMaterial Entries (2)\nTime\tTransporter\tMaterial\tQty/UOM\tUnloaded at\tMaterial Source\tReceipt No.\n10:15\t\nB4 HAULER\nB4-TRIP-01\n\tB4 RECEIVED GSB\t12.5 MT\tStretch\tB4 QUARRY\tB4-TRIP-REC-01\n10:15\t\nB4 HAULER\nB4-TRIP-02\n\tB4 RECEIVED GSB\t7.5 MT\tYard · B4 STORAGE YARD\tB4 QUARRY\tB4-TRIP-REC-02",
+        "receivedHeading": "Materials Received",
+        "receivedRows": [
+          [
+            "10:15",
+            "B4 HAULERB4-TRIP-01",
+            "B4 RECEIVED GSB",
+            "12.5 MT",
+            "Stretch",
+            "B4 QUARRY",
+            "B4-TRIP-REC-01"
+          ],
+          [
+            "10:15",
+            "B4 HAULERB4-TRIP-02",
+            "B4 RECEIVED GSB",
+            "7.5 MT",
+            "Yard · B4 STORAGE YARD",
+            "B4 QUARRY",
+            "B4-TRIP-REC-02"
+          ]
+        ],
+        "legacyRows": [],
+        "purchases": [],
+        "visible": {
+          "heading": true,
+          "note": true,
+          "consumed": true,
+          "received": true
+        },
+        "ambiguous": false,
+        "writes": [],
+        "receivedRequests": [
+          "/api/materials-received?site=NARASIMHULU+ROAD&dateFrom=2026-08-05&dateTo=2026-08-05"
+        ],
+        "supplierBreakdown": null
+      },
+      "printVisibilityPassed": true,
+      "receivedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-mobile-DprDetails-trips-only-received.png",
+      "consumedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-mobile-DprDetails-trips-only-consumed.png"
+    },
+    {
+      "device": "mobile",
+      "page": "DprDetails",
+      "scenario": "populated",
+      "evidence": {
+        "heading": "Materials Consumed / Issued",
+        "note": "Bulk vehicle deliveries are tracked separately in Materials Received.",
+        "consumed": "Materials Consumed / Issued\n\nBulk vehicle deliveries are tracked separately in Materials Received.\n\nSupplier breakdown\nMaterial\tUOM\tSupplier\tTotal Quantity\tTrips\nB4 CEMENT ISSUED\tMT\tB4 SITE STORE\t3.500\t1",
+        "received": "Materials Received\n\nNARASIMHULU ROAD · 2026-08-05\n\n20.00\nMT\nB4 RECEIVED GSB\n2 entries\nTrip unloading: Stretch 12.50 · Yard 7.50 · Not recorded 0.00\nMaterial Entries (2)\nTime\tTransporter\tMaterial\tQty/UOM\tUnloaded at\tMaterial Source\tReceipt No.\n10:15\t\nB4 HAULER\nB4-TRIP-01\n\tB4 RECEIVED GSB\t12.5 MT\tStretch\tB4 QUARRY\tB4-TRIP-REC-01\n10:15\t\nB4 HAULER\nB4-TRIP-02\n\tB4 RECEIVED GSB\t7.5 MT\tYard · B4 STORAGE YARD\tB4 QUARRY\tB4-TRIP-REC-02",
+        "receivedHeading": "Materials Received",
+        "receivedRows": [
+          [
+            "10:15",
+            "B4 HAULERB4-TRIP-01",
+            "B4 RECEIVED GSB",
+            "12.5 MT",
+            "Stretch",
+            "B4 QUARRY",
+            "B4-TRIP-REC-01"
+          ],
+          [
+            "10:15",
+            "B4 HAULERB4-TRIP-02",
+            "B4 RECEIVED GSB",
+            "7.5 MT",
+            "Yard · B4 STORAGE YARD",
+            "B4 QUARRY",
+            "B4-TRIP-REC-02"
+          ]
+        ],
+        "legacyRows": [
+          [
+            "B4 CEMENT ISSUED",
+            "MT",
+            "B4 SITE STORE",
+            "3.500",
+            "1"
+          ]
+        ],
+        "purchases": [],
+        "visible": {
+          "heading": true,
+          "note": true,
+          "consumed": true,
+          "received": true
+        },
+        "ambiguous": false,
+        "writes": [],
+        "receivedRequests": [
+          "/api/materials-received?site=NARASIMHULU+ROAD&dateFrom=2026-08-05&dateTo=2026-08-05"
+        ],
+        "supplierBreakdown": "Supplier breakdown"
+      },
+      "printVisibilityPassed": true,
+      "receivedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-mobile-DprDetails-populated-received.png",
+      "consumedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-mobile-DprDetails-populated-consumed.png"
+    },
+    {
+      "device": "mobile",
+      "page": "DprDetails",
+      "scenario": "empty",
+      "evidence": {
+        "heading": "Materials Consumed / Issued",
+        "note": "Bulk vehicle deliveries are tracked separately in Materials Received.",
+        "consumed": "Materials Consumed / Issued\n\nBulk vehicle deliveries are tracked separately in Materials Received.\n\nNo materials consumed or issued recorded.",
+        "received": "Materials Received\n\nNARASIMHULU ROAD · 2026-08-05\n\nNo materials received this day.",
+        "receivedHeading": "Materials Received",
+        "receivedRows": [],
+        "legacyRows": [],
+        "purchases": [],
+        "visible": {
+          "heading": true,
+          "note": true,
+          "consumed": true,
+          "received": true
+        },
+        "ambiguous": false,
+        "writes": [],
+        "receivedRequests": [
+          "/api/materials-received?site=NARASIMHULU+ROAD&dateFrom=2026-08-05&dateTo=2026-08-05"
+        ],
+        "supplierBreakdown": null
+      },
+      "printVisibilityPassed": true,
+      "receivedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-mobile-DprDetails-empty-received.png",
+      "consumedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-mobile-DprDetails-empty-consumed.png"
+    },
+    {
+      "device": "mobile",
+      "page": "hub",
+      "scenario": "trips-only",
+      "evidence": {
+        "title": "Materials Consumed / Issued & Site Purchases",
+        "paragraphs": [
+          "Bulk vehicle deliveries are tracked separately in Materials Received.",
+          "empty — Not yet entered"
+        ],
+        "state": {
+          "state": "empty",
+          "label": "Not yet entered",
+          "issues": []
+        },
+        "receivedCount": 2,
+        "disabled": false,
+        "writes": [],
+        "loads": 1
+      },
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-mobile-hub-trips-only.png"
+    },
+    {
+      "device": "mobile",
+      "page": "hub",
+      "scenario": "populated",
+      "evidence": {
+        "title": "Materials Consumed / Issued & Site Purchases",
+        "paragraphs": [
+          "Bulk vehicle deliveries are tracked separately in Materials Received.",
+          "ready — Ready"
+        ],
+        "state": {
+          "state": "ready",
+          "label": "Ready",
+          "issues": []
+        },
+        "receivedCount": 2,
+        "disabled": false,
+        "writes": [],
+        "loads": 1
+      },
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-mobile-hub-populated.png"
+    },
+    {
+      "device": "mobile",
+      "page": "hub",
+      "scenario": "empty",
+      "evidence": {
+        "title": "Materials Consumed / Issued & Site Purchases",
+        "paragraphs": [
+          "Bulk vehicle deliveries are tracked separately in Materials Received.",
+          "empty — Not yet entered"
+        ],
+        "state": {
+          "state": "empty",
+          "label": "Not yet entered",
+          "issues": []
+        },
+        "receivedCount": 0,
+        "disabled": false,
+        "writes": [],
+        "loads": 1
+      },
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b4-mobile-hub-empty.png"
+    }
+  ]
+}

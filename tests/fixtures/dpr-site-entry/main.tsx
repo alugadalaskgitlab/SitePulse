@@ -3,7 +3,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import SiteEntry from "../../../client/src/pages/SiteEntry";
 import DprSections, { DprEditEntry, DprWorkEntry } from "../../../client/src/pages/DprSections";
 import { installDpr13Adapter } from "./dpr13-adapter";
-import { DPR_SECTIONS, normalizeDprSectionContext, pickDprSectionPayload } from "../../../shared/dprSections";
+import { DPR_SECTIONS, dprSectionStates, normalizeDprSectionContext, pickDprSectionPayload } from "../../../shared/dprSections";
 import { evaluateSavedDraftReadiness } from "../../../shared/dprDraftReadiness";
 import { buildEquipmentPerformanceReport } from "../../../shared/equipmentPerformance";
 import SiteEdit from "../../../client/src/pages/SiteEdit";
@@ -1399,9 +1399,47 @@ const dpr20B2Performance = buildEquipmentPerformanceReport({
   asOfDate: dpr20B2Report.date,
 });
 
+// DPR20 B4: materials wording scenarios use only this isolated GET service.
+// The hub state is the real shared computation, not a hand-authored readiness.
+function dpr20B4Scenario() {
+  const scenario = new URLSearchParams(window.location.search).get("scenario") ?? "trips-only";
+  const populated = scenario === "populated";
+  const report = {
+    ...storedDpr, id: 24601, date: "2026-08-05", site: site.name,
+    engineer: "B4 SYNTHETIC ENGINEER", dprStatus: "draft", workType: "road",
+    boqProjectId: 5501, equipment: [], labour: [], progress: [], photos: [],
+    structureItems: [], cutFillConsumptions: [], remarks: "",
+    materials: populated ? [{
+      id: 24701, type: "Issued", material: "B4 CEMENT ISSUED", quantity: 3.5,
+      uom: "MT", supplier: "B4 SITE STORE", vehicleNumber: "B4-ISSUE-VEHICLE",
+      location: "B4 concrete work", receiptNumber: "B4-ISSUE-RECEIPT",
+    }] : [],
+    sitePurchases: populated ? [{
+      id: 24702, itemDescription: "B4 STORE PURCHASE", vendor: "B4 LOCAL VENDOR",
+      billNo: "B4-BILL-01", amount: 525, quantity: 5, uom: "Nos",
+    }] : [],
+  };
+  const receipts = scenario === "empty" ? [] : [
+    { ...receivedVehicleSupplierTrip, id: 24901, material: "B4 RECEIVED GSB",
+      quantity: 12.5, supplier: "B4 HAULER", vehicleNumber: "B4-TRIP-01",
+      materialSourceSupplier: "B4 QUARRY", receiptNumber: "B4-TRIP-REC-01",
+      unloadedAt: "stretch", notes: "Synthetic bulk trip; no production data." },
+    { ...receivedVehicleSupplierTrip, id: 24902, material: "B4 RECEIVED GSB",
+      quantity: 7.5, supplier: "B4 HAULER", vehicleNumber: "B4-TRIP-02",
+      materialSourceSupplier: "B4 QUARRY", receiptNumber: "B4-TRIP-REC-02",
+      unloadedAt: "yard", yardLabel: "B4 STORAGE YARD" },
+  ];
+  return { report, receipts, snapshot: {
+    dpr: report, context: normalizeDprSectionContext(report),
+    sectionTokens: { activity: "b4-a", equipment: "b4-e", labour: "b4-l", materials: "b4-m" },
+    headerToken: "b4-header", sections: dprSectionStates(report),
+  } };
+}
+
 const fixtureState = {
   requests: [] as RequestRecord[],
   dpr20B2Performance,
+  dpr20B4Scenario,
   seedDpr18: null as null | ((id: number, equipmentPatch?: Record<string, unknown>) => void),
   dprCreatePayloads: [] as any[],
   dprCreateRecords: [] as any[],
@@ -1742,6 +1780,17 @@ window.fetch = async (input, init) => {
   const body = parseBody(init);
   const pathname = url.pathname;
   fixtureState.requests.push({ method, path: `${pathname}${url.search}`, body });
+
+  if (new URLSearchParams(window.location.search).has("dpr20b4")) {
+    if (method !== "GET") return json({ message: "DPR20 B4 fixture blocks every write" }, 405);
+    const fixture = dpr20B4Scenario();
+    if (pathname === "/api/dprs/24601") return json(fixture.report);
+    if (pathname === "/api/dpr-sections/24601") return json(fixture.snapshot);
+    if (pathname === "/api/materials-received") return json(fixture.receipts);
+    // All remaining synthetic lookups are intercepted below, never native.
+    if (!["/api/sites", "/api/personnel", "/api/plant-module/equipment", "/api/config"].includes(pathname)
+      && !pathname.startsWith("/api/boq/")) return json([]);
+  }
 
   if (new URLSearchParams(window.location.search).has("dpr20b2")) {
     if (method !== "GET") return json({ message: "DPR20 B2 fixture blocks every write" }, 405);
@@ -2288,7 +2337,8 @@ window.fetch = async (input, init) => {
   // Unused API routes are intentionally successful, so the isolated fixture
   // does not depend on an application server or a production database.
   if (pathname.startsWith("/api/")) return json([]);
-  if (new URLSearchParams(window.location.search).has("dpr20b1") && pathname.startsWith("/api/")) {
+  if ((new URLSearchParams(window.location.search).has("dpr20b1")
+    || new URLSearchParams(window.location.search).has("dpr20b4")) && pathname.startsWith("/api/")) {
     return json({ message: `Unhandled isolated DPR20 fixture API: ${method} ${pathname}` }, 404);
   }
   return originalFetch(input, init);
@@ -2545,7 +2595,7 @@ window.history.pushState = ((state: any, title: string, url?: string | URL | nul
 }) as typeof window.history.pushState;
 
 const mount = () => {
-  installDpr13Adapter();
+  if (!new URLSearchParams(window.location.search).has("dpr20b4")) installDpr13Adapter();
   queryClient.clear();
   const isEdit = window.location.pathname.startsWith("/site/edit/");
   const isDpr19B1Dashboard = window.location.pathname === "/site/dashboard"
@@ -2555,8 +2605,9 @@ const mount = () => {
   const isDpr18B3Report = new URLSearchParams(window.location.search).has("dpr18b3");
   const isDpr20B1Report = new URLSearchParams(window.location.search).has("dpr20b1");
   const isDpr20B2Report = new URLSearchParams(window.location.search).has("dpr20b2");
+  const isDpr20B4Report = new URLSearchParams(window.location.search).has("dpr20b4");
   const isLabour01 = new URLSearchParams(window.location.search).has("labour01");
-  const isDpr18B3Details = (isDpr18B3Report || isLabour01) && window.location.pathname.startsWith("/dpr/");
+  const isDpr18B3Details = (isDpr18B3Report || isLabour01 || isDpr20B4Report) && window.location.pathname.startsWith("/dpr/");
   const isSiteMaterialTrips = window.location.pathname.startsWith("/site/material-trips");
   const isSiteMaterialsReceived = window.location.pathname.startsWith("/site/materials-received");
   const isVehicleSupplierInline = window.location.pathname.startsWith("/fixture/vehicle-supplier-inline");
@@ -2570,6 +2621,7 @@ const mount = () => {
       {isDpr18B3Report && <header className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">DPR18 B3 · isolated synthetic read-only response · no customer database</header>}
       {isDpr20B1Report && <header data-testid="dpr20-b1-fixture-banner" className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">DPR20 B1 · synthetic isolated API · actual SiteReport · no customer database or writes</header>}
       {isDpr20B2Report && <header data-testid="dpr20-b2-fixture-banner" className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">DPR20 B2 · synthetic real-builder canonical events · actual SiteReport · intercepted GETs only</header>}
+      {isDpr20B4Report && <header data-testid="dpr20-b4-fixture-banner" className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">DPR20 B4 · isolated materials wording evidence · real read-only pages and section hub · intercepted GETs only</header>}
       {isLabour01 && <header className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">LABOUR-01 · isolated synthetic DPR · intercepted API · no customer database</header>}
       {new URLSearchParams(window.location.search).has("dpr13Legacy") && <header className="border border-amber-500 bg-amber-50 p-4">DPR-13 synthetic legacy-token fixture — real Guided/SiteEdit components, intercepted API only.</header>}
       <Dpr16B2EvidenceBanner />
@@ -2579,7 +2631,7 @@ const mount = () => {
         <Dpr08EvidenceBanner />
         <Dpr09EvidenceBanner />
         <DprNullEvidenceBanner />
-      {isDpr19B1Dashboard ? <SiteDashboard /> : isDpr18B3Details ? <DprDetails /> : window.location.pathname === "/fixture/dpr16-b3-activity" ? (
+      {isDpr19B1Dashboard ? <SiteDashboard /> : isDpr18B3Details ? <DprDetails /> : isDpr20B4Report && window.location.pathname === "/fixture/dpr20-b4-hub" ? <DprSections initialId={24601} /> : window.location.pathname === "/fixture/dpr16-b3-activity" ? (
         <main className="mx-auto max-w-4xl space-y-4 p-6">
           <h1 className="text-xl font-semibold">DPR16 B3 · isolated synthetic activity summary</h1>
           <p>Fixture only; this uses the same read-only activity component as both report routes.</p>
@@ -2598,7 +2650,7 @@ const mount = () => {
         : isSiteSuccess
           ? <SiteSuccess />
           : isSiteReport
-            ? isDpr18B3Report || isDpr20B1Report || isDpr20B2Report || isLabour01 ? <SiteReport /> : <FixtureSubmittedReport />
+            ? isDpr18B3Report || isDpr20B1Report || isDpr20B2Report || isDpr20B4Report || isLabour01 ? <SiteReport /> : <FixtureSubmittedReport />
             : isVehicleSupplierInline
               ? <VehicleSupplierInlineFixture />
               : isSiteMaterialTrips

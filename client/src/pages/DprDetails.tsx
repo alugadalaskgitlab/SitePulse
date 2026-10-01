@@ -401,37 +401,41 @@ export default function DprDetails() {
         </CardHeader>
         <CardContent className="space-y-6">
           <DprMaterialsReceived site={dpr.site} date={dpr.date} />
-          {dpr.materials.length === 0 ? (
-            <p className="text-muted-foreground italic">No materials recorded.</p>
-          ) : (
-            <div className="border-t pt-4">
-              <h3 className="font-semibold mb-4">DPR material records · Supplier breakdown</h3>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Material</TableHead>
-                    <TableHead>UOM</TableHead>
-                    <TableHead>Supplier</TableHead>
-                    <TableHead className="text-right">Total Quantity</TableHead>
-                    <TableHead className="text-right">Trips</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {materialAbstract.map((item: any, i: number) => (
-                    <TableRow key={i} data-testid={`row-material-abstract-${i}`}>
-                      <TableCell className="font-medium">{item.material}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{item.uom}</Badge>
-                      </TableCell>
-                      <TableCell className="text-sm">{item.supplier}</TableCell>
-                      <TableCell className="text-right font-semibold">{item.totalQty.toFixed(3)}</TableCell>
-                      <TableCell className="text-right">{item.trips}</TableCell>
+          <section className="border-t pt-4" aria-label="Materials Consumed / Issued">
+            <h3 className="font-semibold mb-2">Materials Consumed / Issued</h3>
+            <p className="text-sm text-muted-foreground mb-4">Bulk vehicle deliveries are tracked separately in Materials Received.</p>
+            {dpr.materials.length === 0 ? (
+              <p className="text-muted-foreground italic">No materials consumed or issued recorded.</p>
+            ) : (
+              <div>
+                <h4 className="font-medium mb-4">Supplier breakdown</h4>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Material</TableHead>
+                      <TableHead>UOM</TableHead>
+                      <TableHead>Supplier</TableHead>
+                      <TableHead className="text-right">Total Quantity</TableHead>
+                      <TableHead className="text-right">Trips</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+                  </TableHeader>
+                  <TableBody>
+                    {materialAbstract.map((item: any, i: number) => (
+                      <TableRow key={i} data-testid={`row-material-abstract-${i}`}>
+                        <TableCell className="font-medium">{item.material}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{item.uom}</Badge>
+                        </TableCell>
+                        <TableCell className="text-sm">{item.supplier}</TableCell>
+                        <TableCell className="text-right font-semibold">{item.totalQty.toFixed(3)}</TableCell>
+                        <TableCell className="text-right">{item.trips}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </section>
         </CardContent>
       </Card>
 

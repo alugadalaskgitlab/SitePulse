@@ -854,11 +854,12 @@ export default function SiteReport() {
         </CardHeader>
         <CardContent className="space-y-6">
           <DprMaterialsReceived site={dpr.site} date={dpr.date} />
-          {dpr.materials.length === 0 ? (
-            <p className="text-muted-foreground italic">No materials recorded.</p>
-          ) : (
-            <div className="border-t pt-4">
-              <h3 className="font-semibold mb-4">DPR material records</h3>
+          <section className="border-t pt-4" aria-label="Materials Consumed / Issued">
+            <h3 className="font-semibold mb-2">Materials Consumed / Issued</h3>
+            <p className="text-sm text-muted-foreground mb-4">Bulk vehicle deliveries are tracked separately in Materials Received.</p>
+            {dpr.materials.length === 0 ? (
+              <p className="text-muted-foreground italic">No materials consumed or issued recorded.</p>
+            ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -891,8 +892,8 @@ export default function SiteReport() {
                   ))}
                 </TableBody>
               </Table>
-            </div>
-          )}
+            )}
+          </section>
         </CardContent>
       </Card>
 

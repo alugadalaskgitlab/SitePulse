@@ -242,7 +242,8 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
         {!snapshot && <div><Label>Engineer (required for first save)</Label><Input value={engineer} onChange={e => setEngineer(e.target.value)} /></div>}
         {final ? <p role="status">This DPR is {snapshot?.dpr.dprStatus}. Section editing is closed.</p> : <>
           <div className="grid sm:grid-cols-2 gap-4">{DPR_SECTIONS.map(name => <button key={name} className="text-left border rounded-lg p-5 space-y-2 hover:bg-muted disabled:opacity-50" disabled={busy || (!snapshot && !engineer.trim())} onClick={() => { setReview(false); setSection(name); }}>
-            <h2 className="font-semibold capitalize">{name === "activity" ? "Activity / Progress" : name === "materials" ? "Materials / Site Purchases" : name}</h2>
+            <h2 className="font-semibold capitalize">{name === "activity" ? "Activity / Progress" : name === "materials" ? "Materials Consumed / Issued & Site Purchases" : name}</h2>
+            {name === "materials" && <p className="text-sm text-muted-foreground">Bulk vehicle deliveries are tracked separately in Materials Received.</p>}
             <p>{snapshot?.sections[name].state ?? "empty"} — {name === "equipment" && snapshot?.sections[name].issues?.some(issue => /closing|end time/i.test(issue.message))
               ? "Equipment saved — closing needed" : snapshot?.sections[name].label ?? "Not yet entered"}</p>
             {snapshot?.sections[name].issues?.map((issue, index) => <p className="text-sm text-muted-foreground" key={index}>{issue.message}</p>)}
