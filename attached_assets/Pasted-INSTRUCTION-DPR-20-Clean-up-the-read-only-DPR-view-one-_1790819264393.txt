@@ -1,0 +1,52 @@
+INSTRUCTION DPR-20: Clean up the read-only DPR view — one equipment table (not two), a real computed efficiency figure, correct Lifecycle/Send-onward handling, and a clear materials section
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Four independent fixes, all on read-only view page(s) only — none of this touches the editable DPR entry screens (SiteEntry.tsx/SiteEdit.tsx/GuidedDpr.tsx/DprSections.tsx), save/submit logic, or schema. Part A is a short design/mapping plan — STOP after Part A and share it before writing implementation code, because Fix 1 and Fix 4 both involve removing/conditionally-hiding a real, currently-working control (the condensed equipment cards, and the Lifecycle "Send onward" action), and must not silently break anything live. STOP after each subsequent part too. Do not touch HOME-01, DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, PERM-01/02, LABOUR-01, or any DPR-13 through DPR-19 work beyond what's explicitly described below. Do not publish automatically.
+
+BACKGROUND — confirmed by direct code review
+`client/src/pages/SiteReport.tsx` (the "Site Report" read-only view with Edit/Cancel/Delete/Print/Home actions) currently renders BOTH the condensed per-machine `<DprEquipmentCompact>` cards (from DPR-16/18) AND its own separate, older wide equipment table (Machine/Vehicle No/Operator/Task/Time-Meter/Operating Quantity/Diesel/Expected Diesel/Norm-Efficiency/Breakdown-Stoppage/Diesel Source/Lifecycle columns) — this older table was deliberately kept during DPR-16 for its audit/print-output value, not deleted, but now reads as genuine duplication next to the newer cards. `client/src/pages/DprDetails.tsx` may or may not have the same duplication — CONFIRM this in Part A rather than assuming, and only change whichever page(s) actually have it.
+
+The wide table's "Lifecycle" column (`client/src/lib/equipmentLifecycle.ts`'s `lifecycleLabel()`) is not just a status label — for equipment rows with a real linked plant-usage record (`plantUsageId`, populated when equipment is selected from the master picker rather than typed free-text), it also hosts the real "Send onward" button (`button-move-equipment-{i}` in `SiteReport.tsx` ~line 706, gated by `canMove` ~lines 585-588: usage must be `closed` with no `successorId` yet) that POSTs to `/api/equipment-usage/:id/move` to transfer equipment between a site, HMP, or RMC. This must be preserved exactly for any row where it's genuinely available — do not remove or relocate it.
+
+The "Norm/Efficiency" column (`SiteReport.tsx` ~lines 556, 570-571, 613-622) currently shows `item.dieselNorm` — the equipment master's preset standard rate — plus an "Actual variance" line that is only a liters delta (diesel issued − expected), not a rate. A genuine computed ACTUAL efficiency (measured liters consumed ÷ actual runtime, in L/hr, or km/L for odometer-type machines) already exists via `managementMetrics()` in `shared/equipmentPerformance.ts` (~lines 524-531, `consumptionRate`/`consumptionRateUnit`/`consumptionIncomplete`) but isn't wired into this table — REUSE this existing computation, do not build a new one.
+
+Separately, both `DprDetails.tsx` and `SiteReport.tsx` show a confusing, unlabeled "No materials recorded." line directly beneath the new rich Materials Received trips table (from DPR-17). This line is the read-only rendering of an entirely different, older concept — "Materials Consumed/Issued" (material issued from store against a specific work item) plus "Site Purchases" — which the live edit screen (`client/src/pages/DprSections.tsx`'s "Materials / Site Purchases" section) already labels clearly and even explains inline: "Bulk deliveries by vehicle trip are still tracked separately in Materials Received." The read-only rendering has no such label, so it reads as a contradiction next to the trips table showing real data. The section hub's "Materials / Site Purchases" tile (same page) shows "empty — Not yet entered" for the same reason — technically correct for what it tracks, but its name doesn't make clear it's a different thing from Materials Received.
+
+FIX
+
+PART A — Design/mapping plan (STOP after this, share the plan, wait for go-ahead before building)
+a. Confirm exactly which read-only page(s) — `SiteReport.tsx`, `DprDetails.tsx`, or both — currently render both the condensed per-machine equipment cards AND the wide summary table. Only remove the cards from pages where this duplication genuinely exists.
+b. Confirm the plan removes ONLY the condensed per-machine `<DprEquipmentCompact>` cards from the affected read-only page(s), keeping the wide summary table (including its Lifecycle column and Send-onward action) exactly as-is structurally. Confirm equipment-card removal does NOT affect the editable screens at all (SiteEntry.tsx/SiteEdit.tsx/GuidedDpr.tsx keep using `DprEquipmentCompact` exactly as today).
+c. Propose how the Norm/Efficiency column will show both figures clearly — e.g. the existing norm value plus a new, clearly-labeled "Actual: X L/hr" (or km/L) line reusing `managementMetrics()`'s `consumptionRate`, with an honest fallback (e.g. "Actual: pending confirmation" or similar, reusing whatever `consumptionIncomplete` already signals) when the real figure can't be computed — do not fabricate a number when the underlying data isn't there.
+d. Confirm the Lifecycle column's display logic: show the real lifecycle text (Pending/Completed/Closed at ...) and the Send-onward button exactly as today for any row with a genuine linked usage; for rows with no linked usage at all (free-text equipment entries with no `plantUsageId`), show a clean neutral placeholder (e.g. "—" or blank) rather than nothing happening visually — but do NOT hide the column itself, since that would remove Send-onward for rows where it IS eligible.
+e. Propose how to fix the materials-section confusion: either (i) give the "No materials recorded" line a clear heading distinguishing it from Materials Received (e.g. "Materials Consumed / Issued" as its own labeled sub-block, matching the edit screen's naming) so it reads as a different, correctly-empty section rather than a contradiction, or (ii) omit it entirely on the read-only view when both Materials Consumed/Issued and Site Purchases are empty, matching how other optional empty sections are already handled elsewhere in the app (check and follow existing precedent) — propose whichever is more consistent with the app's existing patterns and explain why.
+f. Confirm the section hub's "Materials / Site Purchases" tile wording — propose a small change (e.g. the tile subtitle also noting trips are tracked separately) so it's not confused with Materials Received, without changing its actual readiness logic.
+g. Flag any real risk (e.g. whether removing the per-machine cards loses any information not present in the wide table — check this explicitly and report any gap rather than assuming parity).
+
+PART B — Build (only after Part A is approved)
+B1. Equipment table consolidation (Fix 1) on the confirmed page(s).
+B2. Norm/Efficiency actual-rate fix (Fix 3).
+B3. Lifecycle column conditional display, preserving Send-onward exactly (Fix 4).
+B4. Materials section clarity fix (Fix 2) on both DprDetails.tsx and SiteReport.tsx, plus the section-hub tile wording.
+Stop after each for report and confirmation before starting the next.
+
+WHAT NOT TO DO
+- Do not remove or alter the Send-onward button, its `canMove` gating, or the `/api/equipment-usage/:id/move` route — preserve exactly.
+- Do not touch the editable DPR entry screens' equipment rendering.
+- Do not change any submit-readiness logic as part of the materials-section wording fix.
+- Do not invent a new actual-efficiency calculation — reuse `managementMetrics()`.
+- Do not touch HOME-01, DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, PERM-01/02, LABOUR-01, or unrelated DPR-13 through DPR-19 work.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change expected — all data involved already exists.
+
+TESTS
+Confirm the affected read-only page(s) show exactly one equipment table (no duplicate per-machine cards), with no information lost versus before (verify against point g's gap-check). Confirm Norm/Efficiency shows both the norm and a real computed actual rate where available, with an honest fallback where not. Confirm Send-onward still works exactly as before for an equipment row with a genuine linked usage eligible for it. Confirm the materials section reads clearly (no apparent contradiction) for a DPR with trips but no consumed/issued or site-purchase records.
+
+REPORT BACK
+1. After Part A: your written plan, and explicitly wait for approval before proceeding.
+2. After B1, B2, B3, B4 each: confirm with evidence before starting the next.
+3. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
