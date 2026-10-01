@@ -1,0 +1,2568 @@
+{
+  "source": "Synthetic DPR + real canonical report builder; real SiteReport; all API intercepted; no customer writes",
+  "result": [
+    {
+      "device": "desktop",
+      "evidence": {
+        "equipmentTables": 1,
+        "compactCards": 0,
+        "headers": [
+          "Machine",
+          "Vehicle No",
+          "Operator",
+          "Task",
+          "Time/Meter",
+          "Operating Quantity",
+          "Diesel (L)",
+          "Expected Diesel",
+          "Norm / Efficiency",
+          "Breakdown / Stoppage",
+          "Diesel Source",
+          "Lifecycle"
+        ],
+        "efficiencies": [
+          "Norm: 5.000 L/hrActual: unavailable (multiple same-day records; source rate cannot be isolated safely)Issued − expected: -20.000 LDPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -30.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 0.300 L/kmActual: 0.200 L/kmConfirmed tank consumption; distance from recorded odometer readings.Issued − expected: -12.000 LDPR snapshot consumed: 5.00 LDPR snapshot consumed − expected variance: -7.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: 0.000 L/hrConfirmed tank consumption; runtime from recorded hour-meter readings.Issued − expected: -10.000 LDPR snapshot consumed: 0.00 LDPR snapshot consumed − expected variance: -10.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: pending confirmed tank / usage dataDPR snapshot consumed: 9.00 LDPR snapshot consumed − expected variance: -1.00 LCurrent master norm (reference): 5.00 L/hrThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000Actual: unavailable (runtime or distance is missing)DPR snapshot consumed: 15.00 LDPR snapshot consumed − expected variance: —Current master norm (reference): 5.00 L/hrThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000Actual: unavailable (no matching canonical performance record)DPR snapshot consumed: 9.00 LDPR snapshot consumed − expected variance: -1.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (multiple same-day records; source rate cannot be isolated safely)Issued − expected: -5.000 LDPR snapshot consumed: 3.00 LDPR snapshot consumed − expected variance: -7.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: pending confirmed tank / usage dataDPR snapshot consumed: 9.00 LDPR snapshot consumed − expected variance: +4.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: 3.750 L/hrConfirmed tank consumption; runtime from recorded hour-meter readings.Issued − expected: -20.000 LDPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -30.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 0.300Actual: unavailable (distance is estimated, not measured or recorded from trips)DPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -20.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: 2.500 L/hrConfirmed tank consumption; runtime from recorded start/end clock time, not hour-meter readings.DPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -10.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected."
+        ],
+        "lifecycle": [
+          "Closed by Synthetic operator",
+          "Pending at SITE: NARASIMHULU ROAD",
+          "Completed at HMP"
+        ],
+        "moveButtons": [
+          true,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "writes": [],
+        "performanceRequests": [
+          {
+            "method": "GET",
+            "path": "/api/reports/equipment-performance?dateFrom=2026-08-05&dateTo=2026-08-05"
+          }
+        ],
+        "canonicalReferences": [
+          {
+            "dprId": 22602,
+            "equipmentLogId": 22999,
+            "plantUsageId": 22999
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22701,
+            "plantUsageId": 22801
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22703,
+            "plantUsageId": 22803
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22709,
+            "plantUsageId": 22809
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22710,
+            "plantUsageId": 22810
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22711,
+            "plantUsageId": 22811
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22708,
+            "plantUsageId": null
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22702,
+            "plantUsageId": 22802
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22704,
+            "plantUsageId": 22804
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22705,
+            "plantUsageId": 22805
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22707,
+            "plantUsageId": 22807
+          }
+        ],
+        "canonicalEventBases": [
+          {
+            "reference": {
+              "dprId": 22602,
+              "equipmentLogId": 22999,
+              "plantUsageId": 22999
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 4,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22701,
+              "plantUsageId": 22801
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 8,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22703,
+              "plantUsageId": 22803
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 2,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22709,
+              "plantUsageId": 22809
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 8,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22710,
+              "plantUsageId": 22810
+            },
+            "usageBasis": "time_fallback",
+            "usageValue": 100,
+            "unit": "L/km"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22711,
+              "plantUsageId": 22811
+            },
+            "usageBasis": "time_fallback",
+            "usageValue": 4,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22708,
+              "plantUsageId": null
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 1,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22702,
+              "plantUsageId": 22802
+            },
+            "usageBasis": "odometer",
+            "usageValue": 40,
+            "unit": "L/km"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22704,
+              "plantUsageId": 22804
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 2,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22705,
+              "plantUsageId": 22805
+            },
+            "usageBasis": "none",
+            "usageValue": 0,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22707,
+              "plantUsageId": 22807
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 2,
+            "unit": "L/hr"
+          }
+        ],
+        "actualBlocks": [
+          "Norm: 5.000 L/hrActual: unavailable (multiple same-day records; source rate cannot be isolated safely)",
+          "Norm: 0.300 L/kmActual: 0.200 L/kmConfirmed tank consumption; distance from recorded odometer readings.",
+          "Norm: 5.000 L/hrActual: 0.000 L/hrConfirmed tank consumption; runtime from recorded hour-meter readings.",
+          "Norm: 5.000 L/hrActual: pending confirmed tank / usage data",
+          "Norm: 5.000Actual: unavailable (runtime or distance is missing)",
+          "Norm: 5.000Actual: unavailable (no matching canonical performance record)",
+          "Norm: 5.000 L/hrActual: unavailable (multiple same-day records; source rate cannot be isolated safely)",
+          "Norm: 5.000 L/hrActual: pending confirmed tank / usage data",
+          "Norm: 5.000 L/hrActual: 3.750 L/hrConfirmed tank consumption; runtime from recorded hour-meter readings.",
+          "Norm: 0.300Actual: unavailable (distance is estimated, not measured or recorded from trips)",
+          "Norm: 5.000 L/hrActual: 2.500 L/hrConfirmed tank consumption; runtime from recorded start/end clock time, not hour-meter readings."
+        ],
+        "canonicalDay": [
+          {
+            "key": "21701:2026-08-05",
+            "date": "2026-08-05",
+            "projectSite": "Synthetic B2 active project / NARASIMHULU ROAD",
+            "meterUnit": "h",
+            "openingMeter": 100,
+            "closingMeter": 110,
+            "workingHours": 10,
+            "workingHoursIncomplete": false,
+            "clockDuration": 6,
+            "clockDurationIncomplete": false,
+            "dieselIssued": 25,
+            "openingTank": 30,
+            "closingTank": 22,
+            "dieselConsumed": 33,
+            "expectedDiesel": 50,
+            "difference": -17,
+            "consumptionRate": 3.3,
+            "consumptionRateUnit": "L/hr",
+            "consumptionIncomplete": false,
+            "startTime": "08:00",
+            "endTime": "15:00",
+            "multipleTimeSegments": true,
+            "events": [
+              {
+                "key": "plant_usage:22801",
+                "date": "2026-08-05",
+                "projectId": 21801,
+                "project": "Synthetic B2 active project",
+                "scope": "site",
+                "site": "NARASIMHULU ROAD",
+                "plant": null,
+                "equipmentId": 21701,
+                "machine": "SYNTHETIC B2 HOURS",
+                "equipmentType": null,
+                "ownership": "owned",
+                "task": null,
+                "openingReading": 100,
+                "closingReading": 108,
+                "startTime": "08:00",
+                "endTime": "12:00",
+                "trips": null,
+                "usageBasis": "hour_meter",
+                "usageValue": 8,
+                "runtimeHours": 8,
+                "totalKm": null,
+                "dieselIssued": 20,
+                "openingTank": 30,
+                "closingTank": 20,
+                "clockDuration": 4,
+                "dieselActual": 30,
+                "dieselBasis": "tank_measured",
+                "dieselExpected": 40,
+                "dieselVariance": -10,
+                "actualConsumptionRate": 3.75,
+                "dieselEfficiencyUnit": "L/hr",
+                "efficiencyPercent": 133.33333333333331,
+                "operator": null,
+                "source": "plant_usage",
+                "link": "linked",
+                "reference": {
+                  "dprId": 22601,
+                  "equipmentLogId": 22701,
+                  "plantUsageId": 22801
+                },
+                "notes": null,
+                "breakdownNotes": [],
+                "confidence": "linked",
+                "suggestions": []
+              },
+              {
+                "key": "plant_usage:22807",
+                "date": "2026-08-05",
+                "projectId": 21801,
+                "project": "Synthetic B2 active project",
+                "scope": "site",
+                "site": "NARASIMHULU ROAD",
+                "plant": null,
+                "equipmentId": 21701,
+                "machine": "SYNTHETIC B2 HOURS",
+                "equipmentType": null,
+                "ownership": "owned",
+                "task": null,
+                "openingReading": 108,
+                "closingReading": 110,
+                "startTime": "13:00",
+                "endTime": "15:00",
+                "trips": null,
+                "usageBasis": "hour_meter",
+                "usageValue": 2,
+                "runtimeHours": 2,
+                "totalKm": null,
+                "dieselIssued": 5,
+                "openingTank": 20,
+                "closingTank": 22,
+                "clockDuration": 2,
+                "dieselActual": 3,
+                "dieselBasis": "tank_measured",
+                "dieselExpected": 10,
+                "dieselVariance": -7,
+                "actualConsumptionRate": 1.5,
+                "dieselEfficiencyUnit": "L/hr",
+                "efficiencyPercent": 333.33333333333337,
+                "operator": null,
+                "source": "plant_usage",
+                "link": "linked",
+                "reference": {
+                  "dprId": 22601,
+                  "equipmentLogId": 22707,
+                  "plantUsageId": 22807
+                },
+                "notes": null,
+                "breakdownNotes": [],
+                "confidence": "linked",
+                "suggestions": []
+              }
+            ]
+          }
+        ],
+        "viewport": 1440
+      },
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b2-desktop.png"
+    },
+    {
+      "device": "desktop",
+      "zeroScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b2-desktop-zero.png",
+      "pendingScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b2-desktop-pending.png"
+    },
+    {
+      "device": "desktop",
+      "estimatedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b2-desktop-estimated.png",
+      "clockScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b2-desktop-clock.png"
+    },
+    {
+      "device": "mobile",
+      "evidence": {
+        "equipmentTables": 1,
+        "compactCards": 0,
+        "headers": [
+          "Machine",
+          "Vehicle No",
+          "Operator",
+          "Task",
+          "Time/Meter",
+          "Operating Quantity",
+          "Diesel (L)",
+          "Expected Diesel",
+          "Norm / Efficiency",
+          "Breakdown / Stoppage",
+          "Diesel Source",
+          "Lifecycle"
+        ],
+        "efficiencies": [
+          "Norm: 5.000 L/hrActual: unavailable (multiple same-day records; source rate cannot be isolated safely)Issued − expected: -20.000 LDPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -30.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 0.300 L/kmActual: 0.200 L/kmConfirmed tank consumption; distance from recorded odometer readings.Issued − expected: -12.000 LDPR snapshot consumed: 5.00 LDPR snapshot consumed − expected variance: -7.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: 0.000 L/hrConfirmed tank consumption; runtime from recorded hour-meter readings.Issued − expected: -10.000 LDPR snapshot consumed: 0.00 LDPR snapshot consumed − expected variance: -10.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: pending confirmed tank / usage dataDPR snapshot consumed: 9.00 LDPR snapshot consumed − expected variance: -1.00 LCurrent master norm (reference): 5.00 L/hrThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000Actual: unavailable (runtime or distance is missing)DPR snapshot consumed: 15.00 LDPR snapshot consumed − expected variance: —Current master norm (reference): 5.00 L/hrThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000Actual: unavailable (no matching canonical performance record)DPR snapshot consumed: 9.00 LDPR snapshot consumed − expected variance: -1.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (multiple same-day records; source rate cannot be isolated safely)Issued − expected: -5.000 LDPR snapshot consumed: 3.00 LDPR snapshot consumed − expected variance: -7.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: pending confirmed tank / usage dataDPR snapshot consumed: 9.00 LDPR snapshot consumed − expected variance: +4.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: 3.750 L/hrConfirmed tank consumption; runtime from recorded hour-meter readings.Issued − expected: -20.000 LDPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -30.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 0.300Actual: unavailable (distance is estimated, not measured or recorded from trips)DPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -20.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: 2.500 L/hrConfirmed tank consumption; runtime from recorded start/end clock time, not hour-meter readings.DPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -10.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected."
+        ],
+        "lifecycle": [
+          "Closed by Synthetic operator",
+          "Pending at SITE: NARASIMHULU ROAD",
+          "Completed at HMP"
+        ],
+        "moveButtons": [
+          true,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "writes": [],
+        "performanceRequests": [
+          {
+            "method": "GET",
+            "path": "/api/reports/equipment-performance?dateFrom=2026-08-05&dateTo=2026-08-05"
+          }
+        ],
+        "canonicalReferences": [
+          {
+            "dprId": 22602,
+            "equipmentLogId": 22999,
+            "plantUsageId": 22999
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22701,
+            "plantUsageId": 22801
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22703,
+            "plantUsageId": 22803
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22709,
+            "plantUsageId": 22809
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22710,
+            "plantUsageId": 22810
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22711,
+            "plantUsageId": 22811
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22708,
+            "plantUsageId": null
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22702,
+            "plantUsageId": 22802
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22704,
+            "plantUsageId": 22804
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22705,
+            "plantUsageId": 22805
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22707,
+            "plantUsageId": 22807
+          }
+        ],
+        "canonicalEventBases": [
+          {
+            "reference": {
+              "dprId": 22602,
+              "equipmentLogId": 22999,
+              "plantUsageId": 22999
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 4,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22701,
+              "plantUsageId": 22801
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 8,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22703,
+              "plantUsageId": 22803
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 2,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22709,
+              "plantUsageId": 22809
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 8,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22710,
+              "plantUsageId": 22810
+            },
+            "usageBasis": "time_fallback",
+            "usageValue": 100,
+            "unit": "L/km"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22711,
+              "plantUsageId": 22811
+            },
+            "usageBasis": "time_fallback",
+            "usageValue": 4,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22708,
+              "plantUsageId": null
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 1,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22702,
+              "plantUsageId": 22802
+            },
+            "usageBasis": "odometer",
+            "usageValue": 40,
+            "unit": "L/km"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22704,
+              "plantUsageId": 22804
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 2,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22705,
+              "plantUsageId": 22805
+            },
+            "usageBasis": "none",
+            "usageValue": 0,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22707,
+              "plantUsageId": 22807
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 2,
+            "unit": "L/hr"
+          }
+        ],
+        "actualBlocks": [
+          "Norm: 5.000 L/hrActual: unavailable (multiple same-day records; source rate cannot be isolated safely)",
+          "Norm: 0.300 L/kmActual: 0.200 L/kmConfirmed tank consumption; distance from recorded odometer readings.",
+          "Norm: 5.000 L/hrActual: 0.000 L/hrConfirmed tank consumption; runtime from recorded hour-meter readings.",
+          "Norm: 5.000 L/hrActual: pending confirmed tank / usage data",
+          "Norm: 5.000Actual: unavailable (runtime or distance is missing)",
+          "Norm: 5.000Actual: unavailable (no matching canonical performance record)",
+          "Norm: 5.000 L/hrActual: unavailable (multiple same-day records; source rate cannot be isolated safely)",
+          "Norm: 5.000 L/hrActual: pending confirmed tank / usage data",
+          "Norm: 5.000 L/hrActual: 3.750 L/hrConfirmed tank consumption; runtime from recorded hour-meter readings.",
+          "Norm: 0.300Actual: unavailable (distance is estimated, not measured or recorded from trips)",
+          "Norm: 5.000 L/hrActual: 2.500 L/hrConfirmed tank consumption; runtime from recorded start/end clock time, not hour-meter readings."
+        ],
+        "canonicalDay": [
+          {
+            "key": "21701:2026-08-05",
+            "date": "2026-08-05",
+            "projectSite": "Synthetic B2 active project / NARASIMHULU ROAD",
+            "meterUnit": "h",
+            "openingMeter": 100,
+            "closingMeter": 110,
+            "workingHours": 10,
+            "workingHoursIncomplete": false,
+            "clockDuration": 6,
+            "clockDurationIncomplete": false,
+            "dieselIssued": 25,
+            "openingTank": 30,
+            "closingTank": 22,
+            "dieselConsumed": 33,
+            "expectedDiesel": 50,
+            "difference": -17,
+            "consumptionRate": 3.3,
+            "consumptionRateUnit": "L/hr",
+            "consumptionIncomplete": false,
+            "startTime": "08:00",
+            "endTime": "15:00",
+            "multipleTimeSegments": true,
+            "events": [
+              {
+                "key": "plant_usage:22801",
+                "date": "2026-08-05",
+                "projectId": 21801,
+                "project": "Synthetic B2 active project",
+                "scope": "site",
+                "site": "NARASIMHULU ROAD",
+                "plant": null,
+                "equipmentId": 21701,
+                "machine": "SYNTHETIC B2 HOURS",
+                "equipmentType": null,
+                "ownership": "owned",
+                "task": null,
+                "openingReading": 100,
+                "closingReading": 108,
+                "startTime": "08:00",
+                "endTime": "12:00",
+                "trips": null,
+                "usageBasis": "hour_meter",
+                "usageValue": 8,
+                "runtimeHours": 8,
+                "totalKm": null,
+                "dieselIssued": 20,
+                "openingTank": 30,
+                "closingTank": 20,
+                "clockDuration": 4,
+                "dieselActual": 30,
+                "dieselBasis": "tank_measured",
+                "dieselExpected": 40,
+                "dieselVariance": -10,
+                "actualConsumptionRate": 3.75,
+                "dieselEfficiencyUnit": "L/hr",
+                "efficiencyPercent": 133.33333333333331,
+                "operator": null,
+                "source": "plant_usage",
+                "link": "linked",
+                "reference": {
+                  "dprId": 22601,
+                  "equipmentLogId": 22701,
+                  "plantUsageId": 22801
+                },
+                "notes": null,
+                "breakdownNotes": [],
+                "confidence": "linked",
+                "suggestions": []
+              },
+              {
+                "key": "plant_usage:22807",
+                "date": "2026-08-05",
+                "projectId": 21801,
+                "project": "Synthetic B2 active project",
+                "scope": "site",
+                "site": "NARASIMHULU ROAD",
+                "plant": null,
+                "equipmentId": 21701,
+                "machine": "SYNTHETIC B2 HOURS",
+                "equipmentType": null,
+                "ownership": "owned",
+                "task": null,
+                "openingReading": 108,
+                "closingReading": 110,
+                "startTime": "13:00",
+                "endTime": "15:00",
+                "trips": null,
+                "usageBasis": "hour_meter",
+                "usageValue": 2,
+                "runtimeHours": 2,
+                "totalKm": null,
+                "dieselIssued": 5,
+                "openingTank": 20,
+                "closingTank": 22,
+                "clockDuration": 2,
+                "dieselActual": 3,
+                "dieselBasis": "tank_measured",
+                "dieselExpected": 10,
+                "dieselVariance": -7,
+                "actualConsumptionRate": 1.5,
+                "dieselEfficiencyUnit": "L/hr",
+                "efficiencyPercent": 333.33333333333337,
+                "operator": null,
+                "source": "plant_usage",
+                "link": "linked",
+                "reference": {
+                  "dprId": 22601,
+                  "equipmentLogId": 22707,
+                  "plantUsageId": 22807
+                },
+                "notes": null,
+                "breakdownNotes": [],
+                "confidence": "linked",
+                "suggestions": []
+              }
+            ]
+          }
+        ],
+        "viewport": 390
+      },
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b2-mobile.png"
+    },
+    {
+      "device": "mobile",
+      "zeroScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b2-mobile-zero.png",
+      "pendingScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b2-mobile-pending.png"
+    },
+    {
+      "device": "mobile",
+      "estimatedScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b2-mobile-estimated.png",
+      "clockScreenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b2-mobile-clock.png"
+    },
+    {
+      "role": "site-only",
+      "scenario": "normal",
+      "evidence": {
+        "equipmentTables": 1,
+        "compactCards": 0,
+        "headers": [
+          "Machine",
+          "Vehicle No",
+          "Operator",
+          "Task",
+          "Time/Meter",
+          "Operating Quantity",
+          "Diesel (L)",
+          "Expected Diesel",
+          "Norm / Efficiency",
+          "Breakdown / Stoppage",
+          "Diesel Source",
+          "Lifecycle"
+        ],
+        "efficiencies": [
+          "Norm: 5.000 L/hrActual: unavailable (performance access not granted)Issued − expected: -20.000 LDPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -30.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 0.300 L/kmActual: unavailable (performance access not granted)Issued − expected: -12.000 LDPR snapshot consumed: 5.00 LDPR snapshot consumed − expected variance: -7.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (performance access not granted)Issued − expected: -10.000 LDPR snapshot consumed: 0.00 LDPR snapshot consumed − expected variance: -10.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (performance access not granted)DPR snapshot consumed: 9.00 LDPR snapshot consumed − expected variance: -1.00 LCurrent master norm (reference): 5.00 L/hrThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000Actual: unavailable (performance access not granted)DPR snapshot consumed: 15.00 LDPR snapshot consumed − expected variance: —Current master norm (reference): 5.00 L/hrThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000Actual: unavailable (performance access not granted)DPR snapshot consumed: 9.00 LDPR snapshot consumed − expected variance: -1.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (performance access not granted)Issued − expected: -5.000 LDPR snapshot consumed: 3.00 LDPR snapshot consumed − expected variance: -7.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (performance access not granted)DPR snapshot consumed: 9.00 LDPR snapshot consumed − expected variance: +4.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (performance access not granted)Issued − expected: -20.000 LDPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -30.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 0.300Actual: unavailable (performance access not granted)DPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -20.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (performance access not granted)DPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -10.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected."
+        ],
+        "lifecycle": [
+          "Closed by Synthetic operator",
+          "Pending at SITE: NARASIMHULU ROAD",
+          "Completed at HMP"
+        ],
+        "moveButtons": [
+          true,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "writes": [],
+        "performanceRequests": [],
+        "canonicalReferences": [
+          {
+            "dprId": 22602,
+            "equipmentLogId": 22999,
+            "plantUsageId": 22999
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22701,
+            "plantUsageId": 22801
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22703,
+            "plantUsageId": 22803
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22709,
+            "plantUsageId": 22809
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22710,
+            "plantUsageId": 22810
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22711,
+            "plantUsageId": 22811
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22708,
+            "plantUsageId": null
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22702,
+            "plantUsageId": 22802
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22704,
+            "plantUsageId": 22804
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22705,
+            "plantUsageId": 22805
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22707,
+            "plantUsageId": 22807
+          }
+        ],
+        "canonicalEventBases": [
+          {
+            "reference": {
+              "dprId": 22602,
+              "equipmentLogId": 22999,
+              "plantUsageId": 22999
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 4,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22701,
+              "plantUsageId": 22801
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 8,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22703,
+              "plantUsageId": 22803
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 2,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22709,
+              "plantUsageId": 22809
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 8,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22710,
+              "plantUsageId": 22810
+            },
+            "usageBasis": "time_fallback",
+            "usageValue": 100,
+            "unit": "L/km"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22711,
+              "plantUsageId": 22811
+            },
+            "usageBasis": "time_fallback",
+            "usageValue": 4,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22708,
+              "plantUsageId": null
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 1,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22702,
+              "plantUsageId": 22802
+            },
+            "usageBasis": "odometer",
+            "usageValue": 40,
+            "unit": "L/km"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22704,
+              "plantUsageId": 22804
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 2,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22705,
+              "plantUsageId": 22805
+            },
+            "usageBasis": "none",
+            "usageValue": 0,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22707,
+              "plantUsageId": 22807
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 2,
+            "unit": "L/hr"
+          }
+        ],
+        "actualBlocks": [
+          "Norm: 5.000 L/hrActual: unavailable (performance access not granted)",
+          "Norm: 0.300 L/kmActual: unavailable (performance access not granted)",
+          "Norm: 5.000 L/hrActual: unavailable (performance access not granted)",
+          "Norm: 5.000 L/hrActual: unavailable (performance access not granted)",
+          "Norm: 5.000Actual: unavailable (performance access not granted)",
+          "Norm: 5.000Actual: unavailable (performance access not granted)",
+          "Norm: 5.000 L/hrActual: unavailable (performance access not granted)",
+          "Norm: 5.000 L/hrActual: unavailable (performance access not granted)",
+          "Norm: 5.000 L/hrActual: unavailable (performance access not granted)",
+          "Norm: 0.300Actual: unavailable (performance access not granted)",
+          "Norm: 5.000 L/hrActual: unavailable (performance access not granted)"
+        ],
+        "canonicalDay": [
+          {
+            "key": "21701:2026-08-05",
+            "date": "2026-08-05",
+            "projectSite": "Synthetic B2 active project / NARASIMHULU ROAD",
+            "meterUnit": "h",
+            "openingMeter": 100,
+            "closingMeter": 110,
+            "workingHours": 10,
+            "workingHoursIncomplete": false,
+            "clockDuration": 6,
+            "clockDurationIncomplete": false,
+            "dieselIssued": 25,
+            "openingTank": 30,
+            "closingTank": 22,
+            "dieselConsumed": 33,
+            "expectedDiesel": 50,
+            "difference": -17,
+            "consumptionRate": 3.3,
+            "consumptionRateUnit": "L/hr",
+            "consumptionIncomplete": false,
+            "startTime": "08:00",
+            "endTime": "15:00",
+            "multipleTimeSegments": true,
+            "events": [
+              {
+                "key": "plant_usage:22801",
+                "date": "2026-08-05",
+                "projectId": 21801,
+                "project": "Synthetic B2 active project",
+                "scope": "site",
+                "site": "NARASIMHULU ROAD",
+                "plant": null,
+                "equipmentId": 21701,
+                "machine": "SYNTHETIC B2 HOURS",
+                "equipmentType": null,
+                "ownership": "owned",
+                "task": null,
+                "openingReading": 100,
+                "closingReading": 108,
+                "startTime": "08:00",
+                "endTime": "12:00",
+                "trips": null,
+                "usageBasis": "hour_meter",
+                "usageValue": 8,
+                "runtimeHours": 8,
+                "totalKm": null,
+                "dieselIssued": 20,
+                "openingTank": 30,
+                "closingTank": 20,
+                "clockDuration": 4,
+                "dieselActual": 30,
+                "dieselBasis": "tank_measured",
+                "dieselExpected": 40,
+                "dieselVariance": -10,
+                "actualConsumptionRate": 3.75,
+                "dieselEfficiencyUnit": "L/hr",
+                "efficiencyPercent": 133.33333333333331,
+                "operator": null,
+                "source": "plant_usage",
+                "link": "linked",
+                "reference": {
+                  "dprId": 22601,
+                  "equipmentLogId": 22701,
+                  "plantUsageId": 22801
+                },
+                "notes": null,
+                "breakdownNotes": [],
+                "confidence": "linked",
+                "suggestions": []
+              },
+              {
+                "key": "plant_usage:22807",
+                "date": "2026-08-05",
+                "projectId": 21801,
+                "project": "Synthetic B2 active project",
+                "scope": "site",
+                "site": "NARASIMHULU ROAD",
+                "plant": null,
+                "equipmentId": 21701,
+                "machine": "SYNTHETIC B2 HOURS",
+                "equipmentType": null,
+                "ownership": "owned",
+                "task": null,
+                "openingReading": 108,
+                "closingReading": 110,
+                "startTime": "13:00",
+                "endTime": "15:00",
+                "trips": null,
+                "usageBasis": "hour_meter",
+                "usageValue": 2,
+                "runtimeHours": 2,
+                "totalKm": null,
+                "dieselIssued": 5,
+                "openingTank": 20,
+                "closingTank": 22,
+                "clockDuration": 2,
+                "dieselActual": 3,
+                "dieselBasis": "tank_measured",
+                "dieselExpected": 10,
+                "dieselVariance": -7,
+                "actualConsumptionRate": 1.5,
+                "dieselEfficiencyUnit": "L/hr",
+                "efficiencyPercent": 333.33333333333337,
+                "operator": null,
+                "source": "plant_usage",
+                "link": "linked",
+                "reference": {
+                  "dprId": 22601,
+                  "equipmentLogId": 22707,
+                  "plantUsageId": 22807
+                },
+                "notes": null,
+                "breakdownNotes": [],
+                "confidence": "linked",
+                "suggestions": []
+              }
+            ]
+          }
+        ],
+        "viewport": 390
+      },
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b2-site-only-normal.png"
+    },
+    {
+      "role": "manager",
+      "scenario": "failure",
+      "evidence": {
+        "equipmentTables": 1,
+        "compactCards": 0,
+        "headers": [
+          "Machine",
+          "Vehicle No",
+          "Operator",
+          "Task",
+          "Time/Meter",
+          "Operating Quantity",
+          "Diesel (L)",
+          "Expected Diesel",
+          "Norm / Efficiency",
+          "Breakdown / Stoppage",
+          "Diesel Source",
+          "Lifecycle"
+        ],
+        "efficiencies": [
+          "Norm: 5.000 L/hrActual: unavailable (performance request failed (HTTP 500))Issued − expected: -20.000 LDPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -30.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 0.300 L/kmActual: unavailable (performance request failed (HTTP 500))Issued − expected: -12.000 LDPR snapshot consumed: 5.00 LDPR snapshot consumed − expected variance: -7.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (performance request failed (HTTP 500))Issued − expected: -10.000 LDPR snapshot consumed: 0.00 LDPR snapshot consumed − expected variance: -10.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (performance request failed (HTTP 500))DPR snapshot consumed: 9.00 LDPR snapshot consumed − expected variance: -1.00 LCurrent master norm (reference): 5.00 L/hrThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000Actual: unavailable (performance request failed (HTTP 500))DPR snapshot consumed: 15.00 LDPR snapshot consumed − expected variance: —Current master norm (reference): 5.00 L/hrThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000Actual: unavailable (performance request failed (HTTP 500))DPR snapshot consumed: 9.00 LDPR snapshot consumed − expected variance: -1.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (performance request failed (HTTP 500))Issued − expected: -5.000 LDPR snapshot consumed: 3.00 LDPR snapshot consumed − expected variance: -7.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (performance request failed (HTTP 500))DPR snapshot consumed: 9.00 LDPR snapshot consumed − expected variance: +4.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (performance request failed (HTTP 500))Issued − expected: -20.000 LDPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -30.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 0.300Actual: unavailable (performance request failed (HTTP 500))DPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -20.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (performance request failed (HTTP 500))DPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -10.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected."
+        ],
+        "lifecycle": [
+          "Closed by Synthetic operator",
+          "Pending at SITE: NARASIMHULU ROAD",
+          "Completed at HMP"
+        ],
+        "moveButtons": [
+          true,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "writes": [],
+        "performanceRequests": [
+          {
+            "method": "GET",
+            "path": "/api/reports/equipment-performance?dateFrom=2026-08-05&dateTo=2026-08-05"
+          }
+        ],
+        "canonicalReferences": [
+          {
+            "dprId": 22602,
+            "equipmentLogId": 22999,
+            "plantUsageId": 22999
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22701,
+            "plantUsageId": 22801
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22703,
+            "plantUsageId": 22803
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22709,
+            "plantUsageId": 22809
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22710,
+            "plantUsageId": 22810
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22711,
+            "plantUsageId": 22811
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22708,
+            "plantUsageId": null
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22702,
+            "plantUsageId": 22802
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22704,
+            "plantUsageId": 22804
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22705,
+            "plantUsageId": 22805
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22707,
+            "plantUsageId": 22807
+          }
+        ],
+        "canonicalEventBases": [
+          {
+            "reference": {
+              "dprId": 22602,
+              "equipmentLogId": 22999,
+              "plantUsageId": 22999
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 4,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22701,
+              "plantUsageId": 22801
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 8,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22703,
+              "plantUsageId": 22803
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 2,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22709,
+              "plantUsageId": 22809
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 8,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22710,
+              "plantUsageId": 22810
+            },
+            "usageBasis": "time_fallback",
+            "usageValue": 100,
+            "unit": "L/km"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22711,
+              "plantUsageId": 22811
+            },
+            "usageBasis": "time_fallback",
+            "usageValue": 4,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22708,
+              "plantUsageId": null
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 1,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22702,
+              "plantUsageId": 22802
+            },
+            "usageBasis": "odometer",
+            "usageValue": 40,
+            "unit": "L/km"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22704,
+              "plantUsageId": 22804
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 2,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22705,
+              "plantUsageId": 22805
+            },
+            "usageBasis": "none",
+            "usageValue": 0,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22707,
+              "plantUsageId": 22807
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 2,
+            "unit": "L/hr"
+          }
+        ],
+        "actualBlocks": [
+          "Norm: 5.000 L/hrActual: unavailable (performance request failed (HTTP 500))",
+          "Norm: 0.300 L/kmActual: unavailable (performance request failed (HTTP 500))",
+          "Norm: 5.000 L/hrActual: unavailable (performance request failed (HTTP 500))",
+          "Norm: 5.000 L/hrActual: unavailable (performance request failed (HTTP 500))",
+          "Norm: 5.000Actual: unavailable (performance request failed (HTTP 500))",
+          "Norm: 5.000Actual: unavailable (performance request failed (HTTP 500))",
+          "Norm: 5.000 L/hrActual: unavailable (performance request failed (HTTP 500))",
+          "Norm: 5.000 L/hrActual: unavailable (performance request failed (HTTP 500))",
+          "Norm: 5.000 L/hrActual: unavailable (performance request failed (HTTP 500))",
+          "Norm: 0.300Actual: unavailable (performance request failed (HTTP 500))",
+          "Norm: 5.000 L/hrActual: unavailable (performance request failed (HTTP 500))"
+        ],
+        "canonicalDay": [
+          {
+            "key": "21701:2026-08-05",
+            "date": "2026-08-05",
+            "projectSite": "Synthetic B2 active project / NARASIMHULU ROAD",
+            "meterUnit": "h",
+            "openingMeter": 100,
+            "closingMeter": 110,
+            "workingHours": 10,
+            "workingHoursIncomplete": false,
+            "clockDuration": 6,
+            "clockDurationIncomplete": false,
+            "dieselIssued": 25,
+            "openingTank": 30,
+            "closingTank": 22,
+            "dieselConsumed": 33,
+            "expectedDiesel": 50,
+            "difference": -17,
+            "consumptionRate": 3.3,
+            "consumptionRateUnit": "L/hr",
+            "consumptionIncomplete": false,
+            "startTime": "08:00",
+            "endTime": "15:00",
+            "multipleTimeSegments": true,
+            "events": [
+              {
+                "key": "plant_usage:22801",
+                "date": "2026-08-05",
+                "projectId": 21801,
+                "project": "Synthetic B2 active project",
+                "scope": "site",
+                "site": "NARASIMHULU ROAD",
+                "plant": null,
+                "equipmentId": 21701,
+                "machine": "SYNTHETIC B2 HOURS",
+                "equipmentType": null,
+                "ownership": "owned",
+                "task": null,
+                "openingReading": 100,
+                "closingReading": 108,
+                "startTime": "08:00",
+                "endTime": "12:00",
+                "trips": null,
+                "usageBasis": "hour_meter",
+                "usageValue": 8,
+                "runtimeHours": 8,
+                "totalKm": null,
+                "dieselIssued": 20,
+                "openingTank": 30,
+                "closingTank": 20,
+                "clockDuration": 4,
+                "dieselActual": 30,
+                "dieselBasis": "tank_measured",
+                "dieselExpected": 40,
+                "dieselVariance": -10,
+                "actualConsumptionRate": 3.75,
+                "dieselEfficiencyUnit": "L/hr",
+                "efficiencyPercent": 133.33333333333331,
+                "operator": null,
+                "source": "plant_usage",
+                "link": "linked",
+                "reference": {
+                  "dprId": 22601,
+                  "equipmentLogId": 22701,
+                  "plantUsageId": 22801
+                },
+                "notes": null,
+                "breakdownNotes": [],
+                "confidence": "linked",
+                "suggestions": []
+              },
+              {
+                "key": "plant_usage:22807",
+                "date": "2026-08-05",
+                "projectId": 21801,
+                "project": "Synthetic B2 active project",
+                "scope": "site",
+                "site": "NARASIMHULU ROAD",
+                "plant": null,
+                "equipmentId": 21701,
+                "machine": "SYNTHETIC B2 HOURS",
+                "equipmentType": null,
+                "ownership": "owned",
+                "task": null,
+                "openingReading": 108,
+                "closingReading": 110,
+                "startTime": "13:00",
+                "endTime": "15:00",
+                "trips": null,
+                "usageBasis": "hour_meter",
+                "usageValue": 2,
+                "runtimeHours": 2,
+                "totalKm": null,
+                "dieselIssued": 5,
+                "openingTank": 20,
+                "closingTank": 22,
+                "clockDuration": 2,
+                "dieselActual": 3,
+                "dieselBasis": "tank_measured",
+                "dieselExpected": 10,
+                "dieselVariance": -7,
+                "actualConsumptionRate": 1.5,
+                "dieselEfficiencyUnit": "L/hr",
+                "efficiencyPercent": 333.33333333333337,
+                "operator": null,
+                "source": "plant_usage",
+                "link": "linked",
+                "reference": {
+                  "dprId": 22601,
+                  "equipmentLogId": 22707,
+                  "plantUsageId": 22807
+                },
+                "notes": null,
+                "breakdownNotes": [],
+                "confidence": "linked",
+                "suggestions": []
+              }
+            ]
+          }
+        ],
+        "viewport": 390
+      },
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b2-manager-failure.png"
+    },
+    {
+      "role": "manager",
+      "scenario": "forbidden",
+      "evidence": {
+        "equipmentTables": 1,
+        "compactCards": 0,
+        "headers": [
+          "Machine",
+          "Vehicle No",
+          "Operator",
+          "Task",
+          "Time/Meter",
+          "Operating Quantity",
+          "Diesel (L)",
+          "Expected Diesel",
+          "Norm / Efficiency",
+          "Breakdown / Stoppage",
+          "Diesel Source",
+          "Lifecycle"
+        ],
+        "efficiencies": [
+          "Norm: 5.000 L/hrActual: unavailable (performance access denied)Issued − expected: -20.000 LDPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -30.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 0.300 L/kmActual: unavailable (performance access denied)Issued − expected: -12.000 LDPR snapshot consumed: 5.00 LDPR snapshot consumed − expected variance: -7.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (performance access denied)Issued − expected: -10.000 LDPR snapshot consumed: 0.00 LDPR snapshot consumed − expected variance: -10.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (performance access denied)DPR snapshot consumed: 9.00 LDPR snapshot consumed − expected variance: -1.00 LCurrent master norm (reference): 5.00 L/hrThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000Actual: unavailable (performance access denied)DPR snapshot consumed: 15.00 LDPR snapshot consumed − expected variance: —Current master norm (reference): 5.00 L/hrThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000Actual: unavailable (performance access denied)DPR snapshot consumed: 9.00 LDPR snapshot consumed − expected variance: -1.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (performance access denied)Issued − expected: -5.000 LDPR snapshot consumed: 3.00 LDPR snapshot consumed − expected variance: -7.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (performance access denied)DPR snapshot consumed: 9.00 LDPR snapshot consumed − expected variance: +4.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (performance access denied)Issued − expected: -20.000 LDPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -30.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 0.300Actual: unavailable (performance access denied)DPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -20.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (performance access denied)DPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -10.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected."
+        ],
+        "lifecycle": [
+          "Closed by Synthetic operator",
+          "Pending at SITE: NARASIMHULU ROAD",
+          "Completed at HMP"
+        ],
+        "moveButtons": [
+          true,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "writes": [],
+        "performanceRequests": [
+          {
+            "method": "GET",
+            "path": "/api/reports/equipment-performance?dateFrom=2026-08-05&dateTo=2026-08-05"
+          }
+        ],
+        "canonicalReferences": [
+          {
+            "dprId": 22602,
+            "equipmentLogId": 22999,
+            "plantUsageId": 22999
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22701,
+            "plantUsageId": 22801
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22703,
+            "plantUsageId": 22803
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22709,
+            "plantUsageId": 22809
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22710,
+            "plantUsageId": 22810
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22711,
+            "plantUsageId": 22811
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22708,
+            "plantUsageId": null
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22702,
+            "plantUsageId": 22802
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22704,
+            "plantUsageId": 22804
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22705,
+            "plantUsageId": 22805
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22707,
+            "plantUsageId": 22807
+          }
+        ],
+        "canonicalEventBases": [
+          {
+            "reference": {
+              "dprId": 22602,
+              "equipmentLogId": 22999,
+              "plantUsageId": 22999
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 4,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22701,
+              "plantUsageId": 22801
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 8,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22703,
+              "plantUsageId": 22803
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 2,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22709,
+              "plantUsageId": 22809
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 8,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22710,
+              "plantUsageId": 22810
+            },
+            "usageBasis": "time_fallback",
+            "usageValue": 100,
+            "unit": "L/km"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22711,
+              "plantUsageId": 22811
+            },
+            "usageBasis": "time_fallback",
+            "usageValue": 4,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22708,
+              "plantUsageId": null
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 1,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22702,
+              "plantUsageId": 22802
+            },
+            "usageBasis": "odometer",
+            "usageValue": 40,
+            "unit": "L/km"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22704,
+              "plantUsageId": 22804
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 2,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22705,
+              "plantUsageId": 22805
+            },
+            "usageBasis": "none",
+            "usageValue": 0,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22707,
+              "plantUsageId": 22807
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 2,
+            "unit": "L/hr"
+          }
+        ],
+        "actualBlocks": [
+          "Norm: 5.000 L/hrActual: unavailable (performance access denied)",
+          "Norm: 0.300 L/kmActual: unavailable (performance access denied)",
+          "Norm: 5.000 L/hrActual: unavailable (performance access denied)",
+          "Norm: 5.000 L/hrActual: unavailable (performance access denied)",
+          "Norm: 5.000Actual: unavailable (performance access denied)",
+          "Norm: 5.000Actual: unavailable (performance access denied)",
+          "Norm: 5.000 L/hrActual: unavailable (performance access denied)",
+          "Norm: 5.000 L/hrActual: unavailable (performance access denied)",
+          "Norm: 5.000 L/hrActual: unavailable (performance access denied)",
+          "Norm: 0.300Actual: unavailable (performance access denied)",
+          "Norm: 5.000 L/hrActual: unavailable (performance access denied)"
+        ],
+        "canonicalDay": [
+          {
+            "key": "21701:2026-08-05",
+            "date": "2026-08-05",
+            "projectSite": "Synthetic B2 active project / NARASIMHULU ROAD",
+            "meterUnit": "h",
+            "openingMeter": 100,
+            "closingMeter": 110,
+            "workingHours": 10,
+            "workingHoursIncomplete": false,
+            "clockDuration": 6,
+            "clockDurationIncomplete": false,
+            "dieselIssued": 25,
+            "openingTank": 30,
+            "closingTank": 22,
+            "dieselConsumed": 33,
+            "expectedDiesel": 50,
+            "difference": -17,
+            "consumptionRate": 3.3,
+            "consumptionRateUnit": "L/hr",
+            "consumptionIncomplete": false,
+            "startTime": "08:00",
+            "endTime": "15:00",
+            "multipleTimeSegments": true,
+            "events": [
+              {
+                "key": "plant_usage:22801",
+                "date": "2026-08-05",
+                "projectId": 21801,
+                "project": "Synthetic B2 active project",
+                "scope": "site",
+                "site": "NARASIMHULU ROAD",
+                "plant": null,
+                "equipmentId": 21701,
+                "machine": "SYNTHETIC B2 HOURS",
+                "equipmentType": null,
+                "ownership": "owned",
+                "task": null,
+                "openingReading": 100,
+                "closingReading": 108,
+                "startTime": "08:00",
+                "endTime": "12:00",
+                "trips": null,
+                "usageBasis": "hour_meter",
+                "usageValue": 8,
+                "runtimeHours": 8,
+                "totalKm": null,
+                "dieselIssued": 20,
+                "openingTank": 30,
+                "closingTank": 20,
+                "clockDuration": 4,
+                "dieselActual": 30,
+                "dieselBasis": "tank_measured",
+                "dieselExpected": 40,
+                "dieselVariance": -10,
+                "actualConsumptionRate": 3.75,
+                "dieselEfficiencyUnit": "L/hr",
+                "efficiencyPercent": 133.33333333333331,
+                "operator": null,
+                "source": "plant_usage",
+                "link": "linked",
+                "reference": {
+                  "dprId": 22601,
+                  "equipmentLogId": 22701,
+                  "plantUsageId": 22801
+                },
+                "notes": null,
+                "breakdownNotes": [],
+                "confidence": "linked",
+                "suggestions": []
+              },
+              {
+                "key": "plant_usage:22807",
+                "date": "2026-08-05",
+                "projectId": 21801,
+                "project": "Synthetic B2 active project",
+                "scope": "site",
+                "site": "NARASIMHULU ROAD",
+                "plant": null,
+                "equipmentId": 21701,
+                "machine": "SYNTHETIC B2 HOURS",
+                "equipmentType": null,
+                "ownership": "owned",
+                "task": null,
+                "openingReading": 108,
+                "closingReading": 110,
+                "startTime": "13:00",
+                "endTime": "15:00",
+                "trips": null,
+                "usageBasis": "hour_meter",
+                "usageValue": 2,
+                "runtimeHours": 2,
+                "totalKm": null,
+                "dieselIssued": 5,
+                "openingTank": 20,
+                "closingTank": 22,
+                "clockDuration": 2,
+                "dieselActual": 3,
+                "dieselBasis": "tank_measured",
+                "dieselExpected": 10,
+                "dieselVariance": -7,
+                "actualConsumptionRate": 1.5,
+                "dieselEfficiencyUnit": "L/hr",
+                "efficiencyPercent": 333.33333333333337,
+                "operator": null,
+                "source": "plant_usage",
+                "link": "linked",
+                "reference": {
+                  "dprId": 22601,
+                  "equipmentLogId": 22707,
+                  "plantUsageId": 22807
+                },
+                "notes": null,
+                "breakdownNotes": [],
+                "confidence": "linked",
+                "suggestions": []
+              }
+            ]
+          }
+        ],
+        "viewport": 390
+      },
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b2-manager-forbidden.png"
+    },
+    {
+      "role": "manager",
+      "scenario": "restricted",
+      "evidence": {
+        "equipmentTables": 1,
+        "compactCards": 0,
+        "headers": [
+          "Machine",
+          "Vehicle No",
+          "Operator",
+          "Task",
+          "Time/Meter",
+          "Operating Quantity",
+          "Diesel (L)",
+          "Expected Diesel",
+          "Norm / Efficiency",
+          "Breakdown / Stoppage",
+          "Diesel Source",
+          "Lifecycle"
+        ],
+        "efficiencies": [
+          "Norm: 5.000 L/hrActual: unavailable (complete equipment-day access is not verified)Issued − expected: -20.000 LDPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -30.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 0.300 L/kmActual: unavailable (complete equipment-day access is not verified)Issued − expected: -12.000 LDPR snapshot consumed: 5.00 LDPR snapshot consumed − expected variance: -7.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (complete equipment-day access is not verified)Issued − expected: -10.000 LDPR snapshot consumed: 0.00 LDPR snapshot consumed − expected variance: -10.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (complete equipment-day access is not verified)DPR snapshot consumed: 9.00 LDPR snapshot consumed − expected variance: -1.00 LCurrent master norm (reference): 5.00 L/hrThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000Actual: unavailable (complete equipment-day access is not verified)DPR snapshot consumed: 15.00 LDPR snapshot consumed − expected variance: —Current master norm (reference): 5.00 L/hrThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000Actual: unavailable (complete equipment-day access is not verified)DPR snapshot consumed: 9.00 LDPR snapshot consumed − expected variance: -1.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (complete equipment-day access is not verified)Issued − expected: -5.000 LDPR snapshot consumed: 3.00 LDPR snapshot consumed − expected variance: -7.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (complete equipment-day access is not verified)DPR snapshot consumed: 9.00 LDPR snapshot consumed − expected variance: +4.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (complete equipment-day access is not verified)Issued − expected: -20.000 LDPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -30.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 0.300Actual: unavailable (complete equipment-day access is not verified)DPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -20.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (complete equipment-day access is not verified)DPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -10.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected."
+        ],
+        "lifecycle": [
+          "Closed by Synthetic operator",
+          "Pending at SITE: NARASIMHULU ROAD",
+          "Completed at HMP"
+        ],
+        "moveButtons": [
+          true,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "writes": [],
+        "performanceRequests": [],
+        "canonicalReferences": [
+          {
+            "dprId": 22602,
+            "equipmentLogId": 22999,
+            "plantUsageId": 22999
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22701,
+            "plantUsageId": 22801
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22703,
+            "plantUsageId": 22803
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22709,
+            "plantUsageId": 22809
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22710,
+            "plantUsageId": 22810
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22711,
+            "plantUsageId": 22811
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22708,
+            "plantUsageId": null
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22702,
+            "plantUsageId": 22802
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22704,
+            "plantUsageId": 22804
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22705,
+            "plantUsageId": 22805
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22707,
+            "plantUsageId": 22807
+          }
+        ],
+        "canonicalEventBases": [
+          {
+            "reference": {
+              "dprId": 22602,
+              "equipmentLogId": 22999,
+              "plantUsageId": 22999
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 4,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22701,
+              "plantUsageId": 22801
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 8,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22703,
+              "plantUsageId": 22803
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 2,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22709,
+              "plantUsageId": 22809
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 8,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22710,
+              "plantUsageId": 22810
+            },
+            "usageBasis": "time_fallback",
+            "usageValue": 100,
+            "unit": "L/km"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22711,
+              "plantUsageId": 22811
+            },
+            "usageBasis": "time_fallback",
+            "usageValue": 4,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22708,
+              "plantUsageId": null
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 1,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22702,
+              "plantUsageId": 22802
+            },
+            "usageBasis": "odometer",
+            "usageValue": 40,
+            "unit": "L/km"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22704,
+              "plantUsageId": 22804
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 2,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22705,
+              "plantUsageId": 22805
+            },
+            "usageBasis": "none",
+            "usageValue": 0,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22707,
+              "plantUsageId": 22807
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 2,
+            "unit": "L/hr"
+          }
+        ],
+        "actualBlocks": [
+          "Norm: 5.000 L/hrActual: unavailable (complete equipment-day access is not verified)",
+          "Norm: 0.300 L/kmActual: unavailable (complete equipment-day access is not verified)",
+          "Norm: 5.000 L/hrActual: unavailable (complete equipment-day access is not verified)",
+          "Norm: 5.000 L/hrActual: unavailable (complete equipment-day access is not verified)",
+          "Norm: 5.000Actual: unavailable (complete equipment-day access is not verified)",
+          "Norm: 5.000Actual: unavailable (complete equipment-day access is not verified)",
+          "Norm: 5.000 L/hrActual: unavailable (complete equipment-day access is not verified)",
+          "Norm: 5.000 L/hrActual: unavailable (complete equipment-day access is not verified)",
+          "Norm: 5.000 L/hrActual: unavailable (complete equipment-day access is not verified)",
+          "Norm: 0.300Actual: unavailable (complete equipment-day access is not verified)",
+          "Norm: 5.000 L/hrActual: unavailable (complete equipment-day access is not verified)"
+        ],
+        "canonicalDay": [
+          {
+            "key": "21701:2026-08-05",
+            "date": "2026-08-05",
+            "projectSite": "Synthetic B2 active project / NARASIMHULU ROAD",
+            "meterUnit": "h",
+            "openingMeter": 100,
+            "closingMeter": 110,
+            "workingHours": 10,
+            "workingHoursIncomplete": false,
+            "clockDuration": 6,
+            "clockDurationIncomplete": false,
+            "dieselIssued": 25,
+            "openingTank": 30,
+            "closingTank": 22,
+            "dieselConsumed": 33,
+            "expectedDiesel": 50,
+            "difference": -17,
+            "consumptionRate": 3.3,
+            "consumptionRateUnit": "L/hr",
+            "consumptionIncomplete": false,
+            "startTime": "08:00",
+            "endTime": "15:00",
+            "multipleTimeSegments": true,
+            "events": [
+              {
+                "key": "plant_usage:22801",
+                "date": "2026-08-05",
+                "projectId": 21801,
+                "project": "Synthetic B2 active project",
+                "scope": "site",
+                "site": "NARASIMHULU ROAD",
+                "plant": null,
+                "equipmentId": 21701,
+                "machine": "SYNTHETIC B2 HOURS",
+                "equipmentType": null,
+                "ownership": "owned",
+                "task": null,
+                "openingReading": 100,
+                "closingReading": 108,
+                "startTime": "08:00",
+                "endTime": "12:00",
+                "trips": null,
+                "usageBasis": "hour_meter",
+                "usageValue": 8,
+                "runtimeHours": 8,
+                "totalKm": null,
+                "dieselIssued": 20,
+                "openingTank": 30,
+                "closingTank": 20,
+                "clockDuration": 4,
+                "dieselActual": 30,
+                "dieselBasis": "tank_measured",
+                "dieselExpected": 40,
+                "dieselVariance": -10,
+                "actualConsumptionRate": 3.75,
+                "dieselEfficiencyUnit": "L/hr",
+                "efficiencyPercent": 133.33333333333331,
+                "operator": null,
+                "source": "plant_usage",
+                "link": "linked",
+                "reference": {
+                  "dprId": 22601,
+                  "equipmentLogId": 22701,
+                  "plantUsageId": 22801
+                },
+                "notes": null,
+                "breakdownNotes": [],
+                "confidence": "linked",
+                "suggestions": []
+              },
+              {
+                "key": "plant_usage:22807",
+                "date": "2026-08-05",
+                "projectId": 21801,
+                "project": "Synthetic B2 active project",
+                "scope": "site",
+                "site": "NARASIMHULU ROAD",
+                "plant": null,
+                "equipmentId": 21701,
+                "machine": "SYNTHETIC B2 HOURS",
+                "equipmentType": null,
+                "ownership": "owned",
+                "task": null,
+                "openingReading": 108,
+                "closingReading": 110,
+                "startTime": "13:00",
+                "endTime": "15:00",
+                "trips": null,
+                "usageBasis": "hour_meter",
+                "usageValue": 2,
+                "runtimeHours": 2,
+                "totalKm": null,
+                "dieselIssued": 5,
+                "openingTank": 20,
+                "closingTank": 22,
+                "clockDuration": 2,
+                "dieselActual": 3,
+                "dieselBasis": "tank_measured",
+                "dieselExpected": 10,
+                "dieselVariance": -7,
+                "actualConsumptionRate": 1.5,
+                "dieselEfficiencyUnit": "L/hr",
+                "efficiencyPercent": 333.33333333333337,
+                "operator": null,
+                "source": "plant_usage",
+                "link": "linked",
+                "reference": {
+                  "dprId": 22601,
+                  "equipmentLogId": 22707,
+                  "plantUsageId": 22807
+                },
+                "notes": null,
+                "breakdownNotes": [],
+                "confidence": "linked",
+                "suggestions": []
+              }
+            ]
+          }
+        ],
+        "viewport": 390
+      },
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b2-manager-restricted.png"
+    },
+    {
+      "viewer": {
+        "equipmentTables": 1,
+        "compactCards": 0,
+        "headers": [
+          "Machine",
+          "Vehicle No",
+          "Operator",
+          "Task",
+          "Time/Meter",
+          "Operating Quantity",
+          "Diesel (L)",
+          "Expected Diesel",
+          "Norm / Efficiency",
+          "Breakdown / Stoppage",
+          "Diesel Source",
+          "Lifecycle"
+        ],
+        "efficiencies": [
+          "Norm: 5.000 L/hrActual: unavailable (multiple same-day records; source rate cannot be isolated safely)Issued − expected: -20.000 LDPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -30.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 0.300 L/kmActual: 0.200 L/kmConfirmed tank consumption; distance from recorded odometer readings.Issued − expected: -12.000 LDPR snapshot consumed: 5.00 LDPR snapshot consumed − expected variance: -7.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: 0.000 L/hrConfirmed tank consumption; runtime from recorded hour-meter readings.Issued − expected: -10.000 LDPR snapshot consumed: 0.00 LDPR snapshot consumed − expected variance: -10.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: pending confirmed tank / usage dataDPR snapshot consumed: 9.00 LDPR snapshot consumed − expected variance: -1.00 LCurrent master norm (reference): 5.00 L/hrThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000Actual: unavailable (runtime or distance is missing)DPR snapshot consumed: 15.00 LDPR snapshot consumed − expected variance: —Current master norm (reference): 5.00 L/hrThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000Actual: unavailable (no matching canonical performance record)DPR snapshot consumed: 9.00 LDPR snapshot consumed − expected variance: -1.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: unavailable (multiple same-day records; source rate cannot be isolated safely)Issued − expected: -5.000 LDPR snapshot consumed: 3.00 LDPR snapshot consumed − expected variance: -7.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: pending confirmed tank / usage dataDPR snapshot consumed: 9.00 LDPR snapshot consumed − expected variance: +4.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: 3.750 L/hrConfirmed tank consumption; runtime from recorded hour-meter readings.Issued − expected: -20.000 LDPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -30.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 0.300Actual: unavailable (distance is estimated, not measured or recorded from trips)DPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -20.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected.",
+          "Norm: 5.000 L/hrActual: 2.500 L/hrConfirmed tank consumption; runtime from recorded start/end clock time, not hour-meter readings.DPR snapshot consumed: 10.00 LDPR snapshot consumed − expected variance: -10.00 LThese fuel facts use the saved DPR snapshot, not the canonical performance record; a positive variance means more fuel was consumed than expected."
+        ],
+        "lifecycle": [
+          "Closed by Synthetic operator",
+          "Pending at SITE: NARASIMHULU ROAD",
+          "Completed at HMP"
+        ],
+        "moveButtons": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "writes": [],
+        "performanceRequests": [
+          {
+            "method": "GET",
+            "path": "/api/reports/equipment-performance?dateFrom=2026-08-05&dateTo=2026-08-05"
+          }
+        ],
+        "canonicalReferences": [
+          {
+            "dprId": 22602,
+            "equipmentLogId": 22999,
+            "plantUsageId": 22999
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22701,
+            "plantUsageId": 22801
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22703,
+            "plantUsageId": 22803
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22709,
+            "plantUsageId": 22809
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22710,
+            "plantUsageId": 22810
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22711,
+            "plantUsageId": 22811
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22708,
+            "plantUsageId": null
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22702,
+            "plantUsageId": 22802
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22704,
+            "plantUsageId": 22804
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22705,
+            "plantUsageId": 22805
+          },
+          {
+            "dprId": 22601,
+            "equipmentLogId": 22707,
+            "plantUsageId": 22807
+          }
+        ],
+        "canonicalEventBases": [
+          {
+            "reference": {
+              "dprId": 22602,
+              "equipmentLogId": 22999,
+              "plantUsageId": 22999
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 4,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22701,
+              "plantUsageId": 22801
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 8,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22703,
+              "plantUsageId": 22803
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 2,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22709,
+              "plantUsageId": 22809
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 8,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22710,
+              "plantUsageId": 22810
+            },
+            "usageBasis": "time_fallback",
+            "usageValue": 100,
+            "unit": "L/km"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22711,
+              "plantUsageId": 22811
+            },
+            "usageBasis": "time_fallback",
+            "usageValue": 4,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22708,
+              "plantUsageId": null
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 1,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22702,
+              "plantUsageId": 22802
+            },
+            "usageBasis": "odometer",
+            "usageValue": 40,
+            "unit": "L/km"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22704,
+              "plantUsageId": 22804
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 2,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22705,
+              "plantUsageId": 22805
+            },
+            "usageBasis": "none",
+            "usageValue": 0,
+            "unit": "L/hr"
+          },
+          {
+            "reference": {
+              "dprId": 22601,
+              "equipmentLogId": 22707,
+              "plantUsageId": 22807
+            },
+            "usageBasis": "hour_meter",
+            "usageValue": 2,
+            "unit": "L/hr"
+          }
+        ],
+        "actualBlocks": [
+          "Norm: 5.000 L/hrActual: unavailable (multiple same-day records; source rate cannot be isolated safely)",
+          "Norm: 0.300 L/kmActual: 0.200 L/kmConfirmed tank consumption; distance from recorded odometer readings.",
+          "Norm: 5.000 L/hrActual: 0.000 L/hrConfirmed tank consumption; runtime from recorded hour-meter readings.",
+          "Norm: 5.000 L/hrActual: pending confirmed tank / usage data",
+          "Norm: 5.000Actual: unavailable (runtime or distance is missing)",
+          "Norm: 5.000Actual: unavailable (no matching canonical performance record)",
+          "Norm: 5.000 L/hrActual: unavailable (multiple same-day records; source rate cannot be isolated safely)",
+          "Norm: 5.000 L/hrActual: pending confirmed tank / usage data",
+          "Norm: 5.000 L/hrActual: 3.750 L/hrConfirmed tank consumption; runtime from recorded hour-meter readings.",
+          "Norm: 0.300Actual: unavailable (distance is estimated, not measured or recorded from trips)",
+          "Norm: 5.000 L/hrActual: 2.500 L/hrConfirmed tank consumption; runtime from recorded start/end clock time, not hour-meter readings."
+        ],
+        "canonicalDay": [
+          {
+            "key": "21701:2026-08-05",
+            "date": "2026-08-05",
+            "projectSite": "Synthetic B2 active project / NARASIMHULU ROAD",
+            "meterUnit": "h",
+            "openingMeter": 100,
+            "closingMeter": 110,
+            "workingHours": 10,
+            "workingHoursIncomplete": false,
+            "clockDuration": 6,
+            "clockDurationIncomplete": false,
+            "dieselIssued": 25,
+            "openingTank": 30,
+            "closingTank": 22,
+            "dieselConsumed": 33,
+            "expectedDiesel": 50,
+            "difference": -17,
+            "consumptionRate": 3.3,
+            "consumptionRateUnit": "L/hr",
+            "consumptionIncomplete": false,
+            "startTime": "08:00",
+            "endTime": "15:00",
+            "multipleTimeSegments": true,
+            "events": [
+              {
+                "key": "plant_usage:22801",
+                "date": "2026-08-05",
+                "projectId": 21801,
+                "project": "Synthetic B2 active project",
+                "scope": "site",
+                "site": "NARASIMHULU ROAD",
+                "plant": null,
+                "equipmentId": 21701,
+                "machine": "SYNTHETIC B2 HOURS",
+                "equipmentType": null,
+                "ownership": "owned",
+                "task": null,
+                "openingReading": 100,
+                "closingReading": 108,
+                "startTime": "08:00",
+                "endTime": "12:00",
+                "trips": null,
+                "usageBasis": "hour_meter",
+                "usageValue": 8,
+                "runtimeHours": 8,
+                "totalKm": null,
+                "dieselIssued": 20,
+                "openingTank": 30,
+                "closingTank": 20,
+                "clockDuration": 4,
+                "dieselActual": 30,
+                "dieselBasis": "tank_measured",
+                "dieselExpected": 40,
+                "dieselVariance": -10,
+                "actualConsumptionRate": 3.75,
+                "dieselEfficiencyUnit": "L/hr",
+                "efficiencyPercent": 133.33333333333331,
+                "operator": null,
+                "source": "plant_usage",
+                "link": "linked",
+                "reference": {
+                  "dprId": 22601,
+                  "equipmentLogId": 22701,
+                  "plantUsageId": 22801
+                },
+                "notes": null,
+                "breakdownNotes": [],
+                "confidence": "linked",
+                "suggestions": []
+              },
+              {
+                "key": "plant_usage:22807",
+                "date": "2026-08-05",
+                "projectId": 21801,
+                "project": "Synthetic B2 active project",
+                "scope": "site",
+                "site": "NARASIMHULU ROAD",
+                "plant": null,
+                "equipmentId": 21701,
+                "machine": "SYNTHETIC B2 HOURS",
+                "equipmentType": null,
+                "ownership": "owned",
+                "task": null,
+                "openingReading": 108,
+                "closingReading": 110,
+                "startTime": "13:00",
+                "endTime": "15:00",
+                "trips": null,
+                "usageBasis": "hour_meter",
+                "usageValue": 2,
+                "runtimeHours": 2,
+                "totalKm": null,
+                "dieselIssued": 5,
+                "openingTank": 20,
+                "closingTank": 22,
+                "clockDuration": 2,
+                "dieselActual": 3,
+                "dieselBasis": "tank_measured",
+                "dieselExpected": 10,
+                "dieselVariance": -7,
+                "actualConsumptionRate": 1.5,
+                "dieselEfficiencyUnit": "L/hr",
+                "efficiencyPercent": 333.33333333333337,
+                "operator": null,
+                "source": "plant_usage",
+                "link": "linked",
+                "reference": {
+                  "dprId": 22601,
+                  "equipmentLogId": 22707,
+                  "plantUsageId": 22807
+                },
+                "notes": null,
+                "breakdownNotes": [],
+                "confidence": "linked",
+                "suggestions": []
+              }
+            ]
+          }
+        ],
+        "viewport": 390
+      }
+    },
+    {
+      "print": {
+        "requiredTokens": 38,
+        "audit": {
+          "pages": 10,
+          "outside": []
+        },
+        "file": "tests/fixtures/dpr-site-entry/evidence/dpr20-b2-print.pdf"
+      }
+    }
+  ]
+}

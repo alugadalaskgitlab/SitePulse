@@ -58,10 +58,11 @@ function Line({ label, children }: { label: string; children: ReactNode }) {
 }
 
 type Details = ReturnType<typeof buildDprEquipmentTableDetails>;
-export function DprEquipmentTableDetails({ section, row, details, index, boqItems, programmeBars }: {
+export function DprEquipmentTableDetails({ section, row, details, index, boqItems, programmeBars, showLegacyRate = true }: {
   section: "identity" | "readings" | "quantity" | "tank" | "expected" | "performance" | "work";
   row: DprEquipmentFields; details: Details; index: number;
   boqItems?: AllocationProps["boqItems"]; programmeBars?: AllocationProps["programmeBars"];
+  showLegacyRate?: boolean;
 }) {
   const { preview, fuel } = details;
   let content: ReactNode;
@@ -117,12 +118,15 @@ export function DprEquipmentTableDetails({ section, row, details, index, boqItem
       break;
     case "performance":
       content = details.isPlantStock && <>
-        <Line label="Actual Consumed">{fuel.actualConsumed == null ? "Awaiting tank dip" : `${number(fuel.actualConsumed)} L`}</Line>
-        <Line label="Consumed − expected variance">{fuel.variance == null ? "—" : `${fuel.variance > 0 ? "+" : ""}${number(fuel.variance)} L`}</Line>
-        <Line label={details.confirmedRate ? "Actual Consumption Rate · from confirmed tank dip" : "Expected Consumption Rate · from norm, actual unavailable"}>
+        <Line label={showLegacyRate ? "Actual Consumed" : "DPR snapshot consumed"}>{fuel.actualConsumed == null ? "Awaiting tank dip" : `${number(fuel.actualConsumed)} L`}</Line>
+        <Line label={showLegacyRate ? "Consumed − expected variance" : "DPR snapshot consumed − expected variance"}>{fuel.variance == null ? "—" : `${fuel.variance > 0 ? "+" : ""}${number(fuel.variance)} L`}</Line>
+        {showLegacyRate && <Line label={details.confirmedRate ? "Actual Consumption Rate · from confirmed tank dip" : "Expected Consumption Rate · from norm, actual unavailable"}>
           {details.confirmedRate ? `${number(fuel.actualRate)} ${fuel.actualRateUnit}` : details.norm.value == null ? "—" : `${number(details.norm.value)} ${details.norm.unit}`}
-        </Line>
-        <p className="text-muted-foreground">Variance is actual consumed minus expected; a positive value means more fuel was consumed than expected.</p>
+        </Line>}
+        {!showLegacyRate && !details.confirmedRate && details.norm.value != null && <Line label="Current master norm (reference)">
+          {number(details.norm.value)} {details.norm.unit}
+        </Line>}
+        <p className="text-muted-foreground">{showLegacyRate ? "Variance is actual consumed minus expected" : "These fuel facts use the saved DPR snapshot, not the canonical performance record"}; a positive variance means more fuel was consumed than expected.</p>
       </>;
       break;
     case "work":

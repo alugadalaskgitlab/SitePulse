@@ -5,12 +5,15 @@ export function useAuth() {
   const role = typeof window !== "undefined"
     ? new URLSearchParams(window.location.search).get("role")
     : null;
+  const b2 = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("dpr20b2");
   const viewer = typeof window !== "undefined"
-    && new URLSearchParams(window.location.search).has("dpr20b1") && role === "viewer";
-  const isAdmin = role !== "manager" && !viewer;
+    && (new URLSearchParams(window.location.search).has("dpr20b1") || b2) && role === "viewer";
+  const siteOnly = b2 && role === "site-only";
+  const isAdmin = role !== "manager" && !viewer && !siteOnly;
   return {
     isAdmin,
-    sectionCan: (_section?: string, action?: string) => !viewer || action === "view",
+    sectionCan: (section?: string, action?: string) => siteOnly && (section === "equipment_performance_report" || section === "plant_equipment")
+      ? false : !viewer || action === "view",
     sectionVisible: () => true,
     canApprove: () => !viewer,
     isAuthenticated: true,
@@ -27,6 +30,7 @@ export function useAuth() {
       isAdmin,
       isOwner: isAdmin,
       isActive: true,
+      ...(b2 ? { setupComplete: true, allSitesAccess: new URLSearchParams(window.location.search).get("scenario") !== "restricted" } : {}),
        isFieldEngineer: !isAdmin && !viewer,
       sessionPolicy: "sticky" as const,
        canManagePermissions: !viewer,

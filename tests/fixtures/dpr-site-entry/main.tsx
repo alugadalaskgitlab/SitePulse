@@ -5,6 +5,7 @@ import DprSections, { DprEditEntry, DprWorkEntry } from "../../../client/src/pag
 import { installDpr13Adapter } from "./dpr13-adapter";
 import { DPR_SECTIONS, normalizeDprSectionContext, pickDprSectionPayload } from "../../../shared/dprSections";
 import { evaluateSavedDraftReadiness } from "../../../shared/dprDraftReadiness";
+import { buildEquipmentPerformanceReport } from "../../../shared/equipmentPerformance";
 import SiteEdit from "../../../client/src/pages/SiteEdit";
 import SiteSuccess from "../../../client/src/pages/SiteSuccess";
 import SiteMaterialTrips from "../../../client/src/pages/SiteMaterialTrips";
@@ -1306,8 +1307,101 @@ const dpr20B1Report = {
   ],
 };
 
+// DPR20 B2 uses the real pure report builder, not hand-authored rate DTOs.
+// Saved DPR snapshot fuel deliberately differs from its canonical usage fuel.
+const dpr20B2Masters = [
+  { id: 21701, name: "SYNTHETIC B2 HOURS", meterType: "hour_meter", consumptionNorm: 5, ownership: "owned", isActive: 1 },
+  { id: 21702, name: "SYNTHETIC B2 ODOMETER", meterType: "odometer", consumptionNorm: 0.3, ownership: "owned", isActive: 1 },
+  { id: 21703, name: "SYNTHETIC B2 ZERO", meterType: "hour_meter", consumptionNorm: 5, ownership: "owned", isActive: 1 },
+  { id: 21704, name: "SYNTHETIC B2 PENDING", meterType: "hour_meter", consumptionNorm: 5, ownership: "owned", isActive: 1 },
+  { id: 21705, name: "SYNTHETIC B2 NO RUNTIME", meterType: "hour_meter", consumptionNorm: 5, ownership: "owned", isActive: 1 },
+  { id: 21706, name: "SYNTHETIC B2 EXCLUDED", meterType: "hour_meter", consumptionNorm: 5, ownership: "owned", isActive: 1 },
+  { id: 21707, name: "SYNTHETIC B2 SINGLE CANONICAL", meterType: "hour_meter", consumptionNorm: 5, ownership: "owned", isActive: 1 },
+  { id: 21708, name: "SYNTHETIC B2 LEGACY EXACT LOG", meterType: "hour_meter", consumptionNorm: 5, ownership: "owned", isActive: 1 },
+  { id: 21709, name: "SYNTHETIC B2 ESTIMATED ODOMETER", meterType: "odometer", consumptionNorm: 0.3, ownership: "owned", isActive: 1 },
+  { id: 21710, name: "SYNTHETIC B2 REAL CLOCK HOURS", meterType: "hour_meter", consumptionNorm: 5, ownership: "owned", isActive: 1 },
+];
+const dpr20B2Rows: any[] = [
+  { ...dpr20B1Report.equipment[0], id: 22701, plantUsageId: 22801, equipmentId: 21701,
+    machine: dpr20B2Masters[0].name, vehicleNo: "SYN-B2-HOURS", dieselNorm: 5,
+    // Snapshot rate is 1.25 L/hr; canonical below is 3.75 L/hr.
+    openingDiesel: 10, dieselBalanceInTank: 20 },
+  { ...dpr20B1Report.equipment[1], id: 22702, plantUsageId: 22802, equipmentId: 21702,
+    machine: dpr20B2Masters[1].name, dieselNorm: 0.3, dieselBalanceConfirmed: true },
+  { ...dpr20B1Report.equipment[2], id: 22703, plantUsageId: 22803, equipmentId: 21703,
+    machine: dpr20B2Masters[2].name, startTime: "08:00", endTime: "10:00",
+    openingReading: 100, closingReading: 102, hoursWorked: 2,
+    dieselSource: "plant_stock", diesel: 0, openingDiesel: 10, dieselBalanceInTank: 10,
+    dieselBalanceConfirmed: true, expectedDiesel: 10, breakdowns: [] },
+  { ...dpr20B1Report.equipment[2], id: 22704, plantUsageId: 22804, equipmentId: 21704,
+    machine: dpr20B2Masters[3].name, hoursWorked: 2, dieselSource: "plant_stock",
+    openingDiesel: 20, dieselBalanceInTank: 15, dieselBalanceConfirmed: false, breakdowns: [] },
+  { id: 22705, plantUsageId: 22805, equipmentId: 21705, machine: dpr20B2Masters[4].name,
+    entryType: "time_meter", usageStatus: "working", dieselNorm: 5, dieselSource: "plant_stock",
+    diesel: 10, openingDiesel: 20, dieselBalanceInTank: 15, dieselBalanceConfirmed: true,
+    breakdowns: [] },
+  { ...dpr20B1Report.equipment[2], id: 22706, plantUsageId: 22806, equipmentId: 21706,
+    machine: dpr20B2Masters[5].name, dieselSource: "plant_stock", dieselNorm: 5,
+    openingDiesel: 20, dieselBalanceInTank: 15, dieselBalanceConfirmed: true, breakdowns: [] },
+  { ...dpr20B1Report.equipment[0], id: 22707, plantUsageId: 22807, equipmentId: 21701,
+    machine: "SYNTHETIC B2 HOURS SECOND SHIFT", startTime: "13:00", endTime: "15:00",
+    openingReading: 108, closingReading: 110, hoursWorked: 2, diesel: 5, dieselNorm: 5,
+    openingDiesel: 20, dieselBalanceInTank: 22, expectedDiesel: 10, task: "", activitySegments: [],
+    breakdowns: [] },
+  { id: 22708, plantUsageId: null, equipmentId: 21708, machine: "SYNTHETIC B2 LEGACY EXACT LOG",
+    entryType: "time_meter", startTime: "12:00", endTime: "13:00", openingReading: 102,
+    closingReading: 103, hoursWorked: 1, diesel: 4, dieselNorm: 5, dieselSource: "plant_stock",
+    openingDiesel: 10, dieselBalanceInTank: 5, dieselBalanceConfirmed: true, breakdowns: [] },
+  { ...dpr20B1Report.equipment[0], id: 22709, plantUsageId: 22809, equipmentId: 21707,
+    machine: dpr20B2Masters[6].name, vehicleNo: "SYN-B2-SINGLE", dieselNorm: 5,
+    // Saved snapshot would produce 1.25 L/hr; canonical usage produces 3.75.
+    openingDiesel: 10, dieselBalanceInTank: 20, task: "", activitySegments: [], breakdowns: [] },
+  { id: 22710, plantUsageId: 22810, equipmentId: 21709, machine: dpr20B2Masters[8].name,
+    entryType: "time_meter", usageStatus: "working", startTime: "08:00", endTime: "12:00",
+    openingReading: null, closingReading: null, dieselNorm: 0.3, dieselSource: "plant_stock",
+    diesel: 5, openingDiesel: 20, dieselBalanceInTank: 15, dieselBalanceConfirmed: true, breakdowns: [] },
+  { id: 22711, plantUsageId: 22811, equipmentId: 21710, machine: dpr20B2Masters[9].name,
+    entryType: "time_meter", usageStatus: "working", startTime: "08:00", endTime: "12:00",
+    openingReading: null, closingReading: null, hoursWorked: 4, dieselNorm: 5, dieselSource: "plant_stock",
+    diesel: 5, openingDiesel: 20, dieselBalanceInTank: 15, dieselBalanceConfirmed: true, breakdowns: [] },
+];
+const dpr20B2Report = {
+  ...dpr20B1Report, id: 22601, boqProjectId: 21801,
+  remarks: "DPR20 B2 — synthetic canonical rates and explicit unavailable cases", equipment: dpr20B2Rows,
+};
+const dpr20B2Performance = buildEquipmentPerformanceReport({
+  projects: [{ id: 21801, name: "Synthetic B2 active project", status: "active" }],
+  dprs: [
+    { id: 22601, date: dpr20B2Report.date, site: site.name, boqProjectId: 21801, dprStatus: "submitted" },
+    { id: 22602, date: dpr20B2Report.date, site: "Synthetic other site", boqProjectId: 21801, dprStatus: "submitted" },
+  ],
+  masters: dpr20B2Masters,
+  logs: [
+    // Excluded record deliberately has no canonical report event.
+    ...dpr20B2Rows.filter(row => row.id !== 22706).map(row => ({ ...row, dprId: 22601 })),
+    { id: 22999, dprId: 22602, machine: dpr20B2Masters[5].name, equipmentId: 21706,
+      plantUsageId: 22999, openingReading: 1, closingReading: 5, startTime: "05:00", endTime: "07:00", diesel: 100 },
+  ],
+  usages: [
+    ...dpr20B2Rows.filter(row => row.plantUsageId != null && row.id !== 22706).map(row => ({
+      id: row.plantUsageId!, dprId: 22601, date: dpr20B2Report.date, equipmentId: row.equipmentId,
+      entryType: row.entryType, openingReading: row.openingReading, closingReading: row.closingReading,
+      startTime: row.startTime, endTime: row.endTime, dieselIssued: row.diesel,
+      openingDiesel: row.id === 22701 || row.id === 22709 ? 30 : row.id === 22702 ? 23 : row.openingDiesel,
+      dieselBalanceInTank: row.dieselBalanceInTank, dieselBalanceConfirmed: row.dieselBalanceConfirmed,
+      status: "closed", siteName: site.name,
+    })),
+    { id: 22999, dprId: 22602, date: dpr20B2Report.date, equipmentId: 21706,
+      entryType: "time_meter", openingReading: 1, closingReading: 5, startTime: "05:00", endTime: "07:00",
+      dieselIssued: 100, openingDiesel: 20, dieselBalanceInTank: 20, dieselBalanceConfirmed: true, status: "closed" },
+  ],
+  filters: { dateFrom: dpr20B2Report.date, dateTo: dpr20B2Report.date },
+  asOfDate: dpr20B2Report.date,
+});
+
 const fixtureState = {
   requests: [] as RequestRecord[],
+  dpr20B2Performance,
   seedDpr18: null as null | ((id: number, equipmentPatch?: Record<string, unknown>) => void),
   dprCreatePayloads: [] as any[],
   dprCreateRecords: [] as any[],
@@ -1648,6 +1742,28 @@ window.fetch = async (input, init) => {
   const body = parseBody(init);
   const pathname = url.pathname;
   fixtureState.requests.push({ method, path: `${pathname}${url.search}`, body });
+
+  if (new URLSearchParams(window.location.search).has("dpr20b2")) {
+    if (method !== "GET") return json({ message: "DPR20 B2 fixture blocks every write" }, 405);
+    if (pathname === "/api/dprs/22601") return json(dpr20B2Report);
+    if (pathname === "/api/reports/equipment-performance") {
+      const scenario = new URLSearchParams(window.location.search).get("scenario");
+      if (scenario === "failure") return json({ message: "Synthetic performance service failure" }, 500);
+      if (scenario === "forbidden") return json({ error: "forbidden" }, 403);
+      return json(dpr20B2Performance);
+    }
+    if (pathname === "/api/equipment-usage/lifecycle") return json([
+      { id: 22801, status: "closed", successorId: null, closedByUserName: "Synthetic operator" },
+      { id: 22802, status: "open", successorId: null, destinationType: "site", destinationSite: site.name },
+      { id: 22803, status: "closed", successorId: 22900, destinationType: "hmp" },
+    ]);
+    if (pathname === "/api/plant-module/equipment") return json(dpr20B2Masters);
+    if (pathname === "/api/sites") return json([site]);
+    if (pathname === "/api/maintenance/logs") return json([]);
+    // BOQ/personnel/config responses are independent synthetic GETs below.
+    if (![ "/api/personnel", "/api/config" ].includes(pathname)
+      && !pathname.startsWith("/api/boq/")) return json([]);
+  }
 
   if (new URLSearchParams(window.location.search).has("dpr20b1")) {
     if (pathname === "/api/dprs/20601" && method === "GET") return json(dpr20B1Report);
@@ -2422,7 +2538,8 @@ window.history.pushState = ((state: any, title: string, url?: string | URL | nul
   // Viewer history entries do not route/remount the production application.
   // Keep that behavior in this narrow fixture too, instead of unmounting the
   // report synchronously while its attachment-opening effect is executing.
-  if (new URLSearchParams(window.location.search).has("dpr20b1")
+  if ((new URLSearchParams(window.location.search).has("dpr20b1")
+    || new URLSearchParams(window.location.search).has("dpr20b2"))
     && typeof state?.[ATTACHMENT_VIEWER_HISTORY_KEY] === "string") return;
   window.dispatchEvent(new PopStateEvent("popstate"));
 }) as typeof window.history.pushState;
@@ -2437,6 +2554,7 @@ const mount = () => {
   const isSiteReport = window.location.pathname.startsWith("/site/report/");
   const isDpr18B3Report = new URLSearchParams(window.location.search).has("dpr18b3");
   const isDpr20B1Report = new URLSearchParams(window.location.search).has("dpr20b1");
+  const isDpr20B2Report = new URLSearchParams(window.location.search).has("dpr20b2");
   const isLabour01 = new URLSearchParams(window.location.search).has("labour01");
   const isDpr18B3Details = (isDpr18B3Report || isLabour01) && window.location.pathname.startsWith("/dpr/");
   const isSiteMaterialTrips = window.location.pathname.startsWith("/site/material-trips");
@@ -2451,6 +2569,7 @@ const mount = () => {
     <QueryClientProvider client={queryClient}>
       {isDpr18B3Report && <header className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">DPR18 B3 · isolated synthetic read-only response · no customer database</header>}
       {isDpr20B1Report && <header data-testid="dpr20-b1-fixture-banner" className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">DPR20 B1 · synthetic isolated API · actual SiteReport · no customer database or writes</header>}
+      {isDpr20B2Report && <header data-testid="dpr20-b2-fixture-banner" className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">DPR20 B2 · synthetic real-builder canonical events · actual SiteReport · intercepted GETs only</header>}
       {isLabour01 && <header className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">LABOUR-01 · isolated synthetic DPR · intercepted API · no customer database</header>}
       {new URLSearchParams(window.location.search).has("dpr13Legacy") && <header className="border border-amber-500 bg-amber-50 p-4">DPR-13 synthetic legacy-token fixture — real Guided/SiteEdit components, intercepted API only.</header>}
       <Dpr16B2EvidenceBanner />
@@ -2479,7 +2598,7 @@ const mount = () => {
         : isSiteSuccess
           ? <SiteSuccess />
           : isSiteReport
-            ? isDpr18B3Report || isDpr20B1Report || isLabour01 ? <SiteReport /> : <FixtureSubmittedReport />
+            ? isDpr18B3Report || isDpr20B1Report || isDpr20B2Report || isLabour01 ? <SiteReport /> : <FixtureSubmittedReport />
             : isVehicleSupplierInline
               ? <VehicleSupplierInlineFixture />
               : isSiteMaterialTrips

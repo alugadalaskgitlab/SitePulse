@@ -30,6 +30,9 @@ import {
 } from "@/lib/equipmentLifecycle";
 import { ProgrammeBarOutcomeHistory } from "@/components/ProgrammeBarOutcomeHistory";
 import { buildDprEquipmentTableDetails, DprEquipmentTableDetails, DprEquipmentTableBreakdowns } from "@/components/DprEquipmentTableDetails";
+import { DprEquipmentEfficiency } from "@/components/DprEquipmentEfficiency";
+import { hasCompleteDprPerformanceContext, resolveDprActualEfficiency } from "@/lib/dprEquipmentEfficiency";
+import { useDprEquipmentPerformance } from "@/hooks/use-dpr-equipment-performance";
 import { DprActivityReadOnly } from "@/components/DprActivityReadOnly";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
 import { isVisibleEquipmentRow } from "@shared/equipmentUsage";
@@ -133,6 +136,9 @@ export default function SiteReport() {
   const { sectionCan, user } = useAuth();
   const canEdit = sectionCan("site_dprs", "edit");
   const canDelete = !!user?.isAdmin;
+  const canViewPerformance = sectionCan("equipment_performance_report", "view") || sectionCan("plant_equipment", "view");
+  const completePerformanceContext = hasCompleteDprPerformanceContext(user);
+  const performance = useDprEquipmentPerformance(dpr, canViewPerformance, user?.id, completePerformanceContext);
   const { data: personnelList } = useQuery<Personnel[]>({
     queryKey: ["/api/personnel"],
   });
@@ -696,13 +702,18 @@ export default function SiteReport() {
                           <DprEquipmentTableDetails section="expected" row={item} details={tableDetails} index={i} />
                         </TableCell>
                         <TableCell className="text-sm">
-                          {persistedNorm != null ? `${persistedNorm.toFixed(3)}${persistedNormUnit ? ` ${persistedNormUnit}` : ""}` : "—"}
+                          <DprEquipmentEfficiency norm={persistedNorm} normUnit={persistedNormUnit} index={i}
+                            actual={resolveDprActualEfficiency({
+                              dpr, row: item, report: performance.data, canView: canViewPerformance,
+                              hasCompleteContext: completePerformanceContext,
+                              isLoading: performance.isLoading || performance.isFetching, error: performance.error,
+                            })} />
                           {persistedExpected != null && item.diesel != null && (
                             <div className="text-xs text-muted-foreground">
-                              Actual variance: {(Number(item.diesel) - persistedExpected).toFixed(3)} L
+                              Issued − expected: {(Number(item.diesel) - persistedExpected).toFixed(3)} L
                             </div>
                           )}
-                          <DprEquipmentTableDetails section="performance" row={item} details={tableDetails} index={i} />
+                          <DprEquipmentTableDetails section="performance" row={item} details={tableDetails} index={i} showLegacyRate={false} />
                         </TableCell>
                         <TableCell className="text-sm">
                           <DprEquipmentTableBreakdowns stops={item.breakdowns} linkedRows={linkedRows} index={i} />

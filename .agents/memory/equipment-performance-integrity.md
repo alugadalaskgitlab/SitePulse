@@ -44,3 +44,15 @@ Management period and daily consumption must not bridge events omitted by Projec
 **Why:** A Site → Plant → Site sequence can have reliable boundary tanks but a false Site-only fuel total. Filtering away the middle event destroys the evidence needed to detect that gap.
 
 **How to apply:** Assess continuity against the authorized canonical stream, expose only visible records, and show unavailable consumption, difference, and rate when incomplete. Meter working hours must stay separate from canonical runtime's clock fallback. Keep explanatory detail out of the main management table.
+
+Read-only DPR actual rates must not promote a site-scoped response to complete chronology when the current user's access later broadens.
+
+**Why:** Site authorization removes events before the performance builder can flag gaps. A cached restricted response can look internally complete while omitting other machine events; current permissions alone do not prove the provenance of that response.
+
+**How to apply:** Bind cached performance data to its access context, revalidate access grants, and withhold numeric rates until the new authorized response arrives. Under the existing API, unknown/restricted full-day context must remain unavailable rather than guessed.
+
+Confirmed fuel does not imply a measured denominator.
+
+**Why:** The canonical calculation permits an odometer's time-based estimated distance, and the shared omitted-event guard conservatively rejects even ordered same-day sibling records. Neither should be bypassed merely to display a number.
+
+**How to apply:** Reuse the management calculation unchanged; decline estimated-distance actual rates, disclose recorded-clock hour provenance, and preserve unavailable results for incomplete same-day evidence. Do not substitute daily fleet averages for individual DPR rows.

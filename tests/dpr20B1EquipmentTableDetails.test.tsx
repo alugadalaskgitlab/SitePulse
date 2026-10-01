@@ -188,7 +188,6 @@ describe("DPR20 B1 scope and one-table source contract", () => {
     expect(source).toContain('/api/equipment-usage/${usageId}/move');
     expect(source).toContain('<TableHead className="print:hidden">Lifecycle</TableHead>');
     expect(source).not.toContain("managementMetrics");
-    expect(source).not.toContain("/api/reports/equipment-performance");
     expect(readFileSync("client/src/pages/DprDetails.tsx", "utf8")).toContain("<DprEquipmentCompact");
     for (const page of ["SiteEntry", "SiteEdit", "GuidedDpr"]) {
       expect(readFileSync(`client/src/pages/${page}.tsx`, "utf8")).toContain("<DprEquipmentCompact");

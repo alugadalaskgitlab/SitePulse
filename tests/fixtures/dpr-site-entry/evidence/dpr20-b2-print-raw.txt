@@ -1,0 +1,1884 @@
+DPR Browser Fixture DailyProgressReport Submitted Road
+DPR-22601
+DPR Browser Fixture
+Date
+August 5th, 2026
+Site Name
+NARASIMHULU
+ROAD
+Engineer
+SURESH KUMAR
+Draft created by User
+unavailable — Aug 5,
+2026, 4:00 PM
+Road
+1
+Activities
+11
+Equipment
+2
+Workers
+77.000 L
+Total Diesel
+1
+Purchases
+Activity Progress Road DPR
+GSB LAYING Details ▾
+12+000 → 12+100 Measured: 700 SQM BOQ: 700 Sqm
+Equipment Log
+Machine Vehicl
+e No
+Opera
+tor
+Task Time/Mete
+r
+Opera
+ting
+Quant
+ity
+Diesel (L) Expect
+ed
+Diesel
+Norm /
+Efficiency
+Breakdown /
+Stoppage
+Diesel
+Sourc
+e
+SYNTHETI
+C B2
+HOURS
+Hourl
+y Hire
+Machine
+day: 1
+Entry / Hire
+Type:
+hourly
+Daily
+Status:
+Working
+Status
+Reason:
+Synthetic
+shift note
+Breakdown
+s: 1
+SYN-
+B2-
+HOUR
+S
+RAJU Synthetic
+incidental
+diversion
+Non-BOQ /
+Incidental Work
+— Not a BOQ
+item — not
+payable
+progress.
+WORK
+ASSIGNMENT
+GSB LAYING
+8:00 AM →
+10:00 AM
+2 h
+Assigned: 2 h
+Unassigned: 2 h
+Machine Day: 4
+h
+Assignment
+validation uses
+the machine-
+day Clock
+Duration (4 h).
+Assignment
+segments are
+clock times;
+gaps and partial
+assignment are
+allowed.
+Opening
+Meter: 100
+Closing
+Meter: 108
+Start Time:
+8:00 AM
+End Time:
+12:00 PM
+Clock
+Duration: 4
+h
+Meter
+Working
+Hours
+come from
+the
+opening
+and
+closing
+meter
+difference.
+Clock
+duration is
+shown
+separately.
+Saved
+quanti
+ty:
+8.000
+h
+Meter
+Worki
+ng
+Hours
+: 8.00
+h
+20
+Diesel
+Issued /
+Added:
+20.00 L
+Opening
+Tank (L):
+10.00 L
+Closing
+Tank /
+Physical
+Dip (L):
+20.00 L
+Physical
+Tank
+Balance:
+Confirme
+d
+Saved
+expect
+ed:
+40.000
+L
+Fuel-
+summa
+ry
+expect
+ed:
+40.00
+L
+Norm: 5.000
+L/hr
+Actual:
+unavailable
+(multiple
+same-day
+records;
+source rate
+cannot be
+isolated
+safely)
+Issued −
+expected:
+-20.000 L
+DPR
+snapshot
+consumed:
+10.00 L
+DPR
+snapshot
+consumed −
+expected
+variance:
+-30.00 L
+These fuel
+facts use the
+saved DPR
+snapshot, not
+the canonical
+performance
+record; a
+positive
+variance
+means more
+fuel was
+consumed
+than
+expected.
+Synthetic
+authoritative
+hydraulic hose
+10:00 AM–11:30
+AM · 1 h 30 min
+Responsibility:
+vendor ·
+Repair/payment
+scope: vendor ·
+Debitable to
+vendor: Yes
+Remarks:
+Synthetic repair
+paid by vendor.
+Synthetic long
+audit note
+preserves
+responsibility,
+work
+assignment,
+fuel evidence
+and repair
+history across
+printed page
+boundaries.
+Synthetic long
+audit note
+preserves
+responsibility,
+work
+assignment,
+fuel evidence
+and repair
+history across
+printed page
+boundaries.
+Synthetic long
+audit note
+preserves
+responsibility,
+work
+assignment,
+fuel evidence
+and repair
+history across
+printed page
+boundaries.
+Synthetic long
+audit note
+preserves
+responsibility,
+work
+assignment,
+fuel evidence
+and repair
+history across
+printed page
+boundaries.
+Plant
+Stock
+Machine Vehicl
+e No
+Opera
+tor
+Task Time/Mete
+r
+Opera
+ting
+Quant
+ity
+Diesel (L) Expect
+ed
+Diesel
+Norm /
+Efficiency
+Breakdown /
+Stoppage
+Diesel
+Sourc
+e
+Synthetic long
+audit note
+preserves
+responsibility,
+work
+assignment,
+fuel evidence
+and repair
+history across
+printed page
+boundaries.
+Synthetic long
+audit note
+preserves
+responsibility,
+work
+assignment,
+fuel evidence
+and repair
+history across
+printed page
+boundaries.
+SYNTHETIC_DP
+R20_LONG_REF
+ERENCE_ABCD
+EFGHIJKLMNO
+PQRSTUVWXYZ
+_0123456789_A
+BCDEFGHIJKLM
+NOPQRSTUVW
+XYZ
+DPR20_LONG_N
+OTE_END
+View
+attachment:
+synthetic-
+dpr20-hose.svg
+SYNTHETI
+C B2
+ODOMETE
+R
+Daily
+Hire
+Machine
+day: 2
+Entry / Hire
+Type: daily
+Daily
+Status: Idle
+· Operator
+Unavailabl
+e
+Status
+Reason:
+Synthetic
+operator
+unavailable
+SYN-
+D20-
+02
+RAJU -
+WORK
+ASSIGNMENT
+No BOQ
+item
+assigned
+to this
+machine
+day.
+Assigned: 0
+min
+Unassigned: 4 h
+Machine Day: 4
+h
+Opening
+Odometer:
+200
+Closing
+Odometer:
+240
+Start Time:
+1:00 PM
+End Time:
+5:00 PM
+Clock
+Duration: 4
+h
+Distance
+comes
+from the
+odometer
+or trip
+calculation
+. Clock
+Saved
+quanti
+ty:
+40.00
+0 km
+Calcul
+ated
+Dista
+nce:
+40.00
+km
+0
+Diesel
+Issued /
+Added:
+0.00 L
+Opening
+Tank (L):
+20.00 L
+Closing
+Tank /
+Physical
+Dip (L):
+15.00 L
+Physical
+Tank
+Balance:
+Confirme
+d
+Saved
+expect
+ed:
+12.000
+L
+Fuel-
+summa
+ry
+expect
+ed:
+12.00 L
+Norm: 0.300
+L/km
+Actual: 0.200
+L/km
+Confirmed
+tank
+consumption;
+distance from
+recorded
+odometer
+readings.
+Issued −
+expected:
+-12.000 L
+DPR
+snapshot
+consumed:
+5.00 L
+DPR
+snapshot
+— Plant
+Stock
+Machine Vehicl
+e No
+Opera
+tor
+Task Time/Mete
+r
+Opera
+ting
+Quant
+ity
+Diesel (L) Expect
+ed
+Diesel
+Norm /
+Efficiency
+Breakdown /
+Stoppage
+Diesel
+Sourc
+e
+Assignment
+validation uses
+the machine-
+day Clock
+Duration (4 h).
+Assignment
+segments are
+clock times;
+gaps and partial
+assignment are
+allowed.
+duration is
+shown
+separately.
+consumed −
+expected
+variance:
+-7.00 L
+These fuel
+facts use the
+saved DPR
+snapshot, not
+the canonical
+performance
+record; a
+positive
+variance
+means more
+fuel was
+consumed
+than
+expected.
+SYNTHETI
+C B2 ZERO
+Machine
+day: 3
+Entry / Hire
+Type: time
+meter
+Daily
+Status:
+Breakdown
+SYN-
+D20-
+03
+- -
+WORK
+ASSIGNMENT
+No BOQ
+item
+assigned
+to this
+machine
+day.
+Assigned: 0
+min
+Unassigned: 2 h
+Machine Day: 2
+h
+Assignment
+validation uses
+the machine-
+day Clock
+Duration (2 h).
+Assignment
+segments are
+clock times;
+gaps and partial
+assignment are
+allowed.
+Opening
+Meter: 100
+Closing
+Meter: 102
+Start Time:
+8:00 AM
+End Time:
+10:00 AM
+Clock
+Duration: 2
+h
+Meter
+Working
+Hours
+come from
+the
+opening
+and
+closing
+meter
+difference.
+Clock
+duration is
+shown
+separately.
+Saved
+quanti
+ty:
+2.000
+h
+Meter
+Worki
+ng
+Hours
+: 2.00
+h
+0
+Diesel
+Issued /
+Added:
+0.00 L
+Opening
+Tank (L):
+10.00 L
+Closing
+Tank /
+Physical
+Dip (L):
+10.00 L
+Physical
+Tank
+Balance:
+Confirme
+d
+Saved
+expect
+ed:
+10.000
+L
+Fuel-
+summa
+ry
+expect
+ed:
+10.00 L
+Norm: 5.000
+L/hr
+Actual: 0.000
+L/hr
+Confirmed
+tank
+consumption;
+runtime from
+recorded
+hour-meter
+readings.
+Issued −
+expected:
+-10.000 L
+DPR
+snapshot
+consumed:
+0.00 L
+DPR
+snapshot
+consumed −
+expected
+variance:
+-10.00 L
+These fuel
+facts use the
+saved DPR
+snapshot, not
+the canonical
+performance
+record; a
+positive
+variance
+means more
+fuel was
+consumed
+than
+expected.
+— Plant
+Stock
+Machine Vehicl
+e No
+Opera
+tor
+Task Time/Mete
+r
+Opera
+ting
+Quant
+ity
+Diesel (L) Expect
+ed
+Diesel
+Norm /
+Efficiency
+Breakdown /
+Stoppage
+Diesel
+Sourc
+e
+SYNTHETI
+C B2
+PENDING
+Machine
+day: 4
+Entry / Hire
+Type: time
+meter
+Daily
+Status:
+Breakdown
+SYN-
+D20-
+03
+- -
+WORK
+ASSIGNMENT
+No BOQ
+item
+assigned
+to this
+machine
+day.
+Assigned: 0
+min
+Unassigned: 3 h
+Machine Day: 3
+h
+Assignment
+validation uses
+the machine-
+day Clock
+Duration (3 h).
+Assignment
+segments are
+clock times;
+gaps and partial
+assignment are
+allowed.
+Opening
+Meter: 310
+Closing
+Meter: 312
+Start Time:
+2:00 PM
+End Time:
+5:00 PM
+Clock
+Duration: 3
+h
+Meter
+Working
+Hours
+come from
+the
+opening
+and
+closing
+meter
+difference.
+Clock
+duration is
+shown
+separately.
+Saved
+quanti
+ty:
+2.000
+h
+Meter
+Worki
+ng
+Hours
+: 2.00
+h
+4
+Diesel
+Issued /
+Added:
+4.00 L
+Opening
+Tank (L):
+20.00 L
+Closing
+Tank /
+Physical
+Dip (L):
+15.00 L
+Physical
+Tank
+Balance:
+Pending
+confirmati
+on
+Physical
+tank
+balance
+has not
+been
+confirme
+d.
+Saved
+expect
+ed: —
+Fuel-
+summa
+ry
+expect
+ed:
+10.00 L
+Norm: 5.000
+L/hr
+Actual:
+pending
+confirmed
+tank / usage
+data
+DPR
+snapshot
+consumed:
+9.00 L
+DPR
+snapshot
+consumed −
+expected
+variance:
+-1.00 L
+Current
+master norm
+(reference):
+5.00 L/hr
+These fuel
+facts use the
+saved DPR
+snapshot, not
+the canonical
+performance
+record; a
+positive
+variance
+means more
+fuel was
+consumed
+than
+expected.
+— Plant
+Stock
+SYNTHETI
+C B2 NO
+RUNTIME
+Machine
+day: 5
+Entry / Hire
+Type: time
+meter
+Daily
+Status:
+Working
+Usage
+warning:
+No hour
+meter
+reading or
+start/end
+time
+entered.
+- - -
+WORK
+ASSIGNMENT
+No BOQ
+item
+assigned
+to this
+machine
+day.
+Assigned: 0
+min
+Opening
+Meter: —
+Closing
+Meter: —
+Start Time:
+—
+End Time:
+—
+Clock
+Duration:
+—
+No hour-
+meter
+difference
+is
+available.
+Clock
+duration is
+shown
+separately
+Saved
+quanti
+ty: —
+Meter
+Worki
+ng
+Hours
+: —
+10
+Diesel
+Issued /
+Added:
+10.00 L
+Opening
+Tank (L):
+20.00 L
+Closing
+Tank /
+Physical
+Dip (L):
+15.00 L
+Physical
+Tank
+Balance:
+Confirme
+d
+Saved
+expect
+ed: —
+Fuel-
+summa
+ry
+expect
+ed: —
+Norm: 5.000
+Actual:
+unavailable
+(runtime or
+distance is
+missing)
+DPR
+snapshot
+consumed:
+15.00 L
+DPR
+snapshot
+consumed −
+expected
+variance: —
+Current
+master norm
+(reference):
+5.00 L/hr
+These fuel
+facts use the
+— Plant
+Stock
+Machine Vehicl
+e No
+Opera
+tor
+Task Time/Mete
+r
+Opera
+ting
+Quant
+ity
+Diesel (L) Expect
+ed
+Diesel
+Norm /
+Efficiency
+Breakdown /
+Stoppage
+Diesel
+Sourc
+e
+and is not
+labelled as
+meter
+working
+time.
+saved DPR
+snapshot, not
+the canonical
+performance
+record; a
+positive
+variance
+means more
+fuel was
+consumed
+than
+expected.
+SYNTHETI
+C B2
+EXCLUDED
+Machine
+day: 6
+Entry / Hire
+Type: time
+meter
+Daily
+Status:
+Breakdown
+SYN-
+D20-
+03
+- -
+WORK
+ASSIGNMENT
+No BOQ
+item
+assigned
+to this
+machine
+day.
+Assigned: 0
+min
+Unassigned: 3 h
+Machine Day: 3
+h
+Assignment
+validation uses
+the machine-
+day Clock
+Duration (3 h).
+Assignment
+segments are
+clock times;
+gaps and partial
+assignment are
+allowed.
+Opening
+Meter: 310
+Closing
+Meter: 312
+Start Time:
+2:00 PM
+End Time:
+5:00 PM
+Clock
+Duration: 3
+h
+Meter
+Working
+Hours
+come from
+the
+opening
+and
+closing
+meter
+difference.
+Clock
+duration is
+shown
+separately.
+Saved
+quanti
+ty: —
+Meter
+Worki
+ng
+Hours
+: 2.00
+h
+4
+Diesel
+Issued /
+Added:
+4.00 L
+Opening
+Tank (L):
+20.00 L
+Closing
+Tank /
+Physical
+Dip (L):
+15.00 L
+Physical
+Tank
+Balance:
+Confirme
+d
+Saved
+expect
+ed: —
+Fuel-
+summa
+ry
+expect
+ed:
+10.00 L
+Norm: 5.000
+Actual:
+unavailable
+(no matching
+canonical
+performance
+record)
+DPR
+snapshot
+consumed:
+9.00 L
+DPR
+snapshot
+consumed −
+expected
+variance:
+-1.00 L
+These fuel
+facts use the
+saved DPR
+snapshot, not
+the canonical
+performance
+record; a
+positive
+variance
+means more
+fuel was
+consumed
+than
+expected.
+— Plant
+Stock
+SYNTHETI
+C B2
+HOURS
+SECOND
+SHIFT
+Hourl
+y Hire
+Machine
+day: 7
+Entry / Hire
+Type:
+hourly
+SYN-
+D20-
+01
+RAJU -
+WORK
+ASSIGNMENT
+No BOQ
+item
+assigned
+to this
+machine
+day.
+Opening
+Meter: 108
+Closing
+Meter: 110
+Start Time:
+1:00 PM
+End Time:
+3:00 PM
+Clock
+Duration: 2
+h
+Saved
+quanti
+ty:
+2.000
+h
+Meter
+Worki
+ng
+Hours
+: 2.00
+h
+5
+Diesel
+Issued /
+Added:
+5.00 L
+Opening
+Tank (L):
+20.00 L
+Closing
+Tank /
+Physical
+Dip (L):
+22.00 L
+Saved
+expect
+ed:
+10.000
+L
+Fuel-
+summa
+ry
+expect
+ed:
+10.00 L
+Norm: 5.000
+L/hr
+Actual:
+unavailable
+(multiple
+same-day
+records;
+source rate
+cannot be
+isolated
+safely)
+Issued −
+expected:
+-5.000 L
+— Plant
+Stock
+Machine Vehicl
+e No
+Opera
+tor
+Task Time/Mete
+r
+Opera
+ting
+Quant
+ity
+Diesel (L) Expect
+ed
+Diesel
+Norm /
+Efficiency
+Breakdown /
+Stoppage
+Diesel
+Sourc
+e
+Daily
+Status:
+Working
+Status
+Reason:
+Synthetic
+shift note
+Assigned: 0
+min
+Unassigned: 2 h
+Machine Day: 2
+h
+Assignment
+validation uses
+the machine-
+day Clock
+Duration (2 h).
+Assignment
+segments are
+clock times;
+gaps and partial
+assignment are
+allowed.
+Meter
+Working
+Hours
+come from
+the
+opening
+and
+closing
+meter
+difference.
+Clock
+duration is
+shown
+separately.
+Physical
+Tank
+Balance:
+Confirme
+d
+DPR
+snapshot
+consumed:
+3.00 L
+DPR
+snapshot
+consumed −
+expected
+variance:
+-7.00 L
+These fuel
+facts use the
+saved DPR
+snapshot, not
+the canonical
+performance
+record; a
+positive
+variance
+means more
+fuel was
+consumed
+than
+expected.
+SYNTHETI
+C B2
+LEGACY
+EXACT
+LOG
+Machine
+day: 8
+Entry / Hire
+Type: time
+meter
+Daily
+Status: Not
+specified
+- - -
+WORK
+ASSIGNMENT
+No BOQ
+item
+assigned
+to this
+machine
+day.
+Assigned: 0
+min
+Unassigned: 1 h
+Machine Day: 1
+h
+Assignment
+validation uses
+the machine-
+day Clock
+Duration (1 h).
+Assignment
+segments are
+clock times;
+gaps and partial
+assignment are
+allowed.
+Opening
+Meter: 102
+Closing
+Meter: 103
+Start Time:
+12:00 PM
+End Time:
+1:00 PM
+Clock
+Duration: 1
+h
+Meter
+Working
+Hours
+come from
+the
+opening
+and
+closing
+meter
+difference.
+Clock
+duration is
+shown
+separately.
+Saved
+quanti
+ty:
+1.000
+h
+Meter
+Worki
+ng
+Hours
+: 1.00
+h
+4
+Diesel
+Issued /
+Added:
+4.00 L
+Opening
+Tank (L):
+10.00 L
+Closing
+Tank /
+Physical
+Dip (L):
+5.00 L
+Physical
+Tank
+Balance:
+Confirme
+d
+Saved
+expect
+ed: —
+Fuel-
+summa
+ry
+expect
+ed:
+5.00 L
+Norm: 5.000
+L/hr
+Actual:
+pending
+confirmed
+tank / usage
+data
+DPR
+snapshot
+consumed:
+9.00 L
+DPR
+snapshot
+consumed −
+expected
+variance:
++4.00 L
+These fuel
+facts use the
+saved DPR
+snapshot, not
+the canonical
+performance
+record; a
+positive
+variance
+means more
+fuel was
+consumed
+than
+expected.
+— Plant
+Stock
+Machine Vehicl
+e No
+Opera
+tor
+Task Time/Mete
+r
+Opera
+ting
+Quant
+ity
+Diesel (L) Expect
+ed
+Diesel
+Norm /
+Efficiency
+Breakdown /
+Stoppage
+Diesel
+Sourc
+e
+SYNTHETI
+C B2
+SINGLE
+CANONIC
+AL
+Hourl
+y Hire
+Machine
+day: 9
+Entry / Hire
+Type:
+hourly
+Daily
+Status:
+Working
+Status
+Reason:
+Synthetic
+shift note
+SYN-
+B2-
+SINGL
+E
+RAJU -
+WORK
+ASSIGNMENT
+No BOQ
+item
+assigned
+to this
+machine
+day.
+Assigned: 0
+min
+Unassigned: 4 h
+Machine Day: 4
+h
+Assignment
+validation uses
+the machine-
+day Clock
+Duration (4 h).
+Assignment
+segments are
+clock times;
+gaps and partial
+assignment are
+allowed.
+Opening
+Meter: 100
+Closing
+Meter: 108
+Start Time:
+8:00 AM
+End Time:
+12:00 PM
+Clock
+Duration: 4
+h
+Meter
+Working
+Hours
+come from
+the
+opening
+and
+closing
+meter
+difference.
+Clock
+duration is
+shown
+separately.
+Saved
+quanti
+ty:
+8.000
+h
+Meter
+Worki
+ng
+Hours
+: 8.00
+h
+20
+Diesel
+Issued /
+Added:
+20.00 L
+Opening
+Tank (L):
+10.00 L
+Closing
+Tank /
+Physical
+Dip (L):
+20.00 L
+Physical
+Tank
+Balance:
+Confirme
+d
+Saved
+expect
+ed:
+40.000
+L
+Fuel-
+summa
+ry
+expect
+ed:
+40.00
+L
+Norm: 5.000
+L/hr
+Actual: 3.750
+L/hr
+Confirmed
+tank
+consumption;
+runtime from
+recorded
+hour-meter
+readings.
+Issued −
+expected:
+-20.000 L
+DPR
+snapshot
+consumed:
+10.00 L
+DPR
+snapshot
+consumed −
+expected
+variance:
+-30.00 L
+These fuel
+facts use the
+saved DPR
+snapshot, not
+the canonical
+performance
+record; a
+positive
+variance
+means more
+fuel was
+consumed
+than
+expected.
+— Plant
+Stock
+SYNTHETI
+C B2
+ESTIMATE
+D
+ODOMETE
+R
+Machine
+day: 10
+Entry / Hire
+Type: time
+meter
+Daily
+Status:
+Working
+Usage
+warning:
+KM not
+entered —
+- - -
+WORK
+ASSIGNMENT
+No BOQ
+item
+assigned
+to this
+machine
+day.
+Assigned: 0
+min
+Unassigned: 4 h
+Opening
+Odometer:
+—
+Closing
+Odometer:
+—
+Start Time:
+8:00 AM
+End Time:
+12:00 PM
+Clock
+Duration: 4
+h
+Distance
+comes
+from the
+odometer
+Saved
+quanti
+ty: —
+Calcul
+ated
+Dista
+nce:
+100.0
+0 km
+5
+Diesel
+Issued /
+Added:
+5.00 L
+Opening
+Tank (L):
+20.00 L
+Closing
+Tank /
+Physical
+Dip (L):
+15.00 L
+Physical
+Tank
+Balance:
+Confirme
+d
+Saved
+expect
+ed: —
+Fuel-
+summa
+ry
+expect
+ed:
+30.00
+L
+Norm: 0.300
+Actual:
+unavailable
+(distance is
+estimated,
+not measured
+or recorded
+from trips)
+DPR
+snapshot
+consumed:
+10.00 L
+DPR
+snapshot
+consumed −
+expected
+variance:
+-20.00 L
+— Plant
+Stock
+Machine Vehicl
+e No
+Opera
+tor
+Task Time/Mete
+r
+Opera
+ting
+Quant
+ity
+Diesel (L) Expect
+ed
+Diesel
+Norm /
+Efficiency
+Breakdown /
+Stoppage
+Diesel
+Sourc
+e
+using time
+fallback
+(assumed
+25 km/hr).
+Machine Day: 4
+h
+Assignment
+validation uses
+the machine-
+day Clock
+Duration (4 h).
+Assignment
+segments are
+clock times;
+gaps and partial
+assignment are
+allowed.
+or trip
+calculation
+. Clock
+duration is
+shown
+separately.
+These fuel
+facts use the
+saved DPR
+snapshot, not
+the canonical
+performance
+record; a
+positive
+variance
+means more
+fuel was
+consumed
+than
+expected.
+SYNTHETI
+C B2 REAL
+CLOCK
+HOURS
+Machine
+day: 11
+Entry / Hire
+Type: time
+meter
+Daily
+Status:
+Working
+Usage
+warning:
+Hour meter
+not
+entered —
+using
+start/end
+time.
+- - -
+WORK
+ASSIGNMENT
+No BOQ
+item
+assigned
+to this
+machine
+day.
+Assigned: 0
+min
+Unassigned: 4 h
+Machine Day: 4
+h
+Assignment
+validation uses
+the machine-
+day Clock
+Duration (4 h).
+Assignment
+segments are
+clock times;
+gaps and partial
+assignment are
+allowed.
+Opening
+Meter: —
+Closing
+Meter: —
+Start Time:
+8:00 AM
+End Time:
+12:00 PM
+Clock
+Duration: 4
+h
+No hour-
+meter
+difference
+is
+available.
+Clock
+duration is
+shown
+separately
+and is not
+labelled as
+meter
+working
+time.
+Saved
+quanti
+ty:
+4.000
+h
+Meter
+Worki
+ng
+Hours
+: —
+5
+Diesel
+Issued /
+Added:
+5.00 L
+Opening
+Tank (L):
+20.00 L
+Closing
+Tank /
+Physical
+Dip (L):
+15.00 L
+Physical
+Tank
+Balance:
+Confirme
+d
+Saved
+expect
+ed: —
+Fuel-
+summa
+ry
+expect
+ed:
+20.00 L
+Norm: 5.000
+L/hr
+Actual: 2.500
+L/hr
+Confirmed
+tank
+consumption;
+runtime from
+recorded
+start/end
+clock time,
+not hour-
+meter
+readings.
+DPR
+snapshot
+consumed:
+10.00 L
+DPR
+snapshot
+consumed −
+expected
+variance:
+-10.00 L
+These fuel
+facts use the
+saved DPR
+snapshot, not
+the canonical
+performance
+record; a
+positive
+variance
+means more
+fuel was
+consumed
+than
+expected.
+— Plant
+Stock
+Labour Strength
+Materials Log
+MaterialsReceived
+NARASIMHULU ROAD · 2026-08-05
+No materials received this day.
+DPRmaterialrecords
+Site Purchases
+Activity Photos
+No photos attached
+Category Gender Count Task/Work Contractor/Gang
+Skilled Male 2 GSB LAYING FIXTURE GANG
+Type Material Quantity UOM Vehicle No. Supplier Location/Task Receipt No.
+Issued GSB 10.000 MT FIX-TRUCK-01 FIXTURE SUPPLIER KM 12 FIX-REC-01
+Item Description Vendor Bill No Amount Qty UOM
+DIESEL FOR CLEANING FIXTURE FUEL FIX-BILL-01 1500.000 15.000 LITRES
+
