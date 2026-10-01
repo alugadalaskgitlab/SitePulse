@@ -1,0 +1,342 @@
+{
+  "source": "isolated B1 synthetic fixture, real SiteReport and move UI, intercepted APIs, no customer writes",
+  "productionChanges": false,
+  "blockedNativeApiRequests": [],
+  "result": [
+    {
+      "device": "desktop",
+      "role": "manager",
+      "evidence": {
+        "equipmentTables": 1,
+        "compactCards": 0,
+        "nestedEquipmentTables": 0,
+        "headers": [
+          "Machine",
+          "Vehicle No",
+          "Operator",
+          "Task",
+          "Time/Meter",
+          "Operating Quantity",
+          "Diesel (L)",
+          "Expected Diesel",
+          "Norm / Efficiency",
+          "Breakdown / Stoppage",
+          "Diesel Source",
+          "Lifecycle"
+        ],
+        "cellCounts": [
+          12,
+          12,
+          12,
+          12
+        ],
+        "lifecycle": [
+          {
+            "text": "Closed by Synthetic operatorSend onward",
+            "badge": "Closed by Synthetic operator",
+            "move": true,
+            "buttons": 1,
+            "displayed": "table-cell"
+          },
+          {
+            "text": "Pending at SITE: NARASIMHULU ROAD",
+            "badge": "Pending at SITE: NARASIMHULU ROAD",
+            "move": false,
+            "buttons": 0,
+            "displayed": "table-cell"
+          },
+          {
+            "text": "Completed at HMP",
+            "badge": "Completed at HMP",
+            "move": false,
+            "buttons": 0,
+            "displayed": "table-cell"
+          },
+          {
+            "text": "—",
+            "badge": null,
+            "move": false,
+            "buttons": 0,
+            "displayed": "table-cell"
+          }
+        ],
+        "linkedIds": [
+          "20801,20802,20803"
+        ],
+        "writes": [],
+        "viewport": 1440
+      },
+      "screenshots": [
+        "tests/fixtures/dpr-site-entry/evidence/dpr20-b3-desktop-manager-linked.png",
+        "tests/fixtures/dpr-site-entry/evidence/dpr20-b3-desktop-manager-unlinked.png"
+      ]
+    },
+    {
+      "device": "desktop",
+      "role": "viewer",
+      "evidence": {
+        "equipmentTables": 1,
+        "compactCards": 0,
+        "nestedEquipmentTables": 0,
+        "headers": [
+          "Machine",
+          "Vehicle No",
+          "Operator",
+          "Task",
+          "Time/Meter",
+          "Operating Quantity",
+          "Diesel (L)",
+          "Expected Diesel",
+          "Norm / Efficiency",
+          "Breakdown / Stoppage",
+          "Diesel Source",
+          "Lifecycle"
+        ],
+        "cellCounts": [
+          12,
+          12,
+          12,
+          12
+        ],
+        "lifecycle": [
+          {
+            "text": "Closed by Synthetic operator",
+            "badge": "Closed by Synthetic operator",
+            "move": false,
+            "buttons": 0,
+            "displayed": "table-cell"
+          },
+          {
+            "text": "Pending at SITE: NARASIMHULU ROAD",
+            "badge": "Pending at SITE: NARASIMHULU ROAD",
+            "move": false,
+            "buttons": 0,
+            "displayed": "table-cell"
+          },
+          {
+            "text": "Completed at HMP",
+            "badge": "Completed at HMP",
+            "move": false,
+            "buttons": 0,
+            "displayed": "table-cell"
+          },
+          {
+            "text": "—",
+            "badge": null,
+            "move": false,
+            "buttons": 0,
+            "displayed": "table-cell"
+          }
+        ],
+        "linkedIds": [
+          "20801,20802,20803"
+        ],
+        "writes": [],
+        "viewport": 1440
+      },
+      "screenshots": [
+        "tests/fixtures/dpr-site-entry/evidence/dpr20-b3-desktop-viewer-linked.png",
+        "tests/fixtures/dpr-site-entry/evidence/dpr20-b3-desktop-viewer-unlinked.png"
+      ]
+    },
+    {
+      "device": "mobile",
+      "role": "manager",
+      "evidence": {
+        "equipmentTables": 1,
+        "compactCards": 0,
+        "nestedEquipmentTables": 0,
+        "headers": [
+          "Machine",
+          "Vehicle No",
+          "Operator",
+          "Task",
+          "Time/Meter",
+          "Operating Quantity",
+          "Diesel (L)",
+          "Expected Diesel",
+          "Norm / Efficiency",
+          "Breakdown / Stoppage",
+          "Diesel Source",
+          "Lifecycle"
+        ],
+        "cellCounts": [
+          12,
+          12,
+          12,
+          12
+        ],
+        "lifecycle": [
+          {
+            "text": "Closed by Synthetic operatorSend onward",
+            "badge": "Closed by Synthetic operator",
+            "move": true,
+            "buttons": 1,
+            "displayed": "table-cell"
+          },
+          {
+            "text": "Pending at SITE: NARASIMHULU ROAD",
+            "badge": "Pending at SITE: NARASIMHULU ROAD",
+            "move": false,
+            "buttons": 0,
+            "displayed": "table-cell"
+          },
+          {
+            "text": "Completed at HMP",
+            "badge": "Completed at HMP",
+            "move": false,
+            "buttons": 0,
+            "displayed": "table-cell"
+          },
+          {
+            "text": "—",
+            "badge": null,
+            "move": false,
+            "buttons": 0,
+            "displayed": "table-cell"
+          }
+        ],
+        "linkedIds": [
+          "20801,20802,20803"
+        ],
+        "writes": [],
+        "viewport": 390
+      },
+      "screenshots": [
+        "tests/fixtures/dpr-site-entry/evidence/dpr20-b3-mobile-manager-linked.png",
+        "tests/fixtures/dpr-site-entry/evidence/dpr20-b3-mobile-manager-unlinked.png"
+      ]
+    },
+    {
+      "device": "mobile",
+      "role": "viewer",
+      "evidence": {
+        "equipmentTables": 1,
+        "compactCards": 0,
+        "nestedEquipmentTables": 0,
+        "headers": [
+          "Machine",
+          "Vehicle No",
+          "Operator",
+          "Task",
+          "Time/Meter",
+          "Operating Quantity",
+          "Diesel (L)",
+          "Expected Diesel",
+          "Norm / Efficiency",
+          "Breakdown / Stoppage",
+          "Diesel Source",
+          "Lifecycle"
+        ],
+        "cellCounts": [
+          12,
+          12,
+          12,
+          12
+        ],
+        "lifecycle": [
+          {
+            "text": "Closed by Synthetic operator",
+            "badge": "Closed by Synthetic operator",
+            "move": false,
+            "buttons": 0,
+            "displayed": "table-cell"
+          },
+          {
+            "text": "Pending at SITE: NARASIMHULU ROAD",
+            "badge": "Pending at SITE: NARASIMHULU ROAD",
+            "move": false,
+            "buttons": 0,
+            "displayed": "table-cell"
+          },
+          {
+            "text": "Completed at HMP",
+            "badge": "Completed at HMP",
+            "move": false,
+            "buttons": 0,
+            "displayed": "table-cell"
+          },
+          {
+            "text": "—",
+            "badge": null,
+            "move": false,
+            "buttons": 0,
+            "displayed": "table-cell"
+          }
+        ],
+        "linkedIds": [
+          "20801,20802,20803"
+        ],
+        "writes": [],
+        "viewport": 390
+      },
+      "screenshots": [
+        "tests/fixtures/dpr-site-entry/evidence/dpr20-b3-mobile-viewer-linked.png",
+        "tests/fixtures/dpr-site-entry/evidence/dpr20-b3-mobile-viewer-unlinked.png"
+      ]
+    },
+    {
+      "print": {
+        "lifecycleHidden": true,
+        "headerHidden": true,
+        "visibleHeaders": [
+          "Machine",
+          "Vehicle No",
+          "Operator",
+          "Task",
+          "Time/Meter",
+          "Operating Quantity",
+          "Diesel (L)",
+          "Expected Diesel",
+          "Norm / Efficiency",
+          "Breakdown / Stoppage",
+          "Diesel Source"
+        ],
+        "movesHidden": true
+      }
+    },
+    {
+      "destination": "HMP Plant",
+      "writes": [
+        {
+          "method": "POST",
+          "path": "/api/equipment-usage/20801/move",
+          "body": {
+            "destinationType": "hmp",
+            "successorDate": "2026-08-06"
+          }
+        }
+      ],
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b3-send-hmp.png"
+    },
+    {
+      "destination": "RMC Plant",
+      "writes": [
+        {
+          "method": "POST",
+          "path": "/api/equipment-usage/20801/move",
+          "body": {
+            "destinationType": "rmc",
+            "successorDate": "2026-08-06"
+          }
+        }
+      ],
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b3-send-rmc.png"
+    },
+    {
+      "destination": "NARASIMHULU ROAD",
+      "writes": [
+        {
+          "method": "POST",
+          "path": "/api/equipment-usage/20801/move",
+          "body": {
+            "destinationType": "site",
+            "destinationSite": "NARASIMHULU ROAD",
+            "successorDate": "2026-08-06"
+          }
+        }
+      ],
+      "screenshot": "tests/fixtures/dpr-site-entry/evidence/dpr20-b3-send-site.png"
+    }
+  ]
+}
