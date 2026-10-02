@@ -1,0 +1,62 @@
+INSTRUCTION PI-01: Stop Purchase Indent edits from crashing/destroying ordered items, and fix the blank "Remaining" quantity on the PI-linked delivery trip screen
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Two independent bugs, found by screen-recording a real session (WMM indent HLC/PI/2026/0004). Bug 1 is a genuine data-safety issue — treat it as the priority. Part A is a design/mapping plan — STOP after Part A and share it, including your exact proposed `updatePurchaseIndent` rewrite, before writing any implementation code — not optional, because the current behavior touches live purchase/delivery data and a wrong fix could silently corrupt records instead of just failing loudly. STOP after each subsequent part too. Do not touch HOME-01, DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, PERM-01/02, LABOUR-01, any DPR-13 through DPR-20 work, or any other open instruction's scope. Do not publish automatically.
+
+BACKGROUND — confirmed by direct code review and a screen recording of the failure
+
+Bug 1 — editing an already-ordered Purchase Indent fails with a 500 and is destructive by design.
+`server/routes.ts`'s `PUT /api/purchase-indents/:id` (~line 10315) calls `storage.updatePurchaseIndent(id, validatedData)`. That function (`server/storage.ts` ~line 16948) handles ANY edit to a PI — even just reopening and clicking Update with no real change — the same way regardless of status or how far any item has progressed:
+1. It deletes every row in `purchase_indent_item_history` for the indent's current item IDs.
+2. It deletes every row in `purchase_indent_items` for the indent (`DELETE FROM purchase_indent_items WHERE indent_id = id`).
+3. It re-inserts fresh item rows from the submitted form data — but the re-insert only carries `description/spec/partNo/qty/uom/purpose/priority/materialId/estRate/estAmount/requiredBy`. None of the purchase-tracking fields (vendor, rate actually agreed, orderedQty, totalPurchasedQty, totalAcceptedQty, totalRejectedQty, linkedReceiptId, linkedGrnId, orderNo, orderedByUserId, paymentMode, purchasedBy, etc.) are carried over.
+
+This is unsafe the moment any item has moved past "pending": `shared/schema.ts`'s `purchaseOrders` table (~line 1959) has `purchaseIndentItemId` as a NOT NULL foreign key to `purchaseIndentItems.id` with a unique "one active PO per item" index — so once an item has a PO/vendor assigned (status "Order Placed", exactly the WMM item's state in the reproduction), deleting that item row either (a) throws a foreign-key violation, which is almost certainly the real cause of the generic 500 "Failed to update purchase indent" seen on every retry in the recording, or — if the FK is somehow not enforced in a given deployment — (b) silently deletes a row real other tables still reference, orphaning data. Other tables that also reference an indent item (`pi_item_transactions`, `store_grn_items`, `pending_plant_receipts`, `service_completions` — confirmed via `shared/schema.ts` grep for `indentItemId`) make this worse: even a successful delete-and-reinsert would leave those tables pointing at item IDs that no longer exist, or at a brand-new row that looks unrelated to the history it should be attached to.
+Net effect confirmed on video: user reopens PI HLC/PI/2026/0004 (WMM item, status "Order Placed", vendor SARVANA METAL INDUSTRIES already assigned) with no intent to change anything material, clicks "Update Indent", and gets `500: {"message":"Failed to update purchase indent"}` — repeatably, identically, on every retry across roughly 30 seconds of the recording. This is not transient; it is structural, and it currently makes it impossible to make ANY edit (even a harmless one, like fixing a typo in General Remarks) to a PI once any one of its items has an order placed against it.
+
+Bug 2 — the PI-linked delivery trip screen shows "Remaining: MT" with the quantity missing.
+`client/src/components/purchase-indent-delivery.tsx`'s `PurchaseIndentDeliveryPanel` builds the "Log Site Delivery →" link (~line where `href` is set for `item.receivingLocation === "site"`) as:
+`/site/material-trips?piIndentId=${indentId}&piItemId=${item.id}&material=${...}&uom=${...}&site=${...}`
+— it never includes a `qty` (or remaining-quantity) parameter. `client/src/pages/SiteMaterialTrips.tsx` (~line 49-65) parses `piParams` straight from the URL, including `qty: p.get("qty") || ""`, and uses it in two places: the PI-linked banner at ~line 494 (`Remaining: <strong>{piParams.qty} {piParams.uom}</strong>`) and the Quantity field's initial value (~line 97, `quantity: piParams.qty || ""`). Because the link never sends `qty`, both come back blank — the banner literally reads "Remaining: MT" with no number, and the Quantity input doesn't get a sensible starting value either. Confirmed on video at the "Log Material Trip" screen reached via "Log Site Delivery →" from the same WMM item.
+Separately, note that `purchase-indent-delivery.tsx` already computes a correct "X of Y delivered" figure via its own `deliveryProgress()` helper (ordered/approved qty vs `item.deliveredQty`) — the remaining quantity for the link is simply `target - delivered` from that same logic and does not need to be invented; REUSE it, do not write a second remaining-quantity calculation.
+
+FIX
+
+PART A — Design/mapping plan (STOP after this, share the plan, wait for go-ahead before building)
+
+For Bug 1, explain:
+a. Your exact proposed rewrite of `updatePurchaseIndent`. The core principle: stop deleting and re-inserting item rows. Instead, reconcile in place — for item IDs present in both the existing set and the submitted set, UPDATE the editable fields only (description/spec/partNo/qty/uom/purpose/priority/materialId/estRate/estAmount/requiredBy), leaving every purchase-tracking field (vendor, orderedQty, totalPurchasedQty, totalAcceptedQty, totalRejectedQty, linkedReceiptId, linkedGrnId, orderNo, orderedByUserId, paymentMode, purchasedBy, status, etc.) untouched; for item IDs only in the existing set (removed by the editor), decide whether to actually delete (only safe if nothing downstream references them — confirm) or soft-remove; for entries only in the submitted set (newly added items), insert as today. Propose the exact match key (item id, confirming the client already round-trips existing item IDs in its submitted payload — verify this, since the current code's "delete everything, make new IDs" approach may mean the client was never designed to send back IDs for existing items; if so, that's the actual UI-side change needed too, and say so).
+b. Whether any item that already has downstream activity (a `purchaseOrders` row, a `pi_item_transactions` entry, a linked receipt/GRN, a service completion, i.e. effectively anything past "pending") should simply be blocked from having its qty/uom/materialId changed at all via this edit path (even with the in-place-update fix), versus allowed — propose the safer default and explain why, and if blocked, propose the exact user-facing error (not a generic 500).
+c. Confirm the `purchase_indent_item_history` handling: today it's wiped unconditionally for the indent's items. Propose whether history should be preserved for item IDs that survive the edit (it should — a running history of a surviving item is exactly what least loses information) and only touched for items that are genuinely removed.
+d. Whether the indent-status reset to "pending" on any edit (existing code: `if (existing.status !== "pending") { updateFields.status = "pending"; ... }`) is still the right behavior once items can carry forward their own already-ordered state — flag this as a question, not something to silently change; it's existing behavior and out of scope to alter unless it's actually part of the bug.
+e. Any other real risk you find by reading the full set of tables that reference `purchase_indent_items.id` (you found four in this review: `purchase_orders`, `pi_item_transactions`, `store_grn_items`, `pending_plant_receipts`, `service_completions` — confirm this list is complete via your own search, don't assume ours is exhaustive).
+
+For Bug 2, explain:
+f. Confirm the one-line fix: add `&qty=${encodeURIComponent(String(remainingQty))}` (computed the same way `deliveryProgress()` already computes it — target minus delivered) to the "Log Site Delivery →" href in `purchase-indent-delivery.tsx`, for the site-destination branch only (the plant-receipt branch doesn't use this banner).
+g. Confirm this needs no changes to `SiteMaterialTrips.tsx` itself — it already reads `qty` from the URL correctly; it just never received a value.
+
+PART B — Build (only after Part A is approved)
+B1. Bug 1 — in-place item reconciliation in `updatePurchaseIndent`, per the approved plan.
+B2. Bug 2 — pass the remaining quantity into the "Log Site Delivery →" link.
+Stop after each for report and confirmation before starting the next.
+
+WHAT NOT TO DO
+- Do not ship a fix for Bug 1 that merely catches the exception more gracefully (e.g. a nicer error message) without fixing the underlying delete-and-reinsert approach — that would leave PIs with any ordered item permanently un-editable, which is still broken, just quieter.
+- Do not change what fields are editable on a PI item beyond what's already editable today — this is a data-integrity fix, not a feature change.
+- Do not alter PO/vendor assignment, purchaser-action, or receipt/GRN workflows — only how item rows survive a PI-level edit.
+- Do not touch the Material Master route configuration (`plantMaterials.procurementRoute`) or the delivery-panel routing logic (`isBulkPiDeliveryItem`/`effectivePiDeliveryRoute`) — unrelated and already working correctly.
+- Do not touch HOME-01, DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, PERM-01/02, LABOUR-01, or any DPR-13 through DPR-20 work.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No new columns expected for either bug. If Part A concludes the client needs to start round-tripping existing item IDs in its submit payload (per Part A(a)), that's a client-side contract change, not a schema change — call it out explicitly for approval, not decide it unilaterally. If you find a genuine need for an `ON DELETE` policy change on any FK referencing `purchase_indent_items.id`, propose it for approval rather than assuming it's safe to add.
+
+TESTS
+Confirm a PI with an item already in "Order Placed" status (vendor assigned, rate set) can be edited and saved successfully — e.g. changing only the General Remarks — with no 500, and confirm the item's vendor/rate/status/orderedQty are unchanged afterward (not wiped, not reset). Confirm a PI with no ordered items (still fully "pending") can still add/remove/edit items exactly as before. Confirm `purchase_indent_item_history` for a surviving item is still intact after an edit (not wiped). Confirm the "Log Site Delivery →" link now carries a `qty` matching the item's actual remaining balance (ordered minus delivered), and that the Log Material Trip screen's "Remaining:" banner shows that number, not a blank. Confirm the Quantity field on that screen now defaults to the same remaining value. Confirm the "Record Plant Receipt →" path (the non-site branch) is unaffected by the Bug 2 change.
+
+REPORT BACK
+1. After Part A: your written plan, including the exact proposed `updatePurchaseIndent` rewrite and the answer to whether the client needs to send item IDs back, and explicitly wait for approval before proceeding.
+2. After B1 and B2 each: confirm with evidence (screen recording or equivalent reproducible proof, same standard as the DPR-20 evidence) before starting the next.
+3. Anything else noticed but not touched, for a separate decision — in particular, flag if you find any OTHER place in the app that does a similar delete-and-reinsert against a row with real foreign-key dependents, since this pattern may not be unique to Purchase Indents.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
