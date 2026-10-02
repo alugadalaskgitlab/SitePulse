@@ -94,6 +94,7 @@
 - [Equipment daily status](equipment-daily-status.md) — explicit status is independent of maintenance; idle defaults preserve evidence and never auto-confirm tank dips.
 - [Material source billing](material-source-billing.md) — source seller and transporter are independent liabilities; role-qualified duplicate identity preserves both.
 - [PI delivery progress](pi-delivery-progress.md) — retain both delivery paths across destination changes; reconcile mutations without guessing missing historical links.
+- [PI edit integrity](pi-edit-integrity.md) — preserve identities and approvals on harmless edits; ordered headers do not prove child activity or atomic receipt linkage.
 - [Vendor payment validation](vendor-payment-validation.md) — test actual payment save before paid transition; synthetic UI success cannot prove server eligibility.
 - [Vendor master identity](vendor-master-identity.md) — review-first links remain separate from name matching; name changes invalidate associations independently by role.
 - [Diesel comparison attribution](diesel-comparison-attribution.md) — never invent equipment purchase splits; keep purchase-gap warnings report-only.

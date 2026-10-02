@@ -17,6 +17,7 @@ const evidenceDir = path.join(workspace, "screenshots/pi01");
 const vitePort = 4195;
 const cdpPort = 9345;
 const chromiumProfile = "/tmp/pi01-chromium-profile";
+const verifyB1 = process.argv.includes("--b1");
 mkdirSync(evidenceDir, { recursive: true });
 rmSync(chromiumProfile, { recursive: true, force: true });
 
@@ -53,7 +54,7 @@ await waitHttp(`http://127.0.0.1:${vitePort}`, "PI-01 Vite");
 const chromium = spawn("/repl/tools/bin/chromium", [
   "--headless=new", "--no-sandbox", "--disable-gpu", `--remote-debugging-port=${cdpPort}`,
   `--user-data-dir=${chromiumProfile}`, "--window-size=1920,1080",
-  `http://127.0.0.1:${vitePort}`,
+  `http://127.0.0.1:${vitePort}${verifyB1 ? "/?b1" : ""}`,
 ], { cwd: workspace, stdio: "ignore" });
 children.push(chromium);
 await waitHttp(`http://127.0.0.1:${cdpPort}/json/version`, "Chromium CDP");
@@ -69,8 +70,12 @@ await new Promise((resolve, reject) => {
 
 let sequence = 0;
 const pending = new Map();
+const nativeApiRequests = [];
+const uncaughtExceptions = [];
 socket.on("message", raw => {
   const message = JSON.parse(raw);
+  if (message.method === "Network.requestWillBeSent" && new URL(message.params.request.url).pathname.startsWith("/api/")) nativeApiRequests.push(message.params.request);
+  if (message.method === "Runtime.exceptionThrown") uncaughtExceptions.push(message.params.exceptionDetails);
   if (!message.id || !pending.has(message.id)) return;
   const request = pending.get(message.id);
   pending.delete(message.id);
@@ -131,10 +136,85 @@ const screenshot = async name => {
 
 await cdp("Page.enable");
 await cdp("Runtime.enable");
+await cdp("Network.enable");
 await cdp("Emulation.setDeviceMetricsOverride", { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
 await waitFor("document.readyState==='complete' && !!document.querySelector('[data-testid=\"pi01-fixture-disclosure\"]')", "fixture disclosure");
 await waitFor("!!document.querySelector('[data-testid=\"card-indent-1\"]')", "PI list");
 
+if (verifyB1) {
+  const setInput = async (testId, value) => {
+    const changed = await evaluate(`(() => {
+      const e=document.querySelector('[data-testid=${quote(testId)}]');
+      if(!e)return false;
+      const proto=e instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(proto,'value').set.call(e,${quote(value)});
+      e.dispatchEvent(new Event('input',{bubbles:true}));
+      e.dispatchEvent(new Event('change',{bubbles:true}));
+      return true;
+    })()`);
+    assert(changed, `Could not change ${testId}`);
+  };
+  const edit = async () => {
+    await clickTestId("card-indent-1");
+    await waitFor("!!document.querySelector('[data-testid=\"button-edit-indent-purchase\"]')", "ordered detail edit");
+    await clickTestId("button-edit-indent-purchase");
+    await waitFor("!!document.querySelector('[data-testid=\"button-submit-indent\"]')", "edit form");
+  };
+  const save = async expected => {
+    await clickTestId("button-submit-indent");
+    await waitFor(`window.__PI01Fixture.editSnapshots.length===${expected}`, "intercepted edit PUT");
+    await waitFor("!!document.querySelector('[data-testid=\"card-indent-1\"]')", "successful edit returns to list");
+    return evaluate(`window.__PI01Fixture.editSnapshots[${expected - 1}]`);
+  };
+  const trackingFields = ["id", "vendor", "rate", "purchaseStatus", "orderedQty", "qtyPurchased", "totalPurchasedQty", "totalAcceptedQty", "deliveredQty", "linkedReceiptId", "linkedGrnId", "orderNo"];
+  const preserved = snapshot => {
+    for (const field of trackingFields) assert(snapshot.before.items[0][field] === snapshot.after.items[0][field], `Synthetic response changed ${field}`);
+    for (const field of ["status", "approvedBy", "approvedAt"]) assert(snapshot.before[field] === snapshot.after[field], `Synthetic response changed header ${field}`);
+    assert(snapshot.submitted.items.map(row => row.id).slice(0, 3).join(",") === "101,102,103", "Existing item IDs lost from PUT");
+  };
+  const screenshots = [];
+  await edit();
+  await focus("button-submit-indent");
+  screenshots.push(await screenshot("B1-desktop-ordered-noop-form-SYNTHETIC"));
+  const noop = await save(1);
+  preserved(noop);
+  await edit();
+  await setInput("input-remarks", "SYNTHETIC CORRECTED GENERAL REMARKS");
+  const remarks = await save(2);
+  preserved(remarks);
+  assert(remarks.submitted.remarks === "SYNTHETIC CORRECTED GENERAL REMARKS", "Remarks were not submitted");
+  await edit();
+  await clickTestId("button-add-item");
+  await setInput("input-item-desc-3", "NEW SYNTHETIC MATERIAL");
+  const addition = await save(3);
+  assert(addition.submitted.items[0].id === 101, "Existing ID lost when adding new row");
+  assert(!Object.hasOwn(addition.submitted.items[3], "id"), "New row incorrectly submitted a persisted ID");
+  await clickTestId("card-indent-1");
+  await waitFor("!!document.querySelector('[data-testid=\"delivery-panel-101\"]')", "updated ordered item");
+  await focus("delivery-panel-101");
+  screenshots.push(await screenshot("B1-desktop-saved-ordered-item-SYNTHETIC"));
+  await cdp("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  await cdp("Page.navigate", { url: `http://127.0.0.1:${vitePort}/?b1` });
+  await waitFor("!!document.querySelector('[data-testid=\"card-indent-1\"]')", "mobile PI list");
+  await edit();
+  await setInput("input-remarks", "SYNTHETIC MOBILE REMARKS");
+  await focus("input-remarks");
+  screenshots.push(await screenshot("B1-mobile-remarks-form-SYNTHETIC"));
+  const mobile = await save(1);
+  preserved(mobile);
+  const state = await evaluate("window.__PI01Fixture");
+  assert(nativeApiRequests.length === 0, "Native API request escaped synthetic fixture");
+  assert(uncaughtExceptions.length === 0, "Uncaught browser exception");
+  const evidence = {
+    scenario: "PI-01 B1 actual PurchaseIndents edit UI with fully intercepted synthetic API",
+    limitation: "Synthetic response preservation is UI evidence ONLY, not backend/database persistence proof. Backend/storage tests must establish preservation independently.",
+    safety: { productionDatabaseUsed: false, productionApiWrites: false, nativeApiRequests, uncaughtExceptions },
+    verified: { desktopNoop: noop, desktopRemarks: remarks, existingAndNewRows: addition, mobileRemarks: mobile },
+    screenshots, interceptedRequestCount: state.requests.length,
+  };
+  writeFileSync(path.join(evidenceDir, "b1-evidence.json"), `${JSON.stringify(evidence, null, 2)}\n`);
+  console.log(JSON.stringify(evidence, null, 2));
+} else {
 // A: synthetic list shows independently-scoped sequence values for two sites.
 assert((await text("text-indent-no-1")) === "HLC/PI/ALLADURG/2027/0004", "A Site A number mismatch");
 assert((await text("text-indent-no-2")) === "HLC/PI/ZAHEERABAD/2027/0001", "A Site B number mismatch");
@@ -237,6 +317,7 @@ const evidence = {
 };
 writeFileSync(path.join(evidenceDir, "evidence.json"), `${JSON.stringify(evidence, null, 2)}\n`);
 console.log(JSON.stringify(evidence, null, 2));
+}
 socket.close();
 stop();
 await sleep(250);

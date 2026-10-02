@@ -62,7 +62,18 @@ let indents: AnyRow[] = [
   ] },
 ];
 
-const fixtureState = { requests: [] as RequestRecord[], destinationUpdates: [] as AnyRow[], toasts: [] as AnyRow[] };
+if (new URLSearchParams(window.location.search).has("b1")) {
+  indents[0].items[0] = {
+    ...indents[0].items[0], vendor: "SYNTHETIC WMM VENDOR", rate: 875,
+    orderedQty: 1500, totalPurchasedQty: 1500, totalAcceptedQty: 600,
+    linkedReceiptId: 7101, linkedGrnId: null, orderNo: "SYNTHETIC-PO-101",
+  };
+}
+
+const fixtureState = {
+  requests: [] as RequestRecord[], destinationUpdates: [] as AnyRow[],
+  toasts: [] as AnyRow[], editSnapshots: [] as AnyRow[],
+};
 declare global { interface Window { __PI01Fixture?: typeof fixtureState; } }
 window.__PI01Fixture = fixtureState;
 
@@ -83,6 +94,23 @@ window.fetch = async (input, init) => {
   if (/^\/api\/purchase-indents\/\d+$/.test(url.pathname) && method === "GET") {
     return json(indents.find(row => row.id === Number(url.pathname.split("/").pop())) || {}, 200);
   }
+  if (/^\/api\/purchase-indents\/\d+$/.test(url.pathname) && method === "PUT" && new URLSearchParams(window.location.search).has("b1")) {
+    const indent = indents.find(row => row.id === Number(url.pathname.split("/").pop()));
+    if (!indent) return json({ message: "Synthetic indent not found" }, 404);
+    const before = structuredClone(indent);
+    const editable = ["description", "spec", "partNo", "qty", "uom", "purpose", "priority", "materialId", "estRate", "estAmount", "requiredBy"];
+    const nextItems = body.items.map((submitted: AnyRow, index: number) => {
+      const original = submitted.id ? indent.items.find((row: AnyRow) => row.id === submitted.id) : null;
+      if (submitted.id && !original) throw new Error("B1 fixture received foreign item ID");
+      const next = original ? { ...original } : { id: 9000 + index, purchaseStatus: null };
+      for (const field of editable) if (field in submitted) next[field] = submitted[field];
+      return next;
+    });
+    const updated = { ...indent, remarks: body.remarks, items: nextItems };
+    indents = indents.map(row => row.id === indent.id ? updated : row);
+    fixtureState.editSnapshots.push({ before, after: structuredClone(updated), submitted: body });
+    return json(updated);
+  }
   if (/^\/api\/purchase-indents\/\d+\/transactions$/.test(url.pathname)) return json([]);
   const destinationMatch = url.pathname.match(/^\/api\/purchase-indents\/(\d+)\/items\/(\d+)\/destination$/);
   if (destinationMatch && method === "PATCH") {
@@ -102,6 +130,7 @@ window.fetch = async (input, init) => {
   if (url.pathname === "/api/service-completions") return json([]);
   if (url.pathname === "/api/site-material-trips") return json([]);
   if (url.pathname === "/api/stores/grns") return json([]);
+  if (url.pathname.startsWith("/api/") && method !== "GET") return json({ message: "Synthetic fixture blocked unhandled write" }, 405);
   if (url.pathname.startsWith("/api/")) return json([]);
   throw new Error(`PI-01 fixture blocked non-API request: ${url.pathname}`);
 };

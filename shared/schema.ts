@@ -2039,6 +2039,25 @@ export const createPurchaseIndentRequestSchema = insertPurchaseIndentSchema.exte
 );
 export type CreatePurchaseIndentRequest = z.infer<typeof createPurchaseIndentRequestSchema>;
 
+// PI edits own planning fields only. Persisted IDs must survive validation;
+// purchase/receipt tracking fields are never writable through this contract.
+export const updatePurchaseIndentItemSchema = insertPurchaseIndentItemSchema.pick({
+  description: true, spec: true, partNo: true, qty: true, uom: true,
+  purpose: true, priority: true, materialId: true, estRate: true,
+  estAmount: true, requiredBy: true,
+}).extend({ id: z.number().int().positive().optional() });
+export const updatePurchaseIndentRequestSchema = insertPurchaseIndentSchema.pick({
+  date: true, proposedBy: true, raisedBy: true, remarks: true,
+}).extend({
+  siteId: z.number().int().nullish(),
+  raisedFrom: z.string().nullish(),
+  items: z.array(updatePurchaseIndentItemSchema),
+}).refine(
+  (d) => (d.siteId != null && d.siteId > 0) || !!d.raisedFrom?.trim(),
+  { message: "Raised from / location is required", path: ["raisedFrom"] },
+);
+export type UpdatePurchaseIndentRequest = z.infer<typeof updatePurchaseIndentRequestSchema>;
+
 // ============================================
 // PI ITEM TRANSACTIONS
 // One row per procurement event per item:

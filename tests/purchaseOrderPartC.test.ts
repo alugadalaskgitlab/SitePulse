@@ -59,12 +59,12 @@ beforeAll(async () => {
   await pg.exec(`
     CREATE TABLE users (id integer PRIMARY KEY, full_name text NOT NULL);
     CREATE TABLE vendors (id integer PRIMARY KEY, name text NOT NULL, business_name text, gst_number text, pan_number text, address text);
-    CREATE TABLE purchase_indents (id integer PRIMARY KEY);
-    CREATE TABLE purchase_indent_items (id integer PRIMARY KEY);
+    CREATE TABLE purchase_indents (id integer PRIMARY KEY, status text);
+    CREATE TABLE purchase_indent_items (id integer PRIMARY KEY, indent_id integer, qty real, approved_qty real, uom text, material_id integer, vendor_id integer);
     INSERT INTO users VALUES (7,'Ramesh Kumar'), (8,'Suresh Reddy'), (9,'Store User'), (10,'Project Manager');
     INSERT INTO vendors VALUES (3,'SYNTHETIC Supplier','Supplier Works','GST-SYN','PAN-SYN','Supplier Road');
-    INSERT INTO purchase_indents VALUES (1);
-    INSERT INTO purchase_indent_items VALUES (10);
+    INSERT INTO purchase_indents VALUES (1,'ordered');
+    INSERT INTO purchase_indent_items VALUES (10,1,15,null,'MT',null,3);
   `);
   await pg.exec(readFileSync("migrations/0037_purchase_orders.sql", "utf8"));
   fx.db = drizzle(pg);
@@ -83,6 +83,24 @@ beforeEach(async () => {
   fx.purchaserAction.mockClear();
 });
 describe("optional PO lifecycle with isolated PostgreSQL fixture", () => {
+  it("PI01 rejects a PO when the locked authoritative item changed after scoping", async () => {
+    await pg.exec("UPDATE purchase_indent_items SET qty=16 WHERE id=10");
+    try {
+      const response = await request(app).post(base).send(draft);
+      expect(response.status).toBe(409);
+      expect(response.body.message).toMatch(/changed/);
+      expect((await pg.query("SELECT * FROM purchase_orders")).rows).toHaveLength(0);
+    } finally { await pg.exec("UPDATE purchase_indent_items SET qty=15 WHERE id=10"); }
+  });
+  it("PI01 rejects a PO when deletion won before the authoritative item lock", async () => {
+    await pg.exec("DELETE FROM purchase_indent_items WHERE id=10");
+    try {
+      const response = await request(app).post(base).send(draft);
+      expect(response.status).toBe(409);
+      expect(response.body.message).toMatch(/no longer exists/);
+      expect((await pg.query("SELECT * FROM purchase_orders")).rows).toHaveLength(0);
+    } finally { await pg.exec("INSERT INTO purchase_indent_items VALUES(10,1,15,null,'MT',null,3)"); }
+  });
   it("A: an order is recorded without raising a PO, for bulk and stores", async () => {
     for (const piType of ["material", "stores"]) {
       fx.indent.piType = piType;

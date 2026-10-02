@@ -269,6 +269,7 @@ import {
   type PurchaseIndentItemHistoryEntry,
   type PurchaseIndentWithItems,
   type CreatePurchaseIndentRequest,
+  type UpdatePurchaseIndentRequest,
   personnel,
   activityPersonnel,
   type Personnel,
@@ -1469,7 +1470,7 @@ export interface IStorage {
   forceCloseIndent(indentId: number, closedBy: string, reason: string): Promise<PurchaseIndentWithItems | undefined>;
   getItemHistory(itemId: number): Promise<PurchaseIndentItemHistoryEntry[]>;
   getProcurementReport(filters?: { dateFrom?: string; dateTo?: string; purchaseStatus?: string; purpose?: string; vendor?: string; paymentMode?: string }): Promise<{ items: any[]; summary: { totalItems: number; purchased: number; partial: number; cancelled: number; notPurchased: number; pending: number; totalSpend: number; fulfillmentRate: number } }>;
-  updatePurchaseIndent(id: number, data: CreatePurchaseIndentRequest): Promise<PurchaseIndentWithItems | undefined>;
+  updatePurchaseIndent(id: number, data: UpdatePurchaseIndentRequest): Promise<PurchaseIndentWithItems | undefined>;
   setIndentNotifyMessage(id: number, message: string): Promise<void>;
   setItemReviewerNote(itemId: number, note: string): Promise<void>;
   getRecentIndentItemIds(limit?: number): Promise<number[]>;
@@ -2496,6 +2497,23 @@ export class PurchaseIndentRouteCorrectionConflictError extends Error {
 }
 
 export class DatabaseStorage implements IStorage {
+  /** Acquire sorted item locks before creating an application-owned reference. */
+  async _lockPiItemsWithinTx(tx: any, ids: number[], indentId?: number): Promise<PurchaseIndentItem[]> {
+    const unique = [...new Set(ids)].sort((a, b) => a - b);
+    if (!unique.length) return [];
+    const rows = await tx.select().from(purchaseIndentItems)
+      .where(inArray(purchaseIndentItems.id, unique)).orderBy(purchaseIndentItems.id).for("update");
+    if (rows.length !== unique.length || (indentId !== undefined && rows.some((row: PurchaseIndentItem) => row.indentId !== indentId))) {
+      throw new Error("Cannot edit purchase indent: a referenced item no longer belongs to this indent. Refresh and try again.");
+    }
+    return rows;
+  }
+  private async insertPiTransaction(data: typeof piItemTransactions.$inferInsert): Promise<void> {
+    await db.transaction(async tx => {
+      await this._lockPiItemsWithinTx(tx, [data.indentItemId], data.indentId);
+      await tx.insert(piItemTransactions).values(data);
+    });
+  }
   /** PI evidence is application-owned: managed Publish needs only delivered_qty. */
   async _getPiDeliveryEvidence(tx: any, itemId: number): Promise<DeliveryEvidence[]> {
     const [item] = await tx.select().from(purchaseIndentItems).where(eq(purchaseIndentItems.id, itemId));
@@ -15250,6 +15268,12 @@ export class DatabaseStorage implements IStorage {
     data: { action: string; vendor?: string; rate?: number; qtyPurchased?: number; expectedDelivery?: string; orderPlacedAt?: string; paymentMode?: string; billNo?: string; purchaseRemarks?: string; purchasedBy?: string },
     actionBy: string
   ): Promise<PurchaseIndentItem | undefined> {
+    const updated = await db.transaction(async tx => {
+    const [initial] = await tx.select().from(purchaseIndentItems).where(eq(purchaseIndentItems.id, itemId));
+    if (!initial) return undefined;
+    await tx.select().from(purchaseIndents).where(eq(purchaseIndents.id, initial.indentId)).for("update");
+    await this._lockPiItemsWithinTx(tx, [itemId], initial.indentId);
+    const db = tx;
     const action = data.action.toLowerCase();
 
     // Fetch existing item so "received" can patch-merge without losing "ordered" data
@@ -15313,8 +15337,12 @@ export class DatabaseStorage implements IStorage {
         billNo: updates.billNo ?? null,
         amount: updates.amount ?? null,
         notes: updates.purchaseRemarks ?? null,
-      }).catch(() => {});
+      });
+    }
+    return updated;
+    });
 
+    if (updated) {
       // Transition indent from "approved" → "purchasing" on first procurement action
       const [indentRow] = await db.select({ status: purchaseIndents.status })
         .from(purchaseIndents)
@@ -15368,6 +15396,12 @@ export class DatabaseStorage implements IStorage {
     const [parentIndent] = await db.select({ piType: purchaseIndents.piType }).from(purchaseIndents).where(eq(purchaseIndents.id, indentId));
 
     await db.transaction(async (tx) => {
+      // Serialize the authoritative recheck with PI-level item reconciliation.
+      // A pre-transaction snapshot cannot authorize a logical-reference insert.
+      const lockedItems = await tx.select().from(purchaseIndentItems)
+        .where(inArray(purchaseIndentItems.id, items.map(item => item.itemId)))
+        .orderBy(purchaseIndentItems.id).for("update");
+      const allItemDbMap = new Map(lockedItems.map(item => [item.id, item]));
       for (const item of items) {
         const existing = allItemDbMap.get(item.itemId);
         if (!existing || existing.indentId !== indentId) throw new Error("Item does not belong to this purchase indent");
@@ -15664,7 +15698,9 @@ export class DatabaseStorage implements IStorage {
 
     // Generate GRN number and create the draft GRN
     const grnNumber = await this.generateStoreDocNumber("GRN", "STORE");
-    const [grn] = await db.insert(storeGrns).values({
+    const grn = await db.transaction(async tx => {
+    await this._lockPiItemsWithinTx(tx, items.map(item => item.itemId), indentId);
+    const [grn] = await tx.insert(storeGrns).values({
       grnNumber,
       date: today,
       supplier: vendor.toUpperCase(),
@@ -15676,9 +15712,10 @@ export class DatabaseStorage implements IStorage {
     }).returning();
 
     if (grnItemsData.length > 0) {
-      await db.insert(storeGrnItems).values(grnItemsData.map(it => ({ ...it, grnId: grn.id })));
+      await tx.insert(storeGrnItems).values(grnItemsData.map(it => ({ ...it, grnId: grn.id })));
     }
-
+    return grn;
+    });
     return this.buildGrnWithItems(grn);
   }
 
@@ -15774,7 +15811,7 @@ export class DatabaseStorage implements IStorage {
         plantName: "Main Plant",
       } as any);
       // Insert pi_item_transactions record
-      await db.insert(piItemTransactions).values({
+      await this.insertPiTransaction({
         indentId,
         indentItemId: item.itemId,
         transactionType: "bulk_receipt",
@@ -15825,9 +15862,9 @@ export class DatabaseStorage implements IStorage {
       if (!Number.isFinite(item.qty) || item.qty <= 0) throw new Error("Receipt quantity must be positive");
     }
     await db.transaction(async tx => {
+    const lockedItems = await this._lockPiItemsWithinTx(tx, items.map(item => item.itemId), indentId);
     for (const item of items) {
-      await tx.select({ id: purchaseIndentItems.id }).from(purchaseIndentItems).where(eq(purchaseIndentItems.id, item.itemId)).for("update");
-      const piItem = existing.items.find(i => i.id === item.itemId);
+      const piItem = lockedItems.find(row => row.id === item.itemId)!;
       const values = {
         indentId,
         indentNo: existing.indentNo,
@@ -15959,7 +15996,9 @@ export class DatabaseStorage implements IStorage {
     qty?: number | null; hours?: number | null; remarks?: string;
     documentUrl?: string | null; verifiedByUserId: number; verifiedByName: string; createdByUserId: number;
   }): Promise<ServiceCompletion> {
-    const [row] = await db.insert(serviceCompletions).values({
+    const row = await db.transaction(async tx => {
+    await this._lockPiItemsWithinTx(tx, [data.indentItemId], data.indentId);
+    const [row] = await tx.insert(serviceCompletions).values({
       indentId: data.indentId,
       indentItemId: data.indentItemId,
       itemDescription: data.itemDescription ?? null,
@@ -15974,7 +16013,7 @@ export class DatabaseStorage implements IStorage {
       createdByUserId: data.createdByUserId,
     }).returning();
     // Record transaction
-    await db.insert(piItemTransactions).values({
+    await tx.insert(piItemTransactions).values({
       indentId: data.indentId,
       indentItemId: data.indentItemId,
       transactionType: "service_completion",
@@ -15984,9 +16023,11 @@ export class DatabaseStorage implements IStorage {
     });
     // Update PI item purchase status
     const newStatus = data.completionStatus === "completed" ? "SERVICE_COMPLETED" : "SERVICE_PARTLY_COMPLETED";
-    await db.update(purchaseIndentItems)
+    await tx.update(purchaseIndentItems)
       .set({ purchaseStatus: newStatus })
       .where(eq(purchaseIndentItems.id, data.indentItemId));
+    return row;
+    });
     await this.checkAndCompleteIndent(data.indentId);
     return row;
   }
@@ -16183,7 +16224,8 @@ export class DatabaseStorage implements IStorage {
       if (!headerUpdated) {
         throw new Error(`Indent ${id} status transition to ordered failed — concurrent update detected`);
       }
-      for (const indentItem of existing.items) {
+      const lockedItems = await this._lockPiItemsWithinTx(tx, existing.items.map(item => item.id), id);
+      for (const indentItem of lockedItems) {
         const approvedQty = indentItem.approvedQty ?? indentItem.qty;
         if (approvedQty <= 0) continue;
         const itemInput = items.find(i => i.itemId === indentItem.id);
@@ -16265,7 +16307,7 @@ export class DatabaseStorage implements IStorage {
           purchaseStatus,
           vendor: item.vendor?.toUpperCase() ?? null,
         }));
-      await db.insert(piItemTransactions).values({
+      await this.insertPiTransaction({
         indentId,
         indentItemId: item.itemId,
         transactionType: "bulk_receipt",
@@ -16356,7 +16398,7 @@ export class DatabaseStorage implements IStorage {
     const updated = await db.transaction(tx => this._linkPiReceiptWithinTx(tx, itemId, receiptId,
       { totalAcceptedQty: newAccepted, purchaseStatus }));
     if (!updated) return undefined;
-    await db.insert(piItemTransactions).values({
+    await this.insertPiTransaction({
       indentId: existingItem.indentId,
       indentItemId: itemId,
       transactionType: "bulk_receipt",
@@ -16830,6 +16872,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updatePurchaseItemStatus(itemId: number, purchaseData: { purchaseStatus?: string; qtyPurchased?: number; vendor?: string; billNo?: string; rate?: number; amount?: number; purchaseRemarks?: string }, actionBy?: string): Promise<PurchaseIndentItem | undefined> {
+    const updatedItem = await db.transaction(async tx => {
+    await this._lockPiItemsWithinTx(tx, [itemId]);
+    const db = tx;
     const updates: any = { ...purchaseData };
     if (updates.vendor) updates.vendor = updates.vendor.toUpperCase();
     if (updates.billNo) updates.billNo = updates.billNo.toUpperCase();
@@ -16857,12 +16902,16 @@ export class DatabaseStorage implements IStorage {
       });
     }
 
-    await this.checkAndCompleteIndent(updatedItem.indentId);
-
+    return updatedItem;
+    });
+    if (updatedItem) await this.checkAndCompleteIndent(updatedItem.indentId);
     return updatedItem;
   }
 
   async cancelPurchaseItem(itemId: number, cancelledBy: string, reason: string): Promise<PurchaseIndentItem | undefined> {
+    const updatedItem = await db.transaction(async tx => {
+    await this._lockPiItemsWithinTx(tx, [itemId]);
+    const db = tx;
     const [existingItem] = await db.select().from(purchaseIndentItems).where(eq(purchaseIndentItems.id, itemId));
     if (!existingItem) return undefined;
     const uncancellableStatuses = ["PURCHASED", "NOT_PURCHASED", "CANCELLED"];
@@ -16895,20 +16944,23 @@ export class DatabaseStorage implements IStorage {
       amount: null,
     });
 
-    await this.checkAndCompleteIndent(updatedItem.indentId);
-
+    return updatedItem;
+    });
+    if (updatedItem) await this.checkAndCompleteIndent(updatedItem.indentId);
     return updatedItem;
   }
 
   async forceCloseIndent(indentId: number, closedBy: string, reason: string): Promise<PurchaseIndentWithItems | undefined> {
-    const [indent] = await db.select().from(purchaseIndents).where(eq(purchaseIndents.id, indentId));
+    const found = await db.transaction(async tx => {
+    const db = tx;
+    const [indent] = await db.select().from(purchaseIndents).where(eq(purchaseIndents.id, indentId)).for("update");
     if (!indent) return undefined;
     if (indent.status === "completed" || indent.status === "rejected" || indent.status === "pending") {
       throw new Error(`Cannot force close indent with status: ${indent.status}`);
     }
 
     const allItems = await db.select().from(purchaseIndentItems)
-      .where(eq(purchaseIndentItems.indentId, indentId));
+      .where(eq(purchaseIndentItems.indentId, indentId)).orderBy(purchaseIndentItems.id).for("update");
 
     const skipStatuses = ["PURCHASED", "NOT_PURCHASED", "CANCELLED"];
     const now = new Date().toISOString();
@@ -16941,15 +16993,81 @@ export class DatabaseStorage implements IStorage {
     await db.update(purchaseIndents)
       .set({ status: "completed" })
       .where(eq(purchaseIndents.id, indentId));
-
+    return true;
+    });
+    if (!found) return undefined;
     return this.getPurchaseIndent(indentId);
   }
 
-  async updatePurchaseIndent(id: number, data: CreatePurchaseIndentRequest): Promise<PurchaseIndentWithItems | undefined> {
-    const existing = await this.getPurchaseIndent(id);
-    if (!existing) return undefined;
-
+  async updatePurchaseIndent(id: number, data: UpdatePurchaseIndentRequest): Promise<PurchaseIndentWithItems | undefined> {
     return await db.transaction(async (tx) => {
+      const [existing] = await tx.select().from(purchaseIndents).where(eq(purchaseIndents.id, id)).for("update");
+      if (!existing) return undefined;
+      const current = await tx.select().from(purchaseIndentItems)
+        .where(eq(purchaseIndentItems.indentId, id)).orderBy(purchaseIndentItems.id).for("update");
+      const normalize = (item: UpdatePurchaseIndentRequest["items"][number]) => ({
+        description: item.description.toUpperCase(),
+        spec: item.spec?.toUpperCase() || null,
+        partNo: item.partNo?.toUpperCase() || null,
+        qty: item.qty,
+        uom: item.uom.toUpperCase(),
+        purpose: item.purpose.toUpperCase(),
+        priority: item.priority || "normal",
+        materialId: item.materialId || null,
+        estRate: item.estRate ?? null,
+        estAmount: item.estAmount ?? null,
+        requiredBy: item.requiredBy || null,
+      });
+      const seen = new Set<number>();
+      const byId = new Map(current.map(item => [item.id, item]));
+      const submitted = data.items.map(item => {
+        if (item.id !== undefined) {
+          if (!Number.isInteger(item.id) || item.id <= 0 || seen.has(item.id) || !byId.has(item.id)) {
+            throw new Error(`Cannot edit purchase indent: item #${item.id} is duplicated or no longer belongs to this indent. Refresh and try again.`);
+          }
+          seen.add(item.id);
+        }
+        return { id: item.id, values: normalize(item) };
+      });
+      const removed = current.filter(item => !seen.has(item.id));
+      const active = new Set<number>();
+      // All statuses count: cancelled trips and rejected POs remain references.
+      for (const item of current) {
+        const refs = await tx.execute(sql`
+          SELECT 1 FROM purchase_orders WHERE purchase_indent_item_id = ${item.id}
+          UNION ALL SELECT 1 FROM purchase_indent_item_history WHERE item_id = ${item.id}
+          UNION ALL SELECT 1 FROM pi_item_transactions WHERE indent_item_id = ${item.id}
+          UNION ALL SELECT 1 FROM store_grn_items WHERE indent_item_id = ${item.id} OR source_pi_item_id = ${item.id}
+          UNION ALL SELECT 1 FROM pending_plant_receipts WHERE indent_item_id = ${item.id}
+          UNION ALL SELECT 1 FROM service_completions WHERE indent_item_id = ${item.id}
+          UNION ALL SELECT 1 FROM site_material_trips WHERE indent_item_id = ${item.id}
+          LIMIT 1`);
+        const tracking = [
+          item.approvedQty, item.qtyPurchased, item.deliveredQty, item.orderedQty,
+          item.totalPurchasedQty, item.totalAcceptedQty, item.totalRejectedQty,
+          item.vendor, item.vendorId, item.rate, item.amount, item.billNo,
+          item.linkedReceiptId, item.linkedGrnId, item.orderNo, item.orderPlacedAt,
+          item.orderedByUserId, item.orderedByName, item.purchasedBy, item.purchasedByUserId,
+          item.paymentMode, item.paidBy, item.cancelledBy, item.cancelledAt,
+          item.stockStatus, item.stockAvailableQty, item.storesItemNote, item.reviewerNote,
+          item.purchaseRemarks, item.expectedDelivery,
+        ];
+        if (refs.rows.length || (item.purchaseStatus && item.purchaseStatus.toLowerCase() !== "pending")
+          || tracking.some(value => value !== null && value !== undefined && value !== "" && value !== 0)) active.add(item.id);
+      }
+      for (const item of removed) {
+        if (active.has(item.id)) throw new Error(`Cannot edit purchase indent: item #${item.id} has procurement, delivery or history records and cannot be removed. Restore it and use the existing cancellation workflow.`);
+      }
+      let itemChanges = removed.length > 0;
+      for (const item of submitted) {
+        if (item.id === undefined) { itemChanges = true; continue; }
+        const old = byId.get(item.id)!;
+        const before = normalize(old);
+        if (active.has(item.id) && (before.qty !== item.values.qty || before.uom !== item.values.uom || before.materialId !== item.values.materialId)) {
+          throw new Error(`Cannot edit item #${item.id}: quantity, UOM or material cannot be changed after ordering, purchase or receipt activity. Keep these values unchanged and use the relevant procurement workflow.`);
+        }
+        if (JSON.stringify(before) !== JSON.stringify(item.values)) itemChanges = true;
+      }
       const updateFields: any = {
         date: data.date,
         proposedBy: uppercaseBusinessText(data.proposedBy),
@@ -16959,7 +17077,14 @@ export class DatabaseStorage implements IStorage {
         raisedFrom: (data as any).raisedFrom ?? null,
       };
 
-      if (existing.status !== "pending") {
+      const headerChanges = ["date", "proposedBy", "raisedBy", "siteId", "raisedFrom"]
+        .some(key => {
+          const previous = existing[key as keyof typeof existing];
+          const normalized = key === "proposedBy" || key === "raisedBy"
+            ? uppercaseBusinessText(previous as string) : previous ?? null;
+          return normalized !== (updateFields[key] ?? null);
+        });
+      if (existing.status !== "pending" && (headerChanges || itemChanges)) {
         updateFields.status = "pending";
         updateFields.approvedBy = null;
         updateFields.approvedAt = null;
@@ -16971,31 +17096,18 @@ export class DatabaseStorage implements IStorage {
         .set(updateFields)
         .where(eq(purchaseIndents.id, id));
 
-      const existingItemIds = existing.items.map(i => i.id);
-      if (existingItemIds.length > 0) {
-        await tx.delete(purchaseIndentItemHistory).where(inArray(purchaseIndentItemHistory.itemId, existingItemIds));
+      for (const item of removed) {
+        await tx.delete(purchaseIndentItems).where(and(eq(purchaseIndentItems.id, item.id), eq(purchaseIndentItems.indentId, id)));
       }
-      await tx.delete(purchaseIndentItems).where(eq(purchaseIndentItems.indentId, id));
-
-      let items: PurchaseIndentItem[] = [];
-      if (data.items?.length) {
-        items = await tx.insert(purchaseIndentItems).values(
-          data.items.map(item => ({
-            indentId: id,
-            description: item.description.toUpperCase(),
-            spec: (item as any).spec?.toUpperCase() || null,
-            partNo: (item as any).partNo?.toUpperCase() || null,
-            qty: item.qty,
-            uom: item.uom.toUpperCase(),
-            purpose: item.purpose.toUpperCase(),
-            priority: item.priority || "normal",
-            materialId: item.materialId || null,
-            estRate: item.estRate ?? null,
-            estAmount: item.estAmount ?? null,
-            requiredBy: item.requiredBy || null,
-          }))
-        ).returning();
+      for (const item of submitted) {
+        if (item.id === undefined) {
+          await tx.insert(purchaseIndentItems).values({ indentId: id, ...item.values });
+        } else if (JSON.stringify(normalize(byId.get(item.id)!)) !== JSON.stringify(item.values)) {
+          await tx.update(purchaseIndentItems).set(item.values)
+            .where(and(eq(purchaseIndentItems.id, item.id), eq(purchaseIndentItems.indentId, id)));
+        }
       }
+      const items = await tx.select().from(purchaseIndentItems).where(eq(purchaseIndentItems.indentId, id)).orderBy(purchaseIndentItems.id);
 
       const [updatedIndent] = await tx.select().from(purchaseIndents).where(eq(purchaseIndents.id, id));
       if (!updatedIndent) throw new Error(`Purchase indent #${id} not found after update`);
@@ -27267,10 +27379,14 @@ export class DatabaseStorage implements IStorage {
       }
     }
     const grnNumber = await this.generateStoreDocNumber('GRN', resolvedCategoryCode);
-    const [grn] = await db.insert(storeGrns).values({ ...grnData, grnNumber }).returning();
+    const grn = await db.transaction(async tx => {
+    await this._lockPiItemsWithinTx(tx, items.flatMap(item => [item.indentItemId, item.sourcePiItemId].filter((id): id is number => id != null)));
+    const [grn] = await tx.insert(storeGrns).values({ ...grnData, grnNumber }).returning();
     if (items.length > 0) {
-      await db.insert(storeGrnItems).values(items.map(it => ({ ...it, grnId: grn.id })));
+      await tx.insert(storeGrnItems).values(items.map(it => ({ ...it, grnId: grn.id })));
     }
+    return grn;
+    });
     return this.buildGrnWithItems(grn);
   }
 
@@ -27306,12 +27422,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async replaceStoreGrn(id: number, grnData: Partial<InsertStoreGrn>, items: Omit<InsertStoreGrnItem, 'grnId'>[]): Promise<StoreGrnWithItems | undefined> {
-    const [grn] = await db.update(storeGrns).set(grnData).where(eq(storeGrns.id, id)).returning();
+    const grn = await db.transaction(async tx => {
+    await this._lockPiItemsWithinTx(tx, items.flatMap(item => [item.indentItemId, item.sourcePiItemId].filter((id): id is number => id != null)));
+    const [grn] = await tx.update(storeGrns).set(grnData).where(eq(storeGrns.id, id)).returning();
     if (!grn) return undefined;
-    await db.delete(storeGrnItems).where(eq(storeGrnItems.grnId, id));
+    await tx.delete(storeGrnItems).where(eq(storeGrnItems.grnId, id));
     if (items.length > 0) {
-      await db.insert(storeGrnItems).values(items.map(it => ({ ...it, grnId: id })));
+      await tx.insert(storeGrnItems).values(items.map(it => ({ ...it, grnId: id })));
     }
+    return grn;
+    });
+    if (!grn) return undefined;
     return this.buildGrnWithItems(grn);
   }
 

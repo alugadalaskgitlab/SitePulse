@@ -2,6 +2,7 @@ import { DPR_SECTIONS, DPR_SECTION_FIELDS, normalizeDprSectionContext } from "..
 import { assertSectionTokens, DprSectionConflict, findSectionDrafts, readSectionAggregate, saveDprSection, sectionSnapshot } from "./dprSections";
 import type { Express, Request, Response } from "express";
 import type { Server } from "http";
+import { updatePurchaseIndentRequestSchema } from "@shared/schema";
 import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, InvalidDieselPhysicalStockError, InvalidStockTransferQuantityError, InvalidDieselSourceError, DieselReceiptExceedsRemainingError, InvalidLinkedDieselRequirementError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError, InitialScopeCorrectionBlockedError, ScopeChangedDuringPlanningError, DprProjectMismatchError, PushSubscriptionOwnershipError, PurchaseIndentRouteCorrectionConflictError, assertValidDieselPhysicalStock } from "./storage";
 import { buildEquipmentComparison, buildDailyDieselEquipmentReport } from "./dieselComparisonEquipment";
 import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection, classifyBoqItem, getSectorMultiplier } from "./snlAutoMapper";
@@ -9141,6 +9142,8 @@ export async function registerRoutes(
   }
   const poError = (err: any, res: Response) => {
     if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message });
+    if (/^(Purchase indent item (no longer exists|changed)|Purchase Order requires|Only the PI item's reviewed)/.test(err?.message ?? ""))
+      return res.status(409).json({ message: err.message });
     if (err?.code === "23505") return res.status(409).json({ message: "This item already has an active Purchase Order" });
     console.error("Purchase Order request failed:", err);
     return res.status(500).json({ message: "Purchase Order request failed" });
@@ -9209,13 +9212,32 @@ export async function registerRoutes(
       if (fields.vendorId && !linkedVendor) return res.status(400).json({ message: "Linked vendor not found" });
       if (linkedVendor && !linkedPoNameMatches(fields.vendorName, linkedVendor.name))
         return res.status(400).json({ message: "Vendor name does not match the linked Vendor Master record; clear the link to use a different name" });
-      const [order] = await db.insert(purchaseOrders).values({
+      const order = await db.transaction(async tx => {
+        const [indent] = await tx.select({ status: purchaseIndentsTable.status }).from(purchaseIndentsTable)
+          .where(eq(purchaseIndentsTable.id, scoped.indent.id)).for("update");
+        const [item] = await tx.select({
+          qty: purchaseIndentItems.qty, approvedQty: purchaseIndentItems.approvedQty,
+          uom: purchaseIndentItems.uom, materialId: purchaseIndentItems.materialId,
+          vendorId: purchaseIndentItems.vendorId,
+        }).from(purchaseIndentItems)
+          .where(and(eq(purchaseIndentItems.id, scoped.item.id), eq(purchaseIndentItems.indentId, scoped.indent.id))).for("update");
+        if (!indent || !item) throw new Error("Purchase indent item no longer exists. Refresh and try again.");
+        if (["pending", "stores_check", "rejected"].includes(indent.status) || Number(item.approvedQty ?? item.qty) <= 0)
+          throw new Error("Purchase Order requires an approved Purchase Indent item");
+        if (fields.vendorId && fields.vendorId !== item.vendorId)
+          throw new Error("Only the PI item's reviewed Vendor Master link may be used");
+        // Reject a stale form rather than ordering a snapshot of changed material.
+        if (item.qty !== scoped.item.qty || item.uom !== scoped.item.uom || item.materialId !== (scoped.item.materialId ?? null))
+          throw new Error("Purchase indent item changed. Refresh and try again.");
+        const [order] = await tx.insert(purchaseOrders).values({
         ...fields, vendorName: linkedVendor?.name ?? fields.vendorName,
         purchaseIndentId: scoped.indent.id, purchaseIndentItemId: scoped.item.id,
         raisedByUserId: req.authUser!.id,
         vendorBusinessName: linkedVendor?.businessName ?? null, vendorGst: linkedVendor?.gstNumber ?? null,
         vendorPan: linkedVendor?.panNumber ?? null, vendorAddress: linkedVendor?.address ?? null,
-      }).returning();
+        }).returning();
+        return order;
+      });
       res.status(201).json(await poDetails(order));
     } catch (err) { poError(err, res); }
   });
@@ -10326,7 +10348,7 @@ export async function registerRoutes(
       // restrictions remain enforced by the existing workflow.
       if (!assertEditEither(req, res, "site_procurement", "purchase_indents_raise")) return;
 
-      const validatedData = createPurchaseIndentRequestSchema.parse(data);
+      const validatedData = updatePurchaseIndentRequestSchema.parse(data);
       const indent = await storage.updatePurchaseIndent(id, validatedData);
       if (!indent) return res.status(404).json({ message: "Purchase indent not found" });
 

@@ -248,6 +248,7 @@ const PRIORITY_OPTIONS = ["urgent", "normal", "low"] as const;
 const UOM_ITEM_OPTIONS = ["NOS", "KG", "METERS", "LITERS", "SET", "PAIR", "BOX", "ROLLS", "PACKETS", "TON", "MT", "CFT", "CUM", "SQM", "RMT"] as const;
 
 interface ItemRow {
+  id?: number;
   description: string;
   spec: string;
   partNo: string;
@@ -1871,6 +1872,7 @@ export default function PurchaseIndents() {
       allocationId: prefillAllocationId ?? undefined,
       piType: formPiType,
       items: validItems.map(item => ({
+        ...(editIndentId && Number.isInteger(item.id) && item.id! > 0 ? { id: item.id } : {}),
         description: item.description.toUpperCase(),
         spec: item.spec?.trim().toUpperCase() || undefined,
         partNo: item.partNo?.trim().toUpperCase() || undefined,
@@ -1879,9 +1881,9 @@ export default function PurchaseIndents() {
         purpose: item.purpose,
         priority: item.priority,
         materialId: item.materialId || undefined,
-        estRate: item.estRate || undefined,
-        estAmount: item.estAmount || undefined,
-        requiredBy: (item.priority !== "urgent" && item.requiredBy) ? item.requiredBy : undefined,
+        estRate: editIndentId ? item.estRate ?? undefined : item.estRate || undefined,
+        estAmount: editIndentId ? item.estAmount ?? undefined : item.estAmount || undefined,
+        requiredBy: editIndentId ? item.requiredBy || undefined : (item.priority !== "urgent" && item.requiredBy) ? item.requiredBy : undefined,
         procurementRoute: item.procurementRoute || undefined,
       })),
     };
@@ -2055,6 +2057,7 @@ export default function PurchaseIndents() {
       setFormSiteId((selectedIndent as any).siteId ?? null);
       setFormRaisedFrom((selectedIndent as any).raisedFrom ?? null);
       setFormItems(selectedIndent.items.map(item => ({
+        id: item.id,
         description: item.description,
         spec: (item as any).spec || "",
         partNo: (item as any).partNo || "",
@@ -2063,8 +2066,8 @@ export default function PurchaseIndents() {
         purpose: item.purpose,
         priority: item.priority,
         materialId: item.materialId || null,
-        estRate: item.estRate || null,
-        estAmount: (item as any).estAmount || null,
+        estRate: item.estRate ?? null,
+        estAmount: (item as any).estAmount ?? null,
         requiredBy: (item as any).requiredBy || null,
         procurementRoute: (item as any).procurementRoute || null,
       })));
