@@ -13,7 +13,7 @@ beforeAll(async () => {
   pg = new PGlite();
   for (const table of [schema.purchaseIndents, schema.purchaseIndentItems, schema.purchaseOrders,
     schema.purchaseIndentItemHistory, schema.piItemTransactions, schema.storeGrnItems,
-    schema.pendingPlantReceipts, schema.serviceCompletions, schema.siteMaterialTrips]) {
+    schema.pendingPlantReceipts, schema.serviceCompletions, schema.siteMaterialTrips, schema.materialReceipts]) {
     const config = getTableConfig(table);
     await pg.exec(`CREATE TABLE "${config.name}" (${config.columns.map(c =>
       `"${c.name}" ${c.getSQLType()}${c.primary ? " PRIMARY KEY" : ""}`).join(",")})`);
@@ -25,7 +25,7 @@ beforeAll(async () => {
 afterAll(async () => { await pg.close(); });
 beforeEach(async () => {
   await pg.exec(`TRUNCATE purchase_orders,purchase_indent_item_history,pi_item_transactions,store_grn_items,
-    pending_plant_receipts,service_completions,site_material_trips,purchase_indent_items,purchase_indents RESTART IDENTITY;
+    pending_plant_receipts,service_completions,site_material_trips,material_receipts,purchase_indent_items,purchase_indents RESTART IDENTITY;
     INSERT INTO purchase_indents(id,indent_no,date,proposed_by,raised_by,site_id,status,approved_by,remarks)
       VALUES(1,'TEST-ONLY','2026-01-01','ENGINEER','ENGINEER',1,'approved','MANAGER','OLD');
     INSERT INTO purchase_indent_items(id,indent_id,description,qty,uom,purpose,priority,delivered_qty)
@@ -87,23 +87,88 @@ it("omitted nullable planning fields are a normalized no-op and preserve approva
     spec: null, partNo: null, materialId: null, estRate: null, estAmount: null, requiredBy: null,
   });
 });
-it("characterizes legacy receipt eligibility: ordered header alone reaches physical creation", async () => {
+it("round-tripped zero estimates and urgent existing dates remain a no-op", async () => {
+  await pg.exec("UPDATE purchase_indent_items SET est_rate=0,est_amount=0,priority='urgent',required_by='2026-01-03'");
+  const result = await storage.updatePurchaseIndent(1, payload([{
+    ...item, estRate: 0, estAmount: 0, priority: "urgent", requiredBy: "2026-01-03",
+  }], "OLD"));
+  expect(result).toMatchObject({ status: "approved", approvedBy: "MANAGER" });
+  expect(result.items[0]).toMatchObject({ estRate: 0, estAmount: 0, requiredBy: "2026-01-03" });
+});
+it.each(["recordMaterialIndentReceipt", "recordBulkMaterialReceipt"])("%s rejects an untouched zero-approved target before physical creation", async method => {
   await pg.exec("UPDATE purchase_indents SET status='ordered',pi_type='material'; UPDATE purchase_indent_items SET approved_qty=0");
   const snapshot = vi.spyOn(storage, "getPurchaseIndent").mockResolvedValue({
     id: 1, indentNo: "TEST-ONLY", piType: "material", status: "ordered",
     items: [{ ...item, approvedQty: 0, orderedQty: null, purchaseStatus: null }],
   });
+  const create = vi.spyOn(storage, "createMaterialReceipt");
+  try {
+    await expect(storage[method](1, [{
+      itemId: 1, materialId: 1, qty: 1, uom: "MT",
+    }], "TEST")).rejects.toThrow("has no approval or procurement activity");
+    expect(create).not.toHaveBeenCalled();
+    expect((await pg.query("SELECT * FROM purchase_indent_item_history")).rows).toHaveLength(0);
+  } finally { snapshot.mockRestore(); create.mockRestore(); }
+});
+it.each(["recordMaterialIndentReceipt", "recordBulkMaterialReceipt"])("%s records durable attempt evidence before physical creation, surviving approval changes", async method => {
+  await pg.exec("UPDATE purchase_indents SET status='ordered',pi_type='material'; UPDATE purchase_indent_items SET approved_qty=10");
+  const snapshot = vi.spyOn(storage, "getPurchaseIndent").mockResolvedValue({
+    id: 1, indentNo: "TEST-ONLY", piType: "material", status: "ordered", items: [item],
+  });
   const create = vi.spyOn(storage, "createMaterialReceipt").mockImplementation(async () => {
-    await storage.updatePurchaseIndent(1, payload([]));
-    throw new Error("TEST: physical creation reached");
+    const history = (await pg.query<any>("SELECT action,notes FROM purchase_indent_item_history WHERE item_id=1")).rows;
+    expect(history).toHaveLength(1);
+    expect(history[0].action).toBe("RECEIPT_RECORDING_STARTED");
+    expect(history[0].notes).toMatch(/does not confirm/);
+    // Deterministically interleave a later approval revision and a PI edit
+    // after eligibility commits but before canonical receipt writes.
+    await pg.exec("UPDATE purchase_indent_items SET approved_qty=0 WHERE id=1");
+    await expect(storage.updatePurchaseIndent(1, payload([]))).rejects.toThrow("cannot be removed");
+    await expect(storage.updatePurchaseIndent(1, payload([{ ...item, qty: 20 }]))).rejects.toThrow("quantity, UOM or material");
+    await storage.updatePurchaseIndent(1, payload([item], "REMARKS DURING RECEIPT"));
+    throw new Error("TEST: canonical receipt stopped without stock writes");
   });
   try {
-    await expect(storage.recordMaterialIndentReceipt(1, [{
-      itemId: 1, materialId: 1, qty: 1, uom: "MT",
-    }], "TEST")).rejects.toThrow("TEST: physical creation reached");
+    await expect(storage[method](1, [{ itemId: 1, materialId: 1, qty: 1, uom: "MT" }], "TEST"))
+      .rejects.toThrow("TEST: canonical receipt stopped without stock writes");
     expect(create).toHaveBeenCalledOnce();
-    expect((await pg.query("SELECT * FROM purchase_indent_items")).rows).toHaveLength(0);
+    expect((await pg.query("SELECT * FROM purchase_indent_items")).rows).toHaveLength(1);
   } finally { snapshot.mockRestore(); create.mockRestore(); }
+});
+it("receipt guard rejects deletion winning after initial snapshot without recording an attempt", async () => {
+  await pg.exec("UPDATE purchase_indents SET status='ordered',pi_type='material'");
+  const snapshot = vi.spyOn(storage, "getPurchaseIndent").mockImplementation(async () => {
+    await pg.exec("DELETE FROM purchase_indent_items WHERE id=1");
+    return { id: 1, piType: "material", status: "ordered", items: [item] };
+  });
+  const create = vi.spyOn(storage, "createMaterialReceipt");
+  try {
+    await expect(storage.recordMaterialIndentReceipt(1, [{ itemId: 1, materialId: 1, qty: 1, uom: "MT" }], "TEST")).rejects.toThrow("no longer belongs");
+    expect(create).not.toHaveBeenCalled();
+    expect((await pg.query("SELECT * FROM purchase_indent_item_history")).rows).toHaveLength(0);
+  } finally { snapshot.mockRestore(); create.mockRestore(); }
+});
+it.each(["recordMaterialIndentReceipt", "recordBulkMaterialReceipt"])("%s proceeds through actual PI linkage for an eligible receipt", async method => {
+  await pg.exec("UPDATE purchase_indents SET status='ordered',pi_type='material'; UPDATE purchase_indent_items SET approved_qty=10");
+  const snapshot = vi.spyOn(storage, "getPurchaseIndent").mockResolvedValue({
+    id: 1, indentNo: "TEST-ONLY", piType: "material", status: "ordered", items: [item],
+  });
+  // Canonical stock posting is covered separately; supply a real isolated receipt
+  // row and exercise the actual PI receipt-link, evidence, and total writers.
+  const create = vi.spyOn(storage, "createMaterialReceipt").mockImplementation(async (data: any) => {
+    const [row] = await holder.db.insert(schema.materialReceipts).values({
+      ...data, receiptNo: "TEST-ONLY-1", isDeleted: false, isCancelled: false,
+    }).returning();
+    return row;
+  });
+  const complete = vi.spyOn(storage, "checkAndCompleteIndent").mockResolvedValue(undefined);
+  try {
+    await storage[method](1, [{ itemId: 1, materialId: 1, qty: 1, uom: "MT" }], "TEST");
+    expect(create).toHaveBeenCalledOnce();
+    const persisted = (await pg.query<any>("SELECT linked_receipt_id,total_accepted_qty,delivered_qty FROM purchase_indent_items WHERE id=1")).rows[0];
+    expect(persisted).toEqual({ linked_receipt_id: 1, total_accepted_qty: 1, delivered_qty: 1 });
+    expect((await pg.query("SELECT * FROM purchase_indent_item_history WHERE action='RECEIPT_RECORDING_STARTED'")).rows).toHaveLength(1);
+  } finally { snapshot.mockRestore(); create.mockRestore(); complete.mockRestore(); }
 });
 it("service writer rechecks identity before either dependent insert", async () => {
   await pg.exec("DELETE FROM purchase_indent_items WHERE id=1");

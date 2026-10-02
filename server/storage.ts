@@ -2514,6 +2514,46 @@ export class DatabaseStorage implements IStorage {
       await tx.insert(piItemTransactions).values(data);
     });
   }
+  /** Validate the whole receipt batch before canonical stock creation. Locks end
+   * here: canonical receipt/link helpers own their source→item transactions.
+   * The truthful attempt audit survives even if another workflow later revises
+   * approved quantities. It is not a claim that physical receipt completed. */
+  private async assertPiReceiptEligibility(indentId: number, itemIds: number[], materialOnly: boolean, actionBy: string): Promise<void> {
+    await db.transaction(async tx => {
+      const [indent] = await tx.select().from(purchaseIndents)
+        .where(eq(purchaseIndents.id, indentId)).for("update");
+      if (!indent) throw new Error("Cannot record receipt: purchase indent no longer exists. Refresh and try again.");
+      if (materialOnly && (indent.piType !== "material" || indent.status !== "ordered")) {
+        throw new Error("Cannot record receipt: Material Indent must still be ordered. Refresh and try again.");
+      }
+      const items = await this._lockPiItemsWithinTx(tx, itemIds, indentId);
+      for (const item of items) {
+        const tracked = Number(item.approvedQty) > 0 || Number(item.orderedQty) > 0
+          || Number(item.qtyPurchased) > 0 || Number(item.deliveredQty) > 0
+          || Number(item.totalPurchasedQty) > 0 || Number(item.totalAcceptedQty) > 0
+          || !!item.orderPlacedAt || !!item.orderNo || !!item.linkedReceiptId || !!item.linkedGrnId
+          || !!item.vendor || !!item.vendorId || !!item.purchasedBy || !!item.purchasedByUserId;
+        if (tracked) continue;
+        const refs = await tx.execute(sql`
+          SELECT 1 FROM purchase_orders WHERE purchase_indent_item_id = ${item.id}
+          UNION ALL SELECT 1 FROM pi_item_transactions WHERE indent_item_id = ${item.id}
+          UNION ALL SELECT 1 FROM store_grn_items WHERE indent_item_id = ${item.id} OR source_pi_item_id = ${item.id}
+          UNION ALL SELECT 1 FROM pending_plant_receipts WHERE indent_item_id = ${item.id}
+          UNION ALL SELECT 1 FROM service_completions WHERE indent_item_id = ${item.id}
+          UNION ALL SELECT 1 FROM site_material_trips WHERE indent_item_id = ${item.id}
+          LIMIT 1`);
+        if (!refs.rows.length) {
+          throw new Error(`Cannot record receipt: item #${item.id} has no approval or procurement activity. Approve or order this item before recording delivery.`);
+        }
+      }
+      if (items.length) await tx.insert(purchaseIndentItemHistory).values(items.map(item => ({
+        itemId: item.id,
+        action: "RECEIPT_RECORDING_STARTED",
+        actionBy: actionBy.toUpperCase(),
+        notes: "Receipt eligibility verified; delivery recording started. This attempt does not confirm that a physical receipt was created.",
+      })));
+    });
+  }
   /** PI evidence is application-owned: managed Publish needs only delivered_qty. */
   async _getPiDeliveryEvidence(tx: any, itemId: number): Promise<DeliveryEvidence[]> {
     const [item] = await tx.select().from(purchaseIndentItems).where(eq(purchaseIndentItems.id, itemId));
@@ -15794,6 +15834,7 @@ export class DatabaseStorage implements IStorage {
         throw new Error(`Item ${item.itemId} does not belong to indent ${indentId}`);
       }
     }
+    await this.assertPiReceiptEligibility(indentId, items.map(item => item.itemId), false, actionBy);
     for (const item of items) {
       // Delegate to canonical receipt path — handles UOM conversion, stock_ledger write, and LDO flow
       const receipt = await this.createMaterialReceipt({
@@ -16280,6 +16321,7 @@ export class DatabaseStorage implements IStorage {
         throw new Error(`Item ${item.itemId} does not belong to indent ${indentId}`);
       }
     }
+    await this.assertPiReceiptEligibility(indentId, items.map(item => item.itemId), true, actionBy);
     for (const item of items) {
       // Delegate to canonical receipt path — handles UOM conversion, stock_ledger write, and LDO flow
       const receipt = await this.createMaterialReceipt({

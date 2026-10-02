@@ -9489,6 +9489,8 @@ export async function registerRoutes(
       if (!indent) return res.status(404).json({ message: "Indent not found" });
       res.json(indent);
     } catch (err) {
+      if (err instanceof Error && (err.message.startsWith("Cannot record receipt:") || err.message.startsWith("Cannot edit purchase indent:")))
+        return res.status(400).json({ message: err.message });
       console.error("Error recording material indent receipt:", err);
       res.status(500).json({ message: "Failed to record receipt" });
     }

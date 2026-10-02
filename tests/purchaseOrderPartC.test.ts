@@ -13,6 +13,7 @@ const fx = vi.hoisted(() => ({
   allowed: [1] as number[] | null,
   indent: null as any,
   purchaserAction: vi.fn().mockResolvedValue({ txnIdsByItemId: {}, grnIdsByItemId: {}, routeWarnings: [] }),
+  materialReceipt: vi.fn(),
 }));
 vi.mock("../server/db", () => ({ get db() { return fx.db; }, pool: {} }));
 vi.mock("../server/storage", () => ({ storage: new Proxy({
@@ -22,6 +23,7 @@ vi.mock("../server/storage", () => ({ storage: new Proxy({
   getUserPermittedSiteIds: async () => fx.allowed,
   getSetting: async (key: string) => key === "licensed_modules" ? "[]" : null,
   submitPurchaserAction: fx.purchaserAction,
+  recordMaterialIndentReceipt: fx.materialReceipt,
 }, { get(target: any, key: string) { return key in target ? target[key] : vi.fn().mockResolvedValue([]); } }) }));
 vi.mock("../server/push", () => ({ sendPushToAll: vi.fn(), sendPushToAudience: vi.fn(), sendPushToSection: vi.fn(), sendTestPush: vi.fn() }));
 vi.mock("../server/auth", () => ({
@@ -83,6 +85,13 @@ beforeEach(async () => {
   fx.purchaserAction.mockClear();
 });
 describe("optional PO lifecycle with isolated PostgreSQL fixture", () => {
+  it("PI01 returns a clean validation error for receipt eligibility rejection", async () => {
+    fx.materialReceipt.mockRejectedValueOnce(new Error("Cannot record receipt: item #10 has no approval or procurement activity. Approve or order this item before recording delivery."));
+    const response = await request(app).post("/api/purchase-indents/1/record-material-receipt")
+      .send({ items: [{ itemId: 10, materialId: 1, qty: 1, uom: "MT" }] });
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain("has no approval or procurement activity");
+  });
   it("PI01 rejects a PO when the locked authoritative item changed after scoping", async () => {
     await pg.exec("UPDATE purchase_indent_items SET qty=16 WHERE id=10");
     try {
