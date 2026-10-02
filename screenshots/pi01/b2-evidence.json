@@ -1,0 +1,453 @@
+{
+  "scenario": "PI-01 B2 production delivery-panel link -> production SiteMaterialTrips",
+  "limitation": "Synthetic intercepted browser UI evidence only; no backend or physical stock verification.",
+  "safety": {
+    "productionDatabaseUsed": false,
+    "productionApiWrites": false,
+    "nativeApiRequests": [],
+    "uncaughtExceptions": []
+  },
+  "verified": [
+    {
+      "viewport": "desktop",
+      "scenario": "partial",
+      "expectedRemaining": "900",
+      "panel": {
+        "href": "/site/material-trips?piIndentId=91&piItemId=401&material=WMM&uom=MT&site=ALLADURG&qty=900",
+        "progress": "600 of 1,500 MT delivered",
+        "plant": "/plant/material-receipts?autoOpen=1&piRef=SYNTHETIC%2FPI%2F0091&piItemId=405&materialId=77",
+        "absent": [
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      "trip": {
+        "pathname": "/site/material-trips",
+        "params": {
+          "piIndentId": "91",
+          "piItemId": "401",
+          "material": "WMM",
+          "uom": "MT",
+          "site": "ALLADURG",
+          "qty": "900"
+        },
+        "quantity": "900",
+        "banner": "PI-Linked Delivery — log each truckload below\n\nMaterial: WMM · Site: ALLADURG · Remaining: 900 MT\n\n← Back to PI",
+        "material": "WMM",
+        "uom": "MT",
+        "site": "ALLADURG",
+        "requests": [
+          {
+            "method": "GET",
+            "path": "/api/sites"
+          },
+          {
+            "method": "GET",
+            "path": "/api/site-material-trips/suggestions?site=ALLADURG"
+          },
+          {
+            "method": "GET",
+            "path": "/api/site-material-trips?dateFrom=2026-10-02&dateTo=2026-10-02&site=ALLADURG&onlyUnassigned=true"
+          },
+          {
+            "method": "GET",
+            "path": "/api/plant-module/equipment"
+          },
+          {
+            "method": "GET",
+            "path": "/api/boq/projects?siteId=11"
+          }
+        ]
+      }
+    },
+    {
+      "viewport": "desktop",
+      "scenario": "fully-delivered",
+      "expectedRemaining": "0",
+      "panel": {
+        "href": "/site/material-trips?piIndentId=91&piItemId=402&material=WMM&uom=MT&site=ALLADURG&qty=0",
+        "progress": "Delivered — 1,500 of 1,500 MT delivered",
+        "plant": "/plant/material-receipts?autoOpen=1&piRef=SYNTHETIC%2FPI%2F0091&piItemId=405&materialId=77",
+        "absent": [
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      "trip": {
+        "pathname": "/site/material-trips",
+        "params": {
+          "piIndentId": "91",
+          "piItemId": "402",
+          "material": "WMM",
+          "uom": "MT",
+          "site": "ALLADURG",
+          "qty": "0"
+        },
+        "quantity": "0",
+        "banner": "PI-Linked Delivery — log each truckload below\n\nMaterial: WMM · Site: ALLADURG · Remaining: 0 MT\n\n← Back to PI",
+        "material": "WMM",
+        "uom": "MT",
+        "site": "ALLADURG",
+        "requests": [
+          {
+            "method": "GET",
+            "path": "/api/sites"
+          },
+          {
+            "method": "GET",
+            "path": "/api/site-material-trips/suggestions?site=ALLADURG"
+          },
+          {
+            "method": "GET",
+            "path": "/api/site-material-trips?dateFrom=2026-10-02&dateTo=2026-10-02&site=ALLADURG&onlyUnassigned=true"
+          },
+          {
+            "method": "GET",
+            "path": "/api/plant-module/equipment"
+          },
+          {
+            "method": "GET",
+            "path": "/api/boq/projects?siteId=11"
+          }
+        ]
+      }
+    },
+    {
+      "viewport": "desktop",
+      "scenario": "overdelivered",
+      "expectedRemaining": "0",
+      "panel": {
+        "href": "/site/material-trips?piIndentId=91&piItemId=403&material=WMM&uom=MT&site=ALLADURG&qty=0",
+        "progress": "Delivered — 1,750 of 1,500 MT delivered",
+        "plant": "/plant/material-receipts?autoOpen=1&piRef=SYNTHETIC%2FPI%2F0091&piItemId=405&materialId=77",
+        "absent": [
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      "trip": {
+        "pathname": "/site/material-trips",
+        "params": {
+          "piIndentId": "91",
+          "piItemId": "403",
+          "material": "WMM",
+          "uom": "MT",
+          "site": "ALLADURG",
+          "qty": "0"
+        },
+        "quantity": "0",
+        "banner": "PI-Linked Delivery — log each truckload below\n\nMaterial: WMM · Site: ALLADURG · Remaining: 0 MT\n\n← Back to PI",
+        "material": "WMM",
+        "uom": "MT",
+        "site": "ALLADURG",
+        "requests": [
+          {
+            "method": "GET",
+            "path": "/api/sites"
+          },
+          {
+            "method": "GET",
+            "path": "/api/site-material-trips/suggestions?site=ALLADURG"
+          },
+          {
+            "method": "GET",
+            "path": "/api/site-material-trips?dateFrom=2026-10-02&dateTo=2026-10-02&site=ALLADURG&onlyUnassigned=true"
+          },
+          {
+            "method": "GET",
+            "path": "/api/plant-module/equipment"
+          },
+          {
+            "method": "GET",
+            "path": "/api/boq/projects?siteId=11"
+          }
+        ]
+      }
+    },
+    {
+      "viewport": "desktop",
+      "scenario": "fractional",
+      "expectedRemaining": "1.125",
+      "panel": {
+        "href": "/site/material-trips?piIndentId=91&piItemId=404&material=WMM&uom=MT&site=ALLADURG&qty=1.125",
+        "progress": "0.5 of 1.625 MT delivered",
+        "plant": "/plant/material-receipts?autoOpen=1&piRef=SYNTHETIC%2FPI%2F0091&piItemId=405&materialId=77",
+        "absent": [
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      "trip": {
+        "pathname": "/site/material-trips",
+        "params": {
+          "piIndentId": "91",
+          "piItemId": "404",
+          "material": "WMM",
+          "uom": "MT",
+          "site": "ALLADURG",
+          "qty": "1.125"
+        },
+        "quantity": "1.125",
+        "banner": "PI-Linked Delivery — log each truckload below\n\nMaterial: WMM · Site: ALLADURG · Remaining: 1.125 MT\n\n← Back to PI",
+        "material": "WMM",
+        "uom": "MT",
+        "site": "ALLADURG",
+        "requests": [
+          {
+            "method": "GET",
+            "path": "/api/sites"
+          },
+          {
+            "method": "GET",
+            "path": "/api/site-material-trips/suggestions?site=ALLADURG"
+          },
+          {
+            "method": "GET",
+            "path": "/api/site-material-trips?dateFrom=2026-10-02&dateTo=2026-10-02&site=ALLADURG&onlyUnassigned=true"
+          },
+          {
+            "method": "GET",
+            "path": "/api/plant-module/equipment"
+          },
+          {
+            "method": "GET",
+            "path": "/api/boq/projects?siteId=11"
+          }
+        ]
+      }
+    },
+    {
+      "viewport": "mobile",
+      "scenario": "partial",
+      "expectedRemaining": "900",
+      "panel": {
+        "href": "/site/material-trips?piIndentId=91&piItemId=401&material=WMM&uom=MT&site=ALLADURG&qty=900",
+        "progress": "600 of 1,500 MT delivered",
+        "plant": "/plant/material-receipts?autoOpen=1&piRef=SYNTHETIC%2FPI%2F0091&piItemId=405&materialId=77",
+        "absent": [
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      "trip": {
+        "pathname": "/site/material-trips",
+        "params": {
+          "piIndentId": "91",
+          "piItemId": "401",
+          "material": "WMM",
+          "uom": "MT",
+          "site": "ALLADURG",
+          "qty": "900"
+        },
+        "quantity": "900",
+        "banner": "PI-Linked Delivery — log each truckload below\n\nMaterial: WMM · Site: ALLADURG · Remaining: 900 MT\n\n← Back to PI",
+        "material": "WMM",
+        "uom": "MT",
+        "site": "ALLADURG",
+        "requests": [
+          {
+            "method": "GET",
+            "path": "/api/sites"
+          },
+          {
+            "method": "GET",
+            "path": "/api/site-material-trips/suggestions?site=ALLADURG"
+          },
+          {
+            "method": "GET",
+            "path": "/api/site-material-trips?dateFrom=2026-10-02&dateTo=2026-10-02&site=ALLADURG&onlyUnassigned=true"
+          },
+          {
+            "method": "GET",
+            "path": "/api/plant-module/equipment"
+          },
+          {
+            "method": "GET",
+            "path": "/api/boq/projects?siteId=11"
+          }
+        ]
+      }
+    },
+    {
+      "viewport": "mobile",
+      "scenario": "fully-delivered",
+      "expectedRemaining": "0",
+      "panel": {
+        "href": "/site/material-trips?piIndentId=91&piItemId=402&material=WMM&uom=MT&site=ALLADURG&qty=0",
+        "progress": "Delivered — 1,500 of 1,500 MT delivered",
+        "plant": "/plant/material-receipts?autoOpen=1&piRef=SYNTHETIC%2FPI%2F0091&piItemId=405&materialId=77",
+        "absent": [
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      "trip": {
+        "pathname": "/site/material-trips",
+        "params": {
+          "piIndentId": "91",
+          "piItemId": "402",
+          "material": "WMM",
+          "uom": "MT",
+          "site": "ALLADURG",
+          "qty": "0"
+        },
+        "quantity": "0",
+        "banner": "PI-Linked Delivery — log each truckload below\n\nMaterial: WMM · Site: ALLADURG · Remaining: 0 MT\n\n← Back to PI",
+        "material": "WMM",
+        "uom": "MT",
+        "site": "ALLADURG",
+        "requests": [
+          {
+            "method": "GET",
+            "path": "/api/sites"
+          },
+          {
+            "method": "GET",
+            "path": "/api/site-material-trips/suggestions?site=ALLADURG"
+          },
+          {
+            "method": "GET",
+            "path": "/api/site-material-trips?dateFrom=2026-10-02&dateTo=2026-10-02&site=ALLADURG&onlyUnassigned=true"
+          },
+          {
+            "method": "GET",
+            "path": "/api/plant-module/equipment"
+          },
+          {
+            "method": "GET",
+            "path": "/api/boq/projects?siteId=11"
+          }
+        ]
+      }
+    },
+    {
+      "viewport": "mobile",
+      "scenario": "overdelivered",
+      "expectedRemaining": "0",
+      "panel": {
+        "href": "/site/material-trips?piIndentId=91&piItemId=403&material=WMM&uom=MT&site=ALLADURG&qty=0",
+        "progress": "Delivered — 1,750 of 1,500 MT delivered",
+        "plant": "/plant/material-receipts?autoOpen=1&piRef=SYNTHETIC%2FPI%2F0091&piItemId=405&materialId=77",
+        "absent": [
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      "trip": {
+        "pathname": "/site/material-trips",
+        "params": {
+          "piIndentId": "91",
+          "piItemId": "403",
+          "material": "WMM",
+          "uom": "MT",
+          "site": "ALLADURG",
+          "qty": "0"
+        },
+        "quantity": "0",
+        "banner": "PI-Linked Delivery — log each truckload below\n\nMaterial: WMM · Site: ALLADURG · Remaining: 0 MT\n\n← Back to PI",
+        "material": "WMM",
+        "uom": "MT",
+        "site": "ALLADURG",
+        "requests": [
+          {
+            "method": "GET",
+            "path": "/api/sites"
+          },
+          {
+            "method": "GET",
+            "path": "/api/site-material-trips/suggestions?site=ALLADURG"
+          },
+          {
+            "method": "GET",
+            "path": "/api/site-material-trips?dateFrom=2026-10-02&dateTo=2026-10-02&site=ALLADURG&onlyUnassigned=true"
+          },
+          {
+            "method": "GET",
+            "path": "/api/plant-module/equipment"
+          },
+          {
+            "method": "GET",
+            "path": "/api/boq/projects?siteId=11"
+          }
+        ]
+      }
+    },
+    {
+      "viewport": "mobile",
+      "scenario": "fractional",
+      "expectedRemaining": "1.125",
+      "panel": {
+        "href": "/site/material-trips?piIndentId=91&piItemId=404&material=WMM&uom=MT&site=ALLADURG&qty=1.125",
+        "progress": "0.5 of 1.625 MT delivered",
+        "plant": "/plant/material-receipts?autoOpen=1&piRef=SYNTHETIC%2FPI%2F0091&piItemId=405&materialId=77",
+        "absent": [
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      "trip": {
+        "pathname": "/site/material-trips",
+        "params": {
+          "piIndentId": "91",
+          "piItemId": "404",
+          "material": "WMM",
+          "uom": "MT",
+          "site": "ALLADURG",
+          "qty": "1.125"
+        },
+        "quantity": "1.125",
+        "banner": "PI-Linked Delivery — log each truckload below\n\nMaterial: WMM · Site: ALLADURG · Remaining: 1.125 MT\n\n← Back to PI",
+        "material": "WMM",
+        "uom": "MT",
+        "site": "ALLADURG",
+        "requests": [
+          {
+            "method": "GET",
+            "path": "/api/sites"
+          },
+          {
+            "method": "GET",
+            "path": "/api/site-material-trips/suggestions?site=ALLADURG"
+          },
+          {
+            "method": "GET",
+            "path": "/api/site-material-trips?dateFrom=2026-10-02&dateTo=2026-10-02&site=ALLADURG&onlyUnassigned=true"
+          },
+          {
+            "method": "GET",
+            "path": "/api/plant-module/equipment"
+          },
+          {
+            "method": "GET",
+            "path": "/api/boq/projects?siteId=11"
+          }
+        ]
+      }
+    }
+  ],
+  "screenshots": [
+    "/home/runner/workspace/screenshots/pi01/B2-desktop-partial-remaining-banner-SYNTHETIC.png",
+    "/home/runner/workspace/screenshots/pi01/B2-desktop-partial-site-trip-SYNTHETIC.png",
+    "/home/runner/workspace/screenshots/pi01/B2-desktop-fractional-site-trip-SYNTHETIC.png",
+    "/home/runner/workspace/screenshots/pi01/B2-mobile-partial-remaining-banner-SYNTHETIC.png",
+    "/home/runner/workspace/screenshots/pi01/B2-mobile-partial-site-trip-SYNTHETIC.png",
+    "/home/runner/workspace/screenshots/pi01/B2-mobile-fractional-site-trip-SYNTHETIC.png"
+  ],
+  "interceptedRequestCount": 40
+}

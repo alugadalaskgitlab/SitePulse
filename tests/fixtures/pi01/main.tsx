@@ -1,10 +1,12 @@
-import React from "react";
+import React, { lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import PurchaseIndents from "../../../client/src/pages/PurchaseIndents";
 import "../../../client/src/index.css";
 
+const isB2Fixture = new URLSearchParams(window.location.search).has("b2") || window.location.pathname === "/site/material-trips";
+const B2Fixture = lazy(() => import("./b2"));
 type AnyRow = Record<string, any>;
 type RequestRecord = { method: string; path: string; body?: any };
 
@@ -139,8 +141,8 @@ queryClient.clear();
 createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={queryClient}>
     <div className="sticky top-0 z-[200] border-b border-purple-300 bg-purple-50 px-4 py-2 text-center text-xs font-bold text-purple-900" data-testid="pi01-fixture-disclosure">
-      PI-01 REAL PURCHASE INDENTS COMPONENT — SYNTHETIC INTERCEPTED API DATA — NO LIVE API OR DATABASE WRITES
+      PI-01 REAL {isB2Fixture ? "DELIVERY PANEL / SITE TRIPS" : "PURCHASE INDENTS"} COMPONENT — SYNTHETIC INTERCEPTED API DATA — NO LIVE API OR DATABASE WRITES
     </div>
-    <PurchaseIndents />
+    {isB2Fixture ? <Suspense fallback={<p>Loading isolated B2 fixture…</p>}><B2Fixture /></Suspense> : <PurchaseIndents />}
   </QueryClientProvider>,
 );

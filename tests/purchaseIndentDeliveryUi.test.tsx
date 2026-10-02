@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { readFileSync } from "node:fs";
-import { deliveryProgress, DestinationFields, PurchaseIndentDeliveryPanel } from "@/components/purchase-indent-delivery";
+import { deliveryQuantities, deliveryProgress, DestinationFields, PurchaseIndentDeliveryPanel } from "@/components/purchase-indent-delivery";
 import { isBulkPiDeliveryItem } from "@shared/purchaseIndentDelivery";
 
 afterEach(cleanup);
@@ -67,9 +67,37 @@ describe("PI-01 delivery display", () => {
     const props = { sites: [{ id: 3, name: "Site A" }], canEdit: true, onSave: vi.fn(), indentId: 21, indentNo: "HLC/PI/A/2026/0001" };
     const { rerender } = render(<PurchaseIndentDeliveryPanel {...props} item={{ ...item, receivingLocation: "site", receivingSiteId: 3 }} />);
     expect(screen.getByText("Log Site Delivery →")).toHaveAttribute("href", expect.stringContaining("/site/material-trips?piIndentId=21&piItemId=12"));
+    expect(new URL(screen.getByText("Log Site Delivery →").getAttribute("href")!, "http://fixture").searchParams.get("qty")).toBe("900");
     rerender(<PurchaseIndentDeliveryPanel {...props} item={{ ...item, receivingLocation: "hmp_plant" }} />);
     expect(screen.getByText("Record Plant Receipt →")).toHaveAttribute("href", expect.stringContaining("/plant/material-receipts?autoOpen=1&piRef="));
     expect(screen.queryByText("Log Site Delivery →")).not.toBeInTheDocument();
+  });
+  it.each([
+    [{ qtyPurchased: 100, totalPurchasedQty: 200, orderedQty: 300, approvedQty: 400, deliveredQty: 20 }, 100, 80],
+    [{ qtyPurchased: 0, totalPurchasedQty: 200, orderedQty: 300, deliveredQty: 20 }, 200, 180],
+    [{ qtyPurchased: null, totalPurchasedQty: 0, orderedQty: 300, deliveredQty: 20 }, 300, 280],
+    [{ orderedQty: 0, approvedQty: 400, deliveredQty: null }, 400, 400],
+    [{ approvedQty: null, deliveredQty: 600 }, 1500, 900],
+    [{ approvedQty: 0, deliveredQty: 0 }, 0, 0],
+    [{ orderedQty: 1500, deliveredQty: 1500 }, 1500, 0],
+    [{ orderedQty: 1500, deliveredQty: 1600 }, 1500, 0],
+    [{ orderedQty: 10.75, deliveredQty: 2.5 }, 10.75, 8.25],
+  ])("uses the progress target for the site link: %j", (values, target, remainingQty) => {
+    const row = { ...item, ...values, description: "WMM & GSB / MIX", receivingLocation: "site", receivingSiteId: 3 };
+    expect(deliveryQuantities(row)).toEqual({ target, delivered: Number(row.deliveredQty ?? 0), remainingQty });
+    render(<PurchaseIndentDeliveryPanel item={row} sites={[{ id: 3, name: "Site A & B" }]} canEdit onSave={vi.fn()} indentId={21} />);
+    const url = new URL(screen.getByText("Log Site Delivery →").getAttribute("href")!, "http://fixture");
+    expect(url.pathname).toBe("/site/material-trips");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      piIndentId: "21", piItemId: "12", material: row.description,
+      uom: "MT", site: "Site A & B", qty: String(remainingQty),
+    });
+  });
+  it.each(["hmp_plant", "rmc_plant"])("keeps the %s receipt URL exactly unchanged", receivingLocation => {
+    render(<PurchaseIndentDeliveryPanel item={{ ...item, materialId: 45, receivingLocation }}
+      sites={[]} canEdit onSave={vi.fn()} indentId={21} indentNo="HLC/PI/A/2026/0001" />);
+    expect(screen.getByText("Record Plant Receipt →")).toHaveAttribute("href",
+      "/plant/material-receipts?autoOpen=1&piRef=HLC%2FPI%2FA%2F2026%2F0001&piItemId=12&materialId=45");
   });
   it("guards bulk spec fields and all legacy spec display surfaces", () => {
     const source = readFileSync("client/src/pages/PurchaseIndents.tsx", "utf8");

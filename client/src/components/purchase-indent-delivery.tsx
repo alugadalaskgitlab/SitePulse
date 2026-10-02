@@ -2,10 +2,17 @@ import { useState } from "react";
 import type { DeliveryEvidence } from "@shared/purchaseIndentDelivery";
 import { Button } from "@/components/ui/button";
 
-export function deliveryProgress(item: { qty: number; qtyPurchased?: number | null; totalPurchasedQty?: number | null; orderedQty?: number | null; approvedQty?: number | null; deliveredQty?: number | null; uom: string; requiredBy?: string | null }, requiredBy?: string | null, today = new Date()) {
+type DeliveryQuantityItem = { qty: number; qtyPurchased?: number | null; totalPurchasedQty?: number | null; orderedQty?: number | null; approvedQty?: number | null; deliveredQty?: number | null };
+
+export function deliveryQuantities(item: DeliveryQuantityItem) {
   const orderedQty = [item.qtyPurchased, item.totalPurchasedQty, item.orderedQty].find(q => Number(q) > 0);
   const target = Number(orderedQty ?? item.approvedQty ?? item.qty);
   const delivered = Number(item.deliveredQty ?? 0);
+  return { target, delivered, remainingQty: Math.max(0, target - delivered) };
+}
+
+export function deliveryProgress(item: DeliveryQuantityItem & { uom: string; requiredBy?: string | null }, requiredBy?: string | null, today = new Date()) {
+  const { target, delivered } = deliveryQuantities(item);
   const counts = `${delivered.toLocaleString("en-IN", { maximumFractionDigits: 3 })} of ${target.toLocaleString("en-IN", { maximumFractionDigits: 3 })} ${item.uom} delivered`;
   if (target <= 0) return "Not required";
   if (delivered >= target) return `Delivered — ${counts}`;
@@ -47,6 +54,7 @@ export function PurchaseIndentDeliveryPanel({ item, requiredBy, sites, canEdit, 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const evidence: DeliveryEvidence[] | undefined = item.deliveryEvidence;
+  const { remainingQty } = deliveryQuantities(item);
   const ordered = ["ordered", "partial", "purchased", "pending_plant_receipt"].includes((item.purchaseStatus || "").toLowerCase()) || Number(item.qtyPurchased) > 0 || Number(item.totalPurchasedQty) > 0;
   const destination = item.receivingLocation === "site" ? `Site — ${sites.find(s => s.id === item.receivingSiteId)?.name || item.receivingSiteId}` : ({ hmp_plant: "HMP Plant", rmc_plant: "RMC Plant" } as Record<string, string>)[item.receivingLocation];
   return <section className="rounded-lg border p-3 space-y-2" data-testid={`delivery-panel-${item.id}`}>
@@ -55,7 +63,7 @@ export function PurchaseIndentDeliveryPanel({ item, requiredBy, sites, canEdit, 
     <p className="text-sm">Destination: {destination || "Not confirmed — confirm before recording delivery"}</p>
     {ordered && destination && indentId && canEdit && <a className="inline-block text-sm underline text-teal-700" data-testid={`delivery-path-${item.id}`}
       href={item.receivingLocation === "site"
-        ? `/site/material-trips?piIndentId=${indentId}&piItemId=${item.id}&material=${encodeURIComponent(item.description)}&uom=${encodeURIComponent(item.uom)}&site=${encodeURIComponent(sites.find(s => s.id === item.receivingSiteId)?.name || "")}`
+        ? `/site/material-trips?piIndentId=${indentId}&piItemId=${item.id}&material=${encodeURIComponent(item.description)}&uom=${encodeURIComponent(item.uom)}&site=${encodeURIComponent(sites.find(s => s.id === item.receivingSiteId)?.name || "")}&qty=${encodeURIComponent(String(remainingQty))}`
         : `/plant/material-receipts?autoOpen=1&piRef=${encodeURIComponent(indentNo || "")}&piItemId=${item.id}${item.materialId ? `&materialId=${item.materialId}` : ""}`}>
       {item.receivingLocation === "site" ? "Log Site Delivery →" : "Record Plant Receipt →"}
     </a>}
