@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { isFilledLabourRow } from "@shared/labourEntry";
+import { LabourContractorInput, LabourHoursInput } from "@/components/LabourEntryFields";
 import { ResourceWorkItemSelect } from "@/components/ResourceWorkItemSelect";
 import { useResourceSuggestions } from "@/hooks/use-resource-suggestions";
 import { equipmentReadinessAttribution, remapAttributionAdvisories } from "@/lib/resourceReadiness";
@@ -77,7 +79,7 @@ import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { EquipmentRowRemove, resolveEquipmentRemovalIndex } from "@/components/EquipmentRowRemove";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { equipmentStatusRequiresReason } from "@shared/equipmentStatus";
-import { withEquipmentCreationStartTime, withNewEquipmentWorkingDefault, meaningfulEquipmentRows, isMeaningfulEquipmentRow, isVisibleEquipmentRow } from "@shared/equipmentUsage";
+import { withNewEquipmentWorkingDefault, meaningfulEquipmentRows, isMeaningfulEquipmentRow, isVisibleEquipmentRow } from "@shared/equipmentUsage";
 import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arrangementStatusHistory";
 import { transitionDieselSource, validateDieselTankBalance } from "@shared/dieselEntryValidation";
 import { normalizeSiteEditEquipmentPayload, normalizeSiteEditProgressPayload } from "@/lib/siteEditPayload";
@@ -183,7 +185,8 @@ interface LabourEntry extends SuggestionRow {
   workerNames?: string[];
   category: string;
   gender: string;
-  count: number;
+  count: number | null;
+  hours?: number | null;
   task: string;
   contractor: string;
   boqItemId: number | null;
@@ -366,13 +369,14 @@ export function mapDprToFormState(dpr: any) {
         category: l.category || "Skilled",
         gender: l.gender || "Male",
         count: l.count,
+        hours: l.hours ?? null,
         task: l.task || "",
         contractor: l.contractor || "",
         boqItemId: l.boqItemId ?? null,
         resourceScope: l.resourceScope ?? null,
         structureId: l.structureId ?? null,
       }))
-    : [{ category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null, workerNames: [], editCreationKey: newLabourRowKey() }];
+    : [{ category: "Skilled", gender: "Male", count: null, task: "", contractor: "", boqItemId: null, structureId: null, workerNames: [], editCreationKey: newLabourRowKey() }];
 
   const materials: MaterialEntry[] = dpr.materials
     ? dpr.materials.map((m: any) => ({
@@ -761,7 +765,7 @@ export default function SiteEdit() {
   };
 
   const [labour, setLabour] = useState<LabourEntry[]>([
-    { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null, workerNames: [], editCreationKey: newLabourRowKey() }
+    { category: "Skilled", gender: "Male", count: null, task: "", contractor: "", boqItemId: null, structureId: null, workerNames: [], editCreationKey: newLabourRowKey() }
   ]);
 
   const [materials, setMaterials] = useState<MaterialEntry[]>([]);
@@ -1302,7 +1306,7 @@ export default function SiteEdit() {
       // opening-reading continuity when equipment is selected.
       setEquipment([...equipment, newResourceRow({ machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, isNew: true, editCreationKey: newEntryKey() })]);
     } else if (section === 'labour') {
-      setLabour([...labour, newResourceRow({ category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null, workerNames: [], editCreationKey: newLabourRowKey() })]);
+      setLabour([...labour, newResourceRow({ category: "Skilled", gender: "Male", count: null, task: "", contractor: "", boqItemId: null, structureId: null, workerNames: [], editCreationKey: newLabourRowKey() })]);
     }
   };
 
@@ -1466,7 +1470,7 @@ export default function SiteEdit() {
         dieselNorm: preview.efficiencyValue ?? eq.dieselNorm ?? null,
       });
     }),
-    labour: labour.filter(l => l.count > 0).map(prepareLabourWorkerRow),
+    labour: labour.filter(row => row.persistedId != null || isFilledLabourRow(row)).map(prepareLabourWorkerRow),
     materials: materials.filter(m => m.material).map(m => ({
       type: m.type, material: m.material, quantity: m.quantity, uom: m.uom,
       vehicleNumber: m.vehicleNumber || undefined, supplier: m.supplier || undefined,
@@ -1475,7 +1479,7 @@ export default function SiteEdit() {
     })),
     sitePurchases: sitePurchases.filter(sp => sp.itemDescription),
     });
-    labourSubmissionRef.current.set(payload, labour.filter(l => l.count > 0));
+    labourSubmissionRef.current.set(payload, labour.filter(row => row.persistedId != null || isFilledLabourRow(row)));
     return payload;
   };
 
@@ -1644,7 +1648,7 @@ export default function SiteEdit() {
       progress: withCutFillReadinessContext(payload.progress as any, siteBoqItems),
     } as any), {
       equipment: readinessEquipment.map(({ index }) => index),
-      labour: labour.flatMap((row, index) => row.count > 0 ? [index] : []),
+      labour: labour.flatMap((row, index) => row.persistedId != null || isFilledLabourRow(row) ? [index] : []),
       materials: materials.flatMap((row, index) => row.material ? [index] : []),
     });
     if (r.mandatory.length > 0) {
@@ -2936,7 +2940,7 @@ export default function SiteEdit() {
                       updated[idx].vehicleNo = selectedEquip.registrationNumber || "";
                       if (updated[idx].isNew && updated[idx].editCreationKey) {
                         updated[idx] = withNewEquipmentWorkingDefault(
-                          withEquipmentCreationStartTime(updated[idx]),
+                          updated[idx],
                           { isNew: true },
                         );
                       }
@@ -3033,7 +3037,7 @@ export default function SiteEdit() {
                           setEquipment(updated);
                         }}
                       >
-                        <SelectTrigger data-testid={`select-entry-type-${idx}`} className="w-48">
+                        <SelectTrigger data-testid={`select-entry-type-${idx}`} className="w-full">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -3226,7 +3230,7 @@ export default function SiteEdit() {
               </>
             );
             const stoppageSlot = (
-              <BreakdownStoppageEditor
+              <BreakdownStoppageEditor usageStatus={entry.usageStatus}
                 draftOnly={isDraftMode}
                 value={entry.breakdowns ?? []}
                 onChange={(breakdowns) => setEquipment(rows => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, breakdowns } : row))}
@@ -3313,7 +3317,7 @@ export default function SiteEdit() {
         </CardHeader>
         <CardContent className="space-y-4">
           {labour.map((entry, idx) => (
-            <div key={idx} className="grid grid-cols-2 md:grid-cols-6 gap-3 p-4 border rounded-lg bg-muted/30 transition-all duration-500" data-dpr-row-key={dprRowKey("labour", idx)} data-testid={"labour-row-" + idx}>
+            <div key={idx} className="grid grid-cols-2 md:grid-cols-7 gap-3 p-4 border rounded-lg bg-muted/30 [&_label]:text-xs [&_label]:normal-case [&_label]:text-slate-700 dark:[&_label]:text-slate-200 [&_input]:placeholder:text-slate-500" data-dpr-row-key={dprRowKey("labour", idx)} data-testid={"labour-row-" + idx}>
               <div>
                 <Label className="text-sm">Category</Label>
                 <Select
@@ -3355,15 +3359,17 @@ export default function SiteEdit() {
                 <Input
                   type="number"
                   min="0"
-                  value={entry.count || ""}
+                  value={entry.count ?? ""}
                   onChange={(e) => {
                     const updated = [...labour];
-                    updated[idx].count = parseInt(e.target.value) || 0;
+                    updated[idx].count = e.target.value === "" ? null : Number(e.target.value);
                     setLabour(updated);
                   }}
                   data-testid={`input-labour-count-${idx}`}
                 />
               </div>
+              <LabourHoursInput value={entry.hours} contractor={entry.contractor} rowIndex={idx}
+                onChange={hours => setLabour(rows => rows.map((row, i) => i === idx ? { ...row, hours } : row))} />
               <div>
                 <Label className="text-sm">Task/Work</Label>
                 <Input
@@ -3379,18 +3385,10 @@ export default function SiteEdit() {
                 />
               </div>
               <div>
-                <Label className="text-sm">Contractor/Gang</Label>
-                <Input
-                  placeholder="e.g. Raju Gang"
-                  value={entry.contractor}
-                  onChange={(e) => {
-                    const updated = [...labour];
-                    updated[idx].contractor = e.target.value.toUpperCase();
-                    setLabour(updated);
-                  }}
-                  className="uppercase"
-                  data-testid={`input-labour-contractor-${idx}`}
-                />
+                <Label className="text-sm">Contractor / gang</Label>
+                <LabourContractorInput value={entry.contractor} rowIndex={idx}
+                  suggestions={labour.map(row => row.contractor)}
+                  onChange={contractor => setLabour(rows => rows.map((row, i) => i === idx ? { ...row, contractor } : row))} />
               </div>
               <div className="flex items-end">
                 <Button 
@@ -3403,13 +3401,13 @@ export default function SiteEdit() {
                   <Trash2 className="w-4 h-4 text-destructive" />
                 </Button>
               </div>
-                <div className="col-span-2 md:col-span-6">
+                <div className="col-span-2 md:col-span-7">
                   <Label className="text-sm text-muted-foreground">Link to Work Item (optional)</Label>
                   <ResourceWorkItemSelect row={entry} items={dprBoqItemsForMapping} activityIds={todaysResourceActivities(progress)}
                     testId={`select-labour-boqitem-${idx}`}
                     onChange={value => setLabour(rows => rows.map((row, index) => index === idx ? chooseResourceItem(row, value) : row))} />
                 </div>
-              <div className="col-span-2 md:col-span-6">
+              <div className="col-span-2 md:col-span-7">
                 <LabourWorkerNames names={entry.workerNames} count={entry.count} rowIndex={idx}
                   onChange={workerNames => setLabour(rows => rows.map((row, i) => i === idx ? { ...row, workerNames } : row))} />
               </div>

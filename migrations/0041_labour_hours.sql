@@ -1,0 +1,1 @@
+ALTER TABLE labour_logs ADD COLUMN hours real NULL;

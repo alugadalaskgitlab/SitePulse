@@ -97,6 +97,8 @@ type EquipmentRowLike = {
 };
 
 type LabourRowLike = {
+  hours?: number | null;
+  workerNames?: string[] | null;
   category?: string | null;
   count?: number | null;
   task?: string | null;
@@ -251,14 +253,16 @@ export function evaluateDprSubmitReadiness(input: DprReadinessInput): DprReadine
     // values such as negatives, NaN, and Infinity. Only null/undefined mean
     // that the count field was left untouched.
     const hasCountEvidence = l?.count != null;
-    const touched = hasText(l?.category) || hasCountEvidence || hasText(l?.task) || hasText(l?.contractor);
+    // UX-FIX-01 E1: the sole authorized readiness change to this baseline.
+    const touched = hasCountEvidence || l?.hours != null || hasText(l?.task) || hasText(l?.contractor) ||
+      !!l?.workerNames?.some(hasText);
     if (!touched) continue; // blank placeholder row
     const label = hasText(l.category) ? (l.category as string).trim() : "Labour row";
     if (!hasText(l.category)) {
       mandatory.push({ section: "labour", label, message: "labour category missing", rowIndex: i });
     }
     if (!(typeof l.count === "number" && Number.isFinite(l.count) && l.count >= 0)) {
-      mandatory.push({ section: "labour", label, message: "labour count must be a finite non-negative number", rowIndex: i });
+      mandatory.push({ section: "labour", label, message: "Enter the number of workers", rowIndex: i });
     }
   }
 

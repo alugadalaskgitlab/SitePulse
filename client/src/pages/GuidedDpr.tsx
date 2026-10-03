@@ -16,6 +16,8 @@
  * This screen deliberately does NOT modify SiteEntry.tsx (Detailed DPR).
  */
 import { useState, useMemo, useEffect, useRef } from "react";
+import { isFilledLabourRow } from "@shared/labourEntry";
+import { LabourContractorInput, LabourHoursInput } from "@/components/LabourEntryFields";
 import { ResourceWorkItemSelect } from "@/components/ResourceWorkItemSelect";
 import { useResourceSuggestions } from "@/hooks/use-resource-suggestions";
 import { useEquipmentResourceSuggestions } from "@/hooks/use-equipment-resource-suggestions";
@@ -91,7 +93,7 @@ import { normalizeExcavationMaterialOutcome } from "@shared/cutFillReconciliatio
 import { APPLICABLE_ARRANGEMENT_STATUSES, blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
-import { currentLocalEquipmentTime, isMeaningfulEquipmentRow, isVisibleEquipmentRow, withNewEquipmentWorkingDefault } from "@shared/equipmentUsage";
+import { isMeaningfulEquipmentRow, isVisibleEquipmentRow, withNewEquipmentWorkingDefault } from "@shared/equipmentUsage";
 import { DPR_REGISTER_PATH, resolveReturnTo } from "@/lib/progressReportNav";
 import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arrangementStatusHistory";
 import { transitionDieselSource, validateDieselTankBalance } from "@shared/dieselEntryValidation";
@@ -169,7 +171,7 @@ type SimpleEquipmentRow = GuidedEquipmentRow & {
   workingDefaultedInGuided?: true;
 };
 const createGuidedEquipmentRow = (): SimpleEquipmentRow => ({
-  ...newGuidedEquipmentRowForCreation(), passthrough: newResourceRow({}), newlyCreatedInGuided: true,
+  ...newGuidedEquipmentRowForCreation(), passthrough: newResourceRow({ startTime: "", endTime: "", usageStatus: "working" }), newlyCreatedInGuided: true, workingDefaultedInGuided: true,
 });
 // Batch 06C §12–13: Guided labour carries the SAME fields as Detailed —
 // gender, task and the optional Work Item linkage are preserved, never
@@ -179,6 +181,7 @@ interface SimpleLabourRow extends SuggestionRow {
   editCreationKey?: string;
   workerNames?: string[];
   category: string; gender: string; count: number | null; contractor: string; task: string;
+  hours?: number | null;
   boqItemId: number | null; structureId: string | null;
 }
 const newLabourRow = (): SimpleLabourRow =>
@@ -476,6 +479,7 @@ export default function GuidedDpr() {
       workerNames: readLabourWorkerNames(l),
       category: l.category || "", gender: l.gender || "",
       count: l.count != null ? Number(l.count) : null,
+      hours: l.hours ?? null,
       contractor: l.contractor || "", task: l.task || "",
       boqItemId: l.boqItemId ?? null, structureId: l.structureId ?? null,
       resourceScope: l.resourceScope ?? null,
@@ -1486,10 +1490,10 @@ export default function GuidedDpr() {
         }),
       // Batch 06C §12: real values round-trip — gender / work-item / structure
       // links are never wiped by a Guided save.
-      labour: labour.filter((l) => l.category || l.count != null || l.task || l.contractor || l.boqItemId != null || l.structureId || l.workerNames?.some(name => name.trim())).map((l) => prepareLabourWorkerRow({
+      labour: labour.filter(row => row.persistedId != null || isFilledLabourRow(row)).map((l) => prepareLabourWorkerRow({
         ...(l.persistedId != null ? { persistedId: l.persistedId } : {}),
         ...(l.workerNames !== undefined ? { workerNames: l.workerNames } : {}),
-        category: l.category, gender: l.gender, count: l.count ?? 0, task: l.task,
+        category: l.category, gender: l.gender, count: l.count, hours: l.hours ?? null, task: l.task,
         contractor: l.contractor, boqItemId: l.boqItemId, resourceScope: l.resourceScope ?? null, structureId: l.structureId,
       })),
       materials: unmanagedSectionsRef.current.materials,
@@ -1522,7 +1526,7 @@ export default function GuidedDpr() {
         throw new Error(dieselTankError);
       }
       const payload = buildPayload(asDraft);
-      const sentLabour = labour.filter((l) => l.category || l.count != null || l.task || l.contractor || l.boqItemId != null || l.structureId || l.workerNames?.some(name => name.trim()));
+      const sentLabour = labour.filter(row => row.persistedId != null || isFilledLabourRow(row));
       const payloadRows = equipment.filter((e) =>
         isMeaningfulEquipmentRow({ ...e.passthrough, machine: e.machine, vehicleNo: e.vehicleNo, operator: e.operator, task: e.task }),
       );
@@ -2501,10 +2505,7 @@ export default function GuidedDpr() {
                               if (j !== i) return r;
                               const selectedRow = applyGuidedEquipmentMasterSelection(r, sel);
                               const nextPt = { ...selectedRow.passthrough } as Record<string, any>;
-                              // New rows get their convenience start time only
-                              // after the engineer deliberately identifies a
-                              // machine. Hydrated history is never modified.
-                              if (r.newlyCreatedInGuided && !nextPt.startTime) nextPt.startTime = currentLocalEquipmentTime();
+                              // Engineers enter the actual start/end; picking equipment does not supply clock times.
                               // Same rule as Detailed: owned equipment is always
                               // Time / Meter — trip fields don't apply.
                               if (sel.ownership !== "hired") {
@@ -2634,7 +2635,7 @@ export default function GuidedDpr() {
                       {showEntryType && (
                         <div className="flex items-center gap-2">
                           <div className="flex-1">
-                            <Label className="text-xs text-muted-foreground">Deployment / Usage Type</Label>
+                             <Label className="text-xs text-muted-foreground">Entry type</Label>
                             <Select
                               value={entryType}
                               onValueChange={(v) => {
@@ -2787,7 +2788,7 @@ export default function GuidedDpr() {
                          equipmentPickerSlot={equipmentPickerSlot}
                          ownerTypeSlot={ownerTypeSlot}
                          dieselSourceSlot={dieselSourceSlot}
-                         stoppageSlot={<BreakdownStoppageEditor
+                         stoppageSlot={<BreakdownStoppageEditor usageStatus={pt.usageStatus}
                            draftOnly
                            value={(pt.breakdowns ?? []) as StagedBreakdown[]}
                            onChange={(breakdowns) => setEquipment(rows => rows.map((row, rowIndex) =>
@@ -2844,7 +2845,7 @@ export default function GuidedDpr() {
                 <Label className="mb-1 block font-semibold">Labour</Label>
                 {labour.map((l, i) => (
                   <div key={i} className="mb-3 space-y-1.5 transition-all duration-500" data-dpr-row-key={dprRowKey("labour", i)} data-testid={"labour-row-" + String(i)}>
-                    <div className="grid grid-cols-[1fr_90px_70px_auto] gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-[1fr_90px_80px_100px_auto] gap-2">
                       <Select value={l.category} onValueChange={(v) => setLabour((p) => p.map((r, j) => j === i ? { ...r, category: v } : r))}>
                         <SelectTrigger data-testid={`select-labour-cat-${i}`}><SelectValue placeholder="Category" /></SelectTrigger>
                         <SelectContent>{LABOUR_CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
@@ -2854,11 +2855,15 @@ export default function GuidedDpr() {
                         <SelectTrigger data-testid={`select-labour-gender-${i}`}><SelectValue placeholder="Gender" /></SelectTrigger>
                         <SelectContent>{GENDER_OPTIONS.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
                       </Select>
-                      <Input type="number" placeholder="Nos" value={l.count ?? ""} onChange={(ev) => setLabour((p) => p.map((r, j) => j === i ? { ...r, count: ev.target.value === "" ? null : Number(ev.target.value) } : r))} data-testid={`input-labour-count-${i}`} />
+                      <div><Label className="text-xs text-slate-700">Count</Label><Input type="number" min="0" placeholder="Nos" value={l.count ?? ""} onChange={(ev) => setLabour((p) => p.map((r, j) => j === i ? { ...r, count: ev.target.value === "" ? null : Number(ev.target.value) } : r))} data-testid={`input-labour-count-${i}`} /></div>
+                      <LabourHoursInput value={l.hours} contractor={l.contractor} rowIndex={i}
+                        onChange={hours => setLabour(rows => rows.map((row, j) => j === i ? { ...row, hours } : row))} />
                       <Button variant="ghost" size="icon" onClick={() => setLabour((p) => p.filter((_, j) => j !== i))}><Trash2 className="w-4 h-4" /></Button>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                      <Input placeholder="Agency / contractor" value={l.contractor} onChange={(ev) => setLabour((p) => p.map((r, j) => j === i ? { ...r, contractor: ev.target.value } : r))} data-testid={`input-labour-contractor-${i}`} />
+                      <div><Label className="text-xs text-slate-700">Contractor / gang</Label><LabourContractorInput value={l.contractor} rowIndex={i}
+                        suggestions={labour.map(row => row.contractor)}
+                        onChange={contractor => setLabour(rows => rows.map((row, j) => j === i ? { ...row, contractor } : row))} /></div>
                       <Input placeholder="Task (e.g. RE-CLEARING VEGETATION)" value={l.task} onChange={(ev) => setLabour((p) => p.map((r, j) => j === i ? { ...r, task: ev.target.value } : r))} data-testid={`input-labour-task-${i}`} />
                     </div>
                     {/* Batch 06C §13: optional Work Item linkage — blank for

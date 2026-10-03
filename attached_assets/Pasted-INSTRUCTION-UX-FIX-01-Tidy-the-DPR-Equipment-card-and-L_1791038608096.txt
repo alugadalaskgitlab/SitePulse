@@ -1,0 +1,92 @@
+INSTRUCTION UX-FIX-01: Tidy the DPR Equipment card and Labour rows (entry screens only) — readable, shorter, sensible defaults
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is a small usability batch for the LIVE app that HLC uses every day. Change only what is listed. It applies to the DPR ENTRY screens: Detailed DPR / section editor (client/src/pages/SiteEntry.tsx), Guided DPR (GuidedDpr.tsx), Edit DPR (SiteEdit.tsx), and the shared components they use (client/src/components/DprEquipmentCompact.tsx, BreakdownStoppageEditor.tsx, LabourWorkerNames.tsx, ResourceWorkItemSelect.tsx).
+Do NOT touch: read-only DPR views (SiteReport.tsx, DprDetails.tsx) except the one labour "Hours" column in Part F; reports; hire billing; Equipment Performance; any hours/km/diesel/expected-diesel calculation; any stored value of existing rows.
+A mockup image (UX-FIX-01_Equipment_Labour_Mockup.png) is attached. Match its layout and wording. Keep the app's existing colours, fonts and components (shadcn) — this is a tidy-up, not a new design.
+Do not publish automatically. STOP after this batch and report back.
+
+ORDER / COORDINATION
+- BOQ-LINK-01 (Part B) is already in this codebase and is being verified. Build this batch ON TOP of it. Do not undo or change any BOQ-LINK-01 behaviour (suggestions, General, advisory, resource_scope).
+- LABOUR-01 worker names: this batch deliberately changes how the worker-names block opens (Part E3). Update only the LABOUR-01 tests that assert the old two-step open; keep every other LABOUR-01 test unchanged and passing.
+- No other DPR-screen batch may run at the same time.
+
+=====================================================================
+PART A — EQUIPMENT CARD LAYOUT (DprEquipmentCompact, all editable modes)
+=====================================================================
+A1. Remove the numbered group headings ("01 / Equipment picker" … "06 / Work / BOQ assignment"). Use short plain headings only where shown in the mockup: "Readings & times", "Diesel", "Work done on", "Breakdown / stoppage".
+A2. Top block, one row on desktop: Equipment (picker) · Operator · Entry type. Owner/vendor and hire type stay in the card header (as today). Remove the "Master default hire type" and "Effective hire / entry type" detail lines from the editable card.
+A3. NEW ROW: Status (narrow select, width of the longest option + small margin) and Task / work done (free text, takes the rest of the row). The Task box is the SAME field as today's "Non-BOQ / Incidental Work (optional)" textarea (row.task). Move it here, single-line input (it may grow), placeholder "e.g. Subgrade cutting Ch 2+100 to 2+300". Delete the old "Non-BOQ / Incidental Work" box and its help sentence from the editable card. No data change.
+A4. Readings & times row: Opening meter · Closing meter · Start · End · Meter hours (calculated) · Clock time (calculated). Meter hours and Clock time must be shown in this row in ALL modes, including sectionPresentation (today they are hidden there and moved to a top strip). Odometer machines show "Distance (km)" instead of Meter hours, as today. Use the existing calculated values — no new arithmetic.
+A5. Remove the expanded-card summary strip (Working Hours / Clock duration / Diesel issued / Tank status) in sectionPresentation. Keep the one-line summary that shows when a card is COLLAPSED.
+A6. Diesel block unchanged in behaviour; heading "Diesel". Tank fields still appear only for plant-stock diesel, as today.
+A7. Work done on: the existing EquipmentActivityAllocationEditor (unchanged behaviour), then a link "+ Split time across another item" (same action as today's "Add Item"), then the "General — not for any one work item (e.g. camp DG, water tanker)" checkbox MOVED here from the top of the card. Keep its test id, its confirm prompt and its behaviour exactly. Remove the line "Physical work segments · BOQ only".
+A8. Breakdown / stoppage: collapsed to one link "+ Add breakdown / stoppage" until a row exists or the status is Breakdown (see Part B). Remove the sentences "Timed interruptions are separate from the machine-day daily status." and "Saved with this equipment row in the DPR draft. Draft saves do not create or update maintenance ledger entries."
+A9. Readability: inside the equipment card and labour rows, field labels become normal-case 12–13px, dark slate (e.g. text-slate-700/800), not 10px uppercase grey. Placeholders slate-500. Numbers shown without 3 decimals: hours 1 decimal ("6.0 h", "1.5 h"), litres whole or 1 decimal.
+
+=====================================================================
+PART B — STATUS DEFAULT AND BREAKDOWN
+=====================================================================
+B1. Every NEW equipment row starts with Status = Working (Detailed, section editor, Guided, Edit). The existing auto-working logic (autoWorkingStatus / withNewEquipmentWorkingDefault / workingDefaultedInGuided) may be reused; make all three screens behave the same.
+B2. Remove the option "Not specified (legacy behavior)" / "Not specified" from the status select for NEW rows (both the in-card select and the header chip select). For SAVED rows whose status is null, show the chip text "Not recorded" and still allow choosing a status. Never change a saved row's status unless the user chooses one.
+B3. When Status is Breakdown (or Idle): keep today's required Reason box and today's auto-fill (closing = opening, diesel 0) exactly. For Breakdown ALSO auto-expand the Breakdown / stoppage area and show a prominent button "Add breakdown details (time, whose cost, photo)". Do NOT auto-create a breakdown row — breakdown rows feed maintenance and hire-billing exceptions, so a row must only exist when the engineer adds it.
+B4. Breakdown / stoppage row (BreakdownStoppageEditor): first line From · To · Hours (calculated, 1 decimal, not 3) · Reason. Second line Responsibility · Repair cost by · Deduct from hire bill? (the existing "Debitable to vendor" checkbox, shown as a Yes/No select or checkbox with this label) · Photo. Remarks under a small "More" toggle. Relabel only — every existing field is kept and saved exactly as today.
+
+=====================================================================
+PART C — START TIME DEFAULT
+=====================================================================
+C1. Stop filling Start time with the current clock time when a machine is picked (withEquipmentCreationStartTime / currentLocalEquipmentTime, SiteEntry ~3330 and any Guided/Edit equivalent). New rows start with Start and End EMPTY. (Engineers fill DPRs in the evening; today this creates a wrong start like 19:30 and a false "end time required".)
+C2. Do not change the existing rule "start without end / end without start" — it stays mandatory. Report if any other code depends on the auto start time.
+
+=====================================================================
+PART D — SECTION EDITOR BUTTONS
+=====================================================================
+D1. Section editor bottom bar (SiteEntry sectionEditor, ~4008): replace "Save Section" + "Save & return" with two buttons: "Cancel" and "Save & return" (primary). Save & return = today's Save & return. Cancel = return to the section menu WITHOUT saving; if there are unsaved changes ask "Discard changes?" (reuse confirmLeave if suitable).
+D2. Update texts that mention "Save Section" (e.g. the photo-failure message ~1846, the help line ~4000).
+
+=====================================================================
+PART E — LABOUR ROWS (Detailed/section editor, Guided labour step, Edit)
+=====================================================================
+E1. Blank rows: a labour row the user has not filled must not raise an error and must not be saved. A row counts as FILLED only if any of these has a value: count, hours, task, contractor/gang, worker names. The pre-selected Category/Gender and a suggested (untouched) work item do NOT make a row filled.
+   - Apply in shared/dprSubmitReadiness.ts (labour "touched" test) and in each screen's save payload filter (e.g. SiteEntry ~1489) so untouched rows are dropped.
+   - A filled row with no count still gets the mandatory error, reworded in plain English: "Enter the number of workers".
+   - This is the ONLY intended change to a mandatory rule in this batch. Update the BOQ-LINK-01 mandatory-parity fixture for this one case only, and show the before/after in the report.
+E2. Contractor / gang: becomes a select-or-type field. Options: the contractor/gang names already used on this site's DPRs (recent first), "Direct / local hire", and "Other — type a name". Stored as plain text in the existing contractor column (no schema change). Typing a new name still works.
+E3. Worker names (LabourWorkerNames): one tap on "+ Add worker names" opens the list with ONE empty name box already focused. Once open, the toggle turns into a plain heading "Worker names (n)" (no second "add" step to start). "+ Add name" and remove buttons stay. Saving, cleaning and storing names unchanged.
+E4. NEW optional field "Hours" on each labour row, next to Count. Blank = full day. Allowed 0.5–24. Help text only on the row when contractor is "Direct / local hire": "Hours blank = full day".
+   Schema: ADD COLUMN labour_logs.hours real NULL (nullable, no default). Carry it through create, draft PATCH, submit, edit-as-copy (dpr_versions), clone, and detail APIs exactly like resource_scope in BOQ-LINK-01. Existing rows stay NULL.
+   Do NOT change any man-day / labour report calculation in this batch (reports keep counting heads as today; that is a later batch).
+
+=====================================================================
+PART F — ONE READ-ONLY ADDITION
+=====================================================================
+F1. Site Report labour table: show the Hours value when present ("4 h"), else nothing. No other read-only change.
+
+SCHEMA SAFETY
+- Only: ALTER TABLE labour_logs ADD COLUMN hours real NULL; Paste the generated SQL. Before any publish, show the Publish database-changes preview: it must contain only this ADD COLUMN plus the three BOQ-LINK-01 resource_scope ADD COLUMNs. Any DROP/RENAME/type change → stop and report.
+
+WHAT NOT TO DO
+- No change to stored values of existing DPRs, hours/km/diesel/expected/tank logic, hire billing, maintenance creation, Equipment Performance, reports (except F1), BOQ-LINK-01 behaviour.
+- Do not auto-create breakdown rows. Do not auto-fill start/end times.
+- Do not remove any field from the data model; this batch only moves, relabels and hides behind links.
+
+TESTS (unit tests + screenshots from the running DEVELOPMENT app, signed in with a dev test login — not fixtures only)
+A. Section editor, new hired machine: card matches the mockup — Status = Working, Task beside Status, Meter hours + Clock time in the readings row, no numbered headings, no top summary strip, General inside "Work done on". Screenshot desktop + phone width.
+B. Picking a machine leaves Start/End empty; no "end time required" until a start is typed.
+C. Old saved DPR with a null-status machine opens showing "Not recorded"; nothing re-saved; values identical.
+D. Status → Breakdown: reason required, closing = opening, diesel 0, breakdown area opens with "Add breakdown details" button, NO breakdown row created unless tapped. Add one row: From/To/Hours (1 decimal)/Reason/Responsibility/Repair cost by/Deduct/Photo; save and reopen → all fields identical to before this batch's storage.
+E. Old "incidental task" text on a saved DPR appears in the new Task box; edit + save keeps it in the same column.
+F. Labour: open the Labour section, add a row, enter nothing, Save & return → no error, no row saved. Enter only a task → "Enter the number of workers".
+G. Contractor "Direct / local hire", Count 2, Hours 4 → saved; reopen shows the same; Site Report shows "4 h". Old rows show no hours.
+H. Worker names open in one tap with the cursor in the first box; LABOUR-01 save/reopen still works.
+I. Cancel with unsaved changes asks "Discard changes?"; Cancel with none returns straight to the section menu.
+J. Guided DPR and Edit DPR show the same status default, Task position, labour rules.
+K. Full test suite: report counts vs the BOQ-LINK-01 final run (4,084 passed / 55 failed). No new failures except deliberate, listed test updates (LABOUR-01 open behaviour, mandatory-parity labour case, any source-string test pinned to removed text) — list each one changed and why.
+
+REPORT BACK
+1. Files changed; migration SQL.
+2. Screenshots for A–J (dev app, signed in), desktop and phone width for A.
+3. Every test you updated and the reason.
+4. Anything noticed but not touched.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

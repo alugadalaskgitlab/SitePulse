@@ -4536,6 +4536,7 @@ export class DatabaseStorage implements IStorage {
             category: l.category,
             gender: l.gender,
             count: l.count,
+            ...(l.hours !== undefined ? { hours: l.hours } : {}),
             task: l.task, contractor: l.contractor, boqItemId: l.boqItemId,
             ...(l.resourceScope !== undefined ? { resourceScope: l.resourceScope } : {}),
             structureId: l.structureId, workerNames: l.workerNames,

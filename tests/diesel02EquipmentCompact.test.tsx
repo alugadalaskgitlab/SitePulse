@@ -57,7 +57,7 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
     expect(screen.getAllByTestId("equipment-compact-start-0")).toHaveLength(1);
     expect(screen.getAllByTestId("equipment-compact-end-0")).toHaveLength(1);
     expect(screen.getAllByTestId("equipment-compact-diesel-0")).toHaveLength(1);
-    expect(screen.getByTestId("equipment-compact-working-hours-0").textContent).toContain("9.000 h");
+    expect(screen.getByTestId("equipment-compact-working-hours-0").textContent).toContain("9.0 h");
     expect(screen.getByTestId("equipment-compact-opening-meter-0")).toBeTruthy();
     expect(screen.getByTestId("equipment-compact-closing-meter-0")).toBeTruthy();
     expect(screen.queryByTestId("equipment-compact-opening-tank-0")).toBeNull();
@@ -112,7 +112,7 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
     expect(screen.getByText("Opening Odometer")).toBeTruthy();
     expect(screen.getByText("Closing Odometer")).toBeTruthy();
     expect(screen.getByTestId("equipment-compact-working-hours-0").textContent).toContain("50.00 km");
-    expect(screen.getByText("Clock Duration").parentElement?.textContent).toContain("9 h");
+    expect(screen.getByText("Clock time").parentElement?.textContent).toContain("9.0 h");
   });
 
   it("keeps identity visible by default and can suppress only the duplicate identity block", () => {
@@ -136,7 +136,7 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
     );
     expect(screen.queryByText("DAILY HIRE ROLLER")).toBeNull();
     expect(screen.queryByTestId("equipment-owner-0")).toBeNull();
-    expect(screen.getByTestId("equipment-compact-status-chip-0").textContent).toContain("Not specified");
+    expect(screen.getByTestId("equipment-compact-status-chip-0").textContent).toContain("Not recorded");
   });
 
   it("shows tank observations and confirmation only for editable plant-stock fuel", () => {

@@ -54,9 +54,9 @@ describe("LABOUR-01 optional worker names", () => {
     const onChange = vi.fn();
     const { rerender } = render(<LabourWorkerNames names={[]} count={1} rowIndex={0} onChange={onChange} />);
     fireEvent.click(screen.getByTestId("button-labour-workers-0"));
-    fireEvent.click(screen.getByTestId("button-add-labour-worker-0"));
     expect(onChange).toHaveBeenLastCalledWith([""]);
     rerender(<LabourWorkerNames names={[""]} count={1} rowIndex={0} onChange={onChange} />);
+    expect(document.activeElement).toBe(screen.getByTestId("input-labour-worker-0-0"));
     fireEvent.change(screen.getByTestId("input-labour-worker-0-0"), { target: { value: "  Raju " } });
     expect(onChange).toHaveBeenLastCalledWith(["  Raju "]);
     rerender(<LabourWorkerNames names={["Raju", "Sita"]} count={1} rowIndex={0} onChange={onChange} />);

@@ -322,6 +322,7 @@ export const equipmentActivitySegmentBoqItems = pgTable("equipment_activity_segm
 // Labour Log
 export const labourLogs = pgTable("labour_logs", {
   resourceScope: text("resource_scope"),
+  hours: real("hours"),
   id: serial("id").primaryKey(),
   dprId: integer("dpr_id").notNull(),
   category: text("category").notNull(), // Skilled, Unskilled
@@ -1034,7 +1035,9 @@ export const insertEquipmentSchema = createInsertSchema(equipmentLogs).omit({ id
 export const insertEquipmentActivityAllocationSchema = createInsertSchema(equipmentActivityAllocations).omit({ id: true, equipmentLogId: true, createdAt: true });
 export const insertEquipmentActivitySegmentSchema = createInsertSchema(equipmentActivitySegments).omit({ id: true, equipmentLogId: true, createdAt: true });
 export const insertEquipmentActivitySegmentBoqItemSchema = createInsertSchema(equipmentActivitySegmentBoqItems).omit({ id: true, segmentId: true, createdAt: true });
-export const insertLabourSchema = createInsertSchema(labourLogs).omit({ id: true, dprId: true });
+export const insertLabourSchema = createInsertSchema(labourLogs).omit({ id: true, dprId: true }).extend({
+  hours: z.number().finite().min(0.5).max(24).nullable().optional(),
+});
 export const insertMaterialSchema = createInsertSchema(materialLogs).omit({ id: true, dprId: true });
 export const insertSitePurchaseSchema = createInsertSchema(sitePurchases).omit({ id: true, dprId: true, documentStatus: true, finalSubmittedAt: true, finalSubmittedBy: true });
 export const insertPlantReportSchema = createInsertSchema(plantReports).omit({ id: true, createdAt: true });

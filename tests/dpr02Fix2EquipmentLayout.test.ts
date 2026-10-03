@@ -28,7 +28,7 @@ describe("DPR-02 Fix 2 equipment layout", () => {
     expect(guided).not.toContain("badge-eq-owner-${i}");
     expect(siteEdit).not.toContain("text-equipment-owner-${idx}");
     expect(compact).toContain('<Detail label="Owner / vendor"');
-    expect(compact).toContain('<Detail label="Master default hire type"');
+    expect(compact).not.toContain('<Detail label="Master default hire type"');
     expect(guided).toContain("ownerTypeSlot={ownerTypeSlot}");
     expect(siteEdit).toContain("ownerTypeSlot={ownerTypeSlot}");
     expect(siteEntry).not.toContain("hideIdentity");

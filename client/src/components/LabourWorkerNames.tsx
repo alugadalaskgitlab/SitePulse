@@ -61,16 +61,16 @@ export function LabourWorkerNames({ names, count, onChange, rowIndex }: {
   const filled = cleanLabourWorkerNames(existing).length;
   return (
     <div className="min-w-0" data-testid={`labour-workers-${rowIndex}`}>
-      <Button type="button" variant="ghost" size="sm" className="h-11 px-2 text-muted-foreground"
+      {open ? <p className="mb-2 text-xs font-medium text-slate-700 dark:text-slate-200">Worker names ({filled})</p> : <Button type="button" variant="ghost" size="sm" className="h-11 px-2 text-muted-foreground"
         aria-expanded={open} data-testid={`button-labour-workers-${rowIndex}`}
-        onClick={() => setOpen(!open)}>
+        onClick={() => { if (!existing.length) onChange([""]); setOpen(true); }}>
         {filled ? `Worker names (${filled})` : "+ Add worker names"}
-      </Button>
+      </Button>}
       {open && (
         <div className="space-y-2 rounded-md border p-2" data-testid={`labour-workers-editor-${rowIndex}`}>
           {existing.map((name, index) => (
             <div key={index} className="flex min-w-0 gap-2">
-              <Input aria-label={`Worker name ${index + 1}`} placeholder="Worker name" value={name}
+              <Input autoFocus={index === 0} aria-label={`Worker name ${index + 1}`} placeholder="Worker name" value={name}
                 data-testid={`input-labour-worker-${rowIndex}-${index}`}
                 onChange={event => onChange(existing.map((value, i) => i === index ? event.target.value : value))} />
               <Button type="button" size="icon" variant="ghost" className="h-11 w-11 shrink-0"

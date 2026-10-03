@@ -32,9 +32,9 @@ describe("DPR-03 equipment incidental work field", () => {
       />,
     );
 
-    const task = screen.getByLabelText("Non-BOQ / Incidental Work (optional)") as HTMLTextAreaElement;
+    const task = screen.getByLabelText("Task / work done") as HTMLInputElement;
     expect(task.value).toBe("");
-    expect(screen.getByText(/Use this only for work that has no BOQ item and is not payable progress/)).toBeTruthy();
+    expect(screen.queryByText(/Use this only for work that has no BOQ item and is not payable progress/)).toBeNull();
     expect(screen.getByText("No BOQ item assigned to this machine day.")).toBeTruthy();
     expect(screen.queryByText(/select a BOQ Item/i)).toBeNull();
 

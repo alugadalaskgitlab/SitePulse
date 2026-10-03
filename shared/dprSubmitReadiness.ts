@@ -21,6 +21,7 @@
 import { excavationMaterialOutcomeIssue } from "./cutFillReconciliation";
 import { equipmentStatusRequiresReason } from "./equipmentStatus";
 import { isMeaningfulEquipmentRow } from "./equipmentUsage";
+import { isFilledLabourRow } from "./labourEntry";
 import { resolveEquipmentBoqHours, calculateEquipmentAllocationHours } from "./equipmentActivityAllocations";
 
 export type DprReadinessSection = "activities" | "equipment" | "labour" | "materials";
@@ -100,6 +101,8 @@ type EquipmentRowLike = {
 };
 
 type LabourRowLike = {
+  hours?: number | null;
+  workerNames?: string[] | null;
   resourceScope?: string | null;
   boqItemId?: number | null;
   category?: string | null;
@@ -257,15 +260,14 @@ export function evaluateDprSubmitReadiness(input: DprReadinessInput): DprReadine
     // A count value is evidence that the row was touched, including invalid
     // values such as negatives, NaN, and Infinity. Only null/undefined mean
     // that the count field was left untouched.
-    const hasCountEvidence = l?.count != null;
-    const touched = hasText(l?.category) || hasCountEvidence || hasText(l?.task) || hasText(l?.contractor);
+    const touched = isFilledLabourRow(l ?? {});
     if (!touched) continue; // blank placeholder row
     const label = hasText(l.category) ? (l.category as string).trim() : "Labour row";
     if (!hasText(l.category)) {
       mandatory.push({ section: "labour", label, message: "labour category missing", rowIndex: i });
     }
     if (!(typeof l.count === "number" && Number.isFinite(l.count) && l.count >= 0)) {
-      mandatory.push({ section: "labour", label, message: "labour count must be a finite non-negative number", rowIndex: i });
+      mandatory.push({ section: "labour", label, message: "Enter the number of workers", rowIndex: i });
     }
   }
 

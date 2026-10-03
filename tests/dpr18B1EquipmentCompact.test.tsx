@@ -20,7 +20,8 @@ describe("DPR18 B1 grouped equipment card", () => {
     expect(screen.queryByText("Effective hire / entry type")).toBeNull();
     rerender(<DprEquipmentCompact row={base} onChange={vi.fn()}
       equipment={{ ownership: "hired" }} ownerTypeSlot={<button>Existing hire override</button>} />);
-    expect(screen.getByText("Not configured")).toBeTruthy();
+    expect(screen.queryByText("Master default hire type")).toBeNull();
+    expect(screen.queryByText("Effective hire / entry type")).toBeNull();
   });
   it.each([undefined, null, "working"] as const)("shows stored status %s without writing on mount", usageStatus => {
     const onChange = vi.fn();
@@ -28,10 +29,10 @@ describe("DPR18 B1 grouped equipment card", () => {
     const chip = screen.getByTestId("equipment-compact-status-chip-0");
     expect(chip.getAttribute("role")).toBe("combobox");
     expect(chip.getAttribute("aria-label")).toContain("Daily status");
-    expect(chip.textContent).toContain(usageStatus === "working" ? "Working" : "Not specified");
+    expect(chip.textContent).toContain(usageStatus === "working" ? "Working" : "Not recorded");
     expect(onChange).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Expand Compactor" }));
-    expect(screen.getByTestId("equipment-compact-usage-status-0").textContent).toContain(usageStatus === "working" ? "Working" : "Not specified");
+    expect(screen.getByTestId("equipment-compact-usage-status-0").textContent).toContain(usageStatus === "working" ? "Working" : "Not recorded");
   });
 
   it.each([
@@ -60,15 +61,15 @@ describe("DPR18 B1 grouped equipment card", () => {
       ownerTypeSlot={<button type="button">Caller hire override</button>}
       dieselSourceSlot={<button type="button">Caller source extras</button>}
       stoppageSlot={<button type="button">Caller stoppage trigger</button>} />);
-    const ids = ["picker", "owner", "readings", "diesel", "stoppage", "work"].map(name =>
+    const ids = ["picker", "owner", "readings", "diesel", "work", "stoppage"].map(name =>
       screen.getByTestId(`equipment-compact-group-${name}-0`));
     for (let i = 1; i < ids.length; i++) {
       expect(ids[i - 1].compareDocumentPosition(ids[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
     expect(ids[0].textContent).toContain("Caller equipment picker");
-    expect(ids[1].textContent).toContain("Caller hire override");
+    expect(ids[0].textContent).toContain("Caller hire override");
     expect(ids[3].textContent).toContain("Caller source extras");
-    expect(ids[4].textContent).toContain("Caller stoppage trigger");
+    expect(ids[5].textContent).toContain("Caller stoppage trigger");
     expect(onChange).not.toHaveBeenCalled();
   });
 
@@ -77,12 +78,13 @@ describe("DPR18 B1 grouped equipment card", () => {
       stoppageSlot={<button type="button">Caller stoppage trigger</button>} />);
     const stoppage = screen.getByTestId("equipment-compact-group-stoppage-0");
     const work = screen.getByTestId("equipment-compact-group-work-0");
-    expect(screen.getByTestId("section-equipment-summary-0")).toBeTruthy();
+    expect(screen.queryByTestId("section-equipment-summary-0")).toBeNull();
     expect(stoppage.classList.contains("hidden")).toBe(true);
     expect(work.classList.contains("hidden")).toBe(true);
     expect(screen.getByText("Caller stoppage trigger")).toBeTruthy();
-    expect(screen.getByTestId("equipment-compact-incidental-task-0")).toBeTruthy();
+    expect(screen.queryByTestId("equipment-compact-incidental-task-0")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Expand Compactor" }));
+    expect(screen.getByTestId("equipment-compact-incidental-task-0")).toBeTruthy();
     expect(stoppage.classList.contains("hidden")).toBe(false);
     expect(work.classList.contains("hidden")).toBe(false);
   });
@@ -91,7 +93,7 @@ describe("DPR18 B1 grouped equipment card", () => {
     render(<DprEquipmentCompact row={base} onChange={vi.fn()} />);
     expect(screen.queryByTestId("equipment-compact-group-picker-0")).toBeNull();
     expect(screen.queryByTestId("equipment-compact-group-stoppage-0")).toBeNull();
-    expect(screen.getByTestId("equipment-compact-group-owner-0").textContent).toContain("Effective hire / entry type");
+    expect(screen.getByTestId("equipment-compact-group-owner-0").textContent).not.toContain("Effective hire / entry type");
     expect(screen.getByTestId("equipment-compact-group-diesel-0")).toBeTruthy();
   });
 

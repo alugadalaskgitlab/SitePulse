@@ -826,6 +826,7 @@ export default function SiteReport() {
                     <TableHead>Category</TableHead>
                     <TableHead>Gender</TableHead>
                     <TableHead className="text-right">Count</TableHead>
+                    <TableHead className="text-right">Hours</TableHead>
                     <TableHead>Task/Work</TableHead>
                     <TableHead>Contractor/Gang</TableHead>
                   </TableRow>
@@ -836,6 +837,7 @@ export default function SiteReport() {
                       <TableCell>{item.category}<LabourWorkerNamesReadOnly row={item} /></TableCell>
                       <TableCell>{item.gender}</TableCell>
                       <TableCell className="text-right font-mono font-bold">{item.count}</TableCell>
+                      <TableCell className="text-right font-mono">{item.hours == null ? "" : `${item.hours} h`}</TableCell>
                       <TableCell>{item.task || '-'}</TableCell>
                       <TableCell>{item.contractor || '-'}</TableCell>
                     </TableRow>

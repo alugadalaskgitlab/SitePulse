@@ -1,4 +1,6 @@
 import { ResourceWorkItemSelect } from "@/components/ResourceWorkItemSelect";
+import { isFilledLabourRow } from "@shared/labourEntry";
+import { LabourContractorInput, LabourHoursInput } from "@/components/LabourEntryFields";
 import { useResourceSuggestions } from "@/hooks/use-resource-suggestions";
 import { chooseResourceItem, newResourceRow, todaysResourceActivities, resourceSuggestion, type SuggestionRow } from "@/lib/resourceSuggestions";
 import { useState, useMemo, useCallback, useEffect, useLayoutEffect, useRef } from "react";
@@ -102,7 +104,7 @@ import { EquipmentRowRemove, committedEquipmentRemovalIndex, resolveEquipmentRem
 import { EquipmentTankBalanceInputs } from "@/components/EquipmentTankBalanceInputs";
 import { aggregateStructureActualCredits, dprActualBalance, exceedsKnownActualBalance, type DprActualBalance } from "@/lib/dprActualBalance";
 import { DPR_REGISTER_PATH, resolveReturnTo } from "@/lib/progressReportNav";
-import { withEquipmentCreationStartTime, withNewEquipmentWorkingDefault, meaningfulEquipmentRows, isVisibleEquipmentRow } from "@shared/equipmentUsage";
+import { withNewEquipmentWorkingDefault, meaningfulEquipmentRows, isVisibleEquipmentRow } from "@shared/equipmentUsage";
 import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arrangementStatusHistory";
 import { transitionDieselSource, validateDieselTankBalance } from "@shared/dieselEntryValidation";
 
@@ -207,6 +209,7 @@ interface LabourEntry extends SuggestionRow {
   category: string;
   gender: string;
   count: number | null;
+  hours?: number | null;
   task: string;
   contractor: string;
   // Phase 3: optional link to the planned BOQ item / structure this deployment
@@ -1582,7 +1585,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
             }))
           : [],
         equipment: normalizedEquipment,
-        labour: labour.map(prepareLabourWorkerRow),
+        labour: labour.filter(row => row.persistedId != null || isFilledLabourRow(row)).map(prepareLabourWorkerRow),
         materials: materials.filter(m => m.material),
         sitePurchases: sitePurchases.filter(sp => sp.itemDescription),
         remarks: remarksNote.trim() || undefined,
@@ -1808,7 +1811,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
             }))
           : [],
         equipment: normalizedEquipment,
-        labour: labour.map(prepareLabourWorkerRow),
+        labour: labour.filter(row => row.persistedId != null || isFilledLabourRow(row)).map(prepareLabourWorkerRow),
         materials: materials.filter(m => m.material),
         sitePurchases: sitePurchases.filter(sp => sp.itemDescription),
         remarks: sectionEditor ? remarksNote.trim() : remarksNote.trim() || undefined,
@@ -1834,7 +1837,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
           photos: [], entryPhotos: {},
         });
         if (sectionEditor.section === "labour") {
-          setLabour(current => adoptLabourRowIds(current, labour, restored.labour.map(row => ({ id: row.persistedId ?? 0 }))));
+          setLabour(current => adoptLabourRowIds(current, labour.filter(row => row.persistedId != null || isFilledLabourRow(row)), restored.labour.map(row => ({ id: row.persistedId ?? 0 }))));
         }
         handleRestoreDraft(restored, sectionEditor.section === "labour");
         setRemarksNote(snapshot.dpr.remarks ?? "");
@@ -1843,7 +1846,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
           setStagedPhotos(failed);
           setEntryPhotos(failedByEntry);
           if (failed.length || Object.values(failedByEntry).some(files => files.length)) {
-            throw new Error("Section saved, but photos failed. Keep this screen open and retry Save Section.");
+            throw new Error("Section saved, but photos failed. Keep this screen open and retry Save & return.");
           }
         }
         setSectionDirty(false);
@@ -2159,7 +2162,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
         structureItems,
       } : {}),
       ...(sectionEditor.section === "equipment" ? { equipment } : {}),
-      ...(sectionEditor.section === "labour" ? { labour: labour.map(prepareLabourWorkerRow) } : {}),
+      ...(sectionEditor.section === "labour" ? { labour: labour.filter(row => row.persistedId != null || isFilledLabourRow(row)).map(prepareLabourWorkerRow) } : {}),
       ...(sectionEditor.section === "materials" ? { materials, sitePurchases } : {}),
     }) : null;
   // Match the final-submit evaluator's inputs, including BOQ-enriched cut/fill
@@ -3304,7 +3307,6 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
             const selectedEquipForRow = activeEquipment.find(e => e.id === entry.equipmentId);
             const usage = computeEquipmentUsage(selectedEquipForRow, entry);
             const isTripBased = entry.entryType === "trip_based";
-            const isDailyOrMonthly = entry.entryType === "daily" || entry.entryType === "monthly";
             const isWaterTanker = (entry.machine || '').toUpperCase().includes('WATER') || (entry.machine || '').toUpperCase().includes('TANKER');
             const linkedUsage = openPlantMap[entry.equipmentId ?? -1] as OpenUsageLike | undefined;
             const handoffContext = entry.plantUsageId != null && linkedUsage
@@ -3327,7 +3329,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                   if (!selected) return;
                   setEquipment(rows => rows.map((row, i) => {
                     if (i !== idx) return row;
-                    let next = withEquipmentCreationStartTime(applyEquipmentMasterSelection(row, selected));
+                    let next = applyEquipmentMasterSelection(row, selected);
                     if (selected.ownership !== "hired") next = { ...next, entryType: "time_meter", numberOfTrips: null, tripDistance: null, totalKm: null };
                     const defaulted = withNewEquipmentWorkingDefault(next, { isNew: row[newEquipmentRow] === true });
                     return defaulted !== next ? { ...defaulted, [autoWorkingStatus]: true } : defaulted;
@@ -3365,7 +3367,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
               {entry.equipmentId && entry.vehicleNo && <p className="mt-1 text-sm text-muted-foreground">Reg: {entry.vehicleNo}</p>}
               {handoffContext && <p className="mt-2 text-xs text-blue-700 dark:text-blue-300" data-testid={`text-equipment-handoff-${idx}`}>{handoffContext}</p>}
             </div>;
-            const ownerType = <div className="grid gap-3 sm:grid-cols-2">
+            const ownerType = <>
               {selectedEquipForRow?.ownership === "hired" && <div>
                 <Label className="text-sm">Entry Type</Label>
                 <Select value={entry.entryType ?? "time_meter"} onValueChange={val => setEquipment(rows => rows.map((row, i) =>
@@ -3382,16 +3384,13 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                     <SelectItem value="monthly">Monthly Hire</SelectItem>
                   </SelectContent>
                 </Select>
-                {isDailyOrMonthly && <Badge variant="outline" className="mt-2" data-testid={`badge-entry-type-${idx}`}>
-                  {entry.entryType === "daily" ? "DAILY HIRE" : "MONTHLY HIRE"}
-                </Badge>}
               </div>}
               <div><Label className="text-sm">Operator</Label>
                 <Input placeholder="Operator name" value={entry.operator} className="uppercase"
                   onChange={event => setEquipment(rows => rows.map((row, i) => i === idx ? { ...row, operator: event.target.value.toUpperCase() } : row))}
                   data-testid={`input-equipment-operator-${idx}`} />
               </div>
-            </div>;
+            </>;
             const dieselSource = <div className="grid grid-cols-2 gap-3 px-3 py-3 md:grid-cols-4">
               <div><Label className="text-sm">Diesel Source</Label>
                 <Select value={entry.dieselSource ?? ""} disabled={entry.plantUsageId != null}
@@ -3466,7 +3465,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
               equipmentPickerSlot={equipmentPicker}
               ownerTypeSlot={ownerType}
               dieselSourceSlot={dieselSource}
-              stoppageSlot={<BreakdownStoppageEditor draftOnly={!!sectionEditor} value={entry.breakdowns ?? []}
+              stoppageSlot={<BreakdownStoppageEditor usageStatus={entry.usageStatus} draftOnly={!!sectionEditor} value={entry.breakdowns ?? []}
                 onChange={breakdowns => setEquipment(rows => rows.map((row, i) => i === idx ? { ...row, breakdowns } : row))}
                 testId={`equipment-breakdown-${idx}`} />}
               onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx
@@ -3522,7 +3521,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
         </CardHeader>
         <CardContent className="space-y-4">
           {labour.map((entry, idx) => (
-            <div key={idx} className="grid grid-cols-2 md:grid-cols-6 gap-3 p-4 border rounded-lg bg-muted/30 transition-all duration-500" data-dpr-row-key={dprRowKey("labour", idx)} data-testid={"labour-row-" + idx}>
+            <div key={idx} className="grid grid-cols-2 md:grid-cols-7 gap-3 p-4 border rounded-lg bg-muted/30 [&_label]:text-xs [&_label]:normal-case [&_label]:text-slate-700 dark:[&_label]:text-slate-200 [&_input]:placeholder:text-slate-500" data-dpr-row-key={dprRowKey("labour", idx)} data-testid={"labour-row-" + idx}>
               <div>
                 <Label className="text-sm">Category</Label>
                 <Select
@@ -3573,6 +3572,8 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                   data-testid={`input-labour-count-${idx}`}
                 />
               </div>
+              <LabourHoursInput value={entry.hours} contractor={entry.contractor} rowIndex={idx}
+                onChange={hours => setLabour(rows => rows.map((row, i) => i === idx ? { ...row, hours } : row))} />
               <div>
                 <Label className="text-sm">Task/Work</Label>
                 <Input
@@ -3588,18 +3589,10 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                 />
               </div>
               <div>
-                <Label className="text-sm">Contractor/Gang</Label>
-                <Input
-                  placeholder="e.g. Raju Gang"
-                  value={entry.contractor}
-                  onChange={(e) => {
-                    const updated = [...labour];
-                    updated[idx].contractor = e.target.value.toUpperCase();
-                    setLabour(updated);
-                  }}
-                  className="uppercase"
-                  data-testid={`input-labour-contractor-${idx}`}
-                />
+                <Label className="text-sm">Contractor / gang</Label>
+                <LabourContractorInput value={entry.contractor} rowIndex={idx}
+                  suggestions={labour.map(row => row.contractor)}
+                  onChange={contractor => setLabour(rows => rows.map((row, i) => i === idx ? { ...row, contractor } : row))} />
               </div>
               <div className="flex items-end">
                 <Button 
@@ -3613,7 +3606,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                 </Button>
               </div>
               {siteBoqItems.length > 0 && (
-                <div className="col-span-2 md:col-span-6 grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                <div className="col-span-2 md:col-span-7 grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
                   <div>
                     <Label className="text-sm text-muted-foreground">Link to Work Item (optional)</Label>
                     <ResourceWorkItemSelect row={entry} items={dprBoqItemsForMapping} activityIds={todaysResourceActivities(progress)}
@@ -3667,7 +3660,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                   })()}
                 </div>
               )}
-              <div className="col-span-2 md:col-span-6">
+              <div className="col-span-2 md:col-span-7">
                 <LabourWorkerNames names={entry.workerNames} count={entry.count} rowIndex={idx}
                   onChange={workerNames => setLabour(rows => rows.map((row, i) => i === idx ? { ...row, workerNames } : row))} />
               </div>
@@ -3997,7 +3990,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
               <p className="text-xs text-muted-foreground mt-1">Photos are uploaded once you save the report.</p>
             </div>
             <p className="text-sm text-muted-foreground">
-              {sectionEditor ? "Save this section, then return to the section menu to review and submit the DPR." : "Review your entries above, then tap Preview Report to finish."}
+              {sectionEditor ? "Save & return to the section menu to review and submit the DPR." : "Review your entries above, then tap Preview Report to finish."}
             </p>
           </CardContent>
         </Card>
@@ -4006,8 +3999,10 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
       {/* Action Buttons - sticky on mobile so Save/Preview stay reachable while scrolling a long form */}
       </fieldset>
       {sectionEditor ? <div className="sticky bottom-0 z-10 flex gap-3 border-t bg-background p-4">
-        <Button disabled={draftMutation.isPending} onClick={() => draftMutation.mutate()}>Save Section</Button>
-        <Button variant="outline" disabled={draftMutation.isPending} onClick={async () => {
+        <Button variant="outline" disabled={draftMutation.isPending} onClick={() => {
+          if (sectionBaseline.current === sectionFingerprint || window.confirm("Discard changes?")) sectionEditor.onReturn();
+        }}>Cancel</Button>
+        <Button disabled={draftMutation.isPending} onClick={async () => {
           try { await draftMutation.mutateAsync(); sectionEditor.onReturn(); }
           catch { /* Retain fields after failure. */ }
         }}>Save &amp; return</Button>
