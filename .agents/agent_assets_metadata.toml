@@ -4301,3 +4301,31 @@ mtime_ms = 1791028382748
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/4900afa4-cd47-447f-9616-af1f62179290/5cfda4e8-47b6-4348-9d0a-d7c9155e9c1b"
 storage_version_token = "1791028747343383"
 content_type = "image/png"
+
+[[outputs]]
+id = "g9yRUKZt6GNlNK5nC1yKY"
+uri = "file://.agents/outputs/ux-fix-01-real/verification-report.html"
+type = "html"
+title = "UX-FIX-01 — Signed-in development verification"
+description = "A–J screenshots, desktop/mobile checks, save/reopen evidence and historical-record comparisons."
+logical_id = "179c5067-e4e8-4268-8911-5d9cc8ff9b03"
+content_hash = "sha256:9d259585e071305326d468929c8da20da002d5326ddee1e81782638f446da224"
+size = 14222877
+mtime_ms = 1791041396836
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/179c5067-e4e8-4268-8911-5d9cc8ff9b03/688c35ac-c11e-4329-b56d-28288dcdb648"
+storage_version_token = "1791041501102462"
+content_type = "text/html"
+
+[[outputs]]
+id = "NOe9LE8ApoIEt7UyA_LSv"
+uri = "file://.agents/outputs/ux-fix-01-real/delivery-report.html"
+type = "html"
+title = "UX-FIX-01 — Changes, tests and Publish SQL"
+description = "Both deliberate mandatory-rule changes, changed files and assertions, test counts, limitations and the exact four-column database preview."
+logical_id = "41f74414-44a9-4c97-8fda-e622dcafd398"
+content_hash = "sha256:79733d1f6cf4887c2c4c698039d22e9a0cbde55eef2332a3657de44bb746406f"
+size = 9119
+mtime_ms = 1791041471225
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/41f74414-44a9-4c97-8fda-e622dcafd398/0192c84c-bd1d-4332-aed6-710d9e35705e"
+storage_version_token = "1791041502872241"
+content_type = "text/html"

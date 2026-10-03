@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UX-FIX-01 delivery and database changes</title>
+<style>body{font:16px/1.6 system-ui,sans-serif;max-width:1050px;margin:32px auto;padding:0 22px;color:#243449}h1,h2{line-height:1.25}section{border-top:1px solid #dae1e8;margin-top:28px;padding-top:16px}pre{padding:18px;background:#f0f4f8;white-space:pre-wrap}li{margin:8px 0}code{overflow-wrap:anywhere}th,td{text-align:left;padding:10px;border-bottom:1px solid #ddd;vertical-align:top}table{border-collapse:collapse;width:100%}</style>
+<h1>UX-FIX-01 delivery report</h1>
+<p><strong>Implemented on top of accepted BOQ-LINK-01. Neither batch has been published.</strong> Production was not modified. The companion “Signed-in development verification” report contains embedded desktop/mobile screenshots for A–J and the API/database evidence summary.</p>
+<section><h2>Two deliberate mandatory-rule changes</h2><ol>
+<li><strong>Labour:</strong> before, a category-default-only row triggered a missing-count error; now untouched rows are ignored and new blank rows are omitted from save payloads. Count, Hours, Task, Contractor or worker-name evidence makes a row filled. A filled row without Count gives <strong>“Enter the number of workers”</strong>. Invalid counts remain invalid. Saved identities are retained.</li>
+<li><strong>Breakdown:</strong> before, DPR Breakdown did not require a daily status reason; now a Breakdown row being saved requires <strong>“Enter the breakdown reason”</strong>. The existing Idle — No Work rule and all other statuses are unchanged. The new rule is DPR-entry/write-only, not a read gate or a standalone plant-usage rule. Historical rows are not rewritten.</li>
+</ol><p>The mandatory-parity baseline was adjusted only for these two approved differences. Start/end pairing and all operational calculations remain unchanged.</p></section>
+<section><h2>Publish database-changes preview</h2><p>Captured using the actual Publish comparison. Exactly four additions, no drops, renames, type changes, truncations or warnings; structural-data-loss and backwards-compatibility warning flags were false.</p>
+<pre>ALTER TABLE "labour_logs" ADD COLUMN "resource_scope" text;
+ALTER TABLE "labour_logs" ADD COLUMN "hours" real;
+ALTER TABLE "equipment_logs" ADD COLUMN "resource_scope" text;
+ALTER TABLE "material_logs" ADD COLUMN "resource_scope" text;</pre>
+<p>All four columns are nullable with no default. The explicit Hours migration is:</p><pre>ALTER TABLE labour_logs ADD COLUMN hours real NULL;</pre>
+<p>Hours was applied to the runtime development database and the Publish-source development database. No production migration was run.</p></section>
+<section><h2>Verification</h2><ul>
+<li>Real signed-in development browser checks A–J: passed, including desktop and 390px phone equipment layout, blank clocks, Breakdown validation and deliberate stoppage addition, Task round-trip, blank labour, Hours, worker-name focus/save, Cancel and Guided/Edit parity.</li>
+<li>Labour Hours survives create, draft PATCH, submit, edit-as-copy, clone and detail reload. Invalid hours were rejected without mutation. Supplemental API tests are identified separately from actual browser interactions.</li>
+<li>Contractor history is recent-first and site-scoped: allowed site 200, forbidden site 403, missing site 400. New names remain plain text.</li>
+<li>Legacy DPR246: complete detail response, database data and segment/BOQ junction matched before and after viewing, with no writes.</li>
+<li>Full suite: <strong>4,094 passed / 53 failed / 3 skipped</strong>, compared with accepted baseline <strong>4,084 passed / 55 failed / 1 skipped</strong>. All remaining failures match baseline failures. The lower failure count includes two baseline tests now skipped by the existing test/environment behavior, not two unrelated fixes.</li>
+<li>Focused new frontend suite: 12/12. Shared labour/Breakdown parity tests: 9/9. Intentional assertion-update suites: 196 passed, two unchanged baseline failures. The final count-message-only schema fix was followed by focused checks and a real-browser retest, not another full-suite run.</li>
+<li>Temporary verification user deactivated, devices revoked, session closed, browser stopped and temporary credential/profile files deleted. Test DPRs254–260 and their upload were retained as development evidence.</li>
+</ul></section>
+<section><h2>Files changed for this batch</h2>
+<p><strong>Frontend:</strong> client/src/components/DprEquipmentCompact.tsx, BreakdownStoppageEditor.tsx, EquipmentActivityAllocationEditor.tsx, LabourWorkerNames.tsx, LabourEntryFields.tsx; client/src/pages/SiteEntry.tsx, GuidedDpr.tsx, SiteEdit.tsx, SiteReport.tsx. SiteReport changes are limited to the Hours column.</p>
+<p><strong>Shared/backend:</strong> shared/labourEntry.ts, shared/dprSubmitReadiness.ts, shared/equipmentStatus.ts, shared/schema.ts; server/storage.ts; server/routes.ts; migrations/0041_labour_hours.sql.</p>
+<p><strong>New verification:</strong> tests/uxFix01Labour.test.ts, tests/uxFix01Breakdown.test.ts, client/src/__tests__/uxFix01Frontend.test.tsx and its vitest.uxFix01.config.ts; evidence and self-contained reports in .agents/outputs/ux-fix-01-real. The existing equipment daily-status memory note records the user's approved historical-read constraint.</p>
+</section>
+<section><h2>Existing test assertion updates and reasons</h2><table><tr><th>Test</th><th>Deliberate update</th></tr>
+<tr><td>LABOUR-01 worker-name opening test</td><td>Removed second Add-name click; assert first empty input receives focus. All save, cleaning, count and persistence assertions retained.</td></tr>
+<tr><td>DPR03 Task test</td><td>Uses Task / work done label; removed incidental help must be absent.</td></tr>
+<tr><td>diesel02EquipmentCompact</td><td>One-decimal hours, Clock time wording, Not recorded legacy label. Breakdown now requires the exact reason message; no onChange on mount remains asserted.</td></tr>
+<tr><td>dpr02Fix2EquipmentLayout</td><td>Removed Master default hire type must be absent; unrelated stale inline-render assertion remains a baseline failure.</td></tr>
+<tr><td>dpr12EquipmentStatus</td><td>DPR Breakdown requires reason and passes with it. Added DPR-opt-in helper coverage. Existing generic/non-DPR helper assertions unchanged.</td></tr>
+<tr><td>dpr13StoppageEditor</td><td>Deleted explanatory sentence absent; draft-only marker asserted. Attribution, attachment and edit assertions unchanged.</td></tr>
+<tr><td>dpr16B1Rendered</td><td>No expanded summary strip; one-decimal collapsed values; expanded readings contain meters, clocks and calculated metrics. Confirmation checked on real checkbox rather than removed summary. Tank calculation assertions unchanged.</td></tr>
+<tr><td>dpr18B1EquipmentCompact</td><td>Removed master/effective hire details and expanded summary; moved Task only expanded; Work precedes stoppage; legacy Not recorded; Breakdown reason required. Historical notes retained.</td></tr>
+<tr><td>dpr18B2GuidedEquipment</td><td>Removed current-time default branch absent; new constructor has empty Start/End and Working. Link/provenance/hydration assertions unchanged.</td></tr>
+<tr><td>dpr18B2SiteEntry</td><td>Stoppage prop assertion includes usageStatus before existing draftOnly.</td></tr>
+<tr><td>dprBatch04</td><td>Exact plain-English count error; invalid-count coverage retained. Category-only blank row passes; task-only row requires count.</td></tr>
+<tr><td>dprBatch06X</td><td>Missing-count fixtures include Task evidence; use new count message. Independent row-index/category assertions retained.</td></tr>
+<tr><td>equipmentUsageFormReorganisation</td><td>No current-clock helpers; empty new clocks; one-decimal segments; Split time across another item and Hours labels; removed master detail absent. Two unrelated baseline source assertions unchanged.</td></tr>
+<tr><td>tests/fixtures/boq-link-01/readiness-before.ts</td><td>Only approved blank-labour semantics/message and DPR Breakdown reason requirement.</td></tr>
+</table></section>
+<section><h2>Not changed / verification limits</h2><ul>
+<li>No existing operational values, hours/km/diesel/expected-diesel math, labour headcount reporting, hire billing or Equipment Performance changes.</li>
+<li>No old submitted Breakdown-with-empty-reason record was available for a direct historical example. Old null-status DPR read invariance was verified; the new rule is confined to entry/write validation.</li>
+<li>Draft stoppage photo metadata round-trips. Submitted maintenance-backed detail objects omit that metadata and version copies rehome the relationship; this observed existing behavior was left unchanged.</li>
+<li>Native time fields used native DOM input events after real focus. Supplemental API cases are not represented as independent browser interactions.</li>
+<li>Existing failing tests, unrelated mockup-generated changes and Part C PDF files were not repaired or included as this batch's work. No other DPR feature was started.</li>
+</ul></section></html>

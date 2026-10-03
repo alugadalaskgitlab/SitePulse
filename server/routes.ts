@@ -527,6 +527,35 @@ export async function registerRoutes(
     }
   });
 
+  // Plain-text suggestions, confined to the caller's explicitly selected site.
+  app.get("/api/dprs/labour-contractors", async (req, res) => {
+    try {
+      if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
+      if (!req.authUser.isAdmin && !req.authUser.isOwner &&
+          !["view", "create", "edit"].some(action => (req.authPermissions?.site_dprs as any)?.[action])) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const site = typeof req.query.site === "string" ? req.query.site.trim() : "";
+      if (!site) return res.status(400).json({ message: "site is required" });
+      if (!await assertTripSiteAccess(req, res, site)) return;
+      const result = await db.execute(sql`
+        SELECT trim(l.contractor) AS contractor
+        FROM labour_logs l JOIN dprs d ON d.id = l.dpr_id
+        WHERE lower(trim(d.site)) = lower(${site})
+          AND NOT coalesce(d.is_deleted, false)
+          AND NOT coalesce(d.is_cancelled, false)
+          AND NOT coalesce(d.is_superseded, false)
+          AND nullif(trim(l.contractor), '') IS NOT NULL
+        GROUP BY trim(l.contractor)
+        ORDER BY max(d.date) DESC, max(d.id) DESC, trim(l.contractor) ASC
+      `);
+      res.json(result.rows.map(row => row.contractor));
+    } catch (err) {
+      console.error("Labour contractor suggestions failed:", err);
+      res.status(500).json({ message: "Failed to load contractor names" });
+    }
+  });
+
   // Get all DPRs with full details (for admin reports)
   // Accepts optional ?dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD to limit result size.
   // FieldHome passes today's date to avoid fetching the full history on every load.

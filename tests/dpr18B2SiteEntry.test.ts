@@ -9,7 +9,7 @@ describe("DPR18 B2 SiteEntry equipment integration", () => {
     expect(siteEntry).toContain("equipmentPickerSlot={equipmentPicker}");
     expect(siteEntry).toContain("ownerTypeSlot={ownerType}");
     expect(siteEntry).toContain("dieselSourceSlot={dieselSource}");
-    expect(siteEntry).toMatch(/stoppageSlot=\{<BreakdownStoppageEditor draftOnly=\{!!sectionEditor\}/);
+    expect(siteEntry).toMatch(/stoppageSlot=\{<BreakdownStoppageEditor usageStatus=\{entry.usageStatus\} draftOnly=\{!!sectionEditor\}/);
     expect(siteEntry).toContain("testId={`equipment-breakdown-${idx}`}");
     expect(siteEntry).toContain("!isVisibleEquipmentRow({ ...entry }) && equipmentPicker");
     expect(siteEntry).toContain("showTankBalance={false}");

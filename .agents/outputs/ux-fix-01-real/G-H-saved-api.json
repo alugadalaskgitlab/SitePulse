@@ -1,0 +1,120 @@
+{
+  "status": 200,
+  "body": {
+    "id": 254,
+    "date": "2026-10-03",
+    "site": "THAKADPALLY - SIRUR",
+    "engineer": "UX DEVELOPMENT VERIFIER",
+    "role": "engineer",
+    "submittedAt": null,
+    "createdAt": "2026-10-03T15:08:51.335Z",
+    "isSuperseded": false,
+    "authorUserId": 10,
+    "lastEditedByUserId": 10,
+    "lastEditedAt": "2026-10-03T15:16:40.494Z",
+    "submittedByUserId": null,
+    "lockStatus": "locked",
+    "unlockedByUserId": null,
+    "unlockedAt": null,
+    "unlockReason": null,
+    "workType": "road",
+    "boqProjectId": null,
+    "remarks": null,
+    "dprStatus": "draft",
+    "isDeleted": false,
+    "deletedAt": null,
+    "deletedBy": null,
+    "isCancelled": false,
+    "cancelledAt": null,
+    "cancelledBy": null,
+    "cancellationReason": null,
+    "progress": [],
+    "equipment": [
+      {
+        "resourceScope": null,
+        "id": 531,
+        "dprId": 254,
+        "machine": "JCB-PLANT",
+        "operator": "UX REAL OPERATOR",
+        "vehicleNo": "",
+        "entryType": "time_meter",
+        "startTime": "",
+        "endTime": "",
+        "openingReading": 100,
+        "closingReading": 102,
+        "hoursWorked": 2,
+        "numberOfTrips": null,
+        "tripDistance": null,
+        "totalKm": null,
+        "diesel": 0,
+        "dieselNorm": 4.75,
+        "expectedDiesel": 9.5,
+        "openingDiesel": null,
+        "dieselBalanceInTank": null,
+        "dieselBalanceConfirmed": false,
+        "task": "UX initial incidental task stored in taskUX task column edited and saved column",
+        "equipmentId": 3,
+        "dieselSource": "",
+        "fuelStation": "",
+        "billNumber": "",
+        "amountPaid": null,
+        "waterQuantity": null,
+        "boqItemId": null,
+        "structureId": null,
+        "plantUsageId": null,
+        "usageStatus": "breakdown",
+        "usageStatusReason": "UX hydraulic service required",
+        "persistedId": 531,
+        "breakdowns": [
+          {
+            "clientKey": "73a16176-1aa6-49a7-aeda-4eaf7eb21415",
+            "fromTime": "09:00",
+            "toTime": "10:30",
+            "description": "UX test hydraulic hose service",
+            "responsibility": "vendor",
+            "repairScope": "hlc",
+            "debitableToVendor": true,
+            "remarks": "UX test remarks round trip",
+            "attachment": {
+              "fileName": "A-desktop.png",
+              "objectPath": "/objects/uploads/10d12f35-b296-4085-81de-a2994fc6415a",
+              "mimeType": "image/png",
+              "fileSize": 164771
+            }
+          }
+        ]
+      }
+    ],
+    "labour": [
+      {
+        "resourceScope": null,
+        "hours": 4,
+        "id": 170,
+        "dprId": 254,
+        "category": "Skilled",
+        "gender": "Male",
+        "count": 2,
+        "task": "UX TASK ONLY MISSING WORKER COUNT",
+        "contractor": "Direct / local hire",
+        "boqItemId": null,
+        "structureId": null,
+        "persistedId": 170,
+        "workerNames": [
+          "UX Worker Alpha",
+          "UX Worker Beta"
+        ]
+      }
+    ],
+    "materials": [],
+    "structureItems": [],
+    "sitePurchases": [],
+    "cutFillConsumptions": [],
+    "sectionTokens": {
+      "activity": "0cbfb4ea4595abe59d42821b14ade3616358bfb60c59ceab3e9f19d27b4a4b17",
+      "equipment": "988afe99acbed9f8d6e7a245d83a0fc62f20d004cdefaf4c8ca9f303ab49e1b7",
+      "labour": "5ef12a81d868ef9d9751c1df7abb99d6279fefc8eb7268c063e627f7d924661a",
+      "materials": "ceba8f6796ccbc716944b21dc12493f66e47f15c9696a913f7ae27ea9619703c"
+    },
+    "headerToken": "219f1b3236930bd51c4e56aedf2096c8c9d640d8663c38e95f1ab3e490cc78c3"
+  }
+}

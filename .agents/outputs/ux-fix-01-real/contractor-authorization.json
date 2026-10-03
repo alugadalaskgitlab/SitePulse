@@ -1,0 +1,25 @@
+{
+  "allowed": {
+    "status": 200,
+    "body": [
+      "UX Scope Recent 10",
+      "RAJESH",
+      "BALARAJU",
+      "RAJU"
+    ]
+  },
+  "denied": {
+    "status": 403,
+    "body": {
+      "message": "Access denied for this site"
+    }
+  },
+  "missingSite": {
+    "status": 400,
+    "body": {
+      "message": "site is required"
+    }
+  },
+  "permittedSite": "THAKADPALLY - SIRUR",
+  "testUserId": 10
+}

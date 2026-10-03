@@ -38,7 +38,7 @@ describe("DPR18 B1 grouped equipment card", () => {
   it.each([
     { status: "idle_no_work", required: true },
     { status: "idle_no_operator", required: false },
-    { status: "breakdown", required: false },
+    { status: "breakdown", required: true },
     { status: "working", required: false },
   ] as const)("only requires reason for $status; historical notes remain displayed", ({ status, required }) => {
     render(<DprEquipmentCompact row={{ ...base, usageStatus: status, usageStatusReason: "Archived note" }} onChange={vi.fn()} />);

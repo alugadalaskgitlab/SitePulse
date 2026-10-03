@@ -1,0 +1,18 @@
+{
+  "suggestions": {
+    "status": 200,
+    "body": [
+      "UX Scope Recent 10",
+      "UX Scope Earlier 10",
+      "RAJESH",
+      "BALARAJU",
+      "RAJU"
+    ]
+  },
+  "otherSuggestions": {
+    "status": 200,
+    "body": [
+      "UX Other Site Only 10"
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+[
+  {
+    "hours": 0.25,
+    "status": 400,
+    "body": {
+      "message": "Number must be greater than or equal to 0.5",
+      "field": "labour.0.hours"
+    }
+  },
+  {
+    "hours": 24.5,
+    "status": 400,
+    "body": {
+      "message": "Number must be less than or equal to 24",
+      "field": "labour.0.hours"
+    }
+  }
+]

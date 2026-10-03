@@ -1,0 +1,7 @@
+{
+  "testUserInactive": true,
+  "devicesRevoked": true,
+  "browserStopped": true,
+  "profileDeleted": true,
+  "credentialStateDeleted": true
+}

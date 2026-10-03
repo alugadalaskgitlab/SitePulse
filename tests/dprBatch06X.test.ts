@@ -156,8 +156,8 @@ describe("B: evaluateDprSubmitReadiness populates rowIndex on mandatory issues",
   });
 
   it("labour: count missing carries rowIndex", () => {
-    const r = evaluateDprSubmitReadiness({ labour: [{ category: "Unskilled", count: null }] });
-    const issue = r.mandatory.find((m) => m.message.includes("labour count"));
+    const r = evaluateDprSubmitReadiness({ labour: [{ category: "Unskilled", count: null, task: "Kerb laying" }] });
+    const issue = r.mandatory.find((m) => m.message === "Enter the number of workers");
     expect(issue).toBeDefined();
     expect(issue!.rowIndex).toBe(0);
   });
@@ -301,12 +301,12 @@ describe("F: multiple issues carry correct independent rowIndex values", () => {
     const r = evaluateDprSubmitReadiness({
       labour: [
         { count: 5 },                          // missing category, index 0
-        { category: "Skilled", count: null },  // missing count, index 1
+        { category: "Skilled", count: null, task: "Kerb laying" }, // filled row missing count, index 1
         {},                                    // blank — ignored
       ],
     });
     const catIssue = r.mandatory.find((m) => m.message.includes("category"));
-    const cntIssue = r.mandatory.find((m) => m.message.includes("count"));
+    const cntIssue = r.mandatory.find((m) => m.message === "Enter the number of workers");
     expect(catIssue!.rowIndex).toBe(0);
     expect(cntIssue!.rowIndex).toBe(1);
   });

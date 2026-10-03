@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -18,13 +19,23 @@ export function LabourHoursInput({ value, contractor, onChange, rowIndex }: {
 }
 
 /** Plain-text storage; callers supply only names from the selected site's authorised history. */
-export function LabourContractorInput({ value, onChange, suggestions = [], rowIndex }: {
-  value: string; onChange: (value: string) => void; suggestions?: string[]; rowIndex: number;
+export function LabourContractorInput({ value, onChange, suggestions = [], rowIndex, site = "" }: {
+  value: string; onChange: (value: string) => void; suggestions?: string[]; rowIndex: number; site?: string;
 }) {
+  const history = useQuery<string[]>({
+    queryKey: ["/api/dprs/labour-contractors", site],
+    enabled: !!site.trim(),
+    queryFn: async () => {
+      const response = await fetch(`/api/dprs/labour-contractors?site=${encodeURIComponent(site)}`, { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load contractor names");
+      return response.json();
+    },
+  });
   const [typing, setTyping] = useState(false);
   const input = useRef<HTMLInputElement>(null);
-  const options = Array.from(new Set([...suggestions.filter(name => name.trim()), "Direct / local hire", ...(value.trim() ? [value] : [])]));
+  const options = Array.from(new Set([...(history.data ?? []), ...suggestions.filter(name => name.trim()), "Direct / local hire", ...(value.trim() ? [value] : [])]));
   return <div className="min-w-0 space-y-1">
+    {history.isError && <p className="text-xs text-destructive">Could not load site contractor names. You can still type a name.</p>}
     <Select value={typing ? "__other__" : value || undefined} onValueChange={next => {
       if (next === "__other__") {
         setTyping(true);

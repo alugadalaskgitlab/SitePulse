@@ -1,0 +1,32 @@
+{
+  "status": 201,
+  "body": {
+    "id": 256,
+    "date": "2026-10-03",
+    "site": "THAKADPALLY - SIRUR – Copy by Admin – 2026-10-03 15:22:19",
+    "engineer": "UX DEVELOPMENT VERIFIER",
+    "role": "admin",
+    "submittedAt": "2026-10-03 15:20:35",
+    "createdAt": "2026-10-03T15:08:51.335Z",
+    "isSuperseded": false,
+    "authorUserId": 10,
+    "lastEditedByUserId": 10,
+    "lastEditedAt": "2026-10-03T15:22:19.838Z",
+    "submittedByUserId": 10,
+    "lockStatus": "locked",
+    "unlockedByUserId": null,
+    "unlockedAt": null,
+    "unlockReason": null,
+    "workType": "road",
+    "boqProjectId": null,
+    "remarks": "",
+    "dprStatus": "submitted",
+    "isDeleted": false,
+    "deletedAt": null,
+    "deletedBy": null,
+    "isCancelled": false,
+    "cancelledAt": null,
+    "cancelledBy": null,
+    "cancellationReason": null
+  }
+}

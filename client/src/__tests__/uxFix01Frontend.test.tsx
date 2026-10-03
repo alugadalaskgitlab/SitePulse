@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { useState } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
@@ -140,7 +141,7 @@ describe("UX-FIX-01 equipment and labour entry", () => {
 
   it("contractor remains select-or-type plain text, without uppercase normalization", () => {
     const change = vi.fn();
-    render(<LabourContractorInput value="Direct / local hire" rowIndex={0} suggestions={["Raju gang"]} onChange={change} />);
+    render(<QueryClientProvider client={new QueryClient()}><LabourContractorInput value="Direct / local hire" rowIndex={0} suggestions={["Raju gang"]} onChange={change} /></QueryClientProvider>);
     expect(screen.getByTestId("select-labour-contractor-0").textContent).toBe("Direct / local hire");
     fireEvent.keyDown(screen.getByTestId("select-labour-contractor-0"), { key: "ArrowDown" });
     fireEvent.click(screen.getByRole("option", { name: "Other — type a name" }));

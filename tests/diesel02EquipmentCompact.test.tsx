@@ -490,7 +490,7 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
     expect(onChange).not.toHaveBeenCalledWith(expect.objectContaining({ diesel: 0 }));
   });
 
-  it("does not require a reason for breakdown or default readings or fuel", () => {
+  it("requires the DPR breakdown reason without defaulting readings or fuel on mount", () => {
     const onChange = vi.fn();
     render(
       <DprEquipmentCompact
@@ -500,7 +500,9 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
       />,
     );
 
-    expect(screen.queryByTestId("equipment-compact-usage-reason-0")).toBeNull();
+    expect((screen.getByTestId("equipment-compact-usage-reason-0") as HTMLTextAreaElement).required).toBe(true);
+    expect(screen.getByTestId("equipment-compact-usage-reason-0").getAttribute("aria-invalid")).toBe("true");
+    expect(screen.getByText("Enter the breakdown reason")).toBeTruthy();
     expect(onChange).not.toHaveBeenCalled();
   });
 

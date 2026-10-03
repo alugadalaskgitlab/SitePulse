@@ -1,0 +1,42 @@
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import {api,db,save,close} from "./browser.mjs";
+const pool=await db();
+const state=JSON.parse(await fs.readFile("/tmp/ux-fix-01-state.json","utf8"));
+try {
+  const clone=JSON.parse(await fs.readFile(".agents/outputs/ux-fix-01-real/hours-clone-response.json","utf8"));
+  assert.equal(clone.status,201);
+  state.cloneId=clone.body.id;
+  const clean=row=>Object.fromEntries(Object.entries(row).filter(([k])=>!["id","dprId","persistedId","entryKey","createdAt","maintenanceLogId"].includes(k)));
+  const src=(await api("/api/dprs/254")).body;
+  const equipment=clean(src.equipment[0]);
+  equipment.usageStatus=null;equipment.usageStatusReason=null;equipment.breakdowns=[];equipment.task="UX saved incidental task legacy presentation";equipment.plantUsageId=null;
+  const payload={date:"2026-10-01",site:"THAKADPALLY - SIRUR",engineer:"UX API CREATE VERIFIER",workType:"road",dprStatus:"draft",
+    progress:src.progress.map(clean),equipment:[equipment],labour:[{category:"Skilled",gender:"Male",count:1,hours:3.5,task:"UX API hours transport",contractor:"UX Scope Earlier "+state.userId,workerNames:[]}],materials:[],sitePurchases:[]};
+  const created=JSON.parse(await fs.readFile(".agents/outputs/ux-fix-01-real/hours-create-response.json","utf8"));
+  assert.equal(created.status,201);
+  state.apiCreateId=created.body.id;
+  await fs.writeFile("/tmp/ux-fix-01-state.json",JSON.stringify(state),{mode:0o600});
+  const tokens=(await api(`/api/dprs/${state.apiCreateId}`)).body;
+  const patch={...payload,labour:[{...payload.labour[0],hours:5}],equipment:[equipment],headerToken:tokens.headerToken,sectionTokens:tokens.sectionTokens};
+  const patched=await api(`/api/dprs/${state.apiCreateId}/draft`,patch,"PATCH");
+  await save("hours-draft-patch-response",patched);assert.equal(patched.status,200);
+  const details=await api(`/api/dprs/${state.apiCreateId}`);await save("hours-api-create-patched-detail",details);
+  assert.equal(details.body.labour[0].hours,5);
+  const later=await api("/api/dprs",{...payload,date:"2026-10-02",equipment:[],labour:[{...payload.labour[0],hours:null,contractor:"UX Scope Recent "+state.userId}]});
+  await save("contractor-recent-create-response",later);assert.equal(later.status,201);
+  state.recentId=later.body.id;
+  const other=await api("/api/dprs",{...payload,date:"2026-10-02",site:"UX Verification Other Site "+state.userId,equipment:[],labour:[{...payload.labour[0],hours:null,contractor:"UX Other Site Only "+state.userId}]});
+  await save("contractor-other-site-create-response",other);assert.equal(other.status,201);
+  state.otherId=other.body.id;
+  const suggestions=await api("/api/dprs/labour-contractors?site="+encodeURIComponent(payload.site));
+  const otherSuggestions=await api("/api/dprs/labour-contractors?site="+encodeURIComponent("UX Verification Other Site "+state.userId));
+  await save("contractor-site-scope",{suggestions,otherSuggestions});
+  assert(suggestions.body.indexOf("UX Scope Recent "+state.userId)<suggestions.body.indexOf("UX Scope Earlier "+state.userId));
+  assert(!suggestions.body.includes("UX Other Site Only "+state.userId));
+  assert(otherSuggestions.body.includes("UX Other Site Only "+state.userId));
+  await fs.writeFile("/tmp/ux-fix-01-state.json",JSON.stringify(state),{mode:0o600});
+  for(const id of [254,255,state.cloneId,state.apiCreateId,state.recentId,state.otherId])await save(`transport-final-${id}`,await api(`/api/dprs/${id}`));
+  await save("transport-record-ids",{primary:254,copy:255,clone:state.cloneId,apiCreate:state.apiCreateId,recent:state.recentId,other:state.otherId});
+  console.log("Transport and contractor assertions passed", {clone:state.cloneId,apiCreate:state.apiCreateId,recent:state.recentId,other:state.otherId});
+} finally {await pool.end();await close();}

@@ -17,7 +17,8 @@ describe("DPR draft stoppage editor", () => {
   it("preserves persisted identifiers, attribution and evidence while editing local fields", () => {
     const changed = vi.fn();
     render(<BreakdownStoppageEditor draftOnly value={[saved]} onChange={changed} />);
-    expect(screen.getByText(/Draft saves do not create or update maintenance ledger entries/)).toBeTruthy();
+    expect(screen.queryByText(/Draft saves do not create or update maintenance ledger entries/)).toBeNull();
+    expect(screen.getByTestId("breakdown-editor").getAttribute("data-draft-only")).toBe("true");
     expect(screen.getByTestId("breakdown-attachment-0").textContent).toContain(saved.attachment!.fileName);
     fireEvent.change(screen.getByTestId("breakdown-remarks-0"), { target: { value: "Corrected remarks" } });
     expect(changed).toHaveBeenLastCalledWith([{ ...saved, remarks: "Corrected remarks" }]);

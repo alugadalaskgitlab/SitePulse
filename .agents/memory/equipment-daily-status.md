@@ -7,7 +7,13 @@ Explicit Working, Idle (no work/operator), and Breakdown are additional daily fa
 
 **Why:** The user deliberately deferred maintenance integration. A selected Breakdown status must never create a maintenance record or change vendor hire deductions.
 
-**How to apply:** Preserve status/reason through clone and source-link projections and retain status-only rows. Require reasons for explicit non-working states. Keep legacy nulls compatible; records without explicit status belong to Logged — No Status, never inferred Idle or Working. Reserve Not Logged strictly for days with no records.
+**How to apply:** Preserve status/reason through clone and source-link projections and retain status-only rows. Keep legacy nulls compatible; records without explicit status belong to Logged — No Status, never inferred Idle or Working. Reserve Not Logged strictly for days with no records.
+
+DPR entry saves require a reason for Breakdown, with the exact message “Enter the breakdown reason”. Leave the existing Idle — No Work requirement and other statuses unchanged. Do not re-check or block old submitted DPRs that are only opened, not edited. Do not extend this DPR-only change to standalone plant usage.
+
+**Why:** The user explicitly approved this as a second deliberate mandatory-rule change while requiring historical reads and other status behavior to remain unchanged.
+
+**How to apply:** Enforce the new requirement in editable DPR validation and write paths, not read-only report loading or historical migrations.
 
 **Why:** Combining real legacy logs with missing days hides activity in summary totals; a cosmetic legacy badge alone is insufficient.
 

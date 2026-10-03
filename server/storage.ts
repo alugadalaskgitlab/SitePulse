@@ -7031,7 +7031,7 @@ export class DatabaseStorage implements IStorage {
    * deliberately retained unchanged.
    */
   private async normaliseDprEquipmentRowsTx(tx: any, rows: any[], boqProjectId?: number | null): Promise<any[]> {
-    for (const row of rows) assertValidEquipmentStatus(row);
+    for (const row of rows) assertValidEquipmentStatus(row, true);
     const ids = Array.from(new Set(rows.map(r => Number(r?.equipmentId)).filter(Number.isFinite)));
     const masters = ids.length
       ? await tx.select().from(equipmentMaster).where(inArray(equipmentMaster.id, ids))

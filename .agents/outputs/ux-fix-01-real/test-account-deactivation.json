@@ -1,0 +1,8 @@
+{
+  "apiStatus": 200,
+  "user": {
+    "id": 10,
+    "is_active": false
+  },
+  "devicesRevoked": true
+}

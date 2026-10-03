@@ -16,8 +16,11 @@ describe("equipment usage form reorganisation contracts", () => {
   it("uses creation-only local-time defaults without changing hydration helpers", () => {
     expect(guided).toContain("newGuidedEquipmentRowForCreation()");
     expect(guided).toContain("...newGuidedEquipmentRow(), ...e");
-    expect(detailed).toContain("withEquipmentCreationStartTime(");
-    expect(edit).toContain("withEquipmentCreationStartTime(");
+    for (const source of [guided, detailed, edit]) {
+      expect(source).not.toContain("withEquipmentCreationStartTime(");
+      expect(source).not.toContain("currentLocalEquipmentTime(");
+    }
+    expect(guided).toContain('passthrough: newResourceRow({ startTime: "", endTime: "", usageStatus: "working" })');
     expect(edit).toContain("setEquipment((draft.equipment as EquipmentEntry[]).map(({ isNew: _isNew, editCreationKey: _key, ...row }) => row))");
   });
 
@@ -47,12 +50,12 @@ describe("equipment usage form reorganisation contracts", () => {
     expect(allocation).not.toContain("Choose the work reach");
     expect(allocation).not.toContain("workReachName");
     expect(allocation).not.toContain("Programme distinction");
-    expect(allocation).toContain("formatEquipmentAllocationDuration");
+    expect(allocation).toContain("duration(segment)!.toFixed(1)");
     expect(allocation).not.toContain("Add another activity");
     expect(allocation).toContain("Assign Item");
-    expect(allocation).toContain("Add Item");
+    expect(allocation).toContain("Split time across another item");
     expect(allocation).toContain("Add BOQ Item");
-    expect(allocation).toContain("Segment Duration");
+    expect(allocation).toContain(">Hours<");
     expect(allocation).toContain("boqItems:");
     expect(allocation).toContain("Work Assignment");
     expect(allocation).toContain("BOQ Item");
@@ -149,7 +152,7 @@ describe("equipment usage form reorganisation contracts", () => {
     expect((guided.match(/text-eq-reg-/g) ?? []).length).toBe(1);
     expect((edit.match(/text-equipment-reg-/g) ?? []).length).toBe(1);
     expect(compact).toContain('label="Owner / vendor"');
-    expect(compact).toContain('label="Master default hire type"');
+    expect(compact).not.toContain('label="Master default hire type"');
     expect(guided).not.toContain("hideIdentity");
     expect(edit).toContain("hideIdentity");
   });

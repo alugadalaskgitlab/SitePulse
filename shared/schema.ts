@@ -1036,6 +1036,7 @@ export const insertEquipmentActivityAllocationSchema = createInsertSchema(equipm
 export const insertEquipmentActivitySegmentSchema = createInsertSchema(equipmentActivitySegments).omit({ id: true, equipmentLogId: true, createdAt: true });
 export const insertEquipmentActivitySegmentBoqItemSchema = createInsertSchema(equipmentActivitySegmentBoqItems).omit({ id: true, segmentId: true, createdAt: true });
 export const insertLabourSchema = createInsertSchema(labourLogs).omit({ id: true, dprId: true }).extend({
+  count: z.number({ required_error: "Enter the number of workers", invalid_type_error: "Enter the number of workers" }).int(),
   hours: z.number().finite().min(0.5).max(24).nullable().optional(),
 });
 export const insertMaterialSchema = createInsertSchema(materialLogs).omit({ id: true, dprId: true });
@@ -1154,11 +1155,11 @@ export const createDprRequestSchema = insertDprSchema.extend({
   clientTimestamp: z.string().optional(),
 }).superRefine((input, ctx) => {
   input.equipment?.forEach((row, index) => {
-    const message = equipmentStatusInputError(row);
+    const message = equipmentStatusInputError(row, true);
     if (message) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["equipment", index, equipmentStatusRequiresReason(row.usageStatus)
+        path: ["equipment", index, equipmentStatusRequiresReason(row.usageStatus, true)
           ? "usageStatusReason" : "usageStatus"],
         message,
       });

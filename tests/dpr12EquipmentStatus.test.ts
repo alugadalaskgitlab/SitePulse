@@ -59,7 +59,16 @@ describe("DPR-12 equipment status contract", () => {
     expect(isVisibleEquipmentRow({ usageStatus: "idle_no_operator" })).toBe(true);
   });
 
-  it("blocks final submit without an Idle — No Work reason but allows other status-only rows", () => {
+  it("requires a DPR Breakdown reason only when the DPR-entry helper opt-in is enabled", () => {
+    expect(equipmentStatusRequiresReason("breakdown", true)).toBe(true);
+    expect(equipmentStatusInputError({ usageStatus: "breakdown", usageStatusReason: " " }, true))
+      .toBe("Enter the breakdown reason");
+    expect(equipmentStatusInputError({ usageStatus: "breakdown", usageStatusReason: "Hydraulic hose" }, true))
+      .toBeNull();
+    expect(equipmentStatusRequiresReason("idle_no_operator", true)).toBe(false);
+  });
+
+  it("blocks final submit without Idle — No Work or Breakdown reasons but allows idle-no-operator status-only rows", () => {
     const missingReason = evaluateDprSubmitReadiness({
       equipment: [{ equipmentId: 7, machine: "EXCAVATOR 01", usageStatus: "idle_no_work" }],
     });
@@ -67,13 +76,25 @@ describe("DPR-12 equipment status contract", () => {
       expect.objectContaining({ section: "equipment", message: expect.stringMatching(/reason required/i) }),
     ]));
 
-    for (const status of ["idle_no_operator", "breakdown"] as const) {
+    for (const status of ["idle_no_operator"] as const) {
       const optionalReason = evaluateDprSubmitReadiness({
         equipment: [{ equipmentId: 7, machine: "EXCAVATOR 01", usageStatus: status }],
       });
       expect(optionalReason.mandatory).toHaveLength(0);
       expect(optionalReason.advisories).toHaveLength(0);
     }
+    const breakdown = evaluateDprSubmitReadiness({
+      equipment: [{ equipmentId: 7, machine: "EXCAVATOR 01", usageStatus: "breakdown" }],
+    });
+    expect(breakdown.mandatory).toEqual([
+      expect.objectContaining({ section: "equipment", message: "Enter the breakdown reason", rowIndex: 0 }),
+    ]);
+    expect(breakdown.advisories).toHaveLength(0);
+    const explainedBreakdown = evaluateDprSubmitReadiness({
+      equipment: [{ equipmentId: 7, machine: "EXCAVATOR 01", usageStatus: "breakdown", usageStatusReason: "Hydraulic hose" }],
+    });
+    expect(explainedBreakdown.mandatory).toHaveLength(0);
+    expect(explainedBreakdown.advisories).toHaveLength(0);
     const working = evaluateDprSubmitReadiness({
       equipment: [{ equipmentId: 7, machine: "EXCAVATOR 01", usageStatus: "working" }],
     });

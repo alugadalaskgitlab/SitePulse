@@ -27,7 +27,7 @@ describe("DPR16 B1 rendered section-only presentation", () => {
     fireEvent.change(screen.getByTestId("select-progress-uom-3"), { target: { value: "SQM" } });
     expect((screen.getByTestId("select-progress-uom-3") as HTMLSelectElement).value).toBe("SQM");
   });
-  it("renders one stat grid, retains existing meter and tank handlers, without changing default mode", () => {
+  it("places one-decimal metrics in readings instead of a summary strip and retains existing meter and tank handlers", () => {
     const row = { machine: "Excavator", equipmentId: null, openingReading: 100, closingReading: 106,
       startTime: "08:00", endTime: "16:00", dieselSource: "plant_stock", diesel: 20,
       openingDiesel: 30, dieselBalanceInTank: 25, dieselBalanceConfirmed: false };
@@ -42,13 +42,17 @@ describe("DPR16 B1 rendered section-only presentation", () => {
       </>;
     }
     render(<Harness />);
-    const grid = screen.getByTestId("section-equipment-summary-0");
-    expect(grid.children).toHaveLength(4);
-    expect(grid.textContent).toContain("6.000 h");
-    expect(grid.textContent).toContain("8 h");
-    expect(grid.textContent).toContain("20.00 L");
-    expect(screen.getAllByText("Clock duration")).toHaveLength(1);
+    expect(screen.queryByTestId("section-equipment-summary-0")).toBeNull();
+    expect(screen.getByRole("button", { name: /Clock.*Fuel.*Open details/ }).textContent).toContain("8.0 h");
+    expect(screen.getByRole("button", { name: /Clock.*Fuel.*Open details/ }).textContent).toContain("20.0 L");
     expect(screen.queryByTestId("equipment-compact-working-hours-0")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Expand Excavator" }));
+    const grid = screen.getByTestId("equipment-compact-group-readings-0");
+    expect(grid.querySelector("section")?.children).toHaveLength(6);
+    expect(grid.textContent).toContain("6.0 h");
+    expect(grid.textContent).toContain("8.0 h");
+    expect(screen.getAllByText("Clock time")).toHaveLength(1);
+    expect(screen.getByTestId("equipment-compact-working-hours-0").textContent).toBe("6.0 h");
     expect(screen.queryByTestId("equipment-compact-opening-tank-0")).toBeNull();
     const tank = screen.getByTestId("input-diesel-balance-0");
     expect(tank).toBeTruthy();
@@ -56,18 +60,17 @@ describe("DPR16 B1 rendered section-only presentation", () => {
     expect(screen.queryByTestId("panel-actual-consumption-0")).toBeNull();
     expect(screen.queryByTestId("text-actual-l-per-hr-0")).toBeNull();
     fireEvent.click(screen.getByTestId("checkbox-diesel-balance-confirmed-0"));
-    expect(grid.textContent).toContain("Confirmed");
+    expect(screen.getByTestId("checkbox-diesel-balance-confirmed-0").getAttribute("aria-checked")).toBe("true");
     expect(screen.queryByTestId("panel-consumption-incomplete-0")).toBeNull();
     expect(screen.getByTestId("text-actual-consumption-0").textContent).toBe("25.000");
     expect(screen.getByTestId("text-actual-l-per-hr-0").textContent).toBe("4.167");
     fireEvent.click(screen.getByTestId("checkbox-diesel-balance-confirmed-0"));
     expect(screen.getByTestId("panel-consumption-incomplete-0").textContent).toContain("tank balance not confirmed");
     expect(screen.queryByTestId("panel-actual-consumption-0")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Expand Excavator" }));
-    expect(screen.getAllByText("Clock duration")).toHaveLength(1);
+    expect(screen.getAllByText("Clock time")).toHaveLength(1);
     expect(screen.getByTestId("equipment-compact-closing-meter-0")).toBeTruthy();
     fireEvent.change(screen.getByTestId("equipment-compact-closing-meter-0"), { target: { value: "107" } });
-    expect(grid.textContent).toContain("7.000 h");
+    expect(grid.textContent).toContain("7.0 h");
     cleanup();
     render(<DprEquipmentCompact row={row} equipment={{ meterType: "hour_meter" }} onChange={vi.fn()} />);
     expect(screen.queryByTestId("section-equipment-summary-0")).toBeNull();

@@ -51,7 +51,9 @@ describe("DPR18 B2 Guided grouped machine day", () => {
     expect(withNewEquipmentWorkingDefault({ ...blank, machine: "Tanker", plantUsageId: 100 }, { isNew: true }).usageStatus).toBeUndefined();
     expect(source).toContain("newlyCreatedInGuided: true");
     expect(source).toContain("r.newlyCreatedInGuided && nextPt.plantUsageId == null");
-    expect(source).toContain("r.newlyCreatedInGuided && !nextPt.startTime");
+    expect(source).not.toContain("r.newlyCreatedInGuided && !nextPt.startTime");
+    expect(source).not.toContain("withEquipmentCreationStartTime");
+    expect(source).toContain('passthrough: newResourceRow({ startTime: "", endTime: "", usageStatus: "working" })');
     expect(source).toContain("if (open && r.workingDefaultedInGuided) delete nextPt.usageStatus");
     expect(source).toContain('hasOwnProperty.call(patch, "usageStatus")');
     expect(source).toContain("equipment: equipment.map(({ newlyCreatedInGuided, workingDefaultedInGuided, ...row }) => row)");

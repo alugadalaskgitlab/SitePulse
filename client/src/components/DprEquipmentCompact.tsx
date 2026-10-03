@@ -147,8 +147,8 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
   const tankNeedsConfirmation = isPlantStock && (row.openingDiesel != null || row.dieselBalanceInTank != null) && !row.dieselBalanceConfirmed;
   const isIdle = row.usageStatus === "idle_no_work" || row.usageStatus === "idle_no_operator";
   const visibleWarning = isIdle ? null : preview.warning;
-  const statusReasonRequired = equipmentStatusRequiresReason(row.usageStatus);
-  const statusError = equipmentStatusInputError(row);
+  const statusReasonRequired = equipmentStatusRequiresReason(row.usageStatus, true);
+  const statusError = equipmentStatusInputError(row, true);
   const rowLooksComplete = !!row.machine && !!row.endTime && row.closingReading != null && !row.breakdowns?.length && !visibleWarning && !tankNeedsConfirmation && (!statusReasonRequired || !!row.usageStatusReason?.trim());
   const [expanded, setExpanded] = useState(row.usageStatus === "breakdown" || !!row.breakdowns?.length || (sectionPresentation ? false : index === 0 || !rowLooksComplete));
   const [viewedAttachment, setViewedAttachment] = useState<Attachment | null>(null);

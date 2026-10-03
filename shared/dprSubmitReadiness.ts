@@ -220,11 +220,11 @@ export function evaluateDprSubmitReadiness(input: DprReadinessInput): DprReadine
         rowIndex: i,
       });
     }
-    if (equipmentStatusRequiresReason(e.usageStatus) && !hasText(e.usageStatusReason)) {
+    if (equipmentStatusRequiresReason(e.usageStatus, true) && !hasText(e.usageStatusReason)) {
       mandatory.push({
         section: "equipment",
         label,
-        message: "reason required for Idle — No Work status",
+        message: e.usageStatus === "breakdown" ? "Enter the breakdown reason" : "reason required for Idle — No Work status",
         rowIndex: i,
       });
     }

@@ -70,19 +70,20 @@ export function isEquipmentUsageStatus(value: unknown): value is EquipmentUsageS
     && (EQUIPMENT_USAGE_STATUSES as readonly string[]).includes(value);
 }
 
-/** Only Idle — No Work needs an explanatory reason. */
-export function equipmentStatusRequiresReason(status: unknown): boolean {
-  return status === "idle_no_work";
+/** Applied on entry/save, never as a historical-record read gate. */
+export function equipmentStatusRequiresReason(status: unknown, dprEntry = false): boolean {
+  return status === "idle_no_work" || (dprEntry && status === "breakdown");
 }
 
 export function equipmentStatusInputError(input: {
   usageStatus?: unknown;
   usageStatusReason?: unknown;
-}): string | null {
+}, dprEntry = false): string | null {
   const status = input.usageStatus;
   if (status == null || status === "") return null;
   if (!isEquipmentUsageStatus(status)) return "Invalid equipment usage status";
-  if (equipmentStatusRequiresReason(status) && !String(input.usageStatusReason ?? "").trim()) {
+  if (equipmentStatusRequiresReason(status, dprEntry) && !String(input.usageStatusReason ?? "").trim()) {
+    if (status === "breakdown") return "Enter the breakdown reason";
     return "A reason is required for Idle — No Work status";
   }
   return null;
@@ -91,8 +92,8 @@ export function equipmentStatusInputError(input: {
 export function assertValidEquipmentStatus(input: {
   usageStatus?: unknown;
   usageStatusReason?: unknown;
-}): void {
-  const error = equipmentStatusInputError(input);
+}, dprEntry = false): void {
+  const error = equipmentStatusInputError(input, dprEntry);
   if (error) throw new Error(error);
 }
 

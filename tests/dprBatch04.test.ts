@@ -398,12 +398,18 @@ describe("Batch 04 — submit readiness (K–V)", () => {
     });
     expect(r.ready).toBe(false);
     expect(r.mandatory.filter((m) => m.section === "labour")).toHaveLength(5);
-    expect(r.mandatory.filter((m) => /finite non-negative number/i.test(m.message))).toHaveLength(3);
+    expect(r.mandatory.filter((m) => m.message === "Enter the number of workers")).toHaveLength(3);
   });
 
-  it("a populated labour row with a blank count is mandatory", () => {
+  it("ignores category-only labour placeholders but requires count once the row has work evidence", () => {
     const r = evaluateDprSubmitReadiness({ labour: [{ category: "Skilled", count: null }] });
-    expect(r.mandatory.some((m) => m.section === "labour" && /finite non-negative number/i.test(m.message))).toBe(true);
+    expect(r.ready).toBe(true);
+    expect(r.mandatory).toHaveLength(0);
+    const filled = evaluateDprSubmitReadiness({ labour: [{ category: "Skilled", count: null, task: "Kerb laying" }] });
+    expect(filled.ready).toBe(false);
+    expect(filled.mandatory).toEqual([
+      expect.objectContaining({ section: "labour", message: "Enter the number of workers", rowIndex: 0 }),
+    ]);
   });
 
   it("trip-based equipment: trips without distance is MANDATORY; complete trip entry passes", () => {

@@ -1748,7 +1748,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
     }
     for (const e of equipment) {
       if (!e.machine) continue;
-      if (equipmentStatusRequiresReason(e.usageStatus) && !e.usageStatusReason?.trim()) return false;
+      if (equipmentStatusRequiresReason(e.usageStatus, true) && !e.usageStatusReason?.trim()) return false;
       if (e.openingReading !== null && e.closingReading === null) return false;
       if (e.startTime && !e.endTime) return false;
     }
@@ -3590,7 +3590,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
               </div>
               <div>
                 <Label className="text-sm">Contractor / gang</Label>
-                <LabourContractorInput value={entry.contractor} rowIndex={idx}
+                <LabourContractorInput value={entry.contractor} rowIndex={idx} site={header.site}
                   suggestions={labour.map(row => row.contractor)}
                   onChange={contractor => setLabour(rows => rows.map((row, i) => i === idx ? { ...row, contractor } : row))} />
               </div>

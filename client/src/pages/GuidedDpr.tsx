@@ -2861,7 +2861,7 @@ export default function GuidedDpr() {
                       <Button variant="ghost" size="icon" onClick={() => setLabour((p) => p.filter((_, j) => j !== i))}><Trash2 className="w-4 h-4" /></Button>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                      <div><Label className="text-xs text-slate-700">Contractor / gang</Label><LabourContractorInput value={l.contractor} rowIndex={i}
+                      <div><Label className="text-xs text-slate-700">Contractor / gang</Label><LabourContractorInput value={l.contractor} rowIndex={i} site={siteName}
                         suggestions={labour.map(row => row.contractor)}
                         onChange={contractor => setLabour(rows => rows.map((row, j) => j === i ? { ...row, contractor } : row))} /></div>
                       <Input placeholder="Task (e.g. RE-CLEARING VEGETATION)" value={l.task} onChange={(ev) => setLabour((p) => p.map((r, j) => j === i ? { ...r, task: ev.target.value } : r))} data-testid={`input-labour-task-${i}`} />
