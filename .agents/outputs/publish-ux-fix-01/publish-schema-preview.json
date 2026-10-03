@@ -1,0 +1,18 @@
+{
+  "columnsToRemove": [],
+  "hasDiff": true,
+  "hasStructuralDataLoss": false,
+  "matViewsToRemove": [],
+  "maybeNonBackwardsCompatible": false,
+  "schemasToRemove": [],
+  "statementsToExecute": [
+    "ALTER TABLE \"labour_logs\" ADD COLUMN \"resource_scope\" text;",
+    "ALTER TABLE \"labour_logs\" ADD COLUMN \"hours\" real;",
+    "ALTER TABLE \"equipment_logs\" ADD COLUMN \"resource_scope\" text;",
+    "ALTER TABLE \"material_logs\" ADD COLUMN \"resource_scope\" text;"
+  ],
+  "success": true,
+  "tablesToRemove": [],
+  "tablesToTruncate": [],
+  "warnings": []
+}

@@ -1,0 +1,18 @@
+{
+  "recorded_at_utc": "2026-10-03T16:03:12.090752Z",
+  "recorded_at_ist": "2026-10-03 21:33:12.090752 IST",
+  "database": "neondb",
+  "counts": {
+    "dprs": 333,
+    "equipment_logs": 762,
+    "labour_logs": 162,
+    "material_logs": 100,
+    "progress_entries": 445,
+    "equipment_activity_segments": 126,
+    "labour_log_workers": 0,
+    "vendor_bills": 46,
+    "hire_statements": 2
+  },
+  "environment": "production",
+  "access": "read-only production replica; single statement snapshot"
+}
