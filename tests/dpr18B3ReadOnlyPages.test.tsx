@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import DprDetails from "../client/src/pages/DprDetails";
 import SiteReport from "../client/src/pages/SiteReport";
@@ -68,7 +68,7 @@ describe.each([
   ["DPR details", DprDetails],
   ["Site report", SiteReport],
 ])("DPR18 B3 real %s read-only page", (_name, Page) => {
-  it.each(["draft", "submitted"])("renders %s row data and omits only empty Breakdown sections", dprStatus => {
+  it.each(["draft", "submitted"])("renders %s compact summaries and preserves all audit facts in toggleable Details", dprStatus => {
     state.dpr = {
       id: 6291, site: "FIXTURE SITE", date: "2026-08-05", engineer: "Fixture engineer",
       dprStatus, workType: "road", boqProjectId: 5501, progress: [], labour: [],
@@ -82,23 +82,42 @@ describe.each([
       ],
     };
     render(<Page />);
-    const normal = screen.getByTestId("equipment-compact-0");
-    const stopped = screen.getByTestId("equipment-compact-1");
-    const statusOnly = screen.getByTestId("equipment-compact-2");
-    expect(within(normal).queryByTestId("equipment-compact-read-group-breakdowns-0")).toBeNull();
-    expect(within(statusOnly).queryByTestId("equipment-compact-read-group-breakdowns-2")).toBeNull();
-    expect(within(statusOnly).getByTestId("equipment-compact-read-group-identity-2").textContent).toContain("Breakdown");
-    expect(within(stopped).getByTestId("equipment-compact-breakdown-1-0").textContent).toContain("Hydraulic hose");
-    expect(within(stopped).getByTestId("equipment-compact-read-group-breakdowns-1").textContent).toContain("Debitable to vendor: Yes");
-    expect(within(normal).getByTestId("equipment-compact-read-group-identity-0").textContent).toContain("Fixture Hire");
-    expect(within(normal).getByTestId("equipment-compact-read-group-identity-0").textContent).toContain("hourly");
-    expect(within(normal).getByTestId("equipment-compact-read-group-readings-0").textContent).toContain("8:00 AM");
-    expect(within(normal).getByTestId("equipment-compact-read-group-diesel-0").textContent).toContain("Confirmed");
-    expect(within(normal).getByTestId("equipment-compact-read-group-performance-0").textContent).toContain("Actual Consumed");
-    expect(within(normal).getByTestId("equipment-compact-read-group-performance-0").textContent).toContain("Expected");
-    expect(within(normal).getByTestId("equipment-compact-read-group-performance-0").textContent).toContain("Actual Consumption Rate");
-    expect(within(normal).getByTestId("equipment-compact-group-work-0").textContent).toContain("Incidental diversion, not BOQ");
-    expect(within(normal).getByTestId("equipment-compact-group-work-0").textContent).toContain("Fixture BOQ work");
+    const normal = screen.getByTestId("row-equipment-0");
+    const stopped = screen.getByTestId("row-equipment-1");
+    const statusOnly = screen.getByTestId("row-equipment-2");
+    const normalAudit = screen.getByTestId("equipment-audit-details-0");
+    const stoppedAudit = screen.getByTestId("equipment-audit-details-1");
+    const statusOnlyAudit = screen.getByTestId("equipment-audit-details-2");
+    expect(screen.getAllByRole("table", { name: "Equipment Log" })).toHaveLength(1);
+    expect(normalAudit.getAttribute("data-expanded")).toBe("false");
+    expect(stoppedAudit.getAttribute("data-expanded")).toBe("false");
+    expect(statusOnlyAudit.getAttribute("data-expanded")).toBe("false");
+    expect(within(normalAudit).queryByTestId("equipment-table-stop-0-0")).toBeNull();
+    expect(within(statusOnlyAudit).queryByTestId("equipment-table-stop-2-0")).toBeNull();
+    expect(statusOnly.textContent).toContain("Breakdown");
+    expect(statusOnlyAudit.textContent).toContain("Daily statusBreakdown");
+    expect(stopped.textContent).toContain("Hydraulic hose");
+    expect(within(stoppedAudit).getByTestId("equipment-table-stop-1-0").textContent).toContain("Hydraulic hose");
+    expect(stoppedAudit.textContent).toContain("Debitable to vendor: Yes");
+    expect(normal.textContent).toContain("Fixture Hire");
+    expect(normal.textContent).toContain("Hourly");
+    expect(normalAudit.textContent).toContain("hourly");
+    expect(normalAudit.textContent).toContain("8:00 AM");
+    expect(normalAudit.textContent).toContain("Confirmed");
+    expect(normalAudit.textContent).toContain("DPR snapshot consumed");
+    expect(normalAudit.textContent).toContain("25.000 L");
+    expect(normalAudit.textContent).toContain("Saved expected diesel20.000 L");
+    expect(within(normal).getByTestId("equipment-consumption-0").textContent).toContain("6.3 L/hr");
+    expect(within(normal).getByTestId("equipment-consumption-0").textContent).toContain("measured ✓");
+    expect(normal.textContent).toContain("Incidental diversion, not BOQ");
+    expect(within(normalAudit).getByTestId("equipment-table-work-0").textContent).toContain("Fixture BOQ work");
+    expect(normalAudit.textContent).toContain("Assigned:");
+    expect(normalAudit.textContent).toContain("Unassigned:");
+    expect(normalAudit.textContent).toContain("Machine Day:");
+    fireEvent.click(within(normal).getByTestId("button-equipment-details-0"));
+    expect(normalAudit.getAttribute("data-expanded")).toBe("true");
+    fireEvent.click(within(stopped).getByTestId("button-equipment-details-1"));
+    expect(stoppedAudit.getAttribute("data-expanded")).toBe("true");
   });
 });
 
@@ -114,6 +133,8 @@ it("SiteReport passes already-loaded linked stoppages only when an older row has
     equipment: [{ ...machine, breakdowns: undefined }, { ...machine, id: 7292, breakdowns: [] }],
   };
   render(<SiteReport />);
-  expect(screen.getByTestId("equipment-compact-read-group-breakdowns-0").textContent).toContain("Linked hose failure");
-  expect(screen.queryByTestId("equipment-compact-read-group-breakdowns-1")).toBeNull();
+  expect(screen.getByTestId("equipment-table-stop-0-0").textContent).toContain("Linked hose failure");
+  expect(screen.queryByTestId("equipment-table-stop-1-0")).toBeNull();
+  expect(screen.getByTestId("equipment-table-breakdowns-1").textContent).toBe("—");
+  expect(screen.getByTestId("equipment-audit-details-0").getAttribute("data-expanded")).toBe("false");
 });

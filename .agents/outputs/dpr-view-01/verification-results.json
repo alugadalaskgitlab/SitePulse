@@ -1,0 +1,357 @@
+{
+  "fixtureOnly": true,
+  "baselineCommit": "490f21f77490f64cb7c4dd07c550987448d115ac",
+  "cases": [
+    {
+      "page": "SiteReport",
+      "version": "before",
+      "width": 1280,
+      "closed": {
+        "width": 1280,
+        "documentWidth": 1280,
+        "panels": [],
+        "rowHeights": [],
+        "baselineRowHeights": [
+          785,
+          785,
+          784.5
+        ],
+        "equipmentTables": 0,
+        "lifecycleContained": true
+      },
+      "expanded": {
+        "documentWidth": 1280,
+        "panels": []
+      },
+      "baselineNote": "Both HEAD read-only views expose equipment audit without a collapsible equipment toggle; closed screenshot denotes default screen state, not a nonexistent toggle."
+    },
+    {
+      "page": "SiteReport",
+      "version": "before",
+      "width": 390,
+      "closed": {
+        "width": 390,
+        "documentWidth": 390,
+        "panels": [],
+        "rowHeights": [],
+        "baselineRowHeights": [
+          657,
+          657,
+          656.5
+        ],
+        "equipmentTables": 0,
+        "lifecycleContained": true
+      },
+      "expanded": {
+        "documentWidth": 390,
+        "panels": []
+      },
+      "baselineNote": "Both HEAD read-only views expose equipment audit without a collapsible equipment toggle; closed screenshot denotes default screen state, not a nonexistent toggle."
+    },
+    {
+      "page": "SiteReport",
+      "version": "after",
+      "width": 1280,
+      "closed": {
+        "width": 1280,
+        "documentWidth": 1280,
+        "panels": [
+          {
+            "expanded": "false",
+            "display": "none"
+          },
+          {
+            "expanded": "false",
+            "display": "none"
+          },
+          {
+            "expanded": "false",
+            "display": "none"
+          }
+        ],
+        "rowHeights": [
+          114.5,
+          72.4375,
+          89.375
+        ],
+        "baselineRowHeights": [
+          114.5,
+          72.4375,
+          89.375
+        ],
+        "equipmentTables": 1,
+        "lifecycleContained": true,
+        "visualLines": [
+          [
+            4,
+            3,
+            2,
+            3,
+            2,
+            2
+          ],
+          [
+            3,
+            3,
+            2,
+            3,
+            2,
+            2
+          ],
+          [
+            4,
+            3,
+            2,
+            3,
+            2,
+            2
+          ]
+        ]
+      },
+      "expanded": {
+        "documentWidth": 1280,
+        "panels": [
+          "block",
+          "block",
+          "block"
+        ]
+      }
+    },
+    {
+      "page": "SiteReport",
+      "version": "after",
+      "width": 390,
+      "closed": {
+        "width": 390,
+        "documentWidth": 390,
+        "panels": [
+          {
+            "expanded": "false",
+            "display": "none"
+          },
+          {
+            "expanded": "false",
+            "display": "none"
+          },
+          {
+            "expanded": "false",
+            "display": "none"
+          }
+        ],
+        "rowHeights": [
+          493.1875,
+          453.1875,
+          453.1875
+        ],
+        "baselineRowHeights": [
+          493.1875,
+          453.1875,
+          453.1875
+        ],
+        "equipmentTables": 1,
+        "lifecycleContained": true
+      },
+      "expanded": {
+        "documentWidth": 390,
+        "panels": [
+          "block",
+          "block",
+          "block"
+        ]
+      }
+    },
+    {
+      "page": "DprDetails",
+      "version": "before",
+      "width": 1280,
+      "closed": {
+        "width": 1280,
+        "documentWidth": 1280,
+        "panels": [],
+        "rowHeights": [],
+        "baselineRowHeights": [
+          654,
+          654,
+          654
+        ],
+        "equipmentTables": 0,
+        "lifecycleContained": true
+      },
+      "expanded": {
+        "documentWidth": 1280,
+        "panels": []
+      },
+      "baselineNote": "Both HEAD read-only views expose equipment audit without a collapsible equipment toggle; closed screenshot denotes default screen state, not a nonexistent toggle."
+    },
+    {
+      "page": "DprDetails",
+      "version": "before",
+      "width": 390,
+      "closed": {
+        "width": 390,
+        "documentWidth": 390,
+        "panels": [],
+        "rowHeights": [],
+        "baselineRowHeights": [
+          978,
+          978,
+          978
+        ],
+        "equipmentTables": 0,
+        "lifecycleContained": true
+      },
+      "expanded": {
+        "documentWidth": 390,
+        "panels": []
+      },
+      "baselineNote": "Both HEAD read-only views expose equipment audit without a collapsible equipment toggle; closed screenshot denotes default screen state, not a nonexistent toggle."
+    },
+    {
+      "page": "DprDetails",
+      "version": "after",
+      "width": 1280,
+      "closed": {
+        "width": 1280,
+        "documentWidth": 1280,
+        "panels": [
+          {
+            "expanded": "false",
+            "display": "none"
+          },
+          {
+            "expanded": "false",
+            "display": "none"
+          },
+          {
+            "expanded": "false",
+            "display": "none"
+          }
+        ],
+        "rowHeights": [
+          71.375,
+          71.375,
+          71.375
+        ],
+        "baselineRowHeights": [
+          71.375,
+          71.375,
+          71.375
+        ],
+        "equipmentTables": 1,
+        "lifecycleContained": true,
+        "visualLines": [
+          [
+            3,
+            2,
+            1,
+            3,
+            2,
+            2
+          ],
+          [
+            3,
+            2,
+            1,
+            3,
+            2,
+            2
+          ],
+          [
+            3,
+            2,
+            1,
+            3,
+            2,
+            2
+          ]
+        ]
+      },
+      "expanded": {
+        "documentWidth": 1280,
+        "panels": [
+          "block",
+          "block",
+          "block"
+        ]
+      }
+    },
+    {
+      "page": "DprDetails",
+      "version": "after",
+      "width": 390,
+      "closed": {
+        "width": 390,
+        "documentWidth": 390,
+        "panels": [
+          {
+            "expanded": "false",
+            "display": "none"
+          },
+          {
+            "expanded": "false",
+            "display": "none"
+          },
+          {
+            "expanded": "false",
+            "display": "none"
+          }
+        ],
+        "rowHeights": [
+          402.1875,
+          402.1875,
+          402.1875
+        ],
+        "baselineRowHeights": [
+          402.1875,
+          402.1875,
+          402.1875
+        ],
+        "equipmentTables": 1,
+        "lifecycleContained": true
+      },
+      "expanded": {
+        "documentWidth": 390,
+        "panels": [
+          "block",
+          "block",
+          "block"
+        ]
+      }
+    }
+  ],
+  "browserErrors": [],
+  "lifecycleMove": {
+    "destinationType": "hmp",
+    "successorDate": "2026-10-02"
+  },
+  "normalPrint": {
+    "panels": [
+      "block",
+      "block",
+      "block"
+    ],
+    "info": "Title:           DPR-VIEW-01 isolated evidence\nCreator:         Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36\nProducer:        Skia/PDF m152\nCreationDate:    Sat Oct  3 17:34:28 2026 UTC\nModDate:         Sat Oct  3 17:34:28 2026 UTC\nCustom Metadata: no\nMetadata Stream: no\nTagged:          yes\nUserProperties:  no\nSuspects:        no\nForm:            none\nJavaScript:      no\nPages:           5\nEncrypted:       no\nPage size:       595.92 x 841.92 pts (A4)\nPage rot:        0\nFile size:       536818 bytes\nOptimized:       no\nPDF version:     1.4\n"
+  },
+  "printPanels": [
+    {
+      "screenExpanded": "false",
+      "display": "block"
+    },
+    {
+      "screenExpanded": "false",
+      "display": "block"
+    },
+    {
+      "screenExpanded": "false",
+      "display": "block"
+    }
+  ],
+  "pdf": {
+    "path": "/home/runner/workspace/.agents/outputs/dpr-view-01/sitereport-after-audit-stress.pdf",
+    "pageInfo": "Title:           DPR-VIEW-01 isolated evidence\nCreator:         Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36\nProducer:        Skia/PDF m152\nCreationDate:    Sat Oct  3 17:34:30 2026 UTC\nModDate:         Sat Oct  3 17:34:30 2026 UTC\nCustom Metadata: no\nMetadata Stream: no\nTagged:          yes\nUserProperties:  no\nSuspects:        no\nForm:            none\nJavaScript:      no\nPages:           9\nEncrypted:       no\nPage size:       595.92 x 841.92 pts (A4)\nPage rot:        0\nFile size:       574471 bytes\nOptimized:       no\nPDF version:     1.4\n",
+    "allRemarkParagraphs": true,
+    "filenamePreserved": true,
+    "noLifecycle": true
+  },
+  "success": true
+}

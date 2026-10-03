@@ -1,0 +1,446 @@
+DPR-VIEW-01 · Working tree after · SiteReport
+Mockup DPR409 numbers, explicitly fixture-only. Not live auth. No production writes. Audit-stress
+variation: synthetic long remarks and attachment.
+
+
+
+
+     DPR FIXTURE
+                                             Daily Progress Report Submitted             Road
+
+                                                                                  DPR-409
+         NOT LIVE AUTH
+
+
+
+                                                                         DPR409 isolated fixture
+
+        Date
+        October 2nd, 2026
+
+        Site Name
+        alladurg pwd road to pampad
+
+        Engineer
+        DPR409 fixture engineer
+
+        Draft created by User unavailable — Oct 2, 2026, 7:30 AM
+
+
+        Submitted by User unavailable — Oct 2, 2026, 6:30 PM
+
+
+
+
+                     Road                                                 3
+                         1                                            Equipment
+                   Activities
+
+
+
+                         2                                           42.000 L
+                   Workers                                           Total Diesel
+
+
+
+
+ Activity Progress              Road DPR
+
+
+   Wet Mix Macadam                                                                     Details ▾
+     0+280 → 0+380 Measured: 56.25 CUM BOQ: 56.25 Cum
+
+
+
+
+   Equipment Log
+Machine               Work               Usage               Diesel   Consumption      Notes
+SOIL COMPACTOR        Wet Mix Macadam 2,594.4 → 2,595.5 20.0 L    10.5 L/hr          AUDIT-STRESS
+TS08JG4572            7.4 h           = 1.1 h           tank 54.0 measured ✓         Hydraulic
+Hired · Nafeez        Compacting WMM                    → 62.5 ✓ norm 9.0 L/hr ▲ 16% inspection · 35
+ Monthly              lift                                                           min
+Operator: Ramesh                                                                     Plant stock
+
+ Machine day: 1
+ Entry / hire type: monthly
+ Daily status: Working
+ Status reason: Saved fixture status reason
+ Breakdowns: 1
+ Opening / closing meter: 2594.4 / 2595.5
+ Start / end time: 9:50 AM / 5:13 PM
+ Clock duration: 7 h 23 min
+ Saved operating quantity: 1.100 h
+ Calculated preview quantity: 1.100 h
+ Usage basis: hour meter
+ Trips / one-way distance: — / — km
+ Diesel issued: 20.000 L
+ Opening / closing tank: 54.000 / 62.500 L
+ Physical tank balance: Confirmed
+ Saved expected diesel: 9.900 L
+ Fuel-summary expected: 9.900 L
+ Issued − saved expected: 10.100 L
+ Saved norm: 9.000 L/hr
+ Current master norm (reference): 9.000 L/hr
+ DPR snapshot consumed: 11.500 L
+ DPR snapshot consumed − expected variance: 1.600 L
+ Diesel source: Plant stock
+ Fuel station / bill / amount: — / — / —
+ Work assignments / segments:
+   WORK ASSIGNMENT
+
+ Wet Mix Macadam
+ 9:50 AM → 5:13 PM
+ 7 h 24 min
+
+
+ Assigned: 7 h 23 min Unassigned: 0 min Machine Day: 7 h 23 min
+ Saved segment links:
+ Segment 1 · 9:50 AM → 5:13 PM · saved 7.400 h
+Machine                  Work                Usage                Diesel       Consumption             Notes
+ BOQ #7
+ Breakdown / stoppage audit:
+ AUDIT-STRESS Hydraulic inspection
+ 11:10 AM–11:45 AM · 35 min
+ Responsibility: vendor · Repair/payment scope: Parts and labour retained for vendor reconciliation · Debitable to
+ vendor: Yes
+ Remarks: AUDIT-PARAGRAPH-1: Vendor responsibility remains recorded separately from maintenance status. The
+ replaced hose, inspection record, payment scope, operator statement and physical dip evidence must remain
+ readable on paper. AUDIT-PARAGRAPH-2: Vendor responsibility remains recorded separately from maintenance
+ status. The replaced hose, inspection record, payment scope, operator statement and physical dip evidence must
+ remain readable on paper. AUDIT-PARAGRAPH-3: Vendor responsibility remains recorded separately from
+ maintenance status. The replaced hose, inspection record, payment scope, operator statement and physical dip
+ evidence must remain readable on paper. AUDIT-PARAGRAPH-4: Vendor responsibility remains recorded separately
+ from maintenance status. The replaced hose, inspection record, payment scope, operator statement and physical dip
+ evidence must remain readable on paper. AUDIT-PARAGRAPH-5: Vendor responsibility remains recorded separately
+ from maintenance status. The replaced hose, inspection record, payment scope, operator statement and physical dip
+ evidence must remain readable on paper. AUDIT-PARAGRAPH-6: Vendor responsibility remains recorded separately
+ from maintenance status. The replaced hose, inspection record, payment scope, operator statement and physical dip
+ evidence must remain readable on paper. AUDIT-PARAGRAPH-7: Vendor responsibility remains recorded separately
+ from maintenance status. The replaced hose, inspection record, payment scope, operator statement and physical dip
+ evidence must remain readable on paper. AUDIT-PARAGRAPH-8: Vendor responsibility remains recorded separately
+ from maintenance status. The replaced hose, inspection record, payment scope, operator statement and physical dip
+ evidence must remain readable on paper. AUDIT-PARAGRAPH-9: Vendor responsibility remains recorded separately
+ from maintenance status. The replaced hose, inspection record, payment scope, operator statement and physical dip
+ evidence must remain readable on paper. AUDIT-PARAGRAPH-10: Vendor responsibility remains recorded
+ separately from maintenance status. The replaced hose, inspection record, payment scope, operator statement and
+ physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-11: Vendor responsibility remains
+ recorded separately from maintenance status. The replaced hose, inspection record, payment scope, operator
+ statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-12: Vendor responsibility
+ remains recorded separately from maintenance status. The replaced hose, inspection record, payment scope,
+ operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-13: Vendor
+ responsibility remains recorded separately from maintenance status. The replaced hose, inspection record, payment
+ scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-14:
+ Vendor responsibility remains recorded separately from maintenance status. The replaced hose, inspection record,
+ payment scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-
+ 15: Vendor responsibility remains recorded separately from maintenance status. The replaced hose, inspection
+ record, payment scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-
+ PARAGRAPH-16: Vendor responsibility remains recorded separately from maintenance status. The replaced hose,
+ inspection record, payment scope, operator statement and physical dip evidence must remain readable on paper.
+ AUDIT-PARAGRAPH-17: Vendor responsibility remains recorded separately from maintenance status. The replaced
+ hose, inspection record, payment scope, operator statement and physical dip evidence must remain readable on
+ paper. AUDIT-PARAGRAPH-18: Vendor responsibility remains recorded separately from maintenance status. The
+ replaced hose, inspection record, payment scope, operator statement and physical dip evidence must remain
+ readable on paper. AUDIT-PARAGRAPH-19: Vendor responsibility remains recorded separately from maintenance
+ status. The replaced hose, inspection record, payment scope, operator statement and physical dip evidence must
+ remain readable on paper. AUDIT-PARAGRAPH-20: Vendor responsibility remains recorded separately from
+ maintenance status. The replaced hose, inspection record, payment scope, operator statement and physical dip
+ evidence must remain readable on paper. AUDIT-PARAGRAPH-21: Vendor responsibility remains recorded
+ separately from maintenance status. The replaced hose, inspection record, payment scope, operator statement and
+ physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-22: Vendor responsibility remains
+ recorded separately from maintenance status. The replaced hose, inspection record, payment scope, operator
+ statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-23: Vendor responsibility
+ remains recorded separately from maintenance status. The replaced hose, inspection record, payment scope,
+ operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-24: Vendor
+ responsibility remains recorded separately from maintenance status. The replaced hose, inspection record, payment
+ scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-25:
+ Vendor responsibility remains recorded separately from maintenance status. The replaced hose, inspection record,
+ payment scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-
+ 26: Vendor responsibility remains recorded separately from maintenance status. The replaced hose, inspection
+ record, payment scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-
+ PARAGRAPH-27: Vendor responsibility remains recorded separately from maintenance status. The replaced hose,
+Machine                  Work                Usage               Diesel      Consumption            Notes
+ inspection record, payment scope, operator statement and physical dip evidence must remain readable on paper.
+ AUDIT-PARAGRAPH-28: Vendor responsibility remains recorded separately from maintenance status. The replaced
+ hose, inspection record, payment scope, operator statement and physical dip evidence must remain readable on
+ paper. AUDIT-PARAGRAPH-29: Vendor responsibility remains recorded separately from maintenance status. The
+ replaced hose, inspection record, payment scope, operator statement and physical dip evidence must remain
+ readable on paper. AUDIT-PARAGRAPH-30: Vendor responsibility remains recorded separately from maintenance
+ status. The replaced hose, inspection record, payment scope, operator statement and physical dip evidence must
+ remain readable on paper. AUDIT-PARAGRAPH-31: Vendor responsibility remains recorded separately from
+ maintenance status. The replaced hose, inspection record, payment scope, operator statement and physical dip
+ evidence must remain readable on paper. AUDIT-PARAGRAPH-32: Vendor responsibility remains recorded
+ separately from maintenance status. The replaced hose, inspection record, payment scope, operator statement and
+ physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-33: Vendor responsibility remains
+ recorded separately from maintenance status. The replaced hose, inspection record, payment scope, operator
+ statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-34: Vendor responsibility
+ remains recorded separately from maintenance status. The replaced hose, inspection record, payment scope,
+ operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-35: Vendor
+ responsibility remains recorded separately from maintenance status. The replaced hose, inspection record, payment
+ scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-36:
+ Vendor responsibility remains recorded separately from maintenance status. The replaced hose, inspection record,
+ payment scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-
+ 37: Vendor responsibility remains recorded separately from maintenance status. The replaced hose, inspection
+ record, payment scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-
+ PARAGRAPH-38: Vendor responsibility remains recorded separately from maintenance status. The replaced hose,
+ inspection record, payment scope, operator statement and physical dip evidence must remain readable on paper.
+ AUDIT-PARAGRAPH-39: Vendor responsibility remains recorded separately from maintenance status. The replaced
+ hose, inspection record, payment scope, operator statement and physical dip evidence must remain readable on
+ paper. AUDIT-PARAGRAPH-40: Vendor responsibility remains recorded separately from maintenance status. The
+ replaced hose, inspection record, payment scope, operator statement and physical dip evidence must remain
+ readable on paper. AUDIT-PARAGRAPH-41: Vendor responsibility remains recorded separately from maintenance
+ status. The replaced hose, inspection record, payment scope, operator statement and physical dip evidence must
+ remain readable on paper. AUDIT-PARAGRAPH-42: Vendor responsibility remains recorded separately from
+ maintenance status. The replaced hose, inspection record, payment scope, operator statement and physical dip
+ evidence must remain readable on paper. AUDIT-PARAGRAPH-43: Vendor responsibility remains recorded
+ separately from maintenance status. The replaced hose, inspection record, payment scope, operator statement and
+ physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-44: Vendor responsibility remains
+ recorded separately from maintenance status. The replaced hose, inspection record, payment scope, operator
+ statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-45: Vendor responsibility
+ remains recorded separately from maintenance status. The replaced hose, inspection record, payment scope,
+ operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-46: Vendor
+ responsibility remains recorded separately from maintenance status. The replaced hose, inspection record, payment
+ scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-47:
+ Vendor responsibility remains recorded separately from maintenance status. The replaced hose, inspection record,
+ payment scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-
+ 48: Vendor responsibility remains recorded separately from maintenance status. The replaced hose, inspection
+ record, payment scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-
+ PARAGRAPH-49: Vendor responsibility remains recorded separately from maintenance status. The replaced hose,
+ inspection record, payment scope, operator statement and physical dip evidence must remain readable on paper.
+ AUDIT-PARAGRAPH-50: Vendor responsibility remains recorded separately from maintenance status. The replaced
+ hose, inspection record, payment scope, operator statement and physical dip evidence must remain readable on
+ paper. AUDIT-PARAGRAPH-51: Vendor responsibility remains recorded separately from maintenance status. The
+ replaced hose, inspection record, payment scope, operator statement and physical dip evidence must remain
+ readable on paper. AUDIT-PARAGRAPH-52: Vendor responsibility remains recorded separately from maintenance
+ status. The replaced hose, inspection record, payment scope, operator statement and physical dip evidence must
+ remain readable on paper. AUDIT-PARAGRAPH-53: Vendor responsibility remains recorded separately from
+ maintenance status. The replaced hose, inspection record, payment scope, operator statement and physical dip
+ evidence must remain readable on paper. AUDIT-PARAGRAPH-54: Vendor responsibility remains recorded
+ separately from maintenance status. The replaced hose, inspection record, payment scope, operator statement and
+ physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-55: Vendor responsibility remains
+ recorded separately from maintenance status. The replaced hose, inspection record, payment scope, operator
+ statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-56: Vendor responsibility
+ remains recorded separately from maintenance status. The replaced hose, inspection record, payment scope,
+ operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-57: Vendor
+ responsibility remains recorded separately from maintenance status. The replaced hose, inspection record, payment
+Machine                  Work                Usage               Diesel      Consumption            Notes
+ scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-58:
+ Vendor responsibility remains recorded separately from maintenance status. The replaced hose, inspection record,
+ payment scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-
+ 59: Vendor responsibility remains recorded separately from maintenance status. The replaced hose, inspection
+ record, payment scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-
+ PARAGRAPH-60: Vendor responsibility remains recorded separately from maintenance status. The replaced hose,
+ inspection record, payment scope, operator statement and physical dip evidence must remain readable on paper.
+ AUDIT-PARAGRAPH-61: Vendor responsibility remains recorded separately from maintenance status. The replaced
+ hose, inspection record, payment scope, operator statement and physical dip evidence must remain readable on
+ paper. AUDIT-PARAGRAPH-62: Vendor responsibility remains recorded separately from maintenance status. The
+ replaced hose, inspection record, payment scope, operator statement and physical dip evidence must remain
+ readable on paper. AUDIT-PARAGRAPH-63: Vendor responsibility remains recorded separately from maintenance
+ status. The replaced hose, inspection record, payment scope, operator statement and physical dip evidence must
+ remain readable on paper. AUDIT-PARAGRAPH-64: Vendor responsibility remains recorded separately from
+ maintenance status. The replaced hose, inspection record, payment scope, operator statement and physical dip
+ evidence must remain readable on paper. AUDIT-PARAGRAPH-65: Vendor responsibility remains recorded
+ separately from maintenance status. The replaced hose, inspection record, payment scope, operator statement and
+ physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-66: Vendor responsibility remains
+ recorded separately from maintenance status. The replaced hose, inspection record, payment scope, operator
+ statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-67: Vendor responsibility
+ remains recorded separately from maintenance status. The replaced hose, inspection record, payment scope,
+ operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-68: Vendor
+ responsibility remains recorded separately from maintenance status. The replaced hose, inspection record, payment
+ scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-69:
+ Vendor responsibility remains recorded separately from maintenance status. The replaced hose, inspection record,
+ payment scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-
+ 70: Vendor responsibility remains recorded separately from maintenance status. The replaced hose, inspection
+ record, payment scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-
+ PARAGRAPH-71: Vendor responsibility remains recorded separately from maintenance status. The replaced hose,
+ inspection record, payment scope, operator statement and physical dip evidence must remain readable on paper.
+ AUDIT-PARAGRAPH-72: Vendor responsibility remains recorded separately from maintenance status. The replaced
+ hose, inspection record, payment scope, operator statement and physical dip evidence must remain readable on
+ paper. AUDIT-PARAGRAPH-73: Vendor responsibility remains recorded separately from maintenance status. The
+ replaced hose, inspection record, payment scope, operator statement and physical dip evidence must remain
+ readable on paper. AUDIT-PARAGRAPH-74: Vendor responsibility remains recorded separately from maintenance
+ status. The replaced hose, inspection record, payment scope, operator statement and physical dip evidence must
+ remain readable on paper. AUDIT-PARAGRAPH-75: Vendor responsibility remains recorded separately from
+ maintenance status. The replaced hose, inspection record, payment scope, operator statement and physical dip
+ evidence must remain readable on paper. AUDIT-PARAGRAPH-76: Vendor responsibility remains recorded
+ separately from maintenance status. The replaced hose, inspection record, payment scope, operator statement and
+ physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-77: Vendor responsibility remains
+ recorded separately from maintenance status. The replaced hose, inspection record, payment scope, operator
+ statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-78: Vendor responsibility
+ remains recorded separately from maintenance status. The replaced hose, inspection record, payment scope,
+ operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-79: Vendor
+ responsibility remains recorded separately from maintenance status. The replaced hose, inspection record, payment
+ scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-80:
+ Vendor responsibility remains recorded separately from maintenance status. The replaced hose, inspection record,
+ payment scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-
+ 81: Vendor responsibility remains recorded separately from maintenance status. The replaced hose, inspection
+ record, payment scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-
+ PARAGRAPH-82: Vendor responsibility remains recorded separately from maintenance status. The replaced hose,
+ inspection record, payment scope, operator statement and physical dip evidence must remain readable on paper.
+ AUDIT-PARAGRAPH-83: Vendor responsibility remains recorded separately from maintenance status. The replaced
+ hose, inspection record, payment scope, operator statement and physical dip evidence must remain readable on
+ paper. AUDIT-PARAGRAPH-84: Vendor responsibility remains recorded separately from maintenance status. The
+ replaced hose, inspection record, payment scope, operator statement and physical dip evidence must remain
+ readable on paper. AUDIT-PARAGRAPH-85: Vendor responsibility remains recorded separately from maintenance
+ status. The replaced hose, inspection record, payment scope, operator statement and physical dip evidence must
+ remain readable on paper. AUDIT-PARAGRAPH-86: Vendor responsibility remains recorded separately from
+ maintenance status. The replaced hose, inspection record, payment scope, operator statement and physical dip
+ evidence must remain readable on paper. AUDIT-PARAGRAPH-87: Vendor responsibility remains recorded
+ separately from maintenance status. The replaced hose, inspection record, payment scope, operator statement and
+Machine                  Work                Usage               Diesel      Consumption            Notes
+ physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-88: Vendor responsibility remains
+ recorded separately from maintenance status. The replaced hose, inspection record, payment scope, operator
+ statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-89: Vendor responsibility
+ remains recorded separately from maintenance status. The replaced hose, inspection record, payment scope,
+ operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-90: Vendor
+ responsibility remains recorded separately from maintenance status. The replaced hose, inspection record, payment
+ scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-91:
+ Vendor responsibility remains recorded separately from maintenance status. The replaced hose, inspection record,
+ payment scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-PARAGRAPH-
+ 92: Vendor responsibility remains recorded separately from maintenance status. The replaced hose, inspection
+ record, payment scope, operator statement and physical dip evidence must remain readable on paper. AUDIT-
+ PARAGRAPH-93: Vendor responsibility remains recorded separately from maintenance status. The replaced hose,
+ inspection record, payment scope, operator statement and physical dip evidence must remain readable on paper.
+ AUDIT-PARAGRAPH-94: Vendor responsibility remains recorded separately from maintenance status. The replaced
+ hose, inspection record, payment scope, operator statement and physical dip evidence must remain readable on
+ paper. AUDIT-PARAGRAPH-95: Vendor responsibility remains recorded separately from maintenance status. The
+ replaced hose, inspection record, payment scope, operator statement and physical dip evidence must remain
+ readable on paper. END-LONG-REMARKS-409
+    resolved Linked maintenance: 11:10–11:50 (0.667 h)
+ Linked inspection resolved
+ Linked responsibility: CONTRACTOR
+                                                  View attachment:
+ DPR409_AUDIT_ATTACHMENT_hydraulic_inspection_vendor_signed_delivery_and_repair_scope_hydraulic_inspection
+  _vendor_signed_delivery_and_repair_scope_hydraulic_inspection_vendor_signed_delivery_and_repair_scope_hydrauli
+                      c_inspection_vendor_signed_delivery_and_repair_scope_END_FILENAME.pdf
+
+TRACTOR – RATNAM       Wet Mix Macadam 5,193.3 → 5,196.4 5.0 L             1.6 L/hr            Plant stock
+0930                   8.2 h           = 3.1 h           tank 10.0          measured ✓
+Hired · Ratnam         Compacting WMM                    → 10.0 ✓          norm 4.0 L/hr check
+ Monthly               lift                                                ▼ 60%
+Operator: Yovan
+
+ Machine day: 2
+ Entry / hire type: monthly
+ Daily status: Working
+ Status reason: Saved fixture status reason
+ Breakdowns: 0
+ Opening / closing meter: 5193.3 / 5196.4
+ Start / end time: 9:56 AM / 6:10 PM
+ Clock duration: 8 h 14 min
+ Saved operating quantity: 3.100 h
+ Calculated preview quantity: 3.100 h
+ Usage basis: hour meter
+ Trips / one-way distance: — / — km
+ Diesel issued: 5.000 L
+ Opening / closing tank: 10.000 / 10.000 L
+ Physical tank balance: Confirmed
+ Saved expected diesel: 12.400 L
+ Fuel-summary expected: 12.400 L
+ Issued − saved expected: -7.400 L
+ Saved norm: 4.000 L/hr
+ Current master norm (reference): 4.000 L/hr
+ DPR snapshot consumed: 5.000 L
+ DPR snapshot consumed − expected variance: -7.400 L
+Machine                   Work             Usage             Diesel    Consumption         Notes
+ Diesel source: Plant stock
+ Fuel station / bill / amount: — / — / —
+ Work assignments / segments:
+    WORK ASSIGNMENT
+
+ Wet Mix Macadam
+ 9:56 AM → 6:10 PM
+ 8 h 12 min
+
+
+ Assigned: 8 h 14 min Unassigned: 0 min Machine Day: 8 h 14 min
+ Saved segment links:
+ Segment 1 · 9:56 AM → 6:10 PM · saved 8.200 h
+ BOQ #7
+ Breakdown / stoppage audit:
+ —
+
+TRACTOR DOZER            Wet Mix Macadam 8,819.1 → 8,820.5 17.0 L     2.9 L/hr            Plant stock
+TS34TA8581               2.8 h           = 1.4 h           tank 2.0 → measured ✓
+Hired · Mahipal          Compacting WMM                    15.0 ✓     norm 2.5 L/hr ▲ 14%
+ Monthly                 lift
+Operator: Nagesh
+
+ Machine day: 3
+ Entry / hire type: monthly
+ Daily status: Working
+ Status reason: Saved fixture status reason
+ Breakdowns: 0
+ Opening / closing meter: 8819.1 / 8820.5
+ Start / end time: 2:40 PM / 5:30 PM
+ Clock duration: 2 h 50 min
+ Saved operating quantity: 1.400 h
+ Calculated preview quantity: 1.400 h
+ Usage basis: hour meter
+ Trips / one-way distance: — / — km
+ Diesel issued: 17.000 L
+ Opening / closing tank: 2.000 / 15.000 L
+ Physical tank balance: Confirmed
+ Saved expected diesel: 3.500 L
+ Fuel-summary expected: 3.500 L
+ Issued − saved expected: 13.500 L
+ Saved norm: 2.500 L/hr
+ Current master norm (reference): 2.500 L/hr
+ DPR snapshot consumed: 4.000 L
+ DPR snapshot consumed − expected variance: 0.500 L
+ Diesel source: Plant stock
+ Fuel station / bill / amount: — / — / —
+ Work assignments / segments:
+    WORK ASSIGNMENT
+Machine                   Work                  Usage                  Diesel       Consumption               Notes
+  Wet Mix Macadam
+  2:40 PM → 5:30 PM
+  2 h 48 min
+
+
+  Assigned: 2 h 50 min Unassigned: 0 min Machine Day: 2 h 50 min
+  Saved segment links:
+  Segment 1 · 2:40 PM → 5:30 PM · saved 2.800 h
+  BOQ #7
+  Breakdown / stoppage audit:
+  —
+
+
+ Total · 3 machines      5.600 h     0.000 km      42.000 L issued         25.800 L expected
+ 16.200 L issued − expected
+
+Measured ✓ uses canonical confirmed performance when available, otherwise the confirmed DPR tank snapshot (opening + issued
+− closing). Issued uses diesel issued ÷ recorded usage; it can read high when the tank was topped up ahead. Vehicles use km/L. ✓
+is within ±10% of norm; ▲ is more than 10% worse; amber check ▼ is more than 10% better — check diesel entries and readings.
+Clock duration and calculated previews are separate audit facts. Snapshot variance is consumed − expected; totals difference is
+issued − saved expected. Assignment validation uses machine-day clock duration; segments are clock times, and gaps and partial
+assignment are allowed. Meter working hours use opening/closing meter difference; vehicle distance uses odometer or recorded
+round trips.
+
+
+
+
+    Labour Strength
+      Category           Gender           Count          Hours         Task/Work               Contractor/Gang
+
+      Skilled            Male             1              8h            WMM                     Fixture gang
+
+      Unskilled          Male             1              7.5 h         -                       -
+
+
+
+
+    Materials Log
+         Materials Received
+    alladurg pwd road to pampad · 2026-10-02
+    No materials received this day.
+
+
+    Materials Consumed / Issued
+    Bulk vehicle deliveries are tracked separately in Materials Received.
+No materials consumed or issued recorded.
+
+
+
+Activity Photos
+No photos attached
+

@@ -79,7 +79,9 @@ describe("DPR16 B3 activity summaries", () => {
       const source = readFileSync(resolve(process.cwd(), `client/src/pages/${page}.tsx`), "utf8");
       expect(source).toContain("<DprActivityReadOnly");
       expect(source).toContain("<DprPhotoGroups");
-      expect(source).toContain("<DprEquipmentCompact");
+      expect(source).toContain("<DprEquipmentReadOnlyRow");
+      expect(source).toContain("<DprEquipmentReadOnlyTable");
+      expect(source).not.toContain("<DprEquipmentCompact");
     }
   });
 });

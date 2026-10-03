@@ -38,7 +38,7 @@ export function buildDprEquipmentTableDetails(row: DprEquipmentFields, equipment
     expectedDiesel: row.expectedDiesel,
   });
   return {
-    preview, fuel, isPlantStock,
+    preview, historicalUsage, fuel, isPlantStock,
     norm: resolveEquipmentConsumptionNormRate(equipment, historicalUsage),
     confirmedRate: row.dieselBalanceConfirmed === true && fuel.actualRate != null,
     tankKnown: isPlantStock && (row.openingDiesel != null || row.dieselBalanceInTank != null),
@@ -58,11 +58,12 @@ function Line({ label, children }: { label: string; children: ReactNode }) {
 }
 
 type Details = ReturnType<typeof buildDprEquipmentTableDetails>;
-export function DprEquipmentTableDetails({ section, row, details, index, boqItems, programmeBars, showLegacyRate = true }: {
+export function DprEquipmentTableDetails({ section, row, details, index, boqItems, programmeBars, showLegacyRate = true, showExplanations = true }: {
   section: "identity" | "readings" | "quantity" | "tank" | "expected" | "performance" | "work";
   row: DprEquipmentFields; details: Details; index: number;
   boqItems?: AllocationProps["boqItems"]; programmeBars?: AllocationProps["programmeBars"];
   showLegacyRate?: boolean;
+  showExplanations?: boolean;
 }) {
   const { preview, fuel } = details;
   let content: ReactNode;
@@ -90,11 +91,11 @@ export function DprEquipmentTableDetails({ section, row, details, index, boqItem
         <Line label="Start Time">{formatEquipmentTime(row.startTime)}</Line>
         <Line label="End Time">{formatEquipmentTime(row.endTime)}</Line>
         <Line label="Clock Duration">{formatEquipmentDuration(details.clockHours)}</Line>
-        <p className="text-muted-foreground">{details.odometer
+        {showExplanations && <p className="text-muted-foreground">{details.odometer
           ? "Distance comes from the odometer or trip calculation. Clock duration is shown separately."
           : preview.basis === "hour_meter"
             ? "Meter Working Hours come from the opening and closing meter difference. Clock duration is shown separately."
-            : "No hour-meter difference is available. Clock duration is shown separately and is not labelled as meter working time."}</p>
+             : "No hour-meter difference is available. Clock duration is shown separately and is not labelled as meter working time."}</p>}
       </>;
       break;
     case "quantity":
@@ -131,8 +132,9 @@ export function DprEquipmentTableDetails({ section, row, details, index, boqItem
       break;
     case "work":
       content = <>
-        {row.task?.trim() && <p className="text-amber-800 dark:text-amber-300">Non-BOQ / Incidental Work — Not a BOQ item — not payable progress.</p>}
+         {showExplanations && row.task?.trim() && <p className="text-amber-800 dark:text-amber-300">Non-BOQ / Incidental Work — Not a BOQ item — not payable progress.</p>}
         <EquipmentActivityAllocationEditor value={details.activitySegments} editable={false}
+           showExplanations={showExplanations}
           parentHours={details.allocationParent.hours} parentStartTime={row.startTime} parentEndTime={row.endTime}
           boqItems={boqItems} programmeBars={programmeBars} preserveInitialValueUntilChange={details.usingLegacyAssignment} />
       </>;

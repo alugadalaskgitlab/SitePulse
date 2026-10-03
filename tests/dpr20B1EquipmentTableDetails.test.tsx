@@ -168,27 +168,30 @@ describe("DPR20 B1 stoppage parity and linked maintenance", () => {
 
 describe("DPR20 B1 scope and one-table source contract", () => {
   const source = readFileSync("client/src/pages/SiteReport.tsx", "utf8");
+  const renderer = readFileSync("client/src/components/DprEquipmentReadOnlyRow.tsx", "utf8");
   const equipmentSection = source.split("<CardTitle>Equipment Log</CardTitle>")[1].split("</Card>")[0];
 
-  it("uses one equipment table, the existing twelve columns and child-aware collection", () => {
+  it("uses the approved six-column shared equipment table and child-aware collection", () => {
     expect(equipmentSection).not.toContain("<DprEquipmentCompact");
-    expect((equipmentSection.match(/<Table>/g) ?? [])).toHaveLength(1);
-    expect((equipmentSection.match(/<TableHead[ >]/g) ?? [])).toHaveLength(12);
+    expect((equipmentSection.match(/<DprEquipmentReadOnlyTable /g) ?? [])).toHaveLength(1);
+    expect((renderer.match(/<table /g) ?? [])).toHaveLength(1);
+    expect(renderer).toContain('["Machine", "Work", "Usage", "Diesel", "Consumption", "Notes"]');
     expect((equipmentSection.match(/visibleEquipment\.map/g) ?? [])).toHaveLength(1);
     expect(source).toContain("breakdowns: item.breakdowns ?? breakdownsBySourceId.get(Number(item.id)) ?? []");
     expect(source).toContain("const totalDiesel = visibleEquipment.reduce");
-    expect(source).toContain("item.hoursWorked != null");
-    expect(source).toContain("item.expectedDiesel != null");
-    expect(source).toContain("item.dieselNorm != null");
+    expect(renderer).toContain("row.hoursWorked != null");
+    expect(renderer).toContain("finite(row.expectedDiesel)");
+    expect(renderer).toContain("displayNorm(row.dieselNorm, normUnit)");
   });
 
   it("leaves lifecycle eligibility, move endpoint and button placement intact without B2 integration", () => {
     expect(source).toContain('const canMove = canEdit\n                      && usageId != null\n                      && usageLifecycle?.status === "closed"\n                      && usageLifecycle.successorId == null;');
     expect(source).toContain('data-testid={`button-move-equipment-${i}`}');
     expect(source).toContain('/api/equipment-usage/${usageId}/move');
-    expect(source).toContain('<TableHead className="print:hidden">Lifecycle</TableHead>');
+    expect(source).toContain("lifecycleSlot={lifecycleText");
+    expect(renderer).toContain('<th scope="col" className="equipment-lifecycle print:hidden">Lifecycle</th>');
     expect(source).not.toContain("managementMetrics");
-    expect(readFileSync("client/src/pages/DprDetails.tsx", "utf8")).toContain("<DprEquipmentCompact");
+    expect(readFileSync("client/src/pages/DprDetails.tsx", "utf8")).toContain("<DprEquipmentReadOnlyRow");
     for (const page of ["SiteEntry", "SiteEdit", "GuidedDpr"]) {
       expect(readFileSync(`client/src/pages/${page}.tsx`, "utf8")).toContain("<DprEquipmentCompact");
     }
@@ -221,11 +224,16 @@ describe("DPR20 B1 equipment-only print layout", () => {
     expect(css).not.toContain("zoom:");
   });
 
-  it("fits all eleven printable columns with wrapping, 9pt text, visible overflow and repeated headers", () => {
+  it("fits all six printable columns with wrapping, 9pt text, visible overflow and repeated headers", () => {
     expect(declaration(".dpr-equipment-audit table", "table-layout").value).toBe("fixed");
     expect(declaration(".dpr-equipment-audit .overflow-auto", "overflow").value).toBe("visible");
-    const widths = Array.from({ length: 11 }, (_, index) =>
-      parseFloat(declaration(`.dpr-equipment-audit th:nth-child(${index + 1})`, "width").value));
+    const compactRules: postcss.Rule[] = [];
+    postcss.parse(readFileSync("client/src/components/dprEquipmentReadOnly.css", "utf8")).walkRules(rule => { compactRules.push(rule); });
+    const widths = Array.from({ length: 6 }, (_, index) => {
+      const candidates = compactRules.filter(rule => rule.selector.endsWith(`th:nth-child(${index + 1})`));
+      const width = candidates.at(-1)!.nodes.find(node => node.type === "decl" && node.prop === "width") as postcss.Declaration;
+      return parseFloat(width.value);
+    });
     expect(widths.reduce((total, width) => total + width, 0)).toBe(100);
     expect(declaration(".dpr-equipment-audit td", "white-space").value).toBe("normal");
     expect(declaration(".dpr-equipment-audit td", "overflow-wrap").value).toBe("anywhere");
@@ -240,6 +248,8 @@ describe("DPR20 B1 equipment-only print layout", () => {
     const buttonRule = rules.filter(rule => rule.selector.includes("button"));
     expect(buttonRule).toHaveLength(1);
     expect(buttonRule[0].selector).toBe('.dpr-equipment-audit [data-testid^="equipment-table-breakdowns-"] button');
-    expect(source).toContain('<TableHead className="print:hidden">Lifecycle</TableHead>');
+    const compactCss = readFileSync("client/src/components/dprEquipmentReadOnly.css", "utf8");
+    expect(compactCss).toContain(".equipment-lifecycle,.equipment-details-toggle { display: none !important; }");
+    expect(compactCss).toContain(".equipment-audit-panel { display: block !important;");
   });
 });

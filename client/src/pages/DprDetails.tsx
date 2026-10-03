@@ -18,7 +18,9 @@ import type { EquipmentMasterType, Personnel, Site } from "@shared/schema";
 import { boqItemDisplayName } from "@shared/boqItemName";
 import { dprMeasurementSummary, resolveBoqDisplayUnit } from "@shared/dprGeometry";
 import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
-import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
+import { DprEquipmentReadOnlyRow, DprEquipmentReadOnlyTable } from "@/components/DprEquipmentReadOnlyRow";
+import { useDprEquipmentPerformance } from "@/hooks/use-dpr-equipment-performance";
+import { hasCompleteDprPerformanceContext, resolveDprActualEfficiency } from "@/lib/dprEquipmentEfficiency";
 import { DprActivityReadOnly } from "@/components/DprActivityReadOnly";
 import { DprMaterialsReceived } from "@/components/DprMaterialsReceived";
 import { LabourWorkerNamesReadOnly } from "@/components/LabourWorkerNames";
@@ -33,13 +35,16 @@ export default function DprDetails() {
   const { sectionCan, isAdmin, user } = useAuth();
   const canEdit = sectionCan("site_dprs", "edit");
   const canDelete = isAdmin;
+  const canViewPerformance = sectionCan("equipment_performance_report", "view") || sectionCan("plant_equipment", "view");
+  const completePerformanceContext = hasCompleteDprPerformanceContext(user);
+  const performance = useDprEquipmentPerformance(dpr, canViewPerformance, user?.id, completePerformanceContext);
   const { toast } = useToast();
   const { data: personnelList = [] } = useQuery<Personnel[]>({ queryKey: ["/api/personnel"] });
 
   const { data: equipmentList = [] } = useQuery<EquipmentMasterType[]>({
     queryKey: ["/api/plant-module/equipment", "all"],
     queryFn: async () => {
-      const res = await fetch("/api/plant-module/equipment?includeInactive=true");
+      const res = await fetch("/api/plant-module/equipment?includeInactive=true", { credentials: "include" });
       return res.json();
     },
   });
@@ -47,9 +52,21 @@ export default function DprDetails() {
   // Keep persisted legacy rows editable, but do not turn the historical
   // start-time auto-prefill shape into an Operating entry in this read view.
   // Child evidence (allocations, segments, and breakdowns) remains visible.
+  const logIds = (dpr?.equipment ?? []).map((row: any) => Number(row.id)).filter(Number.isInteger).join(",");
+  const { data: linkedBreakdowns = [] } = useQuery<any[]>({
+    queryKey: ["/api/maintenance/logs", "dpr_log", logIds],
+    queryFn: async () => {
+      const res = await fetch(`/api/maintenance/logs?sourceType=dpr_log&sourceRecordIds=${encodeURIComponent(logIds)}`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: logIds.length > 0,
+  });
   const visibleEquipment = useMemo(
-    () => visibleEquipmentRows((dpr as any)?.equipment),
-    [dpr],
+    () => visibleEquipmentRows<any>((dpr as any)?.equipment?.map((row: any) => ({
+      ...row,
+      breakdowns: row.breakdowns ?? linkedBreakdowns.filter(log => Number(log.sourceRecordId) === Number(row.id)),
+    }))),
+    [dpr, linkedBreakdowns],
   );
 
   // BOQ item lookup for progress entries — chain: sites → boq project → items
@@ -333,15 +350,22 @@ export default function DprDetails() {
             {visibleEquipment.length === 0 ? (
               <p className="text-muted-foreground italic">No equipment usage recorded.</p>
             ) : (
-              <>
-                <div className="space-y-3">
+              <DprEquipmentReadOnlyTable rows={visibleEquipment} equipmentFor={row => equipmentList.find(entry => entry.id === row.equipmentId)}
+                canonicalFor={row => resolveDprActualEfficiency({
+                  dpr, row, report: performance.data, canView: canViewPerformance, hasCompleteContext: completePerformanceContext,
+                  isLoading: performance.isLoading || performance.isFetching, error: performance.error,
+                })}>
                   {visibleEquipment.map((item: any, i: number) => (
-                    <DprEquipmentCompact
+                    <DprEquipmentReadOnlyRow
                       key={item.id ?? i}
                       row={item}
                       equipment={item.equipmentId ? equipmentList.find((entry) => entry.id === item.equipmentId) : null}
-                      editable={false}
                       index={i}
+                       linkedRows={linkedBreakdowns.filter(log => Number(log.sourceRecordId) === Number(item.id))}
+                       canonical={resolveDprActualEfficiency({
+                         dpr, row: item, report: performance.data, canView: canViewPerformance, hasCompleteContext: completePerformanceContext,
+                         isLoading: performance.isLoading || performance.isFetching, error: performance.error,
+                       })}
                       boqItems={siteBoqItems}
                       programmeBars={(dpr.progress ?? []).flatMap((entry: any) => entry.programmeBarId != null && entry.boqItemId != null ? [{
                         id: Number(entry.programmeBarId),
@@ -351,14 +375,7 @@ export default function DprDetails() {
                       }] : [])}
                     />
                   ))}
-                </div>
-                <div className="mt-4 p-4 bg-primary/5 border border-primary/20 rounded-lg">
-                  <p className="text-sm text-muted-foreground">Total Diesel Issued</p>
-                  <p className="text-2xl font-bold text-primary">
-                    {visibleEquipment.reduce((sum: number, e: any) => sum + (e.diesel || 0), 0).toFixed(3)} L
-                  </p>
-                </div>
-              </>
+              </DprEquipmentReadOnlyTable>
             )}
           </CardContent>
         </Card>
@@ -377,6 +394,7 @@ export default function DprDetails() {
                     <TableHead>Category</TableHead>
                     <TableHead>Gender</TableHead>
                     <TableHead className="text-right">Count</TableHead>
+                     <TableHead className="text-right">Hours</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -385,6 +403,7 @@ export default function DprDetails() {
                       <TableCell>{item.category}<LabourWorkerNamesReadOnly row={item} /></TableCell>
                       <TableCell>{item.gender}</TableCell>
                       <TableCell className="text-right font-mono font-bold">{item.count}</TableCell>
+                       <TableCell className="text-right font-mono">{item.hours == null ? "" : `${item.hours} h`}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

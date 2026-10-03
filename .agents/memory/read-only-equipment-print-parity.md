@@ -14,3 +14,9 @@ Verify actual generated PDFs, including multi-page machine rows, rather than onl
 **Why:** Print DOM checks passed while the actual PDF clipped the right-hand audit columns. Removing the separately printable cards exposed the loss.
 
 **How to apply:** Check every printable column and long remarks/attachment names in extracted PDF text and rendered pages. Scope wrapping/overflow/page-fragmentation rules to this table; do not change unrelated print layouts or expose lifecycle actions in print.
+
+Read-only consumption deliberately falls back from an available canonical measurement to confirmed row-level tank consumption, then issued diesel per recorded usage. Vehicles display km/L; unusually better-than-norm consumption is an amber check, not a green reward.
+
+**Why:** The user approved a useful row-level figure for site-restricted viewers without relaxing canonical access checks or changing operational calculations.
+
+**How to apply:** Preserve canonical precedence and distinguish measured from issued. Use existing historical runtime and fuel facts; never manufacture missing quantities. Keep saved-versus-calculated audit distinctions in expandable details, automatically expanded on paper.

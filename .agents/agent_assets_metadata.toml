@@ -4329,3 +4329,17 @@ mtime_ms = 1791041471225
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/41f74414-44a9-4c97-8fda-e622dcafd398/0192c84c-bd1d-4332-aed6-710d9e35705e"
 storage_version_token = "1791041502872241"
 content_type = "text/html"
+
+[[outputs]]
+id = "5PWpCI-hVNWuoEAOBEVS4"
+uri = "file://.agents/outputs/dpr-view-01/verification-report.html"
+type = "html"
+title = "DPR-VIEW-01 verification report"
+description = "A–L results, before/after screenshots, print evidence and verification limitations."
+logical_id = "270856ea-e6fe-491d-b832-0dd71c2fc4c6"
+content_hash = "sha256:dfea48ec3660de1fced127af98575b5e9ed385dc67a2df6c54a770ceb25552b7"
+size = 2518302
+mtime_ms = 1791049265476
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/270856ea-e6fe-491d-b832-0dd71c2fc4c6/ca91ca9a-db50-4402-8c0a-e405d85dd815"
+storage_version_token = "1791049350937399"
+content_type = "text/html"

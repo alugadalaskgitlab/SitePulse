@@ -454,9 +454,13 @@ describe("DPR20 B2 snapshot fuel facts do not compete with canonical Actual", ()
     const source = readFileSync("client/src/pages/SiteReport.tsx", "utf8");
     expect(source).toContain('sectionCan("equipment_performance_report", "view") || sectionCan("plant_equipment", "view")');
     expect(source).toContain("useDprEquipmentPerformance(dpr, canViewPerformance, user?.id, completePerformanceContext)");
-    expect(source).toContain("Issued − expected:");
+    const renderer = readFileSync("client/src/components/DprEquipmentReadOnlyRow.tsx", "utf8");
+    expect(source).toContain("canonical={resolveDprActualEfficiency");
+    expect(renderer).toContain('label="Issued − saved expected"');
+    expect(renderer).toContain('label="DPR snapshot consumed − expected variance"');
     expect(source).not.toContain("Actual variance:");
-    expect(source).toContain("showLegacyRate={false}");
-    expect(source).toContain('.dpr-equipment-audit th:nth-child(11) { width: 6%; }');
+    expect(renderer).toContain("resolveDprRowConsumption");
+    expect(renderer).not.toContain("<DprEquipmentEfficiency");
+    expect(source).toContain(".dpr-equipment-audit thead { display: table-header-group !important; }");
   });
 });

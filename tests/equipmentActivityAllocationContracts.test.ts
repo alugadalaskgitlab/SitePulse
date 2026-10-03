@@ -41,7 +41,15 @@ describe("equipment allocation lifecycle and view contracts", () => {
 
   it("O/P: renders allocations in submitted and manager/admin views", () => {
     const report = read("client/src/pages/SiteReport.tsx");
-    expect(report).toContain("<DprEquipmentCompact");
+    expect(report).toContain("<DprEquipmentReadOnlyRow");
+    const renderer = read("client/src/components/DprEquipmentReadOnlyRow.tsx");
+    const audit = read("client/src/components/DprEquipmentTableDetails.tsx");
+    expect(renderer).toContain('section="work"');
+    expect(renderer).toContain("resolveEquipmentBoqHours");
+    expect(renderer).toContain("Saved legacy allocations");
+    expect(audit).toContain("groupLegacyEquipmentActivityAllocations(row.activityAllocations)");
+    expect(audit).toContain("<EquipmentActivityAllocationEditor");
+    expect(audit).toContain("editable={false}");
     expect(report).toContain("boqItems={reportBoqItems}");
     expect(read("client/src/pages/AdminReports.tsx")).toContain("activityAllocations");
   });

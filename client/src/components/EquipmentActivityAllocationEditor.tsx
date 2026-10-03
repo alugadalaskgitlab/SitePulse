@@ -23,10 +23,11 @@ export type EquipmentActivitySegment = {
 type BoqItem = { id: number; description?: string | null; itemCode?: string | null; itemName?: string | null; displayName?: string | null; unit?: string | null };
 type ProgrammeBar = { id: number; boqItemId: number; reachLabel?: string | null; side?: string | null };
 
-export function EquipmentActivityAllocationEditor({ value = [], onChange, boqItems = [], programmeBars = [], parentHours, parentStartTime, parentEndTime, editable = true, preserveInitialValueUntilChange = false }: {
+export function EquipmentActivityAllocationEditor({ value = [], onChange, boqItems = [], programmeBars = [], parentHours, parentStartTime, parentEndTime, editable = true, preserveInitialValueUntilChange = false, showExplanations = true }: {
   value?: EquipmentActivitySegment[]; onChange?: (value: EquipmentActivitySegment[]) => void; boqItems?: BoqItem[]; programmeBars?: ProgrammeBar[];
   parentHours?: number | null; parentStartTime?: string | null; parentEndTime?: string | null; editable?: boolean;
   preserveInitialValueUntilChange?: boolean;
+  showExplanations?: boolean;
 }) {
   const itemName = (id: number) => {
     const item = boqItems.find(candidate => candidate.id === id);
@@ -123,7 +124,7 @@ export function EquipmentActivityAllocationEditor({ value = [], onChange, boqIte
           <div className="mt-1 text-base font-bold tabular-nums">{formatEquipmentDuration(segment.hoursWorked ?? duration(segment))}</div>
         </div>
       ))}</div> : <div className="rounded-md border border-dashed border-slate-300 bg-slate-50/50 px-4 py-3 text-sm text-muted-foreground dark:border-slate-700 dark:bg-slate-950/20">No BOQ item assigned to this machine day.</div>}
-      <AssignmentTotals assigned={allocatedHours} unassigned={unallocatedHours} parentHours={parentHours} />
+      <AssignmentTotals assigned={allocatedHours} unassigned={unallocatedHours} parentHours={parentHours} showExplanations={showExplanations} />
     </section>;
   }
 
@@ -155,8 +156,8 @@ export function EquipmentActivityAllocationEditor({ value = [], onChange, boqIte
 }
 
 
-function AssignmentTotals({ assigned, unassigned, parentHours, compact = false }: { assigned: number; unassigned: number | null; parentHours?: number | null; compact?: boolean }) {
+function AssignmentTotals({ assigned, unassigned, parentHours, compact = false, showExplanations = true }: { assigned: number; unassigned: number | null; parentHours?: number | null; compact?: boolean; showExplanations?: boolean }) {
   const hours = (value: number) => `${value.toFixed(1)} h`;
   if (compact) return <div className="rounded bg-slate-100 px-2 py-1 text-xs tabular-nums text-slate-600 dark:bg-slate-800 dark:text-slate-300"><strong className="text-slate-800 dark:text-slate-100">{hours(assigned)}</strong> assigned{parentHours != null ? ` / ${hours(parentHours)}` : ""}{unassigned != null && unassigned > 0 ? <span className="ml-1 font-semibold text-amber-700 dark:text-amber-300">· {hours(unassigned)} unassigned</span> : null}</div>;
-  return <div className="mt-4 border-t border-slate-200 pt-3 dark:border-slate-700"><div className="flex flex-wrap gap-x-5 gap-y-2 text-sm tabular-nums"><span className="font-bold text-slate-900 dark:text-slate-100">Assigned: {formatEquipmentDuration(assigned)}</span>{parentHours != null && <><span className={unassigned === 0 ? "font-medium text-emerald-700 dark:text-emerald-300" : "text-slate-700 dark:text-slate-300"}>Unassigned: {formatEquipmentDuration(unassigned ?? 0)}</span><span className="text-slate-700 dark:text-slate-300">Machine Day: {formatEquipmentDuration(parentHours)}</span></>}</div>{parentHours != null && <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">Assignment validation uses the machine-day Clock Duration ({formatEquipmentDuration(parentHours)}). Assignment segments are clock times; gaps and partial assignment are allowed.</p>}</div>;
+  return <div className="mt-4 border-t border-slate-200 pt-3 dark:border-slate-700"><div className="flex flex-wrap gap-x-5 gap-y-2 text-sm tabular-nums"><span className="font-bold text-slate-900 dark:text-slate-100">Assigned: {formatEquipmentDuration(assigned)}</span>{parentHours != null && <><span className={unassigned === 0 ? "font-medium text-emerald-700 dark:text-emerald-300" : "text-slate-700 dark:text-slate-300"}>Unassigned: {formatEquipmentDuration(unassigned ?? 0)}</span><span className="text-slate-700 dark:text-slate-300">Machine Day: {formatEquipmentDuration(parentHours)}</span></>}</div>{showExplanations && parentHours != null && <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">Assignment validation uses the machine-day Clock Duration ({formatEquipmentDuration(parentHours)}). Assignment segments are clock times; gaps and partial assignment are allowed.</p>}</div>;
 }

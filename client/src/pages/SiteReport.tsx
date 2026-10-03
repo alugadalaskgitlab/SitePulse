@@ -29,8 +29,7 @@ import {
   type EquipmentDestinationType,
 } from "@/lib/equipmentLifecycle";
 import { ProgrammeBarOutcomeHistory } from "@/components/ProgrammeBarOutcomeHistory";
-import { buildDprEquipmentTableDetails, DprEquipmentTableDetails, DprEquipmentTableBreakdowns } from "@/components/DprEquipmentTableDetails";
-import { DprEquipmentEfficiency } from "@/components/DprEquipmentEfficiency";
+import { DprEquipmentReadOnlyRow, DprEquipmentReadOnlyTable } from "@/components/DprEquipmentReadOnlyRow";
 import { hasCompleteDprPerformanceContext, resolveDprActualEfficiency } from "@/lib/dprEquipmentEfficiency";
 import { useDprEquipmentPerformance } from "@/hooks/use-dpr-equipment-performance";
 import { DprActivityReadOnly } from "@/components/DprActivityReadOnly";
@@ -89,17 +88,6 @@ const equipmentAuditPrintCss = `
     font-size: 9pt !important;
     line-height: 1.35 !important;
   }
-  .dpr-equipment-audit th:nth-child(1) { width: 10%; }
-  .dpr-equipment-audit th:nth-child(2) { width: 6%; }
-  .dpr-equipment-audit th:nth-child(3) { width: 6%; }
-  .dpr-equipment-audit th:nth-child(4) { width: 14%; }
-  .dpr-equipment-audit th:nth-child(5) { width: 10%; }
-  .dpr-equipment-audit th:nth-child(6) { width: 6%; }
-  .dpr-equipment-audit th:nth-child(7) { width: 9%; }
-  .dpr-equipment-audit th:nth-child(8) { width: 7%; }
-  .dpr-equipment-audit th:nth-child(9) { width: 12%; }
-  .dpr-equipment-audit th:nth-child(10) { width: 14%; }
-  .dpr-equipment-audit th:nth-child(11) { width: 6%; }
   .dpr-equipment-audit [data-testid^="equipment-table-work-"] section,
   .dpr-equipment-audit [data-testid^="equipment-table-work-"] .grid > div {
     padding: 1mm 0 !important;
@@ -618,38 +606,13 @@ export default function SiteReport() {
               <p className="text-muted-foreground italic">No equipment usage recorded.</p>
             ) : (
               <div className="space-y-2">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Machine</TableHead>
-                    <TableHead>Vehicle No</TableHead>
-                    <TableHead>Operator</TableHead>
-                    <TableHead>Task</TableHead>
-                    <TableHead>Time/Meter</TableHead>
-                    <TableHead className="text-right">Operating Quantity</TableHead>
-                    <TableHead className="text-right">Diesel (L)</TableHead>
-                    <TableHead className="text-right">Expected Diesel</TableHead>
-                    <TableHead>Norm / Efficiency</TableHead>
-                    <TableHead>Breakdown / Stoppage</TableHead>
-                    <TableHead>Diesel Source</TableHead>
-                    <TableHead className="print:hidden">Lifecycle</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              <DprEquipmentReadOnlyTable rows={visibleEquipment} equipmentFor={row => equipmentById.get(row.equipmentId)} hasLifecycle
+                canonicalFor={row => resolveDprActualEfficiency({
+                  dpr, row, report: performance.data, canView: canViewPerformance,
+                  hasCompleteContext: completePerformanceContext,
+                  isLoading: performance.isLoading || performance.isFetching, error: performance.error,
+                })}>
                   {visibleEquipment.map((item: any, i: number) => {
-                    const et = item.entryType || "time_meter";
-                    const isTripBased = et === "trip_based";
-                    const operatingQuantity = item.hoursWorked != null
-                      ? `${Number(item.hoursWorked).toFixed(3)} h`
-                      : item.totalKm != null ? `${Number(item.totalKm).toFixed(3)} km` : "—";
-                    const persistedExpected = item.expectedDiesel != null ? Number(item.expectedDiesel) : null;
-                    const persistedNorm = item.dieselNorm != null ? Number(item.dieselNorm) : null;
-                    const persistedNormUnit = item.totalKm != null ? "L/km" : item.hoursWorked != null ? "L/hr" : "";
-                    const tableDetails = buildDprEquipmentTableDetails(item, equipmentById.get(item.equipmentId));
-
-                    const dieselSourceLabel = item.dieselSource === 'direct_purchase' ? 'Direct Purchase'
-                      : item.dieselSource === 'contractor' ? 'Contractor'
-                      : item.dieselSource === 'plant_stock' ? 'Plant Stock' : String(item.dieselSource || '-').replace("_", " ");
                     const usageId = linkedUsageId(item);
                     const usageLifecycle = usageId != null ? lifecycle.get(usageId) : undefined;
                     const lifecycleText = lifecycleLabel(usageLifecycle);
@@ -660,76 +623,20 @@ export default function SiteReport() {
                     const linkedRows = breakdownsBySourceId.get(Number(item.id)) ?? [];
                     
                     return (
-                      <TableRow key={i} data-testid={`row-equipment-${i}`}>
-                        <TableCell className="font-medium">
-                          {item.machine}
-                          {et === "hourly" && <Badge variant="outline" className="ml-1 text-[12px] bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700">Hourly Hire</Badge>}
-                          {et === "daily" && <Badge variant="outline" className="ml-1 text-[12px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Daily Hire</Badge>}
-                          {et === "monthly" && <Badge variant="outline" className="ml-1 text-[12px] bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-700">Monthly Hire</Badge>}
-                          {et === "trip_based" && <Badge variant="outline" className="ml-1 text-[12px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700">Trip Based</Badge>}
-                          <DprEquipmentTableDetails section="identity" row={item} details={tableDetails} index={i} />
-                        </TableCell>
-                        <TableCell>{item.vehicleNo || '-'}</TableCell>
-                        <TableCell>{item.operator || '-'}</TableCell>
-                        <TableCell className="text-sm">
-                          <span className="whitespace-pre-wrap">{item.task || '-'}</span>
-                          <DprEquipmentTableDetails section="work" row={item} details={tableDetails} index={i}
+                      <DprEquipmentReadOnlyRow key={item.id ?? i} row={item} equipment={equipmentById.get(item.equipmentId)} index={i} linkedRows={linkedRows}
+                            canonical={resolveDprActualEfficiency({
+                              dpr, row: item, report: performance.data, canView: canViewPerformance,
+                              hasCompleteContext: completePerformanceContext,
+                              isLoading: performance.isLoading || performance.isFetching, error: performance.error,
+                            })}
                             boqItems={reportBoqItems}
                             programmeBars={(dpr.progress ?? []).flatMap((entry: any) => entry.programmeBarId != null && entry.boqItemId != null ? [{
                               id: Number(entry.programmeBarId),
                               boqItemId: Number(entry.boqItemId),
                               reachLabel: [entry.chainageFrom, entry.chainageTo].filter(Boolean).join("–") || null,
                               side: entry.side || null,
-                            }] : [])} />
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          <DprEquipmentTableDetails section="readings" row={item} details={tableDetails} index={i} />
-                          {isTripBased && item.numberOfTrips && item.tripDistance && (
-                            <div className="text-[12px] text-muted-foreground">{item.numberOfTrips} trips × {item.tripDistance} km</div>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <span className="text-xs text-muted-foreground">Saved quantity: </span>{operatingQuantity}
-                          <DprEquipmentTableDetails section="quantity" row={item} details={tableDetails} index={i} />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {item.diesel ?? '-'}
-                          <DprEquipmentTableDetails section="tank" row={item} details={tableDetails} index={i} />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <span className="text-xs text-muted-foreground">Saved expected: </span>
-                          {persistedExpected != null ? `${persistedExpected.toFixed(3)} L` : "—"}
-                          <DprEquipmentTableDetails section="expected" row={item} details={tableDetails} index={i} />
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          <DprEquipmentEfficiency norm={persistedNorm} normUnit={persistedNormUnit} index={i}
-                            actual={resolveDprActualEfficiency({
-                              dpr, row: item, report: performance.data, canView: canViewPerformance,
-                              hasCompleteContext: completePerformanceContext,
-                              isLoading: performance.isLoading || performance.isFetching, error: performance.error,
-                            })} />
-                          {persistedExpected != null && item.diesel != null && (
-                            <div className="text-xs text-muted-foreground">
-                              Issued − expected: {(Number(item.diesel) - persistedExpected).toFixed(3)} L
-                            </div>
-                          )}
-                          <DprEquipmentTableDetails section="performance" row={item} details={tableDetails} index={i} showLegacyRate={false} />
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          <DprEquipmentTableBreakdowns stops={item.breakdowns} linkedRows={linkedRows} index={i} />
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-sm">{dieselSourceLabel}</span>
-                          {item.dieselSource === 'direct_purchase' && (
-                            <div className="text-sm text-muted-foreground mt-0.5">
-                              {item.fuelStation && <span>{item.fuelStation}</span>}
-                              {item.billNumber && <span> | Bill: {item.billNumber}</span>}
-                              {item.amountPaid && <span> | Rs. {item.amountPaid}</span>}
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell className="print:hidden">
-                          {lifecycleText ? (
+                            }] : [])}
+                        lifecycleSlot={lifecycleText ? (
                             <div className="space-y-2">
                               <Badge
                                 variant={usageLifecycle?.status === "open" ? "secondary" : "outline"}
@@ -801,12 +708,10 @@ export default function SiteReport() {
                           ) : (
                             <span className="text-muted-foreground">—</span>
                           )}
-                        </TableCell>
-                      </TableRow>
+                      />
                     );
                   })}
-                </TableBody>
-              </Table>
+              </DprEquipmentReadOnlyTable>
               </div>
             )}
           </CardContent>
