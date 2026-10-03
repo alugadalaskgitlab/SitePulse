@@ -1,0 +1,31 @@
+baseline
+"{""equipment"" : [{""site"":""ALLADURG PWD ROAD TO PAMPAD"",""total"":66,""segment"":55,""allocation"":0,""parent"":0,""none"":11,""stored_hours"":267.39996,""attributed_hours"":394.18332,""unattributed_hours"":115.9,""missing_hours"":10,""attribution_exceeds_stored"":53}, 
+ {""site"":""DTPL-BASAVAKALYAN"",""total"":10,""segment"":0,""allocation"":0,""parent"":0,""none"":10,""stored_hours"":0,""attributed_hours"":0,""unattributed_hours"":0,""missing_hours"":10,""attribution_exceeds_stored"":0}, 
+ {""site"":""DTPL-RAJESHWAR"",""total"":22,""segment"":0,""allocation"":0,""parent"":0,""none"":22,""stored_hours"":0,""attributed_hours"":0,""unattributed_hours"":0,""missing_hours"":22,""attribution_exceeds_stored"":0}, 
+ {""site"":""FDR KK ROAD"",""total"":47,""segment"":0,""allocation"":0,""parent"":0,""none"":47,""stored_hours"":0,""attributed_hours"":0,""unattributed_hours"":0,""missing_hours"":47,""attribution_exceeds_stored"":0}, 
+ {""site"":""KANGTI SITE - MURTHY"",""total"":7,""segment"":0,""allocation"":0,""parent"":0,""none"":7,""stored_hours"":0,""attributed_hours"":0,""unattributed_hours"":0,""missing_hours"":7,""attribution_exceeds_stored"":0}, 
+ {""site"":""PLANT/CAMP OFFICE"",""total"":8,""segment"":0,""allocation"":0,""parent"":0,""none"":8,""stored_hours"":0,""attributed_hours"":0,""unattributed_hours"":0,""missing_hours"":8,""attribution_exceeds_stored"":0}, 
+ {""site"":""TAKKADPALLY-SIRUR"",""total"":86,""segment"":9,""allocation"":0,""parent"":14,""none"":63,""stored_hours"":174.79999,""attributed_hours"":130.84999,""unattributed_hours"":76.5,""missing_hours"":43,""attribution_exceeds_stored"":7}], ""labour"" : [{""site"":""ALLADURG PWD ROAD TO PAMPAD"",""total"":10,""linked"":2,""unlinked"":8,""linked_headcount"":3,""unlinked_headcount"":8}, 
+ {""site"":""DTPL-BASAVAKALYAN"",""total"":2,""linked"":0,""unlinked"":2,""linked_headcount"":0,""unlinked_headcount"":16}, 
+ {""site"":""DTPL-RAJESHWAR"",""total"":3,""linked"":0,""unlinked"":3,""linked_headcount"":0,""unlinked_headcount"":24}, 
+ {""site"":""FDR KK ROAD"",""total"":8,""linked"":0,""unlinked"":8,""linked_headcount"":0,""unlinked_headcount"":15}, 
+ {""site"":""KANGTI SITE - MURTHY"",""total"":4,""linked"":0,""unlinked"":4,""linked_headcount"":0,""unlinked_headcount"":9}, 
+ {""site"":""PLANT/CAMP OFFICE"",""total"":9,""linked"":0,""unlinked"":9,""linked_headcount"":0,""unlinked_headcount"":12}, 
+ {""site"":""TAKKADPALLY-SIRUR"",""total"":18,""linked"":0,""unlinked"":18,""linked_headcount"":0,""unlinked_headcount"":14}], ""materials"" : [{""site"":""FDR KK ROAD"",""type"":""Received"",""total"":27,""linked"":0,""unlinked"":27}], ""dprs"" : [{""site"":""ALIPUR - KOTHUR HLB"",""total"":1,""one_item"":1,""multiple_items"":0,""no_items"":0,""null_project_with_links"":0}, 
+ {""site"":""ALLADURG PWD ROAD TO PAMPAD"",""total"":17,""one_item"":16,""multiple_items"":0,""no_items"":1,""null_project_with_links"":0}, 
+ {""site"":""DTPL-BASAVAKALYAN"",""total"":2,""one_item"":0,""multiple_items"":0,""no_items"":2,""null_project_with_links"":0}, 
+ {""site"":""DTPL-RAJESHWAR"",""total"":3,""one_item"":0,""multiple_items"":0,""no_items"":3,""null_project_with_links"":0}, 
+ {""site"":""FDR KK ROAD"",""total"":23,""one_item"":0,""multiple_items"":0,""no_items"":23,""null_project_with_links"":0}, 
+ {""site"":""KANGTI SITE - MURTHY"",""total"":3,""one_item"":0,""multiple_items"":0,""no_items"":3,""null_project_with_links"":0}, 
+ {""site"":""PLANT/CAMP OFFICE"",""total"":9,""one_item"":0,""multiple_items"":0,""no_items"":9,""null_project_with_links"":0}, 
+ {""site"":""TAKKADPALLY-SIRUR"",""total"":54,""one_item"":18,""multiple_items"":11,""no_items"":25,""null_project_with_links"":0}]}"
+
+
+site,rows,known_clock_hours,missing_clock_rows,assigned_once_hours,known_clock_unassigned,assigned_exceeds_clock
+ALLADURG PWD ROAD TO PAMPAD,66,482.117,0,394.183,87.933,0
+DTPL-BASAVAKALYAN,10,36.917,2,0.000,36.917,0
+DTPL-RAJESHWAR,22,20.567,17,0.000,20.567,0
+FDR KK ROAD,47,240.283,10,0.000,240.283,0
+KANGTI SITE - MURTHY,7,15.283,5,0.000,15.283,0
+PLANT/CAMP OFFICE,8,0.500,7,0.000,0.500,0
+TAKKADPALLY-SIRUR,86,337.483,40,101.350,243.833,0

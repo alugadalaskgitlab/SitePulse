@@ -1,0 +1,96 @@
+INSTRUCTION BOQ-LINK-01: Make DPR equipment, labour and material rows link to the right BOQ item by default — and first measure, read-only, how much is linked today
+
+READ THIS FIRST — SCOPE DISCIPLINE
+This is the first of three batches (BOQ-LINK-01, -02, -03). This batch does exactly two things:
+  PART A — a read-only baseline: count how much DPR resource data is linked to BOQ items today. No writes.
+  PART B — change DPR entry so new equipment / labour / material rows get a sensible BOQ link by default, plus an explicit "General / not item-specific" choice, plus a non-blocking advisory at Final Submit.
+Do NOT backfill or edit any existing DPR rows (that is BOQ-LINK-02, with human review). Do NOT change the BOM & Demand / Plan vs Actual report calculations (that is BOQ-LINK-03). Do NOT change any quantity, hours, meter reading, diesel, trip or km logic. Do not publish automatically. STOP after this batch and report back.
+
+COORDINATION
+- No other batch that touches the DPR screens (Guided DPR, SiteEdit / Detailed DPR, SiteEntry, DprEquipmentCompact, the labour Step 4 screen, dprSubmitReadiness) may be in progress while this one runs. If one is half-done, say so and stop.
+- LABOUR-01 (worker names under each labour row) is already in this codebase (LabourWorkerNames, tests/labour01*.test.ts). This batch edits the same Step 4 labour row. Do not move, restyle or alter the worker-names block; all LABOUR-01 tests must still pass unchanged.
+
+WHY
+Equipment hours, labour and materials only reach the Plan vs Actual (resources) tab on the BOM & Demand page when the DPR row is linked to a BOQ item. Today most rows are not linked, so the "actual" side of resources is understated and nobody can tell whether the app's planned resource norms are right. We want new data to arrive linked, and we want "deliberately not item-specific" (camp DG, site camper, watchman, general cleaning) to be recorded as such instead of being indistinguishable from "forgot to link".
+
+HOW LINKS WORK TODAY (verified in code — read these before changing anything)
+- Labour: labour_logs.boq_item_id (nullable). Guided DPR step 4 shows an optional "Work item" select defaulting to "No work item", listing ALL selectable BOQ items (dprSelectableBoqItems), not today's activities. SiteEdit (Detailed DPR) has the same optional select.
+- Equipment: three attribution paths, resolved by shared/equipmentActivityAllocations.ts → resolveEquipmentBoqHours():
+    1. activity segments (equipment_activity_segments + equipment_activity_segment_boq_items) — authoritative when present;
+    2. legacy activity allocations (equipment_activity_allocations);
+    3. legacy parent link equipment_logs.boq_item_id — used only when 1 and 2 are absent.
+  SOURCE OF TRUTH FOR EQUIPMENT: whatever resolveEquipmentBoqHours() returns. Activity segments win; legacy allocations next; equipment_logs.boq_item_id is a read-only fallback for old rows. New code in this batch must NEVER write equipment_logs.boq_item_id, so a row can never carry two disagreeing links and hours can never be counted twice.
+  The Guided DPR equipment card (client/src/components/DprEquipmentCompact.tsx → EquipmentActivityAllocationEditor) lets the engineer assign hours to today's progress entries' programme bars. If nothing is assigned, the machine's hours are unattributed. If only part of the shift is assigned, the remainder is unattributed (this is correct and must stay).
+- Materials: material_logs.boq_item_id (nullable). Only the Detailed DPR (SiteEdit) manages materials; Guided DPR passes them through unchanged.
+- The submit rule lives in ONE place: shared/dprSubmitReadiness.ts (evaluateDprSubmitReadiness), used by Guided, Detailed, SiteEdit and the server submit paths. It already has a "mandatory" vs "advisory" split.
+
+=====================================================================
+PART A — READ-ONLY BASELINE (do this first, before any code change)
+=====================================================================
+Against the PRODUCTION database if you have read-only access to it, otherwise the development database — state clearly which one you used (read-only SELECTs only — no writes, no migrations), for submitted, non-deleted, non-cancelled, non-superseded DPRs, per site, report:
+1. Equipment rows: total; with ≥1 activity segment link; with ≥1 legacy allocation; with only equipment_logs.boq_item_id; with none. Also total equipment hours (as resolveEquipmentBoqHours / the existing hour logic computes them) attributed vs unattributed.
+2. Labour rows: total; with boq_item_id; without. Also total headcount (man-days) linked vs unlinked.
+3. Material rows: split by type (Received / Issued / other); with boq_item_id vs without.
+4. DPRs whose progress rows reference exactly ONE distinct BOQ item that day (these are the easy, high-confidence backfill candidates for BOQ-LINK-02) vs DPRs with 2+ distinct BOQ items vs DPRs with no BOQ-linked progress.
+5. DPRs with dprs.boq_project_id NULL but BOQ-linked progress rows (legacy DPRs — note: the Plan vs Actual tab currently filters dprs by boqProjectId, so these are invisible to it).
+Present this as a table in the report. Paste the SQL you used.
+
+=====================================================================
+PART B — DPR ENTRY: DEFAULT LINKS + EXPLICIT "GENERAL"
+=====================================================================
+B1. Schema (additive only). Add one nullable text column to each of equipment_logs, labour_logs, material_logs:
+      resource_scope text NULL   -- null = normal; 'general' = deliberately not item-specific
+    Meaning: a row is "linked" if it has a BOQ attribution (any of the paths above); "general" if resource_scope = 'general'; otherwise "not linked". A row cannot be both: choosing a BOQ item clears 'general'; choosing General clears the BOQ link (and for equipment clears its activity segments/allocations only if the user explicitly confirms). Existing rows keep NULL — do not backfill anything.
+
+B2. Labour row "Work item" select — Guided DPR step 4 and SiteEdit:
+    - Order the options: first a group "Today's activities" = the distinct BOQ items used in this DPR's progress rows (in the order they appear), then "General / not item-specific", then a group "Other BOQ items" with the rest (dprSelectableBoqItems), then "No work item".
+    - Default for a NEW labour row: if this DPR's progress rows reference exactly ONE BOQ item, pre-select that item and show a small muted note "Suggested from today's activity — change if wrong". If 0 or 2+ items, leave it unselected (no guessing).
+    - Recompute the suggestion when the engineer adds/removes progress activities ONLY for rows still holding an untouched suggestion; never overwrite a value the engineer chose.
+    - Existing rows loaded from a saved DPR keep their saved value exactly.
+
+B3. Equipment rows — Guided DPR (DprEquipmentCompact / EquipmentActivityAllocationEditor) and SiteEdit:
+    - Add a visible "General / not item-specific" toggle per machine row (sets resource_scope='general').
+    - Default for a NEW machine row with usage: if today's progress rows reference exactly ONE BOQ item and exactly one programme bar for it, pre-fill ONE activity segment covering the machine's full start–end time linked to that item/bar, through the existing allocation editor's own state (onWorkAssignmentChange), marked as a suggestion exactly like B2. If the machine has meter readings but no start/end times, make NO suggestion (do not invent times, do not write the legacy parent field) — the row stays unassigned and the B5 advisory covers it. If 0 or 2+ items, or 2+ bars, leave unassigned. One tipper serving both GSB and WMM is exactly the case where the engineer must choose.
+    - Do not change how segments are validated, saved, or how hours are computed. Do not change partial-allocation behaviour.
+
+B4. Material rows — SiteEdit only (Guided does not manage materials; leave it as is):
+    - Same select ordering and single-activity default as B2, but ONLY for rows of type "Issued". "Received" rows are deliveries, not consumption: keep their BOQ select available but default it to empty.
+
+B5. Final Submit advisory — shared/dprSubmitReadiness.ts:
+    - Add an ADVISORY (never mandatory) issue per section when meaningful rows are "not linked" (no BOQ attribution and resource_scope is not 'general'): e.g. "2 machines, 1 labour row not linked to a work item — link them or mark General". Label the rows so the existing row-highlight works (rowIndex).
+    - Skip this advisory entirely when the DPR has no BOQ-linked progress rows (e.g. No Site Work days).
+    - Equipment counts as linked if resolveEquipmentBoqHours returns ≥1 slice OR the row is General. A partially assigned machine is "linked" (the remainder staying unattributed is intended).
+    - Submit must never be blocked by this. Add it ONLY to the advisories array. Do not modify any existing mandatory or advisory rule (DPR-13 to DPR-19 protected these). Add a regression test that runs every existing dprSubmitReadiness test fixture and asserts the mandatory list is byte-for-byte identical to before this batch.
+
+B6. Server persistence: make sure resource_scope round-trips on create, draft PATCH, submit, edit-as-copy (dpr_versions) and the DPR detail API (/api/dprs/with-details and the single-DPR fetch), exactly like boq_item_id does today. Check every place that copies equipment/labour/material rows (versioning, draft promotion, supersede) so the new column is not silently dropped.
+
+SCHEMA SAFETY
+- Additive nullable columns only. No renames, no drops, no NOT NULL, no defaults that rewrite existing rows. Confirm the publish migration for this change is a pure ADD COLUMN (we have been burned by destructive publish migrations before — see 06Z-HF1). Paste the generated SQL.
+
+WHAT NOT TO DO
+- No backfill of existing rows. No changes to hours, readings, diesel, trips, km, quantities, rates, hire billing, Equipment Performance, or vendor bills.
+- Do not change the BOM & Demand / Plan vs Actual calculations (BOQ-LINK-03 will).
+- Do not auto-select a BOQ item when today's DPR has 2+ items. A wrong link is worse than no link.
+- Do not make linking mandatory.
+
+TESTS (unit tests in tests/ plus screenshots from the running app)
+A. Part A baseline table produced from production (read-only), SQL pasted.
+B. Guided DPR, one activity (e.g. WMM): add labour row → WMM pre-selected with the "Suggested" note; add machine with start/end → one segment for full time linked to WMM; add machine with meter only → NO suggestion, no invented times, equipment_logs.boq_item_id stays NULL after save.
+C. Guided DPR, two activities: new labour/machine rows are NOT pre-selected; the select shows the two activities at the top.
+D. Change the suggested item, then add another activity → the engineer's choice is unchanged.
+E. Mark a DG set "General" → saved with resource_scope='general', no BOQ link; reopen draft → still General.
+F. SiteEdit: Issued material defaults to the single activity; Received material stays empty.
+G. Final Submit with one unlinked machine → advisory shown, row highlighted, submit still succeeds. No Site Work DPR → no advisory.
+H. Open an OLD submitted DPR → every link and value exactly as before; resource_scope NULL; nothing re-saved.
+I. Edit-as-copy and draft→submit preserve resource_scope.
+J. Existing test suite passes in full, including all LABOUR-01 and dprSubmitReadiness tests unchanged; report the count.
+K. Grep proof: no new code path writes equipment_logs.boq_item_id.
+
+REPORT BACK
+1. Part A baseline table + SQL.
+2. Files changed, and the generated migration SQL (must be ADD COLUMN only).
+3. Test A–J evidence (screenshots for B–G).
+4. Every code path you found that copies DPR resource rows, and confirmation resource_scope is carried through each.
+5. Anything noticed but not touched, for a separate decision.
+
+DO NOT START BOQ-LINK-02 OR ANY OTHER FEATURE after completing this batch.

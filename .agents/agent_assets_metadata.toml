@@ -4217,3 +4217,17 @@ mtime_ms = 1790990998281
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/27ef2a55-acc2-4033-8b71-76fc86eddd1e/e145d900-8fb0-460d-bf57-8689d802a6c8"
 storage_version_token = "1790991002760392"
 content_type = "text/html"
+
+[[outputs]]
+id = "neAeT1Hs_96EPX9w-QqnB"
+uri = "file://.agents/outputs/boq-link-01/part-a-baseline.html"
+type = "html"
+title = "BOQ-LINK-01 — Part A production baseline"
+description = "Per-site equipment, labour, material and DPR counts, hour-basis caveats, and the full read-only SQL used."
+logical_id = "3ae09fd8-dd76-47be-a21f-a3af255bf7da"
+content_hash = "sha256:111b2ba133aa446d166887c7f594efa1b715e09b368550094a6314a377bbcc01"
+size = 15044
+mtime_ms = 1791021134490
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/3ae09fd8-dd76-47be-a21f-a3af255bf7da/c4a4c35b-0f3c-42f1-a9d5-9830ca1d8370"
+storage_version_token = "1791021137188991"
+content_type = "text/html"
