@@ -1,0 +1,131 @@
+{
+  "recorded_at_utc": "2026-10-03T16:17:51.684103Z",
+  "recorded_at_ist": "2026-10-03 21:47:51.684103 IST",
+  "database": "neondb",
+  "counts": {
+    "dprs": 333,
+    "equipment_logs": 762,
+    "labour_logs": 162,
+    "material_logs": 100,
+    "progress_entries": 445,
+    "equipment_activity_segments": 126,
+    "labour_log_workers": 0,
+    "vendor_bills": 46,
+    "hire_statements": 2
+  },
+  "existing_rows": {
+    "equipment_logs": {
+      "expected_count": 762,
+      "present_count": 762,
+      "missing_ids": [],
+      "resource_scope_non_null_count": 0
+    },
+    "labour_logs": {
+      "expected_count": 162,
+      "present_count": 162,
+      "missing_ids": [],
+      "resource_scope_non_null_count": 0,
+      "hours_non_null_count": 0
+    },
+    "material_logs": {
+      "expected_count": 100,
+      "present_count": 100,
+      "missing_ids": [],
+      "resource_scope_non_null_count": 0
+    }
+  },
+  "environment": "production",
+  "access": "read-only production replica; counts and preexisting-row verification in one SELECT snapshot",
+  "column_metadata": [
+    {
+      "table_name": "equipment_logs",
+      "column_name": "resource_scope",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "labour_logs",
+      "column_name": "hours",
+      "data_type": "real",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "labour_logs",
+      "column_name": "resource_scope",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "material_logs",
+      "column_name": "resource_scope",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    }
+  ],
+  "count_comparison": {
+    "dprs": {
+      "before": 333,
+      "after": 333,
+      "delta": 0,
+      "not_lower": true
+    },
+    "equipment_logs": {
+      "before": 762,
+      "after": 762,
+      "delta": 0,
+      "not_lower": true
+    },
+    "labour_logs": {
+      "before": 162,
+      "after": 162,
+      "delta": 0,
+      "not_lower": true
+    },
+    "material_logs": {
+      "before": 100,
+      "after": 100,
+      "delta": 0,
+      "not_lower": true
+    },
+    "progress_entries": {
+      "before": 445,
+      "after": 445,
+      "delta": 0,
+      "not_lower": true
+    },
+    "equipment_activity_segments": {
+      "before": 126,
+      "after": 126,
+      "delta": 0,
+      "not_lower": true
+    },
+    "labour_log_workers": {
+      "before": 0,
+      "after": 0,
+      "delta": 0,
+      "not_lower": true
+    },
+    "vendor_bills": {
+      "before": 46,
+      "after": 46,
+      "delta": 0,
+      "not_lower": true
+    },
+    "hire_statements": {
+      "before": 2,
+      "after": 2,
+      "delta": 0,
+      "not_lower": true
+    }
+  },
+  "checks": {
+    "all_counts_not_lower": true,
+    "every_saved_row_id_exists": true,
+    "four_columns_exist": true,
+    "all_four_columns_null_on_preexisting_rows": true
+  }
+}
