@@ -8,6 +8,7 @@
  *    mandatory issues (same rule the server enforces).
  */
 import { AlertTriangle, Info } from "lucide-react";
+import { isResourceAttributionAdvisory } from "@/lib/resourceReadiness";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import type { DprReadinessIssue, DprReadinessResult } from "@shared/dprSubmitReadiness";
@@ -25,6 +26,7 @@ export function DprReadinessDialog({
   onSubmitAnyway,
   onSaveDraft,
   onMandatoryIssue,
+  onAdvisoryIssue,
 }: {
   readiness: DprReadinessResult | null;
   onClose: () => void;
@@ -34,6 +36,8 @@ export function DprReadinessDialog({
   onSaveDraft?: () => void;
   /** optional exact-row jump for mandatory issues */
   onMandatoryIssue?: (issue: DprReadinessIssue) => void;
+  /** exact-row jump for resource attribution advice; never blocks submit */
+  onAdvisoryIssue?: (issue: DprReadinessIssue) => void;
 }) {
   const hasMandatory = (readiness?.mandatory.length ?? 0) > 0;
   return (
@@ -83,7 +87,15 @@ export function DprReadinessDialog({
               <p className="font-semibold text-amber-700 mb-1">Advisories (do not block)</p>
               <ul className="space-y-1" data-testid="list-readiness-advisories">
                 {readiness!.advisories.map((a, i) => (
-                  <li key={i} className="flex gap-2">
+                  isResourceAttributionAdvisory(a) && onAdvisoryIssue && a.rowIndex != null
+                    ? <li key={i}><button type="button"
+                        className="flex w-full gap-2 rounded px-1 py-0.5 text-left hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        data-testid={`button-readiness-advisory-${a.section}-${a.rowIndex}`}
+                        onClick={() => onAdvisoryIssue(a)}>
+                        <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                        <span>{a.message}<span className="ml-1 text-xs font-medium text-primary">Jump to row</span></span>
+                      </button></li>
+                    : <li key={i} className="flex gap-2">
                     <Info className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
                     <span>{a.message}</span>
                   </li>

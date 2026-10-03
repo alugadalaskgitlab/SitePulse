@@ -4231,3 +4231,45 @@ mtime_ms = 1791021134490
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/3ae09fd8-dd76-47be-a21f-a3af255bf7da/c4a4c35b-0f3c-42f1-a9d5-9830ca1d8370"
 storage_version_token = "1791021137188991"
 content_type = "text/html"
+
+[[outputs]]
+id = "EuXW-dxZj-idRWlfYHFo-"
+uri = "file://.agents/outputs/boq-link-01/final-report.html"
+type = "html"
+title = "BOQ-LINK-01 report, migration SQL and screenshots"
+description = "B1–B6 implementation, Tests B–K evidence and limitations, 13 fixture screenshots, and accepted Part A baseline with SQL. Acceptance remains incomplete."
+logical_id = "cf06d46e-68a9-4a94-8aa2-cd14c3d8040c"
+content_hash = "sha256:3b737095c4711f450dd9fa56f6029d1ae079c25d2deaac4690c87017f585b2e0"
+size = 1710733
+mtime_ms = 1791027263382
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/cf06d46e-68a9-4a94-8aa2-cd14c3d8040c/fd541090-3892-4560-b289-93b5ff4b9e9d"
+storage_version_token = "1791027268577718"
+content_type = "text/html"
+
+[[outputs]]
+id = "fuD77N4EmmyQ-MoqvOLxF"
+uri = "file://.agents/outputs/boq-link-01/screenshots/fixture-B-machine-full-segment.png"
+type = "image"
+title = "Test B — suggested full-shift segment"
+description = "Real DPR component with isolated synthetic fixture data; not a production screenshot."
+logical_id = "5b3d95de-fbae-4e02-afc0-0aaabc5a8396"
+content_hash = "sha256:6c643ea52fb33bf880322071e160c1264e66bfbbfc2faffd73680f4070726580"
+size = 90546
+mtime_ms = 1791026762205
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/5b3d95de-fbae-4e02-afc0-0aaabc5a8396/041c2f8c-a6c0-4a46-9dec-51c54fb08110"
+storage_version_token = "1791027308827024"
+content_type = "image/png"
+
+[[outputs]]
+id = "hmNkqMs3efh-zW2n_wEmx"
+uri = "file://.agents/outputs/boq-link-01/screenshots/fixture-G-nonblocking-advisory.png"
+type = "image"
+title = "Test G — non-blocking resource advisory"
+description = "Fixture evidence of the advisory flow. The complete report includes all 13 B–G screenshots."
+logical_id = "a4cf05cd-1f2e-44ba-b10e-23eb8fe72034"
+content_hash = "sha256:7bb3c084c0e13db3bb86c7b14f4184863ea4e4cf2422c40018891d6f8550e0a7"
+size = 108568
+mtime_ms = 1791026778533
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/a4cf05cd-1f2e-44ba-b10e-23eb8fe72034/aadc201f-5b1e-46c9-a11b-ae55b18f4143"
+storage_version_token = "1791027310790571"
+content_type = "image/png"

@@ -101,3 +101,4 @@
 - [Condensed DPR mockup review](dpr-mockup-review.md) — reviewed readiness/Fix/tank interactions stay stable; visual approval is not production-integration approval.
 - [DPR daily received totals](dpr-daily-received-totals.md) — secondary BOQ totals require complete same-unit conversions, never a convertible subset of the day's receipts.
 - [Vendor group action placement](vendor-group-action-placement.md) — approved separation preserves toggle geometry and collapsed-state removal availability.
+- [Conservative resource attribution](boq-resource-linking.md) — wrong links are worse than missing links; entry defaults, reviewed historical linking, and report math are separate scopes.

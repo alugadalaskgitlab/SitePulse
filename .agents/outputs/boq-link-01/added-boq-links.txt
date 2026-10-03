@@ -1,0 +1,18 @@
++  const assignmentKey = JSON.stringify((row.activitySegments ?? []).map(({ startTime, endTime, boqItems }) => ({ startTime, endTime, boqItems: boqItems.map(({ boqItemId, programmeBarId }) => ({ boqItemId, programmeBarId })) })));
++    if (provenance !== "suggested" && (row.activitySegments?.length || row.activityAllocations?.length || row.boqItemId != null)) return;
++  }, [editable, suggestNewRow, row.resourceScope, row.persistedId, provenance, row.activitySegments?.length, row.activityAllocations?.length, row.boqItemId, suggestionKey, assignmentKey]);
++           if (checked && (activitySegments.length > 0 || row.activityAllocations?.length || row.boqItemId != null)
++        contractor: l.contractor, boqItemId: l.boqItemId, resourceScope: l.resourceScope ?? null, structureId: l.structureId,
++                        programmeBars={entries.flatMap((entry) => !entry.noSiteWork && entry.programmeBarId != null && entry.boqItemId != null ? [{
++      setEquipment([...equipment, newResourceRow({ machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, isNew: true, editCreationKey: newEntryKey() })]);
++      setLabour([...labour, newResourceRow({ category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null, workerNames: [], editCreationKey: newLabourRowKey() })]);
++    setMaterials([...materials, newResourceRow({ type: "Received", material: "", quantity: null, uom: "", vehicleNumber: "", supplier: "", location: "", receiptNumber: "", boqItemId: null, structureId: null })]);
++      boqItemId: m.boqItemId ?? null, resourceScope: m.resourceScope ?? null, structureId: m.structureId ?? null,
++                  programmeBars={progress.flatMap((entry) => !entry.noSiteWork && entry.programmeBarId != null && entry.boqItemId != null ? [{
++      setEquipment([...equipment, newResourceRow({ [equipmentRowToken]: Symbol("equipment row"), [newEquipmentRow]: true, machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] })]);
++      setLabour([...labour, newResourceRow({ category: "Skilled", gender: "Male", count: null, task: "", contractor: "", boqItemId: null, structureId: null, workerNames: [], editCreationKey: newLabourRowKey() })]);
++      setMaterials([...materials, newResourceRow({ type: "Issued", material: "", quantity: null, uom: "", vehicleNumber: "", supplier: "", location: "", receiptNumber: "", boqItemId: null, structureId: null })]);
++              programmeBars={progress.flatMap((progressRow) => !progressRow.noSiteWork && progressRow.programmeBarId != null && progressRow.boqItemId != null ? [{
++        input.boqItemId = null;
++      } else if (input.activitySegments?.length || input.activityAllocations?.length || input.boqItemId != null) {
++    return allocations.length > 0 || allocationsWereExplicit ? { ...row, boqItemId: null } : row;

@@ -1,3 +1,6 @@
+import { ResourceWorkItemSelect } from "@/components/ResourceWorkItemSelect";
+import { useResourceSuggestions } from "@/hooks/use-resource-suggestions";
+import { chooseResourceItem, newResourceRow, todaysResourceActivities, resourceSuggestion, type SuggestionRow } from "@/lib/resourceSuggestions";
 import { useState, useMemo, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { pickDprSectionPayload, type DprSection, type DprSectionContext, type DprSectionSnapshot } from "@shared/dprSections";
 import type { DprReadinessIssue } from "@shared/dprSubmitReadiness";
@@ -143,7 +146,7 @@ interface ProgressEntry {
 const newEquipmentRow = Symbol("new DPR equipment row");
 const autoWorkingStatus = Symbol("auto-selected working status");
 const equipmentRowToken = Symbol("DPR equipment row identity");
-interface EquipmentEntry {
+interface EquipmentEntry extends SuggestionRow {
   [newEquipmentRow]?: true;
   [autoWorkingStatus]?: true;
   // Hydrated form-state types originate in SiteEdit; the state boundary below
@@ -197,7 +200,7 @@ const contractorDieselTankFieldsCleared = (row: EquipmentEntry): EquipmentEntry 
       }
     : row;
 
-interface LabourEntry {
+interface LabourEntry extends SuggestionRow {
   persistedId?: number;
   editCreationKey?: string;
   workerNames?: string[];
@@ -212,7 +215,7 @@ interface LabourEntry {
   structureId: string | null;
 }
 
-interface MaterialEntry {
+interface MaterialEntry extends SuggestionRow {
   type: string;
   material: string;
   quantity: number | null;
@@ -958,6 +961,8 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
   // be tracked separately in the Materials Received tab; this section is for
   // recording what was actually consumed/issued against a planned BOQ item.
   const [materials, setMaterials] = useState<MaterialEntry[]>([]);
+  useResourceSuggestions(progress, labour, setLabour);
+  useResourceSuggestions(progress, materials, setMaterials, true);
 
   const [sitePurchases, setSitePurchases] = useState<SitePurchaseEntry[]>([]);
 
@@ -1418,11 +1423,11 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
     if (section === 'progress') {
       setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", isIncidental: false, incidentalDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }]);
     } else if (section === 'equipment') {
-      setEquipment([...equipment, { [equipmentRowToken]: Symbol("equipment row"), [newEquipmentRow]: true, machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] }]);
+      setEquipment([...equipment, newResourceRow({ [equipmentRowToken]: Symbol("equipment row"), [newEquipmentRow]: true, machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] })]);
     } else if (section === 'labour') {
-      setLabour([...labour, { category: "Skilled", gender: "Male", count: null, task: "", contractor: "", boqItemId: null, structureId: null, workerNames: [], editCreationKey: newLabourRowKey() }]);
+      setLabour([...labour, newResourceRow({ category: "Skilled", gender: "Male", count: null, task: "", contractor: "", boqItemId: null, structureId: null, workerNames: [], editCreationKey: newLabourRowKey() })]);
     } else if (section === 'materials') {
-      setMaterials([...materials, { type: "Issued", material: "", quantity: null, uom: "", vehicleNumber: "", supplier: "", location: "", receiptNumber: "", boqItemId: null, structureId: null }]);
+      setMaterials([...materials, newResourceRow({ type: "Issued", material: "", quantity: null, uom: "", vehicleNumber: "", supplier: "", location: "", receiptNumber: "", boqItemId: null, structureId: null })]);
     }
   };
 
@@ -2087,6 +2092,11 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
     <DprReadinessDialog
       readiness={readiness}
       onClose={() => setReadiness(null)}
+      onAdvisoryIssue={(issue) => {
+        setReadiness(null);
+        if (showPreview) setShowPreview(false);
+        window.setTimeout(() => focusSectionIssue(issue), 80);
+      }}
       onSubmitAnyway={continueSubmitAfterReadiness}
       onSaveDraft={handleSaveDraft}
       onMandatoryIssue={(issue) => {
@@ -3444,7 +3454,9 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
               beforeDate={header.date}
               site={header.site}
               boqItems={siteBoqItems}
-              programmeBars={progress.flatMap((progressRow) => progressRow.programmeBarId != null && progressRow.boqItemId != null ? [{
+              activityIds={todaysResourceActivities(progress)}
+              suggestNewRow={entry[resourceSuggestion] != null && entry.persistedId == null}
+              programmeBars={progress.flatMap((progressRow) => !progressRow.noSiteWork && progressRow.programmeBarId != null && progressRow.boqItemId != null ? [{
                 id: progressRow.programmeBarId,
                 boqItemId: progressRow.boqItemId,
               }] : [])}
@@ -3459,6 +3471,8 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                 testId={`equipment-breakdown-${idx}`} />}
               onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx
                 ? { ...row, ...patch, ...("usageStatus" in patch ? { [autoWorkingStatus]: undefined } : {}) } as EquipmentEntry : row))}
+              onWorkAssignmentChange={(activitySegments, source) => setEquipment(rows => rows.map((row, index) => index === idx
+                ? { ...row, activitySegments, activityAllocations: undefined, workAssignmentEdited: true, resourceScope: null, [resourceSuggestion]: source === "suggestion" ? "suggested" : "manual" } : row))}
             />;
             
             const rowToken = entry[equipmentRowToken];
@@ -3602,27 +3616,10 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                 <div className="col-span-2 md:col-span-6 grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
                   <div>
                     <Label className="text-sm text-muted-foreground">Link to Work Item (optional)</Label>
-                    <Select
-                      value={entry.boqItemId ? String(entry.boqItemId) : "__none__"}
-                      onValueChange={(val) => {
-                        const updated = [...labour];
-                        updated[idx].boqItemId = val === "__none__" ? null : Number(val);
-                        updated[idx].structureId = null;
-                        setLabour(updated);
-                      }}
-                    >
-                      <SelectTrigger data-testid={`select-labour-boqitem-${idx}`}>
-                        <SelectValue placeholder="Not linked" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">Not linked</SelectItem>
-                        {dprBoqItemsForMapping.map((bi) => (
-                          <SelectItem key={bi.id} value={String(bi.id)}>
-                            {bi.itemCode ? `[${bi.itemCode}] ` : ""}{boqItemDisplayName(bi)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <ResourceWorkItemSelect row={entry} items={dprBoqItemsForMapping} activityIds={todaysResourceActivities(progress)}
+                      itemLabel={bi => `${bi.itemCode ? `[${bi.itemCode}] ` : ""}${boqItemDisplayName(bi)}`}
+                      testId={`select-labour-boqitem-${idx}`}
+                      onChange={value => setLabour(rows => rows.map((row, index) => index === idx ? chooseResourceItem(row, value) : row))} />
                   </div>
                   {(() => {
                     if (entry.boqItemId == null) return null;
@@ -3768,27 +3765,10 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                       <Label className="text-sm text-muted-foreground">Link to Work Item (optional)</Label>
-                      <Select
-                        value={m.boqItemId ? String(m.boqItemId) : "__none__"}
-                        onValueChange={(val) => {
-                          const updated = [...materials];
-                          updated[idx].boqItemId = val === "__none__" ? null : Number(val);
-                          updated[idx].structureId = null;
-                          setMaterials(updated);
-                        }}
-                      >
-                        <SelectTrigger data-testid={`select-material-boqitem-${idx}`}>
-                          <SelectValue placeholder="Not linked" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">Not linked</SelectItem>
-                          {dprBoqItemsForMapping.map((bi) => (
-                            <SelectItem key={bi.id} value={String(bi.id)}>
-                              {bi.itemCode ? `[${bi.itemCode}] ` : ""}{boqItemDisplayName(bi)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <ResourceWorkItemSelect row={m} items={dprBoqItemsForMapping} activityIds={todaysResourceActivities(progress)}
+                        itemLabel={bi => `${bi.itemCode ? `[${bi.itemCode}] ` : ""}${boqItemDisplayName(bi)}`}
+                        testId={`select-material-boqitem-${idx}`}
+                        onChange={value => setMaterials(rows => rows.map((row, index) => index === idx ? chooseResourceItem(row, value) : row))} />
                     </div>
                     {(() => {
                       if (m.boqItemId == null) return null;

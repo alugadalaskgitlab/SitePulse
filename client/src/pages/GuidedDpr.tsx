@@ -16,6 +16,12 @@
  * This screen deliberately does NOT modify SiteEntry.tsx (Detailed DPR).
  */
 import { useState, useMemo, useEffect, useRef } from "react";
+import { ResourceWorkItemSelect } from "@/components/ResourceWorkItemSelect";
+import { useResourceSuggestions } from "@/hooks/use-resource-suggestions";
+import { useEquipmentResourceSuggestions } from "@/hooks/use-equipment-resource-suggestions";
+import { equipmentReadinessAttribution, remapAttributionAdvisories } from "@/lib/resourceReadiness";
+import type { EquipmentActivitySegment } from "@/components/EquipmentActivityAllocationEditor";
+import { chooseResourceItem, newResourceRow, todaysResourceActivities, resourceSuggestion, type SuggestionRow } from "@/lib/resourceSuggestions";
 import { readDprWriteTokens, requireDprWriteTokens, type DprWriteTokens } from "@/lib/dprSectionTokens";
 import { useLocation, useSearch } from "wouter";
 import { Link } from "wouter";
@@ -163,12 +169,12 @@ type SimpleEquipmentRow = GuidedEquipmentRow & {
   workingDefaultedInGuided?: true;
 };
 const createGuidedEquipmentRow = (): SimpleEquipmentRow => ({
-  ...newGuidedEquipmentRowForCreation(), newlyCreatedInGuided: true,
+  ...newGuidedEquipmentRowForCreation(), passthrough: newResourceRow({}), newlyCreatedInGuided: true,
 });
 // Batch 06C §12–13: Guided labour carries the SAME fields as Detailed —
 // gender, task and the optional Work Item linkage are preserved, never
 // hard-coded away on save.
-interface SimpleLabourRow {
+interface SimpleLabourRow extends SuggestionRow {
   persistedId?: number;
   editCreationKey?: string;
   workerNames?: string[];
@@ -282,8 +288,16 @@ export default function GuidedDpr() {
   const [engineer, setEngineer] = useState(entryParams.get("engineer") || "");
   const [entries, setEntries] = useState<GuidedEntry[]>([]);
   const [equipment, setEquipment] = useState<SimpleEquipmentRow[]>([]);
+  const changeEquipmentAssignment = (index: number, activitySegments: EquipmentActivitySegment[], source?: "suggestion" | "manual") =>
+    setEquipment(rows => rows.map((row, rowIndex) => rowIndex === index ? {
+      ...row, passthrough: { ...row.passthrough, activitySegments, activityAllocations: undefined,
+        resourceScope: null, [resourceSuggestion]: source === "suggestion" ? "suggested" : "manual", workAssignmentEdited: true },
+    } : row));
+  useEquipmentResourceSuggestions(equipment, entries, row => row.passthrough,
+    row => row.newlyCreatedInGuided === true && row.persistedId == null, changeEquipmentAssignment);
   const [otherEquipmentRows, setOtherEquipmentRows] = useState<Set<number>>(() => new Set());
   const [labour, setLabour] = useState<SimpleLabourRow[]>([]);
+  useResourceSuggestions(entries, labour, setLabour);
   const [remarks, setRemarks] = useState("");
   const [showYesterdayPreview, setShowYesterdayPreview] = useState(false);
   const [stagedPhotos, setStagedPhotos] = useState<File[]>([]);
@@ -464,6 +478,7 @@ export default function GuidedDpr() {
       count: l.count != null ? Number(l.count) : null,
       contractor: l.contractor || "", task: l.task || "",
       boqItemId: l.boqItemId ?? null, structureId: l.structureId ?? null,
+      resourceScope: l.resourceScope ?? null,
     })));
     setBoqCataloguePreviewReady(true);
     // Batch 05 (spec §10): this server draft is authoritative — silence any
@@ -1475,7 +1490,7 @@ export default function GuidedDpr() {
         ...(l.persistedId != null ? { persistedId: l.persistedId } : {}),
         ...(l.workerNames !== undefined ? { workerNames: l.workerNames } : {}),
         category: l.category, gender: l.gender, count: l.count ?? 0, task: l.task,
-        contractor: l.contractor, boqItemId: l.boqItemId, structureId: l.structureId,
+        contractor: l.contractor, boqItemId: l.boqItemId, resourceScope: l.resourceScope ?? null, structureId: l.structureId,
       })),
       materials: unmanagedSectionsRef.current.materials,
       sitePurchases: unmanagedSectionsRef.current.sitePurchases,
@@ -2784,7 +2799,9 @@ export default function GuidedDpr() {
                         beforeDate={date}
                         site={siteName}
                         boqItems={boqItems}
-                        programmeBars={entries.flatMap((entry) => entry.programmeBarId != null && entry.boqItemId != null ? [{
+                        activityIds={todaysResourceActivities(entries)}
+                        suggestNewRow={eq.newlyCreatedInGuided === true && eq.persistedId == null}
+                        programmeBars={entries.flatMap((entry) => !entry.noSiteWork && entry.programmeBarId != null && entry.boqItemId != null ? [{
                           id: entry.programmeBarId,
                           boqItemId: entry.boqItemId,
                         }] : [])}
@@ -2799,17 +2816,7 @@ export default function GuidedDpr() {
                              passthrough: { ...row.passthrough, ...passthroughPatch },
                            };
                          }))}
-                        onWorkAssignmentChange={(activitySegments) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === i
-                          ? {
-                              ...row,
-                              passthrough: {
-                                ...row.passthrough,
-                                activitySegments,
-                                activityAllocations: undefined,
-                                workAssignmentEdited: true,
-                              },
-                            }
-                          : row))}
+                        onWorkAssignmentChange={(activitySegments, source) => changeEquipmentAssignment(i, activitySegments, source)}
                       />
                     </div>
                   );
@@ -2856,25 +2863,14 @@ export default function GuidedDpr() {
                     </div>
                     {/* Batch 06C §13: optional Work Item linkage — blank for
                         No Site Work crews, a BOQ item for billable work. */}
-                    <Select
-                      value={l.boqItemId != null ? String(l.boqItemId) : "none"}
-                      onValueChange={(v) => setLabour((p) => p.map((r, j) => j === i
-                        ? { ...r, boqItemId: v === "none" ? null : Number(v), structureId: null }
-                        : r))}
-                    >
-                      <SelectTrigger data-testid={`select-labour-workitem-${i}`}><SelectValue placeholder="Work item (optional)" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">No work item</SelectItem>
-                        {dprBoqItemsForMapping.map((item) => (
-                          <SelectItem key={item.id} value={String(item.id)}>{boqItemDisplayName(item)}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <ResourceWorkItemSelect row={l} items={dprBoqItemsForMapping} activityIds={todaysResourceActivities(entries)}
+                      testId={`select-labour-workitem-${i}`}
+                      onChange={(value) => setLabour(rows => rows.map((row, index) => index === i ? chooseResourceItem(row, value) : row))} />
                     <LabourWorkerNames names={l.workerNames} count={l.count} rowIndex={i}
                       onChange={workerNames => setLabour(p => p.map((row, j) => j === i ? { ...row, workerNames } : row))} />
                   </div>
                 ))}
-                <Button variant="outline" size="sm" onClick={() => setLabour((p) => [...p, newLabourRow()])} data-testid="button-add-labour">
+                <Button variant="outline" size="sm" onClick={() => setLabour((p) => [...p, newResourceRow(newLabourRow())])} data-testid="button-add-labour">
                   <Plus className="w-3.5 h-3.5 mr-1" />Add Labour
                 </Button>
               </div>
@@ -3058,13 +3054,15 @@ export default function GuidedDpr() {
             onClick={() => {
               if (!validateHeader() || !validateForSubmit({ skipCutFill: true })) return;
               // Batch 04: one consolidated readiness panel before Final Submit.
-              const r = evaluateDprSubmitReadiness({
+              const readinessEquipment = equipment.map((row, index) => ({ row, index }))
+                .filter(({ row: e }) => isMeaningfulEquipmentRow({ ...e.passthrough, machine: e.machine, vehicleNo: e.vehicleNo, operator: e.operator, task: e.task }));
+              const r = remapAttributionAdvisories(evaluateDprSubmitReadiness({
                 workType: "road",
                 progress: withCutFillReadinessContext(entries, boqItems),
-                equipment: equipment.filter((e) => isMeaningfulEquipmentRow({ ...e.passthrough, machine: e.machine, vehicleNo: e.vehicleNo, operator: e.operator, task: e.task })).map((e) => buildGuidedEquipmentPayload(e)) as any[],
+                equipment: readinessEquipment.map(({ row }) => equipmentReadinessAttribution(buildGuidedEquipmentPayload(row), row.passthrough)) as any[],
                 labour: labour as any[],
                 materials: unmanagedSectionsRef.current.materials as any[],
-              });
+              }), { equipment: readinessEquipment.map(({ index }) => index) });
               if (r.mandatory.length > 0) { setReadiness(r); return; }
               const cutFillIssues = validateCutFillForm(entries as any, boqItems, dateEffectiveCutFillArrangements, [], true);
               if (cutFillIssues.length > 0) {
@@ -3094,6 +3092,7 @@ export default function GuidedDpr() {
         onSubmitAnyway={() => { if (validateForSubmit()) saveMutation.mutate(false); }}
         onSaveDraft={() => { if (validateHeader()) saveMutation.mutate(true); }}
         onMandatoryIssue={jumpToReadinessIssue}
+        onAdvisoryIssue={jumpToReadinessIssue}
       />
 
       {/* Batch 06V: confirm changing a credited row to incidental */}

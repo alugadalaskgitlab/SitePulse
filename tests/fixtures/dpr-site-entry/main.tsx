@@ -3,6 +3,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import SiteEntry from "../../../client/src/pages/SiteEntry";
 import DprSections, { DprEditEntry, DprWorkEntry } from "../../../client/src/pages/DprSections";
 import { installDpr13Adapter } from "./dpr13-adapter";
+import { installBoqLink01Adapter } from "./boq-link01-adapter";
 import { DPR_SECTIONS, dprSectionStates, normalizeDprSectionContext, pickDprSectionPayload } from "../../../shared/dprSections";
 import { evaluateSavedDraftReadiness } from "../../../shared/dprDraftReadiness";
 import { buildEquipmentPerformanceReport } from "../../../shared/equipmentPerformance";
@@ -2463,6 +2464,8 @@ function VehicleSupplierInlineFixture() {
   );
 }
 
+installBoqLink01Adapter();
+
 function Dpr07EvidenceBanner() {
   if (!isDpr07Route()) return null;
   const params = new URLSearchParams(window.location.search);
@@ -2623,6 +2626,9 @@ const mount = () => {
       {isDpr20B2Report && <header data-testid="dpr20-b2-fixture-banner" className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">DPR20 B2 · synthetic real-builder canonical events · actual SiteReport · intercepted GETs only</header>}
       {isDpr20B4Report && <header data-testid="dpr20-b4-fixture-banner" className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">DPR20 B4 · isolated materials wording evidence · real read-only pages and section hub · intercepted GETs only</header>}
       {isLabour01 && <header className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">LABOUR-01 · isolated synthetic DPR · intercepted API · no customer database</header>}
+      {new URLSearchParams(window.location.search).has("boqlink01") && <header data-testid="boq-link01-fixture-banner" className="sticky top-0 z-50 mb-4 border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">
+        BOQ-LINK-01 · fixture evidence · real DPR screens · synthetic API/session storage only · no database persistence claim
+      </header>}
       {new URLSearchParams(window.location.search).has("dpr13Legacy") && <header className="border border-amber-500 bg-amber-50 p-4">DPR-13 synthetic legacy-token fixture — real Guided/SiteEdit components, intercepted API only.</header>}
       <Dpr16B2EvidenceBanner />
       {isDpr19B1Dashboard && <header data-testid="dpr19-b1-fixture-banner" className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">DPR19 B1 · isolated synthetic GET responses · actual SiteDashboard · no customer database</header>}

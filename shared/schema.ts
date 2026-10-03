@@ -194,6 +194,7 @@ export const dprStructureItems = pgTable("dpr_structure_items", {
 
 // Equipment Log
 export const equipmentLogs = pgTable("equipment_logs", {
+  resourceScope: text("resource_scope"),
   id: serial("id").primaryKey(),
   dprId: integer("dpr_id").notNull(),
   machine: text("machine").notNull(),
@@ -320,6 +321,7 @@ export const equipmentActivitySegmentBoqItems = pgTable("equipment_activity_segm
 
 // Labour Log
 export const labourLogs = pgTable("labour_logs", {
+  resourceScope: text("resource_scope"),
   id: serial("id").primaryKey(),
   dprId: integer("dpr_id").notNull(),
   category: text("category").notNull(), // Skilled, Unskilled
@@ -345,6 +347,7 @@ export const labourLogWorkers = pgTable("labour_log_workers", {
 
 // Materials Log
 export const materialLogs = pgTable("material_logs", {
+  resourceScope: text("resource_scope"),
   id: serial("id").primaryKey(),
   dprId: integer("dpr_id").notNull(),
   type: text("type").notNull(), // Received, Issued
@@ -1122,10 +1125,14 @@ export const createDprRequestSchema = insertDprSchema.extend({
   labour: z.array(insertLabourSchema.extend({
     persistedId: z.number().int().positive().optional(),
     workerNames: z.array(z.string()).optional(),
-  })).optional(),
+  }).transform(row => row.resourceScope === "general"
+    ? { ...row, boqItemId: null }
+    : row.boqItemId != null ? { ...row, resourceScope: null } : row)).optional(),
   materials: z.array(insertMaterialSchema.extend({
     persistedId: z.number().int().positive().optional(),
-  })).optional(),
+  }).transform(row => row.resourceScope === "general"
+    ? { ...row, boqItemId: null }
+    : row.boqItemId != null ? { ...row, resourceScope: null } : row)).optional(),
   sitePurchases: z.array(insertSitePurchaseSchema.extend({
     // Transient row identity for independent Materials draft reconciliation.
     persistedId: z.number().int().positive().optional(),

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { resourceSuggestion, suggestedEquipmentSegment, type SuggestionRow } from "@/lib/resourceSuggestions";
 import { Check, ChevronDown, ChevronUp, CircleAlert, Droplets, Fuel, Gauge } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,7 +18,7 @@ import { AttachmentViewer } from "@/components/AttachmentViewer";
 import type { Attachment } from "@shared/schema";
 import { equipmentStatusInputError, equipmentStatusRequiresReason } from "@shared/equipmentStatus";
 
-export type DprEquipmentFields = {
+export type DprEquipmentFields = SuggestionRow & {
   machine?: string; vehicleNo?: string; operator?: string; task?: string; entryType?: string; startTime?: string; endTime?: string;
   openingReading?: number | null; closingReading?: number | null; numberOfTrips?: number | null;
   tripDistance?: number | null; diesel?: number | null; openingDiesel?: number | null;
@@ -78,11 +79,13 @@ const statusLabel = (status: DprEquipmentFields["usageStatus"]) => status === "w
   : status === "idle_no_operator" ? "Idle · Operator Unavailable"
   : status === "breakdown" ? "Breakdown" : "Not specified";
 
-export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignmentChange, editable = true, index = 0, beforeDate, site, boqItems, programmeBars, showTankBalance = true, enableTankContinuity = true, hideIdentity = false, allowLinkedSourceEdit = false, sectionPresentation = false, equipmentPickerSlot, ownerTypeSlot, dieselSourceSlot, stoppageSlot, headerActionSlot, headerConfirmationSlot, onToggle }: {
+export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignmentChange, activityIds = [], suggestNewRow = false, editable = true, index = 0, beforeDate, site, boqItems, programmeBars, showTankBalance = true, enableTankContinuity = true, hideIdentity = false, allowLinkedSourceEdit = false, sectionPresentation = false, equipmentPickerSlot, ownerTypeSlot, dieselSourceSlot, stoppageSlot, headerActionSlot, headerConfirmationSlot, onToggle }: {
   row: DprEquipmentFields;
   equipment?: { meterType?: string | null; consumptionNorm?: number | null; ownership?: string | null; vendorName?: string | null; entryType?: string | null; hireBillingBasis?: string | null } | null;
   onChange?: (patch: Partial<DprEquipmentFields>) => void;
-  onWorkAssignmentChange?: (activitySegments: EquipmentActivitySegment[]) => void;
+  onWorkAssignmentChange?: (activitySegments: EquipmentActivitySegment[], source?: "suggestion" | "manual") => void;
+  activityIds?: number[];
+  suggestNewRow?: boolean;
   editable?: boolean; index?: number; beforeDate?: string; site?: string;
   boqItems?: Array<{ id: number; description?: string | null; itemCode?: string | null; itemName?: string | null; displayName?: string | null; unit?: string | null }>;
   programmeBars?: Array<{ id: number; boqItemId: number; reachLabel?: string | null; side?: string | null }>;
@@ -120,6 +123,17 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
   allowLinkedSourceEdit?: boolean;
 }) {
   const visibleRow = isVisibleEquipmentRow(row);
+  const assignmentCallback = useRef(onWorkAssignmentChange);
+  assignmentCallback.current = onWorkAssignmentChange;
+  const suggestedSegments = suggestedEquipmentSegment(row, activityIds, programmeBars ?? []);
+  const suggestionKey = JSON.stringify(suggestedSegments);
+  const assignmentKey = JSON.stringify((row.activitySegments ?? []).map(({ startTime, endTime, boqItems }) => ({ startTime, endTime, boqItems: boqItems.map(({ boqItemId, programmeBarId }) => ({ boqItemId, programmeBarId })) })));
+  const provenance = row[resourceSuggestion];
+  useEffect(() => {
+    if (!editable || !suggestNewRow || row.resourceScope === "general" || row.persistedId != null || provenance === "manual") return;
+    if (provenance !== "suggested" && (row.activitySegments?.length || row.activityAllocations?.length || row.boqItemId != null)) return;
+    if (suggestionKey !== assignmentKey) assignmentCallback.current?.(JSON.parse(suggestionKey), "suggestion");
+  }, [editable, suggestNewRow, row.resourceScope, row.persistedId, provenance, row.activitySegments?.length, row.activityAllocations?.length, row.boqItemId, suggestionKey, assignmentKey]);
   const continuityAppliedFor = useRef<string | null>(null);
   const readingContinuityAppliedFor = useRef<string | null>(null);
   const closingReadingEdited = useRef(false);
@@ -297,6 +311,15 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
         <span className="text-right font-semibold text-amber-700 dark:text-amber-300">Open details</span>
       </button>}
 
+       {editable && onChange && <label className="flex items-center gap-2 border-t border-slate-200 px-3 py-2 text-sm dark:border-slate-700">
+         <Checkbox checked={row.resourceScope === "general"} data-testid={`equipment-general-${index}`} onCheckedChange={(checked) => {
+           if (checked && (activitySegments.length > 0 || row.activityAllocations?.length || row.boqItemId != null)
+             && !window.confirm("Mark General / not item-specific? This removes this machine's work assignments. Its hours and readings will not change.")) return;
+           if (checked) onWorkAssignmentChange?.([], "manual");
+           onChange({ resourceScope: checked ? "general" : null, [resourceSuggestion]: "manual" });
+         }} />
+         General / not item-specific
+       </label>}
        {(!editable || expanded) && <>
          {editable && equipmentPickerSlot != null && <Group title="01 / Equipment picker" testId={`equipment-compact-group-picker-${index}`}>
            {equipmentPickerSlot}
@@ -437,7 +460,15 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
          <p className="whitespace-pre-wrap text-sm font-medium text-slate-800 dark:text-slate-100" data-testid={`equipment-compact-incidental-task-value-${index}`}>{incidentalTask}</p>
          <p className="mt-2 text-xs font-semibold text-amber-800 dark:text-amber-300">Not a BOQ item — not payable progress.</p>
        </section> : null}
-      <EquipmentActivityAllocationEditor value={activitySegments} onChange={editable && (onWorkAssignmentChange || onChange) ? activitySegments => onWorkAssignmentChange ? onWorkAssignmentChange(activitySegments) : onChange?.({ activitySegments, activityAllocations: undefined }) : undefined} parentHours={allocationParent.hours} parentStartTime={row.startTime} parentEndTime={row.endTime} boqItems={boqItems} programmeBars={programmeBars} editable={editable} preserveInitialValueUntilChange={usingLegacyActivityAssignment} />
+      {!editable && row.resourceScope === "general" && <p className="mb-3 text-sm text-muted-foreground">General / not item-specific</p>}
+      {row.resourceScope !== "general" && <EquipmentActivityAllocationEditor value={activitySegments} onChange={editable && (onWorkAssignmentChange || onChange) ? activitySegments => {
+        if (onWorkAssignmentChange) onWorkAssignmentChange(activitySegments, "manual");
+        else {
+          onChange?.({ activitySegments, activityAllocations: undefined });
+          onChange?.({ resourceScope: null, [resourceSuggestion]: "manual" });
+        }
+      } : undefined} parentHours={allocationParent.hours} parentStartTime={row.startTime} parentEndTime={row.endTime} boqItems={boqItems} programmeBars={programmeBars} editable={editable} preserveInitialValueUntilChange={usingLegacyActivityAssignment} />}
+      {provenance === "suggested" && activitySegments.length > 0 && suggestNewRow && <p className="mt-2 text-xs text-muted-foreground">Suggested from today's activity — change if wrong</p>}
       </div>
        </Group>
        {!editable && !!row.breakdowns?.length && <Group title="06 / Breakdown information" testId={`equipment-compact-read-group-breakdowns-${index}`}>

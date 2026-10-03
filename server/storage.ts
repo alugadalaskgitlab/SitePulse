@@ -4507,6 +4507,7 @@ export class DatabaseStorage implements IStorage {
             tripDistance: (e as any).tripDistance ?? null,
             totalKm: (e as any).totalKm ?? null,
             boqItemId: e.boqItemId ?? null,
+            resourceScope: e.resourceScope ?? null,
             usageStatus: e.usageStatus ?? null,
             usageStatusReason: e.usageStatusReason ?? null,
             // Preserve the dispatch linkage across clone/version chains.
@@ -4536,6 +4537,7 @@ export class DatabaseStorage implements IStorage {
             gender: l.gender,
             count: l.count,
             task: l.task, contractor: l.contractor, boqItemId: l.boqItemId,
+            ...(l.resourceScope !== undefined ? { resourceScope: l.resourceScope } : {}),
             structureId: l.structureId, workerNames: l.workerNames,
           })));
       }
@@ -4553,6 +4555,7 @@ export class DatabaseStorage implements IStorage {
             vehicleNumber: m.vehicleNumber?.toUpperCase() || m.vehicleNumber,
             location: m.location?.toUpperCase() || m.location,
             receiptNumber: m.receiptNumber,
+            resourceScope: m.resourceScope ?? null,
           }))
         );
       }
@@ -4879,6 +4882,7 @@ export class DatabaseStorage implements IStorage {
               location: m.location,
               receiptNumber: m.receiptNumber,
               boqItemId: m.boqItemId,
+              resourceScope: m.resourceScope ?? null,
               structureId: m.structureId,
             }))
           );
@@ -7043,6 +7047,16 @@ export class DatabaseStorage implements IStorage {
     const barById = new Map(barRows.map((row: any) => [Number(row.id), row]));
     return rows.map((rawInput: any) => {
       const input = normalizeEquipmentStatusFields(rawInput);
+      // General is an explicit user decision, not a fallback for missing links.
+      // Reject contradictory child assignments rather than silently erase them.
+      if (input.resourceScope === "general") {
+        if (input.activitySegments?.length || input.activityAllocations?.length) {
+          throw Object.assign(new Error("Clear work assignments before marking equipment General."), { status: 400 });
+        }
+        input.boqItemId = null;
+      } else if (input.activitySegments?.length || input.activityAllocations?.length || input.boqItemId != null) {
+        input.resourceScope = null;
+      }
       const { breakdowns: _breakdowns, persistedId: _persistedId, activityAllocations, activitySegments, _preserveActivityAssignment, _preserveLinkedChildren, ...row } = input;
       const normalizedSegmentsAreExplicit = Array.isArray(activitySegments)
         && (activitySegments.length > 0 || !Array.isArray(activityAllocations));
@@ -7099,9 +7113,10 @@ export class DatabaseStorage implements IStorage {
     allocations: Array<{ boqItemId: number }>,
     allocationsWereExplicit: boolean,
   ): any {
-    // Legacy single-BOQ rows remain untouched when no allocation payload exists.
-    return allocations.length === 1 ? { ...row, boqItemId: allocations[0].boqItemId }
-      : allocations.length > 1 || allocationsWereExplicit ? { ...row, boqItemId: null } : row;
+    // Assignments own attribution; never mirror a new assignment into the
+    // legacy parent fallback. Loaded legacy rows without an assignment payload
+    // retain their original parent link.
+    return allocations.length > 0 || allocationsWereExplicit ? { ...row, boqItemId: null } : row;
   }
 
   private assertEquipmentAllocationReferences(

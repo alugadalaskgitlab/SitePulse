@@ -21,6 +21,7 @@
 import { excavationMaterialOutcomeIssue } from "./cutFillReconciliation";
 import { equipmentStatusRequiresReason } from "./equipmentStatus";
 import { isMeaningfulEquipmentRow } from "./equipmentUsage";
+import { resolveEquipmentBoqHours, calculateEquipmentAllocationHours } from "./equipmentActivityAllocations";
 
 export type DprReadinessSection = "activities" | "equipment" | "labour" | "materials";
 
@@ -69,6 +70,8 @@ type ProgressRowLike = {
 };
 
 type EquipmentRowLike = {
+  resourceScope?: string | null;
+  boqItemId?: number | null;
   machine?: string | null;
   vehicleNo?: string | null;
   operator?: string | null;
@@ -97,6 +100,8 @@ type EquipmentRowLike = {
 };
 
 type LabourRowLike = {
+  resourceScope?: string | null;
+  boqItemId?: number | null;
   category?: string | null;
   count?: number | null;
   task?: string | null;
@@ -104,6 +109,8 @@ type LabourRowLike = {
 };
 
 type MaterialRowLike = {
+  resourceScope?: string | null;
+  boqItemId?: number | null;
   material?: string | null;
   quantity?: number | null;
   uom?: string | null;
@@ -273,5 +280,35 @@ export function evaluateDprSubmitReadiness(input: DprReadinessInput): DprReadine
     if (!hasText(m.uom)) advisories.push({ section: "materials", label, message: `${label}: UOM not specified — consider adding it` });
   }
 
+  // Resource attribution is advice only. Existing readiness rules above stay
+  // unchanged; partial machine assignments intentionally count as linked.
+  if (input.progress?.some(p => p.boqItemId != null && !p.noSiteWork)) {
+    const unlinked = (section: DprReadinessSection, label: string, rowIndex: number) =>
+      advisories.push({ section, label, rowIndex,
+        message: `${label}: not linked to a work item — link it or mark General` });
+    input.equipment?.forEach((row, i) => {
+      // The live editor sends start/end only until save-time validation. Use
+      // that same clock calculator for pending segments, without mutating input.
+      const attribution = row as Parameters<typeof resolveEquipmentBoqHours>[0];
+      const normalizedAttribution = {
+        ...attribution,
+        activitySegments: attribution.activitySegments?.map(segment => ({
+          ...segment,
+          hoursWorked: segment.hoursWorked ?? calculateEquipmentAllocationHours(segment.startTime, segment.endTime) ?? 0,
+        })),
+      };
+      if (isMeaningfulEquipmentRow({ ...row }) && equipmentHasUsage(row) && row.resourceScope !== "general" &&
+          resolveEquipmentBoqHours(normalizedAttribution).length === 0)
+        unlinked("equipment", row.machine?.trim() || `Machine ${i + 1}`, i);
+    });
+    input.labour?.forEach((row, i) => {
+      if (pos(row.count) && row.resourceScope !== "general" && row.boqItemId == null)
+        unlinked("labour", row.category?.trim() || `Labour row ${i + 1}`, i);
+    });
+    input.materials?.forEach((row, i) => {
+      if (hasText(row.material) && row.resourceScope !== "general" && row.boqItemId == null)
+        unlinked("materials", row.material!.trim(), i);
+    });
+  }
   return { ready: mandatory.length === 0, mandatory, advisories };
 }

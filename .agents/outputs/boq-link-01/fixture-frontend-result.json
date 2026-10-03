@@ -1,0 +1,225 @@
+{
+  "fixtureOnly": true,
+  "results": [
+    {
+      "test": "B",
+      "adapterPayload": {
+        "date": "2026-08-05",
+        "site": "NARASIMHULU ROAD",
+        "engineer": "SURESH KUMAR",
+        "role": "engineer",
+        "workType": "road",
+        "boqProjectId": 5501,
+        "dprStatus": "draft",
+        "progress": [
+          {
+            "entryKey": "boq-link01-8801",
+            "activity": "GSB LAYING",
+            "side": "LHS",
+            "chainageFrom": "0+000",
+            "chainageTo": "0+010",
+            "length": 10,
+            "width": 4,
+            "thickness": null,
+            "quantity": 40,
+            "uom": "SQM",
+            "noSiteWork": false,
+            "noSiteWorkDescription": "",
+            "isIncidental": false,
+            "incidentalDescription": null,
+            "personnelIds": [],
+            "lengthOverrideReason": null,
+            "scopeOverrideReason": null,
+            "boqItemId": 8801,
+            "programmeBarId": 9901,
+            "earthworkArrangementId": null,
+            "chainageFromKm": 0,
+            "chainageToKm": 0.01,
+            "quantitySource": "calculated",
+            "quantitySourceNote": null,
+            "chainageOverrideReason": null,
+            "executedBy": "hlc",
+            "layerNo": null,
+            "materialOutcome": null,
+            "reusableQty": null
+          }
+        ],
+        "cutFillConsumptions": [],
+        "structureItems": [],
+        "equipment": [
+          {
+            "equipmentId": 7701,
+            "plantUsageId": null,
+            "startTime": "08:00",
+            "entryType": "time_meter",
+            "usageStatus": "working",
+            "endTime": "12:00",
+            "resourceScope": null,
+            "breakdowns": [],
+            "activitySegments": [
+              {
+                "startTime": "08:00",
+                "endTime": "12:00",
+                "boqItems": [
+                  {
+                    "boqItemId": 8801,
+                    "programmeBarId": 9901
+                  }
+                ]
+              }
+            ],
+            "machine": "JCB 3DX",
+            "vehicleNo": "FIX-JCB-01",
+            "operator": "",
+            "task": ""
+          },
+          {
+            "equipmentId": 7703,
+            "plantUsageId": null,
+            "startTime": "",
+            "usageStatus": "working",
+            "openingReading": 150,
+            "closingReading": 154,
+            "breakdowns": [],
+            "machine": "DAILY HIRE ROLLER",
+            "vehicleNo": "FIX-HIRE-01",
+            "operator": "",
+            "task": ""
+          }
+        ],
+        "labour": [
+          {
+            "workerNames": [],
+            "category": "",
+            "gender": "",
+            "count": 0,
+            "task": "",
+            "contractor": "",
+            "boqItemId": 8801,
+            "resourceScope": null,
+            "structureId": null
+          }
+        ],
+        "materials": [],
+        "sitePurchases": [],
+        "remarks": "BOQ-LINK-01 isolated synthetic fixture. No real database writes.",
+        "clientTimestamp": "2026-10-03 11:26:03",
+        "headerToken": "82fce50df30ccb8e5bc437bb340575c9df70d35eb44a9d7acbe779d5185d55e7",
+        "sectionTokens": {
+          "activity": "8307c665273a3e64a6f69d48f1c5f90367d8bb68a49658eb64bf377859c8af3f",
+          "equipment": "eaf8f7676dce2f2ae0ea5868dd637396dc431327df4f02c8222f1c103a745177",
+          "labour": "3b13fef829e7a399e2e6f21bb9d693d900724a7a8d0e3ca9b358fb895f4a04e6",
+          "materials": "ceba8f6796ccbc716944b21dc12493f66e47f15c9696a913f7ae27ea9619703c"
+        }
+      },
+      "databasePersistence": false
+    },
+    {
+      "test": "C",
+      "twoActivitiesNoDefault": true
+    },
+    {
+      "test": "D",
+      "explicitChoicePreserved": true,
+      "addedSecondBoqActivity": true
+    },
+    {
+      "test": "E",
+      "syntheticReopen": true,
+      "adapterPayload": {
+        "date": "2026-08-05",
+        "site": "NARASIMHULU ROAD",
+        "engineer": "SURESH KUMAR",
+        "role": "engineer",
+        "workType": "road",
+        "boqProjectId": 5501,
+        "dprStatus": "draft",
+        "progress": [
+          {
+            "entryKey": "boq-link01-8801",
+            "activity": "GSB LAYING",
+            "side": "LHS",
+            "chainageFrom": "0+000",
+            "chainageTo": "0+010",
+            "length": 10,
+            "width": 4,
+            "thickness": null,
+            "quantity": 40,
+            "uom": "SQM",
+            "noSiteWork": false,
+            "noSiteWorkDescription": "",
+            "isIncidental": false,
+            "incidentalDescription": null,
+            "personnelIds": [],
+            "lengthOverrideReason": null,
+            "scopeOverrideReason": null,
+            "boqItemId": 8801,
+            "programmeBarId": 9901,
+            "earthworkArrangementId": null,
+            "chainageFromKm": 0,
+            "chainageToKm": 0.01,
+            "quantitySource": "calculated",
+            "quantitySourceNote": null,
+            "chainageOverrideReason": null,
+            "executedBy": "hlc",
+            "layerNo": null,
+            "materialOutcome": null,
+            "reusableQty": null
+          }
+        ],
+        "cutFillConsumptions": [],
+        "structureItems": [],
+        "equipment": [
+          {
+            "equipmentId": 7701,
+            "plantUsageId": null,
+            "startTime": "08:00",
+            "entryType": "time_meter",
+            "usageStatus": "working",
+            "endTime": "12:00",
+            "resourceScope": "general",
+            "breakdowns": [],
+            "activitySegments": [],
+            "machine": "JCB 3DX",
+            "vehicleNo": "FIX-JCB-01",
+            "operator": "",
+            "task": ""
+          }
+        ],
+        "labour": [],
+        "materials": [],
+        "sitePurchases": [],
+        "remarks": "BOQ-LINK-01 isolated synthetic fixture. No real database writes.",
+        "clientTimestamp": "2026-10-03 11:26:11",
+        "headerToken": "82fce50df30ccb8e5bc437bb340575c9df70d35eb44a9d7acbe779d5185d55e7",
+        "sectionTokens": {
+          "activity": "8307c665273a3e64a6f69d48f1c5f90367d8bb68a49658eb64bf377859c8af3f",
+          "equipment": "eaf8f7676dce2f2ae0ea5868dd637396dc431327df4f02c8222f1c103a745177",
+          "labour": "3b13fef829e7a399e2e6f21bb9d693d900724a7a8d0e3ca9b358fb895f4a04e6",
+          "materials": "ceba8f6796ccbc716944b21dc12493f66e47f15c9696a913f7ae27ea9619703c"
+        }
+      },
+      "databasePersistence": false
+    },
+    {
+      "test": "F",
+      "issuedSuggestedReceivedEmpty": true
+    },
+    {
+      "test": "G",
+      "nonblocking": true,
+      "highlight": true,
+      "syntheticSubmit": true,
+      "databasePersistence": false
+    },
+    {
+      "test": "G-edit",
+      "exactRowHighlight": true
+    },
+    {
+      "test": "G-no-work",
+      "attributionAdvisoryAbsent": true
+    }
+  ],
+  "exceptions": []
+}

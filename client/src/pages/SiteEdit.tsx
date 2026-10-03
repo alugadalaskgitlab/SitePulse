@@ -1,4 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { ResourceWorkItemSelect } from "@/components/ResourceWorkItemSelect";
+import { useResourceSuggestions } from "@/hooks/use-resource-suggestions";
+import { equipmentReadinessAttribution, remapAttributionAdvisories } from "@/lib/resourceReadiness";
+import { chooseResourceItem, newResourceRow, todaysResourceActivities, resourceSuggestion, type SuggestionRow } from "@/lib/resourceSuggestions";
 import { readDprWriteTokens, requireDprWriteTokens, type DprWriteTokens } from "@/lib/dprSectionTokens";
 import { useLocation, useRoute, Link } from "wouter";
 import { useAuth } from "@/lib/auth-context";
@@ -35,7 +39,6 @@ import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
 import { DprDayTripsPanel } from "@/components/DprDayTripsPanel";
 import { useChainageOverlapContext, useChainageOverlapHits, ChainageOverlapWarning } from "@/components/ChainageOverlapGuard";
 import { unchangedChainageRowKeys, type CandidateChainageRow } from "@shared/chainageOverlap";
-import { boqItemDisplayName } from "@shared/boqItemName";
 import { layerFieldLabel } from "@shared/layerDisplay";
 import { newEntryKey, MAX_ACTIVITY_PHOTOS, activityPhotoCapacity, countEntryAttachments } from "@shared/dprPhotos";
 import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
@@ -74,7 +77,7 @@ import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { EquipmentRowRemove, resolveEquipmentRemovalIndex } from "@/components/EquipmentRowRemove";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { equipmentStatusRequiresReason } from "@shared/equipmentStatus";
-import { withEquipmentCreationStartTime, withNewEquipmentWorkingDefault, meaningfulEquipmentRows, isVisibleEquipmentRow } from "@shared/equipmentUsage";
+import { withEquipmentCreationStartTime, withNewEquipmentWorkingDefault, meaningfulEquipmentRows, isMeaningfulEquipmentRow, isVisibleEquipmentRow } from "@shared/equipmentUsage";
 import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arrangementStatusHistory";
 import { transitionDieselSource, validateDieselTankBalance } from "@shared/dieselEntryValidation";
 import { normalizeSiteEditEquipmentPayload, normalizeSiteEditProgressPayload } from "@/lib/siteEditPayload";
@@ -120,7 +123,7 @@ interface ProgressEntry {
   allocations?: Array<{ sourceEntryKey?: string | null; openingBalanceId?: number | null; quantity: number }>;
 }
 
-interface EquipmentEntry {
+interface EquipmentEntry extends SuggestionRow {
   /** Existing equipment_logs id; retained solely to relink stoppages after replacement. */
   persistedId?: number;
   machine: string;
@@ -174,7 +177,7 @@ const contractorDieselTankFieldsCleared = (row: EquipmentEntry): EquipmentEntry 
       }
     : row;
 
-interface LabourEntry {
+interface LabourEntry extends SuggestionRow {
   persistedId?: number;
   editCreationKey?: string;
   workerNames?: string[];
@@ -187,7 +190,7 @@ interface LabourEntry {
   structureId: string | null;
 }
 
-interface MaterialEntry {
+interface MaterialEntry extends SuggestionRow {
   persistedId?: number;
   type: string;
   material: string;
@@ -332,6 +335,7 @@ export function mapDprToFormState(dpr: any) {
         totalKm: e.totalKm ?? null,
         waterQuantity: e.waterQuantity ?? null,
         boqItemId: e.boqItemId ?? null,
+        resourceScope: e.resourceScope ?? null,
         structureId: e.structureId ?? null,
         activitySegments: Array.isArray(e.activitySegments)
           && (e.activitySegments.length > 0 || !Array.isArray(e.activityAllocations) || e.activityAllocations.length === 0)
@@ -365,6 +369,7 @@ export function mapDprToFormState(dpr: any) {
         task: l.task || "",
         contractor: l.contractor || "",
         boqItemId: l.boqItemId ?? null,
+        resourceScope: l.resourceScope ?? null,
         structureId: l.structureId ?? null,
       }))
     : [{ category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null, workerNames: [], editCreationKey: newLabourRowKey() }];
@@ -381,6 +386,7 @@ export function mapDprToFormState(dpr: any) {
         location: m.location || "",
         receiptNumber: m.receiptNumber || "",
         boqItemId: m.boqItemId ?? null,
+        resourceScope: m.resourceScope ?? null,
         structureId: m.structureId ?? null,
       }))
     : [];
@@ -759,6 +765,8 @@ export default function SiteEdit() {
   ]);
 
   const [materials, setMaterials] = useState<MaterialEntry[]>([]);
+  useResourceSuggestions(progress, labour, setLabour);
+  useResourceSuggestions(progress, materials, setMaterials, true);
   // Batch 04: consolidated submit-readiness panel (one dialog, not N toasts).
   const [readiness, setReadiness] = useState<DprReadinessResult | null>(null);
 
@@ -1292,9 +1300,9 @@ export default function SiteEdit() {
     } else if (section === 'equipment') {
       // 06Q: rows added during the edit session are flagged isNew — they get
       // opening-reading continuity when equipment is selected.
-      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, isNew: true, editCreationKey: newEntryKey() }]);
+      setEquipment([...equipment, newResourceRow({ machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, plantUsageId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, isNew: true, editCreationKey: newEntryKey() })]);
     } else if (section === 'labour') {
-      setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null, workerNames: [], editCreationKey: newLabourRowKey() }]);
+      setLabour([...labour, newResourceRow({ category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null, workerNames: [], editCreationKey: newLabourRowKey() })]);
     }
   };
 
@@ -1323,7 +1331,7 @@ export default function SiteEdit() {
   };
 
   const addMaterial = () => {
-    setMaterials([...materials, { type: "Received", material: "", quantity: null, uom: "", vehicleNumber: "", supplier: "", location: "", receiptNumber: "", boqItemId: null, structureId: null }]);
+    setMaterials([...materials, newResourceRow({ type: "Received", material: "", quantity: null, uom: "", vehicleNumber: "", supplier: "", location: "", receiptNumber: "", boqItemId: null, structureId: null })]);
   };
   const removeMaterial = (index: number) => {
     setMaterials(materials.filter((_, i) => i !== index));
@@ -1463,7 +1471,7 @@ export default function SiteEdit() {
       type: m.type, material: m.material, quantity: m.quantity, uom: m.uom,
       vehicleNumber: m.vehicleNumber || undefined, supplier: m.supplier || undefined,
       location: m.location || undefined, receiptNumber: m.receiptNumber || undefined,
-      boqItemId: m.boqItemId ?? null, structureId: m.structureId ?? null,
+      boqItemId: m.boqItemId ?? null, resourceScope: m.resourceScope ?? null, structureId: m.structureId ?? null,
     })),
     sitePurchases: sitePurchases.filter(sp => sp.itemDescription),
     });
@@ -1628,10 +1636,17 @@ export default function SiteEdit() {
     }
     // Batch 04: same shared readiness rule as Guided/Detailed/server.
     const payload = buildPayload();
-    const r = evaluateDprSubmitReadiness({
+    const readinessEquipment = equipment.map((row, index) => ({ row: contractorDieselTankFieldsCleared(row), index }))
+      .filter(({ row }) => isMeaningfulEquipmentRow({ ...row }));
+    const r = remapAttributionAdvisories(evaluateDprSubmitReadiness({
       ...payload,
+      equipment: payload.equipment.map((row, index) => equipmentReadinessAttribution(row, readinessEquipment[index].row)),
       progress: withCutFillReadinessContext(payload.progress as any, siteBoqItems),
-    } as any);
+    } as any), {
+      equipment: readinessEquipment.map(({ index }) => index),
+      labour: labour.flatMap((row, index) => row.count > 0 ? [index] : []),
+      materials: materials.flatMap((row, index) => row.material ? [index] : []),
+    });
     if (r.mandatory.length > 0) {
       setReadiness(r);
       return;
@@ -3255,7 +3270,9 @@ export default function SiteEdit() {
                   beforeDate={header.date}
                   site={header.site}
                   boqItems={siteBoqItems}
-                  programmeBars={progress.flatMap((entry) => entry.programmeBarId != null && entry.boqItemId != null ? [{
+                  activityIds={todaysResourceActivities(progress)}
+                  suggestNewRow={entry[resourceSuggestion] != null && entry.persistedId == null}
+                  programmeBars={progress.flatMap((entry) => !entry.noSiteWork && entry.programmeBarId != null && entry.boqItemId != null ? [{
                     id: entry.programmeBarId,
                     boqItemId: entry.boqItemId,
                     reachLabel: [entry.chainageFrom, entry.chainageTo].filter(Boolean).join("–") || null,
@@ -3264,10 +3281,12 @@ export default function SiteEdit() {
                     enableTankContinuity={entry.dieselSource === "plant_stock"}
                    allowLinkedSourceEdit={isAdmin}
                    onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, ...patch } as EquipmentEntry : row))}
-                  onWorkAssignmentChange={(activitySegments) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? {
+                  onWorkAssignmentChange={(activitySegments, source) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? {
                     ...row,
                     activitySegments,
                     activityAllocations: undefined,
+                    resourceScope: null,
+                    [resourceSuggestion]: source === "suggestion" ? "suggested" : "manual",
                     workAssignmentEdited: true,
                   } : row))}
                 />
@@ -3384,32 +3403,12 @@ export default function SiteEdit() {
                   <Trash2 className="w-4 h-4 text-destructive" />
                 </Button>
               </div>
-              {siteBoqItems.length > 0 && (
                 <div className="col-span-2 md:col-span-6">
                   <Label className="text-sm text-muted-foreground">Link to Work Item (optional)</Label>
-                  <Select
-                    value={entry.boqItemId != null ? String(entry.boqItemId) : "__none__"}
-                    onValueChange={(val) => {
-                      const updated = [...labour];
-                      updated[idx].boqItemId = val === "__none__" ? null : Number(val);
-                      updated[idx].structureId = null;
-                      setLabour(updated);
-                    }}
-                  >
-                    <SelectTrigger data-testid={`select-labour-boqitem-${idx}`}>
-                      <SelectValue placeholder="Not linked" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Not linked</SelectItem>
-                      {dprBoqItemsForMapping.map((item) => (
-                        <SelectItem key={item.id} value={String(item.id)}>
-                          {item.itemCode ? `[${item.itemCode}] ` : ""}{boqItemDisplayName(item)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <ResourceWorkItemSelect row={entry} items={dprBoqItemsForMapping} activityIds={todaysResourceActivities(progress)}
+                    testId={`select-labour-boqitem-${idx}`}
+                    onChange={value => setLabour(rows => rows.map((row, index) => index === idx ? chooseResourceItem(row, value) : row))} />
                 </div>
-              )}
               <div className="col-span-2 md:col-span-6">
                 <LabourWorkerNames names={entry.workerNames} count={entry.count} rowIndex={idx}
                   onChange={workerNames => setLabour(rows => rows.map((row, i) => i === idx ? { ...row, workerNames } : row))} />
@@ -3483,6 +3482,12 @@ export default function SiteEdit() {
                 <div>
                   <Label>Receipt No</Label>
                   <Input placeholder="Receipt number" value={m.receiptNumber} onChange={e => updateMaterial(idx, 'receiptNumber', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-material-receipt-${idx}`} />
+                </div>
+                <div className="md:col-span-8">
+                  <Label className="text-sm text-muted-foreground">Link to Work Item (optional)</Label>
+                  <ResourceWorkItemSelect row={m} items={dprBoqItemsForMapping} activityIds={todaysResourceActivities(progress)}
+                    testId={`select-material-boqitem-${idx}`}
+                    onChange={value => setMaterials(rows => rows.map((row, index) => index === idx ? chooseResourceItem(row, value) : row))} />
                 </div>
               </div>
             ))
@@ -3647,6 +3652,10 @@ export default function SiteEdit() {
           if (validateCutFillForFinal()) submitDraftMutation.mutate(buildPayload());
         }}
         onSaveDraft={handleDraftSave}
+        onAdvisoryIssue={(issue) => {
+          setReadiness(null);
+          window.setTimeout(() => focusReadinessIssue(issue), 80);
+        }}
       />
 
       <Dialog open={incidentalConfirm != null} onOpenChange={(open) => { if (!open) setIncidentalConfirm(null); }}>
