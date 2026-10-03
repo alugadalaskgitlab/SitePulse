@@ -1,0 +1,41 @@
+INSTRUCTION VB-28: Move "Remove Group" away from the date-group toggle on the Vendor Bill line-items table — it sits in a misclick-prone spot
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Single, narrow, presentation-only fix. Part A is a short design plan — STOP after Part A and share it before writing implementation code, because this shared component has four call sites and the fix must look/behave identically across all of them. STOP after Part B too. Do not touch `removeItemGroup`'s logic, its `window.confirm` guard, the hire-group/hire-statement block, or anything about how line items are grouped, totaled, or removed — this is purely about where the button sits and how it's visually separated from the expand/collapse control. Do not touch HOME-01, DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, PERM-01/02, LABOUR-01, PI-01, or any DPR-13 through DPR-20 work. Do not publish automatically.
+
+BACKGROUND — confirmed by direct code review and a screenshot of the live date-group table on the vendor bill edit screen
+`client/src/components/vendor-bills/BillDateGroups.tsx`'s `BillDateGroupRows` renders each date group as a single table row: a full-width ghost `Button` that toggles expand/collapse (showing the date, item count, and subtotal), and — immediately below it, inside the same `<td>`, with no gap or divider — a second ghost `Button` styled `text-destructive` reading "Remove Group" (~line 100-110). `client/src/pages/VendorBills.tsx` uses this same component at three call sites (`scope="edit-all"`, per-category via `scope={\`edit-${cat}\`}`, and per-site inside the else-branch) and additionally has a fourth, inline-duplicated copy of the same pattern for labour sub-groups (~line 3796) that is NOT routed through `BillDateGroupRows` — it builds its own `<tr>`/`<td>` with the same "toggle row, Remove Group directly beneath" layout. All four render "Remove Group" as a full-width, stacked-directly-under-the-toggle control, which is exactly the geometry a user's thumb or mouse passes over right after tapping/clicking the date header to expand it.
+The underlying action is not unguarded — `removeItemGroup` in `VendorBills.tsx` (~line 1520) already calls `window.confirm(...)` before removing anything, and already blocks removing hire-group/hire-statement generated items with a toast instead. This instruction is NOT about adding a confirmation — one already exists. It's about the button's placement making a misclick likely enough that a user ends up staring at a confirm dialog they didn't mean to trigger, on a line-items table that can represent real money (subtotals in the screenshot run into thousands of rupees per group).
+This is the same class of problem DPR-19 Fix 2 already solved elsewhere in this app (the equipment-row delete button overlapping the expand/collapse toggle in `DprEquipmentCompact.tsx`) — that fix gave the destructive control "real, deliberate spacing... a proper flex-adjacent sibling with a visible gap." Reuse that same established pattern here for consistency across the app rather than inventing a new layout convention.
+
+FIX
+
+PART A — Design/mapping plan (STOP after this, share the plan, wait for go-ahead before building)
+a. Confirm your proposed placement for "Remove Group" relative to the toggle button. Options to weigh (propose the one you think fits this row's existing layout best, or a better one, and explain why): (i) move it to the trailing edge of the same row, after the subtotal, separated by a visible gap/divider so it's no longer stacked directly beneath the toggle's tap/click zone; (ii) shrink it to an icon-only trash button with its own padding and a real gap from the toggle, consistent with DPR-19's fix; (iii) only render it when the group is already expanded (so collapsed rows — the ones being rapidly tapped through to scan the bill — never show a destructive control at all). Whichever you pick, it must work on both desktop (mouse) and mobile (touch, no hover) — do not propose a hover-only reveal as the sole affordance.
+b. Confirm this same placement fix is applied consistently to all four occurrences: the three `BillDateGroupRows` call sites in `VendorBills.tsx` (via the shared component, so one fix covers all three) and the fourth inline-duplicated labour sub-group block (~line 3796) that doesn't go through the shared component. Propose whether that fourth block should now also be routed through `BillDateGroupRows` (removing the duplication) or just have its layout mirrored by hand — your call, explain which is lower-risk given it's a smaller, scoped change.
+c. Confirm no change to `removeItemGroup`'s logic, its `window.confirm` text, or the hire-group/hire-statement block toast — only the button's position/size/visual treatment.
+d. Confirm the toggle button's own click target doesn't grow or shift as a side effect of relocating "Remove Group" — expand/collapse must keep working exactly as today for every row.
+
+PART B — Build (only after Part A is approved)
+Implement per the approved plan across all four occurrences. Single stage is fine given the scope, but stop and report with evidence before considering this done.
+
+WHAT NOT TO DO
+- Do not add, remove, or reword the `window.confirm` guard — it already exists and is out of scope.
+- Do not change grouping, subtotal, or removal logic in `removeItemGroup` or `groupBillItemsByDate`.
+- Do not touch the hire-group/hire-statement block-and-toast behavior.
+- Do not change `BillDateGroupControls` (Expand All / Collapse All).
+- Do not touch HOME-01, DIESEL-04/05, NAV-01, VB-27, MAT-03/04, VENDOR-01/02/03, PERM-01/02, LABOUR-01, PI-01, or any DPR-13 through DPR-20 work.
+- Do not start any other task on your own initiative.
+
+SCHEMA SAFETY
+No schema change — this is layout-only.
+
+TESTS
+Confirm "Remove Group" is no longer immediately adjacent to the expand/collapse toggle's click/tap zone on any of the four occurrences, on both desktop and mobile widths. Confirm clicking/tapping the toggle still expands/collapses correctly and does not accidentally trigger removal. Confirm "Remove Group" still works when deliberately clicked (confirm dialog appears, items are removed on confirm, nothing happens on cancel) — same behavior as today, just relocated. Confirm the hire-group/hire-statement block toast still fires correctly instead of the confirm dialog for those items.
+
+REPORT BACK
+1. After Part A: your written plan, and explicitly wait for approval before proceeding.
+2. After the build: confirm with evidence (screenshot or recording showing the new placement on desktop and mobile across all four occurrences).
+3. Anything else noticed but not touched, for a separate decision.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
