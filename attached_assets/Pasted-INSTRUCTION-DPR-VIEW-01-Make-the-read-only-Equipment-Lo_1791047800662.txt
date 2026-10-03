@@ -1,0 +1,92 @@
+INSTRUCTION DPR-VIEW-01: Make the read-only Equipment Log short and clear, with diesel consumption (L/hr for machines, km/L for vehicles) as the main figure on every row
+
+READ THIS FIRST — SCOPE DISCIPLINE
+Display-only batch for the READ-ONLY DPR views: client/src/pages/SiteReport.tsx (Site Report, incl. its print output) and client/src/pages/DprDetails.tsx. Do NOT touch the editable entry screens (GuidedDpr.tsx, SiteEdit.tsx, SiteEntry.tsx, DprSections.tsx) or their use of DprEquipmentCompact in edit mode. Do NOT change any stored value, calculation of hours/km/expected diesel/tank figures, submit-readiness, schema, or the Equipment Performance report. Do not publish automatically.
+PREREQUISITE: BOQ-LINK-01 must be completed and approved first (this batch shows its "General / Not linked" status). If BOQ-LINK-01 is not done, STOP and say so. No other batch touching DPR screens may be running at the same time.
+Part A is a short plan — STOP after Part A and wait for approval before building.
+Attached mockup Site_Report_View_Mockup.png, part 1, shows the approved look using DPR 409's real numbers (parts 2–3 belong to the next batch, UX-FIX-02). Note: DprDetails.tsx is not routed anywhere; keep it compiling but put the effort into SiteReport.tsx.
+UX-FIX-01 is live: equipment rows now have Status (default Working), Task, breakdown reason required, labour Hours — show Task under the Work column and labour Hours where relevant; do not change the entry screens.
+
+PRESERVE EXACTLY (DPR-20 decisions)
+- The Lifecycle display and the "Send onward" control: same gating (canMove: usage closed, no successor), same /api/equipment-usage/:id/move call, same test ids (button-move-equipment-{i}, select-move-destination-{i}, input-successor-date-{i}, button-confirm-move-{i}, badge-equipment-lifecycle-{i}).
+- Site Report keeps ONE equipment table (no duplicate cards come back).
+- The existing canonical actual-efficiency path (client/src/lib/dprEquipmentEfficiency.ts → resolveDprActualEfficiency, reusing managementMetrics) stays the preferred source when it returns "available".
+
+WHY
+Today one machine can produce ~25 lines in the Site Report table: 12 columns, each with labelled sub-lines from DprEquipmentTableDetails (identity / readings / quantity / tank / expected / performance / work), the same hours shown three ways (Operating Quantity, Meter Working Hours, Clock Duration), the diesel difference twice (Issued − expected and DPR snapshot consumed − expected), and the same explanatory sentences repeated on every row. The figure the owner actually wants — consumption rate — is usually missing: resolveDprActualEfficiency only returns a number when the tank dip is confirmed AND the viewer has all-sites access, so most rows read "unavailable (complete equipment-day access is not verified)". Vehicles are shown in L/km while site practice is km/L.
+
+=====================================================================
+NEW SHARED HELPER (pure, tested): shared/dprEquipmentConsumption.ts
+=====================================================================
+export function resolveDprRowConsumption(input): {
+  basis: "measured" | "issued" | "incomplete";
+  value: number | null;            // in displayUnit
+  displayUnit: "L/hr" | "km/L" | null;
+  norm: number | null;             // in displayUnit
+  deviationPct: number | null;     // signed; positive = WORSE than norm
+  flag: "ok" | "worse" | "better_check" | null;
+  reason: string | null;           // 2–6 words when incomplete, e.g. "closing reading missing", "no diesel recorded", "diesel by vendor"
+}
+Inputs: the row's runtime and unit exactly as buildDprEquipmentTableDetails already derives them (historicalUsage.runtime + efficiencyUnit "L/hr" | "L/km" — reuse that, do not recompute hours/km), diesel issued (row.diesel), fuel.actualConsumed and row.dieselBalanceConfirmed from the same builder, the norm from details.norm (resolveEquipmentConsumptionNormRate) with fallback to the row's saved dieselNorm, and the canonical result from resolveDprActualEfficiency when available.
+Rules, in order:
+1. MEASURED: if the canonical result is "available" → use it. Else if row.dieselBalanceConfirmed === true and fuel.actualConsumed != null and runtime > 0 → actualConsumed ÷ runtime. basis = "measured".
+2. ISSUED: else if diesel issued > 0 and runtime > 0 → issued ÷ runtime. basis = "issued".
+3. INCOMPLETE: otherwise value = null with a short reason (runtime missing → "hours/km not available" or "closing reading missing" when opening exists without closing; diesel missing → "no diesel recorded"; dieselSource "contractor" with no diesel → "diesel by vendor").
+Units: machines (L/hr basis) display L/hr. Vehicles (L/km basis) display km/L = 1 ÷ (L/km); convert the norm the same way. Never divide by zero; guard non-finite values.
+Deviation and flag (threshold 10%, as a named constant CONSUMPTION_FLAG_PCT = 10):
+- L/hr: deviationPct = (value − norm) ÷ norm × 100. km/L: deviationPct = (norm − value) ÷ norm × 100 (so positive always means worse).
+- |deviation| ≤ 10 → "ok"; deviation > 10 → "worse"; deviation < −10 → "better_check" (unusually low consumption usually means a missing diesel entry or wrong reading — show as amber "check", not green).
+- No norm or incomplete → flag null.
+Unit tests: measured beats issued; canonical beats row-level; L/km→km/L conversion of value and norm; ±10% boundaries; zero/negative/missing inputs; contractor diesel; a row whose canonical state is "unavailable" for access reasons still gets a row-level figure.
+
+=====================================================================
+PART A — PLAN (STOP after this)
+=====================================================================
+a. Confirm both pages and the print path render equipment from the sources described here, and list every piece of information currently shown per machine (all DprEquipmentTableDetails sections, breakdowns, diesel source details, lifecycle). Map each one to where it will live in the new layout (row, Details panel, or bottom legend). Nothing may be dropped — report any item you cannot place.
+b. Confirm resolveDprRowConsumption inputs come only from existing builders (no new hours/diesel arithmetic).
+c. Propose the phone layout (stacked card per machine) and print layout.
+
+=====================================================================
+PART B — BUILD (after approval)
+=====================================================================
+B1. One compact row per machine, same component on both pages (create client/src/components/DprEquipmentReadOnlyRow.tsx or similar; DprDetails stops using DprEquipmentCompact for its read-only list, SiteReport replaces its 12-column body). Columns:
+  1. Machine — name (+ registration if any), "Owned" or "Hired · vendor", hire-type badge (Hourly/Daily/Monthly/Trip, existing badges), operator in small text. Daily status shown ONLY when not "Working" (Idle · No work / Idle · No operator / Breakdown + reason).
+  2. Work — BOQ item(s) and hours from the activity segments/allocations (resolveEquipmentBoqHours), or "General", or a muted "Not linked" chip (BOQ-LINK-01 status). Task text below in small grey.
+  3. Usage — ONE line: "6,204.0 → 6,212.5 = 8.5 h", or "07:30 → 15:00 = 7.5 h" when time-based, or "9 trips × 6 km = 108 km", or odometer "84,320 → 84,402 = 82 km". Use the same runtime the helper uses.
+  4. Diesel — issued litres in bold; if plant stock with tank figures: "tank 40 → 52" with ✓ when confirmed.
+  5. Consumption — the helper's figure in bold with unit, then a small tag: "measured ✓" or "issued"; or "Incomplete" + reason. Next to it the norm ("norm 14.0 L/hr") and the flag: ✓ (ok), red "▲ 18%" (worse), amber "check ▼ 22%" (better_check).
+  6. Notes — only when there is something: breakdown/stoppage summary (from DprEquipmentTableBreakdowns, one line each), "Direct purchase · bill 123 · ₹4,500" (existing diesel source details), usage warning. Empty otherwise.
+  Send onward / Lifecycle: kept as in DPR-20 (its own narrow column on desktop, hidden in print as today), unchanged behaviour.
+B2. "Details ▸" toggle per row (closed by default on screen) showing the remaining audit facts in a compact two-column list: opening/closing meter, start/end time, clock duration, opening/closing tank and confirmation, expected diesel and issued − expected, DPR snapshot consumed, status reason, linked maintenance rows, entry type. No explanatory sentences inside the panel.
+B3. ONE legend at the bottom of the Equipment Log section (small text, once): what "measured" vs "issued" means (issued-basis reads high on days the tank was topped up ahead), that km/L is used for vehicles, and the ±10% flag rule. Remove the per-row explanatory paragraphs from DprEquipmentTableDetails for these read-only pages (the edit screens are unaffected — if the component is shared, gate by a prop).
+B4. Totals line under the table: total hours (machines), total km (vehicles), total diesel issued, total expected, difference. Totals only sum figures that exist; if any row is incomplete, mark the total "(incomplete)".
+B5. Fix the misleading note: "Non-BOQ / Incidental Work — Not a BOQ item — not payable progress" must appear ONLY when the row has no BOQ attribution (resolveEquipmentBoqHours returns nothing) AND is not General. Today it shows whenever task text exists.
+B6. Phone (< 640px): each machine becomes a stacked card with the same six items in the same order; no horizontal scrolling of the page.
+B7. Print (Site Report): rows print with the Details panel EXPANDED for every machine so the paper copy keeps full audit detail; Send onward hidden as today; legend printed once.
+
+WHAT NOT TO DO
+- No changes to stored data, hour/km/diesel/expected calculations, Equipment Performance, hire billing, or the edit screens.
+- Do not remove or alter Send onward, its gating, route or test ids.
+- Do not invent a consumption number when the helper returns "incomplete".
+- Do not show L/km anywhere on these pages for vehicles — km/L only (convert the norm too).
+
+TESTS
+A. Part A mapping table — every current field placed; none dropped.
+B. Helper unit tests (listed above) pass.
+C. Machine with confirmed tank dip → "measured ✓" L/hr; equals the Equipment Performance figure for that day when the canonical path is available.
+D. Machine without dip, with diesel and hours → "issued" L/hr; same machine viewed by a site-restricted user → same figure (no "access not verified" text).
+E. Tipper with trips/odometer → km/L, norm shown in km/L, flag correct.
+F. Machine with opening but no closing reading → "Incomplete · closing reading missing", no number.
+G. 15% above norm → red ▲ 15%; 12% below → amber check ▼ 12%; 8% → ✓.
+H. Row count: a typical machine row on Site Report is ≤ 4 visual lines with Details closed (screenshot before/after of the same DPR).
+I. Send onward still works on an eligible row (DPR-20 test still passes).
+J. Phone-width screenshot of both pages; print preview screenshot of Site Report with details expanded.
+K. "Non-BOQ / Incidental" note: absent on a row with segment links; absent on a General row; present on an unlinked row with task text.
+L. Full test suite passes; report count.
+
+REPORT BACK
+1. Part A plan and field mapping — then wait for approval.
+2. After build: Tests A–L evidence with before/after screenshots of the same DPR on both pages.
+3. Anything noticed but not touched.
+
+DO NOT START ANOTHER FEATURE after completing this batch.
