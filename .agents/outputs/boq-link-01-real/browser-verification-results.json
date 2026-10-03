@@ -1,0 +1,23 @@
+{
+  "environment": "real development app / sitelog_dev",
+  "browser": "already-authenticated Chromium CDP port 9223",
+  "applicationCodeEdited": false,
+  "newDevelopmentDprIds": [249, 250, 251, 252],
+  "tests": {
+    "B": "passed real Guided UI, save/reopen, NULL equipment parent links verified",
+    "E": "passed real General DG UI, draft save/reopen and persistence verified",
+    "G": "passed advisory, correct row highlight, Submit anyway success; No Site Work direct success",
+    "H": "passed correct readonly report route and exact original snapshot equality; segment BOQ junction rows supplemental only because original snapshot omitted them",
+    "I": "passed draft-to-submit and two UI edit-as-copy generations; General equipment/labour/material retained"
+  },
+  "dbEvidence": "browser-db-evidence.json",
+  "report": "browser-verification-report.md",
+  "testUserId": 9,
+  "testUserDeactivated": true,
+  "deactivationApiStatus": 200,
+  "deactivationEvidence": "test-account-deactivation.json",
+  "applicationBlockers": [],
+  "historicalDprEditedOrSaved": false,
+  "productionWrites": false,
+  "published": false
+}

@@ -1,0 +1,16 @@
+[
+  {
+    "id": 7,
+    "segment_id": 4,
+    "boq_item_id": 1148,
+    "programme_bar_id": 26480,
+    "created_at": "2026-09-09T02:27:50.636Z"
+  },
+  {
+    "id": 8,
+    "segment_id": 4,
+    "boq_item_id": 1149,
+    "programme_bar_id": 26482,
+    "created_at": "2026-09-09T02:27:50.636Z"
+  }
+]

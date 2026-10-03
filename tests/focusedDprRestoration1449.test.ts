@@ -71,7 +71,7 @@ describe("focused DPR restoration", () => {
     expect(siteEdit).toContain("<DprEquipmentCompact");
     expect(allocationEditor).toContain("Select BOQ Item");
     expect(siteEdit).toContain("select-labour-boqitem-${idx}");
-    expect(siteEdit).toContain("<SelectItem value=\"__none__\">Not linked</SelectItem>");
+    expect(await readSource("client/src/components/ResourceWorkItemSelect.tsx")).toContain("<SelectItem value=\"none\">No work item</SelectItem>");
   });
 
   it("keeps exact arrangement and trip context on existing DPR paths", async () => {

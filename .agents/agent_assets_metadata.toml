@@ -4273,3 +4273,31 @@ mtime_ms = 1791026778533
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/a4cf05cd-1f2e-44ba-b10e-23eb8fe72034/aadc201f-5b1e-46c9-a11b-ae55b18f4143"
 storage_version_token = "1791027310790571"
 content_type = "image/png"
+
+[[outputs]]
+id = "rvAeTxwQFp6f2v-bq79vr"
+uri = "file://.agents/outputs/boq-link-01-real/verification-report.html"
+type = "html"
+title = "Real-app verification, Publish SQL and rollback plan"
+description = "B, E, G, H and I verified against development with 11 authenticated screenshots, persisted database checks and unchanged old-DPR comparisons. Nothing published."
+logical_id = "97c33d3f-3ee2-4fc8-b540-d14b7c560672"
+content_hash = "sha256:0214b8850bfa47b3455c755d976702f158eec64833ffdc6239968e7576717d90"
+size = 1956102
+mtime_ms = 1791028740017
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/97c33d3f-3ee2-4fc8-b540-d14b7c560672/634c3c71-3bea-4728-9809-84507057b263"
+storage_version_token = "1791028745205595"
+content_type = "text/html"
+
+[[outputs]]
+id = "J2OZ1lVeemyzyQYQJoAns"
+uri = "file://.agents/outputs/boq-link-01-real/G-unlinked-advisory.png"
+type = "image"
+title = "Real app: non-blocking advisory"
+description = "Authenticated development DPR 249. Submit anyway subsequently succeeded."
+logical_id = "4900afa4-cd47-447f-9616-af1f62179290"
+content_hash = "sha256:c69a00e36a3617ed5fdb6e2624c0c5c6e77bd1a5d65179783ba2fabaff0f354f"
+size = 118366
+mtime_ms = 1791028382748
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/4900afa4-cd47-447f-9616-af1f62179290/5cfda4e8-47b6-4348-9d0a-d7c9155e9c1b"
+storage_version_token = "1791028747343383"
+content_type = "image/png"
