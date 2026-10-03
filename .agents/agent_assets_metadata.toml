@@ -4189,3 +4189,17 @@ mtime_ms = 1790685098264
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d06ea1fe-c842-4805-b2ff-f772f8d4409a/4d1be15a-bf7f-4269-867a-db6c805c2f11"
 storage_version_token = "1790685111047264"
 content_type = "image/png"
+
+[[outputs]]
+id = "N_G-slYoJOuJgvB4PigkX"
+uri = "file://screenshots/vb28/proposed-placement-desktop.jpg"
+type = "image"
+title = "Proposed Remove Group placement"
+description = "Preview only with sample data. Remove Group is right-aligned below a divider, separated from the unchanged date toggle. Includes the labour-source header treatment. The live app is unchanged."
+logical_id = "dab90cee-3a61-4d75-b0aa-f81c87f15384"
+content_hash = "sha256:34e52c662ab9698df3ee5aa0e9b10fcfb813254c8d0346b509d5d03880b4abc7"
+size = 60999
+mtime_ms = 1790990612511
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/dab90cee-3a61-4d75-b0aa-f81c87f15384/9e8933a5-7e87-44aa-abff-0b7f2ddfe23b"
+storage_version_token = "1790990620206115"
+content_type = "image/jpeg"
