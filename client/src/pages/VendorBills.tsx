@@ -3792,8 +3792,11 @@ export default function VendorBills() {
                                           <span className="text-muted-foreground normal-case">
                                             {grp.items.length} row{grp.items.length !== 1 ? "s" : ""} · Rs. {formatCurrency(grpTotal)}
                                           </span>
-                                          <Button type="button" variant="ghost" size="sm" className="text-destructive"
-                                            onClick={() => removeItemGroup(grp.items, grp.label)}>Remove Group</Button>
+                                          <div className="mt-3 flex justify-end border-t pt-3">
+                                            <Button type="button" variant="ghost" size="sm" className="min-h-11 text-destructive"
+                                              data-testid={`button-remove-labour-source-${grp.key}`}
+                                              onClick={() => removeItemGroup(grp.items, grp.label)}>Remove Group</Button>
+                                          </div>
                                         </td>
                                       </tr>
                                       <BillDateGroupRows

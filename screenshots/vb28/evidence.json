@@ -1,0 +1,139 @@
+{
+  "synthetic": true,
+  "productionComponent": "VendorBills",
+  "liveWrites": false,
+  "checks": [
+    {
+      "viewport": "desktop",
+      "scope": "edit-all",
+      "geometry": {
+        "height": 44,
+        "rightGap": 8,
+        "gap": 25,
+        "divider": "1px",
+        "margin": "12px",
+        "padding": "12px"
+      },
+      "confirmText": "Remove all 2 items from 01-MAR-2027?",
+      "cancelPreserved": true,
+      "confirmRemoved": true
+    },
+    {
+      "viewport": "desktop",
+      "scope": "edit-material",
+      "geometry": {
+        "height": 44,
+        "rightGap": 8,
+        "gap": 25,
+        "divider": "1px",
+        "margin": "12px",
+        "padding": "12px"
+      },
+      "confirmText": "Remove all 1 items from 01-MAR-2027?",
+      "cancelPreserved": true,
+      "confirmRemoved": true
+    },
+    {
+      "viewport": "desktop",
+      "scope": "edit-labour-labour-other",
+      "geometry": {
+        "height": 44,
+        "rightGap": 8,
+        "gap": 25,
+        "divider": "1px",
+        "margin": "12px",
+        "padding": "12px"
+      },
+      "confirmText": "Remove all 2 items from 01-MAR-2027?",
+      "cancelPreserved": true,
+      "confirmRemoved": true
+    },
+    {
+      "viewport": "desktop",
+      "scope": "other",
+      "geometry": {
+        "height": 44,
+        "rightGap": 12,
+        "gap": null,
+        "divider": "1px",
+        "margin": "12px",
+        "padding": "12px"
+      },
+      "confirmText": "Remove all 2 items from Manual / Other?",
+      "cancelPreserved": true,
+      "confirmRemoved": true
+    },
+    {
+      "viewport": "mobile",
+      "scope": "edit-all",
+      "geometry": {
+        "height": 44,
+        "rightGap": 8,
+        "gap": 25,
+        "divider": "1px",
+        "margin": "12px",
+        "padding": "12px"
+      },
+      "confirmText": "Remove all 2 items from 01-MAR-2027?",
+      "cancelPreserved": true,
+      "confirmRemoved": true
+    },
+    {
+      "viewport": "mobile",
+      "scope": "edit-material",
+      "geometry": {
+        "height": 44,
+        "rightGap": 8,
+        "gap": 25,
+        "divider": "1px",
+        "margin": "12px",
+        "padding": "12px"
+      },
+      "confirmText": "Remove all 1 items from 01-MAR-2027?",
+      "cancelPreserved": true,
+      "confirmRemoved": true
+    },
+    {
+      "viewport": "mobile",
+      "scope": "edit-labour-labour-other",
+      "geometry": {
+        "height": 44,
+        "rightGap": 8,
+        "gap": 25,
+        "divider": "1px",
+        "margin": "12px",
+        "padding": "12px"
+      },
+      "confirmText": "Remove all 2 items from 01-MAR-2027?",
+      "cancelPreserved": true,
+      "confirmRemoved": true
+    },
+    {
+      "viewport": "mobile",
+      "scope": "other",
+      "geometry": {
+        "height": 44,
+        "rightGap": 12,
+        "gap": null,
+        "divider": "1px",
+        "margin": "12px",
+        "padding": "12px"
+      },
+      "confirmText": "Remove all 2 items from Manual / Other?",
+      "cancelPreserved": true,
+      "confirmRemoved": true
+    }
+  ],
+  "shots": [
+    "screenshots/vb28/desktop-edit-all-SYNTHETIC.png",
+    "screenshots/vb28/desktop-edit-material-SYNTHETIC.png",
+    "screenshots/vb28/desktop-edit-labour-labour-other-SYNTHETIC.png",
+    "screenshots/vb28/desktop-other-SYNTHETIC.png",
+    "screenshots/vb28/mobile-edit-all-SYNTHETIC.png",
+    "screenshots/vb28/mobile-edit-material-SYNTHETIC.png",
+    "screenshots/vb28/mobile-edit-labour-labour-other-SYNTHETIC.png",
+    "screenshots/vb28/mobile-other-SYNTHETIC.png"
+  ],
+  "nativeApis": [],
+  "exceptions": []
+}

@@ -18,18 +18,32 @@ afterEach(cleanup);
 it("offers removal only in editable groups and passes original indices while collapsed", () => {
   const rows = [{ item: { date: "2027-02-14", amount: 1 }, idx: 2 }, { item: { date: "2027-02-14", amount: 2 }, idx: 9 }];
   const removals: unknown[] = [];
+  const toggles: unknown[] = [];
   const props = {
     items: rows, scope: "test", totalColumns: 2, totalBillItems: 111,
-    expansionMode: "collapsed" as const, expansionOverrides: {}, onToggle: () => {},
+    expansionMode: "collapsed" as const, expansionOverrides: {}, onToggle: (key: string, expanded: boolean) => toggles.push({ key, expanded }),
     renderRow: () => null, formatDate: (date: string | null | undefined) => date || "",
     formatAmount: String,
   };
   const { rerender } = render(<table><tbody><BillDateGroupRows {...props}
     onRemoveGroup={(items, label) => removals.push({ items, label })} /></tbody></table>);
+  const toggle = screen.getByTestId("button-date-group-test-2027-02-14");
+  const remove = screen.getByText("Remove Group");
+  expect(toggle.className).toContain("w-full");
+  expect(remove.className).toContain("min-h-11");
+  expect(remove.parentElement?.className).toBe("mt-3 flex justify-end border-t pt-3");
+  expect(toggle.contains(remove)).toBe(false);
+  fireEvent.click(toggle);
+  expect(toggles).toEqual([{ key: "test:2027-02-14", expanded: true }]);
+  expect(removals).toEqual([]);
+  fireEvent.click(remove.parentElement!);
+  expect(removals).toEqual([]);
   fireEvent.click(screen.getByText("Remove Group"));
   expect(removals).toEqual([{ items: rows, label: "2027-02-14" }]);
+  expect(toggles).toHaveLength(1);
   rerender(<table><tbody><BillDateGroupRows {...props} /></tbody></table>);
   expect(screen.queryByText("Remove Group")).toBeNull();
+  expect(screen.getByTestId("row-date-group-test-2027-02-14").querySelector(".border-t")).toBeNull();
 });
 
 function Harness({ items }: { items: Item[] }) {

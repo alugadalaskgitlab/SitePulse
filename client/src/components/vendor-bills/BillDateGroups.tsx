@@ -100,11 +100,13 @@ export function BillDateGroupRows<T extends { date?: string | null; amount?: num
                   </span>
                 </Button>
                 {onRemoveGroup && (
-                  <Button type="button" variant="ghost" size="sm" className="text-destructive"
-                    data-testid={`button-remove-date-group-${scope}-${group.key}`}
-                    onClick={() => onRemoveGroup(group.items, group.date ? formatDate(group.date) : "Missing date")}>
-                    Remove Group
-                  </Button>
+                  <div className="mt-3 flex justify-end border-t pt-3">
+                    <Button type="button" variant="ghost" size="sm" className="min-h-11 text-destructive"
+                      data-testid={`button-remove-date-group-${scope}-${group.key}`}
+                      onClick={() => onRemoveGroup(group.items, group.date ? formatDate(group.date) : "Missing date")}>
+                      Remove Group
+                    </Button>
+                  </div>
                 )}
               </td>
             </tr>

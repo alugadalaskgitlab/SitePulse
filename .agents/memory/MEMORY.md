@@ -100,3 +100,4 @@
 - [Diesel comparison attribution](diesel-comparison-attribution.md) — never invent equipment purchase splits; keep purchase-gap warnings report-only.
 - [Condensed DPR mockup review](dpr-mockup-review.md) — reviewed readiness/Fix/tank interactions stay stable; visual approval is not production-integration approval.
 - [DPR daily received totals](dpr-daily-received-totals.md) — secondary BOQ totals require complete same-unit conversions, never a convertible subset of the day's receipts.
+- [Vendor group action placement](vendor-group-action-placement.md) — approved separation preserves toggle geometry and collapsed-state removal availability.
