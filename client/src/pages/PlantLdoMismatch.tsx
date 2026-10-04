@@ -771,6 +771,8 @@ function DayDetail({ day, plant, appendPlantContext, ldoFlowMeterLink, isAdmin, 
   );
 }
 
+import { ReportExportGate } from "@/components/ReportExportGate";
+
 export default function PlantLdoMismatch() {
   const { appendPlantContext, getPlantBackLink } = useOrigin();
   const { user } = useAuth();
@@ -1409,7 +1411,7 @@ export default function PlantLdoMismatch() {
           </p>
         </div>
         {!isLoading && !isError && daySummaries.length > 0 && (
-          <>
+          <ReportExportGate sections={["plant_heating"]}>
             <Button
               variant="outline"
               size="sm"
@@ -1428,7 +1430,7 @@ export default function PlantLdoMismatch() {
               <Download className="w-4 h-4 mr-1.5" />
               Export PDF
             </Button>
-          </>
+          </ReportExportGate>
         )}
       </div>
 

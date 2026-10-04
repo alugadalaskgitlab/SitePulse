@@ -1,0 +1,45 @@
+{
+  "results": [
+    {
+      "name": "vendor-bills",
+      "allowed": false,
+      "path": "/finance/vendor-bills",
+      "body": "Site\nPulse\n\nPermission test fixture\n\nNAVIGATION\n\nDashboard\nHMP Operations\nPT\n\nPermission test manager\n\nManager\n\nSign Out\nRefresh\nVENDOR BILLS\n\nManage vendor/supplier billing and payments\n\nTOTAL BILLS\n\n0\n\n0.00\n\nDRAFT\n\n0\n\n0.00\n\nVERIFIED\n\n0\n\n0.00\n\nPAID\n\n0\n\n0.00\n\nGST REGISTER — CATEGORY BREAKDOWN\nReflects current filters · 0 bills\n\nGST EQUIPMENT\n\n0.00\n\nGST MATERIAL\n\n0.00\n\nGST TRANSPORT\n\n0.00\n\nGST LABO",
+      "counts": [
+        0,
+        0
+      ]
+    },
+    {
+      "name": "site-report",
+      "allowed": false,
+      "path": "/site/report/262",
+      "body": "Site\nPulse\n\nPermission test fixture\n\nNAVIGATION\n\nDashboard\nHMP Operations\nPT\n\nPermission test manager\n\nManager\n\nSign Out\nRefresh\nBack\nDPR PAGE DEVELOPMENT · ALLADURG ROAD\n\nDaily Progress Report · Fri 02 Oct 2026 · DPR #262 · Engineer: Development verification · submitted\n\n56.25 Cum\nWork done · Wet Mix Macadam\n3\nMachines\nall worked\n42 L\nDiesel issued\n2\nLabour\nWork done\nItem\tChainage from → to\tSize ",
+      "counts": [
+        0,
+        0
+      ]
+    },
+    {
+      "name": "vendor-bills",
+      "allowed": true,
+      "path": "/finance/vendor-bills",
+      "body": "Site\nPulse\n\nPermission test fixture\n\nNAVIGATION\n\nDashboard\nHMP Operations\nPT\n\nPermission test manager\n\nManager\n\nSign Out\nRefresh\nVENDOR BILLS\n\nManage vendor/supplier billing and payments\n\nTOTAL BILLS\n\n0\n\n0.00\n\nDRAFT\n\n0\n\n0.00\n\nVERIFIED\n\n0\n\n0.00\n\nPAID\n\n0\n\n0.00\n\nGST REGISTER — CATEGORY BREAKDOWN\nReflects current filters · 0 bills\nExport CSV\nExport Excel\n\nGST EQUIPMENT\n\n0.00\n\nGST MATERIAL\n\n0.00\n\nGST T",
+      "counts": [
+        1,
+        1
+      ]
+    },
+    {
+      "name": "site-report",
+      "allowed": true,
+      "path": "/site/report/262",
+      "body": "Site\nPulse\n\nPermission test fixture\n\nNAVIGATION\n\nDashboard\nHMP Operations\nPT\n\nPermission test manager\n\nManager\n\nSign Out\nRefresh\nBack\nDPR PAGE DEVELOPMENT · ALLADURG ROAD\n\nDaily Progress Report · Fri 02 Oct 2026 · DPR #262 · Engineer: Development verification · submitted\n\nPrint / PDF\nShare on WhatsApp\n56.25 Cum\nWork done · Wet Mix Macadam\n3\nMachines\nall worked\n42 L\nDiesel issued\n2\nLabour\nWork done",
+      "counts": [
+        1,
+        1
+      ]
+    }
+  ],
+  "errors": []
+}

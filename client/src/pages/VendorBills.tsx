@@ -2326,6 +2326,11 @@ export default function VendorBills() {
       if (filterVendor && filterVendor !== "all") params.set("vendor", filterVendor);
       if (filterStatus && filterStatus !== "all") params.set("status", filterStatus);
       if (filterCategory && filterCategory !== "all") params.set("category", filterCategory);
+      if (filterSite) {
+        const selectedSite = sites.find(site => siteMatchesPermitted(site.name, [filterSite]));
+        if (!selectedSite) throw new Error("Select a registered site before exporting this site filter.");
+        params.set("siteId", String(selectedSite.id));
+      }
       params.set("format", fmt);
       const res = await fetch(`/api/vendor-bills/export?${params.toString()}`, { credentials: "include" });
       if (!res.ok) {
@@ -2994,8 +2999,8 @@ export default function VendorBills() {
                     <>
                       <div className="flex flex-wrap gap-2">
                         <Button type="button" variant="outline" size="sm" onClick={() => setShowEquipmentDailyActivity(true)} disabled={equipmentPerformance.isFetching} data-testid="button-view-daily-activity">{equipmentPerformance.isFetching ? "Loading daily activity…" : "View Daily Activity"}</Button>
-                        <Button type="button" variant="outline" size="sm" disabled={equipmentPerformance.isFetching} onClick={() => exportEquipmentHireBill(exportData, dailyRows, "pdf")} data-testid="button-export-equipment-hire-pdf">EXPORT PDF</Button>
-                        <Button type="button" variant="outline" size="sm" disabled={equipmentPerformance.isFetching} onClick={() => exportEquipmentHireBill(exportData, dailyRows, "xlsx")} data-testid="button-export-equipment-hire-excel">EXPORT EXCEL</Button>
+                        {canExport && <Button type="button" variant="outline" size="sm" disabled={equipmentPerformance.isFetching} onClick={() => exportEquipmentHireBill(exportData, dailyRows, "pdf")} data-testid="button-export-equipment-hire-pdf">EXPORT PDF</Button>}
+                        {canExport && <Button type="button" variant="outline" size="sm" disabled={equipmentPerformance.isFetching} onClick={() => exportEquipmentHireBill(exportData, dailyRows, "xlsx")} data-testid="button-export-equipment-hire-excel">EXPORT EXCEL</Button>}
                       </div>
                       <EquipmentHireDailyActivity open={showEquipmentDailyActivity} onOpenChange={setShowEquipmentDailyActivity} rows={dailyRows} dieselResponsibility={equipment?.hireDieselResponsibility} consumptionNorm={equipment?.consumptionNorm} />
                     </>
@@ -4349,9 +4354,9 @@ export default function VendorBills() {
                 }}
               />
             )}
-            <Button variant="outline" size="sm" onClick={() => handlePrint(bill)} data-testid="button-print">
+            {canExport && <Button variant="outline" size="sm" onClick={() => handlePrint(bill)} data-testid="button-print">
               <Printer className="w-4 h-4 mr-1" /> PRINT
-            </Button>
+            </Button>}
             {canEdit && (!bill.hireStatements?.length || (bill.status === "draft" && bill.hireStatements.every((statement: any) => statement.status === "draft"))) && (
               <Button
                 variant="default"
@@ -4906,7 +4911,7 @@ export default function VendorBills() {
               <span className="text-[12px] normal-case font-normal text-muted-foreground">
                 Reflects current filters &middot; {filteredBills.length} bill{filteredBills.length !== 1 ? "s" : ""}
               </span>
-              <Button
+              {canExport && <Button
                 variant="outline"
                 size="sm"
                 className="h-7 px-2 text-xs normal-case"
@@ -4916,8 +4921,8 @@ export default function VendorBills() {
               >
                 <Download className="w-3 h-3 mr-1" />
                 Export CSV
-              </Button>
-              <Button
+              </Button>}
+              {canExport && <Button
                 variant="outline"
                 size="sm"
                 className="h-7 px-2 text-xs normal-case"
@@ -4927,7 +4932,7 @@ export default function VendorBills() {
               >
                 <Download className="w-3 h-3 mr-1" />
                 Export Excel
-              </Button>
+              </Button>}
             </div>
           </CardTitle>
         </CardHeader>

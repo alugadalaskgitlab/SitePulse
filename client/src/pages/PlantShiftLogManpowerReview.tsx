@@ -555,6 +555,8 @@ function buildClusters(
   return clusters;
 }
 
+import { ReportExportGate } from "@/components/ReportExportGate";
+
 export default function PlantShiftLogManpowerReview() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
@@ -2665,7 +2667,7 @@ export default function PlantShiftLogManpowerReview() {
                         </Button>
                       )}
                       <div className="ml-auto flex items-center gap-1.5 flex-wrap">
-                        <Button
+                        <ReportExportGate sections={["plant_manpower_review", "plant_shift_logs"]}><Button
                           size="sm"
                           variant="outline"
                           className="h-7 px-2 text-xs"
@@ -2676,7 +2678,7 @@ export default function PlantShiftLogManpowerReview() {
                         >
                           <Download className="w-3.5 h-3.5 mr-1" />
                           Download CSV
-                        </Button>
+                        </Button></ReportExportGate>
                         <Button
                           size="sm"
                           variant="outline"

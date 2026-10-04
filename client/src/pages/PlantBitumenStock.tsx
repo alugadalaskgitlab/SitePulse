@@ -54,7 +54,7 @@ export default function PlantBitumenStock() {
   const canCreate = sectionCan("plant_stock", "create");
   const canEdit = sectionCan("plant_stock", "edit");
   const canDelete = isAdminUser;
-  const canExport = sectionCan("plant_stock", "view_reports");
+  const canExport = sectionCan("plant_bitumen", "view_reports");
   const { appendOrigin, getPlantBackLink, appendPlantContext } = useOrigin();
   const searchString = useSearch();
   const sp = new URLSearchParams(searchString || window.location.search);
@@ -1488,14 +1488,14 @@ export default function PlantBitumenStock() {
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <CardTitle className="text-sm font-medium">All Dip Readings</CardTitle>
-            {isAdmin && <div className="flex gap-2 flex-wrap">
-              <Button variant="outline" size="sm" onClick={exportExcel} data-testid="button-export-excel" style={{ display: canExport ? undefined : "none" }}>
+            {isAdmin && canExport && <div className="flex gap-2 flex-wrap">
+              <Button variant="outline" size="sm" onClick={exportExcel} data-testid="button-export-excel">
                 <Download className="w-4 h-4 mr-1" /> Excel
               </Button>
-              <Button variant="outline" size="sm" onClick={exportPdf} data-testid="button-export-pdf" style={{ display: canExport ? undefined : "none" }}>
+              <Button variant="outline" size="sm" onClick={exportPdf} data-testid="button-export-pdf">
                 <Download className="w-4 h-4 mr-1" /> PDF
               </Button>
-              <Button variant="outline" size="sm" onClick={printData} data-testid="button-print" style={{ display: canExport ? undefined : "none" }}>
+              <Button variant="outline" size="sm" onClick={printData} data-testid="button-print">
                 <Printer className="w-4 h-4 mr-1" /> Print
               </Button>
             </div>}

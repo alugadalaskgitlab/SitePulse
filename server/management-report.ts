@@ -39,7 +39,7 @@ function assertViewReportOrAdmin(req: Request, res: Response): boolean {
   }
   if (req.authUser.isAdmin) return true;
   const m = req.authPermissions;
-  if (m?.["reports"]?.view || m?.["admin_settings"]?.view) return true;
+  if (m?.["report_management"]?.view || m?.["reports"]?.view || m?.["admin_settings"]?.view) return true;
   res.status(403).json({ error: "forbidden" });
   return false;
 }
@@ -105,7 +105,7 @@ export function registerManagementReportRoutes(app: Express) {
       }
       const { isAdmin } = req.authUser;
       const perms = req.authPermissions;
-      const canView = isAdmin || perms?.["reports"]?.view || perms?.["admin_settings"]?.view;
+      const canView = isAdmin || req.authUser.isOwner || perms?.["report_management"]?.view || perms?.["reports"]?.view || perms?.["admin_settings"]?.view;
       if (!canView) {
         return res.status(403).json({ error: "forbidden" });
       }

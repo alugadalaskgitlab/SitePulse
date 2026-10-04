@@ -1832,15 +1832,15 @@ export default function PlantEquipmentUsage() {
         <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
           <CardTitle className="text-base">Filters</CardTitle>
           <div className="flex items-center gap-2 flex-wrap">
-            <Button size="sm" variant="outline" className="gap-1" onClick={handleExportExcelClick} disabled={!filteredUsage.length} data-testid="button-export-excel" style={{ display: canExport ? undefined : "none" }}>
+            {canExport && <><Button size="sm" variant="outline" className="gap-1" onClick={handleExportExcelClick} disabled={!filteredUsage.length} data-testid="button-export-excel">
               <Download className="w-4 h-4" /> Excel
             </Button>
-            <Button size="sm" variant="outline" className="gap-1" onClick={handleExportPdfClick} disabled={!filteredUsage.length} data-testid="button-export-pdf" style={{ display: canExport ? undefined : "none" }}>
+            <Button size="sm" variant="outline" className="gap-1" onClick={handleExportPdfClick} disabled={!filteredUsage.length} data-testid="button-export-pdf">
               <Download className="w-4 h-4" /> PDF
             </Button>
-            <Button size="sm" variant="outline" className="gap-1" onClick={handlePrintClick} data-testid="button-print" style={{ display: canExport ? undefined : "none" }}>
+            <Button size="sm" variant="outline" className="gap-1" onClick={handlePrintClick} data-testid="button-print">
               <Printer className="w-4 h-4" /> Print
-            </Button>
+            </Button></>}
           </div>
         </CardHeader>
         <CardContent>

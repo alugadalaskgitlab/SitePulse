@@ -4553,3 +4553,17 @@ mtime_ms = 1791094474555
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/a8662e6c-c52f-4d63-b773-52fa31200ddc/80bf4094-fa60-4436-8980-67ed753d1d12"
 storage_version_token = "1791094488813537"
 content_type = "application/pdf"
+
+[[outputs]]
+id = "6AR0N6cfGR2nW3QH4iUjn"
+uri = "file://.agents/outputs/vb-export-part-a/Part-A-evidence.html"
+type = "html"
+title = "Part A — permission gates, tests and screenshots"
+description = "All gate changes, 27 passing focused tests, and permission-off/on browser screenshots. Full-suite rerun pending."
+logical_id = "2547086a-79a2-48cb-a6c4-46f5fabe8999"
+content_hash = "sha256:567ff64e0d4003f85b51ec375a426ba377e6b0e3b3d667b4f006c9112efa0914"
+size = 633164
+mtime_ms = 1791097703259
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/2547086a-79a2-48cb-a6c4-46f5fabe8999/a365bb52-99d4-464a-a967-59d239a7bc7b"
+storage_version_token = "1791097719089146"
+content_type = "text/html"

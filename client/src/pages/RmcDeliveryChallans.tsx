@@ -12,12 +12,14 @@ import type { RmcBatchRecordWithDesign } from "@shared/schema";
 const today = new Date().toISOString().slice(0, 10);
 const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
+import { ReportExportGate } from "@/components/ReportExportGate";
+
 function DCPrintView({ record, onClose }: { record: RmcBatchRecordWithDesign; onClose: () => void }) {
   const handlePrint = () => window.print();
   return (
     <div className="max-w-2xl mx-auto p-6">
       <div className="flex gap-2 mb-4 print:hidden">
-        <Button onClick={handlePrint}><Printer className="w-4 h-4 mr-2" />Print</Button>
+        <ReportExportGate sections={["rmc_delivery_challans", "rmc_operations", "plant_production"]}><Button onClick={handlePrint}><Printer className="w-4 h-4 mr-2" />Print</Button></ReportExportGate>
         <Button variant="outline" onClick={onClose}>Back to List</Button>
       </div>
       <div className="border rounded-lg p-8 text-sm space-y-4 print:border-0 print:p-0">
@@ -184,14 +186,14 @@ export default function RmcDeliveryChallans() {
                     {r.truckNumber && <span>🚚 {r.truckNumber}</span>}
                   </div>
                 </div>
-                <Button
+                <ReportExportGate sections={["rmc_delivery_challans", "rmc_operations", "plant_production"]}><Button
                   variant="outline"
                   size="sm"
                   onClick={() => setPrintRecord(r)}
                   data-testid={`btn-print-dc-${r.id}`}
                 >
                   <Printer className="w-4 h-4 mr-2" />Print DC
-                </Button>
+                </Button></ReportExportGate>
               </CardContent>
             </Card>
           ))}

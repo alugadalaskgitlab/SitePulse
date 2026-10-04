@@ -131,6 +131,8 @@ function EmptyState({ loading }: { loading: boolean }) {
 
 // ── Main Component ───────────────────────────────────────────────────────────
 
+import { ReportExportGate } from "@/components/ReportExportGate";
+
 export default function ManagementReport() {
   const { toast } = useToast();
   const { isAdmin } = useAuth();
@@ -377,7 +379,7 @@ export default function ManagementReport() {
           <h1 className="text-lg font-semibold text-foreground">Management Report</h1>
           <p className="text-sm text-muted-foreground">Cross-site aggregated view</p>
         </div>
-        <Button
+        <ReportExportGate sections={["report_management", "reports", "admin_settings"]}><Button
           size="sm"
           variant="outline"
           className="gap-1.5"
@@ -396,7 +398,7 @@ export default function ManagementReport() {
           data-testid="btn-export-excel"
         >
           <Download className="h-4 w-4" /> Excel
-        </Button>
+        </Button></ReportExportGate>
       </div>
 
       <div className="p-4 space-y-4 max-w-7xl mx-auto">

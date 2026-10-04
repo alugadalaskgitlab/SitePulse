@@ -23,6 +23,8 @@ interface DailyReport {
   cubeTests: RmcCubeTest[];
 }
 
+import { ReportExportGate } from "@/components/ReportExportGate";
+
 export default function RmcDailyReport() {
   const [date, setDate] = useState(today);
   const ALL_PLANTS = "__ALL__";
@@ -78,7 +80,7 @@ export default function RmcDailyReport() {
           </div>
           <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-40" data-testid="input-date" />
           {report && (
-            <>
+            <ReportExportGate sections={["rmc_daily_report", "plant_daily_reports"]}>
               <Button variant="outline" onClick={handlePrint} data-testid="btn-print">
                 <Printer className="w-4 h-4 mr-2" />Print
               </Button>
@@ -96,7 +98,7 @@ export default function RmcDailyReport() {
               >
                 <FileText className="w-4 h-4 mr-2" />Export Excel
               </Button>
-            </>
+            </ReportExportGate>
           )}
         </div>
       </div>

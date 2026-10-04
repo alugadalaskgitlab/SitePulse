@@ -568,6 +568,8 @@ function ScenarioComparison({
 
 // ───────────────────────────────────────────────────────────────────────────
 
+import { ReportExportGate } from "@/components/ReportExportGate";
+
 export default function MixImpact() {
   const { sectionCan, isAdmin, isLoading: authLoading } = useAuth();
   const hasMainAppAccess = isAdmin || sectionCan("mix_calculator", "create") || sectionCan("mix_calculator", "edit");
@@ -703,9 +705,9 @@ export default function MixImpact() {
               </Button>
             </Link>
           )}
-          <Button variant="outline" size="sm" onClick={() => window.print()} data-testid="btn-print-impact">
+          <ReportExportGate sections={["mix_calculator"]}><Button variant="outline" size="sm" onClick={() => window.print()} data-testid="btn-print-impact">
             <Printer className="w-4 h-4 mr-1" /> Print
-          </Button>
+          </Button></ReportExportGate>
         </div>
       </div>
 

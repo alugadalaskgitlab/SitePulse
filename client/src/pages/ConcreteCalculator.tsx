@@ -877,6 +877,8 @@ function RateAnalysisPill({
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
+import { ReportExportGate } from "@/components/ReportExportGate";
+
 export default function ConcreteCalculator() {
   const { toast } = useToast();
   const { companyName } = useFeatureFlags();
@@ -3866,7 +3868,7 @@ export default function ConcreteCalculator() {
                       <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Concrete Rate Analysis — {s.grade}</CardTitle>
                       <p className="text-sm text-slate-600 mt-0.5">Full cost breakdown (materials, plant, overhead, margin) for the active concrete grade.</p>
                     </div>
-                    <Button size="sm" variant="outline" className="h-7 text-sm print:hidden" onClick={() => window.print()}>Print</Button>
+                    <ReportExportGate sections={["concrete_calculator"]}><Button size="sm" variant="outline" className="h-7 text-sm print:hidden" onClick={() => window.print()}>Print</Button></ReportExportGate>
                   </CardHeader>
                   <CardContent className="px-4 pb-4">
                     {/* Print-only Mix Design Basis — hidden on screen, visible when printing */}
@@ -3967,7 +3969,7 @@ export default function ConcreteCalculator() {
                       <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Steel Rate Analysis</CardTitle>
                       <p className="text-sm text-slate-600 mt-0.5">Purchase rate + fabrication + wastage + OH + margin per diameter and summary.</p>
                     </div>
-                    <Button size="sm" variant="outline" className="h-7 text-sm print:hidden" onClick={() => window.print()}>Print</Button>
+                    <ReportExportGate sections={["concrete_calculator"]}><Button size="sm" variant="outline" className="h-7 text-sm print:hidden" onClick={() => window.print()}>Print</Button></ReportExportGate>
                   </CardHeader>
                   <CardContent className="px-4 pb-4 overflow-x-auto">
                     <p className="text-[12px] font-semibold text-slate-700 uppercase tracking-wide mb-2">Per Diameter — Purchase Cost</p>
@@ -4111,7 +4113,7 @@ export default function ConcreteCalculator() {
                         <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Per-Metre Rate Card</CardTitle>
                         <p className="text-sm text-slate-600 mt-0.5">RCC cost per linear metre of {s.structureType.toLowerCase()} (stem + footing).</p>
                       </div>
-                      <Button size="sm" variant="outline" className="h-7 text-sm print:hidden" onClick={() => window.print()}>Print</Button>
+                      <ReportExportGate sections={["concrete_calculator"]}><Button size="sm" variant="outline" className="h-7 text-sm print:hidden" onClick={() => window.print()}>Print</Button></ReportExportGate>
                     </CardHeader>
                     <CardContent className="px-5 pb-5">
                       <div className="border rounded-xl p-4 space-y-3 max-w-sm">
@@ -4276,7 +4278,7 @@ export default function ConcreteCalculator() {
                     <CardTitle className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Per-Metre Rate Card</CardTitle>
                     <p className="text-sm text-slate-600 mt-0.5">All-in cost per running metre — concrete by element, earthwork, steel + ancillaries.</p>
                   </div>
-                  <Button size="sm" variant="outline" className="h-7 text-sm print:hidden" onClick={() => window.print()}>Print</Button>
+                  <ReportExportGate sections={["concrete_calculator"]}><Button size="sm" variant="outline" className="h-7 text-sm print:hidden" onClick={() => window.print()}>Print</Button></ReportExportGate>
                 </CardHeader>
                 <CardContent className="px-4 pb-4">
                   {hasMultiZone && (
@@ -4382,7 +4384,7 @@ export default function ConcreteCalculator() {
                       <p className="text-sm text-slate-600 mt-0.5">Enter client's offered rate per item to compute margin.</p>
                     </div>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline" className="h-7 text-sm print:hidden" onClick={() => window.print()}>Print</Button>
+                      <ReportExportGate sections={["concrete_calculator"]}><Button size="sm" variant="outline" className="h-7 text-sm print:hidden" onClick={() => window.print()}>Print</Button></ReportExportGate>
                       <Button size="sm" variant="outline" className="h-7 text-sm shrink-0" data-testid="btn-export-quotation-excel"
                         onClick={async () => {
                           const XLSX = await import("xlsx");

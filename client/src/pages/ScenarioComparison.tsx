@@ -33,6 +33,8 @@ interface ScenarioEntry {
   profitCosts: SiteProfitResult;
 }
 
+import { ReportExportGate } from "@/components/ReportExportGate";
+
 export default function ScenarioComparison() {
   const { sectionCan, isAdmin, isLoading: authLoading } = useAuth();
   const hasMainAppAccess = isAdmin || sectionCan("mix_calculator", "create") || sectionCan("mix_calculator", "edit");
@@ -171,9 +173,9 @@ export default function ScenarioComparison() {
             </p>
           )}
         </div>
-        <Button variant="outline" size="sm" onClick={() => window.print()} data-testid="btn-print">
+        <ReportExportGate sections={["mix_calculator"]}><Button variant="outline" size="sm" onClick={() => window.print()} data-testid="btn-print">
           <Printer className="w-4 h-4 mr-1" /> Print
-        </Button>
+        </Button></ReportExportGate>
       </div>
 
       <div className="print:hidden mb-6">

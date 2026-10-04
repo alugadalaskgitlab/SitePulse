@@ -22,6 +22,8 @@ type SummaryRow = {
   mixTypes: string[] | null;
 };
 
+import { ReportExportGate } from "@/components/ReportExportGate";
+
 export default function PlantProjectReport() {
   const { isAdmin, isManager } = useAuth();
   const { getPlantBackLink } = useOrigin();
@@ -256,7 +258,7 @@ export default function PlantProjectReport() {
             : `${summaryRows.length} group${summaryRows.length !== 1 ? "s" : ""} · ${totalLoads.toLocaleString()} loads · ${totalMT.toFixed(2)} MT total`}
         </div>
         {summaryRows.length > 0 && (
-          <Button
+          <ReportExportGate sections={["plant_daily_reports", "plant_production"]}><Button
             variant="outline"
             size="sm"
             onClick={exportToExcel}
@@ -265,7 +267,7 @@ export default function PlantProjectReport() {
           >
             <Download className="w-4 h-4" />
             Export Excel
-          </Button>
+          </Button></ReportExportGate>
         )}
       </div>
 

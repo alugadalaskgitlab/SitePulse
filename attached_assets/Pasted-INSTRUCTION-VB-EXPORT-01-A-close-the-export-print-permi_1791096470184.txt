@@ -1,0 +1,80 @@
+INSTRUCTION VB-EXPORT-01: (A) close the export/print permission holes, (B) vendor payables export before any bill is saved, (C) DPR summary tiles — heading on top
+
+READ THIS FIRST
+Three parts, in this order. Part A is a SECURITY fix and must be done and reported first — do not start B until A is reported. Part C is a small display change and can be done alongside B.
+Do NOT change any stored value, calculation, schema (one new permission key aside, see A4), hire-billing logic, DPR entry screens or publishing. Do not publish automatically. STOP after this batch and report back.
+
+=====================================================================
+PART A — EXPORT / PRINT PERMISSION GATING (do this first)
+=====================================================================
+Today several export endpoints have NO server-side permission check at all: any logged-in user — including one with no vendor-bills permission and no site access — can download them directly by URL. Fix the server first; the client is secondary.
+
+A1. Add the missing SERVER gates. Each of these must require the same permission as the page it belongs to, AND apply the same site scoping the on-screen list applies:
+   - GET /api/vendor-bills/export (routes.ts ~11252) — require vendor_bills / vendor_bills_view view_reports. It currently calls storage.getVendorBills(filters) RAW: it must also call resolveVendorBillSite + scopeVendorBillsToSiteAccess exactly like GET /api/vendor-bills (~11200) so a site-restricted user never exports other sites' bills.
+   - GET /api/vendor-bills/:id/pdf (~11896) — same permission, and verify the bill's site is within the caller's permitted sites.
+   - GET /api/plant-module/daily-reports-export (~8245), POST /api/plant-module/daily-reports/bulk-zip (~8402), GET /api/plant-module/daily-reports/:date/pdf (~8540) — require plant_daily_reports view_reports + site scoping.
+   - GET /api/plant-module/heating-trends/excel (~8820) — require plant_heating / plant_heating_trends view_reports + site scoping.
+   - GET /api/irn/:id/issue-voucher (~9956) — require irn_view/irn_raise and check the caller may see that IRN (ids are guessable).
+   - server/routes.ts ~2995 estimator-guide.pdf — login-only today; confirm that is intended, otherwise gate it.
+A2. Add the missing CLIENT gates (hide the button when the user may not export). Use the SAME canExport pattern already used in SiteDashboard (`sectionCan("site_dprs","view_reports")`):
+   - VendorBills: GST register CSV/Excel buttons (~4909/4920) and the PRINT action (~4352) — currently ungated although canExport exists on the same page (L693).
+   - VendorBills hire-bill draft EXPORT PDF / EXPORT EXCEL (~2997-2998) — the sibling branch at 2989 already passes canExport; make both consistent.
+   - SiteReport: Print / PDF and Share on WhatsApp (~171-172) — gate on site_dprs view_reports.
+   - ProgressReport (~180), ManagementReport (~384/395), PlantLdoFlowMeter (~2100-2106 — canExport is declared at L60 and never used), PlantShiftLog (~1121), PlantProjectReport (~264), PlantDailyReports (~468-486), PlantDieselProcurementReport, PlantLdoMismatch, PlantShiftLogManpowerReview, Rmc* print actions, MixComparativeReport / MixImpact / ScenarioComparison / ConcreteCalculator.
+A3. Replace CSS-only hiding with conditional rendering (a hidden button is still clickable from the browser's tools): PlantEquipmentUsage ~1835-1841, PlantBitumenStock ~1492-1498.
+A4. Fix wrong/divergent permission keys and report each one before changing it:
+   - PlantBitumenStock page is gated plant_bitumen but its export checks plant_stock.
+   - PlantMaterialReceipts/Issues/Returns pages are gated plant_materials but their exports check plant_stock.
+   - ManagementReport: the client route allows report_management while the server honours reports/admin_settings.
+   The permission matrix already defines an "export" action (shared/permissions.ts) that NOTHING checks — everything uses view_reports. Do NOT switch to it in this batch; just note it in the report with a recommendation.
+A5. Dead code: AdminReports export/print functions (~309/454) are not wired to any button. Report, do not delete.
+A6. Tests: for each endpoint in A1 add an automated test proving (i) a user without the permission gets 403, (ii) a site-restricted user gets only their sites' rows. Report the before/after of any test counts.
+
+=====================================================================
+PART B — VENDOR PAYABLES EXPORT (nothing saved)
+=====================================================================
+Purpose: the owner picks a vendor and a period and gets, in Excel and PDF, everything that COULD be billed to that vendor but has not been saved as a bill yet — so payables can be planned. It must create nothing: no draft bill, no hire statement, no stock movement, no status change anywhere.
+
+B1. New read-only screen/panel in Vendor Bills: "Payables preview (not saved)". Inputs: vendor (single select), date range, optional site filter.
+B2. It pulls the same candidate items the existing "pull items" flow would offer for that vendor and period, across ALL bill types — equipment hire, material, transport, labour, other — reusing the existing pull/candidate logic. Items already covered by a saved bill (draft or beyond) must be EXCLUDED and the count of excluded items shown, so nothing is double-planned.
+B3. On screen: one block per bill type with its own subtotal, and a grand total (pre-tax, GST as the existing per-category rates compute it, and net). Equipment hire shows the same day-by-day activity/breakdown calendar that the draft hire bill already shows.
+B4. EXPORT EXCEL — sheets: Summary (vendor, period, totals per type, grand total) · Equipment hire (one row per machine-day, with the calendar) · Materials · Transport · Labour · Other. Reuse the existing exportEquipmentHireBill formatting for the hire sheet so figures match what the saved bill would produce.
+B5. EXPORT PDF — one-page-per-vendor statement: header (vendor, period, generated date/time, "PREVIEW — NOT A SAVED BILL"), totals per type, then the detail tables.
+B6. Permission: this screen and both exports require vendor_bills / vendor_bills_view with view_reports (the same canExport used elsewhere), AND the server endpoint must enforce it plus site scoping. It must NOT be visible to users without it. Engineers and site users must not see it.
+B7. Every export file and the on-screen header must carry the words "Preview — not a saved bill" and the generation timestamp, so a preview can never be mistaken for an issued bill.
+B8. Absolutely no writes. Prove it: run the preview and both exports, then show before/after row counts for vendor_bills, hire_statements, equipment_usage, site_material_trips, store_issues and any status column the pull flow would normally touch.
+
+=====================================================================
+PART C — DPR SUMMARY TILES: HEADING ON TOP
+=====================================================================
+Current tile shows the big value first and the label underneath. Flip it, and rename one tile.
+C1. Each tile becomes: small bold heading (top) · big value · detail line(s) under it. Headings, in this order:
+    "Work done" · "Equipment" · "Diesel" · "Labour" · "Materials received"
+C2. Content under each heading (unchanged logic, only arrangement):
+    - Work done: big value = the single activity's quantity, or "3 items"; detail line = the activity list as now ("WMM 56.25 Cum · Clearing 0.5 Ha · Marking 250 m", up to 3 then "+n more"). When one activity, the item name goes on the detail line.
+    - Equipment: big value = number of machines logged; detail line = "all worked" or the attention line ("1 breakdown", "2 idle", "1 part-day breakdown") with the existing colours.
+    - Diesel: big value = litres issued.
+    - Labour: big value = headcount.
+    - Materials received: big value = quantity (one material) or "2 materials"; detail line = "WMM 141.03 MT (5 trips) · Soil 60 MT (3 trips)". Remove the word "Bulk" everywhere on this tile.
+C3. Heading style: 12.5px, 700 weight, #334155, letter-spacing normal — not uppercase, not grey. Big value unchanged. Detail line as now (12.5px #334155).
+C4. Keep the existing tile widths (Work done and Materials received wider), the phone stacking, and the print layout. Update the WhatsApp share text heading "Bulk received:" to "Materials received:".
+
+WHAT NOT TO DO
+- No money, rate or ₹ figure anywhere on the DPR page (Part C) — unchanged rule.
+- Part B must not create, update or delete a single record.
+- Do not switch any existing permission from view_reports to the unused "export" action in this batch.
+
+TESTS
+A. For every endpoint in A1: 403 for a user without the permission; only permitted sites' rows for a site-restricted user. Paste the test names and results.
+B. Screenshots: VendorBills GST buttons and SiteReport Print/Share hidden for a user without view_reports, visible for one with it.
+C. Payables preview: screenshot + exported Excel and PDF for one vendor with hire + material + labour items; the before/after row counts from B8; a case where some items are already on a saved bill (shows the excluded count).
+D. Preview screen and exports return 403 for a site engineer.
+E. DPR tiles: desktop + phone screenshots, one-activity and three-activity cases, one-material and two-material cases; print preview; WhatsApp text.
+F. Full test suite counts vs the last run (4,229 passed / 47 failed / 5 skipped); list every test updated and why.
+
+REPORT BACK
+1. Part A first, on its own: every gate added, every key corrected, test evidence.
+2. Then Part B and C with the evidence above.
+3. Anything noticed but not touched.
+
+DO NOT START ANOTHER FEATURE after this batch.

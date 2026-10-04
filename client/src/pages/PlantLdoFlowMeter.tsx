@@ -57,7 +57,7 @@ export default function PlantLdoFlowMeter() {
   const canCreate = sectionCan("plant_stock", "create");
   const canEdit = sectionCan("plant_stock", "edit");
   const canDelete = isAdminUser;
-  const canExport = sectionCan("plant_stock", "view_reports");
+  const canExport = sectionCan("plant_ldo", "view_reports");
   const { appendOrigin, getPlantBackLink } = useOrigin();
   const searchString = useSearch();
   const sp = new URLSearchParams(searchString || window.location.search);
@@ -2097,7 +2097,7 @@ export default function PlantLdoFlowMeter() {
             <CardTitle className="text-sm font-medium">All Flow Readings</CardTitle>
             {isAdmin && (
               <div className="flex gap-2 flex-wrap">
-                <Button variant="outline" size="sm" onClick={() => exportExcel()} data-testid="button-export-excel">
+                {canExport && <><Button variant="outline" size="sm" onClick={() => exportExcel()} data-testid="button-export-excel">
                   <Download className="w-4 h-4 mr-1" /> Excel
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => exportPdf()} data-testid="button-export-pdf">
@@ -2105,7 +2105,7 @@ export default function PlantLdoFlowMeter() {
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => printData()} data-testid="button-print">
                   <Printer className="w-4 h-4 mr-1" /> Print
-                </Button>
+                </Button></>}
               </div>
             )}
           </div>

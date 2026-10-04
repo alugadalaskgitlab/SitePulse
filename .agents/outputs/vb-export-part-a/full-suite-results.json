@@ -1,0 +1,286 @@
+{
+  "counts": {
+    "passed": 4119,
+    "failed": 40,
+    "skipped": 48
+  },
+  "failures": [
+    {
+      "file": "tests/dieselStockGuard06mB.test.ts",
+      "message": "",
+      "tests": [
+        {
+          "name": "Task #1433 DPR invalid-source route audit maps InvalidDieselSourceError in mutation block app.post(\"/api/dprs/:id/submit\"",
+          "message": "AssertionError: expected -1 to be greater than 0\n    at /home/runner/workspace/tests/dieselStockGuard06mB.test.ts:674:19\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2025:60\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)"
+        }
+      ]
+    },
+    {
+      "file": "tests/dpr02Fix2EquipmentLayout.test.ts",
+      "message": "",
+      "tests": [
+        {
+          "name": "DPR-02 Fix 2 equipment layout keeps equipment setup visible instead of behind the old auto-collapsing summary",
+          "message": "AssertionError: expected 'import { useState, useEffect, useRef,…' to contain '{!isVisibleEquipmentRow({ ...entry })…'\n    at /home/runner/workspace/tests/dpr02Fix2EquipmentLayout.test.ts:18:22\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64"
+        }
+      ]
+    },
+    {
+      "file": "tests/dpr04Fix2.test.ts",
+      "message": "Hook timed out in 10000ms.\nIf this is a long-running hook, pass a timeout value as the last argument or configure it globally with \"hookTimeout\".",
+      "tests": []
+    },
+    {
+      "file": "tests/dpr16B1.test.ts",
+      "message": "",
+      "tests": [
+        {
+          "name": "DPR16 B1 section presentation and evaluator shares the approved condensed activity UI with classic while keeping section-only navigation and persistence",
+          "message": "AssertionError: expected 'import { ResourceWorkItemSelect } fro…' to contain 'requireConfirmationForConsumption\\n  …'\n    at /home/runner/workspace/tests/dpr16B1.test.ts:53:19\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64"
+        }
+      ]
+    },
+    {
+      "file": "tests/dprSections13.integration.test.ts",
+      "message": "Hook timed out in 120000ms.\nIf this is a long-running hook, pass a timeout value as the last argument or configure it globally with \"hookTimeout\".",
+      "tests": []
+    },
+    {
+      "file": "tests/equipmentConsistencyRuntime.test.ts",
+      "message": "",
+      "tests": [
+        {
+          "name": "DPR draft operational side-effect boundary persists an evidence-based null-project recovery with a newly selected target-project BOQ row",
+          "message": "AssertionError: expected \"vi.fn()\" to be called 1 times, but got 2 times\n    at /home/runner/workspace/tests/equipmentConsistencyRuntime.test.ts:483:24\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        },
+        {
+          "name": "DPR draft operational side-effect boundary does not let a second recovery overwrite the first recovered project pin",
+          "message": "Error: promise resolved \"undefined\" instead of rejecting\n    at _Assertion.__VITEST_REJECTS__ (file:///home/runner/workspace/node_modules/@vitest/expect/dist/index.js:1747:17)\n    at _Assertion.propertyGetter (file:///home/runner/workspace/node_modules/chai/index.js:1570:27)\n    at Reflect.get (<anonymous>)\n    at Object.proxyGetter [as get] (file:///home/runner/workspace/node_modules/chai/index.js:1659:22)\n    at /home/runner/workspace/tests/equipmentConsistencyRuntime.test.ts:560:91\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        },
+        {
+          "name": "all DPR write paths and route authorization remain wired keeps start identity and draft state transitions inside transaction guards",
+          "message": "AssertionError: expected 'import { lookupTripBoqQuantity } from…' to contain 'pg_advisory_xact_lock(1437'\n    at /home/runner/workspace/tests/equipmentConsistencyRuntime.test.ts:770:20\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64"
+        }
+      ]
+    },
+    {
+      "file": "tests/equipmentUsageFormReorganisation.test.ts",
+      "message": "",
+      "tests": [
+        {
+          "name": "equipment usage form reorganisation contracts uses creation-only local-time defaults without changing hydration helpers",
+          "message": "AssertionError: expected 'import { useState, useEffect, useRef,…' to contain 'setEquipment((draft.equipment as Equi…'\n    at /home/runner/workspace/tests/equipmentUsageFormReorganisation.test.ts:24:18\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64"
+        },
+        {
+          "name": "equipment usage form reorganisation contracts shows the same parent equipment summary in both submitted DPR views",
+          "message": "AssertionError: expected 'import { useMemo, useState } from \"re…' to contain '<DprEquipmentCompact'\n    at /home/runner/workspace/tests/equipmentUsageFormReorganisation.test.ts:91:23\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64"
+        }
+      ]
+    },
+    {
+      "file": "tests/focusedDprRestoration1449.test.ts",
+      "message": "",
+      "tests": [
+        {
+          "name": "focused DPR restoration keeps length read-only, removes the reconciliation prompt, and keeps compact DPR equipment details deliberate",
+          "message": "AssertionError: expected 'import { ResourceWorkItemSelect } fro…' to contain '<details {...(!sectionEditor ? { open…'\n    at /home/runner/workspace/tests/focusedDprRestoration1449.test.ts:40:23\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        }
+      ]
+    },
+    {
+      "file": "tests/guidedDprReliability.test.ts",
+      "message": "",
+      "tests": [
+        {
+          "name": "Part B — programmeBarId survives draft → update → submit (real routes) draft POST with INCOMPLETE chainage keeps the link (draft-lenient)",
+          "message": "AssertionError: expected 409 to be 201 // Object.is equality\n    at /home/runner/workspace/tests/guidedDprReliability.test.ts:250:24\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        },
+        {
+          "name": "Part B — programmeBarId survives draft → update → submit (real routes) full lifecycle: create draft → PATCH draft twice → submit — link intact at every step, exactly one DPR record",
+          "message": "AssertionError: expected 409 to be 201 // Object.is equality\n    at /home/runner/workspace/tests/guidedDprReliability.test.ts:258:27\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        },
+        {
+          "name": "Part B — programmeBarId survives draft → update → submit (real routes) submit strictly blocks a linked row with missing chainage (no silent link drop)",
+          "message": "AssertionError: expected 404 to be 400 // Object.is equality\n    at /home/runner/workspace/tests/guidedDprReliability.test.ts:294:27\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        },
+        {
+          "name": "Part B — programmeBarId survives draft → update → submit (real routes) unlinked real BOQ progress survives draft → update → submit → version with no scheduled bars",
+          "message": "AssertionError: expected 409 to be 201 // Object.is equality\n    at /home/runner/workspace/tests/guidedDprReliability.test.ts:319:27\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        },
+        {
+          "name": "Part D — out-of-range chainage reason persistence submit without a reason is blocked with PROGRAMME_LINK_INVALID",
+          "message": "AssertionError: expected 409 to be 201 // Object.is equality\n    at /home/runner/workspace/tests/guidedDprReliability.test.ts:392:27\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        },
+        {
+          "name": "Part D — out-of-range chainage reason persistence with a reason: submit succeeds, reason persisted, row stamped review_required",
+          "message": "AssertionError: expected 404 to be 200 // Object.is equality\n    at /home/runner/workspace/tests/guidedDprReliability.test.ts:406:27\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        },
+        {
+          "name": "Part E — executedBy attribution persists through the lifecycle executedBy set on a draft reaches submitDraftDpr unchanged",
+          "message": "AssertionError: expected 409 to be 201 // Object.is equality\n    at /home/runner/workspace/tests/guidedDprReliability.test.ts:423:27\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        },
+        {
+          "name": "DPR actor audit trail A-E A — passes the authenticated actor when creating a draft",
+          "message": "AssertionError: expected 409 to be 201 // Object.is equality\n    at /home/runner/workspace/tests/guidedDprReliability.test.ts:440:29\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        },
+        {
+          "name": "DPR actor audit trail A-E B — passes the authenticated actor on every draft save",
+          "message": "AssertionError: expected 404 to be 200 // Object.is equality\n    at /home/runner/workspace/tests/guidedDprReliability.test.ts:447:29\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        },
+        {
+          "name": "DPR actor audit trail A-E C — passes the authenticated submitter when submitting a draft",
+          "message": "AssertionError: expected 404 to be 200 // Object.is equality\n    at /home/runner/workspace/tests/guidedDprReliability.test.ts:454:29\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        }
+      ]
+    },
+    {
+      "file": "tests/initialScopeCorrectionRoutes.test.ts",
+      "message": "",
+      "tests": [
+        {
+          "name": "draft submission scope-token handoff reads a fresh token and passes it into final draft submission",
+          "message": "AssertionError: expected 404 to be 200 // Object.is equality\n    at /home/runner/workspace/tests/initialScopeCorrectionRoutes.test.ts:442:29\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        },
+        {
+          "name": "draft submission scope-token handoff maps a correction committed during validation to 409 and does not notify as submitted",
+          "message": "AssertionError: expected 404 to be 409 // Object.is equality\n    at /home/runner/workspace/tests/initialScopeCorrectionRoutes.test.ts:470:29\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        }
+      ]
+    },
+    {
+      "file": "tests/mat01MaterialsReceivedQueries.test.ts",
+      "message": "",
+      "tests": [
+        {
+          "name": "MAT-01 Materials Received database queries executes the received query with source-or-transporter matching and returns the source field",
+          "message": "error: column \"supplier_vendor_id\" does not exist\n    at pe.Ue (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/chunk-2BOC2OMW.js:1:17897)\n    at pe.tt (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/chunk-2BOC2OMW.js:1:15285)\n    at pe.parse (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/chunk-2BOC2OMW.js:1:13959)\n    at N.qe (file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/index.js:5:1762)\n    at file:///home/runner/workspace/node_modules/@electric-sql/pglite/dist/index.js:5:1155\n    at null.<anonymous> (wasm://wasm/0267bb86:1:5921938)\n    at null.<anonymous> (wasm://wasm/0267bb86:1:2615982)\n    at null.<anonymous> (wasm://wasm/0267bb86:1:2648468)\n    at null.<anonymous> (wasm://wasm/0267bb86:1:2649072)\n    at null.<anonymous> (wasm://wasm/0267bb86:1:5569808)"
+        }
+      ]
+    },
+    {
+      "file": "tests/perm01MatrixUi.test.tsx",
+      "message": "",
+      "tests": [
+        {
+          "name": "PERM-01 C actual permissions dialog action audit: Mix Calculator Edit and Device Approval Edit remain grantable",
+          "message": "Error: STACK_TRACE_ERROR\n    at task (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1784:27)\n    at Object.<anonymous> (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1817:16)\n    at Object.<anonymous> (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1563:28)\n    at chain (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:599:14)\n    at /home/runner/workspace/tests/perm01MatrixUi.test.tsx:101:3\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1889:40\n    at runWithSuite (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2258:8)\n    at Object.collect (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1889:10)\n    at Object.collect (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1893:54)\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)"
+        },
+        {
+          "name": "PERM-01 C actual permissions dialog E: no-change save preserves every alias; enable then revoke roundtrips without touching hidden Notify",
+          "message": "Error: STACK_TRACE_ERROR\n    at task (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1784:27)\n    at Object.<anonymous> (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1817:16)\n    at Object.<anonymous> (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1563:28)\n    at chain (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:599:14)\n    at /home/runner/workspace/tests/perm01MatrixUi.test.tsx:107:3\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1889:40\n    at runWithSuite (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2258:8)\n    at Object.collect (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1889:10)\n    at Object.collect (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1893:54)\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)"
+        }
+      ]
+    },
+    {
+      "file": "tests/perm01SupportingReads.test.ts",
+      "message": "",
+      "tests": [
+        {
+          "name": "PERM-01 supporting read HTTP routes with real guards actually creates and edits purchase_indents_raise or site_procurement through the registered handlers",
+          "message": "AssertionError: expected \"vi.fn()\" to be called with arguments: [ 1, ObjectContaining{…} ]\n\nReceived:\n\n  1st vi.fn() call:\n\n@@ -1,10 +1,9 @@\n  [\n    1,\n-   ObjectContaining {\n+   {\n      \"date\": \"2026-08-15\",\n-     \"indentNo\": \"PI-TEST-1\",\n      \"items\": [\n        {\n          \"description\": \"Cement\",\n          \"purpose\": \"Site work\",\n          \"qty\": 10,\n\n\nNumber of calls: 1\n\n    at Proxy.<anonymous> (file:///home/runner/workspace/node_modules/@vitest/expect/dist/index.js:1487:10)\n    at Proxy.<anonymous> (file:///home/runner/workspace/node_modules/@vitest/expect/dist/index.js:1156:15)\n    at Proxy.methodWrapper (file:///home/runner/workspace/node_modules/chai/index.js:1700:25)\n    at /home/runner/workspace/tests/perm01SupportingReads.test.ts:139:40\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        }
+      ]
+    },
+    {
+      "file": "tests/purchase-indent-pi01.test.ts",
+      "message": "",
+      "tests": []
+    },
+    {
+      "file": "tests/purchaseOrderPartC.test.ts",
+      "message": "",
+      "tests": [
+        {
+          "name": "optional PO lifecycle with isolated PostgreSQL fixture A: an order is recorded without raising a PO, for bulk and stores",
+          "message": "AssertionError: expected 500 to be 200 // Object.is equality\n    at /home/runner/workspace/tests/purchaseOrderPartC.test.ts:117:217\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        },
+        {
+          "name": "optional PO lifecycle with isolated PostgreSQL fixture B-G: material snapshot, lock, approver, approved PDF and role access",
+          "message": "AssertionError: expected 403 to be 409 // Object.is equality\n    at /home/runner/workspace/tests/purchaseOrderPartC.test.ts:124:60\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        },
+        {
+          "name": "optional PO lifecycle with isolated PostgreSQL fixture B-G: stores snapshot, lock, approver, approved PDF and role access",
+          "message": "AssertionError: expected 403 to be 409 // Object.is equality\n    at /home/runner/workspace/tests/purchaseOrderPartC.test.ts:124:60\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        },
+        {
+          "name": "optional PO lifecycle with isolated PostgreSQL fixture reject permits re-raise; only one active PO even on concurrent requests",
+          "message": "AssertionError: expected 403 to be 409 // Object.is equality\n    at /home/runner/workspace/tests/purchaseOrderPartC.test.ts:171:60\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        },
+        {
+          "name": "optional PO lifecycle with isolated PostgreSQL fixture denies unauthenticated, no-create, no-view, and out-of-site calls",
+          "message": "AssertionError: expected 500 to be 401 // Object.is equality\n    at /home/runner/workspace/tests/purchaseOrderPartC.test.ts:192:64\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        }
+      ]
+    },
+    {
+      "file": "tests/siteDashboardActivity06X.test.ts",
+      "message": "",
+      "tests": [
+        {
+          "name": "H2: detailed DPR endpoint provides canonical BOQ label fields batch-loads unique BOQ items and attaches them to progress rows",
+          "message": "AssertionError: expected 'app.get(\"/api/dprs/with-details\", asy…' to contain 'drizzleInArray(boqItems.id, boqItemId…'\n    at /home/runner/workspace/tests/siteDashboardActivity06X.test.ts:245:19\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        }
+      ]
+    },
+    {
+      "file": "tests/siteEditDpr10.test.tsx",
+      "message": "",
+      "tests": [
+        {
+          "name": "DPR-10 SiteEdit regressions does not exempt hydrated draft rows from the prior-overlap warning",
+          "message": "AssertionError: expected 'import { useState, useEffect, useRef,…' to contain 'const isDraftDpr = (dpr as any)?.dprS…'\n    at /home/runner/workspace/tests/siteEditDpr10.test.tsx:61:28\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64"
+        }
+      ]
+    },
+    {
+      "file": "tests/vehicleSupplierAssociationPostgres.integration.test.ts",
+      "message": "",
+      "tests": [
+        {
+          "name": "vehicle supplier association PostgreSQL transactions VB24: commits all 114 Soil trips over 15–22 September (direct SQL evidence)",
+          "message": "AssertionError: expected 500 to be 200 // Object.is equality\n    at /home/runner/workspace/tests/vehicleSupplierAssociationPostgres.integration.test.ts:214:27\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        },
+        {
+          "name": "vehicle supplier association PostgreSQL transactions VB24: preserves edit/site restrictions and exposes case-mismatched permitted names as zero, not success",
+          "message": "AssertionError: expected 500 to be 403 // Object.is equality\n    at /home/runner/workspace/tests/vehicleSupplierAssociationPostgres.integration.test.ts:265:120\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        },
+        {
+          "name": "vehicle supplier association PostgreSQL transactions VB24: fill blanks, per-trip history, single edit and clear, and single audit rollback",
+          "message": "AssertionError: expected 500 to be 200 // Object.is equality\n    at /home/runner/workspace/tests/vehicleSupplierAssociationPostgres.integration.test.ts:288:27\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        },
+        {
+          "name": "vehicle supplier association PostgreSQL transactions serializes two concurrent DatabaseStorage creates on real pooled connections",
+          "message": "error: column \"supplier_vendor_id\" of relation \"site_material_trips\" does not exist\n    at /home/runner/workspace/node_modules/pg/lib/client.js:545:17\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/drizzle-orm/node-postgres/session.js:83:22\n    at DatabaseStorage._mutatePiDeliverySourceWithinTx (/home/runner/workspace/server/storage.ts:2642:20)\n    at /home/runner/workspace/server/storage.ts:12896:28\n    at NodePgSession.transaction (file:///home/runner/workspace/node_modules/drizzle-orm/node-postgres/session.js:142:22)\n    at DatabaseStorage.createSiteMaterialTrip (/home/runner/workspace/server/storage.ts:12870:20)\n    at async Promise.all (index 0)\n    at /home/runner/workspace/tests/vehicleSupplierAssociationPostgres.integration.test.ts:309:37\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        },
+        {
+          "name": "vehicle supplier association PostgreSQL transactions pins an old pair through an ordinary edit and keeps complete-history conflict",
+          "message": "error: column \"supplier_vendor_id\" of relation \"site_material_trips\" does not exist\n    at /home/runner/workspace/node_modules/pg/lib/client.js:545:17\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/runner/workspace/node_modules/drizzle-orm/node-postgres/session.js:83:22\n    at DatabaseStorage._mutatePiDeliverySourceWithinTx (/home/runner/workspace/server/storage.ts:2642:20)\n    at /home/runner/workspace/server/storage.ts:12896:28\n    at NodePgSession.transaction (file:///home/runner/workspace/node_modules/drizzle-orm/node-postgres/session.js:142:22)\n    at DatabaseStorage.createSiteMaterialTrip (/home/runner/workspace/server/storage.ts:12870:20)\n    at /home/runner/workspace/tests/vehicleSupplierAssociationPostgres.integration.test.ts:355:5\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        }
+      ]
+    },
+    {
+      "file": "tests/vendorBillHireIntegration07c.test.ts",
+      "message": "",
+      "tests": [
+        {
+          "name": "07C vendor-bill hire transaction wiring keeps source-qualified auto evidence read-only and visibly marked as auto",
+          "message": "AssertionError: expected [ …(4) ] to have a length of 3 but got 4\n    at Proxy.<anonymous> (file:///home/runner/workspace/node_modules/@vitest/expect/dist/index.js:1389:20)\n    at Proxy.<anonymous> (file:///home/runner/workspace/node_modules/@vitest/expect/dist/index.js:1156:15)\n    at Proxy.methodWrapper (file:///home/runner/workspace/node_modules/chai/index.js:1700:25)\n    at /home/runner/workspace/tests/vendorBillHireIntegration07c.test.ts:78:70\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20"
+        }
+      ]
+    },
+    {
+      "file": "tests/vendorBillsEquipmentHire07b.test.tsx",
+      "message": "",
+      "tests": [
+        {
+          "name": "VB-11 grouped ordinary activity pull Test A/B/C: groups mixed activity, pulls equipment only, then adds one material group without disturbing it",
+          "message": "AssertionError: expected '' to be '250' // Object.is equality\n    at /home/runner/workspace/tests/vendorBillsEquipmentHire07b.test.tsx:398:86\n    at runNextTicks (node:internal/process/task_queues:60:5)\n    at listOnTimeout (node:internal/timers:545:9)\n    at processTimers (node:internal/timers:519:7)\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        },
+        {
+          "name": "VB-11 grouped ordinary activity pull Test D/E/F: Pull All applies rates and duplicate flags, clears the blank row, and retains Added groups",
+          "message": "AssertionError: expected false to be true // Object.is equality\n    at /home/runner/workspace/tests/vendorBillsEquipmentHire07b.test.tsx:444:125\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        }
+      ]
+    }
+  ]
+}

@@ -74,7 +74,7 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
   return (
     <div className="space-y-6">
       <div className={`flex items-center gap-2 ${printable ? "no-print" : ""}`}>
-        <Button
+        <ReportExportGate sections={["mix_calculator"]}><Button
           variant="outline"
           size="sm"
           onClick={() => doExport(data)}
@@ -84,7 +84,7 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
         </Button>
         <Button variant="outline" size="sm" onClick={() => window.print()} data-testid="btn-print">
           <Printer className="w-4 h-4 mr-1" /> Print
-        </Button>
+        </Button></ReportExportGate>
         {printable && (
           <span className="text-sm text-muted-foreground ml-2">
             {contractors.length} contractor{contractors.length !== 1 ? "s" : ""} · {ledgerRows.length} job{ledgerRows.length !== 1 ? "s" : ""}
@@ -264,6 +264,8 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
     </div>
   );
 }
+
+import { ReportExportGate } from "@/components/ReportExportGate";
 
 export default function MixComparativeReport() {
   useEffect(() => {

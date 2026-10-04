@@ -108,6 +108,7 @@ import {
   assertEditEither,
   assertView,
   assertViewEither,
+  assertReportExport,
   assertAuthed,
   assertCreate,
   assertCreateOrEdit,
@@ -480,6 +481,23 @@ export async function registerRoutes(
     return allSites.filter((s) => permittedIds.includes(s.id)).map((s) => s.name);
   }
   registerVendorMasterRoutes(app, getPermittedSiteNames);
+
+  // A plant name alone is not a site grant. Unmapped/shared plants are visible
+  // only to all-sites users; never infer their site from a display name.
+  async function permittedReportPlants(req: Express.Request): Promise<Set<string> | null> {
+    const permitted = await getPermittedSiteNames(req);
+    if (permitted === null) return null;
+    const plants = await storage.listPlantSettings();
+    return new Set(plants.filter(plant => plant.siteName &&
+      siteMatchesPermitted(plant.siteName, permitted)).map(plant => plant.plantName));
+  }
+
+  async function assertReportPlant(req: Express.Request, res: Express.Response, plant: string): Promise<boolean> {
+    const permitted = await permittedReportPlants(req);
+    if (permitted === null || permitted.has(plant)) return true;
+    res.status(403).json({ message: "Access denied for this plant's site" });
+    return false;
+  }
 
   /** Site trips are operational records: both their current record and their
    * requested destination must be in the caller's site scope. */
@@ -8244,6 +8262,7 @@ export async function registerRoutes(
   // (defaults to xlsx).
   app.get("/api/plant-module/daily-reports-export", async (req, res) => {
     try {
+      if (!assertReportExport(req, res, "plant_daily_reports")) return;
       const from = (req.query.from as string) || undefined;
       const to = (req.query.to as string) || undefined;
       const plant = (req.query.plant as string) || undefined;
@@ -8256,7 +8275,12 @@ export async function registerRoutes(
       const mixTypes = splitMulti(req.query.mixType);
       const format = (String(req.query.format || "xlsx").toLowerCase() === "csv") ? "csv" : "xlsx";
 
-      const rows = await storage.getDailyPlantReportIndex({ from, to, plant, parties, mixTypes });
+      const permitted = await permittedReportPlants(req);
+      if (plant && permitted !== null && !permitted.has(plant)) {
+        return res.status(403).json({ message: "Access denied for this plant's site" });
+      }
+      const rows = (await storage.getDailyPlantReportIndex({ from, to, plant, parties, mixTypes }))
+        .filter(row => permitted === null || permitted.has(row.plantName));
       // Match the cover-sheet sort order: most recent first, then plant name.
       const sorted = [...rows].sort((a, b) =>
         b.date.localeCompare(a.date) || a.plantName.localeCompare(b.plantName)
@@ -8401,6 +8425,7 @@ export async function registerRoutes(
   // Backward-compat: also accepts the old { plant, dates: [...] } shape.
   app.post("/api/plant-module/daily-reports/bulk-zip", async (req, res) => {
     try {
+      if (!assertReportExport(req, res, "plant_daily_reports")) return;
       type Entry = { date: string; plant: string };
       let entries: Entry[] = [];
       if (Array.isArray(req.body?.entries)) {
@@ -8413,6 +8438,10 @@ export async function registerRoutes(
       }
       if (!entries.length) {
         return res.status(400).json({ message: "Provide at least one entry" });
+      }
+      const permitted = await permittedReportPlants(req);
+      if (permitted !== null && entries.some(entry => !permitted.has(entry.plant))) {
+        return res.status(403).json({ message: "Access denied for one or more plants' sites" });
       }
       // Sanity guard: with archiver streaming the response, memory stays flat
       // regardless of entry count — but keep a generous upper bound to prevent
@@ -8539,8 +8568,10 @@ export async function registerRoutes(
 
   app.get("/api/plant-module/daily-reports/:date/pdf", async (req, res) => {
     try {
+      if (!assertReportExport(req, res, "plant_daily_reports")) return;
       const date = req.params.date;
       const plantName = (req.query.plant as string) || "Main Plant";
+      if (!await assertReportPlant(req, res, plantName)) return;
       const summary: any = await storage.getDailyPlantSummary(date, plantName);
 
       const doc = new PDFDocument({ size: "A4", margin: 40 });
@@ -8819,9 +8850,11 @@ export async function registerRoutes(
 
   app.get("/api/plant-module/heating-trends/excel", async (req, res) => {
     try {
+      if (!assertReportExport(req, res, "plant_heating", "plant_heating_trends")) return;
       const r = resolveTrendsRange(req);
       if ("error" in r) return res.status(400).json({ message: r.error });
       const { dateFrom, dateTo, plantName } = r;
+      if (!await assertReportPlant(req, res, plantName)) return;
       const trends = await storage.getHeatingTrends({ dateFrom, dateTo, plantName });
       const sheet = trends.rows.map(r => ({
         Date: r.date,
@@ -9955,10 +9988,18 @@ export async function registerRoutes(
 
   app.get("/api/irn/:id/issue-voucher", async (req, res) => {
     try {
+      if (!assertReportExport(req, res, "irn_view", "irn_raise")) return;
       const id = Number(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
       const irn = await storage.getInternalRequisition(id);
       if (!irn) return res.status(404).json({ message: "IRN not found" });
+      const permittedSites = await getPermittedSiteNames(req);
+      if (permittedSites !== null) {
+        const site = (await storage.getSites()).find(site => site.id === irn.siteId);
+        if (!site || !siteMatchesPermitted(site.name, permittedSites)) {
+          return res.status(403).json({ message: "Access denied for this IRN's site" });
+        }
+      }
       if (!["approved", "issued", "partially_issued"].includes(irn.status)) {
         return res.status(400).json({ message: "Issue voucher PDF is only available for approved or issued IRNs" });
       }
@@ -9968,6 +10009,10 @@ export async function registerRoutes(
       let specificVoucher: any = null;
       if (voucherIdParam && !isNaN(voucherIdParam)) {
         specificVoucher = await storage.getStoreIssue(voucherIdParam);
+        const linkedVouchers = await storage.getIrnIssueVouchers(id);
+        if (!specificVoucher || !linkedVouchers.some(voucher => voucher.id === voucherIdParam)) {
+          return res.status(403).json({ message: "Voucher does not belong to this IRN" });
+        }
       }
       if (!specificVoucher && !voucherIdParam) {
         // Default: latest voucher if any exist
@@ -11251,6 +11296,7 @@ export async function registerRoutes(
   // download mirrors what the user sees on screen.
   app.get("/api/vendor-bills/export", async (req, res) => {
     try {
+      if (!assertReportExport(req, res, "vendor_bills", "vendor_bills_view")) return;
       const dateFrom = (req.query.dateFrom as string) || undefined;
       const dateTo = (req.query.dateTo as string) || undefined;
       const vendor = (req.query.vendor as string) || undefined;
@@ -11258,7 +11304,15 @@ export async function registerRoutes(
       const categoryFilter = ((req.query.category as string) || "all").toLowerCase();
       const format = (String(req.query.format || "xlsx").toLowerCase() === "csv") ? "csv" : "xlsx";
 
-      const billsRaw = await storage.getVendorBills({ dateFrom, dateTo, vendor, status });
+      const selectedSite = await resolveVendorBillSite(req, res, req.query.siteId);
+      if (!selectedSite) return;
+      let billsRaw = await scopeVendorBillsToSiteAccess(req,
+        await storage.getVendorBills({ dateFrom, dateTo, vendor, status }));
+      if (selectedSite.siteName) {
+        billsRaw = billsRaw.filter(bill => bill.siteId === selectedSite.siteId ||
+          (bill.siteId == null && bill.items?.some((item: any) =>
+            vendorBillItemMatchesSite(item.siteName, selectedSite.siteName!))));
+      }
       // Apply category filter the same way the UI does (combined => "all" billType).
       const bills = categoryFilter === "all"
         ? billsRaw
@@ -11269,7 +11323,10 @@ export async function registerRoutes(
       // Sort newest first for both summary and detail.
       bills.sort((a, b) => (b.billDate || "").localeCompare(a.billDate || ""));
 
-      const allVendorNames = await storage.getVendorNames();
+      // Restricted exports must not disclose unrelated vendor names either.
+      const allVendorNames = (await getPermittedSiteNames(req)) === null
+        ? await storage.getVendorNames()
+        : Array.from(new Set(bills.map(bill => bill.vendorName)));
 
       const vendorScope = vendor && vendor !== "all" ? vendor : "All vendors";
       const isLedger = vendor && vendor !== "all";
@@ -11895,10 +11952,14 @@ export async function registerRoutes(
 
   app.get("/api/vendor-bills/:id/pdf", async (req, res) => {
     try {
+      if (!assertReportExport(req, res, "vendor_bills", "vendor_bills_view")) return;
       const id = Number(req.params.id);
       const bill = await storage.getVendorBill(id);
       if (!bill) {
         return res.status(404).json({ message: "Vendor bill not found" });
+      }
+      if (!(await scopeVendorBillsToSiteAccess(req, [bill])).length) {
+        return res.status(403).json({ message: "Access denied for this bill's site" });
       }
       if (!["verified", "approved", "paid"].includes(bill.status)) {
         return res.status(400).json({ message: "PDF export is only available for verified, approved, or paid bills" });

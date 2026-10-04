@@ -43,6 +43,8 @@ function defaultForm() {
   };
 }
 
+import { ReportExportGate } from "@/components/ReportExportGate";
+
 export default function RmcCubeTests() {
   const { toast } = useToast();
   const { sectionCan, isAdmin } = useAuth();
@@ -189,7 +191,7 @@ export default function RmcCubeTests() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button
+          <ReportExportGate sections={["rmc_cube_tests", "rmc_operations", "plant_production"]}><Button
             variant="outline"
             onClick={() => {
               const p = new URLSearchParams({ dateFrom, dateTo });
@@ -199,7 +201,7 @@ export default function RmcCubeTests() {
             data-testid="btn-export-cube-tests"
           >
             <Download className="w-4 h-4 mr-2" />Export Excel
-          </Button>
+          </Button></ReportExportGate>
           {canCreate && (
             <Button onClick={openCreate} data-testid="btn-add-test">
               <Plus className="w-4 h-4 mr-2" />Add Test Result

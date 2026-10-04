@@ -27,7 +27,7 @@ export default function PlantMaterialReturns() {
   const { companyName, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("plant_stock", "create");
   const canEdit = sectionCan("plant_stock", "edit");
-  const canExport = sectionCan("plant_stock", "view_reports");
+  const canExport = sectionCan("plant_materials", "view_reports");
   const backLink = getPlantBackLink({ defaultTab: "operations" });
   const searchString = useSearch();
   const [, setLocation] = useLocation();

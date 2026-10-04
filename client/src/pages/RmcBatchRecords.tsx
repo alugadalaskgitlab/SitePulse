@@ -32,12 +32,14 @@ function defaultForm(plantName: string) {
   };
 }
 
+import { ReportExportGate } from "@/components/ReportExportGate";
+
 function DCPrintView({ record, onClose }: { record: RmcBatchRecordWithDesign; onClose: () => void }) {
   const handlePrint = () => window.print();
   return (
     <div>
       <div className="flex gap-2 mb-4 print:hidden">
-        <Button onClick={handlePrint}><Printer className="w-4 h-4 mr-2" />Print DC</Button>
+        <ReportExportGate sections={["rmc_batch_records", "rmc_operations", "plant_production"]}><Button onClick={handlePrint}><Printer className="w-4 h-4 mr-2" />Print DC</Button></ReportExportGate>
         <Button variant="outline" onClick={onClose}>Close</Button>
       </div>
       <div className="border rounded-lg p-6 text-sm space-y-4 print:border-0">
@@ -373,9 +375,9 @@ export default function RmcBatchRecords() {
                   {r.remarks && <p className="text-sm text-muted-foreground mt-1">{r.remarks}</p>}
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setPrintRecord(r)} data-testid={`btn-print-dc-${r.id}`}>
+                  <ReportExportGate sections={["rmc_batch_records", "rmc_operations", "plant_production"]}><Button variant="outline" size="sm" onClick={() => setPrintRecord(r)} data-testid={`btn-print-dc-${r.id}`}>
                     <Printer className="w-4 h-4" />
-                  </Button>
+                  </Button></ReportExportGate>
                   {canEdit && (
                     <Button variant="outline" size="sm" onClick={() => openEdit(r)} data-testid={`btn-edit-batch-${r.id}`}>
                       <Pencil className="w-4 h-4" />

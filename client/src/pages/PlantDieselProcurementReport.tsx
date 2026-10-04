@@ -34,6 +34,8 @@ interface DieselProcurementData {
   }>;
 }
 
+import { ReportExportGate } from "@/components/ReportExportGate";
+
 export default function PlantDieselProcurementReport() {
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "stock" });
@@ -232,7 +234,7 @@ export default function PlantDieselProcurementReport() {
         <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
           <CardTitle className="text-base">Filters</CardTitle>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" className="gap-1" onClick={handleExportExcel} data-testid="button-export-excel">
+            <ReportExportGate sections={["plant_diesel_proc"]}><Button size="sm" variant="outline" className="gap-1" onClick={handleExportExcel} data-testid="button-export-excel">
               <Download className="w-4 h-4" /> Excel
             </Button>
             <Button size="sm" variant="outline" className="gap-1" onClick={handleExportPdf} data-testid="button-export-pdf">
@@ -240,7 +242,7 @@ export default function PlantDieselProcurementReport() {
             </Button>
             <Button size="sm" variant="outline" className="gap-1" onClick={handlePrint} data-testid="button-print">
               <Printer className="w-4 h-4" /> Print
-            </Button>
+            </Button></ReportExportGate>
           </div>
         </CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">

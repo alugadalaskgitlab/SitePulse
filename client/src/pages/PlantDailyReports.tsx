@@ -108,6 +108,8 @@ type IndexRow = {
   bitumenTemplateMt: number | null;
 };
 
+import { ReportExportGate } from "@/components/ReportExportGate";
+
 export default function PlantDailyReports() {
   const { appendOrigin, getPlantBackLink, appendPlantContext } = useOrigin();
   const { toast } = useToast();
@@ -461,7 +463,7 @@ export default function PlantDailyReports() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <Button
+          <ReportExportGate sections={["plant_daily_reports"]}><Button
             variant="outline"
             onClick={() => handleSpreadsheetExport("csv")}
             disabled={!rows?.length}
@@ -487,7 +489,7 @@ export default function PlantDailyReports() {
           >
             {bulkBusy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileDown className="w-4 h-4 mr-2" />}
             Bulk Export PDFs (ZIP)
-          </Button>
+          </Button></ReportExportGate>
         </div>
       </div>
 
@@ -903,11 +905,11 @@ export default function PlantDailyReports() {
                               <ExternalLink className="w-3.5 h-3.5 mr-1" /> Open
                             </Button>
                           </Link>
-                          <a href={pdfHref} target="_blank" rel="noreferrer">
+                          <ReportExportGate sections={["plant_daily_reports"]}><a href={pdfHref} target="_blank" rel="noreferrer">
                             <Button variant="outline" size="sm" data-testid={`button-pdf-${rowKey}`}>
                               <Download className="w-3.5 h-3.5 mr-1" /> PDF
                             </Button>
-                          </a>
+                          </a></ReportExportGate>
                         </div>
                       </TableCell>
                     </TableRow>

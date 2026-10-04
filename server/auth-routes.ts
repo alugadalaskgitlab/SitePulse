@@ -1028,6 +1028,19 @@ export function assertView(req: Request, res: Response, section: SectionKey): bo
   return true;
 }
 
+export function assertReportExport(req: Request, res: Response, ...sections: SectionKey[]): boolean {
+  if (!req.authUser) {
+    res.status(401).json({ error: "not_authenticated" });
+    return false;
+  }
+  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
+  if (!sections.some(section => req.authPermissions?.[section]?.view_reports)) {
+    res.status(403).json({ error: "forbidden", sections, action: "view_reports" });
+    return false;
+  }
+  return true;
+}
+
 export function assertViewEither(req: Request, res: Response, ...sections: SectionKey[]): boolean {
   if (!req.authUser) {
     res.status(401).json({ error: "not_authenticated" });

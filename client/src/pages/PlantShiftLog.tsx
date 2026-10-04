@@ -38,6 +38,8 @@ type ManpowerRow = {
 };
 type IdleRow = { startTime: string; endTime?: string | null; reason: string; remarks?: string | null };
 
+import { ReportExportGate } from "@/components/ReportExportGate";
+
 export default function PlantShiftLog() {
   const { toast } = useToast();
   const { isFromPortal, appendPlantContext, getPlantBackLink } = useOrigin();
@@ -1118,9 +1120,9 @@ export default function PlantShiftLog() {
                 <Users className="w-4 h-4 mr-1" />Review UNKNOWN
               </Button>
             </Link>
-            <Button variant="outline" size="sm" onClick={exportShiftLogsToExcel} disabled={!sorted.length} data-testid="button-export-shift-logs">
+            <ReportExportGate sections={["plant_shift_logs"]}><Button variant="outline" size="sm" onClick={exportShiftLogsToExcel} disabled={!sorted.length} data-testid="button-export-shift-logs">
               <Download className="w-4 h-4 mr-1" />Excel
-            </Button>
+            </Button></ReportExportGate>
             <Button onClick={openNew} data-testid="button-new-shift-log"><Plus className="w-4 h-4 mr-1" />New Log</Button>
           </div>
         </div>

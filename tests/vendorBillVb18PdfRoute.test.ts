@@ -83,6 +83,7 @@ vi.mock("../server/auth-routes", () => ({
   assertAdmin: () => true,
   assertView: () => true,
   assertViewEither: () => true,
+  assertReportExport: () => true,
   assertAuthed: () => true,
   assertCreateOrEdit: () => true,
   assertCreateEither: () => true,

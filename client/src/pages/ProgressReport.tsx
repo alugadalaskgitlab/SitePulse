@@ -69,6 +69,8 @@ const fmt = (n: number | null | undefined, dp = 3) =>
 const incompleteQty = <span className="text-amber-700 font-medium" title="One or more physical evidence rows have unresolved BOQ credit">Incomplete — review</span>;
 const itemLabel = (b: ReportItem["boqItem"]) => boqItemDisplayName(b);
 
+import { ReportExportGate } from "@/components/ReportExportGate";
+
 export default function ProgressReport() {
   const { toast } = useToast();
   const search = useSearch();
@@ -177,7 +179,7 @@ export default function ProgressReport() {
           <Input type="date" className="w-40" value={effTo} onChange={(e) => update({ to: e.target.value })} data-testid="input-to" />
         </div>
         <Button variant="outline" onClick={() => update({ from: "", to: "" })} data-testid="button-reset">Reset</Button>
-        <Button onClick={exportExcel} disabled={!report} data-testid="button-export"><Download className="w-4 h-4 mr-1" />Export Excel</Button>
+        <ReportExportGate sections={["site_dprs"]}><Button onClick={exportExcel} disabled={!report} data-testid="button-export"><Download className="w-4 h-4 mr-1" />Export Excel</Button></ReportExportGate>
       </CardContent></Card>
 
       {!effectiveProject && <div className="text-slate-500 text-sm p-6 text-center">Select a project to build the report.</div>}
