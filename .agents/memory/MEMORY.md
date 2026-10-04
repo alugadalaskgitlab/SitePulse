@@ -1,4 +1,5 @@
 - [IRN Feature](irn-feature.md) — Internal Requisition Note fully built: schema, storage, 4 API routes, 3 pages, nav wiring, DB pushed
+- [Read-only drift checks](schema-drift-read-only.md) — user requires read-only schema comparisons; no temporary test columns or sync writes.
 - [Port configuration preservation](port-configuration-preservation.md) — verify requested exposure settings against actual config, not just a clean diff; drift mechanism remains unproven.
 - [Labour worker names](labour-worker-name-preservation.md) — optional detail, authoritative Count; replacement saves must preserve names and rebase row identities without overwriting in-flight edits.
 - [Equipment print parity](read-only-equipment-print-parity.md) — card removal requires audit-detail parity and actual multi-page PDF checks; print DOM visibility alone misses clipping.
