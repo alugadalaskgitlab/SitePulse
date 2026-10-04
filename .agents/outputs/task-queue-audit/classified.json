@@ -1,0 +1,1317 @@
+[
+  {
+    "db": "No database change",
+    "reason": "UI enhancement to pre-fill form fields based on existing calculation logic.",
+    "ref": "#1118"
+  },
+  {
+    "db": "Stored data change",
+    "reason": "Persists scope UI state changes to the database via existing save mechanism.",
+    "ref": "#1177"
+  },
+  {
+    "db": "No database change",
+    "reason": "Visual UI update to existing table rows based on client-side state.",
+    "ref": "#1180"
+  },
+  {
+    "db": "No database change",
+    "reason": "Uses browser localStorage to persist preferences across sessions.",
+    "ref": "#1181"
+  },
+  {
+    "db": "No database change",
+    "reason": "Displaying existing database fields in the UI.",
+    "ref": "#1183"
+  },
+  {
+    "db": "No database change",
+    "reason": "Read-only API for stats and optional UI for threshold tuning.",
+    "ref": "#1184"
+  },
+  {
+    "db": "No database change",
+    "reason": "Displaying a count of items based on existing logic.",
+    "ref": "#1189"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Adds a new API endpoint for bulk updating planning inclusion status.",
+    "ref": "#1190"
+  },
+  {
+    "db": "No database change",
+    "reason": "Visual rendering update for existing data in monthly tables.",
+    "ref": "#1194"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Restricts validation of chainage fields for specific item types.",
+    "ref": "#1195"
+  },
+  {
+    "db": "No database change",
+    "reason": "Gantt chart rendering visual update.",
+    "ref": "#1196"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Addition of a unit test for existing logic.",
+    "ref": "#1198"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI badge rendering based on existing data parsing.",
+    "ref": "#1199"
+  },
+  {
+    "db": "Schema change",
+    "reason": "Requires adding a new column to the BOQ items table for front overrides.",
+    "ref": "#1201"
+  },
+  {
+    "db": "No database change",
+    "reason": "Visual indicator for existing progress states.",
+    "ref": "#1202"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Adding new automated tests for existing sequencing logic.",
+    "ref": "#1203"
+  },
+  {
+    "db": "Stored data change",
+    "reason": "Updates existing equipment recipes to align with new classifications.",
+    "ref": "#1205"
+  },
+  {
+    "db": "No database change",
+    "reason": "Changes rendering structure of existing data in the UI.",
+    "ref": "#1208"
+  },
+  {
+    "db": "No database change",
+    "reason": "Client-side export of existing data to Excel.",
+    "ref": "#1209"
+  },
+  {
+    "db": "Stored data change",
+    "reason": "Updates or expands seed data stored in the database.",
+    "ref": "#1213"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI badge based on existing database status fields.",
+    "ref": "#1214"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI enhancement to display existing data in detail panels.",
+    "ref": "#1216"
+  },
+  {
+    "db": "No database change",
+    "reason": "Updates import parsing logic to filter data before storage.",
+    "ref": "#1217"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds an endpoint to trigger existing import logic.",
+    "ref": "#1218"
+  },
+  {
+    "db": "No database change",
+    "reason": "Displaying existing data fields on the UI.",
+    "ref": "#1224"
+  },
+  {
+    "db": "No database change",
+    "reason": "API error handling improvement.",
+    "ref": "#1225"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI/CSS modification for table headers.",
+    "ref": "#1229"
+  },
+  {
+    "db": "No database change",
+    "reason": "Visual badge update based on existing bar data.",
+    "ref": "#1231"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Automates existing cleanup logic during import.",
+    "ref": "#1232"
+  },
+  {
+    "db": "No database change",
+    "reason": "Displaying existing shortage information in new UI locations.",
+    "ref": "#1241"
+  },
+  {
+    "db": "Stored data change",
+    "reason": "Persists manual overrides of planning mode to the database.",
+    "ref": "#1242"
+  },
+  {
+    "db": "No database change",
+    "reason": "Audit of storage methods and potential addition of internal tests.",
+    "ref": "#1244"
+  },
+  {
+    "db": "No database change",
+    "reason": "Validation improvement within the import parser.",
+    "ref": "#1246"
+  },
+  {
+    "db": "Stored data change",
+    "reason": "Bulk update of user roles in the database.",
+    "ref": "#1248"
+  },
+  {
+    "db": "No database change",
+    "reason": "Code review and potential cleanup of flag logic.",
+    "ref": "#1249"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Adding a regression test for UI component security.",
+    "ref": "#1252"
+  },
+  {
+    "db": "Stored data change",
+    "reason": "Potential update to include additional remarks data.",
+    "ref": "#1254"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Adding a regression test for photo gallery URL fetching.",
+    "ref": "#1257"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI adaptation using existing configuration.",
+    "ref": "#1280"
+  },
+  {
+    "db": "No database change",
+    "reason": "Filtering existing API data in the UI.",
+    "ref": "#1281"
+  },
+  {
+    "db": "No database change",
+    "reason": "Updates UI for auto-sequence flow; no mention of persisting new data or schema.",
+    "ref": "#1282"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Updates frontend to send data already supported by existing backend updateStoreGrn.",
+    "ref": "#1285"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds UI navigation links for existing data relationships.",
+    "ref": "#1286"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Updates UI to provide override reason for an existing write-path validation.",
+    "ref": "#1287"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adjusts client-side query filters for consistency; existing backend support presumed.",
+    "ref": "#1288"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Enables creation of vendor bills for service items through existing POST handler.",
+    "ref": "#1296"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds UI badges and client-side filtering for existing indent status.",
+    "ref": "#1297"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Adds defensive validation checks to existing GRN and receipt API endpoints.",
+    "ref": "#1298"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Adds integration tests to verify existing service-completion API logic.",
+    "ref": "#1299"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Adds logic to cancel or resolve stale orders via existing procurement routes.",
+    "ref": "#1303"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Adds test coverage for existing delivery and status derivation logic.",
+    "ref": "#1304"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Adds GET route and UI for viewing existing data in materialRequirements table.",
+    "ref": "#1305"
+  },
+  {
+    "db": "Unclear",
+    "reason": "Task is suspended; specifics for database impact are unavailable.",
+    "ref": "#16"
+  },
+  {
+    "db": "Unclear",
+    "reason": "Task is suspended; specifics for database impact are unavailable.",
+    "ref": "#21"
+  },
+  {
+    "db": "Unclear",
+    "reason": "Task is suspended; specifics for database impact are unavailable.",
+    "ref": "#23"
+  },
+  {
+    "db": "Unclear",
+    "reason": "Task is suspended; specifics for database impact are unavailable.",
+    "ref": "#24"
+  },
+  {
+    "db": "Unclear",
+    "reason": "Task is suspended; specifics for database impact are unavailable.",
+    "ref": "#25"
+  },
+  {
+    "db": "Unclear",
+    "reason": "Task is suspended; specifics for database impact are unavailable.",
+    "ref": "#26"
+  },
+  {
+    "db": "Unclear",
+    "reason": "Task is suspended; specifics for database impact are unavailable.",
+    "ref": "#32"
+  },
+  {
+    "db": "Unclear",
+    "reason": "Task is suspended; specifics for database impact are unavailable.",
+    "ref": "#34"
+  },
+  {
+    "db": "Unclear",
+    "reason": "Task is suspended; specifics for database impact are unavailable.",
+    "ref": "#40"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds UI visual cues for existing readings data.",
+    "ref": "#144"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Fixes bug in API handlers to use existing correct schema field name.",
+    "ref": "#145"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds new report UI; fetches data using existing storage methods.",
+    "ref": "#146"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds export functionality for existing data via existing endpoints.",
+    "ref": "#150"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds client-side UI features; server-side change explicitly out of scope.",
+    "ref": "#242"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds UI components for handling permission errors.",
+    "ref": "#243"
+  },
+  {
+    "db": "Schema change",
+    "reason": "Requires new partial unique index on userDevices table.",
+    "ref": "#257"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Adds automated regression tests for authentication flows.",
+    "ref": "#258"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Adds alert hook logic to existing post-save process.",
+    "ref": "#261"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Adds regression test for Excel export column ordering.",
+    "ref": "#262"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Adds unit tests to verify legacy threshold data handling.",
+    "ref": "#263"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds UI-only highlighting stored in local browser settings.",
+    "ref": "#264"
+  },
+  {
+    "db": "No database change",
+    "reason": "Cleanup of unused code helper.",
+    "ref": "#265"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Adds guard logic to existing API endpoints to prevent accidental data overwrites.",
+    "ref": "#270"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Adds logic to update ledger rows when parent records are edited.",
+    "ref": "#271"
+  },
+  {
+    "db": "No database change",
+    "reason": "Updates UI to display existing reconciliation data.",
+    "ref": "#272"
+  },
+  {
+    "db": "No database change",
+    "reason": "Disables UI interactions for locked records; no changes to data persistence.",
+    "ref": "#273"
+  },
+  {
+    "db": "Schema change",
+    "reason": "Requires new audit table (record_lock_events) to track lock/unlock history.",
+    "ref": "#274"
+  },
+  {
+    "db": "No database change",
+    "reason": "Updates UI logic to conditionally render phone number instead of email.",
+    "ref": "#281"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Normalizing phone formats on server-side write operations.",
+    "ref": "#282"
+  },
+  {
+    "db": "Stored data change",
+    "reason": "One-time startup migration to copy permissions for users.",
+    "ref": "#295"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI fetching existing data for display purposes.",
+    "ref": "#305"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI prefilling form fields with existing data on load.",
+    "ref": "#306"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI persisting state in URL query parameters.",
+    "ref": "#327"
+  },
+  {
+    "db": "No database change",
+    "reason": "Client-side filtering of already-fetched data.",
+    "ref": "#328"
+  },
+  {
+    "db": "No database change",
+    "reason": "Frontend calculation/rendering of existing data.",
+    "ref": "#329"
+  },
+  {
+    "db": "No database change",
+    "reason": "Frontend UI computation using existing query result data.",
+    "ref": "#331"
+  },
+  {
+    "db": "No database change",
+    "reason": "Frontend UI display using existing dispatch API endpoint.",
+    "ref": "#373"
+  },
+  {
+    "db": "No database change",
+    "reason": "Frontend UI component querying existing stock ledger rows.",
+    "ref": "#388"
+  },
+  {
+    "db": "No database change",
+    "reason": "Access control change (auth guard update) for existing file.",
+    "ref": "#394"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adding images to existing PDF generation process.",
+    "ref": "#395"
+  },
+  {
+    "db": "Schema change",
+    "reason": "Adding isTankLiquid column to plant_materials table.",
+    "ref": "#396"
+  },
+  {
+    "db": "Stored data change",
+    "reason": "One-time SQL update to fix historical ledger balances.",
+    "ref": "#403"
+  },
+  {
+    "db": "Stored data change",
+    "reason": "One-time migration to correct UOM mismatches in opening stocks.",
+    "ref": "#404"
+  },
+  {
+    "db": "Stored data change",
+    "reason": "Backfill migration to update existing ledger notes.",
+    "ref": "#408"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI logic update to display banners based on existing data.",
+    "ref": "#420"
+  },
+  {
+    "db": "No database change",
+    "reason": "Frontend-only UI logic for highlighting gaps in view.",
+    "ref": "#430"
+  },
+  {
+    "db": "No database change",
+    "reason": "Client-side scroll navigation in UI.",
+    "ref": "#431"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Configuration changes for test coverage reporting.",
+    "ref": "#435"
+  },
+  {
+    "db": "No database change",
+    "reason": "Frontend display logic using existing API data.",
+    "ref": "#451"
+  },
+  {
+    "db": "No database change",
+    "reason": "Fixing data retrieval logic for existing report renderer.",
+    "ref": "#452"
+  },
+  {
+    "db": "No database change",
+    "reason": "Updating client-side UI display for existing data points.",
+    "ref": "#462"
+  },
+  {
+    "db": "Schema change",
+    "reason": "Dropping unused legacy columns from multiple tables.",
+    "ref": "#464"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adding client-side filtering to existing list view.",
+    "ref": "#475"
+  },
+  {
+    "db": "No database change",
+    "reason": "Frontend enhancement to auto-populate description strings.",
+    "ref": "#476"
+  },
+  {
+    "db": "No database change",
+    "reason": "Updating UI visual representation of existing data.",
+    "ref": "#493"
+  },
+  {
+    "db": "No database change",
+    "reason": "Client-side UI form validation/guard.",
+    "ref": "#494"
+  },
+  {
+    "db": "Unclear",
+    "reason": "Suspended task.",
+    "ref": "#521"
+  },
+  {
+    "db": "No database change",
+    "reason": "Frontend routing/link logic update.",
+    "ref": "#531"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adding UI confirmation dialogs before existing actions.",
+    "ref": "#535"
+  },
+  {
+    "db": "No database change",
+    "reason": "Client-side proactive warning check.",
+    "ref": "#549"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI layout reorganization without data/schema changes.",
+    "ref": "#1489"
+  },
+  {
+    "db": "Stored data change",
+    "reason": "Updating requirement status and quantity fields on write.",
+    "ref": "#1306"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Adding end-to-end API tests.",
+    "ref": "#1307"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Adding unit tests for planning engine logic.",
+    "ref": "#1309"
+  },
+  {
+    "db": "Stored data change",
+    "reason": "Creating new mapping records for global material management.",
+    "ref": "#1310"
+  },
+  {
+    "db": "No database change",
+    "reason": "Displaying existing data in a new popover UI.",
+    "ref": "#1311"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Adding unit tests for horizon resolution logic.",
+    "ref": "#1313"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Adding tests to verify IRN item data consistency.",
+    "ref": "#1314"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Task involves adding unit tests for existing error path validation.",
+    "ref": "#1316"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Task involves adding unit tests for existing calculation logic.",
+    "ref": "#1317"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI enhancement to display existing data returned from the API.",
+    "ref": "#1318"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Task involves adding unit and integration tests for existing horizon logic.",
+    "ref": "#1319"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Task involves adding unit and API tests for existing UOM validation.",
+    "ref": "#1320"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI enhancement and field inclusion in API response for existing logic.",
+    "ref": "#1321"
+  },
+  {
+    "db": "No database change",
+    "reason": "Task involves creating a script/checklist for schema maintenance processes.",
+    "ref": "#1391"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Adjustment to validation logic to allow saving without blocking on unchanged rows.",
+    "ref": "#1420"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Task involves adding database-backed tests for existing reconciliation workflows.",
+    "ref": "#1423"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Enforcement of access control logic across existing attachment APIs.",
+    "ref": "#1425"
+  },
+  {
+    "db": "No database change",
+    "reason": "Frontend form UI improvement and blur normalization.",
+    "ref": "#1456"
+  },
+  {
+    "db": "Stored data change",
+    "reason": "Requires migration of master names and references.",
+    "ref": "#1457"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Updating tests to match current implementation of save-flow.",
+    "ref": "#1458"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Adding mobile regression tests with isolated fixtures.",
+    "ref": "#1467"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Optimization of lookup logic for suggestion keys.",
+    "ref": "#1471"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI error handling enhancement for existing identification queries.",
+    "ref": "#1478"
+  },
+  {
+    "db": "No database change",
+    "reason": "Preserving existing report identifiers in exported files.",
+    "ref": "#1483"
+  },
+  {
+    "db": "Unclear",
+    "reason": "Task requires prior inspection and data identity verification before determining if config changes are needed.",
+    "ref": "#1486"
+  },
+  {
+    "db": "No database change",
+    "reason": "Improving error handling UI for existing 409 responses.",
+    "ref": "#550"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI labelling enhancement for LDO dip book report.",
+    "ref": "#553"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI layout modification for table scanning consistency.",
+    "ref": "#557"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI summary display enhancement based on existing calculations.",
+    "ref": "#573"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI enhancement adding a status indicator for local state.",
+    "ref": "#582"
+  },
+  {
+    "db": "Schema change",
+    "reason": "Adding unique index back to the ldo_flow_readings table.",
+    "ref": "#590"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI display modification for LDO reconciliation reports.",
+    "ref": "#591"
+  },
+  {
+    "db": "No database change",
+    "reason": "Moving client-side state from sessionStorage to localStorage.",
+    "ref": "#599"
+  },
+  {
+    "db": "No database change",
+    "reason": "Updating counter tracking for UI summary.",
+    "ref": "#633"
+  },
+  {
+    "db": "Schema change",
+    "reason": "Proposed migration adds new unique index to table.",
+    "ref": "#634"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Logic guard needed in existing dispatch creation path.",
+    "ref": "#642"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Logic change for party lookup used in both dispatch and rebuild tools.",
+    "ref": "#643"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Adding regression tests to ensure view consistency.",
+    "ref": "#664"
+  },
+  {
+    "db": "No database change",
+    "reason": "Implementing deep-link auto-open behavior for existing dialogs.",
+    "ref": "#669"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adding new reporting endpoints to export existing data to Excel.",
+    "ref": "#698"
+  },
+  {
+    "db": "Schema change",
+    "reason": "Adds new optional column equipmentId to store_issues table.",
+    "ref": "#699"
+  },
+  {
+    "db": "No database change",
+    "reason": "Configuring default application permissions.",
+    "ref": "#700"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adding reporting endpoints for existing maintenance data.",
+    "ref": "#701"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adding new aggregate endpoint for count monitoring.",
+    "ref": "#702"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI display modification to show maintenance link.",
+    "ref": "#703"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adding PDF export endpoint for existing test results.",
+    "ref": "#715"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI display enhancement to render existing identifiers.",
+    "ref": "#764"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Updates indent status to completed based on receipt quantities.",
+    "ref": "#765"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI-only highlighting for overdue items.",
+    "ref": "#777"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds read-only query filters to an existing report.",
+    "ref": "#778"
+  },
+  {
+    "db": "No database change",
+    "reason": "Persists filter states in localStorage.",
+    "ref": "#791"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Adds a PATCH endpoint to update site assignment on existing GRN records.",
+    "ref": "#801"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Adds a PATCH endpoint to update site and metadata on existing Issue Vouchers.",
+    "ref": "#802"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds visual indicator using existing plant settings data.",
+    "ref": "#803"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds UI navigation link.",
+    "ref": "#804"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds visual UI icon.",
+    "ref": "#805"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds UI filtering for existing equipment usage data.",
+    "ref": "#808"
+  },
+  {
+    "db": "No database change",
+    "reason": "Displays existing plantName property in reports.",
+    "ref": "#809"
+  },
+  {
+    "db": "No database change",
+    "reason": "Removes dead code.",
+    "ref": "#811"
+  },
+  {
+    "db": "Stored data change",
+    "reason": "Adds PUT endpoint to perform transaction-based delete/insert for GRN items.",
+    "ref": "#834"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds summary view of existing received/ordered counts.",
+    "ref": "#835"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds client-side warning logic against existing stock data.",
+    "ref": "#836"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds UI suggestion cards for existing indent data.",
+    "ref": "#837"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds UI auto-fill logic for material picker.",
+    "ref": "#838"
+  },
+  {
+    "db": "No database change",
+    "reason": "Updates client-side search logic.",
+    "ref": "#860"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds UI item count display.",
+    "ref": "#861"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds UI header title.",
+    "ref": "#862"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds URL redirect.",
+    "ref": "#869"
+  },
+  {
+    "db": "No database change",
+    "reason": "Clears local UI state on cancel.",
+    "ref": "#901"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds navigation links to UI hubs.",
+    "ref": "#914"
+  },
+  {
+    "db": "Schema change",
+    "reason": "Introduces new tables for MRN workflow.",
+    "ref": "#915"
+  },
+  {
+    "db": "No database change",
+    "reason": "Uses URL params to pre-select UI form state.",
+    "ref": "#916"
+  },
+  {
+    "db": "No database change",
+    "reason": "Updates UI back-link navigation.",
+    "ref": "#930"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds Excel export functionality for existing report data.",
+    "ref": "#952"
+  },
+  {
+    "db": "No database change",
+    "reason": "Displays existing payment mode data as badge.",
+    "ref": "#953"
+  },
+  {
+    "db": "No database change",
+    "reason": "Pre-fills form state from context/URL.",
+    "ref": "#982"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Extends API endpoint with grouping for drilldown data.",
+    "ref": "#985"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Adds new API endpoint for trend data.",
+    "ref": "#986"
+  },
+  {
+    "db": "Schema change",
+    "reason": "Adds column to existing history table.",
+    "ref": "#1004"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Adds automated tests for permission routing.",
+    "ref": "#1005"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds UI badge based on existing query.",
+    "ref": "#1006"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Adds PATCH endpoint to update IRN item statuses.",
+    "ref": "#1007"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Modifies existing PATCH endpoint to support re-open.",
+    "ref": "#1008"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Adds action to trigger user settings update.",
+    "ref": "#1014"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds KPI card using existing data.",
+    "ref": "#1015"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adds client-side filtering to existing IRN list.",
+    "ref": "#1020"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Adds server-side query filtering to existing endpoint.",
+    "ref": "#1021"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI update to display existing unlock fields in a timeline.",
+    "ref": "#1022"
+  },
+  {
+    "db": "No database change",
+    "reason": "Frontend query configuration (staleTime/refetchInterval) for existing endpoints.",
+    "ref": "#1023"
+  },
+  {
+    "db": "No database change",
+    "reason": "Frontend URL state management for UI navigation consistency.",
+    "ref": "#1024"
+  },
+  {
+    "db": "No database change",
+    "reason": "New server-side export endpoint fetching existing data via current storage methods.",
+    "ref": "#1025"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI addition of bulk print feature using existing printing logic.",
+    "ref": "#1026"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Adding validation check to existing GRN update endpoint.",
+    "ref": "#1027"
+  },
+  {
+    "db": "No database change",
+    "reason": "Frontend UI enhancement showing existing received data.",
+    "ref": "#1028"
+  },
+  {
+    "db": "No database change",
+    "reason": "Logic to derive and filter existing indent fulfilment status.",
+    "ref": "#1029"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI confirmation dialog for existing auto-fix functionality.",
+    "ref": "#1057"
+  },
+  {
+    "db": "No database change",
+    "reason": "Batch operation on existing endpoint.",
+    "ref": "#1058"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI update to link existing data relations.",
+    "ref": "#1086"
+  },
+  {
+    "db": "Stored data change",
+    "reason": "Saving linkage between progress entries and BOQ items.",
+    "ref": "#1093"
+  },
+  {
+    "db": "No database change",
+    "reason": "Frontend export of existing computed data.",
+    "ref": "#1094"
+  },
+  {
+    "db": "No database change",
+    "reason": "Static JS config for UI presets.",
+    "ref": "#1095"
+  },
+  {
+    "db": "Stored data change",
+    "reason": "Persisting new productivity fields for equipment types.",
+    "ref": "#1102"
+  },
+  {
+    "db": "Stored data change",
+    "reason": "Saving boq_item_id on progress entries.",
+    "ref": "#1103"
+  },
+  {
+    "db": "No database change",
+    "reason": "Updating UI for existing schema fields.",
+    "ref": "#1104"
+  },
+  {
+    "db": "No database change",
+    "reason": "Frontend export of existing computed BOM data.",
+    "ref": "#1105"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI warning banner based on existing project settings.",
+    "ref": "#1106"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI breakdown panel for existing computed data.",
+    "ref": "#1111"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Frontend interaction for existing update endpoint.",
+    "ref": "#1112"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI expansion for existing recipe data.",
+    "ref": "#1128"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Adding unit tests for existing logic.",
+    "ref": "#1129"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI display improvement for existing data.",
+    "ref": "#1130"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "New endpoint to trigger existing recipe application logic in bulk.",
+    "ref": "#1131"
+  },
+  {
+    "db": "No database change",
+    "reason": "CSS/UI cleanup.",
+    "ref": "#1146"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI display of existing resource calculations.",
+    "ref": "#1147"
+  },
+  {
+    "db": "No database change",
+    "reason": "Using localStorage to persist UI preferences.",
+    "ref": "#1148"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI prompt for existing data configuration.",
+    "ref": "#1149"
+  },
+  {
+    "db": "No database change",
+    "reason": "Frontend data sorting/display change.",
+    "ref": "#1150"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Unit tests for existing SNL mapper.",
+    "ref": "#1155"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI display of existing mapping data.",
+    "ref": "#1156"
+  },
+  {
+    "db": "Stored data change",
+    "reason": "Backfilling FK data for existing records.",
+    "ref": "#1161"
+  },
+  {
+    "db": "Stored data change",
+    "reason": "Persisting new configuration values.",
+    "ref": "#1162"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI indication of existing conversion factor.",
+    "ref": "#1169"
+  },
+  {
+    "db": "No database change",
+    "reason": "Logic fix for how existing data is derived.",
+    "ref": "#1187"
+  },
+  {
+    "db": "Stored data change",
+    "reason": "Correcting stored equipment quantities in recipes.",
+    "ref": "#1188"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI warning indicator for existing confirmed data.",
+    "ref": "#1221"
+  },
+  {
+    "db": "No database change",
+    "reason": "Logging/UI update to improve identification of existing rows.",
+    "ref": "#1222"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI improvement to surfaced information from existing process.",
+    "ref": "#1223"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adding sticky CSS classes to UI components for existing pages.",
+    "ref": "#1228"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Update to logic in storage.ts to support bar/structure-scoped plan-vs-actual queries.",
+    "ref": "#1236"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Adding automated test coverage for existing DPR entry flow.",
+    "ref": "#1237"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Enforcing immutability on updateSiteMaterialTrip and API endpoint for submitted status.",
+    "ref": "#1262"
+  },
+  {
+    "db": "No database change",
+    "reason": "UI change to display existing attachment gallery on the field screen.",
+    "ref": "#1263"
+  },
+  {
+    "db": "Unclear",
+    "reason": "Placeholder for future phases; specific DB impact depends on phase requirements.",
+    "ref": "#1264"
+  },
+  {
+    "db": "No database change",
+    "reason": "Read-only display of existing API data on the frontend.",
+    "ref": "#1265"
+  },
+  {
+    "db": "No database change",
+    "reason": "Client-side form validation before submission.",
+    "ref": "#1266"
+  },
+  {
+    "db": "No database change",
+    "reason": "Fetching counts from existing APIs for UI display.",
+    "ref": "#1267"
+  },
+  {
+    "db": "No database change",
+    "reason": "Frontend logic to gracefully handle missing BOQ projects.",
+    "ref": "#1268"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "PATCH request to update needsReview field in existing work_program_bars table.",
+    "ref": "#1269"
+  },
+  {
+    "db": "Schema change",
+    "reason": "Potential new categoryOverride column in boqItems table.",
+    "ref": "#1270"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Adding automated tests for existing logic changes.",
+    "ref": "#1271"
+  },
+  {
+    "db": "Write-path change",
+    "reason": "Adding new storage method for optimized counting queries.",
+    "ref": "#1292"
+  },
+  {
+    "db": "No database change",
+    "reason": "Displaying existing rejection history for plant receipts.",
+    "ref": "#1293"
+  },
+  {
+    "db": "Schema change",
+    "reason": "New column sod_override_reason in pending_plant_receipts table.",
+    "ref": "#1294"
+  },
+  {
+    "db": "No database change",
+    "reason": "Polling an API endpoint to display count badges in the UI.",
+    "ref": "#1295"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Adding route-level and UI tests to verify existing logic.",
+    "ref": "#1361"
+  },
+  {
+    "db": "No database change",
+    "reason": "Updating calculation logic in shared/programmeSequencer.ts.",
+    "ref": "#1376"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Adding component tests with mocked responses.",
+    "ref": "#1452"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Automation for existing browser-based regression checks.",
+    "ref": "#1470"
+  },
+  {
+    "db": "No database change",
+    "reason": "Adding informational UI text to explain existing filter logic.",
+    "ref": "#1480"
+  },
+  {
+    "db": "Tests only",
+    "reason": "Repairing broken existing tests in the suite.",
+    "ref": "#1490"
+  }
+]

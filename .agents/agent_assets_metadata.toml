@@ -4511,3 +4511,31 @@ mtime_ms = 1791091581907
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/4cc7a7db-520d-4d51-8bef-f47e5b5e4dfc/2c7d17aa-b23f-4f59-8dd6-3b4862193dc3"
 storage_version_token = "1791091891208720"
 content_type = "application/pdf"
+
+[[outputs]]
+id = "6wPZmYZl5J5chJhCpSvA5"
+uri = "file://.agents/outputs/task-queue-audit/pending-task-inventory.html"
+type = "html"
+title = "Complete task list — all 262 waiting tasks"
+description = "Every title, recorded source, and database impact. Includes the already-active task separately."
+logical_id = "1bf63058-13cd-4375-9081-9f0594e1ca86"
+content_hash = "sha256:b1e4f28382a75bcdf8de9445b286549118c98e35b4b281c47791f1288fc600a3"
+size = 78154
+mtime_ms = 1791092705335
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/1bf63058-13cd-4375-9081-9f0594e1ca86/104796aa-975c-4a34-af51-bff9b8f34722"
+storage_version_token = "1791092716865209"
+content_type = "text/html"
+
+[[outputs]]
+id = "6SCy-1T5l434-wmVSqkcQ"
+uri = "file://.agents/outputs/task-queue-audit/pending-task-inventory.csv"
+type = "table"
+title = "Task inventory — spreadsheet copy"
+description = "Same complete list in CSV format for sorting and selecting which task numbers to keep."
+logical_id = "3f9f117f-c0b5-4100-8b6a-dfab8cdb8541"
+content_hash = "sha256:44cce275647bdf4d142bc7c3f655161fa9dd1d014abf6d83882f40adfbec7c29"
+size = 59899
+mtime_ms = 1791092705631
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/3f9f117f-c0b5-4100-8b6a-dfab8cdb8541/03bb9e29-bd52-4a57-a66d-0f500bd232e6"
+storage_version_token = "1791092718811792"
+content_type = "text/csv"
