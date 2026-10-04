@@ -4623,3 +4623,73 @@ mtime_ms = 1791131155734
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8db624ea-31c1-412b-b19f-78d43b61c8f4/d3aedebe-1924-44f0-8813-3dc633bdeaa5"
 storage_version_token = "1791131158160479"
 content_type = "text/html"
+
+[[outputs]]
+id = "HdQ0FJQvlbjR8y8lf4p4k"
+uri = "file://.agents/outputs/vb-payables-preview/verification-report.html"
+type = "html"
+title = "Payables preview — verification report"
+description = "Counts and full-row checksums, screenshots, tests, evidence boundaries and remaining limitations."
+logical_id = "9de0effd-3d03-4f73-b44e-27397639b29b"
+content_hash = "sha256:aaef668fcb0197cb65131424aa07860491b69960637b243e3667993b84273fe2"
+size = 495253
+mtime_ms = 1791132957606
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/9de0effd-3d03-4f73-b44e-27397639b29b/8b0cd965-31ef-45bf-86d8-7d94dfea7ef4"
+storage_version_token = "1791132962441840"
+content_type = "text/html"
+
+[[outputs]]
+id = "Yf5JJFrLxgSprjjX5jeAg"
+uri = "file://.agents/outputs/vb-payables-preview/live-payables-preview.xlsx"
+type = "table"
+title = "Real development preview — Excel"
+description = "Six sheets; 37 already-billed exclusions. Missing rates remain incomplete."
+logical_id = "6f8284e4-022c-4ed6-8d16-8a415a557995"
+content_hash = "sha256:0e4d33f201a922c99b128a669807bcee73234d86a9134ba9ed1a1944ecfeed8c"
+size = 44698
+mtime_ms = 1791132200447
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/6f8284e4-022c-4ed6-8d16-8a415a557995/0a7e1ad0-62a1-4f2e-b94d-bb5474302dbe"
+storage_version_token = "1791132963827854"
+content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+[[outputs]]
+id = "syFUyhGxRtLGk7J3SZ2-t"
+uri = "file://.agents/outputs/vb-payables-preview/live-payables-preview.pdf"
+type = "pdf"
+title = "Real development preview — PDF"
+description = "Development data; current PDF uses three pages, not the requested strict one-page layout."
+logical_id = "cd33fc18-12e6-41ad-be7d-31f77c650df0"
+content_hash = "sha256:cabb4686239d47cdbfb94d5f9d9c39895448dbf1ec0c57580785015e8079fccd"
+size = 90394
+mtime_ms = 1791132200491
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/cd33fc18-12e6-41ad-be7d-31f77c650df0/5d7d9e5e-d45c-48e1-bd65-67db61a7bedd"
+storage_version_token = "1791132965619485"
+content_type = "application/pdf"
+
+[[outputs]]
+id = "nVbE3aGvYSOR1FYz07XgZ"
+uri = "file://.agents/outputs/vb-payables-preview/three-category-example.xlsx"
+type = "table"
+title = "Hire + material + labour example — Excel"
+description = "Clearly labelled synthetic in-memory example. No business records inserted."
+logical_id = "b71a175a-e86e-4355-849c-0e7e051426e7"
+content_hash = "sha256:2d80e0a1136ebac087e629bb95c622538d2adca81b9e4f9249f58b4ff7116c05"
+size = 53956
+mtime_ms = 1791132772631
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b71a175a-e86e-4355-849c-0e7e051426e7/2ec0d00d-099b-47ad-ac73-fa96e439bc19"
+storage_version_token = "1791132968181363"
+content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+[[outputs]]
+id = "RBuhTsqa5gETIB1HM7TtX"
+uri = "file://.agents/outputs/vb-payables-preview/three-category-example.pdf"
+type = "pdf"
+title = "Hire + material + labour example — PDF"
+description = "Synthetic example showing unallocated hire and last-bill GST suggestions; not live payable data."
+logical_id = "35415852-65d8-4001-8610-39936dff4270"
+content_hash = "sha256:eeb7c0872acc959e2e0dfbf0853a9bf16799a1a1f09b85a4ba437de93c39d2bc"
+size = 78969
+mtime_ms = 1791132772683
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/35415852-65d8-4001-8610-39936dff4270/e6a8066b-9c75-4338-a462-aa3a204fd76a"
+storage_version_token = "1791132969866371"
+content_type = "application/pdf"

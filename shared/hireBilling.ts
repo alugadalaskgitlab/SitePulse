@@ -538,6 +538,27 @@ export interface HireAuthoritativeDieselPeriod {
   reliable: boolean;
   dailyRows?: readonly unknown[];
 }
+/** Canonical save/preview period tank reconciliation; no database operations. */
+export function authoritativeHireDieselPeriod(
+  activities: readonly HireActivity[],
+  equipment: { hireStartDate?: string | null; hireEndDate?: string | null; consumptionNorm?: number | null; hireDieselResponsibility?: string | null },
+  periodFrom: string, periodTo: string,
+): HireAuthoritativeDieselPeriod {
+  const activeFrom = equipment.hireStartDate && equipment.hireStartDate > periodFrom ? equipment.hireStartDate : periodFrom;
+  const activeTo = equipment.hireEndDate && equipment.hireEndDate < periodTo ? equipment.hireEndDate : periodTo;
+  const periodActivities = normalizeHireActivities(activities).filter(row => row.businessDate >= activeFrom && row.businessDate <= activeTo);
+  const runtime = periodActivities.reduce((sum, row) => sum + Math.max(0, Number(row.hoursOrKmRun) || 0), 0);
+  const expectedDiesel = Number.isFinite(Number(equipment.consumptionNorm)) ? Math.round(runtime * Number(equipment.consumptionNorm) * 100) / 100 : null;
+  const stockRows = periodActivities.filter(row => String(row.dieselSource || "").toLowerCase() === "plant_stock")
+    .sort((a, b) => a.businessDate.localeCompare(b.businessDate) || String(a.occurredAt || "").localeCompare(String(b.occurredAt || "")));
+  const opening = stockRows.length ? Number(stockRows[0].openingDiesel) : NaN;
+  const closing = stockRows.length ? Number(stockRows[stockRows.length - 1].closingDiesel) : NaN;
+  const issuedKnown = stockRows.length > 0 && stockRows.every(row => Number.isFinite(Number(row.actualDiesel)));
+  const actualDiesel = Number.isFinite(opening) && opening >= 0 && Number.isFinite(closing) && closing >= 0 && issuedKnown
+    ? Math.round(Math.max(0, opening + stockRows.reduce((sum, row) => sum + Number(row.actualDiesel || 0), 0) - closing) * 100) / 100 : null;
+  const reliable = String(equipment.hireDieselResponsibility || "").toLowerCase() === "hlc" && actualDiesel != null && expectedDiesel != null;
+  return { actualDiesel, expectedDiesel, difference: reliable ? Math.round((actualDiesel! - expectedDiesel!) * 100) / 100 : null, reliable, dailyRows: [] };
+}
 export interface HireDailyDieselPricing {
   date: string;
   actualDiesel: number;

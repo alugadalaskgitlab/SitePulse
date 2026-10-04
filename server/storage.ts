@@ -4,7 +4,7 @@ import { insertLabourWithWorkers, readWorkerNames } from "./labourWorkers";
 import { assertSectionTokens, DprSectionConflict, findSectionDrafts, lockDprIdentity, readSectionAggregate, readDraftStoppages, stageDraftStoppages, reconcileRows, reconcileDraftEquipmentAssignments, sameContext, sectionSnapshot } from "./dprSections";
 import { normalizeDprSectionContext } from "../shared/dprSections";
 import { formatPurchaseIndentNumber, reconcileDeliveryEvidence, validateDeliveryDestination, isBulkPiDeliveryItem, type DeliveryEvidence } from "../shared/purchaseIndentDelivery";
-import { calculateEquipmentHireFinancials, calculateHireGroup, getHireReviewGaps, isEquipmentHireBillEligible, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
+import { authoritativeHireDieselPeriod, calculateEquipmentHireFinancials, calculateHireGroup, getHireReviewGaps, isEquipmentHireBillEligible, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
 import { hasCumulativeVendorPayment } from "../shared/vendorBillPayment";
 import { normalizeDprSiteName } from "../shared/dprBoqSelection";
 import { hasDprBoqReferences } from "../shared/dprBoqReferences";
@@ -17499,31 +17499,7 @@ export class DatabaseStorage implements IStorage {
       // HLC fuel is reconciled as one period tank movement, never by summing
       // per-row consumption. Only Plant Stock issues belong to HLC's stock;
       // contractor/direct-purchase fuel cannot inflate an HLC recovery.
-      const activeFrom = equipment.hireStartDate && equipment.hireStartDate > group.periodFrom ? equipment.hireStartDate : group.periodFrom;
-      const activeTo = equipment.hireEndDate && equipment.hireEndDate < group.periodTo ? equipment.hireEndDate : group.periodTo;
-      const periodActivities = normalizeHireActivities(activities as any).filter((row: any) =>
-        row.businessDate >= activeFrom && row.businessDate <= activeTo);
-      const runtime = periodActivities.reduce((sum: number, row: any) => sum + Math.max(0, Number(row.hoursOrKmRun) || 0), 0);
-      const expectedDiesel = Number.isFinite(Number(equipment.consumptionNorm))
-        ? Math.round(runtime * Number(equipment.consumptionNorm) * 100) / 100 : null;
-      const stockRows = periodActivities.filter((row: any) =>
-        String(row.dieselSource || "").toLowerCase() === "plant_stock")
-        .sort((a: any, b: any) => a.businessDate.localeCompare(b.businessDate) ||
-          String(a.occurredAt || "").localeCompare(String(b.occurredAt || "")));
-      const opening = stockRows.length ? Number(stockRows[0].openingDiesel) : NaN;
-      const closing = stockRows.length ? Number(stockRows[stockRows.length - 1].closingDiesel) : NaN;
-      const issuedKnown = stockRows.length > 0 && stockRows.every((row: any) => Number.isFinite(Number(row.actualDiesel)));
-      const actualDiesel = Number.isFinite(opening) && opening >= 0 && Number.isFinite(closing) && closing >= 0 && issuedKnown
-        ? Math.round(Math.max(0, opening + stockRows.reduce((sum: number, row: any) => sum + Number(row.actualDiesel || 0), 0) - closing) * 100) / 100
-        : null;
-      const reliable = String(equipment.hireDieselResponsibility || "").toLowerCase() === "hlc" &&
-        actualDiesel != null && expectedDiesel != null;
-      const authoritativeDieselPeriod = {
-        actualDiesel, expectedDiesel,
-        difference: reliable ? Math.round((actualDiesel! - expectedDiesel!) * 100) / 100 : null,
-        reliable,
-        dailyRows: [],
-      };
+      const authoritativeDieselPeriod = authoritativeHireDieselPeriod(activities as any, equipment, group.periodFrom, group.periodTo);
       const calc = calculateHireGroup({ terms, periodFrom: group.periodFrom, periodTo: group.periodTo, activities, maintenance,
         dailyDecisions: group.dailyDecisions, tripDecisions: group.tripDecisions, exceptionDecisions: decisions,
         quantityOverride: group.quantityOverride, grossAmountOverride: group.grossAmountOverride,

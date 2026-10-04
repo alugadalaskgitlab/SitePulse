@@ -42,6 +42,7 @@ import { validateFulfilment } from "@shared/requirementFulfilment";
 import { validateOutcomeInput, resolveCarryTargetDate, buildCarryForwardPlan, buildOutcomeRecord, computeExecutionComparison, businessToday } from "@shared/planOutcome";
 import { syncArrangementBarAllocations } from "./arrangementAllocationSync";
 import { AUTO_SYNC_STATUSES } from "@shared/arrangementAutoAllocation";
+import { buildVendorPayablesPreview } from "./vendorPayablesPreview";
 import {
   classifyBarExecutionState,
   deriveItemStatus,
@@ -11637,6 +11638,34 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Error discovering vendors:", err);
       res.status(500).json({ message: "Failed to discover vendors" });
+    }
+  });
+
+  // Read-only forecast. Register before the parameterized bill lookup.
+  app.get("/api/vendor-bills/payables-preview", async (req, res) => {
+    try {
+      if (!assertReportExport(req, res, "vendor_bills", "vendor_bills_view")) return;
+      if (req.authUser?.isFieldEngineer) return res.status(403).json({ error: "forbidden", message: "Payables preview is not available to field engineers." });
+      const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
+        const parsed = new Date(`${value}T00:00:00Z`);
+        return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+      }, "A valid calendar date is required");
+      const rates = req.query.gstRates === undefined ? undefined : JSON.parse(String(req.query.gstRates));
+      const input = z.object({
+        vendorName: z.string().trim().min(1).max(200), periodFrom: date, periodTo: date,
+        gstRates: z.object({ equipment: z.number().min(0).max(100).nullable().optional(),
+          material: z.number().min(0).max(100).nullable().optional(), transport: z.number().min(0).max(100).nullable().optional(),
+          labour: z.number().min(0).max(100).nullable().optional(), other: z.number().min(0).max(100).nullable().optional() }).strict().optional(),
+      }).refine(value => value.periodFrom <= value.periodTo, "periodFrom must be on or before periodTo")
+        .parse({ vendorName: req.query.vendorName, periodFrom: req.query.periodFrom, periodTo: req.query.periodTo, gstRates: rates });
+      const site = await resolveVendorBillSite(req, res, req.query.siteId);
+      if (!site) return;
+      const permittedSiteNames = await getPermittedSiteNames(req);
+      res.setHeader("Cache-Control", "no-store");
+      res.json(await buildVendorPayablesPreview(storage, input, { ...site, permittedSiteNames }));
+    } catch (err) {
+      const badRequest = err instanceof z.ZodError || err instanceof SyntaxError;
+      res.status(badRequest ? 400 : 500).json({ message: badRequest ? "Invalid preview vendor, period, site or GST inputs." : "Unable to build payables preview. Retry without saving a bill." });
     }
   });
 

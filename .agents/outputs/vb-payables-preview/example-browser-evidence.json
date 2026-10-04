@@ -1,0 +1,14 @@
+{
+  "mode": "Browser-only auth/API fixture with real read-only service output; not a signed-in session",
+  "panelRendered": true,
+  "deniedPanelAbsent": true,
+  "engineerPanelAbsent": true,
+  "previewRequests": 3,
+  "exportTexts": [
+    "Payables preview (not saved)Plan vendor payables without creating a bill or changing records.",
+    "Generate preview",
+    "Export Excel",
+    "Export PDF"
+  ],
+  "errors": []
+}

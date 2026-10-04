@@ -194,6 +194,17 @@ function dailyValues(
   ];
 }
 
+/** Same columns, values and widths as exportEquipmentHireBill's hire sheet. */
+export function equipmentHireActivitySheetRows(
+  rows: BillingDailyRow[], dieselResponsibility?: string | null, consumptionNorm?: number | null,
+  meterType?: string | null,
+) {
+  const headers = dailyHeaders(dieselResponsibility);
+  const unit = calendarConsumptionUnit(rows, meterType);
+  return { headers, values: rows.map(row => dailyValues(row, dieselResponsibility, consumptionNorm, unit)),
+    columns: headers.map((header, index) => ({ wch: index === headers.length - 1 ? 52 : Math.max(14, header.length + 2) })) };
+}
+
 type DailyTotalsRow = BillingDailyRow & {
   /** Kept out of BillingDailyRow so the persisted/live row contract stays unchanged. */
   trips?: number | null;
@@ -351,12 +362,13 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
     const workbook = XLSX.utils.book_new();
     const summarySheet = XLSX.utils.aoa_to_sheet([["Equipment Hire Bill Summary"], ...summary]);
     summarySheet["!cols"] = [{ wch: 28 }, { wch: 60 }];
-    const headers = dailyHeaders(data.dieselResponsibility);
+    const activity = equipmentHireActivitySheetRows(rows, data.dieselResponsibility, data.consumptionNorm, data.meterType);
+    const headers = activity.headers;
     const activitySheet = XLSX.utils.aoa_to_sheet([
       ...(String(data.dieselResponsibility).toLowerCase() === "vendor" ? [["Fuel / Diesel: Contractor Scope"]] : []),
-      headers, ...rows.map(row => dailyValues(row, data.dieselResponsibility, data.consumptionNorm, consumptionUnit)),
+      headers, ...activity.values,
     ]);
-    activitySheet["!cols"] = headers.map((header, index) => ({ wch: index === headers.length - 1 ? 52 : Math.max(14, header.length + 2) }));
+    activitySheet["!cols"] = activity.columns;
     XLSX.utils.book_append_sheet(workbook, summarySheet, "Bill Summary");
     XLSX.utils.book_append_sheet(workbook, activitySheet, "Daily Activity");
     XLSX.writeFile(workbook, `${safeName}.xlsx`);

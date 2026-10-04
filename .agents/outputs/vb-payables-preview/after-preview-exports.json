@@ -1,0 +1,38 @@
+{
+  "environment": "development",
+  "capturedAt": "2026-10-04T16:43:20.666Z",
+  "tables": {
+    "vendor_bills": {
+      "count": 45,
+      "fingerprint": "3e6f2c85124877f14e91341af64b7474"
+    },
+    "hire_statements": {
+      "count": 0,
+      "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "equipment_usage": {
+      "count": 73,
+      "fingerprint": "b58293594062828392451775f671a8cf"
+    },
+    "site_material_trips": {
+      "count": 6,
+      "fingerprint": "c3288785b04e1dd0e597f5712e93699f"
+    },
+    "store_issues": {
+      "count": 4,
+      "fingerprint": "401fbbb2a8e28f5e23a1daa18950fa31"
+    },
+    "vendor_bill_items": {
+      "count": 172,
+      "fingerprint": "481575bdce7db96828a6fd2ace92afcf"
+    },
+    "vendor_rate_cards": {
+      "count": 11,
+      "fingerprint": "de1c816430653dd8f2842b1ca8696857"
+    },
+    "hire_statement_exceptions": {
+      "count": 0,
+      "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+    }
+  }
+}

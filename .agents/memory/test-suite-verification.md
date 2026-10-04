@@ -8,3 +8,9 @@ Compare test-file inventories as well as pass/fail/skip totals. The historical "
 **Why:** A permission-gating verification appeared to lose passing tests: it omitted an entire frontend test directory, while concurrent builds and memory-heavy route/PGlite fixtures also produced setup failures reported as skipped tests.
 
 **How to apply:** Preserve the normal suite's frontend and server discovery together. Save per-file JSON evidence. Do not run a production build concurrently with the full suite. Use bounded test workers, and distinguish explicit opt-in skips from setup failures; neither missing files nor failed hooks prove a regression was fixed.
+
+Browser-only API fixtures must bypass service workers as well as disabling cache.
+
+**Why:** A registered worker bypassed CDP request interception and sent fixture-authenticated browser requests to the real server, producing 401s and misleading login redirects.
+
+**How to apply:** Set CDP Network.setBypassServiceWorker before navigating fixture-based browser tests; do not mistake those tests for an authenticated HTTP authorization check.

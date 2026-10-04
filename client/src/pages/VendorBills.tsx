@@ -23,7 +23,7 @@ import { format } from "date-fns";
 import type { VendorBillWithItems, VendorAlias, Site } from "@shared/schema";
 import { siteMatchesPermitted, vendorBillItemMatchesSite } from "@shared/siteName";
 import { aggregateGstBreakdown } from "@shared/vendor-bill-gst";
-import { defaultConvertedQuantity, isDifferentBillingUnit, matchingRateCardsForGroup, normalizeRateCardPart, selectAutoMaterialRateConversion, vendorBillAutoSourceIdentity, type RateCardUnitOption, type VendorRateCardRecord } from "@/lib/vendorBillRateSelection";
+import { defaultConvertedQuantity, isDifferentBillingUnit, matchingRateCardsForGroup, normalizeRateCardPart, selectAutoMaterialRateConversion, type RateCardUnitOption, type VendorRateCardRecord } from "@/lib/vendorBillRateSelection";
 import { autoBillItemIdentity, availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateHireGroup, duplicateBillItemPayload, mergeOtherBillItems, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, uniqueDuplicateBillMatches, type DuplicateBillItemMatch, type HireActivity, type HireBillingBasis } from "@shared/hireBilling";
 import type { EquipmentPerformanceReport } from "@shared/equipmentPerformance";
 import { formatEquipmentOptionLabel } from "@shared/equipmentLabel";
@@ -41,6 +41,8 @@ import HireActivityBreakdownCalendar from "@/components/vendor-bills/HireActivit
 import { BillDateGroupControls, BillDateGroupRows } from "@/components/vendor-bills/BillDateGroups";
 import { isTrulyBlankManualBillRow } from "@/lib/vendorBillBlankRows";
 import RateCards from "@/pages/RateCards";
+import PayablesPreviewPanel from "@/components/vendor-bills/PayablesPreviewPanel";
+import { mapAutoBillItem, calcCandidateAmount, groupRateItems, stripSourceSuffix, canonicalMachineName, canonicalTransportName, canonicalMatName, deriveLabourKey, type RateGroup as SharedRateGroup } from "@shared/vendorBillCandidates";
 
 const formatDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return "-";
@@ -166,33 +168,6 @@ const categoryOrder: Record<string, number> = { equipment: 0, material: 1, trans
 const isAutoLineSource = (source: string) => source === "auto" || source.startsWith("auto:");
 const isGeneratedEvidenceLine = (source: string) =>
   isAutoLineSource(source) || ["hire_group", "hire_statement"].includes(source);
-
-function mapAutoBillItem(item: any): LineItem {
-  const sourceType = item.sourceType ?? null;
-  const source = vendorBillAutoSourceIdentity(sourceType, item.sourceId, item.source);
-  return {
-    date: item.date || "",
-    category: item.category || "other",
-    description: item.description || "",
-    qty: item.qty || 0,
-    unit: item.unit || "HRS",
-    rate: item.rate || 0,
-    amount: (item.qty || 0) * (item.rate || 0),
-    source,
-    sourceType,
-    sourceId: item.sourceId ?? null,
-    equipmentId: item.equipmentId || null,
-    leadDistance: item.leadDistance ?? null,
-    siteName: item.siteName || null,
-    suppliedTo: item.suppliedTo ?? null,
-    transporter: item.transporter ?? null,
-    vehicleNumber: item.vehicleNumber ?? null,
-    receiptNumber: item.receiptNumber ?? null,
-    vendorName: item.vendorName ?? null,
-    physicalQuantity: Number(item.qty) || 0,
-    physicalUnit: item.unit || "HRS",
-  };
-}
 
 /**
  * Keep the banner preflight and the authoritative post-conversion check on
@@ -338,73 +313,7 @@ function getSiteBadgeClass(type: "site" | "plant" | "site-unlinked"): string {
   }
 }
 
-function stripSourceSuffix(desc: string): string {
-  return desc.replace(/\s*\(SITE-UNLINKED\)\s*/gi, " ").replace(/\s*\(SITE TRIP MATERIAL\)\s*/gi, " ").replace(/\s*\(SITE TRIP\)\s*/gi, " ").replace(/\s*\(SITE\)\s*/gi, " ").replace(/\s*\(PLANT\)\s*/gi, " ").trim();
-}
-
-function canonicalizeMachineType(name: string): string {
-  return name
-    .replace(/\s+PLANT\s+INTERCARTING/gi, '')
-    .replace(/\s+INTERCARTING/gi, '')
-    .replace(/\s+PLANT$/i, '')
-    .replace(/-PLANT$/i, '')
-    .replace(/-SITE$/i, '')
-    .replace(/-\d+(\s+.*)?$/i, '')
-    .replace(/-[A-Z][A-Z\s]+$/i, '')
-    .trim();
-}
-
-function canonicalMachineName(description: string): string {
-  const rawName = description.split(/\s*-\s*/)[0]?.trim() || "EQUIPMENT";
-  const stripped = stripSourceSuffix(rawName);
-  return canonicalizeMachineType(stripped).toUpperCase().replace(/\s+/g, "_");
-}
-
-function canonicalTransportName(description: string): string {
-  const upper = stripSourceSuffix(description.trim().toUpperCase());
-  const viaMatch = upper.match(/\bVIA\s+(.+)/);
-  if (viaMatch) {
-    return canonicalizeMachineType(viaMatch[1].trim()).toUpperCase().replace(/\s+/g, "_");
-  }
-  const mobilMatch = upper.match(/^MOBILIZATION:\s*(.+?)(?:\s*\(.*)?$/);
-  if (mobilMatch) {
-    return canonicalizeMachineType(mobilMatch[1].trim()).toUpperCase().replace(/\s+/g, "_");
-  }
-  const stripped = upper
-    .replace(/\s*-\s*(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION|TRANSPORT).*$/i, "")
-    .trim();
-  return canonicalizeMachineType(stripped).toUpperCase().replace(/\s+/g, "_");
-}
-
-function canonicalMatName(description: string): string {
-  return stripSourceSuffix(description.trim().toUpperCase()).replace(/\s+/g, "_");
-}
-
-function deriveLabourLabel(description: string): string {
-  return description.trim().toUpperCase().split(" - ")[0].trim();
-}
-
-function deriveLabourKey(description: string): string {
-  const head = deriveLabourLabel(description);
-  const parts = head.split(/\s+/).filter(Boolean);
-  if (parts[0] !== "LABOUR" || parts.length < 2) {
-    return head.replace(/\s+/g, "_");
-  }
-  const category = parts[1];
-  const gender = parts[2];
-  return gender ? `LAB_${category}_${gender}` : `LAB_${category}`;
-}
-
-type RateGroup<T extends Pick<LineItem, "category" | "description" | "unit" | "equipmentId"> = LineItem> = {
-  key: string;
-  equipmentId: number | null;
-  groupName: string;
-  entryType: string;
-  category: string;
-  unit: string;
-  count: number;
-  items: T[];
-};
+type RateGroup<T extends Pick<LineItem, "category" | "description" | "unit" | "equipmentId"> = LineItem> = SharedRateGroup<T>;
 
 type BulkRateSelection = {
   rate: number;
@@ -412,56 +321,6 @@ type BulkRateSelection = {
   targetUnit: string;
   unitOptions: RateCardUnitOption[];
 };
-
-/**
- * One canonical grouping seam for both Set Rates and the pre-pull activity
- * chooser. Keep rate selection and pull selection on exactly the same
- * equipment/material/transport/labour identity.
- */
-function groupRateItems<T extends Pick<LineItem, "category" | "description" | "unit" | "equipmentId">>(items: readonly T[]): RateGroup<T>[] {
-  const groups = new Map<string, RateGroup<T>>();
-  for (const item of items) {
-    let key: string;
-    let group: Omit<RateGroup<T>, "key" | "count" | "items">;
-    if (item.category === "transport") {
-      const canonical = canonicalTransportName(item.description);
-      const unit = (item.unit || "TRIP").toUpperCase();
-      key = `transport_${canonical}_${unit}`;
-      group = { equipmentId: null, groupName: canonical.replace(/_/g, " "), entryType: unit, category: "transport", unit };
-    } else if (item.equipmentId) {
-      const machineName = canonicalMachineName(item.description);
-      const entryTypeMatch = item.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/);
-      const entryType = entryTypeMatch ? entryTypeMatch[1] : "OTHER";
-      const unit = (item.unit || "HRS").toUpperCase();
-      // Preserve the established Set Rates identity: equipment labels may
-      // differ by entry type, but the same canonical machine and unit share
-      // one rate group.
-      key = `eq_${machineName}_${unit}`;
-      group = { equipmentId: item.equipmentId, groupName: machineName.replace(/_/g, " "), entryType, category: item.category, unit };
-    } else if (item.category === "labour" && item.description.trim()) {
-      const labourKey = deriveLabourKey(item.description);
-      const labourLabel = deriveLabourLabel(item.description);
-      const unit = (item.unit || "HEAD-DAY").toUpperCase();
-      key = `lab_${labourKey}_${unit}`;
-      group = { equipmentId: null, groupName: labourLabel, entryType: item.unit || "HEAD-DAY", category: "labour", unit };
-    } else if (item.description.trim()) {
-      const cleanDescription = stripSourceSuffix(item.description.trim().toUpperCase());
-      const unit = (item.unit || "NOS").toUpperCase();
-      key = `desc_${item.category}_${cleanDescription.replace(/\s+/g, "_")}_${unit}`;
-      group = { equipmentId: null, groupName: cleanDescription, entryType: item.unit || "", category: item.category, unit };
-    } else {
-      continue;
-    }
-    const existing = groups.get(key);
-    if (existing) {
-      existing.count++;
-      existing.items.push(item);
-    } else {
-      groups.set(key, { key, ...group, count: 1, items: [item] });
-    }
-  }
-  return [...groups.values()];
-}
 
 const STATUS_ORDER = ["draft", "verified", "approved", "paid"] as const;
 
@@ -680,7 +539,7 @@ export default function VendorBills() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "stock" });
-  const { sectionCan, sectionVisible, isAdmin } = useAuth();
+  const { sectionCan, sectionVisible, isAdmin, user } = useAuth();
   const { companyName, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("vendor_bills", "create") || sectionCan("vendor_bills_raise", "create");
   const canEdit = sectionCan("vendor_bills", "edit") || sectionCan("vendor_bills_verify", "edit") || sectionCan("vendor_bills_approve", "edit");
@@ -1528,12 +1387,7 @@ export default function VendorBills() {
     [...items].sort((a, b) => b.idx - a.idx).forEach(({ idx }) => removeLineItem(idx));
   };
 
-  const calcAmount = (item: LineItem) => {
-    if (item.category === "transport" && item.leadDistance && item.leadDistance > 0) {
-      return item.leadDistance * 2 * (item.rate || 0);
-    }
-    return (item.qty || 0) * (item.rate || 0);
-  };
+  const calcAmount = calcCandidateAmount;
 
   const hireEquipmentFor = (id: number) => hireEquipment.find((e: any) => Number(e.id) === id);
   const activityForGroup = (group: HireGroup) => normalizedHireActivities.filter((a: any) =>
@@ -4861,6 +4715,7 @@ export default function VendorBills() {
       </div>
 
       {/* Management Report context banner */}
+      {canExport && !user?.isFieldEngineer && <PayablesPreviewPanel vendors={vendorNames} sites={sites} />}
       {mgmtReportSite && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300" data-testid="banner-management-report">
           <BarChart2 className="w-4 h-4 flex-shrink-0 text-amber-500" />

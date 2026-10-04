@@ -1,0 +1,192 @@
+{
+  "environment": "development",
+  "writeProtection": "PostgreSQL default_transaction_read_only=on on all service connections",
+  "businessWritesAttempted": false,
+  "selectedVendor": "NARASIMHULU",
+  "generatedAt": "2026-10-04T16:43:20.136Z",
+  "sheets": [
+    "Summary",
+    "Equipment hire",
+    "Materials",
+    "Transport",
+    "Labour",
+    "Other"
+  ],
+  "pdfPages": 3,
+  "vendors": [
+    {
+      "vendorName": "VISWANATH",
+      "categories": [],
+      "excluded": 0,
+      "items": 0,
+      "hireGroups": 0
+    },
+    {
+      "vendorName": "MAHIPAL",
+      "categories": [],
+      "excluded": 0,
+      "items": 0,
+      "hireGroups": 0
+    },
+    {
+      "vendorName": "BALARAJU SANGAPUR",
+      "categories": [],
+      "excluded": 0,
+      "items": 0,
+      "hireGroups": 0
+    },
+    {
+      "vendorName": "MOHAN REDDY PAVER",
+      "categories": [],
+      "excluded": 0,
+      "items": 0,
+      "hireGroups": 0
+    },
+    {
+      "vendorName": "NARASIMHULU",
+      "categories": [
+        "equipment",
+        "material",
+        "transport"
+      ],
+      "excluded": 37,
+      "items": 25,
+      "hireGroups": 0
+    },
+    {
+      "vendorName": "MALLESH KOHIR",
+      "categories": [],
+      "excluded": 0,
+      "items": 0,
+      "hireGroups": 0
+    },
+    {
+      "vendorName": "NARASIMHULU JCB PLANNT",
+      "categories": [],
+      "excluded": 0,
+      "items": 0,
+      "hireGroups": 0
+    },
+    {
+      "vendorName": "SAMSON DCM TRUCK",
+      "categories": [],
+      "excluded": 0,
+      "items": 0,
+      "hireGroups": 0
+    },
+    {
+      "vendorName": "RAMESH ROLLER OPE",
+      "categories": [],
+      "excluded": 0,
+      "items": 0,
+      "hireGroups": 0
+    },
+    {
+      "vendorName": "SURESH TIPPER",
+      "categories": [],
+      "excluded": 0,
+      "items": 0,
+      "hireGroups": 0
+    },
+    {
+      "vendorName": "SAILU NARAYAKHED",
+      "categories": [],
+      "excluded": 0,
+      "items": 0,
+      "hireGroups": 0
+    },
+    {
+      "vendorName": "NARESH SARPANCH SINGITHAM",
+      "categories": [],
+      "excluded": 0,
+      "items": 0,
+      "hireGroups": 0
+    },
+    {
+      "vendorName": "NARASIMHULU JCB PLANT",
+      "categories": [],
+      "excluded": 0,
+      "items": 0,
+      "hireGroups": 0
+    },
+    {
+      "vendorName": "BALARAJU",
+      "categories": [
+        "labour"
+      ],
+      "excluded": 0,
+      "items": 2,
+      "hireGroups": 0
+    },
+    {
+      "vendorName": "BAKKANNA",
+      "categories": [],
+      "excluded": 0,
+      "items": 0,
+      "hireGroups": 0
+    },
+    {
+      "vendorName": "PRABHU PATEL",
+      "categories": [],
+      "excluded": 0,
+      "items": 0,
+      "hireGroups": 0
+    },
+    {
+      "vendorName": "SURESH",
+      "categories": [
+        "equipment"
+      ],
+      "excluded": 0,
+      "items": 2,
+      "hireGroups": 0
+    },
+    {
+      "vendorName": "MOHAN REDDY",
+      "categories": [
+        "equipment"
+      ],
+      "excluded": 8,
+      "items": 1,
+      "hireGroups": 0
+    },
+    {
+      "vendorName": "SANGANNA",
+      "categories": [
+        "equipment",
+        "material",
+        "transport"
+      ],
+      "excluded": 8,
+      "items": 5,
+      "hireGroups": 0
+    },
+    {
+      "vendorName": "TEST TRANSPORT VENDOR2",
+      "categories": [],
+      "excluded": 0,
+      "items": 0,
+      "hireGroups": 0
+    },
+    {
+      "vendorName": "NARSIMULU",
+      "categories": [
+        "equipment",
+        "material",
+        "transport"
+      ],
+      "excluded": 37,
+      "items": 25,
+      "hireGroups": 0
+    },
+    {
+      "vendorName": "RAJU",
+      "categories": [
+        "labour"
+      ],
+      "excluded": 2,
+      "items": 3,
+      "hireGroups": 0
+    }
+  ]
+}
