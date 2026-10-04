@@ -4362,14 +4362,14 @@ content_type = "text/html"
 id = "a6vJR8tDjjSQzXh7Ccx_J"
 uri = "file://.agents/outputs/dpr-page-01/J-main.pdf"
 type = "pdf"
-title = "DPR management report — verified one-page A4 PDF"
-description = "Generated from the real signed-in development application using isolated test records."
+title = "DPR-PAGE-01 — generated A4 PDF"
+description = "Actual saved PDF from the original management-page verification; predates the tile follow-up."
 logical_id = "94239f27-cc49-46cb-bf04-e657133e13e2"
 content_hash = "sha256:2ecda4f39c6f46ebc300757b1e6f4f3f1d1183d97d9eaf2cf2c2add65ec6d2da"
 size = 213651
 mtime_ms = 1791080453112
-storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/94239f27-cc49-46cb-bf04-e657133e13e2/84fef63c-780c-40ac-9e24-a385f6db880e"
-storage_version_token = "1791080840019016"
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/94239f27-cc49-46cb-bf04-e657133e13e2/ee9d1f7d-caf1-4708-8282-8d982387cfe9"
+storage_version_token = "1791085960241750"
 content_type = "application/pdf"
 
 [[outputs]]
@@ -4385,3 +4385,101 @@ mtime_ms = 1791085520008
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/3803ac1d-cb0b-4356-8fdd-ce73fd261d80/3f0aa7a6-16a2-4218-b0e1-52787eaee9ab"
 storage_version_token = "1791085530848516"
 content_type = "text/html"
+
+[[outputs]]
+id = "QfhY3K9c4NrX_fsc5p1IE"
+uri = "file://.agents/outputs/dpr-page-01/A-main-desktop.png"
+type = "image"
+title = "DPR-PAGE-01 — signed-in desktop"
+description = "Original management-page verification with three machines, work, labour and receipts."
+logical_id = "1dcdeb7e-5059-4417-a013-0a0fd713ca17"
+content_hash = "sha256:5b1da3b74bd355d9e1794ad0ab2a0c93749a594c26a1d5e6a1286698ca9e96ab"
+size = 199029
+mtime_ms = 1791080452308
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/1dcdeb7e-5059-4417-a013-0a0fd713ca17/29c8b572-6301-4d16-b7f4-044abd06af38"
+storage_version_token = "1791085947298709"
+content_type = "image/png"
+
+[[outputs]]
+id = "NJxgrHtoEuWjU37Y3Zcfu"
+uri = "file://.agents/outputs/dpr-page-01/A-main-phone.png"
+type = "image"
+title = "DPR-PAGE-01 — signed-in phone"
+description = "Original management-page phone capture."
+logical_id = "20332bcd-75bf-4c88-90c3-5b34b5404597"
+content_hash = "sha256:94cd2bc81470cbdc6dbdae203ea28867fd012a7fb2b03753692e3a5ed958f2d2"
+size = 177518
+mtime_ms = 1791080464100
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/20332bcd-75bf-4c88-90c3-5b34b5404597/95adde2c-936f-407f-9199-d13682ab697e"
+storage_version_token = "1791085949690332"
+content_type = "image/png"
+
+[[outputs]]
+id = "7Rp6_0suYnadnoNv7uY8_"
+uri = "file://.agents/outputs/dpr-summary-fix/B-E-full-page.png"
+type = "image"
+title = "Tile fix — desktop: three activities and two materials"
+description = "Signed-in development DPR: WMM 56.25 Cum, GSB 120 Cum, Clearing 0.5 Ha; WMM 141.03 MT / 5 trips and Soil 60 MT / 3 trips."
+logical_id = "ea4e0f08-6def-4ec7-88b0-21a92cd16c30"
+content_hash = "sha256:452aa3d2bac411ddd08475192cc0f56af4323357ddc5b5ce0dbe8a3e05bec7f1"
+size = 161525
+mtime_ms = 1791085208727
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/ea4e0f08-6def-4ec7-88b0-21a92cd16c30/21726429-b4a1-46d5-9188-5d29e284b3cf"
+storage_version_token = "1791085951931892"
+content_type = "image/png"
+
+[[outputs]]
+id = "V8__sjzZdlynOq-LH3lP_"
+uri = "file://.agents/outputs/dpr-summary-fix/G-phone-full-page.png"
+type = "image"
+title = "Tile fix — phone: same DPR at 390px"
+description = "Full signed-in phone capture of the same three activities and two materials."
+logical_id = "31cb330e-d05b-400d-af62-c1319b6b5d3a"
+content_hash = "sha256:9245c592aad1e78ee5491b773092446cb30fce185dcade00193d9fb97bbfd742"
+size = 134095
+mtime_ms = 1791085239743
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/31cb330e-d05b-400d-af62-c1319b6b5d3a/6f5e6e31-aa10-4b2e-b344-c407d64e89db"
+storage_version_token = "1791085954304040"
+content_type = "image/png"
+
+[[outputs]]
+id = "9BnxfeQMAph1LGBfwYvt_"
+uri = "file://.agents/outputs/dpr-summary-fix/B-E-three-activities-two-materials-desktop.png"
+type = "image"
+title = "Tile fix — desktop summary close-up"
+description = "Readable crop from the signed-in desktop screenshot."
+logical_id = "18bee23e-99ba-4480-ba59-e43fdd283972"
+content_hash = "sha256:af48c7a2a89f3160df937d10b45a266073eda2070c4699930b487d345db03006"
+size = 39328
+mtime_ms = 1791085208179
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/18bee23e-99ba-4480-ba59-e43fdd283972/838f77c4-45fe-48c6-8b8c-7e4eb11d7efe"
+storage_version_token = "1791085955840354"
+content_type = "image/png"
+
+[[outputs]]
+id = "yWb5hio39SFKM6_MKe4oS"
+uri = "file://.agents/outputs/dpr-summary-fix/G-phone-three-activities-two-materials.png"
+type = "image"
+title = "Tile fix — phone summary close-up"
+description = "Readable crop of both summary lists at 390px."
+logical_id = "e6c2f376-95ad-4e7d-975b-c72930add73b"
+content_hash = "sha256:73cec14d4daad564be386a5ccc5df445d65b7debcbb6789302051e06ece47d50"
+size = 40525
+mtime_ms = 1791085239283
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e6c2f376-95ad-4e7d-975b-c72930add73b/287a334f-3730-43fd-818f-6945e363f2a6"
+storage_version_token = "1791085957353438"
+content_type = "image/png"
+
+[[outputs]]
+id = "jgUno8oiZZlG1iGAAMNuL"
+uri = "file://.agents/outputs/dpr-summary-fix/mixed-sources-no-money-print.png"
+type = "image"
+title = "Tile fix — signed-in print view"
+description = "Later print-media capture verifying actual trip counts and purchase details without monetary amounts."
+logical_id = "9cb0eddd-da5a-48c7-9fd4-898a51c9db0c"
+content_hash = "sha256:f1db963bdb0dea4494feedc1f45a1a807a30619801379eb17535c9f8dfa719a2"
+size = 82700
+mtime_ms = 1791085194163
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/9cb0eddd-da5a-48c7-9fd4-898a51c9db0c/410e07b6-2ab1-428a-bd7c-eb99d6eea05d"
+storage_version_token = "1791085961920042"
+content_type = "image/png"
