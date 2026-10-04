@@ -146,11 +146,12 @@ describe.each([
     expect(screen.getByTestId("row-material-trip-24701").textContent).toContain("Synthetic GSB");
   });
 
-  it("does not change the existing purchase visibility", () => {
+  it("retains purchase facts without financial amounts in the management report", () => {
     state.dpr.sitePurchases = [purchase];
     render(<Page />);
     if (_name === "SiteReport") {
-      expect(screen.getByTestId("row-site-purchase-0").textContent).toBe("Site purchase · Synthetic gloves · Synthetic shop · 5 pairs · ₹125");
+      expect(screen.getByTestId("row-site-purchase-0").textContent).toBe("Site purchase · Synthetic gloves · Synthetic shop · 5 pairs");
+      expect(screen.getByTestId("row-site-purchase-0").textContent).not.toContain("₹");
       expect(screen.queryByText("No store issues or site purchases today.")).toBeNull();
     } else {
       expect(screen.getByRole("region", { name: title }).textContent).toContain(emptyText);

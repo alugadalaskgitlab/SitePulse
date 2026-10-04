@@ -1,0 +1,16 @@
+{
+  "testRecordsRemoved": true,
+  "testAccessRevoked": true,
+  "existingBusinessRowsUnchanged": {
+    "sites": true,
+    "boq_projects": true,
+    "boq_items": true,
+    "dprs": true,
+    "progress_entries": true,
+    "labour_logs": true,
+    "equipment_logs": true,
+    "site_material_trips": true,
+    "material_logs": true,
+    "site_purchases": true
+  }
+}

@@ -28,8 +28,7 @@ import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
 import { isVisibleEquipmentRow } from "@shared/equipmentUsage";
 import { getBaseSiteName } from "@shared/siteName";
 import { useDprMaterialReceipts } from "@/hooks/use-dpr-material-receipts";
-import { summarizeReceived } from "@/lib/materialUnloadingSummary";
-import { buildManagementShare, managementNumber, managementQuantity, shareManagementReport } from "@/lib/dprManagementPresentation";
+import { buildManagementShare, managementNumber, managementReceivedEntry, managementReceivedGroups, managementSummaryList, managementWorkEntries, shareManagementReport } from "@/lib/dprManagementPresentation";
 import "@/components/dprManagement.css";
 
 export default function SiteReport() {
@@ -141,11 +140,11 @@ export default function SiteReport() {
   const totalDiesel = visibleEquipment.reduce((sum: number, e: any) => sum + (Number(e.diesel) || 0), 0);
   const headcount = dpr.labour.reduce((sum: number, row: any) => sum + (Number(row.count) || 0), 0);
   const activities = (dpr as any).workType === "structure" ? ((dpr as any).structureItems ?? []).map((item: any) => ({ ...item, kind: "structure", activity: item.itemOfWork })) : dpr.progress;
-  const workItems = activities.filter((item: any) => !item.noSiteWork);
+  const workItems = managementWorkEntries(activities, reportBoqItems);
   const workSummary = workItems.length > 1 ? `${workItems.length} items` : workItems.length === 1
-    ? managementQuantity(workItems[0], reportBoqItems.find((b: any) => b.id === workItems[0].boqItemId)).text : "No site work";
+    ? workItems[0].quantity : "No site work";
   const working = visibleEquipment.filter((row: any) => row.usageStatus === "working").length;
-  const bulk = summarizeReceived(receipts.data ?? []).filter(group => group.totalQty !== 0);
+  const bulk = managementReceivedGroups(receipts.data ?? []).filter(group => group.totalQty !== 0);
   const hasHours = dpr.labour.some((row: any) => row.hours != null);
   const issues = (dpr.materials ?? []).filter((row: any) => row.type === "Issued" || row.type === "Consumed");
   const handleShare = async () => {
@@ -170,11 +169,15 @@ export default function SiteReport() {
       </div>
     </header>
     <div className="dpr-management-summary">
-      <div><strong>{workSummary}</strong><span className="dpr-management-subtle">Work done{workItems.length === 1 && ` · ${workItems[0].activity}`}</span></div>
+      <div><strong>{workSummary}</strong><span className="dpr-management-subtle">Work done{workItems.length === 1 && ` · ${workItems[0].name}${workItems[0].marker}`}</span>
+        {workItems.length > 1 && <span className="dpr-management-summary-list">{managementSummaryList(workItems.map(item => `${item.shortName} ${item.quantity}${item.marker}`))}</span>}
+      </div>
       {working > 0 && <div><strong>{working} / {visibleEquipment.length}</strong><span className="dpr-management-subtle">Machines working</span></div>}
       {totalDiesel > 0 && <div><strong>{managementNumber(totalDiesel, 1)} L</strong><span className="dpr-management-subtle">Diesel issued</span></div>}
       {headcount > 0 && <div><strong>{headcount}</strong><span className="dpr-management-subtle">Labour</span></div>}
-      {bulk.length > 0 && <div><strong>{bulk.length === 1 ? `${managementNumber(bulk[0].totalQty)} ${bulk[0].uom}` : `${bulk.length} materials`}</strong><span className="dpr-management-subtle">Bulk received{bulk.length === 1 ? ` · ${bulk[0].material}` : ""}</span></div>}
+      {bulk.length > 0 && <div><strong>{bulk.length === 1 ? `${managementNumber(bulk[0].totalQty)} ${bulk[0].uom}` : `${bulk.length} materials`}</strong><span className="dpr-management-subtle">Bulk received{bulk.length === 1 ? ` · ${bulk[0].material} · ${bulk[0].tripCount} trips` : ""}</span>
+        {bulk.length > 1 && <span className="dpr-management-summary-list">{managementSummaryList(bulk.map(managementReceivedEntry))}</span>}
+      </div>}
     </div>
     <section><h2>Work done</h2>
       {!activities.length ? <p className="dpr-management-subtle">No site work</p> : <table className="dpr-management-table dpr-work-table" aria-label="Work done">

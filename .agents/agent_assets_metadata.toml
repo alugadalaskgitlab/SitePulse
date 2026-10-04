@@ -4371,3 +4371,17 @@ mtime_ms = 1791080453112
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/94239f27-cc49-46cb-bf04-e657133e13e2/84fef63c-780c-40ac-9e24-a385f6db880e"
 storage_version_token = "1791080840019016"
 content_type = "application/pdf"
+
+[[outputs]]
+id = "YHsb3EULm0UDNCv-hBGE7"
+uri = "file://.agents/outputs/dpr-summary-fix/verification-report.html"
+type = "html"
+title = "Final DPR summary verification — screenshots A–H"
+description = "Updated report: actual trip counts, no-money screen/print checks, full share text, six changed code/test files and final test counts."
+logical_id = "3803ac1d-cb0b-4356-8fdd-ce73fd261d80"
+content_hash = "sha256:f6b44dc3259f43c112f1b0ec67103bf742789e0755043b1b4bf24ddef00dd897"
+size = 1036707
+mtime_ms = 1791085520008
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/3803ac1d-cb0b-4356-8fdd-ce73fd261d80/3f0aa7a6-16a2-4218-b0e1-52787eaee9ab"
+storage_version_token = "1791085530848516"
+content_type = "text/html"

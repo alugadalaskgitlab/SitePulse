@@ -3,11 +3,17 @@ name: Read-only equipment print parity
 description: Management-page scope, historical quantity display, actual PDF checks, and safe development verification.
 ---
 
-Site Report policy is superseded by DPR-PAGE-01: the user says "THE SITE REPORT IS A MANAGEMENT PAGE, NOT AN AUDIT DUMP." DPR-VIEW-01 is not approved and must not be published as it stands. Revise it in place, preserving its useful helper, compact-row concept and print support; remove Site Report per-row audit expansions, technical legend and three-decimal totals. Audit data and other pages must remain intact.
+Management summaries must identify the work and received materials with their own quantities, units and material trip counts, not only bare item counts. No money, rates or values belong on the DPR.
+
+**Why:** The user checks which work was done and reconciles incoming trips against transporters; unlike units and different items cannot be meaningfully added.
+
+**How to apply:** Keep DPR order, omit No Site Work from work summaries, mark incidental work, and keep shared-text lists complete even when on-screen lists are shortened. Do not change table data or operational calculations to simplify a summary.
+
+The user says "THE SITE REPORT IS A MANAGEMENT PAGE, NOT AN AUDIT DUMP." Keep audit data and other pages intact; do not bring per-row audit expansions or technical explanatory detail back into the management page.
 
 **Why:** The user explicitly replaced the earlier layout and print requirements.
 
-**How to apply:** Follow the DPR-PAGE-01 instruction over older audit-parity rules for Site Report. Require signed-in development verification, not fixtures alone. Do not publish automatically. The historical notes below explain earlier work, not current Site Report acceptance criteria.
+**How to apply:** Require signed-in development verification, not fixtures alone. Preserve operational facts without showing empty or auditor-only fields.
 
 Historically, read-only equipment consolidation retained the old cards' audit details in table cells; preserving column headings alone did not establish parity.
 
@@ -25,7 +31,7 @@ Read-only consumption deliberately falls back from an available canonical measur
 
 **Why:** The user approved a useful row-level figure for site-restricted viewers without relaxing canonical access checks or changing operational calculations.
 
-**How to apply:** Use existing historical runtime and fuel facts; never manufacture missing quantities. The older expandable-audit design is superseded for Site Report by DPR-PAGE-01.
+**How to apply:** Use existing historical runtime and fuel facts; never manufacture missing quantities.
 
 For signed-in print checks, test the actual application shell and injected development banner, not just an isolated component.
 

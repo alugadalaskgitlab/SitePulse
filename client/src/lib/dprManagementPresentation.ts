@@ -1,6 +1,6 @@
 import { dprMeasurementSummary } from "@shared/dprGeometry";
 import { shortItemName } from "@shared/boqItemName";
-import { summarizeReceived, type ReceivedEntry } from "@/lib/materialUnloadingSummary";
+import { summarizeReceived, type ReceivedEntry, type ReceivedSummary } from "@/lib/materialUnloadingSummary";
 
 export const managementNumber = (value: unknown, decimals = 2): string =>
   value == null || value === "" || !Number.isFinite(Number(value)) ? "—"
@@ -26,17 +26,52 @@ export function managementQuantity(item: Record<string, any>, boqItem?: any) {
   return { text, note, measurement };
 }
 
+/** Keep DPR order and native quantities; omit only rows explicitly marked no site work. */
+export function managementWorkEntries(activities: any[], boqItems: any[] = []) {
+  return activities.filter(item => !item.noSiteWork).map(item => {
+    const name = item.activity ?? item.itemOfWork;
+    return {
+      name,
+      shortName: shortItemName(name) || name,
+      quantity: managementQuantity(item, boqItems.find(b => b.id === item.boqItemId)).text,
+      marker: item.isIncidental ? " (incidental)" : "",
+    };
+  });
+}
+
+export function managementSummaryList(entries: string[]): string {
+  return [...entries.slice(0, 3), ...(entries.length > 3 ? [`+${entries.length - 3} more`] : [])].join(" · ");
+}
+
+type ManagementReceivedSummary = ReceivedSummary & { tripCount: number };
+
+/** Retain all-source quantities/counts; transporter trips include only trip receipts. */
+export function managementReceivedGroups(receipts: ReceivedEntry[]): ManagementReceivedSummary[] {
+  const key = (material: string, uom: string) => JSON.stringify([material, uom.trim().toUpperCase()]);
+  const tripCounts = new Map(summarizeReceived(receipts.filter(entry => entry.source === "trip"))
+    .map(group => [key(group.material, group.uom), group.count]));
+  return summarizeReceived(receipts).map(group => ({
+    ...group, tripCount: tripCounts.get(key(group.material, group.uom)) ?? 0,
+  }));
+}
+
+export function managementReceivedEntry(group: ManagementReceivedSummary): string {
+  return `${group.material} ${managementNumber(group.totalQty)} ${group.uom} (${group.tripCount} trips)`;
+}
+
 export function buildManagementShare(dpr: any, equipment: any[], receipts: ReceivedEntry[], boqItems: any[] = []) {
-  const activities = dpr.workType === "structure" ? dpr.structureItems ?? [] : dpr.progress ?? [];
-  const work = activities.filter((item: any) => !item.noSiteWork).map((item: any) =>
-    `${shortItemName(item.activity ?? item.itemOfWork) || item.activity || item.itemOfWork}: ${managementQuantity(item, boqItems.find(b => b.id === item.boqItemId)).text}`);
+  const activities = dpr.workType === "structure"
+    ? (dpr.structureItems ?? []).map((item: any) => ({ ...item, kind: "structure", activity: item.itemOfWork }))
+    : dpr.progress ?? [];
+  const work = managementWorkEntries(activities, boqItems).map(item =>
+    `${item.shortName}: ${item.quantity}${item.marker}`);
   const working = equipment.filter(e => e.usageStatus === "working").length;
   const idle = equipment.filter(e => e.usageStatus === "idle_no_work" || e.usageStatus === "idle_no_operator").length;
   const breakdown = equipment.filter(e => e.usageStatus === "breakdown").length;
   const unspecified = equipment.length - working - idle - breakdown;
   const diesel = equipment.reduce((sum, e) => sum + (Number(e.diesel) || 0), 0);
   const labour = (dpr.labour ?? []).reduce((sum: number, l: any) => sum + (Number(l.count) || 0), 0);
-  const bulk = summarizeReceived(receipts).map(g => `${managementNumber(g.totalQty)} ${g.uom} ${g.material}`).join("; ");
+  const bulk = managementReceivedGroups(receipts).map(g => `${managementNumber(g.totalQty)} ${g.uom} ${g.material} (${g.tripCount} trips)`).join("; ");
   return [`${dpr.site} · ${dpr.date} · DPR #${dpr.id}`,
     `Work done: ${work.join("; ") || "No site work"}`,
     `Machines: ${working}/${equipment.length} working · ${idle} idle · ${breakdown} breakdown${unspecified ? ` · ${unspecified} not specified` : ""}`,

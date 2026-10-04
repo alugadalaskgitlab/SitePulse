@@ -1,0 +1,42 @@
+{
+  "sites": {
+    "maxId": 19,
+    "hash": "0fd85a19fc7b3f6e2a0134d094bd3a755cecc709f11967d2deff3ed6bc09d1c3"
+  },
+  "boq_projects": {
+    "maxId": 2,
+    "hash": "348bb8fafbebaa469cdeeb3316e7f5260e5f8a1ada3b526cc704789e0d28a436"
+  },
+  "boq_items": {
+    "maxId": 1156,
+    "hash": "733bbef2701f9d874b9f58c4c02b01103d571ff2d4049c858eed48931c74f1fb"
+  },
+  "dprs": {
+    "maxId": 260,
+    "hash": "ebb272b76622b43ed79f316d9462ef57a48c8fadc4c356e2300388786aaebf15"
+  },
+  "progress_entries": {
+    "maxId": 293,
+    "hash": "d6d4b1890fc01fda277ae00b21484076ecf11241b6eb845a0765a9624d5d75f6"
+  },
+  "labour_logs": {
+    "maxId": 180,
+    "hash": "95c98a9e13e8307d162837920f025005a0423002525a1e47e9102dd567f7d97a"
+  },
+  "equipment_logs": {
+    "maxId": 538,
+    "hash": "67fc2725930e6e598b6292da142fe3b8733de26cec70c987cbc1193e476820c9"
+  },
+  "site_material_trips": {
+    "maxId": 12,
+    "hash": "574ffb01824e013ad594cd30df15484a27f1ac41cb9a20968e6dc6b7821df86b"
+  },
+  "material_logs": {
+    "maxId": 177,
+    "hash": "98b7fd032ced0da50e1af300bd1ce7b852735d9310bb3e85c7b75ba10504588f"
+  },
+  "site_purchases": {
+    "maxId": 0,
+    "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  }
+}

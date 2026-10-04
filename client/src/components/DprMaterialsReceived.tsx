@@ -79,7 +79,7 @@ function ManagementMaterials({ site, date, issues, purchases }: { site: string; 
     <div className="dpr-management-subtle mt-2">
       {!issues.length && !purchases.length && <span>No store issues or site purchases today.</span>}
       {issues.map((row, i) => <div key={`issue-${i}`} data-testid={`row-material-${i}`}>Issued · {row.material} · <strong>{managementNumber(row.quantity)} {row.uom}</strong>{row.location && ` · ${row.location}`}</div>)}
-      {purchases.map((row, i) => <div key={`purchase-${i}`} data-testid={`row-site-purchase-${i}`}>Site purchase · {row.itemDescription}{row.vendor && ` · ${row.vendor}`}{row.quantity != null && ` · ${managementNumber(row.quantity)} ${row.uom || ""}`}{row.amount != null && ` · ₹${managementNumber(row.amount)}`}</div>)}
+      {purchases.map((row, i) => <div key={`purchase-${i}`} data-testid={`row-site-purchase-${i}`}>Site purchase · {row.itemDescription}{row.vendor && ` · ${row.vendor}`}{row.quantity != null && ` · ${managementNumber(row.quantity)} ${row.uom || ""}`}</div>)}
       {tripEntries.length > 0 && <Button className="ml-1 h-auto p-0 text-xs print:hidden" variant="ghost" onClick={() => setTripsOpen(true)} data-testid="button-trip-list">Trip list ▸</Button>}
     </div>
     <Dialog open={tripsOpen} onOpenChange={setTripsOpen}>

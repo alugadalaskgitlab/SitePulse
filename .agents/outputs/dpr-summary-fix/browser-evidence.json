@@ -1,0 +1,75 @@
+{
+  "realSignedInDevelopment": true,
+  "mockedReportApis": false,
+  "cases": {
+    "A": [
+      "56.25 Cum\nWork done · Wet Mix Macadam",
+      "1 / 1\nMachines working",
+      "2 L\nDiesel issued",
+      "2\nLabour",
+      "141.03 MT\nBulk received · WMM · 5 trips"
+    ],
+    "BE": [
+      "3 items\nWork done\nWet Mix Macadam 56.25 Cum · GSB 120 Cum · Clearing 0.5 Ha",
+      "1 / 1\nMachines working",
+      "2 L\nDiesel issued",
+      "2\nLabour",
+      "2 materials\nBulk received\nWMM 141.03 MT (5 trips) · Soil 60 MT (3 trips)"
+    ],
+    "C": [
+      "5 items\nWork done\nWet Mix Macadam 56.25 Cum · GSB 120 Cum · Clearing 0.5 Ha · +2 more",
+      "1 / 1\nMachines working",
+      "2 L\nDiesel issued",
+      "2\nLabour",
+      "5 materials\nBulk received\nWMM 141.03 MT (5 trips) · Soil 60 MT (3 trips) · Sand 12 CUM (2 trips) · +2 more"
+    ],
+    "D": [
+      "2 items\nWork done\nWet Mix Macadam 56.25 Cum · GSB 120 Cum",
+      "1 / 1\nMachines working",
+      "2 L\nDiesel issued",
+      "2\nLabour"
+    ],
+    "NoWork": [
+      "No site work\nWork done",
+      "1 / 1\nMachines working",
+      "2 L\nDiesel issued",
+      "2\nLabour"
+    ]
+  },
+  "desktopGeometry": [
+    {
+      "y": 242.1875,
+      "big": "19px"
+    },
+    {
+      "y": 242.1875,
+      "big": "19px"
+    },
+    {
+      "y": 242.1875,
+      "big": "19px"
+    },
+    {
+      "y": 242.1875,
+      "big": "19px"
+    },
+    {
+      "y": 242.1875,
+      "big": "19px"
+    }
+  ],
+  "shareBE": {
+    "url": "https://wa.me/?text=SUMMARY%20CHECK%20%C2%B7%20Development%20only%20%C2%B7%202026-09-21%20%C2%B7%20DPR%20%23262%0AWork%20done%3A%20Wet%20Mix%20Macadam%3A%2056.25%20Cum%3B%20GSB%3A%20120%20Cum%3B%20Clearing%3A%200.5%20Ha%0AMachines%3A%201%2F1%20working%20%C2%B7%200%20idle%20%C2%B7%200%20breakdown%0ADiesel%20issued%3A%202%20L%0ALabour%3A%202%0ABulk%20received%3A%20141.03%20MT%20WMM%20(5%20trips)%3B%2060%20MT%20Soil%20(3%20trips)%0ARemarks%3A%20none%20recorded",
+    "text": "SUMMARY CHECK · Development only · 2026-09-21 · DPR #262\nWork done: Wet Mix Macadam: 56.25 Cum; GSB: 120 Cum; Clearing: 0.5 Ha\nMachines: 1/1 working · 0 idle · 0 breakdown\nDiesel issued: 2 L\nLabour: 2\nBulk received: 141.03 MT WMM (5 trips); 60 MT Soil (3 trips)\nRemarks: none recorded"
+  },
+  "shareC": {
+    "url": "https://wa.me/?text=SUMMARY%20CHECK%20%C2%B7%20Development%20only%20%C2%B7%202026-09-22%20%C2%B7%20DPR%20%23263%0AWork%20done%3A%20Wet%20Mix%20Macadam%3A%2056.25%20Cum%3B%20GSB%3A%20120%20Cum%3B%20Clearing%3A%200.5%20Ha%3B%20Diversion%3A%2040%20Sqm%20(incidental)%3B%20Road%20marking%3A%20250%20m%0AMachines%3A%201%2F1%20working%20%C2%B7%200%20idle%20%C2%B7%200%20breakdown%0ADiesel%20issued%3A%202%20L%0ALabour%3A%202%0ABulk%20received%3A%20141.03%20MT%20WMM%20(5%20trips)%3B%2060%20MT%20Soil%20(3%20trips)%3B%2012%20CUM%20Sand%20(2%20trips)%3B%2022%20MT%20Stone%20(1%20trips)%3B%2030%20MT%20Aggregate%20(4%20trips)%0ARemarks%3A%20none%20recorded",
+    "text": "SUMMARY CHECK · Development only · 2026-09-22 · DPR #263\nWork done: Wet Mix Macadam: 56.25 Cum; GSB: 120 Cum; Clearing: 0.5 Ha; Diversion: 40 Sqm (incidental); Road marking: 250 m\nMachines: 1/1 working · 0 idle · 0 breakdown\nDiesel issued: 2 L\nLabour: 2\nBulk received: 141.03 MT WMM (5 trips); 60 MT Soil (3 trips); 12 CUM Sand (2 trips); 22 MT Stone (1 trips); 30 MT Aggregate (4 trips)\nRemarks: none recorded"
+  },
+  "phoneListStyles": [
+    {
+      "size": "12.5px",
+      "color": "rgb(51, 65, 85)"
+    }
+  ]
+}

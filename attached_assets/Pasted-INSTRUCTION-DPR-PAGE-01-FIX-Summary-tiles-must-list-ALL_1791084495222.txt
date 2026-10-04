@@ -1,0 +1,49 @@
+INSTRUCTION DPR-PAGE-01-FIX: Summary tiles must list ALL activities and ALL materials (small follow-up to DPR-PAGE-01)
+
+READ THIS FIRST
+Small display-only change to the DPR Site Report summary tiles built in DPR-PAGE-01 (client/src/pages/SiteReport.tsx, the dpr-management-summary block, and client/src/lib/dprManagementPresentation.ts if a helper is cleaner). Nothing else changes. No stored value, calculation, schema, readiness or other page is touched. Do not publish automatically. STOP after this and report back.
+
+WHY
+Today the "Work done" tile shows one quantity and names the activity only when there is exactly ONE; with several it collapses to a count. The "Bulk received" tile does the same ("2 materials"). Management looks at this strip to see, at a glance, WHICH activities were done with WHAT quantity, and WHICH materials came in with how much and how many trips. A bare count does not answer that. Quantities of different items must never be added together (Cum, Sqm, Ha, MT are not addable). No money/value is to be shown anywhere on this page — rates and value belong to the reports, not the DPR.
+
+A. WORK DONE TILE
+- One activity (unchanged): big "56.25 Cum", small "Work done · Wet Mix Macadam".
+- Two or more: big "3 items", then a small list on its own line(s) inside the same tile:
+  "WMM 56.25 Cum · GSB 120 Cum · Clearing 0.5 Ha"
+  Use the short item name (shortItemName) and the same quantity text the Work done table shows (managementQuantity). Show up to 3 items, then "+2 more". Order: largest contribution first is NOT required — keep the order they appear in the DPR.
+- Activities flagged No site work are excluded from the list and from the count; if every activity is No site work, the tile shows "No site work".
+- Incidental activities are included but marked, e.g. "Diversion 40 Sqm (incidental)".
+
+B. BULK RECEIVED TILE
+- One material (unchanged): big "141.03 MT", small "Bulk received · WMM".
+- Two or more: big "2 materials", then a small list:
+  "WMM 141.03 MT (5 trips) · Soil 60 MT (3 trips)"
+  Same grouping already used by the Materials table (summarizeReceived). Up to 3, then "+n more". Include the trip count for each material, since trips are what management checks against the transporter.
+- Add the trip count to the one-material case too: small line "Bulk received · WMM · 5 trips".
+
+C. WHATSAPP SHARE TEXT
+Make the shared text match: list every activity with its quantity (not just the first), and every material with quantity and trips. No truncation in the text — the "+n more" rule applies only on screen.
+
+D. LAYOUT
+The tiles must stay one row on desktop and wrap cleanly on a phone. If a list makes a tile too tall, let that tile grow and keep the others aligned to the top; do not shrink the big number. Small list text: 12–12.5px, dark slate, not light grey.
+
+WHAT NOT TO DO
+- Do not add any rate, amount, value or ₹ figure to this page.
+- Do not total quantities across different items or units.
+- Do not change the Work done or Materials tables themselves, or any other section.
+
+TESTS (real signed-in DEVELOPMENT app screenshots + unit tests)
+A. DPR with 1 activity → tile exactly as today.
+B. DPR with 3 activities in different units → "3 items" + list of all three with correct quantities and units.
+C. DPR with 5 activities → "5 items" + first three + "+2 more".
+D. DPR where one activity is No site work → excluded from count and list.
+E. DPR with 2 materials received → "2 materials" + both with quantity and trips.
+F. DPR with 1 material → quantity big, "Bulk received · WMM · 5 trips".
+G. Phone width screenshot of the tile strip for cases B and E.
+H. WhatsApp share text for case B/E pasted into the report.
+I. Full test suite: counts vs last run; list any test updated and why.
+
+REPORT BACK
+Files changed, screenshots A–H, test counts, anything not done.
+
+DO NOT START ANOTHER FEATURE after this batch.
