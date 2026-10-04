@@ -1,0 +1,7 @@
+{
+  "at": "2026-10-04T16:19:19.398Z",
+  "exitCode": 0,
+  "exitReason": null,
+  "output": "table_name,row_count\ndprs,334\nequipment_logs,763\nlabour_logs,162\nmaterial_logs,100\nprogress_entries,445\nvendor_bills,45\nhire_statements,1\n",
+  "success": true
+}
