@@ -170,9 +170,10 @@ describe("DPR-VIEW-01 page, mobile and print contracts", () => {
     }
     expect(detail).toContain('<TableHead className="text-right">Hours</TableHead>');
   });
-  it("preserves the original SiteReport lifecycle gating, endpoint and test IDs", () => {
+  it("preserves the original SiteReport lifecycle gating, endpoint and dialog test IDs", () => {
     expect(site).toContain('const canMove = canEdit\n                      && usageId != null\n                      && usageLifecycle?.status === "closed"\n                      && usageLifecycle.successorId == null;');
-    for (const id of ["button-move-equipment", "select-move-destination", "input-successor-date", "button-confirm-move", "badge-equipment-lifecycle"]) expect(site).toContain(`data-testid={\`${id}-\${i}\`}`);
+    for (const id of ["button-move-equipment", "badge-equipment-lifecycle"]) expect(site).toContain(`data-testid={\`${id}-\${i}\`}`);
+    for (const id of ["select-move-destination", "input-successor-date", "button-confirm-move"]) expect(site).toContain(`data-testid={\`${id}-\${movingIndex}\`}`);
     expect(site).toContain('apiRequest("POST", `/api/equipment-usage/${usageId}/move`');
     expect(site).toContain("successorDate,");
     expect(site).toContain("setSuccessorDate(dpr.date)");
@@ -184,5 +185,11 @@ describe("DPR-VIEW-01 page, mobile and print contracts", () => {
     expect(css).toContain(".equipment-lifecycle,.equipment-details-toggle { display: none !important; }");
     expect(css).toContain("break-inside: auto !important");
     expect(css).not.toContain("@page");
+  });
+  it("opts only SiteReport into the new management presentation, preserving other pages' audit", () => {
+    expect(site).toContain("<DprEquipmentReadOnlyTable management");
+    expect(site).toContain("<DprEquipmentReadOnlyRow management");
+    expect(detail).not.toContain("<DprEquipmentReadOnlyTable management");
+    expect(detail).not.toContain("<DprActivityReadOnly management");
   });
 });

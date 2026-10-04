@@ -178,6 +178,8 @@ describe("UX-FIX-01 equipment and labour entry", () => {
     expect(source).not.toContain("Save Section");
     expect(source).toContain('window.confirm("Discard changes?")');
     const report = readFileSync("client/src/pages/SiteReport.tsx", "utf8");
-    expect(report).toContain('item.hours == null ? "" : `${item.hours} h`');
+    // Management display rounds hours; the entry/save assertions above still
+    // protect the original fractional stored value and blank semantics.
+    expect(report).toContain('item.hours == null ? "" : `${managementNumber(item.hours, 1)} h`');
   });
 });

@@ -450,7 +450,7 @@ describe("DPR20 B2 snapshot fuel facts do not compete with canonical Actual", ()
     expect(screen.getByTestId("equipment-table-performance-0").textContent).not.toContain("Expected Consumption Rate");
   });
 
-  it("integrates only the read-only efficiency cell and preserves the audit print style", () => {
+  it("preserves the permission-aware consumption path and opts SiteReport into compact print, retaining default audit CSS", () => {
     const source = readFileSync("client/src/pages/SiteReport.tsx", "utf8");
     expect(source).toContain('sectionCan("equipment_performance_report", "view") || sectionCan("plant_equipment", "view")');
     expect(source).toContain("useDprEquipmentPerformance(dpr, canViewPerformance, user?.id, completePerformanceContext)");
@@ -461,6 +461,10 @@ describe("DPR20 B2 snapshot fuel facts do not compete with canonical Actual", ()
     expect(source).not.toContain("Actual variance:");
     expect(renderer).toContain("resolveDprRowConsumption");
     expect(renderer).not.toContain("<DprEquipmentEfficiency");
-    expect(source).toContain(".dpr-equipment-audit thead { display: table-header-group !important; }");
+    expect(source).toContain('<DprEquipmentReadOnlyRow management');
+    expect(source).toContain('import "@/components/dprManagement.css"');
+    const auditCss = readFileSync("client/src/components/dprEquipmentReadOnly.css", "utf8");
+    expect(auditCss).toContain(".dpr-equipment-readonly thead { display: table-header-group !important; }");
+    expect(auditCss).toContain(".equipment-audit-panel { display: block !important;");
   });
 });

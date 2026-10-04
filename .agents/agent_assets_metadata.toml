@@ -4343,3 +4343,31 @@ mtime_ms = 1791049265476
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/270856ea-e6fe-491d-b832-0dd71c2fc4c6/ca91ca9a-db50-4402-8c0a-e405d85dd815"
 storage_version_token = "1791049350937399"
 content_type = "text/html"
+
+[[outputs]]
+id = "BQhArZZGg5cxdM1hmL6X3"
+uri = "file://.agents/outputs/dpr-page-01/verification-report.html"
+type = "html"
+title = "DPR-PAGE-01 final verification report"
+description = "Screenshots A–K, one-page PDF evidence, updated tests and final structure-factor regression correction (56 focused tests passing)."
+logical_id = "6b01dade-a75b-49bd-b394-f431b5708798"
+content_hash = "sha256:18514c3c61820013c6ad4eb8b2b1bba310e7f6ab66656304749303b696df88c6"
+size = 2311787
+mtime_ms = 1791081199291
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/6b01dade-a75b-49bd-b394-f431b5708798/a7bea755-7ddd-4d82-bb2d-651367d4e2ca"
+storage_version_token = "1791081209222578"
+content_type = "text/html"
+
+[[outputs]]
+id = "a6vJR8tDjjSQzXh7Ccx_J"
+uri = "file://.agents/outputs/dpr-page-01/J-main.pdf"
+type = "pdf"
+title = "DPR management report — verified one-page A4 PDF"
+description = "Generated from the real signed-in development application using isolated test records."
+logical_id = "94239f27-cc49-46cb-bf04-e657133e13e2"
+content_hash = "sha256:2ecda4f39c6f46ebc300757b1e6f4f3f1d1183d97d9eaf2cf2c2add65ec6d2da"
+size = 213651
+mtime_ms = 1791080453112
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/94239f27-cc49-46cb-bf04-e657133e13e2/84fef63c-780c-40ac-9e24-a385f6db880e"
+storage_version_token = "1791080840019016"
+content_type = "application/pdf"

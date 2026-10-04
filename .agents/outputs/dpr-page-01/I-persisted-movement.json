@@ -1,0 +1,18 @@
+[
+  {
+    "id": 80,
+    "status": "closed",
+    "source_usage_id": null,
+    "opening_reading": 2594.4,
+    "closing_reading": 2595.5,
+    "destination_type": "site"
+  },
+  {
+    "id": 81,
+    "status": "open",
+    "source_usage_id": 80,
+    "opening_reading": 2595.5,
+    "closing_reading": null,
+    "destination_type": "hmp"
+  }
+]

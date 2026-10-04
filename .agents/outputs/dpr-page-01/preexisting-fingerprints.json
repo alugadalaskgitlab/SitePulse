@@ -1,0 +1,50 @@
+{
+  "sites": {
+    "maxId": 19,
+    "hash": "0fd85a19fc7b3f6e2a0134d094bd3a755cecc709f11967d2deff3ed6bc09d1c3"
+  },
+  "boq_projects": {
+    "maxId": 2,
+    "hash": "348bb8fafbebaa469cdeeb3316e7f5260e5f8a1ada3b526cc704789e0d28a436"
+  },
+  "boq_items": {
+    "maxId": 1156,
+    "hash": "733bbef2701f9d874b9f58c4c02b01103d571ff2d4049c858eed48931c74f1fb"
+  },
+  "work_program_bars": {
+    "maxId": 26642,
+    "hash": "d4814f3f6fd5dea0593406bd4d82d52f541ae593cf30408d0a00af707af97cc2"
+  },
+  "dprs": {
+    "maxId": 260,
+    "hash": "ebb272b76622b43ed79f316d9462ef57a48c8fadc4c356e2300388786aaebf15"
+  },
+  "progress_entries": {
+    "maxId": 293,
+    "hash": "d6d4b1890fc01fda277ae00b21484076ecf11241b6eb845a0765a9624d5d75f6"
+  },
+  "equipment_master": {
+    "maxId": 38,
+    "hash": "14234724320c10eee2af1afee75b8784e79e058677b1a4c156ad52dc2c47856f"
+  },
+  "equipment_logs": {
+    "maxId": 538,
+    "hash": "67fc2725930e6e598b6292da142fe3b8733de26cec70c987cbc1193e476820c9"
+  },
+  "equipment_activity_segments": {
+    "maxId": 8,
+    "hash": "cd209d19f1f07282d1afe8a21cd08efc72d6edebaa934b149a2339b6861127e8"
+  },
+  "equipment_activity_segment_boq_items": {
+    "maxId": 12,
+    "hash": "bbd412bee6f6d0b7e32458ea1b8c7e4778c315ba93abd3d2dc4c3c85088c7b54"
+  },
+  "labour_logs": {
+    "maxId": 180,
+    "hash": "95c98a9e13e8307d162837920f025005a0423002525a1e47e9102dd567f7d97a"
+  },
+  "site_material_trips": {
+    "maxId": 12,
+    "hash": "574ffb01824e013ad594cd30df15484a27f1ac41cb9a20968e6dc6b7821df86b"
+  }
+}

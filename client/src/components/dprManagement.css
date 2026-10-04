@@ -1,0 +1,82 @@
+.dpr-management { width: 100%; max-width: 1180px; margin: 0 auto; padding: 20px; border: 1px solid hsl(var(--border)); border-radius: 10px; background: hsl(var(--card)); color: hsl(var(--foreground)); font-size: 13px; line-height: 1.4; }
+.dpr-management h1 { font-size: 24px; font-weight: 750; line-height: 1.2; }
+.dpr-management h2 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+.dpr-management section { min-width: 0; margin-top: 20px; }
+.dpr-management-header { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
+.dpr-management-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.dpr-management-subtle { color: hsl(var(--muted-foreground)); font-size: 11px; overflow-wrap: anywhere; }
+.dpr-management-summary { display: grid; grid-template-columns: repeat(auto-fit,minmax(140px,1fr)); gap: 8px; margin-top: 16px; }
+.dpr-management-summary > div { border: 1px solid hsl(var(--border)); background: hsl(var(--muted) / .35); padding: 11px 12px; border-radius: 7px; min-width: 0; overflow-wrap: anywhere; }
+.dpr-management-summary strong { display: block; font-size: 19px; }
+.dpr-management-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.dpr-management-table th { background: hsl(var(--muted) / .5); text-align: left; font-size: 11px; font-weight: 600; }
+.dpr-management-table th,.dpr-management-table td { padding: 8px; border-bottom: 1px solid hsl(var(--border)); vertical-align: top; overflow-wrap: anywhere; }
+.dpr-management-table tfoot { background: hsl(var(--muted) / .6); font-weight: 700; }
+.dpr-management-table .dpr-work-note td { padding: 0 8px 7px; }
+.dpr-work-table th:nth-child(1) { width: 23%; }
+.dpr-work-table th:nth-child(2) { width: 17%; }
+.dpr-work-table th:nth-child(3) { width: 20%; }
+.dpr-work-table th:nth-child(4) { width: 14%; }
+.dpr-work-table th:nth-child(5) { width: 26%; }
+.dpr-management-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.dpr-programme-track { margin-top: 4px; width: 110px; max-width: 100%; height: 4px; background: hsl(var(--muted)); border-radius: 3px; overflow: hidden; }
+.dpr-programme-track > span { display: block; height: 100%; background: #24965c; }
+.dpr-management .dpr-equipment-readonly th:nth-child(1) { width: 27%; }
+.dpr-management .dpr-equipment-readonly th:nth-child(2) { width: 17%; }
+.dpr-management .dpr-equipment-readonly th:nth-child(3) { width: 25%; }
+.dpr-management .dpr-equipment-readonly th:nth-child(4) { width: 8%; }
+.dpr-management .dpr-equipment-readonly th:nth-child(5) { width: 23%; }
+.dpr-management .equipment-legend { font-size: 9px; margin-top: 6px; }
+.dpr-management .equipment-totals { margin-top: 0; padding: 7px; }
+.dpr-row-controls { display: flex; align-items: center; justify-content: flex-end; gap: 5px; margin-top: 5px; }
+.dpr-row-controls button { font-size: 10px; height: 24px; padding: 0 6px; }
+.dpr-management-dialog { width: calc(100% - 24px); max-height: 85dvh; overflow-y: auto; overflow-wrap: anywhere; }
+@media screen and (max-width: 767px) {
+  .dpr-management-columns { grid-template-columns: minmax(0,1fr); gap: 0; }
+}
+@media screen and (max-width: 639px) {
+  .dpr-management { padding: 12px; }
+  .dpr-management-header { flex-direction: column; }
+  .dpr-management h1 { font-size: 21px; }
+  .dpr-management-summary { grid-template-columns: minmax(0,1fr); }
+  .dpr-management-table,.dpr-management-table tbody,.dpr-management-table tfoot { display: block; }
+  .dpr-management-table thead { display: none; }
+  .dpr-management-table tr { display: block; padding: 8px; margin-bottom: 8px; border: 1px solid hsl(var(--border)); border-radius: 6px; }
+  .dpr-management-table td { display: block; padding: 5px; border: 0; }
+  .dpr-management-table td[data-label]::before { content: attr(data-label); display: block; font-size: 10px; font-weight: 600; color: hsl(var(--muted-foreground)); }
+  .dpr-management-table .dpr-work-note { border: 0; padding: 0; margin-top: -8px; }
+}
+@media print {
+  /* Use the application's existing A4 page: switching named pages can leave
+     a trailing shell/banner page. Only this report's ancestors are reset. */
+  body:has(.dpr-management) { min-height: 0 !important; height: auto !important; overflow: visible !important; }
+  body:has(.dpr-management) #root,
+  body:has(.dpr-management) #root *:has(.dpr-management) {
+    display: block !important;
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    position: static !important;
+    flex: none !important;
+  }
+  body:has(.dpr-management) #replit-dev-banner,
+  body:has(.dpr-management) aside { display: none !important; }
+  body:has(.dpr-management) .dpr-management-header { display: flex !important; }
+  body:has(.dpr-management) .dpr-management-actions { display: none !important; }
+  .dpr-management { page: auto !important; max-width: none; padding: 0; border: 0; font-size: 8pt; line-height: 1.25; }
+  .dpr-management h1 { font-size: 14pt; }
+  .dpr-management h2 { font-size: 10pt; margin-bottom: 2mm; }
+  .dpr-management section { margin-top: 3mm; }
+  .dpr-management-summary { margin-top: 3mm; gap: 2mm; grid-template-columns: repeat(5,minmax(0,1fr)); }
+  .dpr-management-summary > div { padding: 2mm; }
+  .dpr-management-summary strong { font-size: 11pt; }
+  .dpr-management-subtle { font-size: 7pt; }
+  .dpr-management-columns { grid-template-columns: 1fr 1fr; gap: 4mm; }
+  .dpr-management-table th,.dpr-management-table td,.dpr-management .dpr-equipment-readonly th,.dpr-management .dpr-equipment-readonly td { padding: 1.5mm 1mm !important; font-size: 8pt !important; }
+  .dpr-management-table tr { break-inside: avoid; }
+  .dpr-management button,.dpr-management .print-hidden,.dpr-row-controls { display: none !important; }
+  .dpr-management .equipment-legend { font-size: 6pt; line-height: 1.3; }
+}

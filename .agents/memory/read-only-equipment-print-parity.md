@@ -1,6 +1,6 @@
 ---
 name: Read-only equipment print parity
-description: Equipment consolidation must preserve card-only audit detail and verify actual paginated PDF output.
+description: Management-page scope, historical quantity display, actual PDF checks, and safe development verification.
 ---
 
 Site Report policy is superseded by DPR-PAGE-01: the user says "THE SITE REPORT IS A MANAGEMENT PAGE, NOT AN AUDIT DUMP." DPR-VIEW-01 is not approved and must not be published as it stands. Revise it in place, preserving its useful helper, compact-row concept and print support; remove Site Report per-row audit expansions, technical legend and three-decimal totals. Audit data and other pages must remain intact.
@@ -26,3 +26,15 @@ Read-only consumption deliberately falls back from an available canonical measur
 **Why:** The user approved a useful row-level figure for site-restricted viewers without relaxing canonical access checks or changing operational calculations.
 
 **How to apply:** Use existing historical runtime and fuel facts; never manufacture missing quantities. The older expandable-audit design is superseded for Site Report by DPR-PAGE-01.
+
+For signed-in print checks, test the actual application shell and injected development banner, not just an isolated component.
+
+**Why:** Global print rules hid the report's own header, while shell minimum heights and named-page transitions produced an extra PDF page despite a compact report. A screenshot of print media alone did not establish the page count.
+
+**How to apply:** Render the generated PDF and check its header, page count, totals, and final remarks. Keep report-specific print overrides scoped so other pages retain their layout.
+
+Persisted development test rows can trigger startup backfills even when the feature being tested is display-only.
+
+**Why:** Plant Stock equipment fixtures were automatically posted to the Diesel ledger on application restart.
+
+**How to apply:** Track every new test ID, clean up generated ledger references as well as source rows, restore their exact balance effect transactionally, and compare pre-existing business-row fingerprints. Revoke test sessions/devices and disable the isolated account after capture.

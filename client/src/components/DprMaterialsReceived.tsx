@@ -1,8 +1,12 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Package } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { summarizeReceived, unloadingLabel, type ReceivedEntry } from "@/lib/materialUnloadingSummary";
+import { useDprMaterialReceipts } from "@/hooks/use-dpr-material-receipts";
+import { managementNumber } from "@/lib/dprManagementPresentation";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 type MaterialReceipt = ReceivedEntry & {
   id: number;
@@ -37,7 +41,62 @@ export function completeBoqTotal(entries: MaterialReceipt[], material: string, n
   return Number.isFinite(quantity) && uom ? { quantity, uom } : null;
 }
 
-export function DprMaterialsReceived({ site, date }: { site: string; date: string }) {
+export function DprMaterialsReceived({ site, date, management = false, issues = [], purchases = [] }: {
+  site: string; date: string; management?: boolean; issues?: any[]; purchases?: any[];
+}) {
+  if (management) return <ManagementMaterials site={site} date={date} issues={issues} purchases={purchases} />;
+  return <AuditMaterialsReceived site={site} date={date} />;
+}
+
+function ManagementMaterials({ site, date, issues, purchases }: { site: string; date: string; issues: any[]; purchases: any[] }) {
+  const { data: entries = [], isPending, isError, refetch } = useDprMaterialReceipts(site, date);
+  const [tripsOpen, setTripsOpen] = useState(false);
+  const groups = new Map<string, { material: string; unit: string; supplier: string; location: string; quantity: number; trips: number }>();
+  for (const entry of entries) {
+    const location = entry.unloadedAt === "stretch" ? "Stretch (used on site)" : entry.unloadedAt === "yard" ? "Yard (stock)" : "not recorded";
+    const key = JSON.stringify([entry.material, entry.uom, entry.materialSourceSupplier || entry.supplier, location]);
+    const group = groups.get(key) ?? { material: entry.material || "Material not recorded", unit: entry.uom || "",
+      supplier: entry.materialSourceSupplier || entry.supplier || "", location, quantity: 0, trips: 0 };
+    group.quantity += Number(entry.quantity) || 0;
+    if (entry.source === "trip") group.trips++;
+    groups.set(key, group);
+  }
+  const tripEntries = entries.filter(e => e.source === "trip");
+  return <section data-testid="dpr-materials-received">
+    <h2>Materials</h2>
+    {isPending ? <div className="h-16 bg-muted/50 rounded" role="status" aria-label="Loading materials" />
+      : isError ? <div role="alert">Materials unavailable. <Button variant="ghost" size="sm" onClick={() => refetch()}>Retry</Button></div>
+      : !entries.length ? <p className="dpr-management-subtle">No materials received this day.</p>
+      : <table className="dpr-management-table" aria-label="Materials received">
+        <thead><tr>{["Material", "Received qty", "Unloaded at", "Trips"].map(label => <th key={label}>{label}</th>)}</tr></thead>
+        <tbody>{Array.from(groups.entries()).map(([key, g]) => <tr key={key}>
+          <td data-label="Material">{g.material}{g.supplier && <div className="dpr-management-subtle">{g.supplier}</div>}</td>
+          <td data-label="Received qty"><strong>{managementNumber(g.quantity)} {g.unit}</strong></td>
+          <td data-label="Unloaded at">{g.location}</td>
+          <td data-label="Trips"><strong>{g.trips || ""}</strong></td>
+        </tr>)}</tbody>
+      </table>}
+    <div className="dpr-management-subtle mt-2">
+      {!issues.length && !purchases.length && <span>No store issues or site purchases today.</span>}
+      {issues.map((row, i) => <div key={`issue-${i}`} data-testid={`row-material-${i}`}>Issued · {row.material} · <strong>{managementNumber(row.quantity)} {row.uom}</strong>{row.location && ` · ${row.location}`}</div>)}
+      {purchases.map((row, i) => <div key={`purchase-${i}`} data-testid={`row-site-purchase-${i}`}>Site purchase · {row.itemDescription}{row.vendor && ` · ${row.vendor}`}{row.quantity != null && ` · ${managementNumber(row.quantity)} ${row.uom || ""}`}{row.amount != null && ` · ₹${managementNumber(row.amount)}`}</div>)}
+      {tripEntries.length > 0 && <Button className="ml-1 h-auto p-0 text-xs print:hidden" variant="ghost" onClick={() => setTripsOpen(true)} data-testid="button-trip-list">Trip list ▸</Button>}
+    </div>
+    <Dialog open={tripsOpen} onOpenChange={setTripsOpen}>
+      <DialogContent className="dpr-management-dialog">
+        <DialogTitle>Trip list</DialogTitle><DialogDescription>{site} · {date}</DialogDescription>
+        {tripEntries.map((entry, i) => <div key={`${entry.id}-${i}`} className="border-b pb-3 text-sm">
+          <strong>{entry.material} · {managementNumber(entry.quantity)} {entry.uom}</strong>
+          <div>{[entry.time, entry.supplier, entry.vehicleNumber].filter(Boolean).join(" · ")}</div>
+          <div>{entry.unloadedAt === "stretch" ? "Stretch (used on site)" : entry.unloadedAt === "yard" ? "Yard (stock)" : "not recorded"}{entry.yardLabel && ` · ${entry.yardLabel}`}</div>
+          <div className="text-xs text-muted-foreground">{[entry.materialSourceSupplier, entry.receiptNumber].filter(Boolean).join(" · ")}</div>
+        </div>)}
+      </DialogContent>
+    </Dialog>
+  </section>;
+}
+
+function AuditMaterialsReceived({ site, date }: { site: string; date: string }) {
   const scopedSite = site?.trim();
   const scopedDate = date?.trim();
   const scoped = Boolean(scopedSite && scopedDate);

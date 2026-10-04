@@ -74,11 +74,17 @@ describe("DPR16 B3 activity summaries", () => {
     expect(screen.getByText("Length (m)").nextElementSibling?.textContent).toBe("0");
   });
 
-  it("both live read-only routes render the same shared component and keep photo groups", () => {
+  it("both read-only routes use shared renderers; only SiteReport opts into management and DprDetails keeps photo groups", () => {
     for (const page of ["DprDetails", "SiteReport"]) {
       const source = readFileSync(resolve(process.cwd(), `client/src/pages/${page}.tsx`), "utf8");
       expect(source).toContain("<DprActivityReadOnly");
-      expect(source).toContain("<DprPhotoGroups");
+      if (page === "DprDetails") {
+        expect(source).toContain("<DprPhotoGroups");
+        expect(source).not.toContain("<DprActivityReadOnly management");
+      } else {
+        expect(source).toContain("<DprActivityReadOnly management");
+        expect(source).not.toContain("<DprPhotoGroups");
+      }
       expect(source).toContain("<DprEquipmentReadOnlyRow");
       expect(source).toContain("<DprEquipmentReadOnlyTable");
       expect(source).not.toContain("<DprEquipmentCompact");

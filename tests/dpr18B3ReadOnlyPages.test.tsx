@@ -68,7 +68,7 @@ describe.each([
   ["DPR details", DprDetails],
   ["Site report", SiteReport],
 ])("DPR18 B3 real %s read-only page", (_name, Page) => {
-  it.each(["draft", "submitted"])("renders %s compact summaries and preserves all audit facts in toggleable Details", dprStatus => {
+  it.each(["draft", "submitted"])("renders %s management rows on SiteReport and retains default audit on DprDetails", dprStatus => {
     state.dpr = {
       id: 6291, site: "FIXTURE SITE", date: "2026-08-05", engineer: "Fixture engineer",
       dprStatus, workType: "road", boqProjectId: 5501, progress: [], labour: [],
@@ -85,6 +85,22 @@ describe.each([
     const normal = screen.getByTestId("row-equipment-0");
     const stopped = screen.getByTestId("row-equipment-1");
     const statusOnly = screen.getByTestId("row-equipment-2");
+    if (_name === "Site report") {
+      expect(screen.getAllByRole("table", { name: "Equipment" })).toHaveLength(1);
+      expect(screen.getAllByRole("columnheader").map(node => node.textContent)).toEqual(["Machine", "Work", "Hours", "Diesel", "Consumption"]);
+      expect(screen.queryByTestId("equipment-audit-details-0")).toBeNull();
+      expect(screen.queryByTestId("button-equipment-details-0")).toBeNull();
+      expect(normal.textContent).toContain("Hired · Fixture Hire · Hourly · Op. Fixture operator");
+      expect(normal.textContent).toContain("Incidental diversion, not BOQ");
+      expect(normal.textContent).toContain("Fixture BOQ work");
+      expect(within(normal).getByTestId("equipment-consumption-0").textContent).toContain("6.3 L/hr");
+      expect(within(normal).getByTestId("equipment-consumption-0").textContent).not.toContain("measured");
+      expect(stopped.textContent).toContain("Breakdown");
+      expect(statusOnly.textContent).toContain("Breakdown");
+      expect(within(stopped).getByTestId("equipment-consumption-1").textContent).not.toContain("L/hr");
+      expect(screen.queryByText(/Debitable to vendor/)).toBeNull();
+      return;
+    }
     const normalAudit = screen.getByTestId("equipment-audit-details-0");
     const stoppedAudit = screen.getByTestId("equipment-audit-details-1");
     const statusOnlyAudit = screen.getByTestId("equipment-audit-details-2");
@@ -121,7 +137,7 @@ describe.each([
   });
 });
 
-it("SiteReport passes already-loaded linked stoppages only when an older row has no breakdowns field", () => {
+it("SiteReport retains child-aware linked stoppage visibility without rendering the audit panel", () => {
   state.linkedBreakdowns = [{
     id: 90, sourceRecordId: 7291, description: "Linked hose failure",
     fromTime: "09:00", toTime: "10:00", responsibility: "vendor",
@@ -130,11 +146,13 @@ it("SiteReport passes already-loaded linked stoppages only when an older row has
     id: 6291, site: "FIXTURE SITE", date: "2026-08-05", engineer: "Fixture engineer",
     dprStatus: "submitted", workType: "road", boqProjectId: 5501,
     progress: [], labour: [], materials: [], sitePurchases: [],
-    equipment: [{ ...machine, breakdowns: undefined }, { ...machine, id: 7292, breakdowns: [] }],
+    equipment: [{ id: 7291, breakdowns: undefined }, { id: 7292, breakdowns: [] }],
   };
   render(<SiteReport />);
-  expect(screen.getByTestId("equipment-table-stop-0-0").textContent).toContain("Linked hose failure");
+  expect(screen.getByTestId("row-equipment-0")).toBeTruthy();
+  expect(screen.queryByTestId("row-equipment-1")).toBeNull();
+  expect(screen.queryByTestId("equipment-table-stop-0-0")).toBeNull();
   expect(screen.queryByTestId("equipment-table-stop-1-0")).toBeNull();
-  expect(screen.getByTestId("equipment-table-breakdowns-1").textContent).toBe("—");
-  expect(screen.getByTestId("equipment-audit-details-0").getAttribute("data-expanded")).toBe("false");
+  expect(screen.queryByTestId("equipment-table-breakdowns-1")).toBeNull();
+  expect(screen.queryByTestId("equipment-audit-details-0")).toBeNull();
 });

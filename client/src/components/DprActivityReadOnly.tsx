@@ -1,14 +1,17 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
+import { managementNumber, managementQuantity } from "@/lib/dprManagementPresentation";
 import { Badge } from "@/components/ui/badge";
 import { calculateLengthFromChainage, dprMeasurementSummary } from "@shared/dprGeometry";
 import { boqItemDisplayName, shortItemName } from "@shared/boqItemName";
 import { layerDisplayName } from "@shared/layerDisplay";
+import { barSideLabel } from "@shared/barSide";
+import { normalizeDprSideKey } from "@shared/dprProgrammeLink";
 
 type Activity = Record<string, any>;
 
 /** A single, collapsed-by-default activity. Facts in the detail pane are historical data, not inputs. */
 export function DprActivityReadOnly({
-  item, index, boqItem, personnelNames, nameStyle = "boq", children,
+  item, index, boqItem, personnelNames, nameStyle = "boq", children, management = false,
 }: {
   item: Activity;
   index: number;
@@ -16,6 +19,7 @@ export function DprActivityReadOnly({
   personnelNames?: string | null;
   nameStyle?: "boq" | "activity";
   children?: ReactNode;
+  management?: boolean;
 }) {
   const measurement = dprMeasurementSummary(item, boqItem ?? null);
   const name = nameStyle === "activity" ? shortItemName(item.activity) || item.activity
@@ -42,6 +46,37 @@ export function DprActivityReadOnly({
     ["Incidental description", item.incidentalDescription],
     ["No site work description", item.noSiteWorkDescription],
   ];
+  if (management) {
+    const quantity = managementQuantity(item, boqItem);
+    const earthwork = /excavat|embank|earthwork|earth work/i.test(`${item.activity ?? ""} ${boqItem?.description ?? ""}`);
+    const notes = [
+      earthwork && item.materialOutcome ? item.materialOutcome.replaceAll("_", " ") : null,
+      earthwork && item.reusableQty != null ? `Reusable ${managementNumber(item.reusableQty)} ${item.uom ?? ""}` : null,
+      earthwork && item.earthworkArrangementId != null ? "Execution arrangement linked" : null,
+      item.isIncidental ? item.incidentalDescription : null,
+      item.noSiteWork ? item.noSiteWorkDescription : null,
+      item.layerNo != null ? layerDisplayName(item.activity, item.layerNo) : null,
+      personnelNames,
+      item.structureName, item.stage, item.remarks,
+    ].filter(Boolean).join(" · ");
+    const length = item.length ?? (item.chainageFrom && item.chainageTo ? calculateLengthFromChainage(item.chainageFrom, item.chainageTo) : null);
+    const size = [length, item.width, item.thickness].filter(v => v != null && v !== "").map(v => managementNumber(v)).join(" × ");
+    return <Fragment>
+      <tr data-testid={`row-progress-${index}`}>
+        <td data-label="Item"><strong>{name || item.itemOfWork}</strong>{item.side && <div className="dpr-management-subtle">{barSideLabel(normalizeDprSideKey(item.side))}</div>}
+          {item.isIncidental && <Badge variant="outline">Incidental · No BOQ credit</Badge>}
+          {item.noSiteWork && <Badge variant="secondary">No site work</Badge>}
+        </td>
+        <td data-label="Chainage">{item.chainageFrom || item.chainageTo ? `${item.chainageFrom || "—"} → ${item.chainageTo || "—"}` : ""}</td>
+        <td data-label="Size (L × W × T)">{size && `${size} m`}</td>
+        <td data-label="Quantity"><strong data-testid={`text-report-physical-${index}`}>{quantity.text}</strong>
+          {quantity.note && <div className="text-xs text-amber-700" data-testid={`text-boq-progress-${index}`}>{quantity.note}</div>}
+        </td>
+        <td data-label="Programme">{children}</td>
+      </tr>
+      {notes && <tr className="dpr-work-note"><td colSpan={5}><div className="dpr-management-subtle">{notes}</div></td></tr>}
+    </Fragment>;
+  }
   return (
     <details className="rounded-lg border border-border/70 bg-card" data-testid={`row-progress-${index}`}>
       <summary className="cursor-pointer list-none p-3 marker:hidden [&::-webkit-details-marker]:hidden">

@@ -91,6 +91,14 @@ describe.each([
   it("separates received trips from explicitly empty consumed/issued materials", () => {
     render(<Page />);
     const received = screen.getByTestId("dpr-materials-received");
+    if (_name === "SiteReport") {
+      expect(within(received).getByRole("heading", { name: "Materials" })).toBeTruthy();
+      expect(within(received).getByRole("table", { name: "Materials received" }).textContent).toContain("Synthetic GSB");
+      expect(within(received).getByText("No store issues or site purchases today.")).toBeTruthy();
+      expect(within(received).queryByRole("region", { name: title })).toBeNull();
+      expect(screen.queryByText(note)).toBeNull();
+      return;
+    }
     const consumed = screen.getByRole("region", { name: title });
     expect(within(received).getByRole("heading", { name: "Materials Received" })).toBeTruthy();
     expect(within(received).getByTestId("row-material-trip-24701").textContent).toContain("Synthetic GSB");
@@ -107,43 +115,45 @@ describe.each([
     state.receipts = [];
     render(<Page />);
     expect(within(screen.getByTestId("dpr-materials-received")).getByText("No materials received this day.")).toBeTruthy();
-    expect(within(screen.getByRole("region", { name: title })).getByText(emptyText)).toBeTruthy();
+    if (_name === "SiteReport") expect(screen.getByText("No store issues or site purchases today.")).toBeTruthy();
+    else expect(within(screen.getByRole("region", { name: title })).getByText(emptyText)).toBeTruthy();
   });
 
   it("retains all populated legacy material data beside the independent trips panel", () => {
     state.dpr.materials = [material, { ...material, id: 24803, quantity: 1.25 }];
     render(<Page />);
+    if (_name === "SiteReport") {
+      const block = screen.getByTestId("dpr-materials-received");
+      expect(within(block).queryByText("No store issues or site purchases today.")).toBeNull();
+      expect(within(block).getByTestId("row-material-0").textContent).toContain("Issued · Synthetic cement · 2.5 MT · Synthetic work item");
+      expect(within(block).getByTestId("row-material-1").textContent).toContain("1.25 MT");
+      expect(within(block).getAllByRole("columnheader").map(n => n.textContent)).toEqual(["Material", "Received qty", "Unloaded at", "Trips"]);
+      expect(within(block).getByRole("table").textContent).toContain("Synthetic GSB");
+      expect(block.textContent).not.toContain("2.500");
+      return;
+    }
     const consumed = screen.getByRole("region", { name: title });
     expect(within(consumed).getAllByRole("heading", { name: title })).toHaveLength(1);
     expect(within(consumed).queryByText(emptyText)).toBeNull();
     expect(within(consumed).getByText(note)).toBeTruthy();
     const rows = within(consumed).getAllByRole("row").slice(1);
-    if (_name === "SiteReport") {
-      expect(rows).toHaveLength(2);
-      expect(within(consumed).getAllByRole("columnheader").map(node => node.textContent)).toEqual([
-        "Type", "Material", "Quantity", "UOM", "Vehicle No.", "Supplier", "Location/Task", "Receipt No.",
-      ]);
-      expect(rows[0].textContent).toContain("IssuedSynthetic cement2.500MTSYN-ISSUEDSynthetic storeSynthetic work itemSYN-I-1");
-      expect(rows[1].textContent).toContain("1.250");
-    } else {
       expect(rows).toHaveLength(1);
       expect(within(consumed).getByRole("heading", { name: "Supplier breakdown" })).toBeTruthy();
       expect(within(consumed).getAllByRole("columnheader").map(node => node.textContent)).toEqual([
         "Material", "UOM", "Supplier", "Total Quantity", "Trips",
       ]);
       expect(rows[0].textContent).toBe("Synthetic cementMTSynthetic store3.7502");
-    }
     expect(screen.getByTestId("row-material-trip-24701").textContent).toContain("Synthetic GSB");
   });
 
   it("does not change the existing purchase visibility", () => {
     state.dpr.sitePurchases = [purchase];
     render(<Page />);
-    expect(screen.getByRole("region", { name: title }).textContent).toContain(emptyText);
     if (_name === "SiteReport") {
-      expect(screen.getByText("Site Purchases")).toBeTruthy();
-      expect(screen.getByTestId("row-site-purchase-0").textContent).toBe("Synthetic glovesSynthetic shopSYN-P-1125.0005.000pairs");
+      expect(screen.getByTestId("row-site-purchase-0").textContent).toBe("Site purchase · Synthetic gloves · Synthetic shop · 5 pairs · ₹125");
+      expect(screen.queryByText("No store issues or site purchases today.")).toBeNull();
     } else {
+      expect(screen.getByRole("region", { name: title }).textContent).toContain(emptyText);
       // DprDetails never rendered purchases; B4 must not introduce a new table.
       expect(screen.queryByText("Site Purchases")).toBeNull();
       expect(screen.queryByTestId("row-site-purchase-0")).toBeNull();

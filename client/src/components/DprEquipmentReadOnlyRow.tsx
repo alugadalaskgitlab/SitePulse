@@ -8,6 +8,7 @@ import { boqItemDisplayName } from "@shared/boqItemName";
 import { formatEquipmentTime, formatEquipmentDuration } from "@shared/equipmentUsage";
 import { breakdownDurationHours } from "@/components/BreakdownStoppageEditor";
 import "@/components/dprEquipmentReadOnly.css";
+import { DPR_CONSUMPTION_LEGEND, managementNumber } from "@/lib/dprManagementPresentation";
 
 type Details = ReturnType<typeof buildDprEquipmentTableDetails>;
 type WorkProps = ComponentProps<typeof DprEquipmentTableDetails>;
@@ -19,6 +20,7 @@ type RowProps = {
   index: number; canonical?: DprActualEfficiency; lifecycleSlot?: ReactNode;
   linkedRows?: ComponentProps<typeof DprEquipmentTableBreakdowns>["linkedRows"];
   boqItems?: WorkProps["boqItems"]; programmeBars?: WorkProps["programmeBars"];
+  management?: boolean;
 };
 const finite = (value: unknown): number | null => value == null || value === "" || !Number.isFinite(Number(value)) ? null : Number(value);
 const n = (value: unknown, decimals = 1) => finite(value) == null ? "—" : Number(value).toLocaleString("en-IN", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
@@ -48,7 +50,7 @@ export function consumptionForReadOnlyRow(row: ReadOnlyEquipmentRow, details: De
 function AuditFact({ label, children }: { label: string; children: ReactNode }) {
   return <div><dt>{label}</dt><dd>{children}</dd></div>;
 }
-export function DprEquipmentReadOnlyRow({ row, equipment, index, canonical, lifecycleSlot, linkedRows = [], boqItems = [], programmeBars }: RowProps) {
+export function DprEquipmentReadOnlyRow({ row, equipment, index, canonical, lifecycleSlot, linkedRows = [], boqItems = [], programmeBars, management = false }: RowProps) {
   const [expanded, setExpanded] = useState(false);
   const details = buildDprEquipmentTableDetails(row, equipment);
   const { historicalUsage, preview, fuel } = details;
@@ -64,6 +66,54 @@ export function DprEquipmentReadOnlyRow({ row, equipment, index, canonical, life
   const expected = finite(row.expectedDiesel);
   const issued = finite(row.diesel);
   const panelId = `equipment-audit-details-${index}`;
+  if (management) {
+    // Links remain meaningful display facts even on older rows without saved
+    // allocation hours; never infer or change their operational quantities.
+    const savedWorkIds = Array.from(new Set(work.length ? work.map(slice => slice.boqItemId)
+      : row.activitySegments?.length ? row.activitySegments.flatMap(segment => segment.boqItems.map(link => link.boqItemId))
+      : row.activityAllocations?.length ? row.activityAllocations.map(link => link.boqItemId)
+      : row.boqItemId != null ? [row.boqItemId] : []));
+    const stopped = row.usageStatus === "breakdown" || row.usageStatus === "idle_no_work" || row.usageStatus === "idle_no_operator";
+    const incompleteReason = consumption.norm == null ? "no norm recorded"
+      : !trip && row.openingReading != null && row.closingReading == null ? "no closing reading"
+      : consumption.reason;
+    const metadata = [
+      equipment?.ownership === "hired" ? "Hired" : equipment?.ownership === "owned" ? "Owned" : null,
+      equipment?.ownership === "hired" ? equipment.vendorName?.trim() : null,
+      equipment?.ownership === "hired" ? hire[row.entryType ?? ""] : null,
+      row.operator ? `Op. ${row.operator}` : null,
+    ].filter(Boolean).join(" · ");
+    return <tr className="equipment-summary-row" data-testid={`row-equipment-${index}`}>
+      <td data-label="Machine"><strong>{row.machine || "Machine not recorded"}</strong>{row.vehicleNo && <span className="equipment-subtle"> {row.vehicleNo}</span>}
+        {metadata && <div className="equipment-subtle">{metadata}</div>}
+      </td>
+      <td data-label="Work">{savedWorkIds.length ? savedWorkIds.map((boqItemId, i) => {
+        const item = boqItems.find(item => item.id === boqItemId);
+        return <div key={i}>{item ? boqItemDisplayName(item) : "Not linked"}</div>;
+      }) : row.resourceScope === "general" ? "General" : "Not linked"}
+        {row.task && <div className="equipment-subtle whitespace-pre-wrap">{row.task}</div>}
+      </td>
+      <td data-label="Hours">
+        <div className="equipment-number">{trip
+          ? `${managementNumber(row.numberOfTrips, 0)} trips × ${managementNumber(row.tripDistance, 1)} km = ${managementNumber(historicalUsage.runtime, 1)} km`
+          : distance ? `${managementNumber(historicalUsage.runtime, 1)} km (${managementNumber(row.openingReading, 1)} → ${managementNumber(row.closingReading, 1)})`
+          : preview.basis === "hour_meter" ? `${n(historicalUsage.runtime)} h meter (${managementNumber(row.openingReading, 1)} → ${managementNumber(row.closingReading, 1)})`
+          : `${n(historicalUsage.runtime)} h`}
+        </div>
+        {!distance && !trip && (row.startTime || row.endTime) && <div className="equipment-subtle">{row.startTime || "—"} – {row.endTime || "—"}{details.clockHours != null && ` (${n(details.clockHours)} h)`}</div>}
+      </td>
+      <td data-label="Diesel"><strong>{managementNumber(row.diesel, 1)} L</strong></td>
+      <td data-label="Consumption" data-testid={`equipment-consumption-${index}`}>
+        {stopped ? <><span className="equipment-tag">{status(row)}</span>{row.usageStatusReason && <div className="equipment-subtle">{row.usageStatusReason}</div>}</>
+          : incompleteReason || consumption.value == null ? <><strong>—</strong><div className="equipment-subtle">{incompleteReason || "consumption not available"}</div></>
+          : <><strong>{n(consumption.value)} {consumption.displayUnit}</strong><span className="equipment-subtle"> norm {n(consumption.norm)}</span>
+            {consumption.flag === "worse" && <span className="equipment-worse"> ▲{n(Math.abs(consumption.deviationPct ?? 0), 0)}%</span>}
+            {consumption.flag === "better_check" && <span className="equipment-check"> ▼{n(Math.abs(consumption.deviationPct ?? 0), 0)}% check</span>}
+          </>}
+        {lifecycleSlot !== undefined && <div className="dpr-row-controls equipment-lifecycle print:hidden">{lifecycleSlot}</div>}
+      </td>
+    </tr>;
+  }
   return <Fragment>
     <tr className="equipment-summary-row" data-testid={`row-equipment-${index}`}>
       <td data-label="Machine">
@@ -158,11 +208,12 @@ export function DprEquipmentReadOnlyRow({ row, equipment, index, canonical, life
     </td></tr>
   </Fragment>;
 }
-export function DprEquipmentReadOnlyTable({ children, rows, equipmentFor, canonicalFor, hasLifecycle = false }: {
+export function DprEquipmentReadOnlyTable({ children, rows, equipmentFor, canonicalFor, hasLifecycle = false, management = false }: {
   children: ReactNode; rows: ReadOnlyEquipmentRow[];
   equipmentFor: (row: ReadOnlyEquipmentRow) => RowProps["equipment"];
   canonicalFor?: (row: ReadOnlyEquipmentRow) => DprActualEfficiency;
   hasLifecycle?: boolean;
+  management?: boolean;
 }) {
   const facts = rows.map(row => {
     const details = buildDprEquipmentTableDetails(row, equipmentFor(row));
@@ -175,6 +226,20 @@ export function DprEquipmentReadOnlyTable({ children, rows, equipmentFor, canoni
   const differences = rows.map(row => finite(row.diesel) != null && finite(row.expectedDiesel) != null ? Number(row.diesel) - Number(row.expectedDiesel) : null);
   const incomplete = facts.some(({ consumption }) => consumption.basis === "incomplete");
   const total = (values: (number | null)[], unit: string) => `${n(sum(values), 3)} ${unit}${incomplete || values.some(value => value == null) ? " (incomplete)" : ""}`;
+  if (management) {
+    const confirmed = facts.filter(({ row, details }) => row.dieselBalanceConfirmed === true && details.fuel.actualConsumed != null);
+    return <div className="dpr-equipment-readonly">
+      <table aria-label="Equipment"><thead><tr>{["Machine", "Work", "Hours", "Diesel", "Consumption"].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead><tbody>{children}</tbody>
+        <tfoot><tr className="equipment-summary-row">
+          <td data-label="Total" colSpan={2}><strong>Total · {rows.length} machines</strong></td>
+          <td data-label="Hours"><strong>{n(sum(quantities("L/hr")))} h</strong>{quantities("L/km").length > 0 && <div>{n(sum(quantities("L/km")))} km</div>}</td>
+          <td data-label="Diesel"><strong>{managementNumber(sum(diesels), 1)} L</strong></td>
+          <td data-label="Consumption"><strong>{confirmed.length > 0 && `${managementNumber(sum(confirmed.map(({ details }) => details.fuel.actualConsumed)), 1)} L used · `}{expected.some(v => v != null) ? `${managementNumber(sum(expected), 1)} L expected` : "—"}</strong></td>
+        </tr></tfoot>
+      </table>
+      <p className="equipment-legend">{DPR_CONSUMPTION_LEGEND}</p>
+    </div>;
+  }
   return <div className="dpr-equipment-readonly">
     <table aria-label="Equipment Log"><thead><tr>{["Machine", "Work", "Usage", "Diesel", "Consumption", "Notes"].map(label => <th key={label} scope="col">{label}</th>)}{hasLifecycle && <th scope="col" className="equipment-lifecycle print:hidden">Lifecycle</th>}</tr></thead><tbody>{children}</tbody></table>
     <div className="equipment-totals" data-testid="equipment-totals">

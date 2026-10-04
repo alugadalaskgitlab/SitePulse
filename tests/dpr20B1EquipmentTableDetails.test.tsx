@@ -169,12 +169,14 @@ describe("DPR20 B1 stoppage parity and linked maintenance", () => {
 describe("DPR20 B1 scope and one-table source contract", () => {
   const source = readFileSync("client/src/pages/SiteReport.tsx", "utf8");
   const renderer = readFileSync("client/src/components/DprEquipmentReadOnlyRow.tsx", "utf8");
-  const equipmentSection = source.split("<CardTitle>Equipment Log</CardTitle>")[1].split("</Card>")[0];
+  const equipmentSection = source.split("<section><h2>Equipment</h2>")[1].split("</section>")[0];
 
-  it("uses the approved six-column shared equipment table and child-aware collection", () => {
+  it("uses the approved opt-in five-column management table and retains default audit rendering", () => {
     expect(equipmentSection).not.toContain("<DprEquipmentCompact");
     expect((equipmentSection.match(/<DprEquipmentReadOnlyTable /g) ?? [])).toHaveLength(1);
-    expect((renderer.match(/<table /g) ?? [])).toHaveLength(1);
+    expect(equipmentSection).toContain("<DprEquipmentReadOnlyTable management");
+    expect(equipmentSection).toContain("<DprEquipmentReadOnlyRow management");
+    expect(renderer).toContain('["Machine", "Work", "Hours", "Diesel", "Consumption"]');
     expect(renderer).toContain('["Machine", "Work", "Usage", "Diesel", "Consumption", "Notes"]');
     expect((equipmentSection.match(/visibleEquipment\.map/g) ?? [])).toHaveLength(1);
     expect(source).toContain("breakdowns: item.breakdowns ?? breakdownsBySourceId.get(Number(item.id)) ?? []");
@@ -198,9 +200,9 @@ describe("DPR20 B1 scope and one-table source contract", () => {
   });
 });
 
-describe("DPR20 B1 equipment-only print layout", () => {
+describe("DPR-PAGE-01 compact management print with default audit preserved", () => {
   const source = readFileSync("client/src/pages/SiteReport.tsx", "utf8");
-  const css = source.match(/const equipmentAuditPrintCss = `([\s\S]*?)`;/)![1];
+  const css = readFileSync("client/src/components/dprManagement.css", "utf8");
   const parsed = postcss.parse(css);
   const rules: postcss.Rule[] = [];
   parsed.walkRules(rule => { rules.push(rule); });
@@ -208,46 +210,41 @@ describe("DPR20 B1 equipment-only print layout", () => {
     rules.filter(rule => rule.selectors.includes(selector)).flatMap(rule => rule.nodes)
       .find(node => node.type === "decl" && node.prop === property) as postcss.Declaration;
 
-  it("is scoped to Equipment Log and print media only, without changing page orientation or screen layout", () => {
-    expect(source).toContain('<Card className="dpr-equipment-audit">');
-    expect(source).toContain('<style data-testid="equipment-audit-print-style">{equipmentAuditPrintCss}</style>');
-    expect(parsed.nodes).toHaveLength(1);
-    expect(parsed.nodes[0].type).toBe("atrule");
-    expect((parsed.nodes[0] as postcss.AtRule).name).toBe("media");
-    expect((parsed.nodes[0] as postcss.AtRule).params).toBe("print");
+  it("uses opt-in compact print on the existing A4 page without named-page breaks or scaling", () => {
+    expect(source).toContain('import "@/components/dprManagement.css"');
+    expect(source).toContain('<article className="dpr-management">');
+    expect(readFileSync("client/src/pages/DprDetails.tsx", "utf8")).not.toContain("dprManagement.css");
     for (const rule of rules) {
-      for (const selector of rule.selectors) expect(selector).toMatch(/^\.dpr-equipment-audit(?:[ .]|$)/);
+      for (const selector of rule.selectors) expect(selector).toMatch(/^(?:\.dpr-|body:has\(\.dpr-management\))/);
     }
+    expect(css).toContain("page: auto !important");
     expect(css).not.toContain("@page");
+    expect(readFileSync("client/src/index.css", "utf8")).toContain("size: A4 portrait;");
     expect(css).not.toContain("landscape");
     expect(css).not.toContain("scale(");
     expect(css).not.toContain("zoom:");
   });
 
-  it("fits all six printable columns with wrapping, 9pt text, visible overflow and repeated headers", () => {
-    expect(declaration(".dpr-equipment-audit table", "table-layout").value).toBe("fixed");
-    expect(declaration(".dpr-equipment-audit .overflow-auto", "overflow").value).toBe("visible");
+  it("fits all five management columns with wrapping, compact text and repeated equipment headers", () => {
+    expect(declaration(".dpr-management-table", "table-layout").value).toBe("fixed");
     const compactRules: postcss.Rule[] = [];
-    postcss.parse(readFileSync("client/src/components/dprEquipmentReadOnly.css", "utf8")).walkRules(rule => { compactRules.push(rule); });
-    const widths = Array.from({ length: 6 }, (_, index) => {
+    parsed.walkRules(rule => { compactRules.push(rule); });
+    const widths = Array.from({ length: 5 }, (_, index) => {
       const candidates = compactRules.filter(rule => rule.selector.endsWith(`th:nth-child(${index + 1})`));
       const width = candidates.at(-1)!.nodes.find(node => node.type === "decl" && node.prop === "width") as postcss.Declaration;
       return parseFloat(width.value);
     });
     expect(widths.reduce((total, width) => total + width, 0)).toBe(100);
-    expect(declaration(".dpr-equipment-audit td", "white-space").value).toBe("normal");
-    expect(declaration(".dpr-equipment-audit td", "overflow-wrap").value).toBe("anywhere");
-    expect(declaration(".dpr-equipment-audit td", "font-size").value).toBe("9pt");
-    expect(declaration(".dpr-equipment-audit thead", "display").value).toBe("table-header-group");
+    expect(declaration(".dpr-management-table td", "overflow-wrap").value).toBe("anywhere");
+    const printRules = compactRules.filter(rule => rule.parent?.type === "atrule" && (rule.parent as postcss.AtRule).params === "print");
+    expect(printRules.some(rule => rule.selectors.includes(".dpr-management .dpr-equipment-readonly td") && rule.nodes.some(node => node.type === "decl" && node.prop === "font-size" && node.value === "8pt"))).toBe(true);
+    const auditCss = readFileSync("client/src/components/dprEquipmentReadOnly.css", "utf8");
+    expect(auditCss).toContain("white-space: normal !important");
+    expect(auditCss).toContain(".dpr-equipment-readonly thead { display: table-header-group !important; }");
   });
 
-  it("allows long rows across pages and allocation blocks to wrap without revealing Lifecycle actions", () => {
-    expect(declaration(".dpr-equipment-audit tr", "page-break-inside").value).toBe("auto");
-    expect(declaration(".dpr-equipment-audit tr", "page-break-inside").important).toBe(true);
-    expect(declaration('.dpr-equipment-audit [data-testid^="equipment-table-work-"] .grid', "display").value).toBe("block");
-    const buttonRule = rules.filter(rule => rule.selector.includes("button"));
-    expect(buttonRule).toHaveLength(1);
-    expect(buttonRule[0].selector).toBe('.dpr-equipment-audit [data-testid^="equipment-table-breakdowns-"] button');
+  it("hides management actions and Lifecycle in print while keeping other pages' full audit print", () => {
+    expect(css).toContain(".dpr-management button,.dpr-management .print-hidden,.dpr-row-controls { display: none !important; }");
     const compactCss = readFileSync("client/src/components/dprEquipmentReadOnly.css", "utf8");
     expect(compactCss).toContain(".equipment-lifecycle,.equipment-details-toggle { display: none !important; }");
     expect(compactCss).toContain(".equipment-audit-panel { display: block !important;");

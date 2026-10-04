@@ -1,0 +1,10 @@
+{
+  "signedInDevelopment": true,
+  "seededDevelopmentRecords": true,
+  "apiMocking": false,
+  "checks": [
+    "A/F/H real signed-in development main report, quantities/totals/legend/remarks",
+    "K actual Share control, wa.me URL and clipboard fallback text captured; external send not performed",
+    "B-H edge report: unlinked programme, differing credit, earthwork line, flags, missing closing, idle/breakdown, vehicle, labour hours/tasks, yard, remarks"
+  ]
+}
