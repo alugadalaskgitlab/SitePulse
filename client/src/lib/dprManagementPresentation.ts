@@ -92,7 +92,7 @@ export function buildManagementShare(dpr: any, equipment: any[], receipts: Recei
     `Work done: ${work.join("; ") || "No site work"}`,
     `Machines: ${working}/${equipment.length} working · ${idle} idle · ${breakdown} breakdown${unspecified ? ` · ${unspecified} not specified` : ""}`,
     `Diesel issued: ${managementNumber(diesel, 1)} L`, `Labour: ${labour}`,
-    `Materials received: ${bulk || "none recorded"}`, `Remarks: ${dpr.remarks?.trim() || "none recorded"}`].join("\n");
+    `Bulk received: ${bulk || "none recorded"}`, `Remarks: ${dpr.remarks?.trim() || "none recorded"}`].join("\n");
 }
 
 export async function shareManagementReport(text: string): Promise<"shared" | "copied" | "cancelled"> {

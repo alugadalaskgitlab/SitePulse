@@ -4595,3 +4595,17 @@ mtime_ms = 1791101033578
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c3b84a7f-7df0-44ac-aeef-9d40cdcab216/f472535d-dcd4-46ab-b7d6-4cc9a9471013"
 storage_version_token = "1791101034795921"
 content_type = "text/html"
+
+[[outputs]]
+id = "SvBq3mlkbsGzfYtpH0FyD"
+uri = "file://.agents/outputs/vb-export-verification/publish-preflight.html"
+type = "html"
+title = "Part A publish preview and production row-count baseline"
+description = "Read-only publishing schema result: zero changes and zero SQL statements. Seven production counts recorded; post-publish comparison pending."
+logical_id = "c6832f7c-e8b4-4d09-8ba2-772b288478c9"
+content_hash = "sha256:68d54d14a377aed6f92701e6e9d75f2622107a9ccb9a3386f9f0a680608a190c"
+size = 2556
+mtime_ms = 1791101576622
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c6832f7c-e8b4-4d09-8ba2-772b288478c9/a29e5931-8e0d-4ff9-a565-2084688bcb05"
+storage_version_token = "1791101579241650"
+content_type = "text/html"

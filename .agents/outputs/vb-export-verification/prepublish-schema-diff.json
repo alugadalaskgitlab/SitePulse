@@ -1,0 +1,14 @@
+{
+  "checkedAt": "2026-10-04T08:09:29.271Z",
+  "columnsToRemove": [],
+  "hasDiff": false,
+  "hasStructuralDataLoss": false,
+  "matViewsToRemove": [],
+  "maybeNonBackwardsCompatible": false,
+  "schemasToRemove": [],
+  "statementsToExecute": [],
+  "success": true,
+  "tablesToRemove": [],
+  "tablesToTruncate": [],
+  "warnings": []
+}

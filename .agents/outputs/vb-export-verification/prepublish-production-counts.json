@@ -1,0 +1,6 @@
+{
+  "exitCode": 0,
+  "exitReason": null,
+  "output": "captured_at,table_name,row_count\n2026-10-04 08:10:11.852292+00,dprs,334\n2026-10-04 08:10:11.852292+00,equipment_logs,762\n2026-10-04 08:10:11.852292+00,labour_logs,162\n2026-10-04 08:10:11.852292+00,material_logs,100\n2026-10-04 08:10:11.852292+00,progress_entries,445\n2026-10-04 08:10:11.852292+00,vendor_bills,45\n2026-10-04 08:10:11.852292+00,hire_statements,1\n",
+  "success": true
+}
