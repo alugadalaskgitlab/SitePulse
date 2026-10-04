@@ -4670,26 +4670,54 @@ content_type = "application/pdf"
 id = "nVbE3aGvYSOR1FYz07XgZ"
 uri = "file://.agents/outputs/vb-payables-preview/three-category-example.xlsx"
 type = "table"
-title = "Hire + material + labour example — Excel"
-description = "Clearly labelled synthetic in-memory example. No business records inserted."
+title = "Hire + material + labour — Excel example"
+description = "Explicitly synthetic in-memory example, including unallocated monthly hire. No business records created."
 logical_id = "b71a175a-e86e-4355-849c-0e7e051426e7"
-content_hash = "sha256:2d80e0a1136ebac087e629bb95c622538d2adca81b9e4f9249f58b4ff7116c05"
+content_hash = "sha256:dcacbec71342f1deb655bcb543a8e6e6748034bb69935e382cec4f5c67dacdc2"
 size = 53956
-mtime_ms = 1791132772631
-storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b71a175a-e86e-4355-849c-0e7e051426e7/2ec0d00d-099b-47ad-ac73-fa96e439bc19"
-storage_version_token = "1791132968181363"
+mtime_ms = 1791133944526
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b71a175a-e86e-4355-849c-0e7e051426e7/3dcddc43-4e3e-4c33-b745-71c1c4af73ff"
+storage_version_token = "1791134039381498"
 content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 [[outputs]]
 id = "RBuhTsqa5gETIB1HM7TtX"
 uri = "file://.agents/outputs/vb-payables-preview/three-category-example.pdf"
 type = "pdf"
-title = "Hire + material + labour example — PDF"
-description = "Synthetic example showing unallocated hire and last-bill GST suggestions; not live payable data."
+title = "Hire + material + labour — PDF example"
+description = "Same synthetic vendor and period as the workbook; preview only, not a live bill."
 logical_id = "35415852-65d8-4001-8610-39936dff4270"
-content_hash = "sha256:eeb7c0872acc959e2e0dfbf0853a9bf16799a1a1f09b85a4ba437de93c39d2bc"
+content_hash = "sha256:fc30d751fddee82c0f248ad95a4bd24e6aa4cb09878c8759bff066aaf4344762"
 size = 78969
-mtime_ms = 1791132772683
-storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/35415852-65d8-4001-8610-39936dff4270/e6a8066b-9c75-4338-a462-aa3a204fd76a"
-storage_version_token = "1791132969866371"
+mtime_ms = 1791133944578
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/35415852-65d8-4001-8610-39936dff4270/632b79dd-7c1d-4b8a-b4c5-d98eb404ea6b"
+storage_version_token = "1791134041046774"
 content_type = "application/pdf"
+
+[[outputs]]
+id = "5Hc_D3rb7TnFF8LgaBDAN"
+uri = "file://.agents/outputs/vb-payables-preview/final-evidence-report.html"
+type = "html"
+title = "Part B — final evidence report"
+description = "Fresh B8 checksums, billed exclusions, allocation totals, permission-test boundaries and final full-suite comparison."
+logical_id = "589321a9-a392-4ce0-ae12-6df732246f6c"
+content_hash = "sha256:b04903f66e4e5320115236cb5fbf2ec3156edb5c851c74f73b832c081387574e"
+size = 5987
+mtime_ms = 1791134033262
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/589321a9-a392-4ce0-ae12-6df732246f6c/4659d4a4-4efb-4dd7-b5e5-8514637dba34"
+storage_version_token = "1791134035978431"
+content_type = "text/html"
+
+[[outputs]]
+id = "ZeurcJ8SkZhflGDdPsYnv"
+uri = "file://.agents/outputs/vb-payables-preview/B8-before-after.csv"
+type = "table"
+title = "B8 — before/after counts and content checksums"
+description = "Fresh snapshots around the full preview and both exports; all five tables identical."
+logical_id = "42761c9f-3697-4b59-9729-d30f4a369585"
+content_hash = "sha256:1205fd3470245bd31216c4ab9d752d4d52bc1b82d40f1a10ed92b24f84cc9e00"
+size = 805
+mtime_ms = 1791134033038
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/42761c9f-3697-4b59-9729-d30f4a369585/0439e5b1-8832-4462-997f-8a942187c63d"
+storage_version_token = "1791134037602672"
+content_type = "text/csv"

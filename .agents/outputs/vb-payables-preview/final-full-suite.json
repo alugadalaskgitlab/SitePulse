@@ -1,0 +1,1934 @@
+{
+  "baseline": {
+    "passed": 4264,
+    "failed": 48,
+    "skipped": 3
+  },
+  "current": {
+    "passed": 4296,
+    "failed": 48,
+    "skipped": 3
+  },
+  "failureChanges": [],
+  "files": [
+    {
+      "file": "client/src/__tests__/dprEquipmentReadOnly.test.tsx",
+      "passed": 24,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "client/src/__tests__/dprManagement.test.tsx",
+      "passed": 64,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "client/src/__tests__/uxFix01Frontend.test.tsx",
+      "passed": 12,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/account-push-notification.test.tsx",
+      "passed": 3,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/arrangementApplicableQtyBatch02.test.ts",
+      "passed": 22,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/arrangementAutoAllocation.test.ts",
+      "passed": 23,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/arrangementBarPhasing026.test.ts",
+      "passed": 16,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/arrangementDemandExclusion.test.ts",
+      "passed": 23,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/arrangementExecutionEvidence.test.ts",
+      "passed": 13,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/arrangementProcurementCorrection.test.ts",
+      "passed": 22,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/arrangementStatusHistory.test.ts",
+      "passed": 7,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/attachmentGalleryViewer.test.tsx",
+      "passed": 5,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/autoSequence.integration.test.ts",
+      "passed": 36,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/autoSequence029.test.ts",
+      "passed": 19,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/batch06V.test.ts",
+      "passed": 60,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/billItemPickerRegression.test.tsx",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/bituminousArrangement028.test.ts",
+      "passed": 31,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/bituminousArrangement028A.test.ts",
+      "passed": 10,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/bituminousShortageRoute028B.test.ts",
+      "passed": 5,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/boqDisplayOrder.test.ts",
+      "passed": 2,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/boqImportParsing.test.ts",
+      "passed": 8,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/boqItemDisplayName.test.ts",
+      "passed": 20,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/boqLink01Frontend.test.tsx",
+      "passed": 14,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/boqLink01Persistence.test.ts",
+      "passed": 5,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/boqLink01Readiness.test.ts",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/boqNormalise.test.ts",
+      "passed": 171,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/boqProjectEdit.test.ts",
+      "passed": 3,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/boqProjectHeader06WHF3.test.tsx",
+      "passed": 5,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/boqProjectUppercaseUi.test.ts",
+      "passed": 2,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/boqWorkCategories.test.ts",
+      "passed": 16,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/businessText.test.ts",
+      "passed": 3,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/businessTextPersistencePolicy.test.ts",
+      "passed": 3,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/chainageOverlap06b.test.ts",
+      "passed": 31,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/cutFillLedger.test.ts",
+      "passed": 7,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/cutFillReconciliation.test.ts",
+      "passed": 26,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/diesel02EquipmentCompact.test.tsx",
+      "passed": 45,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/diesel04NormRoute.test.ts",
+      "passed": 7,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/diesel04PartB.test.ts",
+      "passed": 1,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dieselComparisonEquipment.test.ts",
+      "passed": 3,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dieselComparisonRoute.test.ts",
+      "passed": 15,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dieselDailyReport.test.ts",
+      "passed": 14,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dieselEntryDpr01.test.tsx",
+      "passed": 7,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dieselEntryPlant01.test.tsx",
+      "passed": 13,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dieselPaymentEvidence06mE.test.ts",
+      "passed": 3,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dieselPaymentStatus06mF.test.ts",
+      "passed": 26,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dieselPurchase06m.test.ts",
+      "passed": 13,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dieselReceiptConcurrencyFix1.integration.test.ts",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dieselReceiptFix1.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dieselReceiptPending06mC.test.ts",
+      "passed": 39,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dieselReceiptPiBypass06mChf.test.ts",
+      "passed": 22,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dieselRegister.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dieselSourceHsdRuntime1433.test.ts",
+      "passed": 22,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dieselStockGuard06mB.test.ts",
+      "passed": 83,
+      "failed": 1,
+      "failures": [
+        "Task #1433 DPR invalid-source route audit maps InvalidDieselSourceError in mutation block app.post(\"/api/dprs/:id/submit\""
+      ]
+    },
+    {
+      "file": "tests/dieselStockOwnerLabel.test.ts",
+      "passed": 8,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr-site-scope-mutation.test.ts",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr01WorkAssignmentLookup.test.tsx",
+      "passed": 7,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr02Fix2EquipmentLayout.test.ts",
+      "passed": 2,
+      "failed": 1,
+      "failures": [
+        "DPR-02 Fix 2 equipment layout keeps equipment setup visible instead of behind the old auto-collapsing summary"
+      ]
+    },
+    {
+      "file": "tests/dpr02MaterialTripLinkage.test.ts",
+      "passed": 23,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr02MaterialTripRoutes.test.ts",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr03EquipmentTask.test.tsx",
+      "passed": 5,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr03EquipmentTaskFinancial.test.ts",
+      "passed": 5,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr04Fix1Guided.test.ts",
+      "passed": 3,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr04Fix1Lifecycle.test.tsx",
+      "passed": 12,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr04Fix2.test.ts",
+      "passed": 1,
+      "failed": 10,
+      "failures": [
+        "DPR-04 Fix 2 — no-BOQ mismatch carve-out B/D: PATCH allows a project mismatch only for a no-BOQ draft and canonicalizes the saved project",
+        "DPR-04 Fix 2 — no-BOQ mismatch carve-out keeps a saved null-project draft null when no BOQ evidence exists",
+        "DPR-04 Fix 2 — no-BOQ mismatch carve-out does not treat a confirmation as permission to move a saved null-project DPR to another site",
+        "DPR-04 Fix 2 — no-BOQ mismatch carve-out does not recover from BOQ evidence that replacement payload clears",
+        "DPR-04 Fix 2 — no-BOQ mismatch carve-out accepts an evidence-based saved-null recovery with a target-project item",
+        "DPR-04 Fix 2 — no-BOQ mismatch carve-out B: submit allows a project mismatch only for a no-BOQ draft and preserves the saved project",
+        "DPR-04 Fix 2 — no-BOQ mismatch carve-out C: submit still rejects mixed real BOQ refs, including no-site-work, legacy equipment, normalized segments, allocations, and labour",
+        "DPR-04 Fix 2 — no-BOQ mismatch carve-out submit automatically recovers a saved null when incoming BOQ evidence exists",
+        "DPR-04 Fix 2 — no-BOQ mismatch carve-out C: PATCH also rejects a real labour/equipment BOQ reference",
+        "DPR-04 Fix 2 — no-BOQ mismatch carve-out does not allow a PATCH to bypass the guard by omitting stored equipment child refs"
+      ]
+    },
+    {
+      "file": "tests/dpr06x.test.ts",
+      "passed": 39,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr07VersionValidation.test.ts",
+      "passed": 15,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr12EquipmentStatus.test.ts",
+      "passed": 12,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr13FallbackAndRetry.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr13FrontendTokens.test.ts",
+      "passed": 3,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr13StoppageEditor.test.tsx",
+      "passed": 2,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr16B1.test.ts",
+      "passed": 4,
+      "failed": 1,
+      "failures": [
+        "DPR16 B1 section presentation and evaluator shares the approved condensed activity UI with classic while keeping section-only navigation and persistence"
+      ]
+    },
+    {
+      "file": "tests/dpr16B1Rendered.test.tsx",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr16B2SiteEdit.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr16B2SiteEntry.test.ts",
+      "passed": 3,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr16B3ActivityRendered.test.tsx",
+      "passed": 5,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr16B3Rendered.test.tsx",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr17MaterialsReceived.test.tsx",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr18B1EquipmentCompact.test.tsx",
+      "passed": 21,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr18B2Defaults.test.ts",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr18B2GuidedEquipment.test.ts",
+      "passed": 3,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr18B2SiteEdit.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr18B2SiteEntry.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr18B3ReadOnlyPages.test.tsx",
+      "passed": 5,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr19B1SiteDashboard.test.tsx",
+      "passed": 8,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr19DraftReadiness.test.ts",
+      "passed": 3,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr19DraftReadinessRoute.test.ts",
+      "passed": 2,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr19Fix2EquipmentRemoval.test.tsx",
+      "passed": 8,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr20B1EquipmentTableDetails.test.tsx",
+      "passed": 21,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr20B2EquipmentEfficiency.test.tsx",
+      "passed": 56,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dpr20B4MaterialsClarity.test.tsx",
+      "passed": 12,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dprActorAudit.test.ts",
+      "passed": 5,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dprBatch04.test.ts",
+      "passed": 37,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dprBatch05.test.ts",
+      "passed": 27,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dprBatch06X.test.ts",
+      "passed": 62,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dprBoqSelection.test.ts",
+      "passed": 14,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dprBoqStatus.test.tsx",
+      "passed": 13,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dprBreakdownPersistence1430.test.ts",
+      "passed": 10,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dprCloneVersionMutex.test.ts",
+      "passed": 11,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dprEntryMode.test.ts",
+      "passed": 10,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dprEquipmentConsumption.test.ts",
+      "passed": 31,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dprLifecycle06d.test.ts",
+      "passed": 23,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dprProgrammeLink031.test.ts",
+      "passed": 22,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dprQuantitySource.test.ts",
+      "passed": 17,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dprSaveError.test.ts",
+      "passed": 2,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dprSections13.integration.test.ts",
+      "passed": 23,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dprSiteAccessBaseName.test.ts",
+      "passed": 13,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/dprWorkHub.test.ts",
+      "passed": 8,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/earthworkArrangement.test.ts",
+      "passed": 38,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/earthworkArrangement024.test.ts",
+      "passed": 63,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/earthworkArrangementRouteScope.test.ts",
+      "passed": 1,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/earthworkArrangementScopeMutex.test.ts",
+      "passed": 2,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/earthworkCutToFill.test.ts",
+      "passed": 27,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/editRecordTypeSectionMap.test.ts",
+      "passed": 5,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/equipment-status-page.test.tsx",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/equipmentActivityAllocationContracts.test.ts",
+      "passed": 10,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/equipmentActivityAllocations.test.ts",
+      "passed": 17,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/equipmentConsistencyRuntime.test.ts",
+      "passed": 31,
+      "failed": 3,
+      "failures": [
+        "DPR draft operational side-effect boundary persists an evidence-based null-project recovery with a newly selected target-project BOQ row",
+        "DPR draft operational side-effect boundary does not let a second recovery overwrite the first recovered project pin",
+        "all DPR write paths and route authorization remain wired keeps start identity and draft state transitions inside transaction guards"
+      ]
+    },
+    {
+      "file": "tests/equipmentEmptyReliability.test.ts",
+      "passed": 9,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/equipmentHireBillOutput.test.ts",
+      "passed": 13,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/equipmentIdentification.test.ts",
+      "passed": 7,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/equipmentIdentificationDialog.test.tsx",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/equipmentLabel.test.ts",
+      "passed": 5,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/equipmentLifecycle.test.ts",
+      "passed": 5,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/equipmentMasterCreateDialog.test.tsx",
+      "passed": 3,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/equipmentMovement.test.ts",
+      "passed": 5,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/equipmentOpeningContinuity06q.test.ts",
+      "passed": 26,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/equipmentPerformance.test.ts",
+      "passed": 30,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/equipmentPerformanceNav.test.ts",
+      "passed": 8,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/equipmentPerformancePermissions04.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/equipmentPerformanceRoutes.test.ts",
+      "passed": 9,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/equipmentPerformanceUi.test.ts",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/equipmentStatusRouteDpr12.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/equipmentUsageCanonical.test.ts",
+      "passed": 11,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/equipmentUsageCombinedUpdate06XHF4.test.ts",
+      "passed": 7,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/equipmentUsageDestinationEdit.test.ts",
+      "passed": 23,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/equipmentUsageFormReorganisation.test.ts",
+      "passed": 6,
+      "failed": 2,
+      "failures": [
+        "equipment usage form reorganisation contracts uses creation-only local-time defaults without changing hydration helpers",
+        "equipment usage form reorganisation contracts shows the same parent equipment summary in both submitted DPR views"
+      ]
+    },
+    {
+      "file": "tests/executionArrangementApproval06ZHF5.test.ts",
+      "passed": 5,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/executionArrangementScope031.test.ts",
+      "passed": 31,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/executionArrangementsUi.test.ts",
+      "passed": 5,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/executionState027.test.ts",
+      "passed": 20,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/fieldHomeDprResponseGuard.test.ts",
+      "passed": 3,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/focusedDprRestoration1449.test.ts",
+      "passed": 3,
+      "failed": 1,
+      "failures": [
+        "focused DPR restoration keeps length read-only, removes the reconciliation prompt, and keeps compact DPR equipment details deliberate"
+      ]
+    },
+    {
+      "file": "tests/ganttCalendarAxis027A.test.ts",
+      "passed": 31,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/guidedDpr06c.test.ts",
+      "passed": 10,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/guidedDpr06cP.test.ts",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/guidedDprActualSide.test.ts",
+      "passed": 36,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/guidedDprCalculation.test.ts",
+      "passed": 22,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/guidedDprIntegrity06t.test.ts",
+      "passed": 19,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/guidedDprReliability.test.ts",
+      "passed": 5,
+      "failed": 10,
+      "failures": [
+        "Part B — programmeBarId survives draft → update → submit (real routes) draft POST with INCOMPLETE chainage keeps the link (draft-lenient)",
+        "Part B — programmeBarId survives draft → update → submit (real routes) full lifecycle: create draft → PATCH draft twice → submit — link intact at every step, exactly one DPR record",
+        "Part B — programmeBarId survives draft → update → submit (real routes) submit strictly blocks a linked row with missing chainage (no silent link drop)",
+        "Part B — programmeBarId survives draft → update → submit (real routes) unlinked real BOQ progress survives draft → update → submit → version with no scheduled bars",
+        "Part D — out-of-range chainage reason persistence submit without a reason is blocked with PROGRAMME_LINK_INVALID",
+        "Part D — out-of-range chainage reason persistence with a reason: submit succeeds, reason persisted, row stamped review_required",
+        "Part E — executedBy attribution persists through the lifecycle executedBy set on a draft reaches submitDraftDpr unchanged",
+        "DPR actor audit trail A-E A — passes the authenticated actor when creating a draft",
+        "DPR actor audit trail A-E B — passes the authenticated actor on every draft save",
+        "DPR actor audit trail A-E C — passes the authenticated submitter when submitting a draft"
+      ]
+    },
+    {
+      "file": "tests/guidedEquipment06cQ.test.ts",
+      "passed": 14,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/guidedWizard1409.test.ts",
+      "passed": 9,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/heating-trends-ldo-link.test.tsx",
+      "passed": 12,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/hireBilling.test.ts",
+      "passed": 61,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/hireBillingLifecycle07b.test.ts",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/home01PendingActions.test.ts",
+      "passed": 3,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/initialScopeCorrectionRoutes.test.ts",
+      "passed": 12,
+      "failed": 2,
+      "failures": [
+        "draft submission scope-token handoff reads a fresh token and passes it into final draft submission",
+        "draft submission scope-token handoff maps a correction committed during validation to 409 and does not notify as submitted"
+      ]
+    },
+    {
+      "file": "tests/initialScopeCorrectionStorage.test.ts",
+      "passed": 23,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/initialScopeCorrectionUi.test.tsx",
+      "passed": 5,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/labour01WorkerNamesFrontend.test.tsx",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/labour01Workers.test.ts",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/labour01WorkersPostgres.test.ts",
+      "passed": 0,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/layerDisplayCoverage01.test.ts",
+      "passed": 9,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/mat01MaterialsReceivedQueries.test.ts",
+      "passed": 1,
+      "failed": 1,
+      "failures": [
+        "MAT-01 Materials Received database queries executes the received query with source-or-transporter matching and returns the source field"
+      ]
+    },
+    {
+      "file": "tests/mat03StockDensity.test.tsx",
+      "passed": 5,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/mat04UnloadingDisplay.test.tsx",
+      "passed": 2,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/materialMappingAuth.test.ts",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/materialMatch.test.ts",
+      "passed": 1,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/materialReceiptCancelDeleteRec02.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/materialReceiptDateSplitRec01.test.ts",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/materialReceiptReversal06mD.test.ts",
+      "passed": 16,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/materialReceiptSubmissionUx.test.ts",
+      "passed": 3,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/materialReceiptSubmittedEditRec03.test.ts",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/materialReceiptSummary06e.test.ts",
+      "passed": 44,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/multiLayerLift06p.test.ts",
+      "passed": 30,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/notification-body.test.ts",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/overlapResolutionLayerRoute.test.ts",
+      "passed": 23,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/perm01ClientRaise.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/perm01ConcreteRoute.test.ts",
+      "passed": 5,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/perm01MatrixUi.test.tsx",
+      "passed": 7,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/perm01PartAServer.test.ts",
+      "passed": 13,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/perm01PartBHandlers.test.ts",
+      "passed": 15,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/perm01SupportingReads.test.ts",
+      "passed": 12,
+      "failed": 1,
+      "failures": [
+        "PERM-01 supporting read HTTP routes with real guards actually creates and edits purchase_indents_raise or site_procurement through the registered handlers"
+      ]
+    },
+    {
+      "file": "tests/pi01B1ConcurrencyPostgres.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/pi01B1Update.test.ts",
+      "passed": 26,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/planOutcome06j.test.ts",
+      "passed": 34,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/planOutcomeRoute06jhf.test.ts",
+      "passed": 7,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/plannedWork06n.test.ts",
+      "passed": 15,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/planningEngine.test.ts",
+      "passed": 44,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/planningMode.test.ts",
+      "passed": 11,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/plantEquipmentUsage06X.test.ts",
+      "passed": 39,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/programmeBarLinkage030A.test.ts",
+      "passed": 26,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/programmeBarOutcome1430.test.ts",
+      "passed": 9,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/programmeBarPickerOptional.test.tsx",
+      "passed": 5,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/programmeCalendarBackfill.test.ts",
+      "passed": 14,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/programmeSequencer.test.ts",
+      "passed": 44,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/progressReportBatch06.test.ts",
+      "passed": 64,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/progressReportExportRoutePr01.test.ts",
+      "passed": 1,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/progressReportNav.test.ts",
+      "passed": 25,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/progressReportPr01.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/projectScope032.test.ts",
+      "passed": 38,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/purchase-indent-pi01.test.ts",
+      "passed": 11,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/purchase-indent-pi02b.test.ts",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/purchaseIndentB1Client.test.tsx",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/purchaseIndentDeliveryUi.test.tsx",
+      "passed": 19,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/purchaseOrderPartC.test.ts",
+      "passed": 7,
+      "failed": 5,
+      "failures": [
+        "optional PO lifecycle with isolated PostgreSQL fixture A: an order is recorded without raising a PO, for bulk and stores",
+        "optional PO lifecycle with isolated PostgreSQL fixture B-G: material snapshot, lock, approver, approved PDF and role access",
+        "optional PO lifecycle with isolated PostgreSQL fixture B-G: stores snapshot, lock, approver, approved PDF and role access",
+        "optional PO lifecycle with isolated PostgreSQL fixture reject permits re-raise; only one active PO even on concurrent requests",
+        "optional PO lifecycle with isolated PostgreSQL fixture denies unauthenticated, no-create, no-view, and out-of-site calls"
+      ]
+    },
+    {
+      "file": "tests/purchaseOrderPdfPartC.test.ts",
+      "passed": 3,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/push-notification-setup.test.tsx",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/push-sections-sync.test.ts",
+      "passed": 1,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/push-subscription-routes-reliability.test.ts",
+      "passed": 5,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/push-subscription-storage-reliability.test.ts",
+      "passed": 3,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/quantityResolverBatch01.test.ts",
+      "passed": 13,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/rateCardsDeletion.test.tsx",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/rec04ReceiptUx.test.ts",
+      "passed": 7,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/receipt06g.test.ts",
+      "passed": 14,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/receiptWorkContext06ef.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/requirementFulfilment06f.test.ts",
+      "passed": 27,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/resolveWorkType.test.ts",
+      "passed": 65,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/resourceReview.test.ts",
+      "passed": 51,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/roadGeometryBatch01.test.ts",
+      "passed": 47,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/roadGeometryProjectSwitch01A.test.tsx",
+      "passed": 2,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/scopeConfirmedReachEditBatch03.test.tsx",
+      "passed": 9,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/scopeEditAutoSequenceLoad.test.ts",
+      "passed": 16,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/scopeSegmentDeleteMutex.test.ts",
+      "passed": 3,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/sectorMultiplier.test.ts",
+      "passed": 15,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/shortageCheck.test.ts",
+      "passed": 21,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/shoulderSequencing.test.ts",
+      "passed": 23,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/sideAwareQtyAllocation029C.test.ts",
+      "passed": 16,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/site-access-atomicity.test.ts",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/siteAccessSecurity.test.ts",
+      "passed": 18,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/siteDashboardActivity06X.test.ts",
+      "passed": 41,
+      "failed": 1,
+      "failures": [
+        "H2: detailed DPR endpoint provides canonical BOQ label fields batch-loads unique BOQ items and attaches them to progress rows"
+      ]
+    },
+    {
+      "file": "tests/siteDprContinuity06Y.test.ts",
+      "passed": 2,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/siteEditDispatch06XHF6.test.ts",
+      "passed": 25,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/siteEditDpr10.test.tsx",
+      "passed": 3,
+      "failed": 1,
+      "failures": [
+        "DPR-10 SiteEdit regressions does not exempt hydrated draft rows from the prior-overlap warning"
+      ]
+    },
+    {
+      "file": "tests/siteEditPayloadNormalization.test.ts",
+      "passed": 3,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/siteMaterialSuggestionFrontend.test.tsx",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/siteMaterialTripSuggestions.test.ts",
+      "passed": 14,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/siteMaterialTrips06s.test.ts",
+      "passed": 25,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/siteMaterialTripsMaterialSourceUi.test.ts",
+      "passed": 8,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/siteMaterialTripsTransport.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/siteReportHistoricalEquipment.test.ts",
+      "passed": 2,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/snlClassifier.test.ts",
+      "passed": 31,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/snlIdentityRuleMatch.test.ts",
+      "passed": 26,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/snlPipeRuleMatch.test.ts",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/stageFrontSideOverlap029B.test.ts",
+      "passed": 14,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/stockNumericSafety.test.ts",
+      "passed": 13,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/stockReconciliation1385.test.ts",
+      "passed": 30,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/structureImportLabels.test.ts",
+      "passed": 11,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/structureOrLocationScheduledItem.test.ts",
+      "passed": 17,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/task1479BackendCredit.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/task1479UnitConversion.test.ts",
+      "passed": 33,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/task1481NullableActualConsumers.test.tsx",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/task1481SiteGoalUnitCompletion.test.ts",
+      "passed": 7,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/task1482DprHeaders.test.tsx",
+      "passed": 12,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/task1482DprRegister.test.tsx",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/tripQuantityDisplayMat03.test.ts",
+      "passed": 3,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/tripQuantityStorageMat03.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/unscheduledReportCredit.test.ts",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/uomConvert.test.ts",
+      "passed": 8,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/uppercaseBusinessTextMigration.test.ts",
+      "passed": 2,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/uxFix01Breakdown.test.ts",
+      "passed": 2,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/uxFix01Labour.test.ts",
+      "passed": 7,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vb22BackendStorage.test.ts",
+      "passed": 5,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vbExport01PartC.test.tsx",
+      "passed": 8,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vehicleSupplierAssociationBackend.test.ts",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vehicleSupplierAssociationPostgres.integration.test.ts",
+      "passed": 3,
+      "failed": 5,
+      "failures": [
+        "vehicle supplier association PostgreSQL transactions VB24: commits all 114 Soil trips over 15–22 September (direct SQL evidence)",
+        "vehicle supplier association PostgreSQL transactions VB24: preserves edit/site restrictions and exposes case-mismatched permitted names as zero, not success",
+        "vehicle supplier association PostgreSQL transactions VB24: fill blanks, per-trip history, single edit and clear, and single audit rollback",
+        "vehicle supplier association PostgreSQL transactions serializes two concurrent DatabaseStorage creates on real pooled connections",
+        "vehicle supplier association PostgreSQL transactions pins an old pair through an ordinary edit and keeps complete-history conflict"
+      ]
+    },
+    {
+      "file": "tests/vehicleSupplierAssociationStorage.integration.test.ts",
+      "passed": 7,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vehicleSupplierAutofillFrontend.test.tsx",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillBlankRows.test.ts",
+      "passed": 1,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillBulkUnitConversion.test.ts",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillDateGroups.test.tsx",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillDraftRateCards.test.tsx",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillGroupRemovalGuard.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillHireIntegration07c.test.ts",
+      "passed": 16,
+      "failed": 1,
+      "failures": [
+        "07C vendor-bill hire transaction wiring keeps source-qualified auto evidence read-only and visibly marked as auto"
+      ]
+    },
+    {
+      "file": "tests/vendorBillHireUiParity.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillImportSafety.test.ts",
+      "passed": 7,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillMaterialTripDisplay.test.ts",
+      "passed": 2,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillPayment06mA.test.ts",
+      "passed": 12,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillRateSelection.test.ts",
+      "passed": 13,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillSitePartA.test.ts",
+      "passed": 9,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillSitePersistence.integration.test.ts",
+      "passed": 1,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillStatusError.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillVb09Server.test.ts",
+      "passed": 13,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillVb10HireBilling.test.ts",
+      "passed": 13,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillVb14.test.ts",
+      "passed": 3,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillVb15Server.test.ts",
+      "passed": 2,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillVb17MonthlyBreakdown.test.tsx",
+      "passed": 7,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillVb18PdfRoute.test.ts",
+      "passed": 1,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillVb18Server.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillVb20MonthlySegments.test.ts",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillVb20MonthlySelection.test.tsx",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillVb21ActivityCalendar.test.tsx",
+      "passed": 7,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillVb23PaymentGuard.test.ts",
+      "passed": 7,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillVb23PaymentUi.test.tsx",
+      "passed": 11,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillVb23bPaymentSave.test.ts",
+      "passed": 11,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorBillsEquipmentHire07b.test.tsx",
+      "passed": 15,
+      "failed": 2,
+      "failures": [
+        "VB-11 grouped ordinary activity pull Test A/B/C: groups mixed activity, pulls equipment only, then adds one material group without disturbing it",
+        "VB-11 grouped ordinary activity pull Test D/E/F: Pull All applies rates and duplicate flags, clears the blank row, and retains Added groups"
+      ]
+    },
+    {
+      "file": "tests/vendorExportPermissions.test.ts",
+      "passed": 26,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorMasterHandlersPartA.test.ts",
+      "passed": 12,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorMasterPartA.test.ts",
+      "passed": 5,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorPayablesPreview.test.ts",
+      "passed": 26,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorPayablesPreviewUi.test.tsx",
+      "passed": 6,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/vendorRateCardUnitUpsert.test.ts",
+      "passed": 1,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/workProgrammeRevision06W.test.ts",
+      "passed": 37,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/workProgrammeRevisionDialog06WHF.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/workProgrammeRevisionDialog06WHF.test.tsx",
+      "passed": 23,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/workProgrammeRevisionRoutes06W.test.ts",
+      "passed": 18,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/workTypeProtectiveMisc.test.ts",
+      "passed": 18,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/workspaceMode.test.ts",
+      "passed": 9,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/write-endpoints-auth.test.ts",
+      "passed": 2,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "file": "tests/fixtures/vb23b/server.test.ts",
+      "passed": 0,
+      "failed": 0,
+      "failures": []
+    }
+  ]
+}

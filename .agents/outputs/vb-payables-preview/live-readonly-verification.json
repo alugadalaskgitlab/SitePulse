@@ -3,7 +3,7 @@
   "writeProtection": "PostgreSQL default_transaction_read_only=on on all service connections",
   "businessWritesAttempted": false,
   "selectedVendor": "NARASIMHULU",
-  "generatedAt": "2026-10-04T16:43:20.136Z",
+  "generatedAt": "2026-10-04T17:12:22.215Z",
   "sheets": [
     "Summary",
     "Equipment hire",
