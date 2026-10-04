@@ -4609,3 +4609,17 @@ mtime_ms = 1791101576622
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c6832f7c-e8b4-4d09-8ba2-772b288478c9/a29e5931-8e0d-4ff9-a565-2084688bcb05"
 storage_version_token = "1791101579241650"
 content_type = "text/html"
+
+[[outputs]]
+id = "XFftzrH0c-Tw0cZvPfd5Y"
+uri = "file://.agents/outputs/vb-export-verification/production-part-a-passed.html"
+type = "html"
+title = "Published Part A: production verification passed"
+description = "Actual CSV, Excel and PDF permission/site checks passed. Includes the row-count difference and test-account cleanup."
+logical_id = "8db624ea-31c1-412b-b19f-78d43b61c8f4"
+content_hash = "sha256:8329722af673a35a00e451bbed517677d0454ca89cf65e2dfa47dc97e662bfc1"
+size = 2890
+mtime_ms = 1791131155734
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8db624ea-31c1-412b-b19f-78d43b61c8f4/d3aedebe-1924-44f0-8813-3dc633bdeaa5"
+storage_version_token = "1791131158160479"
+content_type = "text/html"

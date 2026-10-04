@@ -1,7 +1,7 @@
 {
   "environment": "production",
   "url": "https://site-reporter--8shmmcw622.replit.app",
-  "generatedAt": "2026-10-04T08:02:22.042Z",
+  "generatedAt": "2026-10-04T16:24:11.196Z",
   "checks": [
     {
       "account": "ZZ-TEST-NO-REPORTS",
@@ -19,7 +19,7 @@
       "account": "ZZ-TEST-NO-REPORTS",
       "path": "/api/vendor-bills/export?format=csv",
       "expected": 403,
-      "actual": 200
+      "actual": 403
     },
     {
       "account": "ZZ-TEST-SITE-ONLY",
@@ -30,10 +30,10 @@
     {
       "format": "csv",
       "selectedSite": false,
-      "exactPermittedBillSet": false,
-      "rows": 45,
+      "exactPermittedBillSet": true,
+      "rows": 11,
       "expectedRows": 11,
-      "unauthorizedRows": 34
+      "unauthorizedRows": 0
     },
     {
       "account": "ZZ-TEST-SITE-ONLY",
@@ -44,22 +44,22 @@
     {
       "format": "csv",
       "selectedSite": true,
-      "exactPermittedBillSet": false,
-      "rows": 45,
+      "exactPermittedBillSet": true,
+      "rows": 11,
       "expectedRows": 11,
-      "unauthorizedRows": 34
+      "unauthorizedRows": 0
     },
     {
       "account": "ZZ-TEST-SITE-ONLY",
       "path": "/api/vendor-bills/export?format=csv&siteId=14",
       "expected": 403,
-      "actual": 200
+      "actual": 403
     },
     {
       "account": "ZZ-TEST-NO-REPORTS",
       "path": "/api/vendor-bills/export?format=xlsx",
       "expected": 403,
-      "actual": 200
+      "actual": 403
     },
     {
       "account": "ZZ-TEST-SITE-ONLY",
@@ -70,10 +70,10 @@
     {
       "format": "xlsx",
       "selectedSite": false,
-      "exactPermittedBillSet": false,
-      "rows": 45,
+      "exactPermittedBillSet": true,
+      "rows": 11,
       "expectedRows": 11,
-      "unauthorizedRows": 34
+      "unauthorizedRows": 0
     },
     {
       "account": "ZZ-TEST-SITE-ONLY",
@@ -84,22 +84,22 @@
     {
       "format": "xlsx",
       "selectedSite": true,
-      "exactPermittedBillSet": false,
-      "rows": 45,
+      "exactPermittedBillSet": true,
+      "rows": 11,
       "expectedRows": 11,
-      "unauthorizedRows": 34
+      "unauthorizedRows": 0
     },
     {
       "account": "ZZ-TEST-SITE-ONLY",
       "path": "/api/vendor-bills/export?format=xlsx&siteId=14",
       "expected": 403,
-      "actual": 200
+      "actual": 403
     },
     {
       "account": "ZZ-TEST-NO-REPORTS",
       "path": "/api/vendor-bills/48/pdf",
       "expected": 403,
-      "actual": 200
+      "actual": 403
     },
     {
       "account": "ZZ-TEST-SITE-ONLY",
@@ -111,7 +111,7 @@
       "account": "ZZ-TEST-SITE-ONLY",
       "path": "/api/vendor-bills/34/pdf",
       "expected": 403,
-      "actual": 200
+      "actual": 403
     },
     {
       "account": "ZZ-TEST-SITE-ONLY",
@@ -130,6 +130,14 @@
       "deactivationStatus": 200
     },
     {
+      "deviceId": 53,
+      "revokeStatus": 200
+    },
+    {
+      "deviceId": 52,
+      "revokeStatus": 200
+    },
+    {
       "deviceId": 50,
       "revokeStatus": 200
     },
@@ -145,7 +153,7 @@
     "permittedBillCount": 11,
     "excludedBillCount": 34
   },
-  "passed": false,
+  "passed": true,
   "finalAccounts": [
     {
       "name": "ZZ-TEST-NO-REPORTS",

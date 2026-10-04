@@ -176,17 +176,18 @@ export default function SiteReport() {
       </div>
     </header>
     <div className="dpr-management-summary">
-      <div className="dpr-management-tile-work"><strong>{workSummary}</strong><span className="dpr-management-subtle">Work done{workItems.length === 1 && ` · ${workItems[0].name}${workItems[0].marker}`}</span>
+      <div className="dpr-management-tile-work"><span className="dpr-management-tile-heading">Work done</span><strong>{workSummary}</strong>
+        {workItems.length === 1 && <span className="dpr-management-summary-list">{workItems[0].name}{workItems[0].marker}</span>}
         {workItems.length > 1 && <span className="dpr-management-summary-list">{managementSummaryList(workItems.map(item => `${item.shortName} ${item.quantity}${item.marker}`))}</span>}
       </div>
-      {machines.count > 0 && <div className="dpr-management-tile-machines"><strong>{machines.count}</strong><span className="dpr-management-subtle">Machines</span>
+      {machines.count > 0 && <div className="dpr-management-tile-machines"><span className="dpr-management-tile-heading">Equipment</span><strong>{machines.count}</strong>
         {machineAttention.length > 0 ? <span className="dpr-management-summary-list">{machineAttention.map((entry, i) => <span key={entry.text}>{i > 0 && ", "}<span className={`dpr-management-attention-${entry.kind}`}>{entry.text}</span></span>)}</span>
           : machines.allWorked && <span className="dpr-management-summary-list">all worked</span>}
       </div>}
-      {totalDiesel > 0 && <div className="dpr-management-tile-diesel"><strong>{managementNumber(totalDiesel, 1)} L</strong><span className="dpr-management-subtle">Diesel issued</span></div>}
-      {headcount > 0 && <div className="dpr-management-tile-labour"><strong>{headcount}</strong><span className="dpr-management-subtle">Labour</span></div>}
-      {bulk.length > 0 && <div className="dpr-management-tile-bulk"><strong>{bulk.length === 1 ? `${managementNumber(bulk[0].totalQty)} ${bulk[0].uom}` : `${bulk.length} materials`}</strong><span className="dpr-management-subtle">Bulk received{bulk.length === 1 ? ` · ${bulk[0].material} · ${bulk[0].tripCount} trips` : ""}</span>
-        {bulk.length > 1 && <span className="dpr-management-summary-list">{managementSummaryList(bulk.map(managementReceivedEntry))}</span>}
+      {totalDiesel > 0 && <div className="dpr-management-tile-diesel"><span className="dpr-management-tile-heading">Diesel</span><strong>{managementNumber(totalDiesel, 1)} L</strong></div>}
+      {headcount > 0 && <div className="dpr-management-tile-labour"><span className="dpr-management-tile-heading">Labour</span><strong>{headcount}</strong></div>}
+      {bulk.length > 0 && <div className="dpr-management-tile-bulk"><span className="dpr-management-tile-heading">Materials received</span><strong>{bulk.length === 1 ? `${managementNumber(bulk[0].totalQty)} ${bulk[0].uom}` : `${bulk.length} materials`}</strong>
+        <span className="dpr-management-summary-list">{managementSummaryList(bulk.map(managementReceivedEntry))}</span>
       </div>}
     </div>
     <section><h2>Work done</h2>
