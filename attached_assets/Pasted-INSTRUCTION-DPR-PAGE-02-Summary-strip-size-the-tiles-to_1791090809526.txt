@@ -1,0 +1,56 @@
+INSTRUCTION DPR-PAGE-02: Summary strip — size the tiles to their content, change the machines tile to count + breakdown, darken small text, fix page margins
+
+READ THIS FIRST
+Small display-only change to the DPR Site Report built in DPR-PAGE-01 (client/src/pages/SiteReport.tsx, client/src/components/dprManagement.css, client/src/lib/dprManagementPresentation.ts). Nothing else changes: no stored value, calculation, schema, readiness, entry/edit screen or other page. Do not publish automatically. STOP after this and report back.
+Reference: the owner's screenshot of the current page is attached. Problems to fix are listed below exactly.
+
+A. TILE WIDTHS — give the space to the tiles that need it
+Today all five tiles are equal width (grid-auto-columns: minmax(0,1fr)), so Diesel and Labour waste space while Work done and Bulk received wrap their lists onto 3–4 lines.
+- Desktop (≥ 768px): the five tiles share one row, but Work done and Bulk received get roughly double the width of the others. Suggested: grid-template-columns: 2.2fr 1fr 0.85fr 0.7fr 2.2fr with grid-auto-flow normal (not column). Tiles that are hidden must not leave a gap — compute the columns from the tiles actually rendered, or use flex with flex-grow 2.2 / 1 / 0.85 / 0.7 / 2.2 and flex-basis 0.
+- The big number must never wrap. The small list may wrap to a second line; aim for the 2-material / 3-item case to fit on ONE line at 1180px.
+- Phone (< 768px): tiles stack full width as today.
+
+B. MACHINES TILE — count worked, and flag breakdowns
+Replace "2 / 2 · Machines working". The DPR only contains machines that were logged, so a "x / y" ratio is misleading.
+- Big number: the count of machines logged on this DPR (visible equipment rows).
+- Label: "Machines".
+- Small line, only when something needs attention, in this order, comma separated:
+  "1 breakdown" (red), "2 idle" (amber), "1 part-day breakdown" (red) — a part-day breakdown is a machine whose daily status is NOT breakdown but which has at least one breakdown/stoppage row on this DPR.
+  Count full-day breakdown (usageStatus = breakdown) and part-day breakdown separately; do not double count.
+- When every machine worked with no stoppage, the small line reads "all worked" in normal grey.
+- Use the stoppage rows already loaded for the equipment table; do not add a new API call.
+
+C. SECOND-LINE TEXT DARKER
+.dpr-management-subtle is 11px muted grey — too light on paper and on a phone.
+- Tile labels and list lines: 12.5px, colour #334155 (dark slate), line-height 1.45.
+- The same darker colour for the small second lines inside the Work done, Equipment, Labour and Materials tables (vendor/operator lines, supplier lines, programme "Done …" line). Keep the hierarchy: main values stay bold/dark, these are one step lighter but clearly readable.
+- Equipment legend: raise from 9px to 11.5px, same #334155.
+
+D. PAGE MARGINS / CUT-OFF
+In the owner's screenshot the page content touches the left and right edges and the tables look cut.
+- .dpr-management: keep max-width 1180px and centre it, but give the page a side gutter so the card never touches the window edge: padding 20px inside the card AND at least 16px margin outside it on screen (e.g. wrap in a container with padding: 16px, or margin: 16px auto).
+- On phones: 12px outside gutter, 14px inside.
+- Print: 10mm page margin, no outside gutter, and confirm no table is clipped at the right edge in the PDF.
+
+E. WHILE YOU ARE THERE (same screenshot)
+- The Materials table shows a row "WMM 8 MT — not recorded" with no trips and a "Water 4,000 Liters — not recorded" row: that is correct data, but blank Trips cells should show "—" not empty, and the "not recorded" text should be the amber "unloading place not recorded" wording so it reads as something to fix.
+- "Site purchase · Safety gloves · Development vendor · 6 Pairs" under the Materials table: give it a small heading "Site purchases" so it is not mistaken for a material receipt.
+
+WHAT NOT TO DO
+- No value/rate/₹ anywhere on this page.
+- Do not change which tiles exist beyond the Machines tile wording described above.
+- Do not change any table's columns or any calculation.
+
+TESTS (real signed-in DEVELOPMENT app screenshots)
+A. DPR with 3 activities + 2 materials at 1180px: both lists fit on one line; no tile wraps its big number.
+B. Same DPR at 1280px and at 1024px: still one row, nothing clipped, outside gutter visible.
+C. Phone width: tiles stacked, text readable.
+D. Machines tile: (i) all worked → "4 Machines / all worked"; (ii) one full-day breakdown → "1 breakdown" red; (iii) one machine working with a 1.5 h stoppage → "1 part-day breakdown"; (iv) two idle → "2 idle" amber.
+E. Print / PDF: 10mm margins, nothing clipped at the right edge; screenshot of page 1.
+F. Materials: blank trips show "—"; unloading-place note reads as amber; site purchases have their own heading.
+G. Full test suite counts; list any test updated and why.
+
+REPORT BACK
+Files changed, screenshots A–F, test counts, anything not done.
+
+DO NOT START ANOTHER FEATURE after this batch.

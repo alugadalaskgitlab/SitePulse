@@ -1,0 +1,15 @@
+{
+  "userId": 14,
+  "pendingLoginStatus": 202,
+  "approvedDevices": [
+    {
+      "id": 84,
+      "status": "approved"
+    },
+    {
+      "id": 85,
+      "status": "approved"
+    }
+  ],
+  "normalLogin": true
+}

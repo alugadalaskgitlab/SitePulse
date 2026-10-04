@@ -1,0 +1,914 @@
+{
+  "realSignedInDevelopment": true,
+  "mockedReportApis": false,
+  "widths": {
+    "390": {
+      "viewport": 390,
+      "documentWidth": 390,
+      "card": {
+        "x": 28,
+        "y": 163,
+        "width": 334,
+        "height": 3868.296875,
+        "right": 362,
+        "bottom": 4031.296875
+      },
+      "parent": {
+        "x": 0,
+        "y": 127,
+        "width": 390,
+        "height": 3932.296875,
+        "right": 390,
+        "bottom": 4059.296875
+      },
+      "padding": "14px",
+      "lists": [
+        {
+          "text": "WMM 56.25 Cum · Clearing 0.5 Ha · Marking 250 m",
+          "lines": 2,
+          "x": 56,
+          "y": 473.46875,
+          "width": 278,
+          "height": 36.25,
+          "right": 334,
+          "bottom": 509.71875,
+          "font": "12.5px"
+        },
+        {
+          "text": "WMM 141.03 MT (5 trips) · Soil 60 MT (3 trips)",
+          "lines": 1,
+          "x": 56,
+          "y": 842.71875,
+          "width": 278,
+          "height": 18.125,
+          "right": 334,
+          "bottom": 860.84375,
+          "font": "12.5px"
+        }
+      ],
+      "tiles": [
+        {
+          "text": "3 items\nWork done\nWMM 56.25 Cum · Clearing 0.5 Ha · Marking 250 m",
+          "x": 43,
+          "y": 412.75,
+          "width": 304,
+          "height": 108.96875,
+          "right": 347,
+          "bottom": 521.71875,
+          "big": {
+            "x": 56,
+            "y": 424.75,
+            "width": 278,
+            "height": 26.59375,
+            "right": 334,
+            "bottom": 451.34375,
+            "nowrap": "nowrap"
+          }
+        },
+        {
+          "text": "4\nMachines\nall worked",
+          "x": 43,
+          "y": 529.71875,
+          "width": 304,
+          "height": 90.84375,
+          "right": 347,
+          "bottom": 620.5625,
+          "big": {
+            "x": 56,
+            "y": 541.71875,
+            "width": 278,
+            "height": 26.59375,
+            "right": 334,
+            "bottom": 568.3125,
+            "nowrap": "nowrap"
+          }
+        },
+        {
+          "text": "2 L\nDiesel issued",
+          "x": 43,
+          "y": 628.5625,
+          "width": 304,
+          "height": 68.71875,
+          "right": 347,
+          "bottom": 697.28125,
+          "big": {
+            "x": 56,
+            "y": 640.5625,
+            "width": 278,
+            "height": 26.59375,
+            "right": 334,
+            "bottom": 667.15625,
+            "nowrap": "nowrap"
+          }
+        },
+        {
+          "text": "7\nLabour",
+          "x": 43,
+          "y": 705.28125,
+          "width": 304,
+          "height": 68.71875,
+          "right": 347,
+          "bottom": 774,
+          "big": {
+            "x": 56,
+            "y": 717.28125,
+            "width": 278,
+            "height": 26.59375,
+            "right": 334,
+            "bottom": 743.875,
+            "nowrap": "nowrap"
+          }
+        },
+        {
+          "text": "2 materials\nBulk received\nWMM 141.03 MT (5 trips) · Soil 60 MT (3 trips)",
+          "x": 43,
+          "y": 782,
+          "width": 304,
+          "height": 90.84375,
+          "right": 347,
+          "bottom": 872.84375,
+          "big": {
+            "x": 56,
+            "y": 794,
+            "width": 278,
+            "height": 26.59375,
+            "right": 334,
+            "bottom": 820.59375,
+            "nowrap": "nowrap"
+          }
+        }
+      ],
+      "tables": [
+        {
+          "label": "Work done",
+          "x": 43,
+          "y": 923.234375,
+          "width": 304,
+          "height": 555.125,
+          "right": 347,
+          "bottom": 1478.359375
+        },
+        {
+          "label": "Labour",
+          "x": 43,
+          "y": 3086.453125,
+          "width": 304,
+          "height": 274.9375,
+          "right": 347,
+          "bottom": 3361.390625
+        },
+        {
+          "label": "Materials received",
+          "x": 43,
+          "y": 3419.78125,
+          "width": 304,
+          "height": 417.75,
+          "right": 347,
+          "bottom": 3837.53125
+        }
+      ],
+      "text": "Back\nDPR PAGE 02 · Development 33e747\n\nDaily Progress Report · Tue 10 Nov 2026 · DPR #261 · Engineer: Development verification · submitted\n\nPrint / PDF\nShare on WhatsApp\nEdit\n3 items\nWork done\nWMM 56.25 Cum · Clearing 0.5 Ha · Marking 250 m\n4\nMachines\nall worked\n2 L\nDiesel issued\n7\nLabour\n2 materials\nBulk received\nWMM 141.03 MT (5 trips) · Soil 60 MT (3 trips)\nWork done\nWMM\n56.25 Cum\nClearing\n0.5 Ha\nMarking\n250 m\nBOQ credit 250 Rmt\nEquipment\nRoller\nHired · Development contractor · Op. Development operator\nNot linked\n6.5 h\n2 L\n—\nno norm recorded\nGrader\nHired · Development contractor · Op. Development operator\nNot linked\n6.5 h\n0 L\n—\nno norm recorded\nExcavator\nHired · Development contractor · Op. Development operator\nNot linked\n6.5 h\n0 L\n—\nno norm recorded\nWater tanker\nHired · Development contractor · Op. Development operator\nNot linked\n6.5 h\n0 L\n—\nno norm recorded\nTotal · 4 machines\n26.0 h\n2 L\n—\n\nConsumption from tank dip (opening + issued − closing). ▲ more than 10% above norm · ▼ check more than 10% below (often a missed diesel entry) · no mark = within 10%.\n\nLabour\nDevelopment gang\nSkilled\n7\nTotal\n7\nMaterials\nWMM\nDevelopment supplier\n141.03 MT\nStretch (used on site)\n5\nSoil\nDevelopment supplier\n60 MT\nStretch (used on site)\n3\nNo store issues or site purchases today.Trip list ▸\nRemarks / hold-ups\n\nPhysical quantities only. Development verification.\n\nHistory\nCancel report\nDelete\nHome"
+    },
+    "1024": {
+      "viewport": 1024,
+      "documentWidth": 1016,
+      "card": {
+        "x": 272,
+        "y": 149,
+        "width": 696,
+        "height": 1494.3125,
+        "right": 968,
+        "bottom": 1643.3125
+      },
+      "parent": {
+        "x": 224,
+        "y": 101,
+        "width": 792,
+        "height": 1590.3125,
+        "right": 1016,
+        "bottom": 1691.3125
+      },
+      "padding": "20px",
+      "lists": [
+        {
+          "text": "WMM 56.25 Cum · Clearing 0.5 Ha · Marking 250 m",
+          "lines": 3,
+          "x": 306,
+          "y": 354.71875,
+          "width": 155.734375,
+          "height": 54.375,
+          "right": 461.734375,
+          "bottom": 409.09375,
+          "font": "12.5px"
+        },
+        {
+          "text": "WMM 141.03 MT (5 trips) · Soil 60 MT (3 trips)",
+          "lines": 2,
+          "x": 778.265625,
+          "y": 354.71875,
+          "width": 155.734375,
+          "height": 36.25,
+          "right": 934,
+          "bottom": 390.96875,
+          "font": "12.5px"
+        }
+      ],
+      "tiles": [
+        {
+          "text": "3 items\nWork done\nWMM 56.25 Cum · Clearing 0.5 Ha · Marking 250 m",
+          "x": 293,
+          "y": 294,
+          "width": 181.734375,
+          "height": 127.09375,
+          "right": 474.734375,
+          "bottom": 421.09375,
+          "big": {
+            "x": 306,
+            "y": 306,
+            "width": 155.734375,
+            "height": 26.59375,
+            "right": 461.734375,
+            "bottom": 332.59375,
+            "nowrap": "nowrap"
+          }
+        },
+        {
+          "text": "4\nMachines\nall worked",
+          "x": 482.734375,
+          "y": 294,
+          "width": 96.796875,
+          "height": 90.84375,
+          "right": 579.53125,
+          "bottom": 384.84375,
+          "big": {
+            "x": 495.734375,
+            "y": 306,
+            "width": 70.796875,
+            "height": 26.59375,
+            "right": 566.53125,
+            "bottom": 332.59375,
+            "nowrap": "nowrap"
+          }
+        },
+        {
+          "text": "2 L\nDiesel issued",
+          "x": 587.53125,
+          "y": 294,
+          "width": 86.171875,
+          "height": 86.84375,
+          "right": 673.703125,
+          "bottom": 380.84375,
+          "big": {
+            "x": 600.53125,
+            "y": 306,
+            "width": 60.171875,
+            "height": 26.59375,
+            "right": 660.703125,
+            "bottom": 332.59375,
+            "nowrap": "nowrap"
+          }
+        },
+        {
+          "text": "7\nLabour",
+          "x": 681.703125,
+          "y": 294,
+          "width": 75.5625,
+          "height": 68.71875,
+          "right": 757.265625,
+          "bottom": 362.71875,
+          "big": {
+            "x": 694.703125,
+            "y": 306,
+            "width": 49.5625,
+            "height": 26.59375,
+            "right": 744.265625,
+            "bottom": 332.59375,
+            "nowrap": "nowrap"
+          }
+        },
+        {
+          "text": "2 materials\nBulk received\nWMM 141.03 MT (5 trips) · Soil 60 MT (3 trips)",
+          "x": 765.265625,
+          "y": 294,
+          "width": 181.734375,
+          "height": 108.96875,
+          "right": 947,
+          "bottom": 402.96875,
+          "big": {
+            "x": 778.265625,
+            "y": 306,
+            "width": 155.734375,
+            "height": 26.59375,
+            "right": 934,
+            "bottom": 332.59375,
+            "nowrap": "nowrap"
+          }
+        }
+      ],
+      "tables": [
+        {
+          "label": "Work done",
+          "x": 293,
+          "y": 471.484375,
+          "width": 654,
+          "height": 185.34375,
+          "right": 947,
+          "bottom": 656.828125
+        },
+        {
+          "label": "Labour",
+          "x": 293,
+          "y": 1234.828125,
+          "width": 318,
+          "height": 136.34375,
+          "right": 611,
+          "bottom": 1371.171875
+        },
+        {
+          "label": "Materials received",
+          "x": 629,
+          "y": 1234.828125,
+          "width": 318,
+          "height": 226.90625,
+          "right": 947,
+          "bottom": 1461.734375
+        }
+      ],
+      "text": "Back\nDPR PAGE 02 · Development 33e747\n\nDaily Progress Report · Tue 10 Nov 2026 · DPR #261 · Engineer: Development verification · submitted\n\nPrint / PDF\nShare on WhatsApp\nEdit\n3 items\nWork done\nWMM 56.25 Cum · Clearing 0.5 Ha · Marking 250 m\n4\nMachines\nall worked\n2 L\nDiesel issued\n7\nLabour\n2 materials\nBulk received\nWMM 141.03 MT (5 trips) · Soil 60 MT (3 trips)\nWork done\nItem\tChainage from → to\tSize (L × W × T)\tQuantity\tProgramme\nWMM\t\t\t56.25 Cum\t\nClearing\t\t\t0.5 Ha\t\nMarking\t\t\t250 m\nBOQ credit 250 Rmt\n\t\nEquipment\nMachine\tWork\tHours\tDiesel\tConsumption\nRoller\nHired · Development contractor · Op. Development operator\n\tNot linked\t\n6.5 h\n\t2 L\t—\nno norm recorded\n\nGrader\nHired · Development contractor · Op. Development operator\n\tNot linked\t\n6.5 h\n\t0 L\t—\nno norm recorded\n\nExcavator\nHired · Development contractor · Op. Development operator\n\tNot linked\t\n6.5 h\n\t0 L\t—\nno norm recorded\n\nWater tanker\nHired · Development contractor · Op. Development operator\n\tNot linked\t\n6.5 h\n\t0 L\t—\nno norm recorded\n\nTotal · 4 machines\t26.0 h\t2 L\t—\n\nConsumption from tank dip (opening + issued − closing). ▲ more than 10% above norm · ▼ check more than 10% below (often a missed diesel entry) · no mark = within 10%.\n\nLabour\nGang / contractor\tCategory (+ gender)\tCount\tTask\nDevelopment gang\tSkilled\t7\t\nTotal\t7\t\nMaterials\nMaterial\tReceived qty\tUnloaded at\tTrips\nWMM\nDevelopment supplier\n\t141.03 MT\tStretch (used on site)\t5\nSoil\nDevelopment supplier\n\t60 MT\tStretch (used on site)\t3\nNo store issues or site purchases today.Trip list ▸\nRemarks / hold-ups\n\nPhysical quantities only. Development verification.\n\nHistory\nCancel report\nDelete\nHome"
+    },
+    "1180": {
+      "viewport": 1180,
+      "documentWidth": 1172,
+      "card": {
+        "x": 272,
+        "y": 149,
+        "width": 852,
+        "height": 1321.703125,
+        "right": 1124,
+        "bottom": 1470.703125
+      },
+      "parent": {
+        "x": 224,
+        "y": 101,
+        "width": 948,
+        "height": 1417.703125,
+        "right": 1172,
+        "bottom": 1518.703125
+      },
+      "padding": "20px",
+      "lists": [
+        {
+          "text": "WMM 56.25 Cum · Clearing 0.5 Ha · Marking 250 m",
+          "lines": 2,
+          "x": 306,
+          "y": 339.765625,
+          "width": 205.125,
+          "height": 36.25,
+          "right": 511.125,
+          "bottom": 376.015625,
+          "font": "12.5px"
+        },
+        {
+          "text": "WMM 141.03 MT (5 trips) · Soil 60 MT (3 trips)",
+          "lines": 2,
+          "x": 884.875,
+          "y": 339.765625,
+          "width": 205.125,
+          "height": 36.25,
+          "right": 1090,
+          "bottom": 376.015625,
+          "font": "12.5px"
+        }
+      ],
+      "tiles": [
+        {
+          "text": "3 items\nWork done\nWMM 56.25 Cum · Clearing 0.5 Ha · Marking 250 m",
+          "x": 293,
+          "y": 279.046875,
+          "width": 231.125,
+          "height": 108.96875,
+          "right": 524.125,
+          "bottom": 388.015625,
+          "big": {
+            "x": 306,
+            "y": 291.046875,
+            "width": 205.125,
+            "height": 26.59375,
+            "right": 511.125,
+            "bottom": 317.640625,
+            "nowrap": "nowrap"
+          }
+        },
+        {
+          "text": "4\nMachines\nall worked",
+          "x": 532.125,
+          "y": 279.046875,
+          "width": 119.234375,
+          "height": 90.84375,
+          "right": 651.359375,
+          "bottom": 369.890625,
+          "big": {
+            "x": 545.125,
+            "y": 291.046875,
+            "width": 93.234375,
+            "height": 26.59375,
+            "right": 638.359375,
+            "bottom": 317.640625,
+            "nowrap": "nowrap"
+          }
+        },
+        {
+          "text": "2 L\nDiesel issued",
+          "x": 659.359375,
+          "y": 279.046875,
+          "width": 105.25,
+          "height": 68.71875,
+          "right": 764.609375,
+          "bottom": 347.765625,
+          "big": {
+            "x": 672.359375,
+            "y": 291.046875,
+            "width": 79.25,
+            "height": 26.59375,
+            "right": 751.609375,
+            "bottom": 317.640625,
+            "nowrap": "nowrap"
+          }
+        },
+        {
+          "text": "7\nLabour",
+          "x": 772.609375,
+          "y": 279.046875,
+          "width": 91.265625,
+          "height": 68.71875,
+          "right": 863.875,
+          "bottom": 347.765625,
+          "big": {
+            "x": 785.609375,
+            "y": 291.046875,
+            "width": 65.265625,
+            "height": 26.59375,
+            "right": 850.875,
+            "bottom": 317.640625,
+            "nowrap": "nowrap"
+          }
+        },
+        {
+          "text": "2 materials\nBulk received\nWMM 141.03 MT (5 trips) · Soil 60 MT (3 trips)",
+          "x": 871.875,
+          "y": 279.046875,
+          "width": 231.125,
+          "height": 108.96875,
+          "right": 1103,
+          "bottom": 388.015625,
+          "big": {
+            "x": 884.875,
+            "y": 291.046875,
+            "width": 205.125,
+            "height": 26.59375,
+            "right": 1090,
+            "bottom": 317.640625,
+            "nowrap": "nowrap"
+          }
+        }
+      ],
+      "tables": [
+        {
+          "label": "Work done",
+          "x": 293,
+          "y": 438.40625,
+          "width": 810,
+          "height": 169.953125,
+          "right": 1103,
+          "bottom": 608.359375
+        },
+        {
+          "label": "Labour",
+          "x": 293,
+          "y": 1113.859375,
+          "width": 396,
+          "height": 136.34375,
+          "right": 689,
+          "bottom": 1250.203125
+        },
+        {
+          "label": "Materials received",
+          "x": 707,
+          "y": 1113.859375,
+          "width": 396,
+          "height": 175.265625,
+          "right": 1103,
+          "bottom": 1289.125
+        }
+      ],
+      "text": "Back\nDPR PAGE 02 · Development 33e747\n\nDaily Progress Report · Tue 10 Nov 2026 · DPR #261 · Engineer: Development verification · submitted\n\nPrint / PDF\nShare on WhatsApp\nEdit\n3 items\nWork done\nWMM 56.25 Cum · Clearing 0.5 Ha · Marking 250 m\n4\nMachines\nall worked\n2 L\nDiesel issued\n7\nLabour\n2 materials\nBulk received\nWMM 141.03 MT (5 trips) · Soil 60 MT (3 trips)\nWork done\nItem\tChainage from → to\tSize (L × W × T)\tQuantity\tProgramme\nWMM\t\t\t56.25 Cum\t\nClearing\t\t\t0.5 Ha\t\nMarking\t\t\t250 m\nBOQ credit 250 Rmt\n\t\nEquipment\nMachine\tWork\tHours\tDiesel\tConsumption\nRoller\nHired · Development contractor · Op. Development operator\n\tNot linked\t\n6.5 h\n\t2 L\t—\nno norm recorded\n\nGrader\nHired · Development contractor · Op. Development operator\n\tNot linked\t\n6.5 h\n\t0 L\t—\nno norm recorded\n\nExcavator\nHired · Development contractor · Op. Development operator\n\tNot linked\t\n6.5 h\n\t0 L\t—\nno norm recorded\n\nWater tanker\nHired · Development contractor · Op. Development operator\n\tNot linked\t\n6.5 h\n\t0 L\t—\nno norm recorded\n\nTotal · 4 machines\t26.0 h\t2 L\t—\n\nConsumption from tank dip (opening + issued − closing). ▲ more than 10% above norm · ▼ check more than 10% below (often a missed diesel entry) · no mark = within 10%.\n\nLabour\nGang / contractor\tCategory (+ gender)\tCount\tTask\nDevelopment gang\tSkilled\t7\t\nTotal\t7\t\nMaterials\nMaterial\tReceived qty\tUnloaded at\tTrips\nWMM\nDevelopment supplier\n\t141.03 MT\tStretch (used on site)\t5\nSoil\nDevelopment supplier\n\t60 MT\tStretch (used on site)\t3\nNo store issues or site purchases today.Trip list ▸\nRemarks / hold-ups\n\nPhysical quantities only. Development verification.\n\nHistory\nCancel report\nDelete\nHome"
+    },
+    "1280": {
+      "viewport": 1280,
+      "documentWidth": 1272,
+      "card": {
+        "x": 272,
+        "y": 149,
+        "width": 952,
+        "height": 1321.703125,
+        "right": 1224,
+        "bottom": 1470.703125
+      },
+      "parent": {
+        "x": 224,
+        "y": 101,
+        "width": 1048,
+        "height": 1417.703125,
+        "right": 1272,
+        "bottom": 1518.703125
+      },
+      "padding": "20px",
+      "lists": [
+        {
+          "text": "WMM 56.25 Cum · Clearing 0.5 Ha · Marking 250 m",
+          "lines": 2,
+          "x": 306,
+          "y": 339.765625,
+          "width": 236.765625,
+          "height": 36.25,
+          "right": 542.765625,
+          "bottom": 376.015625,
+          "font": "12.5px"
+        },
+        {
+          "text": "WMM 141.03 MT (5 trips) · Soil 60 MT (3 trips)",
+          "lines": 2,
+          "x": 953.21875,
+          "y": 339.765625,
+          "width": 236.78125,
+          "height": 36.25,
+          "right": 1190,
+          "bottom": 376.015625,
+          "font": "12.5px"
+        }
+      ],
+      "tiles": [
+        {
+          "text": "3 items\nWork done\nWMM 56.25 Cum · Clearing 0.5 Ha · Marking 250 m",
+          "x": 293,
+          "y": 279.046875,
+          "width": 262.765625,
+          "height": 108.96875,
+          "right": 555.765625,
+          "bottom": 388.015625,
+          "big": {
+            "x": 306,
+            "y": 291.046875,
+            "width": 236.765625,
+            "height": 26.59375,
+            "right": 542.765625,
+            "bottom": 317.640625,
+            "nowrap": "nowrap"
+          }
+        },
+        {
+          "text": "4\nMachines\nall worked",
+          "x": 563.765625,
+          "y": 279.046875,
+          "width": 133.625,
+          "height": 90.84375,
+          "right": 697.390625,
+          "bottom": 369.890625,
+          "big": {
+            "x": 576.765625,
+            "y": 291.046875,
+            "width": 107.625,
+            "height": 26.59375,
+            "right": 684.390625,
+            "bottom": 317.640625,
+            "nowrap": "nowrap"
+          }
+        },
+        {
+          "text": "2 L\nDiesel issued",
+          "x": 705.390625,
+          "y": 279.046875,
+          "width": 117.484375,
+          "height": 68.71875,
+          "right": 822.875,
+          "bottom": 347.765625,
+          "big": {
+            "x": 718.390625,
+            "y": 291.046875,
+            "width": 91.484375,
+            "height": 26.59375,
+            "right": 809.875,
+            "bottom": 317.640625,
+            "nowrap": "nowrap"
+          }
+        },
+        {
+          "text": "7\nLabour",
+          "x": 830.875,
+          "y": 279.046875,
+          "width": 101.34375,
+          "height": 68.71875,
+          "right": 932.21875,
+          "bottom": 347.765625,
+          "big": {
+            "x": 843.875,
+            "y": 291.046875,
+            "width": 75.34375,
+            "height": 26.59375,
+            "right": 919.21875,
+            "bottom": 317.640625,
+            "nowrap": "nowrap"
+          }
+        },
+        {
+          "text": "2 materials\nBulk received\nWMM 141.03 MT (5 trips) · Soil 60 MT (3 trips)",
+          "x": 940.21875,
+          "y": 279.046875,
+          "width": 262.78125,
+          "height": 108.96875,
+          "right": 1203,
+          "bottom": 388.015625,
+          "big": {
+            "x": 953.21875,
+            "y": 291.046875,
+            "width": 236.78125,
+            "height": 26.59375,
+            "right": 1190,
+            "bottom": 317.640625,
+            "nowrap": "nowrap"
+          }
+        }
+      ],
+      "tables": [
+        {
+          "label": "Work done",
+          "x": 293,
+          "y": 438.40625,
+          "width": 910,
+          "height": 169.953125,
+          "right": 1203,
+          "bottom": 608.359375
+        },
+        {
+          "label": "Labour",
+          "x": 293,
+          "y": 1113.859375,
+          "width": 446,
+          "height": 136.34375,
+          "right": 739,
+          "bottom": 1250.203125
+        },
+        {
+          "label": "Materials received",
+          "x": 757,
+          "y": 1113.859375,
+          "width": 446,
+          "height": 175.265625,
+          "right": 1203,
+          "bottom": 1289.125
+        }
+      ],
+      "text": "Back\nDPR PAGE 02 · Development 33e747\n\nDaily Progress Report · Tue 10 Nov 2026 · DPR #261 · Engineer: Development verification · submitted\n\nPrint / PDF\nShare on WhatsApp\nEdit\n3 items\nWork done\nWMM 56.25 Cum · Clearing 0.5 Ha · Marking 250 m\n4\nMachines\nall worked\n2 L\nDiesel issued\n7\nLabour\n2 materials\nBulk received\nWMM 141.03 MT (5 trips) · Soil 60 MT (3 trips)\nWork done\nItem\tChainage from → to\tSize (L × W × T)\tQuantity\tProgramme\nWMM\t\t\t56.25 Cum\t\nClearing\t\t\t0.5 Ha\t\nMarking\t\t\t250 m\nBOQ credit 250 Rmt\n\t\nEquipment\nMachine\tWork\tHours\tDiesel\tConsumption\nRoller\nHired · Development contractor · Op. Development operator\n\tNot linked\t\n6.5 h\n\t2 L\t—\nno norm recorded\n\nGrader\nHired · Development contractor · Op. Development operator\n\tNot linked\t\n6.5 h\n\t0 L\t—\nno norm recorded\n\nExcavator\nHired · Development contractor · Op. Development operator\n\tNot linked\t\n6.5 h\n\t0 L\t—\nno norm recorded\n\nWater tanker\nHired · Development contractor · Op. Development operator\n\tNot linked\t\n6.5 h\n\t0 L\t—\nno norm recorded\n\nTotal · 4 machines\t26.0 h\t2 L\t—\n\nConsumption from tank dip (opening + issued − closing). ▲ more than 10% above norm · ▼ check more than 10% below (often a missed diesel entry) · no mark = within 10%.\n\nLabour\nGang / contractor\tCategory (+ gender)\tCount\tTask\nDevelopment gang\tSkilled\t7\t\nTotal\t7\t\nMaterials\nMaterial\tReceived qty\tUnloaded at\tTrips\nWMM\nDevelopment supplier\n\t141.03 MT\tStretch (used on site)\t5\nSoil\nDevelopment supplier\n\t60 MT\tStretch (used on site)\t3\nNo store issues or site purchases today.Trip list ▸\nRemarks / hold-ups\n\nPhysical quantities only. Development verification.\n\nHistory\nCancel report\nDelete\nHome"
+    }
+  },
+  "machines": {
+    "AllWorked": {
+      "text": "4Machinesall worked",
+      "attention": [],
+      "count": 4
+    },
+    "FullBreakdown": {
+      "text": "4Machines1 breakdown",
+      "attention": [
+        {
+          "text": "1 breakdown",
+          "color": "rgb(185, 28, 28)"
+        }
+      ],
+      "count": 4
+    },
+    "PartDay": {
+      "text": "4Machines1 part-day breakdown",
+      "attention": [
+        {
+          "text": "1 part-day breakdown",
+          "color": "rgb(185, 28, 28)"
+        }
+      ],
+      "count": 4
+    },
+    "TwoIdle": {
+      "text": "2Machines2 idle",
+      "attention": [
+        {
+          "text": "2 idle",
+          "color": "rgb(146, 64, 14)"
+        }
+      ],
+      "count": 2
+    },
+    "Unknown": {
+      "text": "1Machines",
+      "attention": [],
+      "count": 1
+    }
+  },
+  "limitations": [
+    "1180 viewport: one-line target is not achieved for both lists with the actual signed-in shell/sidebar and 12.5px text; lists wrap naturally without shrinking or clipping."
+  ],
+  "mixed": {
+    "text": "Materials\nMaterial\tReceived qty\tUnloaded at\tTrips\nWMM\nDevelopment supplier\n\t12 MT\tStretch (used on site)\t1\nWMM\t8 MT\tunloading place not recorded\t—\nWater\nDevelopment operator\n\t4,000 Liters\tunloading place not recorded\t—\nSite purchases\nSite purchase · Safety gloves · Development vendor · 6 Pairs\nTrip list ▸",
+    "rows": [
+      "WMM\nDevelopment supplier\n\t12 MT\tStretch (used on site)\t1",
+      "WMM\t8 MT\tunloading place not recorded\t—",
+      "Water\nDevelopment operator\n\t4,000 Liters\tunloading place not recorded\t—"
+    ],
+    "missing": [
+      {
+        "text": "unloading place not recorded",
+        "color": "rgb(146, 64, 14)"
+      },
+      {
+        "text": "unloading place not recorded",
+        "color": "rgb(146, 64, 14)"
+      }
+    ],
+    "tripCells": [
+      "1",
+      "—",
+      "—"
+    ],
+    "purchasesHeading": true,
+    "pageText": "Back\nDPR PAGE 02 · Development 33e747\n\nDaily Progress Report · Sat 14 Nov 2026 · DPR #265 · Engineer: Development verification · submitted\n\nPrint / PDF\nShare on WhatsApp\nEdit\n3 items\nWork done\nWMM 56.25 Cum · Clearing 0.5 Ha · Marking 250 m\n4\nMachines\nall worked\n2 L\nDiesel issued\n7\nLabour\n2 materials\nBulk received\nWMM 20 MT (1 trips) · Water 4,000 LITERS (0 trips)\nWork done\nItem\tChainage from → to\tSize (L × W × T)\tQuantity\tProgramme\nWMM\t\t\t56.25 Cum\t\nClearing\t\t\t0.5 Ha\t\nMarking\t\t\t250 m\nBOQ credit 250 Rmt\n\t\nEquipment\nMachine\tWork\tHours\tDiesel\tConsumption\nRoller\nHired · Development contractor · Op. Development operator\n\tNot linked\t\n6.5 h\n\t2 L\t—\nno norm recorded\n\nGrader\nHired · Development contractor · Op. Development operator\n\tNot linked\t\n6.5 h\n\t0 L\t—\nno norm recorded\n\nExcavator\nHired · Development contractor · Op. Development operator\n\tNot linked\t\n6.5 h\n\t0 L\t—\nno norm recorded\n\nWater tanker\nHired · Development contractor · Op. Development operator\n\tNot linked\t\n6.5 h\n\t0 L\t—\nno norm recorded\n\nTotal · 4 machines\t26.0 h\t2 L\t—\n\nConsumption from tank dip (opening + issued − closing). ▲ more than 10% above norm · ▼ check more than 10% below (often a missed diesel entry) · no mark = within 10%.\n\nLabour\nGang / contractor\tCategory (+ gender)\tCount\tTask\nDevelopment gang\tSkilled\t7\t\nTotal\t7\t\nMaterials\nMaterial\tReceived qty\tUnloaded at\tTrips\nWMM\nDevelopment supplier\n\t12 MT\tStretch (used on site)\t1\nWMM\t8 MT\tunloading place not recorded\t—\nWater\nDevelopment operator\n\t4,000 Liters\tunloading place not recorded\t—\nSite purchases\nSite purchase · Safety gloves · Development vendor · 6 Pairs\nTrip list ▸\nRemarks / hold-ups\n\nPhysical quantities only. Development verification.\n\nHistory\nCancel report\nDelete\nHome"
+  },
+  "print": {
+    "viewport": 1180,
+    "documentWidth": 1180,
+    "card": {
+      "x": 0,
+      "y": 0,
+      "width": 1180,
+      "height": 869.359375,
+      "right": 1180,
+      "bottom": 869.359375
+    },
+    "parent": {
+      "x": 0,
+      "y": 0,
+      "width": 1180,
+      "height": 869.359375,
+      "right": 1180,
+      "bottom": 869.359375
+    },
+    "padding": "0px",
+    "lists": [
+      {
+        "text": "WMM 56.25 Cum · Clearing 0.5 Ha · Marking 250 m",
+        "lines": 1,
+        "x": 8.546875,
+        "y": 104.859375,
+        "width": 336.90625,
+        "height": 18.125,
+        "right": 345.453125,
+        "bottom": 122.984375,
+        "font": "12.5px"
+      },
+      {
+        "text": "WMM 141.03 MT (5 trips) · Soil 60 MT (3 trips)",
+        "lines": 1,
+        "x": 834.53125,
+        "y": 104.859375,
+        "width": 336.921875,
+        "height": 18.125,
+        "right": 1171.453125,
+        "bottom": 122.984375,
+        "font": "12.5px"
+      }
+    ],
+    "tiles": [
+      {
+        "text": "3 items\nWork done\nWMM 56.25 Cum · Clearing 0.5 Ha · Marking 250 m",
+        "x": 0,
+        "y": 55.859375,
+        "width": 354,
+        "height": 75.671875,
+        "right": 354,
+        "bottom": 131.53125,
+        "big": {
+          "x": 8.546875,
+          "y": 64.40625,
+          "width": 336.90625,
+          "height": 18.328125,
+          "right": 345.453125,
+          "bottom": 82.734375,
+          "nowrap": "nowrap"
+        }
+      },
+      {
+        "text": "4\nMachines\nall worked",
+        "x": 361.546875,
+        "y": 55.859375,
+        "width": 170.234375,
+        "height": 75.671875,
+        "right": 531.78125,
+        "bottom": 131.53125,
+        "big": {
+          "x": 370.09375,
+          "y": 64.40625,
+          "width": 153.140625,
+          "height": 18.328125,
+          "right": 523.234375,
+          "bottom": 82.734375,
+          "nowrap": "nowrap"
+        }
+      },
+      {
+        "text": "2 L\nDiesel issued",
+        "x": 539.328125,
+        "y": 55.859375,
+        "width": 147.265625,
+        "height": 53.546875,
+        "right": 686.59375,
+        "bottom": 109.40625,
+        "big": {
+          "x": 547.875,
+          "y": 64.40625,
+          "width": 130.171875,
+          "height": 18.328125,
+          "right": 678.046875,
+          "bottom": 82.734375,
+          "nowrap": "nowrap"
+        }
+      },
+      {
+        "text": "7\nLabour",
+        "x": 694.140625,
+        "y": 55.859375,
+        "width": 124.296875,
+        "height": 53.546875,
+        "right": 818.4375,
+        "bottom": 109.40625,
+        "big": {
+          "x": 702.6875,
+          "y": 64.40625,
+          "width": 107.203125,
+          "height": 18.328125,
+          "right": 809.890625,
+          "bottom": 82.734375,
+          "nowrap": "nowrap"
+        }
+      },
+      {
+        "text": "2 materials\nBulk received\nWMM 141.03 MT (5 trips) · Soil 60 MT (3 trips)",
+        "x": 825.984375,
+        "y": 55.859375,
+        "width": 354.015625,
+        "height": 75.671875,
+        "right": 1180,
+        "bottom": 131.53125,
+        "big": {
+          "x": 834.53125,
+          "y": 64.40625,
+          "width": 336.921875,
+          "height": 18.328125,
+          "right": 1171.453125,
+          "bottom": 82.734375,
+          "nowrap": "nowrap"
+        }
+      }
+    ],
+    "tables": [
+      {
+        "label": "Work done",
+        "x": 0,
+        "y": 167.0625,
+        "width": 1180,
+        "height": 119.5625,
+        "right": 1180,
+        "bottom": 286.625
+      },
+      {
+        "label": "Labour",
+        "x": 0,
+        "y": 680.203125,
+        "width": 582.4375,
+        "height": 77.921875,
+        "right": 582.4375,
+        "bottom": 758.125
+      },
+      {
+        "label": "Materials received",
+        "x": 597.546875,
+        "y": 680.203125,
+        "width": 582.453125,
+        "height": 114.171875,
+        "right": 1180,
+        "bottom": 794.375
+      }
+    ],
+    "text": "DPR PAGE 02 · Development 33e747\n\nDaily Progress Report · Tue 10 Nov 2026 · DPR #261 · Engineer: Development verification · submitted\n\n3 items\nWork done\nWMM 56.25 Cum · Clearing 0.5 Ha · Marking 250 m\n4\nMachines\nall worked\n2 L\nDiesel issued\n7\nLabour\n2 materials\nBulk received\nWMM 141.03 MT (5 trips) · Soil 60 MT (3 trips)\nWork done\nItem\tChainage from → to\tSize (L × W × T)\tQuantity\tProgramme\nWMM\t\t\t56.25 Cum\t\nClearing\t\t\t0.5 Ha\t\nMarking\t\t\t250 m\nBOQ credit 250 Rmt\n\t\nEquipment\nMachine\tWork\tHours\tDiesel\tConsumption\nRoller\nHired · Development contractor · Op. Development operator\n\tNot linked\t\n6.5 h\n\t2 L\t—\nno norm recorded\n\nGrader\nHired · Development contractor · Op. Development operator\n\tNot linked\t\n6.5 h\n\t0 L\t—\nno norm recorded\n\nExcavator\nHired · Development contractor · Op. Development operator\n\tNot linked\t\n6.5 h\n\t0 L\t—\nno norm recorded\n\nWater tanker\nHired · Development contractor · Op. Development operator\n\tNot linked\t\n6.5 h\n\t0 L\t—\nno norm recorded\n\nTotal · 4 machines\t26.0 h\t2 L\t—\n\nConsumption from tank dip (opening + issued − closing). ▲ more than 10% above norm · ▼ check more than 10% below (often a missed diesel entry) · no mark = within 10%.\n\nLabour\nGang / contractor\tCategory (+ gender)\tCount\tTask\nDevelopment gang\tSkilled\t7\t\nTotal\t7\t\nMaterials\nMaterial\tReceived qty\tUnloaded at\tTrips\nWMM\nDevelopment supplier\n\t141.03 MT\tStretch (used on site)\t5\nSoil\nDevelopment supplier\n\t60 MT\tStretch (used on site)\t3\nNo store issues or site purchases today.\nRemarks / hold-ups\n\nPhysical quantities only. Development verification.",
+    "pageRules": [
+      "@page { margin: 1cm; size: a4; }"
+    ]
+  }
+}

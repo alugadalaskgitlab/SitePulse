@@ -1,0 +1,55 @@
+{
+  "database": "sitelog_dev",
+  "existingBusinessRowsUnchanged": {
+    "sites": true,
+    "boq_projects": true,
+    "boq_items": true,
+    "dprs": true,
+    "progress_entries": true,
+    "labour_logs": true,
+    "equipment_master": true,
+    "equipment_logs": true,
+    "equipment_maintenance_logs": true,
+    "site_material_trips": true,
+    "material_logs": true,
+    "site_purchases": true
+  },
+  "remainingInsertedRows": {
+    "sites": 0,
+    "boq_projects": 0,
+    "boq_items": 0,
+    "dprs": 0,
+    "progress_entries": 0,
+    "labour_logs": 0,
+    "equipment_master": 0,
+    "equipment_logs": 0,
+    "equipment_maintenance_logs": 0,
+    "site_material_trips": 0,
+    "material_logs": 0,
+    "site_purchases": 0
+  },
+  "testUser": {
+    "id": 14,
+    "is_active": false,
+    "is_admin": false
+  },
+  "devices": [
+    {
+      "id": 83,
+      "status": "revoked"
+    },
+    {
+      "id": 84,
+      "status": "revoked"
+    },
+    {
+      "id": 85,
+      "status": "revoked"
+    }
+  ],
+  "activeSessions": 0,
+  "credentialsRemoved": true,
+  "temporaryCredentialsAbsent": true,
+  "temporaryBrowserProfileAbsent": true,
+  "chromiumCdpStopped": true
+}

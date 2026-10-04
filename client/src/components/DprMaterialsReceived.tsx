@@ -53,7 +53,7 @@ function ManagementMaterials({ site, date, issues, purchases }: { site: string; 
   const [tripsOpen, setTripsOpen] = useState(false);
   const groups = new Map<string, { material: string; unit: string; supplier: string; location: string; quantity: number; trips: number }>();
   for (const entry of entries) {
-    const location = entry.unloadedAt === "stretch" ? "Stretch (used on site)" : entry.unloadedAt === "yard" ? "Yard (stock)" : "not recorded";
+    const location = entry.unloadedAt === "stretch" ? "Stretch (used on site)" : entry.unloadedAt === "yard" ? "Yard (stock)" : "unloading place not recorded";
     const key = JSON.stringify([entry.material, entry.uom, entry.materialSourceSupplier || entry.supplier, location]);
     const group = groups.get(key) ?? { material: entry.material || "Material not recorded", unit: entry.uom || "",
       supplier: entry.materialSourceSupplier || entry.supplier || "", location, quantity: 0, trips: 0 };
@@ -72,13 +72,14 @@ function ManagementMaterials({ site, date, issues, purchases }: { site: string; 
         <tbody>{Array.from(groups.entries()).map(([key, g]) => <tr key={key}>
           <td data-label="Material">{g.material}{g.supplier && <div className="dpr-management-subtle">{g.supplier}</div>}</td>
           <td data-label="Received qty"><strong>{managementNumber(g.quantity)} {g.unit}</strong></td>
-          <td data-label="Unloaded at">{g.location}</td>
-          <td data-label="Trips"><strong>{g.trips || ""}</strong></td>
+          <td data-label="Unloaded at" className={g.location === "unloading place not recorded" ? "dpr-management-unloading-missing" : undefined}>{g.location}</td>
+          <td data-label="Trips"><strong>{g.trips || "—"}</strong></td>
         </tr>)}</tbody>
       </table>}
     <div className="dpr-management-subtle mt-2">
       {!issues.length && !purchases.length && <span>No store issues or site purchases today.</span>}
       {issues.map((row, i) => <div key={`issue-${i}`} data-testid={`row-material-${i}`}>Issued · {row.material} · <strong>{managementNumber(row.quantity)} {row.uom}</strong>{row.location && ` · ${row.location}`}</div>)}
+      {purchases.length > 0 && <h3 className="dpr-management-purchases-heading">Site purchases</h3>}
       {purchases.map((row, i) => <div key={`purchase-${i}`} data-testid={`row-site-purchase-${i}`}>Site purchase · {row.itemDescription}{row.vendor && ` · ${row.vendor}`}{row.quantity != null && ` · ${managementNumber(row.quantity)} ${row.uom || ""}`}</div>)}
       {tripEntries.length > 0 && <Button className="ml-1 h-auto p-0 text-xs print:hidden" variant="ghost" onClick={() => setTripsOpen(true)} data-testid="button-trip-list">Trip list ▸</Button>}
     </div>

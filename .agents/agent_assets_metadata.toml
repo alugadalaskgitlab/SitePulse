@@ -4483,3 +4483,31 @@ mtime_ms = 1791085194163
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/9cb0eddd-da5a-48c7-9fd4-898a51c9db0c/410e07b6-2ab1-428a-bd7c-eb99d6eea05d"
 storage_version_token = "1791085961920042"
 content_type = "image/png"
+
+[[outputs]]
+id = "LbUgFwY_cpHV-12OTm10S"
+uri = "file://.agents/outputs/dpr-page-02/verification-report.html"
+type = "html"
+title = "DPR-PAGE-02 — signed-in screenshots and verification"
+description = "Screenshots A–F, desktop/phone checks, machine states, final test counts and the 1180px wrapping limitation."
+logical_id = "12c6b240-00c1-4af2-90db-e0a336888716"
+content_hash = "sha256:267d4a5178eee3b66ea52a321b8591ee9da87175cfb36b0f2281c52866fee190"
+size = 2794745
+mtime_ms = 1791091842987
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/12c6b240-00c1-4af2-90db-e0a336888716/2bb05604-1803-4bdd-bc3a-43b308db8238"
+storage_version_token = "1791091888492709"
+content_type = "text/html"
+
+[[outputs]]
+id = "R9fqBG2G_Wcf6JUA6kK7U"
+uri = "file://.agents/outputs/dpr-page-02/E-report.pdf"
+type = "pdf"
+title = "DPR-PAGE-02 — actual one-page A4 PDF"
+description = "Generated from the signed-in development app; 10mm page margin setting, no right-edge table clipping."
+logical_id = "4cc7a7db-520d-4d51-8bef-f47e5b5e4dfc"
+content_hash = "sha256:45d8ca659a6e60272c6ee4b5818da22cc30cc0413ad9a4ca38fec9c314e92810"
+size = 184740
+mtime_ms = 1791091581907
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/4cc7a7db-520d-4d51-8bef-f47e5b5e4dfc/2c7d17aa-b23f-4f59-8dd6-3b4862193dc3"
+storage_version_token = "1791091891208720"
+content_type = "application/pdf"

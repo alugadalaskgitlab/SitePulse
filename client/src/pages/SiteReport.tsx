@@ -28,7 +28,7 @@ import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
 import { isVisibleEquipmentRow } from "@shared/equipmentUsage";
 import { getBaseSiteName } from "@shared/siteName";
 import { useDprMaterialReceipts } from "@/hooks/use-dpr-material-receipts";
-import { buildManagementShare, managementNumber, managementReceivedEntry, managementReceivedGroups, managementSummaryList, managementWorkEntries, shareManagementReport } from "@/lib/dprManagementPresentation";
+import { buildManagementShare, managementMachines, managementNumber, managementReceivedEntry, managementReceivedGroups, managementSummaryList, managementWorkEntries, shareManagementReport } from "@/lib/dprManagementPresentation";
 import "@/components/dprManagement.css";
 
 export default function SiteReport() {
@@ -143,7 +143,12 @@ export default function SiteReport() {
   const workItems = managementWorkEntries(activities, reportBoqItems);
   const workSummary = workItems.length > 1 ? `${workItems.length} items` : workItems.length === 1
     ? workItems[0].quantity : "No site work";
-  const working = visibleEquipment.filter((row: any) => row.usageStatus === "working").length;
+  const machines = managementMachines(visibleEquipment, linkedBreakdowns);
+  const machineAttention = [
+    ...(machines.breakdown ? [{ text: `${machines.breakdown} breakdown`, kind: "breakdown" }] : []),
+    ...(machines.idle ? [{ text: `${machines.idle} idle`, kind: "idle" }] : []),
+    ...(machines.partDay ? [{ text: `${machines.partDay} part-day breakdown`, kind: "breakdown" }] : []),
+  ];
   const bulk = managementReceivedGroups(receipts.data ?? []).filter(group => group.totalQty !== 0);
   const hasHours = dpr.labour.some((row: any) => row.hours != null);
   const issues = (dpr.materials ?? []).filter((row: any) => row.type === "Issued" || row.type === "Consumed");
@@ -169,13 +174,16 @@ export default function SiteReport() {
       </div>
     </header>
     <div className="dpr-management-summary">
-      <div><strong>{workSummary}</strong><span className="dpr-management-subtle">Work done{workItems.length === 1 && ` · ${workItems[0].name}${workItems[0].marker}`}</span>
+      <div className="dpr-management-tile-work"><strong>{workSummary}</strong><span className="dpr-management-subtle">Work done{workItems.length === 1 && ` · ${workItems[0].name}${workItems[0].marker}`}</span>
         {workItems.length > 1 && <span className="dpr-management-summary-list">{managementSummaryList(workItems.map(item => `${item.shortName} ${item.quantity}${item.marker}`))}</span>}
       </div>
-      {working > 0 && <div><strong>{working} / {visibleEquipment.length}</strong><span className="dpr-management-subtle">Machines working</span></div>}
-      {totalDiesel > 0 && <div><strong>{managementNumber(totalDiesel, 1)} L</strong><span className="dpr-management-subtle">Diesel issued</span></div>}
-      {headcount > 0 && <div><strong>{headcount}</strong><span className="dpr-management-subtle">Labour</span></div>}
-      {bulk.length > 0 && <div><strong>{bulk.length === 1 ? `${managementNumber(bulk[0].totalQty)} ${bulk[0].uom}` : `${bulk.length} materials`}</strong><span className="dpr-management-subtle">Bulk received{bulk.length === 1 ? ` · ${bulk[0].material} · ${bulk[0].tripCount} trips` : ""}</span>
+      {machines.count > 0 && <div className="dpr-management-tile-machines"><strong>{machines.count}</strong><span className="dpr-management-subtle">Machines</span>
+        {machineAttention.length > 0 ? <span className="dpr-management-summary-list">{machineAttention.map((entry, i) => <span key={entry.text}>{i > 0 && ", "}<span className={`dpr-management-attention-${entry.kind}`}>{entry.text}</span></span>)}</span>
+          : machines.allWorked && <span className="dpr-management-summary-list">all worked</span>}
+      </div>}
+      {totalDiesel > 0 && <div className="dpr-management-tile-diesel"><strong>{managementNumber(totalDiesel, 1)} L</strong><span className="dpr-management-subtle">Diesel issued</span></div>}
+      {headcount > 0 && <div className="dpr-management-tile-labour"><strong>{headcount}</strong><span className="dpr-management-subtle">Labour</span></div>}
+      {bulk.length > 0 && <div className="dpr-management-tile-bulk"><strong>{bulk.length === 1 ? `${managementNumber(bulk[0].totalQty)} ${bulk[0].uom}` : `${bulk.length} materials`}</strong><span className="dpr-management-subtle">Bulk received{bulk.length === 1 ? ` · ${bulk[0].material} · ${bulk[0].tripCount} trips` : ""}</span>
         {bulk.length > 1 && <span className="dpr-management-summary-list">{managementSummaryList(bulk.map(managementReceivedEntry))}</span>}
       </div>}
     </div>

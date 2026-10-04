@@ -6,7 +6,7 @@ import { DprEquipmentReadOnlyRow, DprEquipmentReadOnlyTable, type ReadOnlyEquipm
 import { DprActivityReadOnly } from "@/components/DprActivityReadOnly";
 import { ProgrammeBarOutcomeHistory } from "@/components/ProgrammeBarOutcomeHistory";
 import { DprMaterialsReceived } from "@/components/DprMaterialsReceived";
-import { DPR_CONSUMPTION_LEGEND, buildManagementShare, managementQuantity, managementReceivedGroups, managementSummaryList, managementWorkEntries, shareManagementReport } from "@/lib/dprManagementPresentation";
+import { DPR_CONSUMPTION_LEGEND, buildManagementShare, managementMachines, managementQuantity, managementReceivedGroups, managementSummaryList, managementWorkEntries, shareManagementReport } from "@/lib/dprManagementPresentation";
 import { shortItemName } from "@shared/boqItemName";
 import { summarizeReceived } from "@/lib/materialUnloadingSummary";
 import SiteReport from "@/pages/SiteReport";
@@ -24,7 +24,7 @@ describe("persisted structure quantity override", () => {
 
 const state = vi.hoisted(() => ({
   bars: [] as any[], receipts: [] as any[], receiptPending: false, receiptError: false, canEdit: true,
-  dpr: null as any, boqItems: [] as any[], equipment: [] as any[], lifecycle: null as any, mutate: vi.fn(), toast: vi.fn(),
+  dpr: null as any, boqItems: [] as any[], equipment: [] as any[], stoppages: [] as any[], lifecycle: null as any, mutate: vi.fn(), toast: vi.fn(),
 }));
 vi.mock("@/hooks/use-dprs", () => ({ useDpr: () => ({ data: state.dpr, isLoading: false, refetch: vi.fn() }) }));
 vi.mock("@/hooks/use-dpr-material-receipts", () => ({
@@ -34,7 +34,8 @@ vi.mock("@tanstack/react-query", () => ({
   useQuery: ({ queryKey }: any) => ({
     data: queryKey[0] === "/api/dpr/programme-bars" ? state.bars
       : queryKey[0] === "/api/equipment-usage/lifecycle" ? state.lifecycle
-      : queryKey[0] === "/api/plant-module/equipment" ? state.equipment : [],
+      : queryKey[0] === "/api/plant-module/equipment" ? state.equipment
+      : queryKey[0] === "/api/maintenance/logs" ? state.stoppages : [],
   }),
   useMutation: () => ({ mutate: state.mutate, isPending: false }),
 }));
@@ -50,7 +51,7 @@ vi.mock("@/lib/queryClient", () => ({ apiRequest: vi.fn(), queryClient: { invali
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 beforeEach(() => {
   state.bars = []; state.receipts = []; state.receiptError = false; state.receiptPending = false; state.canEdit = true;
-  state.equipment = []; state.lifecycle = null; state.mutate.mockReset(); state.toast.mockReset();
+  state.equipment = []; state.stoppages = []; state.lifecycle = null; state.mutate.mockReset(); state.toast.mockReset();
   state.boqItems = [{ id: 7, description: "Wet Mix Macadam", unit: "Cum" }];
   state.dpr = { id: 409, site: "Alladurg PWD Road to Pampad", date: "2026-10-02", engineer: "K V Babu",
     dprStatus: "submitted", progress: [], equipment: [], labour: [], materials: [], sitePurchases: [], remarks: "" };
@@ -136,6 +137,87 @@ describe("DPR-PAGE-01 management equipment", () => {
     expect(screen.getByText("Send onward").closest(".print\\:hidden")).not.toBeNull();
   });
 });
+describe("DPR-PAGE-02 machines and scoped presentation", () => {
+  it("shows four logged Machines / all worked, never the old ratio", () => {
+    state.dpr.equipment = Array.from({ length: 4 }, (_, id) => ({ ...machine, id }));
+    render(<SiteReport />);
+    const tile = document.querySelector(".dpr-management-tile-machines")!;
+    expect(tile.querySelector("strong")?.textContent).toBe("4");
+    expect(tile.textContent).toBe("4Machinesall worked");
+    expect(tile.textContent).not.toContain("/");
+  });
+  it("counts full-day, idle and part-day separately in attention order, once per machine", () => {
+    state.dpr.equipment = [
+      { ...machine, id: 1, usageStatus: "breakdown", breakdowns: [{ description: "Full-day" }] },
+      { ...machine, id: 2, usageStatus: "idle_no_work" },
+      { ...machine, id: 3, usageStatus: "idle_no_operator" },
+      { ...machine, id: 4, breakdowns: [] },
+    ];
+    state.stoppages = [
+      { id: 41, sourceRecordId: 4, eventType: "breakdown", downtimeHours: 1.5 },
+      { id: 42, sourceRecordId: 4, eventType: "breakdown", downtimeHours: .25 },
+      { id: 43, sourceRecordId: 1, eventType: "breakdown", downtimeHours: 8 },
+    ];
+    render(<SiteReport />);
+    const tile = document.querySelector(".dpr-management-tile-machines")!;
+    expect(tile.querySelector("strong")?.textContent).toBe("4");
+    expect(tile.querySelector(".dpr-management-summary-list")?.textContent).toBe("1 breakdown, 2 idle, 1 part-day breakdown");
+    expect(tile.querySelectorAll(".dpr-management-attention-breakdown")).toHaveLength(2);
+    expect(tile.querySelector(".dpr-management-attention-idle")?.textContent).toBe("2 idle");
+    expect(tile.textContent).not.toContain("all worked");
+  });
+  it.each(["breakdown", "idle_no_work", "idle_no_operator", null, "unknown"])("still shows a logged machine when none worked (%s)", usageStatus => {
+    state.dpr.equipment = [{ ...machine, usageStatus }];
+    render(<SiteReport />);
+    const tile = document.querySelector(".dpr-management-tile-machines")!;
+    expect(tile.querySelector("strong")?.textContent).toBe("1");
+    expect(tile.textContent).not.toContain("all worked");
+  });
+  it("does not count maintenance service, cancelled events or other DPR rows as stoppages", () => {
+    state.dpr.equipment = [{ ...machine, breakdowns: [] }];
+    state.stoppages = [
+      { sourceRecordId: 1, eventType: "service" },
+      { sourceRecordId: 1, eventType: "breakdown", isCancelled: true },
+      { sourceRecordId: 9001, eventType: "breakdown" },
+    ];
+    render(<SiteReport />);
+    expect(document.querySelector(".dpr-management-tile-machines")?.textContent).toBe("1Machinesall worked");
+  });
+  it("retains hidden-machine rules and existing diesel/labour/material tile existence", () => {
+    state.dpr.equipment = [];
+    render(<SiteReport />);
+    expect(document.querySelectorAll(".dpr-management-summary > div")).toHaveLength(1);
+    expect(document.querySelector(".dpr-management-tile-machines")).toBeNull();
+  });
+  it("supports embedded stoppages and unknown statuses without claiming all worked", () => {
+    expect(managementMachines([{ usageStatus: "working", breakdowns: [{ description: "Leak" }, { description: "Leak" }] }])).toEqual({
+      count: 1, breakdown: 0, idle: 0, partDay: 1, allWorked: false,
+    });
+    expect(managementMachines([{ usageStatus: null }]).allWorked).toBe(false);
+    expect(managementMachines([]).allWorked).toBe(false);
+  });
+  it("uses amber unloading wording, dash Trips and a separate Site purchases heading with no money", () => {
+    state.receipts = [{ material: "WMM", quantity: 8, uom: "MT", source: "dpr" }];
+    state.dpr.sitePurchases = [{ itemDescription: "Safety gloves", quantity: 6, uom: "Pairs", amount: 1234 }];
+    render(<SiteReport />);
+    const table = screen.getByRole("table", { name: "Materials received" });
+    expect(table.querySelector('[data-label="Trips"]')?.textContent).toBe("—");
+    expect(table.querySelector(".dpr-management-unloading-missing")?.textContent).toBe("unloading place not recorded");
+    expect(screen.getByRole("heading", { name: "Site purchases" })).toBeTruthy();
+    expect(document.querySelector(".dpr-management")?.textContent).not.toMatch(/₹|1234/);
+  });
+  it("keeps secondary text scoped and defines desktop/phone gutters and print reset", () => {
+    const css = readFileSync("client/src/components/dprManagement.css", "utf8");
+    expect(css).toContain("width: calc(100% - 32px)");
+    expect(css).toContain("margin: 16px auto; padding: 20px");
+    expect(css).toMatch(/@media screen and \(max-width: 767px\)[\s\S]*width: calc\(100% - 24px\); margin: 12px auto; padding: 14px/);
+    expect(css).toMatch(/\.dpr-management \.dpr-management-subtle,\s*\.dpr-management \.equipment-subtle \{ color: #334155; font-size: 12\.5px; line-height: 1\.45/);
+    expect(css).toMatch(/\.dpr-management \.equipment-legend \{ font-size: 11\.5px; color: #334155/);
+    expect(css).toMatch(/@media print[\s\S]*\.dpr-management \{[^}]*width: 100%;[^}]*margin: 0; padding: 0/);
+    expect(css).toMatch(/body:has\(\.dpr-management\) \{[^}]*padding: 0 !important; margin: 0 !important/);
+    expect(readFileSync("client/src/index.css", "utf8")).toMatch(/@page\s*\{\s*margin: 1cm;\s*size: A4 portrait/);
+  });
+});
 describe("DPR-PAGE-01 work and programme", () => {
   const wmm = { activity: "Wet Mix Macadam", quantity: 56.25, uom: "Cum", chainageFrom: "0+280", chainageTo: "0+380", width: 3.75, thickness: 0.15, materialOutcome: "reused", reusableQty: 21 };
   function activity(item: any = wmm, boqItem: any = { unit: "Cum" }) {
@@ -189,7 +271,7 @@ describe("DPR-PAGE-01 materials, page and sharing", () => {
       { id: 3, source: "trip", material: "Sand", quantity: 8, uom: "Cum" },
     ];
     const { container } = render(<DprMaterialsReceived management site="Alladurg" date="2026-10-02" />);
-    expect(screen.getByText("Yard (stock)")).toBeTruthy(); expect(screen.getByText("Stretch (used on site)")).toBeTruthy(); expect(screen.getByText("not recorded")).toBeTruthy();
+    expect(screen.getByText("Yard (stock)")).toBeTruthy(); expect(screen.getByText("Stretch (used on site)")).toBeTruthy(); expect(screen.getByText("unloading place not recorded")).toBeTruthy();
     expect(screen.getByText("No store issues or site purchases today.")).toBeTruthy();
     expect(container.querySelector("details")).toBeNull();
     expect(screen.queryByText("TS08")).toBeNull();
@@ -374,7 +456,7 @@ describe("DPR-PAGE-01-FIX summary lists and complete share text", () => {
     const trips = (uom: string) => rows.filter(row =>
       row.querySelector('[data-label="Material"]')?.textContent === "WMM" &&
       row.querySelector('[data-label="Received qty"]')?.textContent?.trim().toUpperCase().endsWith(uom),
-    ).reduce((sum, row) => sum + Number(row.querySelector('[data-label="Trips"]')?.textContent || 0), 0);
+    ).reduce((sum, row) => sum + (Number(row.querySelector('[data-label="Trips"]')?.textContent) || 0), 0);
     expect(trips("MT")).toBe(1);
     expect(trips("CUM")).toBe(0);
     managementReceivedGroups(state.receipts).forEach(group => expect(group.tripCount).toBe(trips(group.uom)));
@@ -389,7 +471,7 @@ describe("DPR-PAGE-01-FIX summary lists and complete share text", () => {
     expect(tiles()[1].querySelector("strong")?.textContent).toBe("20 MT");
     expect(tiles()[1].querySelector(".dpr-management-subtle")?.textContent).toBe("Bulk received · WMM · 1 trips");
     const tripSum = within(screen.getByRole("table", { name: "Materials received" })).getAllByRole("row").slice(1)
-      .reduce((sum, row) => sum + Number(row.querySelector('[data-label="Trips"]')?.textContent || 0), 0);
+      .reduce((sum, row) => sum + (Number(row.querySelector('[data-label="Trips"]')?.textContent) || 0), 0);
     expect(tripSum).toBe(1);
     expect(buildManagementShare(state.dpr, [], state.receipts)).toContain("Bulk received: 20 MT WMM (1 trips)");
   });
@@ -429,13 +511,16 @@ describe("DPR-PAGE-01-FIX summary lists and complete share text", () => {
     state.receipts = tripReceipts;
     render(<SiteReport />);
     expect(tiles()).toHaveLength(5);
-    expect(document.querySelectorAll(".dpr-management-summary-list")).toHaveLength(2);
+    expect(document.querySelectorAll(".dpr-management-summary-list")).toHaveLength(3);
     const css = readFileSync("client/src/components/dprManagement.css", "utf8");
     expect(css).toMatch(/\.dpr-management-summary\s*\{[^}]*align-items: start/);
-    expect(css).toMatch(/@media screen and \(min-width: 768px\)\s*\{\s*\.dpr-management-summary\s*\{[^}]*grid-auto-flow: column;[^}]*grid-auto-columns: minmax\(0,1fr\);[^}]*grid-template-columns: none/);
+    expect(css).toMatch(/@media screen and \(min-width: 768px\)\s*\{\s*\.dpr-management-summary\s*\{[^}]*flex-direction: row/);
+    expect(css).toMatch(/\.dpr-management-tile-bulk\s*\{ flex-grow: 2\.2/);
+    expect(css).toMatch(/\.dpr-management-tile-diesel\s*\{ flex-grow: \.85/);
+    expect(css).toMatch(/\.dpr-management-tile-labour\s*\{ flex-grow: \.7/);
     expect(css).toMatch(/\.dpr-management-summary-list\s*\{[^}]*display: block;[^}]*font-size: 12\.5px;[^}]*color: #334155;[^}]*overflow-wrap: anywhere/);
-    expect(css).toMatch(/@media screen and \(max-width: 639px\)[\s\S]*\.dpr-management-summary \{ grid-template-columns: minmax\(0,1fr\); \}/);
-    expect(css).toContain(".dpr-management-summary strong { display: block; font-size: 19px; }");
+    expect(css).toMatch(/\.dpr-management-summary\s*\{[^}]*flex-direction: column/);
+    expect(css).toContain(".dpr-management-summary strong { display: block; font-size: 19px; white-space: nowrap; }");
   });
 
   it("H: the actual Share button passes every activity and material to native sharing", async () => {

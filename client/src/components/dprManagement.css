@@ -1,16 +1,27 @@
-.dpr-management { width: 100%; max-width: 1180px; margin: 0 auto; padding: 20px; border: 1px solid hsl(var(--border)); border-radius: 10px; background: hsl(var(--card)); color: hsl(var(--foreground)); font-size: 13px; line-height: 1.4; }
+.dpr-management { width: calc(100% - 32px); max-width: 1180px; margin: 16px auto; padding: 20px; border: 1px solid hsl(var(--border)); border-radius: 10px; background: hsl(var(--card)); color: hsl(var(--foreground)); font-size: 13px; line-height: 1.4; }
 .dpr-management h1 { font-size: 24px; font-weight: 750; line-height: 1.2; }
 .dpr-management h2 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
 .dpr-management section { min-width: 0; margin-top: 20px; }
 .dpr-management-header { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
 .dpr-management-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.dpr-management-subtle { color: hsl(var(--muted-foreground)); font-size: 11px; overflow-wrap: anywhere; }
-.dpr-management-summary { display: grid; grid-template-columns: repeat(auto-fit,minmax(140px,1fr)); align-items: start; gap: 8px; margin-top: 16px; }
-.dpr-management-summary > div { border: 1px solid hsl(var(--border)); background: hsl(var(--muted) / .35); padding: 11px 12px; border-radius: 7px; min-width: 0; overflow-wrap: anywhere; }
-.dpr-management-summary strong { display: block; font-size: 19px; }
+.dpr-management .dpr-management-subtle,
+.dpr-management .equipment-subtle { color: #334155; font-size: 12.5px; line-height: 1.45; overflow-wrap: anywhere; }
+.dpr-management-summary { display: flex; flex-direction: column; align-items: start; gap: 8px; margin-top: 16px; }
+.dpr-management-summary > div { width: 100%; border: 1px solid hsl(var(--border)); background: hsl(var(--muted) / .35); padding: 11px 12px; border-radius: 7px; min-width: 0; overflow-wrap: anywhere; }
+.dpr-management-summary strong { display: block; font-size: 19px; white-space: nowrap; }
+.dpr-management-summary .dpr-management-subtle { display: block; }
+.dpr-management-attention-breakdown { color: #b91c1c; }
+.dpr-management-attention-idle { color: #92400e; }
+.dpr-management .dpr-management-unloading-missing { color: #92400e; }
+.dpr-management-purchases-heading { font-size: 12.5px; font-weight: 700; margin-top: 8px; color: #334155; }
 .dpr-management-summary-list { display: block; margin-top: 4px; font-size: 12.5px; line-height: 1.45; color: #334155; overflow-wrap: anywhere; }
 @media screen and (min-width: 768px) {
-  .dpr-management-summary { grid-auto-flow: column; grid-auto-columns: minmax(0,1fr); grid-template-columns: none; }
+  .dpr-management-summary { flex-direction: row; }
+  .dpr-management-summary > div { width: auto; flex: 1 1 0; }
+  .dpr-management-summary > .dpr-management-tile-work,
+  .dpr-management-summary > .dpr-management-tile-bulk { flex-grow: 2.2; }
+  .dpr-management-summary > .dpr-management-tile-diesel { flex-grow: .85; }
+  .dpr-management-summary > .dpr-management-tile-labour { flex-grow: .7; }
 }
 .dpr-management-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .dpr-management-table th { background: hsl(var(--muted) / .5); text-align: left; font-size: 11px; font-weight: 600; }
@@ -30,19 +41,18 @@
 .dpr-management .dpr-equipment-readonly th:nth-child(3) { width: 25%; }
 .dpr-management .dpr-equipment-readonly th:nth-child(4) { width: 8%; }
 .dpr-management .dpr-equipment-readonly th:nth-child(5) { width: 23%; }
-.dpr-management .equipment-legend { font-size: 9px; margin-top: 6px; }
+.dpr-management .equipment-legend { font-size: 11.5px; color: #334155; line-height: 1.45; margin-top: 6px; }
 .dpr-management .equipment-totals { margin-top: 0; padding: 7px; }
 .dpr-row-controls { display: flex; align-items: center; justify-content: flex-end; gap: 5px; margin-top: 5px; }
 .dpr-row-controls button { font-size: 10px; height: 24px; padding: 0 6px; }
 .dpr-management-dialog { width: calc(100% - 24px); max-height: 85dvh; overflow-y: auto; overflow-wrap: anywhere; }
 @media screen and (max-width: 767px) {
+  .dpr-management { width: calc(100% - 24px); margin: 12px auto; padding: 14px; }
   .dpr-management-columns { grid-template-columns: minmax(0,1fr); gap: 0; }
 }
 @media screen and (max-width: 639px) {
-  .dpr-management { padding: 12px; }
   .dpr-management-header { flex-direction: column; }
   .dpr-management h1 { font-size: 21px; }
-  .dpr-management-summary { grid-template-columns: minmax(0,1fr); }
   .dpr-management-table,.dpr-management-table tbody,.dpr-management-table tfoot { display: block; }
   .dpr-management-table thead { display: none; }
   .dpr-management-table tr { display: block; padding: 8px; margin-bottom: 8px; border: 1px solid hsl(var(--border)); border-radius: 6px; }
@@ -53,7 +63,7 @@
 @media print {
   /* Use the application's existing A4 page: switching named pages can leave
      a trailing shell/banner page. Only this report's ancestors are reset. */
-  body:has(.dpr-management) { min-height: 0 !important; height: auto !important; overflow: visible !important; }
+  body:has(.dpr-management) { min-height: 0 !important; height: auto !important; overflow: visible !important; padding: 0 !important; margin: 0 !important; }
   body:has(.dpr-management) #root,
   body:has(.dpr-management) #root *:has(.dpr-management) {
     display: block !important;
@@ -70,17 +80,19 @@
   body:has(.dpr-management) aside { display: none !important; }
   body:has(.dpr-management) .dpr-management-header { display: flex !important; }
   body:has(.dpr-management) .dpr-management-actions { display: none !important; }
-  .dpr-management { page: auto !important; max-width: none; padding: 0; border: 0; font-size: 8pt; line-height: 1.25; }
+   .dpr-management { page: auto !important; width: 100%; max-width: none; margin: 0; padding: 0; border: 0; font-size: 8pt; line-height: 1.25; }
   .dpr-management h1 { font-size: 14pt; }
   .dpr-management h2 { font-size: 10pt; margin-bottom: 2mm; }
   .dpr-management section { margin-top: 3mm; }
-  .dpr-management-summary { margin-top: 3mm; gap: 2mm; grid-template-columns: repeat(5,minmax(0,1fr)); }
-  .dpr-management-summary > div { padding: 2mm; }
+   .dpr-management-summary { margin-top: 3mm; gap: 2mm; flex-direction: row; }
+   .dpr-management-summary > div { width: auto; padding: 2mm; flex: 1 1 0; }
+   .dpr-management-summary > .dpr-management-tile-work,
+   .dpr-management-summary > .dpr-management-tile-bulk { flex-grow: 2.2; }
+   .dpr-management-summary > .dpr-management-tile-diesel { flex-grow: .85; }
+   .dpr-management-summary > .dpr-management-tile-labour { flex-grow: .7; }
   .dpr-management-summary strong { font-size: 11pt; }
-  .dpr-management-subtle { font-size: 7pt; }
   .dpr-management-columns { grid-template-columns: 1fr 1fr; gap: 4mm; }
   .dpr-management-table th,.dpr-management-table td,.dpr-management .dpr-equipment-readonly th,.dpr-management .dpr-equipment-readonly td { padding: 1.5mm 1mm !important; font-size: 8pt !important; }
   .dpr-management-table tr { break-inside: avoid; }
   .dpr-management button,.dpr-management .print-hidden,.dpr-row-controls { display: none !important; }
-  .dpr-management .equipment-legend { font-size: 6pt; line-height: 1.3; }
 }

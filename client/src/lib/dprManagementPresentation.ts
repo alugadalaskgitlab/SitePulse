@@ -43,6 +43,22 @@ export function managementSummaryList(entries: string[]): string {
   return [...entries.slice(0, 3), ...(entries.length > 3 ? [`+${entries.length - 3} more`] : [])].join(" · ");
 }
 
+/** Count visible DPR rows, not master equipment or stoppage events.
+ * Full-day breakdown takes precedence over part-day stoppages. Unknown daily
+ * statuses must never be advertised as worked. Uses the table's loaded rows. */
+export function managementMachines(rows: any[], linkedStoppages: any[] = []) {
+  const breakdown = rows.filter(row => row.usageStatus === "breakdown").length;
+  const idle = rows.filter(row => row.usageStatus === "idle_no_work" || row.usageStatus === "idle_no_operator").length;
+  const partDay = rows.filter(row => row.usageStatus !== "breakdown" && [
+    ...(row.breakdowns ?? []),
+    ...linkedStoppages.filter(stop => stop.sourceRecordId != null && Number(stop.sourceRecordId) === Number(row.id)),
+  ].some(
+    (stop: any) => (!stop.eventType || stop.eventType === "breakdown") && !stop.isCancelled,
+  )).length;
+  const allWorked = rows.length > 0 && rows.every(row => row.usageStatus === "working") && !partDay;
+  return { count: rows.length, breakdown, idle, partDay, allWorked };
+}
+
 type ManagementReceivedSummary = ReceivedSummary & { tripCount: number };
 
 /** Retain all-source quantities/counts; transporter trips include only trip receipts. */

@@ -1,0 +1,52 @@
+{
+  "E-report": {
+    "pageCount": 1,
+    "pagePoints": [
+      594.9599609375,
+      841.9199829101562
+    ],
+    "drawingBoundsPoints": [
+      28.5,
+      28.5,
+      567.75,
+      813.75
+    ],
+    "textRightPoints": 553.208740234375,
+    "drawingPageMarginsMm": [
+      10.054166666666667,
+      10.054166666666667,
+      9.599069552951388,
+      9.937743971082899
+    ],
+    "cssPageMargin": "10mm (existing @page margin:1cm)",
+    "roundingNote": "Chromium A4/pixel rounding makes physical drawing margins approximate; all text remains inside the 10mm margin and no right-edge clipping is present.",
+    "allRequiredSectionsAndFinalRemarksPresent": true,
+    "noRightEdgeClipping": true,
+    "noMoney": true
+  },
+  "F-mixed-report": {
+    "pageCount": 1,
+    "pagePoints": [
+      594.9599609375,
+      841.9199829101562
+    ],
+    "drawingBoundsPoints": [
+      28.5,
+      28.5,
+      567.75,
+      813.75
+    ],
+    "textRightPoints": 552.5821533203125,
+    "drawingPageMarginsMm": [
+      10.054166666666667,
+      10.054166666666667,
+      9.599069552951388,
+      9.937743971082899
+    ],
+    "cssPageMargin": "10mm (existing @page margin:1cm)",
+    "roundingNote": "Chromium A4/pixel rounding makes physical drawing margins approximate; all text remains inside the 10mm margin and no right-edge clipping is present.",
+    "allRequiredSectionsAndFinalRemarksPresent": true,
+    "noRightEdgeClipping": true,
+    "noMoney": true
+  }
+}

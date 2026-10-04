@@ -1,0 +1,142 @@
+[
+  {
+    "column_name": "id",
+    "data_type": "integer",
+    "is_nullable": "NO"
+  },
+  {
+    "column_name": "date",
+    "data_type": "date",
+    "is_nullable": "NO"
+  },
+  {
+    "column_name": "equipment_id",
+    "data_type": "integer",
+    "is_nullable": "NO"
+  },
+  {
+    "column_name": "event_type",
+    "data_type": "text",
+    "is_nullable": "NO"
+  },
+  {
+    "column_name": "description",
+    "data_type": "text",
+    "is_nullable": "NO"
+  },
+  {
+    "column_name": "downtime_hours",
+    "data_type": "real",
+    "is_nullable": "YES"
+  },
+  {
+    "column_name": "status",
+    "data_type": "text",
+    "is_nullable": "NO"
+  },
+  {
+    "column_name": "next_service_due",
+    "data_type": "date",
+    "is_nullable": "YES"
+  },
+  {
+    "column_name": "serviced_by",
+    "data_type": "text",
+    "is_nullable": "YES"
+  },
+  {
+    "column_name": "remarks",
+    "data_type": "text",
+    "is_nullable": "YES"
+  },
+  {
+    "column_name": "reported_by",
+    "data_type": "text",
+    "is_nullable": "YES"
+  },
+  {
+    "column_name": "resolved_at",
+    "data_type": "date",
+    "is_nullable": "YES"
+  },
+  {
+    "column_name": "auto_issue_id",
+    "data_type": "integer",
+    "is_nullable": "YES"
+  },
+  {
+    "column_name": "created_at",
+    "data_type": "timestamp without time zone",
+    "is_nullable": "YES"
+  },
+  {
+    "column_name": "is_deleted",
+    "data_type": "boolean",
+    "is_nullable": "NO"
+  },
+  {
+    "column_name": "deleted_at",
+    "data_type": "timestamp without time zone",
+    "is_nullable": "YES"
+  },
+  {
+    "column_name": "deleted_by",
+    "data_type": "integer",
+    "is_nullable": "YES"
+  },
+  {
+    "column_name": "is_cancelled",
+    "data_type": "boolean",
+    "is_nullable": "NO"
+  },
+  {
+    "column_name": "cancelled_at",
+    "data_type": "timestamp without time zone",
+    "is_nullable": "YES"
+  },
+  {
+    "column_name": "cancelled_by",
+    "data_type": "integer",
+    "is_nullable": "YES"
+  },
+  {
+    "column_name": "cancellation_reason",
+    "data_type": "text",
+    "is_nullable": "YES"
+  },
+  {
+    "column_name": "from_time",
+    "data_type": "text",
+    "is_nullable": "YES"
+  },
+  {
+    "column_name": "to_time",
+    "data_type": "text",
+    "is_nullable": "YES"
+  },
+  {
+    "column_name": "responsibility",
+    "data_type": "text",
+    "is_nullable": "YES"
+  },
+  {
+    "column_name": "repair_scope",
+    "data_type": "text",
+    "is_nullable": "YES"
+  },
+  {
+    "column_name": "debitable_to_vendor",
+    "data_type": "boolean",
+    "is_nullable": "YES"
+  },
+  {
+    "column_name": "source_type",
+    "data_type": "text",
+    "is_nullable": "YES"
+  },
+  {
+    "column_name": "source_record_id",
+    "data_type": "integer",
+    "is_nullable": "YES"
+  }
+]
