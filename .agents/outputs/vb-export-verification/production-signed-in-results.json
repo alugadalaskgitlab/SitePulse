@@ -1,0 +1,161 @@
+{
+  "environment": "production",
+  "url": "https://site-reporter--8shmmcw622.replit.app",
+  "generatedAt": "2026-10-04T08:02:22.042Z",
+  "checks": [
+    {
+      "account": "ZZ-TEST-NO-REPORTS",
+      "signedIn": true,
+      "admin": false,
+      "owner": false
+    },
+    {
+      "account": "ZZ-TEST-SITE-ONLY",
+      "signedIn": true,
+      "admin": false,
+      "owner": false
+    },
+    {
+      "account": "ZZ-TEST-NO-REPORTS",
+      "path": "/api/vendor-bills/export?format=csv",
+      "expected": 403,
+      "actual": 200
+    },
+    {
+      "account": "ZZ-TEST-SITE-ONLY",
+      "path": "/api/vendor-bills/export?format=csv",
+      "expected": 200,
+      "actual": 200
+    },
+    {
+      "format": "csv",
+      "selectedSite": false,
+      "exactPermittedBillSet": false,
+      "rows": 45,
+      "expectedRows": 11,
+      "unauthorizedRows": 34
+    },
+    {
+      "account": "ZZ-TEST-SITE-ONLY",
+      "path": "/api/vendor-bills/export?format=csv&siteId=18",
+      "expected": 200,
+      "actual": 200
+    },
+    {
+      "format": "csv",
+      "selectedSite": true,
+      "exactPermittedBillSet": false,
+      "rows": 45,
+      "expectedRows": 11,
+      "unauthorizedRows": 34
+    },
+    {
+      "account": "ZZ-TEST-SITE-ONLY",
+      "path": "/api/vendor-bills/export?format=csv&siteId=14",
+      "expected": 403,
+      "actual": 200
+    },
+    {
+      "account": "ZZ-TEST-NO-REPORTS",
+      "path": "/api/vendor-bills/export?format=xlsx",
+      "expected": 403,
+      "actual": 200
+    },
+    {
+      "account": "ZZ-TEST-SITE-ONLY",
+      "path": "/api/vendor-bills/export?format=xlsx",
+      "expected": 200,
+      "actual": 200
+    },
+    {
+      "format": "xlsx",
+      "selectedSite": false,
+      "exactPermittedBillSet": false,
+      "rows": 45,
+      "expectedRows": 11,
+      "unauthorizedRows": 34
+    },
+    {
+      "account": "ZZ-TEST-SITE-ONLY",
+      "path": "/api/vendor-bills/export?format=xlsx&siteId=18",
+      "expected": 200,
+      "actual": 200
+    },
+    {
+      "format": "xlsx",
+      "selectedSite": true,
+      "exactPermittedBillSet": false,
+      "rows": 45,
+      "expectedRows": 11,
+      "unauthorizedRows": 34
+    },
+    {
+      "account": "ZZ-TEST-SITE-ONLY",
+      "path": "/api/vendor-bills/export?format=xlsx&siteId=14",
+      "expected": 403,
+      "actual": 200
+    },
+    {
+      "account": "ZZ-TEST-NO-REPORTS",
+      "path": "/api/vendor-bills/48/pdf",
+      "expected": 403,
+      "actual": 200
+    },
+    {
+      "account": "ZZ-TEST-SITE-ONLY",
+      "path": "/api/vendor-bills/48/pdf",
+      "expected": 200,
+      "actual": 200
+    },
+    {
+      "account": "ZZ-TEST-SITE-ONLY",
+      "path": "/api/vendor-bills/34/pdf",
+      "expected": 403,
+      "actual": 200
+    },
+    {
+      "account": "ZZ-TEST-SITE-ONLY",
+      "path": "/api/vendor-bills",
+      "expected": 200,
+      "actual": 200
+    }
+  ],
+  "cleanup": [
+    {
+      "account": "ZZ-TEST-NO-REPORTS",
+      "deactivationStatus": 200
+    },
+    {
+      "account": "ZZ-TEST-SITE-ONLY",
+      "deactivationStatus": 200
+    },
+    {
+      "deviceId": 50,
+      "revokeStatus": 200
+    },
+    {
+      "deviceId": 49,
+      "revokeStatus": 200
+    }
+  ],
+  "scope": {
+    "siteId": 18,
+    "site": "TAKKADPALLY-SIRUR",
+    "administratorBillCount": 45,
+    "permittedBillCount": 11,
+    "excludedBillCount": 34
+  },
+  "passed": false,
+  "finalAccounts": [
+    {
+      "name": "ZZ-TEST-NO-REPORTS",
+      "active": false,
+      "admin": false
+    },
+    {
+      "name": "ZZ-TEST-SITE-ONLY",
+      "active": false,
+      "admin": false
+    }
+  ]
+}

@@ -4581,3 +4581,17 @@ mtime_ms = 1791099112120
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/f478cd21-c9de-496c-868f-ab82adb5cec3/549f7959-6ac6-4f1a-b074-5dc79e66882e"
 storage_version_token = "1791099122750389"
 content_type = "text/html"
+
+[[outputs]]
+id = "5nzLSlhT0JwpJf883nDwU"
+uri = "file://.agents/outputs/vb-export-verification/production-report.html"
+type = "html"
+title = "Production export checks — failed"
+description = "Real signed-in endpoint results, the 11-versus-45 bill-scope comparison, and confirmation that both test accounts and devices were disabled."
+logical_id = "c3b84a7f-7df0-44ac-aeef-9d40cdcab216"
+content_hash = "sha256:6a22a01cc9616cf7af325dbbd2ae83569669f12654c038fa9933be00e6426f93"
+size = 2847
+mtime_ms = 1791101033578
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c3b84a7f-7df0-44ac-aeef-9d40cdcab216/f472535d-dcd4-46ab-b7d6-4cc9a9471013"
+storage_version_token = "1791101034795921"
+content_type = "text/html"

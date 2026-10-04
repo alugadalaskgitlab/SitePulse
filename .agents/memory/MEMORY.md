@@ -104,3 +104,4 @@
 - [Vendor group action placement](vendor-group-action-placement.md) — approved separation preserves toggle geometry and collapsed-state removal availability.
 - [Conservative resource attribution](boq-resource-linking.md) — wrong links are worse than missing links; entry defaults, reviewed historical linking, and report math are separate scopes.
 - [Test suite verification](test-suite-verification.md) — compare file inventories, not only totals; bounded workers and separate build runs avoid setup skips.
+- [Published export verification](published-export-verification.md) — a successful build is not proof workspace gates are live; verify real restricted-user exports.
