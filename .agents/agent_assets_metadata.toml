@@ -4567,3 +4567,17 @@ mtime_ms = 1791097703259
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/2547086a-79a2-48cb-a6c4-46f5fabe8999/a365bb52-99d4-464a-a967-59d239a7bc7b"
 storage_version_token = "1791097719089146"
 content_type = "text/html"
+
+[[outputs]]
+id = "KBfuIyw3LkdKJVUeX-Ujt"
+uri = "file://.agents/outputs/vb-export-verification/verification-report.html"
+type = "html"
+title = "Suite restoration and production-build verification"
+description = "Reconciled counts, all 307 test files, deliberate skip reasons, test changes, and the successful production build. Live signed-in verification awaits account authorization."
+logical_id = "f478cd21-c9de-496c-868f-ab82adb5cec3"
+content_hash = "sha256:b439470111d483ba870b5b357aa5b70ddc18997a88d6d8f274d2f7acdd34356e"
+size = 30065
+mtime_ms = 1791099112120
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/f478cd21-c9de-496c-868f-ab82adb5cec3/549f7959-6ac6-4f1a-b074-5dc79e66882e"
+storage_version_token = "1791099122750389"
+content_type = "text/html"

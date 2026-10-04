@@ -103,3 +103,4 @@
 - [DPR daily received totals](dpr-daily-received-totals.md) — secondary BOQ totals require complete same-unit conversions, never a convertible subset of the day's receipts.
 - [Vendor group action placement](vendor-group-action-placement.md) — approved separation preserves toggle geometry and collapsed-state removal availability.
 - [Conservative resource attribution](boq-resource-linking.md) — wrong links are worse than missing links; entry defaults, reviewed historical linking, and report math are separate scopes.
+- [Test suite verification](test-suite-verification.md) — compare file inventories, not only totals; bounded workers and separate build runs avoid setup skips.

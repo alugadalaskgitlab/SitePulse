@@ -7,7 +7,14 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
-    include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
+    // PGlite fixtures and full route imports are memory-heavy. Unbounded
+    // parallel workers can time out setup and report runnable tests as skipped.
+    maxWorkers: 2,
+    hookTimeout: 60_000,
+    include: [
+      "tests/**/*.test.ts", "tests/**/*.test.tsx",
+      "client/src/**/*.test.ts", "client/src/**/*.test.tsx",
+    ],
     exclude: [".cache/**", "node_modules/**"],
   },
   resolve: {

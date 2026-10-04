@@ -130,7 +130,9 @@ describe("PERM-01 C actual permissions dialog", () => {
     await save();
     expect(stored.site_hub.view).toBe(true);
     expect(stored.site_hub.notify).toBe(true);
-  });
+  // Three full matrix renders and saves can exceed the default five seconds
+  // while the full suite's SQL fixtures run alongside this browser test.
+  }, 15_000);
 
   it("partial manager: cannot revoke unowned hub aliases or save a matrix containing unowned grants", async () => {
     actor = { isAdmin: false, canManagePermissions: true, permissionManagerScope: "partial", permissions: emptyMatrix() };

@@ -143,7 +143,7 @@ describe("DPR-PAGE-02 machines and scoped presentation", () => {
     render(<SiteReport />);
     const tile = document.querySelector(".dpr-management-tile-machines")!;
     expect(tile.querySelector("strong")?.textContent).toBe("4");
-    expect(tile.textContent).toBe("4Machinesall worked");
+    expect(tile.textContent).toBe("Equipment4all worked");
     expect(tile.textContent).not.toContain("/");
   });
   it("counts full-day, idle and part-day separately in attention order, once per machine", () => {
@@ -181,7 +181,7 @@ describe("DPR-PAGE-02 machines and scoped presentation", () => {
       { sourceRecordId: 9001, eventType: "breakdown" },
     ];
     render(<SiteReport />);
-    expect(document.querySelector(".dpr-management-tile-machines")?.textContent).toBe("1Machinesall worked");
+    expect(document.querySelector(".dpr-management-tile-machines")?.textContent).toBe("Equipment1all worked");
   });
   it("retains hidden-machine rules and existing diesel/labour/material tile existence", () => {
     state.dpr.equipment = [];
@@ -305,7 +305,7 @@ describe("DPR-PAGE-01 materials, page and sharing", () => {
     const text = buildManagementShare({ ...state.dpr, progress: [{ activity: "WMM", quantity: 56.25, uom: "Cum" }], labour: [{ count: 2 }], remarks: "Rain" },
       [machine, { ...machine, usageStatus: "breakdown" }], [{ material: "WMM", quantity: 12, uom: "MT" }, { material: "WMM", quantity: 4, uom: "Cum" }]);
     expect(text).toContain("Work done: WMM: 56.25 Cum"); expect(text).toContain("1/2 working · 0 idle · 1 breakdown");
-    expect(text).toContain("Bulk received: 12 MT WMM (0 trips); 4 CUM WMM (0 trips)"); expect(text).toContain("Remarks: Rain");
+    expect(text).toContain("Materials received: 12 MT WMM (0 trips); 4 CUM WMM (0 trips)"); expect(text).toContain("Remarks: Rain");
   });
   it("uses native share when supported", async () => {
     const share = vi.fn().mockResolvedValue(undefined);
@@ -368,8 +368,11 @@ describe("DPR-PAGE-01-FIX summary lists and complete share text", () => {
     state.dpr.progress = [work[0]];
     render(<SiteReport />);
     expect(tiles()[0].querySelector("strong")?.textContent).toBe("56.25 Cum");
-    expect(tiles()[0].querySelector(".dpr-management-subtle")?.textContent).toBe("Work done · Wet Mix Macadam");
-    expect(tiles()[0].querySelector(".dpr-management-summary-list")).toBeNull();
+    expect(tiles()[0].querySelector(".dpr-management-tile-heading")?.textContent).toBe("Work done");
+    expect(tiles()[0].querySelector(".dpr-management-summary-list")?.textContent).toBe("Wet Mix Macadam");
+    expect([...tiles()[0].children].map(node => node.textContent)).toEqual([
+      "Work done", "56.25 Cum", "Wet Mix Macadam",
+    ]);
   });
 
   it("B: lists three native quantities in DPR order, using the shared name/quantity helpers", () => {
@@ -414,7 +417,8 @@ describe("DPR-PAGE-01-FIX summary lists and complete share text", () => {
     state.dpr.progress = [work[3], { ...work[0], noSiteWork: true }];
     render(<SiteReport />);
     expect(tiles()[0].querySelector("strong")?.textContent).toBe("40 Sqm");
-    expect(tiles()[0].querySelector(".dpr-management-subtle")?.textContent).toBe("Work done · Diversion (incidental)");
+    expect(tiles()[0].querySelector(".dpr-management-tile-heading")?.textContent).toBe("Work done");
+    expect(tiles()[0].querySelector(".dpr-management-summary-list")?.textContent).toBe("Diversion (incidental)");
     expect(buildManagementShare(state.dpr, [], [])).toContain("Work done: Diversion: 40 Sqm (incidental)");
   });
 
@@ -435,8 +439,8 @@ describe("DPR-PAGE-01-FIX summary lists and complete share text", () => {
     state.receipts = tripReceipts.slice(0, 5);
     render(<SiteReport />);
     expect(tiles()[1].querySelector("strong")?.textContent).toBe("141.03 MT");
-    expect(tiles()[1].querySelector(".dpr-management-subtle")?.textContent).toBe("Bulk received · WMM · 5 trips");
-    expect(tiles()[1].querySelector(".dpr-management-summary-list")).toBeNull();
+    expect(tiles()[1].querySelector(".dpr-management-tile-heading")?.textContent).toBe("Materials received");
+    expect(tiles()[1].querySelector(".dpr-management-summary-list")?.textContent).toBe("WMM 141.03 MT (5 trips)");
   });
 
   it("preserves all-source quantities but matches table trip sums for mixed sources and native units", () => {
@@ -450,7 +454,7 @@ describe("DPR-PAGE-01-FIX summary lists and complete share text", () => {
     expect(summarizeReceived(state.receipts).map(g => g.count)).toEqual([2, 1]);
     expect(managementReceivedGroups(state.receipts).map(g => g.tripCount)).toEqual([1, 0]);
     expect(tiles()[1].querySelector(".dpr-management-summary-list")?.textContent).toBe("WMM 20 MT (1 trips) · WMM 4 CUM (0 trips)");
-    expect(buildManagementShare(state.dpr, [], state.receipts)).toContain("Bulk received: 20 MT WMM (1 trips); 4 CUM WMM (0 trips)");
+    expect(buildManagementShare(state.dpr, [], state.receipts)).toContain("Materials received: 20 MT WMM (1 trips); 4 CUM WMM (0 trips)");
     const table = screen.getByRole("table", { name: "Materials received" });
     const rows = within(table).getAllByRole("row").slice(1);
     const trips = (uom: string) => rows.filter(row =>
@@ -469,11 +473,12 @@ describe("DPR-PAGE-01-FIX summary lists and complete share text", () => {
     ];
     render(<SiteReport />);
     expect(tiles()[1].querySelector("strong")?.textContent).toBe("20 MT");
-    expect(tiles()[1].querySelector(".dpr-management-subtle")?.textContent).toBe("Bulk received · WMM · 1 trips");
+    expect(tiles()[1].querySelector(".dpr-management-tile-heading")?.textContent).toBe("Materials received");
+    expect(tiles()[1].querySelector(".dpr-management-summary-list")?.textContent).toBe("WMM 20 MT (1 trips)");
     const tripSum = within(screen.getByRole("table", { name: "Materials received" })).getAllByRole("row").slice(1)
       .reduce((sum, row) => sum + (Number(row.querySelector('[data-label="Trips"]')?.textContent) || 0), 0);
     expect(tripSum).toBe(1);
-    expect(buildManagementShare(state.dpr, [], state.receipts)).toContain("Bulk received: 20 MT WMM (1 trips)");
+    expect(buildManagementShare(state.dpr, [], state.receipts)).toContain("Materials received: 20 MT WMM (1 trips)");
   });
 
   it("never renders purchase amounts anywhere in the management SiteReport", () => {
@@ -500,7 +505,7 @@ describe("DPR-PAGE-01-FIX summary lists and complete share text", () => {
     expect(tiles()[1].querySelector(".dpr-management-summary-list")?.textContent).toBe("WMM 141.03 MT (5 trips) · Soil 60 MT (3 trips) · Sand 4.75 CUM (0 trips) · +2 more");
     expect(tiles()[1].textContent).not.toMatch(/Aggregate|Cement/);
     const text = buildManagementShare(state.dpr, [], state.receipts);
-    expect(text).toContain("Bulk received: 141.03 MT WMM (5 trips); 60 MT Soil (3 trips); 4.75 CUM Sand (0 trips); 19.8 MT Aggregate (0 trips); 7.32 MT Cement (0 trips)");
+    expect(text).toContain("Materials received: 141.03 MT WMM (5 trips); 60 MT Soil (3 trips); 4.75 CUM Sand (0 trips); 19.8 MT Aggregate (0 trips); 7.32 MT Cement (0 trips)");
     expect(text).not.toContain("more");
   });
 
@@ -535,7 +540,7 @@ describe("DPR-PAGE-01-FIX summary lists and complete share text", () => {
       const text = share.mock.calls[0][0].text;
       expect(text).toBe(buildManagementShare(state.dpr, [], state.receipts, state.boqItems));
       expect(text.split("\n")[1]).toBe(`Work done: ${work.map(item => `${shortItemName(item.activity)}: ${managementQuantity(item).text}${item.isIncidental ? " (incidental)" : ""}`).join("; ")}`);
-      expect(text).toContain("Bulk received: 141.03 MT WMM (5 trips); 60 MT Soil (3 trips)");
+      expect(text).toContain("Materials received: 141.03 MT WMM (5 trips); 60 MT Soil (3 trips)");
       expect(text).not.toMatch(/\+\d+ more|₹|rate|amount|value/i);
     } finally {
       Object.defineProperty(navigator, "share", { value: undefined, configurable: true });
@@ -550,7 +555,8 @@ describe("DPR-PAGE-01-FIX summary lists and complete share text", () => {
     state.dpr.progress = work;
     render(<SiteReport />);
     expect(tiles()[0].querySelector("strong")?.textContent).toBe("10 MT");
-    expect(tiles()[0].querySelector(".dpr-management-subtle")?.textContent).toBe("Work done · Concrete");
+    expect(tiles()[0].querySelector(".dpr-management-tile-heading")?.textContent).toBe("Work done");
+    expect(tiles()[0].querySelector(".dpr-management-summary-list")?.textContent).toBe("Concrete");
     expect(screen.getByText("BOQ credit 30 Cum")).toBeTruthy();
     const normalized = { ...item, kind: "structure", activity: item.itemOfWork };
     expect(managementQuantity(normalized, state.boqItems[0]).measurement.boqQty).toBe(30);
