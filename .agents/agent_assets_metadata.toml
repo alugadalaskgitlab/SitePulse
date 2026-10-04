@@ -4209,13 +4209,13 @@ id = "EnJ979h5WuBIX4HD90Y11"
 uri = "file://screenshots/vb28/verification-gallery.html"
 type = "html"
 title = "VB-28 desktop and mobile evidence"
-description = "All four implemented placements, eight screenshots, using the actual Vendor Bill screen with synthetic data."
+description = "Existing synthetic-fixture screenshots of all four removal-control occurrences; no live customer data."
 logical_id = "27ef2a55-acc2-4033-8b71-76fc86eddd1e"
 content_hash = "sha256:8af6ac0c0a8bba5bfe786d45031c546b8e76d5831dad8ed0d329de3c4824e8b1"
 size = 722919
-mtime_ms = 1790990998281
-storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/27ef2a55-acc2-4033-8b71-76fc86eddd1e/e145d900-8fb0-460d-bf57-8689d802a6c8"
-storage_version_token = "1790991002760392"
+mtime_ms = 1791035067067
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/27ef2a55-acc2-4033-8b71-76fc86eddd1e/63913192-9487-47cf-bc36-3d5209e00922"
+storage_version_token = "1791078857028737"
 content_type = "text/html"
 
 [[outputs]]
