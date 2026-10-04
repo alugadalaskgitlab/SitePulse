@@ -1,0 +1,83 @@
+INSTRUCTION DPR-PAGE-01: Rebuild the DPR Site Report as ONE clean page, exactly like the attached mockup — and replace the DPR-VIEW-01 work
+
+READ THIS FIRST — THIS REPLACES EARLIER WORK
+- Attached mockup: DPR_Site_Report_OnePage_Mockup.png. This is the OWNER-APPROVED design. Build what it shows. Where this instruction and any earlier instruction (DPR-VIEW-01, UX-FIX-02) disagree, THIS one wins.
+- STATE OF THE CODE: the DPR-VIEW-01 work is ALREADY in this codebase (commit c0bb1dd), but it was never published — the live app still shows only BOQ-LINK-01 + UX-FIX-01 (published at 7effad5). So HLC users have not seen the DPR-VIEW-01 layout. Revise the existing code in place; do not revert the commit and do not start from scratch unless that is genuinely simpler, and say which you chose.
+- DPR-VIEW-01 is NOT approved and must NOT be published as it stands. Keep its useful parts (shared/dprEquipmentConsumption.ts helper, the compact row idea, print support) and REMOVE what the owner rejected: the per-row expandable "Details ▸" audit panel on the Site Report, the long technical legend, 3-decimal totals, repeated explanatory sentences.
+- The guiding rule for this whole batch: THE SITE REPORT IS A MANAGEMENT PAGE, NOT AN AUDIT DUMP. If a value is empty, it is not shown. If a field is only meaningful to a developer or auditor, it does not appear on this page at all. Full audit detail stays available in the EDIT screen and in the Equipment Performance report — do not delete any stored data or any other page.
+- Scope: client/src/pages/SiteReport.tsx and the components it uses for the read-only DPR (DprEquipmentReadOnlyRow.tsx, DprActivityReadOnly.tsx, DprEquipmentTableDetails.tsx, DprMaterialsReceived.tsx, ProgrammeBarOutcomeHistory.tsx). DprDetails.tsx is unrouted — keep it compiling, no effort. Do NOT change entry/edit screens, calculations, schema, readiness, hire billing, Equipment Performance or any stored value. Display only.
+- Do not publish automatically. STOP after this batch and report back.
+
+=====================================================================
+PAGE STRUCTURE (top to bottom) — match the mockup
+=====================================================================
+1. HEADER
+   Site name (big) · "Daily Progress Report · Fri 02 Oct 2026 · DPR #409 · Engineer: <name> · <status>".
+   Buttons: Print / PDF, Share on WhatsApp, Edit (Edit only for users who can edit, same permission as today).
+   "Share on WhatsApp": build a short plain-text summary of this DPR (site, date, work done with quantities, machines working/idle/breakdown, diesel issued, labour count, bulk received, remarks) and open wa.me / navigator.share with it; if the browser cannot share, copy it to the clipboard and show a small confirmation. No new backend.
+   Remove: "Road" repeated, "Project 2", raw project ids, "Machine day n", any "snapshot/canonical/lifecycle" wording.
+
+2. SUMMARY STRIP (5 tiles, as in the mockup): Work done (main item + qty; "n items" when several) · Machines working (working/total) · Diesel issued (L) · Labour (headcount) · Bulk received (qty + material). Hide a tile whose value is zero/absent, except Work done which always shows (or "No site work").
+
+3. WORK DONE table — one row per activity:
+   Item (+ side under it) | Chainage from → to | Size (L × W × T) | Quantity | Programme
+   - ONE quantity only: the recorded/measured quantity with its unit. Do NOT show "Recorded quantity", "Physical measurement" and "BOQ credit" separately. Show a small amber note under the quantity ONLY when the BOQ credit differs from it in value or unit, e.g. "BOQ credit 56.25 Cum" or "unit review needed"; otherwise show nothing.
+   - Programme cell: "Reach 1 · Ch 0+000 – 1+600 · 25–30 Sep" then "Done 412 / 900 Cum (46%)" with a thin progress bar, and a red "past planned end" when today > end date and done < planned. If the activity is not linked to a programme bar, the cell is empty.
+   - Badges stay where they apply: Incidental · No BOQ credit, No site work.
+   - NEVER show: Material outcome, Reusable quantity, Execution arrangement, Incidental description, No site work description, Layer/Lift, Personnel, Dimensions, Recorded vs Physical — unless the field HAS a value AND belongs to that activity type (earthwork fields only for excavation/embankment; incidental/no-site-work text only when that flag is set). When shown, they go on one small grey line under the row, never as a labelled grid with "—".
+   - No expandable Details panel on this page.
+
+4. EQUIPMENT table — one row per machine, no expand control:
+   Machine (name + reg; second line "Hired · vendor · hire type · Op. <operator>" or "Owned · Op. <operator>") | Work (BOQ item, or "General", or "Not linked"; task text on a second small line) | Hours | Diesel | Consumption
+   - Hours cell: "1.1 h meter (2594.4 → 2595.5)" and under it "09:50 – 17:13 (7.4 h)". For vehicles: "82 km (84,320 → 84,402)" or "9 trips × 6 km = 108 km". Do NOT add any meter-vs-clock warning text.
+   - Diesel: issued litres only.
+   - Consumption: value + unit (L/hr machines, km/L vehicles), then "norm 9.0" small, then the deviation mark. THE MARK MUST APPEAR ON EVERY ROW WHOSE DEVIATION IS MORE THAN 10%: red "▲16%" when worse than norm, amber "▼60% check" when better than norm by more than 10%. Within 10% → no mark. No norm or incomplete data → show "—" plus 2–4 words why (e.g. "no closing reading"), never a made-up number.
+   - Idle/Breakdown rows: show the status chip and the reason instead of consumption.
+   - Totals row: hours (1 decimal), diesel issued (whole/1 decimal), "20.5 L used · 25.8 L expected". Never 3 decimals. Hide km when no vehicle; hide "used" when no machine has a confirmed tank figure.
+   - Legend, exactly one line under the table: "Consumption from tank dip (opening + issued − closing). ▲ more than 10% above norm · ▼ check more than 10% below (often a missed diesel entry) · no mark = within 10%." Nothing else.
+   - Keep Send onward / Lifecycle exactly as DPR-20 defined (same gating, route, test ids) but place it as a small control at the end of the machine row; it must not expand the row or print.
+
+5. LABOUR table: Gang / contractor | Category (+ gender) | Count | Hours (only if any row has hours) | Task. Totals row with the headcount.
+   The Task column is the existing labour_logs.task typed by the engineer — do not invent or derive it. If a row has no task, leave the cell blank.
+
+6. MATERIALS block (side by side with Labour on desktop, stacked on phone):
+   Material (+ supplier small) | Received qty (bold) | Unloaded at | Trips (bold, same weight as the quantity)
+   - "Unloaded at": "Stretch (used on site)", "Yard (stock)", or "not recorded".
+   - Under the table: issued rows and site purchases when they exist; otherwise the single line "No store issues or site purchases today."
+   - "Trip list ▸" opens the existing trip detail (link or small dialog), not an inline expansion.
+
+7. REMARKS / HOLD-UPS: show dprs.remarks (today it is captured and never displayed). If empty, "— none recorded —".
+
+PRINT / PDF
+One clean A4 page where possible: same blocks, same order, no buttons, no Lifecycle, legend once. All content visible (nothing collapsed).
+
+PHONE (< 640px)
+Same order; each table becomes stacked cards with the same fields and the same wording. No horizontal scrolling.
+
+WHAT NOT TO DO
+- No new expandable panels on this page. No "Details ▸" per row.
+- No stored value, calculation, readiness, schema, hire-billing, Equipment Performance or entry/edit screen change.
+- Do not delete DprEquipmentTableDetails or the audit fields from the codebase — they stay for the edit screen and other pages.
+- No 3-decimal numbers anywhere on this page.
+
+TESTS (real signed-in DEVELOPMENT app, as you did for UX-FIX-01 — fixtures alone are not enough)
+A. DPR 409-like day (3 machines, 1 WMM activity, 2 labour, bulk received): full-page screenshot desktop + phone. It must match the mockup block for block.
+B. Activity with no programme link → empty Programme cell, no error. Activity whose BOQ credit differs → amber note shown.
+C. Excavation activity with material outcome + reusable qty → those appear on the small grey line; a WMM activity shows none of them and no "—".
+D. Machine 15% above norm → red ▲15%; 12% below → amber ▼12% check; 8% → no mark; machine with no closing reading → "—" + reason. Vehicle row → km/L and km distance.
+E. Idle and Breakdown machines → status + reason, no invented consumption.
+F. Totals: no 3-decimal values; km hidden when no vehicles.
+G. Labour with and without task/hours; materials with yard unloading, with stretch only, and a day with no issues/purchases.
+H. Remarks shown when present, "— none recorded —" when not.
+I. Send onward still works (DPR-20 test ids unchanged).
+J. Print preview + PDF screenshot.
+K. WhatsApp share text screenshot/copy output.
+L. Full test suite: counts vs the last run; list every test you updated and why (text/layout only).
+
+REPORT BACK
+1. Files changed; what you removed from the earlier DPR-VIEW-01 work.
+2. Screenshots A–K.
+3. Tests updated + suite counts.
+4. Anything in the mockup you could not do, and why.
+
+DO NOT START ANOTHER FEATURE after completing this batch.

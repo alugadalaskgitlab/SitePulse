@@ -3,7 +3,13 @@ name: Read-only equipment print parity
 description: Equipment consolidation must preserve card-only audit detail and verify actual paginated PDF output.
 ---
 
-Read-only equipment consolidation must retain the old cards' audit details in the existing table cells; preserving column headings alone does not establish parity.
+Site Report policy is superseded by DPR-PAGE-01: the user says "THE SITE REPORT IS A MANAGEMENT PAGE, NOT AN AUDIT DUMP." DPR-VIEW-01 is not approved and must not be published as it stands. Revise it in place, preserving its useful helper, compact-row concept and print support; remove Site Report per-row audit expansions, technical legend and three-decimal totals. Audit data and other pages must remain intact.
+
+**Why:** The user explicitly replaced the earlier layout and print requirements.
+
+**How to apply:** Follow the DPR-PAGE-01 instruction over older audit-parity rules for Site Report. Require signed-in development verification, not fixtures alone. Do not publish automatically. The historical notes below explain earlier work, not current Site Report acceptance criteria.
+
+Historically, read-only equipment consolidation retained the old cards' audit details in table cells; preserving column headings alone did not establish parity.
 
 **Why:** The approved consolidation retained the table's structure and Send onward controls, but the former cards exposed additional tank, work-allocation and attachment evidence.
 
@@ -19,4 +25,4 @@ Read-only consumption deliberately falls back from an available canonical measur
 
 **Why:** The user approved a useful row-level figure for site-restricted viewers without relaxing canonical access checks or changing operational calculations.
 
-**How to apply:** Preserve canonical precedence and distinguish measured from issued. Use existing historical runtime and fuel facts; never manufacture missing quantities. Keep saved-versus-calculated audit distinctions in expandable details, automatically expanded on paper.
+**How to apply:** Use existing historical runtime and fuel facts; never manufacture missing quantities. The older expandable-audit design is superseded for Site Report by DPR-PAGE-01.
