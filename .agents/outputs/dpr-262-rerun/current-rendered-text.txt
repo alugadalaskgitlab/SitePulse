@@ -1,0 +1,78 @@
+Back
+DPR PAGE DEVELOPMENT · ALLADURG ROAD
+
+Daily Progress Report · Fri 02 Oct 2026 · DPR #268 · Engineer: Development verification · submitted
+
+Print / PDF
+Share on WhatsApp
+Edit
+56.25 Cum
+Work done · Wet Mix Macadam
+3
+Machines
+all worked
+42 L
+Diesel issued
+2
+Labour
+141.03 MT
+Bulk received · WMM · 5 trips
+Work done
+Item	Chainage from → to	Size (L × W × T)	Quantity	Programme
+Wet Mix Macadam
+Full Width
+	0+280 → 0+380	100 × 3.75 × 0.15 m	56.25 Cum	
+Reach 1 · Ch 0+000 – 1+600 · 25 Sep – 30 Sep
+Done 412 / 900 Cum (46%) past planned end
+Equipment
+Machine	Work	Hours	Diesel	Consumption
+Soil Compactor TS08JG4572
+Hired · Nafeez · Monthly · Op. Ramesh
+	
+Wet Mix Macadam
+Compacting WMM lift
+	
+1.1 h meter (2,594.4 → 2,595.5)
+09:50 – 17:13 (7.4 h)
+	20 L	10.5 L/hr norm 9.0 ▲16%
+Tractor – Ratnam 0930
+Hired · Ratnam · Monthly · Op. Yovan
+	
+Wet Mix Macadam
+Compacting WMM lift
+	
+3.1 h meter (5,193.3 → 5,196.4)
+09:56 – 18:10 (8.2 h)
+	5 L	1.6 L/hr norm 4.0 ▼60% check
+Tractor Dozer TS34TA8581
+Hired · Mahipal · Monthly · Op. Nagesh
+	
+Wet Mix Macadam
+Compacting WMM lift
+	
+1.4 h meter (8,819.1 → 8,820.5)
+14:40 – 17:30 (2.8 h)
+	17 L	2.9 L/hr norm 2.5 ▲14%
+Total · 3 machines	5.6 h	42 L	20.5 L used · 25.8 L expected
+
+Consumption from tank dip (opening + issued − closing). ▲ more than 10% above norm · ▼ check more than 10% below (often a missed diesel entry) · no mark = within 10%.
+
+Labour
+Gang / contractor	Category (+ gender)	Count	Task
+Machender	Unskilled · Male	1	WMM
+Samson	Unskilled · Male	1	WMM
+Total	2	
+Materials
+Material	Received qty	Unloaded at	Trips
+WMM
+Saravana
+	141.03 MT	Stretch (used on site)	5
+No store issues or site purchases today.Trip list ▸
+Remarks / hold-ups
+
+— none recorded —
+
+History
+Cancel report
+Delete
+Home

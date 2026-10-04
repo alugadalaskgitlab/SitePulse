@@ -4539,3 +4539,17 @@ mtime_ms = 1791092705631
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/3f9f117f-c0b5-4100-8b6a-dfab8cdb8541/03bb9e29-bd52-4a57-a66d-0f500bd232e6"
 storage_version_token = "1791092718811792"
 content_type = "text/csv"
+
+[[outputs]]
+id = "tbbYJaWvBv0nbAqsMLx6i"
+uri = "file://.agents/outputs/dpr-262-rerun/DPR-262-same-fixture-current-code.pdf"
+type = "pdf"
+title = "DPR #262 fixture — rerun against current code"
+description = "Same original fixture, freshly seeded as DPR #268. Includes all three BOQ-linked machines, meter readings, tank consumption and norms. One-page PDF."
+logical_id = "a8662e6c-c52f-4d63-b773-52fa31200ddc"
+content_hash = "sha256:1cda759cb2a8b72da612c465b3c6098eda01b1d152446445df408399869c3316"
+size = 213184
+mtime_ms = 1791094474555
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/a8662e6c-c52f-4d63-b773-52fa31200ddc/80bf4094-fa60-4436-8980-67ed753d1d12"
+storage_version_token = "1791094488813537"
+content_type = "application/pdf"

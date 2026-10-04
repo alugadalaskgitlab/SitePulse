@@ -1,0 +1,22 @@
+{
+  "removedSeedData": true,
+  "testAccountDisabled": true,
+  "testDevicesRevoked": true,
+  "testSessionsRevoked": true,
+  "testLedgerEntriesRemoved": 0,
+  "testLedgerNetRestored": 0,
+  "preexistingRowsUnchanged": {
+    "sites": true,
+    "boq_projects": true,
+    "boq_items": true,
+    "work_program_bars": true,
+    "dprs": true,
+    "progress_entries": true,
+    "equipment_master": true,
+    "equipment_logs": true,
+    "equipment_activity_segments": true,
+    "equipment_activity_segment_boq_items": true,
+    "labour_logs": true,
+    "site_material_trips": true
+  }
+}

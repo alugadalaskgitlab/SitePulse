@@ -1,0 +1,77 @@
+{
+  "developmentOnly": true,
+  "site": "DPR PAGE DEVELOPMENT · ALLADURG ROAD",
+  "projectId": 12,
+  "barId": 26644,
+  "boqItemId": 1173,
+  "mainId": 268,
+  "edgeId": 269,
+  "created": {
+    "sites": [
+      23
+    ],
+    "boq_projects": [
+      12
+    ],
+    "boq_items": [
+      1173,
+      1174
+    ],
+    "work_program_bars": [
+      26644
+    ],
+    "dprs": [
+      267,
+      268,
+      269
+    ],
+    "progress_entries": [
+      312,
+      313,
+      314,
+      315
+    ],
+    "equipment_master": [
+      43,
+      44,
+      45,
+      46
+    ],
+    "equipment_logs": [
+      558,
+      559,
+      560,
+      561,
+      562,
+      563,
+      564,
+      565,
+      566,
+      567
+    ],
+    "equipment_activity_segments": [
+      12,
+      13,
+      14
+    ],
+    "equipment_activity_segment_boq_items": [
+      16,
+      17,
+      18
+    ],
+    "labour_logs": [
+      187,
+      188,
+      189,
+      190
+    ],
+    "site_material_trips": [
+      54,
+      55,
+      56,
+      57,
+      58,
+      59
+    ]
+  }
+}

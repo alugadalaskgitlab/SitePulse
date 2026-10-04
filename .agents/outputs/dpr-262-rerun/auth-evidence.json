@@ -1,0 +1,14 @@
+{
+  "database": "sitelog_dev",
+  "userId": 15,
+  "firstStatus": 202,
+  "approvedDevices": [
+    {
+      "id": 86,
+      "user_id": 15,
+      "status": "approved"
+    }
+  ],
+  "secondStatus": 200,
+  "authBypass": false
+}
