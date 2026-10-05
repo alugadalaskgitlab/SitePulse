@@ -52,6 +52,7 @@ const fx = vi.hoisted(() => {
           },
           where: () => q,
           returning: () => {
+            if (!state.selectedRows.length) return Promise.resolve([]);
             Object.assign(state.selectedRows[0], state.updateValues);
             return Promise.resolve([state.selectedRows[0]]);
           },
@@ -101,17 +102,34 @@ describe("vendor rate-card upsert unit identity", () => {
       ["HEAD", 222],
     ]);
   });
-  it("persists setup explicitly but ordinary subsequent write-back leaves it intact", async () => {
+  it("bill write-back ignores both supplied numeric basis and explicit nulls", async () => {
     const { DatabaseStorage } = await import("../server/storage");
     const storage = new DatabaseStorage();
     const data = { vendorName: "UNIT VENDOR", category: "transport", itemKey: "EQ_TIPPER_HEAD",
       itemLabel: "TIPPER", unit: "HEAD", rate: 200, notes: null };
-    await storage.upsertVendorRateCard({ ...data, leadDistanceKm: 12, payloadMt: 30, ratePerKm: 950 });
-    expect(fx.state.updateValues).toMatchObject({ rate: 200, leadDistanceKm: 12, payloadMt: 30, ratePerKm: 950 });
-    await storage.upsertVendorRateCard({ ...data, rate: 250 });
+    Object.assign(fx.state.rows[1], { leadDistanceKm: 12, payloadMt: 30, ratePerKm: 950 });
+    await storage.upsertVendorRateCard({ ...data, leadDistanceKm: 99, payloadMt: 1, ratePerKm: 1 });
+    expect(fx.state.updateValues).not.toHaveProperty("leadDistanceKm");
+    expect(fx.state.rows[1]).toMatchObject({ leadDistanceKm: 12, payloadMt: 30, ratePerKm: 950 });
+    await storage.upsertVendorRateCard({ ...data, rate: 250, leadDistanceKm: null, payloadMt: null, ratePerKm: null });
     expect(fx.state.updateValues).not.toHaveProperty("payloadMt");
     expect(fx.state.updateValues).not.toHaveProperty("leadDistanceKm");
     expect(fx.state.updateValues).not.toHaveProperty("ratePerKm");
     expect(fx.state.rows[1]).toMatchObject({ rate: 250, leadDistanceKm: 12, payloadMt: 30, ratePerKm: 950 });
+  });
+  it("the dedicated update writes exactly three columns, never identity or flat rate", async () => {
+    const { DatabaseStorage } = await import("../server/storage");
+    fx.state.selectedRows = [fx.state.rows[1]];
+    await new DatabaseStorage().updateTransportRateSetup(102, " Mixed  Key ", {
+      leadDistanceKm: 12, payloadMt: 30, ratePerKm: 950,
+    });
+    expect(fx.state.updateValues).toEqual({ leadDistanceKm: 12, payloadMt: 30, ratePerKm: 950 });
+    expect(fx.state.rows[1].rate).toBe(200);
+  });
+  it("a missing existing row is not inserted by dedicated setup", async () => {
+    const { DatabaseStorage } = await import("../server/storage");
+    expect(await new DatabaseStorage().updateTransportRateSetup(999, "Missing", {
+      leadDistanceKm: 12, payloadMt: 30, ratePerKm: 950,
+    })).toBeUndefined();
   });
 });

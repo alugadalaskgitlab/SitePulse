@@ -1603,6 +1603,7 @@ export interface IStorage {
   getVendorRateCards(vendorName?: string): Promise<VendorRateCard[]>;
   discoverVendorItems(vendorName: string): Promise<{ itemKey: string; itemLabel: string; category: string; unit: string; rate: number | null; rateCardId: number | null; isManual?: boolean }[]>;
   upsertVendorRateCard(data: InsertVendorRateCard): Promise<VendorRateCard>;
+  updateTransportRateSetup(id: number, itemKey: string, fields: { leadDistanceKm: number | null; payloadMt: number | null; ratePerKm: number | null }): Promise<VendorRateCard | undefined>;
   deleteVendorRateCard(id: number): Promise<boolean>;
   checkDuplicateBilledItems(vendorName: string, items: { date: string; source?: string | null; equipmentId?: number | null; description?: string; category?: string | null; siteName?: string | null }[], excludeBillId?: number): Promise<{ index: number; billNo: string; billStatus: string }[]>;
 
@@ -22362,7 +22363,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertVendorRateCard(data: InsertVendorRateCard): Promise<VendorRateCard> {
-    const transportFields = validatedTransportRateFields(data);
+    // Legacy/bill write-back is NEVER allowed to set or clear transport basis.
+    // Keep an explicit legacy-column allowlist below, even if callers send it.
     const upperVendor = data.vendorName.toUpperCase().trim();
     const upperKey = data.itemKey.toUpperCase().trim();
     const upperUnit = data.unit.toUpperCase().trim();
@@ -22376,7 +22378,6 @@ export class DatabaseStorage implements IStorage {
     if (existing.length > 0) {
       const [updated] = await db.update(vendorRateCards)
         .set({
-          ...transportFields,
           rate: data.rate,
           unit: data.unit,
           itemLabel: data.itemLabel,
@@ -22390,7 +22391,6 @@ export class DatabaseStorage implements IStorage {
       return updated;
     }
     const [created] = await db.insert(vendorRateCards).values({
-      ...transportFields,
       category: data.category,
       itemLabel: data.itemLabel,
       unit: data.unit,
@@ -22400,6 +22400,18 @@ export class DatabaseStorage implements IStorage {
       itemKey: upperKey,
     }).returning();
     return created;
+  }
+
+  async updateTransportRateSetup(id: number, itemKey: string, fields: { leadDistanceKm: number | null; payloadMt: number | null; ratePerKm: number | null }): Promise<VendorRateCard | undefined> {
+    const basis = validatedTransportRateFields({ ...fields, category: "transport" });
+    // Update-only, exact stored identity. No insert, normalization, name, unit,
+    // flat-rate, notes or timestamp changes are permitted by this path.
+    const [updated] = await db.update(vendorRateCards).set(basis).where(and(
+      eq(vendorRateCards.id, id),
+      eq(vendorRateCards.itemKey, itemKey),
+      eq(vendorRateCards.category, "transport"),
+    )).returning();
+    return updated;
   }
 
   async deleteVendorRateCard(id: number): Promise<boolean> {

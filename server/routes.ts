@@ -24,7 +24,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, vendors, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
 import { db } from "./db";
-import { TransportRateInputError, validatedTransportRateFields } from "@shared/transportRate";
+import { TransportRateInputError } from "@shared/transportRate";
 import { registerVendorMasterRoutes } from "./vendor-master";
 import { buildPurchaseOrderPdf } from "./purchase-order-pdf";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc, desc } from "drizzle-orm";
@@ -12436,13 +12436,36 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/vendor-rate-cards/:id/transport-setup", async (req, res) => {
+    try {
+      if (!assertCreateEither(req, res, "vendor_masters_manage", "admin_settings")) return;
+      const id = Number(req.params.id);
+      const body = req.body;
+      const fields = ["leadDistanceKm", "payloadMt", "ratePerKm"];
+      if (!Number.isSafeInteger(id) || id <= 0 || !body ||
+          typeof body.itemKey !== "string" ||
+          !fields.every(key => Object.prototype.hasOwnProperty.call(body, key)) ||
+          Object.keys(body).some(key => key !== "itemKey" && !fields.includes(key))) {
+        return res.status(400).json({ message: "Provide the existing itemKey and all three transport setup fields only" });
+      }
+      const card = await storage.updateTransportRateSetup(id, body.itemKey, {
+        leadDistanceKm: body.leadDistanceKm, payloadMt: body.payloadMt, ratePerKm: body.ratePerKm,
+      });
+      if (!card) return res.status(404).json({ message: "Existing transport rate card not found; no row was created" });
+      res.json(card);
+    } catch (err) {
+      if (err instanceof TransportRateInputError) return res.status(400).json({ message: err.message });
+      console.error("Error updating transport rate setup:", err);
+      res.status(500).json({ message: "Failed to update transport rate setup" });
+    }
+  });
+
   app.post("/api/vendor-rate-cards/bulk-upsert", async (req, res) => {
     try {
       if (!assertCreateEither(req, res, "vendor_masters_manage", "admin_settings")) return;
       const items = req.body.items as any[];
-      // Validate new setup fields before any writes; omitted legacy fields
-      // preserve the existing bill-to-rate-card write-back behavior.
-      items.forEach(item => validatedTransportRateFields(item));
+      // Storage explicitly ignores basis fields on ALL legacy upserts, even
+      // if a bill client sends numeric values or nulls for those fields.
       const results = [];
       for (const item of items) {
         if (item.rate && item.rate > 0) {

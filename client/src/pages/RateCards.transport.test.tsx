@@ -41,7 +41,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), "http://localhost");
     const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
-    if (url.pathname === "/api/vendor-rate-cards" && init?.method === "POST") {
+    if (url.pathname === "/api/vendor-rate-cards/7/transport-setup" && init?.method === "PATCH") {
       const body = JSON.parse(String(init.body));
       writes.push(body);
       if (failure) return json({ message: "Setup save failed" }, 500);
@@ -88,7 +88,7 @@ describe("transport-only rate setup", () => {
     expect(screen.getByTestId("transport-per-mt").textContent).toBe("₹760");
     expect(writes).toHaveLength(0);
     await save();
-    expect(writes).toEqual([{ vendorName: base.vendorName, category: base.category, itemKey: base.itemKey, itemLabel: base.itemLabel, unit: "HRS", rate: 387, notes: base.notes, ratePerKm: 950, leadDistanceKm: 12, payloadMt: 30 }]);
+    expect(writes).toEqual([{ itemKey: base.itemKey, ratePerKm: 950, leadDistanceKm: 12, payloadMt: 30 }]);
     expect(screen.getByTestId("transport-rate-basis").textContent).toContain("₹950/km · 12 km one way · 30 MT → ₹22,800/trip · ₹760/MT");
     expect(screen.queryByTestId("select-unit-0")).toBeNull();
     expect(screen.getByText("TRIP", { selector: "span" })).toBeTruthy();
@@ -115,15 +115,15 @@ describe("transport-only rate setup", () => {
     expect(screen.getByTestId("transport-per-trip").textContent).toBe("");
     expect(screen.getByTestId("transport-per-mt").textContent).toBe("");
     await save();
-    expect(writes[0].rate).toBe(387);
+    expect(writes[0]).not.toHaveProperty("rate");
+    expect(cards[0].rate).toBe(387);
     expect((screen.getByTestId("input-rate-0") as HTMLInputElement).value).toBe("387");
     expect(screen.getByTestId("select-unit-0")).toBeTruthy();
     fireEvent.change(screen.getByTestId("input-rate-0"), { target: { value: "419" } });
     fireEvent.click(screen.getByTestId("button-save-all-rates"));
     await waitFor(() => expect(bulkWrites).toHaveLength(1));
     expect(bulkWrites[0].items[0].rate).toBe(419);
-    if (lead === "") expect(bulkWrites[0].items[0]).not.toHaveProperty("leadDistanceKm");
-    else expect(bulkWrites[0].items[0].leadDistanceKm).toBe(0);
+    expect(bulkWrites[0].items[0]).not.toHaveProperty("leadDistanceKm");
   });
 
   it("defaults payload only in the editor and Cancel leaves nullable rows untouched", async () => {
@@ -148,7 +148,8 @@ describe("transport-only rate setup", () => {
     await screen.findByTestId("transport-rate-basis");
     fireEvent.click(screen.getByTestId("button-save-all-rates"));
     await waitFor(() => expect(bulkWrites).toHaveLength(1));
-    expect(bulkWrites[0].items[0]).toMatchObject({ itemKey: base.itemKey, unit: "HRS", rate: 387, ratePerKm: 950, leadDistanceKm: 12, payloadMt: 30, notes: base.notes });
+    expect(bulkWrites[0].items[0]).toMatchObject({ itemKey: base.itemKey, unit: "HRS", rate: 387, notes: base.notes });
+    expect(bulkWrites[0].items[0]).not.toHaveProperty("ratePerKm");
   });
 
   it("joins discovered rows without ids using exact category/key/unit identity", async () => {
@@ -164,9 +165,8 @@ describe("transport-only rate setup", () => {
     discovered[0].rateCardId = null;
     cards[0] = { ...base, unit: "MT", ratePerKm: 950, leadDistanceKm: 12, payloadMt: 31 };
     mount();
-    await open();
-    expect((screen.getByLabelText("Rate (₹ per km per load)") as HTMLInputElement).value).toBe("");
-    expect((screen.getByLabelText("Payload (MT)") as HTMLInputElement).value).toBe("30");
+    const button = await screen.findByRole("button", { name: `Rate setup for ${base.itemLabel}` });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByTestId("transport-rate-basis")).toBeNull();
   });
 
@@ -175,11 +175,8 @@ describe("transport-only rate setup", () => {
     discovered[0].rateCardId = null;
     mount();
     fireEvent.change(await screen.findByTestId("input-rate-0"), { target: { value: "463" } });
-    await open();
-    fill();
-    await save();
-    expect(writes[0]).toMatchObject({ itemKey: base.itemKey, unit: "HRS", rate: 463 });
-    expect(writes[0]).not.toHaveProperty("notes");
+    expect((screen.getByRole("button", { name: `Rate setup for ${base.itemLabel}` }) as HTMLButtonElement).disabled).toBe(true);
+    expect(writes).toHaveLength(0);
   });
 
   it("reopens persisted manual setup while preserving manual provenance and flat rate", async () => {
@@ -190,10 +187,12 @@ describe("transport-only rate setup", () => {
     expect((screen.getByLabelText("Payload (MT)") as HTMLInputElement).value).toBe("28");
     change("Payload (MT)", "32");
     await save();
-    expect(writes[0]).toMatchObject({ rate: 387, notes: MANUAL_VENDOR_RATE_CARD_NOTE, payloadMt: 32, itemKey: base.itemKey, unit: "HRS" });
+    expect(writes[0]).toMatchObject({ payloadMt: 32, itemKey: base.itemKey });
+    expect(writes[0]).not.toHaveProperty("notes");
+    expect(cards[0]).toMatchObject({ rate: 387, notes: MANUAL_VENDOR_RATE_CARD_NOTE, unit: "HRS" });
   });
 
-  it.each(["521", ""])("saves a new manual row with flat rate '%s' and refreshes its id", async flatRate => {
+  it.each(["521", ""])("never creates a card from setup on an unsaved manual row with flat rate '%s'", async flatRate => {
     cards = [];
     discovered = [];
     mount();
@@ -202,13 +201,8 @@ describe("transport-only rate setup", () => {
     fireEvent.change(screen.getByTestId("select-add-trans-mode"), { target: { value: "TRIP" } });
     fireEvent.click(screen.getByTestId("button-confirm-add-transport"));
     fireEvent.change(screen.getByTestId("input-manual-rate-transport-0"), { target: { value: flatRate } });
-    fireEvent.click(screen.getByRole("button", { name: "Rate setup for TIPPER - TRIP" }));
-    fill();
-    await save();
-    expect(writes[0]).toMatchObject({ rate: flatRate === "" ? 0 : 521, itemKey: "EQ_TIPPER_TRIP", unit: "TRIP", notes: MANUAL_VENDOR_RATE_CARD_NOTE });
-    expect(screen.getAllByTestId("transport-rate-basis")).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", { name: "Rate setup for TIPPER - TRIP" }));
-    expect((screen.getByLabelText("Rate (₹ per km per load)") as HTMLInputElement).value).toBe("950");
+    expect((screen.getByRole("button", { name: "Rate setup for TIPPER - TRIP" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(writes).toHaveLength(0);
   });
 
   it("keeps drafts on save errors and supports retry", async () => {
@@ -229,7 +223,7 @@ describe("transport-only rate setup", () => {
     const original = vi.mocked(fetch).getMockImplementation()!;
     let finish!: () => void;
     vi.mocked(fetch).mockImplementation((input, init) => {
-      if (String(input) === "/api/vendor-rate-cards" && init?.method === "POST") {
+      if (String(input) === "/api/vendor-rate-cards/7/transport-setup" && init?.method === "PATCH") {
         return new Promise(resolve => {
           finish = () => resolve(new Response(JSON.stringify({ ...base, ...JSON.parse(String(init.body)) }), { status: 200, headers: { "Content-Type": "application/json" } }));
         });

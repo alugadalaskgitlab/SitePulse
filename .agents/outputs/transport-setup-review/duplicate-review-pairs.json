@@ -1,0 +1,142 @@
+[
+  [
+    {
+      "itemKey": "TIPPER NARASIMHULU  - WMM INTERACTING - TIME/METER | 9.08 HRS | DIESEL: 20L",
+      "itemLabel": "TIPPER NARASIMHULU",
+      "category": "equipment",
+      "unit": "HRS",
+      "rate": 3000,
+      "rateCardId": 74,
+      "isManual": true
+    },
+    {
+      "itemKey": "TIPPER NARASIMHULU - WMM INTERCARTING - TIME/METER | 9.08 HRS | DIESEL: 20L",
+      "itemLabel": "TIPPER NARASIMHULU",
+      "category": "equipment",
+      "unit": "HRS",
+      "rate": 3000,
+      "rateCardId": 76,
+      "isManual": true
+    }
+  ],
+  [
+    {
+      "itemKey": "TIPPER NARASIMHULU  - WMM INTERACTING  (SITE-UNLINKED) - TIME/METER | 9.08 HRS | DIESEL: 20L",
+      "itemLabel": "TIPPER NARASIMHULU  - WMM INTERACTING  (SITE-UNLINKED) - TIME/METER | 9.08 HRS | DIESEL: 20L",
+      "category": "equipment",
+      "unit": "DAYS",
+      "rate": null,
+      "rateCardId": null,
+      "isManual": false
+    },
+    {
+      "itemKey": "TIPPER NARASIMHULU - WMM INTERCARTING (SITE-UNLINKED) - TIME/METER | 9.08 HRS | DIESEL: 20L",
+      "itemLabel": "TIPPER NARASIMHULU - WMM INTERCARTING (SITE-UNLINKED) - TIME/METER | 9.08 HRS | DIESEL: 20L",
+      "category": "equipment",
+      "unit": "DAYS",
+      "rate": null,
+      "rateCardId": null,
+      "isManual": false
+    }
+  ],
+  [
+    {
+      "itemKey": "MAT_20_MM_MT",
+      "itemLabel": "20 MM",
+      "category": "material",
+      "unit": "MT",
+      "rate": null,
+      "rateCardId": null,
+      "isManual": false
+    },
+    {
+      "itemKey": "MAT_20MM_MT",
+      "itemLabel": "20MM",
+      "category": "material",
+      "unit": "MT",
+      "rate": null,
+      "rateCardId": null,
+      "isManual": false
+    }
+  ],
+  [
+    {
+      "itemKey": "MAT_DUST_CFT",
+      "itemLabel": "DUST",
+      "category": "material",
+      "unit": "CFT",
+      "rate": null,
+      "rateCardId": null,
+      "isManual": false
+    },
+    {
+      "itemKey": "MAT_DUST_MT",
+      "itemLabel": "DUST",
+      "category": "material",
+      "unit": "MT",
+      "rate": null,
+      "rateCardId": null,
+      "isManual": false
+    }
+  ],
+  [
+    {
+      "itemKey": "MAT_SOIL_CUM",
+      "itemLabel": "SOIL",
+      "category": "material",
+      "unit": "CUM",
+      "rate": null,
+      "rateCardId": null,
+      "isManual": false
+    },
+    {
+      "itemKey": "MAT_SOIL_TRIPS",
+      "itemLabel": "SOIL",
+      "category": "material",
+      "unit": "TRIPS",
+      "rate": null,
+      "rateCardId": null,
+      "isManual": false
+    }
+  ],
+  [
+    {
+      "itemKey": "EQ_MIX_TRANSPORT_KM",
+      "itemLabel": "MIX TRANSPORT - TRANSPORT",
+      "category": "transport",
+      "unit": "KM",
+      "rate": null,
+      "rateCardId": null,
+      "isManual": false
+    },
+    {
+      "itemKey": "EQ_MIX_TRASPORT_KM",
+      "itemLabel": "MIX TRASPORT - TRANSPORT",
+      "category": "transport",
+      "unit": "KM",
+      "rate": null,
+      "rateCardId": null,
+      "isManual": false
+    }
+  ],
+  [
+    {
+      "itemKey": "EQ_TA15UF7763_→_DTPL-RAJESHWAR_(45_MT)_TRIP",
+      "itemLabel": "TA15UF7763 → DTPL-RAJESHWAR (45 MT) - TRANSPORT",
+      "category": "transport",
+      "unit": "TRIP",
+      "rate": null,
+      "rateCardId": null,
+      "isManual": false
+    },
+    {
+      "itemKey": "EQ_TS15UF7763_→_DTPL-RAJESHWAR_(45_MT)_TRIP",
+      "itemLabel": "TS15UF7763 → DTPL-RAJESHWAR (45 MT) - TRANSPORT",
+      "category": "transport",
+      "unit": "TRIP",
+      "rate": null,
+      "rateCardId": null,
+      "isManual": false
+    }
+  ]
+]

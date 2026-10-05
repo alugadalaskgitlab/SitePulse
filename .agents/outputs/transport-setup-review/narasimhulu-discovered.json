@@ -1,0 +1,353 @@
+[
+  {
+    "itemKey": "EQ_JCB_DAYS",
+    "itemLabel": "JCB - DAILY HIRE",
+    "category": "equipment",
+    "unit": "DAYS",
+    "rate": 3500,
+    "rateCardId": 73,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_JCB_MONTHS",
+    "itemLabel": "JCB - MONTHLY HIRE",
+    "category": "equipment",
+    "unit": "MONTHS",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_JCB_HRS",
+    "itemLabel": "JCB - TIME/METER",
+    "category": "equipment",
+    "unit": "HRS",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_TIPPER_DAYS",
+    "itemLabel": "TIPPER - DAILY HIRE",
+    "category": "equipment",
+    "unit": "DAYS",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_TIPPER_MONTHS",
+    "itemLabel": "TIPPER - MONTHLY HIRE",
+    "category": "equipment",
+    "unit": "MONTHS",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_TIPPER_HRS",
+    "itemLabel": "TIPPER - TIME/METER",
+    "category": "equipment",
+    "unit": "HRS",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "TIPPER NARASIMHULU  - WMM INTERACTING - TIME/METER | 9.08 HRS | DIESEL: 20L",
+    "itemLabel": "TIPPER NARASIMHULU",
+    "category": "equipment",
+    "unit": "HRS",
+    "rate": 3000,
+    "rateCardId": 74,
+    "isManual": true
+  },
+  {
+    "itemKey": "TIPPER NARASIMHULU - WMM INTERCARTING - TIME/METER | 9.08 HRS | DIESEL: 20L",
+    "itemLabel": "TIPPER NARASIMHULU",
+    "category": "equipment",
+    "unit": "HRS",
+    "rate": 3000,
+    "rateCardId": 76,
+    "isManual": true
+  },
+  {
+    "itemKey": "TIPPER NARASIMHULU  - WMM INTERACTING  (SITE-UNLINKED) - TIME/METER | 9.08 HRS | DIESEL: 20L",
+    "itemLabel": "TIPPER NARASIMHULU  - WMM INTERACTING  (SITE-UNLINKED) - TIME/METER | 9.08 HRS | DIESEL: 20L",
+    "category": "equipment",
+    "unit": "DAYS",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "TIPPER NARASIMHULU - WMM INTERCARTING (SITE-UNLINKED) - TIME/METER | 9.08 HRS | DIESEL: 20L",
+    "itemLabel": "TIPPER NARASIMHULU - WMM INTERCARTING (SITE-UNLINKED) - TIME/METER | 9.08 HRS | DIESEL: 20L",
+    "category": "equipment",
+    "unit": "DAYS",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "MAT_20_MM_MT",
+    "itemLabel": "20 MM",
+    "category": "material",
+    "unit": "MT",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "MAT_20MM_MT",
+    "itemLabel": "20MM",
+    "category": "material",
+    "unit": "MT",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "MAT_DUST_CFT",
+    "itemLabel": "DUST",
+    "category": "material",
+    "unit": "CFT",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "MAT_DUST_MT",
+    "itemLabel": "DUST",
+    "category": "material",
+    "unit": "MT",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "MAT_GSB_CFT",
+    "itemLabel": "GSB",
+    "category": "material",
+    "unit": "CFT",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "MAT_SOIL_CUM",
+    "itemLabel": "SOIL",
+    "category": "material",
+    "unit": "CUM",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "MAT_SOIL_TRIPS",
+    "itemLabel": "SOIL",
+    "category": "material",
+    "unit": "TRIPS",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "MAT_WMM_CFT",
+    "itemLabel": "WMM",
+    "category": "material",
+    "unit": "CFT",
+    "rate": 22,
+    "rateCardId": 75,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_DUST_TRIP",
+    "itemLabel": "DUST - TRANSPORT",
+    "category": "transport",
+    "unit": "TRIP",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_MIX_TRANSPORT_KM",
+    "itemLabel": "MIX TRANSPORT - TRANSPORT",
+    "category": "transport",
+    "unit": "KM",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_MIX_TRASPORT_KM",
+    "itemLabel": "MIX TRASPORT - TRANSPORT",
+    "category": "transport",
+    "unit": "KM",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_TA15UF7763_→_DTPL-RAJESHWAR_(45_MT)_TRIP",
+    "itemLabel": "TA15UF7763 → DTPL-RAJESHWAR (45 MT) - TRANSPORT",
+    "category": "transport",
+    "unit": "TRIP",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "TRIP",
+    "itemLabel": "TIPPER",
+    "category": "transport",
+    "unit": "TRIP",
+    "rate": 95,
+    "rateCardId": 3,
+    "isManual": true
+  },
+  {
+    "itemKey": "EQ_TRACTOR_DOZER_TRIP",
+    "itemLabel": "TRACTOR DOZER - MOBILIZATION",
+    "category": "transport",
+    "unit": "TRIP",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_TRASPORT_FROM_SANGAM_TO_MT",
+    "itemLabel": "TRASPORT FROM SANGAM TO - TRANSPORT",
+    "category": "transport",
+    "unit": "MT",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_TS15UE_7839_→_DTPL-RAJESHWAR_(32.99_MT)_TRIP",
+    "itemLabel": "TS15UE 7839 → DTPL-RAJESHWAR (32.99 MT) - TRANSPORT",
+    "category": "transport",
+    "unit": "TRIP",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_TS15UE4470_→_DTPL-BASAVAKALYAN_(34.14_MT)_TRIP",
+    "itemLabel": "TS15UE4470 → DTPL-BASAVAKALYAN (34.14 MT) - TRANSPORT",
+    "category": "transport",
+    "unit": "TRIP",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_TS15UE4470_→_DTPL-BASAVAKALYAN_(34.16_MT)_TRIP",
+    "itemLabel": "TS15UE4470 → DTPL-BASAVAKALYAN (34.16 MT) - TRANSPORT",
+    "category": "transport",
+    "unit": "TRIP",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_TS15UE7839_→_DTPL-RAJESHWAR_(30_MT)_TRIP",
+    "itemLabel": "TS15UE7839 → DTPL-RAJESHWAR (30 MT) - TRANSPORT",
+    "category": "transport",
+    "unit": "TRIP",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_TS15UF4308_→_DTPL-BASAVAKALYAN_(27.03_MT)_TRIP",
+    "itemLabel": "TS15UF4308 → DTPL-BASAVAKALYAN (27.03 MT) - TRANSPORT",
+    "category": "transport",
+    "unit": "TRIP",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_TS15UF4308_→_DTPL-BASAVAKALYAN_(30.14_MT)_TRIP",
+    "itemLabel": "TS15UF4308 → DTPL-BASAVAKALYAN (30.14 MT) - TRANSPORT",
+    "category": "transport",
+    "unit": "TRIP",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_TS15UF4308_→_DTPL-RAJESHWAR_(32_MT)_TRIP",
+    "itemLabel": "TS15UF4308 → DTPL-RAJESHWAR (32 MT) - TRANSPORT",
+    "category": "transport",
+    "unit": "TRIP",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_TS15UF4308_→_DTPL-RAJESHWAR_(34_MT)_TRIP",
+    "itemLabel": "TS15UF4308 → DTPL-RAJESHWAR (34 MT) - TRANSPORT",
+    "category": "transport",
+    "unit": "TRIP",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_TS15UF4470_→_DTPL-RAJESHWAR_(34_MT)_TRIP",
+    "itemLabel": "TS15UF4470 → DTPL-RAJESHWAR (34 MT) - TRANSPORT",
+    "category": "transport",
+    "unit": "TRIP",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_TS15UF7703_→_DTPL-BASAVAKALYAN_(48.08_MT)_TRIP",
+    "itemLabel": "TS15UF7703 → DTPL-BASAVAKALYAN (48.08 MT) - TRANSPORT",
+    "category": "transport",
+    "unit": "TRIP",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_TS15UF7763_→_DTPL-BASAVAKALYAN_(42.1_MT)_TRIP",
+    "itemLabel": "TS15UF7763 → DTPL-BASAVAKALYAN (42.1 MT) - TRANSPORT",
+    "category": "transport",
+    "unit": "TRIP",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_TS15UF7763_→_DTPL-RAJESHWAR_(45_MT)_TRIP",
+    "itemLabel": "TS15UF7763 → DTPL-RAJESHWAR (45 MT) - TRANSPORT",
+    "category": "transport",
+    "unit": "TRIP",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_TS15UF7839_→_DTPL-BASAVAKALYAN_(30_MT)_TRIP",
+    "itemLabel": "TS15UF7839 → DTPL-BASAVAKALYAN (30 MT) - TRANSPORT",
+    "category": "transport",
+    "unit": "TRIP",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  },
+  {
+    "itemKey": "EQ_TS15UF7839_→_DTPL-BASAVAKALYAN_(32.1_MT)_TRIP",
+    "itemLabel": "TS15UF7839 → DTPL-BASAVAKALYAN (32.1 MT) - TRANSPORT",
+    "category": "transport",
+    "unit": "TRIP",
+    "rate": null,
+    "rateCardId": null,
+    "isManual": false
+  }
+]

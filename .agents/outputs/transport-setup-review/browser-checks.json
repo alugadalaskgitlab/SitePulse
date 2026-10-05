@@ -1,0 +1,20 @@
+{
+  "saved": {
+    "id": 3,
+    "vendorName": "NARASIMHULU",
+    "vendorId": null,
+    "category": "transport",
+    "itemKey": "TRIP",
+    "itemLabel": "TIPPER",
+    "unit": "TRIP",
+    "rate": 95,
+    "leadDistanceKm": 12,
+    "payloadMt": 30,
+    "ratePerKm": 950,
+    "notes": null,
+    "updatedAt": "2026-03-12T03:12:34.004Z"
+  },
+  "reopen": true,
+  "missing": 404,
+  "renameRejected": 400
+}

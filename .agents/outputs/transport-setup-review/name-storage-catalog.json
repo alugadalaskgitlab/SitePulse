@@ -1,0 +1,387 @@
+[
+  {
+    "table": "progress_entries",
+    "line": 171,
+    "definition": "materialOutcome: text(\"material_outcome\"), // fully_reusable | partly_reusable | unsuitable"
+  },
+  {
+    "table": "material_logs",
+    "line": 355,
+    "definition": "material: text(\"material\").notNull(),"
+  },
+  {
+    "table": "material_logs",
+    "line": 356,
+    "definition": "supplier: text(\"supplier\"), // Supplier name for received materials"
+  },
+  {
+    "table": "site_purchases",
+    "line": 376,
+    "definition": "vendor: text(\"vendor\"),"
+  },
+  {
+    "table": "plant_production",
+    "line": 407,
+    "definition": "material: text(\"material\").notNull(),"
+  },
+  {
+    "table": "plant_production",
+    "line": 410,
+    "definition": "supplier: text(\"supplier\"), // Supplier name"
+  },
+  {
+    "table": "parties",
+    "line": 462,
+    "definition": "name: text(\"name\").notNull(),"
+  },
+  {
+    "table": "plant_materials",
+    "line": 471,
+    "definition": "name: text(\"name\").notNull(),"
+  },
+  {
+    "table": "plant_materials",
+    "line": 485,
+    "definition": "aliases: text(\"aliases\"),                                       // JSON array of approved alias strings"
+  },
+  {
+    "table": "material_opening_stocks",
+    "line": 491,
+    "definition": "materialId: integer(\"material_id\").notNull(),"
+  },
+  {
+    "table": "mix_template_components",
+    "line": 531,
+    "definition": "materialId: integer(\"material_id\").notNull(),"
+  },
+  {
+    "table": "equipment_master",
+    "line": 541,
+    "definition": "name: text(\"name\").notNull(),"
+  },
+  {
+    "table": "equipment_master",
+    "line": 545,
+    "definition": "vendorName: text(\"vendor_name\"), // Vendor/contractor name for hired equipment"
+  },
+  {
+    "table": "material_receipts",
+    "line": 582,
+    "definition": "materialId: integer(\"material_id\").notNull(),"
+  },
+  {
+    "table": "material_receipts",
+    "line": 585,
+    "definition": "supplier: text(\"supplier\"),"
+  },
+  {
+    "table": "material_receipts",
+    "line": 586,
+    "definition": "transporter: text(\"transporter\"), // Who transported the material (separate from supplier)"
+  },
+  {
+    "table": "stock_balances",
+    "line": 779,
+    "definition": "materialId: integer(\"material_id\").notNull(),"
+  },
+  {
+    "table": "stock_ledger",
+    "line": 790,
+    "definition": "materialId: integer(\"material_id\").notNull(),"
+  },
+  {
+    "table": "stock_reconciliation_items",
+    "line": 839,
+    "definition": "materialId: integer(\"material_id\").notNull(),"
+  },
+  {
+    "table": "material_issues",
+    "line": 864,
+    "definition": "materialId: integer(\"material_id\").notNull(),"
+  },
+  {
+    "table": "material_returns",
+    "line": 887,
+    "definition": "materialId: integer(\"material_id\").notNull(),"
+  },
+  {
+    "table": "site_material_trips",
+    "line": 907,
+    "definition": "material: text(\"material\").notNull(), // Material name"
+  },
+  {
+    "table": "site_material_trips",
+    "line": 908,
+    "definition": "supplier: text(\"supplier\"), // Supplier name"
+  },
+  {
+    "table": "site_material_trips",
+    "line": 909,
+    "definition": "supplierVendorId: integer(\"supplier_vendor_id\").references(() => vendors.id, { onDelete: \"set null\" }),"
+  },
+  {
+    "table": "site_material_trips",
+    "line": 912,
+    "definition": "materialSourceSupplier: text(\"material_source_supplier\"),"
+  },
+  {
+    "table": "site_material_trips",
+    "line": 913,
+    "definition": "materialSourceVendorId: integer(\"material_source_vendor_id\").references(() => vendors.id, { onDelete: \"set null\" }),"
+  },
+  {
+    "table": "ldo_flow_readings",
+    "line": 1348,
+    "definition": "sourceMaterialReceiptId: integer(\"source_material_receipt_id\"),"
+  },
+  {
+    "table": "ldo_flow_readings",
+    "line": 1351,
+    "definition": "sourceMaterialIssueId: integer(\"source_material_issue_id\"),"
+  },
+  {
+    "table": "plant_shift_log_manpower_custom_aliases",
+    "line": 1565,
+    "definition": "kind: text(\"kind\").notNull().default(\"alias\"),"
+  },
+  {
+    "table": "purchase_indent_items",
+    "line": 1915,
+    "definition": "materialId: integer(\"material_id\").references(() => plantMaterials.id, { onDelete: \"set null\" }),"
+  },
+  {
+    "table": "purchase_indent_items",
+    "line": 1926,
+    "definition": "vendor: text(\"vendor\"),"
+  },
+  {
+    "table": "purchase_indent_items",
+    "line": 1927,
+    "definition": "vendorId: integer(\"vendor_id\").references(() => vendors.id, { onDelete: \"set null\" }),"
+  },
+  {
+    "table": "purchase_orders",
+    "line": 1973,
+    "definition": "vendorId: integer(\"vendor_id\").references(() => vendors.id, { onDelete: \"set null\" }),"
+  },
+  {
+    "table": "purchase_orders",
+    "line": 1974,
+    "definition": "vendorName: text(\"vendor_name\").notNull(),"
+  },
+  {
+    "table": "purchase_orders",
+    "line": 1975,
+    "definition": "vendorBusinessName: text(\"vendor_business_name\"),"
+  },
+  {
+    "table": "purchase_orders",
+    "line": 1976,
+    "definition": "vendorGst: text(\"vendor_gst\"),"
+  },
+  {
+    "table": "purchase_orders",
+    "line": 1977,
+    "definition": "vendorPan: text(\"vendor_pan\"),"
+  },
+  {
+    "table": "purchase_orders",
+    "line": 1978,
+    "definition": "vendorAddress: text(\"vendor_address\"),"
+  },
+  {
+    "table": "purchase_indent_item_history",
+    "line": 2009,
+    "definition": "vendor: text(\"vendor\"),"
+  },
+  {
+    "table": "pi_item_transactions",
+    "line": 2088,
+    "definition": "vendor: text(\"vendor\"),"
+  },
+  {
+    "table": "internal_requisition_items",
+    "line": 2147,
+    "definition": "material: text(\"material\").notNull(),"
+  },
+  {
+    "table": "internal_requisition_items",
+    "line": 2160,
+    "definition": "materialId: integer(\"material_id\").references(() => plantMaterials.id), // optional FK → plant_materials (for bulk material items)"
+  },
+  {
+    "table": "diesel_requirements",
+    "line": 2279,
+    "definition": "supplier: text(\"supplier\"),"
+  },
+  {
+    "table": "vendor_bills",
+    "line": 2362,
+    "definition": "vendorName: text(\"vendor_name\").notNull(),"
+  },
+  {
+    "table": "vendor_bills",
+    "line": 2363,
+    "definition": "vendorId: integer(\"vendor_id\").references(() => vendors.id, { onDelete: \"set null\" }),"
+  },
+  {
+    "table": "vendor_bills",
+    "line": 2385,
+    "definition": "additionalAdjustments: jsonb(\"additional_adjustments\").$type<VendorBillAdditionalAdjustment[] | null>().default([]),"
+  },
+  {
+    "table": "vendor_bill_items",
+    "line": 2434,
+    "definition": "transporter: text(\"transporter\"),"
+  },
+  {
+    "table": "hire_statements",
+    "line": 2454,
+    "definition": "vendorName: text(\"vendor_name\").notNull(),"
+  },
+  {
+    "table": "hire_statements",
+    "line": 2472,
+    "definition": "vendorBillId: integer(\"vendor_bill_id\"),"
+  },
+  {
+    "table": "vendor_aliases",
+    "line": 2665,
+    "definition": "canonicalName: text(\"canonical_name\").notNull(),"
+  },
+  {
+    "table": "vendor_aliases",
+    "line": 2666,
+    "definition": "alias: text(\"alias\").notNull().unique(),"
+  },
+  {
+    "table": "vendors",
+    "line": 2672,
+    "definition": "name: text(\"name\").notNull(),"
+  },
+  {
+    "table": "vendor_rate_cards",
+    "line": 2764,
+    "definition": "vendorName: text(\"vendor_name\").notNull(),"
+  },
+  {
+    "table": "vendor_rate_cards",
+    "line": 2765,
+    "definition": "vendorId: integer(\"vendor_id\").references(() => vendors.id, { onDelete: \"set null\" }),"
+  },
+  {
+    "table": "store_items",
+    "line": 2926,
+    "definition": "name: text(\"name\").notNull(),"
+  },
+  {
+    "table": "store_grns",
+    "line": 2938,
+    "definition": "supplier: text(\"supplier\").notNull(),"
+  },
+  {
+    "table": "store_issue_items",
+    "line": 3009,
+    "definition": "materialText: text(\"material_text\"),  // display name when itemId is null"
+  },
+  {
+    "table": "rmc_raw_material_receipts",
+    "line": 3182,
+    "definition": "materialName: text(\"material_name\").notNull(),"
+  },
+  {
+    "table": "rmc_raw_material_receipts",
+    "line": 3186,
+    "definition": "supplier: text(\"supplier\"),"
+  },
+  {
+    "table": "planning_equipment_types",
+    "line": 3220,
+    "definition": "name: text(\"name\").notNull(),"
+  },
+  {
+    "table": "boq_items",
+    "line": 3474,
+    "definition": "bulkMaterialClassification: text(\"bulk_material_classification\"),"
+  },
+  {
+    "table": "boq_item_materials",
+    "line": 3641,
+    "definition": "materialName: text(\"material_name\").notNull(),               // e.g. \"20mm Aggregate\", \"Bitumen VG30\""
+  },
+  {
+    "table": "snl_item_materials",
+    "line": 3945,
+    "definition": "materialName: text(\"material_name\").notNull(),"
+  },
+  {
+    "table": "snl_item_materials",
+    "line": 3946,
+    "definition": "materialCategory: text(\"material_category\").notNull().default(\"OTHER\"),"
+  },
+  {
+    "table": "snl_mix_override_materials",
+    "line": 4006,
+    "definition": "materialName: text(\"material_name\").notNull(),"
+  },
+  {
+    "table": "snl_mix_override_materials",
+    "line": 4007,
+    "definition": "materialCategory: text(\"material_category\").notNull().default(\"OTHER\"),"
+  },
+  {
+    "table": "attachments",
+    "line": 4102,
+    "definition": "materialId: integer(\"material_id\"),"
+  },
+  {
+    "table": "site_requirements",
+    "line": 4214,
+    "definition": "materials: jsonb(\"materials\"),"
+  },
+  {
+    "table": "pending_plant_receipts",
+    "line": 4264,
+    "definition": "materialName: text(\"material_name\").notNull(),"
+  },
+  {
+    "table": "pending_plant_receipts",
+    "line": 4265,
+    "definition": "materialId: integer(\"material_id\"),"
+  },
+  {
+    "table": "pending_plant_receipts",
+    "line": 4268,
+    "definition": "vendor: text(\"vendor\"),"
+  },
+  {
+    "table": "material_requirements",
+    "line": 4345,
+    "definition": "materialType: text(\"material_type\").notNull().default(\"plant_material\"), // \"plant_material\" | \"store_item\""
+  },
+  {
+    "table": "material_requirements",
+    "line": 4346,
+    "definition": "materialId: integer(\"material_id\").references(() => plantMaterials.id),"
+  },
+  {
+    "table": "boq_material_mappings",
+    "line": 4445,
+    "definition": "materialLabel: text(\"material_label\").notNull(),    // normalised BOM label from planningEngine"
+  },
+  {
+    "table": "boq_material_mappings",
+    "line": 4446,
+    "definition": "materialId: integer(\"material_id\").notNull(),       // canonical plant_materials.id"
+  },
+  {
+    "table": "material_uom_conversions",
+    "line": 4473,
+    "definition": "materialId: integer(\"material_id\").notNull(),"
+  },
+  {
+    "table": "earthwork_arrangements",
+    "line": 4518,
+    "definition": "materialLabel: text(\"material_label\").notNull(), // BOM materialName e.g. \"Earth / Borrow Soil\""
+  }
+]

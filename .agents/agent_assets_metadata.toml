@@ -4889,3 +4889,31 @@ mtime_ms = 1791173670192
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/84ff88a5-3b74-4e62-81a3-f42b80790f7f/7b280c76-58c6-4923-8bbd-595c6bd381fa"
 storage_version_token = "1791173679303597"
 content_type = "text/html"
+
+[[outputs]]
+id = "7eTiQLVuxGw_pYUozbvDU"
+uri = "file://.agents/outputs/transport-setup-review/audit-report.html"
+type = "html"
+title = "Part C safeguards, duplicate review and naming audit"
+description = "Exact stored keys, rates, saved-versus-discovered counts, name storage and transformation locations, signed-in before/after screenshots, tests and Publish SQL."
+logical_id = "5d9af089-9027-4d9c-b17e-71f9155dc740"
+content_hash = "sha256:d6f2d31d2d94455445851d9f621329011b4f06679c625b5f04f9820f09b000c5"
+size = 1513315
+mtime_ms = 1791177041857
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/5d9af089-9027-4d9c-b17e-71f9155dc740/554985dd-22aa-4b24-b0da-8d00f403e674"
+storage_version_token = "1791177055213706"
+content_type = "text/html"
+
+[[outputs]]
+id = "kP1MBTfh-r1CeM_Nz-1UY"
+uri = "file://.agents/outputs/transport-setup-review/case-trim-inventory.csv"
+type = "table"
+title = "Uppercase and trim source inventory"
+description = "File, line, code and context for 2,186 source locations; includes write, validation, matching and display uses."
+logical_id = "26e30933-f618-4e45-9ee3-cf72b3327f3a"
+content_hash = "sha256:bec2b84f2112b0af5b5137f5a8dd88c2dfacd21fbbc2ee3274a47ceed1372e07"
+size = 1098806
+mtime_ms = 1791176917874
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/26e30933-f618-4e45-9ee3-cf72b3327f3a/b6bc4858-120c-4fa1-9e54-814205956d53"
+storage_version_token = "1791177058922253"
+content_type = "text/csv"
