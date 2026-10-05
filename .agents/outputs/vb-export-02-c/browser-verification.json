@@ -1,0 +1,61 @@
+{
+  "states": {
+    "example": {
+      "rate": "950",
+      "lead": "12",
+      "payload": "30",
+      "trip": "₹22,800",
+      "perMT": "₹760",
+      "twoWay": "24 km",
+      "saveDisabled": false,
+      "text": "TRANSPORT RATE SETUPDUST - TRANSPORT · The one-way lead is doubled for each load.Rate (₹ per km per load)Lead distance — ONE WAY (km)Payload (MT)Two-way distance24 km₹ per trip₹22,800₹ per MT₹760Saving changes only this row’s rate basis. Its existing flat rate and saved unit are not changed. A blank or zero lead keeps flat-rate entry available.CANCELSAVE RATE SETUPClose"
+    },
+    "payloadZero": {
+      "rate": "950",
+      "lead": "12",
+      "payload": "0",
+      "trip": "₹22,800",
+      "perMT": "",
+      "twoWay": "24 km",
+      "saveDisabled": true,
+      "text": "TRANSPORT RATE SETUPDUST - TRANSPORT · The one-way lead is doubled for each load.Rate (₹ per km per load)Lead distance — ONE WAY (km)Payload (MT)Payload required for ₹/MTTwo-way distance24 km₹ per trip₹22,800₹ per MTSaving changes only this row’s rate basis. Its existing flat rate and saved unit are not changed. A blank or zero lead keeps flat-rate entry available.CANCELSAVE RATE SETUPClose"
+    },
+    "leadZero": {
+      "rate": "950",
+      "lead": "0",
+      "payload": "30",
+      "trip": "",
+      "perMT": "",
+      "twoWay": "0 km",
+      "saveDisabled": false,
+      "text": "TRANSPORT RATE SETUPDUST - TRANSPORT · The one-way lead is doubled for each load.Rate (₹ per km per load)Lead distance — ONE WAY (km)Payload (MT)Two-way distance0 km₹ per trip₹ per MTSaving changes only this row’s rate basis. Its existing flat rate and saved unit are not changed. A blank or zero lead keeps flat-rate entry available.CANCELSAVE RATE SETUPClose"
+    },
+    "reopened": {
+      "rate": "950",
+      "lead": "12",
+      "payload": "30",
+      "trip": "₹22,800",
+      "perMT": "₹760",
+      "twoWay": "24 km",
+      "saveDisabled": false,
+      "text": "TRANSPORT RATE SETUPDUST - TRANSPORT · The one-way lead is doubled for each load.Rate (₹ per km per load)Lead distance — ONE WAY (km)Payload (MT)Two-way distance24 km₹ per trip₹22,800₹ per MT₹760Saving changes only this row’s rate basis. Its existing flat rate and saved unit are not changed. A blank or zero lead keeps flat-rate entry available.CANCELSAVE RATE SETUPClose"
+    }
+  },
+  "existingCardsUnchanged": true,
+  "cleanup": true,
+  "createdCard": {
+    "id": 77,
+    "vendorName": "NARASIMHULU",
+    "vendorId": null,
+    "category": "transport",
+    "itemKey": "EQ_DUST_TRIP",
+    "itemLabel": "DUST - TRANSPORT",
+    "unit": "TRIP",
+    "rate": 0,
+    "leadDistanceKm": 12,
+    "payloadMt": 30,
+    "ratePerKm": 950,
+    "notes": null,
+    "updatedAt": "2026-10-05T04:09:56.322Z"
+  }
+}

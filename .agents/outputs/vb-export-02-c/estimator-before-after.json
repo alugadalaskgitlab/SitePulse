@@ -1,0 +1,200 @@
+{
+  "identical": true,
+  "state": {
+    "inputs": {
+      "transDist": "12",
+      "transRate": "950",
+      "transPayload": "30",
+      "aggDist": "10",
+      "aggFreightRate": "50",
+      "aggPayload": "25",
+      "aggRate": "1000",
+      "aggDensity": "1.6",
+      "bitPrice": "50",
+      "marginPct": "10",
+      "tph": "100",
+      "plantHrsMonth": "200"
+    },
+    "mixTypes": [
+      {
+        "name": "DBM parity example",
+        "binderPct": 5,
+        "density": 2.4,
+        "fractions": {
+          "f20mm": 50,
+          "f10mm": 20,
+          "f6mm": 10,
+          "fDust": 15,
+          "fFiller": 5
+        }
+      }
+    ],
+    "equipDefs": [],
+    "sites": [
+      {
+        "id": "PARITY",
+        "name": "Parity site",
+        "transLead": 14,
+        "jobs": [
+          {
+            "id": "JOB",
+            "basis": "BOQ",
+            "mixes": [
+              {
+                "mixIdx": 0,
+                "qty_mt": 100
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "before": {
+    "mixRates": [
+      {
+        "name": "DBM parity example",
+        "density": 2.4,
+        "aggregate": 1040,
+        "bitumen": 2500,
+        "equipment": 0,
+        "fuel": 0,
+        "hsd": 0,
+        "ldo": 0,
+        "crew": 0,
+        "overhead": 0,
+        "margin": 430,
+        "exPlant": 3540,
+        "exPlantPerCum": 8496,
+        "transport": 760,
+        "transPerCum": 1824,
+        "laying": 0,
+        "layPerCum": 0,
+        "finalLaid": 4730,
+        "finalLaidPerCum": 11352
+      }
+    ],
+    "jobResults": [
+      {
+        "id": "JOB",
+        "contractor": "",
+        "siteName": "Parity site",
+        "totalMt": 100,
+        "totalCum": 0,
+        "totalAmt": 473000.00000000006,
+        "mixes": [
+          {
+            "mixIdx": 0,
+            "mixName": "DBM parity example",
+            "mt": 100,
+            "finalLaid": 4730,
+            "amt": 430000
+          }
+        ]
+      }
+    ],
+    "siteResults": [
+      {
+        "siteId": "PARITY",
+        "siteName": "Parity site",
+        "jobs": [
+          {
+            "id": "JOB",
+            "contractor": "",
+            "siteName": "Parity site",
+            "totalMt": 100,
+            "totalCum": 0,
+            "totalAmt": 473000.00000000006,
+            "mixes": [
+              {
+                "mixIdx": 0,
+                "mixName": "DBM parity example",
+                "mt": 100,
+                "finalLaid": 4730,
+                "amt": 430000
+              }
+            ]
+          }
+        ],
+        "siteTotal": 473000.00000000006,
+        "siteMt": 100
+      }
+    ],
+    "grandTotalMt": 100,
+    "grandTotalAmt": 473000.00000000006
+  },
+  "after": {
+    "mixRates": [
+      {
+        "name": "DBM parity example",
+        "density": 2.4,
+        "aggregate": 1040,
+        "bitumen": 2500,
+        "equipment": 0,
+        "fuel": 0,
+        "hsd": 0,
+        "ldo": 0,
+        "crew": 0,
+        "overhead": 0,
+        "margin": 430,
+        "exPlant": 3540,
+        "exPlantPerCum": 8496,
+        "transport": 760,
+        "transPerCum": 1824,
+        "laying": 0,
+        "layPerCum": 0,
+        "finalLaid": 4730,
+        "finalLaidPerCum": 11352
+      }
+    ],
+    "jobResults": [
+      {
+        "id": "JOB",
+        "contractor": "",
+        "siteName": "Parity site",
+        "totalMt": 100,
+        "totalCum": 0,
+        "totalAmt": 473000.00000000006,
+        "mixes": [
+          {
+            "mixIdx": 0,
+            "mixName": "DBM parity example",
+            "mt": 100,
+            "finalLaid": 4730,
+            "amt": 430000
+          }
+        ]
+      }
+    ],
+    "siteResults": [
+      {
+        "siteId": "PARITY",
+        "siteName": "Parity site",
+        "jobs": [
+          {
+            "id": "JOB",
+            "contractor": "",
+            "siteName": "Parity site",
+            "totalMt": 100,
+            "totalCum": 0,
+            "totalAmt": 473000.00000000006,
+            "mixes": [
+              {
+                "mixIdx": 0,
+                "mixName": "DBM parity example",
+                "mt": 100,
+                "finalLaid": 4730,
+                "amt": 430000
+              }
+            ]
+          }
+        ],
+        "siteTotal": 473000.00000000006,
+        "siteMt": 100
+      }
+    ],
+    "grandTotalMt": 100,
+    "grandTotalAmt": 473000.00000000006
+  },
+  "otherExports": []
+}

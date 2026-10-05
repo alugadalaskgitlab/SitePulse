@@ -1,0 +1,326 @@
+Site
+Pulse
+
+High Lane Constructions Pvt Ltd
+
+NAVIGATION
+
+Dashboard
+Site Operations
+HMP Operations
+RMC Operations
+Equipment & Fleet
+Stores & Inventory
+Procurement & Billing
+Requisitions
+Work Program & BOQ
+Norms Library (SNL)
+Reports
+Edit Requests
+
+TOOLS
+
+Estimator
+Masters
+Settings
+A
+
+Administrator
+
+Admin
+
+Sign Out
+Refresh
+VENDOR RATE CARDS
+SELECT VENDOR
+NARASIMHULU
+39 ITEMS
+5 RATES SET
+EQUIPMENT
+10 item(s)
+MACHINE TYPE — BILLING MODE	UNIT	RATE (₹)	REMOVE
+
+JCB - DAILY HIRE
+	
+DAYS
+	
+	
+
+
+JCB - MONTHLY HIRE
+	
+MONTHS
+	
+	
+
+
+JCB - TIME/METER
+	
+HRS
+	
+	
+
+
+TIPPER - DAILY HIRE
+	
+DAYS
+	
+	
+
+
+TIPPER - MONTHLY HIRE
+	
+MONTHS
+	
+	
+
+
+TIPPER - TIME/METER
+	
+HRS
+	
+	
+
+
+TIPPER NARASIMHULU - WMM INTERACTING (SITE-UNLINKED) - TIME/METER | 9.08 HRS | DIESEL: 20L
+	
+DAYS
+	
+	
+
+
+TIPPER NARASIMHULU - WMM INTERCARTING (SITE-UNLINKED) - TIME/METER | 9.08 HRS | DIESEL: 20L
+	
+DAYS
+	
+	
+
+
+TIPPER NARASIMHULU
+NEW
+	HRS	
+	
+
+
+TIPPER NARASIMHULU
+NEW
+	HRS	
+	
+ADD ROW
+MATERIALS
+8 item(s)
+MATERIAL NAME	UNIT	RATE (₹)	REMOVE
+
+20 MM
+	
+MT
+	
+	
+
+
+20MM
+	
+MT
+	
+	
+
+
+DUST
+	
+CFT
+	
+	
+
+
+DUST
+	
+MT
+	
+	
+
+
+GSB
+	
+CFT
+	
+	
+
+
+SOIL
+	
+CUM
+	
+	
+
+
+SOIL
+	
+TRIPS
+	
+	
+
+
+WMM
+	
+CFT
+	
+	
+ADD ROW
+TRANSPORT
+21 item(s)
+MACHINE TYPE — BILLING MODE	UNIT	RATE (₹)	REMOVE
+
+DUST - TRANSPORT
+	
+TRIP
+	
+	
+
+
+MIX TRANSPORT - TRANSPORT
+	
+KM
+	
+	
+
+
+MIX TRASPORT - TRANSPORT
+	
+KM
+	
+	
+
+
+TA15UF7763 → DTPL-RAJESHWAR (45 MT) - TRANSPORT
+	
+TRIP
+	
+	
+
+
+TRACTOR DOZER - MOBILIZATION
+	
+TRIP
+	
+	
+
+
+TRASPORT FROM SANGAM TO - TRANSPORT
+	
+MT
+	
+	
+
+
+TS15UE 7839 → DTPL-RAJESHWAR (32.99 MT) - TRANSPORT
+	
+TRIP
+	
+	
+
+
+TS15UE4470 → DTPL-BASAVAKALYAN (34.14 MT) - TRANSPORT
+	
+TRIP
+	
+	
+
+
+TS15UE4470 → DTPL-BASAVAKALYAN (34.16 MT) - TRANSPORT
+	
+TRIP
+	
+	
+
+
+TS15UE7839 → DTPL-RAJESHWAR (30 MT) - TRANSPORT
+	
+TRIP
+	
+	
+
+
+TS15UF4308 → DTPL-BASAVAKALYAN (27.03 MT) - TRANSPORT
+	
+TRIP
+	
+	
+
+
+TS15UF4308 → DTPL-BASAVAKALYAN (30.14 MT) - TRANSPORT
+	
+TRIP
+	
+	
+
+
+TS15UF4308 → DTPL-RAJESHWAR (32 MT) - TRANSPORT
+	
+TRIP
+	
+	
+
+
+TS15UF4308 → DTPL-RAJESHWAR (34 MT) - TRANSPORT
+	
+TRIP
+	
+	
+
+
+TS15UF4470 → DTPL-RAJESHWAR (34 MT) - TRANSPORT
+	
+TRIP
+	
+	
+
+
+TS15UF7703 → DTPL-BASAVAKALYAN (48.08 MT) - TRANSPORT
+	
+TRIP
+	
+	
+
+
+TS15UF7763 → DTPL-BASAVAKALYAN (42.1 MT) - TRANSPORT
+	
+TRIP
+	
+	
+
+
+TS15UF7763 → DTPL-RAJESHWAR (45 MT) - TRANSPORT
+	
+TRIP
+	
+	
+
+
+TS15UF7839 → DTPL-BASAVAKALYAN (30 MT) - TRANSPORT
+	
+TRIP
+	
+	
+
+
+TS15UF7839 → DTPL-BASAVAKALYAN (32.1 MT) - TRANSPORT
+	
+TRIP
+	
+	
+
+
+TIPPER
+NEW
+	TRIP	
+	
+TRIP rates use lead distance x 2 (one-way to two-way)
+ADD ROW
+LABOUR
+0 item(s)
+LABOUR CATEGORY [GENDER]	UNIT	RATE (₹ / HEAD-DAY)	REMOVE
+No labour items discovered. Use ADD ROW to add manually.
+Rate per head per day. Add gender only if rates differ by gender; otherwise leave blank for combined rate.
+ADD ROW
+SAVE ALL RATES
+This is a temporary development preview, and these links are not for public use. Deploy your app for secure sharing or use an invite link.

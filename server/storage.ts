@@ -1,4 +1,5 @@
 import { lookupTripBoqQuantity } from "../shared/tripQuantityDisplay";
+import { validatedTransportRateFields } from "../shared/transportRate";
 import { db } from "./db";
 import { insertLabourWithWorkers, readWorkerNames } from "./labourWorkers";
 import { assertSectionTokens, DprSectionConflict, findSectionDrafts, lockDprIdentity, readSectionAggregate, readDraftStoppages, stageDraftStoppages, reconcileRows, reconcileDraftEquipmentAssignments, sameContext, sectionSnapshot } from "./dprSections";
@@ -22361,6 +22362,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertVendorRateCard(data: InsertVendorRateCard): Promise<VendorRateCard> {
+    const transportFields = validatedTransportRateFields(data);
     const upperVendor = data.vendorName.toUpperCase().trim();
     const upperKey = data.itemKey.toUpperCase().trim();
     const upperUnit = data.unit.toUpperCase().trim();
@@ -22374,6 +22376,7 @@ export class DatabaseStorage implements IStorage {
     if (existing.length > 0) {
       const [updated] = await db.update(vendorRateCards)
         .set({
+          ...transportFields,
           rate: data.rate,
           unit: data.unit,
           itemLabel: data.itemLabel,
@@ -22387,6 +22390,7 @@ export class DatabaseStorage implements IStorage {
       return updated;
     }
     const [created] = await db.insert(vendorRateCards).values({
+      ...transportFields,
       category: data.category,
       itemLabel: data.itemLabel,
       unit: data.unit,

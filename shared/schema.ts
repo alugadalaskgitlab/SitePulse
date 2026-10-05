@@ -2768,6 +2768,9 @@ export const vendorRateCards = pgTable("vendor_rate_cards", {
   itemLabel: text("item_label"),
   unit: text("unit").notNull(),
   rate: real("rate").notNull(),
+  leadDistanceKm: real("lead_distance_km"),
+  payloadMt: real("payload_mt"),
+  ratePerKm: real("rate_per_km"),
   notes: text("notes"),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

@@ -1,0 +1,149 @@
+{
+  "database": "sitelog_dev",
+  "columns": [
+    "id",
+    "vendor_name",
+    "category",
+    "item_key",
+    "item_label",
+    "unit",
+    "rate",
+    "notes",
+    "updated_at",
+    "vendor_id"
+  ],
+  "rows": [
+    {
+      "id": 2,
+      "vendor_name": "TEST VENDOR",
+      "category": "equipment",
+      "item_key": "TEST_ITEM_1",
+      "item_label": "TEST EQUIPMENT HIRE",
+      "unit": "HRS",
+      "rate": 2500,
+      "notes": null,
+      "updated_at": "2026-03-12T02:53:43.955Z",
+      "vendor_id": null
+    },
+    {
+      "id": 3,
+      "vendor_name": "NARASIMHULU",
+      "category": "transport",
+      "item_key": "TRIP",
+      "item_label": "TIPPER",
+      "unit": "TRIP",
+      "rate": 95,
+      "notes": null,
+      "updated_at": "2026-03-12T03:12:34.004Z",
+      "vendor_id": null
+    },
+    {
+      "id": 4,
+      "vendor_name": "ARUN",
+      "category": "equipment",
+      "item_key": "10_TIME_METER",
+      "item_label": "JCB-2 SITE - TIME/METER",
+      "unit": "HRS",
+      "rate": 500,
+      "notes": null,
+      "updated_at": "2026-03-12T16:08:16.963Z",
+      "vendor_id": null
+    },
+    {
+      "id": 5,
+      "vendor_name": "SANGANNA",
+      "category": "equipment",
+      "item_key": "32_DAILY_HIRE",
+      "item_label": "TIPPER - DAILY HIRE",
+      "unit": "DAYS",
+      "rate": 1500,
+      "notes": null,
+      "updated_at": "2026-03-12T16:17:17.321Z",
+      "vendor_id": null
+    },
+    {
+      "id": 6,
+      "vendor_name": "SANGANNA",
+      "category": "equipment",
+      "item_key": "33_DAILY_HIRE",
+      "item_label": "TIPPER - DAILY HIRE",
+      "unit": "DAYS",
+      "rate": 2000,
+      "notes": null,
+      "updated_at": "2026-03-12T16:17:17.327Z",
+      "vendor_id": null
+    },
+    {
+      "id": 39,
+      "vendor_name": "MOHAN REDDY",
+      "category": "equipment",
+      "item_key": "21_DAILY_HIRE",
+      "item_label": "PAVER FINISHER-MOHAN REDDY - DAILY HIRE",
+      "unit": "DAYS",
+      "rate": 10500,
+      "notes": null,
+      "updated_at": "2026-03-12T16:43:11.691Z",
+      "vendor_id": null
+    },
+    {
+      "id": 72,
+      "vendor_name": "MOHAN REDDY",
+      "category": "equipment",
+      "item_key": "EQ_PAVER_FINISHER_DAYS",
+      "item_label": "PAVER FINISHER - DAILY HIRE",
+      "unit": "DAYS",
+      "rate": 10000,
+      "notes": null,
+      "updated_at": "2026-03-13T04:30:11.752Z",
+      "vendor_id": null
+    },
+    {
+      "id": 73,
+      "vendor_name": "NARASIMHULU",
+      "category": "equipment",
+      "item_key": "EQ_JCB_DAYS",
+      "item_label": "JCB-SITE",
+      "unit": "DAYS",
+      "rate": 3500,
+      "notes": null,
+      "updated_at": "2026-03-15T03:18:23.344Z",
+      "vendor_id": null
+    },
+    {
+      "id": 74,
+      "vendor_name": "NARASIMHULU",
+      "category": "equipment",
+      "item_key": "TIPPER NARASIMHULU  - WMM INTERACTING - TIME/METER | 9.08 HRS | DIESEL: 20L",
+      "item_label": "TIPPER NARASIMHULU",
+      "unit": "HRS",
+      "rate": 3000,
+      "notes": null,
+      "updated_at": "2026-03-15T03:18:23.385Z",
+      "vendor_id": null
+    },
+    {
+      "id": 75,
+      "vendor_name": "NARASIMHULU",
+      "category": "material",
+      "item_key": "MAT_WMM_CFT",
+      "item_label": "WMM (SITE)",
+      "unit": "CFT",
+      "rate": 22,
+      "notes": null,
+      "updated_at": "2026-03-15T03:18:23.403Z",
+      "vendor_id": null
+    },
+    {
+      "id": 76,
+      "vendor_name": "NARASIMHULU",
+      "category": "equipment",
+      "item_key": "TIPPER NARASIMHULU - WMM INTERCARTING - TIME/METER | 9.08 HRS | DIESEL: 20L",
+      "item_label": "TIPPER NARASIMHULU",
+      "unit": "HRS",
+      "rate": 3000,
+      "notes": null,
+      "updated_at": "2026-03-15T03:18:23.399Z",
+      "vendor_id": null
+    }
+  ]
+}

@@ -24,6 +24,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, vendors, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
 import { db } from "./db";
+import { TransportRateInputError, validatedTransportRateFields } from "@shared/transportRate";
 import { registerVendorMasterRoutes } from "./vendor-master";
 import { buildPurchaseOrderPdf } from "./purchase-order-pdf";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc, desc } from "drizzle-orm";
@@ -12429,6 +12430,7 @@ export async function registerRoutes(
       const card = await storage.upsertVendorRateCard(req.body);
       res.status(201).json(card);
     } catch (err) {
+      if (err instanceof TransportRateInputError) return res.status(400).json({ message: err.message });
       console.error("Error creating vendor rate card:", err);
       res.status(500).json({ message: "Failed to create rate card" });
     }
@@ -12438,6 +12440,9 @@ export async function registerRoutes(
     try {
       if (!assertCreateEither(req, res, "vendor_masters_manage", "admin_settings")) return;
       const items = req.body.items as any[];
+      // Validate new setup fields before any writes; omitted legacy fields
+      // preserve the existing bill-to-rate-card write-back behavior.
+      items.forEach(item => validatedTransportRateFields(item));
       const results = [];
       for (const item of items) {
         if (item.rate && item.rate > 0) {
@@ -12447,6 +12452,7 @@ export async function registerRoutes(
       }
       res.json({ upserted: results.length });
     } catch (err) {
+      if (err instanceof TransportRateInputError) return res.status(400).json({ message: err.message });
       console.error("Error bulk upserting rate cards:", err);
       res.status(500).json({ message: "Failed to upsert rate cards" });
     }

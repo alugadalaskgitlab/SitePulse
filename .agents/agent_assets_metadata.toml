@@ -4875,3 +4875,17 @@ mtime_ms = 1791171029041
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/860baacc-f973-4e45-8006-12c593047306/4ee7e98d-8615-4731-9254-7ee545b80499"
 storage_version_token = "1791171849894623"
 content_type = "text/html"
+
+[[outputs]]
+id = "69_iY5sRp4Q8gvb_gwVHY"
+uri = "file://.agents/outputs/vb-export-02-c/part-c-evidence.html"
+type = "html"
+title = "Part C — verification and screenshots"
+description = "Actual signed-in screenshots, NARASIMHULU before/after, save/reopen, zero guards, estimator parity, Publish SQL and test inventory."
+logical_id = "84ff88a5-3b74-4e62-81a3-f42b80790f7f"
+content_hash = "sha256:ee65ef641bfd00faf989e14ef11729144d0a6c6c0a5bc35dae5bd97d881d318c"
+size = 1590987
+mtime_ms = 1791173670192
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/84ff88a5-3b74-4e62-81a3-f42b80790f7f/7b280c76-58c6-4923-8bbd-595c6bd381fa"
+storage_version_token = "1791173679303597"
+content_type = "text/html"

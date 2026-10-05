@@ -11,6 +11,8 @@ import { ChevronLeft, Loader2, Save, Lock, Search, Plus, ChevronDown, ChevronUp,
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { isManualVendorRateCard, MANUAL_VENDOR_RATE_CARD_NOTE, vendorRateCardIdentity } from "@shared/vendorRateCardIdentity";
+import { TransportRateBasis, TransportRateSetup, hasTransportSetup } from "@/components/TransportRateSetup";
+import type { TransportRateFields } from "@/components/TransportRateSetup";
 
 type DiscoveredItem = {
   itemKey: string;
@@ -78,6 +80,9 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [manualRows, setManualRows] = useState<ManualRow[]>([]);
   const deletedManualRowsRef = useRef(new Map<number, ManualRow>());
+  const [setupRow, setSetupRow] = useState<DiscoveredItem | ManualRow | null>(null);
+  const activeVendorRef = useRef(selectedVendor);
+  activeVendorRef.current = selectedVendor;
 
   const [showAddEquipment, setShowAddEquipment] = useState(false);
   const [addEqType, setAddEqType] = useState("");
@@ -150,7 +155,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
         return existingByRateCardId.get(rateCardId) || deletedManualRowsRef.current.get(rateCardId) || {
           id: `manual_saved_${card.id}`,
           rateCardId,
-          itemKey: String(card.itemKey).toUpperCase().trim(),
+           itemKey: card.category === "transport" ? String(card.itemKey) : String(card.itemKey).toUpperCase().trim(),
           itemLabel: card.itemLabel || card.itemKey,
           category: card.category,
           unit: card.unit,
@@ -166,7 +171,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
           return existingByRateCardId.get(rateCardId) || deletedManualRowsRef.current.get(rateCardId) || {
             id: `manual_saved_${item.rateCardId}`,
             rateCardId,
-            itemKey: item.itemKey.toUpperCase().trim(),
+             itemKey: item.category === "transport" ? item.itemKey : item.itemKey.toUpperCase().trim(),
             itemLabel: item.itemLabel,
             category: item.category,
             unit: item.unit,
@@ -296,6 +301,64 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
       return parts.join("_");
     }
     return item.itemKey;
+  };
+
+  const findTransportCard = (row: DiscoveredItem | ManualRow) => {
+    const byId = row.rateCardId != null ? allRateCards.find(card => Number(card.id) === Number(row.rateCardId)) : undefined;
+    return byId || allRateCards.find(card =>
+      vendorRateCardIdentity(card.category, String(card.itemKey), card.unit) ===
+      vendorRateCardIdentity(row.category, row.itemKey, row.unit));
+  };
+
+  const transportSaveFields = (row: DiscoveredItem | ManualRow) => {
+    if (row.category !== "transport") return {};
+    const card = findTransportCard(row);
+    if (!card) return {};
+    return {
+      ...(card.ratePerKm != null ? { ratePerKm: card.ratePerKm } : {}),
+      ...(card.leadDistanceKm != null ? { leadDistanceKm: card.leadDistanceKm } : {}),
+      ...(card.payloadMt != null ? { payloadMt: card.payloadMt } : {}),
+      ...(card.notes !== undefined ? { notes: card.notes } : {}),
+    };
+  };
+
+  const saveTransportSetup = async (fields: TransportRateFields) => {
+    if (!setupRow) return;
+    const row = setupRow;
+    const vendor = selectedVendor;
+    const card = findTransportCard(row);
+    const manual = "id" in row && typeof row.id === "string";
+    const flatRate = manual ? row.rate : rates[row.itemKey];
+    const body = {
+      vendorName: vendor,
+      category: row.category,
+      itemKey: card?.itemKey ?? row.itemKey,
+      itemLabel: card?.itemLabel ?? row.itemLabel,
+      unit: card?.unit ?? row.unit,
+      rate: card ? card.rate : (parseFloat(String(flatRate || 0)) || 0),
+      ...(card?.notes !== undefined ? { notes: card.notes } : manual ? { notes: MANUAL_VENDOR_RATE_CARD_NOTE } : {}),
+      ...fields,
+    };
+    const response = await apiRequest("POST", "/api/vendor-rate-cards", body);
+    const saved = await response.json();
+    queryClient.setQueryData<any[]>(["/api/vendor-rate-cards", vendor], previous => {
+      const nextCard = { ...card, ...body, ...saved };
+      return [...(previous ?? []).filter(candidate =>
+        !(Number(candidate.id) === Number(nextCard.id) ||
+          vendorRateCardIdentity(candidate.category, String(candidate.itemKey), candidate.unit) ===
+          vendorRateCardIdentity(body.category, String(body.itemKey), body.unit))), nextCard];
+    });
+    if (activeVendorRef.current !== vendor) return;
+    if (manual && saved.id != null) {
+      setManualRows(previous => previous.map(candidate => candidate.id === row.id
+        ? { ...candidate, rateCardId: Number(saved.id) } : candidate));
+    }
+    queryClient.setQueryData<DiscoveredItem[]>(["/api/vendor-rate-cards/discover", vendor], previous =>
+      previous?.map(candidate =>
+        vendorRateCardIdentity(candidate.category, candidate.itemKey, candidate.unit) ===
+        vendorRateCardIdentity(row.category, row.itemKey, row.unit)
+          ? { ...candidate, rateCardId: saved.id ?? candidate.rateCardId } : candidate));
+    toast({ title: "Transport rate setup saved" });
   };
 
   const handleUnitChange = (item: DiscoveredItem, newUnit: string) => {
@@ -428,8 +491,9 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
 
   const handleSaveAll = () => {
     const discoveredToSave = visibleDiscoveredItems.map(item => {
-      const effectiveUnit = getEffectiveUnit(item);
-      const effectiveKey = getEffectiveKey(item);
+      const setupCard = item.category === "transport" ? findTransportCard(item) : undefined;
+      const effectiveUnit = hasTransportSetup(setupCard) ? setupCard.unit : getEffectiveUnit(item);
+      const effectiveKey = hasTransportSetup(setupCard) ? setupCard.itemKey : getEffectiveKey(item);
       return {
         vendorName: selectedVendor,
         category: item.category,
@@ -437,6 +501,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
         itemLabel: item.itemLabel,
         unit: effectiveUnit,
         rate: parseFloat(String(rates[item.itemKey] || 0)) || 0,
+        ...transportSaveFields(item),
       };
     }).filter(i => i.rate > 0);
 
@@ -448,6 +513,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
       unit: row.unit,
       rate: parseFloat(String(row.rate || 0)) || 0,
       notes: MANUAL_VENDOR_RATE_CARD_NOTE,
+      ...transportSaveFields(row),
     })).filter(i => i.rate > 0);
 
     const allToSave = [...discoveredToSave, ...manualToSave];
@@ -527,7 +593,9 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
         <div className="font-medium text-sm">{item.itemLabel}</div>
       </td>
       <td className="px-3 py-2">
-        <Select value={getEffectiveUnit(item)} onValueChange={(v) => handleUnitChange(item, v)}>
+        {item.category === "transport" && hasTransportSetup(findTransportCard(item)) ? (
+          <span className="text-sm font-mono px-2 py-1 bg-muted rounded" title="Derived display unit; saved identity is unchanged">TRIP</span>
+        ) : <Select value={getEffectiveUnit(item)} onValueChange={(v) => handleUnitChange(item, v)}>
           <SelectTrigger className="h-8 w-24 text-sm" data-testid={`select-unit-${idx}`}>
             <SelectValue />
           </SelectTrigger>
@@ -536,10 +604,12 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
               <SelectItem key={u} value={u}>{u}</SelectItem>
             ))}
           </SelectContent>
-        </Select>
+        </Select>}
       </td>
       <td className="px-3 py-2">
-        <Input
+        {item.category === "transport" && hasTransportSetup(findTransportCard(item)) ? (
+          <TransportRateBasis fields={findTransportCard(item)} />
+        ) : <Input
           type="number"
           step="0.01"
           min="0"
@@ -549,7 +619,8 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
           placeholder="0.00"
           className="text-right font-mono w-full"
           data-testid={`input-rate-${idx}`}
-        />
+        />}
+        {item.category === "transport" && <Button type="button" size="sm" variant="outline" className="mt-1.5 h-7 text-xs" onClick={() => setSetupRow(item)} aria-label={`Rate setup for ${item.itemLabel}`} disabled={!isRateCardsFetched || bulkSaveMutation.isPending}>RATE SETUP</Button>}
       </td>
       <td className="px-3 py-2 w-16">
         <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive"
@@ -573,10 +644,12 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
         </div>
       </td>
       <td className="px-3 py-2">
-        <span className="text-sm font-mono px-2 py-1 bg-muted rounded">{row.unit}</span>
+        <span className="text-sm font-mono px-2 py-1 bg-muted rounded">{row.category === "transport" && hasTransportSetup(findTransportCard(row)) ? "TRIP" : row.unit}</span>
       </td>
       <td className="px-3 py-2">
-        <Input
+        {row.category === "transport" && hasTransportSetup(findTransportCard(row)) ? (
+          <TransportRateBasis fields={findTransportCard(row)} />
+        ) : <Input
           type="number"
           step="0.01"
           min="0"
@@ -589,7 +662,8 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
           placeholder="0.00"
           className="text-right font-mono w-full"
           data-testid={`input-manual-rate-${row.category}-${idx}`}
-        />
+        />}
+        {row.category === "transport" && <Button type="button" size="sm" variant="outline" className="mt-1.5 h-7 text-xs" onClick={() => setSetupRow(row)} aria-label={`Rate setup for ${row.itemLabel}`} disabled={!isRateCardsFetched || bulkSaveMutation.isPending}>RATE SETUP</Button>}
       </td>
       <td className="px-3 py-2 w-16 text-center">
         <Button
@@ -626,6 +700,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
 
   return (
     <div className="max-w-5xl mx-auto space-y-4 p-4">
+      {setupRow && <TransportRateSetup key={`${selectedVendor}:${setupRow.itemKey}`} label={setupRow.itemLabel} fields={findTransportCard(setupRow)} onSave={saveTransportSetup} onClose={() => setSetupRow(null)} />}
       <div className="flex items-center gap-4 flex-wrap">
         {onReturnToDraft ? (
           <Button variant="ghost" onClick={onReturnToDraft} data-testid="button-back-rate-cards">
@@ -643,7 +718,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
         <CardContent className="pt-4 space-y-3">
           <div>
             <Label className="text-sm uppercase font-semibold">Select Vendor</Label>
-            <Select value={selectedVendor} onValueChange={(v) => { setSelectedVendor(v); setRates({}); setUnitOverrides({}); setSearchFilter(""); setManualRows([]); deletedManualRowsRef.current.clear(); }}>
+            <Select value={selectedVendor} onValueChange={(v) => { setSelectedVendor(v); setSetupRow(null); setRates({}); setUnitOverrides({}); setSearchFilter(""); setManualRows([]); deletedManualRowsRef.current.clear(); }}>
               <SelectTrigger data-testid="select-vendor">
                 <SelectValue placeholder="Choose a vendor..." />
               </SelectTrigger>

@@ -1,3 +1,5 @@
+import { transportPerMT } from "@shared/transportRate";
+
 const FRAC_KEYS = ['f20mm', 'f10mm', 'f6mm', 'fDust', 'fFiller'] as const;
 
 export interface MixTypeDef {
@@ -212,7 +214,7 @@ export function calcMixRatesAndJobs(state: CalcState, overrides?: RevisedPrices)
   const aggDist = n(inputs, 'aggDist');
   const aggFreightRate = n(inputs, 'aggFreightRate');
   const aggPayload = n(inputs, 'aggPayload');
-  const aggFreight = aggPayload > 0 ? (aggDist * 2 * aggFreightRate / aggPayload) : 0;
+  const aggFreight = transportPerMT(aggDist, aggFreightRate, aggPayload);
   const aggRateMT = (aggBasis === 'CFT' && aggDensity > 0)
     ? (rawAggRate / aggDensity * 35.3147)
     : rawAggRate;
@@ -268,7 +270,7 @@ export function calcMixRatesAndJobs(state: CalcState, overrides?: RevisedPrices)
   const transDist = n(inputs, 'transDist');
   const transRate = n(inputs, 'transRate');
   const transPayload = n(inputs, 'transPayload');
-  const transPerMT = transPayload > 0 ? (transDist * 2 * transRate / transPayload) : 0;
+  const transPerMT = transportPerMT(transDist, transRate, transPayload);
 
   const primeSpray = n(inputs, 'primeSpray');
   const primePrice_ = n(inputs, 'primePrice');
@@ -658,7 +660,7 @@ function calcScopeComponentsTS(state: CalcState, hsdPrice: number): Record<strin
   const aggDist = n(inputs, 'aggDist');
   const aggFreightRate = n(inputs, 'aggFreightRate');
   const aggPayload = n(inputs, 'aggPayload');
-  const aggFreight = aggPayload > 0 ? (aggDist * 2 * aggFreightRate / aggPayload) : 0;
+  const aggFreight = transportPerMT(aggDist, aggFreightRate, aggPayload);
   const aggLandedTS = aggRateMT + aggFreight;
   const avgAggFracTS = (mixTypes || []).length > 0
     ? (mixTypes || []).reduce((s: number, m: any) => s + FRAC_KEYS.reduce((a: number, k) => a + ((m.fractions && m.fractions[k]) || 0), 0), 0) / (mixTypes || []).length / 100
@@ -797,7 +799,7 @@ export function calcSiteProfitCosts(state: CalcState, mixRates: MixRate[]): Site
   for (const s of sites) {
     if (!s.jobs.length) continue;
     const siteLead = (s.transLead != null && s.transLead > 0) ? s.transLead : gTransDist;
-    const siteTransPerMT = gTransPayload > 0 ? (siteLead * 2 * gTransRate / gTransPayload) : 0;
+    const siteTransPerMT = transportPerMT(siteLead, gTransRate, gTransPayload);
 
     const mixQty: Record<string, { cum: number; mixIdx: number }> = {};
     let primeArea = 0, tackArea = 0, totalSiteMT = 0;

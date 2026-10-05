@@ -1,0 +1,62 @@
+[
+  {
+    "id": 73,
+    "vendorName": "NARASIMHULU",
+    "vendorId": null,
+    "category": "equipment",
+    "itemKey": "EQ_JCB_DAYS",
+    "itemLabel": "JCB-SITE",
+    "unit": "DAYS",
+    "rate": 3500,
+    "notes": null,
+    "updatedAt": "2026-03-15T03:18:23.344Z"
+  },
+  {
+    "id": 74,
+    "vendorName": "NARASIMHULU",
+    "vendorId": null,
+    "category": "equipment",
+    "itemKey": "TIPPER NARASIMHULU  - WMM INTERACTING - TIME/METER | 9.08 HRS | DIESEL: 20L",
+    "itemLabel": "TIPPER NARASIMHULU",
+    "unit": "HRS",
+    "rate": 3000,
+    "notes": null,
+    "updatedAt": "2026-03-15T03:18:23.385Z"
+  },
+  {
+    "id": 76,
+    "vendorName": "NARASIMHULU",
+    "vendorId": null,
+    "category": "equipment",
+    "itemKey": "TIPPER NARASIMHULU - WMM INTERCARTING - TIME/METER | 9.08 HRS | DIESEL: 20L",
+    "itemLabel": "TIPPER NARASIMHULU",
+    "unit": "HRS",
+    "rate": 3000,
+    "notes": null,
+    "updatedAt": "2026-03-15T03:18:23.399Z"
+  },
+  {
+    "id": 75,
+    "vendorName": "NARASIMHULU",
+    "vendorId": null,
+    "category": "material",
+    "itemKey": "MAT_WMM_CFT",
+    "itemLabel": "WMM (SITE)",
+    "unit": "CFT",
+    "rate": 22,
+    "notes": null,
+    "updatedAt": "2026-03-15T03:18:23.403Z"
+  },
+  {
+    "id": 3,
+    "vendorName": "NARASIMHULU",
+    "vendorId": null,
+    "category": "transport",
+    "itemKey": "TRIP",
+    "itemLabel": "TIPPER",
+    "unit": "TRIP",
+    "rate": 95,
+    "notes": null,
+    "updatedAt": "2026-03-12T03:12:34.004Z"
+  }
+]
