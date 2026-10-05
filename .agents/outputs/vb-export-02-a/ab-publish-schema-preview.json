@@ -1,0 +1,13 @@
+{
+  "columnsToRemove": [],
+  "hasDiff": false,
+  "hasStructuralDataLoss": false,
+  "matViewsToRemove": [],
+  "maybeNonBackwardsCompatible": false,
+  "schemasToRemove": [],
+  "statementsToExecute": [],
+  "success": true,
+  "tablesToRemove": [],
+  "tablesToTruncate": [],
+  "warnings": []
+}

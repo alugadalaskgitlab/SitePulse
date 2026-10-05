@@ -4726,84 +4726,84 @@ content_type = "text/csv"
 id = "l9L5AnqHdkpzBUZeYjKO1"
 uri = "file://.agents/outputs/vb-export-02-a/downloads/NARASIMHULU_2026-08-01_to_2026-10-04_UNSAVED.xlsx"
 type = "table"
-title = "Part A — actual combined unsaved Excel"
-description = "Retained real development exports. The evidence report explicitly identifies missing native Save As and restricted-user screenshots."
+title = "Part A — combined unsaved Excel"
+description = "Retained real signed-in development evidence. Reports contain screenshots and explicitly state verification limitations."
 logical_id = "0b0dbfde-8210-4f09-9572-39d034fd4ed5"
 content_hash = "sha256:1ef33271e2075bca41ececb5f9cbb226b9c288911bbddde5ba3e83c66835d54a"
 size = 26817
 mtime_ms = 1791162360073
-storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/0b0dbfde-8210-4f09-9572-39d034fd4ed5/55df4885-895e-451f-918a-1e1aa2cbc68a"
-storage_version_token = "1791171052112397"
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/0b0dbfde-8210-4f09-9572-39d034fd4ed5/0434743a-d1cd-4cd3-8d01-083027358426"
+storage_version_token = "1791171851395029"
 content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 [[outputs]]
 id = "bAvlwtkXW3iFNjqixxcxJ"
 uri = "file://.agents/outputs/vb-export-02-a/downloads/NARASIMHULU_2026-08-01_to_2026-10-04_UNSAVED.pdf"
 type = "pdf"
-title = "Part A — actual unsaved PDF with unpriced rows"
-description = "Retained real development exports. The evidence report explicitly identifies missing native Save As and restricted-user screenshots."
+title = "Part A — unsaved PDF, unpriced rows"
+description = "Retained real signed-in development evidence. Reports contain screenshots and explicitly state verification limitations."
 logical_id = "7138ef1c-c32b-402b-90ad-6f3442b94518"
 content_hash = "sha256:6f2fe73ced1ac1053736294f1870805d661d921a317bc5f2296888489f765f4c"
 size = 82435
 mtime_ms = 1791162229688
-storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/7138ef1c-c32b-402b-90ad-6f3442b94518/d36a8636-3ecb-4488-a1b6-86929aceb5bd"
-storage_version_token = "1791171055904421"
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/7138ef1c-c32b-402b-90ad-6f3442b94518/4a2dc088-fbc7-45ef-94ad-742356176711"
+storage_version_token = "1791171855718140"
 content_type = "application/pdf"
 
 [[outputs]]
 id = "idTurNHdzLL6qp0biPNP0"
 uri = "file://.agents/outputs/vb-export-02-a/material-only/NARASIMHULU_2026-08-01_to_2026-10-04_UNSAVED.xlsx"
 type = "table"
-title = "Part A — actual material-only Excel"
-description = "Retained real development exports. The evidence report explicitly identifies missing native Save As and restricted-user screenshots."
+title = "Part A — material-only Excel"
+description = "Retained real signed-in development evidence. Reports contain screenshots and explicitly state verification limitations."
 logical_id = "0b85e90d-72d9-4141-9753-a3f21a3ac5af"
 content_hash = "sha256:156d7c4b87d1592f80998278ba31e93629d4c1620e0c74176240fa7ff2251afa"
 size = 21136
 mtime_ms = 1791162347021
-storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/0b85e90d-72d9-4141-9753-a3f21a3ac5af/6d4da691-80c7-41db-b859-00a6a8b07203"
-storage_version_token = "1791171057213359"
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/0b85e90d-72d9-4141-9753-a3f21a3ac5af/efeeb975-7592-46d9-8368-616d9a99d3dd"
+storage_version_token = "1791171857252574"
 content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 [[outputs]]
 id = "cV1TPnMSC_8kDm5reodQA"
 uri = "file://.agents/outputs/vb-export-02-a/downloads/NARASIMHULU_2025-12-01_to_2026-01-25_DRAFT.pdf"
 type = "pdf"
-title = "Part A — actual DRAFT PDF: net 3,63,629.00"
-description = "Retained real development exports. The evidence report explicitly identifies missing native Save As and restricted-user screenshots."
+title = "Part A — DRAFT PDF, NET PAYABLE 3,63,629.00"
+description = "Retained real signed-in development evidence. Reports contain screenshots and explicitly state verification limitations."
 logical_id = "b57c4fb3-2154-499d-8fb1-ba2e8aa3f23c"
 content_hash = "sha256:e0a0264e495a6a28870283498a6a81e744adb93af07194009031a83e3a95991c"
 size = 164093
 mtime_ms = 1791162296067
-storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b57c4fb3-2154-499d-8fb1-ba2e8aa3f23c/98710f83-eb26-403b-a8c2-9c513bea9410"
-storage_version_token = "1791171054237936"
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b57c4fb3-2154-499d-8fb1-ba2e8aa3f23c/64949c9e-983d-43b2-ac56-6b57eb9963a2"
+storage_version_token = "1791171853801012"
 content_type = "application/pdf"
 
 [[outputs]]
 id = "Gyqtpi4wtIzelnXQ3oBFy"
 uri = "file://.agents/outputs/vb-export-02-a/downloads/RAJU_2026-02-26_to_2026-03-05_APPROVED.pdf"
 type = "pdf"
-title = "Part A — actual APPROVED PDF"
-description = "Retained real development exports. The evidence report explicitly identifies missing native Save As and restricted-user screenshots."
+title = "Part A — APPROVED PDF"
+description = "Retained real signed-in development evidence. Reports contain screenshots and explicitly state verification limitations."
 logical_id = "ca012c51-375e-454a-bb7d-8ea161af8378"
 content_hash = "sha256:5b91bf98ac75a18a9ba515e369b020e5ffee0455d4966564e149334001439cc4"
 size = 82948
 mtime_ms = 1791162304144
-storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/ca012c51-375e-454a-bb7d-8ea161af8378/042a6097-a799-4780-ad07-48cbff1ce040"
-storage_version_token = "1791171059019373"
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/ca012c51-375e-454a-bb7d-8ea161af8378/db6b6115-ec25-4e0e-aa14-27d4b8c09978"
+storage_version_token = "1791171859318572"
 content_type = "application/pdf"
 
 [[outputs]]
 id = "xnsmuSAParV1DGhiWSqcq"
 uri = "file://.agents/outputs/vb-export-02-a/downloads/VISWANATH_2026-08-15_to_2026-08-28_PAID.pdf"
 type = "pdf"
-title = "Part A — actual PAID PDF"
-description = "Retained real development exports. The evidence report explicitly identifies missing native Save As and restricted-user screenshots."
+title = "Part A — PAID PDF"
+description = "Retained real signed-in development evidence. Reports contain screenshots and explicitly state verification limitations."
 logical_id = "03ca7993-e465-4774-8ea7-822e1c54fe47"
 content_hash = "sha256:e57583fd5b72030b4d35febc5fd74a02456941bc68f3df97df083d2a0c4ff41e"
 size = 106730
 mtime_ms = 1791162312217
-storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/03ca7993-e465-4774-8ea7-822e1c54fe47/e45c931a-4098-49b9-8453-e862679bdfb4"
-storage_version_token = "1791171060918332"
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/03ca7993-e465-4774-8ea7-822e1c54fe47/9e3f77da-1640-4997-b3be-6e94b6d440a7"
+storage_version_token = "1791171861432055"
 content_type = "application/pdf"
 
 [[outputs]]
@@ -4824,54 +4824,54 @@ content_type = "text/html"
 id = "mtPCkJTUtCXhHzCh6O4ui"
 uri = "file://.agents/outputs/vb-export-02-b/part-b-evidence.html"
 type = "html"
-title = "Part B — separate existing implementation report"
-description = "Previously implemented equipment-log detail, 75 focused passing tests, screenshots and legacy-source limitations; not a new build this turn."
+title = "Part B — screenshots, test results and source-data limitations"
+description = "Retained real signed-in development evidence. Reports contain screenshots and explicitly state verification limitations."
 logical_id = "aea4290e-a9eb-4758-abf8-194192420105"
 content_hash = "sha256:cb59f0245b61f37784fbe7350e1d1710e1304a39a27c578a0d9bada3526f4ed0"
 size = 919615
 mtime_ms = 1791168487830
-storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/aea4290e-a9eb-4758-abf8-194192420105/8ec0b332-437e-4cbf-8b11-7f4360253b99"
-storage_version_token = "1791171064336701"
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/aea4290e-a9eb-4758-abf8-194192420105/090e2b8e-720c-4776-9367-c7af0093d05a"
+storage_version_token = "1791171864945164"
 content_type = "text/html"
 
 [[outputs]]
 id = "m-eE9_uNZLpT6GPDryHwp"
 uri = "file://.agents/outputs/vb-export-02-b/downloads/NARASIMHULU_2026-08-01_to_2026-10-04_UNSAVED.xlsx"
 type = "table"
-title = "Part B — actual Excel with equipment log columns"
-description = "Real signed-in development exports and screenshots; the report identifies missing historical source links and unavailable diesel-scope data."
+title = "Part B — Excel with equipment-log columns"
+description = "Retained real signed-in development evidence. Reports contain screenshots and explicitly state verification limitations."
 logical_id = "d3755a6c-b33a-4e58-b908-9a85891df5dc"
 content_hash = "sha256:e00f4f3a4ec686cc1f08600b7d098e66e355262364bccb6e4278a43b841995f9"
 size = 25881
 mtime_ms = 1791167884984
-storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d3755a6c-b33a-4e58-b908-9a85891df5dc/a11930c4-628f-4638-a06d-7086ed9d0f72"
-storage_version_token = "1791168173919037"
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d3755a6c-b33a-4e58-b908-9a85891df5dc/58e332f7-4dc6-4c3b-ba72-40d288e0c6d5"
+storage_version_token = "1791171866249555"
 content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 [[outputs]]
 id = "lFfpXiKZsxQ3Mi3Xyj1gG"
 uri = "file://.agents/outputs/vb-export-02-b/downloads/NARASIMHULU_2026-08-01_to_2026-10-04_UNSAVED.pdf"
 type = "pdf"
-title = "Part B — actual PDF with equipment log facts"
-description = "Real signed-in development exports and screenshots; the report identifies missing historical source links and unavailable diesel-scope data."
+title = "Part B — PDF with equipment-log facts"
+description = "Retained real signed-in development evidence. Reports contain screenshots and explicitly state verification limitations."
 logical_id = "a7bbbcc0-0168-40ce-ab9c-6f518f3a2596"
 content_hash = "sha256:a7776d89d53019d87d4a29b56a6dd75324600b24e7a8680613bde3cc7eefad16"
 size = 299180
 mtime_ms = 1791167886349
-storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/a7bbbcc0-0168-40ce-ab9c-6f518f3a2596/89d0f2a7-6bb9-440e-9a74-3efea9a34c7d"
-storage_version_token = "1791168176433556"
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/a7bbbcc0-0168-40ce-ab9c-6f518f3a2596/8958dc4c-ff02-407a-ace8-c8d5e5776e1a"
+storage_version_token = "1791171868976369"
 content_type = "application/pdf"
 
 [[outputs]]
 id = "6xxkfkChMNrMtUfVincF7"
 uri = "file://.agents/outputs/vb-export-02-a/part-a-evidence-and-publish-preview.html"
 type = "html"
-title = "Part A — screenshots, exact totals, Z1 checksums and Publish preview"
-description = "Retained real development exports. The evidence report explicitly identifies missing native Save As and restricted-user screenshots."
+title = "Part A — screenshot evidence, totals and checksums"
+description = "Retained real signed-in development evidence. Reports contain screenshots and explicitly state verification limitations."
 logical_id = "860baacc-f973-4e45-8006-12c593047306"
 content_hash = "sha256:930f7f1da3b2e6ed45d2b1944ef22075eccac51bae25b8ec49ed819c18837aab"
 size = 1383823
 mtime_ms = 1791171029041
-storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/860baacc-f973-4e45-8006-12c593047306/2ae00223-353f-46c4-9384-56e074ca7ae6"
-storage_version_token = "1791171050580335"
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/860baacc-f973-4e45-8006-12c593047306/4ee7e98d-8615-4731-9254-7ee545b80499"
+storage_version_token = "1791171849894623"
 content_type = "text/html"
