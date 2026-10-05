@@ -8,7 +8,7 @@ Database drift checks must be read-only. Never add a temporary test column.
 
 **How to apply:** Compare existing schema metadata only; do not perform schema-sync writes or test DDL.
 
-For the transport rate-card expansion, do not run any migration until the user has seen and approved the Publish preview SQL. Leave the current whole-bill export and equipment-log detail (A+B) together unchanged. Do not start Part C until A+B is published.
+For the transport rate-card expansion, do not start Part C or run any migration until the user has seen and approved the schema preview SQL for its three new nullable columns. Leave the whole-bill export and equipment-log detail (A+B) together unchanged.
 
 **Why:** The user explicitly repeated this approval requirement.
 
