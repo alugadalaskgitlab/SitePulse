@@ -49,6 +49,8 @@ import { BillDateGroupControls, BillDateGroupRows } from "@/components/vendor-bi
 import { isTrulyBlankManualBillRow } from "@/lib/vendorBillBlankRows";
 import RateCards from "@/pages/RateCards";
 import PayablesPreviewPanel from "@/components/vendor-bills/PayablesPreviewPanel";
+import { applyTransportCard, changeTransportBasis } from "@shared/vendorBillTransport";
+import { TransportPricingRow } from "@/components/vendor-bills/TransportPricingRow";
 import { calcCandidateAmount, groupRateItems, stripSourceSuffix, canonicalMachineName, canonicalTransportName, canonicalMatName, deriveLabourKey, type RateGroup as SharedRateGroup } from "@shared/vendorBillCandidates";
 
 const formatDate = (dateStr: string | null | undefined) => {
@@ -77,6 +79,8 @@ const formatTimestamp = (ts: string | Date | null | undefined): string | null =>
 type ViewMode = "list" | "form" | "detail";
 
 interface LineItem {
+  transportPricing?: import("@shared/vendorBillTransport").TransportPricing | null;
+  actualMt?: number | null;
   equipmentLogEvidence?: EquipmentLogEvidence | null;
   date: string;
   category: string;
@@ -1122,6 +1126,7 @@ export default function VendorBills() {
         sourceId: (item as any).sourceId ?? null,
         equipmentId: item.equipmentId || null,
         leadDistance: item.leadDistance ?? null,
+        transportPricing: item.transportPricing ?? null,
         siteName: inferSiteNameFromDescription(item.description, item.siteName) || null,
         suppliedTo: item.suppliedTo ?? null,
         transporter: item.transporter ?? null,
@@ -1220,6 +1225,12 @@ export default function VendorBills() {
           let manualConversionCount = 0;
           for (let i = 0; i < mapped.length; i++) {
             const item = mapped[i];
+            const priced = applyTransportCard(item, rateCards, vendorName);
+            if (priced !== item) {
+              mapped[i] = priced;
+              appliedCount++;
+              continue;
+            }
             if (item.rate === 0) {
               const group = groupRateItems([item])[0];
               const conversion = group
@@ -1677,13 +1688,14 @@ export default function VendorBills() {
       updated[index] = { ...updated[index], [field]: value, initialBlank: false };
       if (field === "qty" || field === "rate") {
         updated[index].unitRateWarning = undefined;
-        if (field === "qty") {
+        if (field === "qty" && !updated[index].transportPricing) {
           updated[index].physicalQuantity = value;
           updated[index].physicalUnit = updated[index].unit;
         }
       }
       if (field === "category" && value !== "transport") {
         updated[index].leadDistance = null;
+        updated[index].transportPricing = null;
       }
       if (field === "qty" || field === "rate" || field === "leadDistance" || field === "category") {
         updated[index].amount = calcAmount(updated[index]);
@@ -1813,6 +1825,7 @@ export default function VendorBills() {
 
   const applyRateToSimilar = (sourceIdx: number) => {
     const source = lineItems[sourceIdx];
+    if (source.transportPricing) return;
     if (!source.rate || source.rate <= 0) return;
     const sourceEntryType = source.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/)?.[1] || "";
     let applied = 0;
@@ -1821,6 +1834,7 @@ export default function VendorBills() {
       const updated = [...prev];
       for (let i = 0; i < updated.length; i++) {
         if (i === sourceIdx) continue;
+        if (updated[i].transportPricing) continue;
         const itemEntryType = updated[i].description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/)?.[1] || "";
         const sameEquipment = source.equipmentId && updated[i].equipmentId === source.equipmentId;
         const sameType = sourceEntryType && itemEntryType === sourceEntryType;
@@ -1946,6 +1960,7 @@ export default function VendorBills() {
     const updated = [...lineItems];
     for (let i = 0; i < updated.length; i++) {
       const item = updated[i];
+      if (item.transportPricing) continue;
       if (["hire_group", "hire_statement"].includes(String(item.source || "").toLowerCase())) continue;
       const key = groupRateItems([item])[0]?.key;
       if (!key) continue;
@@ -2148,6 +2163,7 @@ export default function VendorBills() {
         sourceId: item.sourceId ?? null,
         equipmentId: item.equipmentId,
         leadDistance: item.leadDistance,
+        transportPricing: item.transportPricing ?? null,
         siteName: item.siteName ||
           (selectedSiteId === "all" ? null : sites.find(site => String(site.id) === selectedSiteId)?.name) ||
           null,
@@ -2157,7 +2173,7 @@ export default function VendorBills() {
     };
 
     const rateCardItems: any[] = [];
-    lineItems.filter(i => i.description && i.rate > 0 && !["hire_group", "hire_statement"].includes(i.source)).forEach(item => {
+    lineItems.filter(i => i.description && i.rate > 0 && !i.transportPricing && !["hire_group", "hire_statement"].includes(i.source)).forEach(item => {
       let itemKey = "";
       if (item.category === "transport") {
         const canonical = canonicalTransportName(item.description);
@@ -2626,7 +2642,7 @@ export default function VendorBills() {
                     if (item.source === "manual") {
                       const updated = { ...item, category: newCat };
                       if (newUnit) updated.unit = newUnit;
-                      if (newCat !== "transport") updated.leadDistance = null;
+                      if (newCat !== "transport") { updated.leadDistance = null; updated.transportPricing = null; }
                       updated.amount = calcAmount(updated);
                       return updated;
                     }
@@ -3567,6 +3583,10 @@ export default function VendorBills() {
                       />
                     )}
                     <EquipmentLogFacts category={item.category} evidence={item.equipmentLogEvidence} rowKey={`form-${idx}`} />
+                    <TransportPricingRow item={item} onBasisChange={basis => {
+                      unitEditGeneration.current++;
+                      setLineItems(rows => rows.map((row, i) => i === idx ? changeTransportBasis(row, basis) : row));
+                    }} />
                   </td>
                   {hasSuppliedOrTransporter && (
                     <td className="px-2 py-1.5">
@@ -3579,7 +3599,7 @@ export default function VendorBills() {
                     </td>
                   )}
                   <td className="px-2 py-1.5">
-                    {item.category === "transport" ? (
+                    {item.category === "transport" && !item.transportPricing ? (
                       <div className="space-y-0.5">
                         <Input
                           type="number"
@@ -3598,7 +3618,7 @@ export default function VendorBills() {
                         type="number"
                         step="0.01"
                         value={item.qty || ""}
-                        disabled={["hire_group", "hire_statement"].includes(item.source)}
+                        disabled={!!item.transportPricing || ["hire_group", "hire_statement"].includes(item.source)}
                         onChange={e => updateLineItem(idx, "qty", parseFloat(e.target.value) || 0)}
                         className="text-sm h-8"
                         onWheel={e => (e.target as HTMLInputElement).blur()}
@@ -3607,7 +3627,7 @@ export default function VendorBills() {
                     )}
                   </td>
                   <td className="px-2 py-1.5">
-                    <Select value={item.unit} onValueChange={v => updateLineItem(idx, "unit", v)} disabled={["hire_group", "hire_statement"].includes(item.source)}>
+                    <Select value={item.unit} onValueChange={v => updateLineItem(idx, "unit", v)} disabled={!!item.transportPricing || ["hire_group", "hire_statement"].includes(item.source)}>
                       <SelectTrigger className={`h-8 text-sm ${item.unitRateWarning ? "border-amber-600" : ""}`} data-testid={`select-item-unit-${idx}`}>
                         <SelectValue />
                       </SelectTrigger>
@@ -4583,6 +4603,7 @@ export default function VendorBills() {
                     <div className="space-y-1">
                       <span>{item.description}</span>
                       <EquipmentLogFacts category={item.category} evidence={item.equipmentLogEvidence as EquipmentLogEvidence | null | undefined} rowKey={`detail-${idx}`} />
+                      <TransportPricingRow item={item} />
                       <div className="flex items-center gap-1 flex-wrap">
                         {(() => {
                           const badge = parseSiteBadge(item);

@@ -1,0 +1,7 @@
+{
+  "baselineCount": 491,
+  "currentCount": 491,
+  "added": [],
+  "removed": [],
+  "method": "Compare source file, baseline-mapped line, TypeScript error code and multiplicity. Ignore columns and inferred-type display/property-order differences. Baseline extracted from f3cae60 with the same installed dependencies."
+}

@@ -1,0 +1,156 @@
+High Lane Constructions Pvt Ltd / VENDOR BILL
+Vendor: NARASIMHULU | Bill: Not yet saved | Status: UNSAVED
+Bill date: 2026-10-05 | Period: 2026-01-01 to 2026-10-05
+Site: All sites | Bill type: TRANSPORT | Generated: 2026-10-05T06:51:37.862Z
+DRAFT - NOT A FINAL BILL
+
+
+
+
+                                                                                                                                                            I L L
+ Transport
+
+                                                                                                                                         L                B
+ Date         Type        Description         Site   Supplied
+                                                     To
+                                                                Transporter   Vehicle   Receipt   Lead
+                                                                                                  (KM)
+                                                                                                         Transport
+                                                                                                         pricing
+                                                                                                                     Transport working
+
+
+                                                                                                                                    IN A         Card
+                                                                                                                                                 lead
+                                                                                                                                                        Lead
+                                                                                                                                                        difference
+                                                                                                                                                                     Physical
+                                                                                                                                                                     quantity
+                                                                                                                                                                                Physical
+                                                                                                                                                                                unit
+                                                                                                                                                                                           Billed in          Billed
+                                                                                                                                                                                                              status
+                                                                                                                                                                                                                       Qty     Unit   Rate   Amount
+
+
+
+                          05-FEB-2026
+                                                                                                         basis
+
+
+
+                                                                                                                 A F                             (km)
+
+                                                                                                                                                                                                                                             30,270.80
+
+ 2026-02-05   Transport   TS15UE4470 -
+                          DTPL-BASAVAKALYAN
+                                                                                                O
+                                                                                                  14     Per MT
+                                                                                                               T     Rs. 26,600/trip (Rs.
+                                                                                                                     950/km x 14 km x 2) / Rs.
+                                                                                                                                                 12     lead 14 km
+                                                                                                                                                        (card 12
+                                                                                                                                                                     1          TRIP       HLC/VB/2026/0001   PAID     34.14   MT     950    30,270.80
+
+                          (34.14 MT)
+
+                                                                                            - N                      886.67/MT / payload 30
+                                                                                                                     MT / carried 34.14 MT
+                                                                                                                                                        km)
+
+
+                          01-MAR-2026
+
+                                                                           F T                                                                                                                                                               22,800.00
+
+
+                                                                         A
+                                                                DR
+ 2026-03-01   Transport   TA15UF7763 -                                                            12     Per trip    Rs. 22,800/trip (Rs.        12                                        HLC/VB/2026/0004   PAID     1.00    TRIP   950    22,800.00
+                          DTPL-RAJESHWAR                                                                             950/km x 12 km x 2) / Rs.
+                          (45 MT)                                                                                    760/MT / payload 30 MT
+                                                                                                                     / carried 45 MT
+
+                          Transport TOTAL                                                                                                                                                                                                    53,070.80
+
+
+
+
+                                                                                                                                                                                                                                             Page 1 of 2
+High Lane Constructions Pvt Ltd / VENDOR BILL
+Vendor: NARASIMHULU | Bill: Not yet saved | Status: UNSAVED
+Bill date: 2026-10-05 | Period: 2026-01-01 to 2026-10-05
+Site: All sites | Bill type: TRANSPORT | Generated: 2026-10-05T06:51:37.862Z
+DRAFT - NOT A FINAL BILL
+
+
+
+
+                                                                                                                             I L L
+ BILL SUMMARY / ADJUSTMENTS
+
+                                                                                                                       L   B
+ Detail                                                                         Value / Amount
+
+
+                                                                                                                  IN A               Reason / Reference
+
+ Company
+
+ Vendor                                                                                             F
+                                                                                High Lane Constructions Pvt Ltd
+
+                                                                                NARASIMHULU
+                                                                                                  A
+ Bill number
+
+                                                                                   O
+                                                                                Not yet saved
+                                                                                                T
+ Bill date
+
+                                                                               - N
+                                                                                2026-10-05
+
+
+
+
+                                                                      FT
+ Period from                                                                    2026-01-01
+
+
+
+
+                                                            RA
+ Period to                                                                      2026-10-05
+
+ Site
+
+ Bill type                                                 D                    All sites
+
+                                                                                TRANSPORT
+
+ Status                                                                         Unsaved
+
+ Generated                                                                      2026-10-05T06:51:37.862Z
+
+ DRAFT - NOT A FINAL BILL
+
+ SUB-TOTAL                                                                      53,070.80
+
+ GST @ 0%                                                                       0.00
+
+ TOTAL GST                                                                      0.00
+
+ ADVANCE DEDUCTION                                                              0.00
+
+ IT TDS @ 0%                                                                    -0.00
+
+ NET PAYABLE                                                                    53,070.80
+
+
+
+
+                                                                                                                                                          Page 2 of 2
+

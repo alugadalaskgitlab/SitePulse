@@ -1567,6 +1567,7 @@ export interface IStorage {
   // VB18: additive bill-level adjustment list. Nullable for legacy rows;
   // newly created rows receive an empty JSON array by default.
   ensureVendorBillAdditionalAdjustmentsColumn(): Promise<void>;
+  ensureTransportPricingColumn(): Promise<void>;
   ensureMaterialReceiptDieselLinkColumn(): Promise<void>;
   getDieselRequirementReceipts(requirementIds: number[]): Promise<MaterialReceipt[]>;
   deleteVendorBill(id: number): Promise<boolean>;
@@ -17720,6 +17721,7 @@ export class DatabaseStorage implements IStorage {
             source: item.source || "manual",
             equipmentId: item.equipmentId,
             leadDistance: item.leadDistance ?? null,
+            transportPricing: item.transportPricing ?? null,
             siteName: (item as any).siteName?.toUpperCase() || null,
             suppliedTo: item.suppliedTo ?? null,
             transporter: item.transporter ?? null,
@@ -17974,6 +17976,7 @@ export class DatabaseStorage implements IStorage {
             source: item.source || "manual",
             equipmentId: item.equipmentId,
             leadDistance: item.leadDistance ?? null,
+            transportPricing: item.transportPricing ?? null,
             siteName: (item as any).siteName?.toUpperCase() || null,
             suppliedTo: item.suppliedTo ?? null,
             transporter: item.transporter ?? null,
@@ -18028,6 +18031,10 @@ export class DatabaseStorage implements IStorage {
     await db.execute(sql.raw(
       `ALTER TABLE vendor_bills ADD COLUMN IF NOT EXISTS additional_adjustments jsonb DEFAULT '[]'::jsonb`,
     ));
+  }
+
+  async ensureTransportPricingColumn(): Promise<void> {
+    await db.execute(sql.raw(`ALTER TABLE vendor_bill_items ADD COLUMN IF NOT EXISTS transport_pricing jsonb`));
   }
 
   // 06M-C: idempotent additive migration — nullable linkage from a Diesel
@@ -18448,10 +18455,10 @@ export class DatabaseStorage implements IStorage {
     ];
   }
 
-  async getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null, siteName?: string | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null })[]> {
+  async getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null, siteName?: string | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null; actualMt?: number | null; physicalQuantity?: number; physicalUnit?: string | null })[]> {
     const vendorVariants = await this.resolveVendorAliases(vendorName);
     const bt = billType.toLowerCase();
-    const items: (Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null })[] = [];
+    const items: (Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null; actualMt?: number | null; physicalQuantity?: number; physicalUnit?: string | null })[] = [];
 
     const entryTypeLabel = (entryType: string | null) => {
       switch ((entryType || "").toLowerCase()) {
@@ -18904,6 +18911,7 @@ export class DatabaseStorage implements IStorage {
           date: typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0],
           category: "transport",
           description: `${(row.truckNumber || "TRUCK").toUpperCase()} → ${(row.deliveryLocation || "").toUpperCase()} (${row.loadWeight || 0} MT)`,
+          actualMt: row.loadWeight ?? null,
           qty: 1,
           unit: "TRIP",
           source: "auto",
@@ -18940,6 +18948,8 @@ export class DatabaseStorage implements IStorage {
           date: typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0],
           category: "transport",
           description: `MATERIAL TRANSPORT: ${(row.materialName || "MATERIAL").toUpperCase()} (${row.quantity} ${row.uom})${challanPart}${vehiclePart}`,
+          physicalQuantity: row.quantity,
+          physicalUnit: row.uom,
           qty: 1,
           unit: "TRIP",
           source: "auto",
@@ -22150,7 +22160,7 @@ export class DatabaseStorage implements IStorage {
       });
       const items = assertRows(bundle.items, vendorBillItems, "vendor_bills.items", [
         "id", "billId", "date", "category", "description", "qty", "unit", "rate", "amount", "source",
-        "equipmentId", "leadDistance", "siteName", "suppliedTo", "transporter", "hireStatementId",
+        "equipmentId", "leadDistance", "transportPricing", "siteName", "suppliedTo", "transporter", "hireStatementId",
       ]);
       const statements = assertRows(bundle.hireStatements, hireStatements, "vendor_bills.hireStatements", [
         "id", "equipmentId", "vendorName", "billingBasis", "rate", "monthlyDivisorType", "monthlyDivisor",

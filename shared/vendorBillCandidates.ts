@@ -1,4 +1,5 @@
 import { vendorBillAutoSourceIdentity } from "../client/src/lib/vendorBillRateSelection";
+import type { TransportPricing } from "./vendorBillTransport";
 
 export function stripSourceSuffix(desc: string): string {
   return desc.replace(/\s*\(SITE-UNLINKED\)\s*/gi, " ").replace(/\s*\(SITE TRIP MATERIAL\)\s*/gi, " ").replace(/\s*\(SITE TRIP\)\s*/gi, " ").replace(/\s*\(SITE\)\s*/gi, " ").replace(/\s*\(PLANT\)\s*/gi, " ").trim();
@@ -82,10 +83,16 @@ export function mapAutoBillItem(item: any) {
     leadDistance: item.leadDistance ?? null, siteName: item.siteName || null,
     suppliedTo: item.suppliedTo ?? null, transporter: item.transporter ?? null,
     vehicleNumber: item.vehicleNumber ?? null, receiptNumber: item.receiptNumber ?? null,
-    vendorName: item.vendorName ?? null, physicalQuantity: Number(item.qty) || 0, physicalUnit: item.unit || "HRS",
+    vendorName: item.vendorName ?? null,
+    physicalQuantity: item.physicalQuantity ?? (Number(item.qty) || 0), physicalUnit: item.physicalUnit ?? (item.unit || "HRS"),
+    actualMt: item.actualMt ?? null,
   };
 }
-export function calcCandidateAmount<T extends { category: string; leadDistance?: number | null; qty: number; rate: number }>(item: T): number {
+export function calcCandidateAmount<T extends { category: string; leadDistance?: number | null; qty: number; rate: number; transportPricing?: TransportPricing | null }>(item: T): number {
+  if (item.category === "transport" && item.transportPricing && item.transportPricing.payloadMt > 0) {
+    const tripRate = (item.leadDistance || 0) * 2 * (item.rate || 0);
+    return (item.transportPricing.basis === "mt" ? tripRate / item.transportPricing.payloadMt : tripRate) * (item.qty || 0);
+  }
   if (item.category === "transport" && item.leadDistance && item.leadDistance > 0) return item.leadDistance * 2 * (item.rate || 0);
   return (item.qty || 0) * (item.rate || 0);
 }

@@ -4917,3 +4917,45 @@ mtime_ms = 1791176917874
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/26e30933-f618-4e45-9ee3-cf72b3327f3a/b6bc4858-120c-4fa1-9e54-814205956d53"
 storage_version_token = "1791177058922253"
 content_type = "text/csv"
+
+[[outputs]]
+id = "owJqQuu_XG9kbet6Gk6hk"
+uri = "file://.agents/outputs/vb-export-02-d/verification-report.html"
+type = "html"
+title = "Part D verification report"
+description = "Signed-in screenshots, pricing checks, data-integrity checksums, test results, changed files and Publish SQL."
+logical_id = "2ae07e79-210b-4416-927b-dc7789dc4b82"
+content_hash = "sha256:60497c6a0b181b5fcf55c1757e76899afc50e0aa47d687fa68aefdd8316c41f4"
+size = 894464
+mtime_ms = 1791183395448
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/2ae07e79-210b-4416-927b-dc7789dc4b82/89ade712-ab1f-4633-8e75-709b7f34ff8c"
+storage_version_token = "1791183459744501"
+content_type = "text/html"
+
+[[outputs]]
+id = "PSx4MoCDWtR4v0zhG3fNc"
+uri = "file://.agents/outputs/vb-export-02-d/downloads/NARASIMHULU_2026-01-01_to_2026-10-05_UNSAVED.xlsx"
+type = "table"
+title = "Part D — actual Excel export"
+description = "Unsaved transport bill with per-trip and per-MT rows; total ₹53,070.80."
+logical_id = "294be693-3e01-42ce-8373-17f338bfc5ff"
+content_hash = "sha256:295c901c581ba4556d55f796d400cb466801de37d628cd1628ea008cd493c0e1"
+size = 22760
+mtime_ms = 1791183095798
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/294be693-3e01-42ce-8373-17f338bfc5ff/6b09a5ab-5ca7-4a43-adf6-60a43629d78a"
+storage_version_token = "1791183461241294"
+content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+[[outputs]]
+id = "ztH4OcaM5_tiLi2pgJEhI"
+uri = "file://.agents/outputs/vb-export-02-d/downloads/NARASIMHULU_2026-01-01_to_2026-10-05_UNSAVED.pdf"
+type = "pdf"
+title = "Part D — actual PDF export"
+description = "The same unsaved bill, including pricing working and lead-distance difference."
+logical_id = "5f581f7f-5dba-4d1a-a4aa-1955b3315baf"
+content_hash = "sha256:6c100c6385ad25ea82eacc3dedcec794262f6d27c7b84ba872103ca1a1db6aac"
+size = 53056
+mtime_ms = 1791183097941
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/5f581f7f-5dba-4d1a-a4aa-1955b3315baf/50ab9c3b-0d00-4e8b-bf98-596649dbd016"
+storage_version_token = "1791183463597016"
+content_type = "application/pdf"

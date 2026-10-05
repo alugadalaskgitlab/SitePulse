@@ -3,6 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations, sql } from "drizzle-orm";
 import { equipmentStatusInputError, equipmentStatusRequiresReason } from "./equipmentStatus";
+import { transportPricingSchema, type TransportPricing } from "./vendorBillTransport";
 
 // === TABLE DEFINITIONS ===
 
@@ -2429,6 +2430,7 @@ export const vendorBillItems = pgTable("vendor_bill_items", {
   source: text("source").default("manual"),
   equipmentId: integer("equipment_id"),
   leadDistance: real("lead_distance"),
+  transportPricing: jsonb("transport_pricing").$type<TransportPricing | null>(),
   siteName: text("site_name"),
   suppliedTo: text("supplied_to"),
   transporter: text("transporter"),
@@ -2543,7 +2545,9 @@ export const hireStatementExceptionsRelations = relations(hireStatementException
 }));
 
 export const insertVendorBillSchema = createInsertSchema(vendorBills).omit({ id: true, createdAt: true, vendorId: true });
-export const insertVendorBillItemSchema = createInsertSchema(vendorBillItems).omit({ id: true });
+export const insertVendorBillItemSchema = createInsertSchema(vendorBillItems, {
+  transportPricing: transportPricingSchema.nullish(),
+}).omit({ id: true });
 export const insertHireStatementSchema = createInsertSchema(hireStatements).omit({ id: true, createdAt: true });
 export const insertHireStatementExceptionSchema = createInsertSchema(hireStatementExceptions).omit({ id: true, createdAt: true });
 export type VendorBill = typeof vendorBills.$inferSelect;

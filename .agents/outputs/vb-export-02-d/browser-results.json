@@ -1,0 +1,32 @@
+{
+  "before": [
+    {
+      "text": "₹22,800/trip (₹950/km × 12 km × 2) · ₹760/MT · payload 30 MT · carried 34.14 MTPer tripPer MTThis row only · rate field is ₹/km",
+      "amount": "22,800.00"
+    },
+    {
+      "text": "₹22,800/trip (₹950/km × 12 km × 2) · ₹760/MT · payload 30 MT · carried 45 MTPer tripPer MTThis row only · rate field is ₹/km",
+      "amount": "22,800.00"
+    }
+  ],
+  "after": [
+    {
+      "text": "₹22,800/trip (₹950/km × 12 km × 2) · ₹760/MT · payload 30 MT · carried 34.14 MTPer tripPer MTThis row only · rate field is ₹/km",
+      "amount": "25,946.40"
+    },
+    {
+      "text": "₹22,800/trip (₹950/km × 12 km × 2) · ₹760/MT · payload 30 MT · carried 45 MTPer tripPer MTThis row only · rate field is ₹/km",
+      "amount": "22,800.00"
+    }
+  ],
+  "leadChanged": [
+    {
+      "text": "₹26,600/trip (₹950/km × 14 km × 2) · ₹886.67/MT · payload 30 MT · carried 34.14 MTlead 14 km (card 12 km)Per tripPer MTThis row only · rate field is ₹/km",
+      "amount": "30,270.80"
+    },
+    {
+      "text": "₹22,800/trip (₹950/km × 12 km × 2) · ₹760/MT · payload 30 MT · carried 45 MTPer tripPer MTThis row only · rate field is ₹/km",
+      "amount": "22,800.00"
+    }
+  ]
+}

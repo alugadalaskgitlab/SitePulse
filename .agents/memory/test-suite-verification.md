@@ -20,3 +20,9 @@ Archive browser downloads per scenario before testing another scenario with the 
 **Why:** In development verification, Chromium's CDP-configured download directory silently replaced an earlier workbook with a later single-type workbook using the identical vendor/period/status filename.
 
 **How to apply:** Copy each completed download into a scenario-specific evidence directory immediately. Verify its sheet inventory before moving to the next case.
+
+Vitest's JSON failure stack can say only `STACK_TRACE_ERROR` when a test exceeds its timeout.
+
+**Why:** This runner version substitutes the test-registration stack into timeout errors. The JSON failure stack can hide the actual timeout message, making timing failures look like unexplained exceptions.
+
+**How to apply:** Compare durations to the configured test timeout and inspect the runner's timeout serialization before diagnosing a functional regression. Preserve the original failed run and unchanged rerun evidence.

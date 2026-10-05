@@ -1,0 +1,15 @@
+{
+  "passed": 4438,
+  "failed": 50,
+  "skipped": 3,
+  "newFailures": [
+    {
+      "name": "tests/perm01MatrixUi.test.tsx: PERM-01 C actual permissions dialog partial manager: owned hub alias can be enabled/revoked without exceeding grant cap",
+      "error": "Error: STACK_TRACE_ERROR\n    at task (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1784:27)\n    at Object.<anonymous> (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1817:16)\n    at Object.<anonymous> (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1563:28)\n    at chain (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:599:14)\n    at /home/runner/workspace/tests/perm01MatrixUi.test.tsx:149:3\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1889:40\n    at runWithSuite (file:///home/runner/workspace/node_modules/@vitest/r"
+    },
+    {
+      "name": "tests/perm01MatrixUi.test.tsx: PERM-01 C actual permissions dialog group Grant all uses hub Access and leaves inactive historical fields unchanged",
+      "error": "Error: STACK_TRACE_ERROR\n    at task (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1784:27)\n    at Object.<anonymous> (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1817:16)\n    at Object.<anonymous> (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1563:28)\n    at chain (file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:599:14)\n    at /home/runner/workspace/tests/perm01MatrixUi.test.tsx:165:3\n    at file:///home/runner/workspace/node_modules/@vitest/runner/dist/chunk-artifact.js:1889:40\n    at runWithSuite (file:///home/runner/workspace/node_modules/@vitest/r"
+    }
+  ]
+}

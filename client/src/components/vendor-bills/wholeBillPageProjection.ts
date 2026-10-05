@@ -1,4 +1,5 @@
 import { isTrulyBlankManualBillRow } from "@/lib/vendorBillBlankRows";
+import { transportWorking, type TransportPricing } from "@shared/vendorBillTransport";
 import { projectEquipmentLogEvidence, type EquipmentLogEvidence } from "./equipmentLogEvidence";
 import { projectWholeBillScreenSections } from "./wholeBillScreenProjection";
 import type { EquipmentHireExportData } from "./EquipmentHireBillOutput";
@@ -13,6 +14,7 @@ type ScreenItem = {
   physicalQuantity?: number; physicalUnit?: string; unitRateWarning?: string;
   billedIn?: { billNo: string; billStatus: string } | null;
   equipmentLogEvidence?: EquipmentLogEvidence | null;
+  transportPricing?: TransportPricing | null;
 };
 const categories = ["equipment", "material", "transport", "labour", "other"];
 const labourSources = [
@@ -44,6 +46,14 @@ export function projectVendorBillPageItems({
       siteName: getSiteLabel(item), suppliedTo: item.suppliedTo, transporter: item.transporter,
       vehicleNumber: item.vehicleNumber, receiptNumber: item.receiptNumber, leadDistance: item.leadDistance,
       details: {
+        ...(item.transportPricing ? {
+          "Transport pricing basis": item.transportPricing.basis === "trip" ? "Per trip" : "Per MT",
+          "Transport working": transportWorking(item)!,
+          "Card lead (km)": item.transportPricing.cardLeadDistanceKm,
+          ...(item.leadDistance !== item.transportPricing.cardLeadDistanceKm ? {
+            "Lead difference": `lead ${item.leadDistance ?? 0} km (card ${item.transportPricing.cardLeadDistanceKm} km)`,
+          } : {}),
+        } : {}),
         ...(item.category === "equipment" ? projectEquipmentLogEvidence(item.equipmentLogEvidence).columns : {}),
         ...(diesel && Number(diesel[1]) > 0 ? { "Diesel (L)": Number(diesel[1]) } : {}),
         ...(item.physicalQuantity != null && item.physicalUnit && item.physicalUnit !== item.unit

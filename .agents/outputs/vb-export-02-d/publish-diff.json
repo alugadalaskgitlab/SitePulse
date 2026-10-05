@@ -1,0 +1,15 @@
+{
+  "columnsToRemove": [],
+  "hasDiff": true,
+  "hasStructuralDataLoss": false,
+  "matViewsToRemove": [],
+  "maybeNonBackwardsCompatible": false,
+  "schemasToRemove": [],
+  "statementsToExecute": [
+    "ALTER TABLE \"vendor_bill_items\" ADD COLUMN \"transport_pricing\" jsonb;"
+  ],
+  "success": true,
+  "tablesToRemove": [],
+  "tablesToTruncate": [],
+  "warnings": []
+}

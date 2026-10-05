@@ -14,3 +14,9 @@ The user requires basis writes to come only through existing-row rate-card setup
 **Why:** Future Tally ledger mapping depends on stable names and identities. Duplicate-looking rows are review findings, not permission to merge, delete or rename.
 
 **How to apply:** Keep setup update-only with an exact stored identity and a three-column allowlist. Audit saved cards separately from unsaved historical discovery suggestions. Do not change existing naming policies as part of a naming audit.
+
+Transport billing is opt-in when pulling new rows. Persist the row's pricing basis, payload, original card lead and actual carried weight as a frozen snapshot; never derive historical bills from today's rate cards.
+
+**Why:** The user requires old saved amounts to remain unchanged and row-level overrides never to flow back into standing rates. Actual carried MT is independent of the card's rated payload.
+
+**How to apply:** Keep the legacy NULL-snapshot calculation unchanged. Prefer an exact card identity, otherwise use only a single unambiguous configured transport card from the vendor-scoped response. Never infer weight from descriptions or volume. Exclude opted-in lines from legacy rate write-back and bulk flat-rate replacement.

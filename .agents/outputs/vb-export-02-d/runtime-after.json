@@ -1,0 +1,30 @@
+{
+  "vendor_rate_cards": {
+    "count": 11,
+    "checksum": "f6117403b108cd610d68e5097ccbeca1"
+  },
+  "vendor_bills": {
+    "count": 45,
+    "checksum": "93d5f93cf668fa9315ff2bb2e7da5dcd"
+  },
+  "vendor_bill_items": {
+    "count": 172,
+    "checksum": "df5a41ef043b2a3e0e383b89d1e9d613"
+  },
+  "hire_statements": {
+    "count": 0,
+    "checksum": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "equipment_usage": {
+    "count": 73,
+    "checksum": "feca2812e390aca11f15eab6100c2937"
+  },
+  "site_material_trips": {
+    "count": 6,
+    "checksum": "49a281949ee22c82e29b0243547cc084"
+  },
+  "store_issues": {
+    "count": 4,
+    "checksum": "708464928e7d20da36ad6bee0a9f4b34"
+  }
+}
