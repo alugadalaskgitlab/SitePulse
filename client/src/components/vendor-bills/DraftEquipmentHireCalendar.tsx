@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { EquipmentPerformanceReport } from "@shared/equipmentPerformance";
 import {
@@ -15,6 +15,7 @@ import {
 } from "@/components/vendor-bills/EquipmentHireBillOutput";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import type { BillExportCalendar } from "./wholeBillSnapshot";
 
 type CalendarMode = "draft" | "detail";
 
@@ -63,6 +64,8 @@ export type DraftEquipmentHireCalendarProps = {
   mode?: CalendarMode;
   children?: ReactNode;
   testId?: string;
+  /** Optional read-only seam for whole-bill exports; never initiates a query. */
+  onExportSnapshot?: (calendar: BillExportCalendar) => void;
 };
 
 /**
@@ -88,6 +91,7 @@ export default function DraftEquipmentHireCalendar({
   mode = "draft",
   children,
   testId,
+  onExportSnapshot,
 }: DraftEquipmentHireCalendarProps) {
   const [showDailyActivity, setShowDailyActivity] = useState(false);
   const validRequest = Number(equipmentId) > 0 && !!periodFrom && !!periodTo && periodFrom <= periodTo;
@@ -157,6 +161,16 @@ export default function DraftEquipmentHireCalendar({
       : undefined,
     [exportData, masterMeterType, performance?.currentLocation],
   );
+  const exportSnapshotCallback = useRef(onExportSnapshot);
+  exportSnapshotCallback.current = onExportSnapshot;
+  useEffect(() => {
+    exportSnapshotCallback.current?.({
+      equipmentName: equipmentName || liveExportData?.equipmentName || `Equipment #${equipmentId}`,
+      periodFrom, periodTo, rows, dieselResponsibility, consumptionNorm, meterType: masterMeterType,
+      unavailableReason: query.isSuccess ? undefined : stateMessage || "Daily activity unavailable.",
+    });
+  }, [equipmentId, equipmentName, liveExportData?.equipmentName, periodFrom, periodTo, rows,
+    dieselResponsibility, consumptionNorm, masterMeterType, query.isSuccess, stateMessage]);
 
   if (mode === "detail") {
     return (
@@ -251,9 +265,11 @@ export default function DraftEquipmentHireCalendar({
 export function SavedEquipmentCalendarExport({
   bill,
   onExportBill,
+  onExportSnapshot,
 }: {
   bill: any;
   onExportBill: (format: EquipmentHireExportFormat) => void | Promise<void>;
+  onExportSnapshot?: (calendar: BillExportCalendar) => void;
 }) {
   const equipmentItems = useMemo(
     () => (Array.isArray(bill?.items) ? bill.items : []).filter((item: any) =>
@@ -320,6 +336,16 @@ export function SavedEquipmentCalendarExport({
     paid: Number(bill?.amountPaid || 0),
   }), [bill, equipmentName, periodFrom, periodTo]);
   const [choiceOpen, setChoiceOpen] = useState(false);
+  const savedSnapshotCallback = useRef(onExportSnapshot);
+  savedSnapshotCallback.current = onExportSnapshot;
+  useEffect(() => {
+    savedSnapshotCallback.current?.({
+      equipmentName, periodFrom, periodTo, rows,
+      unavailableReason: reports.isFetching || reports.isPending
+        ? "Loading daily equipment activity…"
+        : reports.isError ? "Could not load daily equipment activity." : undefined,
+    });
+  }, [equipmentName, periodFrom, periodTo, rows, reports.isFetching, reports.isPending, reports.isError]);
   const [exporting, setExporting] = useState(false);
   const exportSelection = async (format: EquipmentHireExportFormat, mode: "calendar" | "bill" | "both") => {
     setExporting(true);

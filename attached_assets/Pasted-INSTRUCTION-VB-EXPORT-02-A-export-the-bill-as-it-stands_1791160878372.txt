@@ -1,0 +1,129 @@
+INSTRUCTION VB-EXPORT-02: (A) export the bill as it stands on screen at EVERY stage including unsaved, (B) equipment rows must carry their log detail, (C) transport rate card with lead distance + payload, (D) those rates flow into the pulled items
+
+READ THIS FIRST
+Four parts. Build in the order A → B → C → D and report A on its own before starting B.
+This is NOT the payables preview built in VB-EXPORT-01 Part B. Do not change, move or remove the payables preview — leave it exactly as it is. This instruction works on the BILL FORM and the VENDOR RATE CARDS screen.
+Do NOT change any existing stored value, existing rate, GST logic, deduction/TDS logic, hire-billing calculation, pull/candidate selection logic, bill status machine or DPR/equipment-log data. Part C adds columns (additive only, see C6).
+Do not publish automatically. Show the Publish preview and STOP after this batch and report back.
+
+WHY (state of the code today — verified)
+- client/src/pages/VendorBills.tsx has exactly ONE export on the bill form: EXPORT PDF / EXPORT EXCEL inside the equipment-hire section (~2856-2857, exportEquipmentHireBill). There is no way to export the WHOLE bill — all types together, with the rates just typed — at any stage.
+- A pulled equipment row's description shows only the machine name and hours ("JCB-SITE (SITE) - DAILY HIRE | 2.6 HRS"). The readings, clock times, diesel scope, litres issued and consumption are all already stored and already rendered on the Site Report, but the bill form does not show them.
+- Transport pricing: shared/schema.ts already has leadDistance (line ~2431) and shared/vendorBillCandidates.ts calcCandidateAmount (line ~89) already computes transport as leadDistance * 2 * rate — the two-way doubling exists. What is missing is PAYLOAD, so the app can produce a per-trip figure but never a per-MT figure.
+- The estimator ALREADY has exactly the formula the owner wants, in client/src/lib/mixCalc.ts: transPerMT = transDist * 2 * transRate / transPayload, with labels "Transport Distance (km)", "Transport Rate (₹/km/load)", "Transport Payload (MT)" (lines ~270-271, ~465-467); the same shape is used for aggregate freight (~214-215). REUSE THAT FORMULA. Do not invent a second one.
+
+=====================================================================
+PART A — EXPORT THE BILL AS IT STANDS (do this first, report it on its own)
+=====================================================================
+A1. On the vendor bill form (NEW VENDOR BILL, and the edit/view of an existing bill) add two buttons:
+    "EXPORT EXCEL"  ·  "EXPORT PDF"
+    Place them in the form header row near the BILL STATUS chips (reachable without scrolling) AND beside CANCEL / SAVE BILL at the bottom.
+A2. They work at EVERY stage, no exception:
+    - before the bill has ever been saved (items pulled, rates typed, nothing saved)
+    - DRAFT · VERIFIED · APPROVED · PAID
+    Status never disables them. Only the permission check in A8 hides them.
+A3. They export EXACTLY what is on screen at that moment: the pulled items, their grouping and order, quantities, the rates the user typed (saved or not), the computed amounts, the full ADJUSTMENTS block (GST on equipment, advance deduction, additional deductions/credits with their reasons, IT TDS) and the final total. Nothing is re-fetched from the server; nothing is recalculated by a different path than the on-screen figures.
+A4. Export must NOT save the bill, create a draft, change status, or write any record. After an export the form is unchanged, including unsaved edits.
+A5. EXCEL CONTENT
+    - BILL TYPE = a single type: one workbook, TWO sheets.
+      "Summary": vendor · bill number or "Not yet saved" · bill date · period from → to · site · bill type · status or "Unsaved" · generated date/time · then sub-total, GST, each deduction/credit by name, TDS, NET PAYABLE.
+      "<Type>": one row per line item in the same order and grouping as the screen — Date · Type · Description · (the sub-lines as their OWN columns, not crammed into one cell) · Qty · Unit · Rate · Amount. Date-group sub-totals as on screen, then the type total.
+    - BILL TYPE = "All Types (Combined)": one workbook, "Summary" sheet FIRST, then ONE SHEET PER TYPE THAT HAS ITEMS — "Equipment", "Materials", "Transport", "Labour", "Other". A type with no items gets NO sheet. The Summary shows a line per type with its sub-total, then the same totals block ending in NET PAYABLE.
+    - Equipment hire rows REUSE the existing exportEquipmentHireBill / equipmentHireActivitySheetRows formatting including the day-by-day activity/breakdown calendar, so figures match the saved hire bill. Do not write a second hire layout.
+A6. PDF CONTENT — same content, laid out as a statement: header (HLC name, "VENDOR BILL", vendor, bill number or "Not yet saved", bill date, period, site, bill type, status or "Unsaved", generated date/time) · one table per type that has items with its sub-total · the adjustments block as on screen · NET PAYABLE in bold. Multi-page with repeated header and page numbers. Equipment hire keeps its day-by-day calendar.
+    Watermark: when unsaved or DRAFT, a light diagonal "DRAFT — NOT A FINAL BILL" on every page and the same words under the header. For VERIFIED / APPROVED / PAID print the status in the header, no watermark.
+A7. UNPRICED ROWS: a row with no rate shows a blank Rate and "Rate not set" in Amount — never 0, never a guess. Totals add only priced rows and carry "n rows have no rate — not included in the total". Export is NEVER blocked because rates or GST are missing.
+A8. SAVE DIALOG + FILE NAME: use window.showSaveFilePicker where the browser supports it so the user gets a real "Save as" dialog and picks the folder; fall back to a normal download where it is not supported. Default name:
+    <VENDOR>_<PERIODFROM>_to_<PERIODTO>_<STATUS>.xlsx / .pdf
+    e.g. NARASIMHULU_2026-08-01_to_2026-10-04_DRAFT.xlsx · ..._UNSAVED.pdf · ..._APPROVED.pdf
+    Sanitise the vendor name for file systems (strip / \ : * ? " < > |).
+A9. PERMISSION: both buttons require the canExport already on this page — sectionCan("vendor_bills","view_reports") / vendor_bills_view. HIDDEN (not disabled, not CSS-hidden) for anyone without it, and never shown to field engineers.
+A10. No new server endpoint — build the files in the browser from on-screen state. If you believe you need an endpoint, STOP and report before building it; do not add an ungated one.
+A11. Keep the existing equipment-hire EXPORT PDF / EXPORT EXCEL inside the hire section unchanged. These are in addition.
+
+=====================================================================
+PART B — EQUIPMENT ROWS MUST CARRY THEIR LOG DETAIL
+=====================================================================
+B1. On the bill form, a pulled EQUIPMENT row today reads "JCB-SITE (SITE) - DAILY HIRE | 2.6 HRS". Add the log facts underneath it, as small secondary lines in the Description cell, using the SAME data the Site Report equipment row already renders (equipment_logs + the existing consumption helper shared/dprEquipmentConsumption.ts). Do not add a new API call if the data is already loaded; if it is not, extend the existing bill-items query — read only.
+B2. Show, only when the value exists (never a label with "—"):
+    - Meter: "1.1 h meter (2594.4 → 2595.5)"; for vehicles "82 km (84,320 → 84,402)"
+    - Clock: "09:50 – 17:13 (7.4 h)"
+    - Diesel scope: "Diesel: vendor" / "Diesel: HLC" (whoever bears it, as stored)
+    - Diesel issued: "20 L"
+    - Consumption: "9.6 L/hr (norm 9.0)" or "4.2 km/L (norm 4.5)", with the existing >10% deviation mark from the Site Report (red ▲ above norm, amber ▼ below). No norm or incomplete data → show nothing, not a made-up figure.
+    - Status when not working: "Breakdown — <reason>" / "Idle — <reason>"
+B3. Keep the existing SITE · <site name> chip and the vehicle/receipt sub-lines already shown on material rows.
+B4. These lines are DISPLAY ONLY — they change no amount, no quantity and no rate. The row's Qty/Unit/Rate/Amount behaviour is untouched.
+B5. The Part A exports must carry these facts as their own columns in the Equipment sheet (Opening reading, Closing reading, Meter hours/km, Clock in, Clock out, Clock duration, Diesel scope, Diesel issued L, Consumption, Norm, Deviation %), not jammed into the description cell.
+B6. Do the same for the read-only bill VIEW of a saved bill, so a verified/approved bill shows the same evidence.
+
+=====================================================================
+PART C — TRANSPORT RATE CARD: LEAD DISTANCE + PAYLOAD
+=====================================================================
+Regional practice: transport of mixes is paid ₹ per km, charged two-way, per truck, with a standard payload (normally 30 MT). A single "RATE" box cannot express that — which is why most TRANSPORT rows on the Vendor Rate Cards screen sit at 0.00.
+C1. On the VENDOR RATE CARDS screen (the TRANSPORT block), each row gets a small "RATE SETUP" control opening a dialog with THREE inputs:
+    - Rate (₹ per km per load)
+    - Lead distance — ONE WAY (km)   [label must say one way; the system doubles it]
+    - Payload (MT)  — default 30, editable per row
+    And THREE read-only computed lines, recalculating as the user types:
+    - Two-way distance = lead × 2 (km)
+    - ₹ per trip = rate × lead × 2
+    - ₹ per MT = (rate × lead × 2) ÷ payload
+C2. Use the estimator's formula exactly: perMT = distance * 2 * rate / payload (client/src/lib/mixCalc.ts ~271). Extract it into a shared helper so the estimator and the rate card cannot drift apart; the estimator's behaviour must not change.
+C3. SAVE ALL THREE INPUTS, not only the derived figure — rate, one-way lead distance and payload are each stored on the rate-card row, so months later the basis of a rate is visible.
+C4. Guards: payload must be > 0 (a 0 payload shows "Payload required for ₹/MT" and leaves ₹/MT blank — it never divides by zero and never shows 0). Lead distance 0 or blank → ₹ per trip and ₹ per MT both blank, and the row keeps whatever flat rate was typed.
+C5. The TRANSPORT row then displays, in the list, "₹950/km · 12 km one way · 30 MT → ₹22,800/trip · ₹760/MT" (compact, one line) instead of a bare rate box. Keep the existing UNIT dropdown; when the three fields are filled the unit is derived and shown read-only.
+C6. SCHEMA: this needs new nullable columns on the vendor rate-card row (lead_distance_km real NULL, payload_mt real NULL, rate_per_km real NULL — name them to match existing conventions). ADDITIVE ONLY: no column may be dropped, renamed, made NOT NULL or given a default that rewrites existing rows. Existing rate-card rows keep working untouched with the new columns NULL. Show the Publish preview SQL before anything is published.
+C7. Do not touch the EQUIPMENT, MATERIALS or LABOUR blocks of the rate card.
+
+=====================================================================
+PART D — THOSE RATES FLOW INTO THE PULLED ITEMS
+=====================================================================
+D1. When transport items are pulled into a bill for a vendor whose rate card has the three fields set, each transport row picks up that rate automatically and prices itself.
+D2. Pricing basis — DEFAULT IS PER TRIP:
+    - A trip-based item prices at ₹ per trip (rate × lead × 2), and shows the actual MT carried beside it as INFORMATION only.
+    - A weight-based item (the receipt carries a weight) prices at ₹ per MT × actual MT.
+    - Both bases are visible on the row: "₹22,800/trip (₹950/km × 12 km × 2) · carried 28.4 MT" — so nothing is a black box.
+D3. The user may override the basis ON THE ROW (a small per-trip / per-MT toggle). The override applies to that row only and is never written back to the rate card.
+D4. Where the row's own lead distance differs from the rate card's (the trip record has its own leadDistance), use the ROW's distance and show "lead 14 km (card 12 km)" in amber so the difference is visible. Never silently pick one.
+D5. Existing transport rows on saved bills keep their stored amounts. Do not recalculate or overwrite any saved bill.
+D6. calcCandidateAmount in shared/vendorBillCandidates.ts already does leadDistance * 2 * rate — extend it for the payload/per-MT case rather than adding a parallel function, and keep its current behaviour identical when payload is NULL.
+
+WHAT NOT TO DO
+- Do not change the payables preview from VB-EXPORT-01 Part B.
+- Do not change any GST, deduction, TDS or total calculation. The export reports the screen; it does not compute differently.
+- Do not save, auto-save or create a draft as a side effect of exporting.
+- Do not block an export because rates or GST are missing — export what exists and mark the gaps.
+- Do not create empty sheets for types with no items.
+- Do not change the estimator's behaviour while extracting the shared formula.
+- Do not recalculate any already-saved bill.
+
+TESTS (real signed-in DEVELOPMENT app; attach the actual exported files)
+A1. Vendor NARASIMHULU, 01-Aug-2026 → 04-Oct-2026, All Types (Combined), items pulled, rates set, NOT saved → export Excel: screenshot of the save dialog, then Summary + each type sheet. Bill number reads "Not yet saved"; file name ends _UNSAVED.
+A2. Same bill saved as DRAFT → export PDF: DRAFT watermark visible; NET PAYABLE matches the on-screen total exactly.
+A3. Single-type bill (Material only) → Excel has exactly two sheets: Summary + Materials.
+A4. A bill with unpriced rows (the two SOIL trips at 14 Cum with no rate) → "Rate not set" in Amount, the n-unpriced note, total excluding them.
+A5. An APPROVED bill and a PAID bill → both export, no watermark, status in the header.
+A6. A user without vendor_bills view_reports and a field engineer → neither button present in the DOM.
+B1. An equipment row with full log data → readings, clock, diesel scope, issued litres, consumption + norm + deviation mark all shown; screenshot.
+B2. An equipment row with no closing reading and one on Breakdown → no invented consumption; status + reason shown.
+B3. The Equipment sheet of the export carries the log facts as separate columns; paste the header row.
+C1. Transport rate setup dialog: rate 950, lead 12, payload 30 → two-way 24 km, ₹22,800/trip, ₹760/MT. Screenshot.
+C2. Payload 0 → "Payload required for ₹/MT", no divide-by-zero, ₹/MT blank.
+C3. Reopen the dialog after saving → all three inputs come back as entered.
+C4. The estimator's mix calculation produces IDENTICAL output before and after the shared-helper extraction — show a before/after number for one mix.
+C5. Publish preview SQL for the new columns pasted in full; confirm no drop/rename/NOT NULL/default.
+D1. Pull transport items for that vendor → rows priced per trip with the working shown and actual MT beside it.
+D2. Toggle one row to per-MT → amount changes on that row only; rate card unchanged after reload.
+D3. A trip whose own leadDistance differs from the card → amber "lead 14 km (card 12 km)".
+D4. A saved transport bill from before this change → amounts unchanged after the upgrade; show before/after.
+Z1. Before/after row counts AND content checksums for vendor_bills, hire_statements, equipment_usage, site_material_trips, store_issues taken around a full export run — proving exports wrote nothing.
+Z2. Full test suite counts against the corrected baseline 4,264 passed / 48 failed / 3 skipped. List every test added or updated and why.
+
+REPORT BACK
+1. Part A on its own first: files changed, screenshots A1–A6, the actual .xlsx and .pdf attached.
+2. Then B, C and D with their evidence.
+3. The Publish preview SQL for Part C.
+4. Anything you could not do, and why.
+
+DO NOT START ANOTHER FEATURE after this batch. Do not create follow-up tasks.

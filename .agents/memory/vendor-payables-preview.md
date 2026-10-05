@@ -14,3 +14,9 @@ Do not block previews for unallocatable monthly availability/maintenance. Show a
 **Why:** The user explicitly wants the difference between site and vendor totals to be deliberate and visible without inventing hire-billing rules.
 
 **How to apply:** Keep the original hire engine authoritative and do not disclose otherwise unauthorized sites through the vendor total. The unsaved preview must not create, update or delete business records.
+
+Whole-bill exports are a separate feature from payables preview. Whole-bill exports capture current form/view state, including unsaved edits, without refetching or saving; payables preview discovers unbilled candidates.
+
+**Why:** The user explicitly distinguished the two workflows and required payables preview and its behavior to remain unchanged while adding bill-form exports.
+
+**How to apply:** Never route a whole-bill export through the payables-preview endpoint or replace the existing preview with bill-form controls. Preserve existing hire-section exports alongside the new whole-bill controls.

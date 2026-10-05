@@ -638,9 +638,13 @@ export function buildSavedEquipmentHireBillOutput(bill: any): { data: EquipmentH
 /** Detail-page action set. Approved/saved bills always export the frozen daily
  * rows held in their calculation snapshot; current Equipment Performance data
  * must never rewrite a historical bill. */
-export function EquipmentHireBillDetailOutput({ bill }: { bill: any }) {
+export function EquipmentHireBillDetailOutput({ bill, output: suppliedOutput }: {
+  bill: any;
+  /** Reuse the page's already prepared display output for whole-bill capture. */
+  output?: ReturnType<typeof buildSavedEquipmentHireBillOutput>;
+}) {
   const [showDaily, setShowDaily] = useState(false);
-  const output = buildSavedEquipmentHireBillOutput(bill);
+  const output = suppliedOutput === undefined ? buildSavedEquipmentHireBillOutput(bill) : suppliedOutput;
   if (!output) return null;
   const { data, rows, hasFrozenDailyRows } = output;
   return <div className="flex flex-wrap gap-2">

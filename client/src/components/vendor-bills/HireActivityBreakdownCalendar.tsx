@@ -83,6 +83,37 @@ function recordCount(day: HireActivityDay) {
   return `${label} (${day.billableActivityCount} billable, ${day.openActivityCount} open)`;
 }
 
+/** Export projection reuses this component's exact existing display formatters. */
+export function hireActivityBreakdownSheetRows({
+  days, consumptionNorm, normBasis, meterType, tripApplicable, showFuel, formatDate,
+}: HireActivityBreakdownCalendarProps) {
+  return {
+    headers: [
+      "Date", "Reading (Opening → Closing)", "Hours / Km Run", "Trips",
+      ...(showFuel ? ["Diesel Issued (Actual)", "Consumption Rate", "Excess / Under"] : []),
+      "Downtime (Breakdown)", "Status", "Site / Work Done", "Records",
+    ],
+    rows: days.map(day => {
+      const reading = formatReadings(day);
+      return [
+        formatDate(day.date),
+        `${reading.value}${reading.conflict ? " · Multiple conflicting readings — review records" : ""}`,
+        day.hours > 0 ? day.hours.toFixed(2) : "—",
+        tripApplicable ? day.trips.toFixed(2) : "N/A",
+        ...(showFuel ? [
+          day.actualDiesel > 0 ? `${day.actualDiesel.toFixed(2)} L` : "—",
+          formatConsumptionRate(day.actualDiesel, day.hours, consumptionNorm, normBasis, meterType),
+          day.expectedDieselAvailable
+            ? `${day.dieselVariance >= 0 ? "+" : "−"}${Math.abs(day.dieselVariance).toFixed(2)} L`
+            : "Tank Readings N/A",
+        ] : []),
+        day.activity === "breakdown" && day.downtimeHours > 0 ? `${day.downtimeHours.toFixed(2)} h` : "—",
+        statusLabel(day.activity), siteAndWork(day), recordCount(day),
+      ];
+    }),
+  };
+}
+
 export default function HireActivityBreakdownCalendar({
   days,
   consumptionNorm,

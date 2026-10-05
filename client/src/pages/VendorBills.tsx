@@ -30,6 +30,7 @@ import { formatEquipmentOptionLabel } from "@shared/equipmentLabel";
 import { authoritativeDieselPeriodFromFleet, hasIncludedOperationalTripOnSameDay, initialVendorBillPaidAmount, isPerformanceReadyForHireSubmission } from "@/components/vendor-bills/equipmentHireUi";
 import {
   buildBillingDailyRows,
+  buildSavedEquipmentHireBillOutput,
   EquipmentHireDailyActivity,
   EquipmentHireBillDetailOutput,
   EquipmentHireExportButtons,
@@ -37,7 +38,11 @@ import {
   type EquipmentHireExportData,
 } from "@/components/vendor-bills/EquipmentHireBillOutput";
 import DraftEquipmentHireCalendar, { SavedEquipmentCalendarExport } from "@/components/vendor-bills/DraftEquipmentHireCalendar";
-import HireActivityBreakdownCalendar from "@/components/vendor-bills/HireActivityBreakdownCalendar";
+import HireActivityBreakdownCalendar, { hireActivityBreakdownSheetRows } from "@/components/vendor-bills/HireActivityBreakdownCalendar";
+import WholeBillExportButtons from "@/components/vendor-bills/WholeBillExportButtons";
+import { useWholeBillCalendarSnapshots } from "@/components/vendor-bills/useWholeBillCalendarSnapshots";
+import { displayedHireTotals, historicalHireSheetRows, projectVendorBillPageItems } from "@/components/vendor-bills/wholeBillPageProjection";
+import type { WholeBillSnapshot } from "@/components/vendor-bills/wholeBillSnapshot";
 import { BillDateGroupControls, BillDateGroupRows } from "@/components/vendor-bills/BillDateGroups";
 import { isTrulyBlankManualBillRow } from "@/lib/vendorBillBlankRows";
 import RateCards from "@/pages/RateCards";
@@ -155,6 +160,14 @@ function getBillFinancialTotals(bill: any) {
   return {
     totalAmount,
     totalGst,
+    gstRows: usePerGroupGst
+      ? [
+        { label: `GST ON EQUIPMENT @ ${gstEquipmentRate}%`, amount: (categoryTotals.equipment || 0) * gstEquipmentRate / 100, rate: gstEquipmentRate },
+        { label: `GST ON MATERIAL @ ${gstMaterialRate}%`, amount: (categoryTotals.material || 0) * gstMaterialRate / 100, rate: gstMaterialRate },
+        { label: `GST ON TRANSPORT @ ${gstTransportRate}%`, amount: (categoryTotals.transport || 0) * gstTransportRate / 100, rate: gstTransportRate },
+        { label: `GST ON LABOUR @ ${gstLabourRate}%`, amount: (categoryTotals.labour || 0) * gstLabourRate / 100, rate: gstLabourRate },
+      ].filter((row, index) => row.rate > 0 && categoryTotals[["equipment", "material", "transport", "labour"][index]] != null)
+      : singleGstRate > 0 ? [{ label: `GST @ ${singleGstRate}%`, amount: totalGst, rate: singleGstRate }] : [],
     primaryAdjustment,
     additional,
     additionalTotal,
@@ -554,6 +567,9 @@ export default function VendorBills() {
   const [view, setView] = useState<ViewMode>("list");
   const [selectedBillId, setSelectedBillId] = useState<number | null>(null);
   const [editingBillId, setEditingBillId] = useState<number | null>(null);
+  const [editingBillStatus, setEditingBillStatus] = useState("draft");
+  const { rememberCalendar, readCalendars } = useWholeBillCalendarSnapshots();
+  const renderedHireOutputs = useRef(new Map<string, EquipmentHireExportData>());
   const [historicalHireBillId, setHistoricalHireBillId] = useState<number | null>(null);
   const _vbSp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
   const mgmtReportSite = _vbSp?.get("from") === "management-report" ? (_vbSp?.get("site") || null) : null;
@@ -1158,6 +1174,7 @@ export default function VendorBills() {
     setGstRateLabour((bill as any).gstRateLabour || 0);
     setTdsRate((bill as any).tdsRate || 0);
     setEditingBillId(bill.id);
+    setEditingBillStatus(bill.status);
     setView("form");
   };
 
@@ -1699,6 +1716,87 @@ export default function VendorBills() {
     () => totalAmount + totalGstAmount + (adjustmentAmount || 0) + additionalAdjustmentTotal - tdsAmount,
     [totalAmount, totalGstAmount, adjustmentAmount, additionalAdjustmentTotal, tdsAmount],
   );
+
+  const calendarKey = (group: HireGroup) =>
+    `form|${editingBillId ?? "new"}|${vendorName}|${group.id}|${group.equipmentId}|${group.periodFrom}|${group.periodTo}`;
+  const getCurrentFormSnapshot = (): WholeBillSnapshot => {
+    const labourRows = lineItems.filter(item => item.category === "labour");
+    const showLabourFilter = labourRows.some(item => getLabourSource(item) === "site") &&
+      labourRows.some(item => getLabourSource(item) === "plant");
+    const shouldGroup = computeCategorySubTotals(lineItems).length > 1;
+    const rates: Record<string, number> = {
+      equipment: gstRateEquipment, material: gstRateMaterial, transport: gstRateTransport, labour: gstRateLabour,
+    };
+    const amounts: Record<string, number> = {
+      equipment: gstAmountEquipment, material: gstAmountMaterial, transport: gstAmountTransport, labour: gstAmountLabour,
+    };
+    const groupedGst = billType === "all" || billType === "equipment";
+    const gstCategories = groupedGst
+      ? Object.keys(rates).filter(category => (categorySubtotals[category] || 0) !== 0)
+      : ["material", "transport", "labour"].includes(billType) ? [billType] : [];
+    const included = hireGroups.filter(group => group.includeInBill !== false);
+    const hireOutputs = included.flatMap(group => {
+      const output = renderedHireOutputs.current.get(calendarKey(group));
+      return output ? [output] : [];
+    });
+    const sections = projectVendorBillPageItems({
+      items: lineItems, subtotals: categorySubtotals, shouldGroup, labourFilter, showLabourFilter,
+      billType, total: totalAmount,
+      getLabourSource: item => getLabourSource({ siteName: item.siteName, description: item.description || "" }),
+      getSiteLabel: item => parseSiteBadge({ ...item, description: item.description || "" })?.label || null,
+      formatDate,
+    });
+    // Historical hire does not use the ordinary form adjustments path. Read
+    // the very same output objects prepared by that rendered branch below.
+    if (isHistoricalHireEdit && hireOutputs.length) {
+      sections.unshift({
+        category: "equipment", subtotal: hireOutputs.reduce((sum, output) => sum + output.grossHire, 0),
+        groups: hireOutputs.map((output, index) => ({
+          label: `${formatDate(output.periodFrom)} – ${formatDate(output.periodTo)}`,
+          subtotal: output.grossHire,
+          rows: [{
+            date: output.periodFrom, category: "equipment", description: `${output.equipmentName} · ${output.hireBasis}`,
+            qty: Number(hireCalculated.find(entry => entry.group.id === included[index]?.id)?.result?.quantity || 0),
+            unit: included[index]?.basis || "", rate: output.rate || null, amount: output.grossHire,
+          }],
+        })),
+      });
+    }
+    const filterNote = !isHistoricalHireEdit && labourFilter !== "all" &&
+      (showLabourFilter || (shouldGroup && new Set(labourRows.map(getLabourSource)).size > 1))
+      ? `Active labour view filter: ${labourFilter}. Exported rows follow the displayed filter; category subtotals, GST, TDS and net payable retain the broader whole-bill screen totals, including hidden rows.`
+      : "";
+    return {
+      companyName: companyName || "HLC", vendorName, billNo, billDate, periodFrom, periodTo,
+      site: selectedSiteId === "all" ? "All sites" : sites?.find(site => String(site.id) === selectedSiteId)?.name || "",
+      billType, billTypeLabel: getBillTypeLabel(billType), saved: editingBillId !== null,
+      status: editingBillId !== null ? editingBillStatus : "unsaved", generatedAt: new Date().toISOString(),
+      sections,
+      calendars: included.flatMap(group => {
+        const calendar = readCalendars([calendarKey(group)])[0];
+        return [calendar || {
+          equipmentName: formatEquipmentOptionLabel(hireEquipmentFor(group.equipmentId) || {}),
+          periodFrom: group.periodFrom, periodTo: group.periodTo, rows: [],
+          unavailableReason: "Daily activity is not available in the current rendered bill.",
+        }];
+      }),
+      totals: isHistoricalHireEdit ? displayedHireTotals(hireOutputs) : {
+        subtotal: totalAmount, totalGst: totalGstAmount,
+        gst: gstCategories.map(category => ({
+          label: `${groupedGst ? `GST ON ${category.toUpperCase()}` : "GST"} @ ${rates[category]}%`,
+          amount: amounts[category],
+        })),
+        adjustments: [
+          { label: adjustmentLabel || "ADVANCE DEDUCTION", amount: adjustmentAmount },
+          ...additionalAdjustments.map(adjustment => ({
+            label: adjustment.label || "ADDITIONAL DEDUCTION / CREDIT", amount: adjustment.amount,
+          })),
+        ],
+        tds: { label: `IT TDS @ ${tdsRate}%`, amount: -tdsAmount }, netPayable: netTotal,
+      },
+      notes: [notes, filterNote].filter(Boolean).join("\n"),
+    };
+  };
 
   const computeCategorySubTotals = (items: { category?: string | null; amount?: number | null }[]) => {
     const cats: Record<string, number> = {};
@@ -2497,9 +2595,11 @@ export default function VendorBills() {
         </div>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2">
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
             <CardTitle className="text-base">BILL DETAILS</CardTitle>
             <Badge variant="secondary" className="uppercase" data-testid="badge-status-draft">DRAFT</Badge>
+            <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
+              position="header" getSnapshot={getCurrentFormSnapshot} />
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -2819,6 +2919,13 @@ export default function VendorBills() {
                    netPayable: financials.netPayable, paid: financials.paid,
                    dieselResponsibility: equipment?.hireDieselResponsibility, consumptionNorm: equipment?.consumptionNorm,
                 };
+                renderedHireOutputs.current.set(calendarKey(selection), exportData);
+                rememberCalendar(calendarKey(selection), {
+                  equipmentName: exportData.equipmentName, periodFrom: selection.periodFrom, periodTo: selection.periodTo,
+                  rows: dailyRows, dieselResponsibility: exportData.dieselResponsibility,
+                  consumptionNorm: exportData.consumptionNorm,
+                  unavailableReason: equipmentPerformance.isFetching ? "Loading daily equipment activity…" : undefined,
+                });
                 return <div key={selection.id} className="space-y-4 rounded border bg-muted/20 p-3">
                   <div className="grid gap-3 text-sm sm:grid-cols-4">
                     <div><p className="text-[10px] font-semibold uppercase text-muted-foreground">Hire Basis</p><p className="font-semibold">{HIRE_BASIS_LABELS[selection.basis]}</p></div>
@@ -2835,6 +2942,7 @@ export default function VendorBills() {
                   </div>
                   {billType === "equipment" ? (
                     <DraftEquipmentHireCalendar
+                      onExportSnapshot={calendar => rememberCalendar(calendarKey(selection), calendar)}
                       equipmentId={selection.equipmentId}
                       equipmentName={formatEquipmentOptionLabel(equipment || {})}
                       periodFrom={selection.periodFrom}
@@ -2999,6 +3107,19 @@ export default function VendorBills() {
                    dieselResponsibility: equipment?.hireDieselResponsibility,
                    consumptionNorm: equipment?.consumptionNorm,
                  };
+                 if (billType !== "equipment") {
+                   rememberCalendar(calendarKey(group), {
+                     equipmentName: exportData.equipmentName, periodFrom: group.periodFrom, periodTo: group.periodTo,
+                     rows: [], dieselResponsibility: equipment?.hireDieselResponsibility,
+                     consumptionNorm: diesel?.consumptionNorm ?? equipment?.consumptionNorm,
+                     meterType: equipment?.meterType,
+                     breakdown: hireActivityBreakdownSheetRows({
+                       days: calendar, consumptionNorm: diesel?.consumptionNorm ?? equipment?.consumptionNorm,
+                       normBasis: diesel?.normBasis ?? group.dieselNormBasisOverride, meterType: equipment?.meterType,
+                       tripApplicable, showFuel: !vendorDieselScope, formatDate: date => formatDate(date),
+                     }),
+                   });
+                 }
                 return (
                   <div
                     key={group.id}
@@ -3115,6 +3236,7 @@ export default function VendorBills() {
                     )}
                     {billType === "equipment" ? (
                       <DraftEquipmentHireCalendar
+                        onExportSnapshot={calendar => rememberCalendar(calendarKey(group), calendar)}
                         equipmentId={group.equipmentId}
                         equipmentName={formatEquipmentOptionLabel(equipment || {})}
                         periodFrom={group.periodFrom}
@@ -3955,6 +4077,8 @@ export default function VendorBills() {
               />
             </div>
             <div className="flex justify-end gap-2 flex-wrap">
+              <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
+                position="footer" getSnapshot={getCurrentFormSnapshot} />
               <Button variant="outline" onClick={() => { resetForm(); setView("list"); }} data-testid="button-cancel">
                 CANCEL
               </Button>
@@ -3984,6 +4108,8 @@ export default function VendorBills() {
               />
             </div>
             <div className="flex justify-end gap-2 flex-wrap">
+              <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
+                position="footer" getSnapshot={getCurrentFormSnapshot} />
               <Button variant="outline" onClick={() => { resetForm(); setView("list"); }} data-testid="button-cancel">
                 CANCEL
               </Button>
@@ -4169,6 +4295,73 @@ export default function VendorBills() {
     const currentStatusIdx = STATUS_ORDER.indexOf(bill.status as any);
     const nextStatus = currentStatusIdx < STATUS_ORDER.length - 1 ? STATUS_ORDER[currentStatusIdx + 1] : null;
     const hasPersistedHireStatements = Array.isArray((bill as any).hireStatements) && (bill as any).hireStatements.length > 0;
+    const savedHireOutputs = ((bill as any).hireStatements || []).map((statement: any, index: number) =>
+      buildSavedEquipmentHireBillOutput({
+        ...bill, hireStatements: [statement],
+        // Bill-wide net must not be repeated once for each statement.
+        ...(index > 0 ? { netPayableAmount: undefined } : {}),
+      }));
+    const detailFinancials = getBillFinancialTotals(bill);
+    const detailSubtotals: Record<string, number> = {};
+    bill.items.forEach((item: any) => {
+      const category = item.category || "other";
+      detailSubtotals[category] = (detailSubtotals[category] || 0) + (Number(item.amount) || 0);
+    });
+    const getCurrentDetailSnapshot = (): WholeBillSnapshot => {
+      const b = bill as any;
+      const type = String(bill.billType || "").toLowerCase();
+      const shouldGroup = computeCategorySubTotals(bill.items).length > 1;
+      const historicalHire = type === "equipment" && hasPersistedHireStatements &&
+        !b.hireStatements.some((statement: any) => statement.calculationSnapshot?.billingIntegration === "vb10_automatic");
+      const outputs = savedHireOutputs.flatMap((output: ReturnType<typeof buildSavedEquipmentHireBillOutput>) =>
+        output ? [output.data] : []);
+      return {
+        companyName: companyName || "HLC", vendorName: bill.vendorName, billNo: bill.billNo, billDate: bill.billDate,
+        periodFrom: bill.periodFrom || "", periodTo: bill.periodTo || "",
+        site: b.siteName || (b.siteId == null ? "All sites" : sites?.find(site => site.id === b.siteId)?.name || ""),
+        billType: type, billTypeLabel: getBillTypeLabel(type), saved: true, status: bill.status,
+        generatedAt: new Date().toISOString(), notes: bill.notes || "",
+        sections: projectVendorBillPageItems({
+          items: bill.items, subtotals: detailSubtotals, shouldGroup, billType: type, total: detailFinancials.totalAmount,
+          getLabourSource: item => getLabourSource({ siteName: item.siteName, description: item.description || "" }),
+          getSiteLabel: item => parseSiteBadge({ ...item, description: item.description || "" })?.label || null,
+          formatDate,
+        }),
+        calendars: hasPersistedHireStatements
+          ? savedHireOutputs.flatMap((output: ReturnType<typeof buildSavedEquipmentHireBillOutput>, index: number) => {
+            if (!output) return [{
+              equipmentName: b.hireStatements[index]?.equipmentName || "Equipment",
+              periodFrom: b.hireStatements[index]?.periodFrom || bill.periodFrom || "",
+              periodTo: b.hireStatements[index]?.periodTo || bill.periodTo || "", rows: [],
+              unavailableReason: "Frozen daily activity is unavailable for this historical bill.",
+            }];
+            return [{
+              equipmentName: output.data.equipmentName, periodFrom: output.data.periodFrom, periodTo: output.data.periodTo,
+              rows: output.rows, dieselResponsibility: output.data.dieselResponsibility,
+              consumptionNorm: output.data.consumptionNorm, meterType: output.data.meterType,
+              breakdown: String(b.hireStatements[index]?.status || "").toLowerCase() === "approved" || bill.status !== "draft"
+                ? historicalHireSheetRows(b.hireStatements[index]?.calculationSnapshot, date => formatDate(date), formatCurrency)
+                : undefined,
+              unavailableReason: output.hasFrozenDailyRows ? undefined : "Frozen daily activity is unavailable for this historical bill.",
+            }];
+          })
+          : readCalendars([`detail|${bill.id}|${bill.periodFrom}|${bill.periodTo}`]),
+        totals: historicalHire && outputs.length
+          ? displayedHireTotals(outputs, b.netPayableAmount == null ? undefined : Number(b.netPayableAmount))
+          : {
+            subtotal: detailFinancials.totalAmount, totalGst: detailFinancials.totalGst,
+            gst: detailFinancials.gstRows,
+            adjustments: [
+              { label: b.adjustmentLabel || "ADVANCE DEDUCTION", amount: detailFinancials.primaryAdjustment },
+              ...detailFinancials.additional.map(adjustment => ({
+                label: adjustment.label || "ADDITIONAL DEDUCTION / CREDIT", amount: adjustment.amount,
+              })),
+            ],
+            tds: { label: `IT TDS @ ${Number(b.tdsRate) || 0}%`, amount: -detailFinancials.tds },
+            netPayable: detailFinancials.netTotal,
+          },
+      };
+    };
 
     return (
       <div className="max-w-5xl mx-auto space-y-4 p-4">
@@ -4180,7 +4373,9 @@ export default function VendorBills() {
             <h1 className="text-xl font-bold" data-testid="text-detail-title">BILL DETAIL</h1>
           </div>
           <div className="flex gap-2 flex-wrap items-center">
-            {canExport && String(bill.billType || "").toLowerCase() === "equipment" && hasPersistedHireStatements && <EquipmentHireBillDetailOutput bill={bill} />}
+            <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
+              position="header" getSnapshot={getCurrentDetailSnapshot} />
+            {canExport && String(bill.billType || "").toLowerCase() === "equipment" && hasPersistedHireStatements && <EquipmentHireBillDetailOutput bill={bill} output={savedHireOutputs[0]} />}
             {canExport && String(bill.billType || "").toLowerCase() !== "equipment" && ["verified", "approved", "paid"].includes(bill.status) && (
               <Button
                 variant="outline"
@@ -4199,6 +4394,7 @@ export default function VendorBills() {
             {canExport && String(bill.billType || "").toLowerCase() === "equipment" && !hasPersistedHireStatements && ["verified", "approved", "paid"].includes(bill.status) && (
               <SavedEquipmentCalendarExport
                 bill={bill}
+                onExportSnapshot={calendar => rememberCalendar(`detail|${bill.id}|${bill.periodFrom}|${bill.periodTo}`, calendar)}
                 onExportBill={(format) => {
                   if (format !== "pdf") return;
                   const link = document.createElement("a");
@@ -4564,12 +4760,6 @@ export default function VendorBills() {
                     {(() => {
                       const b = bill as any;
                       const isAllType = bill.billType?.toLowerCase() === "all";
-                      const detailCatSubs: Record<string, number> = {};
-                      bill.items.forEach((it: any) => { const c = it.category || "other"; detailCatSubs[c] = (detailCatSubs[c] || 0) + (it.amount || 0); });
-                      const gstEq = b.gstRateEquipment ? (detailCatSubs["equipment"] || 0) * b.gstRateEquipment / 100 : 0;
-                      const gstMat = b.gstRateMaterial ? (detailCatSubs["material"] || 0) * b.gstRateMaterial / 100 : 0;
-                      const gstTr = b.gstRateTransport ? (detailCatSubs["transport"] || 0) * b.gstRateTransport / 100 : 0;
-                      const gstLab = b.gstRateLabour ? (detailCatSubs["labour"] || 0) * b.gstRateLabour / 100 : 0;
                       const usePerGroupGst = isAllType || shouldGroup;
                       const singleGstRate = !usePerGroupGst
                         ? (bill.billType?.toLowerCase() === "equipment" ? b.gstRateEquipment
@@ -4577,17 +4767,16 @@ export default function VendorBills() {
                           : bill.billType?.toLowerCase() === "transport" ? b.gstRateTransport
                           : bill.billType?.toLowerCase() === "labour" ? b.gstRateLabour : 0) || 0
                         : 0;
-                      const singleGstAmt = singleGstRate ? (bill.totalAmount || 0) * singleGstRate / 100 : 0;
-                      const totalGst = usePerGroupGst ? gstEq + gstMat + gstTr + gstLab : singleGstAmt;
-                      const advAmt = b.adjustmentAmount || 0;
+                      const singleGstAmt = !usePerGroupGst ? detailFinancials.totalGst : 0;
+                      const totalGst = detailFinancials.totalGst;
+                      const advAmt = detailFinancials.primaryAdjustment;
                       const advLabel = b.adjustmentLabel || "ADVANCE DEDUCTION";
-                      const additional = billAdditionalAdjustments(b);
-                      const additionalTotal = additional.reduce((sum, adjustment) => sum + (Number(adjustment.amount) || 0), 0);
+                      const additional = detailFinancials.additional;
                       const tdsR = b.tdsRate || 0;
-                      const tdsAmt = tdsR ? (bill.totalAmount || 0) * tdsR / 100 : 0;
+                      const tdsAmt = detailFinancials.tds;
                       const hasAny = totalGst !== 0 || advAmt !== 0 || additional.length > 0 || tdsAmt !== 0;
                       if (!hasAny) return null;
-                      const billNetTotal = (bill.totalAmount || 0) + totalGst + advAmt + additionalTotal - tdsAmt;
+                      const billNetTotal = detailFinancials.netTotal;
                       return (
                         <>
                           {!usePerGroupGst && singleGstRate > 0 && (
@@ -4642,6 +4831,11 @@ export default function VendorBills() {
             </CardContent>
           </Card>
         )}
+
+        <div className="flex justify-end gap-2 flex-wrap">
+          <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
+            position="footer" getSnapshot={getCurrentDetailSnapshot} />
+        </div>
 
         {showDeleteConfirm && (
           <Dialog open={showDeleteConfirm} onOpenChange={(open) => { if (!open) { setShowDeleteConfirm(false); setPendingDeleteAction(null); } }}>
