@@ -7,6 +7,8 @@ import { saveWholeBillFile, type WholeBillExportFormat } from "./wholeBillExport
 export type WholeBillExportButtonsProps = {
   canExport: boolean;
   isFieldEngineer?: boolean;
+  isAdmin?: boolean;
+  isOwner?: boolean;
   position: "header" | "footer";
   /** Called only on click. Supply the current form/view values, never a query. */
   getSnapshot: () => WholeBillSnapshot;
@@ -14,13 +16,13 @@ export type WholeBillExportButtonsProps = {
 
 /** Existing SitePulse outline controls, no new visual system or status gating. */
 export default function WholeBillExportButtons({
-  canExport, isFieldEngineer, position, getSnapshot,
+  canExport, isFieldEngineer, isAdmin, isOwner, position, getSnapshot,
 }: WholeBillExportButtonsProps) {
   const [pending, setPending] = useState<WholeBillExportFormat | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notes, setNotes] = useState<string[]>([]);
   const [lastFormat, setLastFormat] = useState<WholeBillExportFormat>("xlsx");
-  if (!canExportWholeBill(canExport, isFieldEngineer)) return null;
+  if (!canExportWholeBill(canExport, isFieldEngineer, isAdmin, isOwner)) return null;
   const run = async (kind: WholeBillExportFormat) => {
     if (pending) return;
     setError(null);

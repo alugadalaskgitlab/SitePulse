@@ -82,8 +82,9 @@ export const billExportIsDraft = (snapshot: Pick<WholeBillSnapshot, "saved" | "s
   !snapshot.saved || snapshot.status.toLowerCase() === "draft";
 export const isBillExportPriced = (row: BillExportRow) =>
   row.priced ?? (row.rate != null && Number.isFinite(row.rate) && row.rate !== 0);
-export const canExportWholeBill = (canExport: boolean, isFieldEngineer?: boolean) =>
-  canExport && !isFieldEngineer;
+export const canExportWholeBill = (
+  canExport: boolean, isFieldEngineer?: boolean, isAdmin = false, isOwner = false,
+) => isAdmin || isOwner || (canExport && !isFieldEngineer);
 
 /** Detach the clicked screen state before a save picker or file generation awaits. */
 export function captureWholeBillSnapshot(snapshot: WholeBillSnapshot): WholeBillSnapshot {

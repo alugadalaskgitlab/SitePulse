@@ -68,6 +68,7 @@ type SafeUser = {
   phone: string | null;
   fullName: string;
   isAdmin: boolean;
+  isOwner?: boolean;
   isFieldEngineer: boolean;
   isActive: boolean;
   notificationsEnabled: boolean;
@@ -361,6 +362,13 @@ function UserRow({
             <Badge variant="default">Admin</Badge>
           ) : (
             <Badge variant="secondary">User</Badge>
+          )}
+          {user.isOwner && <Badge variant="default">Owner</Badge>}
+          {user.isFieldEngineer && <Badge variant="outline">Engineer / field user</Badge>}
+          {user.isFieldEngineer && (user.isAdmin || user.isOwner) && (
+            <p role="status" className="basis-full text-sm text-amber-700 dark:text-amber-400" data-testid={`role-conflict-${user.id}`}>
+              Role conflict: Admin/Owner and field user are both enabled. Whole-bill exports remain available, but field-user restrictions still hide Payables Preview and Dispatches Today. Review these flags; no automatic changes are made.
+            </p>
           )}
           {user.canManagePermissions && !user.isAdmin && (
             <Badge variant="outline" className="text-sm gap-1">
@@ -796,6 +804,11 @@ function EditUserDialog({ userId, users, onClose }: { userId: number; users: Saf
             <Label htmlFor="edit-isFieldEngineer">Engineer / field user</Label>
             <Switch id="edit-isFieldEngineer" checked={isFieldEngineerVal} onCheckedChange={setIsFieldEngineerVal} data-testid="switch-edit-field-engineer" />
           </div>
+          {isFieldEngineerVal && (isAdminVal || target.isOwner) && (
+            <p role="alert" className="text-sm text-amber-700 dark:text-amber-400" data-testid="edit-role-conflict">
+              Role conflict: Admin/Owner and field user are both enabled. Whole-bill exports remain available, but field-user restrictions still hide Payables Preview and Dispatches Today. Review these flags; saving will not automatically clear either role.
+            </p>
+          )}
           <div className="flex items-center justify-between">
             <Label htmlFor="edit-notif">Push notifications</Label>
             <Switch id="edit-notif" checked={notifEnabled} onCheckedChange={setNotifEnabled} data-testid="switch-edit-notif" />

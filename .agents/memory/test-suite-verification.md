@@ -3,6 +3,12 @@ name: Test suite verification
 description: Avoid misleading full-suite comparisons and setup-related skips in this project's heavy test suite.
 ---
 
+Use `--maxWorkers` without `--minWorkers` for bounded runs on Vitest 4.
+
+**Why:** The installed Vitest CLI rejects `--minWorkers` before collecting any tests.
+
+**How to apply:** Do not copy older Vitest worker flags into verification commands.
+
 Compare test-file inventories as well as pass/fail/skip totals. The historical "full suite" evidence included frontend component tests that the default npm test discovery did not include.
 
 **Why:** A permission-gating verification appeared to lose passing tests: it omitted an entire frontend test directory, while concurrent builds and memory-heavy route/PGlite fixtures also produced setup failures reported as skipped tests.

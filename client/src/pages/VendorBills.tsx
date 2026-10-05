@@ -2619,6 +2619,7 @@ export default function VendorBills() {
             <CardTitle className="text-base">BILL DETAILS</CardTitle>
             <Badge variant="secondary" className="uppercase" data-testid="badge-status-draft">DRAFT</Badge>
             <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
+              isAdmin={user?.isAdmin} isOwner={user?.isOwner}
               position="header" getSnapshot={getCurrentFormSnapshot} />
           </CardHeader>
           <CardContent className="space-y-4">
@@ -4103,6 +4104,7 @@ export default function VendorBills() {
             </div>
             <div className="flex justify-end gap-2 flex-wrap">
               <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
+                isAdmin={user?.isAdmin} isOwner={user?.isOwner}
                 position="footer" getSnapshot={getCurrentFormSnapshot} />
               <Button variant="outline" onClick={() => { resetForm(); setView("list"); }} data-testid="button-cancel">
                 CANCEL
@@ -4134,6 +4136,7 @@ export default function VendorBills() {
             </div>
             <div className="flex justify-end gap-2 flex-wrap">
               <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
+                isAdmin={user?.isAdmin} isOwner={user?.isOwner}
                 position="footer" getSnapshot={getCurrentFormSnapshot} />
               <Button variant="outline" onClick={() => { resetForm(); setView("list"); }} data-testid="button-cancel">
                 CANCEL
@@ -4399,6 +4402,7 @@ export default function VendorBills() {
           </div>
           <div className="flex gap-2 flex-wrap items-center">
             <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
+              isAdmin={user?.isAdmin} isOwner={user?.isOwner}
               position="header" getSnapshot={getCurrentDetailSnapshot} />
             {canExport && String(bill.billType || "").toLowerCase() === "equipment" && hasPersistedHireStatements && <EquipmentHireBillDetailOutput bill={bill} output={savedHireOutputs[0]} />}
             {canExport && String(bill.billType || "").toLowerCase() !== "equipment" && ["verified", "approved", "paid"].includes(bill.status) && (
@@ -4861,6 +4865,7 @@ export default function VendorBills() {
 
         <div className="flex justify-end gap-2 flex-wrap">
           <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
+            isAdmin={user?.isAdmin} isOwner={user?.isOwner}
             position="footer" getSnapshot={getCurrentDetailSnapshot} />
         </div>
 

@@ -108,3 +108,4 @@
 - [Vendor payables preview](vendor-payables-preview.md) — indicative unsaved GST with last-bill provenance; unallocated monthly charges separate from site subtotal, included in vendor total.
 - [Vendor bill log evidence](vendor-bill-log-evidence.md) — display-only facts; missing legacy IDs require exact unique matching, never equipment/date-only inference.
 - [Transport rate setup](transport-rate-setup.md) — keep basis separate from legacy flat rates and identity; setup approval does not authorize bill-pricing integration.
+- [Role-conflict scope](role-conflict-scope.md) — whole-bill export precedence is a narrow exception; warnings do not authorize account flag changes.
