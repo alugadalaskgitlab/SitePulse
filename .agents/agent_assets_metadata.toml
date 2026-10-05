@@ -4721,3 +4721,143 @@ mtime_ms = 1791134033038
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/42761c9f-3697-4b59-9729-d30f4a369585/0439e5b1-8832-4462-997f-8a942187c63d"
 storage_version_token = "1791134037602672"
 content_type = "text/csv"
+
+[[outputs]]
+id = "l9L5AnqHdkpzBUZeYjKO1"
+uri = "file://.agents/outputs/vb-export-02-a/downloads/NARASIMHULU_2026-08-01_to_2026-10-04_UNSAVED.xlsx"
+type = "table"
+title = "Part A — unsaved combined Excel"
+description = "Real signed-in development exports. Existing DRAFT used with your approval; the report explicitly identifies native-dialog and restricted-user screenshot gaps."
+logical_id = "0b0dbfde-8210-4f09-9572-39d034fd4ed5"
+content_hash = "sha256:1ef33271e2075bca41ececb5f9cbb226b9c288911bbddde5ba3e83c66835d54a"
+size = 26817
+mtime_ms = 1791162360073
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/0b0dbfde-8210-4f09-9572-39d034fd4ed5/2ee78a37-82bb-4f98-99a1-2af7af623865"
+storage_version_token = "1791167414526304"
+content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+[[outputs]]
+id = "bAvlwtkXW3iFNjqixxcxJ"
+uri = "file://.agents/outputs/vb-export-02-a/downloads/NARASIMHULU_2026-08-01_to_2026-10-04_UNSAVED.pdf"
+type = "pdf"
+title = "Part A — unsaved combined PDF"
+description = "Real signed-in development exports. Existing DRAFT used with your approval; the report explicitly identifies native-dialog and restricted-user screenshot gaps."
+logical_id = "7138ef1c-c32b-402b-90ad-6f3442b94518"
+content_hash = "sha256:6f2fe73ced1ac1053736294f1870805d661d921a317bc5f2296888489f765f4c"
+size = 82435
+mtime_ms = 1791162229688
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/7138ef1c-c32b-402b-90ad-6f3442b94518/3a3aad06-c6d9-467f-a0c7-6678e987d06e"
+storage_version_token = "1791167416404458"
+content_type = "application/pdf"
+
+[[outputs]]
+id = "idTurNHdzLL6qp0biPNP0"
+uri = "file://.agents/outputs/vb-export-02-a/material-only/NARASIMHULU_2026-08-01_to_2026-10-04_UNSAVED.xlsx"
+type = "table"
+title = "Part A — material-only Excel"
+description = "Real signed-in development exports. Existing DRAFT used with your approval; the report explicitly identifies native-dialog and restricted-user screenshot gaps."
+logical_id = "0b85e90d-72d9-4141-9753-a3f21a3ac5af"
+content_hash = "sha256:156d7c4b87d1592f80998278ba31e93629d4c1620e0c74176240fa7ff2251afa"
+size = 21136
+mtime_ms = 1791162347021
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/0b85e90d-72d9-4141-9753-a3f21a3ac5af/45b18527-aecb-4467-acd7-15d10e82eec9"
+storage_version_token = "1791167417885771"
+content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+[[outputs]]
+id = "cV1TPnMSC_8kDm5reodQA"
+uri = "file://.agents/outputs/vb-export-02-a/downloads/NARASIMHULU_2025-12-01_to_2026-01-25_DRAFT.pdf"
+type = "pdf"
+title = "Part A — existing DRAFT PDF"
+description = "Real signed-in development exports. Existing DRAFT used with your approval; the report explicitly identifies native-dialog and restricted-user screenshot gaps."
+logical_id = "b57c4fb3-2154-499d-8fb1-ba2e8aa3f23c"
+content_hash = "sha256:e0a0264e495a6a28870283498a6a81e744adb93af07194009031a83e3a95991c"
+size = 164093
+mtime_ms = 1791162296067
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b57c4fb3-2154-499d-8fb1-ba2e8aa3f23c/6d4fdf00-285b-43f1-8873-f728433111da"
+storage_version_token = "1791167420010471"
+content_type = "application/pdf"
+
+[[outputs]]
+id = "Gyqtpi4wtIzelnXQ3oBFy"
+uri = "file://.agents/outputs/vb-export-02-a/downloads/RAJU_2026-02-26_to_2026-03-05_APPROVED.pdf"
+type = "pdf"
+title = "Part A — APPROVED PDF"
+description = "Real signed-in development exports. Existing DRAFT used with your approval; the report explicitly identifies native-dialog and restricted-user screenshot gaps."
+logical_id = "ca012c51-375e-454a-bb7d-8ea161af8378"
+content_hash = "sha256:5b91bf98ac75a18a9ba515e369b020e5ffee0455d4966564e149334001439cc4"
+size = 82948
+mtime_ms = 1791162304144
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/ca012c51-375e-454a-bb7d-8ea161af8378/d4a807ad-e24f-41f5-a49b-274c0d2f2bdd"
+storage_version_token = "1791167421760405"
+content_type = "application/pdf"
+
+[[outputs]]
+id = "xnsmuSAParV1DGhiWSqcq"
+uri = "file://.agents/outputs/vb-export-02-a/downloads/VISWANATH_2026-08-15_to_2026-08-28_PAID.pdf"
+type = "pdf"
+title = "Part A — PAID PDF"
+description = "Real signed-in development exports. Existing DRAFT used with your approval; the report explicitly identifies native-dialog and restricted-user screenshot gaps."
+logical_id = "03ca7993-e465-4774-8ea7-822e1c54fe47"
+content_hash = "sha256:e57583fd5b72030b4d35febc5fd74a02456941bc68f3df97df083d2a0c4ff41e"
+size = 106730
+mtime_ms = 1791162312217
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/03ca7993-e465-4774-8ea7-822e1c54fe47/0a4caacf-b874-4bfe-9c25-a62a5989f3e6"
+storage_version_token = "1791167423748761"
+content_type = "application/pdf"
+
+[[outputs]]
+id = "rne0G_UgVmQqaXgIUHlEQ"
+uri = "file://.agents/outputs/vb-export-02-a/part-a-interim-evidence.html"
+type = "html"
+title = "Part A — evidence report and screenshots"
+description = "Real signed-in development exports. Existing DRAFT used with your approval; the report explicitly identifies native-dialog and restricted-user screenshot gaps."
+logical_id = "ce0c57d9-d6ec-47cb-9f23-5e395a93b901"
+content_hash = "sha256:67431fa808d393d37123a2397a290d4195e69146529e45e5587147e9a5733c2d"
+size = 1224973
+mtime_ms = 1791162482619
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/ce0c57d9-d6ec-47cb-9f23-5e395a93b901/b62c1025-199a-47d4-b8f0-c873d7dbc5bb"
+storage_version_token = "1791167413041754"
+content_type = "text/html"
+
+[[outputs]]
+id = "mtPCkJTUtCXhHzCh6O4ui"
+uri = "file://.agents/outputs/vb-export-02-b/part-b-evidence.html"
+type = "html"
+title = "Part B — screenshots, tests and equipment evidence"
+description = "Real signed-in development exports and screenshots; the report identifies missing historical source links and unavailable diesel-scope data."
+logical_id = "aea4290e-a9eb-4758-abf8-194192420105"
+content_hash = "sha256:cb59f0245b61f37784fbe7350e1d1710e1304a39a27c578a0d9bada3526f4ed0"
+size = 919615
+mtime_ms = 1791168161003
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/aea4290e-a9eb-4758-abf8-194192420105/aebc5fca-ffab-4114-b23d-6b8201dc1c19"
+storage_version_token = "1791168172466057"
+content_type = "text/html"
+
+[[outputs]]
+id = "m-eE9_uNZLpT6GPDryHwp"
+uri = "file://.agents/outputs/vb-export-02-b/downloads/NARASIMHULU_2026-08-01_to_2026-10-04_UNSAVED.xlsx"
+type = "table"
+title = "Part B — actual Excel with equipment log columns"
+description = "Real signed-in development exports and screenshots; the report identifies missing historical source links and unavailable diesel-scope data."
+logical_id = "d3755a6c-b33a-4e58-b908-9a85891df5dc"
+content_hash = "sha256:e00f4f3a4ec686cc1f08600b7d098e66e355262364bccb6e4278a43b841995f9"
+size = 25881
+mtime_ms = 1791167884984
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d3755a6c-b33a-4e58-b908-9a85891df5dc/a11930c4-628f-4638-a06d-7086ed9d0f72"
+storage_version_token = "1791168173919037"
+content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+[[outputs]]
+id = "lFfpXiKZsxQ3Mi3Xyj1gG"
+uri = "file://.agents/outputs/vb-export-02-b/downloads/NARASIMHULU_2026-08-01_to_2026-10-04_UNSAVED.pdf"
+type = "pdf"
+title = "Part B — actual PDF with equipment log facts"
+description = "Real signed-in development exports and screenshots; the report identifies missing historical source links and unavailable diesel-scope data."
+logical_id = "a7bbbcc0-0168-40ce-ab9c-6f518f3a2596"
+content_hash = "sha256:a7776d89d53019d87d4a29b56a6dd75324600b24e7a8680613bde3cc7eefad16"
+size = 299180
+mtime_ms = 1791167886349
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/a7bbbcc0-0168-40ce-ab9c-6f518f3a2596/89d0f2a7-6bb9-440e-9a74-3efea9a34c7d"
+storage_version_token = "1791168176433556"
+content_type = "application/pdf"

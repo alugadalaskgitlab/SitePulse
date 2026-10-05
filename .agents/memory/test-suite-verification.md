@@ -14,3 +14,9 @@ Browser-only API fixtures must bypass service workers as well as disabling cache
 **Why:** A registered worker bypassed CDP request interception and sent fixture-authenticated browser requests to the real server, producing 401s and misleading login redirects.
 
 **How to apply:** Set CDP Network.setBypassServiceWorker before navigating fixture-based browser tests; do not mistake those tests for an authenticated HTTP authorization check.
+
+Archive browser downloads per scenario before testing another scenario with the same suggested filename.
+
+**Why:** In development verification, Chromium's CDP-configured download directory silently replaced an earlier workbook with a later single-type workbook using the identical vendor/period/status filename.
+
+**How to apply:** Copy each completed download into a scenario-specific evidence directory immediately. Verify its sheet inventory before moving to the next case.

@@ -20,3 +20,9 @@ Whole-bill exports are a separate feature from payables preview. Whole-bill expo
 **Why:** The user explicitly distinguished the two workflows and required payables preview and its behavior to remain unchanged while adding bill-form exports.
 
 **How to apply:** Never route a whole-bill export through the payables-preview endpoint or replace the existing preview with bill-form controls. Preserve existing hire-section exports alongside the new whole-bill controls.
+
+For whole-bill export verification, the user accepted existing DRAFT evidence instead of saving the unsaved test bill when saving would alter vendor rates.
+
+**Why:** The user explicitly chose “Use existing DRAFT evidence; preserve rates.”
+
+**How to apply:** Preserve rate cards during export verification and disclose that the existing DRAFT is not the same newly composed test bill.

@@ -1,0 +1,208 @@
+2 item(s) added from records
+Site
+Pulse
+
+High Lane Constructions Pvt Ltd
+
+NAVIGATION
+
+Dashboard
+Site Operations
+HMP Operations
+RMC Operations
+Equipment & Fleet
+Stores & Inventory
+Procurement & Billing
+Requisitions
+Work Program & BOQ
+Norms Library (SNL)
+Reports
+Edit Requests
+
+TOOLS
+
+Estimator
+Masters
+Settings
+A
+
+Administrator
+
+Admin
+
+Sign Out
+Refresh
+NEW VENDOR BILL
+BILL DETAILS
+DRAFT
+EXPORT EXCEL
+EXPORT PDF
+BILL DATE
+BILL NUMBER
+BILL TYPE
+All Types (Combined)
+SITE
+ALL SITES
+VENDOR / SUPPLIER NAME
+PERIOD FROM
+PERIOD TO
+
+BILL STATUS
+
+DRAFT
+VERIFIED
+APPROVED
+PAID
+All billable records for NARASIMHULU (01-AUG-2026 to 04-OCT-2026) — equipment, materials, transport & labour.
+OTHER BILLABLE ACTIVITIES FOR THIS VENDOR/PERIOD ARE SHOWN HERE.
+PREPARE MATERIAL TRIP BACKLOG
+EQUIPMENT
+JCB · DAILY HIRE
+3 ITEMS (0 ALREADY BILLED, 0 TO PULL)
+✓ ADDED 3/3
+✓ ADDED
+EQUIPMENT
+JCB · TIME/METER
+2 ITEMS (0 ALREADY BILLED, 0 TO PULL)
+✓ ADDED 2/2
+✓ ADDED
+MATERIAL
+SOIL · CUM
+2 ITEMS (0 ALREADY BILLED, 2 TO PULL)
+PULL 2
+PULL ALL 2 ITEMS
+RATE CARDS
+₹
+SET RATES
+ADD ITEM
+Expand All
+Collapse All
+#	DATE	TYPE	DESCRIPTION	QTY	UNIT	RATE (₹)	AMOUNT (₹)	
+
+17-AUG-2026
+1 item
+Rs. 3,500.00
+Remove Group
+
+1	17-AUG-2026	EQUIP	
+JCB-SITE - CLEARING (SITE) - DAILY HIRE | 4 HRS | DIESEL: 20L
+SITE · THAKADPALLY - SIRUR
+20L DIESEL
+4 h meter (1,006 → 1,010)
+20 L
+5.0 L/hr (norm 4.8)
+	
+	
+DAYS
+	
+	3,500.00	
+
+
+05-SEP-2026
+1 item
+Rs. 3,500.00
+Remove Group
+
+2	05-SEP-2026	EQUIP	
+JCB-SITE (SITE) - DAILY HIRE | 2.6 HRS
+SITE · THAKADPALLY - SIRUR
+2.6 h meter (1,256.5 → 1,259.1)
+09:41 – 17:41 (8 h)
+	
+	
+DAYS
+	
+	3,500.00	
+
+
+09-SEP-2026
+1 item
+Rs. 3,500.00
+Remove Group
+
+3	09-SEP-2026	EQUIP	
+JCB-SITE (SITE) - DAILY HIRE | 6.5 HRS | DIESEL: 30L
+SITE · THAKADPALLY - SIRUR
+30L DIESEL
+6.5 h meter (1,003 → 1,009.5)
+07:26 – 17:05 (9.7 h)
+30 L
+4.2 L/hr (norm 4.8)▼ 13% check
+	
+	
+DAYS
+	
+	3,500.00	
+
+
+01-OCT-2026
+1 item
+Rs. 0.00
+Remove Group
+
+4	01-OCT-2026	EQUIP	
+JCB-PLANT - UX EXACT EDITED TASK ROUND TRIP (SITE) - TIME/METER | 2 HRS
+SITE · THAKADPALLY - SIRUR
+2 h meter (100 → 102)
+0 L
+	
+	
+HRS
+	
+	0.00	
+
+
+03-OCT-2026
+1 item
+Rs. 0.00
+Remove Group
+
+5	03-OCT-2026	EQUIP	
+JCB-PLANT - UX INITIAL INCIDENTAL TASK STORED IN TASKUX TASK COLUMN EDITED AND SAVED COLUMN (SITE) - TIME/METER | 2 HRS
+SITE · THAKADPALLY - SIRUR – COPY BY ADMIN – 2026-10-03 15:22:19
+2 h meter (100 → 102)
+0 L
+Breakdown — UX hydraulic service required
+	
+	
+HRS
+	
+	0.00	
+
+TOTAL	Rs. 10,500.00	
+
+ADJUSTMENTS
+
+GST ON EQUIPMENT
+
+On Rs. 10,500.00
+
+RATE %
+GST AMOUNT
+
+—
+
+ADVANCE DEDUCTION
+REASON / REFERENCE
+AMOUNT (NEGATIVE TO DEDUCT)
+ADDITIONAL DEDUCTIONS / CREDITS
+
+Add independent signed adjustments without replacing the primary recovery above.
+
+ADD DEDUCTION / CREDIT
+IT TDS
+
+On Rs. 10,500.00
+
+RATE %
+TDS AMOUNT
+
+—
+
+NOTES / REMARKS
+EXPORT EXCEL
+EXPORT PDF
+CANCEL
+SAVE BILL
+This is a temporary development preview, and these links are not for public use. Deploy your app for secure sharing or use an invite link.
+Notification 2 item(s) added from records

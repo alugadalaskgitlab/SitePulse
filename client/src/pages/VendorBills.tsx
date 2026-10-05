@@ -40,6 +40,8 @@ import {
 import DraftEquipmentHireCalendar, { SavedEquipmentCalendarExport } from "@/components/vendor-bills/DraftEquipmentHireCalendar";
 import HireActivityBreakdownCalendar, { hireActivityBreakdownSheetRows } from "@/components/vendor-bills/HireActivityBreakdownCalendar";
 import WholeBillExportButtons from "@/components/vendor-bills/WholeBillExportButtons";
+import EquipmentLogFacts from "@/components/vendor-bills/EquipmentLogFacts";
+import { mapAutoBillItemWithEvidence, type EquipmentLogEvidence } from "@/components/vendor-bills/equipmentLogEvidence";
 import { useWholeBillCalendarSnapshots } from "@/components/vendor-bills/useWholeBillCalendarSnapshots";
 import { displayedHireTotals, historicalHireSheetRows, projectVendorBillPageItems } from "@/components/vendor-bills/wholeBillPageProjection";
 import type { WholeBillSnapshot } from "@/components/vendor-bills/wholeBillSnapshot";
@@ -47,7 +49,7 @@ import { BillDateGroupControls, BillDateGroupRows } from "@/components/vendor-bi
 import { isTrulyBlankManualBillRow } from "@/lib/vendorBillBlankRows";
 import RateCards from "@/pages/RateCards";
 import PayablesPreviewPanel from "@/components/vendor-bills/PayablesPreviewPanel";
-import { mapAutoBillItem, calcCandidateAmount, groupRateItems, stripSourceSuffix, canonicalMachineName, canonicalTransportName, canonicalMatName, deriveLabourKey, type RateGroup as SharedRateGroup } from "@shared/vendorBillCandidates";
+import { calcCandidateAmount, groupRateItems, stripSourceSuffix, canonicalMachineName, canonicalTransportName, canonicalMatName, deriveLabourKey, type RateGroup as SharedRateGroup } from "@shared/vendorBillCandidates";
 
 const formatDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return "-";
@@ -75,6 +77,7 @@ const formatTimestamp = (ts: string | Date | null | undefined): string | null =>
 type ViewMode = "list" | "form" | "detail";
 
 interface LineItem {
+  equipmentLogEvidence?: EquipmentLogEvidence | null;
   date: string;
   category: string;
   description: string;
@@ -823,7 +826,7 @@ export default function VendorBills() {
     queryFn: () => autoItemsUrl ? fetch(autoItemsUrl).then(r => r.json()) : Promise.resolve([]),
     enabled: !!autoItemsUrl,
   });
-  const mappedAutoItems = useMemo(() => (autoItems || []).map(mapAutoBillItem), [autoItems]);
+  const mappedAutoItems = useMemo(() => (autoItems || []).map(mapAutoBillItemWithEvidence), [autoItems]);
 
   const hireActivitiesUrl = vendorName && periodFrom && periodTo
     ? `/api/vendor-bills/hire-activities?vendorName=${encodeURIComponent(vendorName)}&periodFrom=${encodeURIComponent(periodFrom)}&periodTo=${encodeURIComponent(periodTo)}`
@@ -1109,6 +1112,7 @@ export default function VendorBills() {
         date: item.date || "",
         category: item.category || "other",
         description: item.description,
+        equipmentLogEvidence: item.equipmentLogEvidence as EquipmentLogEvidence | null | undefined,
         qty: item.qty || 0,
         unit: item.unit || "HRS",
         rate: item.rate || 0,
@@ -3562,6 +3566,7 @@ export default function VendorBills() {
                         data-testid={`input-item-desc-${idx}`}
                       />
                     )}
+                    <EquipmentLogFacts category={item.category} evidence={item.equipmentLogEvidence} rowKey={`form-${idx}`} />
                   </td>
                   {hasSuppliedOrTransporter && (
                     <td className="px-2 py-1.5">
@@ -4577,6 +4582,7 @@ export default function VendorBills() {
                   <td className="px-2 py-2 font-medium text-sm" data-testid={`text-detail-item-desc-${idx}`}>
                     <div className="space-y-1">
                       <span>{item.description}</span>
+                      <EquipmentLogFacts category={item.category} evidence={item.equipmentLogEvidence as EquipmentLogEvidence | null | undefined} rowKey={`detail-${idx}`} />
                       <div className="flex items-center gap-1 flex-wrap">
                         {(() => {
                           const badge = parseSiteBadge(item);

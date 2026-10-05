@@ -1,0 +1,25 @@
+{
+  "at": "2026-10-05T01:05:13.921Z",
+  "tables": {
+    "vendor_bills": {
+      "count": 45,
+      "checksum": "3e6f2c85124877f14e91341af64b7474"
+    },
+    "hire_statements": {
+      "count": 0,
+      "checksum": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "equipment_usage": {
+      "count": 73,
+      "checksum": "b58293594062828392451775f671a8cf"
+    },
+    "site_material_trips": {
+      "count": 6,
+      "checksum": "c3288785b04e1dd0e597f5712e93699f"
+    },
+    "store_issues": {
+      "count": 4,
+      "checksum": "401fbbb2a8e28f5e23a1daa18950fa31"
+    }
+  }
+}

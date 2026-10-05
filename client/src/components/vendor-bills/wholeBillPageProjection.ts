@@ -1,4 +1,5 @@
 import { isTrulyBlankManualBillRow } from "@/lib/vendorBillBlankRows";
+import { projectEquipmentLogEvidence, type EquipmentLogEvidence } from "./equipmentLogEvidence";
 import { projectWholeBillScreenSections } from "./wholeBillScreenProjection";
 import type { EquipmentHireExportData } from "./EquipmentHireBillOutput";
 import type { BillExportCalendar, BillExportRow, WholeBillSnapshot } from "./wholeBillSnapshot";
@@ -11,6 +12,7 @@ type ScreenItem = {
   initialBlank?: boolean; source?: string | null; equipmentId?: number | null;
   physicalQuantity?: number; physicalUnit?: string; unitRateWarning?: string;
   billedIn?: { billNo: string; billStatus: string } | null;
+  equipmentLogEvidence?: EquipmentLogEvidence | null;
 };
 const categories = ["equipment", "material", "transport", "labour", "other"];
 const labourSources = [
@@ -42,6 +44,7 @@ export function projectVendorBillPageItems({
       siteName: getSiteLabel(item), suppliedTo: item.suppliedTo, transporter: item.transporter,
       vehicleNumber: item.vehicleNumber, receiptNumber: item.receiptNumber, leadDistance: item.leadDistance,
       details: {
+        ...(item.category === "equipment" ? projectEquipmentLogEvidence(item.equipmentLogEvidence).columns : {}),
         ...(diesel && Number(diesel[1]) > 0 ? { "Diesel (L)": Number(diesel[1]) } : {}),
         ...(item.physicalQuantity != null && item.physicalUnit && item.physicalUnit !== item.unit
           ? { "Physical quantity": item.physicalQuantity, "Physical unit": item.physicalUnit } : {}),

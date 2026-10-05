@@ -1,4 +1,5 @@
 import { DPR_SECTIONS, DPR_SECTION_FIELDS, normalizeDprSectionContext } from "../shared/dprSections";
+import { attachVendorBillEquipmentEvidence, resolveSavedEquipmentEvidenceSources } from "./vendorBillEquipmentEvidence";
 import { assertSectionTokens, DprSectionConflict, findSectionDrafts, readSectionAggregate, saveDprSection, sectionSnapshot } from "./dprSections";
 import type { Express, Request, Response } from "express";
 import type { Server } from "http";
@@ -11688,7 +11689,7 @@ export async function registerRoutes(
           items = items.filter(item => permitted.some(site => vendorBillItemMatchesSite(item.siteName, site)));
         }
       }
-      res.json(items);
+      res.json(await attachVendorBillEquipmentEvidence(items, await getPermittedSiteNames(req)));
     } catch (err) {
       console.error("Error fetching vendor bill auto items:", err);
       res.status(500).json({ message: "Failed to fetch auto items" });
@@ -11777,7 +11778,13 @@ export async function registerRoutes(
       }
       const visible = await scopeVendorBillsToSiteAccess(req, [bill]);
       if (visible.length === 0) return res.status(403).json({ message: "Access denied for this bill's site" });
-      res.json(bill);
+      const needsLegacyEvidence = bill.items.some(item =>
+        item.category?.toLowerCase() === "equipment" && item.source === "auto" && item.equipmentId && !item.hireStatementId);
+      const candidates = needsLegacyEvidence && bill.periodFrom && bill.periodTo
+        ? await storage.getVendorBillAutoItems(bill.vendorName, "equipment", bill.periodFrom, bill.periodTo)
+        : [];
+      const evidenceItems = resolveSavedEquipmentEvidenceSources(bill.items, candidates);
+      res.json({ ...bill, items: await attachVendorBillEquipmentEvidence(evidenceItems, await getPermittedSiteNames(req)) });
     } catch (err) {
       console.error("Error fetching vendor bill:", err);
       res.status(500).json({ message: "Failed to fetch vendor bill" });

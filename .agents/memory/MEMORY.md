@@ -106,3 +106,4 @@
 - [Test suite verification](test-suite-verification.md) — compare file inventories, not only totals; bounded workers and separate build runs avoid setup skips.
 - [Published export verification](published-export-verification.md) — a successful build is not proof workspace gates are live; verify real restricted-user exports.
 - [Vendor payables preview](vendor-payables-preview.md) — indicative unsaved GST with last-bill provenance; unallocated monthly charges separate from site subtotal, included in vendor total.
+- [Vendor bill log evidence](vendor-bill-log-evidence.md) — display-only facts; missing legacy IDs require exact unique matching, never equipment/date-only inference.

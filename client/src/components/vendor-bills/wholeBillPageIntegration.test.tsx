@@ -6,6 +6,7 @@ import VendorBills from "@/pages/VendorBills";
 import { queryClient } from "@/lib/queryClient";
 import type { WholeBillSnapshot } from "./wholeBillSnapshot";
 import { wholeBillPricingNotes } from "./wholeBillSnapshot";
+import { EQUIPMENT_LOG_COLUMNS } from "./equipmentLogEvidence";
 
 const state = vi.hoisted(() => ({ permission: true, engineer: false, save: vi.fn() }));
 vi.mock("./wholeBillExport", () => ({ saveWholeBillFile: state.save }));
@@ -35,7 +36,7 @@ const baseBill = {
 };
 let bill: any;
 let autoItems: any[];
-let requests: Array<{ url: string; method: string }>;
+let requests: Array<{ url: string; method: string; body?: any }>;
 beforeEach(() => {
   queryClient.clear();
   state.permission = true; state.engineer = false;
@@ -49,7 +50,8 @@ beforeEach(() => {
   }) });
   HTMLElement.prototype.scrollIntoView = vi.fn();
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input); requests.push({ url, method: init?.method || "GET" });
+    const url = String(input); requests.push({ url, method: init?.method || "GET",
+      ...(typeof init?.body === "string" ? { body: JSON.parse(init.body) } : {}) });
     const json = (value: unknown) => new Response(JSON.stringify(value), { status: 200 });
     if (/\/api\/vendor-bills\/731(?:\?|$)/.test(url)) return json(bill);
     if (/\/api\/vendor-bills(?:\?|$)/.test(url)) return json([bill]);
@@ -79,6 +81,72 @@ async function clickExport(position: "header" | "footer", kind: "excel" | "pdf" 
     (request.method === "POST" && request.url.includes("/check-duplicates")))).toBe(true);
   return state.save.mock.calls.at(-1)![0] as WholeBillSnapshot;
 }
+
+describe("VB-EXPORT-02 Part B actual VendorBills page wiring", () => {
+  const evidence = {
+    log: { openingReading: 2594.4, closingReading: 2595.5, hoursWorked: 1.1,
+      startTime: "09:50", endTime: "17:13", diesel: 20, dieselSource: "contractor",
+      entryType: "daily", usageStatus: "working" },
+    equipment: { meterType: "hour_meter", consumptionNorm: 9, hireDieselResponsibility: "hlc" },
+  };
+  it.each(["auto:dpr_log", "manual"])("saved verified view and edit retain %s evidence, site chip and unchanged financials", async source => {
+    bill.billType = "all";
+    bill.status = "verified";
+    bill.items[0] = { ...bill.items[0], category: "equipment", description: "JCB-SITE",
+      unit: "HRS", source, sourceType: "dpr_log", sourceId: 81, equipmentLogEvidence: evidence };
+    await openDetail();
+    expect(screen.getByTestId("equipment-log-facts-detail-0").textContent).toContain("Diesel: HLC");
+    expect(screen.getByTestId("badge-site-0").textContent).toBe("SITE · RING ROAD");
+    expect(screen.getByTestId("equipment-log-consumption-detail-0").textContent).toContain("18.2 L/hr (norm 9.0)");
+    const saved = await clickExport("header");
+    const savedRow = saved.sections.find(section => section.category === "equipment")!.groups[0].rows[0];
+    expect(savedRow).toMatchObject({ qty: 5, rate: 167.45, amount: 837.25 });
+    expect(Object.keys(savedRow.details!)).toEqual(expect.arrayContaining([...EQUIPMENT_LOG_COLUMNS]));
+    state.save.mockClear();
+    fireEvent.click(screen.getByTestId("button-edit-bill"));
+    expect(await screen.findByTestId("equipment-log-facts-form-0")).toBeTruthy();
+    if (source !== "manual") expect(screen.getByTestId("badge-form-site-0").textContent).toBe("SITE · RING ROAD");
+    const edited = await clickExport("header");
+    const editRow = edited.sections.find(section => section.category === "equipment")!.groups[0].rows[0];
+    expect(editRow.details).toEqual(savedRow.details);
+    expect(editRow).toMatchObject({ qty: 5, rate: 167.45, amount: 837.25 });
+  });
+  it("pulls evidence without additional requests or pricing changes; exports identical facts without saving", async () => {
+    autoItems = [{ date: "2026-09-12", category: "equipment", description: "JCB-SITE",
+      qty: 2.6, unit: "HRS", rate: 87.35, sourceType: "dpr_log", sourceId: 7312,
+      siteName: "SITE: RING ROAD", equipmentLogEvidence: evidence }];
+    mount();
+    fireEvent.click(await screen.findByTestId("button-new-bill"));
+    fireEvent.change(screen.getByTestId("input-period-from"), { target: { value: "2026-09-01" } });
+    fireEvent.change(screen.getByTestId("input-period-to"), { target: { value: "2026-09-30" } });
+    fireEvent.click(screen.getByTestId("button-show-vendors"));
+    fireEvent.click(await screen.findByTestId("button-select-vendor-LOCAL SOIL"));
+    const pull = await screen.findByTestId("button-auto-populate");
+    await waitFor(() => expect((pull as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(pull);
+    expect(await screen.findByTestId("equipment-log-facts-form-0")).toBeTruthy();
+    const snapshot = await clickExport("header");
+    const row = snapshot.sections.find(section => section.category === "equipment")!.groups[0].rows[0];
+    expect(row).toMatchObject({ qty: 2.6, rate: 87.35 });
+    expect(row.amount).toBeCloseTo(2.6 * 87.35);
+    expect(row.details).toMatchObject({ "Opening reading": 2594.4, "Diesel scope": "HLC", Consumption: "18.2 L/hr" });
+    expect(requests.some(request => /equipment-logs|equipment-log-evidence/.test(request.url))).toBe(false);
+  });
+  it("excludes transient evidence from the existing save payload without changing quantities, rates or amounts", async () => {
+    bill.billType = "all";
+    bill.items[0] = { ...bill.items[0], category: "equipment", description: "JCB-SITE",
+      unit: "HRS", source: "auto:dpr_log", sourceType: "dpr_log", sourceId: 81, equipmentLogEvidence: evidence };
+    await openDetail();
+    fireEvent.click(screen.getByTestId("button-edit-bill"));
+    await screen.findByTestId("equipment-log-facts-form-0");
+    fireEvent.click(screen.getByTestId("button-save-bill"));
+    await waitFor(() => expect(requests.some(request => request.method === "PUT" && /vendor-bills\/731$/.test(request.url))).toBe(true));
+    const payload = requests.find(request => request.method === "PUT" && /vendor-bills\/731$/.test(request.url))!.body;
+    expect(payload.items[0]).toMatchObject({ qty: 5, rate: 167.45, amount: 837.25 });
+    expect(payload.items[0]).not.toHaveProperty("equipmentLogEvidence");
+    expect(JSON.stringify(payload)).not.toContain("openingReading");
+  });
+});
 
 describe("VB-EXPORT-02 Part A actual VendorBills page wiring", () => {
   it("exports the untouched new form without exporting the blank seed or saving", async () => {

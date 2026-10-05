@@ -2556,7 +2556,10 @@ export type InsertHireStatement = z.infer<typeof insertHireStatementSchema>;
 export type InsertHireStatementException = z.infer<typeof insertHireStatementExceptionSchema>;
 
 export type VendorBillWithItems = VendorBill & {
-  items: VendorBillItem[];
+  items: (VendorBillItem & {
+    /** Read-only source evidence returned by bill detail; never a persisted field. */
+    equipmentLogEvidence?: { log: Record<string, unknown>; equipment: Record<string, unknown> | null };
+  })[];
   /** Additive detail payload; absent on legacy serialized records. */
   hireStatements?: (HireStatement & { exceptions: HireStatementException[] })[];
 };
