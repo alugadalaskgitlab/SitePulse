@@ -109,3 +109,4 @@
 - [Vendor bill log evidence](vendor-bill-log-evidence.md) — display-only facts; missing legacy IDs require exact unique matching, never equipment/date-only inference.
 - [Transport rate setup](transport-rate-setup.md) — keep basis separate from legacy flat rates and identity; setup approval does not authorize bill-pricing integration.
 - [Role-conflict scope](role-conflict-scope.md) — whole-bill export precedence is a narrow exception; warnings do not authorize account flag changes.
+- [Generated artifact scope](generated-artifact-scope.md) — do not regenerate mockup components or report binaries during unrelated work.
