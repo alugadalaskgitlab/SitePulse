@@ -5057,3 +5057,17 @@ mtime_ms = 1791251785226
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c9d3831b-5aae-47a8-b0f1-1687d39a5a9b/582a1d1a-874c-43cb-86ca-eba493f60f3f"
 storage_version_token = "1791251885444390"
 content_type = "application/pdf"
+
+[[outputs]]
+id = "CRcUSivY_BZ_F7CYM3rw-"
+uri = "file://reports/startup-audit/startup-repair-audit-2026-10-06.html"
+type = "html"
+title = "Startup data repair audit — 6 October 2026"
+description = "73 named repair, backfill and setup entry points: affected rows, conditions, source-history dates, and production evidence with explicit 90-day limitations."
+logical_id = "8f8b9a13-3bf1-47ff-9297-0488ceefdee3"
+content_hash = "sha256:309442cae04f79ef44076c7b1cce71f89425a0bb0d6115b9e86eaa9d5c276015"
+size = 33409
+mtime_ms = 1791262015168
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8f8b9a13-3bf1-47ff-9297-0488ceefdee3/21a1705b-f341-47a3-a8be-7e88d6676021"
+storage_version_token = "1791262041848882"
+content_type = "text/html"
