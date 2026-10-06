@@ -5155,3 +5155,31 @@ mtime_ms = 1791295856565
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/86886814-ad4d-489a-9151-b89d9c722ca7/d2aaab28-e9ac-4130-855e-f839369f5ae3"
 storage_version_token = "1791295859415736"
 content_type = "text/html"
+
+[[outputs]]
+id = "L7s6Ct2AHCC3RQftJXGAD"
+uri = "file://reports/permission-audit.csv"
+type = "table"
+title = "Permission audit — all 696 cells"
+description = "Machine-readable section/action inventory, UI states, exact source references, verdicts and label notes."
+logical_id = "40e5c80c-8892-4853-a590-f910b765b0e2"
+content_hash = "sha256:f6c468f42190aa9c7c26efb47f63c6484c748e30814e25d86c3a906eeee1d4e1"
+size = 728426
+mtime_ms = 1791301882883
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/40e5c80c-8892-4853-a590-f910b765b0e2/d85c23ec-2745-440e-88ef-422e9628e50e"
+storage_version_token = "1791301900552032"
+content_type = "text/csv"
+
+[[outputs]]
+id = "95xM_nauL0X8fEinwLp4_"
+uri = "file://reports/permission-audit.md"
+type = "text"
+title = "Permission audit — findings and evidence"
+description = "Counts, dead/hidden controls, paired checks, page access, bypasses, development user flags, label mismatches and seven template inventories."
+logical_id = "0cdc341b-f2e9-4102-ad59-d6022490baa0"
+content_hash = "sha256:cd6b7cbf794dabe18f839c391d81392e23536dcfe754e4fadb34b86eae5b3888"
+size = 665661
+mtime_ms = 1791301882895
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/0cdc341b-f2e9-4102-ad59-d6022490baa0/69104008-7ff3-48b6-80eb-4a5937999144"
+storage_version_token = "1791301903811307"
+content_type = "text/markdown"

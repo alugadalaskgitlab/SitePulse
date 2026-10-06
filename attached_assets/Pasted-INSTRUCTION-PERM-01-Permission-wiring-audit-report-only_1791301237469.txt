@@ -1,0 +1,81 @@
+INSTRUCTION PERM-01: Permission wiring audit — report only, change nothing
+
+READ THIS FIRST
+This batch produces a REPORT. It changes NO application behaviour.
+Do NOT change any permission, any user, any label, any grey/active cell, any route guard, or any default. Do NOT "fix" anything you find — list it.
+Do NOT publish. Do NOT create follow-up tasks.
+The only files you may create are the report files named in OUTPUT below, plus the script that generates them.
+PARKED — do not investigate, touch or report on any of these: LDO, startup data repair jobs, stock balances, vendor bills, rate cards, trips, Part C.
+
+WHY
+The owner keeps the existing 82-section x 8-action permission matrix. He does not want it replaced or simplified. He wants every switch to be real: a box that is tickable must do something, a box that is greyed must genuinely not apply, and the words on screen must describe what the box actually controls.
+Right now nobody can tell which is which, so the audit comes first and the fixes come second, in a separate batch.
+
+THE THREE SOURCES THAT MUST AGREE
+1. `SECTION_KEYS`, `ACTIONS` and `SECTION_LABELS` in `shared/permissions.ts` — what exists.
+2. `SECTION_ACTIONS` in `client/src/pages/UserManagement.tsx` (~line 85) — a HAND-MAINTAINED map that decides which cells render tickable and which render grey. It is not derived from anything.
+3. The actual enforcement in the code — client `sectionCan` / `sectionVisible` / `canApprove` in `client/src/lib/auth-context.tsx`, `<RequireAuth section="...">`, `ReportExportGate`, `EditPermissionButton`, and the server helpers in `server/auth-routes.ts` (`assertEdit`, `assertEditEither`, `assertCreate`, `assertCreateOrEdit`, `assertView`, `assertDelete`, `assertApprove`, `assertExport`, `requireDeviceMgmt`, and any others that exist).
+
+=====================================================================
+A — BUILD THE MAP
+=====================================================================
+A1. Write a script (committed, re-runnable, e.g. `scripts/permission-audit.ts`) that walks the repo and produces one row per (section, action) pair — all 82 x 8, including pairs that are greyed and pairs that do not exist in the UI map.
+
+Each row must carry:
+  - section key, section label as shown on screen
+  - action key, action label as shown on screen (the column header)
+  - UI STATE: tickable / grey / missing-from-UI-map
+  - ENFORCED BY CLIENT: every file:line that reads this exact (section, action)
+  - ENFORCED BY SERVER: every file:line that reads this exact (section, action)
+  - VERDICT, one of:
+      LIVE          — tickable and read by at least one place
+      DEAD          — tickable but read nowhere (ticking it does nothing)
+      HIDDEN        — greyed but read somewhere (impossible to grant through the UI)
+      CORRECTLY-OFF — greyed and read nowhere
+      UNDECLARED    — the section/action is missing from the UI map entirely
+
+A2. Resolve references by hand where the script cannot. A dynamic call like `sectionCan(someVariable, action)` must be traced and the real section named, or listed under "could not resolve" with the file:line. Do not silently drop what the regex missed, and do not report a cell LIVE on a guess.
+
+A3. My own static pass found roughly 58 cells that look DEAD across 53 sections, about 20 of them in the `notify` column, including `user_management` create/edit, `device_approval` view/edit, `stores_inventory` approve, `equipment_performance_report` view_reports, `labour_management` create, `diesel_req_approve` edit, and `view` on the seven `rmc_*` sections. Treat that as a hint to check, NOT as a result to reproduce. Your number is the one that counts, and where you disagree with mine, say so and show the line.
+
+=====================================================================
+B — THE THINGS THAT ARE NOT SIMPLE CELLS
+=====================================================================
+B1. PAIRED CHECKS. `assertEditEither(req, res, "site_procurement", "purchase_indents_raise")` passes if EITHER cell is ticked, but the screen shows two independent boxes. List every call to `assertEditEither` / `assertCreateEither` / any other multi-section helper: file:line, the sections it ORs, and the route it guards. Group them so we can see how many distinct pairs exist.
+
+B2. `sectionVisible` (client/src/lib/auth-context.tsx ~157) returns true if ANY of view, create, edit, delete, view_reports, export or approve is set. So the View box does NOT control page access on its own, and page access can be granted by ticking Create alone. Confirm this reading, then list every place `sectionVisible` or `<RequireAuth section=...>` decides page access, and for each say which page it gates.
+
+B3. LEGACY BROAD KEYS. `site_procurement`, `site_diesel`, `vendor_bills`, `reports`, `rmc_operations`, `admin_settings`, `hmp_operations`, `reports_analysis`, `estimates_manager`, `app_management`. For each: is it still read anywhere, does it overlap a granular key, and what happens today if the broad key and the granular key disagree. One line each, with the deciding file:line.
+
+B4. THE ADMIN BYPASS. `sectionCan`, `sectionVisible`, `canApprove` and every `assert*` helper return true for `isAdmin || isOwner` BEFORE looking at the matrix. `client/src/pages/UserManagement.tsx` line ~422 disables the Permissions button when `user.isAdmin`, and line ~456 sets `isAdmin` from the role template `"__admin__"`, so "Administrator" appears in the create-user wizard as if it were one role template among the others.
+   State plainly: how many places bypass, and confirm whether a user with `isAdmin = true` can have ANY permission removed through the UI today.
+   Also report, for each existing user, which of `isAdmin` / `isOwner` / `isFieldEngineer` / `canManagePermissions` / `permissionManagerScope` / `allSitesAccess` / `setupComplete` is set. Report only — change nothing.
+
+B5. LABELS. For every tickable cell, quote the action column header and any tooltip text shown today, and say in one line what that cell ACTUALLY controls according to the code. Flag every case where the words and the behaviour differ. Pay particular attention to: View (see B2), Reports vs Export, Approve where a section's real action is "verify" or "issue", and Notify.
+
+B6. TEMPLATES. `buildTemplateMatrix(viewCreate, approveSections, editSections)` in `shared/permissions.ts`. For each of the 7 role templates, list which sections get which actions, and flag every template that grants `create` without `edit` — a user who can file a record but cannot correct his own typo. Report the gap; do not change the templates.
+
+=====================================================================
+OUTPUT
+=====================================================================
+1. `reports/permission-audit.csv` — the full (section, action) table from A1, every row, machine-readable.
+2. `reports/permission-audit.md` — the human summary: counts by verdict; the DEAD list grouped by section; the HIDDEN list; the paired-check list from B1; the `sectionVisible` finding from B2; the legacy-key findings from B3; the bypass findings and the per-user flag table from B4; the label mismatches from B5; the template gaps from B6.
+3. The script itself, so this can be re-run after the fixes land.
+
+=====================================================================
+WHAT NOT TO DO
+=====================================================================
+- Do not change any permission value, user flag, label, tooltip, grey/active cell, template or guard.
+- Do not add, remove or rename any section key or action.
+- Do not refactor the permission system, propose a new role model, or start on the fixes.
+- Do not add any dev-only switch, flag or bypass.
+- Do not publish.
+
+REPORT BACK — ONCE, AT THE END
+1. The two report files and the script path.
+2. Counts: LIVE / DEAD / HIDDEN / CORRECTLY-OFF / UNDECLARED, and the count of cells you could not resolve.
+3. The five findings you consider most serious, in your own words, with file:line for each.
+4. Anywhere your result disagrees with the hint in A3, and why.
+5. Anything you could not determine, and what it would take to determine it.
+
+STOP AFTER THE REPORT. Do not fix anything. The fixes are PERM-02 and will be specified from this report.
