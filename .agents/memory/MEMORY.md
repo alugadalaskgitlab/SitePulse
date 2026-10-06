@@ -110,3 +110,4 @@
 - [Transport rate setup](transport-rate-setup.md) — keep basis separate from legacy flat rates and identity; setup approval does not authorize bill-pricing integration.
 - [Role-conflict scope](role-conflict-scope.md) — whole-bill export precedence is a narrow exception; warnings do not authorize account flag changes.
 - [Generated artifact scope](generated-artifact-scope.md) — do not regenerate mockup components or report binaries during unrelated work.
+- [LDO historical data gap](ldo-historical-data-gap.md) — unrecorded substitute diesel is for SitePulse Next; do not invent receipts or correct historical balances.
