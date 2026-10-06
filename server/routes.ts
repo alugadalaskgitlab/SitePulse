@@ -45,6 +45,7 @@ import { validateOutcomeInput, resolveCarryTargetDate, buildCarryForwardPlan, bu
 import { syncArrangementBarAllocations } from "./arrangementAllocationSync";
 import { AUTO_SYNC_STATUSES } from "@shared/arrangementAutoAllocation";
 import { buildVendorPayablesPreview } from "./vendorPayablesPreview";
+import { buildGstRegisterPdf } from "./gstRegisterPdf";
 import {
   classifyBarExecutionState,
   deriveItemStatus,
@@ -11305,7 +11306,8 @@ export async function registerRoutes(
       const vendor = (req.query.vendor as string) || undefined;
       const status = (req.query.status as string) || undefined;
       const categoryFilter = ((req.query.category as string) || "all").toLowerCase();
-      const format = (String(req.query.format || "xlsx").toLowerCase() === "csv") ? "csv" : "xlsx";
+      const requestedFormat = String(req.query.format || "xlsx").toLowerCase();
+      const format = requestedFormat === "csv" || requestedFormat === "pdf" ? requestedFormat : "xlsx";
 
       const selectedSite = await resolveVendorBillSite(req, res, req.query.siteId);
       if (!selectedSite) return;
@@ -11437,6 +11439,32 @@ export async function registerRoutes(
 
       const fmtNum = (n: number) => n.toFixed(2);
       const fmtCell = (v: number | string) => (typeof v === "number" ? fmtNum(v) : v);
+
+      if (format === "pdf") {
+        const config = await getCompanyConfig();
+        const pdf = buildGstRegisterPdf({
+          title: reportLabel, company: config.companyName,
+          metadata: [
+            `Range: ${rangeLabel}`, `Vendor: ${vendorScope}`,
+            `Status filter: ${status && status !== "all" ? status : "all"}`,
+            `Category filter: ${categoryFilter}`,
+            `Bills in range: ${bills.length}`,
+            `Totals: Taxable ${fmtNum(totalTaxable)} + GST ${fmtNum(totals.total)} = ${fmtNum(grandTotal)}`,
+            `Generated: ${generatedAt}`,
+          ],
+          categories: [
+            ...categoryRows.map(r => [r.category, r.bills, fmtCell(r.taxable), fmtCell(r.gst)]),
+            ["TOTAL", bills.length, fmtNum(totalTaxable), fmtNum(totals.total)],
+          ],
+          details: detailRows.length ? [
+            ...detailRows.map(r => [r.billNo, r.date, r.vendor, r.category, fmtNum(r.taxable), fmtNum(r.gst), fmtNum(r.total)]),
+            ["TOTAL", "", "", "", fmtNum(totalTaxable), fmtNum(totals.total), fmtNum(grandTotal)],
+          ] : [["—", "—", "—", "—", "—", "—", "—"]],
+        });
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="${safeFilename}.pdf"`);
+        return res.send(pdf);
+      }
 
       if (format === "csv") {
         const escape = (v: any) => {

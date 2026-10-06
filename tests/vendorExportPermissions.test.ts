@@ -6,6 +6,7 @@ import request from "supertest";
 import { siteMatchesPermitted, vendorBillVisibleToSites, vendorBillItemMatchesSite } from "../shared/siteName";
 import { aggregateGstBreakdown, computeBillGstByCategory } from "../shared/vendor-bill-gst";
 import PDFDocument from "pdfkit";
+import { buildGstRegisterPdf } from "../server/gstRegisterPdf";
 import * as xlsx from "xlsx";
 import archiver from "archiver";
 import { normalizeVendorBillAdditionalAdjustments } from "../shared/schema";
@@ -66,7 +67,7 @@ const app = express();
 app.use(express.json());
 app.use((req: any, _res, next) => { req.authUser = { id: 7 }; req.authPermissions = permissions; next(); });
 const dependencies = { storage, siteMatchesPermitted, vendorBillVisibleToSites, vendorBillItemMatchesSite,
-  aggregateGstBreakdown, computeBillGstByCategory, normalizeVendorBillAdditionalAdjustments, PDFDocument, xlsx, archiver,
+  aggregateGstBreakdown, computeBillGstByCategory, normalizeVendorBillAdditionalAdjustments, PDFDocument, xlsx, archiver, buildGstRegisterPdf,
   getCompanyLogoPath: () => null,
   // Report layout is not under test here; preserve actual PDF/ZIP streaming.
   renderDailyPlantPdfBody: async (doc: any, _date: string, summary: any) => doc.text(summary.plantName),
@@ -82,6 +83,35 @@ for (const [method, path] of endpoints) {
   app[method](path, new Function(...Object.keys(dependencies), compiled)(...Object.values(dependencies)));
 }
 beforeEach(() => { permissions = {}; permittedIds = [1]; vi.clearAllMocks(); });
+
+describe("GST Register PDF parity and authorization", () => {
+  it("requires the same report permission as Excel", async () => {
+    const response = await request(app).get("/api/vendor-bills/export?format=pdf");
+    expect(response.status).toBe(403);
+    expect(storage.getVendorBills).not.toHaveBeenCalled();
+  });
+  it("retains site scope and the same per-bill values", async () => {
+    permissions.vendor_bills = { view_reports: true };
+    const response = await request(app).get("/api/vendor-bills/export?format=pdf&status=approved&category=material&dateFrom=2026-10-01&dateTo=2026-10-01");
+    expect(response.status).toBe(200);
+    expect(response.headers["content-type"]).toContain("application/pdf");
+    const pdf = response.body.toString("latin1");
+    for (const value of ["TEST", "BILL-1", "100.00", "Bills in range: 1", "Status filter: approved", "Category filter: material", "GST by Category", "Bill Detail"]) {
+      expect(pdf).toContain(value);
+    }
+    expect(pdf).not.toContain("BILL-2");
+    expect(pdf).not.toContain("SECRET VENDOR");
+  });
+  it("paginates a long register with repeated detail headings", () => {
+    const pdf = buildGstRegisterPdf({
+      company: "Company", title: "Register", metadata: ["Bills in range: 100"],
+      categories: [["MATERIAL", 100, "100.00", "18.00"]],
+      details: Array.from({ length: 100 }, (_, i) => [`BILL-${i}`, "2026-10-01", "A long vendor name that must wrap without clipping ".repeat(3), "material", "1.00", "0.18", "1.18"]),
+    }).toString("latin1");
+    expect(pdf).toContain("BILL-99");
+    expect((pdf.match(/Bill No/g) || []).length).toBeGreaterThan(1);
+  });
+});
 const url = (path: string) => path.replace(":id", "2").replace(":date", "2026-10-01");
 describe("VB-EXPORT-01 actual export route callbacks", () => {
   for (const [method, path, key] of endpoints) {

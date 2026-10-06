@@ -4959,3 +4959,101 @@ mtime_ms = 1791183097941
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/5f581f7f-5dba-4d1a-a4aa-1955b3315baf/50ab9c3b-0d00-4e8b-bf98-596649dbd016"
 storage_version_token = "1791183463597016"
 content_type = "application/pdf"
+
+[[outputs]]
+id = "deH4_x2pCHNcw9FalIISm"
+uri = "file://attached_assets/vendor-ui-tidy/HLC-VB-2026-0048-whole-bill.pdf"
+type = "pdf"
+title = "0048 — Whole-bill PDF"
+description = "Existing whole-bill renderer, using a read-only production bill snapshot locally."
+logical_id = "fbd7a662-4755-488a-8166-944a2dc428f6"
+content_hash = "sha256:38a88403858694cfd1f1c60217c60e06f8785e22e46733669c45bdd5958ff1ba"
+size = 132642
+mtime_ms = 1791251608715
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/fbd7a662-4755-488a-8166-944a2dc428f6/1a07dd48-c5f5-48c8-9bd8-f36f65341565"
+storage_version_token = "1791251617745059"
+content_type = "application/pdf"
+
+[[outputs]]
+id = "6HCP2ohn0gdbn4nHeLvhF"
+uri = "file://attached_assets/vendor-ui-tidy/HLC-VB-2026-0048-legacy-server.pdf"
+type = "pdf"
+title = "0048 — Legacy server PDF"
+description = "Existing server PDF renderer, using the same read-only production bill snapshot locally."
+logical_id = "cb3cd9bb-db2f-4c0d-b998-c9a1327dcdb5"
+content_hash = "sha256:104222d38681f93e1a8820a542ddc6db848726d11164ad83389751097065470c"
+size = 18016
+mtime_ms = 1791251608881
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/cb3cd9bb-db2f-4c0d-b998-c9a1327dcdb5/42a17e22-f067-4cac-9083-845a23438449"
+storage_version_token = "1791251619104119"
+content_type = "application/pdf"
+
+[[outputs]]
+id = "_IcL_hwf5tLhUdf3OQace"
+uri = "file://attached_assets/vendor-ui-tidy/bill-detail-header.png"
+type = "image"
+title = "Bill detail — duplicate header PDF buttons"
+description = "Read-only local preview of the production bill snapshot. Both PDF buttons remain."
+logical_id = "1b99aeb9-ba0e-4ca3-961d-7476c1e14b95"
+content_hash = "sha256:403d8f966a599b64acdabd09b2e3363897b0e315b9c92ac085588715e9eda85c"
+size = 166258
+mtime_ms = 1791251606733
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/1b99aeb9-ba0e-4ca3-961d-7476c1e14b95/3a971f71-f860-469e-b632-b9fbcf6674b4"
+storage_version_token = "1791251877888254"
+content_type = "image/png"
+
+[[outputs]]
+id = "UnxS8lNgg5nJ_zj9C38Nb"
+uri = "file://attached_assets/vendor-ui-tidy/bill-detail-footer.png"
+type = "image"
+title = "Bill detail — footer exports"
+description = "Footer has one whole-bill Excel/PDF pair; no legacy PDF duplicate."
+logical_id = "60645394-6f24-4fe0-b91b-aa55ceb9f941"
+content_hash = "sha256:6b9725601cd01c939a1366e45180069c95ac106bbb1dd57c4e1bc9852f8f42d3"
+size = 179721
+mtime_ms = 1791251608713
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/60645394-6f24-4fe0-b91b-aa55ceb9f941/8958c0d7-1d42-4848-8677-bbf952ccdbdd"
+storage_version_token = "1791251880158438"
+content_type = "image/png"
+
+[[outputs]]
+id = "eUy-5tjGu0Lt3sB9kFTN4"
+uri = "file://attached_assets/vendor-ui-tidy/gst-register-desktop.png"
+type = "image"
+title = "GST Register — updated export buttons"
+description = "Development preview: PDF and Excel, with CSV removed."
+logical_id = "70e5d8c4-430c-47a7-98cd-f9536b66c192"
+content_hash = "sha256:fffc473a25e26a719e080be5ab13667827ce2f949335197ee606a7eb24cab81e"
+size = 136079
+mtime_ms = 1791251796593
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/70e5d8c4-430c-47a7-98cd-f9536b66c192/2644f1ad-a16d-4b23-b99c-64080ce81f1d"
+storage_version_token = "1791251882491129"
+content_type = "image/png"
+
+[[outputs]]
+id = "Qg8kNI2wfUDx-XCoEZBml"
+uri = "file://attached_assets/vendor-ui-tidy/gst-register-mobile.png"
+type = "image"
+title = "GST Register — mobile preview"
+description = "Development mobile check of the same export controls."
+logical_id = "e157eb63-618e-4a2c-ab7a-3e5ec9f84e84"
+content_hash = "sha256:d34101f049d8a4975c32638555daca57c3ce661a509ca8f9cc874da4febedd93"
+size = 60533
+mtime_ms = 1791251799045
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e157eb63-618e-4a2c-ab7a-3e5ec9f84e84/b53298e5-c486-4519-a4aa-720ad594cba9"
+storage_version_token = "1791251884190338"
+content_type = "image/png"
+
+[[outputs]]
+id = "5If_KgpifqDPfbHTgdksy"
+uri = "file://attached_assets/vendor-ui-tidy/gst-register-sample.pdf"
+type = "pdf"
+title = "GST Register — sample PDF"
+description = "Header and filters, category totals, then one detail row for the comparison bill."
+logical_id = "c9d3831b-5aae-47a8-b0f1-1687d39a5a9b"
+content_hash = "sha256:bd0eabbc97f73e8ece6fa8b6a4f10f30d1e9d4fb865cff74fc4e1450e0aa8f04"
+size = 14865
+mtime_ms = 1791251785226
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c9d3831b-5aae-47a8-b0f1-1687d39a5a9b/582a1d1a-874c-43cb-86ca-eba493f60f3f"
+storage_version_token = "1791251885444390"
+content_type = "application/pdf"

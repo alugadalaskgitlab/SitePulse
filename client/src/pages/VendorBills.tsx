@@ -2286,7 +2286,7 @@ export default function VendorBills() {
     return { site, plant, other, total: site + plant + other };
   }, [filteredBills]);
 
-  const handleGstRegisterExport = async (fmt: "csv" | "xlsx") => {
+  const handleGstRegisterExport = async (fmt: "pdf" | "xlsx") => {
     if (!filteredBills.length) {
       toast({ title: "Nothing to export", description: "Adjust the filters to include some bills." });
       return;
@@ -2316,7 +2316,7 @@ export default function VendorBills() {
       const range = !fromD && !toD ? "all-dates" : (fromD === toD ? fromD : `${fromD || "…"}_to_${toD || "…"}`);
       const isLedger = filterVendor && filterVendor !== "all";
       const scope = isLedger ? `vendor-ledger-${filterVendor}` : "gst-register";
-      const filename = `${scope}-${range}.${fmt}`.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/_(csv|xlsx)$/, ".$1");
+      const filename = `${scope}-${range}.${fmt}`.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/_(pdf|xlsx)$/, ".$1");
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -4996,12 +4996,12 @@ export default function VendorBills() {
                 variant="outline"
                 size="sm"
                 className="h-7 px-2 text-xs normal-case"
-                onClick={() => handleGstRegisterExport("csv")}
+                onClick={() => handleGstRegisterExport("pdf")}
                 disabled={!filteredBills.length}
-                data-testid="button-export-gst-csv"
+                data-testid="button-export-gst-pdf"
               >
                 <Download className="w-3 h-3 mr-1" />
-                Export CSV
+                Export PDF
               </Button>}
               {canExport && <Button
                 variant="outline"
