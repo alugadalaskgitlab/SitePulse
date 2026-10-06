@@ -157,7 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!u) return false;
       if (u.isAdmin || u.isOwner) return true;
       const row = perms[section];
-      return !!row && (row.view || row.create || row.edit || row.delete || row.view_reports || row.export || row.approve);
+      return !!row && !!row.view;
     };
 
     const canApprove = (section: SectionKey): boolean => {

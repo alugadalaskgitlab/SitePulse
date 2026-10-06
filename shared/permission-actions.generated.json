@@ -1,0 +1,932 @@
+{
+  "dashboard": {
+    "actions": [
+      "view",
+      "edit"
+    ],
+    "tooltips": {
+      "view": "Open Home Dashboard. Other action switches do not grant page access.",
+      "edit": "Edit records in Home Dashboard. Edit also authorizes delete or cancel where the action uses an Edit check."
+    }
+  },
+  "hmp_hub": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open HMP Hub (entry page). Other action switches do not grant page access."
+    }
+  },
+  "site_hub": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open Site Operations Hub (entry page). Other action switches do not grant page access."
+    }
+  },
+  "equipment_hub": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open Equipment & Fleet Hub (entry page). Other action switches do not grant page access. Shared pages or actions also accept: Equipment Performance — View Report (View); Equipment Usage — Log & View (View)."
+    }
+  },
+  "reports_hub": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open Reports Hub (entry page). Other action switches do not grant page access."
+    }
+  },
+  "stores_hub": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open Stores & Inventory Hub (entry page). Other action switches do not grant page access. Shared pages or actions also accept: Stores — GRNs, Issues & Ledger (View)."
+    }
+  },
+  "finance_hub": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open Procurement & Billing Hub (entry page). Other action switches do not grant page access."
+    }
+  },
+  "masters_hub": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open Masters Hub (entry page). Other action switches do not grant page access."
+    }
+  },
+  "admin_hub": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open Admin Hub (entry page). Other action switches do not grant page access."
+    }
+  },
+  "rmc_hub": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open RMC Hub (entry page). Other action switches do not grant page access."
+    }
+  },
+  "site_dprs": {
+    "actions": [
+      "view",
+      "create",
+      "edit",
+      "view_reports",
+      "notify"
+    ],
+    "tooltips": {
+      "view": "Open Site DPRs — File & View. Other action switches do not grant page access. Shared pages or actions also accept: Stores — GRNs, Issues & Ledger (View); Equipment Usage — Log & View (View); Site Requirements — Labour Allocation (View).",
+      "create": "Create records in Site DPRs — File & View.",
+      "edit": "Edit records in Site DPRs — File & View. Edit also authorizes delete or cancel where the action uses an Edit check.",
+      "view_reports": "Use report export controls for Site DPRs — File & View; this is not page access.",
+      "notify": "Receive notifications for Site DPRs — File & View, when user notifications and a device subscription are enabled."
+    }
+  },
+  "site_materials": {
+    "actions": [
+      "view",
+      "create",
+      "edit",
+      "notify"
+    ],
+    "tooltips": {
+      "view": "Open Site Materials Received. Other action switches do not grant page access.",
+      "create": "Create records in Site Materials Received.",
+      "edit": "Edit records in Site Materials Received. Edit also authorizes delete or cancel where the action uses an Edit check.",
+      "notify": "Receive notifications for Site Materials Received, when user notifications and a device subscription are enabled."
+    }
+  },
+  "site_procurement": {
+    "actions": [
+      "view",
+      "create",
+      "edit"
+    ],
+    "tooltips": {
+      "view": "Open Purchase Indents (legacy). Other action switches do not grant page access. Shared pages or actions also accept: Site Purchases Report (View); Purchase Indents — View List (View); Purchase Indents — Raise / Submit (View); Purchase Indents — View List (View / Create / Edit); Purchase Indents — Raise / Submit (View / Create / Edit).",
+      "create": "Create records in Purchase Indents (legacy). Shared pages or actions also accept: Purchase Indents — Raise / Submit (Create); Purchase Indents — View List (View / Create / Edit); Purchase Indents — Raise / Submit (View / Create / Edit).",
+      "edit": "Edit records in Purchase Indents (legacy). Edit also authorizes delete or cancel where the action uses an Edit check. Shared pages or actions also accept: Purchase Indents — Raise / Submit (Edit); Purchase Indents — View List (View / Create / Edit); Purchase Indents — Raise / Submit (View / Create / Edit)."
+    }
+  },
+  "purchase_indents_view": {
+    "actions": [
+      "view",
+      "notify"
+    ],
+    "tooltips": {
+      "view": "Open Purchase Indents — View List. Other action switches do not grant page access. Shared pages or actions also accept: Purchase Indents (legacy) (View); Purchase Indents — Raise / Submit (View); Purchase Indents (legacy) (View / Create / Edit); Purchase Indents — Raise / Submit (View / Create / Edit).",
+      "notify": "Receive notifications for Purchase Indents — View List, when user notifications and a device subscription are enabled."
+    }
+  },
+  "purchase_indents_raise": {
+    "actions": [
+      "view",
+      "create",
+      "edit"
+    ],
+    "tooltips": {
+      "view": "Open Purchase Indents — Raise / Submit. Other action switches do not grant page access. Shared pages or actions also accept: Purchase Indents — View List (View); Purchase Indents (legacy) (View); Purchase Indents — View List (View / Create / Edit); Purchase Indents (legacy) (View / Create / Edit).",
+      "create": "Create records in Purchase Indents — Raise / Submit. Shared pages or actions also accept: Purchase Indents (legacy) (Create); Purchase Indents — View List (View / Create / Edit); Purchase Indents (legacy) (View / Create / Edit).",
+      "edit": "Edit records in Purchase Indents — Raise / Submit. Edit also authorizes delete or cancel where the action uses an Edit check. Shared pages or actions also accept: Purchase Indents (legacy) (Edit); Purchase Indents — View List (View / Create / Edit); Purchase Indents (legacy) (View / Create / Edit)."
+    }
+  },
+  "purchase_indents_approve": {
+    "actions": [
+      "view",
+      "approve"
+    ],
+    "tooltips": {
+      "view": "Open Purchase Indents — Approve / Reject. Other action switches do not grant page access.",
+      "approve": "Allow approve, reject, cancel actions in Purchase Indents — Approve / Reject."
+    }
+  },
+  "site_diesel": {
+    "actions": [
+      "view",
+      "create",
+      "edit",
+      "view_reports",
+      "notify"
+    ],
+    "tooltips": {
+      "view": "Open Diesel Requirements (legacy). Other action switches do not grant page access. Shared pages or actions also accept: Diesel Requirements — View List (View); Diesel Requirements — Raise / Submit (View); Stores — GRNs, Issues & Ledger (View); Stores — GRNs, Issues & Ledger (View / Create / Edit); Diesel Requirements — Raise / Submit (View / Create / Edit).",
+      "create": "Create records in Diesel Requirements (legacy). Shared pages or actions also accept: Diesel Requirements — Raise / Submit (Create); Stores — GRNs, Issues & Ledger (View / Create / Edit); Diesel Requirements — Raise / Submit (View / Create / Edit).",
+      "edit": "Edit records in Diesel Requirements (legacy). Edit also authorizes delete or cancel where the action uses an Edit check. Shared pages or actions also accept: Diesel Requirements — Raise / Submit (Edit); Stores — GRNs, Issues & Ledger (View / Create / Edit); Diesel Requirements — Raise / Submit (View / Create / Edit).",
+      "view_reports": "Use report export controls for Diesel Requirements (legacy); this is not page access.",
+      "notify": "Receive notifications for Diesel Requirements (legacy), when user notifications and a device subscription are enabled."
+    }
+  },
+  "diesel_req_view": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open Diesel Requirements — View List. Other action switches do not grant page access. Shared pages or actions also accept: Diesel Requirements (legacy) (View); Diesel Requirements — Raise / Submit (View); Stores — GRNs, Issues & Ledger (View)."
+    }
+  },
+  "diesel_req_raise": {
+    "actions": [
+      "view",
+      "create",
+      "edit",
+      "notify"
+    ],
+    "tooltips": {
+      "view": "Open Diesel Requirements — Raise / Submit. Other action switches do not grant page access. Shared pages or actions also accept: Diesel Requirements — View List (View); Diesel Requirements (legacy) (View); Diesel Requirements (legacy) (View / Create / Edit); Stores — GRNs, Issues & Ledger (View / Create / Edit).",
+      "create": "Create records in Diesel Requirements — Raise / Submit. Shared pages or actions also accept: Diesel Requirements (legacy) (Create); Diesel Requirements (legacy) (View / Create / Edit); Stores — GRNs, Issues & Ledger (View / Create / Edit).",
+      "edit": "Edit records in Diesel Requirements — Raise / Submit. Edit also authorizes delete or cancel where the action uses an Edit check. Shared pages or actions also accept: Diesel Requirements (legacy) (Edit); Diesel Requirements (legacy) (View / Create / Edit); Stores — GRNs, Issues & Ledger (View / Create / Edit).",
+      "notify": "Receive notifications for Diesel Requirements — Raise / Submit, when user notifications and a device subscription are enabled."
+    }
+  },
+  "diesel_req_approve": {
+    "actions": [
+      "view",
+      "approve",
+      "notify"
+    ],
+    "tooltips": {
+      "view": "Open Diesel Requirements — Approve / Reject. Other action switches do not grant page access.",
+      "approve": "Allow approve, reject actions in Diesel Requirements — Approve / Reject.",
+      "notify": "Receive notifications for Diesel Requirements — Approve / Reject, when user notifications and a device subscription are enabled."
+    }
+  },
+  "irn_view": {
+    "actions": [
+      "view",
+      "view_reports",
+      "notify"
+    ],
+    "tooltips": {
+      "view": "Open Internal Requisitions — View. Other action switches do not grant page access. Shared pages or actions also accept: Internal Requisitions — Raise (View); Internal Requisitions — Approve / Issue (View).",
+      "view_reports": "Use report export controls for Internal Requisitions — View; this is not page access. Shared pages or actions also accept: Internal Requisitions — Raise (Reports).",
+      "notify": "Receive notifications for Internal Requisitions — View, when user notifications and a device subscription are enabled."
+    }
+  },
+  "irn_raise": {
+    "actions": [
+      "view",
+      "create",
+      "view_reports"
+    ],
+    "tooltips": {
+      "view": "Open Internal Requisitions — Raise. Other action switches do not grant page access. Shared pages or actions also accept: Internal Requisitions — View (View); Internal Requisitions — Approve / Issue (View).",
+      "create": "Create records in Internal Requisitions — Raise.",
+      "view_reports": "Use report export controls for Internal Requisitions — Raise; this is not page access. Shared pages or actions also accept: Internal Requisitions — View (Reports)."
+    }
+  },
+  "irn_approve": {
+    "actions": [
+      "view",
+      "create",
+      "approve"
+    ],
+    "tooltips": {
+      "view": "Open Internal Requisitions — Approve / Issue. Other action switches do not grant page access. Shared pages or actions also accept: Internal Requisitions — View (View); Internal Requisitions — Raise (View).",
+      "create": "Show the IRN approval action. The server separately requires IRN Approve to accept approval.",
+      "approve": "Allow approve, close, reopen actions in Internal Requisitions — Approve / Issue."
+    }
+  },
+  "plant_shift_logs": {
+    "actions": [
+      "view",
+      "create",
+      "edit",
+      "view_reports",
+      "notify"
+    ],
+    "tooltips": {
+      "view": "Open Shift Log — File & View. Other action switches do not grant page access. Shared pages or actions also accept: Shift Log — Manpower Review Report (View).",
+      "create": "Create records in Shift Log — File & View.",
+      "edit": "Edit records in Shift Log — File & View. Edit also authorizes delete or cancel where the action uses an Edit check.",
+      "view_reports": "Use report export controls for Shift Log — File & View; this is not page access. Shared pages or actions also accept: Shift Log — Manpower Review Report (Reports).",
+      "notify": "Receive notifications for Shift Log — File & View, when user notifications and a device subscription are enabled."
+    }
+  },
+  "plant_manpower_review": {
+    "actions": [
+      "view",
+      "view_reports"
+    ],
+    "tooltips": {
+      "view": "Open Shift Log — Manpower Review Report. Other action switches do not grant page access. Shared pages or actions also accept: Shift Log — File & View (View).",
+      "view_reports": "Use report export controls for Shift Log — Manpower Review Report; this is not page access. Shared pages or actions also accept: Shift Log — File & View (Reports)."
+    }
+  },
+  "plant_heating": {
+    "actions": [
+      "view",
+      "create",
+      "edit",
+      "view_reports"
+    ],
+    "tooltips": {
+      "view": "Open Heating Sessions — Log & View. Other action switches do not grant page access. Shared pages or actions also accept: Heating Trends Report (View).",
+      "create": "Create records in Heating Sessions — Log & View.",
+      "edit": "Edit records in Heating Sessions — Log & View. Edit also authorizes delete or cancel where the action uses an Edit check.",
+      "view_reports": "Use report export controls for Heating Sessions — Log & View; this is not page access. Shared pages or actions also accept: Heating Trends Report (Reports)."
+    }
+  },
+  "plant_heating_trends": {
+    "actions": [
+      "view",
+      "view_reports"
+    ],
+    "tooltips": {
+      "view": "Open Heating Trends Report. Other action switches do not grant page access. Shared pages or actions also accept: Heating Sessions — Log & View (View).",
+      "view_reports": "Use report export controls for Heating Trends Report; this is not page access. Shared pages or actions also accept: Heating Sessions — Log & View (Reports)."
+    }
+  },
+  "plant_equipment": {
+    "actions": [
+      "view",
+      "create",
+      "edit",
+      "view_reports",
+      "notify"
+    ],
+    "tooltips": {
+      "view": "Open Equipment Usage — Log & View. Other action switches do not grant page access. Shared pages or actions also accept: Equipment & Fleet Hub (entry page) (View); Equipment Performance — View Report (View); Site DPRs — File & View (View); Stores — GRNs, Issues & Ledger (View); Site Requirements — Labour Allocation (View); Generator (DG) Logs (View); Equipment Maintenance Logs (View).",
+      "create": "Create records in Equipment Usage — Log & View.",
+      "edit": "Edit records in Equipment Usage — Log & View. Edit also authorizes delete or cancel where the action uses an Edit check.",
+      "view_reports": "Use report export controls for Equipment Usage — Log & View; this is not page access.",
+      "notify": "Receive notifications for Equipment Usage — Log & View, when user notifications and a device subscription are enabled."
+    }
+  },
+  "plant_generator_logs": {
+    "actions": [
+      "view",
+      "notify"
+    ],
+    "tooltips": {
+      "view": "Open Generator (DG) Logs. Other action switches do not grant page access. Shared pages or actions also accept: Equipment Usage — Log & View (View).",
+      "notify": "Receive notifications for Generator (DG) Logs, when user notifications and a device subscription are enabled."
+    }
+  },
+  "plant_maintenance": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open Equipment Maintenance Logs. Other action switches do not grant page access. Shared pages or actions also accept: Equipment Usage — Log & View (View)."
+    }
+  },
+  "plant_production": {
+    "actions": [
+      "view",
+      "create",
+      "edit",
+      "view_reports",
+      "notify"
+    ],
+    "tooltips": {
+      "view": "Open Production & Dispatches. Other action switches do not grant page access. Shared pages or actions also accept: RMC Operations (legacy) (View); RMC Batch Records (View); RMC Mix Designs (View); RMC Cube Tests (QC) (View); RMC Delivery Challans (View); Daily Plant Reports (single day + PDF bulk) (View).",
+      "create": "Create records in Production & Dispatches.",
+      "edit": "Edit records in Production & Dispatches. Edit also authorizes delete or cancel where the action uses an Edit check.",
+      "view_reports": "Use report export controls for Production & Dispatches; this is not page access. Shared pages or actions also accept: Daily Plant Reports (single day + PDF bulk) (Reports); RMC Batch Records (Reports); RMC Operations (legacy) (Reports); RMC Cube Tests (QC) (Reports); RMC Delivery Challans (Reports).",
+      "notify": "Receive notifications for Production & Dispatches, when user notifications and a device subscription are enabled."
+    }
+  },
+  "plant_materials": {
+    "actions": [
+      "view",
+      "create",
+      "edit",
+      "view_reports",
+      "notify"
+    ],
+    "tooltips": {
+      "view": "Open Material Receipts / Issues / Returns. Other action switches do not grant page access. Shared pages or actions also accept: RMC Raw Materials (View); RMC Operations (legacy) (View); Material Stock Ledger (View).",
+      "create": "Create records in Material Receipts / Issues / Returns.",
+      "edit": "Edit records in Material Receipts / Issues / Returns. Edit also authorizes delete or cancel where the action uses an Edit check.",
+      "view_reports": "Use report export controls for Material Receipts / Issues / Returns; this is not page access.",
+      "notify": "Receive notifications for Material Receipts / Issues / Returns, when user notifications and a device subscription are enabled."
+    }
+  },
+  "plant_bitumen": {
+    "actions": [
+      "view",
+      "create",
+      "edit",
+      "view_reports",
+      "notify"
+    ],
+    "tooltips": {
+      "view": "Open Bitumen Stock Tracker. Other action switches do not grant page access.",
+      "create": "Create records in Bitumen Stock Tracker.",
+      "edit": "Edit records in Bitumen Stock Tracker. Edit also authorizes delete or cancel where the action uses an Edit check.",
+      "view_reports": "Use report export controls for Bitumen Stock Tracker; this is not page access.",
+      "notify": "Receive notifications for Bitumen Stock Tracker, when user notifications and a device subscription are enabled."
+    }
+  },
+  "plant_ldo": {
+    "actions": [
+      "view",
+      "create",
+      "edit",
+      "view_reports",
+      "notify"
+    ],
+    "tooltips": {
+      "view": "Open LDO Flow Meter. Other action switches do not grant page access.",
+      "create": "Create records in LDO Flow Meter.",
+      "edit": "Edit records in LDO Flow Meter. Edit also authorizes delete or cancel where the action uses an Edit check.",
+      "view_reports": "Use report export controls for LDO Flow Meter; this is not page access.",
+      "notify": "Receive notifications for LDO Flow Meter, when user notifications and a device subscription are enabled."
+    }
+  },
+  "plant_daily_reports": {
+    "actions": [
+      "view",
+      "edit",
+      "view_reports",
+      "notify"
+    ],
+    "tooltips": {
+      "view": "Open Daily Plant Reports (single day + PDF bulk). Other action switches do not grant page access. Shared pages or actions also accept: RMC Daily Report (View); Production & Dispatches (View).",
+      "edit": "Edit records in Daily Plant Reports (single day + PDF bulk). Edit also authorizes delete or cancel where the action uses an Edit check.",
+      "view_reports": "Use report export controls for Daily Plant Reports (single day + PDF bulk); this is not page access. Shared pages or actions also accept: Production & Dispatches (Reports); RMC Daily Report (Reports).",
+      "notify": "Receive notifications for Daily Plant Reports (single day + PDF bulk), when user notifications and a device subscription are enabled."
+    }
+  },
+  "plant_stock": {
+    "actions": [
+      "view",
+      "create",
+      "edit",
+      "view_reports",
+      "notify"
+    ],
+    "tooltips": {
+      "view": "Open Material Stock Ledger. Other action switches do not grant page access. Shared pages or actions also accept: Material Receipts / Issues / Returns (View); Physical Stock Reconciliation (View); Stock Ledger Rebuild / Reassign / Transfer (View); LDO Book vs Physical Reconciliation (View).",
+      "create": "Create records in Material Stock Ledger.",
+      "edit": "Edit records in Material Stock Ledger. Edit also authorizes delete or cancel where the action uses an Edit check.",
+      "view_reports": "Use report export controls for Material Stock Ledger; this is not page access.",
+      "notify": "Receive notifications for Material Stock Ledger, when user notifications and a device subscription are enabled."
+    }
+  },
+  "plant_ldo_reconciliation": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open LDO Book vs Physical Reconciliation. Other action switches do not grant page access. Shared pages or actions also accept: Material Stock Ledger (View)."
+    }
+  },
+  "plant_variance": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open Stock Variance Report. Other action switches do not grant page access."
+    }
+  },
+  "plant_audit": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open Audit Report. Other action switches do not grant page access."
+    }
+  },
+  "plant_diesel_proc": {
+    "actions": [
+      "view",
+      "view_reports"
+    ],
+    "tooltips": {
+      "view": "Open Diesel Procurement Report. Other action switches do not grant page access.",
+      "view_reports": "Use report export controls for Diesel Procurement Report; this is not page access."
+    }
+  },
+  "stock_reconciliation": {
+    "actions": [
+      "view",
+      "create"
+    ],
+    "tooltips": {
+      "view": "Open Physical Stock Reconciliation. Other action switches do not grant page access. Shared pages or actions also accept: Material Stock Ledger (View).",
+      "create": "Create records in Physical Stock Reconciliation."
+    }
+  },
+  "equipment_performance_report": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open Equipment Performance — View Report. Other action switches do not grant page access. Shared pages or actions also accept: Equipment & Fleet Hub (entry page) (View); Equipment Usage — Log & View (View)."
+    }
+  },
+  "rmc_operations": {
+    "actions": [
+      "view",
+      "view_reports"
+    ],
+    "tooltips": {
+      "view": "Open RMC Operations (legacy). Other action switches do not grant page access. Shared pages or actions also accept: RMC Batch Records (View); Production & Dispatches (View); RMC Mix Designs (View); RMC Raw Materials (View); Material Receipts / Issues / Returns (View); RMC Cube Tests (QC) (View); RMC Delivery Challans (View).",
+      "view_reports": "Use report export controls for RMC Operations (legacy); this is not page access. Shared pages or actions also accept: RMC Batch Records (Reports); Production & Dispatches (Reports); RMC Cube Tests (QC) (Reports); RMC Delivery Challans (Reports)."
+    }
+  },
+  "rmc_batch_records": {
+    "actions": [
+      "view",
+      "view_reports"
+    ],
+    "tooltips": {
+      "view": "Open RMC Batch Records. Other action switches do not grant page access. Shared pages or actions also accept: RMC Operations (legacy) (View); Production & Dispatches (View).",
+      "view_reports": "Use report export controls for RMC Batch Records; this is not page access. Shared pages or actions also accept: RMC Operations (legacy) (Reports); Production & Dispatches (Reports)."
+    }
+  },
+  "rmc_mix_designs": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open RMC Mix Designs. Other action switches do not grant page access. Shared pages or actions also accept: RMC Operations (legacy) (View); Production & Dispatches (View)."
+    }
+  },
+  "rmc_cube_tests": {
+    "actions": [
+      "view",
+      "view_reports"
+    ],
+    "tooltips": {
+      "view": "Open RMC Cube Tests (QC). Other action switches do not grant page access. Shared pages or actions also accept: RMC Operations (legacy) (View); Production & Dispatches (View).",
+      "view_reports": "Use report export controls for RMC Cube Tests (QC); this is not page access. Shared pages or actions also accept: RMC Operations (legacy) (Reports); Production & Dispatches (Reports)."
+    }
+  },
+  "rmc_raw_materials": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open RMC Raw Materials. Other action switches do not grant page access. Shared pages or actions also accept: RMC Operations (legacy) (View); Material Receipts / Issues / Returns (View)."
+    }
+  },
+  "rmc_delivery_challans": {
+    "actions": [
+      "view",
+      "view_reports"
+    ],
+    "tooltips": {
+      "view": "Open RMC Delivery Challans. Other action switches do not grant page access. Shared pages or actions also accept: RMC Operations (legacy) (View); Production & Dispatches (View).",
+      "view_reports": "Use report export controls for RMC Delivery Challans; this is not page access. Shared pages or actions also accept: RMC Operations (legacy) (Reports); Production & Dispatches (Reports)."
+    }
+  },
+  "rmc_daily_report": {
+    "actions": [
+      "view",
+      "view_reports"
+    ],
+    "tooltips": {
+      "view": "Open RMC Daily Report. Other action switches do not grant page access. Shared pages or actions also accept: Daily Plant Reports (single day + PDF bulk) (View).",
+      "view_reports": "Use report export controls for RMC Daily Report; this is not page access. Shared pages or actions also accept: Daily Plant Reports (single day + PDF bulk) (Reports)."
+    }
+  },
+  "vendor_bills": {
+    "actions": [
+      "view",
+      "create",
+      "edit",
+      "view_reports"
+    ],
+    "tooltips": {
+      "view": "Open Vendor Bills (legacy). Other action switches do not grant page access. Shared pages or actions also accept: Vendor Bills — View List (View); Vendor Bills — Raise / Create (View).",
+      "create": "Create records in Vendor Bills (legacy). Shared pages or actions also accept: Vendor Bills — Raise / Create (Create).",
+      "edit": "Edit records in Vendor Bills (legacy). Edit also authorizes delete or cancel where the action uses an Edit check. Shared pages or actions also accept: Vendor Bills — Raise / Create (Edit).",
+      "view_reports": "Use report export controls for Vendor Bills (legacy); this is not page access. Shared pages or actions also accept: Vendor Bills — View List (Reports)."
+    }
+  },
+  "vendor_bills_view": {
+    "actions": [
+      "view",
+      "view_reports",
+      "notify"
+    ],
+    "tooltips": {
+      "view": "Open Vendor Bills — View List. Other action switches do not grant page access. Shared pages or actions also accept: Vendor Bills (legacy) (View).",
+      "view_reports": "Use report export controls for Vendor Bills — View List; this is not page access. Shared pages or actions also accept: Vendor Bills (legacy) (Reports).",
+      "notify": "Receive notifications for Vendor Bills — View List, when user notifications and a device subscription are enabled."
+    }
+  },
+  "vendor_bills_raise": {
+    "actions": [
+      "view",
+      "create",
+      "edit",
+      "notify"
+    ],
+    "tooltips": {
+      "view": "Open Vendor Bills — Raise / Create. Other action switches do not grant page access. Shared pages or actions also accept: Vendor Bills (legacy) (View).",
+      "create": "Create records in Vendor Bills — Raise / Create. Shared pages or actions also accept: Vendor Bills (legacy) (Create).",
+      "edit": "Edit records in Vendor Bills — Raise / Create. Edit also authorizes delete or cancel where the action uses an Edit check. Shared pages or actions also accept: Vendor Bills (legacy) (Edit).",
+      "notify": "Receive notifications for Vendor Bills — Raise / Create, when user notifications and a device subscription are enabled."
+    }
+  },
+  "vendor_bills_verify": {
+    "actions": [
+      "view",
+      "edit",
+      "approve"
+    ],
+    "tooltips": {
+      "view": "Open Vendor Bills — Mark Verified. Other action switches do not grant page access.",
+      "edit": "Edit records in Vendor Bills — Mark Verified. Edit also authorizes delete or cancel where the action uses an Edit check.",
+      "approve": "Allow approval actions in Vendor Bills — Mark Verified."
+    }
+  },
+  "vendor_bills_approve": {
+    "actions": [
+      "view",
+      "edit",
+      "approve",
+      "notify"
+    ],
+    "tooltips": {
+      "view": "Open Vendor Bills — Final Approve / Mark Paid. Other action switches do not grant page access.",
+      "edit": "Edit records in Vendor Bills — Final Approve / Mark Paid. Edit also authorizes delete or cancel where the action uses an Edit check.",
+      "approve": "Allow approve actions in Vendor Bills — Final Approve / Mark Paid.",
+      "notify": "Receive notifications for Vendor Bills — Final Approve / Mark Paid, when user notifications and a device subscription are enabled."
+    }
+  },
+  "vendor_bill_aliases": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "No implemented page is controlled by this legacy switch. Retained unchanged under PERM-02 D3; it does not grant access."
+    }
+  },
+  "reports": {
+    "actions": [
+      "view",
+      "view_reports"
+    ],
+    "tooltips": {
+      "view": "Open Reports (legacy). Other action switches do not grant page access. Shared pages or actions also accept: Management Report (View); Admin Settings (legacy) (View); Concrete Rate Calculator (v1 & v2) (View); Concrete Estimates — Manage (View).",
+      "view_reports": "Use report export controls for Reports (legacy); this is not page access. Shared pages or actions also accept: Management Report (Reports); Admin Settings (legacy) (Reports)."
+    }
+  },
+  "report_management": {
+    "actions": [
+      "view",
+      "view_reports"
+    ],
+    "tooltips": {
+      "view": "Open Management Report. Other action switches do not grant page access. Shared pages or actions also accept: Reports (legacy) (View); Admin Settings (legacy) (View).",
+      "view_reports": "Use report export controls for Management Report; this is not page access. Shared pages or actions also accept: Reports (legacy) (Reports); Admin Settings (legacy) (Reports)."
+    }
+  },
+  "report_site_purchases": {
+    "actions": [
+      "view",
+      "edit"
+    ],
+    "tooltips": {
+      "view": "Open Site Purchases Report. Other action switches do not grant page access. Shared pages or actions also accept: Purchase Indents (legacy) (View).",
+      "edit": "Edit records in Site Purchases Report. Edit also authorizes delete or cancel where the action uses an Edit check."
+    }
+  },
+  "stores_inventory": {
+    "actions": [
+      "view",
+      "create",
+      "edit",
+      "notify"
+    ],
+    "tooltips": {
+      "view": "Open Stores — GRNs, Issues & Ledger. Other action switches do not grant page access. Shared pages or actions also accept: Stores & Inventory Hub (entry page) (View); Site DPRs — File & View (View); Equipment Usage — Log & View (View); Site Requirements — Labour Allocation (View); Diesel Requirements — View List (View); Diesel Requirements (legacy) (View); Diesel Requirements (legacy) (View / Create / Edit); Diesel Requirements — Raise / Submit (View / Create / Edit).",
+      "create": "Create records in Stores — GRNs, Issues & Ledger. Shared pages or actions also accept: Diesel Requirements (legacy) (View / Create / Edit); Diesel Requirements — Raise / Submit (View / Create / Edit).",
+      "edit": "Edit records in Stores — GRNs, Issues & Ledger. Edit also authorizes delete or cancel where the action uses an Edit check. Shared pages or actions also accept: Diesel Requirements (legacy) (View / Create / Edit); Diesel Requirements — Raise / Submit (View / Create / Edit).",
+      "notify": "Receive notifications for Stores — GRNs, Issues & Ledger, when user notifications and a device subscription are enabled."
+    }
+  },
+  "labour_management": {
+    "actions": [
+      "view",
+      "create"
+    ],
+    "tooltips": {
+      "view": "Open Site Requirements — Labour Allocation. Other action switches do not grant page access. Shared pages or actions also accept: Site DPRs — File & View (View); Stores — GRNs, Issues & Ledger (View); Equipment Usage — Log & View (View).",
+      "create": "Create records in Site Requirements — Labour Allocation."
+    }
+  },
+  "estimator_portal": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open Estimator Portal (login + hub). Other action switches do not grant page access."
+    }
+  },
+  "mix_calculator": {
+    "actions": [
+      "view",
+      "create",
+      "edit",
+      "delete",
+      "view_reports"
+    ],
+    "tooltips": {
+      "view": "Open Bituminous Mix Rate Calculator. Other action switches do not grant page access.",
+      "create": "Create records in Bituminous Mix Rate Calculator.",
+      "edit": "Edit records in Bituminous Mix Rate Calculator. Edit also authorizes delete or cancel where the action uses an Edit check.",
+      "delete": "Delete records where Bituminous Mix Rate Calculator's Delete permission is checked.",
+      "view_reports": "Use report export controls for Bituminous Mix Rate Calculator; this is not page access."
+    }
+  },
+  "concrete_calculator": {
+    "actions": [
+      "view",
+      "view_reports"
+    ],
+    "tooltips": {
+      "view": "Open Concrete Rate Calculator (v1 & v2). Other action switches do not grant page access. Shared pages or actions also accept: Concrete Estimates — Manage (View); Reports (legacy) (View); Admin Settings (legacy) (View).",
+      "view_reports": "Use report export controls for Concrete Rate Calculator (v1 & v2); this is not page access."
+    }
+  },
+  "qto_boq": {
+    "actions": [
+      "view",
+      "edit",
+      "approve"
+    ],
+    "tooltips": {
+      "view": "Open QTO & BOQ Estimator. Other action switches do not grant page access. Shared pages or actions also accept: Project Scope & Working Reaches (View).",
+      "edit": "Edit records in QTO & BOQ Estimator. Edit also authorizes delete or cancel where the action uses an Edit check.",
+      "approve": "Allow approval actions in QTO & BOQ Estimator."
+    }
+  },
+  "project_scope": {
+    "actions": [
+      "view",
+      "edit",
+      "approve"
+    ],
+    "tooltips": {
+      "view": "Open Project Scope & Working Reaches. Other action switches do not grant page access. Shared pages or actions also accept: QTO & BOQ Estimator (View).",
+      "edit": "Edit records in Project Scope & Working Reaches. Edit also authorizes delete or cancel where the action uses an Edit check.",
+      "approve": "Allow approval actions in Project Scope & Working Reaches."
+    }
+  },
+  "rate_cards": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open Rate Cards — View & Edit. Other action switches do not grant page access. Shared pages or actions also accept: Vendor Aliases & Rate Cards — Manage (View); Admin Settings (legacy) (View)."
+    }
+  },
+  "master_parties": {
+    "actions": [
+      "view",
+      "create",
+      "edit",
+      "view_reports"
+    ],
+    "tooltips": {
+      "view": "Open Party / Job Master. Other action switches do not grant page access. Shared pages or actions also accept: Materials, Mix Types & Templates (View); Equipment Master (View); Personnel Master (View); Sites & Plant Reports — Manage (View); Admin Settings (legacy) (View).",
+      "create": "Create records in Party / Job Master.",
+      "edit": "Edit records in Party / Job Master. Edit also authorizes delete or cancel where the action uses an Edit check.",
+      "view_reports": "Use report export controls for Party / Job Master; this is not page access."
+    }
+  },
+  "master_materials": {
+    "actions": [
+      "view",
+      "create",
+      "edit",
+      "view_reports"
+    ],
+    "tooltips": {
+      "view": "Open Materials, Mix Types & Templates. Other action switches do not grant page access. Shared pages or actions also accept: Party / Job Master (View); Equipment Master (View); Personnel Master (View); Sites & Plant Reports — Manage (View); Admin Settings (legacy) (View).",
+      "create": "Create records in Materials, Mix Types & Templates.",
+      "edit": "Edit records in Materials, Mix Types & Templates. Edit also authorizes delete or cancel where the action uses an Edit check.",
+      "view_reports": "Use report export controls for Materials, Mix Types & Templates; this is not page access."
+    }
+  },
+  "master_equipment": {
+    "actions": [
+      "view",
+      "create",
+      "edit",
+      "view_reports"
+    ],
+    "tooltips": {
+      "view": "Open Equipment Master. Other action switches do not grant page access. Shared pages or actions also accept: Party / Job Master (View); Materials, Mix Types & Templates (View); Personnel Master (View); Sites & Plant Reports — Manage (View); Admin Settings (legacy) (View).",
+      "create": "Create records in Equipment Master.",
+      "edit": "Edit records in Equipment Master. Edit also authorizes delete or cancel where the action uses an Edit check.",
+      "view_reports": "Use report export controls for Equipment Master; this is not page access."
+    }
+  },
+  "master_personnel": {
+    "actions": [
+      "view",
+      "create",
+      "edit"
+    ],
+    "tooltips": {
+      "view": "Open Personnel Master. Other action switches do not grant page access. Shared pages or actions also accept: Party / Job Master (View); Materials, Mix Types & Templates (View); Equipment Master (View); Sites & Plant Reports — Manage (View); Admin Settings (legacy) (View).",
+      "create": "Create records in Personnel Master.",
+      "edit": "Edit records in Personnel Master. Edit also authorizes delete or cancel where the action uses an Edit check."
+    }
+  },
+  "admin_settings": {
+    "actions": [
+      "view",
+      "create",
+      "edit",
+      "view_reports"
+    ],
+    "tooltips": {
+      "view": "Open Admin Settings (legacy). Other action switches do not grant page access. Shared pages or actions also accept: Sites & Plants — Add / Configure (View); Sites & Plant Reports — Manage (View); LDO Backfill & Reconciliation Tools (View); Rate Cards — View & Edit (View); Vendor Aliases & Rate Cards — Manage (View); Data Export / Import (Admin Tool) (View); Management Report (View); Reports (legacy) (View); Concrete Rate Calculator (v1 & v2) (View); Concrete Estimates — Manage (View); Party / Job Master (View); Materials, Mix Types & Templates (View); Equipment Master (View); Personnel Master (View); User Management — View & Edit Profiles (View).",
+      "create": "Create records in Admin Settings (legacy). Shared pages or actions also accept: Sites & Plant Reports — Manage (Create); Admin Notifications — Create (Create); Vendor Aliases & Rate Cards — Manage (Create); Concrete Estimates — Manage (Create).",
+      "edit": "Edit records in Admin Settings (legacy). Edit also authorizes delete or cancel where the action uses an Edit check. Shared pages or actions also accept: Sites & Plant Reports — Manage (Edit); Concrete Estimates — Manage (Edit).",
+      "view_reports": "Use report export controls for Admin Settings (legacy); this is not page access. Shared pages or actions also accept: Management Report (Reports); Reports (legacy) (Reports)."
+    }
+  },
+  "site_management": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open Sites & Plants — Add / Configure. Other action switches do not grant page access. Shared pages or actions also accept: Sites & Plant Reports — Manage (View); Admin Settings (legacy) (View)."
+    }
+  },
+  "sites_plants_manage": {
+    "actions": [
+      "view",
+      "create",
+      "edit"
+    ],
+    "tooltips": {
+      "view": "Open Sites & Plant Reports — Manage. Other action switches do not grant page access. Shared pages or actions also accept: Sites & Plants — Add / Configure (View); Admin Settings (legacy) (View); Party / Job Master (View); Materials, Mix Types & Templates (View); Equipment Master (View); Personnel Master (View).",
+      "create": "Create records in Sites & Plant Reports — Manage. Shared pages or actions also accept: Admin Settings (legacy) (Create).",
+      "edit": "Edit records in Sites & Plant Reports — Manage. Edit also authorizes delete or cancel where the action uses an Edit check. Shared pages or actions also accept: Admin Settings (legacy) (Edit)."
+    }
+  },
+  "vendor_masters_manage": {
+    "actions": [
+      "view",
+      "create"
+    ],
+    "tooltips": {
+      "view": "Open Vendor Aliases & Rate Cards — Manage. Other action switches do not grant page access. Shared pages or actions also accept: Rate Cards — View & Edit (View); Admin Settings (legacy) (View).",
+      "create": "Create records in Vendor Aliases & Rate Cards — Manage. Shared pages or actions also accept: Admin Settings (legacy) (Create)."
+    }
+  },
+  "concrete_estimates_manage": {
+    "actions": [
+      "view",
+      "create",
+      "edit"
+    ],
+    "tooltips": {
+      "view": "Open Concrete Estimates — Manage. Other action switches do not grant page access. Shared pages or actions also accept: Concrete Rate Calculator (v1 & v2) (View); Reports (legacy) (View); Admin Settings (legacy) (View).",
+      "create": "Create records in Concrete Estimates — Manage. Shared pages or actions also accept: Admin Settings (legacy) (Create).",
+      "edit": "Edit records in Concrete Estimates — Manage. Edit also authorizes delete or cancel where the action uses an Edit check. Shared pages or actions also accept: Admin Settings (legacy) (Edit)."
+    }
+  },
+  "admin_notifications_manage": {
+    "actions": [
+      "view",
+      "create"
+    ],
+    "tooltips": {
+      "view": "No implemented page is controlled by this legacy switch. Retained unchanged under PERM-02 D3; it does not grant access.",
+      "create": "Create records in Admin Notifications — Create. Shared pages or actions also accept: Admin Settings (legacy) (Create)."
+    }
+  },
+  "admin_ldo_tools": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open LDO Backfill & Reconciliation Tools. Other action switches do not grant page access. Shared pages or actions also accept: Admin Settings (legacy) (View)."
+    }
+  },
+  "admin_ledger_tools": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open Stock Ledger Rebuild / Reassign / Transfer. Other action switches do not grant page access. Shared pages or actions also accept: Material Stock Ledger (View)."
+    }
+  },
+  "data_sync": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open Data Export / Import (Admin Tool). Other action switches do not grant page access. Shared pages or actions also accept: Admin Settings (legacy) (View)."
+    }
+  },
+  "user_management": {
+    "actions": [
+      "view",
+      "create",
+      "edit"
+    ],
+    "tooltips": {
+      "view": "Open User Management — View & Edit Profiles. Other action switches do not grant page access. Shared pages or actions also accept: Manage Permissions for Other Users (View); Admin Settings (legacy) (View).",
+      "create": "Create records in User Management — View & Edit Profiles.",
+      "edit": "Edit records in User Management — View & Edit Profiles. Edit also authorizes delete or cancel where the action uses an Edit check."
+    }
+  },
+  "permission_manager": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open Manage Permissions for Other Users. Other action switches do not grant page access. Shared pages or actions also accept: User Management — View & Edit Profiles (View)."
+    }
+  },
+  "device_approval": {
+    "actions": [
+      "view",
+      "edit"
+    ],
+    "tooltips": {
+      "view": "Open Device Approval. Other action switches do not grant page access.",
+      "edit": "Edit records in Device Approval. Edit also authorizes delete or cancel where the action uses an Edit check."
+    }
+  },
+  "push_notifications": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "No implemented page is controlled by this legacy switch. Retained unchanged under PERM-02 D3; it does not grant access."
+    }
+  },
+  "hmp_operations": {
+    "actions": [],
+    "tooltips": {}
+  },
+  "reports_analysis": {
+    "actions": [],
+    "tooltips": {}
+  },
+  "estimates_manager": {
+    "actions": [],
+    "tooltips": {}
+  },
+  "app_management": {
+    "actions": [],
+    "tooltips": {}
+  }
+}

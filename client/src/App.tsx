@@ -223,12 +223,12 @@ function Router() {
 
         {/* Hub pages (HubShell layout) */}
         <Route path="/">
-          <RequireAuth>
+          <RequireAuth section="dashboard">
             <Home />
           </RequireAuth>
         </Route>
         <Route path="/plant/hub">
-          <RequireAuth>
+          <RequireAuth section="hmp_hub">
             <HmpHub />
           </RequireAuth>
         </Route>
@@ -236,19 +236,19 @@ function Router() {
         <Route path="/reports/hub" component={gated(ReportsHub, "reports_hub")} />
         <Route path="/site/hub" component={gated(SiteHub, "site_hub")} />
         <Route path="/admin/hub">
-          <RequireAuth>
+          <RequireAuth section="admin_hub">
             <MastersHub />
           </RequireAuth>
         </Route>
         <Route path="/masters/hub">
-          <RequireAuth>
+          <RequireAuth section="masters_hub">
             <AdminMastersHub />
           </RequireAuth>
         </Route>
         <Route path="/stores/hub" component={gatedEither(StoresHub, "stores_hub", "stores_inventory")} />
         <Route path="/finance/hub" component={gated(FinanceHub, "finance_hub")} />
         <Route path="/rmc/hub">
-          <RequireAuth>
+          <RequireAuth section="rmc_hub">
             <RmcHub />
           </RequireAuth>
         </Route>
@@ -350,9 +350,9 @@ function AuthedShell() {
           <Route path="/plant/:id" component={gatedEither(PlantDetails, "site_management", "sites_plants_manage", "admin_settings")} />
 
           {/* IRN pages */}
-          <Route path="/irn" component={gatedEither(IrnListPage, "irn_view", "irn_raise")} />
+          <Route path="/irn" component={gatedEither(IrnListPage, "irn_view", "irn_raise", "irn_approve")} />
           <Route path="/irn/new" component={gated(IrnRaisePage, "irn_raise")} />
-          <Route path="/irn/:id" component={gatedEither(IrnDetailPage, "irn_view", "irn_raise")} />
+          <Route path="/irn/:id" component={gatedEither(IrnDetailPage, "irn_view", "irn_raise", "irn_approve")} />
 
           {/* BOQ / Work Programme pages */}
           {WP_ENABLED && <Route path="/work-program" component={gated(BoqProjects, "qto_boq")} />}

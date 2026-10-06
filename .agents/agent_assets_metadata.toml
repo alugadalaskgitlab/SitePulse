@@ -5183,3 +5183,101 @@ mtime_ms = 1791301882895
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/0cdc341b-f2e9-4102-ad59-d6022490baa0/69104008-7ff3-48b6-80eb-4a5937999144"
 storage_version_token = "1791301903811307"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "B3ctL-blVK69YQ-w96W1Y"
+uri = "file://reports/dev-verification-account.md"
+type = "text"
+title = "Development sign-in and C1–C5 verification report"
+description = "Account procedure, exact created row IDs, HTTP evidence, screenshots and remaining pricing limitation. No password included."
+logical_id = "e2496751-2c60-4e6b-bf56-3c488eb5f933"
+content_hash = "sha256:d4e967e2dc7254df369346dc4a3e804e57325315d175030e131777f82c9cac1a"
+size = 9920
+mtime_ms = 1791305930212
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e2496751-2c60-4e6b-bf56-3c488eb5f933/ea454afd-ac14-40d6-aa00-2045b74a902f"
+storage_version_token = "1791305985144845"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "GAdaxDCojXK9fo3DpOmE1"
+uri = "file://reports/dev-verification-screenshots/C1-material-only.jpg"
+type = "image"
+title = "C1 — Material-only vendor"
+description = "Signed in as Agent Verification: one material row, 28.4 MT; no transport row."
+logical_id = "4c974b2e-82d6-47b7-b93e-1fd414dc9955"
+content_hash = "sha256:0b945373a60db7e94ee71553bb983ad0c5697feb8a67ee510d8a9c65d26caffc"
+size = 146879
+mtime_ms = 1791305730296
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/4c974b2e-82d6-47b7-b93e-1fd414dc9955/a3c60a6f-b305-42c6-b4fe-9a3ecd46ab8b"
+storage_version_token = "1791305987488809"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "0ZzhkzHgJUGSyye99u7Il"
+uri = "file://reports/dev-verification-screenshots/C2-transport-only.jpg"
+type = "image"
+title = "C2 — Transport-only vendor"
+description = "One transport row and zero material rows. Explicitly unpriced because this test vendor has no matching card."
+logical_id = "03272603-2c14-419e-8cb4-3e72e3e28392"
+content_hash = "sha256:ffa166b40df39595e69603eaa1c191a001d9f3149e0defa7560e4e4d2faa992d"
+size = 144803
+mtime_ms = 1791305737112
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/03272603-2c14-419e-8cb4-3e72e3e28392/39d7e724-78f4-4a7e-882a-469bae402fbb"
+storage_version_token = "1791305989574937"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "pwJRwVEB2SLGOhybsPWPm"
+uri = "file://reports/dev-verification-screenshots/C3-same-party.jpg"
+type = "image"
+title = "C3 — Same-party vendor"
+description = "Exactly one landed material row for the test trip; no duplicate."
+logical_id = "523c4863-0232-4720-a77b-aae580484e1d"
+content_hash = "sha256:1ee752200a5d4e1e90b0e0c6be5a3778134fb51103ae502d99801c56817c0e9a"
+size = 145949
+mtime_ms = 1791305743880
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/523c4863-0232-4720-a77b-aae580484e1d/df1dd40b-0e29-4d53-aa66-9fe7e82ac7bd"
+storage_version_token = "1791305991946144"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "TDPExYUScFM_bmQugf2gx"
+uri = "file://reports/dev-verification-screenshots/C4-historical-unresolved.jpg"
+type = "image"
+title = "C4 — Original unresolved historical trip"
+description = "Original trip 5: amber warning, unchecked disabled checkbox, no pull action and no bill lines."
+logical_id = "2287a812-5492-4980-ba36-98cd14bf32c6"
+content_hash = "sha256:2bc2ab8ee966efcea1d52a709b80761b0081dc37dafebbc8704bf6583af767f6"
+size = 162201
+mtime_ms = 1791305908684
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/2287a812-5492-4980-ba36-98cd14bf32c6/c17ba92d-2dbf-45c7-a00a-3b2b2467d2d8"
+storage_version_token = "1791305994148438"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "2vvq2JLA0igHg1iscSlrp"
+uri = "file://reports/dev-verification-screenshots/C5-in-house.jpg"
+type = "image"
+title = "C5 — In-house haulage"
+description = "One material row for the seller; no transport row."
+logical_id = "de3c5ed3-b157-40e9-9380-091465a73f88"
+content_hash = "sha256:7a4f8e2b2eecda1c7b69beaae789464a05be68fd8ab336ad917c8c1cd8c75168"
+size = 147199
+mtime_ms = 1791305755736
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/de3c5ed3-b157-40e9-9380-091465a73f88/4a14df66-61ec-41b9-a110-9bc9ce230dd7"
+storage_version_token = "1791305996225744"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "SoZRzP12pvS3EoUtnEy7l"
+uri = "file://reports/perm-02/verification.html"
+type = "html"
+title = "PERM-02 verification report"
+description = "Complete report with signed-in screenshots, additive permission changes, checksums, test comparison, and three D3 exceptions. Development only; not published."
+logical_id = "a6103db3-149e-4546-b198-4e73b84977da"
+content_hash = "sha256:d9256b8c1f5242af50cafcd45a61657cd3a3c1b2dab0fe7bc4d74227461dd2b9"
+size = 1725959
+mtime_ms = 1791309206595
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/a6103db3-149e-4546-b198-4e73b84977da/1dc15455-9ad3-4702-8bac-1c881911edbd"
+storage_version_token = "1791309230091721"
+content_type = "text/html"

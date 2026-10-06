@@ -1,0 +1,21 @@
+{
+  "baseline": {
+    "files": 327,
+    "tests": 4570,
+    "passed": 4519,
+    "failed": 48,
+    "pending": 3
+  },
+  "final": {
+    "files": 328,
+    "tests": 4575,
+    "passed": 4524,
+    "failed": 48,
+    "pending": 3
+  },
+  "newFailures": [],
+  "missingFiles": [],
+  "addedFiles": [
+    "tests/permission-map.test.ts"
+  ]
+}

@@ -335,7 +335,7 @@ function buildTemplateMatrix(
   editSections: SectionKey[] = [],
 ): PermissionMatrix {
   const m = emptyMatrix();
-  for (const k of viewCreate)       m[k] = { ...m[k], view: true, create: true };
+  for (const k of viewCreate)       m[k] = { ...m[k], view: true, create: true, edit: true };
   for (const k of approveSections)  m[k] = { ...m[k], view: true, approve: true };
   for (const k of editSections)     m[k] = { ...m[k], view: true, edit: true };
   return m;
@@ -518,7 +518,7 @@ export const PERMISSION_GROUPS: { id: string; label: string; sections: SectionKe
   {
     id: "site",
     label: "Site — DPRs & Materials",
-    sections: ["site_dprs", "site_materials"],
+    sections: ["site_dprs", "site_materials", "labour_management"],
   },
   {
     id: "indents",

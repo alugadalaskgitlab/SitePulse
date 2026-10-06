@@ -47,7 +47,7 @@ async function open() {
   );
   await screen.findByTestId("button-save-perms");
   await waitFor(() => expect(checked("site_hub-access")).toBe(
-    ["view", "create", "edit", "delete", "view_reports", "export", "approve"].some((a) => stored.site_hub[a as keyof typeof stored.site_hub]),
+    stored.site_hub.view,
   ));
   return result;
 }
@@ -68,11 +68,11 @@ describe("PERM-01 C actual permissions dialog", () => {
   it("A/B: hub has one Access and inactive tooltip; Home offers only View/Edit", async () => {
     stored.site_hub.export = true;
     await open();
-    expect(checked("site_hub-access")).toBe(true);
+    expect(checked("site_hub-access")).toBe(false);
     expect(within(row("site_hub")).getAllByRole("checkbox")).toHaveLength(1);
     for (const a of ACTIONS.filter((a) => a !== "view")) {
       expect(screen.queryByTestId(`checkbox-site_hub-${a}`)).toBeNull();
-      expect(screen.getByTestId(`cell-site_hub-${a}`).title).toBe("Not used for this section");
+      expect(screen.queryByTestId(`cell-site_hub-${a}`)).toBeNull();
     }
     expect(check("dashboard-view")).toBeTruthy();
     expect(check("dashboard-edit")).toBeTruthy();
@@ -117,9 +117,9 @@ describe("PERM-01 C actual permissions dialog", () => {
     cleanup();
     await open();
     fireEvent.click(check("site_hub-access"));
-    expect(checked("site_hub-access")).toBe(false);
+    expect(checked("site_hub-access")).toBe(true);
     await save();
-    expect(stored.site_hub.export).toBe(false);
+    expect(stored.site_hub.export).toBe(true);
     expect(stored.site_hub.notify).toBe(true);
     expect(stored.dashboard.create).toBe(true);
 
@@ -128,31 +128,32 @@ describe("PERM-01 C actual permissions dialog", () => {
     await open();
     fireEvent.click(check("site_hub-access"));
     await save();
-    expect(stored.site_hub.view).toBe(true);
+    expect(stored.site_hub.view).toBe(false);
     expect(stored.site_hub.notify).toBe(true);
   // Three full matrix renders and saves can exceed the default five seconds
   // while the full suite's SQL fixtures run alongside this browser test.
   }, 15_000);
 
-  it("partial manager: cannot revoke unowned hub aliases or save a matrix containing unowned grants", async () => {
+  it("partial manager: View alone controls Access while unowned historical grants still prevent save", async () => {
     actor = { isAdmin: false, canManagePermissions: true, permissionManagerScope: "partial", permissions: emptyMatrix() };
     actor.permissions.site_hub.view = true;
     stored.site_hub.export = true;
     await open();
-    expect(checked("site_hub-access")).toBe(true);
-    expect(check("site_hub-access").hasAttribute("disabled")).toBe(true);
+    expect(checked("site_hub-access")).toBe(false);
+    expect(check("site_hub-access").hasAttribute("disabled")).toBe(false);
     expect(screen.getByTestId("warning-unmanaged-grants")).toBeTruthy();
     expect(screen.getByTestId("button-save-perms").hasAttribute("disabled")).toBe(true);
     expect(writes).toHaveLength(0);
   });
 
-  it("partial manager: owned hub alias can be enabled/revoked without exceeding grant cap", async () => {
+  it("partial manager: Edit alone cannot grant hub View or change inert aliases", async () => {
     actor = { isAdmin: false, canManagePermissions: true, permissionManagerScope: "partial", permissions: emptyMatrix() };
     actor.permissions.site_hub.edit = true;
     await open();
+    expect(check("site_hub-access").hasAttribute("disabled")).toBe(true);
     fireEvent.click(check("site_hub-access"));
     await save();
-    expect(stored.site_hub.edit).toBe(true);
+    expect(stored.site_hub.edit).toBe(false);
     expect(stored.site_hub.view).toBe(false);
     client.clear();
     cleanup();

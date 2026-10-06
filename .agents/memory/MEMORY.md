@@ -4,7 +4,8 @@
 - [Labour worker names](labour-worker-name-preservation.md) — optional detail, authoritative Count; replacement saves must preserve names and rebase row identities without overwriting in-flight edits.
 - [Equipment print parity](read-only-equipment-print-parity.md) — card removal requires audit-detail parity and actual multi-page PDF checks; print DOM visibility alone misses clipping.
 - [Commercial Strategy](commercial-strategy.md) — Option A (per-customer deployments), 3+ customers in sight, multi-project mockup on canvas, navigation fixes applied May 2026
-- [Permission System v2](permission-system-v2.md) — 85 section keys, approve as 7th action, Permission Manager flag; backward-compat gatedEither in App.tsx; self-approval prevention on PI/DR/VendorBills
+- [Permission System v2](permission-system-v2.md) — permission-manager scope, backward-compatible OR gates, and approval separation.
+- [Permission preservation](permission-preservation.md) — retain the full matrix; preserve access additively before tightening gates; development checks never imply production migration.
 - [Tank Calibration](tank-calibration.md) — Per-plant tank calibration fully built; fallback to hardcoded dip charts when no config set
 - [Mix Calculator Separation](mix-calculator-separation.md) — Calculator is a separate product (not SiteLog commercial copy); spin-out = new Repl + standalone auth + own DB
 - [Work Programme Planning Engine](work-programme-planning.md) — Full Gantt + BOM system: schema, planningEngine.ts, Layer Config, tipper fleet, unit conversion, Plan vs Actual. T005 (Equipment Master UI "Planning Output" section) still pending.
@@ -111,3 +112,4 @@
 - [Role-conflict scope](role-conflict-scope.md) — whole-bill export precedence is a narrow exception; warnings do not authorize account flag changes.
 - [Generated artifact scope](generated-artifact-scope.md) — do not regenerate mockup components or report binaries during unrelated work.
 - [LDO historical data gap](ldo-historical-data-gap.md) — unrecorded substitute diesel is for SitePulse Next; do not invent receipts or correct historical balances.
+- [Development browser verification](development-browser-verification.md) — ordinary login and a specifically approved dev device; no auth bypass or repository credentials.

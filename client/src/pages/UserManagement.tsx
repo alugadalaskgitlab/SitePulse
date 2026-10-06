@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
+import permissionActions from "@shared/permission-actions.generated.json";
 import { apiRequest } from "@/lib/queryClient";
 import {
   SECTION_KEYS,
@@ -81,73 +82,12 @@ type SafeUser = {
 // Display metadata only. These are the actions checked by the corresponding
 // routes/buttons (plus View for page entry via sectionVisible). Keep all other
 // persisted fields intact: older matrices can contain grants in inactive cells.
-const HUB_ACTIONS: Action[] = ["view", "create", "edit", "delete", "view_reports", "export", "approve"];
-const SECTION_ACTIONS: Record<SectionKey, readonly Action[]> = {
-  dashboard: ["view", "edit"],
-  hmp_hub: ["view"], site_hub: ["view"], equipment_hub: ["view"],
-  reports_hub: ["view"], stores_hub: ["view"], finance_hub: ["view"],
-  masters_hub: ["view"], admin_hub: ["view"], rmc_hub: ["view"],
-  site_dprs: ["view", "create", "edit", "view_reports", "notify"],
-  site_materials: ["view", "create", "edit", "notify"],
-  site_procurement: ["view", "create", "edit"],
-  purchase_indents_view: ["view", "notify"],
-  purchase_indents_raise: ["view", "create", "edit"],
-  purchase_indents_approve: ["view", "approve"],
-  site_diesel: ["view", "create", "edit", "view_reports", "notify"],
-  diesel_req_view: ["view"],
-  diesel_req_raise: ["view", "create", "edit", "notify"],
-  diesel_req_approve: ["view", "edit", "approve", "notify"],
-  irn_view: ["view", "notify"], irn_raise: ["view", "create"],
-  irn_approve: ["view", "create", "approve"],
-  plant_shift_logs: ["view", "create", "edit", "notify"],
-  plant_manpower_review: ["view"],
-  plant_heating: ["view", "create", "edit"],
-  plant_heating_trends: ["view"],
-  plant_equipment: ["view", "create", "edit", "view_reports", "notify"],
-  plant_generator_logs: ["view", "notify"],
-  plant_maintenance: ["view"],
-  plant_production: ["view", "create", "edit", "view_reports", "notify"],
-  plant_materials: ["view", "create", "edit", "notify"],
-  plant_bitumen: ["view", "create", "edit", "notify"],
-  plant_ldo: ["view", "create", "edit", "notify"],
-  plant_daily_reports: ["view", "edit", "notify"],
-  plant_stock: ["view", "create", "edit", "view_reports", "notify"],
-  plant_ldo_reconciliation: ["view"], plant_variance: ["view"],
-  plant_audit: ["view"], plant_diesel_proc: ["view"],
-  stock_reconciliation: ["view", "create"],
-  equipment_performance_report: ["view", "view_reports"],
-  rmc_operations: ["view"],
-  rmc_batch_records: ["view"], rmc_mix_designs: ["view"],
-  rmc_cube_tests: ["view"], rmc_raw_materials: ["view"],
-  rmc_delivery_challans: ["view"], rmc_daily_report: ["view"],
-  vendor_bills: ["view", "create", "edit", "view_reports"],
-  vendor_bills_view: ["view", "view_reports", "notify"],
-  vendor_bills_raise: ["view", "create", "edit", "notify"],
-  vendor_bills_verify: ["view", "edit", "approve"],
-  vendor_bills_approve: ["view", "edit", "approve", "notify"],
-  vendor_bill_aliases: ["view"],
-  reports: ["view"], report_management: ["view"],
-  report_site_purchases: ["view", "edit"],
-  stores_inventory: ["view", "create", "edit", "approve", "notify"],
-  labour_management: ["view", "create"],
-  estimator_portal: ["view"], mix_calculator: ["view", "create", "edit"],
-  concrete_calculator: ["view"], qto_boq: ["view", "edit", "approve"],
-  project_scope: ["view", "edit", "approve"], rate_cards: ["view"],
-  master_parties: ["view", "create", "edit", "view_reports"],
-  master_materials: ["view", "create", "edit", "view_reports"],
-  master_equipment: ["view", "create", "edit", "view_reports"],
-  master_personnel: ["view", "create", "edit"],
-  admin_settings: ["view", "create", "edit", "view_reports"],
-  site_management: ["view"], sites_plants_manage: ["view", "create", "edit"],
-  vendor_masters_manage: ["view", "create"],
-  concrete_estimates_manage: ["view", "create", "edit"],
-  admin_notifications_manage: ["view", "create"],
-  admin_ldo_tools: ["view"], admin_ledger_tools: ["view"],
-  data_sync: ["view"], user_management: ["view", "create", "edit"],
-  permission_manager: ["view"], device_approval: ["view", "edit"],
-  push_notifications: ["view"],
-  hmp_operations: [], reports_analysis: [], estimates_manager: [], app_management: [],
-};
+const HUB_ACTIONS: Action[] = ["view"];
+const SECTION_ACTIONS = Object.fromEntries(
+  SECTION_KEYS.map(section => [section, permissionActions[section].actions]),
+) as Record<SectionKey, readonly Action[]>;
+const permissionTooltip = (section: SectionKey, action: Action) =>
+  (permissionActions[section].tooltips as Partial<Record<Action, string>>)[action] ?? "Not used for this section";
 const HUB_SECTIONS = new Set<SectionKey>([
   "hmp_hub", "site_hub", "equipment_hub", "reports_hub", "stores_hub",
   "finance_hub", "masters_hub", "admin_hub", "rmc_hub",
@@ -419,7 +359,7 @@ function UserRow({
             size="sm"
             variant="outline"
             onClick={onPerms}
-            disabled={user.isAdmin || !canManagePerms}
+            disabled={!canManagePerms}
             data-testid={`button-perms-${user.id}`}
           >
             <ShieldCheck className="h-3.5 w-3.5 mr-1" /> Permissions
@@ -453,8 +393,8 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
   // type: "__admin__" = administrator, "site_engineer" implies field user,
   // "" = custom (no template), null = not chosen yet.
   const [roleTemplate, setRoleTemplate] = useState<string | null>(null);
-  const isAdmin = roleTemplate === "__admin__";
-  const isFieldEngineer = roleTemplate === "site_engineer";
+  const [isAdmin, setIsAdmin] = useState(false);
+  const isFieldEngineer = !isAdmin && roleTemplate === "site_engineer";
 
   // Defensive: browsers sometimes autofill the logged-in login (email +
   // saved password) into a freshly-opened dialog despite autocomplete
@@ -480,7 +420,7 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
   const activeSites = (sitesQ.data ?? []).filter((s) => s.isActive !== 0);
 
   const setupPayload = () => ({
-    roleTemplate: roleTemplate && roleTemplate !== "__admin__" ? roleTemplate : undefined,
+    roleTemplate: !isAdmin && roleTemplate ? roleTemplate : undefined,
     siteAccess: siteMode === "all"
       ? { mode: "all" as const }
       : { mode: "selected" as const, siteIds: Array.from(siteIds) },
@@ -535,10 +475,10 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
   });
 
   const basicsValid = (!!email.trim() || !!phone.trim()) && emailValid && phoneValid && !!fullName.trim() && password.length >= 8;
-  const roleValid = roleTemplate !== null;
+  const roleValid = isAdmin || roleTemplate !== null;
   const siteValid = isAdmin || siteMode === "all" || (siteMode === "selected" && siteIds.size > 0);
   const steps = ["Details", "Role", "Site access", "Review"];
-  const templateLabel = ROLE_TEMPLATES.find((t) => t.id === roleTemplate)?.label ?? "Custom (no template)";
+  const templateLabel = isAdmin ? "Administrator — Full access (ignores permission switches)" : ROLE_TEMPLATES.find((t) => t.id === roleTemplate)?.label ?? "Custom (no template)";
   const busy = create.isPending || retry.isPending;
 
   return (
@@ -599,8 +539,11 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
                   Pick a starting role — it determines the user's type and permissions. You can fine-tune permissions any time later.
                 </p>
                 <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
-                  {[{ id: "__admin__", label: "Administrator", description: "Full access to everything, all sites, user management." },
-                    ...ROLE_TEMPLATES,
+                  <label className="flex items-start gap-3 rounded-md border p-3 text-sm">
+                    <input type="checkbox" checked={isAdmin} onChange={e => setIsAdmin(e.target.checked)} data-testid="wizard-full-access" />
+                    <span><strong>Administrator — Full access</strong><span className="block">Ignores every permission switch below. This is not a role template.</span></span>
+                  </label>
+                  {[...ROLE_TEMPLATES,
                     { id: "", label: "Custom (no template)", description: "Start with no permissions; grant manually afterwards." }].map((t: any) => (
                     <label
                       key={t.id || "custom"}
@@ -610,7 +553,8 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
                       <input
                         type="radio"
                         className="mt-1"
-                        checked={roleTemplate === t.id}
+                        disabled={isAdmin}
+                        checked={!isAdmin && roleTemplate === t.id}
                         onChange={() => setRoleTemplate(t.id)}
                       />
                       <span>
@@ -1018,7 +962,7 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
           <thead className="bg-muted sticky top-0 z-10">
             <tr>
               <th className="text-left px-3 py-2 min-w-[180px] font-medium">Section</th>
-              {ACTIONS.map((a) => (
+              {(sections.every(s => HUB_SECTIONS.has(s)) ? ["view"] as Action[] : ACTIONS).map((a) => (
                 <th
                   key={a}
                   className="px-2 py-2 text-center whitespace-nowrap font-medium min-w-[52px]"
@@ -1048,7 +992,7 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
                     {SECTION_LABELS[s]}
                     {LEGACY_NOTES[s] && <span className="block text-xs font-normal text-muted-foreground" data-testid={`note-${s}`}>{LEGACY_NOTES[s]}</span>}
                   </td>
-                  {ACTIONS.map((a) => {
+                  {(HUB_SECTIONS.has(s) ? ["view"] as Action[] : ACTIONS).map((a) => {
                     const hub = HUB_SECTIONS.has(s);
                     const active = SECTION_ACTIONS[s].includes(a);
                     const grantable = hub ? canToggleHub(s) : canGrantAction(s, a);
@@ -1056,7 +1000,7 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
                       <td
                         key={a}
                         className={`text-center px-2 py-1.5 ${!active ? "bg-muted/40 text-muted-foreground" : ""}`}
-                        title={!active ? "Not used for this section" : !grantable ? "You cannot change this grant" : undefined}
+                        title={!active ? "Not used for this section" : `${permissionTooltip(s, a)}${!grantable ? " You cannot change this grant." : ""}`}
                         data-testid={`cell-${s}-${a}`}
                       >
                         {active ? (
@@ -1117,6 +1061,11 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
           <DialogDescription>Choose section actions, then save permissions. Grey cells are not used by that section.</DialogDescription>
         </DialogHeader>
 
+        {target?.isAdmin && (
+          <div role="note" className="rounded-md border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900" data-testid="banner-admin-permissions">
+            Administrator — Full access. The switches below have no effect while this user is an Administrator.
+          </div>
+        )}
         {notifyMismatch && (
           <div
             className="flex items-start gap-2 rounded-md border border-amber-400 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-600 px-3 py-2 text-sm text-amber-800 dark:text-amber-300"

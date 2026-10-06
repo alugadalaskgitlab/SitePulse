@@ -9,7 +9,7 @@ import { useAuth } from "@/lib/auth-context";
 const HUB = "/admin/hub";
 
 export default function MastersHub() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, sectionVisible } = useAuth();
 
   const { data: unassigned } = useQuery<{
     dieselRequirements: unknown[];
@@ -25,7 +25,7 @@ export default function MastersHub() {
     ? `${dieselCount} diesel / ${indentCount} indent unassigned`
     : undefined;
 
-  if (!isAdmin) {
+  if (!sectionVisible("admin_hub")) {
     return (
       <HubShell title="Settings">
         <div className="p-6 flex items-center justify-center min-h-64">

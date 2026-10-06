@@ -1,0 +1,61 @@
+INSTRUCTION TEST-ACCT-01: Give yourself a working development sign-in, so verification stops being unit tests
+
+READ THIS FIRST
+This batch changes NO application code. It creates data in the DEVELOPMENT database only.
+Do NOT touch production. Do NOT read, request or use the production database URL or any PRODUCTION_BACKUP_DATABASE_URL.
+Do NOT ask the owner for anyone's password. Do NOT reset, read or reuse any existing user's credentials.
+Do NOT add a feature flag, environment switch, "skip device approval" setting, test-mode branch, or any code path that could behave differently in production. If you believe code must change to make this work, STOP and report why instead of changing it.
+Do NOT publish.
+PARKED — do not investigate, touch or report on any of these: LDO, startup data repair jobs, stock balances, rate cards, user permissions, vendor bills, trips.
+
+WHY
+Your last two batches (VB-SPLIT-01 A/B and Part C) could not be verified against a signed-in app. Sign-in returned HTTP 202 and protected reads returned 401, so the evidence was unit tests and read-only queries instead of a real screen. The owner has been publishing changes that nobody has seen work.
+
+The cause is not a bug. `server/auth-routes.ts:221` returns 202 `device_pending` when the signing-in device's row has `status = "pending"`. Your device has never been approved in the development database, and nobody is sitting there to approve it. That is the whole problem.
+
+=====================================================================
+WHAT TO DO
+=====================================================================
+1. In the DEVELOPMENT database only, create ONE new user for your own verification use:
+   - full name: "Agent Verification"
+   - a login identifier that is obviously not a person (e.g. the phone/email form the schema requires, clearly marked as a test account)
+   - a password you generate yourself, store in your own task notes, and never ask the owner for
+   - `isAdmin = false`, `isOwner = false`, `isFieldEngineer = false`, `canManagePermissions = false`
+   - `setupComplete = true`, and whatever site access the development data needs for the pages you must verify
+   - permissions: grant what a verification run needs, through the ordinary permission matrix — not through an admin flag
+
+2. Approve that account's device row in the DEVELOPMENT database, the same way a human admin would (set the device row's status to approved for that user). This is a data change in dev, not a code change. It is what unblocks the 202.
+
+3. Prove it works: sign in as that account and fetch one protected endpoint and one protected page. Show the HTTP status for each.
+
+4. Write down, in `reports/dev-verification-account.md`, how a future run signs in as this account and what to do if the device needs re-approving. Do NOT put the password in the repository — keep it in your own task notes.
+
+=====================================================================
+HARD LIMITS
+=====================================================================
+- Development database only. Nothing in production is created, read, changed or approved.
+- No application code changes. No migration. No schema change. If the dev database genuinely cannot be written to without a code change, STOP and report.
+- No admin or owner flag on this account. It must be an ordinary user, so that verification runs exercise the real permission path rather than the bypass.
+- Never reuse, reset or read the credentials of user IDs 1, 2, 3, 4 or 8, or any other real person's account.
+- No "approve all pending devices" operation. Approve exactly the one device row you are using.
+- The account must be clearly identifiable as a test account by its name, so the owner can see and remove it at any time.
+
+=====================================================================
+THEN — AND ONLY THEN
+=====================================================================
+Using that sign-in, re-run the Part C acceptance checks C1-C5 from INSTRUCTION VB-SPLIT-01 PART C against the development app, as a signed-in user, with screenshots:
+  C1 material-only vendor → material rows only
+  C2 transport-only vendor → transport rows, zero material rows
+  C3 same-party vendor → exactly one landed material row per trip
+  C4 unresolved historical trip → amber, unticked, excluded from the pull
+  C5 in-house trip → seller gets the material row, no transport line offered
+Development currently holds 6 trips and no October 2026 or same-party examples. You may CREATE trips in the development database to cover the missing cases — that is test data in dev, which is allowed — but say exactly which rows you created, and change no existing row.
+
+REPORT BACK — ONCE, AT THE END
+1. That the account exists, its name and identifier (NOT its password), and the HTTP statuses proving sign-in works.
+2. Which development rows you created, for the account, the device, and any test trips.
+3. The C1-C5 screenshots, each labelled with what it shows.
+4. Confirmation in one line that production was not touched and no application code changed.
+5. Anything you could not do, and why.
+
+STOP AFTER THE REPORT. Do not publish. Do not start another feature. Do not create follow-up tasks.

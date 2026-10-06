@@ -1,7 +1,8 @@
 /**
- * PERM-01, read-only permission wiring inventory.
+ * Permission wiring inventory and generated editor map.
  * Run: npx tsx scripts/permission-audit.ts
- * Only writes reports/permission-audit.{csv,md}. Never imports server startup.
+ * Writes reports/permission-audit.{csv,md} and the shared editor map.
+ * --check-map reads only. Never imports server startup.
  * DB: DEV_DATABASE_URL only, transaction READ ONLY; --no-db for source-only reruns.
  * Definitions/tests/permission editors are not feature enforcement.
  * Generic helpers are expanded at concrete callers; unresolved sites are retained.
@@ -14,7 +15,22 @@ import { SECTION_KEYS, SECTION_LABELS, ACTIONS, ACTION_LABELS, ROLE_TEMPLATES,
   applyRoleTemplate, EDIT_RECORD_TYPE_SECTION, PERMISSION_GROUPS } from "../shared/permissions";
 
 const keys = new Set<string>(SECTION_KEYS), acts = new Set<string>(ACTIONS);
-const visibleActions = ACTIONS.filter(a => a !== "notify");
+// Derive the visibility expansion from the actual helper, not an audit-only rule.
+const authSource = ts.createSourceFile("auth-context.tsx", fs.readFileSync("client/src/lib/auth-context.tsx", "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+const visibilityReads = new Set<string>();
+function collectVisibility(node: ts.Node) {
+  if (ts.isVariableDeclaration(node) && node.name.getText(authSource) === "sectionVisible" && node.initializer) {
+    const collect = (n: ts.Node) => {
+      if (ts.isPropertyAccessExpression(n) && n.expression.getText(authSource) === "row") visibilityReads.add(n.name.text);
+      n.forEachChild(collect);
+    };
+    collect(node.initializer);
+  }
+  node.forEachChild(collectVisibility);
+}
+collectVisibility(authSource);
+const visibleActions = ACTIONS.filter(a => visibilityReads.has(a));
+if (!visibleActions.length) throw new Error("Cannot resolve sectionVisible; refusing to generate an empty permission map.");
 const files: string[] = [];
 function walk(dir: string) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -232,6 +248,51 @@ for (const [file,sf] of sources) {
   });
 }
 const csvQ = (v: unknown) => `"${String(v ?? "").replace(/"/g,'""')}"`;
+// One generated artifact feeds both the editor and audit. No feature reader
+// is inferred from permission persistence or from this artifact itself.
+const artifactPath = process.env.PERMISSION_MAP_PATH || "shared/permission-actions.generated.json";
+const generated = Object.fromEntries(SECTION_KEYS.map(section => {
+  const preservedUnwired = ["vendor_bill_aliases", "admin_notifications_manage", "push_notifications"].includes(section);
+  const actions = ACTIONS.filter(action => {
+    const hit = refs.get(`${section}.${action}`);
+    return (!!hit && hit.client.length + hit.server.length > 0) || (preservedUnwired && action === "view");
+  });
+  const tooltips = Object.fromEntries(actions.map(action => {
+    const hit = refs.get(`${section}.${action}`) ?? { client: [], server: [] };
+    const evidence = [...hit.client, ...hit.server];
+    const verbs = [...new Set(evidence.flatMap(h => h.context.match(/\b(approve|verify|issue|reject|close|reopen|cancel|submit)\b/g) || []))];
+    let meaning = ({
+      view: `Open ${SECTION_LABELS[section]}. Other action switches do not grant page access.`,
+      create: `Create records in ${SECTION_LABELS[section]}.`,
+      edit: `Edit records in ${SECTION_LABELS[section]}. Edit also authorizes delete or cancel where the action uses an Edit check.`,
+      delete: `Delete records where ${SECTION_LABELS[section]}'s Delete permission is checked.`,
+      view_reports: `Use report export controls for ${SECTION_LABELS[section]}; this is not page access.`,
+      export: `Export data where ${SECTION_LABELS[section]}'s Export permission is checked.`,
+      approve: `Allow ${verbs.length ? verbs.join(", ") : "approval"} actions in ${SECTION_LABELS[section]}.`,
+      notify: `Receive notifications for ${SECTION_LABELS[section]}, when user notifications and a device subscription are enabled.`,
+    })[action];
+    if (section === "irn_approve" && action === "create")
+      meaning = "Show the IRN approval action. The server separately requires IRN Approve to accept approval.";
+    if (preservedUnwired && action === "view" && !evidence.length)
+      meaning = "No implemented page is controlled by this legacy switch. Retained unchanged under PERM-02 D3; it does not grant access.";
+    const alternatives = [...new Set(pairs.filter(p => p.sections.includes(section) && p.actions.includes(action))
+      .flatMap(p => p.sections.filter(s => s !== section).map(s => `${SECTION_LABELS[s as keyof typeof SECTION_LABELS]} (${p.actions.map(a => ACTION_LABELS[a as keyof typeof ACTION_LABELS]).join(" / ")})`)))];
+    if (alternatives.length) meaning += ` Shared pages or actions also accept: ${alternatives.join("; ")}.`;
+    return [action, meaning];
+  }));
+  return [section, { actions, tooltips }];
+}));
+const artifactText = JSON.stringify(generated, null, 2) + "\n";
+if (process.argv.includes("--check-map")) {
+  if (!fs.existsSync(artifactPath) || fs.readFileSync(artifactPath, "utf8") !== artifactText) {
+    console.error("Permission map drift: regenerate with npx tsx scripts/permission-audit.ts --no-db");
+    process.exit(1);
+  }
+  console.log("Permission map matches fresh source analysis");
+  process.exit(0);
+}
+fs.writeFileSync(artifactPath, artifactText);
+uiMap = Object.fromEntries(Object.entries(generated).map(([s, entry]) => [s, entry.actions]));
 const md = (v: unknown) => String(v ?? "").replace(/\|/g,"\\|").replace(/\r?\n/g," ");
 const rendered = new Set(PERMISSION_GROUPS.flatMap(g=>g.sections));
 const rows = SECTION_KEYS.flatMap(section=>ACTIONS.map(action=>{
@@ -242,11 +303,11 @@ const rows = SECTION_KEYS.flatMap(section=>ACTIONS.map(action=>{
   const label = action === "view" && hubs.includes(section) ? "Access" : ACTION_LABELS[action];
   const kinds = [...new Set([...r.client,...r.server].map(h=>h.kind))];
   const accessOnly = used && kinds.every(k=>["gated","gatedEither","sectionVisible","RequireAuth"].includes(k));
-  const meaning = !used ? "No resolved feature reader." : accessOnly ? "Page/tile access ONLY through the seven-action visibility OR; no resolved action-specific operation. The action's name does not describe this effect."
+  const meaning = !used ? "No resolved feature reader." : accessOnly ? "Page/tile access through View alone; no action-specific operation."
     : action === "notify" ? "Recipient eligibility for concrete sendPushToSection events; also requires user notifications and subscription."
     : `Read by ${kinds.join(", ")}. ${action === "view_reports" ? "Reports controls export affordances/endpoints, not just viewing." : action === "edit" ? "May also authorize delete/cancel via edit-tier gates; see evidence." : ""}`;
   const mismatch = !used ? "Tick has no resolved feature effect" : accessOnly && action !== "view" ? "Named action only grants visibility" :
-    action==="view" ? "Not exclusive: six other actions also grant visibility" :
+    action==="view" ? "View controls page access; paired section alternatives may also grant it" :
     action==="view_reports" ? "Reports also controls exports" : action==="edit" && kinds.includes("assertDeleteOrCancel") ? "Edit also controls Delete/Cancel" :
     action==="approve" ? "Check route verbs: approval can mean verify/issue/reject/close/reopen" : "";
   return {section,action,label,state,verdict,r,meaning,mismatch,rendered:rendered.has(section)};
@@ -268,7 +329,7 @@ if (!process.argv.includes("--no-db") && process.env.DEV_DATABASE_URL) {
 const refText = (hs:Hit[])=>hs.map(h=>`${h.at} [${h.kind}; ${h.context}]`).join(" ; ");
 const csv = [["section_key","section_label","action_key","action_label","ui_state","enforced_by_client","enforced_by_server","verdict","rendered_in_permission_groups","tooltip","actual_control","label_mismatch"].map(csvQ).join(","),
   ...rows.map(r=>[r.section,SECTION_LABELS[r.section],r.action,r.label,r.state,refText(r.r.client),refText(r.r.server),r.verdict,r.rendered,
-    r.state==="grey" ? "Not used for this section" : 'No normal active-cell tooltip; when grant restricted: "You cannot change this grant". Notify header when disabled: "Push notifications are disabled for this user".',r.meaning,r.mismatch].map(csvQ).join(","))].join("\n")+"\n";
+    r.state==="grey" ? "Not used for this section" : generated[r.section].tooltips[r.action],r.meaning,r.mismatch].map(csvQ).join(","))].join("\n")+"\n";
 let out = `# PERM-01 — permission wiring audit (report only)\n\nGenerated ${new Date().toISOString()}. Run \`npx tsx scripts/permission-audit.ts\`.\n\n## Scope and method\n\nSource-only audit of ${files.length} production TS/TSX files under client/src, server and shared. No application startup/import, workflow restart, build, test-suite execution, account mutation or publish. Parked modules are scanned only for the permission references explicitly required by this audit, not their business logic. Runtime click-through was not performed. Verdict LIVE means a real code read, not proof that a control alone grants the entire operation.\n\nThe source currently declares **${SECTION_KEYS.length} sections × ${ACTIONS.length} actions = ${rows.length} cells**, not an assumed 82 × 8. Includes grey cells. UI state reflects SECTION_ACTIONS for an unrestricted manager, not actor-specific grant restrictions. Permission persistence/template/editor reads are not feature enforcement. Generic visibility is deliberately expanded to all seven actions it reads (not Notify); this is why many grey cells are HIDDEN. See hub exception below. The script uses the TypeScript AST, lexical alias tracing, concrete generic callers, mapped edit-record types and concrete push senders—not regex counts of literal sectionCan alone.\n\n## Verdict counts\n\n${Object.entries(counts).map(([k,v])=>`- ${k}: **${v}**`).join("\n")}\n\nUnresolved call sites: **${unresolved.size}**. These are not silently promoted to LIVE; unresolved coverage limits are listed below.\n\n## DEAD, grouped by section\n\n${SECTION_KEYS.map(s=>{const rr=rows.filter(r=>r.section===s&&r.verdict==="DEAD");return rr.length?`- **${s}** (${SECTION_LABELS[s]}): ${rr.map(r=>r.action).join(", ")}`:"";}).filter(Boolean).join("\n")}\n\n## HIDDEN\n\nGrey does not mean inert: sectionVisible reads seven bits; all can grant page entry. Hub rows intentionally aggregate seven historical bits into Access, so their HIDDEN aliases are not necessarily ungrantable in the aggregate. Non-hub grey readers have no matching checkbox.\n\n| Section | Action | Exact evidence |\n|---|---|---|\n${rows.filter(r=>r.verdict==="HIDDEN").map(r=>`| ${r.section} | ${r.action} | ${md(refText([...r.r.client,...r.r.server]))} |`).join("\n")}\n\n## Paired/multi-section checks\n\nIncludes server helper calls, client gatedEither and ReportExportGate; actions listed are alternatives when multiple actions occur. Other endpoint restrictions can still deny.\n\n`;
 const grouped = new Map<string, typeof pairs>();
 for(const p of pairs){const k=`${p.sections.slice().sort().join(" OR ")} [${p.actions.join("/")}]`;grouped.set(k,[...(grouped.get(k)??[]),p]);}
@@ -299,6 +360,7 @@ for(const f of ["client/src/pages/UserManagement.tsx","server/auth-routes.ts","s
  sf.text.split("\n").forEach((line,i)=>{if(/disabled=.*isAdmin|__admin__|function assert|function requirePermission|function requireAdmin|const requireUserMgmt|const requireDeviceMgmt/.test(line))out+=`- ${f}:${i+1} — ${md(line.trim())}\n`;});
 }
 fs.mkdirSync("reports",{recursive:true});
+out = `# PERM-02 — generated permission wiring audit\n\nRun: npx tsx scripts/permission-audit.ts --no-db\nCheck drift without writes: npx tsx scripts/permission-audit.ts --check-map --no-db\n\n## Counts\n\n${JSON.stringify(counts)}\n\n${SECTION_KEYS.length} sections × ${ACTIONS.length} actions; ${unresolved.size} unresolved calls.\nVisibility actions derived from the actual helper: ${visibleActions.join(", ")}.\nThe editor and audit share shared/permission-actions.generated.json, including active-cell tooltips.\n\n## D3 exceptions\n\nvendor_bill_aliases.view, admin_notifications_manage.view, and push_notifications.view have no dedicated implemented page to gate. They remain unchanged and explicitly labelled as having no page-access effect, rather than silently greyed. These three retained dead cells are explicit exceptions to the otherwise reader-derived active map.\n\n## User flags\n\n${dbNote}\n\n${userRows.map(u => `- ${u.id}: ${u.full_name}; admin=${u.is_admin}; owner=${u.is_owner}; field engineer=${u.is_field_engineer}; permission manager=${u.can_manage_permissions}`).join("\n")}\n\n## Paired checks\n\n${pairs.map(p => `- ${p.at}: ${p.sections.join(" OR ")} [${p.actions.join(", ")}] — ${p.helper}: ${p.route}`).join("\n")}\n\n## Cells and evidence\n\n| Section | Action | Verdict | Tooltip | Readers |\n|---|---|---|---|---|\n${rows.map(r => `| ${r.section} | ${r.action} | ${r.verdict} | ${md(generated[r.section].tooltips[r.action] ?? "Not used for this section")} | ${md(refText([...r.r.client, ...r.r.server]))} |`).join("\n")}\n\n## Admin/owner bypass inventory\n\n${bypasses.map(b => `- ${b}`).join("\n")}\n\n## Unresolved calls\n\n${[...unresolved].map(([p, s]) => `- ${p}: ${s}`).join("\n") || "None."}\n`;
 fs.writeFileSync("reports/permission-audit.csv",csv);
 fs.writeFileSync("reports/permission-audit.md",out);
 console.log(JSON.stringify({sections:SECTION_KEYS.length,actions:ACTIONS.length,cells:rows.length,counts,unresolved:[...unresolved],bypasses:bypasses.length,users:userRows.length,dead:rows.filter(r=>r.verdict==="DEAD").map(r=>`${r.section}.${r.action}`)},null,2));
