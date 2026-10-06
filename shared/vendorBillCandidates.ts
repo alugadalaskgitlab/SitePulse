@@ -86,6 +86,10 @@ export function mapAutoBillItem(item: any) {
     vendorName: item.vendorName ?? null,
     physicalQuantity: item.physicalQuantity ?? (Number(item.qty) || 0), physicalUnit: item.physicalUnit ?? (item.unit || "HRS"),
     actualMt: item.actualMt ?? null,
+    rolesUnconfirmed: item.rolesUnconfirmed === true,
+    tripId: item.tripId ?? null, roleWarning: item.roleWarning ?? null,
+    transportPricingNote: item.transportPricingNote ?? (sourceType === "site_material_trip_transport"
+      ? "Unpriced — a unique transport rate card for this vendor and material is required." : null),
   };
 }
 export function calcCandidateAmount<T extends { category: string; leadDistance?: number | null; qty: number; rate: number; transportPricing?: TransportPricing | null }>(item: T): number {

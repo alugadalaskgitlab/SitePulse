@@ -138,6 +138,7 @@ describe("VB-15 vendor-bill activity mirror suppression", () => {
   it("suppresses the linked mirror on both equipment and All auto-item pulls", async () => {
     for (const billType of ["equipment", "all"]) {
       queueAutoEquipmentRows();
+      if (billType === "all") fx.dbRows.splice(1, 0, []); // role-aware trip query after aliases
       const storage = new DatabaseStorage();
       const items = await storage.getVendorBillAutoItems(
         "Mirror Vendor",

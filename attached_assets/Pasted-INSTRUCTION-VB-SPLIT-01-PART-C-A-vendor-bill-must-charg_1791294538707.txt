@@ -1,0 +1,127 @@
+INSTRUCTION VB-SPLIT-01 PART C: A vendor bill must charge each party for what that party actually did
+
+READ THIS FIRST
+This is PART C ONLY. Parts A and B are built and published — do not revisit them.
+Build C, test it yourself in the signed-in development app, and STOP. Report once, at the end.
+Do not publish. Show the Publish preview and stop.
+Do NOT change any stored quantity, material accounting, stock ledger, DPR logic, rate card design, or any already-saved vendor bill.
+Do NOT backfill, rewrite, merge, rename or infer values on any existing trip or any existing vendor/material name.
+PARKED — do not investigate, touch or report on any of these: LDO, startup data repair jobs, stock balances, user permissions, role flags, the whole-bill PDF layout, the vendor-name spelling variants.
+
+=====================================================================
+THE BUG, EXACTLY WHERE IT LIVES
+=====================================================================
+In `server/storage.ts`, `getVendorBillAutoItems(...)` (starts ~line 18450), inside the `if (bt === "material" || bt === "all")` branch there are TWO blocks that pull site material trips:
+
+1. ~line 18755 — matches `vendorMatchSql(siteMaterialTrips.supplier)` and pushes
+   `category: "material"`, description `"<MATERIAL> (SITE TRIP)"`, `qty: row.quantity`, `unit: row.uom`.
+   `supplier` is the TRANSPORTER column — the schema comment at `shared/schema.ts` ~902 says so explicitly.
+   So a party who only hauled the material is billed for selling it, with quantity in MT and a material rate.
+   This block also does NOT filter `isCancelled` / `isDeleted`.
+
+2. ~line 18783 — matches `vendorMatchSql(siteMaterialTrips.materialSourceSupplier)` and pushes
+   `"<MATERIAL> (SITE TRIP MATERIAL)"`. This one is correct and does filter cancelled/deleted.
+
+Two consequences:
+   - A transporter gets material rows he never earned (what the owner is seeing on screen now).
+   - A SAME-PARTY vendor matches BOTH blocks on the SAME trip, so the same delivery is offered TWICE as a material row. Check this and report what you find before changing anything.
+
+And in the `if (bt === "transport" || bt === "all")` branch there is NO `siteMaterialTrips` block at all. A hired hauler of site trips currently gets no transport rows from trips — only shifting, truck dispatches and plant material receipts.
+
+=====================================================================
+OWNER'S DECISIONS (fixed — build to these, do not re-ask)
+=====================================================================
+1. When the SAME party sold and delivered, the bill keeps ONE landed material row, exactly as today. No split into material + transport.
+2. In-house transport (own tipper, `transportType = "in_house"`) produces NO vendor-billable transport line. The material row still goes to the seller. That haulage cost belongs to equipment.
+3. NO automatic backfill or correction of historical trips. The owner is reviewing them by hand. Not one existing trip row may be rewritten by this batch.
+4. Ambiguous historical trips are never silently billed as either role.
+
+=====================================================================
+C1 — CLASSIFY EACH TRIP BY THE ROLE THAT VENDOR PLAYED ON THAT TRIP
+=====================================================================
+Use the classifier that already exists: `classifyTripRoles` in `shared/tripTransportRoles.ts` (built in Part A/B). Do not write a second classifier and do not change that one's logic.
+
+For the vendor being billed, for each trip in the period:
+
+  | Role of THIS vendor on THIS trip                         | Row produced                     | Priced as |
+  |----------------------------------------------------------|----------------------------------|-----------|
+  | matches `materialSourceSupplier` only                    | ONE material row                 | quantity x material rate (as today) |
+  | matches `supplier` only, `transportType = agency_vendor` | ONE transport row                | the transport pricing path from VB-EXPORT-02 Part C/D (`shared/vendorBillTransport.ts`, `shared/transportRate.ts`) |
+  | matches BOTH columns (same party)                        | ONE material row — NOT two       | quantity x landed rate, byte-for-byte what today's bill produces for such a vendor |
+  | `transportType = "in_house"`                             | no transport row for anyone      | seller still gets the material row |
+  | `classifyTripRoles` returns `"unresolved"`               | offered, flagged, UNTICKED       | see C3 |
+
+Matching must go through the existing `vendorMatchSql` / `resolveVendorAliases` mechanism unchanged — do not introduce new name matching, fuzzy matching or spelling tolerance of any kind.
+
+C1a. The transporter-side material block (#1 above) must stop producing material rows for a party whose only role on that trip is transport.
+C1b. Both trip blocks must filter `isCancelled = false` and `isDeleted = false`. Report how many rows today's un-filtered block #1 would have included that the filtered version excludes — do not change any of those rows, just count them.
+C1c. Guarantee one row per trip per vendor per role. A same-party vendor gets exactly one material row for a trip, never two. Prove this with a count.
+
+=====================================================================
+C2 — SPLIT THE SUPPLIER LIST BY ROLE
+=====================================================================
+`storage.getMaterialSuppliers(includeMaterialSources)` (server/storage.ts ~13372) merges `supplier`, `materialSourceSupplier` and DPR suppliers into one undifferentiated list of names. That is why a transporter appears as a material vendor.
+
+C2a. Make the list carry the role each name came from, so the bill pull can ask the right question. Keep the existing function signature working for its current callers.
+C2b. There are exactly two callers today — `server/routes.ts:700` (`GET /api/materials/suppliers`) and `client/src/pages/SiteMaterialsReceived.tsx:155`. Confirm that yourself, list every caller you find, and do NOT change the behaviour either caller sees in this batch. The Materials Received filter keeps working exactly as it does now.
+
+=====================================================================
+C3 — AMBIGUOUS HISTORICAL TRIPS
+=====================================================================
+A trip that `classifyTripRoles` returns `"unresolved"` for (typically `supplier` set, `materialSourceSupplier` empty — the historical case) must NOT be treated as either role.
+C3a. Offer it in the pull with an amber note: "Roles not confirmed — this trip may be material or transport".
+C3b. Leave it UNTICKED by default, so nothing enters a bill by accident.
+C3c. Never guess, never infer from the vehicle number, the material name, the receipt number, timestamps, array order or spelling similarity.
+C3d. The note should point the user to where they fix it: the "Who brought it?" question on the trip itself.
+
+=====================================================================
+C4 — ALREADY-SAVED BILLS ARE UNTOUCHED
+=====================================================================
+No recalculation of any existing bill line, draft or saved. No migration of `vendor_bill_items`. The transport pricing snapshot frozen on a saved line stays frozen.
+
+=====================================================================
+C5 — TRANSPORT PRICING
+=====================================================================
+Confirm — do not redesign — that a transport row produced by C1 is priced through the existing VB-EXPORT-02 Part C/D path: the vendor's transport rate card (rate ₹/km, one-way lead distance doubled, payload MT) via `shared/transportRate.ts` and `shared/vendorBillTransport.ts`.
+C5a. If no transport rate card exists for that vendor and material, the row comes out UNPRICED with a clear note. Do not fall back to a material rate, a nearby card, an average or the most recent card.
+C5b. If more than one card could match, the row comes out unpriced and flagged — never resolved by timestamp or array order.
+C5c. Do not change the rate card screens, the write-back on bill save, or `upsertVendorRateCard`.
+
+=====================================================================
+WHAT NOT TO DO
+=====================================================================
+- No backfill, no inference, no automatic correction of any existing trip. Not one row.
+- Do not create, rename, merge or de-duplicate any vendor or material name. The owner is aware there are multiple spellings of some vendors; that is a separate instruction and must not be touched here.
+- Do not recalculate or alter any saved vendor bill.
+- Do not change stock, consumption, DPR or material accounting.
+- Do not change the Materials Received page or its "Transporter / Material Source" filter.
+- Do not add any dev-only switch, feature flag or toggle to disable or bypass this logic.
+- Do not gate any of this on `isFieldEngineer` or add any new permission check.
+
+=====================================================================
+SELF-TEST BEFORE REPORTING
+=====================================================================
+Run these yourself in the signed-in DEVELOPMENT app against real saved data. Component tests with mocked responses are NOT sufficient evidence for C1–C5 — the last batch could not be verified live and that gap must not repeat. If you genuinely cannot sign in, say so in one line at the top of the report and state plainly which items are unverified.
+
+C1. Pull for a MATERIAL-ONLY vendor → material rows only, no transport rows. Show the rows.
+C2. Pull for a TRANSPORT-ONLY vendor → transport rows priced off the rate card, and ZERO material rows with quantity/unit/material rate. Use a real example: a trip where the material source is one party and the transporter another (there are such trips in October 2026 data). Show before and after for the same vendor and period.
+C3. Pull for a SAME-PARTY vendor → exactly ONE landed material row per trip, identical to today's output. Show today's rows and the new rows side by side for the same vendor and period, and state whether today's code was producing duplicates.
+C4. Pull including an unresolved historical trip → offered, amber, unticked.
+C5. A trip with `transportType = "in_house"` → the seller gets the material row; no transport line is offered to anyone, including the equipment's vendor.
+C6. Every caller of `getMaterialSuppliers` listed, with its behaviour before and after.
+C7. Cancelled/deleted trips: count of rows previously offered by the unfiltered block and now excluded.
+Z1. Before/after row counts AND content checksums for `site_material_trips`, `vendor_bills`, `vendor_bill_items`, `material_receipts`, `vendor_rate_cards` — taken around the test run WITHOUT restarting the server — proving no existing row changed.
+Z2. Full test suite against the current baseline. List every test added or updated and why. Do not report the pre-existing type errors as new.
+Z3. Build passes.
+
+=====================================================================
+REPORT BACK — ONCE, AT THE END
+=====================================================================
+1. Files changed.
+2. Evidence C1–C7 and Z1–Z3.
+3. Whether today's code was double-counting same-party trips, with the numbers.
+4. Any choice you had to make on your own, and what you chose.
+5. Anything you could not do, and why.
+6. The Publish preview.
+
+STOP AFTER PART C. Do not publish. Do not start another feature. Do not create follow-up tasks.

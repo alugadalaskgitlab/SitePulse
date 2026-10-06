@@ -51,6 +51,8 @@ import RateCards from "@/pages/RateCards";
 import PayablesPreviewPanel from "@/components/vendor-bills/PayablesPreviewPanel";
 import { applyTransportCard, changeTransportBasis } from "@shared/vendorBillTransport";
 import { TransportPricingRow } from "@/components/vendor-bills/TransportPricingRow";
+import { UnconfirmedTripOffers, TransportPricingNote } from "@/components/vendor-bills/TripCandidateWarnings";
+import { billableTripCandidates, isUnconfirmedTrip, isSiteTripTransport } from "@/components/vendor-bills/tripCandidateSafety";
 import { calcCandidateAmount, groupRateItems, stripSourceSuffix, canonicalMachineName, canonicalTransportName, canonicalMatName, deriveLabourKey, type RateGroup as SharedRateGroup } from "@shared/vendorBillCandidates";
 
 const formatDate = (dateStr: string | null | undefined) => {
@@ -79,6 +81,10 @@ const formatTimestamp = (ts: string | Date | null | undefined): string | null =>
 type ViewMode = "list" | "form" | "detail";
 
 interface LineItem {
+  rolesUnconfirmed?: boolean;
+  tripId?: number | null;
+  roleWarning?: string | null;
+  transportPricingNote?: string | null;
   transportPricing?: import("@shared/vendorBillTransport").TransportPricing | null;
   actualMt?: number | null;
   equipmentLogEvidence?: EquipmentLogEvidence | null;
@@ -825,12 +831,14 @@ export default function VendorBills() {
     ? `/api/vendor-bills/auto-items?vendorName=${encodeURIComponent(vendorName)}&billType=${encodeURIComponent(billType)}&periodFrom=${encodeURIComponent(periodFrom)}&periodTo=${encodeURIComponent(periodTo)}${selectedSiteId === "all" ? "" : `&siteId=${encodeURIComponent(selectedSiteId)}`}`
     : null;
 
-  const { data: autoItems, isFetching: autoItemsLoading } = useQuery<any[]>({
+  const { data: autoItems, isFetching: autoItemsLoading, refetch: refreshAutoItems } = useQuery<any[]>({
     queryKey: ["/api/vendor-bills/auto-items", vendorName, billType, periodFrom, periodTo, selectedSiteId],
     queryFn: () => autoItemsUrl ? fetch(autoItemsUrl).then(r => r.json()) : Promise.resolve([]),
     enabled: !!autoItemsUrl,
   });
   const mappedAutoItems = useMemo(() => (autoItems || []).map(mapAutoBillItemWithEvidence), [autoItems]);
+  const billableAutoItems = useMemo(() => billableTripCandidates(mappedAutoItems), [mappedAutoItems]);
+  const unconfirmedTripOffers = useMemo(() => mappedAutoItems.filter(isUnconfirmedTrip), [mappedAutoItems]);
 
   const hireActivitiesUrl = vendorName && periodFrom && periodTo
     ? `/api/vendor-bills/hire-activities?vendorName=${encodeURIComponent(vendorName)}&periodFrom=${encodeURIComponent(periodFrom)}&periodTo=${encodeURIComponent(periodTo)}`
@@ -1188,8 +1196,11 @@ export default function VendorBills() {
   };
 
   const handleAutoPopulate = async (items = availableOtherItems) => {
+    // Guard the action itself as well as discovery/group/preflight projections.
+    // Saved lineItems are deliberately not filtered by this discovery rule.
+    const billableItems = billableTripCandidates(items);
     if (
-      items.length === 0 ||
+      billableItems.length === 0 ||
       pullInFlightRef.current ||
       (availableOtherItems.length > 0 && (!duplicatePreflight.isSuccess || duplicatePreflight.isFetching))
     ) return;
@@ -1209,7 +1220,7 @@ export default function VendorBills() {
     setPullInFlight(true);
 
     try {
-      let mapped: LineItem[] = items.map(item => ({ ...item }));
+      let mapped: LineItem[] = billableItems.map(item => ({ ...item }));
 
       try {
         const rcRes = await fetch(`/api/vendor-rate-cards?vendorName=${encodeURIComponent(vendorName)}`, {
@@ -1226,6 +1237,13 @@ export default function VendorBills() {
           for (let i = 0; i < mapped.length; i++) {
             const item = mapped[i];
             const priced = applyTransportCard(item, rateCards, vendorName);
+            if (isSiteTripTransport(item)) {
+              mapped[i] = priced;
+              if (priced.transportPricing) appliedCount++;
+              // Retain the helper's unpriced rate/note when no unique exact
+              // card exists. Never try material conversion for this source.
+              continue;
+            }
             if (priced !== item) {
               mapped[i] = priced;
               appliedCount++;
@@ -1484,9 +1502,9 @@ export default function VendorBills() {
     [hireCalculated],
   );
   const availableOtherItems = useMemo(
-    () => availableOtherBillItems(mappedAutoItems, lineItems, includedHireGroups)
+    () => availableOtherBillItems(billableAutoItems, lineItems, includedHireGroups)
       .filter(item => !suppressedAutoItemsRef.current.has(autoBillItemIdentity(item))),
-    [mappedAutoItems, lineItems, includedHireGroups],
+    [billableAutoItems, lineItems, includedHireGroups],
   );
   const billedLineItemCount = useMemo(
     () => lineItems.filter(item => !!item.billedIn).length,
@@ -1550,7 +1568,7 @@ export default function VendorBills() {
   }, [availableOtherItems, duplicatePreflight.data, duplicatePreflight.isSuccess]);
   // Deleted source identities remain suppressed for this draft context.
   const candidatePullGroups = useMemo(() => {
-    const candidates = availableOtherBillItems(mappedAutoItems, [], includedHireGroups)
+    const candidates = availableOtherBillItems(billableAutoItems, [], includedHireGroups)
       .filter(item => !suppressedAutoItemsRef.current.has(autoBillItemIdentity(item)));
     return groupRateItems(candidates).map(group => ({
       ...group,
@@ -1566,7 +1584,7 @@ export default function VendorBills() {
       const categoryDifference = (categoryOrder[a.category] ?? 3) - (categoryOrder[b.category] ?? 3);
       return categoryDifference || a.groupName.localeCompare(b.groupName) || a.entryType.localeCompare(b.entryType);
     });
-  }, [duplicatePreflight.isSuccess, includedHireGroups, lineItems, mappedAutoItems, preflightBilledIdentities]);
+  }, [duplicatePreflight.isSuccess, includedHireGroups, lineItems, billableAutoItems, preflightBilledIdentities]);
 
   // Keep asynchronous Pull work scoped to the form identity that started it.
   useEffect(() => {
@@ -3370,6 +3388,7 @@ export default function VendorBills() {
                 </span>
                   {billType !== "equipment" && <span className="mt-1 block text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">Other billable activities for this vendor/period are shown here.</span>}
                   <div className="mt-3 space-y-2">
+                    <UnconfirmedTripOffers items={unconfirmedTripOffers} refreshing={autoItemsLoading} onRefresh={() => { void refreshAutoItems(); }} />
                     {(billType === "material" || billType === "all") && (
                       <Link href={`/site/material-trips?returnTo=${encodeURIComponent(typeof window !== "undefined" ? window.location.pathname : "/plant/vendor-bills")}`}>
                         <Button type="button" variant="ghost" size="sm" className="h-auto px-0 text-xs" data-testid="link-material-trip-backlog">
@@ -3423,6 +3442,9 @@ export default function VendorBills() {
                         >
                           {group.pendingItems.length ? `PULL ${group.pendingItems.length}` : "✓ ADDED"}
                         </Button>
+                        {[...new Set(group.items.map(item => item.transportPricingNote).filter(Boolean))].map(note =>
+                          <div key={note} className="w-full"><TransportPricingNote note={note} /></div>
+                        )}
                       </div>;
                     })}
                     {candidatePullGroups.length > 0 && availableOtherItems.length > 0 && <Button
@@ -3588,6 +3610,7 @@ export default function VendorBills() {
                       unitEditGeneration.current++;
                       setLineItems(rows => rows.map((row, i) => i === idx ? changeTransportBasis(row, basis) : row));
                     }} />
+                    <TransportPricingNote note={item.transportPricingNote} />
                   </td>
                   {hasSuppliedOrTransporter && (
                     <td className="px-2 py-1.5">

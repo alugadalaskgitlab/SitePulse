@@ -107,5 +107,9 @@ describe("MAT-01 Materials Received database queries", () => {
       "ROAD TRANSPORT",
     ]);
     expect(reportNames.filter(name => name === "BORROW OWNER")).toHaveLength(1);
+    const roles = await storage.getMaterialSupplierRoles();
+    expect(roles.find(row => row.name === "BORROW OWNER")?.roles).toEqual(["transporter", "material_source"]);
+    expect(roles.find(row => row.name === "QUARRY TWO")?.roles).toEqual(["material_source"]);
+    expect(roles.find(row => row.name === "DPR SUPPLIER")?.roles).toEqual(["dpr_supplier"]);
   });
 });

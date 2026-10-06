@@ -15,6 +15,12 @@ Do not backfill, infer, default, rewrite, or automatically correct historical tr
 
 **How to apply:** New same-party trips explicitly store the chosen vendor in both role columns; a blank transporter never means "same party". Existing ambiguous records must display their stored values and a roles-not-confirmed warning without preselecting a role.
 
+Site-trip transport pricing must match the vendor and material exactly through the existing rate-card identity mechanism; do not use a sole unrelated vendor card as a default. Ambiguous or missing cards leave the new candidate unpriced.
+
+**Why:** The owner explicitly disallowed nearby/default/most-recent material or transport rates for this flow, while requiring already-saved pricing snapshots to remain frozen.
+
+**How to apply:** Keep this stricter rule specific to new site-trip transport candidates; do not redesign rate-card setup or retroactively reprice bills. Unresolved trips must be offered unchecked and corrected on the trip before billing.
+
 Automatic source billing conversion reuses the existing rate-card conversion contract without modifying physical trip quantities.
 
 **Why:** Source vendors may charge per trip while delivery records remain in CFT. Rate-card ambiguity is not permission to guess a price.

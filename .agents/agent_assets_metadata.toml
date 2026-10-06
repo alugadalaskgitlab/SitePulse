@@ -5141,3 +5141,17 @@ mtime_ms = 1791285228918
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/13cead28-64ff-413c-80a9-2d6c33cba762/f802a616-b379-4d9d-919b-68c2a9527d99"
 storage_version_token = "1791285244805076"
 content_type = "text/html"
+
+[[outputs]]
+id = "Whyf7pU5j2crf9a9Z-1Zk"
+uri = "file://reports/vb-split-c/verification.html"
+type = "html"
+title = "Part C — implementation and verification report"
+description = "C1–C7 evidence, all five unchanged-table checksums, full-suite comparison, test inventory, and live-verification limitations."
+logical_id = "86886814-ad4d-489a-9151-b89d9c722ca7"
+content_hash = "sha256:3db02eb547f2714dcd0db157602004036391403561b5943e3652d2edeb4070d1"
+size = 17064
+mtime_ms = 1791295856565
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/86886814-ad4d-489a-9151-b89d9c722ca7/d2aaab28-e9ac-4130-855e-f839369f5ae3"
+storage_version_token = "1791295859415736"
+content_type = "text/html"

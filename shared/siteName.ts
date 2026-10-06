@@ -94,7 +94,7 @@ export function vendorBillAutoSourceFromCandidate(candidate: {
 }): string | null {
   if (candidate.sourceId == null || String(candidate.sourceId) === "") return null;
   const id = String(candidate.sourceId).toLowerCase();
-  return candidate.sourceType === "site_material_trip_material"
-    ? `auto:site_material_trip_material:${id}`
+  return ["site_material_trip_material", "site_material_trip_transport", "site_material_trip_unresolved"].includes(candidate.sourceType || "")
+    ? `auto:${candidate.sourceType}:${id}`
     : `auto:${id}`;
 }

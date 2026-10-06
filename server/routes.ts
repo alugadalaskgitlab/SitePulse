@@ -11227,6 +11227,7 @@ export async function registerRoutes(
       }
     }
     const validSources = new Set(authoritative
+      .filter(item => item.sourceType !== "site_material_trip_unresolved")
       .map(vendorBillAutoSourceFromCandidate)
       .filter((source): source is string => source != null));
     if (submittedAutoSources.some(source => !validSources.has(source))) {

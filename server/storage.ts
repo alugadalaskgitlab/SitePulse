@@ -10,6 +10,7 @@ import { hasCumulativeVendorPayment } from "../shared/vendorBillPayment";
 import { normalizeDprSiteName } from "../shared/dprBoqSelection";
 import { hasDprBoqReferences } from "../shared/dprBoqReferences";
 import { isManualVendorRateCard, vendorRateCardIdentity } from "../shared/vendorRateCardIdentity";
+import { vendorBillTripCandidate } from "../shared/vendorBillTripRoles";
 import {
   auditLogs,
   type AuditLog,
@@ -1420,6 +1421,7 @@ export interface IStorage {
   // Combined Materials Received (site_material_trips + DPR material_logs type=Received)
   getAllMaterialsReceived(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; supplier?: string; permittedSiteNames?: string[]; workType?: string }): Promise<any[]>;
   getMaterialSuppliers(includeMaterialSources?: boolean): Promise<string[]>;
+  getMaterialSupplierRoles(includeMaterialSources?: boolean): Promise<{ name: string; roles: ("transporter" | "material_source" | "dpr_supplier")[] }[]>;
   
   // Consumption Audit Log
   getConsumptionAuditLog(filters?: { dispatchId?: number; dateFrom?: string; dateTo?: string }): Promise<ConsumptionAuditLog[]>;
@@ -13370,6 +13372,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getMaterialSuppliers(includeMaterialSources = false): Promise<string[]> {
+    return (await this.getMaterialSupplierRoles(includeMaterialSources)).map(row => row.name);
+  }
+
+  /** Additive role-aware API; legacy callers still receive the identical name list. */
+  async getMaterialSupplierRoles(includeMaterialSources = true): Promise<{ name: string; roles: ("transporter" | "material_source" | "dpr_supplier")[] }[]> {
     const [tripSuppliers, materialSourceSuppliers, dprSuppliers] = await Promise.all([
       db.selectDistinct({ supplier: siteMaterialTrips.supplier })
         .from(siteMaterialTrips)
@@ -13388,12 +13395,18 @@ export class DatabaseStorage implements IStorage {
           or(eq(dprs.isSuperseded, false), isNull(dprs.isSuperseded)),
         )),
     ]);
-    const all = new Set<string>();
-    for (const row of [...tripSuppliers, ...materialSourceSuppliers, ...dprSuppliers]) {
-      const val = (row.supplier || '').trim().toUpperCase();
-      if (val) all.add(val);
+    const all = new Map<string, Set<"transporter" | "material_source" | "dpr_supplier">>();
+    for (const [rows, role] of [
+      [tripSuppliers, "transporter"], [materialSourceSuppliers, "material_source"], [dprSuppliers, "dpr_supplier"],
+    ] as const) {
+      for (const row of rows) {
+        const val = (row.supplier || '').trim().toUpperCase();
+        if (!val) continue;
+        if (!all.has(val)) all.set(val, new Set());
+        all.get(val)!.add(role);
+      }
     }
-    return [...all].sort();
+    return [...all.keys()].sort().map(name => ({ name, roles: [...all.get(name)!] }));
   }
 
   // Consumption Audit Log
@@ -17608,7 +17621,7 @@ export class DatabaseStorage implements IStorage {
   ): Promise<void> {
     const candidates = items
       .map(item => String(item.source || "").trim().toLowerCase())
-      .filter(source => /^auto:site_material_trip(?:_material)?:\d+$/.test(source));
+      .filter(source => /^auto:site_material_trip(?:_material|_transport)?:\d+$/.test(source));
     if (candidates.length === 0) return;
 
     if (new Set(candidates).size !== candidates.length) {
@@ -18544,6 +18557,23 @@ export class DatabaseStorage implements IStorage {
       return sql`UPPER(TRIM(${col})) IN (${sql.join(vendorVariants.map(v => sql`${v}`), sql`, `)})`;
     };
 
+    if (bt === "material" || bt === "transport" || bt === "all") {
+      // One alias-aware query: same-party matches cannot emit duplicate rows.
+      const trips = await db.select({
+        trip: siteMaterialTrips,
+        matchesSeller: sql<boolean>`coalesce(${vendorMatchSql(siteMaterialTrips.materialSourceSupplier)}, false)`,
+        matchesTransporter: sql<boolean>`coalesce(${vendorMatchSql(siteMaterialTrips.supplier)}, false)`,
+      }).from(siteMaterialTrips).where(and(
+        or(vendorMatchSql(siteMaterialTrips.materialSourceSupplier), vendorMatchSql(siteMaterialTrips.supplier)),
+        gte(siteMaterialTrips.date, periodFrom), lte(siteMaterialTrips.date, periodTo),
+        eq(siteMaterialTrips.isCancelled, false), eq(siteMaterialTrips.isDeleted, false),
+      ));
+      for (const { trip, matchesSeller, matchesTransporter } of trips) {
+        const candidate = vendorBillTripCandidate(trip, matchesSeller, matchesTransporter, bt);
+        if (candidate) items.push(candidate);
+      }
+    }
+
     if (bt === "equipment" || bt === "all") {
       const hiredEquipment = await db.select()
         .from(equipmentMaster)
@@ -18746,63 +18776,6 @@ export class DatabaseStorage implements IStorage {
             source: "auto",
             sourceId: `dpr_material:${row.id}`,
             siteName: siteLabel,
-            vehicleNumber: row.vehicleNumber ?? null,
-            receiptNumber: row.receiptNumber ?? null,
-          });
-        }
-      }
-
-      const siteTrips = await db.select()
-        .from(siteMaterialTrips)
-        .where(and(
-          vendorMatchSql(siteMaterialTrips.supplier),
-          gte(siteMaterialTrips.date, periodFrom),
-          lte(siteMaterialTrips.date, periodTo),
-        ));
-
-      for (const row of siteTrips) {
-        if (row.quantity && row.quantity > 0) {
-          items.push({
-            date: typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0],
-            category: "material",
-            description: `${(row.material || "MATERIAL").toUpperCase()} (SITE TRIP)`,
-            qty: row.quantity,
-            unit: row.uom || "NOS",
-            source: "auto",
-            sourceId: `site_material_trip:${row.id}`,
-            siteName: `SITE: ${(row.site || "").toUpperCase()}`,
-            vehicleNumber: row.vehicleNumber ?? null,
-            receiptNumber: row.receiptNumber ?? null,
-          });
-        }
-      }
-
-      // A physical delivery can generate two independent commercial lines.
-      // Keep the existing transporter-side pull above unchanged; this new
-      // role is identified separately so billing one side never consumes the
-      // other side.
-      const materialSourceTrips = await db.select()
-        .from(siteMaterialTrips)
-        .where(and(
-          vendorMatchSql(siteMaterialTrips.materialSourceSupplier),
-          gte(siteMaterialTrips.date, periodFrom),
-          lte(siteMaterialTrips.date, periodTo),
-          eq(siteMaterialTrips.isCancelled, false),
-          eq(siteMaterialTrips.isDeleted, false),
-        ));
-
-      for (const row of materialSourceTrips) {
-        if (row.quantity && row.quantity > 0) {
-          items.push({
-            date: typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0],
-            category: "material",
-            description: `${(row.material || "MATERIAL").toUpperCase()} (SITE TRIP MATERIAL)`,
-            qty: row.quantity,
-            unit: row.uom || "NOS",
-            source: "auto",
-            sourceType: "site_material_trip_material",
-            sourceId: row.id,
-            siteName: `SITE: ${(row.site || "").toUpperCase()}`,
             vehicleNumber: row.vehicleNumber ?? null,
             receiptNumber: row.receiptNumber ?? null,
           });
@@ -21756,6 +21729,20 @@ export class DatabaseStorage implements IStorage {
       vendorRecords.set(canonical, existing);
     };
 
+    if (bt === "material" || bt === "transport" || bt === "all") {
+      const trips = await db.select().from(siteMaterialTrips).where(and(
+        gte(siteMaterialTrips.date, periodFrom), lte(siteMaterialTrips.date, periodTo),
+        eq(siteMaterialTrips.isCancelled, false), eq(siteMaterialTrips.isDeleted, false),
+      ));
+      for (const trip of trips) {
+        const names = new Set([trip.materialSourceSupplier, trip.supplier].filter((name): name is string => !!name));
+        for (const name of names) {
+          const candidate = vendorBillTripCandidate(trip, name === trip.materialSourceSupplier, name === trip.supplier, bt);
+          if (candidate) addRecord(name, candidate.category);
+        }
+      }
+    }
+
     if (bt === "equipment" || bt === "all") {
       const hiredEquipment = await db.select()
         .from(equipmentMaster)
@@ -21826,36 +21813,6 @@ export class DatabaseStorage implements IStorage {
 
       for (const row of dprMaterials) {
         if (row.supplier) addRecord(row.supplier, "material");
-      }
-
-      const siteTrips = await db.select({
-        supplier: siteMaterialTrips.supplier,
-        materialSourceSupplier: siteMaterialTrips.materialSourceSupplier,
-      })
-      .from(siteMaterialTrips)
-      .where(and(
-        sql`${siteMaterialTrips.supplier} IS NOT NULL AND ${siteMaterialTrips.supplier} != ''`,
-        gte(siteMaterialTrips.date, periodFrom),
-        lte(siteMaterialTrips.date, periodTo),
-      ));
-
-      for (const row of siteTrips) {
-        if (row.supplier) addRecord(row.supplier, "material");
-      }
-
-      const materialSourceTrips = await db.select({
-        materialSourceSupplier: siteMaterialTrips.materialSourceSupplier,
-      })
-      .from(siteMaterialTrips)
-      .where(and(
-        sql`${siteMaterialTrips.materialSourceSupplier} IS NOT NULL AND ${siteMaterialTrips.materialSourceSupplier} != ''`,
-        gte(siteMaterialTrips.date, periodFrom),
-        lte(siteMaterialTrips.date, periodTo),
-        eq(siteMaterialTrips.isCancelled, false),
-        eq(siteMaterialTrips.isDeleted, false),
-      ));
-      for (const row of materialSourceTrips) {
-        if (row.materialSourceSupplier) addRecord(row.materialSourceSupplier, "material");
       }
 
       const plantReceipts = await db.select({
@@ -22825,7 +22782,7 @@ export class DatabaseStorage implements IStorage {
       for (const existing of existingItems) {
         const bill = billMap.get(existing.billId);
         if (!bill) continue;
-        const sourceMatch = /^auto:site_material_trip(?:_material)?:\d+$/.test(String(item.source || "").toLowerCase()) &&
+        const sourceMatch = /^auto:site_material_trip(?:_material|_transport)?:\d+$/.test(String(item.source || "").toLowerCase()) &&
           String(existing.source || "").toLowerCase() === String(item.source || "").toLowerCase();
         if (sourceMatch) {
           duplicates.push({ index: i, billNo: bill.billNo, billStatus: bill.status });

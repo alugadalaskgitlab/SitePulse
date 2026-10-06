@@ -16,6 +16,7 @@ type TransportCard = VendorRateCardRecord & {
   id?: number; leadDistanceKm?: number | null; payloadMt?: number | null; ratePerKm?: number | null;
 };
 type Row = {
+  sourceType?: string | null; transportPricingNote?: string | null;
   category: string; description: string; equipmentId: number | null;
   unit: string; qty: number; rate: number; amount: number; leadDistance?: number | null;
   actualMt?: number | null; physicalQuantity?: number; physicalUnit?: string;
@@ -36,9 +37,21 @@ export function applyTransportCard<T extends Row>(row: T, cards: TransportCard[]
     Number.isFinite(c.ratePerKm) && c.ratePerKm! >= 0);
   const group = groupRateItems([row])[0];
   const exact = configured.filter(c => matchingRateCardsForGroup(group, c.unit || "", [c], vendor, { allowVendorAliases: true }).length);
+  if (row.sourceType === "site_material_trip_transport") {
+    // Site-trip haulage must match THIS material. Never use a vendor default,
+    // a material price, or array order to choose between standing cards.
+    const allExact = cards.filter(c => c.category === "transport" &&
+      matchingRateCardsForGroup(group, c.unit || "", [c], vendor, { allowVendorAliases: true }).length);
+    if (allExact.length !== 1 || exact.length !== 1) return {
+      ...row, rate: 0, amount: 0,
+      transportPricingNote: allExact.length > 1
+        ? "Unpriced — multiple transport rate cards match this vendor and material."
+        : "Unpriced — no configured transport rate card matches this vendor and material.",
+    };
+  }
   // A single configured transport card is the vendor's default. Ambiguous
   // cards are never selected by timestamp, spelling similarity or array order.
-  const matches = exact.length ? exact : configured;
+  const matches = row.sourceType === "site_material_trip_transport" ? exact : exact.length ? exact : configured;
   if (matches.length !== 1) return row;
   const card = matches[0];
   const weight = quantityInMt(row.physicalQuantity ?? row.qty, row.physicalUnit ?? row.unit);
@@ -46,6 +59,7 @@ export function applyTransportCard<T extends Row>(row: T, cards: TransportCard[]
   const tripCount = /^(TRIP|TRIPS)$/i.test(row.unit) ? row.qty : 1;
   const basis = weight != null ? "mt" : "trip";
   const next = { ...row,
+    ...(row.sourceType === "site_material_trip_transport" ? { transportPricingNote: null } : {}),
     physicalQuantity: row.physicalQuantity ?? row.qty, physicalUnit: row.physicalUnit ?? row.unit,
     leadDistance: row.leadDistance ?? card.leadDistanceKm!,
     rate: card.ratePerKm!,

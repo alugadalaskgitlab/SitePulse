@@ -52,8 +52,8 @@ export function vendorBillAutoSourceIdentity(
 ): string {
   if (sourceId == null || String(sourceId) === "") return fallbackSource || "auto";
   const normalizedId = String(sourceId).toLowerCase();
-  return sourceType === SITE_MATERIAL_TRIP_MATERIAL_SOURCE
-    ? `auto:${SITE_MATERIAL_TRIP_MATERIAL_SOURCE}:${normalizedId}`
+  return [SITE_MATERIAL_TRIP_MATERIAL_SOURCE, "site_material_trip_transport", "site_material_trip_unresolved"].includes(sourceType || "")
+    ? `auto:${sourceType}:${normalizedId}`
     : `auto:${normalizedId}`;
 }
 

@@ -360,7 +360,7 @@ describe("site trip suggestion storage contract", () => {
 
   it("keeps source-vendor billing separately source-qualified and concurrency guarded", () => {
     const storage = read("server/storage.ts");
-    expect(storage).toContain('sourceType: "site_material_trip_material"');
+    expect(read("shared/vendorBillTripRoles.ts")).toContain('sourceType: "site_material_trip_material"');
     expect(storage).toContain("vendorMatchSql(siteMaterialTrips.materialSourceSupplier)");
     expect(storage).toContain("assertSiteMaterialTripItemsAvailable");
     expect(storage).toContain("pg_advisory_xact_lock(1432, hashtext");
