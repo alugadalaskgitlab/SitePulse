@@ -1,5 +1,9 @@
 import { formatTripQuantity } from "@shared/tripQuantityDisplay";
-import { useState, useMemo } from "react";
+import { classifyTripRoles, tripRolePayload, validateTripRoles, type TripTransportRole } from "@shared/tripTransportRoles";
+import { TripTransportRoleFields } from "@/components/TripTransportRoleFields";
+import { TripRoleEditDialog } from "@/components/TripRoleEditDialog";
+import { filterTripsByRole, resolveTripVendor, tripRoleDescription, type ExistingTripVendor, type TripRoleFilter } from "@/components/trip-role-utils";
+import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useSearch, useLocation } from "wouter";
 import { format } from "date-fns";
@@ -80,7 +84,12 @@ export default function SiteMaterialTrips() {
   const [materialFilter, setMaterialFilter] = useState("");
   const [vehicleFilter, setVehicleFilter] = useState("");
   const [supplierFilter, setSupplierFilter] = useState("");
-  const [onlyUnassigned, setOnlyUnassigned] = useState(true);
+  const [onlyUnassigned, setOnlyUnassigned] = useState(false);
+  const [roleFilter, setRoleFilter] = useState<TripRoleFilter>("all");
+  const [roleChoice, setRoleChoice] = useState<TripTransportRole | null>("same_party");
+  const roleChoiceRef = useRef(roleChoice);
+  roleChoiceRef.current = roleChoice;
+  const [editingRoleTrip, setEditingRoleTrip] = useState<SiteMaterialTrip | null>(null);
   const [bulkMaterialSourceSupplier, setBulkMaterialSourceSupplier] = useState("");
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
 
@@ -89,10 +98,10 @@ export default function SiteMaterialTrips() {
     time: currentTime,
     site: piParams.site || "",
     material: piParams.material || "",
-    supplier: piParams.supplier || "",
-    materialSourceSupplier: "",
+    supplier: "",
+    materialSourceSupplier: piParams.supplier || "",
     vehicleNumber: "",
-    transportType: "",
+    transportType: "agency_vendor",
     internalEquipmentId: null as number | null,
     quantity: piParams.qty || "",
     uom: piParams.uom || "CFT",
@@ -105,8 +114,9 @@ export default function SiteMaterialTrips() {
     unloadedAt: "stretch",
     yardLabel: "",
   });
-  // Suggestions are scoped to the selected site.  They are optional
-  // convenience data; both fields remain ordinary free-text inputs.
+  // Site suggestions prioritize existing vendors; saving requires one unique master ID.
+  const vendorQuery = useQuery<ExistingTripVendor[]>({ queryKey: ["/api/vendor-master"] });
+  const vendors = vendorQuery.data ?? [];
   const {
     suppliers: supplierSuggestions,
     materialSourceSuppliers: materialSourceSupplierSuggestions,
@@ -131,7 +141,7 @@ export default function SiteMaterialTrips() {
       return {
         ...prev,
         vehicleNumber: vehicleNumber.toUpperCase(),
-        ...(association?.status === "linked" && association.supplier
+        ...(roleChoiceRef.current === "different_parties" && association?.status === "linked" && association.supplier
           ? { supplier: association.supplier }
           : {}),
       };
@@ -149,13 +159,14 @@ export default function SiteMaterialTrips() {
     setNewTrip((prev) => {
       const next = { ...prev };
       if (p.material && (!prev.material || prev.material === lastPrefill.material)) next.material = p.material;
-      const supplierValue = p.supplier ? (p.clientSupplied ? `${p.supplier} (CLIENT SUPPLIED)` : p.supplier) : null;
-      if (supplierValue && (!prev.supplier || prev.supplier === lastPrefill.supplier)) next.supplier = supplierValue;
+      // Keep the vendor's actual master name; client-supplied metadata is not a new vendor.
+      const supplierValue = p.supplier || null;
+      if (supplierValue && (!prev.materialSourceSupplier || prev.materialSourceSupplier === lastPrefill.supplier)) next.materialSourceSupplier = supplierValue;
       if ((p.material && prev.material && prev.material !== lastPrefill.material && prev.material !== p.material) ||
-          (supplierValue && prev.supplier && prev.supplier !== lastPrefill.supplier && prev.supplier !== supplierValue)) {
+          (supplierValue && prev.materialSourceSupplier && prev.materialSourceSupplier !== lastPrefill.supplier && prev.materialSourceSupplier !== supplierValue)) {
         toast({ title: "Kept your entries", description: "Material/Supplier were not overwritten by the arrangement — update them yourself if needed." });
       }
-      setLastPrefill({ material: next.material === p.material ? p.material : lastPrefill.material, supplier: next.supplier === supplierValue ? supplierValue ?? "" : lastPrefill.supplier });
+      setLastPrefill({ material: next.material === p.material ? p.material : lastPrefill.material, supplier: next.materialSourceSupplier === supplierValue ? supplierValue ?? "" : lastPrefill.supplier });
       return next;
     });
   };
@@ -252,11 +263,24 @@ export default function SiteMaterialTrips() {
   const activeInternalEquipment = internalEquipment.filter(
     (equipment) => equipment.isActive && equipment.ownership === "owned",
   );
+  const buildRolePayload = (data: typeof newTrip) => {
+    if (!roleChoice || roleChoice === "unresolved") throw new Error("Choose Who brought it.");
+    if (vendorQuery.isLoading || vendorQuery.isError) throw new Error("Load the existing vendors before saving.");
+    const source = resolveTripVendor(data.materialSourceSupplier, vendors);
+    const transporter = roleChoice === "different_parties" ? resolveTripVendor(data.supplier, vendors) : source;
+    const equipment = activeInternalEquipment.find((item) => item.id === data.internalEquipmentId) ?? null;
+    const roles = tripRolePayload(roleChoice, source, transporter, equipment, data.vehicleNumber);
+    const issue = validateTripRoles(roles);
+    if (issue) throw new Error(issue);
+    if (roleChoice !== "in_house" && !data.vehicleNumber.trim()) throw new Error("Enter the agency/vendor vehicle number.");
+    return roles;
+  };
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof newTrip) => {
       const payload: Record<string, any> = {
         ...data,
+        ...buildRolePayload(data),
         quantity: parseFloat(data.quantity) || 0,
         // 06S: yard label only meaningful for yard receipts.
         yardLabel: data.unloadedAt === "yard" ? data.yardLabel : undefined,
@@ -328,7 +352,7 @@ export default function SiteMaterialTrips() {
           supplier: "",
            materialSourceSupplier: "",
           vehicleNumber: "",
-            transportType: "",
+             transportType: "agency_vendor",
             internalEquipmentId: null,
           quantity: "",
           uom: "CFT",
@@ -336,10 +360,12 @@ export default function SiteMaterialTrips() {
           receiptNumber: "",
           enteredBy: newTrip.enteredBy,
           notes: "",
+          workType: "",
           unloadedAt: "stretch",
           yardLabel: "",
         });
         setWorkCtx(EMPTY_WORK_CONTEXT);
+        setRoleChoice("same_party");
         setLastPrefill({ material: "", supplier: "" });
       }
     },
@@ -365,6 +391,9 @@ export default function SiteMaterialTrips() {
 
   const bulkAssignMutation = useMutation({
     mutationFn: async () => {
+      if (roleFilter !== "all") {
+        throw new Error("Select All in the transport/source role filter before using the bulk material-source tool.");
+      }
       const payload = {
         dateFrom: dateFromFilter || undefined,
         dateTo: dateToFilter || undefined,
@@ -417,33 +446,28 @@ export default function SiteMaterialTrips() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTrip.site || !newTrip.material || !newTrip.quantity || !newTrip.transportType || !hasRequiredWorkContext(workCtx)) {
-      toast({ title: "Required Fields", description: "Please fill in Site, Material, Transport Type, Quantity, and BOQ Item / Intended Activity.", variant: "destructive" });
+    if (!newTrip.site || !newTrip.material || !newTrip.quantity || !hasRequiredWorkContext(workCtx)) {
+      toast({ title: "Required Fields", description: "Please fill in Site, Material, Quantity, and BOQ Item / Intended Activity.", variant: "destructive" });
       return;
     }
-    if (newTrip.transportType === "agency_vendor" && !newTrip.supplier.trim()) {
-      toast({ title: "Vendor required", description: "Enter the agency/vendor transporting this trip.", variant: "destructive" });
-      return;
-    }
-    if (newTrip.transportType === "agency_vendor" && !newTrip.vehicleNumber.trim()) {
-      toast({ title: "Vehicle required", description: "Enter the agency/vendor vehicle number.", variant: "destructive" });
-      return;
-    }
-    if (newTrip.transportType === "in_house" && newTrip.internalEquipmentId == null && !newTrip.vehicleNumber.trim()) {
-      toast({ title: "Vehicle required", description: "Choose internal equipment or enter a vehicle number.", variant: "destructive" });
+    try {
+      buildRolePayload(newTrip);
+    } catch (error) {
+      toast({ title: "Confirm trip roles", description: error instanceof Error ? error.message : "Set Material from and Who brought it.", variant: "destructive" });
       return;
     }
     createMutation.mutate(newTrip);
   };
 
   const filteredTrips = trips ?? [];
+  const roleFilteredTrips = useMemo(() => filterTripsByRole(filteredTrips, roleFilter), [trips, roleFilter]);
   const hasUnassignedFilteredTrips = filteredTrips.some(
     (trip) => !trip.materialSourceSupplier?.trim(),
   );
 
   const tripsByMaterial = useMemo(() => {
     const grouped: Record<string, { count: number; totalQty: number; uom: string }> = {};
-    filteredTrips.forEach(trip => {
+    roleFilteredTrips.forEach(trip => {
       const key = trip.material;
       if (!grouped[key]) {
         grouped[key] = { count: 0, totalQty: 0, uom: trip.uom };
@@ -452,7 +476,7 @@ export default function SiteMaterialTrips() {
       grouped[key].totalQty += trip.quantity || 0;
     });
     return grouped;
-  }, [filteredTrips]);
+  }, [roleFilteredTrips]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -551,48 +575,25 @@ export default function SiteMaterialTrips() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div>
-                  <Label className="text-sm">{newTrip.transportType === "agency_vendor" ? "Vendor / Supplier *" : "Supplier"}</Label>
-                  <FreeTextSuggestionInput
-                    placeholder="e.g. Sanganna"
-                    value={newTrip.supplier}
-                    onChange={(value) => setNewTrip((prev) => ({ ...prev, supplier: value.toUpperCase() }))}
-                    suggestions={supplierSuggestions}
-                    match="supplier"
-                    suggestionsError={suggestionError}
-                    className="uppercase"
-                    data-testid="input-trip-supplier"
-                  />
-                </div>
-                <div>
-                  <Label className="text-sm">Material Source / Supplier (optional)</Label>
-                  <FreeTextSuggestionInput
-                    placeholder="e.g. Borrow area owner"
-                    value={newTrip.materialSourceSupplier}
-                    onChange={(value) => setNewTrip((prev) => ({ ...prev, materialSourceSupplier: value.toUpperCase() }))}
-                    suggestions={materialSourceSupplierSuggestions}
-                    match="supplier"
-                    suggestionsError={suggestionError}
-                    className="uppercase"
-                    data-testid="input-trip-material-source-supplier"
-                  />
-                  <p className="mt-1 text-[11px] text-muted-foreground">Who sold the material; independent from the transporter.</p>
-                </div>
-                <div>
-                  <Label className="text-sm">Vehicle Number <span className="text-muted-foreground">(free text fallback)</span></Label>
-                  <FreeTextSuggestionInput
-                    placeholder="e.g. TS15U1234"
-                    value={newTrip.vehicleNumber}
-                    onChange={(value) => setNewTrip((prev) => ({ ...prev, vehicleNumber: value.toUpperCase() }))}
-                    onSuggestionSelected={applyVehicleSuggestion}
-                    suggestions={vehicleSuggestions}
-                    match="vehicle"
-                    suggestionsError={suggestionError}
-                    className="uppercase"
-                    data-testid="input-trip-vehicle"
-                  />
-                  <VehicleSupplierAssociationNotice
+              <TripTransportRoleFields
+                choice={roleChoice}
+                onChoice={(choice) => {
+                  setRoleChoice(choice);
+                  setNewTrip((prev) => ({ ...prev, transportType: choice === "in_house" ? "in_house" : "agency_vendor", internalEquipmentId: choice === "in_house" ? prev.internalEquipmentId : null }));
+                }}
+                value={newTrip}
+                onChange={(draft) => setNewTrip((prev) => ({ ...prev, ...draft }))}
+                vendors={vendors}
+                equipment={activeInternalEquipment}
+                sourceSuggestions={materialSourceSupplierSuggestions}
+                supplierSuggestions={supplierSuggestions}
+                vehicleSuggestions={vehicleSuggestions}
+                suggestionError={suggestionError}
+                vendorsLoading={vendorQuery.isLoading}
+                vendorsError={vendorQuery.isError}
+                onRetryVendors={() => void vendorQuery.refetch()}
+                onVehicleSelected={applyVehicleSuggestion}
+                vehicleNotice={roleChoice === "different_parties" ? <VehicleSupplierAssociationNotice
                     site={newTrip.site}
                     vehicleNumber={newTrip.vehicleNumber}
                     supplier={newTrip.supplier}
@@ -600,7 +601,7 @@ export default function SiteMaterialTrips() {
                     canCorrectVehicleSupplier={canCorrectVehicleSupplier}
                     onSupplierApplied={(supplier, context) =>
                       setNewTrip((prev) =>
-                        prev.site === context.site &&
+                         roleChoiceRef.current === "different_parties" && prev.site === context.site &&
                         normalizeVehicleSupplierKey(prev.vehicleNumber) ===
                           normalizeVehicleSupplierKey(context.vehicleNumber)
                           ? { ...prev, supplier }
@@ -608,8 +609,9 @@ export default function SiteMaterialTrips() {
                       )
                     }
                     testIdPrefix="trip"
-                  />
-                </div>
+                  /> : undefined}
+              />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <Label className="text-sm">Quantity *</Label>
                   <Input
@@ -640,53 +642,6 @@ export default function SiteMaterialTrips() {
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div>
-                  <Label className="text-sm">Transport Type *</Label>
-                  <Select
-                    value={newTrip.transportType}
-                    onValueChange={(transportType) => setNewTrip((prev) => ({
-                      ...prev,
-                      transportType,
-                      internalEquipmentId: transportType === "in_house" ? prev.internalEquipmentId : null,
-                    }))}
-                  >
-                    <SelectTrigger data-testid="select-trip-transport-type">
-                      <SelectValue placeholder="Select transport" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="in_house">In-house</SelectItem>
-                      <SelectItem value="agency_vendor">Agency / Vendor</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {newTrip.transportType === "in_house" && (
-                  <div>
-                    <Label className="text-sm">Internal Equipment <span className="text-muted-foreground">(optional)</span></Label>
-                    <Select
-                      value={newTrip.internalEquipmentId?.toString() ?? "none"}
-                      onValueChange={(value) => {
-                        const equipment = activeInternalEquipment.find((item) => item.id === Number(value));
-                        setNewTrip((prev) => ({
-                          ...prev,
-                          internalEquipmentId: value === "none" ? null : Number(value),
-                          vehicleNumber: equipment?.registrationNumber || equipment?.name || prev.vehicleNumber,
-                        }));
-                      }}
-                    >
-                      <SelectTrigger data-testid="select-trip-internal-equipment">
-                        <SelectValue placeholder="Choose internal vehicle" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">No master record — use vehicle number</SelectItem>
-                        {activeInternalEquipment.map((equipment) => (
-                          <SelectItem key={equipment.id} value={String(equipment.id)}>
-                            {equipment.registrationNumber || equipment.name} — {equipment.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
                 <div>
                   <Label className="text-sm">Work Type</Label>
                   <Select value={newTrip.workType} onValueChange={(v) => setNewTrip({ ...newTrip, workType: v })}>
@@ -788,7 +743,7 @@ export default function SiteMaterialTrips() {
                       <button
                         type="button"
                         className="text-[11px] font-medium text-indigo-700 underline"
-                        onClick={() => setNewTrip(prev => ({ ...prev, supplier: prev.supplier || fulfilmentSuggestion.suggestion.supplierSuggestion || "" }))}
+                        onClick={() => setNewTrip(prev => ({ ...prev, materialSourceSupplier: prev.materialSourceSupplier || fulfilmentSuggestion.suggestion.supplierSuggestion || "" }))}
                         data-testid="button-apply-fulfilment-supplier"
                       >
                         Use "{fulfilmentSuggestion.suggestion.supplierSuggestion}" as supplier
@@ -940,10 +895,24 @@ export default function SiteMaterialTrips() {
                 <FreeTextSuggestionInput value={supplierFilter} onChange={(value) => setSupplierFilter(value.toUpperCase())} suggestions={filterSupplierSuggestions} match="supplier" suggestionsError={filterSuggestionError} placeholder="All transporters" data-testid="input-filter-supplier" />
               </div>
               <label className="flex items-end gap-2 pb-2 text-sm">
-                <input type="checkbox" checked={onlyUnassigned} onChange={(event) => setOnlyUnassigned(event.target.checked)} data-testid="checkbox-filter-only-unassigned" />
+                <input type="checkbox" checked={onlyUnassigned} onChange={(event) => { setOnlyUnassigned(event.target.checked); setRoleFilter("all"); }} data-testid="checkbox-filter-only-unassigned" />
                 Only trips without a material source
               </label>
+              <div>
+                <Label className="text-xs">Transport/source roles</Label>
+                <Select value={roleFilter} onValueChange={(value) => { setRoleFilter(value as TripRoleFilter); setOnlyUnassigned(false); }}>
+                  <SelectTrigger data-testid="select-filter-trip-role"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="same_party">Same party</SelectItem>
+                    <SelectItem value="different_parties">Different parties</SelectItem>
+                    <SelectItem value="in_house">Our own vehicle</SelectItem>
+                    <SelectItem value="unresolved">Roles not confirmed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
+            <p className="pt-2 text-xs text-muted-foreground" data-testid="trip-role-filter-count">{roleFilteredTrips.length} matching trip{roleFilteredTrips.length === 1 ? "" : "s"} · Role filters include all material-source assignments within the date/site/material/vehicle/transporter filters. The legacy “without a material source” checkbox is separate and resets the role filter.</p>
           </CardHeader>
           <CardContent>
             {canEdit && hasUnassignedFilteredTrips && (
@@ -957,6 +926,7 @@ export default function SiteMaterialTrips() {
                   <p className="text-xs text-muted-foreground">
                     Assign one source supplier to the {filteredTrips.length} trip{filteredTrips.length === 1 ? "" : "s"} matching the filters above. The transporter is not changed.
                   </p>
+                  {roleFilter !== "all" && <p className="text-xs text-amber-700">Select All in the transport/source role filter before using this bulk tool. Role-filtered subsets cannot be bulk assigned.</p>}
                   </div>
                   <div className="flex flex-col sm:flex-row gap-2">
                     <FreeTextSuggestionInput
@@ -971,7 +941,7 @@ export default function SiteMaterialTrips() {
                     />
                     <Button
                       type="button"
-                      disabled={!bulkMaterialSourceSupplier.trim() || !filteredTrips.length || !siteFilter || siteFilter === "all"}
+                      disabled={roleFilter !== "all" || !bulkMaterialSourceSupplier.trim() || !filteredTrips.length || !siteFilter || siteFilter === "all"}
                       onClick={() => setBulkConfirmOpen(true)}
                       data-testid="button-bulk-assign-material-source"
                     >
@@ -986,7 +956,7 @@ export default function SiteMaterialTrips() {
               <div className="flex justify-center py-8">
                 <Loader2 className="w-6 h-6 animate-spin" />
               </div>
-            ) : !filteredTrips.length ? (
+            ) : !roleFilteredTrips.length ? (
               <p className="text-center text-muted-foreground py-8">No trips match these filters.</p>
             ) : (
               <div className="overflow-x-auto">
@@ -1007,12 +977,15 @@ export default function SiteMaterialTrips() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredTrips.map((trip) => (
+                    {roleFilteredTrips.map((trip) => (
                       <tr key={trip.id} className="border-b hover:bg-muted/30" data-testid={`row-trip-${trip.id}`}>
                         <td className="p-2">{trip.time || '-'}</td>
                         <td className="p-2 font-medium">{trip.site}</td>
                         <td className="p-2">
                           {trip.material}
+                          <p className={`mt-1 min-w-64 text-xs ${classifyTripRoles(trip) === "unresolved" ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground"}`} data-testid={`trip-role-description-${trip.id}`}>
+                            {tripRoleDescription(trip, internalEquipment.find((item) => item.id === trip.internalEquipmentId)?.name)}
+                          </p>
                           <TripWorkContextSummary trip={trip} testIdPrefix="trip-list-ctx" />
                         </td>
                         <td className="p-2">{trip.supplier || '-'}</td>
@@ -1032,6 +1005,7 @@ export default function SiteMaterialTrips() {
                         </td>
                         <td className="p-2 text-center">
                           <div className="flex items-center justify-center gap-1">
+                            {canEdit && <Button variant="outline" size="sm" onClick={() => setEditingRoleTrip(trip)} data-testid={`button-edit-trip-roles-${trip.id}`}>Set roles</Button>}
                             <Button
                               variant="ghost"
                               size="icon"
@@ -1071,6 +1045,7 @@ export default function SiteMaterialTrips() {
         </Card>
       </div>
 
+      {editingRoleTrip && <TripRoleEditDialog key={editingRoleTrip.id} trip={editingRoleTrip} vendors={vendors} equipment={internalEquipment} vendorsLoading={vendorQuery.isLoading} vendorsError={vendorQuery.isError} onRetryVendors={() => void vendorQuery.refetch()} onClose={() => setEditingRoleTrip(null)} />}
       <CancelDialog
         open={cancelTripId !== null}
         onOpenChange={(v) => !v && setCancelTripId(null)}
@@ -1113,7 +1088,7 @@ export default function SiteMaterialTrips() {
                 event.preventDefault();
                 bulkAssignMutation.mutate();
               }}
-              disabled={bulkAssignMutation.isPending}
+              disabled={bulkAssignMutation.isPending || roleFilter !== "all"}
               data-testid="button-confirm-bulk-material-source"
             >
               {bulkAssignMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : `Assign ${filteredTrips.length} trips`}

@@ -4,14 +4,16 @@ import path from "path";
 
 const read = (file: string) => fs.readFileSync(path.resolve(__dirname, "..", file), "utf8");
 const page = read("client/src/pages/SiteMaterialTrips.tsx");
+const roleFields = read("client/src/components/TripTransportRoleFields.tsx");
 const editPage = read("client/src/pages/SiteMaterialsReceived.tsx");
 const historyDialog = read("client/src/components/HistoryDialog.tsx");
 const suggestions = read("client/src/hooks/use-site-material-suggestions.ts");
 
 describe("VB-22 site material trip source supplier UI", () => {
   it("keeps the source supplier independent from vehicle/transporter autofill", () => {
-    expect(page).toContain('data-testid="input-trip-material-source-supplier"');
-    expect(page).toContain("materialSourceSupplier: value.toUpperCase()");
+    expect(roleFields).toContain('data-testid={`input-${testIdPrefix}-material-source-supplier`}');
+    expect(roleFields).toContain("materialSourceSupplier: name.toUpperCase()");
+    expect(page).toContain('roleChoiceRef.current === "different_parties"');
     expect(page).toContain("? { supplier: association.supplier }");
     expect(page).not.toContain("? { supplier: association.supplier, materialSourceSupplier:");
     expect(page).toContain("trip.materialSourceSupplier?.trim() || '-'");
@@ -48,6 +50,12 @@ describe("VB-22 site material trip source supplier UI", () => {
     expect(page).toContain('sectionCan("site_materials", "edit")');
     expect(page).toContain("{canEdit && hasUnassignedFilteredTrips && (");
     expect(page).toContain('data-testid="bulk-material-source-panel"');
+  });
+  it("blocks bulk assignment while a client-only role subset is selected, including in the mutation", () => {
+    expect(page).toContain('if (roleFilter !== "all") {');
+    expect(page).toContain('disabled={roleFilter !== "all" || !bulkMaterialSourceSupplier.trim()');
+    expect(page).toContain('disabled={bulkAssignMutation.isPending || roleFilter !== "all"}');
+    expect(page).toContain("Role-filtered subsets cannot be bulk assigned.");
   });
 
   it("hides a cleared backlog, treats whitespace as blank, and collapses a real backlog by default", () => {

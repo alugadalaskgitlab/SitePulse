@@ -8,6 +8,7 @@ const schemaSrc = read("shared/schema.ts");
 const storageSrc = read("server/storage.ts");
 const routeSrc = read("server/routes.ts");
 const formSrc = read("client/src/pages/SiteMaterialTrips.tsx");
+const roleFieldsSrc = read("client/src/components/TripTransportRoleFields.tsx");
 const panelSrc = read("client/src/components/DprDayTripsPanel.tsx");
 const migrationSrc = read("migrations/0019_site_material_trips_transport_type.sql");
 
@@ -36,13 +37,14 @@ describe("DPR-01 Parts 8/9 site material transport", () => {
     expect(storageSrc).toContain("ADD COLUMN IF NOT EXISTS internal_equipment_id integer");
   });
 
-  it("uses the existing equipment endpoint with picker and free-text fallback", () => {
+  it("uses the existing equipment endpoint and requires a master vehicle for own transport", () => {
     expect(formSrc).toContain('queryKey: ["/api/plant-module/equipment"]');
-    expect(formSrc).toContain("select-trip-transport-type");
-    expect(formSrc).toContain("select-trip-internal-equipment");
-    expect(formSrc).toContain("No master record — use vehicle number");
-    expect(formSrc).toContain("free text fallback");
-    expect(formSrc).toContain("Vendor required");
+    expect(formSrc).toContain('useState<TripTransportRole | null>("same_party")');
+    expect(roleFieldsSrc).toContain("select-${testIdPrefix}-internal-equipment");
+    expect(roleFieldsSrc).toContain("Choose from equipment master");
+    expect(roleFieldsSrc).not.toContain("No master record — use vehicle number");
+    expect(formSrc).toContain("tripRolePayload(roleChoice");
+    expect(formSrc).toContain("validateTripRoles(roles)");
     expect(routeSrc).toContain("transportType must be in_house or agency_vendor");
   });
 

@@ -1,0 +1,81 @@
+INSTRUCTION VB-SPLIT-01 (PARTS A AND B ONLY): Record who sold the material and who hauled it, clearly, on the trip
+
+READ THIS FIRST
+This batch is PARTS A AND B ONLY. Part C (vendor-bill classification) is explicitly OUT OF SCOPE and must not be started.
+Build A and B, test them yourself, and STOP. Report once, at the end, with the evidence listed below. Do not ask me questions mid-build unless you are genuinely blocked — make the reasonable choice, note it in the report, and carry on.
+Do NOT change any stored quantity, material accounting, stock ledger, DPR logic, vendor bill or billing behaviour. Do NOT backfill, rewrite, merge or infer values on any existing trip. Do not publish.
+PARKED — do not investigate, touch or report on any of these: LDO, startup data repair jobs, stock balances, vendor bills, rate cards, user permissions, role flags.
+
+WHY
+HLC buys material from one party and sometimes hires a different party to haul it. site_material_trips already separates the two roles (shared/schema.ts ~902):
+  - materialSourceSupplier / materialSourceVendorId = who SOLD the material
+  - supplier / supplierVendorId = the TRANSPORTER (the vehicle side) — the schema comment says this explicitly
+  - transportType = "in_house" | "agency_vendor"
+  - internalEquipmentId = the own-fleet machine when in_house
+But the entry form does not ask the question clearly, so the two roles are recorded inconsistently and older trips are ambiguous. This batch fixes the entry and the display only.
+
+OWNER'S DECISIONS (fixed — build to these, do not re-ask)
+1. When the SAME party supplies and delivers, BOTH vendor columns hold that same party. Never leave the transporter blank to mean "same" — blank is indistinguishable from "not recorded".
+2. NO automatic backfill or correction of historical trips. The owner is reviewing them by hand. Not one existing row may be rewritten.
+3. In-house transport (own tipper) has no transport vendor.
+
+=====================================================================
+PART A — TRIP ENTRY FORM (client/src/pages/SiteMaterialTrips.tsx)
+=====================================================================
+A1. Replace the current separate supplier / material-source inputs with ONE clear question flow. Site staff answer about the real world, not about database columns:
+
+    Material from:  [vendor select]            → materialSourceSupplier / materialSourceVendorId
+
+    Who brought it?
+      (•) Same party            ← DEFAULT, listed first, the commonest case
+      ( ) Another transporter   → [vendor select] + [vehicle number]
+      ( ) Our own vehicle       → [select from equipment master]
+
+A2. What each choice stores:
+    - "Same party": supplier / supplierVendorId = the SAME vendor as Material from. transportType = "agency_vendor". Write the vendor explicitly into both columns.
+    - "Another transporter": supplier / supplierVendorId = the chosen transporter. transportType = "agency_vendor". vehicleNumber as entered.
+    - "Our own vehicle": transportType = "in_house", internalEquipmentId = the chosen equipment_master row, vehicleNumber from that record. supplier / supplierVendorId stay NULL.
+A3. Validation on NEW trips only: "Material from" is required and one of the three options must be chosen. A new trip may not be saved with both vendor columns empty.
+A4. EDITING AN EXISTING TRIP whose stored values do not map onto the three options (e.g. supplier set, materialSourceSupplier empty — the historical case): show the stored values as they are, with an amber line "Transport/source roles not yet confirmed — set Material from and Who brought it". Do NOT pre-select an option, do NOT guess, and write NOTHING until the user picks and saves.
+A5. Keep every existing behaviour of this screen unchanged: the 06G repeat-trip prefill, PI/indent linkage, arrangement prefill, unloadedAt (stretch/yard), work type, receipt number, suggestions. Vendor selects use the existing suggestion sources; do not create new vendor names.
+
+=====================================================================
+PART B — TRIP LIST DISPLAY
+=====================================================================
+B1. Each trip row states the roles in plain words:
+    - Same party:        "SOIL 14 Cum · from NARASIMHULU · brought by NARASIMHULU"
+    - Different parties: "SOIL 14 Cum · from SANGANNA · brought by NARASIMHULU (TS15UF4308)"
+    - In-house:          "SOIL 14 Cum · from SANGANNA · brought by our TIPPER-03"
+    - Unresolved:        "SOIL 14 Cum · NARASIMHULU · roles not confirmed"  (amber)
+B2. Add a filter: All / Same party / Different parties / Our own vehicle / Roles not confirmed.
+    The last option is how the owner will work through historical trips by hand — make sure it returns exactly the rows that cannot be classified.
+B3. Display only. No recalculation, no writes.
+
+WHAT NOT TO DO
+- No backfill, no inference, no automatic correction of any existing trip. Not one row.
+- Do not start Part C. Do not touch vendor bills, the pull/candidate logic, rate cards or getMaterialSuppliers.
+- Do not change stock, consumption, DPR or material accounting.
+- Do not create, rename or merge any vendor or material name.
+- Do not leave a transporter column blank to mean "same party".
+- Do not investigate startup jobs, LDO or stock balances. If a verification snapshot differs for reasons outside this batch, note it in one line and move on — do not open an investigation.
+
+SELF-TEST BEFORE REPORTING (run these yourself in the signed-in DEVELOPMENT app; do not ask me to run them)
+A1. New trip, "Same party" → both vendor columns hold the same vendor, transportType = agency_vendor. Show the saved row values.
+A2. New trip, "Another transporter" → the two columns differ; vehicle number saved.
+A3. New trip, "Our own vehicle" → transportType = in_house, internalEquipmentId set, supplier columns NULL.
+A4. New trip with no "Who brought it?" choice → blocked, clear message.
+A5. Open an existing ambiguous trip → amber note shown, nothing pre-selected, nothing written until save. Show the row values before and after opening it without saving — they must be identical.
+A6. Prove the 06G repeat-trip prefill, PI linkage and unloadedAt still behave as before — one example of each.
+B1. Screenshot of the trip list showing all four display cases plus the amber unresolved case.
+B2. Screenshot of each filter option, and the row count each returns.
+Z1. Before/after row count AND content checksum for site_material_trips ONLY, taken around the test run without restarting the server, proving no existing trip row changed.
+Z2. Full test suite against the current baseline; list every test added or updated and why.
+Z3. Build passes.
+
+REPORT BACK — ONCE, AT THE END
+1. Files changed.
+2. Evidence A1–A6, B1–B2, Z1–Z3.
+3. Any choice you had to make on your own, and what you chose.
+4. Anything you could not do, and why.
+
+STOP AFTER PART B. Do not publish. Do not start Part C. Do not create follow-up tasks.

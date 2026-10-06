@@ -5127,3 +5127,17 @@ mtime_ms = 1791263688928
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/5f446b00-170b-4590-b333-92d8285a1c13/ad420808-660e-4fd8-9971-737d89344c37"
 storage_version_token = "1791263690976966"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "WZvMf08Cv_qDJZyGHM6kw"
+uri = "file://reports/vb-split-ab/verification.html"
+type = "html"
+title = "Parts A/B — implementation and verification report"
+description = "A1–A6, B1–B2 and Z1–Z3 evidence, unchanged trip checksum, complete test inventory, and the signed-in verification blocker."
+logical_id = "13cead28-64ff-413c-80a9-2d6c33cba762"
+content_hash = "sha256:fc726e7e76ced6a2178470549bdc542874c5dfb00eb3c29a59a9f9eb33b8ba9b"
+size = 13513
+mtime_ms = 1791285228918
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/13cead28-64ff-413c-80a9-2d6c33cba762/f802a616-b379-4d9d-919b-68c2a9527d99"
+storage_version_token = "1791285244805076"
+content_type = "text/html"

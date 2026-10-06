@@ -32,3 +32,9 @@ Vitest's JSON failure stack can say only `STACK_TRACE_ERROR` when a test exceeds
 **Why:** This runner version substitutes the test-registration stack into timeout errors. The JSON failure stack can hide the actual timeout message, making timing failures look like unexplained exceptions.
 
 **How to apply:** Compare durations to the configured test timeout and inspect the runner's timeout serialization before diagnosing a functional regression. Preserve the original failed run and unchanged rerun evidence.
+
+The documented testing-subagent kind is not always available in this runtime.
+
+**Why:** A launch using the documented `config.$kind: "testing"` was rejected as `Unknown config kind: testing`.
+
+**How to apply:** Use available browser tooling instead where feasible. Do not equate mocked component tests with signed-in development verification or bypass device approval to complete acceptance evidence.
