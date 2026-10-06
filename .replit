@@ -7,74 +7,12 @@ channel = "stable-24_05"
 packages = ["imagemagick"]
 
 [[ports]]
-localPort = 4177
-externalPort = 5173
-exposeLocalhost = true
-
-[[ports]]
-localPort = 4178
-externalPort = 6000
-exposeLocalhost = true
-
-[[ports]]
-localPort = 4179
-externalPort = 6800
-exposeLocalhost = true
-
-[[ports]]
-localPort = 4181
-externalPort = 8008
-
-[[ports]]
-localPort = 4189
-externalPort = 8000
-exposeLocalhost = true
-
-[[ports]]
-localPort = 4190
-externalPort = 8080
-
-[[ports]]
-localPort = 4191
-externalPort = 8081
-
-[[ports]]
-localPort = 4192
-externalPort = 8099
-
-[[ports]]
-localPort = 4193
-externalPort = 9000
-exposeLocalhost = true
-
-[[ports]]
-localPort = 4599
-externalPort = 5000
-exposeLocalhost = true
-
-[[ports]]
 localPort = 5000
-externalPort = 80
-
-[[ports]]
-localPort = 5001
-externalPort = 3003
+externalPort = 5000
 
 [[ports]]
 localPort = 23636
-externalPort = 3001
-
-[[ports]]
-localPort = 23637
-externalPort = 3000
-
-[[ports]]
-localPort = 23638
-externalPort = 3002
-
-[[ports]]
-localPort = 23639
-externalPort = 4200
+externalPort = 80
 
 [env]
 PORT = "5000"
