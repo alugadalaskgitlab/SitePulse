@@ -1,0 +1,102 @@
+INSTRUCTION VB-SPLIT-01: Material seller and transporter are different parties — record it clearly on the trip, and bill each party for what they actually did
+
+READ THIS FIRST
+Three parts: A = trip entry form, B = trip list display, C = vendor-bill classification. Build A and B first and report them together; C after.
+Do NOT change any stored quantity, material accounting, stock ledger, DPR logic, or any already-saved vendor bill. Do NOT backfill, rewrite, merge or infer values on existing trips — the owner is correcting historical trips by hand and no automated correction is authorised.
+Do not publish automatically. Show the Publish preview and STOP after each part and report.
+
+THE PROBLEM
+HLC buys material from one party and sometimes hires a different party to haul it. The database already separates the two roles on site_material_trips (shared/schema.ts ~902):
+  - materialSourceSupplier / materialSourceVendorId = who SOLD the material
+  - supplier / supplierVendorId = the TRANSPORTER (the vehicle side) — the schema comment says this explicitly
+  - transportType = "in_house" | "agency_vendor"
+  - internalEquipmentId = the own-fleet machine when in_house
+But storage.getMaterialSuppliers (server/storage.ts ~13372) merges BOTH columns into one undifferentiated list of "material suppliers". So when a transporter is selected as the bill vendor, the bill offers his trips as MATERIAL rows with quantity, unit and rate. That is wrong: he sold nothing, he hauled.
+
+OWNER'S DECISIONS (already settled — build to these, do not re-ask)
+1. When the SAME party supplies and delivers, the bill keeps ONE landed material rate exactly as today. No split.
+2. NO automatic backfill of historical trips. The owner is reviewing them by hand. Nothing may be inferred, defaulted or rewritten on existing rows.
+3. In-house transport (own tipper) produces NO vendor-billable transport line. That cost belongs to equipment.
+
+=====================================================================
+PART A — TRIP ENTRY FORM (client/src/pages/SiteMaterialTrips.tsx)
+=====================================================================
+A1. Replace the current separate supplier / material-source fields with ONE clear question flow. The site staff answer about the real world, not about database columns:
+
+    Material from:  [vendor select]            ← this is materialSourceSupplier / materialSourceVendorId
+
+    Who brought it?
+      (•) Same party            ← DEFAULT, first option, the commonest case
+      ( ) Another transporter   → [vendor select] + [vehicle number]
+      ( ) Our own vehicle       → [select from equipment master]
+
+A2. What each choice stores:
+    - "Same party": supplier / supplierVendorId are set to the SAME vendor as Material from. transportType = "agency_vendor".
+      Store the vendor explicitly in both columns. NEVER leave the transporter blank to mean "same" — blank is indistinguishable from "not recorded", which is exactly the ambiguity in the historical data.
+    - "Another transporter": supplier / supplierVendorId = the chosen transporter. transportType = "agency_vendor". vehicleNumber as entered.
+    - "Our own vehicle": transportType = "in_house", internalEquipmentId = the chosen equipment_master row, vehicleNumber from that record. supplier / supplierVendorId stay NULL — in-house haulage has no transport vendor.
+A3. Validation on NEW trips only: "Material from" is required, and one of the three "Who brought it?" options must be chosen. A new trip may not be saved with both vendor columns empty.
+A4. EDITING AN EXISTING TRIP: if the stored combination does not map onto the three options (e.g. supplier set, materialSourceSupplier empty — the historical case), show the row's stored values as-is with an amber line "Transport/source roles not yet confirmed — set Material from and Who brought it", and let the user resolve it by choosing. Do NOT pre-select an option, do NOT guess, and do NOT write anything until the user picks and saves.
+A5. Keep every existing behaviour of this screen unchanged: the 06G repeat-trip prefill, PI/indent linkage, arrangement prefill, unloadedAt (stretch/yard), work type, receipt number, suggestions. Vendor selects use existing suggestion sources; do not create new vendor names.
+
+=====================================================================
+PART B — TRIP LIST DISPLAY
+=====================================================================
+B1. Each trip row shows the roles in plain words, so a wrong entry is caught the same day instead of at billing time:
+    - Same party:          "SOIL 14 Cum · from NARASIMHULU · brought by NARASIMHULU"
+    - Different parties:   "SOIL 14 Cum · from SANGANNA · brought by NARASIMHULU (TS15UF4308)"
+    - In-house:            "SOIL 14 Cum · from SANGANNA · brought by our TIPPER-03"
+    - Unresolved historical row: "SOIL 14 Cum · NARASIMHULU · roles not confirmed" in amber.
+B2. Add a filter on this list: All / Same party / Different parties / Our own vehicle / Roles not confirmed. The last one is how the owner will work through the historical trips by hand.
+B3. Display only. No recalculation, no writes.
+
+=====================================================================
+PART C — VENDOR BILL CLASSIFICATION (after A and B are reported)
+=====================================================================
+C1. When items are pulled for a vendor, classify EACH trip by the role THAT vendor played on THAT trip:
+
+  | Vendor matches on the trip                         | Row produced | Priced as |
+  |----------------------------------------------------|--------------|-----------|
+  | materialSourceSupplier only                         | MATERIAL     | quantity x material rate |
+  | supplier only, transportType = "agency_vendor"      | TRANSPORT    | the transport rate card (trip, or ₹/km x lead x 2), i.e. the VB-EXPORT-02 Part C/D path |
+  | BOTH columns are the same vendor                    | MATERIAL     | quantity x landed rate — ONE row, exactly as today. No transport row. |
+  | transportType = "in_house"                          | nothing billable for haulage | material row still goes to the seller |
+  | roles not confirmed (historical ambiguous row)      | offer it, but flag it | see C3 |
+
+C2. storage.getMaterialSuppliers currently merges both columns. Split it so the vendor list knows which role a name came from, and the pull uses the role. Keep the existing function working for any other caller — do not change other callers' behaviour in this batch; report every caller you find.
+C3. AMBIGUOUS HISTORICAL TRIPS: a trip with a supplier but no materialSourceSupplier must NOT be silently treated as either. Offer it in the pull with an amber note "Roles not confirmed — this trip may be material or transport" and leave it unticked by default, so nothing enters a bill by accident. Never guess.
+C4. Already-saved bills are untouched. No recalculation of any existing bill line.
+C5. A transporter's rate card should offer transport rows, not material rows, once C1 is in. Do not redesign the rate card in this batch — that is a separate instruction — but confirm the transport pricing from VB-EXPORT-02 Part C/D is what gets applied.
+
+WHAT NOT TO DO
+- No backfill, no inference, no automatic correction of any existing trip. Not one row.
+- Do not change stock, consumption, DPR or material accounting.
+- Do not recalculate or alter any saved vendor bill.
+- Do not create, rename or merge any vendor or material name.
+- Do not leave a transporter column blank to mean "same party".
+
+TESTS (real signed-in DEVELOPMENT app)
+A1. New trip, "Same party" → both vendor columns hold the same vendor, transportType = agency_vendor. Show the saved row.
+A2. New trip, "Another transporter" → the two columns differ; vehicle number saved.
+A3. New trip, "Our own vehicle" → transportType = in_house, internalEquipmentId set, supplier columns NULL.
+A4. New trip with no "Who brought it?" choice → blocked with a clear message.
+A5. Open an existing ambiguous trip → amber note shown, nothing pre-selected, nothing written until the user saves a choice. Prove with before/after row values.
+A6. The 06G repeat-trip prefill, PI linkage and unloadedAt still behave exactly as before — show one of each.
+B1. Trip list showing all four display cases plus the amber unresolved case; screenshot.
+B2. Each filter option returns the right rows; screenshot of "Roles not confirmed".
+C1. Pull for a MATERIAL-ONLY vendor → material rows only, no transport rows.
+C2. Pull for a TRANSPORT-ONLY vendor → transport rows priced off the rate card, NO material rows with quantity/unit/rate.
+C3. Pull for a SAME-PARTY vendor → one landed material row, unchanged from today. Show before/after for an existing such vendor to prove nothing moved.
+C4. Pull including an ambiguous historical trip → offered, amber, unticked by default.
+C5. A trip with in-house transport → the seller gets the material row; no transport line is offered to anyone.
+C6. Every caller of getMaterialSuppliers listed, with its behaviour before and after.
+Z1. Before/after row counts AND content checksums for site_material_trips, vendor_bills, vendor_bill_items, material_receipts and any stock table the trip flow touches — proving no existing row changed.
+Z2. Full test suite against the current baseline; list every test added or updated and why.
+
+REPORT BACK
+1. Parts A and B first: files changed, screenshots A1–A6 and B1–B2, Z1 counts.
+2. Then Part C with C1–C6 and Z1 repeated.
+3. The Publish preview for each.
+4. Anything you could not do, and why.
+
+DO NOT START ANOTHER FEATURE after this batch. Do not create follow-up tasks.
