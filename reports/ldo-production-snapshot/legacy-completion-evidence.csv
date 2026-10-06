@@ -1,0 +1,13 @@
+checks
+"{""checked_at"" : ""2026-10-06T05:15:38.473677+00:00"", ""missing_ldo_receipt_ledger"" : 0, ""legacy_markers"" : [{""key"":""backfillLdoDispatchConsumption_v1"",""updated_at"":""2026-05-24T16:29:00.980664""}, 
+ {""key"":""backfillLdoHeatingConsumption_v1"",""updated_at"":""2026-05-26T03:13:01.731141""}, 
+ {""key"":""backfillLdoShiftMeterConsumption_v1"",""updated_at"":""2026-05-26T03:13:02.655069""}, 
+ {""key"":""backfill_ldo_flow_from_heating_sessions_v1"",""updated_at"":""2026-05-09T00:30:21.492905""}, 
+ {""key"":""deduplicate_ldo_dip_readings_v1"",""updated_at"":""2026-05-09T00:30:16.524606""}, 
+ {""key"":""deduplicate_ldo_flow_slot_readings_v1"",""updated_at"":""2026-05-09T00:30:16.660037""}, 
+ {""key"":""fixAllLdoStockBalances_v1"",""updated_at"":""2026-05-24T16:29:01.385965""}, 
+ {""key"":""fixHlcLdoStockBalance_v1"",""updated_at"":""2026-05-24T16:28:54.860204""}, 
+ {""key"":""fixLdoDataIssues_applied"",""updated_at"":""2026-05-24T15:29:11.329208""}, 
+ {""key"":""fixLdoDispatchTankNumbers_v1"",""updated_at"":""2026-05-26T03:12:59.69672""}, 
+ {""key"":""migrateLdoToDispatchModelOnly_v3"",""updated_at"":""2026-05-27T10:06:11.139663""}, 
+ {""key"":""rebuildLdoDispatchLedger_v1"",""updated_at"":""2026-05-25T04:33:48.446307""}]}"

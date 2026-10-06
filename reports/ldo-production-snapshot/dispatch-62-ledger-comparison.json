@@ -1,0 +1,37 @@
+{
+  "snapshot_at": "2026-10-06T05:13:07.941056+00:00",
+  "dispatch_id": 62,
+  "ledger_rows": [
+    {
+      "id": 263127,
+      "date": "2026-05-09",
+      "party_id": 6,
+      "material_id": 9,
+      "transaction_type": "ldo_dip_consumption",
+      "reference_id": 81,
+      "quantity_in": 0,
+      "quantity_out": 890,
+      "balance_after": -1748.75,
+      "uom": "Liters",
+      "notes": "[LDO_DIP_CONS:T1:2026-05-09:Main Plant] Opening: 1263L, Closing: 373L",
+      "created_at": "2026-10-06T03:09:47.045593",
+      "tank_number": 1
+    },
+    {
+      "id": 263165,
+      "date": "2026-05-09",
+      "party_id": 1,
+      "material_id": 9,
+      "transaction_type": "dispatch",
+      "reference_id": 62,
+      "quantity_in": 0,
+      "quantity_out": 275,
+      "balance_after": 1803.31704,
+      "uom": "Liters",
+      "notes": "KANGTI - MURTHY — HIGH LANE CONSTRUCTIONS [backfilled]",
+      "created_at": "2026-10-06T03:10:06.546393",
+      "tank_number": 1
+    }
+  ],
+  "interpretation": "These are a dispatch-specific deduction and a period-wide dip deduction for the same tank and date, but different parties. Dip reference_id=81 is a dip-reading ID, not dispatch 62. They do not prove an exact duplicate 275 litres for dispatch 62."
+}

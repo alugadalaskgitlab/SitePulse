@@ -5071,3 +5071,59 @@ mtime_ms = 1791262015168
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8f8b9a13-3bf1-47ff-9297-0488ceefdee3/21a1705b-f341-47a3-a8be-7e88d6676021"
 storage_version_token = "1791262041848882"
 content_type = "text/html"
+
+[[outputs]]
+id = "28XZYemM2xVp0gPoqs1Ue"
+uri = "file://reports/ldo-production-snapshot/ldo-complete-snapshot.json"
+type = "unspecified"
+title = "Complete production LDO snapshot"
+description = "Single-query read-only snapshot: all LDO ledger and balance rows, every column, material records, capture timestamp and verified row counts."
+logical_id = "49f108ec-873e-41ee-9d0e-eec57b436227"
+content_hash = "sha256:6de6cef63ee04ec26dc0daf7327d6e66bc1c08ff62b3cc580e806dda94df55f8"
+size = 36199
+mtime_ms = 1791263598705
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/49f108ec-873e-41ee-9d0e-eec57b436227/3deec637-bc05-4ef9-aec1-bc890ba95744"
+storage_version_token = "1791263601725675"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "69YI7YLaihCahdg47Z7GS"
+uri = "file://reports/ldo-production-snapshot/ldo-ledger.csv"
+type = "table"
+title = "Production LDO ledger — 78 rows"
+description = "All columns and all dates; captured 6 October 2026 at 10:43:07 IST."
+logical_id = "f8a04a6b-682e-419c-bdd2-10c39a99958a"
+content_hash = "sha256:c7fcc0f28c466636d69b85f9e9c0a57e0c97bcfa15abca7bc12aa7e900604444"
+size = 14830
+mtime_ms = 1791263598921
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/f8a04a6b-682e-419c-bdd2-10c39a99958a/ec7b5282-05f5-4ad1-b80c-ce572a2947ad"
+storage_version_token = "1791263616445718"
+content_type = "text/csv"
+
+[[outputs]]
+id = "YW8vH-CNcFVQNDLoircnu"
+uri = "file://reports/ldo-production-snapshot/ldo-stock-balances.csv"
+type = "table"
+title = "Production LDO balances — all 4 rows"
+description = "Captured in the same database statement as the ledger."
+logical_id = "72faa9f2-d717-411e-a5bd-62aa6899762e"
+content_hash = "sha256:98ab9ba348411be531ed7795ba33b58cbb33712360d4d0297d50d4bd126f7b61"
+size = 274
+mtime_ms = 1791263599113
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/72faa9f2-d717-411e-a5bd-62aa6899762e/930786cc-71dd-4483-9c3f-7a8f1222cfe4"
+storage_version_token = "1791263617766889"
+content_type = "text/csv"
+
+[[outputs]]
+id = "pREguVPGEKt9i8wqR5L1q"
+uri = "file://reports/ldo-production-snapshot/dispatch-62-ledger-comparison.json"
+type = "unspecified"
+title = "Dispatch #62 — exact ledger-row comparison"
+description = "Two preserved ledger rows with original IDs, references, parties, quantities and timestamps; includes the attribution limitation."
+logical_id = "5f446b00-170b-4590-b333-92d8285a1c13"
+content_hash = "sha256:52ecc36096dc194adc25e7668e368197879b138e4b8c91c6f92564cac3abca74"
+size = 1244
+mtime_ms = 1791263688928
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/5f446b00-170b-4590-b333-92d8285a1c13/ad420808-660e-4fd8-9971-737d89344c37"
+storage_version_token = "1791263690976966"
+content_type = "application/octet-stream"
