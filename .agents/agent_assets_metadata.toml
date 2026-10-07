@@ -5337,3 +5337,31 @@ mtime_ms = 1791369841921
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/a856b197-c671-4415-93d0-9df2a3eb2076/a78ef2e7-9f49-4ef8-b61e-eccfb692b269"
 storage_version_token = "1791369932230807"
 content_type = "text/html"
+
+[[outputs]]
+id = "zIoD7q3ZEVeGUCsvI_GxC"
+uri = "file://reports/perm-03b3/status-report.html"
+type = "html"
+title = "PERM-03B-3 — Delete evidence and Notify blocker"
+description = "Signed-in screenshots and HTTP results, all-section push inventory, unchanged-user checksums, row-by-row cleanup, baseline comparison, and explicit unrun checks."
+logical_id = "dfb599f5-346b-4b1d-ad27-8e7eb33857e3"
+content_hash = "sha256:3383c0a308f5becd6d49258a86ccc385086a194d2278a9a7ec775a1bb63fe72d"
+size = 956383
+mtime_ms = 1791373808161
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/dfb599f5-346b-4b1d-ad27-8e7eb33857e3/e7bdd38a-ee34-4fcb-aad9-bc6e1e7fe138"
+storage_version_token = "1791373837902004"
+content_type = "text/html"
+
+[[outputs]]
+id = "_R291vIN5i4_d0FvwLynM"
+uri = "file://reports/perm-03b3/push-capability-inventory.csv"
+type = "table"
+title = "Push capability — all 92 sections"
+description = "Section Notify hooks, source call sites, and separate non-section push paths."
+logical_id = "0d99da21-6e9f-4f7d-94de-0d8698077ba0"
+content_hash = "sha256:f3e7df29e6c4edd1a104a7d7e8f051d60fbb49e5f75126dc27288dc1b5fe8964"
+size = 14172
+mtime_ms = 1791373806885
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/0d99da21-6e9f-4f7d-94de-0d8698077ba0/1b82f239-b551-4b88-9bcb-2ba630e47247"
+storage_version_token = "1791373839232575"
+content_type = "text/csv"

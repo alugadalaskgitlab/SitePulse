@@ -1,0 +1,243 @@
+[
+  {
+    "table": "users",
+    "inserted": {
+      "id": 25,
+      "email": "perm03b3@test.invalid",
+      "flags": "ordinary defaults; unchanged"
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2407,
+      "user_id": 25,
+      "section_key": "qto_boq",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": true,
+      "can_view_reports": false,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2408,
+      "user_id": 25,
+      "section_key": "work_programme",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": true,
+      "can_view_reports": false,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2409,
+      "user_id": 25,
+      "section_key": "project_scope",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": true,
+      "can_view_reports": false,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_site_access",
+    "inserted": {
+      "id": 33,
+      "user_id": 25,
+      "site_id": 16,
+      "access_level": "view"
+    }
+  },
+  {
+    "table": "boq_projects",
+    "inserted": {
+      "id": 17,
+      "site_id": 16,
+      "name": "PERM-03B-3 temporary acceptance",
+      "contract_no": null,
+      "client": null,
+      "contractor": null,
+      "road_length_km": null,
+      "start_date": "2026-10-01T00:00:00.000Z",
+      "total_months": 12,
+      "status": "draft",
+      "created_by": null,
+      "created_at": "2026-10-07T11:41:38.059Z",
+      "working_days_per_month": 26,
+      "working_hours_per_day": 8,
+      "hmp_chainage_km": null,
+      "wmm_plant_chainage_km": null,
+      "quarry_chainage_km": null,
+      "avg_tipper_speed_km_hr": 30,
+      "chainage_from": 0,
+      "chainage_to": 1000,
+      "corridor_confirmed": 1,
+      "corridor_remarks": null,
+      "chainage_display_format": null,
+      "cut_fill_reconciliation_activated_on": null,
+      "programme_baseline_published_at": null
+    }
+  },
+  {
+    "table": "boq_items",
+    "inserted": {
+      "id": 1179,
+      "boq_project_id": 17,
+      "category_id": null,
+      "item_code": "PERM03B3",
+      "description": "PERM-03B-3 temporary item",
+      "unit": "Cum",
+      "boq_qty": 100,
+      "current_qty": 100,
+      "client_rate": null,
+      "client_amount": null,
+      "sort_order": 0,
+      "created_at": "2026-10-07T11:41:38.064Z",
+      "layer_config": null,
+      "work_category": null,
+      "mapping_status": "unmapped",
+      "item_name": null,
+      "dpr_conversion_factor": null,
+      "snl_code": null,
+      "included_in_planning": true,
+      "planning_work_type": "road",
+      "excel_row": null,
+      "is_composite": false,
+      "display_name": null,
+      "dpr_measurement_method": null,
+      "include_in_dpr": true,
+      "include_in_procurement": true,
+      "needs_review": false,
+      "canonical_unit": null,
+      "bulk_material_classification": null,
+      "shoulder_layer_class": null
+    }
+  },
+  {
+    "table": "boq_mix_template_links",
+    "inserted": {
+      "id": 10,
+      "boq_project_id": 17,
+      "mix_type": "DBM",
+      "mix_template_id": null,
+      "mix_template_name": "PERM-03B-3 temporary link",
+      "created_at": "2026-10-07T11:41:38.116Z"
+    }
+  },
+  {
+    "table": "project_scope_segments",
+    "inserted": {
+      "id": 19,
+      "boq_project_id": 17,
+      "segment_type": "working_reach",
+      "label": null,
+      "chainage_from": 0,
+      "chainage_to": 1000,
+      "side": null,
+      "reason": null,
+      "status": "draft",
+      "applicability": "all_linear",
+      "category_ids": null,
+      "item_ids": null,
+      "effective_from": null,
+      "effective_to": null,
+      "dept_reference": null,
+      "document_ref": null,
+      "notes": null,
+      "withdrawal_order_ref": null,
+      "consent_ref": null,
+      "omitted_qty": null,
+      "omitted_amount": null,
+      "original_scope_note": null,
+      "revised_scope_note": null,
+      "created_by": null,
+      "created_at": "2026-10-07T11:41:38.124Z",
+      "updated_at": "2026-10-07T11:41:38.124Z",
+      "approved_by": null,
+      "approved_at": null,
+      "revision_of": null
+    }
+  },
+  {
+    "table": "user_devices",
+    "approved": [
+      {
+        "id": 104
+      }
+    ]
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2408,
+      "user_id": 25,
+      "section_key": "work_programme",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": true,
+      "can_view_reports": false,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2408,
+      "user_id": 25,
+      "section_key": "work_programme",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": true,
+      "can_view_reports": false,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2408,
+      "user_id": 25,
+      "section_key": "work_programme",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": true,
+      "can_view_reports": false,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2408,
+      "user_id": 25,
+      "section_key": "work_programme",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": true,
+      "can_view_reports": false,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  }
+]

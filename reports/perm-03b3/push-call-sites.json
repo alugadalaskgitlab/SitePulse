@@ -1,0 +1,421 @@
+{
+  "sectionTargeted": [
+    {
+      "file": "server/routes.ts",
+      "line": 1004,
+      "section": "site_materials"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 1055,
+      "section": "site_materials"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 1654,
+      "section": "site_materials"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 1683,
+      "section": "site_materials"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 1721,
+      "section": "site_materials"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 2674,
+      "section": "site_dprs"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 2911,
+      "section": "site_dprs"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 3618,
+      "section": "site_dprs"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 3698,
+      "section": "site_dprs"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 3738,
+      "section": "site_dprs"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 3772,
+      "section": "site_dprs"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 3807,
+      "section": "plant_daily_reports"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 3836,
+      "section": "plant_daily_reports"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 3858,
+      "section": "plant_daily_reports"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 3879,
+      "section": "plant_daily_reports"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 4713,
+      "section": "plant_materials"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 4726,
+      "section": "site_diesel"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 4842,
+      "section": "plant_materials"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 4910,
+      "section": "plant_materials"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 4948,
+      "section": "plant_materials"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 5006,
+      "section": "plant_materials"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 5024,
+      "section": "plant_materials"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 5040,
+      "section": "plant_materials"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 5084,
+      "section": "plant_materials"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 5107,
+      "section": "plant_materials"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 5129,
+      "section": "plant_materials"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 5169,
+      "section": "plant_stock"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 5185,
+      "section": "plant_stock"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 5201,
+      "section": "plant_stock"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 5235,
+      "section": "plant_production"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 5366,
+      "section": "plant_production"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 5383,
+      "section": "plant_production"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 5967,
+      "section": "plant_equipment"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 5997,
+      "section": "plant_equipment"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 6026,
+      "section": "plant_equipment"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 6083,
+      "section": "plant_generator_logs"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 7099,
+      "section": "plant_bitumen"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 7115,
+      "section": "plant_bitumen"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 7131,
+      "section": "plant_bitumen"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 7171,
+      "section": "plant_ldo"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 7192,
+      "section": "plant_ldo"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 7205,
+      "section": "plant_ldo"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 7343,
+      "section": "plant_ldo"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 7359,
+      "section": "plant_ldo"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 7372,
+      "section": "plant_ldo"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 7678,
+      "section": "plant_shift_logs"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 7688,
+      "section": "plant_shift_logs"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 9411,
+      "section": "purchase_indents_view"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 9456,
+      "section": "purchase_indents_view"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 9484,
+      "section": "purchase_indents_view"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 9513,
+      "section": "purchase_indents_view"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 9534,
+      "section": "purchase_indents_view"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 9748,
+      "section": "purchase_indents_view"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 9788,
+      "section": "irn_view"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 9827,
+      "section": "irn_view"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 9855,
+      "section": "irn_view"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 9857,
+      "section": "irn_view"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 9888,
+      "section": "irn_view"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 9982,
+      "section": "irn_view"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 10272,
+      "section": "purchase_indents_view"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 10306,
+      "section": "purchase_indents_view"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 10355,
+      "section": "purchase_indents_view"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 10383,
+      "section": "purchase_indents_view"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 10422,
+      "section": "purchase_indents_view"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 10960,
+      "section": "diesel_req_approve"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 10994,
+      "section": "diesel_req_raise"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 11021,
+      "section": "diesel_req_raise"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 11054,
+      "section": "plant_materials"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 11876,
+      "section": "vendor_bills_approve"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 12019,
+      "section": "vendor_bills_raise"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 12022,
+      "section": "vendor_bills_raise"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 12025,
+      "section": "vendor_bills_approve"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 12027,
+      "section": "vendor_bills_view"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 13270,
+      "section": "stores_inventory"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 13495,
+      "section": "stores_inventory"
+    }
+  ],
+  "otherHelpers": [
+    {
+      "file": "server/routes.ts",
+      "line": 1241,
+      "helper": "sendPushToAudience"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 1316,
+      "helper": "sendPushToAudience"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 1835,
+      "helper": "sendTestPush"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 9457,
+      "helper": "sendPushToRaiser"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 9485,
+      "helper": "sendPushToRaiser"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 12020,
+      "helper": "sendPushToRaiser"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 12023,
+      "helper": "sendPushToRaiser"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 14254,
+      "helper": "sendPushToAudience"
+    }
+  ]
+}

@@ -32,3 +32,19 @@ Programme-only account prevented normal navigation to its permitted screen.
 
 **How to apply:** Verify page, navigation, and API independently in both
 directions. A shared metadata read never implies a shared mutation grant.
+
+## Safe live Notify acceptance
+
+Before firing a real event, check every push emission from that event against
+stored eligible users and active subscriptions, including administrators.
+Ordinary users' unticked Notify cells do not establish that nobody real will
+receive a push. Do not suppress real subscriptions or change real grants to
+make a temporary-account test safe without authorization.
+
+**Why:** Preserved administrator grants made live delivery unsafe during an
+acceptance batch restricted to temporary recipients. The apparently unused
+alternative Notify key shared its event with another key that had real recipients.
+
+**How to apply:** If no event is safe under the authorized scope, record the
+stored eligibility and that sending was not attempted; never claim delivery
+or non-delivery was proved, and never substitute a fake transport.

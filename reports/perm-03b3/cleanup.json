@@ -1,0 +1,70 @@
+{
+  "deleted": {
+    "boq_items": [],
+    "boq_mix_template_links": [],
+    "project_scope_segments": [],
+    "boq_program_settings": [],
+    "boq_projects": [
+      {
+        "id": 16
+      }
+    ],
+    "user_permissions": [
+      {
+        "id": 2406
+      },
+      {
+        "id": 2404
+      },
+      {
+        "id": 2405
+      }
+    ],
+    "user_devices": [
+      {
+        "id": 103
+      }
+    ],
+    "user_sessions": [
+      {
+        "id": 357
+      }
+    ],
+    "user_site_access": [
+      {
+        "id": 32
+      }
+    ],
+    "push_subscriptions": [],
+    "audit_logs": [],
+    "users": [
+      {
+        "id": 24
+      }
+    ]
+  },
+  "remaining": {
+    "user_permissions": 0,
+    "user_devices": 0,
+    "user_sessions": 0,
+    "user_site_access": 0,
+    "push_subscriptions": 0,
+    "audit_logs": 0,
+    "users": 0,
+    "projects": 0,
+    "boq_items": 0,
+    "boq_mix_template_links": 0,
+    "project_scope_segments": 0
+  },
+  "apiDeleted": {
+    "boq_items": [
+      1178
+    ],
+    "boq_mix_template_links": [
+      9
+    ],
+    "project_scope_segments": [
+      18
+    ]
+  }
+}

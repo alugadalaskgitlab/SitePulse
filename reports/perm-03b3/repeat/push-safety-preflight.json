@@ -1,0 +1,111 @@
+{
+  "subscriptions": [
+    {
+      "id": 4,
+      "user_id": 2
+    },
+    {
+      "id": 5,
+      "user_id": 2
+    }
+  ],
+  "eligibleRealRecipients": [
+    {
+      "section_key": "diesel_req_approve",
+      "user_id": 2,
+      "subscriptions": 2
+    },
+    {
+      "section_key": "diesel_req_raise",
+      "user_id": 2,
+      "subscriptions": 2
+    },
+    {
+      "section_key": "irn_view",
+      "user_id": 2,
+      "subscriptions": 2
+    },
+    {
+      "section_key": "plant_bitumen",
+      "user_id": 2,
+      "subscriptions": 2
+    },
+    {
+      "section_key": "plant_daily_reports",
+      "user_id": 2,
+      "subscriptions": 2
+    },
+    {
+      "section_key": "plant_equipment",
+      "user_id": 2,
+      "subscriptions": 2
+    },
+    {
+      "section_key": "plant_generator_logs",
+      "user_id": 2,
+      "subscriptions": 2
+    },
+    {
+      "section_key": "plant_ldo",
+      "user_id": 2,
+      "subscriptions": 2
+    },
+    {
+      "section_key": "plant_materials",
+      "user_id": 2,
+      "subscriptions": 2
+    },
+    {
+      "section_key": "plant_production",
+      "user_id": 2,
+      "subscriptions": 2
+    },
+    {
+      "section_key": "plant_shift_logs",
+      "user_id": 2,
+      "subscriptions": 2
+    },
+    {
+      "section_key": "plant_stock",
+      "user_id": 2,
+      "subscriptions": 2
+    },
+    {
+      "section_key": "purchase_indents_view",
+      "user_id": 2,
+      "subscriptions": 2
+    },
+    {
+      "section_key": "site_dprs",
+      "user_id": 2,
+      "subscriptions": 2
+    },
+    {
+      "section_key": "site_materials",
+      "user_id": 2,
+      "subscriptions": 2
+    },
+    {
+      "section_key": "stores_inventory",
+      "user_id": 2,
+      "subscriptions": 2
+    },
+    {
+      "section_key": "vendor_bills_approve",
+      "user_id": 2,
+      "subscriptions": 2
+    },
+    {
+      "section_key": "vendor_bills_raise",
+      "user_id": 2,
+      "subscriptions": 2
+    },
+    {
+      "section_key": "vendor_bills_view",
+      "user_id": 2,
+      "subscriptions": 2
+    }
+  ],
+  "eventFired": false,
+  "reason": "Existing real administrator has Notify grants and active subscriptions. Sending a section event would risk notifying that user. No permission, flag, subscription or push transport changed."
+}

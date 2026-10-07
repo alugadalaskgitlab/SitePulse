@@ -1,0 +1,56 @@
+INSTRUCTION PERM-03B-3: Prove Delete and Notify on screen. Nothing else.
+
+READ THIS FIRST
+This is the LAST acceptance batch before the production rollout. It is small on purpose.
+PERM-03B-2 is complete and pushed (`e4acb3f`): the Work Programme split is finished, Export is separated from Reports, and both were proved signed in. Export, the five new keys and the whole-page gating are already certified — do NOT re-run them.
+What has NEVER been proved on screen is **Delete** and **Notify**. That is this batch, and that is all of it.
+Do NOT publish. Show the Publish preview and STOP.
+Do NOT change any permission grant for a real user. Delete, Export and Notify stay UNTICKED for everyone.
+Do NOT change any user flag, the admin/owner bypass, or any of the 93 admin-only routes.
+Do NOT add section keys, labels, guards or features. If a test fails because a guard is wrong, fix that guard and say so — but do not take on new work.
+PARKED — permission guards only, no business-logic change, no investigation: LDO, startup data repair jobs, stock balances, vendor bills, trips, rate cards.
+
+USE THE EXISTING SIGN-IN
+Development account "Agent Verification" (user 16), password in the `DEV_VERIFICATION_PASSWORD` secret, device approved. Temporary development accounts are authorised under the usual limits: development database only, never a real person's account, notifications only ever to temporary accounts, everything removed afterwards with cleanup verified and listed row by row.
+
+=====================================================================
+PART A — DELETE, BOTH DIRECTIONS, ON REAL SECTIONS
+=====================================================================
+`assertDeleteOrCancel` now reads the `delete` bit instead of delegating to `assertEdit`, and four BOQ/SNL delete routes that had no section guard were given one. None of this has been seen working on a screen.
+
+A1. Pick THREE different sections that have a real delete or cancel operation, and include at least one of the four newly-guarded BOQ/SNL routes (categories, items, revisions, SNL mappings).
+A2. For each, show BOTH directions:
+    - WITHOUT the Delete bit: the delete/cancel control is absent from the screen (screenshot), and the API returns **403** (status code).
+    - WITH the Delete bit ticked on a temporary account: the control appears (screenshot), and the API succeeds (**200/204**).
+A3. Prove the separation that matters most: a user with **Edit but not Delete** can still edit and save that same record (200), and still cannot delete it (403). Before this work, Edit silently carried delete — this is the evidence that it no longer does.
+A4. Name the three sections and the exact routes you exercised.
+
+=====================================================================
+PART B — NOTIFY, END TO END
+=====================================================================
+Notify is wired through 76 `sendPushToSection` call sites across 20 sections, and the audit reports no dead tickable Notify cells — but nobody has watched a notification arrive or fail to arrive.
+
+B1. Choose ONE section that really sends push. Fire its actual event.
+B2. A temporary account WITHOUT `notify` on that section receives **nothing**. Show how you established that (the stored eligibility result and the send outcome), not merely that no error occurred.
+B3. The same temporary account WITH `notify` ticked receives the notification when the event fires again. Show it.
+B4. Confirm no real user received anything during this batch.
+B5. List every section that can send push today, and every section that cannot. The owner needs to know which activities are even capable of notifying before he decides who gets told.
+
+=====================================================================
+EVIDENCE AND CHECKS
+=====================================================================
+Z1. Before/after row counts and content checksums for `users` and the permission table. The only writes may be temporary-account rows, each listed; every real user's row unchanged.
+Z2. Confirm Delete, Export and Notify are unticked for every real user at the end of this batch, and that "Grant all" ticks none of the three.
+Z3. Full suite against the 48 baseline. List every test added or changed and why. Do not report the 48 pre-existing failures or the pre-existing type errors as new.
+Z4. Build passes.
+Z5. Every temporary account, device, permission row, subscription and test record removed, verified, and listed.
+
+REPORT BACK — ONCE, AT THE END, AND KEEP IT SHORT
+1. Files changed (expected: few or none — this is an acceptance batch).
+2. PART A: the three sections and routes, with both directions, status codes and screenshots; and the A3 Edit-without-Delete proof.
+3. PART B: the section used, both directions, and the full list of push-capable and non-push-capable sections.
+4. Z1–Z5.
+5. Anything you could not run: name it and say why. Do not present a component test as screen evidence.
+6. The Publish preview.
+
+STOP HERE. Do not publish. Do not start PERM-04 or the production rollout. Do not create follow-up tasks.

@@ -1,0 +1,6 @@
+{
+  "sectionGrantAllSafe": true,
+  "groupGrantAllSafe": true,
+  "sections": 92,
+  "method": "Executed actual bulk-change function bodies with permissive grant authority in an isolated state container; not browser evidence"
+}

@@ -1,0 +1,42 @@
+[
+  {
+    "label": "ordinary-verification-account",
+    "path": "/account",
+    "url": "/account",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nSite Operations\nHMP Operations\nRMC Operations\nProcurement & Billing\n\nTOOLS\n\nEstimator\nAV\n\nAgent Verification\n\nManager\n\nSign Out\nRefresh\nAV\n\nAgent Verification\n\nagent.verification@test.invalid\n\nManager\n\nACCOUNT DETAILS\n\nRole\n\nManager\n\nSession policy\n\nSticky (stay signed in)\n\nUser ID\n\n#16\n\nPUSH NOTIFICATIONS\n\nStatus on this device\n\nNot subscribed\nEnable on this device\n\nNotification preferences\n\nManage which sections send you push alerts",
+    "controlCount": null,
+    "screenshot": "ordinary-verification-account.jpg"
+  },
+  {
+    "path": "/api/auth/me",
+    "status": 200,
+    "userId": 16,
+    "sessionReused": true
+  },
+  {
+    "label": "work_programme-delete-denied",
+    "path": "/work-program/17/settings",
+    "url": "/work-program/17/settings",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nHMP Operations\nRMC Operations\nWork Program & BOQ\n\nTOOLS\n\nEstimator\nPT\n\nPERM-03B-3 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nWork Program & BOQ\nPERM-03B-3 temporary acceptance\nProgram Settings\nProgram Settings\n\nPERM-03B-3 temporary acceptance\n\nProject Info\n\nActual project chainage range — used by Auto-Sequence for bar chainages and road length.\n\nPROJECT CHAINAGE FROM (km)\nPROJECT CHAINAGE TO (km)\nRoad length: 1000.000 km\n·\nCh 0.000 – 1000.000 km\n\nValues are auto-detected from the project name — update if the detected range is incorrect. Saves on blur. Re-run Auto-Sequence after changing these values.\n\nSchedule Defaults\n\nAuto-duration = (BOQ qty ÷ bottleneck output) ÷ shift hrs/day ÷ working days/month\n\nPROJECT START DATE\n\nSets the calendar date for Month 1 in the Work Programme Gantt — month headers show real month names (e.g. \"Jun '25\")\n\nWORKING DAYS / MONTH\n\nDefault: 26 days/month\n\nSHIFT HOURS / DAY\n\nDefault: 8 hrs/shift\n\nDouble Shift\n\nEnables 2× effective hours per day — duration calculations use shift hrs × 2.\n\nTipper Fleet Defaults\n\nPre-populates the tipper fleet calculator in BOQ item equipment recipes.\n\nTIPPER CAPACITY (T)\nAVG SPEED (km/hr)\nLOAD TIME (min)\nUNLOAD TIME (min)\nLead & Source Distances\n\nPoint-to-point distances between supply sources and destinations. The planning engine uses these to compute haul cycles and tipper demand per layer type.\n\nBITUMINOUS\n\nHMP → SITE (km)\n\nBC / DBM / BM / SDBC layer haul\n\nQUARRY/CRUSHER → HMP (km)\n\nAggregate transport to hot mix plant\n\nGRANULAR / WMM\n\nWMM PLANT → SITE (km)\n\nWMM / GSB plant-mix haul to site\n\nQUARRY/CRUSHER → SITE (km)\n\nGranular material direct to site\n\nQUARRY/CRUSHER → RMC (km)\n\nAggregate transport to RMC plant\n\nCONCRETE\n\nRMC PLANT → SITE (km)\n\nReady-mix / M20/M25/M30/M35 haul\n\nEARTHWORK\n\nBORROW AREA → SITE (km)\n\nEarthwork fill / embankment haul\n\nDISPOSAL POINT (km)\n\nEarthwork cut / excavation haul-away\n\nLAYER TYPE → HAUL DISTANCE USED BY PLANNING ENGINE\n\nBC/DBM→site\n\n—\n\nQry→HMP\n\n—\n\nWMM plant→site\n\n—\n\nQry→site\n\n—\n\nQry→RMC\n\n—\n\nRMC→site\n\n—\n\nBorrow→site\n\n—\n\nDisposal\n\n—\n\nProductivity Mode\n\nControls which output rate source the planning engine uses when computing auto-durations.\n\nMODE\n\nSNL / Standard Norms\n\nUses IRC/MoRTH SNL tables for all items\n\nSNL mode: auto-durations use IRC/MoRTH standard norms library values. Tipper fleet size is calculated from output norms + haul-cycle model.\nMix Template Links\n\nMap standard layer types (BC/DBM/WMM…) to plant mix templates. The planning engine uses these to resolve material demand and production capacity per layer.\n\nDBM\n→\nPERM-03B-3 temporary link\n\nADD MIX LINK\n\nMIX TYPE\nSelect type…\nPLANT MIX TEMPLATE\nSelect template…\nAdd Link\n← Back to Project\nSave Settings",
+    "controlCount": 0,
+    "screenshot": "work_programme-delete-denied.jpg"
+  },
+  {
+    "path": "/api/boq/projects/17/mix-links/10",
+    "method": "DELETE",
+    "status": 403
+  },
+  {
+    "label": "work_programme-delete-allowed",
+    "path": "/work-program/17/settings",
+    "url": "/work-program/17/settings",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nHMP Operations\nRMC Operations\nWork Program & BOQ\n\nTOOLS\n\nEstimator\nPT\n\nPERM-03B-3 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nWork Program & BOQ\nPERM-03B-3 temporary acceptance\nProgram Settings\nProgram Settings\n\nPERM-03B-3 temporary acceptance\n\nProject Info\n\nActual project chainage range — used by Auto-Sequence for bar chainages and road length.\n\nPROJECT CHAINAGE FROM (km)\nPROJECT CHAINAGE TO (km)\nRoad length: 1000.000 km\n·\nCh 0.000 – 1000.000 km\n\nValues are auto-detected from the project name — update if the detected range is incorrect. Saves on blur. Re-run Auto-Sequence after changing these values.\n\nSchedule Defaults\n\nAuto-duration = (BOQ qty ÷ bottleneck output) ÷ shift hrs/day ÷ working days/month\n\nPROJECT START DATE\n\nSets the calendar date for Month 1 in the Work Programme Gantt — month headers show real month names (e.g. \"Jun '25\")\n\nWORKING DAYS / MONTH\n\nDefault: 26 days/month\n\nSHIFT HOURS / DAY\n\nDefault: 8 hrs/shift\n\nDouble Shift\n\nEnables 2× effective hours per day — duration calculations use shift hrs × 2.\n\nTipper Fleet Defaults\n\nPre-populates the tipper fleet calculator in BOQ item equipment recipes.\n\nTIPPER CAPACITY (T)\nAVG SPEED (km/hr)\nLOAD TIME (min)\nUNLOAD TIME (min)\nLead & Source Distances\n\nPoint-to-point distances between supply sources and destinations. The planning engine uses these to compute haul cycles and tipper demand per layer type.\n\nBITUMINOUS\n\nHMP → SITE (km)\n\nBC / DBM / BM / SDBC layer haul\n\nQUARRY/CRUSHER → HMP (km)\n\nAggregate transport to hot mix plant\n\nGRANULAR / WMM\n\nWMM PLANT → SITE (km)\n\nWMM / GSB plant-mix haul to site\n\nQUARRY/CRUSHER → SITE (km)\n\nGranular material direct to site\n\nQUARRY/CRUSHER → RMC (km)\n\nAggregate transport to RMC plant\n\nCONCRETE\n\nRMC PLANT → SITE (km)\n\nReady-mix / M20/M25/M30/M35 haul\n\nEARTHWORK\n\nBORROW AREA → SITE (km)\n\nEarthwork fill / embankment haul\n\nDISPOSAL POINT (km)\n\nEarthwork cut / excavation haul-away\n\nLAYER TYPE → HAUL DISTANCE USED BY PLANNING ENGINE\n\nBC/DBM→site\n\n—\n\nQry→HMP\n\n—\n\nWMM plant→site\n\n—\n\nQry→site\n\n—\n\nQry→RMC\n\n—\n\nRMC→site\n\n—\n\nBorrow→site\n\n—\n\nDisposal\n\n—\n\nProductivity Mode\n\nControls which output rate source the planning engine uses when computing auto-durations.\n\nMODE\n\nSNL / Standard Norms\n\nUses IRC/MoRTH SNL tables for all items\n\nSNL mode: auto-durations use IRC/MoRTH standard norms library values. Tipper fleet size is calculated from output norms + haul-cycle model.\nMix Template Links\n\nMap standard layer types (BC/DBM/WMM…) to plant mix templates. The planning engine uses these to resolve material demand and production capacity per layer.\n\nDBM\n→\nPERM-03B-3 temporary link\n\nADD MIX LINK\n\nMIX TYPE\nSelect type…\nPLANT MIX TEMPLATE\nSelect template…\nAdd Link\n← Back to Project\nSave Settings",
+    "controlCount": 1,
+    "screenshot": "work_programme-delete-allowed.jpg"
+  },
+  {
+    "path": "/api/boq/projects/17/mix-links/10",
+    "method": "DELETE",
+    "status": 200
+  }
+]
