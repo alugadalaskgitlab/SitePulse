@@ -23,6 +23,7 @@ vi.mock("@/lib/auth-context", () => ({
     },
     isAdmin: false,
     isManager: true,
+    sectionCan: () => true,
   }),
 }));
 vi.mock("@/lib/queryClient", () => ({

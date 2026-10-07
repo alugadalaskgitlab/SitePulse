@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { DeleteGate } from "@/components/DeleteGate";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { useForm } from "react-hook-form";
@@ -196,14 +197,14 @@ function MixLinksSection({ projectId }: { projectId: number }) {
               <span className="font-mono font-bold text-violet-700 w-14 flex-shrink-0">{link.mixType}</span>
               <span className="text-muted-foreground text-[12px]">→</span>
               <span className="text-slate-700 flex-1 min-w-0 truncate">{link.mixTemplateName ?? `Template #${link.mixTemplateId}`}</span>
-              <button
+              <DeleteGate sections={["qto_boq"]}><button
                 onClick={() => deleteMutation.mutate(link.id)}
                 disabled={deleteMutation.isPending}
                 className="p-0.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors flex-shrink-0"
                 data-testid={`button-delete-mix-link-${link.id}`}
               >
                 <Trash2 className="w-3 h-3" />
-              </button>
+              </button></DeleteGate>
             </div>
           ))}
         </div>

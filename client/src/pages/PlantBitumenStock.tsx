@@ -54,7 +54,7 @@ export default function PlantBitumenStock() {
   const canCreate = sectionCan("plant_stock", "create");
   const canEdit = sectionCan("plant_stock", "edit");
   const canDelete = isAdminUser;
-  const canExport = sectionCan("plant_bitumen", "view_reports");
+  const canExport = sectionCan("plant_bitumen", "export");
   const { appendOrigin, getPlantBackLink, appendPlantContext } = useOrigin();
   const searchString = useSearch();
   const sp = new URLSearchParams(searchString || window.location.search);

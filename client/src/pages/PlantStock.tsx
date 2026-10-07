@@ -64,7 +64,7 @@ export default function PlantStock() {
   const { toast } = useToast();
   const { sectionCan, isAdmin } = useAuth();
   const { companyName, logoFile } = useFeatureFlags();
-  const canExport = sectionCan("plant_stock", "view_reports");
+  const canExport = sectionCan("plant_stock", "export");
   const canReconcile = isAdmin;
   const { getPlantBackLink, appendPlantContext } = useOrigin();
   const queryClient = useQueryClient();

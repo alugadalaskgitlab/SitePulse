@@ -15,6 +15,12 @@ Compare test-file inventories as well as pass/fail/skip totals. The historical "
 
 **How to apply:** Preserve the normal suite's frontend and server discovery together. Save per-file JSON evidence. Do not run a production build concurrently with the full suite. Use bounded test workers, and distinguish explicit opt-in skips from setup failures; neither missing files nor failed hooks prove a regression was fixed.
 
+Run a pre-change baseline from an immutable source snapshot if implementation will continue while the suite runs.
+
+**Why:** Tests import files throughout a long run. Editing the same checkout contaminated a purported baseline with new permission behavior; an isolated source snapshot reproduced the actual prior failures.
+
+**How to apply:** Either finish the baseline before editing, or run it from a separate snapshot with the same test-file inventory. Avoid overlapping heavy test runs as well as overlapping builds.
+
 Browser-only API fixtures must bypass service workers as well as disabling cache.
 
 **Why:** A registered worker bypassed CDP request interception and sent fixture-authenticated browser requests to the real server, producing 401s and misleading login redirects.

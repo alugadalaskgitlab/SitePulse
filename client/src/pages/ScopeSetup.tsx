@@ -5,6 +5,7 @@
 // visual chainage strip, and confirm flow. Route: /work-program/:id/scope
 // ─────────────────────────────────────────────────────────────────────────────
 import { useMemo, useState } from "react";
+import { DeleteGate } from "@/components/DeleteGate";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import {
@@ -584,9 +585,9 @@ export default function ScopeSetup() {
                           <Button variant="ghost" size="icon" title="Confirm" disabled={confirmMutation.isPending} onClick={() => confirmMutation.mutate(s.id)}>
                             <CheckCircle2 className="h-4 w-4 text-green-600" />
                           </Button>
-                          <Button variant="ghost" size="icon" title="Delete draft" disabled={deleteMutation.isPending} onClick={() => deleteMutation.mutate(s.id)}>
+                          <DeleteGate sections={["project_scope"]}><Button variant="ghost" size="icon" title="Delete draft" disabled={deleteMutation.isPending} onClick={() => deleteMutation.mutate(s.id)}>
                             <Trash2 className="h-4 w-4 text-red-600" />
-                          </Button>
+                          </Button></DeleteGate>
                         </>
                       )}
                     </div>

@@ -38,7 +38,7 @@ export default function PlantMaterialIssues() {
   const canCreate = sectionCan("plant_stock", "create");
   const canEdit = sectionCan("plant_stock", "edit");
   const canDelete = isAdmin;
-  const canExport = sectionCan("plant_materials", "view_reports");
+  const canExport = sectionCan("plant_materials", "export");
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);

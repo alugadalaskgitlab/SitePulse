@@ -55,7 +55,7 @@ export default function PlantMaterialReceipts() {
   const canCreate = sectionCan("plant_stock", "create");
   const canEdit = sectionCan("plant_stock", "edit");
   const canDirectEditSubmittedReceipt = isOwnerOrAdmin || sectionCan("plant_materials", "edit");
-  const canExport = sectionCan("plant_materials", "view_reports");
+  const canExport = sectionCan("plant_materials", "export");
   const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<MaterialReceipt | null>(null);
@@ -1903,23 +1903,23 @@ export default function PlantMaterialReceipts() {
                                     size="sm"
                                   />
                                 )}
-                                {(canEdit || isOwnerOrAdmin) && (receipt as any).documentStatus !== "submitted" && (
+                                {(canEdit || isOwnerOrAdmin || sectionCan("plant_materials", "delete")) && (receipt as any).documentStatus !== "submitted" && (
                                   <>
                                     {/* 06M-D: a cancelled receipt is terminal — no edit or re-cancel;
                                         its stock was already reversed. Delete stays (admin-gated). */}
                                     {!(receipt as any).isCancelled && (
                                       <>
-                                        <Button size="icon" variant="ghost" onClick={() => handleEditClick(receipt)} data-testid={`button-edit-receipt-${receipt.id}`}>
+                                        {canEdit && <Button size="icon" variant="ghost" onClick={() => handleEditClick(receipt)} data-testid={`button-edit-receipt-${receipt.id}`}>
                                           <Edit className="w-4 h-4" />
-                                        </Button>
-                                        <Button size="icon" variant="ghost" onClick={() => setCancelReceiptId(receipt.id)} data-testid={`button-cancel-receipt-${receipt.id}`} title="Cancel">
+                                        </Button>}
+                                        {sectionCan("plant_materials", "delete") && <Button size="icon" variant="ghost" onClick={() => setCancelReceiptId(receipt.id)} data-testid={`button-cancel-receipt-${receipt.id}`} title="Cancel">
                                           <Ban className="w-4 h-4 text-amber-600" />
-                                        </Button>
+                                        </Button>}
                                       </>
                                     )}
-                                    <Button size="icon" variant="ghost" onClick={() => handleDeleteClick(receipt.id)} data-testid={`button-delete-receipt-${receipt.id}`}>
+                                    {isOwnerOrAdmin && <Button size="icon" variant="ghost" onClick={() => handleDeleteClick(receipt.id)} data-testid={`button-delete-receipt-${receipt.id}`}>
                                       <Trash2 className="w-4 h-4 text-destructive" />
-                                    </Button>
+                                    </Button>}
                                   </>
                                 )}
                               </div>

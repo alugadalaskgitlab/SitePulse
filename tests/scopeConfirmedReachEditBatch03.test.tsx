@@ -30,6 +30,8 @@ import ScopeSetup from "../client/src/pages/ScopeSetup";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 
+vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({ sectionCan: () => true }) }));
+
 const project = { id: 2, name: "Takkadpally", chainageFrom: "0", chainageTo: "3.8", corridorConfirmed: 1 };
 
 const confirmedReach = {

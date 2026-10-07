@@ -67,7 +67,7 @@ function VarianceBadge({ pct, l }: { pct: number | null; l: number | null }) {
 export default function PlantLdoReconciliation() {
   const { getPlantBackLink } = useOrigin();
   const { sectionCan } = useAuth();
-  const canExport = sectionCan("plant_stock", "view_reports");
+  const canExport = sectionCan("plant_stock", "export");
   const searchString = useSearch();
   const [, setLocation] = useLocation();
 

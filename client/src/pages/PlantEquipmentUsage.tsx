@@ -61,7 +61,7 @@ export default function PlantEquipmentUsage() {
   const canCreateEquipmentMaster = sectionCan("master_equipment", "create");
   const canEdit = sectionCan("plant_equipment", "edit");
   const canDelete = isAdmin;
-  const canExport = sectionCan("plant_equipment", "view_reports");
+  const canExport = sectionCan("plant_equipment", "export");
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);

@@ -1,0 +1,6765 @@
+[
+  {
+    "file": "server/auth-routes.ts",
+    "line": 147,
+    "method": "POST",
+    "route": "/api/auth/login",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 282,
+    "method": "GET",
+    "route": "/api/auth/me",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 283,
+    "method": "GET",
+    "route": "/api/auth/session",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 286,
+    "method": "PATCH",
+    "route": "/api/auth/me",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 303,
+    "method": "PUT",
+    "route": "/api/auth/me/notify-preferences",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 325,
+    "method": "POST",
+    "route": "/api/auth/logout",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 342,
+    "method": "GET",
+    "route": "/api/auth/device-status",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 365,
+    "method": "POST",
+    "route": "/api/auth/claim-device",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 429,
+    "method": "GET",
+    "route": "/api/auth/users",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 437,
+    "method": "GET",
+    "route": "/api/auth/users/basic",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 558,
+    "method": "POST",
+    "route": "/api/auth/users",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 603,
+    "method": "POST",
+    "route": "/api/auth/users/:id/complete-setup",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 627,
+    "method": "PATCH",
+    "route": "/api/auth/users/:id",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 699,
+    "method": "POST",
+    "route": "/api/auth/users/:id/password",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 714,
+    "method": "GET",
+    "route": "/api/auth/users/:id/permissions",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 722,
+    "method": "PUT",
+    "route": "/api/auth/users/:id/permissions",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 766,
+    "method": "GET",
+    "route": "/api/auth/users/:id/site-access",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 783,
+    "method": "PUT",
+    "route": "/api/auth/users/:id/site-access",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 823,
+    "method": "GET",
+    "route": "/api/auth/users/site-access-audit",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 850,
+    "method": "POST",
+    "route": "/api/auth/users/:id/copy-permissions",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 868,
+    "method": "GET",
+    "route": "/api/auth/devices",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 891,
+    "method": "POST",
+    "route": "/api/auth/devices/:id/approve",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 904,
+    "method": "POST",
+    "route": "/api/auth/devices/:id/revoke",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/management-report.ts",
+    "line": 101,
+    "method": "GET",
+    "route": "/api/admin/management-report/accessible-sites",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/management-report.ts",
+    "line": 136,
+    "method": "GET",
+    "route": "/api/admin/management-report/materials",
+    "guards": [
+      "assertViewReportOrAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/management-report.ts",
+    "line": 269,
+    "method": "GET",
+    "route": "/api/admin/management-report/production",
+    "guards": [
+      "assertViewReportOrAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/management-report.ts",
+    "line": 341,
+    "method": "GET",
+    "route": "/api/admin/management-report/fuel",
+    "guards": [
+      "assertViewReportOrAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/management-report.ts",
+    "line": 451,
+    "method": "GET",
+    "route": "/api/admin/management-report/labour",
+    "guards": [
+      "assertViewReportOrAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/management-report.ts",
+    "line": 496,
+    "method": "GET",
+    "route": "/api/admin/management-report/financials",
+    "guards": [
+      "assertViewReportOrAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/replit_integrations/object_storage/routes.ts",
+    "line": 38,
+    "method": "POST",
+    "route": "/api/uploads/request-url",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/replit_integrations/object_storage/routes.ts",
+    "line": 73,
+    "method": "GET",
+    "route": "/objects/:objectPath(*)",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 279,
+    "method": "GET",
+    "route": "/api/config",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 288,
+    "method": "GET",
+    "route": "/api/admin/branding",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 298,
+    "method": "GET",
+    "route": "/api/admin/licensed-modules",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 308,
+    "method": "POST",
+    "route": "/api/admin/licensed-modules",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 324,
+    "method": "POST",
+    "route": "/api/admin/branding",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 377,
+    "method": "POST",
+    "route": "/api/estimator/session",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 400,
+    "method": "GET",
+    "route": "/api/estimator/session",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 407,
+    "method": "DELETE",
+    "route": "/api/estimator/session",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 413,
+    "method": "GET",
+    "route": "/mix-calculator/login",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 418,
+    "method": "GET",
+    "route": "/mix-calculator",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 556,
+    "method": "GET",
+    "route": "/api/dprs/labour-contractors",
+    "guards": [
+      "assertTripSiteAccess(req, res, site)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 587,
+    "method": "GET",
+    "route": "/api/dprs/with-details",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 676,
+    "method": "GET",
+    "route": "/api/dprs/material-summary",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 701,
+    "method": "GET",
+    "route": "/api/materials/suppliers",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 713,
+    "method": "GET",
+    "route": "/api/site-material-trips/suggestions",
+    "guards": [
+      "assertSiteMaterialSuggestionsAccess(req, res)) return",
+      "assertTripSiteAccess(req, res, site)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 746,
+    "method": "PATCH",
+    "route": "/api/site-material-trips/vehicle-supplier",
+    "guards": [
+      "assertEdit(req, res, \"site_materials\")) return",
+      "assertTripSiteAccess(req, res, site)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 793,
+    "method": "GET",
+    "route": "/api/materials-received",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 813,
+    "method": "GET",
+    "route": "/api/site-material-trips",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 837,
+    "method": "POST",
+    "route": "/api/site-material-trips/material-source/bulk",
+    "guards": [
+      "assertEdit(req, res, \"site_materials\")) return",
+      "assertTripSiteAccess(req, res, input.site)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 886,
+    "method": "GET",
+    "route": "/api/procurement/applicable-pi",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 987,
+    "method": "POST",
+    "route": "/api/site-material-trips",
+    "guards": [
+      "assertCreate(req, res, \"site_materials\")) return",
+      "assertTripSiteAccess(req, res, input.site)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1013,
+    "method": "PATCH",
+    "route": "/api/site-material-trips/:id",
+    "guards": [
+      "assertEdit(req, res, \"site_materials\")) return",
+      "assertTripSiteAccess(req, res, existing.site)) return",
+      "assertTripSiteAccess(req, res, input.site)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1064,
+    "method": "DELETE",
+    "route": "/api/site-material-trips/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1085,
+    "method": "POST",
+    "route": "/api/site-material-trips/:id/cancel",
+    "guards": [
+      "assertDeleteOrCancel(req, res, \"site_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1112,
+    "method": "GET",
+    "route": "/api/site-material-stock",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1132,
+    "method": "GET",
+    "route": "/api/sites",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1151,
+    "method": "POST",
+    "route": "/api/sites",
+    "guards": [
+      "assertCreateEither(req, res, \"sites_plants_manage\", \"admin_settings\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1165,
+    "method": "PATCH",
+    "route": "/api/sites/:id",
+    "guards": [
+      "assertEditEither(req, res, \"sites_plants_manage\", \"admin_settings\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1177,
+    "method": "DELETE",
+    "route": "/api/sites/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1189,
+    "method": "POST",
+    "route": "/api/sites/seed",
+    "guards": [
+      "assertCreateEither(req, res, \"sites_plants_manage\", \"admin_settings\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1211,
+    "method": "POST",
+    "route": "/api/edit-requests",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1261,
+    "method": "GET",
+    "route": "/api/edit-requests/pending",
+    "guards": [
+      "assertView(req, res, \"edit_requests_review\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1274,
+    "method": "GET",
+    "route": "/api/edit-requests/mine",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1285,
+    "method": "GET",
+    "route": "/api/edit-requests/check",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1302,
+    "method": "POST",
+    "route": "/api/edit-requests/:id/approve",
+    "guards": [
+      "assertApprove(req, res, \"edit_requests_review\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1330,
+    "method": "POST",
+    "route": "/api/edit-requests/:id/deny",
+    "guards": [
+      "assertApprove(req, res, \"edit_requests_review\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1349,
+    "method": "POST",
+    "route": "/api/edit-requests/:id/consume",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1366,
+    "method": "GET",
+    "route": "/api/attachments",
+    "guards": [
+      "assertDieselOrStoresView(req, res)) return",
+      "assertMaintenanceRecordAccess(req, res, linkedRecordId, true))) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1385,
+    "method": "GET",
+    "route": "/api/attachments/counts",
+    "guards": [
+      "assertDieselOrStoresView(req, res)) return",
+      "assertMaintenanceRecordAccess(req, res, id, true))) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1415,
+    "method": "POST",
+    "route": "/api/attachments",
+    "guards": [
+      "assertEditEither(req, res, \"site_diesel\", \"diesel_req_raise\")) return",
+      "assertCreateOrEdit(req, res, \"plant_equipment\")) return",
+      "assertMaintenanceRecordAccess(req, res, parsed.linkedRecordId, true))) return"
+    ],
+    "output": true,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1466,
+    "method": "DELETE",
+    "route": "/api/attachments/:id",
+    "guards": [
+      "assertDeleteEither(req, res, \"site_diesel\", \"diesel_req_raise\")",
+      "assertDelete(req, res, \"site_dprs\")",
+      "assertDelete(req, res, \"plant_materials\")",
+      "assertDelete(req, res, \"site_materials\")",
+      "assertDelete(req, res, \"irn_raise\")",
+      "assertDelete(req, res, \"purchase_indents_raise\")",
+      "assertDelete(req, res, \"stores_inventory\")",
+      "assertDelete(req, res, \"vendor_bills_raise\")",
+      "assertDelete(req, res, \"plant_production\")",
+      "assertDelete(req, res, \"plant_equipment\")",
+      "assertDelete(req, res, \"rmc_cube_tests\")",
+      "assertMaintenanceRecordAccess(req, res, attachment.linkedRecordId, true))) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1508,
+    "method": "GET",
+    "route": "/api/personnel",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1518,
+    "method": "POST",
+    "route": "/api/personnel",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1553,
+    "method": "PATCH",
+    "route": "/api/personnel/:id",
+    "guards": [
+      "assertEdit(req, res, \"master_personnel\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1566,
+    "method": "PATCH",
+    "route": "/api/personnel/:id/toggle-active",
+    "guards": [
+      "assertEdit(req, res, \"master_personnel\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1577,
+    "method": "DELETE",
+    "route": "/api/personnel/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1597,
+    "method": "GET",
+    "route": "/api/site-purchases",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1613,
+    "method": "PUT",
+    "route": "/api/site-purchases/:id",
+    "guards": [
+      "assertEdit(req, res, \"report_site_purchases\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1665,
+    "method": "POST",
+    "route": "/api/site-purchases/:id/cancel",
+    "guards": [
+      "assertDeleteOrCancel(req, res, \"site_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1694,
+    "method": "POST",
+    "route": "/api/site-purchases/:id/final-submit",
+    "guards": [
+      "assertEdit(req, res, \"site_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1733,
+    "method": "GET",
+    "route": "/api/notifications",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1742,
+    "method": "GET",
+    "route": "/api/notifications/unread-count",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1751,
+    "method": "POST",
+    "route": "/api/notifications",
+    "guards": [
+      "assertCreateEither(req, res, \"admin_notifications_manage\", \"admin_settings\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1768,
+    "method": "PATCH",
+    "route": "/api/notifications/:id/read",
+    "guards": [
+      "assertEdit(req, res, \"dashboard\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1778,
+    "method": "PATCH",
+    "route": "/api/notifications/read-all",
+    "guards": [
+      "assertEdit(req, res, \"dashboard\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1788,
+    "method": "DELETE",
+    "route": "/api/notifications/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1802,
+    "method": "GET",
+    "route": "/api/push/vapid-key",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1807,
+    "method": "POST",
+    "route": "/api/push/subscribe",
+    "guards": [
+      "assertEdit(req, res, \"dashboard\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1847,
+    "method": "DELETE",
+    "route": "/api/push/unsubscribe",
+    "guards": [
+      "assertDelete(req, res, \"dashboard\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1864,
+    "method": "GET",
+    "route": "/api/push/subscriptions",
+    "guards": [
+      "assertView(req, res, \"user_management\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 1889,
+    "method": "GET",
+    "route": "/api/dprs/chainage-overlap-context",
+    "guards": [
+      "assertCreate(req, res, \"site_dprs\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 2209,
+    "method": "PATCH",
+    "route": "/api/progress-entries/:id/overlap-resolution",
+    "guards": [
+      "assertEdit(req, res, \"site_dprs\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 2569,
+    "method": "POST",
+    "route": "/api/dpr-sections/resolve",
+    "guards": [
+      "assertView(req, res, \"site_dprs\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 2584,
+    "method": "GET",
+    "route": "/api/dpr-sections/:id",
+    "guards": [
+      "assertView(req, res, \"site_dprs\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 2595,
+    "method": "PUT",
+    "route": "/api/dpr-sections/:section",
+    "guards": [
+      "assertCreate(req, res, \"site_dprs\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 2714,
+    "method": "PATCH",
+    "route": "/api/dprs/:id/draft",
+    "guards": [
+      "assertCreate(req, res, \"site_dprs\")) return",
+      "assertSectionTokens(draftSnapshot, req.body)"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 2965,
+    "method": "POST",
+    "route": "/api/admin/change-pin",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 2975,
+    "method": "POST",
+    "route": "/api/admin/change-manager-pin",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 2988,
+    "method": "GET",
+    "route": "/api/admin/ldo-received-by",
+    "guards": [
+      "assertAuthed(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 2997,
+    "method": "POST",
+    "route": "/api/admin/ldo-received-by",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 3012,
+    "method": "GET",
+    "route": "/api/admin/operator-manual.pdf",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": true,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 3029,
+    "method": "GET",
+    "route": "/api/admin/estimator-guide.pdf",
+    "guards": [],
+    "output": true,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 3050,
+    "method": "GET",
+    "route": "/api/admin/admin-guide.pdf",
+    "guards": [
+      "assertAuthed(req, res)) return"
+    ],
+    "output": true,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 3330,
+    "method": "POST",
+    "route": "/api/dprs/:id/version",
+    "guards": [
+      "assertEdit(req, res, \"site_dprs\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 3660,
+    "method": "POST",
+    "route": "/api/dprs/:id/clone",
+    "guards": [
+      "assertEdit(req, res, \"site_dprs\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 3718,
+    "method": "DELETE",
+    "route": "/api/dprs/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 3751,
+    "method": "POST",
+    "route": "/api/dprs/:id/cancel",
+    "guards": [
+      "assertDeleteOrCancel(req, res, \"site_dprs\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 3780,
+    "method": "GET",
+    "route": "/api/plant",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 3789,
+    "method": "GET",
+    "route": "/api/plant/:id",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 3801,
+    "method": "POST",
+    "route": "/api/plant",
+    "guards": [
+      "assertCreateEither(req, res, \"sites_plants_manage\", \"admin_settings\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 3824,
+    "method": "POST",
+    "route": "/api/plant/:id/clone",
+    "guards": [
+      "assertEdit(req, res, \"plant_shift_logs\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 3848,
+    "method": "PATCH",
+    "route": "/api/plant/:id",
+    "guards": [
+      "assertEditEither(req, res, \"sites_plants_manage\", \"admin_settings\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 3870,
+    "method": "DELETE",
+    "route": "/api/plant/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 3896,
+    "method": "GET",
+    "route": "/api/plant-module/parties",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 3905,
+    "method": "POST",
+    "route": "/api/plant-module/parties",
+    "guards": [
+      "assertCreate(req, res, \"master_parties\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 3915,
+    "method": "PATCH",
+    "route": "/api/plant-module/parties/:id",
+    "guards": [
+      "assertEdit(req, res, \"master_parties\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 3926,
+    "method": "DELETE",
+    "route": "/api/plant-module/parties/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 3938,
+    "method": "GET",
+    "route": "/api/plant-module/materials",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 3947,
+    "method": "POST",
+    "route": "/api/plant-module/materials",
+    "guards": [
+      "assertCreate(req, res, \"master_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 3957,
+    "method": "PATCH",
+    "route": "/api/plant-module/materials/:id",
+    "guards": [
+      "assertEdit(req, res, \"master_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 3968,
+    "method": "DELETE",
+    "route": "/api/plant-module/materials/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 3980,
+    "method": "GET",
+    "route": "/api/plant-materials/:id/uom-conversions",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 3992,
+    "method": "POST",
+    "route": "/api/plant-materials/:id/uom-conversions",
+    "guards": [
+      "assertEdit(req, res, \"master_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4021,
+    "method": "PATCH",
+    "route": "/api/plant-materials/:id/uom-conversions/:convId",
+    "guards": [
+      "assertEdit(req, res, \"master_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4046,
+    "method": "GET",
+    "route": "/api/plant-module/mix-types",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4055,
+    "method": "POST",
+    "route": "/api/plant-module/mix-types",
+    "guards": [
+      "assertCreate(req, res, \"master_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4065,
+    "method": "PATCH",
+    "route": "/api/plant-module/mix-types/:id",
+    "guards": [
+      "assertEdit(req, res, \"master_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4076,
+    "method": "DELETE",
+    "route": "/api/plant-module/mix-types/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4088,
+    "method": "GET",
+    "route": "/api/plant-module/mix-templates",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4097,
+    "method": "GET",
+    "route": "/api/plant-module/mix-template-components",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4106,
+    "method": "GET",
+    "route": "/api/plant-module/mix-templates/:id",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4133,
+    "method": "POST",
+    "route": "/api/plant-module/mix-templates",
+    "guards": [
+      "assertCreate(req, res, \"master_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4146,
+    "method": "PATCH",
+    "route": "/api/plant-module/mix-templates/:id",
+    "guards": [
+      "assertEdit(req, res, \"master_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4160,
+    "method": "DELETE",
+    "route": "/api/plant-module/mix-templates/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4171,
+    "method": "POST",
+    "route": "/api/plant-module/mix-templates/:id/rebuild-ledger",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4259,
+    "method": "GET",
+    "route": "/api/equipment-hire/statements",
+    "guards": [
+      "assertView(req, res, \"plant_equipment\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4283,
+    "method": "POST",
+    "route": "/api/equipment-hire/statements",
+    "guards": [
+      "assertEdit(req, res, \"plant_equipment\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4334,
+    "method": "GET",
+    "route": "/api/equipment-hire/statements/:id",
+    "guards": [
+      "assertView(req, res, \"plant_equipment\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4344,
+    "method": "PATCH",
+    "route": "/api/equipment-hire/statements/:id/exceptions",
+    "guards": [
+      "assertEdit(req, res, \"plant_equipment\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4383,
+    "method": "POST",
+    "route": "/api/equipment-hire/statements/:id/review",
+    "guards": [
+      "assertEdit(req, res, \"plant_equipment\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4399,
+    "method": "POST",
+    "route": "/api/equipment-hire/statements/:id/approve",
+    "guards": [
+      "assertApprove(req, res, \"vendor_bills_approve\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4414,
+    "method": "POST",
+    "route": "/api/equipment-hire/statements/:id/create-vendor-bill",
+    "guards": [
+      "assertView(req, res, \"plant_equipment\")) return",
+      "assertCreateEither(req, res, \"vendor_bills_raise\", \"vendor_bills\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4427,
+    "method": "GET",
+    "route": "/api/plant-module/equipment",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4438,
+    "method": "POST",
+    "route": "/api/plant-module/equipment",
+    "guards": [
+      "assertCreate(req, res, \"master_equipment\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4448,
+    "method": "PATCH",
+    "route": "/api/plant-module/equipment/:id",
+    "guards": [
+      "assertEdit(req, res, \"master_equipment\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4459,
+    "method": "DELETE",
+    "route": "/api/plant-module/equipment/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4475,
+    "method": "PATCH",
+    "route": "/api/plant-module/equipment/:id/toggle-active",
+    "guards": [
+      "assertEdit(req, res, \"master_equipment\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4628,
+    "method": "GET",
+    "route": "/api/plant-module/material-receipts",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4642,
+    "method": "POST",
+    "route": "/api/plant-module/material-receipts",
+    "guards": [
+      "assertCreate(req, res, \"plant_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4743,
+    "method": "PUT",
+    "route": "/api/plant-module/material-receipts/:id",
+    "guards": [
+      "assertEdit(req, res, \"plant_materials\")) {"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4856,
+    "method": "POST",
+    "route": "/api/plant-module/material-receipts/:id/final-submit",
+    "guards": [
+      "assertEdit(req, res, \"plant_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4890,
+    "method": "DELETE",
+    "route": "/api/plant-module/material-receipts/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4925,
+    "method": "POST",
+    "route": "/api/plant-module/material-receipts/:id/cancel",
+    "guards": [
+      "assertDeleteOrCancel(req, res, \"plant_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4966,
+    "method": "GET",
+    "route": "/api/plant-module/next-receipt-number",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4979,
+    "method": "GET",
+    "route": "/api/plant-module/material-issues",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 4993,
+    "method": "POST",
+    "route": "/api/plant-module/material-issues",
+    "guards": [
+      "assertCreate(req, res, \"plant_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5017,
+    "method": "PUT",
+    "route": "/api/plant-module/material-issues/:id",
+    "guards": [
+      "assertEdit(req, res, \"plant_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5034,
+    "method": "DELETE",
+    "route": "/api/plant-module/material-issues/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5047,
+    "method": "GET",
+    "route": "/api/plant-module/material-returns",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5062,
+    "method": "GET",
+    "route": "/api/plant-module/material-returns/returned-qty/:issueId",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5071,
+    "method": "POST",
+    "route": "/api/plant-module/material-returns",
+    "guards": [
+      "assertCreate(req, res, \"plant_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5100,
+    "method": "PUT",
+    "route": "/api/plant-module/material-returns/:id",
+    "guards": [
+      "assertEdit(req, res, \"plant_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5123,
+    "method": "DELETE",
+    "route": "/api/plant-module/material-returns/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5137,
+    "method": "GET",
+    "route": "/api/plant-module/opening-stocks",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5153,
+    "method": "GET",
+    "route": "/api/plant-module/opening-stocks/:id",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5163,
+    "method": "POST",
+    "route": "/api/plant-module/opening-stocks",
+    "guards": [
+      "assertCreate(req, res, \"plant_stock\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5178,
+    "method": "PUT",
+    "route": "/api/plant-module/opening-stocks/:id",
+    "guards": [
+      "assertEdit(req, res, \"plant_stock\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5195,
+    "method": "DELETE",
+    "route": "/api/plant-module/opening-stocks/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5209,
+    "method": "GET",
+    "route": "/api/plant-module/dispatches",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5223,
+    "method": "POST",
+    "route": "/api/plant-module/dispatches",
+    "guards": [
+      "assertCreate(req, res, \"plant_production\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5249,
+    "method": "PUT",
+    "route": "/api/plant-module/dispatches/:id",
+    "guards": [
+      "assertEdit(req, res, \"plant_production\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5374,
+    "method": "DELETE",
+    "route": "/api/plant-module/dispatches/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5391,
+    "method": "POST",
+    "route": "/api/plant-module/dispatches/recalculate-all",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5403,
+    "method": "GET",
+    "route": "/api/plant-module/dispatches/variance-report",
+    "guards": [
+      "assertView(req, res, \"plant_variance\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5419,
+    "method": "GET",
+    "route": "/api/plant-module/consumption-audit-log",
+    "guards": [
+      "assertView(req, res, \"plant_audit\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5442,
+    "method": "GET",
+    "route": "/api/plant/equipment-usage",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5453,
+    "method": "GET",
+    "route": "/api/reports/equipment-performance",
+    "guards": [
+      "assertViewEither(req, res, \"equipment_performance_report\", \"plant_equipment\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5489,
+    "method": "GET",
+    "route": "/api/reports/equipment-status",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5517,
+    "method": "POST",
+    "route": "/api/reports/equipment-performance/logs/:id/confirm",
+    "guards": [
+      "assertAdmin(req, res)) return",
+      "assertTripSiteAccess(req, res, context.site)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5545,
+    "method": "GET",
+    "route": "/api/plant-module/equipment-usage",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5564,
+    "method": "GET",
+    "route": "/api/plant-module/equipment-usage/open-today",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5614,
+    "method": "GET",
+    "route": "/api/plant-module/equipment-usage/previous-balance/:equipmentId",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5644,
+    "method": "GET",
+    "route": "/api/equipment/:equipmentId/latest-closing",
+    "guards": [
+      "assertView(req, res, \"site_dprs\")) return",
+      "assertTripSiteAccess(req, res, siteName)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5684,
+    "method": "GET",
+    "route": "/api/equipment/:equipmentId/latest-confirmed-diesel-tank",
+    "guards": [
+      "assertView(req, res, \"site_dprs\")) return",
+      "assertTripSiteAccess(req, res, siteName)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5837,
+    "method": "POST",
+    "route": "/api/equipment-usage/:id/move",
+    "guards": [
+      "assertEdit(req, res, \"site_dprs\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5875,
+    "method": "GET",
+    "route": "/api/equipment-usage/lifecycle",
+    "guards": [
+      "assertView(req, res, \"site_dprs\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5906,
+    "method": "GET",
+    "route": "/api/plant-module/equipment-usage/incoming",
+    "guards": [
+      "assertView(req, res, \"plant_equipment\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5921,
+    "method": "POST",
+    "route": "/api/plant-module/equipment-usage/:id/complete-incoming",
+    "guards": [
+      "assertEdit(req, res, \"plant_equipment\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5959,
+    "method": "POST",
+    "route": "/api/plant-module/equipment-usage",
+    "guards": [
+      "assertCreate(req, res, \"plant_equipment\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 5983,
+    "method": "PUT",
+    "route": "/api/plant-module/equipment-usage/:id",
+    "guards": [
+      "assertEdit(req, res, \"plant_equipment\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6017,
+    "method": "DELETE",
+    "route": "/api/plant-module/equipment-usage/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6038,
+    "method": "GET",
+    "route": "/api/plant-module/generators",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6065,
+    "method": "GET",
+    "route": "/api/plant-module/generator-logs",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6078,
+    "method": "POST",
+    "route": "/api/plant-module/generator-logs",
+    "guards": [
+      "assertCreate(req, res, \"plant_equipment\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6096,
+    "method": "GET",
+    "route": "/api/plant-module/generator-candidates",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6166,
+    "method": "POST",
+    "route": "/api/plant-module/generator-logs/from-equipment-usage",
+    "guards": [
+      "assertCreate(req, res, \"plant_equipment\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6218,
+    "method": "GET",
+    "route": "/api/plant-module/stock-balances",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6229,
+    "method": "POST",
+    "route": "/api/plant-module/stock-correction",
+    "guards": [
+      "assertAdmin(req, res)) return",
+      "assertValidDieselPhysicalStock(correctionMaterial.name, numericPhysicalQty)"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6269,
+    "method": "POST",
+    "route": "/api/plant-module/stock-reconciliation",
+    "guards": [
+      "assertCreate(req, res, \"stock_reconciliation\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6310,
+    "method": "POST",
+    "route": "/api/plant-module/stock-reconciliation-drafts",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6343,
+    "method": "POST",
+    "route": "/api/plant-module/stock-reconciliation-drafts/:id/reject",
+    "guards": [
+      "assertCreate(req, res, \"stock_reconciliation\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6363,
+    "method": "GET",
+    "route": "/api/plant-module/stock-reconciliations",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6378,
+    "method": "POST",
+    "route": "/api/plant-module/reconcile-stock-balances",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6393,
+    "method": "POST",
+    "route": "/api/plant-module/reconcile-equipment-usage-ledger",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6413,
+    "method": "POST",
+    "route": "/api/plant-module/reassign-ledger/preview",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6436,
+    "method": "POST",
+    "route": "/api/plant-module/reassign-ledger/execute",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6487,
+    "method": "POST",
+    "route": "/api/plant-module/stock-transfer",
+    "guards": [
+      "assertCreate(req, res, \"plant_stock\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6529,
+    "method": "POST",
+    "route": "/api/plant-module/recompute-balance-after",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6545,
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/review-list",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6565,
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/bulk-relabel",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6610,
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/recent-merges",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6626,
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/undo-merge",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6653,
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/learned-aliases",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6667,
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/custom-aliases",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6685,
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/add-custom-alias",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6731,
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/delete-custom-alias",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6778,
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/bulk-revert-alias-activity",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6825,
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/dismissed-pairs",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6842,
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/dismiss-pairs",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6890,
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/restore-dismissed-pair",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6929,
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/bulk-restore-dismissed-pairs",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6982,
+    "method": "GET",
+    "route": "/api/plant-module/stock-ledger",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 6998,
+    "method": "GET",
+    "route": "/api/plant-module/stock-ledger-all",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7013,
+    "method": "GET",
+    "route": "/api/plant-module/bitumen-tank-balances",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7024,
+    "method": "GET",
+    "route": "/api/plant-module/party-statement",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7039,
+    "method": "GET",
+    "route": "/api/plant-module/hlc-borrow-reconciliation",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7055,
+    "method": "GET",
+    "route": "/api/plant-module/stock-balance-as-of",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7076,
+    "method": "GET",
+    "route": "/api/plant-module/bitumen-dip-readings",
+    "guards": [
+      "assertView(req, res, \"plant_bitumen\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7093,
+    "method": "POST",
+    "route": "/api/plant-module/bitumen-dip-readings",
+    "guards": [
+      "assertCreate(req, res, \"plant_bitumen\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7108,
+    "method": "PATCH",
+    "route": "/api/plant-module/bitumen-dip-readings/:id",
+    "guards": [
+      "assertEdit(req, res, \"plant_bitumen\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7124,
+    "method": "DELETE",
+    "route": "/api/plant-module/bitumen-dip-readings/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7141,
+    "method": "GET",
+    "route": "/api/plant-module/ldo-flow-readings",
+    "guards": [
+      "assertView(req, res, \"plant_ldo\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7165,
+    "method": "POST",
+    "route": "/api/plant-module/ldo-flow-readings",
+    "guards": [
+      "assertCreate(req, res, \"plant_ldo\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7184,
+    "method": "PATCH",
+    "route": "/api/plant-module/ldo-flow-readings/:id",
+    "guards": [
+      "assertEdit(req, res, \"plant_ldo\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7198,
+    "method": "DELETE",
+    "route": "/api/plant-module/ldo-flow-readings/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7212,
+    "method": "GET",
+    "route": "/api/plant-module/ldo-orphaned-rows",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7224,
+    "method": "DELETE",
+    "route": "/api/plant-module/ldo-orphaned-rows",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7269,
+    "method": "GET",
+    "route": "/api/plant-module/ldo-backfill",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7285,
+    "method": "POST",
+    "route": "/api/plant-module/ldo-backfill",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7320,
+    "method": "GET",
+    "route": "/api/plant-module/ldo-dip-readings",
+    "guards": [
+      "assertView(req, res, \"plant_ldo\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7337,
+    "method": "POST",
+    "route": "/api/plant-module/ldo-dip-readings",
+    "guards": [
+      "assertCreate(req, res, \"plant_ldo\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7352,
+    "method": "PATCH",
+    "route": "/api/plant-module/ldo-dip-readings/:id",
+    "guards": [
+      "assertEdit(req, res, \"plant_ldo\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7365,
+    "method": "DELETE",
+    "route": "/api/plant-module/ldo-dip-readings/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7404,
+    "method": "POST",
+    "route": "/api/admin/backfill-dispatch-notes",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7420,
+    "method": "GET",
+    "route": "/api/plant-module/ldo-dip-backfill",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7436,
+    "method": "POST",
+    "route": "/api/plant-module/ldo-dip-backfill",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7475,
+    "method": "GET",
+    "route": "/api/plant-module/ldo-reports/contractor",
+    "guards": [
+      "assertView(req, res, \"plant_stock\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7488,
+    "method": "GET",
+    "route": "/api/plant-module/ldo-reconciliation",
+    "guards": [
+      "assertView(req, res, \"plant_stock\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7523,
+    "method": "GET",
+    "route": "/api/plant-module/plant-settings",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7532,
+    "method": "GET",
+    "route": "/api/plant-module/plant-settings/:plantName",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7552,
+    "method": "PUT",
+    "route": "/api/plant-module/plant-settings/:plantName",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7575,
+    "method": "DELETE",
+    "route": "/api/plant-module/plant-settings/:plantName",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7587,
+    "method": "POST",
+    "route": "/api/plant-module/plant-settings/:plantName/rename",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7604,
+    "method": "GET",
+    "route": "/api/plant-module/shift-logs/plants",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7615,
+    "method": "GET",
+    "route": "/api/plant-module/shift-logs",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7627,
+    "method": "GET",
+    "route": "/api/plant-module/shift-logs/by-date/:date",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7638,
+    "method": "GET",
+    "route": "/api/plant-module/shift-logs/:id",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7648,
+    "method": "POST",
+    "route": "/api/plant-module/shift-logs",
+    "guards": [
+      "assertEdit(req, res, \"plant_shift_logs\")) return",
+      "assertCreate(req, res, \"plant_shift_logs\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7700,
+    "method": "POST",
+    "route": "/api/plant-module/shift-logs/:id/finalize",
+    "guards": [
+      "assertEdit(req, res, \"plant_shift_logs\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7713,
+    "method": "DELETE",
+    "route": "/api/plant-module/shift-logs/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7727,
+    "method": "PATCH",
+    "route": "/api/plant-module/shift-logs/:id/dryer-source",
+    "guards": [
+      "assertEdit(req, res, \"plant_shift_logs\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7749,
+    "method": "GET",
+    "route": "/api/plant-module/daily-reports/:date",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 8252,
+    "method": "GET",
+    "route": "/api/plant-module/daily-reports-index",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 8279,
+    "method": "GET",
+    "route": "/api/plant-module/daily-reports-export",
+    "guards": [
+      "assertReportExport(req, res, \"plant_daily_reports\")) return"
+    ],
+    "output": true,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 8442,
+    "method": "POST",
+    "route": "/api/plant-module/daily-reports/bulk-zip",
+    "guards": [
+      "assertReportExport(req, res, \"plant_daily_reports\")) return"
+    ],
+    "output": true,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 8585,
+    "method": "GET",
+    "route": "/api/plant-module/daily-reports/:date/pdf",
+    "guards": [
+      "assertReportExport(req, res, \"plant_daily_reports\")) return",
+      "assertReportPlant(req, res, plantName)) return"
+    ],
+    "output": true,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 8610,
+    "method": "GET",
+    "route": "/api/plant-module/heating-sessions",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 8642,
+    "method": "GET",
+    "route": "/api/plant-module/heating-sessions/reconciliation",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 8660,
+    "method": "GET",
+    "route": "/api/plant-module/heating-sessions/dryer-source-mismatches",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 8677,
+    "method": "PATCH",
+    "route": "/api/plant-module/heating-sessions/align-dryer-source",
+    "guards": [
+      "assertEdit(req, res, \"plant_heating\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 8696,
+    "method": "PATCH",
+    "route": "/api/plant-module/heating-sessions/:id",
+    "guards": [
+      "assertEdit(req, res, \"plant_heating\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 8716,
+    "method": "GET",
+    "route": "/api/plant-module/heating-sessions/:id",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 8726,
+    "method": "POST",
+    "route": "/api/plant-module/heating-sessions",
+    "guards": [
+      "assertCreate(req, res, \"plant_heating\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 8754,
+    "method": "PUT",
+    "route": "/api/plant-module/heating-sessions/:id",
+    "guards": [
+      "assertEdit(req, res, \"plant_heating\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 8794,
+    "method": "PATCH",
+    "route": "/api/plant-module/heating-sessions/:id/resync-flow",
+    "guards": [
+      "assertEdit(req, res, \"plant_heating\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 8812,
+    "method": "POST",
+    "route": "/api/plant-module/heating-sessions/:id/finalize",
+    "guards": [
+      "assertEdit(req, res, \"plant_heating\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 8824,
+    "method": "DELETE",
+    "route": "/api/plant-module/heating-sessions/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 8856,
+    "method": "GET",
+    "route": "/api/plant-module/heating-trends",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 8867,
+    "method": "GET",
+    "route": "/api/plant-module/heating-trends/excel",
+    "guards": [
+      "assertReportExport(req, res, \"plant_heating\", \"plant_heating_trends\")) return",
+      "assertReportPlant(req, res, plantName)) return"
+    ],
+    "output": true,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 8952,
+    "method": "GET",
+    "route": "/api/plant-module/ldo-meter/last",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 8971,
+    "method": "GET",
+    "route": "/api/internal-requisitions",
+    "guards": [
+      "assertAuthed(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9001,
+    "method": "GET",
+    "route": "/api/purchase-indents",
+    "guards": [
+      "assertPiRaiserRead(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9024,
+    "method": "GET",
+    "route": "/api/purchase-indents/for-material",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9042,
+    "method": "GET",
+    "route": "/api/purchase-indents/summary",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9062,
+    "method": "GET",
+    "route": "/api/purchase-indents/report",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9080,
+    "method": "GET",
+    "route": "/api/purchase-indents/route-corrections",
+    "guards": [
+      "assertPiRaiserRead(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9092,
+    "method": "POST",
+    "route": "/api/purchase-indents/route-corrections/apply",
+    "guards": [
+      "assertPiRaiserRead(req, res)) return",
+      "assertEditEither(req, res, \"site_procurement\", \"purchase_indents_raise\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9144,
+    "method": "PATCH",
+    "route": "/api/purchase-indents/:id/items/:itemId/destination",
+    "guards": [
+      "assertEditEither(req, res, \"site_procurement\", \"purchase_indents_raise\")) return",
+      "assertPiDeliveryScope(req, res, indentId, [req.body])) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9156,
+    "method": "GET",
+    "route": "/api/purchase-indents/:id",
+    "guards": [
+      "assertPiRaiserRead(req, res)) return",
+      "assertPiDeliveryScope(req, res, id)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9235,
+    "method": "GET",
+    "route": "/api/purchase-orders/pending",
+    "guards": [
+      "assertApprove(req, res, \"purchase_indents_approve\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9252,
+    "method": "GET",
+    "route": "/api/purchase-indents/:id/items/:itemId/purchase-order",
+    "guards": [
+      "assertPiRaiserRead(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9277,
+    "method": "POST",
+    "route": "/api/purchase-indents/:id/items/:itemId/purchase-order",
+    "guards": [
+      "assertCreateEither(req, res, \"site_procurement\", \"purchase_indents_raise\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9323,
+    "method": "PATCH",
+    "route": "/api/purchase-indents/:id/items/:itemId/purchase-order",
+    "guards": [
+      "assertCreateEither(req, res, \"site_procurement\", \"purchase_indents_raise\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9347,
+    "method": "POST",
+    "route": "/api/purchase-indents/:id/items/:itemId/purchase-order/submit",
+    "guards": [
+      "assertCreateEither(req, res, \"site_procurement\", \"purchase_indents_raise\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9359,
+    "method": "POST",
+    "route": "/api/purchase-indents/:id/items/:itemId/purchase-order/decision",
+    "guards": [
+      "assertApprove(req, res, \"purchase_indents_approve\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9385,
+    "method": "GET",
+    "route": "/api/purchase-indents/:id/items/:itemId/purchase-order.pdf",
+    "guards": [
+      "assertReportExport(req, res, \"purchase_indents_view\", \"purchase_indents_raise\")) return",
+      "assertPiRaiserRead(req, res)) return"
+    ],
+    "output": true,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9405,
+    "method": "POST",
+    "route": "/api/purchase-indents",
+    "guards": [
+      "assertCreateEither(req, res, \"site_procurement\", \"purchase_indents_raise\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9421,
+    "method": "PATCH",
+    "route": "/api/purchase-indents/:id/approve",
+    "guards": [
+      "assertApprove(req, res, \"purchase_indents_approve\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9467,
+    "method": "PATCH",
+    "route": "/api/purchase-indents/:id/reject",
+    "guards": [
+      "assertApprove(req, res, \"purchase_indents_approve\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9492,
+    "method": "PATCH",
+    "route": "/api/purchase-indents/:id/stores-verify",
+    "guards": [
+      "assertCreate(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9522,
+    "method": "PATCH",
+    "route": "/api/purchase-indents/:id/stores-bypass",
+    "guards": [
+      "assertCreate(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9544,
+    "method": "POST",
+    "route": "/api/purchase-indents/:id/place-order",
+    "guards": [
+      "assertCreateEither(req, res, \"site_procurement\", \"purchase_indents_raise\")) return",
+      "assertPiDeliveryScope(req, res, id, items || [])) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9560,
+    "method": "POST",
+    "route": "/api/purchase-indents/:id/record-material-receipt",
+    "guards": [
+      "assertCreateEither(req, res, \"site_procurement\", \"purchase_indents_raise\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9578,
+    "method": "GET",
+    "route": "/api/purchase-indents/pending-for-material/:materialId",
+    "guards": [
+      "assertAuthed(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9590,
+    "method": "PATCH",
+    "route": "/api/purchase-indents/items/:itemId/link-receipt",
+    "guards": [
+      "assertAuthed(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9619,
+    "method": "GET",
+    "route": "/api/irn/stock-lookup",
+    "guards": [
+      "assertAuthed(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9644,
+    "method": "GET",
+    "route": "/api/irn/procurement-queue",
+    "guards": [
+      "assertAuthed(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9697,
+    "method": "POST",
+    "route": "/api/irn/:id/raise-pi",
+    "guards": [
+      "assertCreateEither(req, res, \"site_procurement\", \"purchase_indents_raise\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9755,
+    "method": "GET",
+    "route": "/api/irn",
+    "guards": [
+      "assertAuthed(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9767,
+    "method": "GET",
+    "route": "/api/irn/:id",
+    "guards": [
+      "assertAuthed(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9781,
+    "method": "POST",
+    "route": "/api/irn",
+    "guards": [
+      "assertCreate(req, res, \"irn_raise\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9795,
+    "method": "PATCH",
+    "route": "/api/irn/:id/stores-verify",
+    "guards": [
+      "assertCreate(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9834,
+    "method": "PATCH",
+    "route": "/api/irn/:id/approve",
+    "guards": [
+      "assertApprove(req, res, \"irn_approve\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9865,
+    "method": "PATCH",
+    "route": "/api/irn/:id/close",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9895,
+    "method": "PATCH",
+    "route": "/api/irn/:id/reopen",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9919,
+    "method": "GET",
+    "route": "/api/irn/:id/audit-logs",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9932,
+    "method": "DELETE",
+    "route": "/api/irn/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9946,
+    "method": "PATCH",
+    "route": "/api/irn/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9967,
+    "method": "POST",
+    "route": "/api/irn/:id/record-issue",
+    "guards": [
+      "assertCreate(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9994,
+    "method": "GET",
+    "route": "/api/irn/:id/issue-vouchers",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10006,
+    "method": "GET",
+    "route": "/api/irn/:id/issue-voucher",
+    "guards": [
+      "assertReportExport(req, res, \"irn_view\", \"irn_raise\")) return"
+    ],
+    "output": true,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10251,
+    "method": "PATCH",
+    "route": "/api/purchase-indent-items/:id/procure",
+    "guards": [
+      "assertEditEither(req, res, \"site_procurement\", \"purchase_indents_raise\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10281,
+    "method": "POST",
+    "route": "/api/purchase-indents/:id/notify",
+    "guards": [
+      "assertEditEither(req, res, \"site_procurement\", \"purchase_indents_raise\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10319,
+    "method": "GET",
+    "route": "/api/purchase-indent-items/recent-items",
+    "guards": [
+      "assertPiRaiserRead(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10331,
+    "method": "PATCH",
+    "route": "/api/purchase-indent-items/:id/purchase-update",
+    "guards": [
+      "assertEditEither(req, res, \"site_procurement\", \"purchase_indents_raise\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10366,
+    "method": "PATCH",
+    "route": "/api/purchase-indent-items/:id/cancel",
+    "guards": [
+      "assertApprove(req, res, \"purchase_indents_approve\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10393,
+    "method": "PATCH",
+    "route": "/api/purchase-indent-items/:id/reviewer-note",
+    "guards": [
+      "assertEditEither(req, res, \"site_procurement\", \"purchase_indents_raise\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10406,
+    "method": "PATCH",
+    "route": "/api/purchase-indents/:id/force-close",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10432,
+    "method": "PUT",
+    "route": "/api/purchase-indents/:id",
+    "guards": [
+      "assertEditEither(req, res, \"site_procurement\", \"purchase_indents_raise\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10457,
+    "method": "DELETE",
+    "route": "/api/purchase-indents/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10471,
+    "method": "GET",
+    "route": "/api/purchase-indent-items/:id/history",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10486,
+    "method": "GET",
+    "route": "/api/purchase-indents/:id/transactions",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10497,
+    "method": "POST",
+    "route": "/api/purchase-indents/:id/purchaser-action",
+    "guards": [
+      "assertEditEither(req, res, \"site_procurement\", \"purchase_indents_raise\")) return",
+      "assertPiDeliveryScope(req, res, indentId, items)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10548,
+    "method": "POST",
+    "route": "/api/purchase-indent-items/:id/record-delivery",
+    "guards": [
+      "assertEditEither(req, res, \"site_procurement\", \"purchase_indents_raise\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10585,
+    "method": "POST",
+    "route": "/api/purchase-indents/:id/service-completion",
+    "guards": [
+      "assertApprove(req, res, \"purchase_indents_approve\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10638,
+    "method": "GET",
+    "route": "/api/service-completions",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10649,
+    "method": "POST",
+    "route": "/api/purchase-indent-items/:itemId/handover",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10665,
+    "method": "POST",
+    "route": "/api/purchase-indents/:id/bulk-receipt",
+    "guards": [
+      "assertEditEither(req, res, \"site_procurement\", \"purchase_indents_raise\")) return",
+      "assertPiDeliveryScope(req, res, indentId, [{ receivingLocation: location, receivingSiteId: siteId }])) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10689,
+    "method": "GET",
+    "route": "/api/pending-plant-receipts/count",
+    "guards": [
+      "assertView(req, res, \"plant_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10700,
+    "method": "GET",
+    "route": "/api/pending-plant-receipts",
+    "guards": [
+      "assertView(req, res, \"plant_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10716,
+    "method": "PATCH",
+    "route": "/api/pending-plant-receipts/:id",
+    "guards": [
+      "assertView(req, res, \"plant_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10755,
+    "method": "GET",
+    "route": "/api/diesel-requirements",
+    "guards": [
+      "assertDieselOrStoresView(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10771,
+    "method": "GET",
+    "route": "/api/diesel-requirements/summary",
+    "guards": [
+      "assertDieselOrStoresView(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10788,
+    "method": "GET",
+    "route": "/api/diesel-requirements/daily-report",
+    "guards": [
+      "assertDieselOrStoresView(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10809,
+    "method": "GET",
+    "route": "/api/diesel-requirements/comparison",
+    "guards": [
+      "assertDieselOrStoresView(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10840,
+    "method": "GET",
+    "route": "/api/diesel-requirements/recent-items",
+    "guards": [
+      "assertDieselOrStoresView(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10855,
+    "method": "GET",
+    "route": "/api/diesel-requirements/receipt-status",
+    "guards": [
+      "assertDieselOrStoresView(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10901,
+    "method": "PATCH",
+    "route": "/api/diesel-requirements/equipment/:id/consumption-norm",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10939,
+    "method": "GET",
+    "route": "/api/diesel-requirements/:id",
+    "guards": [
+      "assertDieselOrStoresView(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10954,
+    "method": "POST",
+    "route": "/api/diesel-requirements",
+    "guards": [
+      "assertCreateEither(req, res, \"site_diesel\", \"diesel_req_raise\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 10970,
+    "method": "PATCH",
+    "route": "/api/diesel-requirements/:id/approve",
+    "guards": [
+      "assertApprove(req, res, \"diesel_req_approve\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11004,
+    "method": "PATCH",
+    "route": "/api/diesel-requirements/:id/reject",
+    "guards": [
+      "assertApprove(req, res, \"diesel_req_approve\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11028,
+    "method": "PATCH",
+    "route": "/api/diesel-requirements/:id/purchase-update",
+    "guards": [
+      "assertEditEither(req, res, \"site_diesel\", \"diesel_req_raise\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11073,
+    "method": "PATCH",
+    "route": "/api/diesel-requirements/:id/payment-status",
+    "guards": [
+      "assertEditEither(req, res, \"site_diesel\", \"diesel_req_raise\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11147,
+    "method": "PUT",
+    "route": "/api/diesel-requirements/:id",
+    "guards": [
+      "assertAdmin(req, res)) return",
+      "assertEditEither(req, res, \"site_diesel\", \"diesel_req_raise\")) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11175,
+    "method": "DELETE",
+    "route": "/api/diesel-requirements/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11253,
+    "method": "GET",
+    "route": "/api/vendor-bills",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11276,
+    "method": "GET",
+    "route": "/api/vendor-bills/summary",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11315,
+    "method": "GET",
+    "route": "/api/vendor-bills/export",
+    "guards": [
+      "assertReportExport(req, res, \"vendor_bills\", \"vendor_bills_view\")) return"
+    ],
+    "output": true,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11596,
+    "method": "GET",
+    "route": "/api/vendor-aliases",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11606,
+    "method": "POST",
+    "route": "/api/vendor-aliases",
+    "guards": [
+      "assertCreateEither(req, res, \"vendor_masters_manage\", \"admin_settings\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11627,
+    "method": "DELETE",
+    "route": "/api/vendor-aliases/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11642,
+    "method": "GET",
+    "route": "/api/vendor-bills/vendor-names",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11655,
+    "method": "GET",
+    "route": "/api/vendor-bills/equipment-hire-discovery",
+    "guards": [
+      "assertViewEither(req, res, \"vendor_bills\", \"vendor_bills_raise\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11672,
+    "method": "GET",
+    "route": "/api/vendor-bills/discover-vendors",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11689,
+    "method": "GET",
+    "route": "/api/vendor-bills/payables-preview",
+    "guards": [
+      "assertReportExport(req, res, \"vendor_bills\", \"vendor_bills_view\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11723,
+    "method": "GET",
+    "route": "/api/vendor-bills/auto-items",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11751,
+    "method": "GET",
+    "route": "/api/vendor-bills/hire-activities",
+    "guards": [
+      "assertView(req, res, \"vendor_bills\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11765,
+    "method": "GET",
+    "route": "/api/vendor-bills/previous-rates",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11799,
+    "method": "GET",
+    "route": "/api/vendor-bills/company-accounts",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11822,
+    "method": "GET",
+    "route": "/api/vendor-bills/:id",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11844,
+    "method": "POST",
+    "route": "/api/vendor-bills",
+    "guards": [
+      "assertCreateEither(req, res, \"vendor_bills_raise\", \"vendor_bills\")) return",
+      "assertVendorBillAutoSources(req, res, input, selectedSite.siteName)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11888,
+    "method": "PUT",
+    "route": "/api/vendor-bills/:id",
+    "guards": [
+      "assertVendorBillAutoSources(req, res, input, selectedSite.siteName, existing.items)) return",
+      "assertAdmin(req, res)) return",
+      "assertEditEither(req, res, \"vendor_bills\", \"vendor_bills_raise\")) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11959,
+    "method": "PATCH",
+    "route": "/api/vendor-bills/:id/payment-details",
+    "guards": [
+      "assertApprove(req, res, \"vendor_bills_approve\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 11984,
+    "method": "PATCH",
+    "route": "/api/vendor-bills/:id/status",
+    "guards": [
+      "assertApprove(req, res, \"vendor_bills_approve\")) return",
+      "assertApprove(req, res, \"vendor_bills_verify\")) return",
+      "assertApprove(req, res, \"vendor_bills_approve\")) return",
+      "assertEdit(req, res, \"vendor_bills\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12039,
+    "method": "GET",
+    "route": "/api/vendor-bills/:id/pdf",
+    "guards": [
+      "assertReportExport(req, res, \"vendor_bills\", \"vendor_bills_view\")) return"
+    ],
+    "output": true,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12407,
+    "method": "DELETE",
+    "route": "/api/vendor-bills/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12430,
+    "method": "GET",
+    "route": "/api/equipment-master/canonical-types",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12451,
+    "method": "GET",
+    "route": "/api/vendor-rate-cards",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12462,
+    "method": "GET",
+    "route": "/api/vendor-rate-cards/discover",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12476,
+    "method": "POST",
+    "route": "/api/vendor-rate-cards",
+    "guards": [
+      "assertCreateEither(req, res, \"vendor_masters_manage\", \"admin_settings\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12488,
+    "method": "PATCH",
+    "route": "/api/vendor-rate-cards/:id/transport-setup",
+    "guards": [
+      "assertCreateEither(req, res, \"vendor_masters_manage\", \"admin_settings\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12512,
+    "method": "POST",
+    "route": "/api/vendor-rate-cards/bulk-upsert",
+    "guards": [
+      "assertCreateEither(req, res, \"vendor_masters_manage\", \"admin_settings\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12533,
+    "method": "DELETE",
+    "route": "/api/vendor-rate-cards/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12546,
+    "method": "POST",
+    "route": "/api/vendor-bills/check-duplicates",
+    "guards": [
+      "assertCreateEither(req, res, \"vendor_bills\", \"vendor_bills_raise\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12578,
+    "method": "GET",
+    "route": "/api/admin/exportable-tables",
+    "guards": [],
+    "output": true,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12582,
+    "method": "POST",
+    "route": "/api/admin/export-data",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": true,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12606,
+    "method": "POST",
+    "route": "/api/admin/reset-sequences",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12617,
+    "method": "POST",
+    "route": "/api/admin/import-data",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12634,
+    "method": "POST",
+    "route": "/api/admin/fix-ledger-gap-427",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12645,
+    "method": "POST",
+    "route": "/api/admin/fix-orphan-stock-balances",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12658,
+    "method": "GET",
+    "route": "/api/admin/site-backfill/unassigned",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12692,
+    "method": "POST",
+    "route": "/api/admin/site-backfill/assign",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12716,
+    "method": "GET",
+    "route": "/api/users/directory",
+    "guards": [
+      "assertAuthed(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12728,
+    "method": "GET",
+    "route": "/api/mix-estimates",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12738,
+    "method": "GET",
+    "route": "/api/mix-estimates/:id",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12750,
+    "method": "POST",
+    "route": "/api/mix-estimates",
+    "guards": [
+      "assertMixCalcWrite(req, res, \"create\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12764,
+    "method": "PUT",
+    "route": "/api/mix-estimates/:id",
+    "guards": [
+      "assertMixCalcWrite(req, res, \"edit\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12781,
+    "method": "DELETE",
+    "route": "/api/mix-estimates/:id",
+    "guards": [
+      "assertMixCalcWrite(req, res, \"delete\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12794,
+    "method": "GET",
+    "route": "/api/price-scenarios",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12806,
+    "method": "POST",
+    "route": "/api/price-scenarios",
+    "guards": [
+      "assertMixCalcWrite(req, res, \"create\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12821,
+    "method": "GET",
+    "route": "/api/price-scenarios/:id",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12833,
+    "method": "PATCH",
+    "route": "/api/price-scenarios/:id",
+    "guards": [
+      "assertMixCalcWrite(req, res, \"edit\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12847,
+    "method": "DELETE",
+    "route": "/api/price-scenarios/:id",
+    "guards": [
+      "assertMixCalcWrite(req, res, \"delete\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12860,
+    "method": "PATCH",
+    "route": "/api/mix-estimates/rename-contractor",
+    "guards": [
+      "assertMixCalcWrite(req, res, \"edit\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12873,
+    "method": "PATCH",
+    "route": "/api/mix-estimates/rename-project",
+    "guards": [
+      "assertMixCalcWrite(req, res, \"edit\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12898,
+    "method": "GET",
+    "route": "/api/concrete-estimates",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12908,
+    "method": "GET",
+    "route": "/api/concrete-estimates/:id",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12920,
+    "method": "POST",
+    "route": "/api/concrete-estimates",
+    "guards": [
+      "assertCreateEither(req, res, \"concrete_estimates_manage\", \"admin_settings\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12934,
+    "method": "PATCH",
+    "route": "/api/concrete-estimates/:id",
+    "guards": [
+      "assertEditEither(req, res, \"concrete_estimates_manage\", \"admin_settings\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12955,
+    "method": "DELETE",
+    "route": "/api/concrete-estimates/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12972,
+    "method": "GET",
+    "route": "/api/concrete/v2/estimates",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12982,
+    "method": "GET",
+    "route": "/api/concrete/v2/estimates/:id",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 12994,
+    "method": "POST",
+    "route": "/api/concrete/v2/estimates",
+    "guards": [
+      "assertCreateEither(req, res, \"concrete_estimates_manage\", \"admin_settings\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13008,
+    "method": "PATCH",
+    "route": "/api/concrete/v2/estimates/:id",
+    "guards": [
+      "assertEditEither(req, res, \"concrete_estimates_manage\", \"admin_settings\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13029,
+    "method": "DELETE",
+    "route": "/api/concrete/v2/estimates/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13045,
+    "method": "GET",
+    "route": "/api/stores/items",
+    "guards": [
+      "assertView(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13057,
+    "method": "GET",
+    "route": "/api/stores/stock-balance",
+    "guards": [
+      "assertView(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13068,
+    "method": "POST",
+    "route": "/api/stores/items",
+    "guards": [
+      "assertCreate(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13079,
+    "method": "PATCH",
+    "route": "/api/stores/items/:id",
+    "guards": [
+      "assertEdit(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13091,
+    "method": "POST",
+    "route": "/api/stores/items/:id/toggle",
+    "guards": [
+      "assertEdit(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13104,
+    "method": "GET",
+    "route": "/api/stores/grns/pending-receipt-count",
+    "guards": [
+      "assertView(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13124,
+    "method": "GET",
+    "route": "/api/stores/grns",
+    "guards": [
+      "assertView(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13152,
+    "method": "GET",
+    "route": "/api/stores/grns/supplier-history",
+    "guards": [
+      "assertView(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13171,
+    "method": "GET",
+    "route": "/api/stores/grns/recent-items",
+    "guards": [
+      "assertView(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13183,
+    "method": "GET",
+    "route": "/api/stores/grns/recent-suppliers",
+    "guards": [
+      "assertView(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13198,
+    "method": "GET",
+    "route": "/api/stores/grns/stale",
+    "guards": [
+      "assertView(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13214,
+    "method": "GET",
+    "route": "/api/stores/grns/:id",
+    "guards": [
+      "assertView(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13233,
+    "method": "POST",
+    "route": "/api/stores/grns",
+    "guards": [
+      "assertCreate(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13277,
+    "method": "PATCH",
+    "route": "/api/stores/grns/:id",
+    "guards": [
+      "assertEdit(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13361,
+    "method": "PUT",
+    "route": "/api/stores/grns/:id",
+    "guards": [
+      "assertEdit(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13382,
+    "method": "POST",
+    "route": "/api/stores/grns/:id/cancel",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13410,
+    "method": "GET",
+    "route": "/api/stores/issues/recent-items",
+    "guards": [
+      "assertView(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13422,
+    "method": "GET",
+    "route": "/api/stores/issues",
+    "guards": [
+      "assertView(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13445,
+    "method": "GET",
+    "route": "/api/stores/issues/:id",
+    "guards": [
+      "assertView(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13464,
+    "method": "POST",
+    "route": "/api/stores/issues",
+    "guards": [
+      "assertCreate(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13507,
+    "method": "POST",
+    "route": "/api/stores/issues/:id/cancel",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13530,
+    "method": "GET",
+    "route": "/api/stores/stock-summary",
+    "guards": [
+      "assertView(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13542,
+    "method": "GET",
+    "route": "/api/stores/ledger/:itemId",
+    "guards": [
+      "assertView(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13557,
+    "method": "GET",
+    "route": "/api/stores/next-doc-number",
+    "guards": [
+      "assertView(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13572,
+    "method": "GET",
+    "route": "/api/stores/indent-grn-counts",
+    "guards": [
+      "assertView(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13583,
+    "method": "GET",
+    "route": "/api/stores/indent-fulfilment-status",
+    "guards": [
+      "assertView(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13594,
+    "method": "GET",
+    "route": "/api/stores/indent-received-per-item",
+    "guards": [
+      "assertView(req, res, \"stores_inventory\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13733,
+    "method": "GET",
+    "route": "/api/maintenance/logs",
+    "guards": [
+      "assertView(req, res, \"plant_equipment\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13765,
+    "method": "GET",
+    "route": "/api/maintenance/logs/:id",
+    "guards": [
+      "assertView(req, res, \"plant_equipment\")) return",
+      "assertMaintenanceSourceAccess(req, res, log))) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13778,
+    "method": "POST",
+    "route": "/api/maintenance/logs",
+    "guards": [
+      "assertCreate(req, res, \"plant_equipment\")) return",
+      "assertMaintenanceSourceAccess(req, res, normalized.data))) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13793,
+    "method": "PATCH",
+    "route": "/api/maintenance/logs/:id",
+    "guards": [
+      "assertEdit(req, res, \"plant_equipment\")) return",
+      "assertMaintenanceSourceAccess(req, res, existing))) return",
+      "assertMaintenanceSourceAccess(req, res, normalized.data))) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13826,
+    "method": "DELETE",
+    "route": "/api/maintenance/logs/:id",
+    "guards": [
+      "assertAdmin(req, res)) return",
+      "assertMaintenanceSourceAccess(req, res, before))) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13851,
+    "method": "POST",
+    "route": "/api/maintenance/logs/:id/cancel",
+    "guards": [
+      "assertDeleteOrCancel(req, res, \"plant_equipment\")) return",
+      "assertMaintenanceSourceAccess(req, res, before))) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13883,
+    "method": "GET",
+    "route": "/api/audit-logs",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13899,
+    "method": "POST",
+    "route": "/api/maintenance/logs/:id/parts",
+    "guards": [
+      "assertCreate(req, res, \"plant_equipment\")) return",
+      "assertMaintenanceSourceAccess(req, res, parent))) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13917,
+    "method": "DELETE",
+    "route": "/api/maintenance/parts/:partId",
+    "guards": [
+      "assertDelete(req, res, \"plant_equipment\")) return",
+      "assertMaintenanceRecordAccess(req, res, part.maintenanceLogId, true))) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13935,
+    "method": "GET",
+    "route": "/api/maintenance/health-summary",
+    "guards": [
+      "assertView(req, res, \"plant_equipment\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13946,
+    "method": "GET",
+    "route": "/api/maintenance/open-count",
+    "guards": [
+      "assertView(req, res, \"plant_equipment\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13969,
+    "method": "GET",
+    "route": "/api/rmc/mix-designs",
+    "guards": [
+      "assertView(req, res, \"plant_production\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13978,
+    "method": "GET",
+    "route": "/api/rmc/mix-designs/:id",
+    "guards": [
+      "assertView(req, res, \"plant_production\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13987,
+    "method": "POST",
+    "route": "/api/rmc/mix-designs",
+    "guards": [
+      "assertCreate(req, res, \"plant_production\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 13999,
+    "method": "PATCH",
+    "route": "/api/rmc/mix-designs/:id",
+    "guards": [
+      "assertEdit(req, res, \"plant_production\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14012,
+    "method": "DELETE",
+    "route": "/api/rmc/mix-designs/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14022,
+    "method": "GET",
+    "route": "/api/rmc/today-summary",
+    "guards": [
+      "assertView(req, res, \"plant_production\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14032,
+    "method": "GET",
+    "route": "/api/rmc/summary-range",
+    "guards": [
+      "assertView(req, res, \"plant_production\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14044,
+    "method": "GET",
+    "route": "/api/rmc/batch-records",
+    "guards": [
+      "assertView(req, res, \"plant_production\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14059,
+    "method": "GET",
+    "route": "/api/rmc/batch-records/export",
+    "guards": [
+      "assertExport(req, res, \"rmc_batch_records\")) return",
+      "assertView(req, res, \"plant_production\")) return"
+    ],
+    "output": true,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14104,
+    "method": "GET",
+    "route": "/api/rmc/batch-records/:id",
+    "guards": [
+      "assertView(req, res, \"plant_production\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14113,
+    "method": "POST",
+    "route": "/api/rmc/batch-records",
+    "guards": [
+      "assertCreate(req, res, \"plant_production\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14134,
+    "method": "PATCH",
+    "route": "/api/rmc/batch-records/:id",
+    "guards": [
+      "assertEdit(req, res, \"plant_production\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14149,
+    "method": "POST",
+    "route": "/api/rmc/batch-records/reprocess-missed-deductions",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14160,
+    "method": "DELETE",
+    "route": "/api/rmc/batch-records/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14171,
+    "method": "GET",
+    "route": "/api/rmc/cube-tests/export",
+    "guards": [
+      "assertExport(req, res, \"rmc_cube_tests\")) return",
+      "assertView(req, res, \"plant_production\")) return"
+    ],
+    "output": true,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14221,
+    "method": "GET",
+    "route": "/api/rmc/cube-tests/stats",
+    "guards": [
+      "assertView(req, res, \"plant_production\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14230,
+    "method": "GET",
+    "route": "/api/rmc/cube-tests",
+    "guards": [
+      "assertView(req, res, \"plant_production\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14244,
+    "method": "POST",
+    "route": "/api/rmc/cube-tests",
+    "guards": [
+      "assertCreate(req, res, \"plant_production\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14266,
+    "method": "PATCH",
+    "route": "/api/rmc/cube-tests/:id",
+    "guards": [
+      "assertEdit(req, res, \"plant_production\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14279,
+    "method": "DELETE",
+    "route": "/api/rmc/cube-tests/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14289,
+    "method": "GET",
+    "route": "/api/rmc/raw-materials",
+    "guards": [
+      "assertView(req, res, \"plant_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14303,
+    "method": "POST",
+    "route": "/api/rmc/raw-materials",
+    "guards": [
+      "assertCreate(req, res, \"plant_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14315,
+    "method": "PATCH",
+    "route": "/api/rmc/raw-materials/:id",
+    "guards": [
+      "assertEdit(req, res, \"plant_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14328,
+    "method": "DELETE",
+    "route": "/api/rmc/raw-materials/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14338,
+    "method": "GET",
+    "route": "/api/rmc/plants",
+    "guards": [
+      "assertView(req, res, \"plant_daily_reports\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14347,
+    "method": "GET",
+    "route": "/api/rmc/stock-summary",
+    "guards": [
+      "assertView(req, res, \"plant_materials\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14357,
+    "method": "GET",
+    "route": "/api/rmc/daily-report",
+    "guards": [
+      "assertView(req, res, \"plant_daily_reports\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14369,
+    "method": "GET",
+    "route": "/api/rmc/daily-report/pdf",
+    "guards": [
+      "assertExport(req, res, \"rmc_daily_report\")) return",
+      "assertView(req, res, \"plant_daily_reports\")) return"
+    ],
+    "output": true,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14625,
+    "method": "GET",
+    "route": "/api/rmc/daily-report/export",
+    "guards": [
+      "assertExport(req, res, \"rmc_daily_report\")) return",
+      "assertView(req, res, \"plant_daily_reports\")) return"
+    ],
+    "output": true,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14745,
+    "method": "GET",
+    "route": "/api/reports/plant-project-dispatch-summary",
+    "guards": [
+      "assertView(req, res, \"plant_production\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14800,
+    "method": "GET",
+    "route": "/api/boq/projects",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14811,
+    "method": "GET",
+    "route": "/api/boq/projects/:id",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14823,
+    "method": "POST",
+    "route": "/api/boq/projects",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14835,
+    "method": "PATCH",
+    "route": "/api/boq/projects/:id",
+    "guards": [
+      "assertEdit(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14860,
+    "method": "DELETE",
+    "route": "/api/boq/projects/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14873,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/program-settings",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14898,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/road-geometry",
+    "guards": [
+      "assertView(req, res, \"planning_masters\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14914,
+    "method": "PUT",
+    "route": "/api/boq/projects/:id/road-geometry",
+    "guards": [
+      "assertEdit(req, res, \"planning_masters\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14987,
+    "method": "PUT",
+    "route": "/api/boq/projects/:id/program-settings",
+    "guards": [
+      "assertEdit(req, res, \"work_programme\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15013,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/scope-segments",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15029,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/scope-segments/:segId/initial-correction-eligibility",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15102,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/scope-segments",
+    "guards": [
+      "assertEdit(req, res, \"project_scope\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15120,
+    "method": "PATCH",
+    "route": "/api/boq/scope-segments/:segId",
+    "guards": [
+      "assertEdit(req, res, \"project_scope\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15149,
+    "method": "POST",
+    "route": "/api/boq/scope-segments/:segId/correct-initial",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15204,
+    "method": "POST",
+    "route": "/api/boq/scope-segments/:segId/confirm",
+    "guards": [
+      "assertApprove(req, res, \"project_scope\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15236,
+    "method": "DELETE",
+    "route": "/api/boq/scope-segments/:segId",
+    "guards": [
+      "assertDelete(req, res, \"project_scope\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15259,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/scope-reconciliation",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15289,
+    "method": "PATCH",
+    "route": "/api/boq/projects/:id/corridor",
+    "guards": [
+      "assertEdit(req, res, \"project_scope\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15318,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/mix-links",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15328,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/mix-links",
+    "guards": [
+      "assertEdit(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15340,
+    "method": "PUT",
+    "route": "/api/boq/projects/:id/mix-links",
+    "guards": [
+      "assertEdit(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15354,
+    "method": "DELETE",
+    "route": "/api/boq/projects/:id/mix-links/:linkId",
+    "guards": [
+      "assertDelete(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15365,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/duplicate",
+    "guards": [
+      "assertEdit(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15378,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/categories",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15388,
+    "method": "PATCH",
+    "route": "/api/boq/categories/:id",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15399,
+    "method": "DELETE",
+    "route": "/api/boq/categories/:id",
+    "guards": [
+      "assertDelete(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15412,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/items",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15422,
+    "method": "GET",
+    "route": "/api/boq/all-items",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15439,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/import",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15487,
+    "method": "PATCH",
+    "route": "/api/boq/items/:id",
+    "guards": [
+      "assertEdit(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15511,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/auto-map-all",
+    "guards": [
+      "assertEdit(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15544,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/cleanup-zero-qty",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15554,
+    "method": "PATCH",
+    "route": "/api/boq/items/:id/work-type",
+    "guards": [
+      "assertEdit(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15570,
+    "method": "PATCH",
+    "route": "/api/boq/items/:id/planning-include",
+    "guards": [
+      "assertEdit(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15584,
+    "method": "PATCH",
+    "route": "/api/boq/projects/:id/planning-include-bulk",
+    "guards": [
+      "assertEdit(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15598,
+    "method": "DELETE",
+    "route": "/api/boq/items/:id",
+    "guards": [
+      "assertDelete(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15611,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/revisions",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15621,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/revisions",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15644,
+    "method": "PATCH",
+    "route": "/api/boq/revisions/:id/activate",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15657,
+    "method": "DELETE",
+    "route": "/api/boq/revisions/:id",
+    "guards": [
+      "assertDelete(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15671,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/programme",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15698,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/programme/publish-baseline",
+    "guards": [
+      "assertEdit(req, res, \"work_programme\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15904,
+    "method": "POST",
+    "route": "/api/boq/programme/bars/:id/revision-preview",
+    "guards": [
+      "assertEdit(req, res, \"work_programme\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 15915,
+    "method": "POST",
+    "route": "/api/boq/programme/bars/:id/revise-schedule",
+    "guards": [
+      "assertEdit(req, res, \"work_programme\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 16034,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/programme-status",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 16164,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/programme",
+    "guards": [
+      "assertEdit(req, res, \"work_programme\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 16199,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/programme/bulk",
+    "guards": [
+      "assertEdit(req, res, \"work_programme\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 16222,
+    "method": "PATCH",
+    "route": "/api/boq/programme/bars/:id",
+    "guards": [
+      "assertEdit(req, res, \"work_programme\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 16286,
+    "method": "DELETE",
+    "route": "/api/boq/programme/bars/:id",
+    "guards": [
+      "assertDelete(req, res, \"work_programme\")) return",
+      "assertDeleteOrCancel(req, res, \"work_programme\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 16339,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/programme/bulk-side",
+    "guards": [
+      "assertEdit(req, res, \"work_programme\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 16382,
+    "method": "POST",
+    "route": "/api/boq/programme/bars/:id/split-by-side",
+    "guards": [
+      "assertEdit(req, res, \"work_programme\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 16505,
+    "method": "POST",
+    "route": "/api/dpr/programme-bar-outcomes",
+    "guards": [
+      "assertOutcomeManagerAuthority(req, res)) return",
+      "assertOutcomeProjectScope(req, res, bar.boqProjectId))) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 16531,
+    "method": "GET",
+    "route": "/api/dpr/programme-bar-outcomes",
+    "guards": [
+      "assertView(req, res, \"site_dprs\")) return",
+      "assertOutcomeProjectScope(req, res, projectId))) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 16554,
+    "method": "GET",
+    "route": "/api/dpr/programme-bars",
+    "guards": [
+      "assertView(req, res, \"site_dprs\")) return",
+      "assertOutcomeProjectScope(req, res, boqProjectId))) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 16654,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/programme/clean-structure-bars",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 16752,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/monthly-targets",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 16762,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/plan-vs-actual",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 16852,
+    "method": "GET",
+    "route": "/api/reports/progress",
+    "guards": [
+      "assertView(req, res, \"site_dprs\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 16872,
+    "method": "GET",
+    "route": "/api/reports/progress/export",
+    "guards": [
+      "assertExport(req, res, \"site_dprs\")) return",
+      "assertView(req, res, \"site_dprs\")) return"
+    ],
+    "output": true,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 16963,
+    "method": "GET",
+    "route": "/api/boq/items/by-ids",
+    "guards": [
+      "assertAuthed(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 16995,
+    "method": "GET",
+    "route": "/api/boq/items/:itemId/recipes",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 17007,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/resource-review",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 17017,
+    "method": "GET",
+    "route": "/api/boq/items/:itemId/equipment",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 17025,
+    "method": "PUT",
+    "route": "/api/boq/items/:itemId/equipment",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 17037,
+    "method": "GET",
+    "route": "/api/boq/items/:itemId/labour",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 17045,
+    "method": "PUT",
+    "route": "/api/boq/items/:itemId/labour",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 17057,
+    "method": "GET",
+    "route": "/api/boq/items/:itemId/materials",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 17065,
+    "method": "PUT",
+    "route": "/api/boq/items/:itemId/materials",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 17077,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/recipe-materials-used",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 17637,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/bom",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 17676,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/shortage-check",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 18331,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/earthwork-arrangements",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 18343,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/earthwork-arrangements/item/:itemId",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 18514,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/cut-fill-reconciliation",
+    "guards": [
+      "assertCutFillProjectAccess(req, res, projectId)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 18527,
+    "method": "PUT",
+    "route": "/api/boq/projects/:id/cut-fill-reconciliation/activation",
+    "guards": [
+      "assertCutFillProjectAccess(req, res, projectId, true)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 18540,
+    "method": "PUT",
+    "route": "/api/boq/projects/:id/cut-fill-opening-balances/:sourceBoqItemId",
+    "guards": [
+      "assertCutFillProjectAccess(req, res, projectId, true)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 18562,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/cut-fill-sources",
+    "guards": [
+      "assertCutFillProjectAccess(req, res, projectId)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 18579,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/earthwork-arrangements",
+    "guards": [
+      "assertAuthed(req, res)) return",
+      "assertEdit(req, res, \"work_programme\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 18927,
+    "method": "GET",
+    "route": "/api/earthwork-arrangements/:id",
+    "guards": [
+      "assertAuthed(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 18946,
+    "method": "GET",
+    "route": "/api/earthwork-arrangements/:id/execution-evidence",
+    "guards": [
+      "assertAuthed(req, res) || !assertView(req, res, \"qto_boq\")) return",
+      "assertOutcomeProjectScope(req, res, arrangement.boqProjectId))) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 19069,
+    "method": "PATCH",
+    "route": "/api/earthwork-arrangements/:id",
+    "guards": [
+      "assertAuthed(req, res)) return",
+      "assertEdit(req, res, \"work_programme\")) return",
+      "assertOutcomeManagerAuthority(req, res)) return",
+      "assertApprove(req, res, \"work_programme\")) return",
+      "assertApprove(req, res, \"work_programme\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 19676,
+    "method": "DELETE",
+    "route": "/api/earthwork-arrangements/:id",
+    "guards": [
+      "assertAuthed(req, res)) return",
+      "assertDelete(req, res, \"work_programme\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 19735,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/arrangement-programme-allocations",
+    "guards": [
+      "assertAuthed(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 19836,
+    "method": "POST",
+    "route": "/api/earthwork-arrangements/:id/programme-allocations",
+    "guards": [
+      "assertAuthed(req, res)) return",
+      "assertEdit(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 19861,
+    "method": "PATCH",
+    "route": "/api/earthwork-arrangements/:id/programme-allocations/:allocId",
+    "guards": [
+      "assertAuthed(req, res)) return",
+      "assertEdit(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 19886,
+    "method": "DELETE",
+    "route": "/api/earthwork-arrangements/:id/programme-allocations/:allocId",
+    "guards": [
+      "assertAuthed(req, res)) return",
+      "assertDelete(req, res, \"work_programme\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 19911,
+    "method": "GET",
+    "route": "/api/earthwork-arrangements/:id/progress",
+    "guards": [
+      "assertAuthed(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 19926,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/earthwork-baselines/item/:itemId",
+    "guards": [
+      "assertAuthed(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 19940,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/earthwork-baselines",
+    "guards": [
+      "assertAuthed(req, res)) return",
+      "assertEdit(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 19967,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/earthwork-forecasts/item/:itemId",
+    "guards": [
+      "assertAuthed(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 19981,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/earthwork-forecasts",
+    "guards": [
+      "assertAuthed(req, res)) return",
+      "assertEdit(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 20019,
+    "method": "PATCH",
+    "route": "/api/earthwork-forecasts/:id",
+    "guards": [
+      "assertAuthed(req, res)) return",
+      "assertEdit(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 20046,
+    "method": "PATCH",
+    "route": "/api/boq/items/:itemId/shoulder-class",
+    "guards": [
+      "assertAuthed(req, res)) return",
+      "assertEdit(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 20084,
+    "method": "PATCH",
+    "route": "/api/boq/items/:itemId/bulk-classification",
+    "guards": [
+      "assertAuthed(req, res)) return",
+      "assertEdit(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 20120,
+    "method": "GET",
+    "route": "/api/boq/projects/:id/material-mappings",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 20133,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/material-mappings",
+    "guards": [
+      "assertApprove(req, res, \"purchase_indents_approve\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 20210,
+    "method": "GET",
+    "route": "/api/plant-materials/search",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 20274,
+    "method": "POST",
+    "route": "/api/material-requirements",
+    "guards": [
+      "assertCreate(req, res, \"site_procurement\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 20341,
+    "method": "GET",
+    "route": "/api/material-requirements/:id",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 20355,
+    "method": "POST",
+    "route": "/api/material-requirements/:id/allocations",
+    "guards": [
+      "assertApprove(req, res, \"purchase_indents_approve\")) return",
+      "assertApprove(req, res, \"irn_approve\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 20415,
+    "method": "GET",
+    "route": "/api/material-requirements/:id/allocations",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 20429,
+    "method": "GET",
+    "route": "/api/planning/equipment-types",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 20439,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/auto-sequence",
+    "guards": [
+      "assertEdit(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 21165,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/parse-structure-schedule",
+    "guards": [
+      "assertEdit(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 21668,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/auto-sequence-structures",
+    "guards": [
+      "assertEdit(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 21697,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/import-structure",
+    "guards": [
+      "assertEdit(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22008,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/programme/restore",
+    "guards": [
+      "assertEdit(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22032,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/auto-build-recipes",
+    "guards": [
+      "assertEdit(req, res, \"qto_boq\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22174,
+    "method": "POST",
+    "route": "/api/planning/equipment-types",
+    "guards": [
+      "assertEdit(req, res, \"planning_masters\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22184,
+    "method": "PATCH",
+    "route": "/api/planning/equipment-types/:id",
+    "guards": [
+      "assertEdit(req, res, \"planning_masters\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22195,
+    "method": "DELETE",
+    "route": "/api/planning/equipment-types/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22206,
+    "method": "GET",
+    "route": "/api/planning/labour-types",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22215,
+    "method": "POST",
+    "route": "/api/planning/labour-types",
+    "guards": [
+      "assertEdit(req, res, \"planning_masters\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22225,
+    "method": "PATCH",
+    "route": "/api/planning/labour-types/:id",
+    "guards": [
+      "assertEdit(req, res, \"planning_masters\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22236,
+    "method": "DELETE",
+    "route": "/api/planning/labour-types/:id",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22248,
+    "method": "POST",
+    "route": "/api/planning/seed-morth",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22260,
+    "method": "GET",
+    "route": "/api/planning/mix-templates",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22269,
+    "method": "GET",
+    "route": "/api/planning/mix-templates/:id/components",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22291,
+    "method": "GET",
+    "route": "/api/snl/sources",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22299,
+    "method": "GET",
+    "route": "/api/snl/sources/:id",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22309,
+    "method": "GET",
+    "route": "/api/snl/sources/:id/items",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22322,
+    "method": "GET",
+    "route": "/api/boq/items/:id/equipment-output-suggestion",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22334,
+    "method": "GET",
+    "route": "/api/snl/items/:id",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22344,
+    "method": "GET",
+    "route": "/api/snl/search",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22371,
+    "method": "GET",
+    "route": "/api/snl/mappings/:boqItemId",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22380,
+    "method": "POST",
+    "route": "/api/snl/mappings",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22399,
+    "method": "POST",
+    "route": "/api/snl/mappings/:boqItemId/apply",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22424,
+    "method": "DELETE",
+    "route": "/api/snl/mappings/:boqItemId",
+    "guards": [
+      "assertDelete(req, res, \"norms_library\")) return"
+    ],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22434,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/remap",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22445,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/snl/auto-map-all",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22457,
+    "method": "POST",
+    "route": "/api/boq/projects/:id/snl/confirm-review",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22535,
+    "method": "GET",
+    "route": "/api/boq/items/:id/components",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22547,
+    "method": "POST",
+    "route": "/api/boq/items/:id/components/:compId/map",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22564,
+    "method": "POST",
+    "route": "/api/snl/seed",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22578,
+    "method": "POST",
+    "route": "/api/snl/import",
+    "guards": [
+      "assertAdmin(req, res)) return"
+    ],
+    "output": false,
+    "adminOnly": true
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22603,
+    "method": "GET",
+    "route": "/api/snl/import-template",
+    "guards": [
+      "assertExport(req, res, \"norms_library\")) return"
+    ],
+    "output": true,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22678,
+    "method": "GET",
+    "route": "20MM",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22679,
+    "method": "GET",
+    "route": "10/12MM",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22680,
+    "method": "GET",
+    "route": "6MM DOWN",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22681,
+    "method": "GET",
+    "route": "DUST",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22693,
+    "method": "GET",
+    "route": "20MM",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22694,
+    "method": "GET",
+    "route": "10/12MM",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22695,
+    "method": "GET",
+    "route": "6MM DOWN",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 22696,
+    "method": "GET",
+    "route": "DUST",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 23131,
+    "method": "POST",
+    "route": "/api/site-requirements",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 23154,
+    "method": "GET",
+    "route": "/api/site-requirements",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 23179,
+    "method": "GET",
+    "route": "/api/site-requirements/:id",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 23195,
+    "method": "PATCH",
+    "route": "/api/site-requirements/:id/status",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 23215,
+    "method": "PATCH",
+    "route": "/api/site-requirements/:id/allocation",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 23237,
+    "method": "PATCH",
+    "route": "/api/site-requirements/:id/item-status",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 23353,
+    "method": "PATCH",
+    "route": "/api/site-requirements/:id/readiness",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 23384,
+    "method": "GET",
+    "route": "/api/site-requirements/:id/execution-summary",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 23428,
+    "method": "POST",
+    "route": "/api/site-requirements/:id/outcome",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 23498,
+    "method": "PUT",
+    "route": "/api/site-requirements/:id",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 23533,
+    "method": "POST",
+    "route": "/api/site-requirements/:id/revision-request",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 23554,
+    "method": "PATCH",
+    "route": "/api/site-requirements/:id/revision-approve",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 23577,
+    "method": "PATCH",
+    "route": "/api/site-requirements/:id/revision-reject",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/vendor-master.ts",
+    "line": 96,
+    "method": "GET",
+    "route": "/api/vendor-master",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/vendor-master.ts",
+    "line": 104,
+    "method": "POST",
+    "route": "/api/vendor-master",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/vendor-master.ts",
+    "line": 112,
+    "method": "PATCH",
+    "route": "/api/vendor-master/:id",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/vendor-master.ts",
+    "line": 123,
+    "method": "GET",
+    "route": "/api/vendor-master/review",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/vendor-master.ts",
+    "line": 152,
+    "method": "POST",
+    "route": "/api/vendor-master/review/confirm",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  },
+  {
+    "file": "server/vendor-master.ts",
+    "line": 200,
+    "method": "GET",
+    "route": "/api/vendor-master/:id/activity",
+    "guards": [],
+    "output": false,
+    "adminOnly": false
+  }
+]

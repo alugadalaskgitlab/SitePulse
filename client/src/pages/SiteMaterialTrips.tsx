@@ -45,7 +45,7 @@ const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs", "Tons"];
 
 export default function SiteMaterialTrips() {
   const { toast } = useToast();
-  const { sectionCan } = useAuth();
+  const { sectionCan, isAdmin, isOwner } = useAuth();
   const canEdit = sectionCan("site_materials", "edit");
   const { companyName, logoFile } = useFeatureFlags();
   const searchString = useSearch();
@@ -1015,7 +1015,7 @@ export default function SiteMaterialTrips() {
                             >
                               <History className="w-4 h-4 text-muted-foreground" />
                             </Button>
-                            <Button
+                            {sectionCan("site_materials", "delete") && <Button
                               variant="ghost"
                               size="icon"
                               onClick={() => setCancelTripId(trip.id)}
@@ -1023,8 +1023,8 @@ export default function SiteMaterialTrips() {
                               title="Cancel"
                             >
                               <Ban className="w-4 h-4 text-amber-600" />
-                            </Button>
-                            <Button 
+                            </Button>}
+                            {(isAdmin || isOwner) && <Button 
                               variant="ghost" 
                               size="icon"
                               onClick={() => deleteMutation.mutate(trip.id)}
@@ -1032,7 +1032,7 @@ export default function SiteMaterialTrips() {
                               data-testid={`button-delete-trip-${trip.id}`}
                             >
                               <Trash2 className="w-4 h-4 text-destructive" />
-                            </Button>
+                            </Button>}
                           </div>
                         </td>
                       </tr>

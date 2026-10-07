@@ -140,14 +140,15 @@ function RequestCard({
 }
 
 export default function EditRequestsPage() {
-  const { isAdmin, isOwner } = useAuth();
+  const { sectionCan, sectionVisible } = useAuth();
   const { toast } = useToast();
 
   const [actionId, setActionId] = useState<number | null>(null);
   const [actionType, setActionType] = useState<"approve" | "deny">("approve");
   const [note, setNote] = useState("");
 
-  const canApprove = isAdmin || isOwner;
+  const canApprove = sectionCan("edit_requests_review", "approve");
+  const canReview = sectionVisible("edit_requests_review");
 
   const pendingQuery = useQuery<EditPermissionRequest[]>({
     queryKey: ["/api/edit-requests/pending"],
@@ -156,7 +157,7 @@ export default function EditRequestsPage() {
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: canApprove,
+    enabled: canReview,
     refetchInterval: 30_000,
   });
 
@@ -237,9 +238,9 @@ export default function EditRequestsPage() {
         </Button>
       </div>
 
-      <Tabs defaultValue={canApprove ? "pending" : "mine"}>
+      <Tabs defaultValue={canReview ? "pending" : "mine"}>
         <TabsList className="w-full">
-          {canApprove && (
+          {canReview && (
             <TabsTrigger value="pending" className="flex-1" data-testid="tab-pending-requests">
               Pending
               {(pendingQuery.data?.length ?? 0) > 0 && (
@@ -254,7 +255,7 @@ export default function EditRequestsPage() {
           </TabsTrigger>
         </TabsList>
 
-        {canApprove && (
+        {canReview && (
           <TabsContent value="pending" className="space-y-3 pt-4">
             {pendingQuery.isLoading ? (
               Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-36 w-full rounded-lg" />)
@@ -268,7 +269,7 @@ export default function EditRequestsPage() {
                 <RequestCard
                   key={r.id}
                   req={r}
-                  showActions
+                  showActions={canApprove}
                   onApprove={(id) => { setActionId(id); setActionType("approve"); setNote(""); }}
                   onDeny={(id) => { setActionId(id); setActionType("deny"); setNote(""); }}
                 />

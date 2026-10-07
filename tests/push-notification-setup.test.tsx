@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/queryClient", () => ({ apiRequest: mocks.apiRequest }));
+vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({ sectionCan: () => true }) }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: mocks.toast }) }));
 
 import { PushNotificationSetup } from "../client/src/components/PushNotificationSetup";

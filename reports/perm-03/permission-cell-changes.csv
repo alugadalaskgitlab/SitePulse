@@ -1,0 +1,170 @@
+user_id,user,section,action,before,after,permission_id,audit_id
+3,K V Babu,hmp_hub,delete,TRUE,FALSE,1505,88
+3,K V Babu,hmp_hub,export,TRUE,FALSE,1505,88
+3,K V Babu,hmp_hub,notify,TRUE,FALSE,1505,88
+3,K V Babu,site_hub,delete,TRUE,FALSE,1506,89
+3,K V Babu,site_hub,export,TRUE,FALSE,1506,89
+3,K V Babu,site_hub,notify,TRUE,FALSE,1506,89
+3,K V Babu,equipment_hub,delete,TRUE,FALSE,1507,90
+3,K V Babu,equipment_hub,export,TRUE,FALSE,1507,90
+3,K V Babu,equipment_hub,notify,TRUE,FALSE,1507,90
+3,K V Babu,reports_hub,delete,TRUE,FALSE,1508,91
+3,K V Babu,reports_hub,export,TRUE,FALSE,1508,91
+3,K V Babu,reports_hub,notify,TRUE,FALSE,1508,91
+3,K V Babu,stores_hub,delete,TRUE,FALSE,1509,92
+3,K V Babu,stores_hub,export,TRUE,FALSE,1509,92
+3,K V Babu,stores_hub,notify,TRUE,FALSE,1509,92
+3,K V Babu,finance_hub,delete,TRUE,FALSE,1510,93
+3,K V Babu,finance_hub,export,TRUE,FALSE,1510,93
+3,K V Babu,finance_hub,notify,TRUE,FALSE,1510,93
+3,K V Babu,masters_hub,delete,TRUE,FALSE,1511,94
+3,K V Babu,masters_hub,export,TRUE,FALSE,1511,94
+3,K V Babu,masters_hub,notify,TRUE,FALSE,1511,94
+3,K V Babu,admin_hub,delete,TRUE,FALSE,1512,95
+3,K V Babu,admin_hub,export,TRUE,FALSE,1512,95
+3,K V Babu,admin_hub,notify,TRUE,FALSE,1512,95
+3,K V Babu,rmc_hub,delete,TRUE,FALSE,1513,96
+3,K V Babu,rmc_hub,export,TRUE,FALSE,1513,96
+3,K V Babu,site_dprs,delete,TRUE,FALSE,1514,97
+3,K V Babu,site_dprs,export,TRUE,FALSE,1514,97
+3,K V Babu,site_materials,delete,TRUE,FALSE,1515,98
+3,K V Babu,site_materials,export,TRUE,FALSE,1515,98
+3,K V Babu,purchase_indents_view,delete,TRUE,FALSE,1517,99
+3,K V Babu,purchase_indents_view,export,TRUE,FALSE,1517,99
+3,K V Babu,purchase_indents_raise,delete,TRUE,FALSE,1518,100
+3,K V Babu,purchase_indents_raise,export,TRUE,FALSE,1518,100
+3,K V Babu,purchase_indents_approve,delete,TRUE,FALSE,1519,101
+3,K V Babu,purchase_indents_approve,export,TRUE,FALSE,1519,101
+3,K V Babu,diesel_req_view,delete,TRUE,FALSE,1521,102
+3,K V Babu,diesel_req_view,notify,TRUE,FALSE,1521,102
+3,K V Babu,diesel_req_raise,delete,TRUE,FALSE,1522,103
+3,K V Babu,diesel_req_raise,notify,TRUE,FALSE,1522,103
+3,K V Babu,diesel_req_approve,delete,TRUE,FALSE,1523,104
+3,K V Babu,diesel_req_approve,notify,TRUE,FALSE,1523,104
+3,K V Babu,irn_view,delete,TRUE,FALSE,1524,105
+3,K V Babu,irn_view,export,TRUE,FALSE,1524,105
+3,K V Babu,irn_view,notify,TRUE,FALSE,1524,105
+3,K V Babu,irn_raise,delete,TRUE,FALSE,1525,106
+3,K V Babu,irn_raise,export,TRUE,FALSE,1525,106
+3,K V Babu,irn_raise,notify,TRUE,FALSE,1525,106
+3,K V Babu,irn_approve,delete,TRUE,FALSE,1526,107
+3,K V Babu,irn_approve,export,TRUE,FALSE,1526,107
+3,K V Babu,irn_approve,notify,TRUE,FALSE,1526,107
+3,K V Babu,plant_maintenance,delete,TRUE,FALSE,1533,108
+3,K V Babu,plant_maintenance,export,TRUE,FALSE,1533,108
+3,K V Babu,plant_materials,delete,TRUE,FALSE,1535,109
+3,K V Babu,plant_materials,notify,TRUE,FALSE,1535,109
+3,K V Babu,plant_bitumen,delete,TRUE,FALSE,1536,110
+3,K V Babu,plant_bitumen,notify,TRUE,FALSE,1536,110
+3,K V Babu,plant_daily_reports,notify,TRUE,FALSE,1538,111
+3,K V Babu,plant_stock,notify,TRUE,FALSE,1539,112
+3,K V Babu,plant_ldo_reconciliation,delete,TRUE,FALSE,1540,113
+3,K V Babu,plant_ldo_reconciliation,notify,TRUE,FALSE,1540,113
+3,K V Babu,plant_diesel_proc,notify,TRUE,FALSE,1543,114
+3,K V Babu,rmc_operations,delete,TRUE,FALSE,1544,115
+3,K V Babu,rmc_batch_records,delete,TRUE,FALSE,1545,116
+3,K V Babu,rmc_batch_records,export,TRUE,FALSE,1545,116
+3,K V Babu,rmc_mix_designs,delete,TRUE,FALSE,1546,117
+3,K V Babu,rmc_mix_designs,export,TRUE,FALSE,1546,117
+3,K V Babu,rmc_cube_tests,delete,TRUE,FALSE,1547,118
+3,K V Babu,rmc_cube_tests,export,TRUE,FALSE,1547,118
+3,K V Babu,rmc_raw_materials,delete,TRUE,FALSE,1548,119
+3,K V Babu,rmc_raw_materials,export,TRUE,FALSE,1548,119
+3,K V Babu,rmc_delivery_challans,delete,TRUE,FALSE,1549,120
+3,K V Babu,rmc_delivery_challans,export,TRUE,FALSE,1549,120
+3,K V Babu,rmc_daily_report,delete,TRUE,FALSE,1550,121
+3,K V Babu,rmc_daily_report,export,TRUE,FALSE,1550,121
+3,K V Babu,vendor_bills_view,delete,TRUE,FALSE,1552,122
+3,K V Babu,vendor_bills_view,export,TRUE,FALSE,1552,122
+3,K V Babu,vendor_bills_view,notify,TRUE,FALSE,1552,122
+3,K V Babu,vendor_bills_raise,delete,TRUE,FALSE,1553,123
+3,K V Babu,vendor_bills_raise,export,TRUE,FALSE,1553,123
+3,K V Babu,vendor_bills_raise,notify,TRUE,FALSE,1553,123
+3,K V Babu,vendor_bills_verify,delete,TRUE,FALSE,1554,124
+3,K V Babu,vendor_bills_verify,export,TRUE,FALSE,1554,124
+3,K V Babu,vendor_bills_verify,notify,TRUE,FALSE,1554,124
+3,K V Babu,vendor_bills_approve,delete,TRUE,FALSE,1555,125
+3,K V Babu,vendor_bills_approve,export,TRUE,FALSE,1555,125
+3,K V Babu,vendor_bills_approve,notify,TRUE,FALSE,1555,125
+3,K V Babu,vendor_bill_aliases,delete,TRUE,FALSE,1556,126
+3,K V Babu,vendor_bill_aliases,export,TRUE,FALSE,1556,126
+3,K V Babu,vendor_bill_aliases,notify,TRUE,FALSE,1556,126
+3,K V Babu,reports,export,TRUE,FALSE,1557,127
+3,K V Babu,stores_inventory,delete,TRUE,FALSE,1560,128
+3,K V Babu,stores_inventory,export,TRUE,FALSE,1560,128
+3,K V Babu,stores_inventory,notify,TRUE,FALSE,1560,128
+3,K V Babu,estimator_portal,delete,TRUE,FALSE,1562,129
+3,K V Babu,estimator_portal,notify,TRUE,FALSE,1562,129
+3,K V Babu,mix_calculator,delete,TRUE,FALSE,1563,130
+3,K V Babu,mix_calculator,notify,TRUE,FALSE,1563,130
+3,K V Babu,concrete_calculator,delete,TRUE,FALSE,1564,131
+3,K V Babu,concrete_calculator,notify,TRUE,FALSE,1564,131
+3,K V Babu,qto_boq,delete,TRUE,FALSE,1565,132
+3,K V Babu,qto_boq,notify,TRUE,FALSE,1565,132
+3,K V Babu,rate_cards,delete,TRUE,FALSE,1566,133
+3,K V Babu,rate_cards,notify,TRUE,FALSE,1566,133
+3,K V Babu,master_parties,delete,TRUE,FALSE,1567,134
+3,K V Babu,master_parties,notify,TRUE,FALSE,1567,134
+3,K V Babu,master_materials,delete,TRUE,FALSE,1568,135
+3,K V Babu,master_materials,notify,TRUE,FALSE,1568,135
+3,K V Babu,master_equipment,delete,TRUE,FALSE,1569,136
+3,K V Babu,master_equipment,notify,TRUE,FALSE,1569,136
+3,K V Babu,master_personnel,delete,TRUE,FALSE,1570,137
+3,K V Babu,master_personnel,notify,TRUE,FALSE,1570,137
+3,K V Babu,site_management,delete,TRUE,FALSE,1572,138
+3,K V Babu,site_management,export,TRUE,FALSE,1572,138
+3,K V Babu,admin_ldo_tools,delete,TRUE,FALSE,1573,139
+3,K V Babu,admin_ldo_tools,export,TRUE,FALSE,1573,139
+3,K V Babu,admin_ledger_tools,delete,TRUE,FALSE,1574,140
+3,K V Babu,admin_ledger_tools,export,TRUE,FALSE,1574,140
+3,K V Babu,data_sync,delete,TRUE,FALSE,1575,141
+3,K V Babu,data_sync,export,TRUE,FALSE,1575,141
+3,K V Babu,push_notifications,delete,TRUE,FALSE,1579,142
+3,K V Babu,push_notifications,export,TRUE,FALSE,1579,142
+3,K V Babu,push_notifications,notify,TRUE,FALSE,1579,142
+3,K V Babu,hmp_operations,delete,TRUE,FALSE,1580,143
+3,K V Babu,reports_analysis,delete,TRUE,FALSE,1581,144
+3,K V Babu,estimates_manager,delete,TRUE,FALSE,1582,145
+3,K V Babu,planning_masters,view,FALSE,TRUE,2200,146
+3,K V Babu,work_programme,view,FALSE,TRUE,2201,147
+3,K V Babu,work_programme_review,view,FALSE,TRUE,2202,148
+3,K V Babu,norms_library,view,FALSE,TRUE,2203,149
+3,K V Babu,edit_requests_review,view,FALSE,TRUE,2204,150
+4,Ramesh,hmp_hub,notify,TRUE,FALSE,1585,151
+4,Ramesh,site_hub,notify,TRUE,FALSE,1586,152
+4,Ramesh,rmc_hub,notify,TRUE,FALSE,1593,153
+4,Ramesh,site_dprs,notify,TRUE,FALSE,1594,154
+4,Ramesh,site_materials,notify,TRUE,FALSE,1595,155
+4,Ramesh,purchase_indents_raise,export,TRUE,FALSE,1598,156
+4,Ramesh,purchase_indents_raise,notify,TRUE,FALSE,1598,156
+4,Ramesh,purchase_indents_approve,notify,TRUE,FALSE,1599,157
+4,Ramesh,diesel_req_view,notify,TRUE,FALSE,1601,158
+4,Ramesh,diesel_req_raise,notify,TRUE,FALSE,1602,159
+4,Ramesh,diesel_req_approve,notify,TRUE,FALSE,1603,160
+4,Ramesh,irn_view,notify,TRUE,FALSE,1604,161
+4,Ramesh,irn_raise,notify,TRUE,FALSE,1605,162
+4,Ramesh,irn_approve,notify,TRUE,FALSE,1606,163
+4,Ramesh,plant_shift_logs,export,TRUE,FALSE,1607,164
+4,Ramesh,plant_manpower_review,export,TRUE,FALSE,1608,165
+4,Ramesh,plant_heating,export,TRUE,FALSE,1609,166
+4,Ramesh,plant_production,delete,TRUE,FALSE,1614,167
+4,Ramesh,plant_production,export,TRUE,FALSE,1614,167
+4,Ramesh,plant_ldo_reconciliation,delete,TRUE,FALSE,1620,168
+4,Ramesh,plant_ldo_reconciliation,export,TRUE,FALSE,1620,168
+4,Ramesh,plant_diesel_proc,delete,TRUE,FALSE,1623,169
+4,Ramesh,plant_diesel_proc,export,TRUE,FALSE,1623,169
+4,Ramesh,rmc_delivery_challans,export,TRUE,FALSE,1629,170
+4,Ramesh,stores_inventory,notify,TRUE,FALSE,1640,171
+4,Ramesh,estimator_portal,view,FALSE,TRUE,1642,172
+4,Ramesh,mix_calculator,view,FALSE,TRUE,1643,173
+4,Ramesh,concrete_calculator,view,FALSE,TRUE,1644,174
+8,Rajesh,estimator_portal,view,FALSE,TRUE,2051,175
+8,Rajesh,mix_calculator,view,FALSE,TRUE,2052,176
+8,Rajesh,concrete_calculator,view,FALSE,TRUE,2053,177
+8,Rajesh,planning_masters,view,FALSE,TRUE,2205,178
+8,Rajesh,work_programme,view,FALSE,TRUE,2206,179
+8,Rajesh,work_programme_review,view,FALSE,TRUE,2207,180
+8,Rajesh,norms_library,view,FALSE,TRUE,2208,181
+16,Agent Verification,estimator_portal,view,FALSE,TRUE,2209,182
+16,Agent Verification,concrete_calculator,view,FALSE,TRUE,2210,183
+16,Agent Verification,mix_calculator,view,FALSE,TRUE,2211,184

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { DeleteGate } from "@/components/DeleteGate";
 import { Link } from "wouter";
 import { User, Bell, Shield, Clock, ChevronRight, CheckCircle, XCircle, Loader2, BellOff, Pencil, Check, X, Smartphone, Share, Plus } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
@@ -451,7 +452,7 @@ export default function Account() {
           </div>
         )}
         {pushStatus === "active" && (
-          <div className="px-4 py-3 border-b border-slate-100">
+          <DeleteGate sections={["dashboard"]}><div className="px-4 py-3 border-b border-slate-100">
             <Button
               size="sm"
               variant="outline"
@@ -467,7 +468,7 @@ export default function Account() {
               )}
               Unsubscribe this device
             </Button>
-          </div>
+          </div></DeleteGate>
         )}
 
         {/* Link to preferences */}

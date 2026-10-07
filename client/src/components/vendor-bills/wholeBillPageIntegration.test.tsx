@@ -12,7 +12,7 @@ const state = vi.hoisted(() => ({ permission: true, engineer: false, save: vi.fn
 vi.mock("./wholeBillExport", () => ({ saveWholeBillFile: state.save }));
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({
   isAdmin: true, user: { isFieldEngineer: state.engineer },
-  sectionCan: (_section: string, permission: string) => permission === "view_reports" ? state.permission : true,
+  sectionCan: (_section: string, permission: string) => permission === "export" ? state.permission : true,
   sectionVisible: () => true,
 }) }));
 vi.mock("@/lib/featureFlags", () => ({ useFeatureFlags: () => ({ companyName: "HLC", logoFile: null }) }));

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useAuth } from "@/lib/auth-context";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Trash2, FileText, Loader2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -87,6 +88,24 @@ export function AttachmentGrid({
   className?: string;
 }) {
   const { toast } = useToast();
+  const { sectionCan } = useAuth();
+  const hasDeletePermission = (() => {
+    switch (moduleType) {
+      case "diesel_purchase": return sectionCan("site_diesel", "delete") || sectionCan("diesel_req_raise", "delete");
+      case "dpr_progress": case "dpr_material": return sectionCan("site_dprs", "delete");
+      case "material_receipt": case "hmp_rmc_stock_receipt": return sectionCan("plant_materials", "delete");
+      case "site_purchase": case "site_material_trip": return sectionCan("site_materials", "delete");
+      case "irn": return sectionCan("irn_raise", "delete");
+      case "pi": case "pi_purchaser_action": return sectionCan("purchase_indents_raise", "delete");
+      case "store_grn": return sectionCan("stores_inventory", "delete");
+      case "vendor_bill": return sectionCan("vendor_bills_raise", "delete");
+      case "plant_production": return sectionCan("plant_production", "delete");
+      case "equipment_breakdown": case "equipment_maintenance": case "equipment_fuel_proof":
+        return sectionCan("plant_equipment", "delete");
+      case "quality_test": return sectionCan("rmc_cube_tests", "delete");
+      default: return false;
+    }
+  })();
   const [selectedAttachment, setSelectedAttachment] = useState<Attachment | null>(null);
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -150,7 +169,7 @@ export function AttachmentGrid({
                 Linked
               </span>
             )}
-            {allowDelete && !att.isLinked && (
+            {allowDelete && hasDeletePermission && !att.isLinked && (
               <button
                 type="button"
                 className="absolute top-1 right-1 bg-background/90 rounded-full p-1 opacity-80 hover:opacity-100"

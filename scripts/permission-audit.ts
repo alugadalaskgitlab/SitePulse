@@ -145,10 +145,11 @@ const helperActions: Record<string, string[]> = {
   assertEdit: ["edit"], assertEditEither: ["edit"], assertCreate: ["create"],
   assertCreateEither: ["create"], assertCreateOrEdit: ["create", "edit"],
   assertView: ["view"], assertViewEither: ["view"], assertApprove: ["approve"],
-  assertDeleteOrCancel: ["edit"], assertReportExport: ["view_reports"],
+  assertDelete: ["delete"], assertDeleteEither: ["delete"], assertDeleteOrCancel: ["delete"],
+  assertExport: ["export"], assertReportExport: ["export"],
 };
 const plumbing = new Set(["client/src/lib/auth-context.tsx", "client/src/components/RequireAuth.tsx",
-  "client/src/components/ReportExportGate.tsx", "client/src/components/EditPermissionButton.tsx"]);
+  "client/src/components/ReportExportGate.tsx", "client/src/components/DeleteGate.tsx", "client/src/components/EditPermissionButton.tsx"]);
 const genericResolved: string[] = [];
 const allCalls: ts.CallExpression[] = [];
 const functions = new Map<string, ts.Node[]>();
@@ -190,7 +191,7 @@ for (const [file, sf] of sources) visit(sf, n => {
       if (sections.length && actions.length) {
         add(n, sections, actions, name);
         if (sections.length > 1) pairs.push({ at: loc(n), helper: name, sections, actions, route: route(n) });
-      } else if (plumbing.has(file) || (file === "client/src/App.tsx" && name === "sectionVisible") || (file === "server/auth-routes.ts" && name === "assertEdit" && text(args[2]) === "section"))
+      } else if (plumbing.has(file) || (file === "client/src/App.tsx" && name === "sectionVisible") || (file === "server/auth-routes.ts" && helperActions[name] && text(args[2]) === "section"))
         genericResolved.push(`${loc(n)} ${text(n)} — expanded at concrete callers`);
       else unresolved.set(loc(n), text(n).slice(0,450));
     }
@@ -203,9 +204,10 @@ for (const [file, sf] of sources) visit(sf, n => {
   if (ts.isJsxSelfClosingElement(n) || ts.isJsxOpeningElement(n)) {
     const tag = text(n.tagName), props = new Map(n.attributes.properties.filter(ts.isJsxAttribute).map(p => [text(p.name), p.initializer]));
     const propValues = (key: string) => { const v = props.get(key); return values(v && ts.isJsxExpression(v) ? v.expression : v); };
-    if (tag === "ReportExportGate") {
+    if (tag === "ReportExportGate" || tag === "DeleteGate") {
       const ss = propValues("sections");
-      if (ss.length) { add(n, ss, ["view_reports"], tag); if (ss.length > 1) pairs.push({ at: loc(n), helper: tag, sections:ss, actions:["view_reports"], route:route(n) }); }
+      const gateAction = tag === "DeleteGate" ? "delete" : "export";
+      if (ss.length) { add(n, ss, [gateAction], tag); if (ss.length > 1) pairs.push({ at: loc(n), helper: tag, sections:ss, actions:[gateAction], route:route(n) }); }
       else unresolved.set(loc(n), text(n));
     }
     if (tag === "EditPermissionButton") {
@@ -264,9 +266,9 @@ const generated = Object.fromEntries(SECTION_KEYS.map(section => {
     let meaning = ({
       view: `Open ${SECTION_LABELS[section]}. Other action switches do not grant page access.`,
       create: `Create records in ${SECTION_LABELS[section]}.`,
-      edit: `Edit records in ${SECTION_LABELS[section]}. Edit also authorizes delete or cancel where the action uses an Edit check.`,
+      edit: `Edit records in ${SECTION_LABELS[section]}. This does not grant deletion or cancellation.`,
       delete: `Delete records where ${SECTION_LABELS[section]}'s Delete permission is checked.`,
-      view_reports: `Use report export controls for ${SECTION_LABELS[section]}; this is not page access.`,
+      view_reports: `View on-screen reports for ${SECTION_LABELS[section]}; downloading and printing require Export.`,
       export: `Export data where ${SECTION_LABELS[section]}'s Export permission is checked.`,
       approve: `Allow ${verbs.length ? verbs.join(", ") : "approval"} actions in ${SECTION_LABELS[section]}.`,
       notify: `Receive notifications for ${SECTION_LABELS[section]}, when user notifications and a device subscription are enabled.`,

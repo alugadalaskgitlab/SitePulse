@@ -25,7 +25,7 @@ export default function PlantGeneratorLogs() {
   const { sectionCan } = useAuth();
   const { companyName, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("plant_equipment", "create");
-  const canExport = sectionCan("plant_equipment", "view_reports");
+  const canExport = sectionCan("plant_equipment", "export");
   const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);
   

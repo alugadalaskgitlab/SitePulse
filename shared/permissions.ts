@@ -94,6 +94,11 @@ export const SECTION_KEYS = [
   "mix_calculator",
   "concrete_calculator",
   "qto_boq",
+  "planning_masters",
+  "work_programme",
+  "work_programme_review",
+  "norms_library",
+  "edit_requests_review",
   "project_scope",
   "rate_cards",
 
@@ -221,6 +226,11 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
   mix_calculator: "Bituminous Mix Rate Calculator",
   concrete_calculator: "Concrete Rate Calculator (v1 & v2)",
   qto_boq: "QTO & BOQ Estimator",
+  planning_masters: "Work Programme — Planning Masters",
+  work_programme: "Work Programme — Programme & Execution Setup",
+  work_programme_review: "Work Programme — Review & Demand",
+  norms_library: "Norms Library (SNL)",
+  edit_requests_review: "Edit Requests — Review & Approval",
   project_scope: "Project Scope & Working Reaches",
   rate_cards: "Rate Cards — View & Edit",
 
@@ -292,15 +302,14 @@ export const EMPTY_PERMISSION: SectionPermission = {
   notify: false,
 };
 
-// Notify is intentionally false in FULL_PERMISSION — push alerts must be
-// explicitly opted-in per section, even when "Grant all" is clicked.
+// Delegated destructive/export actions and notifications require explicit opt-in.
 export const FULL_PERMISSION: SectionPermission = {
   view: true,
   create: true,
   edit: true,
-  delete: true,
+  delete: false,
   view_reports: true,
-  export: true,
+  export: false,
   approve: true,
   notify: false,
 };
@@ -586,7 +595,7 @@ export const PERMISSION_GROUPS: { id: string; label: string; sections: SectionKe
   {
     id: "calculators",
     label: "Rate Calculators & Estimator",
-    sections: ["estimator_portal", "mix_calculator", "concrete_calculator", "qto_boq", "project_scope", "rate_cards"],
+    sections: ["estimator_portal", "mix_calculator", "concrete_calculator", "qto_boq", "planning_masters", "work_programme", "work_programme_review", "norms_library", "project_scope", "rate_cards"],
   },
   {
     id: "masters",
@@ -601,7 +610,7 @@ export const PERMISSION_GROUPS: { id: string; label: string; sections: SectionKe
   {
     id: "access",
     label: "User & Access Management",
-    sections: ["user_management", "permission_manager", "device_approval", "push_notifications"],
+    sections: ["user_management", "permission_manager", "device_approval", "push_notifications", "edit_requests_review"],
   },
   {
     id: "legacy",

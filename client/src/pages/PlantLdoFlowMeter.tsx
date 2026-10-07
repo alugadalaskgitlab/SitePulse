@@ -57,7 +57,7 @@ export default function PlantLdoFlowMeter() {
   const canCreate = sectionCan("plant_stock", "create");
   const canEdit = sectionCan("plant_stock", "edit");
   const canDelete = isAdminUser;
-  const canExport = sectionCan("plant_ldo", "view_reports");
+  const canExport = sectionCan("plant_ldo", "export");
   const { appendOrigin, getPlantBackLink } = useOrigin();
   const searchString = useSearch();
   const sp = new URLSearchParams(searchString || window.location.search);

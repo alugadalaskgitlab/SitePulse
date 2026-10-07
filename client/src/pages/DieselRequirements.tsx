@@ -1159,7 +1159,7 @@ export default function DieselRequirements() {
               {isAdmin || sectionCan("site_diesel", "view") || sectionCan("stores_inventory", "view") || sectionCan("site_diesel", "create") || sectionCan("site_diesel", "edit") || sectionCan("diesel_req_raise", "view") || sectionCan("diesel_req_raise", "create") || sectionCan("diesel_req_raise", "edit") ? (
                 <Button variant="outline" size="sm" onClick={() => setView("daily-report")} data-testid="button-daily-report">DAILY REPORT</Button>
               ) : null}
-              {sectionCan("site_diesel", "view_reports") && (
+              {sectionCan("site_diesel", "export") && (
                 <Button variant="outline" size="sm" onClick={() => { setView("report"); setReportGenerated(false); }} data-testid="button-comparison-report">
                   COMPARISON REPORT
                 </Button>

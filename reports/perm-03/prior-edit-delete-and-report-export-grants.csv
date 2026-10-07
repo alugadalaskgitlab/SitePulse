@@ -1,0 +1,54 @@
+user,section,authority_before
+K V Babu,dashboard,Edit permitting delete/cancel
+K V Babu,site_dprs,Edit permitting delete/cancel
+K V Babu,site_dprs,Reports permitting output (baseline reader evidence)
+K V Babu,site_materials,Edit permitting delete/cancel
+K V Babu,site_diesel,Edit permitting delete/cancel
+K V Babu,site_diesel,Reports permitting output (baseline reader evidence)
+K V Babu,diesel_req_raise,Edit permitting delete/cancel
+K V Babu,irn_view,Reports permitting output (baseline reader evidence)
+K V Babu,irn_raise,Reports permitting output (baseline reader evidence)
+K V Babu,plant_shift_logs,Reports permitting output (baseline reader evidence)
+K V Babu,plant_heating,Reports permitting output (baseline reader evidence)
+K V Babu,plant_equipment,Edit permitting delete/cancel
+K V Babu,plant_equipment,Reports permitting output (baseline reader evidence)
+K V Babu,plant_production,Reports permitting output (baseline reader evidence)
+K V Babu,plant_materials,Edit permitting delete/cancel
+K V Babu,plant_materials,Reports permitting output (baseline reader evidence)
+K V Babu,plant_bitumen,Reports permitting output (baseline reader evidence)
+K V Babu,plant_ldo,Reports permitting output (baseline reader evidence)
+K V Babu,plant_daily_reports,Reports permitting output (baseline reader evidence)
+K V Babu,plant_stock,Reports permitting output (baseline reader evidence)
+K V Babu,plant_diesel_proc,Reports permitting output (baseline reader evidence)
+K V Babu,rmc_operations,Reports permitting output (baseline reader evidence)
+K V Babu,rmc_batch_records,Reports permitting output (baseline reader evidence)
+K V Babu,rmc_cube_tests,Reports permitting output (baseline reader evidence)
+K V Babu,rmc_delivery_challans,Reports permitting output (baseline reader evidence)
+K V Babu,rmc_daily_report,Reports permitting output (baseline reader evidence)
+K V Babu,vendor_bills,Reports permitting output (baseline reader evidence)
+K V Babu,vendor_bills_view,Reports permitting output (baseline reader evidence)
+K V Babu,reports,Reports permitting output (baseline reader evidence)
+K V Babu,mix_calculator,Reports permitting output (baseline reader evidence)
+K V Babu,concrete_calculator,Reports permitting output (baseline reader evidence)
+K V Babu,qto_boq,Edit permitting delete/cancel
+K V Babu,master_parties,Reports permitting output (baseline reader evidence)
+K V Babu,master_materials,Reports permitting output (baseline reader evidence)
+K V Babu,master_equipment,Reports permitting output (baseline reader evidence)
+K V Babu,admin_settings,Reports permitting output (baseline reader evidence)
+Ramesh,site_dprs,Edit permitting delete/cancel
+Ramesh,site_dprs,Reports permitting output (baseline reader evidence)
+Ramesh,site_materials,Edit permitting delete/cancel
+Ramesh,diesel_req_raise,Edit permitting delete/cancel
+Ramesh,irn_view,Reports permitting output (baseline reader evidence)
+Ramesh,irn_raise,Reports permitting output (baseline reader evidence)
+Ramesh,plant_shift_logs,Reports permitting output (baseline reader evidence)
+Ramesh,plant_manpower_review,Reports permitting output (baseline reader evidence)
+Ramesh,plant_heating,Reports permitting output (baseline reader evidence)
+Ramesh,plant_production,Reports permitting output (baseline reader evidence)
+Ramesh,plant_materials,Edit permitting delete/cancel
+Ramesh,plant_materials,Reports permitting output (baseline reader evidence)
+Ramesh,plant_bitumen,Reports permitting output (baseline reader evidence)
+Ramesh,plant_ldo,Reports permitting output (baseline reader evidence)
+Ramesh,plant_diesel_proc,Reports permitting output (baseline reader evidence)
+Ramesh,rmc_batch_records,Reports permitting output (baseline reader evidence)
+Ramesh,rmc_delivery_challans,Reports permitting output (baseline reader evidence)

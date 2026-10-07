@@ -88,7 +88,7 @@ describe("Task #1430 DPR breakdown persistence wiring", () => {
       routes.indexOf("// ============================================", routes.indexOf('app.delete("/api/attachments/:id"')),
     );
     expect(attachmentMutations).toContain('assertCreateOrEdit(req, res, "plant_equipment")');
-    expect(attachmentMutations).toContain('assertEdit(req, res, "plant_equipment")');
+    expect(attachmentMutations).toContain('assertDelete(req, res, "plant_equipment")');
     expect(routes).toContain("getEquipmentHealthSummary(await visibleMaintenanceLogIds(req))");
     expect(routes).toContain("getOpenBreakdownCount(await visibleMaintenanceLogIds(req))");
     expect(storage).toContain("visibleMaintenanceLogIds.length === 0");

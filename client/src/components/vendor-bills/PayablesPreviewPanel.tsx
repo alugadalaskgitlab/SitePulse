@@ -32,7 +32,7 @@ function Items({ items }: { items: PayablesItem[] }) {
     </tr>)}</tbody>
   </table></div>;
 }
-export default function PayablesPreviewPanel({ vendors, sites }: { vendors: string[]; sites: Site[] }) {
+export default function PayablesPreviewPanel({ vendors, sites, canExport = false }: { vendors: string[]; sites: Site[]; canExport?: boolean }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
@@ -53,7 +53,8 @@ export default function PayablesPreviewPanel({ vendors, sites }: { vendors: stri
     setExporting(true);
     try {
       // Permission/site scope and duplicates are revalidated BEFORE any file is created.
-      const fresh = await requestPayablesPreview(request);
+      if (!canExport) return;
+      const fresh = await requestPayablesPreview(request, true);
       queryClient.setQueryData(["/api/vendor-bills/payables-preview", request], fresh);
       exportPayablesPreview(fresh, format);
     } catch (error) {
@@ -99,11 +100,11 @@ export default function PayablesPreviewPanel({ vendors, sites }: { vendors: stri
           {dirty && <p className="mt-3 text-xs text-amber-700 dark:text-amber-400">Inputs changed. Generate preview again to update figures and enable exports.</p>}
         </div>
         {data.warnings.map(warning => <p key={warning} className="text-xs text-amber-800 dark:text-amber-300">{warning}</p>)}
-        <div className="flex flex-wrap gap-2">
+        {canExport && <div className="flex flex-wrap gap-2">
           <Button variant="outline" disabled={dirty || exporting} onClick={() => download("xlsx")}><Download className="mr-2 h-4 w-4" />Export Excel</Button>
           <Button variant="outline" disabled={dirty || exporting} onClick={() => download("pdf")}><FileText className="mr-2 h-4 w-4" />Export PDF</Button>
           {exporting && <span role="status" className="self-center text-xs text-muted-foreground">Revalidating report access and source data…</span>}
-        </div>
+        </div>}
         <section className="space-y-2"><h3 className="text-sm font-semibold">Authorized site subtotal · excludes unallocated charges</h3><Totals totals={data.siteTotal} /></section>
         {data.categories.map(category => <section key={category.category} className="overflow-hidden rounded border">
           <div className="flex flex-wrap items-center justify-between gap-3 bg-muted/30 px-3 py-3"><h3 className="text-sm font-bold">{labels[category.category]}</h3><Totals totals={category.totals} /></div>

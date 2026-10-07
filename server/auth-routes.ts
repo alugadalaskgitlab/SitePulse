@@ -1034,8 +1034,8 @@ export function assertReportExport(req: Request, res: Response, ...sections: Sec
     return false;
   }
   if (req.authUser.isAdmin || req.authUser.isOwner) return true;
-  if (!sections.some(section => req.authPermissions?.[section]?.view_reports)) {
-    res.status(403).json({ error: "forbidden", sections, action: "view_reports" });
+  if (!sections.some(section => req.authPermissions?.[section]?.export)) {
+    res.status(403).json({ error: "forbidden", sections, action: "export" });
     return false;
   }
   return true;
@@ -1069,12 +1069,30 @@ export function assertApprove(req: Request, res: Response, section: SectionKey):
   return true;
 }
 
-// Delete/Cancel gate for the 5 priority transaction modules (spec §7).
-// Owner/Admin always pass; others need the section's `edit` permission
-// (delete/cancel is treated as an edit-tier action, consistent with how
-// these routes already gate updates).
+// Destructive actions are independently delegated, never inherited from Edit.
+export function assertDelete(req: Request, res: Response, section: SectionKey): boolean {
+  return assertDeleteEither(req, res, section);
+}
+
+export function assertDeleteEither(req: Request, res: Response, ...sections: SectionKey[]): boolean {
+  if (!req.authUser) {
+    res.status(401).json({ error: "not_authenticated" });
+    return false;
+  }
+  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
+  if (!sections.some(section => req.authPermissions?.[section]?.delete)) {
+    res.status(403).json({ error: "forbidden", sections, action: "delete" });
+    return false;
+  }
+  return true;
+}
+
+export function assertExport(req: Request, res: Response, section: SectionKey): boolean {
+  return assertReportExport(req, res, section);
+}
+
 export function assertDeleteOrCancel(req: Request, res: Response, section: SectionKey): boolean {
-  return assertEdit(req, res, section);
+  return assertDelete(req, res, section);
 }
 
 export function currentUserName(req: Request): string {

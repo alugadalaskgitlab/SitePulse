@@ -213,13 +213,13 @@ function Router() {
         {/* Public routes */}
         <Route path="/login" component={Login} />
         <Route path="/estimator-login" component={EstimatorLogin} />
-        <Route path="/estimator-hub" component={EstimatorHub} />
-        <Route path="/concrete-calculator" component={ConcreteCalculator} />
-        <Route path="/concrete-calculator-v2" component={ConcreteCalculatorV2} />
-        <Route path="/admin/mix-estimates" component={MixEstimates} />
-        <Route path="/admin/mix-impact" component={MixImpact} />
-        <Route path="/admin/mix-comparison" component={MixComparativeReport} />
-        <Route path="/admin/scenario-comparison" component={ScenarioComparison} />
+        <Route path="/estimator-hub" component={gated(EstimatorHub, "estimator_portal")} />
+        <Route path="/concrete-calculator" component={gated(ConcreteCalculator, "concrete_calculator")} />
+        <Route path="/concrete-calculator-v2" component={gated(ConcreteCalculatorV2, "concrete_calculator")} />
+        <Route path="/admin/mix-estimates" component={gated(MixEstimates, "mix_calculator")} />
+        <Route path="/admin/mix-impact" component={gated(MixImpact, "mix_calculator")} />
+        <Route path="/admin/mix-comparison" component={gated(MixComparativeReport, "mix_calculator")} />
+        <Route path="/admin/scenario-comparison" component={gated(ScenarioComparison, "mix_calculator")} />
 
         {/* Hub pages (HubShell layout) */}
         <Route path="/">
@@ -275,7 +275,7 @@ function AuthedShell() {
           <Route path="/reports/equipment-performance" component={gatedEither(EquipmentPerformanceReport, "equipment_performance_report", "plant_equipment")} />
            <Route path="/equipment/status" component={gatedEither(EquipmentStatus, "equipment_hub", "plant_equipment", "equipment_performance_report")} />
           {/* Site pages */}
-          <Route path="/site" component={SiteHome} />
+          <Route path="/site" component={gated(SiteHome, "site_hub")} />
           <Route path="/site/dashboard" component={gated(SiteDashboard, "site_dprs")} />
           <Route path="/site/new" component={gated(DprSections, "site_dprs")} />
           <Route path="/site/guided" component={gated(DprSections, "site_dprs")} />
@@ -295,8 +295,8 @@ function AuthedShell() {
           <Route path="/my-plans" component={gated(MyPlans, "site_dprs")} />
 
           {/* Plant pages */}
-          <Route path="/plant" component={PlantHome} />
-          <Route path="/plant/dashboard" component={Plant} />
+          <Route path="/plant" component={gated(PlantHome, "hmp_hub")} />
+          <Route path="/plant/dashboard" component={gated(Plant, "hmp_hub")} />
           <Route path="/plant/new" component={gatedEither(PlantNew, "site_management", "sites_plants_manage", "admin_settings")} />
           <Route path="/plant/material-receipts" component={gated(PlantMaterialReceipts, "plant_materials")} />
           <Route path="/plant/material-issues" component={gated(PlantMaterialIssues, "plant_materials")} />
@@ -356,18 +356,18 @@ function AuthedShell() {
 
           {/* BOQ / Work Programme pages */}
           {WP_ENABLED && <Route path="/work-program" component={gated(BoqProjects, "qto_boq")} />}
-          {WP_ENABLED && <Route path="/work-program/planning-masters" component={gated(PlanningMasters, "qto_boq")} />}
+          {WP_ENABLED && <Route path="/work-program/planning-masters" component={gated(PlanningMasters, "planning_masters")} />}
           {WP_ENABLED && <Route path="/work-program/:id" component={gated(BoqProjectDetail, "qto_boq")} />}
-          {WP_ENABLED && <Route path="/work-program/:id/settings" component={gated(BoqProgramSettings, "qto_boq")} />}
-          {WP_ENABLED && <Route path="/work-program/:id/programme" component={gated(WorkProgramme, "qto_boq")} />}
-          {WP_ENABLED && <Route path="/work-program/:id/demand" component={gated(WorkDemand, "qto_boq")} />}
-          {WP_ENABLED && <Route path="/work-program/:id/earthwork" component={gated(EarthworkControl, "qto_boq")} />}
-          {WP_ENABLED && <Route path="/work-program/:id/execution-arrangements" component={gated(ExecutionArrangements, "qto_boq")} />}
+          {WP_ENABLED && <Route path="/work-program/:id/settings" component={gated(BoqProgramSettings, "work_programme")} />}
+          {WP_ENABLED && <Route path="/work-program/:id/programme" component={gated(WorkProgramme, "work_programme")} />}
+          {WP_ENABLED && <Route path="/work-program/:id/demand" component={gated(WorkDemand, "work_programme_review")} />}
+          {WP_ENABLED && <Route path="/work-program/:id/earthwork" component={gated(EarthworkControl, "work_programme_review")} />}
+          {WP_ENABLED && <Route path="/work-program/:id/execution-arrangements" component={gated(ExecutionArrangements, "work_programme")} />}
           {WP_ENABLED && <Route path="/work-program/:id/scope" component={gatedEither(ScopeSetup, "project_scope", "qto_boq")} />}
-          {WP_ENABLED && <Route path="/work-program/:id/geometry" component={gated(RoadGeometry, "qto_boq")} />}
-          {WP_ENABLED && <Route path="/work-program/:id/resource-review" component={gated(ResourceReview, "qto_boq")} />}
-          {WP_ENABLED && <Route path="/work-program/:id/item-review" component={gated(BoqItemReview, "qto_boq")} />}
-          {WP_ENABLED && <Route path="/norms" component={gated(NormsLibrary, "qto_boq")} />}
+          {WP_ENABLED && <Route path="/work-program/:id/geometry" component={gated(RoadGeometry, "planning_masters")} />}
+          {WP_ENABLED && <Route path="/work-program/:id/resource-review" component={gated(ResourceReview, "work_programme_review")} />}
+          {WP_ENABLED && <Route path="/work-program/:id/item-review" component={gated(BoqItemReview, "work_programme_review")} />}
+          {WP_ENABLED && <Route path="/norms" component={gated(NormsLibrary, "norms_library")} />}
 
           {/* Stores pages */}
           <Route path="/stores" component={gated(StoresHome, "stores_inventory")} />
@@ -395,7 +395,7 @@ function AuthedShell() {
           <Route path="/masters/section/:section" component={gatedEither(PlantMasters, "master_parties", "master_materials", "master_equipment", "master_personnel", "sites_plants_manage", "admin_settings")} />
 
           {/* Edit requests — /edit-requests is the admin review queue; /mine is open to any authenticated user */}
-          <Route path="/edit-requests" component={gatedEither(EditRequestsPage, "admin_settings", "user_management")} />
+          <Route path="/edit-requests" component={gated(EditRequestsPage, "edit_requests_review")} />
           <Route path="/edit-requests/mine" component={EditRequestsPage} />
           <Route path="/notifications/preferences" component={NotificationPreferences} />
           <Route path="/account" component={Account} />

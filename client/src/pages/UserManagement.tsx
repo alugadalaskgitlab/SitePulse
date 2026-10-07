@@ -918,7 +918,7 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
     setMatrix((prev) => {
       const row = { ...prev[section] };
       for (const action of SECTION_ACTIONS[section]) {
-        if (action !== "notify" && canGrantAction(section, action)) row[action] = value;
+        if (!["delete", "export", "notify"].includes(action) && canGrantAction(section, action)) row[action] = value;
       }
       return { ...prev, [section]: row };
     });
@@ -937,7 +937,7 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
           if (!value) for (const a of owned) row[a] = false;
         } else {
           for (const a of SECTION_ACTIONS[s]) {
-            if (a !== "notify" && canGrantAction(s, a)) row[a] = value;
+            if (!["delete", "export", "notify"].includes(a) && canGrantAction(s, a)) row[a] = value;
           }
         }
         next[s] = row;
@@ -953,7 +953,7 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
   const grantableActions = (s: SectionKey): Action[] =>
     HUB_SECTIONS.has(s)
       ? (HUB_ACTIONS.some((a) => canGrantAction(s, a)) ? ["view"] : [])
-      : SECTION_ACTIONS[s].filter((a) => a !== "notify" && canGrantAction(s, a));
+      : SECTION_ACTIONS[s].filter((a) => !["delete", "export", "notify"].includes(a) && canGrantAction(s, a));
 
   function PermMatrix({ sections }: { sections: SectionKey[] }) {
     return (
@@ -1101,7 +1101,15 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
                   ))}
                 </SelectContent>
               </Select>
-              <Button size="sm" variant="outline" onClick={() => setMatrix(fullMatrix())} data-testid="button-perms-all">
+              <Button size="sm" variant="outline" onClick={() => setMatrix(prev => {
+                const next = fullMatrix();
+                for (const key of SECTION_KEYS) {
+                  next[key].delete = prev[key].delete;
+                  next[key].export = prev[key].export;
+                  next[key].notify = prev[key].notify;
+                }
+                return next;
+              })} data-testid="button-perms-all">
                 Grant all
               </Button>
               <Button size="sm" variant="outline" onClick={() => setMatrix(emptyMatrix())} data-testid="button-perms-none">

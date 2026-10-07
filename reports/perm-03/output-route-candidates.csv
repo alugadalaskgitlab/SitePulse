@@ -1,0 +1,21 @@
+method,route,guards,classification
+POST,/api/attachments,"assertEditEither(req, res, ""site_diesel"", ""diesel_req_raise"")) return; assertCreateOrEdit(req, res, ""plant_equipment"")) return; assertMaintenanceRecordAccess(req, res, parsed.linkedRecordId, true))) return",Candidate requires manual classification; not certified covered
+GET,/api/admin/operator-manual.pdf,"assertAdmin(req, res)) return",Admin-only: unchanged
+GET,/api/admin/estimator-guide.pdf,,Candidate requires manual classification; not certified covered
+GET,/api/admin/admin-guide.pdf,"assertAuthed(req, res)) return",Candidate requires manual classification; not certified covered
+GET,/api/plant-module/daily-reports-export,"assertReportExport(req, res, ""plant_daily_reports"")) return",Export guard present
+POST,/api/plant-module/daily-reports/bulk-zip,"assertReportExport(req, res, ""plant_daily_reports"")) return",Export guard present
+GET,/api/plant-module/daily-reports/:date/pdf,"assertReportExport(req, res, ""plant_daily_reports"")) return; assertReportPlant(req, res, plantName)) return",Export guard present
+GET,/api/plant-module/heating-trends/excel,"assertReportExport(req, res, ""plant_heating"", ""plant_heating_trends"")) return; assertReportPlant(req, res, plantName)) return",Export guard present
+GET,/api/purchase-indents/:id/items/:itemId/purchase-order.pdf,"assertReportExport(req, res, ""purchase_indents_view"", ""purchase_indents_raise"")) return; assertPiRaiserRead(req, res)) return",Export guard present
+GET,/api/irn/:id/issue-voucher,"assertReportExport(req, res, ""irn_view"", ""irn_raise"")) return",Export guard present
+GET,/api/vendor-bills/export,"assertReportExport(req, res, ""vendor_bills"", ""vendor_bills_view"")) return",Export guard present
+GET,/api/vendor-bills/:id/pdf,"assertReportExport(req, res, ""vendor_bills"", ""vendor_bills_view"")) return",Export guard present
+GET,/api/admin/exportable-tables,,Candidate requires manual classification; not certified covered
+POST,/api/admin/export-data,"assertAdmin(req, res)) return",Admin-only: unchanged
+GET,/api/rmc/batch-records/export,"assertExport(req, res, ""rmc_batch_records"")) return; assertView(req, res, ""plant_production"")) return",Export guard present
+GET,/api/rmc/cube-tests/export,"assertExport(req, res, ""rmc_cube_tests"")) return; assertView(req, res, ""plant_production"")) return",Export guard present
+GET,/api/rmc/daily-report/pdf,"assertExport(req, res, ""rmc_daily_report"")) return; assertView(req, res, ""plant_daily_reports"")) return",Export guard present
+GET,/api/rmc/daily-report/export,"assertExport(req, res, ""rmc_daily_report"")) return; assertView(req, res, ""plant_daily_reports"")) return",Export guard present
+GET,/api/reports/progress/export,"assertExport(req, res, ""site_dprs"")) return; assertView(req, res, ""site_dprs"")) return",Export guard present
+GET,/api/snl/import-template,"assertExport(req, res, ""norms_library"")) return",Export guard present

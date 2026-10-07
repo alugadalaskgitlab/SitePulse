@@ -82,7 +82,7 @@ describe("REC-03 Material Receipt update feedback and submitted edit controls", 
 
   it("leaves ordinary draft receipt editing on the existing control", () => {
     expect(source).toContain(
-      '(canEdit || isOwnerOrAdmin) && (receipt as any).documentStatus !== "submitted"',
+      '(canEdit || isOwnerOrAdmin || sectionCan("plant_materials", "delete")) && (receipt as any).documentStatus !== "submitted"',
     );
     expect(source).toContain("onClick={() => handleEditClick(receipt)}");
   });

@@ -81,7 +81,7 @@ export default function SiteDashboard() {
   const { companyName, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("site_dprs", "create");
   const canEdit = sectionCan("site_dprs", "edit");
-  const canExport = sectionCan("site_dprs", "view_reports");
+  const canExport = sectionCan("site_dprs", "export");
   const [expandedReports, setExpandedReports] = useState<Set<number>>(new Set());
   // DPR filter state — persisted across visits in localStorage so the page
   // re-opens with the user's last-used filter set. URL params (if any are

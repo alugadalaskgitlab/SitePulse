@@ -575,7 +575,7 @@ export default function VendorBills() {
   // the payment-details PATCH and for marking a bill paid (approve on
   // vendor_bills_approve) — never show an edit control a 403 would reject.
   const canMarkPaid = isAdmin || sectionCan("vendor_bills_approve", "approve");
-  const canExport = sectionCan("vendor_bills", "view_reports") || sectionCan("vendor_bills_view", "view_reports");
+  const canExport = sectionCan("vendor_bills", "export") || sectionCan("vendor_bills_view", "export");
 
   const [view, setView] = useState<ViewMode>("list");
   const [selectedBillId, setSelectedBillId] = useState<number | null>(null);
@@ -4964,7 +4964,7 @@ export default function VendorBills() {
       </div>
 
       {/* Management Report context banner */}
-      {canExport && !user?.isFieldEngineer && <PayablesPreviewPanel vendors={vendorNames} sites={sites} />}
+      {(sectionCan("vendor_bills", "view_reports") || sectionCan("vendor_bills_view", "view_reports")) && !user?.isFieldEngineer && <PayablesPreviewPanel vendors={vendorNames} sites={sites} canExport={canExport} />}
       {mgmtReportSite && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300" data-testid="banner-management-report">
           <BarChart2 className="w-4 h-4 flex-shrink-0 text-amber-500" />

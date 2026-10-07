@@ -220,6 +220,15 @@ const dependencies = { app, storage: reader, z, buildVendorPayablesPreview, vend
 const compiled = ts.transpile(`${guard}\n${["getPermittedSiteNames", "assertTripSiteAccess", "resolveVendorBillSite"].map(fn).join("\n")}\n${route}`, { target: ts.ScriptTarget.ES2022 });
 new Function(...Object.keys(dependencies), compiled)(...Object.values(dependencies));
 describe("VB-EXPORT-01 Part B actual endpoint permission and site gates", () => {
+  it("keeps Reports independent from Export during download revalidation", async () => {
+    permissions = { vendor_bills_view: { view_reports: true, export: false } };
+    expect((await request(app).get("/api/vendor-bills/payables-preview").query({ ...input, export: "1" })).status).toBe(403);
+    expect(reader.getVendorBillAutoItems).not.toHaveBeenCalled();
+  });
+  it("permits explicit Export without using the Reports grant", async () => {
+    permissions = { vendor_bills_view: { view_reports: false, export: true } };
+    expect((await request(app).get("/api/vendor-bills/payables-preview").query({ ...input, export: "1" })).status).toBe(200);
+  });
   it("returns 403 without view_reports before source reads", async () => {
     permissions = { vendor_bills: { view: true, export: true } };
     const res = await request(app).get("/api/vendor-bills/payables-preview").query(input);
@@ -249,7 +258,8 @@ describe("VB-EXPORT-01 Part B actual endpoint permission and site gates", () => 
   it("is registered before /:id; export client revalidates via same protected endpoint first", () => {
     expect(source.indexOf('app.get("/api/vendor-bills/payables-preview"')).toBeLessThan(source.indexOf('app.get("/api/vendor-bills/:id"'));
     const ui = fs.readFileSync("client/src/components/vendor-bills/PayablesPreviewPanel.tsx", "utf8");
-    expect(ui.indexOf("await requestPayablesPreview(request)")).toBeLessThan(ui.indexOf("exportPayablesPreview(fresh, format)"));
-    expect(fs.readFileSync("client/src/pages/VendorBills.tsx", "utf8")).toContain("canExport && !user?.isFieldEngineer");
+    expect(ui.indexOf("await requestPayablesPreview(request, true)")).toBeGreaterThan(-1);
+    expect(ui.indexOf("await requestPayablesPreview(request, true)")).toBeLessThan(ui.indexOf("exportPayablesPreview(fresh, format)"));
+    expect(fs.readFileSync("client/src/pages/VendorBills.tsx", "utf8")).toContain('sectionCan("vendor_bills", "view_reports")');
   });
 });

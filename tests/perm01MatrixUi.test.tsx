@@ -65,7 +65,7 @@ async function save() {
 }
 
 describe("PERM-01 C actual permissions dialog", () => {
-  it("A/B: hub has one Access and inactive tooltip; Home offers only View/Edit", async () => {
+  it("A/B: hub has one Access; Home exposes its explicit subscription Delete action", async () => {
     stored.site_hub.export = true;
     await open();
     expect(checked("site_hub-access")).toBe(false);
@@ -76,7 +76,8 @@ describe("PERM-01 C actual permissions dialog", () => {
     }
     expect(check("dashboard-view")).toBeTruthy();
     expect(check("dashboard-edit")).toBeTruthy();
-    for (const a of ACTIONS.filter((a) => a !== "view" && a !== "edit")) {
+    expect(check("dashboard-delete")).toBeTruthy();
+    for (const a of ACTIONS.filter((a) => a !== "view" && a !== "edit" && a !== "delete")) {
       expect(screen.queryByTestId(`checkbox-dashboard-${a}`)).toBeNull();
     }
   });

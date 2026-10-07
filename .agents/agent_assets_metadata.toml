@@ -5281,3 +5281,17 @@ mtime_ms = 1791309206595
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/a6103db3-149e-4546-b198-4e73b84977da/1dc15455-9ad3-4702-8bac-1c881911edbd"
 storage_version_token = "1791309230091721"
 content_type = "text/html"
+
+[[outputs]]
+id = "8emvAQnCHr9-yJC7FTSzJ"
+uri = "file://reports/perm-03/status-report.html"
+type = "html"
+title = "PERM-03 — implementation status and evidence"
+description = "Incomplete: includes exact permission writes, before/after checksums, the unchanged 93-route inventory, notification coverage, test comparisons, and outstanding acceptance checks."
+logical_id = "962008e8-647e-49a3-8bd6-8fd030dde7ea"
+content_hash = "sha256:41c8ff5ec42987896f06b1f8fd7b121591eae0f38653f56a287c88a5d18415de"
+size = 89272
+mtime_ms = 1791346829970
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/962008e8-647e-49a3-8bd6-8fd030dde7ea/fc66e7a3-2106-4559-9315-59dd40ea9e32"
+storage_version_token = "1791346851279920"
+content_type = "text/html"

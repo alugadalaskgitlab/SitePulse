@@ -86,6 +86,7 @@ vi.mock("../server/auth-routes", () => ({
   registerAuthRoutes: vi.fn(),
   assertAdmin: vi.fn(() => true),
   assertEdit: vi.fn(() => true),
+  assertDelete: vi.fn(() => true),
   assertView: vi.fn(() => true),
   assertViewEither: vi.fn(() => true),
   assertAuthed: vi.fn(() => true),

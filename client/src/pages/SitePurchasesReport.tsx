@@ -39,7 +39,7 @@ interface SitePurchaseItem {
 
 export default function SitePurchasesReport() {
   const { toast } = useToast();
-  const { isOwner, isAdmin } = useAuth();
+  const { isOwner, isAdmin, sectionCan } = useAuth();
   const isOwnerOrAdmin = isOwner || isAdmin;
   const search = useSearch();
   const sp = new URLSearchParams(search);
@@ -380,7 +380,7 @@ export default function SitePurchasesReport() {
                                     >
                                       <Pencil className="w-4 h-4" />
                                     </Button>
-                                    <Button
+                                    {sectionCan("site_materials", "delete") && <Button
                                       variant="ghost"
                                       size="icon"
                                       onClick={() => setCancelItem(p)}
@@ -388,7 +388,7 @@ export default function SitePurchasesReport() {
                                       title="Cancel"
                                     >
                                       <Ban className="w-4 h-4 text-amber-600" />
-                                    </Button>
+                                    </Button>}
                                   </>
                                 )}
                               </>

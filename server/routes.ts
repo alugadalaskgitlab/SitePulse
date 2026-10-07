@@ -119,6 +119,9 @@ import {
   assertCreateEither,
   assertApprove,
   assertDeleteOrCancel,
+  assertDelete,
+  assertDeleteEither,
+  assertExport,
   currentUserName,
 } from "./auth-routes";
 import { registerManagementReportRoutes } from "./management-report";
@@ -1258,9 +1261,7 @@ export async function registerRoutes(
   app.get("/api/edit-requests/pending", requireAuth, async (req, res) => {
     try {
       const u = req.authUser!;
-      if (!u.isAdmin && !u.isOwner) {
-        return res.status(403).json({ error: "Only admins and owners can view pending requests." });
-      }
+      if (!assertView(req, res, "edit_requests_review")) return;
       await storage.expireOldEditPermissions();
       const list = await storage.getPendingEditPermissionRequests();
       res.json(list);
@@ -1301,9 +1302,7 @@ export async function registerRoutes(
   app.post("/api/edit-requests/:id/approve", requireAuth, async (req, res) => {
     try {
       const u = req.authUser!;
-      if (!u.isAdmin && !u.isOwner) {
-        return res.status(403).json({ error: "Only admins and owners can approve requests." });
-      }
+      if (!assertApprove(req, res, "edit_requests_review")) return;
       const id = Number(req.params.id);
       const reqRecord = await storage.getEditPermissionRequest(id);
       if (!reqRecord) return res.status(404).json({ error: "Request not found." });
@@ -1331,9 +1330,7 @@ export async function registerRoutes(
   app.post("/api/edit-requests/:id/deny", requireAuth, async (req, res) => {
     try {
       const u = req.authUser!;
-      if (!u.isAdmin && !u.isOwner) {
-        return res.status(403).json({ error: "Only admins and owners can deny requests." });
-      }
+      if (!assertApprove(req, res, "edit_requests_review")) return;
       const id = Number(req.params.id);
       const reqRecord = await storage.getEditPermissionRequest(id);
       if (!reqRecord) return res.status(404).json({ error: "Request not found." });
@@ -1472,10 +1469,25 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const attachment = await storage.getAttachment(id);
       if (!attachment) return res.status(404).json({ message: "Attachment not found" });
-      // Match the diesel purchase-update authority for removing its evidence.
-      if (attachment.moduleType === "diesel_purchase" && !assertEditEither(req, res, "site_diesel", "diesel_req_raise")) return;
+      // Evidence removal uses the underlying module's explicitly delegated Delete.
+      let allowed = false;
+      switch (attachment.moduleType) {
+        case "diesel_purchase": allowed = assertDeleteEither(req, res, "site_diesel", "diesel_req_raise"); break;
+        case "dpr_progress": case "dpr_material": allowed = assertDelete(req, res, "site_dprs"); break;
+        case "material_receipt": case "hmp_rmc_stock_receipt": allowed = assertDelete(req, res, "plant_materials"); break;
+        case "site_purchase": case "site_material_trip": allowed = assertDelete(req, res, "site_materials"); break;
+        case "irn": allowed = assertDelete(req, res, "irn_raise"); break;
+        case "pi": case "pi_purchaser_action": allowed = assertDelete(req, res, "purchase_indents_raise"); break;
+        case "store_grn": allowed = assertDelete(req, res, "stores_inventory"); break;
+        case "vendor_bill": allowed = assertDelete(req, res, "vendor_bills_raise"); break;
+        case "plant_production": allowed = assertDelete(req, res, "plant_production"); break;
+        case "equipment_breakdown": case "equipment_maintenance": case "equipment_fuel_proof":
+          allowed = assertDelete(req, res, "plant_equipment"); break;
+        case "quality_test": allowed = assertDelete(req, res, "rmc_cube_tests"); break;
+        default: return res.status(403).json({ error: "unmapped_attachment_permission" });
+      }
+      if (!allowed) return;
       if (attachment.moduleType === "equipment_breakdown") {
-        if (!assertEdit(req, res, "plant_equipment")) return;
         if (!(await assertMaintenanceRecordAccess(req, res, attachment.linkedRecordId, true))) return;
       }
       const deleted = await storage.deleteAttachment(id);
@@ -1834,7 +1846,7 @@ export async function registerRoutes(
 
   app.delete("/api/push/unsubscribe", requireAuth, async (req, res) => {
     try {
-      if (!assertEdit(req, res, "dashboard")) return;
+      if (!assertDelete(req, res, "dashboard")) return;
       const { endpoint } = req.body;
       if (!endpoint) {
         return res.status(400).json({ message: "Endpoint required" });
@@ -9371,6 +9383,7 @@ export async function registerRoutes(
 
   // The former instant-export URL now enforces approval, even for direct callers.
   app.get("/api/purchase-indents/:id/items/:itemId/purchase-order.pdf", async (req, res) => {
+    if (!assertReportExport(req, res, "purchase_indents_view", "purchase_indents_raise")) return;
     try {
       if (!assertPiRaiserRead(req, res)) return;
       const scoped = await scopedPoItem(req, res);
@@ -11675,7 +11688,14 @@ export async function registerRoutes(
   // Read-only forecast. Register before the parameterized bill lookup.
   app.get("/api/vendor-bills/payables-preview", async (req, res) => {
     try {
-      if (!assertReportExport(req, res, "vendor_bills", "vendor_bills_view")) return;
+      if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
+      if (req.query.export === "1") {
+        if (!assertReportExport(req, res, "vendor_bills", "vendor_bills_view")) return;
+      } else if (!req.authUser.isAdmin && !req.authUser.isOwner
+        && !req.authPermissions?.vendor_bills?.view_reports
+        && !req.authPermissions?.vendor_bills_view?.view_reports) {
+        return res.status(403).json({ error: "forbidden", action: "view_reports" });
+      }
       if (req.authUser?.isFieldEngineer) return res.status(403).json({ error: "forbidden", message: "Payables preview is not available to field engineers." });
       const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
         const parsed = new Date(`${value}T00:00:00Z`);
@@ -13896,7 +13916,7 @@ export async function registerRoutes(
 
   app.delete("/api/maintenance/parts/:partId", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "plant_equipment")) return;
+      if (!assertDelete(req, res, "plant_equipment")) return;
       const partId = Number(req.params.partId);
       const part = await storage.getMaintenancePart(partId);
       // Conceal both a missing part and a parent outside the caller's site
@@ -14037,6 +14057,7 @@ export async function registerRoutes(
 
   // RMC Batch Records — Excel export (must be declared before /:id)
   app.get("/api/rmc/batch-records/export", async (req, res) => {
+    if (!assertExport(req, res, "rmc_batch_records")) return;
     try {
       if (!assertView(req, res, "plant_production")) return;
       const filters = {
@@ -14148,6 +14169,7 @@ export async function registerRoutes(
   // Cube Tests
   // RMC Cube Tests — Excel export (must be declared before /:id)
   app.get("/api/rmc/cube-tests/export", async (req, res) => {
+    if (!assertExport(req, res, "rmc_cube_tests")) return;
     try {
       if (!assertView(req, res, "plant_production")) return;
       const filters = {
@@ -14345,6 +14367,7 @@ export async function registerRoutes(
 
   // RMC Daily Report — PDF export
   app.get("/api/rmc/daily-report/pdf", async (req, res) => {
+    if (!assertExport(req, res, "rmc_daily_report")) return;
     try {
       if (!assertView(req, res, "plant_daily_reports")) return;
       const date = req.query.date as string;
@@ -14600,6 +14623,7 @@ export async function registerRoutes(
 
   // RMC Daily Report — Excel export (multi-sheet)
   app.get("/api/rmc/daily-report/export", async (req, res) => {
+    if (!assertExport(req, res, "rmc_daily_report")) return;
     try {
       if (!assertView(req, res, "plant_daily_reports")) return;
       const date = req.query.date as string;
@@ -14873,7 +14897,7 @@ export async function registerRoutes(
   // ── Geometry Batch 01: project Road Geometry profile (optional) ────────────
   app.get("/api/boq/projects/:id/road-geometry", async (req, res) => {
     try {
-      if (!assertView(req, res, "qto_boq")) return;
+      if (!assertView(req, res, "planning_masters")) return;
       const projectId = parseInt(req.params.id);
       if (!Number.isFinite(projectId) || projectId <= 0) {
         return res.status(400).json({ error: "invalid_project_id" });
@@ -14889,7 +14913,7 @@ export async function registerRoutes(
 
   app.put("/api/boq/projects/:id/road-geometry", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "planning_masters")) return;
       const projectId = parseInt(req.params.id);
       if (!Number.isFinite(projectId) || projectId <= 0) {
         return res.status(400).json({ error: "invalid_project_id" });
@@ -14962,7 +14986,7 @@ export async function registerRoutes(
 
   app.put("/api/boq/projects/:id/program-settings", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme")) return;
       const projectId = parseInt(req.params.id);
 
       const settings = await storage.upsertBoqProgramSettingsWithCalendarRealignment(projectId, req.body);
@@ -15211,7 +15235,7 @@ export async function registerRoutes(
 
   app.delete("/api/boq/scope-segments/:segId", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "project_scope")) return;
+      if (!assertDelete(req, res, "project_scope")) return;
       const delSegId = parseInt(req.params.segId);
       const [delSeg] = await db.select().from(projectScopeSegmentsTable)
         .where(eq(projectScopeSegmentsTable.id, delSegId));
@@ -15329,7 +15353,7 @@ export async function registerRoutes(
 
   app.delete("/api/boq/projects/:id/mix-links/:linkId", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertDelete(req, res, "qto_boq")) return;
       await storage.deleteBoqMixLink(parseInt(req.params.linkId));
       res.json({ ok: true });
     } catch (err) {
@@ -15374,6 +15398,7 @@ export async function registerRoutes(
 
   app.delete("/api/boq/categories/:id", async (req, res) => {
     try {
+      if (!assertDelete(req, res, "qto_boq")) return;
       await storage.deleteBoqCategory(parseInt(req.params.id));
       res.json({ ok: true });
     } catch (err) {
@@ -15572,6 +15597,7 @@ export async function registerRoutes(
 
   app.delete("/api/boq/items/:id", async (req, res) => {
     try {
+      if (!assertDelete(req, res, "qto_boq")) return;
       await storage.deleteBoqItem(parseInt(req.params.id));
       res.json({ ok: true });
     } catch (err) {
@@ -15630,6 +15656,7 @@ export async function registerRoutes(
 
   app.delete("/api/boq/revisions/:id", async (req, res) => {
     try {
+      if (!assertDelete(req, res, "qto_boq")) return;
       const deleted = await storage.deleteBoqRevision(parseInt(req.params.id));
       if (!deleted) return res.status(400).json({ error: "Only draft revisions can be deleted" });
       res.json({ ok: true });
@@ -15670,7 +15697,7 @@ export async function registerRoutes(
 
   app.post("/api/boq/projects/:id/programme/publish-baseline", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme")) return;
       const projectId = parseInt(req.params.id);
       const existing = await storage.getBoqProject(projectId);
       if (!existing) return res.status(404).json({ error: "BOQ project not found" });
@@ -15876,7 +15903,7 @@ export async function registerRoutes(
 
   app.post("/api/boq/programme/bars/:id/revision-preview", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme")) return;
       const result = await buildScheduleRevisionPlan(parseInt(req.params.id), req.body);
       // Preview is pure: no storage mutation occurs before this response.
       res.json(result.preview);
@@ -15887,7 +15914,7 @@ export async function registerRoutes(
 
   app.post("/api/boq/programme/bars/:id/revise-schedule", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme")) return;
       const barId = parseInt(req.params.id);
       // Recompute immediately before the transaction; never trust a stale
       // client-side preview or a client-provided successor list.
@@ -16136,7 +16163,7 @@ export async function registerRoutes(
 
   app.post("/api/boq/projects/:id/programme", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme")) return;
       const boqProjectId = parseInt(req.params.id);
       if (sendDirectScheduleMutationBlock(res, await directScheduleMutationBlock(boqProjectId))) return;
       const data = { ...req.body, boqProjectId };
@@ -16171,7 +16198,7 @@ export async function registerRoutes(
 
   app.post("/api/boq/projects/:id/programme/bulk", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme")) return;
       const boqProjectId = parseInt(req.params.id);
       if (sendDirectScheduleMutationBlock(res, await directScheduleMutationBlock(boqProjectId))) return;
       const { bars } = req.body as { bars: Array<Record<string, any>> };
@@ -16194,7 +16221,7 @@ export async function registerRoutes(
 
   app.patch("/api/boq/programme/bars/:id", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme")) return;
       const barId = parseInt(req.params.id);
       const scheduleFields = [
         "startDate", "endDate", "startMonth", "endMonth",
@@ -16258,9 +16285,7 @@ export async function registerRoutes(
   // lets the FK's SET NULL clear programmeBarId, and writes an audit record.
   app.delete("/api/boq/programme/bars/:id", async (req, res) => {
     try {
-      // Ordinary bar deletion is part of programme editing; the exceptional
-      // DPR-linked path below additionally demands delete/cancel authority.
-      if (!assertEdit(req, res, "boq_projects")) return;
+      if (!assertDelete(req, res, "work_programme")) return;
       const barId = parseInt(req.params.id);
       const bar = await storage.getWorkProgramBar?.(barId);
       if (!bar) return res.status(404).json({ error: "Bar not found" });
@@ -16281,7 +16306,7 @@ export async function registerRoutes(
           });
         }
         // Exceptional path requires delete permission on the BOQ section + reason.
-        if (!assertDeleteOrCancel(req, res, "boq_projects")) return;
+        if (!assertDeleteOrCancel(req, res, "work_programme")) return;
         if (!reason) {
           return res.status(400).json({ error: "REASON_REQUIRED", message: "An exceptional deletion of a DPR-linked bar requires a reason." });
         }
@@ -16313,7 +16338,7 @@ export async function registerRoutes(
   // Never an automatic migration — the user picks the bars and the side.
   app.post("/api/boq/projects/:id/programme/bulk-side", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "boq_projects")) return;
+      if (!assertEdit(req, res, "work_programme")) return;
       const boqProjectId = parseInt(req.params.id);
       const side = req.body?.side;
       const barIds: number[] = Array.isArray(req.body?.barIds)
@@ -16356,7 +16381,7 @@ export async function registerRoutes(
   // preserved; nothing is deleted) and inserts the remaining sides as new bars.
   app.post("/api/boq/programme/bars/:id/split-by-side", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "boq_projects")) return;
+      if (!assertEdit(req, res, "work_programme")) return;
       const barId = parseInt(req.params.id);
       const bar = await storage.getWorkProgramBar?.(barId);
       if (!bar) return res.status(404).json({ error: "Bar not found" });
@@ -16845,6 +16870,7 @@ export async function registerRoutes(
   });
 
   app.get("/api/reports/progress/export", async (req, res) => {
+    if (!assertExport(req, res, "site_dprs")) return;
     try {
       if (!assertView(req, res, "site_dprs")) return;
       const projectId = parseInt(req.query.projectId as string);
@@ -18553,7 +18579,7 @@ export async function registerRoutes(
   app.post("/api/boq/projects/:id/earthwork-arrangements", async (req, res) => {
     try {
       if (!assertAuthed(req, res)) return;
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme")) return;
 
       // ── Schema readiness guard ────────────────────────────────────────────
       if (!earthworkSchemaReady) {
@@ -19043,7 +19069,7 @@ export async function registerRoutes(
   app.patch("/api/earthwork-arrangements/:id", async (req, res) => {
     try {
       if (!assertAuthed(req, res)) return;
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme")) return;
 
       // ── Schema readiness guard ────────────────────────────────────────────
       if (!earthworkSchemaReady) {
@@ -19311,7 +19337,7 @@ export async function registerRoutes(
         const pendingPeek = readPending((current as any).pendingRevision);
         if (!pendingPeek) return res.status(404).json({ error: "REVISION_NOT_FOUND", message: "This arrangement has no pending revision." });
         const isProposerDiscard = body.revisionAction === "discard" && pendingPeek.proposedByUserId != null && pendingPeek.proposedByUserId === user?.id;
-        if (!isProposerDiscard && !assertApprove(req, res, "qto_boq")) return;
+        if (!isProposerDiscard && !assertApprove(req, res, "work_programme")) return;
 
         // Row-locked transaction: serialize against concurrent proposals/decisions.
         const result: any = await db.transaction(async (tx) => {
@@ -19395,7 +19421,7 @@ export async function registerRoutes(
 
           if (body.saveIntent === "apply_now") {
             // §21 Admin Edit and Apply Now — approver-only, reason mandatory, versioned.
-            if (!assertApprove(req, res, "qto_boq")) return;
+            if (!assertApprove(req, res, "work_programme")) return;
             if (!body.editReason || !String(body.editReason).trim()) {
               return res.status(400).json({ error: "ADMIN_APPLY_REASON_REQUIRED", message: "A reason is mandatory for Edit and Apply Now." });
             }
@@ -19650,7 +19676,7 @@ export async function registerRoutes(
   app.delete("/api/earthwork-arrangements/:id", async (req, res) => {
     try {
       if (!assertAuthed(req, res)) return;
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertDelete(req, res, "work_programme")) return;
       const id = parseInt(req.params.id);
       const user = (req as any).authUser ?? (req as any).user;
       const { reason, effectiveFrom } = req.body ?? {};
@@ -19860,7 +19886,7 @@ export async function registerRoutes(
   app.delete("/api/earthwork-arrangements/:id/programme-allocations/:allocId", async (req, res) => {
     try {
       if (!assertAuthed(req, res)) return;
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertDelete(req, res, "work_programme")) return;
       const arrangementId = parseInt(req.params.id);
       const allocId = parseInt(req.params.allocId);
       const existing = await storage.getArrangementProgrammeAllocationById(allocId);
@@ -22147,7 +22173,7 @@ export async function registerRoutes(
 
   app.post("/api/planning/equipment-types", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "planning_masters")) return;
       const row = await storage.createPlanningEquipmentType(req.body);
       res.status(201).json(row);
     } catch (err) {
@@ -22157,7 +22183,7 @@ export async function registerRoutes(
 
   app.patch("/api/planning/equipment-types/:id", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "planning_masters")) return;
       const row = await storage.updatePlanningEquipmentType(parseInt(req.params.id), req.body);
       if (!row) return res.status(404).json({ error: "Not found" });
       res.json(row);
@@ -22188,7 +22214,7 @@ export async function registerRoutes(
 
   app.post("/api/planning/labour-types", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "planning_masters")) return;
       const row = await storage.createPlanningLabourType(req.body);
       res.status(201).json(row);
     } catch (err) {
@@ -22198,7 +22224,7 @@ export async function registerRoutes(
 
   app.patch("/api/planning/labour-types/:id", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "planning_masters")) return;
       const row = await storage.updatePlanningLabourType(parseInt(req.params.id), req.body);
       if (!row) return res.status(404).json({ error: "Not found" });
       res.json(row);
@@ -22397,6 +22423,7 @@ export async function registerRoutes(
 
   app.delete("/api/snl/mappings/:boqItemId", async (req, res) => {
     try {
+      if (!assertDelete(req, res, "norms_library")) return;
       const ok = await storage.deleteSnlMapping(parseInt(req.params.boqItemId));
       res.json({ success: ok });
     } catch (err) {
@@ -22573,7 +22600,8 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/snl/import-template", async (_req, res) => {
+  app.get("/api/snl/import-template", async (req, res) => {
+    if (!assertExport(req, res, "norms_library")) return;
     try {
       const buf = buildImportTemplate();
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");

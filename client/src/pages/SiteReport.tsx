@@ -168,7 +168,7 @@ export default function SiteReport() {
         <p className="dpr-management-subtle mt-1">Daily Progress Report · {format(parseISO(dpr.date.slice(0, 10)), "EEE dd MMM yyyy")} · DPR #{dpr.id} · Engineer: {dpr.engineer} · <strong className="text-foreground">{(dpr as any).dprStatus || "Submitted"}</strong></p>
       </div>
       <div className="dpr-management-actions print:hidden">
-        {sectionCan("site_dprs", "view_reports") && <>
+        {sectionCan("site_dprs", "export") && <>
           <Button size="sm" variant="outline" onClick={() => window.print()} data-testid="button-print"><Printer className="w-4 h-4 mr-1" />Print / PDF</Button>
           <Button size="sm" variant="outline" onClick={handleShare} data-testid="button-share-whatsapp" disabled={receipts.isPending || receipts.isError}>Share on WhatsApp</Button>
         </>}
@@ -233,7 +233,7 @@ export default function SiteReport() {
     <section><h2>Remarks / hold-ups</h2><p className="whitespace-pre-wrap break-words" data-testid="dpr-remarks">{(dpr as any).remarks?.trim() || "— none recorded —"}</p></section>
     <nav className="flex flex-wrap gap-2 mt-4 print:hidden" aria-label="Report administration">
       <Button size="sm" variant="ghost" onClick={() => setShowHistory(true)} data-testid="button-history">History</Button>
-      {canEdit && <Button size="sm" variant="ghost" onClick={() => setShowCancel(true)} data-testid="button-cancel-dpr">Cancel report</Button>}
+      {sectionCan("site_dprs", "delete") && <Button size="sm" variant="ghost" onClick={() => setShowCancel(true)} data-testid="button-cancel-dpr">Cancel report</Button>}
       {canDelete && <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setShowDeleteConfirm(true)} disabled={deleteMutation.isPending} data-testid="button-admin-delete">Delete</Button>}
       <Link href="/" className="text-xs text-muted-foreground self-center" data-testid="button-home">Home</Link>
     </nav>

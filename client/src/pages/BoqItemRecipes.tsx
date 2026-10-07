@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { DeleteGate } from "@/components/DeleteGate";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Plus, Trash2, Loader2, Wrench, Users, Package, Info, Zap,
@@ -1347,14 +1348,14 @@ function MapToNormModal({ item, onClose }: { item: BoqItemWithCategory; onClose:
               <span className="text-sm flex-1 text-teal-700">
                 Currently mapped · SNL item #{existingMapping.snlItemId} · {existingMapping.projectCategory}{existingMapping.gradingVariant ? ` · ${existingMapping.gradingVariant}` : ""}
               </span>
-              <button
+              <DeleteGate sections={["norms_library"]}><button
                 onClick={() => removeMutation.mutate()}
                 disabled={removeMutation.isPending}
                 className="text-[12px] text-red-600 hover:text-red-800 flex items-center gap-0.5"
                 data-testid="button-remove-snl-mapping"
               >
                 {removeMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />} Remove
-              </button>
+              </button></DeleteGate>
             </div>
           )}
 

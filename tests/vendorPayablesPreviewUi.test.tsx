@@ -29,7 +29,7 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 function openAndGenerate() {
-  render(<PayablesPreviewPanel vendors={["KAVERI WORKS"]} sites={[]} />);
+  render(<PayablesPreviewPanel vendors={["KAVERI WORKS"]} sites={[]} canExport />);
   fireEvent.click(screen.getByRole("button", { name: /Payables preview/ }));
   fireEvent.change(screen.getByLabelText("Vendor"), { target: { value: "KAVERI WORKS" } });
   fireEvent.change(screen.getByLabelText("Period from"), { target: { value: "2026-06-01" } });
@@ -51,7 +51,7 @@ describe("VB-EXPORT-01 Part B unsaved panel and export revalidation", () => {
     openAndGenerate();
     fireEvent.click(screen.getByRole("button", { name: `Export ${format}` }));
     await waitFor(() => expect(mocks.download).toHaveBeenCalledOnce());
-    expect(mocks.request).toHaveBeenCalledWith(expect.objectContaining({ vendorName: "KAVERI WORKS", gstRates: {} }));
+    expect(mocks.request).toHaveBeenCalledWith(expect.objectContaining({ vendorName: "KAVERI WORKS", gstRates: {} }), true);
     expect(mocks.download).toHaveBeenCalledWith(expect.objectContaining({ generatedAt: "2026-06-30T11:12:13Z" }), format === "PDF" ? "pdf" : "xlsx");
     expect(mocks.request.mock.invocationCallOrder[0]).toBeLessThan(mocks.download.mock.invocationCallOrder[0]);
     expect(mocks.update).toHaveBeenCalledOnce();

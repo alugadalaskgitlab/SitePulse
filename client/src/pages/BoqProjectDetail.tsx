@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, type ReactNode } from "react";
+import { DeleteGate } from "@/components/DeleteGate";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useParams, Link } from "wouter";
 import {
@@ -583,7 +584,7 @@ function CategorySection({
                         >
                           <Pencil className="w-3 h-3" />
                         </button>
-                        <button
+                        <DeleteGate sections={["qto_boq"]}><button
                           onClick={() => {
                             if (window.confirm(`Delete "${boqItemDisplayName(item)}"?\nThis removes the item and its Gantt stretches. This cannot be undone.`)) {
                               deleteItemMutation.mutate(item.id);
@@ -595,7 +596,7 @@ function CategorySection({
                           data-testid={`button-delete-item-${item.id}`}
                         >
                           <Trash2 className="w-3 h-3" />
-                        </button>
+                        </button></DeleteGate>
                       </div>
                     </td>
                   </tr>
@@ -1567,13 +1568,13 @@ function RevisionPanel({
                         >
                           Activate
                         </button>
-                        <button
+                        <DeleteGate sections={["qto_boq"]}><button
                           onClick={e => { e.stopPropagation(); setConfirmDelete(rev); }}
                           className="p-1 rounded text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
                           data-testid={`button-delete-revision-${rev.id}`}
                         >
                           <Trash2 className="w-3 h-3" />
-                        </button>
+                        </button></DeleteGate>
                       </>
                     )}
                     {expanded

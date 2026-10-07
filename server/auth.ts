@@ -710,13 +710,8 @@ export function getClientIp(req: Request): string | undefined {
   return req.socket?.remoteAddress || undefined;
 }
 
-// Task #278 — one-time migration: when the schema added separate
-// `can_delete` and `can_export` columns (both default false), existing rows
-// had the new columns zeroed out. This migration propagates the prior combined
-// values: can_delete ← can_edit, can_export ← can_view_reports for every row.
-// A flag in app_settings ensures it runs exactly once — subsequent startups
-// are a no-op so intentional "edit without delete" splits set by an admin
-// after the migration are never overwritten.
+// Historical marker retained for compatibility. Delete and Export are now
+// explicit-only grants; startup must never derive them from other actions.
 const SPLIT_PERMS_FLAG = "perm_v278_split_done";
 // Task #280 — one-time flag recording that the email-nullable / phone-login
 // schema transition has been applied. No data transformation is needed because
@@ -763,7 +758,7 @@ export async function backfillPlantSubPermissions(): Promise<{ inserted: number;
     for (const newKey of plantSubKeys) {
       const result = await tx.execute(sql`
         INSERT INTO user_permissions (user_id, section_key, can_view, can_create, can_edit, can_delete, can_view_reports, can_export)
-        SELECT user_id, ${newKey}, can_view, can_create, can_edit, can_delete, can_view_reports, can_export
+        SELECT user_id, ${newKey}, can_view, can_create, can_edit, false, can_view_reports, false
         FROM user_permissions
         WHERE section_key = 'plant_stock'
         ON CONFLICT (user_id, section_key) DO NOTHING
@@ -778,40 +773,7 @@ export async function backfillPlantSubPermissions(): Promise<{ inserted: number;
 }
 
 export async function backfillSplitPermissions(): Promise<{ deleteUpdated: number; exportUpdated: number; skipped: boolean }> {
-  // IDEMPOTENCY: category (C) — DOCUMENTED RISK.
-  // Primary guard: app_settings key stored in SPLIT_PERMS_FLAG.
-  //
-  // If the flag is deleted and this migration re-runs, the UPDATE logic is:
-  //   can_delete ← can_edit   WHERE can_delete = false AND can_edit = true
-  //   can_export ← can_view_reports  WHERE can_export = false AND can_view_reports = true
-  //
-  // RISK: if an admin intentionally set can_delete=false while can_edit=true
-  // (a deliberate "edit but no delete" split) AFTER the original migration ran,
-  // a spurious re-run would silently re-set can_delete=true for those rows,
-  // undoing the admin's intentional restriction.  The same applies to
-  // can_export / can_view_reports splits.
-  //
-  // Mitigation: this is bounded to users that have can_edit=true but
-  // can_delete=false at the time of re-run.  If you need to perform a manual
-  // DB reset, preserve the app_settings migration flag row (key=SPLIT_PERMS_FLAG)
-  // or manually re-apply any intentional permission splits afterward.
-  const existing = await db.select().from(appSettings).where(eq(appSettings.key, SPLIT_PERMS_FLAG));
-  if (existing.length > 0) {
-    console.log("backfillSplitPermissions: already applied, skipping.");
-    return { deleteUpdated: 0, exportUpdated: 0, skipped: true };
-  }
-  const result = await db.transaction(async (tx) => {
-    const deleteRows = await tx.update(userPermissions)
-      .set({ canDelete: sql`${userPermissions.canEdit}` })
-      .where(and(eq(userPermissions.canDelete, false), eq(userPermissions.canEdit, true)))
-      .returning({ id: userPermissions.id });
-    const exportRows = await tx.update(userPermissions)
-      .set({ canExport: sql`${userPermissions.canViewReports}` })
-      .where(and(eq(userPermissions.canExport, false), eq(userPermissions.canViewReports, true)))
-      .returning({ id: userPermissions.id });
-    await tx.insert(appSettings).values({ key: SPLIT_PERMS_FLAG, value: new Date().toISOString() });
-    return { deleteUpdated: deleteRows.length, exportUpdated: exportRows.length, skipped: false };
-  });
-  console.log(`backfillSplitPermissions: delete updated ${result.deleteUpdated}, export updated ${result.exportUpdated}`);
-  return result;
+  // Intentionally retired, including when the historical flag is absent.
+  // Keep the startup interface, without granting or clearing any permission.
+  return { deleteUpdated: 0, exportUpdated: 0, skipped: true };
 }

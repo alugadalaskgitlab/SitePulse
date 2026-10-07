@@ -1,0 +1,93 @@
+section,label,sends_section_push
+dashboard,Home Dashboard,FALSE
+hmp_hub,HMP Hub (entry page),FALSE
+site_hub,Site Operations Hub (entry page),FALSE
+equipment_hub,Equipment & Fleet Hub (entry page),FALSE
+reports_hub,Reports Hub (entry page),FALSE
+stores_hub,Stores & Inventory Hub (entry page),FALSE
+finance_hub,Procurement & Billing Hub (entry page),FALSE
+masters_hub,Masters Hub (entry page),FALSE
+admin_hub,Admin Hub (entry page),FALSE
+rmc_hub,RMC Hub (entry page),FALSE
+site_dprs,Site DPRs — File & View,TRUE
+site_materials,Site Materials Received,TRUE
+site_procurement,Purchase Indents (legacy),FALSE
+purchase_indents_view,Purchase Indents — View List,TRUE
+purchase_indents_raise,Purchase Indents — Raise / Submit,FALSE
+purchase_indents_approve,Purchase Indents — Approve / Reject,FALSE
+site_diesel,Diesel Requirements (legacy),TRUE
+diesel_req_view,Diesel Requirements — View List,FALSE
+diesel_req_raise,Diesel Requirements — Raise / Submit,TRUE
+diesel_req_approve,Diesel Requirements — Approve / Reject,TRUE
+irn_view,Internal Requisitions — View,TRUE
+irn_raise,Internal Requisitions — Raise,FALSE
+irn_approve,Internal Requisitions — Approve / Issue,FALSE
+plant_shift_logs,Shift Log — File & View,TRUE
+plant_manpower_review,Shift Log — Manpower Review Report,FALSE
+plant_heating,Heating Sessions — Log & View,FALSE
+plant_heating_trends,Heating Trends Report,FALSE
+plant_equipment,Equipment Usage — Log & View,TRUE
+plant_generator_logs,Generator (DG) Logs,TRUE
+plant_maintenance,Equipment Maintenance Logs,FALSE
+plant_production,Production & Dispatches,TRUE
+plant_materials,Material Receipts / Issues / Returns,TRUE
+plant_bitumen,Bitumen Stock Tracker,TRUE
+plant_ldo,LDO Flow Meter,TRUE
+plant_daily_reports,Daily Plant Reports (single day + PDF bulk),TRUE
+plant_stock,Material Stock Ledger,TRUE
+plant_ldo_reconciliation,LDO Book vs Physical Reconciliation,FALSE
+plant_variance,Stock Variance Report,FALSE
+plant_audit,Audit Report,FALSE
+plant_diesel_proc,Diesel Procurement Report,FALSE
+stock_reconciliation,Physical Stock Reconciliation,FALSE
+equipment_performance_report,Equipment Performance — View Report,FALSE
+rmc_operations,RMC Operations (legacy),FALSE
+rmc_batch_records,RMC Batch Records,FALSE
+rmc_mix_designs,RMC Mix Designs,FALSE
+rmc_cube_tests,RMC Cube Tests (QC),FALSE
+rmc_raw_materials,RMC Raw Materials,FALSE
+rmc_delivery_challans,RMC Delivery Challans,FALSE
+rmc_daily_report,RMC Daily Report,FALSE
+vendor_bills,Vendor Bills (legacy),FALSE
+vendor_bills_view,Vendor Bills — View List,TRUE
+vendor_bills_raise,Vendor Bills — Raise / Create,TRUE
+vendor_bills_verify,Vendor Bills — Mark Verified,FALSE
+vendor_bills_approve,Vendor Bills — Final Approve / Mark Paid,TRUE
+vendor_bill_aliases,Vendor Aliases (merge duplicate names),FALSE
+reports,Reports (legacy),FALSE
+report_management,Management Report,FALSE
+report_site_purchases,Site Purchases Report,FALSE
+stores_inventory,"Stores — GRNs, Issues & Ledger",TRUE
+labour_management,Site Requirements — Labour Allocation,FALSE
+estimator_portal,Estimator Portal (login + hub),FALSE
+mix_calculator,Bituminous Mix Rate Calculator,FALSE
+concrete_calculator,Concrete Rate Calculator (v1 & v2),FALSE
+qto_boq,QTO & BOQ Estimator,FALSE
+planning_masters,Work Programme — Planning Masters,FALSE
+work_programme,Work Programme — Programme & Execution Setup,FALSE
+work_programme_review,Work Programme — Review & Demand,FALSE
+norms_library,Norms Library (SNL),FALSE
+edit_requests_review,Edit Requests — Review & Approval,FALSE
+project_scope,Project Scope & Working Reaches,FALSE
+rate_cards,Rate Cards — View & Edit,FALSE
+master_parties,Party / Job Master,FALSE
+master_materials,"Materials, Mix Types & Templates",FALSE
+master_equipment,Equipment Master,FALSE
+master_personnel,Personnel Master,FALSE
+admin_settings,Admin Settings (legacy),FALSE
+site_management,Sites & Plants — Add / Configure,FALSE
+sites_plants_manage,Sites & Plant Reports — Manage,FALSE
+vendor_masters_manage,Vendor Aliases & Rate Cards — Manage,FALSE
+concrete_estimates_manage,Concrete Estimates — Manage,FALSE
+admin_notifications_manage,Admin Notifications — Create,FALSE
+admin_ldo_tools,LDO Backfill & Reconciliation Tools,FALSE
+admin_ledger_tools,Stock Ledger Rebuild / Reassign / Transfer,FALSE
+data_sync,Data Export / Import (Admin Tool),FALSE
+user_management,User Management — View & Edit Profiles,FALSE
+permission_manager,Manage Permissions for Other Users,FALSE
+device_approval,Device Approval,FALSE
+push_notifications,Push Notification Admin,FALSE
+hmp_operations,HMP Operations (legacy),FALSE
+reports_analysis,Reports & Analysis (legacy),FALSE
+estimates_manager,Estimates Manager (legacy),FALSE
+app_management,App Management (legacy),FALSE

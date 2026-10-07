@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { DeleteGate } from "@/components/DeleteGate";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -720,11 +721,11 @@ function LogCard({
                       <div key={p.id} className="flex items-center gap-2 text-sm bg-muted/30 rounded px-3 py-1">
                         <span className="flex-1">{p.itemName}</span>
                         <span className="text-muted-foreground">{p.qty} {p.uom}</span>
-                        {canEdit && (
+                        <DeleteGate sections={["plant_equipment"]}>
                           <Button type="button" variant="ghost" size="icon" className="h-5 w-5" onClick={() => removePartMutation.mutate(p.id)} data-testid={`button-remove-used-part-${p.id}`}>
                             <X className="w-3 h-3" />
                           </Button>
-                        )}
+                        </DeleteGate>
                       </div>
                     ))}
                   </div>
@@ -745,11 +746,11 @@ function LogCard({
                 <Button type="button" variant="outline" size="sm" className="gap-1 h-7" onClick={() => setHistoryOpen(true)} data-testid={`button-history-log-${log.id}`}>
                   <History className="w-3 h-3" /> History
                 </Button>
-                {canEdit && (
+                <DeleteGate sections={["plant_equipment"]}>
                   <Button type="button" variant="outline" size="sm" className="gap-1 h-7 text-amber-600 hover:text-amber-700" onClick={() => setCancelOpen(true)} data-testid={`button-cancel-log-${log.id}`}>
                     <Ban className="w-3 h-3" /> Cancel
                   </Button>
-                )}
+                </DeleteGate>
                 {canDelete && (
                   <Button type="button" variant="ghost" size="sm" className="gap-1 h-7 text-destructive hover:text-destructive" onClick={() => setDeleteOpen(true)} data-testid={`button-delete-log-${log.id}`}>
                     <Trash2 className="w-3 h-3" /> Delete

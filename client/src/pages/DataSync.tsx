@@ -16,7 +16,7 @@ type SyncMode = "menu" | "export" | "import";
 export default function DataSync() {
   const { toast } = useToast();
   const { sectionCan } = useAuth();
-  const canExport = sectionCan("admin_settings", "view_reports");
+  const canExport = sectionCan("data_sync", "export");
   const canImport = sectionCan("admin_settings", "edit");
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "stock" });

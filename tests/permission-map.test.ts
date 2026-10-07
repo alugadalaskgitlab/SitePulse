@@ -21,8 +21,8 @@ describe("generated permission editor contract", () => {
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }, 120000);
 
-  it("retains all 87 sections and 8 actions, with a tooltip on every active cell", () => {
-    expect(SECTION_KEYS).toHaveLength(87);
+  it("retains the original sections plus five independent review/planning keys and all eight actions", () => {
+    expect(SECTION_KEYS).toHaveLength(92);
     expect(ACTIONS).toHaveLength(8);
     expect(Object.keys(map).sort()).toEqual([...SECTION_KEYS].sort());
     for (const section of SECTION_KEYS) {

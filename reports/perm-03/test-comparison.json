@@ -1,0 +1,55 @@
+{
+  "before": {
+    "files": 328,
+    "total": 4575,
+    "passed": 4524,
+    "failed": 48,
+    "skipped": 3
+  },
+  "after": {
+    "files": 329,
+    "total": 4604,
+    "passed": 4550,
+    "failed": 51,
+    "skipped": 3
+  },
+  "newlyFailed": [
+    {
+      "file": "account-push-notification.test.tsx",
+      "test": "Account push notification status silently synchronizes existing subscriptions on mount and remount without requesting permission",
+      "message": "TestingLibraryElementError: Unable to find an element by: [data-testid=\"push-status\"]\n\nIgnored nodes: comments, script, style\n\u001b[36m<body>\u001b[39m\n  \u001b[36m<div />\u001b[39m\n\u001b[36m</body>\u001b[39m\n    at Object.getElementError (/home/runner/workspace/node_modules/@testing-library/dom/dist/config.js:37:19)\n    at /home/runner/workspace/node_modules/@testing-library/dom/dist/query-helpers.js:76:38\n    at /home/runner/workspace/node_modules/@testing-library/dom/dist/query-helpers.js:52:17\n    at /home/runner/workspace/node_modules/@testing-library/dom/dist/query-helpers.js:95:19\n    at /home/runner/workspace/tes"
+    },
+    {
+      "file": "push-notification-setup.test.tsx",
+      "test": "PushNotificationSetup activation and sync silently synchronizes on mount and remount without requesting permission",
+      "message": "Error: useAuth must be used inside <AuthProvider>\n    at useAuth (/home/runner/workspace/client/src/lib/auth-context.tsx:214:19)\n    at DeleteGate (/home/runner/workspace/client/src/components/DeleteGate.tsx:7:26)\n    at renderWithHooks (/home/runner/workspace/node_modules/react-dom/cjs/react-dom.development.js:15486:18)\n    at mountIndeterminateComponent (/home/runner/workspace/node_modules/react-dom/cjs/react-dom.development.js:20103:13)\n    at beginWork (/home/runner/workspace/node_modules/react-dom/cjs/react-dom.development.js:21626:16)\n    at beginWork$1 (/home/runner/workspace/node_modul"
+    },
+    {
+      "file": "scopeConfirmedReachEditBatch03.test.tsx",
+      "test": "G — draft working reach editing unchanged (in-place, no revision) shows draft heading + Save changes, populated",
+      "message": "Error: Unable to find an element with the text: reach 4. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.\n\nIgnored nodes: comments, script, style\n\u001b[36m<body>\u001b[39m\n  \u001b[36m<div />\u001b[39m\n\u001b[36m</body>\u001b[39m\n    at waitForWrapper (/home/runner/workspace/node_modules/@testing-library/dom/dist/wait-for.js:163:27)\n    at /home/runner/workspace/node_modules/@testing-library/dom/dist/query-helpers.js:86:33\n    at /home/runner/workspace/tests/scopeConfirmedReachEditBatch03.test.tsx:175:18\n   "
+    }
+  ],
+  "missingFiles": [],
+  "followUp": {
+    "scope": "Three test-only permission-context fixtures corrected; application unchanged since successful build",
+    "files": 3,
+    "passed": 16,
+    "failed": 0,
+    "resolvedNewFailures": [
+      {
+        "file": "account-push-notification.test.tsx",
+        "test": "Account push notification status silently synchronizes existing subscriptions on mount and remount without requesting permission"
+      },
+      {
+        "file": "push-notification-setup.test.tsx",
+        "test": "PushNotificationSetup activation and sync silently synchronizes on mount and remount without requesting permission"
+      },
+      {
+        "file": "scopeConfirmedReachEditBatch03.test.tsx",
+        "test": "G — draft working reach editing unchanged (in-place, no revision) shows draft heading + Save changes, populated"
+      }
+    ],
+    "fullSuiteRepeatedAfterFixtureCorrections": false
+  }
+}

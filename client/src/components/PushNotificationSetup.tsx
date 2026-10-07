@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { DeleteGate } from "@/components/DeleteGate";
 import { Bell, BellOff, Smartphone, Share, Plus, CheckCircle, XCircle, Loader2, Settings, ShieldOff, SlidersHorizontal } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -265,10 +266,10 @@ export function PushNotificationSetup() {
             </div>
 
             {isSubscribed ? (
-              <Button variant="outline" onClick={disablePush} disabled={isLoading} className="w-full gap-2" data-testid="button-disable-push">
+              <DeleteGate sections={["dashboard"]}><Button variant="outline" onClick={disablePush} disabled={isLoading} className="w-full gap-2" data-testid="button-disable-push">
                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <BellOff className="w-4 h-4" />}
                 Disable Notifications
-              </Button>
+              </Button></DeleteGate>
             ) : (
               <Button onClick={enablePush} disabled={isLoading} className="w-full gap-2" data-testid="button-enable-push">
                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bell className="w-4 h-4" />}

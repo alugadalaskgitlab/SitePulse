@@ -91,7 +91,7 @@ describe("GST Register PDF parity and authorization", () => {
     expect(storage.getVendorBills).not.toHaveBeenCalled();
   });
   it("retains site scope and the same per-bill values", async () => {
-    permissions.vendor_bills = { view_reports: true };
+    permissions.vendor_bills = { export: true };
     const response = await request(app).get("/api/vendor-bills/export?format=pdf&status=approved&category=material&dateFrom=2026-10-01&dateTo=2026-10-01");
     expect(response.status).toBe(200);
     expect(response.headers["content-type"]).toContain("application/pdf");
@@ -115,14 +115,14 @@ describe("GST Register PDF parity and authorization", () => {
 const url = (path: string) => path.replace(":id", "2").replace(":date", "2026-10-01");
 describe("VB-EXPORT-01 actual export route callbacks", () => {
   for (const [method, path, key] of endpoints) {
-    it(`${method.toUpperCase()} ${path}: no report permission returns 403`, async () => {
-      permissions[key] = { view: true, export: true, view_reports: false };
+    it(`${method.toUpperCase()} ${path}: Reports without Export returns 403`, async () => {
+      permissions[key] = { view: true, export: false, view_reports: true };
       expect((await request(app)[method](url(path)).send({ entries: [{ date: "2026-10-01", plant: "Plant B" }] })).status).toBe(403);
       expect(storage.getVendorBills).not.toHaveBeenCalled();
       expect(storage.getDailyPlantSummary).not.toHaveBeenCalled();
     });
     it(`${method.toUpperCase()} ${path}: other-site request returns 403`, async () => {
-      permissions[key] = { view: true, view_reports: true };
+      permissions[key] = { view: true, export: true };
       const response = await request(app)[method](url(path))
         .query(path.includes("vendor-bills/export") ? { siteId: 2 } : { plant: "Plant B" })
         .send({ entries: [{ date: "2026-10-01", plant: "Plant B" }] });
@@ -132,7 +132,7 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
     });
   }
   it("vendor CSV contains only permitted bills and vendor names", async () => {
-    permissions.vendor_bills_view = { view_reports: true };
+    permissions.vendor_bills_view = { export: true };
     const response = await request(app).get("/api/vendor-bills/export?format=csv");
     expect(response.status).toBe(200);
     expect(response.text).toContain("BILL-1");
@@ -141,14 +141,14 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
     expect(response.text).not.toContain("SECRET VENDOR");
   });
   it("daily report CSV contains only plants linked to permitted sites", async () => {
-    permissions.plant_daily_reports = { view_reports: true };
+    permissions.plant_daily_reports = { export: true };
     const response = await request(app).get("/api/plant-module/daily-reports-export?format=csv");
     expect(response.status).toBe(200);
     expect(response.text).toContain("Plant A");
     expect(response.text).not.toContain("Plant B");
   });
   it("no site grants exports no plant rows", async () => {
-    permissions.plant_daily_reports = { view_reports: true };
+    permissions.plant_daily_reports = { export: true };
     permittedIds = [];
     const response = await request(app).get("/api/plant-module/daily-reports-export?format=csv");
     expect(response.status).toBe(200);
@@ -156,7 +156,7 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
     expect(response.text).not.toContain("Plant B");
   });
   it("permitted daily PDF requests only the permitted plant", async () => {
-    permissions.plant_daily_reports = { view_reports: true };
+    permissions.plant_daily_reports = { export: true };
     storage.getDailyPlantSummary.mockResolvedValue({ plantName: "Plant A" });
     const response = await request(app).get("/api/plant-module/daily-reports/2026-10-01/pdf?plant=Plant%20A");
     expect(response.status).toBe(200);
@@ -164,14 +164,14 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
     expect(storage.getDailyPlantSummary).toHaveBeenCalledExactlyOnceWith("2026-10-01", "Plant A");
   });
   it("permitted heating Excel requests only the permitted plant", async () => {
-    permissions.plant_heating = { view_reports: true };
+    permissions.plant_heating = { export: true };
     storage.getHeatingTrends.mockResolvedValue({ rows: [], summary: {}, plantName: "Plant A" });
     const response = await request(app).get("/api/plant-module/heating-trends/excel?plant=Plant%20A&dateFrom=2026-10-01&dateTo=2026-10-02");
     expect(response.status).toBe(200);
     expect(storage.getHeatingTrends).toHaveBeenCalledExactlyOnceWith({ dateFrom: "2026-10-01", dateTo: "2026-10-02", plantName: "Plant A" });
   });
   it("permitted bill PDF returns only the requested permitted bill", async () => {
-    permissions.vendor_bills = { view_reports: true };
+    permissions.vendor_bills = { export: true };
     storage.getVendorBill.mockResolvedValueOnce({ id: 2, siteId: 1, status: "approved", billNo: "BILL-A", billType: "material", items: [], vendorName: "VENDOR-A" } as any);
     const response = await request(app).get("/api/vendor-bills/2/pdf");
     expect(response.status).toBe(200);
@@ -179,7 +179,7 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
     expect(storage.getVendorBill).toHaveBeenCalledExactlyOnceWith(2);
   });
   it("permitted IRN voucher returns only the requested permitted IRN", async () => {
-    permissions.irn_raise = { view_reports: true };
+    permissions.irn_raise = { export: true };
     storage.getInternalRequisition.mockResolvedValueOnce({ id: 2, siteId: 1, status: "approved", irnNo: "IRN-A", items: [{ material: "Test", issueQty: 1, qty: 1, uom: "No" }] } as any);
     const response = await request(app).get("/api/irn/2/issue-voucher");
     expect(response.status).toBe(200);
@@ -187,12 +187,12 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
     expect(storage.getIrnIssueVouchers).toHaveBeenCalledExactlyOnceWith(2);
   });
   it("rejects an unrelated voucher ID even when the IRN is permitted", async () => {
-    permissions.irn_view = { view_reports: true };
+    permissions.irn_view = { export: true };
     storage.getInternalRequisition.mockResolvedValueOnce({ id: 2, siteId: 1, status: "approved" });
     expect((await request(app).get("/api/irn/2/issue-voucher?voucherId=99")).status).toBe(403);
   });
   it("permitted ZIP builds only the requested permitted plant", async () => {
-    permissions.plant_daily_reports = { view_reports: true };
+    permissions.plant_daily_reports = { export: true };
     const entries = [{ date: "2026-10-01", plant: "Plant A" }];
     const response = await request(app).post("/api/plant-module/daily-reports/bulk-zip").send({ entries });
     expect(response.status).toBe(200);

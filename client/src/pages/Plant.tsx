@@ -2449,7 +2449,7 @@ export function PartyMaster() {
   const canEdit = sectionCan("master_parties", "edit");
   const canCreate = sectionCan("master_parties", "create");
   const canDelete = isAdmin;
-  const canExport = sectionCan("master_parties", "view_reports");
+  const canExport = sectionCan("master_parties", "export");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingParty, setEditingParty] = useState<Party | null>(null);
   const [name, setName] = useState("");
@@ -2646,7 +2646,7 @@ export function MaterialMaster() {
   const canEdit = sectionCan("master_materials", "edit");
   const canCreate = sectionCan("master_materials", "create");
   const canDelete = isAdmin;
-  const canExport = sectionCan("master_materials", "view_reports");
+  const canExport = sectionCan("master_materials", "export");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<PlantMaterial | null>(null);
   const [name, setName] = useState("");
@@ -3375,7 +3375,7 @@ export function MixTemplateMaster() {
   const canEdit = sectionCan("master_materials", "edit");
   const canCreate = sectionCan("master_materials", "create");
   const canDelete = isAdmin;
-  const canExport = sectionCan("master_materials", "view_reports");
+  const canExport = sectionCan("master_materials", "export");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<MixTemplate | null>(null);
   const [name, setName] = useState("");
@@ -4285,7 +4285,7 @@ export function EquipmentMasterSection() {
   const canEdit = sectionCan("master_equipment", "edit");
   const canCreate = sectionCan("master_equipment", "create");
   const canDelete = isAdmin;
-  const canExport = sectionCan("master_equipment", "view_reports");
+  const canExport = sectionCan("master_equipment", "export");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingEquipment, setEditingEquipment] = useState<EquipmentMasterType | null>(null);
   const [deleteEquipmentId, setDeleteEquipmentId] = useState<number | null>(null);

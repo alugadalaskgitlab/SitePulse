@@ -36,7 +36,7 @@ export default function PlantDispatches() {
   const { companyName, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("plant_production", "create");
   const canEdit = sectionCan("plant_production", "edit");
-  const canExport = sectionCan("plant_production", "view_reports");
+  const canExport = sectionCan("plant_production", "export");
   const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingDispatch, setEditingDispatch] = useState<TruckDispatch | null>(null);

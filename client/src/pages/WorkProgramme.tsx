@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { DeleteGate } from "@/components/DeleteGate";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import {
@@ -1529,13 +1530,13 @@ function StretchRow({
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
-            <DropdownMenuItem
+            <DeleteGate sections={["work_programme"]}><DropdownMenuItem
               onClick={() => onDelete(bar.id)}
               className="text-red-600 focus:text-red-700"
               data-testid={`menu-delete-${bar.id}`}
             >
               <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete
-            </DropdownMenuItem>
+            </DropdownMenuItem></DeleteGate>
           </DropdownMenuContent>
         </DropdownMenu>
         <ScheduleRevisionActions
@@ -1824,14 +1825,14 @@ function StructureLocationRow({
           <BaselineIndicator bar={bar} />
           </>
           }
-          <button
+          <DeleteGate sections={["work_programme"]}><button
             onClick={() => onDelete(bar.id)}
             className="p-0.5 rounded text-violet-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex-shrink-0 ml-auto"
             title="Delete this structure bar (re-import to update values)"
             data-testid={`button-delete-sloc-${bar.id}`}
           >
             <Trash2 className="w-3 h-3" />
-          </button>
+          </button></DeleteGate>
         </div>
       </div>
 

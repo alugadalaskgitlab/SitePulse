@@ -110,7 +110,7 @@ export default function ExecutionArrangements() {
   const queryClient = useQueryClient();
   const { sectionCan, isAdmin, isOwner, user } = useAuth();
   const { toast } = useToast();
-  const canEditArrangements = sectionCan("qto_boq", "edit");
+  const canEditArrangements = sectionCan("work_programme", "edit");
   const role = String((user as any)?.role ?? "").toLowerCase().replace(/[\s-]+/g, "_");
   const canSetArrangementOutcome = isAdmin || isOwner || ["manager", "pm", "project_manager"].includes(role);
 
