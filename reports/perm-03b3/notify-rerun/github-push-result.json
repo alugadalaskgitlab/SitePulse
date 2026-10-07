@@ -1,0 +1,7 @@
+{
+  "attempted": true,
+  "successful": false,
+  "exitCode": 128,
+  "reason": "GitHub rejected the configured credentials: Invalid username or token. Password authentication is not supported for Git operations.",
+  "localCommitCreated": true
+}

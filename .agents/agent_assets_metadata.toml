@@ -5365,3 +5365,17 @@ mtime_ms = 1791373806885
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/0d99da21-6e9f-4f7d-94de-0d8698077ba0/1b82f239-b551-4b88-9bcb-2ba630e47247"
 storage_version_token = "1791373839232575"
 content_type = "text/csv"
+
+[[outputs]]
+id = "xVhxTuS9Yx8Q1q5OzlF1H"
+uri = "file://reports/perm-03b3/notify-rerun/status-report.html"
+type = "html"
+title = "PERM-03B-3 Notify rerun — real delivery results"
+description = "One real event: Notify-OFF excluded, Notify-ON delivery rejected by provider. Includes native browser observations, sender byte-identity proof, preserved owner subscriptions, and complete cleanup evidence."
+logical_id = "7c435fba-81b9-43e4-8009-e3633cfc048a"
+content_hash = "sha256:8cc18b24d36e29771e6e551749ac599007fe2610da62160d3ebaf11ed9382202"
+size = 82087
+mtime_ms = 1791383096591
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/7c435fba-81b9-43e4-8009-e3633cfc048a/636c43f2-9504-49da-a428-097bfbff7b40"
+storage_version_token = "1791383220370409"
+content_type = "text/html"
