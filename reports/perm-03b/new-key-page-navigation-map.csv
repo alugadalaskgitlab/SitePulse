@@ -1,0 +1,6 @@
+"key","pages","navigation"
+"planning_masters","/work-program/planning-masters; /work-program/:id/geometry","Existing Planning Masters entry; BOQ detail Geometry link now checks planning_masters"
+"work_programme","/work-program/:id/settings; /work-program/:id/programme; /work-program/:id/execution-arrangements","BOQ detail Work Programme link; Settings and programme cross-links retain page-level destination gates"
+"work_programme_review","/work-program/:id/demand; /work-program/:id/earthwork; /work-program/:id/resource-review; /work-program/:id/item-review","BOQ detail BOM & Demand, Resource Review and Item Review links now check work_programme_review"
+"norms_library","/norms","HubShell Norms Library (SNL) now checks norms_library rather than qto_boq"
+"edit_requests_review","/edit-requests","HubShell Edit Requests and pending query now check edit_requests_review instead of admin-only visibility"

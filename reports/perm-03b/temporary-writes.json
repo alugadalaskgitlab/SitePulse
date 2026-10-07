@@ -1,0 +1,3235 @@
+[
+  {
+    "table": "users",
+    "inserted": {
+      "id": 21,
+      "email": "perm03b.acceptance@test.invalid",
+      "flags": "ordinary non-admin non-owner"
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2212,
+      "user_id": 21,
+      "section_key": "qto_boq",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2213,
+      "user_id": 21,
+      "section_key": "work_programme",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2214,
+      "user_id": 21,
+      "section_key": "work_programme_review",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2215,
+      "user_id": 21,
+      "section_key": "planning_masters",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2216,
+      "user_id": 21,
+      "section_key": "norms_library",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2217,
+      "user_id": 21,
+      "section_key": "edit_requests_review",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2218,
+      "user_id": 21,
+      "section_key": "project_scope",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2219,
+      "user_id": 21,
+      "section_key": "site_dprs",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_site_access",
+    "inserted": {
+      "id": 22,
+      "user_id": 21,
+      "site_id": 16,
+      "access_level": "view"
+    }
+  },
+  {
+    "table": "boq_projects",
+    "inserted": {
+      "id": 13,
+      "site_id": 16,
+      "name": "PERM-03B temporary acceptance",
+      "contract_no": null,
+      "client": null,
+      "contractor": null,
+      "road_length_km": null,
+      "start_date": "2026-10-01T00:00:00.000Z",
+      "total_months": 12,
+      "status": "draft",
+      "created_by": null,
+      "created_at": "2026-10-07T04:48:46.733Z",
+      "working_days_per_month": 26,
+      "working_hours_per_day": 8,
+      "hmp_chainage_km": null,
+      "wmm_plant_chainage_km": null,
+      "quarry_chainage_km": null,
+      "avg_tipper_speed_km_hr": 30,
+      "chainage_from": 0,
+      "chainage_to": 1000,
+      "corridor_confirmed": 1,
+      "corridor_remarks": null,
+      "chainage_display_format": null,
+      "cut_fill_reconciliation_activated_on": null,
+      "programme_baseline_published_at": null
+    }
+  },
+  {
+    "table": "boq_items",
+    "inserted": {
+      "id": 1175,
+      "boq_project_id": 13,
+      "category_id": null,
+      "item_code": "PERM03B",
+      "description": "PERM-03B temporary item",
+      "unit": "Cum",
+      "boq_qty": 100,
+      "current_qty": 100,
+      "client_rate": null,
+      "client_amount": null,
+      "sort_order": 0,
+      "created_at": "2026-10-07T04:48:46.847Z",
+      "layer_config": null,
+      "work_category": null,
+      "mapping_status": "unmapped",
+      "item_name": null,
+      "dpr_conversion_factor": null,
+      "snl_code": null,
+      "included_in_planning": true,
+      "planning_work_type": "road",
+      "excel_row": null,
+      "is_composite": false,
+      "display_name": null,
+      "dpr_measurement_method": null,
+      "include_in_dpr": true,
+      "include_in_procurement": true,
+      "needs_review": false,
+      "canonical_unit": null,
+      "bulk_material_classification": null,
+      "shoulder_layer_class": null
+    }
+  },
+  {
+    "table": "boq_mix_template_links",
+    "inserted": {
+      "id": 7,
+      "boq_project_id": 13,
+      "mix_type": "DBM",
+      "mix_template_id": null,
+      "mix_template_name": "PERM-03B temporary link",
+      "created_at": "2026-10-07T04:48:46.949Z"
+    }
+  },
+  {
+    "table": "project_scope_segments",
+    "inserted": {
+      "id": 16,
+      "boq_project_id": 13,
+      "segment_type": "working_reach",
+      "label": null,
+      "chainage_from": 0,
+      "chainage_to": 1000,
+      "side": null,
+      "reason": null,
+      "status": "draft",
+      "applicability": "all_linear",
+      "category_ids": null,
+      "item_ids": null,
+      "effective_from": null,
+      "effective_to": null,
+      "dept_reference": null,
+      "document_ref": null,
+      "notes": null,
+      "withdrawal_order_ref": null,
+      "consent_ref": null,
+      "omitted_qty": null,
+      "omitted_amount": null,
+      "original_scope_note": null,
+      "revised_scope_note": null,
+      "created_by": null,
+      "created_at": "2026-10-07T04:48:47.127Z",
+      "updated_at": "2026-10-07T04:48:47.127Z",
+      "approved_by": null,
+      "approved_at": null,
+      "revision_of": null
+    }
+  },
+  {
+    "table": "user_devices",
+    "approved": [
+      {
+        "id": 99
+      }
+    ]
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2212,
+      "user_id": 21,
+      "section_key": "qto_boq",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2212,
+      "user_id": 21,
+      "section_key": "qto_boq",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2212,
+      "user_id": 21,
+      "section_key": "qto_boq",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2212,
+      "user_id": 21,
+      "section_key": "qto_boq",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2213,
+      "user_id": 21,
+      "section_key": "work_programme",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2213,
+      "user_id": 21,
+      "section_key": "work_programme",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2213,
+      "user_id": 21,
+      "section_key": "work_programme",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2213,
+      "user_id": 21,
+      "section_key": "work_programme",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2218,
+      "user_id": 21,
+      "section_key": "project_scope",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2218,
+      "user_id": 21,
+      "section_key": "project_scope",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2218,
+      "user_id": 21,
+      "section_key": "project_scope",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2218,
+      "user_id": 21,
+      "section_key": "project_scope",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2219,
+      "user_id": 21,
+      "section_key": "site_dprs",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2219,
+      "user_id": 21,
+      "section_key": "site_dprs",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": true,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2215,
+      "user_id": 21,
+      "section_key": "planning_masters",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2215,
+      "user_id": 21,
+      "section_key": "planning_masters",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2213,
+      "user_id": 21,
+      "section_key": "work_programme",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2213,
+      "user_id": 21,
+      "section_key": "work_programme",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2214,
+      "user_id": 21,
+      "section_key": "work_programme_review",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2214,
+      "user_id": 21,
+      "section_key": "work_programme_review",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2216,
+      "user_id": 21,
+      "section_key": "norms_library",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2216,
+      "user_id": 21,
+      "section_key": "norms_library",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2217,
+      "user_id": 21,
+      "section_key": "edit_requests_review",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2217,
+      "user_id": 21,
+      "section_key": "edit_requests_review",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2212,
+      "user_id": 21,
+      "section_key": "qto_boq",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2212,
+      "user_id": 21,
+      "section_key": "qto_boq",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2215,
+      "user_id": 21,
+      "section_key": "planning_masters",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2215,
+      "user_id": 21,
+      "section_key": "planning_masters",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2215,
+      "user_id": 21,
+      "section_key": "planning_masters",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2215,
+      "user_id": 21,
+      "section_key": "planning_masters",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2213,
+      "user_id": 21,
+      "section_key": "work_programme",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2213,
+      "user_id": 21,
+      "section_key": "work_programme",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2214,
+      "user_id": 21,
+      "section_key": "work_programme_review",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2214,
+      "user_id": 21,
+      "section_key": "work_programme_review",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2216,
+      "user_id": 21,
+      "section_key": "norms_library",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2216,
+      "user_id": 21,
+      "section_key": "norms_library",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2217,
+      "user_id": 21,
+      "section_key": "edit_requests_review",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2217,
+      "user_id": 21,
+      "section_key": "edit_requests_review",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2212,
+      "user_id": 21,
+      "section_key": "qto_boq",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2212,
+      "user_id": 21,
+      "section_key": "qto_boq",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2213,
+      "user_id": 21,
+      "section_key": "work_programme",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2213,
+      "user_id": 21,
+      "section_key": "work_programme",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2215,
+      "user_id": 21,
+      "section_key": "planning_masters",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2215,
+      "user_id": 21,
+      "section_key": "planning_masters",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2213,
+      "user_id": 21,
+      "section_key": "work_programme",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2213,
+      "user_id": 21,
+      "section_key": "work_programme",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2214,
+      "user_id": 21,
+      "section_key": "work_programme_review",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2214,
+      "user_id": 21,
+      "section_key": "work_programme_review",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2216,
+      "user_id": 21,
+      "section_key": "norms_library",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2216,
+      "user_id": 21,
+      "section_key": "norms_library",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2217,
+      "user_id": 21,
+      "section_key": "edit_requests_review",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2217,
+      "user_id": 21,
+      "section_key": "edit_requests_review",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2212,
+      "user_id": 21,
+      "section_key": "qto_boq",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2212,
+      "user_id": 21,
+      "section_key": "qto_boq",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2214,
+      "user_id": 21,
+      "section_key": "work_programme_review",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2214,
+      "user_id": 21,
+      "section_key": "work_programme_review",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2215,
+      "user_id": 21,
+      "section_key": "planning_masters",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2215,
+      "user_id": 21,
+      "section_key": "planning_masters",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2213,
+      "user_id": 21,
+      "section_key": "work_programme",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2213,
+      "user_id": 21,
+      "section_key": "work_programme",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2214,
+      "user_id": 21,
+      "section_key": "work_programme_review",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2214,
+      "user_id": 21,
+      "section_key": "work_programme_review",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2216,
+      "user_id": 21,
+      "section_key": "norms_library",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2216,
+      "user_id": 21,
+      "section_key": "norms_library",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2217,
+      "user_id": 21,
+      "section_key": "edit_requests_review",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2217,
+      "user_id": 21,
+      "section_key": "edit_requests_review",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2212,
+      "user_id": 21,
+      "section_key": "qto_boq",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2212,
+      "user_id": 21,
+      "section_key": "qto_boq",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2216,
+      "user_id": 21,
+      "section_key": "norms_library",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2216,
+      "user_id": 21,
+      "section_key": "norms_library",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2215,
+      "user_id": 21,
+      "section_key": "planning_masters",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2215,
+      "user_id": 21,
+      "section_key": "planning_masters",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2213,
+      "user_id": 21,
+      "section_key": "work_programme",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2213,
+      "user_id": 21,
+      "section_key": "work_programme",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2214,
+      "user_id": 21,
+      "section_key": "work_programme_review",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2214,
+      "user_id": 21,
+      "section_key": "work_programme_review",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2216,
+      "user_id": 21,
+      "section_key": "norms_library",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2216,
+      "user_id": 21,
+      "section_key": "norms_library",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2217,
+      "user_id": 21,
+      "section_key": "edit_requests_review",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2217,
+      "user_id": 21,
+      "section_key": "edit_requests_review",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2212,
+      "user_id": 21,
+      "section_key": "qto_boq",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2212,
+      "user_id": 21,
+      "section_key": "qto_boq",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2217,
+      "user_id": 21,
+      "section_key": "edit_requests_review",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2217,
+      "user_id": 21,
+      "section_key": "edit_requests_review",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2212,
+      "user_id": 21,
+      "section_key": "qto_boq",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2212,
+      "user_id": 21,
+      "section_key": "qto_boq",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "boq_items",
+    "inserted": {
+      "id": 1176,
+      "boq_project_id": 13,
+      "category_id": null,
+      "item_code": "PERM03B-R",
+      "description": "PERM-03B repeat temporary item",
+      "unit": "Cum",
+      "boq_qty": 100,
+      "current_qty": 100,
+      "client_rate": null,
+      "client_amount": null,
+      "sort_order": 0,
+      "created_at": "2026-10-07T04:50:31.527Z",
+      "layer_config": null,
+      "work_category": null,
+      "mapping_status": "unmapped",
+      "item_name": null,
+      "dpr_conversion_factor": null,
+      "snl_code": null,
+      "included_in_planning": true,
+      "planning_work_type": "road",
+      "excel_row": null,
+      "is_composite": false,
+      "display_name": null,
+      "dpr_measurement_method": null,
+      "include_in_dpr": true,
+      "include_in_procurement": true,
+      "needs_review": false,
+      "canonical_unit": null,
+      "bulk_material_classification": null,
+      "shoulder_layer_class": null
+    }
+  },
+  {
+    "table": "user_permissions",
+    "before": {
+      "id": 2212,
+      "user_id": 21,
+      "section_key": "qto_boq",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2212,
+      "user_id": 21,
+      "section_key": "qto_boq",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": true,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "project_scope_segments",
+    "deleted": []
+  },
+  {
+    "table": "boq_mix_template_links",
+    "deleted": []
+  },
+  {
+    "table": "boq_items",
+    "deleted": []
+  },
+  {
+    "table": "boq_categories",
+    "deleted": []
+  },
+  {
+    "table": "boq_program_settings",
+    "deleted": []
+  },
+  {
+    "table": "users",
+    "inserted": {
+      "id": 22,
+      "email": "perm03b.acceptance@test.invalid",
+      "flags": "ordinary non-admin non-owner"
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2220,
+      "user_id": 22,
+      "section_key": "qto_boq",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2221,
+      "user_id": 22,
+      "section_key": "work_programme",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2222,
+      "user_id": 22,
+      "section_key": "work_programme_review",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2223,
+      "user_id": 22,
+      "section_key": "planning_masters",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2224,
+      "user_id": 22,
+      "section_key": "norms_library",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2225,
+      "user_id": 22,
+      "section_key": "edit_requests_review",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2226,
+      "user_id": 22,
+      "section_key": "project_scope",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2227,
+      "user_id": 22,
+      "section_key": "site_dprs",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_site_access",
+    "inserted": {
+      "id": 23,
+      "user_id": 22,
+      "site_id": 16,
+      "access_level": "view"
+    }
+  },
+  {
+    "table": "boq_projects",
+    "inserted": {
+      "id": 14,
+      "site_id": 16,
+      "name": "PERM-03B temporary acceptance",
+      "contract_no": null,
+      "client": null,
+      "contractor": null,
+      "road_length_km": null,
+      "start_date": "2026-10-01T00:00:00.000Z",
+      "total_months": 12,
+      "status": "draft",
+      "created_by": null,
+      "created_at": "2026-10-07T04:56:04.703Z",
+      "working_days_per_month": 26,
+      "working_hours_per_day": 8,
+      "hmp_chainage_km": null,
+      "wmm_plant_chainage_km": null,
+      "quarry_chainage_km": null,
+      "avg_tipper_speed_km_hr": 30,
+      "chainage_from": 0,
+      "chainage_to": 1000,
+      "corridor_confirmed": 1,
+      "corridor_remarks": null,
+      "chainage_display_format": null,
+      "cut_fill_reconciliation_activated_on": null,
+      "programme_baseline_published_at": null
+    }
+  },
+  {
+    "table": "boq_items",
+    "inserted": {
+      "id": 1177,
+      "boq_project_id": 14,
+      "category_id": null,
+      "item_code": "PERM03B",
+      "description": "PERM-03B temporary item",
+      "unit": "Cum",
+      "boq_qty": 100,
+      "current_qty": 100,
+      "client_rate": null,
+      "client_amount": null,
+      "sort_order": 0,
+      "created_at": "2026-10-07T04:56:04.713Z",
+      "layer_config": null,
+      "work_category": null,
+      "mapping_status": "unmapped",
+      "item_name": null,
+      "dpr_conversion_factor": null,
+      "snl_code": null,
+      "included_in_planning": true,
+      "planning_work_type": "road",
+      "excel_row": null,
+      "is_composite": false,
+      "display_name": null,
+      "dpr_measurement_method": null,
+      "include_in_dpr": true,
+      "include_in_procurement": true,
+      "needs_review": false,
+      "canonical_unit": null,
+      "bulk_material_classification": null,
+      "shoulder_layer_class": null
+    }
+  },
+  {
+    "table": "boq_mix_template_links",
+    "inserted": {
+      "id": 8,
+      "boq_project_id": 14,
+      "mix_type": "DBM",
+      "mix_template_id": null,
+      "mix_template_name": "PERM-03B temporary link",
+      "created_at": "2026-10-07T04:56:04.722Z"
+    }
+  },
+  {
+    "table": "project_scope_segments",
+    "inserted": {
+      "id": 17,
+      "boq_project_id": 14,
+      "segment_type": "working_reach",
+      "label": null,
+      "chainage_from": 0,
+      "chainage_to": 1000,
+      "side": null,
+      "reason": null,
+      "status": "draft",
+      "applicability": "all_linear",
+      "category_ids": null,
+      "item_ids": null,
+      "effective_from": null,
+      "effective_to": null,
+      "dept_reference": null,
+      "document_ref": null,
+      "notes": null,
+      "withdrawal_order_ref": null,
+      "consent_ref": null,
+      "omitted_qty": null,
+      "omitted_amount": null,
+      "original_scope_note": null,
+      "revised_scope_note": null,
+      "created_by": null,
+      "created_at": "2026-10-07T04:56:04.726Z",
+      "updated_at": "2026-10-07T04:56:04.726Z",
+      "approved_by": null,
+      "approved_at": null,
+      "revision_of": null
+    }
+  },
+  {
+    "table": "user_devices",
+    "approved": [
+      {
+        "id": 100
+      }
+    ]
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2228,
+      "user_id": 22,
+      "section_key": "dashboard",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2229,
+      "user_id": 22,
+      "section_key": "hmp_hub",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2230,
+      "user_id": 22,
+      "section_key": "site_hub",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2231,
+      "user_id": 22,
+      "section_key": "equipment_hub",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2232,
+      "user_id": 22,
+      "section_key": "reports_hub",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2233,
+      "user_id": 22,
+      "section_key": "stores_hub",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2234,
+      "user_id": 22,
+      "section_key": "finance_hub",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2235,
+      "user_id": 22,
+      "section_key": "masters_hub",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2236,
+      "user_id": 22,
+      "section_key": "admin_hub",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2237,
+      "user_id": 22,
+      "section_key": "rmc_hub",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2238,
+      "user_id": 22,
+      "section_key": "site_materials",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2239,
+      "user_id": 22,
+      "section_key": "site_procurement",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2240,
+      "user_id": 22,
+      "section_key": "purchase_indents_view",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2241,
+      "user_id": 22,
+      "section_key": "purchase_indents_raise",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2242,
+      "user_id": 22,
+      "section_key": "purchase_indents_approve",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2243,
+      "user_id": 22,
+      "section_key": "site_diesel",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2244,
+      "user_id": 22,
+      "section_key": "diesel_req_view",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2245,
+      "user_id": 22,
+      "section_key": "diesel_req_raise",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2246,
+      "user_id": 22,
+      "section_key": "diesel_req_approve",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2247,
+      "user_id": 22,
+      "section_key": "irn_view",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2248,
+      "user_id": 22,
+      "section_key": "irn_raise",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2249,
+      "user_id": 22,
+      "section_key": "irn_approve",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2250,
+      "user_id": 22,
+      "section_key": "plant_shift_logs",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2251,
+      "user_id": 22,
+      "section_key": "plant_manpower_review",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2252,
+      "user_id": 22,
+      "section_key": "plant_heating",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2253,
+      "user_id": 22,
+      "section_key": "plant_heating_trends",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2254,
+      "user_id": 22,
+      "section_key": "plant_equipment",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2255,
+      "user_id": 22,
+      "section_key": "plant_generator_logs",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2256,
+      "user_id": 22,
+      "section_key": "plant_maintenance",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2257,
+      "user_id": 22,
+      "section_key": "plant_production",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2258,
+      "user_id": 22,
+      "section_key": "plant_materials",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2259,
+      "user_id": 22,
+      "section_key": "plant_bitumen",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2260,
+      "user_id": 22,
+      "section_key": "plant_ldo",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2261,
+      "user_id": 22,
+      "section_key": "plant_daily_reports",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2262,
+      "user_id": 22,
+      "section_key": "plant_stock",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2263,
+      "user_id": 22,
+      "section_key": "plant_ldo_reconciliation",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2264,
+      "user_id": 22,
+      "section_key": "plant_variance",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2265,
+      "user_id": 22,
+      "section_key": "plant_audit",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2266,
+      "user_id": 22,
+      "section_key": "plant_diesel_proc",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2267,
+      "user_id": 22,
+      "section_key": "stock_reconciliation",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2268,
+      "user_id": 22,
+      "section_key": "equipment_performance_report",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2269,
+      "user_id": 22,
+      "section_key": "rmc_operations",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2270,
+      "user_id": 22,
+      "section_key": "rmc_batch_records",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2271,
+      "user_id": 22,
+      "section_key": "rmc_mix_designs",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2272,
+      "user_id": 22,
+      "section_key": "rmc_cube_tests",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2273,
+      "user_id": 22,
+      "section_key": "rmc_raw_materials",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2274,
+      "user_id": 22,
+      "section_key": "rmc_delivery_challans",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2275,
+      "user_id": 22,
+      "section_key": "rmc_daily_report",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2276,
+      "user_id": 22,
+      "section_key": "vendor_bills",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2277,
+      "user_id": 22,
+      "section_key": "vendor_bills_view",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2278,
+      "user_id": 22,
+      "section_key": "vendor_bills_raise",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2279,
+      "user_id": 22,
+      "section_key": "vendor_bills_verify",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2280,
+      "user_id": 22,
+      "section_key": "vendor_bills_approve",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2281,
+      "user_id": 22,
+      "section_key": "vendor_bill_aliases",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2282,
+      "user_id": 22,
+      "section_key": "reports",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2283,
+      "user_id": 22,
+      "section_key": "report_management",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2284,
+      "user_id": 22,
+      "section_key": "report_site_purchases",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2285,
+      "user_id": 22,
+      "section_key": "stores_inventory",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2286,
+      "user_id": 22,
+      "section_key": "labour_management",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2287,
+      "user_id": 22,
+      "section_key": "estimator_portal",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2288,
+      "user_id": 22,
+      "section_key": "mix_calculator",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2289,
+      "user_id": 22,
+      "section_key": "concrete_calculator",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2290,
+      "user_id": 22,
+      "section_key": "rate_cards",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2291,
+      "user_id": 22,
+      "section_key": "master_parties",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2292,
+      "user_id": 22,
+      "section_key": "master_materials",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2293,
+      "user_id": 22,
+      "section_key": "master_equipment",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2294,
+      "user_id": 22,
+      "section_key": "master_personnel",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2295,
+      "user_id": 22,
+      "section_key": "admin_settings",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2296,
+      "user_id": 22,
+      "section_key": "site_management",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2297,
+      "user_id": 22,
+      "section_key": "sites_plants_manage",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2298,
+      "user_id": 22,
+      "section_key": "vendor_masters_manage",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2299,
+      "user_id": 22,
+      "section_key": "concrete_estimates_manage",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2300,
+      "user_id": 22,
+      "section_key": "admin_notifications_manage",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2301,
+      "user_id": 22,
+      "section_key": "admin_ldo_tools",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2302,
+      "user_id": 22,
+      "section_key": "admin_ledger_tools",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2303,
+      "user_id": 22,
+      "section_key": "data_sync",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2304,
+      "user_id": 22,
+      "section_key": "user_management",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2305,
+      "user_id": 22,
+      "section_key": "permission_manager",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2306,
+      "user_id": 22,
+      "section_key": "device_approval",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2307,
+      "user_id": 22,
+      "section_key": "push_notifications",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2308,
+      "user_id": 22,
+      "section_key": "hmp_operations",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2309,
+      "user_id": 22,
+      "section_key": "reports_analysis",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2310,
+      "user_id": 22,
+      "section_key": "estimates_manager",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "user_permissions",
+    "inserted": {
+      "id": 2311,
+      "user_id": 22,
+      "section_key": "app_management",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "table": "project_scope_segments",
+    "deleted": [
+      {
+        "id": 17
+      }
+    ]
+  },
+  {
+    "table": "boq_mix_template_links",
+    "deleted": [
+      {
+        "id": 8
+      }
+    ]
+  },
+  {
+    "table": "boq_items",
+    "deleted": [
+      {
+        "id": 1177
+      }
+    ]
+  },
+  {
+    "table": "boq_categories",
+    "deleted": []
+  },
+  {
+    "table": "boq_program_settings",
+    "deleted": []
+  }
+]

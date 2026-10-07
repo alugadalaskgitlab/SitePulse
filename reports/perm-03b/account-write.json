@@ -1,0 +1,9 @@
+{
+  "table": "users",
+  "id": 16,
+  "fields": [
+    "password_hash"
+  ],
+  "credentialSource": "DEV_VERIFICATION_PASSWORD",
+  "flagsChanged": false
+}

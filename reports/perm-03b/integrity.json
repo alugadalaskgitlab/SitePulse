@@ -1,0 +1,31 @@
+{
+  "before": {
+    "users": 6,
+    "permissions": 366
+  },
+  "after": {
+    "users": 6,
+    "permissions": 366
+  },
+  "beforeChecksums": {
+    "users": "cebff932c27aa93b97c731fb8fcd031af836e4642fc6450d675aff17fefa941d",
+    "permissions": "070240778e98e64cc5c33b06028879218517021aaf892873fba1e9e6d7ca251d"
+  },
+  "afterChecksums": {
+    "users": "ad7de38d5506afa58545fcef88ce5c2733c1e82b7040313b2545a18d9c806c78",
+    "permissions": "070240778e98e64cc5c33b06028879218517021aaf892873fba1e9e6d7ca251d"
+  },
+  "permissionRowsUnchanged": true,
+  "userChanges": [
+    {
+      "id": 16,
+      "fields": [
+        "last_login_at",
+        "credentialChecksum"
+      ]
+    }
+  ],
+  "adminRouteCount": 93,
+  "adminRoutesUnchanged": true,
+  "ordinaryUsersWithRestrictedBits": []
+}

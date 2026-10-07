@@ -1,0 +1,59 @@
+INSTRUCTION PERM-03B-1: Get back to a clean test baseline and a working development sign-in. Nothing else.
+
+READ THIS FIRST
+This is a SMALL, NARROW batch. It replaces the first and fourth parts of INSTRUCTION PERM-03B, which was too large and stalled after one commit. The rest of PERM-03B (the Work Programme split, Reports-vs-Export certification, the full acceptance run) is OUT OF SCOPE and will be sent separately.
+Do exactly the two things below, report, and STOP.
+Do NOT publish. Do NOT start any other part of PERM-03B. Do NOT create follow-up tasks.
+Do NOT change any permission grant, section key, label, tooltip, route guard or user flag in this batch. The only data you create is the verification account in PART B.
+Standing rule, unchanged: Delete, Export and Notify stay UNTICKED for every real user.
+PARKED: LDO, startup data repair jobs, stock balances, vendor bills, trips, rate cards — do not investigate or touch.
+
+=====================================================================
+PART A — RETURN THE TEST SUITE TO ITS BASELINE
+=====================================================================
+PERM-03 took the suite from 48 failures to 51. `reports/perm-03/test-comparison.json` names the three:
+
+  1. `tests/account-push-notification.test.tsx` — "Account push notification status silently synchronizes existing subscriptions on mount and remount without requesting permission"
+  2. `tests/push-notification-setup.test.tsx` — "PushNotificationSetup activation and sync silently synchronizes on mount and remount without requesting permission"
+  3. `tests/scopeConfirmedReachEditBatch03.test.tsx` — "G — draft working reach editing unchanged (in-place, no revision) shows draft heading + Save changes, populated"
+
+Commit `d8af033` already fixed the `DeleteGate` auth-context defect behind #2 and added `tests/deleteGateProviderBoundary.test.tsx`. Confirm whether that fix actually cleared #2, and finish the rest.
+
+A1. For EACH of the three: run it, state the real cause, and fix it.
+A2. Where the code is wrong, fix the code. Where the test's expectation is now wrong because behaviour changed deliberately in PERM-02 or PERM-03, update the expectation and say in one line exactly what changed and why the new expectation is correct. Do not delete, skip or weaken a test to make it pass.
+A3. Pay attention to #3: a scope/reach editing test failing after a permission batch may mean a real control is now hidden from someone who should see it. Prove which it is before deciding.
+A4. End state: the full suite is back to the SAME 48 pre-existing failures — no more, and no test file missing. Report the before and after counts side by side. If any of the three cannot be returned to baseline, name it, explain why, and do not bury it inside a total.
+A5. Do not present the 48 pre-existing failures or the pre-existing type errors as new.
+
+=====================================================================
+PART B — A DEVELOPMENT SIGN-IN THAT SURVIVES THE CONTAINER
+=====================================================================
+Verification has now failed on three consecutive batches because the development account's credentials lived in a container file and the container was reclaimed. The owner has already supplied a password through the secrets flow for this purpose.
+
+B1. Use the existing `DEV_VERIFICATION_PASSWORD` secret. If it is not present, say so and stop this part rather than inventing another storage location.
+B2. Ensure the development verification account exists, in the DEVELOPMENT database only: an ordinary user, `isAdmin` false, `isOwner` false, `isFieldEngineer` false, `canManagePermissions` false, clearly named as a test account, with that password and its own device approved in dev. If the account from the earlier run still exists, reuse it and reset it to that password rather than creating a second one.
+B3. Assert `SELECT current_database()` returns the development database before any write. Never read, request or use any production connection variable.
+B4. Prove it works, and show the evidence:
+    - sign in through the ordinary login path and show the HTTP status
+    - fetch one protected API endpoint and show the status
+    - open one protected page and show a screenshot
+B5. Update `reports/dev-verification-account.md` with the secret's name and the exact steps a future run follows to sign in. Never write the password into the repository or into any report.
+B6. Confirm in one line that this account is an ordinary user with no admin flags, so that verification runs exercise the real permission path rather than the bypass.
+
+=====================================================================
+WHAT NOT TO DO
+=====================================================================
+- Do not start the Work Programme split, the Reports-vs-Export certification, or the acceptance run. Those come next, separately.
+- Do not grant Delete, Export or Notify to anyone.
+- Do not change permissions, keys, labels, guards or user flags.
+- Do not touch production. Do not publish.
+- Do not add a dev-only switch, feature flag, test mode or bypass.
+
+REPORT BACK — ONCE, AT THE END, AND KEEP IT SHORT
+1. Files changed.
+2. For each of the three tests: the real cause, the fix, and whether it now passes.
+3. Suite before and after, against the 48 baseline.
+4. The sign-in evidence from B4, with status codes and the screenshot.
+5. Anything you could not do, and why.
+
+STOP HERE. Do not publish. Do not continue to the rest of PERM-03B.

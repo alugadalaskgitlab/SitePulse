@@ -1,0 +1,22 @@
+{
+  "userIds": [
+    21,
+    22
+  ],
+  "projectIds": [
+    13,
+    14
+  ],
+  "remainingRows": {
+    "user_permissions": 0,
+    "user_devices": 0,
+    "user_sessions": 0,
+    "user_site_access": 0,
+    "users": 0,
+    "projects": 0,
+    "boq_items": 0,
+    "boq_categories": 0,
+    "boq_mix_template_links": 0,
+    "project_scope_segments": 0
+  }
+}
