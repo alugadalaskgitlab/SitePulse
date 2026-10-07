@@ -5379,3 +5379,17 @@ mtime_ms = 1791383096591
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/7c435fba-81b9-43e4-8009-e3633cfc048a/636c43f2-9504-49da-a428-097bfbff7b40"
 storage_version_token = "1791383220370409"
 content_type = "text/html"
+
+[[outputs]]
+id = "VtpCWUIVnRe4fQUX2egRl"
+uri = "file://reports/perm-prod01/status-report.html"
+type = "html"
+title = "PERM-PROD-01 — migration and signed-in proof"
+description = "Exact View-only rule and carry-forward map, all ten page counts, eight row changes, signed-in before/after and audit screenshots, second-start no-op proof, cleanup, full suite and build results."
+logical_id = "bb2fd83c-fc9d-43d4-be5c-fde9344f70c2"
+content_hash = "sha256:6569424657c475cd26ee4bc24118712fbfb4d759806aa2def0f6e3daf3287088"
+size = 448441
+mtime_ms = 1791385190075
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/bb2fd83c-fc9d-43d4-be5c-fde9344f70c2/58d3182a-9f67-4bb6-af28-38c33ebe3d8a"
+storage_version_token = "1791385285173159"
+content_type = "text/html"

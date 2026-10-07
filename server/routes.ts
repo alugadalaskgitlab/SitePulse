@@ -23,7 +23,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, vendors, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
-import { db } from "./db";
+import { db, pool } from "./db";
+import { readPermissionAccessAudit } from "./permissionAccessMigration";
 import { TransportRateInputError } from "@shared/transportRate";
 import { registerVendorMasterRoutes } from "./vendor-master";
 import { buildPurchaseOrderPdf } from "./purchase-order-pdf";
@@ -13880,6 +13881,16 @@ export async function registerRoutes(
   // ============================================
   // GENERIC AUDIT TRAIL (Owner/Admin transaction controls)
   // ============================================
+
+  app.get("/api/admin/permission-migration-audit", async (req, res) => {
+    if (!assertView(req, res, "admin_settings")) return;
+    try {
+      res.json(await readPermissionAccessAudit(pool));
+    } catch (error) {
+      console.error("Permission migration audit read failed:", error);
+      res.status(500).json({ message: "Unable to load permission migration audit" });
+    }
+  });
 
   app.get("/api/audit-logs", async (req, res) => {
     try {

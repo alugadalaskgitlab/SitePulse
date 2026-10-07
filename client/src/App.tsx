@@ -167,6 +167,8 @@ function PageLoader() {
   );
 }
 
+const PermissionMigrationAudit = lazy(() => import("@/pages/PermissionMigrationAudit"));
+
 // ── Feature flag ─────────────────────────────────────────────────────────────
 const WP_ENABLED = import.meta.env.VITE_ENABLE_WORK_PROGRAM === "true";
 
@@ -384,6 +386,7 @@ function AuthedShell() {
           {/* Admin pages */}
           <Route path="/admin/site-backfill" component={gatedEither(SiteBackfill, "site_management", "admin_settings")} />
           <Route path="/admin/settings" component={gated(AdminSettings, "admin_settings")} />
+          <Route path="/admin/permission-migration-audit" component={gated(PermissionMigrationAudit, "admin_settings")} />
           <Route path="/admin/users" component={gatedEither(UserManagement, "user_management", "permission_manager")} />
           <Route path="/admin/devices" component={gated(DeviceApproval, "device_approval")} />
           <Route path="/admin/reports" component={gatedEither(AdminReports, "report_management", "reports")} />

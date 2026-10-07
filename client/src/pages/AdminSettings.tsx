@@ -258,6 +258,9 @@ export default function AdminSettings() {
         </div>
       </div>
 
+      <Link href="/admin/permission-migration-audit">
+        <Button variant="outline" data-testid="button-permission-migration-audit">Access preservation audit</Button>
+      </Link>
       <Card>
         <CardHeader>
           <div className="flex items-center gap-3">

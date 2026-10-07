@@ -59,3 +59,18 @@ store for an eligible user must not be reported as a passed positive test.
 **How to apply:** Keep recipient eligibility, provider outcome, and observed
 receipt separate. If only one real event is authorised, do not replay it to
 repair a failed positive delivery check.
+
+## Publishing access preservation
+
+The owner does not want another recurring startup repair. Access preservation
+must be a one-time, durably marked, audited, additive View-only operation;
+admins/owners remain untouched. Do not inspect or use a production connection
+to perform it: the application handles its own connected database after the
+owner publishes.
+
+**Why:** The owner explicitly distinguished this migration from existing
+repair/backfill chains that repeatedly run on publish.
+
+**How to apply:** Keep the completion marker and its historical audit intact
+after development fixtures are removed. Do not introduce a rerun button, reset
+the marker to retest, or infer that development counts describe production.

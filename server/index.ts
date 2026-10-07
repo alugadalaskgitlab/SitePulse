@@ -5,7 +5,8 @@ import { createServer } from "http";
 import { initPush, sendPushToAudience } from "./push";
 import { storage } from "./storage";
 import { ensureBootstrapAdmin, backfillSplitPermissions, migrateEmailPhoneSchema, backfillPlantSubPermissions } from "./auth";
-import { db } from "./db";
+import { db, pool } from "./db";
+import { runPermissionAccessMigration } from "./permissionAccessMigration";
 import { sql } from "drizzle-orm";
 
 const app = express();
@@ -177,6 +178,9 @@ app.use((req, res, next) => {
     console.log(`Startup: backfillUppercaseBusinessText — normalized BOQ projects: ${uppercaseBackfill.boqProjects}`);
   }
 
+  // One durable, additive migration; do not serve new View gates until complete.
+  const accessMigration = await runPermissionAccessMigration(pool);
+  console.log("Startup: PERM-PROD-01", JSON.stringify(accessMigration));
   await registerRoutes(httpServer, app);
 
   // ── Start serving immediately — background migrations run after listen ─────

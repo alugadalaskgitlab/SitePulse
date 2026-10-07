@@ -1,0 +1,7 @@
+{
+  "changedExistingRoutes": [],
+  "newRoutes": [
+    "get:/api/admin/permission-migration-audit"
+  ],
+  "adminOnlyRoutesUnchanged": true
+}

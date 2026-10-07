@@ -1,0 +1,19 @@
+{
+  "existingUsersFlagsUnchanged": true,
+  "existingPermissionsUnchanged": true,
+  "onlyViewAdded": true,
+  "nothingUserGainedNothing": true,
+  "originalPermissions": {
+    "count": 366,
+    "checksum": "070240778e98e64cc5c33b06028879218517021aaf892873fba1e9e6d7ca251d"
+  },
+  "finalPermissions": {
+    "count": 366,
+    "checksum": "070240778e98e64cc5c33b06028879218517021aaf892873fba1e9e6d7ca251d"
+  },
+  "beforeFixturePermissions": 371,
+  "afterFixturePermissions": 376,
+  "changedRows": 8,
+  "firstToSecondStartupUnchanged": true,
+  "retainedDurableAuditRows": 8
+}

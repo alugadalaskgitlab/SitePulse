@@ -1,0 +1,196 @@
+{
+  "deniedStatus": 403,
+  "allowedStatus": 200,
+  "data": {
+    "completed": true,
+    "completedAt": "2026-10-07T14:49:21.926Z",
+    "changedRows": 8,
+    "mapping": [
+      {
+        "source": "qto_boq",
+        "target": "planning_masters"
+      },
+      {
+        "source": "qto_boq",
+        "target": "work_programme"
+      },
+      {
+        "source": "qto_boq",
+        "target": "work_programme_review"
+      },
+      {
+        "source": "qto_boq",
+        "target": "norms_library"
+      },
+      {
+        "source": "admin_settings",
+        "target": "edit_requests_review"
+      },
+      {
+        "source": "user_management",
+        "target": "edit_requests_review"
+      }
+    ],
+    "pageSummary": [
+      {
+        "page": "/estimator-hub",
+        "section": "estimator_portal",
+        "usersGranted": 0,
+        "usersWithAccess": 4
+      },
+      {
+        "page": "/concrete-calculator",
+        "section": "concrete_calculator",
+        "usersGranted": 0,
+        "usersWithAccess": 4
+      },
+      {
+        "page": "/concrete-calculator-v2",
+        "section": "concrete_calculator",
+        "usersGranted": 0,
+        "usersWithAccess": 4
+      },
+      {
+        "page": "/admin/mix-estimates",
+        "section": "mix_calculator",
+        "usersGranted": 0,
+        "usersWithAccess": 4
+      },
+      {
+        "page": "/admin/mix-impact",
+        "section": "mix_calculator",
+        "usersGranted": 0,
+        "usersWithAccess": 4
+      },
+      {
+        "page": "/admin/mix-comparison",
+        "section": "mix_calculator",
+        "usersGranted": 0,
+        "usersWithAccess": 4
+      },
+      {
+        "page": "/admin/scenario-comparison",
+        "section": "mix_calculator",
+        "usersGranted": 0,
+        "usersWithAccess": 4
+      },
+      {
+        "page": "/site",
+        "section": "site_hub",
+        "usersGranted": 0,
+        "usersWithAccess": 4
+      },
+      {
+        "page": "/plant",
+        "section": "hmp_hub",
+        "usersGranted": 0,
+        "usersWithAccess": 4
+      },
+      {
+        "page": "/plant/dashboard",
+        "section": "hmp_hub",
+        "usersGranted": 0,
+        "usersWithAccess": 4
+      }
+    ],
+    "population": "non-admin, non-owner users at migration time",
+    "changes": [
+      {
+        "id": 28,
+        "userId": 30,
+        "userName": "PERM-PROD-01 create",
+        "sectionKey": "site_dprs",
+        "action": "view",
+        "before": false,
+        "after": true,
+        "reason": "preserve-existing-access",
+        "permissionId": 2418,
+        "rowExisted": true
+      },
+      {
+        "id": 29,
+        "userId": 31,
+        "userName": "PERM-PROD-01 edit",
+        "sectionKey": "site_dprs",
+        "action": "view",
+        "before": false,
+        "after": true,
+        "reason": "preserve-existing-access",
+        "permissionId": 2419,
+        "rowExisted": true
+      },
+      {
+        "id": 30,
+        "userId": 32,
+        "userName": "PERM-PROD-01 reports",
+        "sectionKey": "site_dprs",
+        "action": "view",
+        "before": false,
+        "after": true,
+        "reason": "preserve-existing-access",
+        "permissionId": 2420,
+        "rowExisted": true
+      },
+      {
+        "id": 31,
+        "userId": 33,
+        "userName": "PERM-PROD-01 boq",
+        "sectionKey": "planning_masters",
+        "action": "view",
+        "before": false,
+        "after": true,
+        "reason": "carried-forward-from-qto_boq",
+        "permissionId": 2423,
+        "rowExisted": false
+      },
+      {
+        "id": 32,
+        "userId": 33,
+        "userName": "PERM-PROD-01 boq",
+        "sectionKey": "work_programme",
+        "action": "view",
+        "before": false,
+        "after": true,
+        "reason": "carried-forward-from-qto_boq",
+        "permissionId": 2424,
+        "rowExisted": false
+      },
+      {
+        "id": 33,
+        "userId": 33,
+        "userName": "PERM-PROD-01 boq",
+        "sectionKey": "work_programme_review",
+        "action": "view",
+        "before": false,
+        "after": true,
+        "reason": "carried-forward-from-qto_boq",
+        "permissionId": 2425,
+        "rowExisted": false
+      },
+      {
+        "id": 34,
+        "userId": 33,
+        "userName": "PERM-PROD-01 boq",
+        "sectionKey": "norms_library",
+        "action": "view",
+        "before": false,
+        "after": true,
+        "reason": "carried-forward-from-qto_boq",
+        "permissionId": 2426,
+        "rowExisted": false
+      },
+      {
+        "id": 35,
+        "userId": 35,
+        "userName": "PERM-PROD-01 auditor",
+        "sectionKey": "edit_requests_review",
+        "action": "view",
+        "before": false,
+        "after": true,
+        "reason": "carried-forward-from-admin_settings",
+        "permissionId": 2427,
+        "rowExisted": false
+      }
+    ]
+  }
+}

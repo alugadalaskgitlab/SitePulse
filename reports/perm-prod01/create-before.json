@@ -1,0 +1,8 @@
+{
+  "userId": 30,
+  "path": "/site/dashboard",
+  "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nHMP Operations\nRMC Operations\nPC\n\nPERM-PROD-01 create\n\nManager\n\nSign Out\nRefresh\nNo access\n\nYou don't have permission to view this section. Contact an administrator if you think this is wrong.",
+  "expectedVisible": true,
+  "screenshot": "create-before.jpg",
+  "documentStatus": 200
+}

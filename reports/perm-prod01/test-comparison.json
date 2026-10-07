@@ -1,0 +1,19 @@
+{
+  "baseline": {
+    "files": 331,
+    "total": 4614,
+    "passed": 4563,
+    "failed": 48,
+    "skipped": 3
+  },
+  "current": {
+    "files": 332,
+    "total": 4629,
+    "passed": 4578,
+    "failed": 48,
+    "skipped": 3
+  },
+  "newFailures": [],
+  "resolvedBaseline": [],
+  "missingBaselineFiles": []
+}

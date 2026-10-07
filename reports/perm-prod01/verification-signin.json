@@ -1,0 +1,8 @@
+{
+  "userId": 16,
+  "path": "/account",
+  "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nSite Operations\nHMP Operations\nRMC Operations\nProcurement & Billing\n\nTOOLS\n\nEstimator\nAV\n\nAgent Verification\n\nManager\n\nSign Out\nRefresh\nAV\n\nAgent Verification\n\nagent.verification@test.invalid\n\nManager\n\nACCOUNT DETAILS\n\nRole\n\nManager\n\nSession policy\n\nSticky (stay signed in)\n\nUser ID\n\n#16\n\nPUSH NOTIFICATIONS\n\nStatus on this device\n\nNot subscribed\nEnable on this device\n\nNotification preferences\n\nManage which sections send you push alerts",
+  "expectedVisible": true,
+  "screenshot": "verification-signin.jpg",
+  "documentStatus": 200
+}

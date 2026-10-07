@@ -1,0 +1,174 @@
+[
+  {
+    "kind": "updated",
+    "before": {
+      "id": 2418,
+      "user_id": 30,
+      "section_key": "site_dprs",
+      "can_view": false,
+      "can_create": true,
+      "can_edit": false,
+      "can_view_reports": false,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2418,
+      "user_id": 30,
+      "section_key": "site_dprs",
+      "can_view": true,
+      "can_create": true,
+      "can_edit": false,
+      "can_view_reports": false,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "kind": "updated",
+    "before": {
+      "id": 2419,
+      "user_id": 31,
+      "section_key": "site_dprs",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": true,
+      "can_view_reports": false,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2419,
+      "user_id": 31,
+      "section_key": "site_dprs",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": true,
+      "can_view_reports": false,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "kind": "updated",
+    "before": {
+      "id": 2420,
+      "user_id": 32,
+      "section_key": "site_dprs",
+      "can_view": false,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    },
+    "after": {
+      "id": 2420,
+      "user_id": 32,
+      "section_key": "site_dprs",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "kind": "inserted",
+    "before": null,
+    "after": {
+      "id": 2423,
+      "user_id": 33,
+      "section_key": "planning_masters",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": false,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "kind": "inserted",
+    "before": null,
+    "after": {
+      "id": 2424,
+      "user_id": 33,
+      "section_key": "work_programme",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": false,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "kind": "inserted",
+    "before": null,
+    "after": {
+      "id": 2425,
+      "user_id": 33,
+      "section_key": "work_programme_review",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": false,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "kind": "inserted",
+    "before": null,
+    "after": {
+      "id": 2426,
+      "user_id": 33,
+      "section_key": "norms_library",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": false,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  },
+  {
+    "kind": "inserted",
+    "before": null,
+    "after": {
+      "id": 2427,
+      "user_id": 35,
+      "section_key": "edit_requests_review",
+      "can_view": true,
+      "can_create": false,
+      "can_edit": false,
+      "can_view_reports": false,
+      "can_delete": false,
+      "can_export": false,
+      "can_approve": false,
+      "can_notify": false
+    }
+  }
+]

@@ -1,0 +1,33 @@
+{
+  "accounts": [
+    {
+      "id": 30,
+      "label": "create"
+    },
+    {
+      "id": 31,
+      "label": "edit"
+    },
+    {
+      "id": 32,
+      "label": "reports"
+    },
+    {
+      "id": 33,
+      "label": "boq"
+    },
+    {
+      "id": 34,
+      "label": "none"
+    },
+    {
+      "id": 35,
+      "label": "auditor"
+    }
+  ],
+  "dprId": 261,
+  "verificationDeviceId": 109,
+  "verificationNewSessions": [
+    363
+  ]
+}

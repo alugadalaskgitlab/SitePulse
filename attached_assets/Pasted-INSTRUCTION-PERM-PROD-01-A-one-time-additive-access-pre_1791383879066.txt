@@ -1,0 +1,73 @@
+INSTRUCTION PERM-PROD-01: A one-time, additive access-preservation migration so nobody is locked out when this publishes
+
+READ THIS FIRST
+This is the LAST batch before publishing. It exists for one reason: PERM-02 made `view` the only bit that opens a page, and PERM-03/03B-2 gated ten more pages and added five new section keys. In development that needed additive `view` grants so nobody lost access. **That fix only ran in development.** The production database still holds the owner's hand-tuned matrices, and nobody has measured it.
+Do NOT publish. Build this, prove it in development, show the Publish preview, and STOP. The owner publishes.
+Do NOT change any permission guard, section key, label, route, user flag, template, or the admin/owner bypass.
+Do NOT revoke, clear or reduce any permission for anybody, ever, in this batch.
+Do NOT ask for, read, or use any production database URL or connection variable. You never touch production directly — the migration runs inside the application after the owner publishes.
+PARKED — do not investigate or touch: LDO, startup data repair jobs (beyond the one-time job defined here), stock balances, vendor bills, trips, rate cards.
+
+THE OWNER'S CONSTRAINT, STATED PLAINLY
+He has 73 repair/backfill entry points already running at startup, including a 14-job LDO chain that re-runs on every publish. He does not want another one of those. What is defined below is NOT that: it is a single one-time job that records that it has run and never runs again, that only ever ADDS a bit, and that writes an audit the owner can read. Build it exactly that way and say so in the report.
+
+=====================================================================
+PART A — THE MIGRATION
+=====================================================================
+A1. Write a one-time migration that runs once on application start, inside the application, against whatever database the application is connected to.
+
+A2. WHAT IT DOES, and nothing else: for every user and every section where the application now requires `view` to open a page or reach a route, if that user has `view = false` but has ANY of create / edit / delete / view_reports / export / approve = true on that section, set `view = true`.
+    - Additive only. No bit is ever cleared, reduced or moved.
+    - `notify` alone never triggers a grant — it does not open a page.
+    - Admin and owner accounts are left alone.
+
+A3. THE NEW KEYS. For the five keys added by PERM-03 — `planning_masters`, `work_programme`, `work_programme_review`, `norms_library`, `edit_requests_review` — carry forward from the key each was carved out of: a user holding `view` on `qto_boq` gets `view` on the keys split from it; a user holding `view` on `admin_settings` or `user_management` gets `view` on `edit_requests_review`. Derive this mapping from the finished key map in `reports/perm-03b2/`, not from guesswork, and print the mapping you used.
+
+A4. THE TEN NEWLY GATED PAGES. Those were previously reachable by any signed-in user. Do NOT grant everyone access to them — that would hand out access nobody had decided on. Instead, for each of those sections, grant `view` only to users who already hold some other bit on that section, per A2. Report how many users that is, and list the pages where the answer is zero so the owner can decide himself.
+
+A5. RUN ONCE. Record completion in a durable marker (a settings row or equivalent). On every later start the job sees the marker and exits immediately, doing no work and no queries beyond the marker check. Prove this: start the application twice and show the second start performing no writes.
+
+A6. AUDIT. Write every change as a row: user id, user name, section key, action, before, after, and the reason (preserve-existing-access, or carried-forward-from-<key>). Store it so it survives restarts, and make it readable.
+
+=====================================================================
+PART B — THE OWNER MUST BE ABLE TO SEE IT
+=====================================================================
+B1. Add one read-only admin screen that shows the migration's audit: whether it has run, when, how many rows it changed, and the full list from A6, with a per-user grouping.
+B2. The screen reveals permission grants, so gate it on an existing admin section — do not create a new key for it.
+B3. No button on that screen re-runs the migration. It is read-only.
+
+=====================================================================
+PART C — PROVE IT IN DEVELOPMENT
+=====================================================================
+Use the development verification sign-in. Temporary accounts are authorised under the usual limits: development database only, never a real person's account, everything removed afterwards and listed.
+
+C1. Build a realistic "before" state in development: temporary users holding create-only, edit-only and reports-only grants on gated sections, plus one with `view` on `qto_boq` and nothing on the new keys, plus one with nothing at all.
+C2. Snapshot the permission table. Run the migration. Snapshot again.
+C3. Show, row by row, that: every affected user gained ONLY `view`; nobody gained any other bit; nobody lost anything; the user with nothing gained nothing.
+C4. Prove the access outcome on screen, not just in the table: the create-only user could NOT open the page before the migration and CAN after, signed in, with screenshots and status codes.
+C5. Start the application a second time and show the job did nothing (A5).
+C6. Show the admin screen from PART B displaying the audit.
+
+=====================================================================
+WHAT NOT TO DO
+=====================================================================
+- Do not revoke, clear or lower any permission for any user, for any reason.
+- Do not grant Delete, Export or Notify to anybody. This migration only ever sets `view`.
+- Do not grant anyone access to a page they could not reach before.
+- Do not touch admin or owner accounts.
+- Do not add a second startup job, a recurring job, or a feature flag.
+- Do not request or use a production connection string.
+- Do not publish.
+
+REPORT BACK — ONCE, AT THE END, AND KEEP IT SHORT
+1. Files changed.
+2. The exact rule the migration applies, in plain words.
+3. The A3 key-carry-forward mapping you used, and where you derived it from.
+4. A4: how many users are affected per newly gated page, and which pages would leave nobody with access.
+5. C1–C6 evidence: row-level before/after, screenshots, status codes, and the second-start proof.
+6. Confirmation that the job marks itself complete and cannot run twice.
+7. Full suite against the 48 baseline; build passes.
+8. Cleanup of every temporary account and row, listed.
+9. The Publish preview.
+
+STOP AFTER PART C. Do not publish — the owner will. Do not start PERM-04 or any other work.
