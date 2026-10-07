@@ -1,0 +1,115 @@
+INSTRUCTION PERM-03: Delete, Export and Notify become real, delegable switches — off for everyone until the owner ticks them
+
+READ THIS FIRST
+PERM-01 (audit) and PERM-02 (wiring + labels) are already in the repo and published state unchanged. Read `reports/permission-audit.md` and `reports/permission-audit.csv` first — they are the regenerated, post-PERM-02 versions. Where this instruction and that audit disagree, the audit's file:line evidence wins; say so in the report.
+The matrix stays exactly as it is: 87 sections x 8 actions. Do NOT replace, simplify, regroup or redesign it. Do NOT add or rename any action.
+Do NOT publish. Show the Publish preview and STOP.
+Do NOT add a dev-only switch, feature flag, test mode or bypass.
+PARKED — do not investigate, touch or report on any of these: LDO, startup data repair jobs, stock balances, vendor bills, trips, rate cards.
+
+THE OWNER'S DESIGN, IN HIS WORDS
+A road contractor has staff at every level — site engineer, senior site engineer, store keeper, store in-charge, purchaser, procurement head, plant engineer, operators, mechanical head, PM, and above. Work moves entry → verify → recommend → approve. The owner does not want fixed roles; the matrix IS how he models that hierarchy, person by person.
+He also needs delegation: when he is away, he hands approving, reconciling or a specific deletion to someone below him for a period, then takes it back.
+And he wants notification to be a noise control: only people connected to an activity should be notified.
+
+THE RULE FOR THIS BATCH, STATED ONCE
+Delete, Export and Notify must EXIST as switches on every row where a real operation of that kind exists, and must be UNTICKED for every user. Nobody gets them by default, by template, by inheritance from another box, or by any automatic grant. The owner ticks a box when he wants to delegate that one thing to that one person. He keeps everything himself through the existing Administrator bypass, which this batch does not change.
+
+=====================================================================
+PART A — DELETE BECOMES ITS OWN SWITCH
+=====================================================================
+Today `assertDelete` is called ZERO times. `assertDeleteOrCancel` (server/auth-routes.ts:1076) is literally `return assertEdit(req, res, section)`. There are 55 `app.delete` routes: 39 guarded by `assertAdmin`, 7 by `assertEdit`, 2 by `assertMixCalcWrite`, and 2 by `assertAuthed` — logged-in is the only requirement.
+
+A1. `assertDeleteOrCancel` must check the `delete` bit, not `edit`. Update its 6 call sites accordingly.
+A2. The 7 `assertEdit`-guarded delete routes move to the `delete` bit of their section.
+A3. The 2 `assertAuthed`-only delete routes are a hole. Give each the `delete` bit of the section its data belongs to. Name both routes in the report.
+A4. The 2 `assertMixCalcWrite` routes: report what that helper checks and propose the right section+action. Do not change them in this batch unless the mapping is obvious and you say so.
+A5. The 39 `assertAdmin` delete routes stay admin-only in this batch — they are covered by PART E's inventory and PERM-04.
+A6. Client side: every delete/cancel/remove control must be gated on `delete` for its section, not on `edit`.
+A7. DEFAULT OFF. Do NOT grant `delete` to anybody, anywhere, for any reason. Not to existing users, not in any role template, not derived from `edit`. Report the list of users who can delete or cancel something TODAY via their Edit bit, with the sections, so the owner can see exactly what he is choosing to re-grant or not. That list is information, not a migration.
+
+=====================================================================
+PART B — EXPORT / PRINT BECOMES ITS OWN SWITCH
+=====================================================================
+`assertExport` is called ZERO times. `ReportExportGate` (client/src/components/ReportExportGate.tsx:8) reads `view_reports`. So "can see the report" and "can download or print it" are one box.
+
+B1. `ReportExportGate` reads `export`.
+B2. Every server route that produces a download, export or print output (the audit and the 8 `/export`-style routes are the starting point — find them all) checks the `export` bit of its section. Report every route you placed and every one you could not.
+B3. `view_reports` keeps meaning "can see the report on screen". The two are independent: a person may view and not export.
+B4. DEFAULT OFF. Do NOT grant `export` to anybody. Report who can export TODAY via their Reports bit, with sections — information only.
+
+=====================================================================
+PART C — NOTIFY
+=====================================================================
+Notify is already wired: 76 `sendPushToSection` call sites across 20 sections, and the regenerated audit reports no dead tickable Notify cells. This part confirms and cleans, it does not rebuild.
+
+C1. Prove the filter works: a user WITHOUT `notify` on a section receives nothing when that section's event fires; a user WITH it receives it. Show both, for one real section, end to end.
+C2. List every section that currently sends push, and every section that does not. The owner needs to know which activities can notify at all.
+C3. DEFAULT OFF. Report every non-admin user who currently holds a `notify` grant, section by section, and CLEAR those grants so the baseline is off for everyone. List every row you cleared, so the owner can re-tick deliberately. Do not clear anything for admin or owner accounts.
+C4. `FULL_PERMISSION` in shared/permissions.ts already excludes notify from "Grant all". Keep that. Add `delete` and `export` to the same exclusion, so "Grant all" never hands out these three.
+
+=====================================================================
+PART D — COVERAGE: PAGES THE MATRIX DOES NOT REACH
+=====================================================================
+129 routes in client/src/App.tsx; about 105 are section-gated. Excluding `/login`, `/estimator-login`, and the three personal pages `/account`, `/notifications/preferences`, `/edit-requests/mine` (which stay open to their own user), these are ungated:
+
+  /estimator-hub, /concrete-calculator, /concrete-calculator-v2,
+  /admin/mix-estimates, /admin/mix-impact, /admin/mix-comparison, /admin/scenario-comparison,
+  /site, /plant, /plant/dashboard
+
+D1. Gate each one. Section keys for most of them ALREADY EXIST and are simply never attached: `estimator_portal`, `concrete_calculator`, `mix_calculator`, `concrete_estimates_manage`. Use the existing key wherever one fits; only propose a new key where none does.
+D2. Apply the same no-lockout rule PERM-02 used: before gating, list every user who would lose access, and additively set `view` for exactly those user/section pairs. Additive only; nothing revoked; every row listed in the report.
+D3. MODULES SHARING SOMEONE ELSE'S KEY — give each its own section key, and report the new keys:
+   - **Work Program & BOQ**: 12 pages (client/src/App.tsx:358-369) all on `qto_boq`. Propose a sensible split so planning masters, the programme itself, and the review screens can be granted separately. Report your proposed split and why; implement it.
+   - **Norms Library (SNL)** (App.tsx:370): also on `qto_boq`. Give it its own key.
+   - **Edit Requests review queue** (App.tsx:398): on `admin_settings` OR `user_management`. It is an approval workflow the owner will want to delegate — give it its own key with a real `approve` action. `/edit-requests/mine` stays open to its own user.
+D4. New section keys are added to the catalogue with labels and tooltips, and appear in the right permission group so they render as rows. Any new key starts UNTICKED for every user.
+D5. Report any page you could not place, and why.
+
+=====================================================================
+PART E — INVENTORY ONLY: THE 93 ADMIN-ONLY ROUTES
+=====================================================================
+93 routes in server/routes.ts are guarded by `assertAdmin`. They cannot be delegated at all today — the only lever is making someone an Administrator, which hands over everything. That is the owner's core problem.
+
+E1. List all 93. For each: the route, what it actually does in one plain sentence, and a proposed section + action it could be delegated through.
+E2. Group them by kind: reconcile, backfill, ledger rebuild/reassign/transfer, masters management, user and device management, data sync, destructive deletes, other.
+E3. For each group, say whether you believe it is safely delegable, or should stay owner-only, and why in one line.
+E4. CHANGE NOTHING in this part. No route is re-gated in this batch. This is the list the owner reads before PERM-04.
+
+=====================================================================
+WHAT NOT TO DO
+=====================================================================
+- Do not grant `delete`, `export` or `notify` to any user, template or default. Not one.
+- Do not revoke any permission except the PART C3 notify clearing, which must be listed row by row.
+- Do not re-apply any template to an existing user.
+- Do not change any user flag (isAdmin, isOwner, isFieldEngineer, canManagePermissions).
+- Do not change the admin/owner bypass.
+- Do not re-gate any of the 93 admin-only routes.
+- Do not touch production. Do not publish.
+
+SELF-TEST BEFORE REPORTING
+Run these signed in, using the development verification account, with screenshots and real HTTP status codes. If you cannot sign in, say so at the top and state which items are unverified — do not present component tests as screen evidence.
+1. Delete: a user with Edit and without Delete on a section — the delete/cancel control is absent and the API returns 403. Tick Delete — the control appears and the API returns 200/204. Show both.
+2. The 2 previously logged-in-only delete routes now return 403 without the Delete bit.
+3. Export: a user with Reports and without Export — the report renders on screen, the download/print control is absent, the export route returns 403. Tick Export — it works. Show both.
+4. Notify: C1's two cases, end to end.
+5. Each newly gated page from PART D: refused without the bit, opens with it.
+6. Work Program / Norms / Edit Requests: each new key gates its own pages and nothing else.
+7. "Grant all" does not tick delete, export or notify.
+Z1. Before/after row counts and content checksums for `users` and the permission table, showing the ONLY writes are PART D2's additive view grants and PART C3's notify clearing, each listed row by row.
+Z2. Full test suite against the current baseline. List every test added or changed and why. Do not report the pre-existing failures or type errors as new.
+Z3. Build passes.
+Z4. Re-run `scripts/permission-audit.ts` and give the new verdict counts beside the PERM-02 numbers (LIVE 205 / DEAD 3 / HIDDEN 0 / CORRECTLY-OFF 488).
+
+REPORT BACK — ONCE, AT THE END
+1. Files changed.
+2. PART A7 and B4 information lists — who can delete and who can export today.
+3. PART C3 cleared notify rows, listed.
+4. PART D2 additive view grants, listed; new section keys and the Work Program split.
+5. PART E: the 93-route inventory, grouped, with proposals.
+6. Evidence 1-7 and Z1-Z4.
+7. Any choice you had to make on your own, and what you chose.
+8. Anything you could not do, and why.
+9. The Publish preview.
+
+STOP AFTER PART E. Do not publish. Do not start PERM-04. Do not create follow-up tasks.
