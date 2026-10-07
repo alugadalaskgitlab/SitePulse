@@ -5295,3 +5295,45 @@ mtime_ms = 1791346829970
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/962008e8-647e-49a3-8bd6-8fd030dde7ea/fc66e7a3-2106-4559-9315-59dd40ea9e32"
 storage_version_token = "1791346851279920"
 content_type = "text/html"
+
+[[outputs]]
+id = "EF9BVpClX5TFZmBQUdjtr"
+uri = "file://reports/perm-03b/status-report.html"
+type = "html"
+title = "PERM-03B verification report"
+description = "Signed-in screenshots, HTTP results, full-suite comparison, permission mappings, checksums, cleanup evidence, and explicitly unverified cases."
+logical_id = "e938f5f2-cd2e-4144-b5aa-5eaaec370e3e"
+content_hash = "sha256:2249893730ee212038d5250bf44c31bd4f7d7303ab229e6e6af80699fc2401c9"
+size = 2918787
+mtime_ms = 1791349640057
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e938f5f2-cd2e-4144-b5aa-5eaaec370e3e/9024fd6a-8068-4df4-9114-03141403ada6"
+storage_version_token = "1791349694267225"
+content_type = "text/html"
+
+[[outputs]]
+id = "IJYilggGOYHdDtYzMzMFI"
+uri = "file://reports/perm-03b1/signed-in-account.jpg"
+type = "image"
+title = "Verified development sign-in"
+description = "Ordinary verification account on /account after normal login and its own device approval. Login and protected API both returned HTTP 200."
+logical_id = "42105d95-30d9-4066-9a1e-1e432360bf85"
+content_hash = "sha256:172fc59d5890c1201ab73ecaebb73879e4bca6c3f0af2ff4ee010ce978adb2ac"
+size = 65167
+mtime_ms = 1791367323365
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/42105d95-30d9-4066-9a1e-1e432360bf85/115d34c3-f64b-4f8f-9ea4-f1a2cd25f9df"
+storage_version_token = "1791367652997591"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "azQO38xT2VgSx1SyPyCbX"
+uri = "file://reports/perm-03b2/status-report.html"
+type = "html"
+title = "PERM-03B-2 — changes and signed-in evidence"
+description = "Reference-by-reference key mapping, E1–E5 screenshots and HTTP results, report-screen exceptions, checksums, cleanup IDs, full-suite comparison and audit."
+logical_id = "a856b197-c671-4415-93d0-9df2a3eb2076"
+content_hash = "sha256:be7b30054b06aa2e2b09ee00a04e4fe3339fc53f0b17c4fb0f517255ac630862"
+size = 3943445
+mtime_ms = 1791369841921
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/a856b197-c671-4415-93d0-9df2a3eb2076/a78ef2e7-9f49-4ef8-b61e-eccfb692b269"
+storage_version_token = "1791369932230807"
+content_type = "text/html"

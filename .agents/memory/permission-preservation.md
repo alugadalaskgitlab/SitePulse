@@ -17,3 +17,18 @@ When carving new sections from an old key, preserve existing View access additiv
 **Why:** The matrix models the contractor's individual responsibilities and temporary delegation, not fixed roles. Notifications are activity-specific noise control.
 
 **How to apply:** List every changed permission row. Parked modules are included in permission coverage and admin-route inventory, but only guards/mappings may change; do not alter or investigate business behavior. Verification may grant these actions only to purpose-created temporary development accounts, after asserting the database name. Never send test pushes to real users; remove and verify cleanup of accounts, devices, permissions and test records.
+
+## Shared navigation and lookup boundaries
+
+Keep the project picker reachable by the sections that genuinely use it, while
+keeping BOQ detail distinct. Shared read grants require an actual page consumer;
+do not broaden a dedicated master-list permission just because planning code
+uses the same underlying records.
+
+**Why:** Live ordinary-user checks exposed that a Programme-only account could
+read Planning Masters through an overly broad shared-read OR, despite its page
+being correctly denied. Conversely, hiding the project picker from a
+Programme-only account prevented normal navigation to its permitted screen.
+
+**How to apply:** Verify page, navigation, and API independently in both
+directions. A shared metadata read never implies a shared mutation grant.

@@ -49,7 +49,7 @@ export default function Plant() {
   })();
 
   const [plantView, setPlantView] = useState<"home" | "hmp" | "fleet" | "reports">(initialView);
-  const { isAdmin, isManager } = useAuth();
+  const { isAdmin, isManager, sectionCan } = useAuth();
   const { rmcEnabled } = useFeatureFlags();
 
   const { data: allPlantSettings } = useQuery<PlantSettingsWithSite[]>({
@@ -107,7 +107,7 @@ export default function Plant() {
                 </Button>
               </a>
             )}
-            <a
+            {sectionCan("admin_settings", "export") && <a
               href={primaryPlantName
                 ? `/api/admin/admin-guide.pdf?plant=${encodeURIComponent(primaryPlantName)}`
                 : '/api/admin/admin-guide.pdf'}
@@ -118,7 +118,7 @@ export default function Plant() {
                 <FileText className="w-4 h-4" />
                 Admin Guide (PDF)
               </Button>
-            </a>
+            </a>}
           </div>
         )}
       </div>

@@ -1,0 +1,73 @@
+INSTRUCTION PERM-03B-2: Finish the Work Programme split and make Export mean export — proved on screen
+
+READ THIS FIRST
+PERM-03B-1 is complete and pushed (`55991bf`): the suite is back to its 48 baseline failures and the development verification account signs in (user 16 "Agent Verification", all admin flags false, password in the `DEV_VERIFICATION_PASSWORD` secret, device 101 approved). USE THAT SIGN-IN. There is no longer any excuse for component tests standing in for screen evidence.
+This batch has TWO build parts and their evidence. The broad acceptance run across Delete / Notify / all five new keys is OUT OF SCOPE and comes next as PERM-03B-3.
+Do NOT publish. Show the Publish preview and STOP.
+Do NOT grant Delete, Export or Notify to any real user — they stay unticked for everyone. Temporary development accounts for testing are authorised under the usual limits: development database only, never a real person's account, everything removed afterwards and listed.
+Do NOT change any user flag, the admin/owner bypass, or any of the 93 admin-only routes.
+PARKED — permission guards only, no business-logic change, no investigation: LDO, startup data repair jobs, stock balances, vendor bills, trips, rate cards.
+
+=====================================================================
+PART A — FINISH THE WORK PROGRAMME SPLIT
+=====================================================================
+PERM-03 added `planning_masters`, `work_programme`, `work_programme_review`, `norms_library` and `edit_requests_review`, and attached them to pages. Its own status report says API, action and navigation coverage was NOT reconciled. That is visible in the code: **44 references to `"qto_boq"` remain**, including route guards in `client/src/App.tsx` (lines ~358, ~360, ~366), `client/src/components/HubShell.tsx`, `client/src/pages/BoqProgramSettings.tsx`, `client/src/pages/BoqProjectDetail.tsx`, and roughly thirty `assertEdit` / `assertDelete` / `assertView` calls in `server/routes.ts` (from ~14837 through ~20022).
+
+The result today is a page gated on a new key whose save and delete actions are still gated on the old one. Someone granted `work_programme` can open the screen and be refused when they act; someone granted only `qto_boq` is refused the screen but could still reach the API.
+
+A1. List every one of the 44 `"qto_boq"` references with its file:line and what it guards.
+A2. Move each to the key its page now belongs to, so the page, its API actions and its navigation agree. Where an operation genuinely still belongs to `qto_boq` (the BOQ estimator itself, as opposed to the Work Programme), keep it and say so in one line each.
+A3. The split must be coherent per screen: the route guard, every `assertView` / `assertEdit` / `assertDelete` behind it, and the navigation item that links to it all read the same key.
+A4. Report the finished map: for each of the five new keys and for `qto_boq`, which pages, which routes, which navigation items.
+A5. ADDITIVE ACCESS PRESERVATION, as in the earlier batches: anyone holding View on `qto_boq` today keeps View on every key carved out of it. Additive only, nothing revoked, every written row listed — user, section, before, after.
+
+=====================================================================
+PART B — CERTIFY REPORTS vs EXPORT
+=====================================================================
+PERM-03 changed `ReportExportGate` to read `export`, but its report says on-screen behaviour and the output-route candidates were never certified. `reports/perm-03/output-route-candidates.csv` is the starting list.
+
+B1. Walk that candidate list. Every route that produces a download, print or export output checks the `export` bit of its section. Report each route placed, and each one you could not place, with the reason.
+B2. `view_reports` keeps meaning "can see the report on screen", and nothing more. The two are independent: a person may view a report and not be able to take a copy of it.
+B3. For each report screen, confirm the content renders with Reports alone and the download/print control is absent without Export.
+B4. Do not change any report's content, calculation or layout. This is about who may take a copy.
+
+=====================================================================
+EVIDENCE — SIGNED IN, WITH SCREENSHOTS AND STATUS CODES
+=====================================================================
+Run these as a signed-in ordinary user, using the PERM-03B-1 account and temporary test accounts as needed. Give HTTP status codes, not descriptions.
+
+E1. A user granted `work_programme` but NOT `planning_masters`: can open the programme screen, is refused the planning masters screen, and the planning-masters API returns 403. Show all three.
+E2. A user granted `planning_masters` but NOT `work_programme`: the mirror image.
+E3. The same user who can OPEN a Work Programme screen can also perform its save action — proving the route guard and the API guard now agree. Show the action returning 200/201, not merely the page loading.
+E4. `norms_library` and `edit_requests_review` each gate their own pages and nothing else.
+E5. A user with `view_reports` and NOT `export`: the report renders on screen (screenshot), the download/print control is absent (screenshot), the export route returns 403. Grant `export` to a temporary account: the control appears and the route returns 200.
+E6. Any case you could not run: name it, say why, and do not present a component test as screen evidence.
+Z1. Before/after row counts and content checksums for `users` and the permission table, showing the only writes are PART A5's additive View grants and any temporary-account rows, each listed.
+Z2. Full suite against the 48 baseline. List every test added or changed and why. Do not report the 48 pre-existing failures or the pre-existing type errors as new.
+Z3. Build passes.
+Z4. Re-run `scripts/permission-audit.ts` and give the new verdict counts beside PERM-02's (LIVE 205 / DEAD 3 / HIDDEN 0 / CORRECTLY-OFF 488), noting the catalogue is 92 sections.
+Z5. Confirm every temporary account, device and permission row created for testing has been removed, and list them.
+
+=====================================================================
+WHAT NOT TO DO
+=====================================================================
+- Do not start the broad Delete / Notify / five-key acceptance run — that is PERM-03B-3.
+- Do not grant Delete, Export or Notify to any real user.
+- Do not revoke any permission. PART A5's writes are additive only.
+- Do not re-gate any of the 93 admin-only routes.
+- Do not add new section keys.
+- Do not change user flags or the admin/owner bypass.
+- Do not touch production. Do not publish.
+
+REPORT BACK — ONCE, AT THE END, AND KEEP IT SHORT
+1. Files changed.
+2. The 44 `qto_boq` references: where each went, and which stayed with a one-line reason.
+3. The finished key map from A4.
+4. PART A5's additive rows, listed.
+5. Output routes placed and not placed.
+6. Evidence E1–E6 with screenshots and status codes; anything unrun, named.
+7. Z1–Z5.
+8. Any choice you made on your own, and what you chose.
+9. The Publish preview.
+
+STOP AFTER PART B. Do not publish. Do not start PERM-03B-3 or PERM-04. Do not create follow-up tasks.

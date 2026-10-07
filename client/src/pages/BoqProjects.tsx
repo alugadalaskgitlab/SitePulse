@@ -21,7 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { boqProjectUpdateErrorMessage, prepareBoqProjectUpdate } from "@/lib/boqProjectEdit";
-import { Link } from "wouter";
+import { ProgrammeLink as Link } from "@/components/ProgrammeLink";
 import { BoqImportWizard } from "@/components/BoqImportWizard";
 import type { BoqProjectWithCounts } from "@shared/schema";
 import {
@@ -315,6 +315,11 @@ function ProjectCard({
   onDuplicate: (id: number) => void;
 }) {
   const [, navigate] = useLocation();
+  const { sectionCan, isAdmin } = useAuth();
+  const destination = sectionCan("qto_boq", "view") ? `/work-program/${project.id}`
+    : sectionCan("work_programme", "view") ? `/work-program/${project.id}/programme`
+    : sectionCan("work_programme_review", "view") ? `/work-program/${project.id}/demand`
+    : `/work-program/${project.id}/geometry`;
 
   return (
     <Card className="hover:shadow-md transition-shadow border-slate-200" data-testid={`card-project-${project.id}`}>
@@ -372,13 +377,13 @@ function ProjectCard({
           <Button
             size="sm"
             className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-sm h-8"
-            onClick={() => navigate(`/work-program/${project.id}`)}
+            onClick={() => navigate(destination)}
             data-testid={`button-open-project-${project.id}`}
           >
             <FolderOpen className="w-3.5 h-3.5 mr-1.5" />
             Open
           </Button>
-          <Button
+          {sectionCan("qto_boq", "edit") && <><Button
             size="sm"
             variant="outline"
             className="text-sm h-8 border-blue-200 text-blue-700 hover:bg-blue-50"
@@ -403,15 +408,15 @@ function ProjectCard({
             data-testid={`button-duplicate-project-${project.id}`}
           >
             <Copy className="w-3.5 h-3.5" />
-          </button>
-          <button
+          </button></>}
+          {isAdmin && <button
             className="h-8 w-8 flex items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
             onClick={() => onDelete(project.id)}
             title="Delete project"
             data-testid={`button-delete-project-${project.id}`}
           >
             <Trash2 className="w-3.5 h-3.5" />
-          </button>
+          </button>}
         </div>
       </CardContent>
     </Card>
@@ -421,6 +426,7 @@ function ProjectCard({
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function BoqProjects() {
+  const { sectionCan } = useAuth();
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [showNew, setShowNew] = useState(false);
@@ -496,14 +502,14 @@ export default function BoqProjects() {
               <Settings className="w-3.5 h-3.5" /> Planning Masters
             </a>
           </Link>
-          <Button
+          {sectionCan("qto_boq", "edit") && <Button
             onClick={() => setShowNew(true)}
             className="bg-emerald-600 hover:bg-emerald-700 text-white"
             data-testid="button-new-project"
           >
             <Plus className="w-4 h-4 mr-1.5" />
             New Project
-          </Button>
+          </Button>}
         </div>
       </div>
 

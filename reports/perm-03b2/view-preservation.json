@@ -1,0 +1,66 @@
+[
+  {
+    "userId": 3,
+    "section": "planning_masters",
+    "before": true,
+    "after": true,
+    "written": false,
+    "permissionId": 2200
+  },
+  {
+    "userId": 3,
+    "section": "work_programme",
+    "before": true,
+    "after": true,
+    "written": false,
+    "permissionId": 2201
+  },
+  {
+    "userId": 3,
+    "section": "work_programme_review",
+    "before": true,
+    "after": true,
+    "written": false,
+    "permissionId": 2202
+  },
+  {
+    "userId": 3,
+    "section": "norms_library",
+    "before": true,
+    "after": true,
+    "written": false,
+    "permissionId": 2203
+  },
+  {
+    "userId": 8,
+    "section": "planning_masters",
+    "before": true,
+    "after": true,
+    "written": false,
+    "permissionId": 2205
+  },
+  {
+    "userId": 8,
+    "section": "work_programme",
+    "before": true,
+    "after": true,
+    "written": false,
+    "permissionId": 2206
+  },
+  {
+    "userId": 8,
+    "section": "work_programme_review",
+    "before": true,
+    "after": true,
+    "written": false,
+    "permissionId": 2207
+  },
+  {
+    "userId": 8,
+    "section": "norms_library",
+    "before": true,
+    "after": true,
+    "written": false,
+    "permissionId": 2208
+  }
+]

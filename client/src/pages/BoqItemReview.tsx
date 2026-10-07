@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useParams, Link } from "wouter";
+import { useParams } from "wouter";
+import { ProgrammeLink as Link } from "@/components/ProgrammeLink";
 import { ArrowLeft, Search, RefreshCw, AlertTriangle, CheckCircle2, Filter, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";

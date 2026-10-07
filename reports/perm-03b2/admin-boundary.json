@@ -1,0 +1,467 @@
+[
+  {
+    "method": "DELETE",
+    "route": "/api/site-material-trips/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/sites/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/personnel/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/notifications/:id",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/admin/change-pin",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/admin/change-manager-pin",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/admin/ldo-received-by",
+    "unchanged": true
+  },
+  {
+    "method": "GET",
+    "route": "/api/admin/operator-manual.pdf",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/dprs/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/plant/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/plant-module/parties/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/plant-module/materials/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/plant-module/mix-types/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/plant-module/mix-templates/:id",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/mix-templates/:id/rebuild-ledger",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/plant-module/equipment/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/plant-module/material-receipts/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/plant-module/material-issues/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/plant-module/material-returns/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/plant-module/opening-stocks/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/plant-module/dispatches/:id",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/dispatches/recalculate-all",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/reports/equipment-performance/logs/:id/confirm",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/plant-module/equipment-usage/:id",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/stock-correction",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/reconcile-stock-balances",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/reconcile-equipment-usage-ledger",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/reassign-ledger/preview",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/reassign-ledger/execute",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/recompute-balance-after",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/review-list",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/bulk-relabel",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/recent-merges",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/undo-merge",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/learned-aliases",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/custom-aliases",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/add-custom-alias",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/delete-custom-alias",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/bulk-revert-alias-activity",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/dismissed-pairs",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/dismiss-pairs",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/restore-dismissed-pair",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/shift-log-manpower/bulk-restore-dismissed-pairs",
+    "unchanged": true
+  },
+  {
+    "method": "GET",
+    "route": "/api/plant-module/hlc-borrow-reconciliation",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/plant-module/bitumen-dip-readings/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/plant-module/ldo-flow-readings/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/plant-module/ldo-orphaned-rows",
+    "unchanged": true
+  },
+  {
+    "method": "GET",
+    "route": "/api/plant-module/ldo-backfill",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/ldo-backfill",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/plant-module/ldo-dip-readings/:id",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/admin/backfill-dispatch-notes",
+    "unchanged": true
+  },
+  {
+    "method": "GET",
+    "route": "/api/plant-module/ldo-dip-backfill",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/ldo-dip-backfill",
+    "unchanged": true
+  },
+  {
+    "method": "PUT",
+    "route": "/api/plant-module/plant-settings/:plantName",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/plant-module/plant-settings/:plantName",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/plant-module/plant-settings/:plantName/rename",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/plant-module/shift-logs/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/plant-module/heating-sessions/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/irn/:id",
+    "unchanged": true
+  },
+  {
+    "method": "PATCH",
+    "route": "/api/irn/:id",
+    "unchanged": true
+  },
+  {
+    "method": "PATCH",
+    "route": "/api/purchase-indents/:id/force-close",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/purchase-indents/:id",
+    "unchanged": true
+  },
+  {
+    "method": "PUT",
+    "route": "/api/diesel-requirements/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/diesel-requirements/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/vendor-aliases/:id",
+    "unchanged": true
+  },
+  {
+    "method": "PUT",
+    "route": "/api/vendor-bills/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/vendor-bills/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/vendor-rate-cards/:id",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/admin/export-data",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/admin/reset-sequences",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/admin/import-data",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/admin/fix-ledger-gap-427",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/admin/fix-orphan-stock-balances",
+    "unchanged": true
+  },
+  {
+    "method": "GET",
+    "route": "/api/admin/site-backfill/unassigned",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/admin/site-backfill/assign",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/concrete-estimates/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/concrete/v2/estimates/:id",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/stores/grns/:id/cancel",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/stores/issues/:id/cancel",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/maintenance/logs/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/rmc/mix-designs/:id",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/rmc/batch-records/reprocess-missed-deductions",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/rmc/batch-records/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/rmc/cube-tests/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/rmc/raw-materials/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/boq/projects/:id",
+    "unchanged": true
+  },
+  {
+    "method": "GET",
+    "route": "/api/boq/projects/:id/scope-segments/:segId/initial-correction-eligibility",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/boq/scope-segments/:segId/correct-initial",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/planning/equipment-types/:id",
+    "unchanged": true
+  },
+  {
+    "method": "DELETE",
+    "route": "/api/planning/labour-types/:id",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/planning/seed-morth",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/snl/seed",
+    "unchanged": true
+  },
+  {
+    "method": "POST",
+    "route": "/api/snl/import",
+    "unchanged": true
+  }
+]

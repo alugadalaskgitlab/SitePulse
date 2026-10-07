@@ -1,7 +1,8 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { DeleteGate } from "@/components/DeleteGate";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useParams, Link } from "wouter";
+import { useParams } from "wouter";
+import { ProgrammeLink as Link } from "@/components/ProgrammeLink";
 import {
   ChevronRight, FileSpreadsheet, Plus, Trash2,
   AlertTriangle, CheckCircle2, Loader2, CalendarDays,

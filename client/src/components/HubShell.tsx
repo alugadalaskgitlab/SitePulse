@@ -81,11 +81,11 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: isAdmin,
+    enabled: sectionVisible("edit_requests_review"),
     staleTime: 30_000,
     refetchInterval: 60_000,
   });
-  const pendingEditCount = isAdmin ? (pendingEditRequests?.length ?? 0) : 0;
+  const pendingEditCount = sectionVisible("edit_requests_review") ? (pendingEditRequests?.length ?? 0) : 0;
 
   const { data: pendingIrns } = useQuery<unknown[]>({
     queryKey: ["/api/irn", "pending_stores"],
@@ -133,10 +133,10 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
     ...(sectionVisible("stores_hub") || sectionVisible("stores_inventory") || isAdmin ? [{ href: "/stores/hub", icon: Package, label: "Stores & Inventory", matchPrefix: "/stores", contextKey: "stores" }] : []),
     ...(sectionVisible("finance_hub") || isAdmin ? [{ href: "/finance/hub", icon: Receipt, label: "Procurement & Billing", matchPrefix: "/finance" }] : []),
     ...(canSeeIrn ? [{ href: "/irn", icon: ClipboardList, label: "Requisitions", matchPrefix: "/irn" }] : []),
-    ...(WP_ENABLED && (sectionVisible("qto_boq") || isAdmin) ? [{ href: "/work-program", icon: FileSpreadsheet, label: "Work Program & BOQ", matchPrefix: "/work-program" }] : []),
-    ...(WP_ENABLED && (sectionVisible("qto_boq") || isAdmin) ? [{ href: "/norms", icon: BookOpen, label: "Norms Library (SNL)", matchPrefix: "/norms" }] : []),
+    ...(WP_ENABLED && (sectionVisible("qto_boq") || sectionVisible("work_programme") || sectionVisible("work_programme_review") || sectionVisible("planning_masters") || isAdmin) ? [{ href: "/work-program", icon: FileSpreadsheet, label: "Work Program & BOQ", matchPrefix: "/work-program" }] : []),
+    ...(WP_ENABLED && sectionVisible("norms_library") ? [{ href: "/norms", icon: BookOpen, label: "Norms Library (SNL)", matchPrefix: "/norms" }] : []),
     ...(sectionVisible("reports_hub") || isAdmin ? [{ href: "/reports/hub", icon: BarChart2, label: "Reports", matchPrefix: "/reports", contextKey: "reports" }] : []),
-    ...(isAdmin ? [{ href: "/edit-requests", icon: ShieldCheck, label: "Edit Requests", matchPrefix: "/edit-requests" }] : []),
+    ...(sectionVisible("edit_requests_review") ? [{ href: "/edit-requests", icon: ShieldCheck, label: "Edit Requests", matchPrefix: "/edit-requests" }] : []),
   ];
 
   const bottomNavItems: NavItem[] = [

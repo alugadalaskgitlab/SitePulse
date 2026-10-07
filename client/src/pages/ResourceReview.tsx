@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { useParams, Link } from "wouter";
+import { useParams } from "wouter";
+import { ProgrammeLink as Link } from "@/components/ProgrammeLink";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";

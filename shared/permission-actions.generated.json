@@ -740,7 +740,7 @@
       "delete"
     ],
     "tooltips": {
-      "view": "Open QTO & BOQ Estimator. Other action switches do not grant page access. Shared pages or actions also accept: Project Scope & Working Reaches (View).",
+      "view": "Open QTO & BOQ Estimator. Other action switches do not grant page access. Shared pages or actions also accept: Work Programme — Programme & Execution Setup (View); Work Programme — Review & Demand (View); Work Programme — Planning Masters (View); Project Scope & Working Reaches (View); Norms Library (SNL) (View).",
       "edit": "Edit records in QTO & BOQ Estimator. This does not grant deletion or cancellation.",
       "delete": "Delete records where QTO & BOQ Estimator's Delete permission is checked."
     }
@@ -751,7 +751,7 @@
       "edit"
     ],
     "tooltips": {
-      "view": "Open Work Programme — Planning Masters. Other action switches do not grant page access.",
+      "view": "Open Work Programme — Planning Masters. Other action switches do not grant page access. Shared pages or actions also accept: QTO & BOQ Estimator (View); Work Programme — Programme & Execution Setup (View); Work Programme — Review & Demand (View); Project Scope & Working Reaches (View).",
       "edit": "Edit records in Work Programme — Planning Masters. This does not grant deletion or cancellation."
     }
   },
@@ -763,7 +763,7 @@
       "approve"
     ],
     "tooltips": {
-      "view": "Open Work Programme — Programme & Execution Setup. Other action switches do not grant page access.",
+      "view": "Open Work Programme — Programme & Execution Setup. Other action switches do not grant page access. Shared pages or actions also accept: QTO & BOQ Estimator (View); Work Programme — Review & Demand (View); Work Programme — Planning Masters (View); Project Scope & Working Reaches (View).",
       "edit": "Edit records in Work Programme — Programme & Execution Setup. This does not grant deletion or cancellation.",
       "delete": "Delete records where Work Programme — Programme & Execution Setup's Delete permission is checked.",
       "approve": "Allow approval actions in Work Programme — Programme & Execution Setup."
@@ -771,20 +771,24 @@
   },
   "work_programme_review": {
     "actions": [
-      "view"
+      "view",
+      "edit"
     ],
     "tooltips": {
-      "view": "Open Work Programme — Review & Demand. Other action switches do not grant page access."
+      "view": "Open Work Programme — Review & Demand. Other action switches do not grant page access. Shared pages or actions also accept: QTO & BOQ Estimator (View); Work Programme — Programme & Execution Setup (View); Work Programme — Planning Masters (View); Project Scope & Working Reaches (View); Norms Library (SNL) (View).",
+      "edit": "Edit records in Work Programme — Review & Demand. This does not grant deletion or cancellation."
     }
   },
   "norms_library": {
     "actions": [
       "view",
+      "edit",
       "delete",
       "export"
     ],
     "tooltips": {
-      "view": "Open Norms Library (SNL). Other action switches do not grant page access.",
+      "view": "Open Norms Library (SNL). Other action switches do not grant page access. Shared pages or actions also accept: QTO & BOQ Estimator (View); Work Programme — Review & Demand (View).",
+      "edit": "Edit records in Norms Library (SNL). This does not grant deletion or cancellation.",
       "delete": "Delete records where Norms Library (SNL)'s Delete permission is checked.",
       "export": "Export data where Norms Library (SNL)'s Export permission is checked."
     }
@@ -807,7 +811,7 @@
       "approve"
     ],
     "tooltips": {
-      "view": "Open Project Scope & Working Reaches. Other action switches do not grant page access. Shared pages or actions also accept: QTO & BOQ Estimator (View).",
+      "view": "Open Project Scope & Working Reaches. Other action switches do not grant page access. Shared pages or actions also accept: QTO & BOQ Estimator (View); Work Programme — Programme & Execution Setup (View); Work Programme — Review & Demand (View); Work Programme — Planning Masters (View).",
       "edit": "Edit records in Project Scope & Working Reaches. This does not grant deletion or cancellation.",
       "delete": "Delete records where Project Scope & Working Reaches's Delete permission is checked.",
       "approve": "Allow approval actions in Project Scope & Working Reaches."

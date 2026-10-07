@@ -1,0 +1,149 @@
+[
+  {
+    "path": "/reports/hub",
+    "screenshot": "report--reports-hub.jpg",
+    "outputs": [],
+    "denied": false,
+    "status": 200
+  },
+  {
+    "path": "/reports/equipment-performance",
+    "screenshot": "report--reports-equipment-performance.jpg",
+    "outputs": [],
+    "denied": false,
+    "status": 200
+  },
+  {
+    "path": "/reports/progress",
+    "screenshot": "report--reports-progress.jpg",
+    "outputs": [],
+    "denied": false,
+    "status": 200
+  },
+  {
+    "path": "/site/purchases",
+    "screenshot": "report--site-purchases.jpg",
+    "outputs": [],
+    "denied": false,
+    "status": 200
+  },
+  {
+    "path": "/plant/variance-report",
+    "screenshot": "report--plant-variance-report.jpg",
+    "outputs": [],
+    "denied": false,
+    "status": 200
+  },
+  {
+    "path": "/plant/audit-report",
+    "screenshot": "report--plant-audit-report.jpg",
+    "outputs": [],
+    "denied": false,
+    "status": 200
+  },
+  {
+    "path": "/plant/diesel-procurement",
+    "screenshot": "report--plant-diesel-procurement.jpg",
+    "outputs": [],
+    "denied": false,
+    "status": 200
+  },
+  {
+    "path": "/plant/daily-reports",
+    "screenshot": "report--plant-daily-reports.jpg",
+    "outputs": [],
+    "denied": false,
+    "status": 200
+  },
+  {
+    "path": "/plant/daily-report",
+    "screenshot": "report--plant-daily-report.jpg",
+    "outputs": [],
+    "denied": false,
+    "status": 200
+  },
+  {
+    "path": "/plant/dispatch-summary",
+    "screenshot": "report--plant-dispatch-summary.jpg",
+    "outputs": [],
+    "denied": false,
+    "status": 200
+  },
+  {
+    "path": "/plant/heating-trends",
+    "screenshot": "report--plant-heating-trends.jpg",
+    "outputs": [],
+    "denied": false,
+    "status": 200
+  },
+  {
+    "path": "/plant/rmc/daily-report",
+    "screenshot": "report--plant-rmc-daily-report.jpg",
+    "outputs": [],
+    "denied": false,
+    "status": 200
+  },
+  {
+    "path": "/plant/rmc/batch-records",
+    "screenshot": "report--plant-rmc-batch-records.jpg",
+    "outputs": [],
+    "denied": false,
+    "status": 200
+  },
+  {
+    "path": "/plant/rmc/cube-tests",
+    "screenshot": "report--plant-rmc-cube-tests.jpg",
+    "outputs": [],
+    "denied": false,
+    "status": 200
+  },
+  {
+    "path": "/plant/rmc/delivery-challans",
+    "screenshot": "report--plant-rmc-delivery-challans.jpg",
+    "outputs": [],
+    "denied": false,
+    "status": 200
+  },
+  {
+    "path": "/admin/reports",
+    "screenshot": "report--admin-reports.jpg",
+    "outputs": [],
+    "denied": false,
+    "status": 200
+  },
+  {
+    "path": "/admin/mix-impact",
+    "screenshot": "report--admin-mix-impact.jpg",
+    "outputs": [],
+    "denied": false,
+    "status": 200
+  },
+  {
+    "path": "/admin/mix-comparison",
+    "screenshot": "report--admin-mix-comparison.jpg",
+    "outputs": [],
+    "denied": false,
+    "status": 200
+  },
+  {
+    "path": "/admin/scenario-comparison",
+    "screenshot": "report--admin-scenario-comparison.jpg",
+    "outputs": [],
+    "denied": false,
+    "status": 200
+  },
+  {
+    "path": "/admin/management-report",
+    "screenshot": "report--admin-management-report.jpg",
+    "outputs": [],
+    "denied": false,
+    "status": 200
+  },
+  {
+    "path": "/site/report/256",
+    "screenshot": "report--site-report-256.jpg",
+    "outputs": [],
+    "denied": false,
+    "status": 200
+  }
+]

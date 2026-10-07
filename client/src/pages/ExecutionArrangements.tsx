@@ -7,7 +7,8 @@
  * action drives into the same stretch panel / dialog used everywhere else.
  */
 import { useMemo, useState } from "react";
-import { useParams, Link } from "wouter";
+import { useParams } from "wouter";
+import { ProgrammeLink as Link } from "@/components/ProgrammeLink";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";

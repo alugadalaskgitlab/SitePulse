@@ -355,7 +355,7 @@ function AuthedShell() {
           <Route path="/irn/:id" component={gatedEither(IrnDetailPage, "irn_view", "irn_raise", "irn_approve")} />
 
           {/* BOQ / Work Programme pages */}
-          {WP_ENABLED && <Route path="/work-program" component={gated(BoqProjects, "qto_boq")} />}
+          {WP_ENABLED && <Route path="/work-program" component={gatedEither(BoqProjects, "qto_boq", "work_programme", "work_programme_review", "planning_masters")} />}
           {WP_ENABLED && <Route path="/work-program/planning-masters" component={gated(PlanningMasters, "planning_masters")} />}
           {WP_ENABLED && <Route path="/work-program/:id" component={gated(BoqProjectDetail, "qto_boq")} />}
           {WP_ENABLED && <Route path="/work-program/:id/settings" component={gated(BoqProgramSettings, "work_programme")} />}
@@ -363,7 +363,7 @@ function AuthedShell() {
           {WP_ENABLED && <Route path="/work-program/:id/demand" component={gated(WorkDemand, "work_programme_review")} />}
           {WP_ENABLED && <Route path="/work-program/:id/earthwork" component={gated(EarthworkControl, "work_programme_review")} />}
           {WP_ENABLED && <Route path="/work-program/:id/execution-arrangements" component={gated(ExecutionArrangements, "work_programme")} />}
-          {WP_ENABLED && <Route path="/work-program/:id/scope" component={gatedEither(ScopeSetup, "project_scope", "qto_boq")} />}
+          {WP_ENABLED && <Route path="/work-program/:id/scope" component={gatedEither(ScopeSetup, "project_scope", "qto_boq", "work_programme", "work_programme_review", "planning_masters")} />}
           {WP_ENABLED && <Route path="/work-program/:id/geometry" component={gated(RoadGeometry, "planning_masters")} />}
           {WP_ENABLED && <Route path="/work-program/:id/resource-review" component={gated(ResourceReview, "work_programme_review")} />}
           {WP_ENABLED && <Route path="/work-program/:id/item-review" component={gated(BoqItemReview, "work_programme_review")} />}

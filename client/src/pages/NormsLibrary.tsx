@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Link } from "wouter";
+import { ProgrammeLink as Link } from "@/components/ProgrammeLink";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   BookOpen, ChevronRight, Search, Loader2, RefreshCw, ArrowLeft,

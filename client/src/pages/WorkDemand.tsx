@@ -1,6 +1,7 @@
 import { useMemo, useState, Fragment, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useParams, Link, useLocation } from "wouter";
+import { useParams, useLocation } from "wouter";
+import { ProgrammeLink as Link } from "@/components/ProgrammeLink";
 import {
   ChevronRight, FileSpreadsheet, BookOpen, Loader2,
   Package, Wrench, Users, CalendarDays, ChevronDown, ChevronUp, Zap, PencilLine,

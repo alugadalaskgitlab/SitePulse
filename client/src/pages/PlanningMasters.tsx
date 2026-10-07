@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { ProgrammeLink as Link } from "@/components/ProgrammeLink";
 import { Plus, Pencil, Trash2, Loader2, Settings, Wrench, Users, ChevronDown, ChevronUp, Sprout, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

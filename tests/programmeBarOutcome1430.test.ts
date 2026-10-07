@@ -81,8 +81,9 @@ describe("Task 1430 programme-bar outcome contract", () => {
     const start = routes.indexOf('app.get("/api/earthwork-arrangements/:id/execution-evidence"');
     const body = routes.slice(start, start + 1200);
     expect(start).toBeGreaterThan(-1);
-    expect(body).toContain('assertView(req, res, "qto_boq")');
-    expect(body.indexOf('assertView(req, res, "qto_boq")')).toBeLessThan(body.indexOf("assertOutcomeProjectScope"));
+    const guard = 'assertViewEither(req, res, "work_programme", "work_programme_review")';
+    expect(body).toContain(guard);
+    expect(body.indexOf(guard)).toBeLessThan(body.indexOf("assertOutcomeProjectScope"));
   });
 
   it("keeps DPR programme status collapsed and read-only while management owns all eight choices", () => {

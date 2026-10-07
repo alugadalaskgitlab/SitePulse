@@ -3049,6 +3049,7 @@ export async function registerRoutes(
   // is the correct gate here — see the role derivation in push subscribe route.
   app.get('/api/admin/admin-guide.pdf', async (req, res) => {
     if (!assertAuthed(req, res)) return;
+    if (!assertExport(req, res, "admin_settings")) return;
     const plantName = typeof req.query.plant === 'string' ? req.query.plant.trim() : undefined;
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename="plant-admin-guide.pdf"');
@@ -14872,6 +14873,7 @@ export async function registerRoutes(
 
   app.get("/api/boq/projects/:id/program-settings", async (req, res) => {
     try {
+      if (!assertViewEither(req, res, "work_programme", "work_programme_review", "planning_masters")) return;
       const projectId = parseInt(req.params.id);
       const settings = await storage.getBoqProgramSettings(projectId);
       if (!settings) {
@@ -15007,7 +15009,7 @@ export async function registerRoutes(
     if (!u) return false;
     if (u.isAdmin || u.isOwner) return true;
     const m = req.authPermissions;
-    return !!(m && ((m.project_scope && m.project_scope.view) || (m.qto_boq && m.qto_boq.view)));
+    return !!(m && [m.project_scope, m.qto_boq, m.work_programme, m.work_programme_review, m.planning_masters].some(p => p?.view));
   };
 
   app.get("/api/boq/projects/:id/scope-segments", async (req, res) => {
@@ -15317,6 +15319,7 @@ export async function registerRoutes(
 
   app.get("/api/boq/projects/:id/mix-links", async (req, res) => {
     try {
+      if (!assertViewEither(req, res, "work_programme", "work_programme_review")) return;
       const links = await storage.getBoqMixLinks(parseInt(req.params.id));
       res.json(links);
     } catch (err) {
@@ -15327,7 +15330,7 @@ export async function registerRoutes(
 
   app.post("/api/boq/projects/:id/mix-links", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme")) return;
       const projectId = parseInt(req.params.id);
       const link = await storage.createBoqMixLink({ ...req.body, boqProjectId: projectId });
       res.status(201).json(link);
@@ -15339,7 +15342,7 @@ export async function registerRoutes(
 
   app.put("/api/boq/projects/:id/mix-links", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme")) return;
       const projectId = parseInt(req.params.id);
       const { mixType, mixTemplateId, mixTemplateName } = req.body;
       if (!mixType) return res.status(400).json({ error: "mixType is required" });
@@ -15353,7 +15356,7 @@ export async function registerRoutes(
 
   app.delete("/api/boq/projects/:id/mix-links/:linkId", async (req, res) => {
     try {
-      if (!assertDelete(req, res, "qto_boq")) return;
+      if (!assertDelete(req, res, "work_programme")) return;
       await storage.deleteBoqMixLink(parseInt(req.params.linkId));
       res.json({ ok: true });
     } catch (err) {
@@ -15553,7 +15556,7 @@ export async function registerRoutes(
 
   app.patch("/api/boq/items/:id/work-type", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme_review")) return;
       const id = parseInt(req.params.id);
       const { planningWorkType } = req.body as { planningWorkType: string };
       if (planningWorkType !== "road" && planningWorkType !== "structure") {
@@ -15569,7 +15572,7 @@ export async function registerRoutes(
 
   app.patch("/api/boq/items/:id/planning-include", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme_review")) return;
       const id = parseInt(req.params.id);
       const { includedInPlanning } = req.body as { includedInPlanning: boolean };
       if (typeof includedInPlanning !== "boolean") return res.status(400).json({ error: "includedInPlanning must be a boolean" });
@@ -15583,7 +15586,7 @@ export async function registerRoutes(
 
   app.patch("/api/boq/projects/:id/planning-include-bulk", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme_review")) return;
       const projectId = parseInt(req.params.id);
       const { categoryId, includedInPlanning } = req.body as { categoryId: number | null; includedInPlanning: boolean };
       if (typeof includedInPlanning !== "boolean") return res.status(400).json({ error: "includedInPlanning must be a boolean" });
@@ -15670,6 +15673,7 @@ export async function registerRoutes(
 
   app.get("/api/boq/projects/:id/programme", async (req, res) => {
     try {
+      if (!assertViewEither(req, res, "work_programme", "work_programme_review")) return;
       const projectId = parseInt(req.params.id);
       const bars = await storage.getWorkProgramBars(projectId);
       const evidence = await storage.getWorkProgrammeExecutionEvidence(projectId, bars);
@@ -16033,6 +16037,7 @@ export async function registerRoutes(
 
   app.get("/api/boq/projects/:id/programme-status", async (req, res) => {
     try {
+      if (!assertViewEither(req, res, "qto_boq", "work_programme", "work_programme_review")) return;
       const projectId = parseInt(req.params.id);
       const bars = await storage.getWorkProgramBars(projectId);
       const evidence = await storage.getWorkProgrammeExecutionEvidence(projectId, bars);
@@ -16653,6 +16658,7 @@ export async function registerRoutes(
   // caller re-POSTs with their ids in `confirmBarIds`.
   app.post("/api/boq/projects/:id/programme/clean-structure-bars", async (req, res) => {
     try {
+      if (!assertDelete(req, res, "work_programme")) return;
       const boqProjectId = parseInt(req.params.id);
       const confirmBarIds: number[] = Array.isArray(req.body?.confirmBarIds)
         ? (req.body.confirmBarIds as any[]).map((x) => Number(x)).filter((n) => Number.isFinite(n))
@@ -16751,6 +16757,7 @@ export async function registerRoutes(
 
   app.get("/api/boq/projects/:id/monthly-targets", async (req, res) => {
     try {
+      if (!assertViewEither(req, res, "work_programme", "work_programme_review")) return;
       const targets = await storage.getMonthlyTargets(parseInt(req.params.id));
       res.json(targets);
     } catch (err) {
@@ -16762,6 +16769,7 @@ export async function registerRoutes(
   app.get("/api/boq/projects/:id/plan-vs-actual", async (req, res) => {
     const t0 = Date.now();
     try {
+      if (!assertView(req, res, "work_programme_review")) return;
       const asOfDate = req.query.asOf as string | undefined;
       const rows = await storage.getPlanVsActual(parseInt(req.params.id), asOfDate);
       const dur = Date.now() - t0;
@@ -17006,6 +17014,7 @@ export async function registerRoutes(
   // All items + recipes for the Resource Review screen
   app.get("/api/boq/projects/:id/resource-review", async (req, res) => {
     try {
+      if (!assertView(req, res, "work_programme_review")) return;
       res.json(await storage.getBoqItemsWithRecipes(parseInt(req.params.id)));
     } catch (err) {
       console.error("GET /api/boq/projects/:id/resource-review:", err);
@@ -17024,6 +17033,7 @@ export async function registerRoutes(
 
   app.put("/api/boq/items/:itemId/equipment", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "work_programme_review")) return;
       const rows = req.body.rows ?? [];
       const saved = await storage.upsertBoqItemEquipment(parseInt(req.params.itemId), rows);
       res.json(saved);
@@ -17044,6 +17054,7 @@ export async function registerRoutes(
 
   app.put("/api/boq/items/:itemId/labour", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "work_programme_review")) return;
       const rows = req.body.rows ?? [];
       const saved = await storage.upsertBoqItemLabour(parseInt(req.params.itemId), rows);
       res.json(saved);
@@ -17064,6 +17075,7 @@ export async function registerRoutes(
 
   app.put("/api/boq/items/:itemId/materials", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "work_programme_review")) return;
       const rows = req.body.rows ?? [];
       const saved = await storage.upsertBoqItemMaterials(parseInt(req.params.itemId), rows);
       res.json(saved);
@@ -17636,6 +17648,7 @@ export async function registerRoutes(
   // BOM demand for the whole project
   app.get("/api/boq/projects/:id/bom", async (req, res) => {
     try {
+      if (!assertView(req, res, "work_programme_review")) return;
       const projectId = parseInt(req.params.id);
       const [{ items, bars, project, expandedItems, excludedCount }, projectArrangementsRaw, projectBarAllocations] = await Promise.all([
         computeProjectBom(projectId),
@@ -17675,6 +17688,7 @@ export async function registerRoutes(
   // PI/IRN procurement, without altering the existing PI/IRN schemas/workflow.
   app.get("/api/boq/projects/:id/shortage-check", async (req, res) => {
     try {
+      if (!assertView(req, res, "work_programme_review")) return;
       const projectId = parseInt(req.params.id);
       const project = await storage.getBoqProject(projectId);
       if (!project) return res.status(404).json({ error: "Project not found" });
@@ -18330,6 +18344,7 @@ export async function registerRoutes(
   /** List all earthwork arrangements for a project. */
   app.get("/api/boq/projects/:id/earthwork-arrangements", async (req, res) => {
     try {
+      if (!assertViewEither(req, res, "work_programme", "work_programme_review")) return;
       const projectId = parseInt(req.params.id);
       const rows = await storage.getEarthworkArrangements(projectId);
       res.json(rows);
@@ -18342,6 +18357,7 @@ export async function registerRoutes(
   /** List earthwork arrangements for a specific BOQ item. */
   app.get("/api/boq/projects/:id/earthwork-arrangements/item/:itemId", async (req, res) => {
     try {
+      if (!assertViewEither(req, res, "work_programme", "work_programme_review")) return;
       const projectId = parseInt(req.params.id);
       const boqItemId = parseInt(req.params.itemId);
       const rows = await storage.getEarthworkArrangementsForItem(projectId, boqItemId);
@@ -18494,7 +18510,7 @@ export async function registerRoutes(
   }
 
   async function assertCutFillProjectAccess(req: any, res: any, projectId: number, write = false): Promise<boolean> {
-    if (!assertAuthed(req, res) || !(write ? assertEdit(req, res, "qto_boq") : assertView(req, res, "qto_boq"))) return false;
+    if (!assertAuthed(req, res) || !(write ? assertEdit(req, res, "work_programme_review") : assertView(req, res, "work_programme_review"))) return false;
     const [project] = await db.select({ id: boqProjectsTable.id, siteId: boqProjectsTable.siteId })
       .from(boqProjectsTable).where(eq(boqProjectsTable.id, projectId));
     if (!project) { res.status(404).json({ message: "BOQ project not found" }); return false; }
@@ -18945,7 +18961,7 @@ export async function registerRoutes(
    */
   app.get("/api/earthwork-arrangements/:id/execution-evidence", async (req, res) => {
     try {
-      if (!assertAuthed(req, res) || !assertView(req, res, "qto_boq")) return;
+      if (!assertAuthed(req, res) || !assertViewEither(req, res, "work_programme", "work_programme_review")) return;
       const id = Number(req.params.id);
       if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "A valid arrangement id is required" });
       const arrangement = await storage.getEarthworkArrangementById(id);
@@ -19734,6 +19750,7 @@ export async function registerRoutes(
   /** All bar allocations for a project (Work Programme + Procurement display). */
   app.get("/api/boq/projects/:id/arrangement-programme-allocations", async (req, res) => {
     try {
+      if (!assertViewEither(req, res, "work_programme", "work_programme_review")) return;
       if (!assertAuthed(req, res)) return;
       const projectId = parseInt(req.params.id);
       const rows = await storage.getArrangementProgrammeAllocationsForProject(projectId);
@@ -19836,7 +19853,7 @@ export async function registerRoutes(
   app.post("/api/earthwork-arrangements/:id/programme-allocations", async (req, res) => {
     try {
       if (!assertAuthed(req, res)) return;
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme")) return;
       const arrangementId = parseInt(req.params.id);
       const user = (req as any).authUser ?? (req as any).user;
       const programmeBarId = Number(req.body?.programmeBarId);
@@ -19861,7 +19878,7 @@ export async function registerRoutes(
   app.patch("/api/earthwork-arrangements/:id/programme-allocations/:allocId", async (req, res) => {
     try {
       if (!assertAuthed(req, res)) return;
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme")) return;
       const arrangementId = parseInt(req.params.id);
       const allocId = parseInt(req.params.allocId);
       const allocatedQty = Number(req.body?.allocatedQty);
@@ -19910,6 +19927,7 @@ export async function registerRoutes(
   /** Get DPR progress for an earthwork arrangement. */
   app.get("/api/earthwork-arrangements/:id/progress", async (req, res) => {
     try {
+      if (!assertViewEither(req, res, "work_programme", "work_programme_review")) return;
       if (!assertAuthed(req, res)) return;
       const id = parseInt(req.params.id);
       const progress = await (storage as any).getArrangementProgress(id);
@@ -19925,6 +19943,7 @@ export async function registerRoutes(
   /** Get baseline for a BOQ item. */
   app.get("/api/boq/projects/:id/earthwork-baselines/item/:itemId", async (req, res) => {
     try {
+      if (!assertView(req, res, "work_programme_review")) return;
       if (!assertAuthed(req, res)) return;
       const projectId = parseInt(req.params.id);
       const boqItemId = parseInt(req.params.itemId);
@@ -19940,7 +19959,7 @@ export async function registerRoutes(
   app.post("/api/boq/projects/:id/earthwork-baselines", async (req, res) => {
     try {
       if (!assertAuthed(req, res)) return;
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme_review")) return;
       const projectId = parseInt(req.params.id);
       const user = (req as any).authUser ?? (req as any).user;
       const { boqItemId, originalStart, originalFinish, originalDurationDays, originalQty, notes } = req.body ?? {};
@@ -19966,6 +19985,7 @@ export async function registerRoutes(
   /** List all forecast versions for a BOQ item. */
   app.get("/api/boq/projects/:id/earthwork-forecasts/item/:itemId", async (req, res) => {
     try {
+      if (!assertView(req, res, "work_programme_review")) return;
       if (!assertAuthed(req, res)) return;
       const projectId = parseInt(req.params.id);
       const boqItemId = parseInt(req.params.itemId);
@@ -19981,7 +20001,7 @@ export async function registerRoutes(
   app.post("/api/boq/projects/:id/earthwork-forecasts", async (req, res) => {
     try {
       if (!assertAuthed(req, res)) return;
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme_review")) return;
       const projectId = parseInt(req.params.id);
       const user = (req as any).authUser ?? (req as any).user;
       const body = req.body ?? {};
@@ -20019,7 +20039,7 @@ export async function registerRoutes(
   app.patch("/api/earthwork-forecasts/:id", async (req, res) => {
     try {
       if (!assertAuthed(req, res)) return;
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme_review")) return;
       const id = parseInt(req.params.id);
       const user = (req as any).authUser ?? (req as any).user;
       const patch: Record<string, unknown> = {};
@@ -20046,7 +20066,7 @@ export async function registerRoutes(
   app.patch("/api/boq/items/:itemId/shoulder-class", async (req, res) => {
     try {
       if (!assertAuthed(req, res)) return;
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme_review")) return;
       const boqItemId = parseInt(req.params.itemId);
       if (isNaN(boqItemId)) return res.status(400).json({ error: "Invalid boqItemId" });
       const { shoulderClass, reason } = req.body ?? {};
@@ -20084,7 +20104,7 @@ export async function registerRoutes(
   app.patch("/api/boq/items/:itemId/bulk-classification", async (req, res) => {
     try {
       if (!assertAuthed(req, res)) return;
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme_review")) return;
       const boqItemId = parseInt(req.params.itemId);
       if (isNaN(boqItemId)) return res.status(400).json({ error: "Invalid boqItemId" });
       const { classification, reason } = req.body ?? {};
@@ -20428,6 +20448,7 @@ export async function registerRoutes(
 
   app.get("/api/planning/equipment-types", async (req, res) => {
     try {
+      if (!assertView(req, res, "planning_masters")) return;
       const includeInactive = req.query.includeInactive === "true";
       res.json(await storage.getPlanningEquipmentTypes(includeInactive));
     } catch (err) {
@@ -20438,7 +20459,7 @@ export async function registerRoutes(
   // Auto-sequence the Work Programme reach-wise with dependencies + multiple fronts.
   app.post("/api/boq/projects/:id/auto-sequence", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme")) return;
       const projectId = parseInt(req.params.id);
       // Scope is read below and then used to compute every generated bar.
       // Carry this token into each write so a correction cannot be silently
@@ -21164,7 +21185,7 @@ export async function registerRoutes(
 
   app.post("/api/boq/projects/:id/parse-structure-schedule", structureUpload.single("file"), async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme")) return;
       if (!req.file) return res.status(400).json({ error: "No file uploaded. Send an Excel file in the 'file' field." });
       const projectId = parseInt(req.params.id);
 
@@ -21667,7 +21688,7 @@ export async function registerRoutes(
   // Standalone endpoint: "Auto-sequence imported structure bars" button.
   app.post("/api/boq/projects/:id/auto-sequence-structures", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme")) return;
       const projectId = parseInt(req.params.id);
       const scope: "unscheduled" | "all" = req.body?.scope === "all" ? "all" : "unscheduled";
       const scopeVersionToken = await storage.getProjectScopeVersionToken(projectId);
@@ -21696,7 +21717,7 @@ export async function registerRoutes(
   // planningMode = "structure_location". Skipped rows are reported back.
   app.post("/api/boq/projects/:id/import-structure", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme")) return;
       const projectId = parseInt(req.params.id);
       // Capture before item/settings reads. Bar deletes and inserts recheck
       // this token while holding the project mutex.
@@ -22007,7 +22028,7 @@ export async function registerRoutes(
   // Restore a full programme snapshot (used by client-side Undo / Redo).
   app.post("/api/boq/projects/:id/programme/restore", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme")) return;
       const projectId = parseInt(req.params.id);
       const { bars } = req.body;
       if (!Array.isArray(bars)) return res.status(400).json({ error: "bars must be an array" });
@@ -22031,7 +22052,7 @@ export async function registerRoutes(
   //   4. Unresolvable → unrecipied list with exact reason + suggestion
   app.post("/api/boq/projects/:id/auto-build-recipes", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!assertEdit(req, res, "work_programme_review")) return;
       const projectId = parseInt(req.params.id);
       const { resolveWorkType, buildEquipmentRows, buildLabourRows, classifyPlanningItem } = await import("@shared/workTypeRecipes");
       const user = (req as any).user?.username ?? "auto";
@@ -22205,6 +22226,7 @@ export async function registerRoutes(
 
   app.get("/api/planning/labour-types", async (req, res) => {
     try {
+      if (!assertView(req, res, "planning_masters")) return;
       const includeInactive = req.query.includeInactive === "true";
       res.json(await storage.getPlanningLabourTypes(includeInactive));
     } catch (err) {
@@ -22259,6 +22281,7 @@ export async function registerRoutes(
 
   app.get("/api/planning/mix-templates", async (req, res) => {
     try {
+      if (!assertViewEither(req, res, "planning_masters", "work_programme", "work_programme_review")) return;
       const templates = await storage.getMixTemplates();
       res.json(templates.map(t => ({ id: t.id, name: t.name, mixType: t.mixType, bitumenPercent: t.bitumenPercent })));
     } catch (err) {
@@ -22268,6 +22291,7 @@ export async function registerRoutes(
 
   app.get("/api/planning/mix-templates/:id/components", async (req, res) => {
     try {
+      if (!assertViewEither(req, res, "planning_masters", "work_programme", "work_programme_review")) return;
       const result = await storage.getMixTemplateWithComponents(parseInt(req.params.id));
       if (!result) return res.status(404).json({ error: "Template not found" });
       // Join components with plant materials to get names
@@ -22290,6 +22314,7 @@ export async function registerRoutes(
 
   app.get("/api/snl/sources", async (req, res) => {
     try {
+      if (!assertViewEither(req, res, "norms_library", "qto_boq", "work_programme_review")) return;
       res.json(await storage.getSnlSources());
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch SNL sources" });
@@ -22298,6 +22323,7 @@ export async function registerRoutes(
 
   app.get("/api/snl/sources/:id", async (req, res) => {
     try {
+      if (!assertViewEither(req, res, "norms_library", "qto_boq", "work_programme_review")) return;
       const src = await storage.getSnlSource(parseInt(req.params.id));
       if (!src) return res.status(404).json({ error: "Not found" });
       res.json(src);
@@ -22308,6 +22334,7 @@ export async function registerRoutes(
 
   app.get("/api/snl/sources/:id/items", async (req, res) => {
     try {
+      if (!assertViewEither(req, res, "norms_library", "qto_boq", "work_programme_review")) return;
       const category = req.query.category as string | undefined;
       const sector = req.query.sector as string | undefined;
       res.json(await storage.getSnlItems(parseInt(req.params.id), category, sector));
@@ -22333,6 +22360,7 @@ export async function registerRoutes(
 
   app.get("/api/snl/items/:id", async (req, res) => {
     try {
+      if (!assertViewEither(req, res, "norms_library", "qto_boq", "work_programme_review")) return;
       const item = await storage.getSnlItem(parseInt(req.params.id));
       if (!item) return res.status(404).json({ error: "Not found" });
       res.json(item);
@@ -22343,6 +22371,7 @@ export async function registerRoutes(
 
   app.get("/api/snl/search", async (req, res) => {
     try {
+      if (!assertViewEither(req, res, "norms_library", "qto_boq", "work_programme_review")) return;
       const q = (req.query.q as string) || "";
       const category = req.query.category as string | undefined;
       const sourceId = req.query.sourceId ? parseInt(req.query.sourceId as string) : undefined;
@@ -22370,6 +22399,7 @@ export async function registerRoutes(
 
   app.get("/api/snl/mappings/:boqItemId", async (req, res) => {
     try {
+      if (!assertViewEither(req, res, "norms_library", "qto_boq", "work_programme_review")) return;
       const mapping = await storage.getSnlMapping(parseInt(req.params.boqItemId));
       res.json(mapping ?? null);
     } catch (err) {
@@ -22379,6 +22409,7 @@ export async function registerRoutes(
 
   app.post("/api/snl/mappings", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "norms_library")) return;
       const { boqItemId, snlItemId, projectCategory, gradingVariant, notes } = req.body;
       if (!boqItemId || !snlItemId) return res.status(400).json({ error: "boqItemId and snlItemId required" });
       const mapping = await storage.setSnlMapping(boqItemId, {
@@ -22398,6 +22429,7 @@ export async function registerRoutes(
 
   app.post("/api/snl/mappings/:boqItemId/apply", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "norms_library")) return;
       const boqItemId = parseInt(req.params.boqItemId);
       const { snlItemId, projectCategory, gradingVariant } = req.body;
       if (!snlItemId) return res.status(400).json({ error: "snlItemId required" });
@@ -22444,6 +22476,7 @@ export async function registerRoutes(
 
   app.post("/api/boq/projects/:id/snl/auto-map-all", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "norms_library")) return;
       const boqProjectId = parseInt(req.params.id);
       if (isNaN(boqProjectId)) return res.status(400).json({ error: "Invalid project id" });
       const summary = await autoMapProjectWithSummary(boqProjectId);
@@ -22456,6 +22489,7 @@ export async function registerRoutes(
 
   app.post("/api/boq/projects/:id/snl/confirm-review", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "norms_library")) return;
       const boqProjectId = parseInt(req.params.id);
       if (isNaN(boqProjectId)) return res.status(400).json({ error: "Invalid project id" });
       // Minimum confidence to bulk-confirm. Cross-sector matches are skipped

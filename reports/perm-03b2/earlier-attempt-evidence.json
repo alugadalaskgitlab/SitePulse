@@ -1,0 +1,434 @@
+[
+  {
+    "label": "verification-account",
+    "path": "/account",
+    "screenshot": "verification-account.jpg",
+    "url": "/account",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nSite Operations\nHMP Operations\nRMC Operations\nProcurement & Billing\n\nTOOLS\n\nEstimator\nAV\n\nAgent Verification\n\nManager\n\nSign Out\nRefresh\nAV\n\nAgent Verification\n\nagent.verification@test.invalid\n\nManager\n\nACCOUNT DETAILS\n\nRole\n\nManager\n\nSession policy\n\nSticky (stay signed in)\n\nUser ID\n\n#16\n\nPUSH NOTIFICATIONS\n\nStatus on this device\n\nNot subscribed\nEnable on this device\n\nNotification preferences\n\nManage which sections send you push alerts",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "label": "programme-only",
+    "path": "/work-program/15/programme",
+    "screenshot": "programme-only.jpg",
+    "url": "/work-program/15/programme",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nHMP Operations\nRMC Operations\nWork Program & BOQ\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nWork Program & BOQ\nWork Programme\nWork Programme\n\nPERM-03B-2 temporary · Oct 26 – Sept 27· 25d/mo · 8h/d\n\nClick cell to add · Ch inputs auto-calculate qty · Date pickers active — AUTO stretches the bar to fit output; FIX locks the window\n\nPublish Baseline\nAuto-sequence\nAuto-generate\nScope\nSettings\nStructures\n\nNo BOQ items in this project yet.\n\nImport a BOQ first, then programme the work here.",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/api/boq/projects/15/programme",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "programme-denies-planning",
+    "path": "/work-program/planning-masters",
+    "screenshot": "programme-denies-planning.jpg",
+    "url": "/work-program/planning-masters",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nHMP Operations\nRMC Operations\nWork Program & BOQ\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nNo access\n\nYou don't have permission to view this section. Contact an administrator if you think this is wrong.",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/api/planning/equipment-types",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "programme-save",
+    "path": "/work-program/15/settings",
+    "screenshot": "programme-save.jpg",
+    "url": "/work-program/15/settings",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nHMP Operations\nRMC Operations\nWork Program & BOQ\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nWork Program & BOQ\nProgram Settings\nProgram Settings\n\nPERM-03B-2 temporary\n\nProject Info\n\nActual project chainage range — used by Auto-Sequence for bar chainages and road length.\n\nPROJECT CHAINAGE FROM (km)\nPROJECT CHAINAGE TO (km)\nRoad length: 1000.000 km\n·\nCh 0.000 – 1000.000 km\n\nValues are auto-detected from the project name — update if the detected range is incorrect. Saves on blur. Re-run Auto-Sequence after changing these values.\n\nSchedule Defaults\n\nAuto-duration = (BOQ qty ÷ bottleneck output) ÷ shift hrs/day ÷ working days/month\n\nPROJECT START DATE\n\nSets the calendar date for Month 1 in the Work Programme Gantt — month headers show real month names (e.g. \"Jun '25\")\n\nWORKING DAYS / MONTH\n\nDefault: 26 days/month\n\nSHIFT HOURS / DAY\n\nDefault: 8 hrs/shift\n\nDouble Shift\n\nEnables 2× effective hours per day — duration calculations use shift hrs × 2.\n\nTipper Fleet Defaults\n\nPre-populates the tipper fleet calculator in BOQ item equipment recipes.\n\nTIPPER CAPACITY (T)\nAVG SPEED (km/hr)\nLOAD TIME (min)\nUNLOAD TIME (min)\nLead & Source Distances\n\nPoint-to-point distances between supply sources and destinations. The planning engine uses these to compute haul cycles and tipper demand per layer type.\n\nBITUMINOUS\n\nHMP → SITE (km)\n\nBC / DBM / BM / SDBC layer haul\n\nQUARRY/CRUSHER → HMP (km)\n\nAggregate transport to hot mix plant\n\nGRANULAR / WMM\n\nWMM PLANT → SITE (km)\n\nWMM / GSB plant-mix haul to site\n\nQUARRY/CRUSHER → SITE (km)\n\nGranular material direct to site\n\nQUARRY/CRUSHER → RMC (km)\n\nAggregate transport to RMC plant\n\nCONCRETE\n\nRMC PLANT → SITE (km)\n\nReady-mix / M20/M25/M30/M35 haul\n\nEARTHWORK\n\nBORROW AREA → SITE (km)\n\nEarthwork fill / embankment haul\n\nDISPOSAL POINT (km)\n\nEarthwork cut / excavation haul-away\n\nLAYER TYPE → HAUL DISTANCE USED BY PLANNING ENGINE\n\nBC/DBM→site\n\n—\n\nQry→HMP\n\n—\n\nWMM plant→site\n\n—\n\nQry→site\n\n—\n\nQry→RMC\n\n—\n\nRMC→site\n\n—\n\nBorrow→site\n\n—\n\nDisposal\n\n—\n\nProductivity Mode\n\nControls which output rate source the planning engine uses when computing auto-durations.\n\nMODE\n\nSNL / Standard Norms\n\nUses IRC/MoRTH SNL tables for all items\n\nSNL mode: auto-durations use IRC/MoRTH standard norms library values. Tipper fleet size is calculated from output norms + haul-cycle model.\nMix Template Links\n\nMap standard layer types (BC/DBM/WMM…) to plant mix templates. The planning engine uses these to resolve material demand and production capacity per layer.\n\nNo mix links set. Add links below to enable material demand cross-referencing.\n\nADD MIX LINK\n\nMIX TYPE\nSelect type…\nPLANT MIX TEMPLATE\nSelect template…\nAdd Link\nSave Settings",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/api/boq/projects/15/program-settings",
+    "method": "PUT",
+    "status": 200
+  },
+  {
+    "label": "programme-saved",
+    "path": "/work-program/15/settings",
+    "screenshot": "programme-saved.jpg",
+    "url": "/work-program/15/settings",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nHMP Operations\nRMC Operations\nWork Program & BOQ\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nWork Program & BOQ\nProgram Settings\nProgram Settings\n\nPERM-03B-2 temporary\n\nProject Info\n\nActual project chainage range — used by Auto-Sequence for bar chainages and road length.\n\nPROJECT CHAINAGE FROM (km)\nPROJECT CHAINAGE TO (km)\nRoad length: 1000.000 km\n·\nCh 0.000 – 1000.000 km\n\nValues are auto-detected from the project name — update if the detected range is incorrect. Saves on blur. Re-run Auto-Sequence after changing these values.\n\nSchedule Defaults\n\nAuto-duration = (BOQ qty ÷ bottleneck output) ÷ shift hrs/day ÷ working days/month\n\nPROJECT START DATE\n\nSets the calendar date for Month 1 in the Work Programme Gantt — month headers show real month names (e.g. \"Jun '25\")\n\nWORKING DAYS / MONTH\n\nDefault: 26 days/month\n\nSHIFT HOURS / DAY\n\nDefault: 8 hrs/shift\n\nDouble Shift\n\nEnables 2× effective hours per day — duration calculations use shift hrs × 2.\n\nTipper Fleet Defaults\n\nPre-populates the tipper fleet calculator in BOQ item equipment recipes.\n\nTIPPER CAPACITY (T)\nAVG SPEED (km/hr)\nLOAD TIME (min)\nUNLOAD TIME (min)\nLead & Source Distances\n\nPoint-to-point distances between supply sources and destinations. The planning engine uses these to compute haul cycles and tipper demand per layer type.\n\nBITUMINOUS\n\nHMP → SITE (km)\n\nBC / DBM / BM / SDBC layer haul\n\nQUARRY/CRUSHER → HMP (km)\n\nAggregate transport to hot mix plant\n\nGRANULAR / WMM\n\nWMM PLANT → SITE (km)\n\nWMM / GSB plant-mix haul to site\n\nQUARRY/CRUSHER → SITE (km)\n\nGranular material direct to site\n\nQUARRY/CRUSHER → RMC (km)\n\nAggregate transport to RMC plant\n\nCONCRETE\n\nRMC PLANT → SITE (km)\n\nReady-mix / M20/M25/M30/M35 haul\n\nEARTHWORK\n\nBORROW AREA → SITE (km)\n\nEarthwork fill / embankment haul\n\nDISPOSAL POINT (km)\n\nEarthwork cut / excavation haul-away\n\nLAYER TYPE → HAUL DISTANCE USED BY PLANNING ENGINE\n\nBC/DBM→site\n\n—\n\nQry→HMP\n\n—\n\nWMM plant→site\n\n—\n\nQry→site\n\n—\n\nQry→RMC\n\n—\n\nRMC→site\n\n—\n\nBorrow→site\n\n—\n\nDisposal\n\n—\n\nProductivity Mode\n\nControls which output rate source the planning engine uses when computing auto-durations.\n\nMODE\nMix Template Links\n\nMap standard layer types (BC/DBM/WMM…) to plant mix templates. The planning engine uses these to resolve material demand and production capacity per layer.\n\nNo mix links set. Add links below to enable material demand cross-referencing.\n\nADD MIX LINK\n\nMIX TYPE\nSelect type…\nPLANT MIX TEMPLATE\nSelect template…\nAdd Link\nSave Settings",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "label": "planning-only",
+    "path": "/work-program/planning-masters",
+    "screenshot": "planning-only.jpg",
+    "url": "/work-program/planning-masters",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nHMP Operations\nRMC Operations\nWork Program & BOQ\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nBack to Work Programme\nPlanning Masters\n\nEquipment and labour type catalogues used by BOQ Item Recipes and Work Programme duration calculations.\n\nEquipment Types\nLabour Types\nAdd Equipment Type\nEARTHWORK\njcb/back hoe\n4 outputs\nExcavator\n3 outputs\nDozer / Bulldozer\n3 outputs\nMotor Grader\n5 outputs\nTractor (Dozer)\n3 outputs\nSoil compactor\n3 outputs\nHydraulic Excavator (0.9 CUM)\n1 output\nTractor Dozer (D6)\n1 output\nMotor Grader (180 HP)\n2 outputs\nWater Tanker (6000 L)\n1 output\nPAVING\nPaver\n3 outputs\nTandem Roller\n2 outputs\nPneumatic Tyre Roller (PTR)\n1 output\nPlate Compactor\n1 output\nBitumen Pressure Distributor\n1 output\nPaver Finisher (sensor)\n2 outputs\nTRANSPORT\nTipper\n3 outputs\nWater Tanker\n1 output\nTransit Mixer\n1 output\nDumper\n1 output\nPLANT\nHot Mix Plant\n1 output\nWMM Plant\n1 output\nConcrete Pump\n1 output\nWheel Loader / JCB\n1 output\nHot Mix Plant (120 T/hr)\n1 output\nSUPPORT\nDG / Generator 600 KVa\nno outputs\nOTHER\nVibratory Roller (10T)\n1 output\nPneumatic Tyre Roller\n1 output\nSheep Foot / Pad Foot Roller\n1 output\nWMM Plant (200 T/hr)\n1 output\nWMM Plant (100 T/hr)\n1 output\nPulvi-mixer (tractor-mounted)\n1 output\nChip Spreader\n1 output\nConcrete Paver (slip-form)\n1 output\nTransit Mixer (6 CUM)\n1 output\nSurvey Equipment (total station)\n1 output\nCrane (50T mobile)\n1 output",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/api/planning/equipment-types",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "planning-denies-programme",
+    "path": "/work-program/15/programme",
+    "screenshot": "planning-denies-programme.jpg",
+    "url": "/work-program/15/programme",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nHMP Operations\nRMC Operations\nWork Program & BOQ\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nNo access\n\nYou don't have permission to view this section. Contact an administrator if you think this is wrong.",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/api/boq/projects/15/programme",
+    "method": "GET",
+    "status": 403
+  },
+  {
+    "label": "norms_library-allowed",
+    "path": "/norms",
+    "screenshot": "norms_library-allowed.jpg",
+    "url": "/norms",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nHMP Operations\nRMC Operations\nNorms Library (SNL)\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nStandard Norms Library\n\nReference norms from MoRTH, IS codes, and other authoritative sources. Use \"Map to Norm\" inside any BOQ item to populate its recipes.\n\nAll Sectors\nROAD\nSTRUCTURE\nIRRIGATION\nGATES & HOIST\nBUILDING\nWATER\nELECTRICAL\n\nMORTH_SDB_2019\n\nStandard Data Book for Analysis of Rates — 2nd Revision 2019\n\nMinistry of Road Transport & Highways · 2019\n\n836 items\n\nSDB_GATES\n\nAP SDB Gates & Hoist\n\nGovernment · 2024\n\n22 items\n\nSDB_IRRIGATION\n\nAP SDB Irrigation Canals\n\nGovernment · 2024\n\n257 items\n\nSDB_ROAD\n\nAP SDB Road Works\n\nGovernment · 2024\n\n260 items\n\nSDB_STRUCTURES\n\nAP SDB Structures\n\nGovernment · 2024\n\n216 items\n\nSDB_MISCELLANEOUS\n\nSDB MISCELLANEOUS\n\nGovernment · 2026\n\n403 items\nBrowse Source\nSearch All\n\nClick a source card above to browse its items",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/api/snl/sources",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "norms_library-denies-other",
+    "path": "/edit-requests",
+    "screenshot": "norms_library-denies-other.jpg",
+    "url": "/edit-requests",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nHMP Operations\nRMC Operations\nNorms Library (SNL)\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nNo access\n\nYou don't have permission to view this section. Contact an administrator if you think this is wrong.",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "label": "edit_requests_review-allowed",
+    "path": "/edit-requests",
+    "screenshot": "edit_requests_review-allowed.jpg",
+    "url": "/edit-requests",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nHMP Operations\nRMC Operations\nEdit Requests\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nEdit Requests\n\nTrack your edit permission requests.\n\nPending\nMy Requests\n\nNo pending edit requests",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/api/edit-requests/pending",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "edit_requests_review-denies-other",
+    "path": "/norms",
+    "screenshot": "edit_requests_review-denies-other.jpg",
+    "url": "/norms",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nHMP Operations\nRMC Operations\nEdit Requests\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nNo access\n\nYou don't have permission to view this section. Contact an administrator if you think this is wrong.",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "label": "reports-no-export",
+    "path": "/reports/progress?projectId=15",
+    "screenshot": "reports-no-export.jpg",
+    "url": "/reports/progress",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nHMP Operations\nRMC Operations\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nReports Hub\nProgress Report\nProgress Report\n\nRA-style rollup of submitted DPR actuals\n\nProject\nPERM-03B-2 temporary\nSite\nAll Sites\nFrom\nTo\nReset\nItem-wise\nChainage-wise\nDate-wise\nNo submitted DPR progress in this project.",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/api/reports/progress/export?projectId=15",
+    "method": "GET",
+    "status": 403
+  },
+  {
+    "label": "reports-export-allowed",
+    "path": "/reports/progress?projectId=15",
+    "screenshot": "reports-export-allowed.jpg",
+    "url": "/reports/progress",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nHMP Operations\nRMC Operations\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nReports Hub\nProgress Report\nProgress Report\n\nRA-style rollup of submitted DPR actuals\n\nProject\nPERM-03B-2 temporary\nSite\nAll Sites\nFrom\nTo\nReset\nExport Excel\nItem-wise\nChainage-wise\nDate-wise\nNo submitted DPR progress in this project.",
+    "outputs": [
+      "Export Excel"
+    ],
+    "exportCount": 1
+  },
+  {
+    "path": "/api/reports/progress/export?projectId=15",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "report--reports-hub",
+    "path": "/reports/hub",
+    "screenshot": "report--reports-hub.jpg",
+    "url": "/reports/hub",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nSite Operations\nHMP Operations\nRMC Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nDashboard\nReports & Analysis\n\nSite, HMP, RMC, stock & procurement reports\n\nRefresh\nSITE REPORTS\nDaily DPR\n\nComplete production summary for any given day\n\nProgress Report\n\nRA-style item-wise, chainage-wise & date-wise DPR rollup\n\nMaterials Received\n\nSite material receipts summary across date ranges\n\nSite Purchases Report\n\nPurchases & expenses analysis across the site\n\nManagement Report\n\nCross-site summary for project management & stakeholders\n\nEquipment Performance\n\nUsage, working hours and diesel consumption by equipment\n\nHMP REPORTS\nDaily Plant Reports\n\nProduction summaries with mix-wise breakdowns and PDF export\n\nHeating Trends\n\nBoiler efficiency & hot-oil temperature trend analysis\n\nDispatch Log\n\nAll truck dispatches with mix type, tonnage & destination\n\nDiesel Procurement\n\nDiesel purchase and consumption summary report\n\nManpower Review\n\nContractor-wise manpower review across shift logs\n\nRMC REPORTS\nRMC Daily Report\n\nDay-wise RMC production summary with grades, materials & cube tests\n\nRMC Batch Records\n\nConcrete batch dispatches — grades, volumes & delivery challans\n\nSTOCK & LEDGERS\nMaterial Stock\n\nCurrent HMP stock levels, receipts & consumption ledger\n\nLDO Book Reconciliation\n\nLDO book-vs-physical reconciliation & audit\n\nStock Variance Report\n\nTheoretical vs actual material consumption variance\n\nAudit Report\n\nStock audit trails and adjustment history\n\nPROCUREMENT & BILLING\nPurchase Indents\n\nView and approve purchase indents across all sites\n\nDaily Diesel Requirements\n\nView and approve daily diesel requirement requests\n\nVendor Bills\n\nEquipment, material, transport & labour bills — review and approve",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/reports/hub",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "report--reports-equipment-performance",
+    "path": "/reports/equipment-performance",
+    "screenshot": "report--reports-equipment-performance.jpg",
+    "url": "/reports/equipment-performance",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nSite Operations\nHMP Operations\nRMC Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nReports Hub\nEquipment Performance\nEQUIPMENT PERFORMANCE\n\nUsage, working hours and diesel consumption by equipment\n\nFROM DATE\nTO DATE\nPROJECT / SITE\nAll projects\nTAKKADPALLY-SIRUR\nSCOPE\nAll\nSite / road operations\nPlant / HMP / RMC operations\nOWNERSHIP\nAll\nhired\nowned\nOWNER / VENDOR\nAll owners / vendors\nBHIMRAO\nHLC / OWNED\nNARSIMULU\nSANGANNA\nSURESH\nVEERANNA\nVISHWANATHAM - BODAPALLY\n—\nEQUIPMENT TYPE\nAll types\nEquipment\nGenerator\nJCB\nTractor\nEQUIPMENT\nAll equipment\n40-30 KVA GENERATOR | Owned | Hour Meter\nJCB-PLANT | Hired - NARSIMULU | Hour Meter\nJCB-SITE | TS07EV930 | Hired - VISHWANATHAM - BODAPALLY | Hour Meter\nJCB-SITE | Hired - NARSIMULU | Hour Meter\nSOIL COMPACTOR | Hired - BHIMRAO | Hour Meter\nTIPPER | TS15UF 4984 | Hired - SANGANNA | Odometer\nTIPPER INTERCARTING | TS12UC5039 | Hired - SURESH | Hour Meter\nTRACTOR DOZER | Hired - VEERANNA | Hour Meter\nWATER TANKER | Hired | Hour Meter\nReset\nEquipment\n\nSelect a machine to see daily details.\n\n9 machines\nEQUIPMENT\tOWNED / HIRED\tOWNER / VENDOR\tOPENING METER\tCLOSING METER\tWORKING HOURS\tCLOCK DURATION\tDIESEL ISSUED\tOPENING TANK\tCLOSING TANK\tDIESEL CONSUMED\tEXPECTED DIESEL\tDIFFERENCE\tCONSUMPTION RATE\nJCB-PLANT\tHired\tNARSIMULU\t—\t—\t—\t2 h\t0 L\t0 L\t—\tIncomplete\t9.5 L\tIncomplete\tIncomplete\nJCB-SITE\nTS07EV930\n\tHired\tVISHWANATHAM - BODAPALLY\t100 h\t1,011 h\tPartial · 14 h 36 min\tPartial · 44 h 08 min\t—\t0 L\t—\tIncomplete\t209.2 L\tIncomplete\tIncomplete\n40-30 KVA GENERATOR\tOwned\tHLC / OWNED\t200 h\t201 h\t1 h\t—\t0 L\t0 L\t—\tIncomplete\t3 L\tIncomplete\tIncomplete\nTIPPER INTERCARTING\nTS12UC5039\n\tHired\tSURESH\t—\t—\t—\t3 h 15 min\t10 L\t—\t—\tIncomplete\t—\tIncomplete\tIncomplete\nTRACTOR DOZER\tHired\tVEERANNA\t10,025 h\t10,026.3 h\tPartial · 1 h 15 min\t29 h 56 min\t—\t—\t—\tIncomplete\t118.7 L\tIncomplete\tIncomplete\nTIPPER\nTS15UF 4984\n\tHired\tSANGANNA\t—\t—\t—\t7 h 30 min\t—\t—\t—\tIncomplete\t67.5 L\tIncomplete\tIncomplete\nSOIL COMPACTOR\tHired\tBHIMRAO\t—\t—\t—\t5 h 20 min\t—\t—\t—\tIncomplete\t48 L\tIncomplete\tIncomplete\nWATER TANKER\tHired\t—\t—\t—\t—\t3 h 35 min\t—\t—\t—\tIncomplete\t4 L\tIncomplete\tIncomplete\nJCB-SITE\tHired\tNARSIMULU\t1,256.5 h\t1,009.5 h\t9 h 06 min\t17 h 39 min\t30 L\t—\t8 L\tIncomplete\t43.2 L\tIncomplete\tIncomplete",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/reports/equipment-performance",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "report--reports-progress",
+    "path": "/reports/progress",
+    "screenshot": "report--reports-progress.jpg",
+    "url": "/reports/progress",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nSite Operations\nHMP Operations\nRMC Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nReports Hub\nProgress Report\nProgress Report\n\nRA-style rollup of submitted DPR actuals\n\nProject\nSelect project\nSite\nAll Sites\nFrom\nTo\nReset\nSelect a project to build the report.",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/reports/progress",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "report--site-purchases",
+    "path": "/site/purchases",
+    "screenshot": "report--site-purchases.jpg",
+    "url": "/site/purchases",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nSite Operations\nHMP Operations\nRMC Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nSite Purchases Report\nFilters\nFrom Date\nTo Date\nSite\nAll Sites\nWork Type\nAll Types\n\nTotal Purchases\n\n19\n\nTotal Amount\n\n38749.680\n\nDate\tSite\tSource\tWork Type\tItem\tVendor\tBill No\tQty\tUOM\tAmount\tReported By\tStatus\tActions\n02-MAR-2026\tDTPL-RAJESHWAR\tDIESEL\tROAD\tDIESEL - PAVER FINISHER-MOHAN REDDY\t-\tC0070\t40\tLTR\t3661.000\tRAVI MANAGER\t-\t\n-\n\n02-MAR-2026\tDTPL-RAJESHWAR\tDIESEL\tROAD\tDIESEL - TANDEM ROLLER-JAYRAM\t-\tC0068\t30\tLTR\t2746.000\tRAVI MANAGER\t-\t\n-\n\n02-MAR-2026\tDTPL-RAJESHWAR\tDIESEL\tROAD\tDIESEL - TRACTOR ENGINE FOR BOWSER\t-\tC0089\t10\tLTR\t915.000\tRAVI MANAGER\t-\t\n-\n\n02-MAR-2026\tDTPL-RAJESHWAR\tDIESEL\tROAD\tDIESEL - AIR COMPRESSOR\t-\tC0069\t10\tLTR\t914.970\tRAVI MANAGER\t-\t\n-\n\n28-FEB-2026\tDTPL-RAJESHWAR\tDIESEL\tROAD\tDIESEL - TANDEM ROLLER-JAYRAM\t-\tB1398 &B1400\t40\tLTR\t3659.940\tRAVI KUMAR - OTHER\t-\t\n-\n\n28-FEB-2026\tDTPL-RAJESHWAR\tDIESEL\tROAD\tDIESEL - AIR COMPRESSOR\t-\tB1403\t10\tLTR\t914.970\tRAVI KUMAR - OTHER\t-\t\n-\n\n28-FEB-2026\tDTPL-RAJESHWAR\tDIESEL\tROAD\tDIESEL - SPRAYER (BOWSER)\t-\tB1403\t10\tLTR\t915.000\tRAVI KUMAR - OTHER\t-\t\n-\n\n13-FEB-2026\tFDR KK ROAD\tDIESEL\tROAD\tDIESEL - SPRAYER (BOWSER)\tDURGA INDHAN\t5088\t10\tLTR\t966.000\tRAJU SUP\t-\t\n-\n\n11-FEB-2026\tFDR KK ROAD\tDIESEL\tROAD\tDIESEL - DOZER\tSWARAJ FUELS\tPURCHASED BY RAJU\t-\tLTR\t1929.000\tBABU & SUNIL\t-\t\n-\n\n05-FEB-2026\tDTPL-BASAVAKALYAN\tDIESEL\tROAD\tDIESEL - TRACTOR COMPRESSOR-GHOUSUDDIN\tKHAKIS PETROLEUM\tB0236\t10\tLTR\t914.900\tRAJU SUPERVISOR\t-\t\n-\n\n05-FEB-2026\tDTPL-BASAVAKALYAN\tDIESEL\tROAD\tDIESEL - TRACTOR-RATNAM\tMG HOLKUNDE\t178243\t20\tLTR\t1829.800\tRAJU SUPERVISOR\t-\t\n-\n\n05-FEB-2026\tDTPL-BASAVAKALYAN\tDIESEL\tROAD\tDIESEL - SPRAYER (BOWSER)\tKHAKIS PETROLEUM\tB0237\t5\tLTR\t457.450\tRAJU SUPERVISOR\t-\t\n-\n\n05-FEB-2026\tDTPL-BASAVAKALYAN\tDIESEL\tROAD\tDIESEL - PAVER FINISHER-MOHAN REDDY\tMG HOLKUNDE\tB0234\t65\tLTR\t5946.850\tRAJU SUPERVISOR\t-\t\n-\n\n05-FEB-2026\tDTPL-BASAVAKALYAN\tDIESEL\tROAD\tDIESEL - TANDEM ROLLER-JAYRAM\tKHAKIS PETROLEUM\tB0235\t30\tLTR\t2744.700\tRAJU SUPERVISOR\t-\t\n-\n\n04-FEB-2026\tDTPL-BASAVAKALYAN\tDIESEL\tROAD\tDIESEL - PAVER FINISHER-MOHAN REDDY\tMG HOLKUNDE\t183442\t40\tLTR\t3659.600\tRAJU SUPERVISOR\t-\t\n-\n\n04-FEB-2026\tDTPL-BASAVAKALYAN\tDIESEL\tROAD\tDIESEL - TANDEM ROLLER-JAYRAM\tMG HOLKUNDE\tB0110\t30\tLTR\t2744.700\tRAJU SUPERVISOR\t-\t\n-\n\n04-FEB-2026\tDTPL-BASAVAKALYAN\tDIESEL\tROAD\tDIESEL - TRACTOR-RATNAM\tMG HOLKUNDE\tB0111\t10\tLTR\t914.900\tRAJU SUPERVISOR\t-\t\n-\n\n04-FEB-2026\tDTPL-BASAVAKALYAN\tDIESEL\tROAD\tDIESEL - TRACTOR COMPRESSOR-GHOUSUDDIN\tMG HOLKUNDE\tB0166\t10\tLTR\t914.900\tRAJU SUPERVISOR\t-\t\n-\n\n28-JAN-2026\tFDR KK ROAD\tDIESEL\tROAD\tDIESEL - SOIL COMPACTOR\tDURGA INDHAN\t5018\t20.76\tLTR\t2000.000\tRAJU SUP\t-\t\n-\n\nTotal:\t38749.680\t",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/site/purchases",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "report--plant-variance-report",
+    "path": "/plant/variance-report",
+    "screenshot": "report--plant-variance-report.jpg",
+    "url": "/plant/variance-report",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nSite Operations\nHMP Operations\nRMC Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nConsumption Variance Report\n\nCompares actual bitumen consumption (entered during dispatch) vs theoretical (from mix template)\n\nDATE FROM\nDATE TO\nDISPATCHED TO\nAll Sites\nMIX TYPE\nAll Mix Types\nSTOCK OWNER\nAll Owners\nTotal Dispatches with Variance\n\n20\n\n0 loads over template\n/\n19 loads under template\nBitumen Variance (Actual vs Template)\n\n-6.9%\n\navg\n\n-2102.373 Kg total (saved)\n\nReading the numbers: Negative % (green) = Savings (less bitumen used than template). Positive % (red) = Excess (more bitumen used than template). The Kg difference shows the total quantity difference between actual and theoretical bitumen across all shown dispatches.\nVariance Details\nDate\tTruck\tMix\tSite\tOwner\tLoad (MT)\tTemplate %\tActual %\tVariance %\tSaved/Excess (Kg)\tBy\n03 Mar\tTS15UF 4984\tDENSE BITUMINOUS MACADAM (DBM)\tNH-167\tHIGH LANE CONSTRUCTIONS\t10\t4.50%\t4.50%\t\t0.000 Kg\toperator\n14 Feb\tTS15UE4470\tBITUMINOUS CONCRETE (BC)\tFDR KK ROAD\tHIGH LANE CONSTRUCTIONS\t28.89\t5.40%\t4.90%\t-9.3%\t-144.450 Kg\tadmin\n14 Feb\tTS15UF7763\tBITUMINOUS CONCRETE (BC)\tFDR KK ROAD\tHIGH LANE CONSTRUCTIONS\t28.89\t5.40%\t4.90%\t-9.3%\t-144.450 Kg\tadmin\n13 Feb\tTS15UE4470\tBITUMINOUS CONCRETE (BC)\tFDR KK ROAD\tHIGH LANE CONSTRUCTIONS\t35\t5.40%\t5.10%\t-5.6%\t-105.000 Kg\tadmin\n13 Feb\tTS15UF4984\tBITUMINOUS CONCRETE (BC)\tFDR KK ROAD\tHIGH LANE CONSTRUCTIONS\t34\t5.40%\t5.10%\t-5.6%\t-102.000 Kg\tadmin\n13 Feb\tTS15UF4983\tBITUMINOUS CONCRETE (BC)\tFDR KK ROAD\tHIGH LANE CONSTRUCTIONS\t32\t5.40%\t5.10%\t-5.6%\t-96.000 Kg\tadmin\n13 Feb\tTS15UF4470\tBITUMINOUS CONCRETE (BC)\tFDR KK ROAD\tHIGH LANE CONSTRUCTIONS\t34\t5.40%\t5.10%\t-5.6%\t-102.000 Kg\tadmin\n13 Feb\tTS15UF7763\tBITUMINOUS CONCRETE (BC)\tFDR KK ROAD\tHIGH LANE CONSTRUCTIONS\t48\t5.40%\t4.90%\t-9.3%\t-240.000 Kg\tmanager\n05 Feb\tTS15UF4308\tSEKURA-DTPL-BASAVA\tDTPL-BASAVAKALYAN\tSEKURA-DTPL-BASAVAKALYAN\t27.03\t4.00%\t3.70%\t-7.5%\t-81.090 Kg\t-\n05 Feb\tTS15UF4984\tSEKURA-DTPL-BASAVA\tDTPL-BASAVAKALYAN\tSEKURA-DTPL-BASAVAKALYAN\t28.11\t4.00%\t3.70%\t-7.5%\t-84.330 Kg\tadmin\n05 Feb\tTS15UF4983\tSEKURA-DTPL-BASAVA\tDTPL-BASAVAKALYAN\tSEKURA-DTPL-BASAVAKALYAN\t28.05\t4.00%\t3.70%\t-7.5%\t-84.150 Kg\tadmin\n05 Feb\tTS15UF7763\tSEKURA-DTPL-BASAVA\tDTPL-BASAVAKALYAN\tSEKURA-DTPL-BASAVAKALYAN\t42.1\t4.00%\t3.70%\t-7.5%\t-126.300 Kg\tadmin\n05 Feb\tTS15UE4470\tSEKURA-DTPL-BASAVA\tDTPL-BASAVAKALYAN\tSEKURA-DTPL-BASAVAKALYAN\t34.14\t4.00%\t3.70%\t-7.5%\t-102.420 Kg\tadmin\n05 Feb\tTS15UF7839\tSEKURA-DTPL-BASAVA\tDTPL-BASAVAKALYAN\tSEKURA-DTPL-BASAVAKALYAN\t32.1\t4.00%\t3.70%\t-7.5%\t-96.300 Kg\tadmin\n04 Feb\tTS15UF4984\tSEKURA-DTPL-BASAVA\tDTPL-BASAVAKALYAN\tSEKURA-DTPL-BASAVAKALYAN\t32.19\t4.00%\t3.80%\t-5.0%\t-64.380 Kg\tadmin\n04 Feb\tTS15UF4308\tSEKURA-DTPL-BASAVA\tDTPL-BASAVAKALYAN\tSEKURA-DTPL-BASAVAKALYAN\t30.14\t4.00%\t3.70%\t-7.5%\t-90.420 Kg\tadmin\n04 Feb\tTS15UF7839\tSEKURA-DTPL-BASAVA\tDTPL-BASAVAKALYAN\tSEKURA-DTPL-BASAVAKALYAN\t30\t4.00%\t3.70%\t-7.5%\t-90.000 Kg\tadmin\n04 Feb\tTS15UF4983\tSEKURA-DTPL-BASAVA\tDTPL-BASAVAKALYAN\tSEKURA-DTPL-BASAVAKALYAN\t34.121\t4.00%\t3.70%\t-7.5%\t-102.363 Kg\tadmin\n04 Feb\tTS15UF7703\tSEKURA-DTPL-BASAVA\tDTPL-BASAVAKALYAN\tSEKURA-DTPL-BASAVAKALYAN\t48.08\t4.00%\t3.70%\t-7.5%\t-144.240 Kg\tadmin\n04 Feb\tTS15UE4470\tSEKURA-DTPL-BASAVA\tDTPL-BASAVAKALYAN\tSEKURA-DTPL-BASAVAKALYAN\t34.16\t4.00%\t3.70%\t-7.5%\t-102.480 Kg\tadmin\nTotal / Weighted Avg\t651.0\t4.53%\t4.20%\t-7.1%\t-2102.373 Kg\t",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/plant/variance-report",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "report--plant-audit-report",
+    "path": "/plant/audit-report",
+    "screenshot": "report--plant-audit-report.jpg",
+    "url": "/plant/audit-report",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nSite Operations\nHMP Operations\nRMC Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nConsumption Audit Log\n\nComplete history of all consumption adjustments (Admin Only)\n\nDATE FROM\nDATE TO\nClear Filters\nTotal Adjustments\n\n2\n\nBy Type\nBitumen:\n1\nLDO:\n1\nBy Role\nOperator:1\nManager:1\nAdmin:0\nAudit Trail\nTimestamp\tDispatch\tType\tTheoretical\tPrevious\tNew Value\tVariance\tAdjusted By\tReason\n15 Jul 2026 06:40\t\nTS15UF 4984\n2026-03-03 • 10 MT\n\tLDO\t60.000 L\t60.000 L\t55.000 L\t\n-8.3%\n\toperator\t-\n13 May 2026 02:08\t\nTS15UF7763\n2026-02-13 • 48 MT\n\tBITUMEN\t5.400 MT\t5.100 MT\t4.900 MT\t\n-9.3%\n\tmanager\t-",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/plant/audit-report",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "report--plant-diesel-procurement",
+    "path": "/plant/diesel-procurement",
+    "screenshot": "report--plant-diesel-procurement.jpg",
+    "url": "/plant/diesel-procurement",
+    "text": "",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/plant/diesel-procurement",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "report--plant-daily-reports",
+    "path": "/plant/daily-reports",
+    "screenshot": "report--plant-daily-reports.jpg",
+    "url": "/plant/daily-reports",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nSite Operations\nHMP Operations\nRMC Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nHMP Daily Plant Reports\n\nEvery past date with any plant data — open the report or download its PDF.\n\nFilters\nFrom\nTo\nPlant\nAll plants\nMain Plant\nParty\nAll party\nMix Type\nAll mix type\n7d\n30d\n90d\n1y\nOctober 20262 days\nDate\tProduction\tParty / Mix\tLDO · Diesel · Bitumen\tStatus\tActions\n\nSat, 03 Oct\nSITE\n\t—\tNo dispatches\t\nHeating: —\nBoiler: —\nDryer: —\nDG Diesel: —\nBitumen: Tmpl — → Act —\n\t\n\t\nOpen\n\n\nThu, 01 Oct\nSITE\n\t—\tNo dispatches\t\nHeating: —\nBoiler: —\nDryer: —\nDG Diesel: —\nBitumen: Tmpl — → Act —\n\t\n\t\nOpen\nSeptember 20262 days\nDate\tProduction\tParty / Mix\tLDO · Diesel · Bitumen\tStatus\tActions\n\nWed, 09 Sep\nSITE\n\t—\tNo dispatches\t\nHeating: —\nBoiler: —\nDryer: —\nDG Diesel: —\nBitumen: Tmpl — → Act —\n\t\n\t\nOpen\n\n\nSat, 05 Sep\nSITE\n\t—\tNo dispatches\t\nHeating: —\nBoiler: —\nDryer: —\nDG Diesel: —\nBitumen: Tmpl — → Act —\n\t\n\t\nOpen\nJuly 20261 day\nDate\tProduction\tParty / Mix\tLDO · Diesel · Bitumen\tStatus\tActions\n\nThu, 16 Jul\nSITE\n\t—\tNo dispatches\t\nHeating: —\nBoiler: —\nDryer: —\nDG Diesel: —\nBitumen: Tmpl — → Act —\n\t\n\t\nOpen",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/plant/daily-reports",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "report--plant-daily-report",
+    "path": "/plant/daily-report",
+    "screenshot": "report--plant-daily-report.jpg",
+    "url": "/plant/daily-report",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nSite Operations\nHMP Operations\nRMC Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nDaily Plant Report\n\nConsolidated view: shift, production, fuel, idle, manpower\n\nMain Plant\nShift Log\nBrowse all dates\nPDF\nShift Detail\nShift\n—\nOperator\n—\nSupervisor\n—\nStatus\nNo log\nPlant Start\n—\nPlant Stop\n—\nRunning Hrs\n—\nProductive Hrs\n—\nWeather\n—\nAmbient Temp °C\n—\nProduction\nLoads\n0\nTotal MT\n0.00\nTheoretical Bitumen MT\n0.000\nTheoretical LDO L\n0.0\nBitumen Tank Status (from Shift Log)\nTank 1 Temp (°C)\n—\nTank 2 Temp (°C)\n—\nTank 1 — Opening\n—\n— MT total · —\n— MT usable\nTank 1 — Closing\n—\n— MT total · —\n— MT usable\nTank 2 — Opening\n—\n— MT total · —\n— MT usable\nTank 2 — Closing\n—\n— MT total · —\n— MT usable\nLDO Detail\n\nDip-stick cross-check and tank stock deduction.\n\nTank stock deducted today (dryer meter is routed to Dryer tank)\nBoiler tank stock used (L)\n—\nDryer tank stock used (L)\n—\nBoiler / Heating Sessions (0)\n\nSessions attributed: on or before 2026-10-07 (no prior production day on record for this plant).\n\nTotal Heating Hrs\n0.00\nSessions LDO L\n0.0\nBoiler-during-production L (off)\n—\nTotal Boiler LDO L\n0.0\nL / Hour\n—\nL / MT (Boiler)\n—\nDG Diesel L\n0.0\nEquipment Usage (Total Diesel Issued: 0.0 L)\n\nNo equipment logged.\n\nManpower (0)\n\nNo manpower entries.\n\nIdle Events (0 min)\n\nNo idle events.",
+    "outputs": [
+      "PDF"
+    ],
+    "exportCount": 0
+  },
+  {
+    "path": "/plant/daily-report",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "report--plant-dispatch-summary",
+    "path": "/plant/dispatch-summary",
+    "screenshot": "report--plant-dispatch-summary.jpg",
+    "url": "/plant/dispatch-summary",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nSite Operations\nHMP Operations\nRMC Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nPlant-Project Dispatch Summary\n\nCross-plant and cross-project dispatch analysis — grouped by plant and party\n\nFROM\nTO\nPLANTS\nBoth\nHigh lane constructions pvt ltd\nPARTY / PROJECT\nHIGH LANE CONSTRUCTIONS\nSEKURA-DTPL-BASAVAKALYAN\nSEKURA-DTPL-RAJESHWAR\nNo data for the selected filters\nNo dispatch records found for the selected date range and filters.",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/plant/dispatch-summary",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "report--plant-heating-trends",
+    "path": "/plant/heating-trends",
+    "screenshot": "report--plant-heating-trends.jpg",
+    "url": "/plant/heating-trends",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nSite Operations\nHMP Operations\nRMC Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nBoiler Heating Efficiency Trends\n\nDaily L/Hour and L/MT for the Boiler Meter, split by night pre-heat vs daytime maintenance\n\nFrom\nTo\nLast 7 days\nLast 30 days\nLast 90 days\nSessions\n0\n30 days\nHeating Hours\n0.0\nL/Hour: —\nLDO Boiler Meter\n0.0 L\nDG Diesel: 0.0 L\nL / MT (vs target 1.5)\n—\nProduction: 0.0 MT\nHot-oil End (avg)\n—\nMin/Max: — / —°C\nShift-meter L\n0.0 L\n0 days logged\nL/MT Trend\nUse shift-meter L\n09-08\n09-10\n09-11\n09-12\n09-14\n09-16\n09-17\n09-19\n09-21\n09-23\n09-25\n09-27\n09-29\n10-01\n10-02\n10-04\n10-06\n10-07\nSessions L/MTPre-heatingProduction heating\n\nSessions L/MT comes from heating-session LDO Tank-1 totals. Shift-meter L/MT uses the daily shift-log Tank-1 closing − opening reading. Days with a mismatch > ±5 L are flagged in the table below.\n\nHot-oil End Temperature (°C)\n09-08\n09-10\n09-11\n09-12\n09-14\n09-16\n09-17\n09-19\n09-21\n09-23\n09-25\n09-27\n09-29\n10-01\n10-02\n10-04\n10-06\n10-07\nAvg End TempMinMax\n\nDays where the daily average hot-oil end temperature drops below 240°C are flagged in the table below. Adjust the floor in Admin → Plant Alert Thresholds.\n\nHot-oil Supply vs Return (Δ)\nSupply Avg\n—\nReturn Avg\n—\nΔ Avg (Supply − Return)\n—\nLowest day avg: — °C\n09-09\n09-11\n09-13\n09-15\n09-17\n09-19\n09-21\n09-23\n09-25\n09-27\n09-29\n10-01\n10-03\n10-05\n10-07\nSupplyReturnΔ (Supply − Return)\n\nΔ is the daily average of supply minus return temperature on each heating session. A shrinking Δ over time is an early sign of heat-exchanger fouling. Days whose average Δ drops below 15°C are flagged. Adjust the floor in Admin → Plant Alert Thresholds.\n\nDaily Breakdown\nDate\tProd (MT)\tNight Hrs\tNight LDO L\tDay Hrs\tDay LDO L\tTotal Hrs\tSessions L\tShift-meter L\tΔ (L)\tL/Hour\tL/MT\tHot-oil End °C (avg)\tMin / Max\t\n2026-09-08\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-09-09\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-09-10\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-09-11\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-09-12\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-09-13\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-09-14\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-09-15\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-09-16\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-09-17\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-09-18\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-09-19\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-09-20\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-09-21\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-09-22\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-09-23\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-09-24\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-09-25\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-09-26\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-09-27\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-09-28\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-09-29\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-09-30\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-10-01\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-10-02\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-10-03\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-10-04\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-10-05\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-10-06\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n\n2026-10-07\t0.00\t0.00\t0.0\t0.00\t0.0\t0.00\t0.0\t—\t—\t—\t—\t—\t—\t\n09-08",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/plant/heating-trends",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "report--plant-rmc-daily-report",
+    "path": "/plant/rmc/daily-report",
+    "screenshot": "report--plant-rmc-daily-report.jpg",
+    "url": "/plant/rmc/daily-report",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nSite Operations\nHMP Operations\nRMC Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nRMC Daily Report\n\nDay-wise summary of production, materials & QC\n\nPlant\nAll plants\n\nTotal Volume\n\n0.00 m³\n\nDispatches\n\n0\n\nCube Tests\n\n0\n\nGrades Produced\n\n0\n\nNo data recorded for 2026-10-07.",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/plant/rmc/daily-report",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "report--plant-rmc-batch-records",
+    "path": "/plant/rmc/batch-records",
+    "screenshot": "report--plant-rmc-batch-records.jpg",
+    "url": "/plant/rmc/batch-records",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nSite Operations\nHMP Operations\nRMC Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nRMC Batch Records\n\nLog concrete batches & generate delivery challans\n\nto\nAll plants\n\nNo batch records for this period.",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/plant/rmc/batch-records",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "report--plant-rmc-cube-tests",
+    "path": "/plant/rmc/cube-tests",
+    "screenshot": "report--plant-rmc-cube-tests.jpg",
+    "url": "/plant/rmc/cube-tests",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nSite Operations\nHMP Operations\nRMC Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nRMC Cube Tests\n\nConcrete compressive strength QC results\n\nto\nAll ages\n\nNo cube test results yet.",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/plant/rmc/cube-tests",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "report--plant-rmc-delivery-challans",
+    "path": "/plant/rmc/delivery-challans",
+    "screenshot": "report--plant-rmc-delivery-challans.jpg",
+    "url": "/plant/rmc/delivery-challans",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nSite Operations\nHMP Operations\nRMC Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nDelivery Challans\n\nView and print RMC delivery challans generated from batch records\n\nto\n\nNo delivery challans in this period\n\nAdd DC numbers to batch records so they appear here as delivery challans.\n\nGo to Batch Records",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/plant/rmc/delivery-challans",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "report--admin-reports",
+    "path": "/admin/reports",
+    "screenshot": "report--admin-reports.jpg",
+    "url": "/admin/reports",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nSite Operations\nHMP Operations\nRMC Operations\nEquipment & Fleet\nStores & Inventory\nProcurement & Billing\nRequisitions\nWork Program & BOQ\nNorms Library (SNL)\nReports\nEdit Requests\n\nTOOLS\n\nEstimator\nMasters\nPT\n\nPERM-03B-2 Temporary Verification\n\nManager\n\nSign Out\nRefresh\nAdmin Reports\n\nMix Rate Calculator & Saved Estimates\n\nManagement Report\n\nCross-site aggregated view — materials, production, fuel, labour & financials\n\nSaved estimates by contractor — click a row to open in the calculator\n\nComparative Report\nOpen Calculator\nMasood\n1 site\n765 MT total\n₹28.5 L\nPrice Impact\nSITE NAME\tMT\tAMOUNT\tSAVED\t\nMASOOD | J: J01, J02 | 17 Mar 2026\nMASOOD\n\t765 MT\t₹28.5 L\t\n08 Apr 2026, 12:05 pm\nunassigned owner\n\t\nLoad\nDECCAN TOLLWAYS PVT LTD\n2 sites\n800 MT total\n₹33.0 L\nPrice Impact\nSITE NAME\tMT\tAMOUNT\tSAVED\t\nBASAVAKALYAN\t400 MT\t₹15.7 L\t\n07 Apr 2026, 07:14 am\nunassigned owner\n\t\nLoad\n\nRAJESHWAR\t400 MT\t₹17.4 L\t\n07 Apr 2026, 07:14 am\nunassigned owner\n\t\nLoad\nTIRUPATHI REDDY\n1 site\n1058 MT total\n₹43.5 L\nPrice Impact\nSITE NAME\tMT\tAMOUNT\tSAVED\t\nTIRUPATHI REDDY-1\t1058 MT\t₹43.5 L\t\n06 Apr 2026, 11:49 am\nunassigned owner\n\t\nLoad\nMurthy\n1 site\n214 MT total\n₹8.1 L\nPrice Impact\nSITE NAME\tMT\tAMOUNT\tSAVED\t\nMURTHY BRIDGE-1\nMURTHY\n\t214 MT\t₹8.1 L\t\n29 Mar 2026, 04:28 pm\nunassigned owner\n\t\nLoad",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/admin/reports",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "report--admin-mix-impact",
+    "path": "/admin/mix-impact",
+    "screenshot": "report--admin-mix-impact.jpg",
+    "url": "/estimator-login",
+    "text": "High Lane Constructions Pvt Ltd\n\nEstimate Manager\n\nEnter Access PIN\nPIN\nAccess Portal\n\nBituminous Mix & Concrete Rate Calculators\n\nBack to Site Log",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/admin/mix-impact",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "report--admin-mix-comparison",
+    "path": "/admin/mix-comparison",
+    "screenshot": "report--admin-mix-comparison.jpg",
+    "url": "/estimator-login",
+    "text": "High Lane Constructions Pvt Ltd\n\nEstimate Manager\n\nEnter Access PIN\nPIN\nAccess Portal\n\nBituminous Mix & Concrete Rate Calculators\n\nBack to Site Log",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/admin/mix-comparison",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "label": "report--admin-scenario-comparison",
+    "path": "/admin/scenario-comparison",
+    "screenshot": "report--admin-scenario-comparison.jpg",
+    "url": "/estimator-login",
+    "text": "High Lane Constructions Pvt Ltd\n\nEstimate Manager\n\nEnter Access PIN\nPIN\nAccess Portal\n\nBituminous Mix & Concrete Rate Calculators\n\nBack to Site Log",
+    "outputs": [],
+    "exportCount": 0
+  },
+  {
+    "path": "/admin/scenario-comparison",
+    "method": "GET",
+    "status": 200
+  }
+]

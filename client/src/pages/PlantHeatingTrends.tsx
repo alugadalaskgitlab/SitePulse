@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
+import { ReportExportGate } from "@/components/ReportExportGate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -157,9 +158,9 @@ export default function PlantHeatingTrends() {
             </p>
           </div>
         </div>
-        <Button onClick={exportExcel} variant="outline" data-testid="button-export-excel">
+        <ReportExportGate sections={["plant_heating", "plant_heating_trends"]}><Button onClick={exportExcel} variant="outline" data-testid="button-export-excel">
           <Download className="w-4 h-4 mr-2" />Export Excel
-        </Button>
+        </Button></ReportExportGate>
       </div>
 
       <Card>

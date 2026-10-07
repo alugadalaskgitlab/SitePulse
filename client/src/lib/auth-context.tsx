@@ -214,5 +214,5 @@ export function useAuth(options: { optional: true }): AuthContextType | null;
 export function useAuth(options?: { optional: true }): AuthContextType | null {
   const ctx = useContext(AuthContext);
   if (!ctx && !options?.optional) throw new Error("useAuth must be used inside <AuthProvider>");
-  return ctx;
+  return ctx ?? null;
 }

@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect, type ReactNode } from "react";
 import { DeleteGate } from "@/components/DeleteGate";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLocation, useParams, Link } from "wouter";
+import { useLocation, useParams } from "wouter";
+import { ProgrammeLink as Link } from "@/components/ProgrammeLink";
 import {
   ChevronRight, Upload, Pencil, ChevronDown, ChevronUp,
   Plus, Check, CheckCheck, Trash2, Loader2, FileSpreadsheet, AlertCircle,
@@ -1834,6 +1835,7 @@ function ProjectSettingsDialog({
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function BoqProjectDetail() {
+  const { sectionVisible } = useAuth();
   const params = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -2039,7 +2041,7 @@ export default function BoqProjectDetail() {
               </Button>
             </a>
           </Link>
-          <Link href={`/work-program/${projectId}/geometry`}>
+          {sectionVisible("planning_masters") && <Link href={`/work-program/${projectId}/geometry`}>
             <a>
               <Button
                 variant="outline"
@@ -2052,8 +2054,8 @@ export default function BoqProjectDetail() {
                 Geometry
               </Button>
             </a>
-          </Link>
-          <Link href={`/work-program/${projectId}/programme`}>
+          </Link>}
+          {sectionVisible("work_programme") && <Link href={`/work-program/${projectId}/programme`}>
             <a>
               <Button
                 variant="outline"
@@ -2065,8 +2067,8 @@ export default function BoqProjectDetail() {
                 Work Programme
               </Button>
             </a>
-          </Link>
-          <Link href={`/work-program/${projectId}/demand`}>
+          </Link>}
+          {sectionVisible("work_programme_review") && <Link href={`/work-program/${projectId}/demand`}>
             <a>
               <Button
                 variant="outline"
@@ -2078,8 +2080,8 @@ export default function BoqProjectDetail() {
                 BOM &amp; Demand
               </Button>
             </a>
-          </Link>
-          <Link href={`/work-program/${projectId}/resource-review`}>
+          </Link>}
+          {sectionVisible("work_programme_review") && <Link href={`/work-program/${projectId}/resource-review`}>
             <a>
               <Button
                 variant="outline"
@@ -2091,8 +2093,8 @@ export default function BoqProjectDetail() {
                 Resource Review
               </Button>
             </a>
-          </Link>
-          <Link href={`/work-program/${projectId}/item-review`}>
+          </Link>}
+          {sectionVisible("work_programme_review") && <Link href={`/work-program/${projectId}/item-review`}>
             <a>
               <Button
                 variant="outline"
@@ -2104,7 +2106,7 @@ export default function BoqProjectDetail() {
                 Item Review
               </Button>
             </a>
-          </Link>
+          </Link>}
           {items.length > 0 && (
             <Button
               variant="outline"
