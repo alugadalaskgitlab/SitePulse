@@ -1,0 +1,414 @@
+{
+  "baseline": {
+    "files": 328,
+    "total": 4575,
+    "passed": 4524,
+    "failed": 48,
+    "skipped": 3
+  },
+  "priorCompletedRun": {
+    "files": 330,
+    "total": 4606,
+    "passed": 4555,
+    "failed": 48,
+    "skipped": 3
+  },
+  "after": {
+    "files": 330,
+    "total": 4607,
+    "passed": 4556,
+    "failed": 48,
+    "skipped": 3
+  },
+  "newlyFailed": [],
+  "resolvedBaseline": [],
+  "missingFiles": [],
+  "baselineFailures": [
+    {
+      "file": "tests/dieselStockGuard06mB.test.ts",
+      "test": "Task #1433 DPR invalid-source route audit maps InvalidDieselSourceError in mutation block app.post(\"/api/dprs/:id/submit\""
+    },
+    {
+      "file": "tests/dpr02Fix2EquipmentLayout.test.ts",
+      "test": "DPR-02 Fix 2 equipment layout keeps equipment setup visible instead of behind the old auto-collapsing summary"
+    },
+    {
+      "file": "tests/dpr04Fix2.test.ts",
+      "test": "DPR-04 Fix 2 — no-BOQ mismatch carve-out B/D: PATCH allows a project mismatch only for a no-BOQ draft and canonicalizes the saved project"
+    },
+    {
+      "file": "tests/dpr04Fix2.test.ts",
+      "test": "DPR-04 Fix 2 — no-BOQ mismatch carve-out keeps a saved null-project draft null when no BOQ evidence exists"
+    },
+    {
+      "file": "tests/dpr04Fix2.test.ts",
+      "test": "DPR-04 Fix 2 — no-BOQ mismatch carve-out does not treat a confirmation as permission to move a saved null-project DPR to another site"
+    },
+    {
+      "file": "tests/dpr04Fix2.test.ts",
+      "test": "DPR-04 Fix 2 — no-BOQ mismatch carve-out does not recover from BOQ evidence that replacement payload clears"
+    },
+    {
+      "file": "tests/dpr04Fix2.test.ts",
+      "test": "DPR-04 Fix 2 — no-BOQ mismatch carve-out accepts an evidence-based saved-null recovery with a target-project item"
+    },
+    {
+      "file": "tests/dpr04Fix2.test.ts",
+      "test": "DPR-04 Fix 2 — no-BOQ mismatch carve-out B: submit allows a project mismatch only for a no-BOQ draft and preserves the saved project"
+    },
+    {
+      "file": "tests/dpr04Fix2.test.ts",
+      "test": "DPR-04 Fix 2 — no-BOQ mismatch carve-out C: submit still rejects mixed real BOQ refs, including no-site-work, legacy equipment, normalized segments, allocations, and labour"
+    },
+    {
+      "file": "tests/dpr04Fix2.test.ts",
+      "test": "DPR-04 Fix 2 — no-BOQ mismatch carve-out submit automatically recovers a saved null when incoming BOQ evidence exists"
+    },
+    {
+      "file": "tests/dpr04Fix2.test.ts",
+      "test": "DPR-04 Fix 2 — no-BOQ mismatch carve-out C: PATCH also rejects a real labour/equipment BOQ reference"
+    },
+    {
+      "file": "tests/dpr04Fix2.test.ts",
+      "test": "DPR-04 Fix 2 — no-BOQ mismatch carve-out does not allow a PATCH to bypass the guard by omitting stored equipment child refs"
+    },
+    {
+      "file": "tests/dpr16B1.test.ts",
+      "test": "DPR16 B1 section presentation and evaluator shares the approved condensed activity UI with classic while keeping section-only navigation and persistence"
+    },
+    {
+      "file": "tests/equipmentConsistencyRuntime.test.ts",
+      "test": "DPR draft operational side-effect boundary persists an evidence-based null-project recovery with a newly selected target-project BOQ row"
+    },
+    {
+      "file": "tests/equipmentConsistencyRuntime.test.ts",
+      "test": "DPR draft operational side-effect boundary does not let a second recovery overwrite the first recovered project pin"
+    },
+    {
+      "file": "tests/equipmentConsistencyRuntime.test.ts",
+      "test": "all DPR write paths and route authorization remain wired keeps start identity and draft state transitions inside transaction guards"
+    },
+    {
+      "file": "tests/equipmentUsageFormReorganisation.test.ts",
+      "test": "equipment usage form reorganisation contracts uses creation-only local-time defaults without changing hydration helpers"
+    },
+    {
+      "file": "tests/equipmentUsageFormReorganisation.test.ts",
+      "test": "equipment usage form reorganisation contracts shows the same parent equipment summary in both submitted DPR views"
+    },
+    {
+      "file": "tests/focusedDprRestoration1449.test.ts",
+      "test": "focused DPR restoration keeps length read-only, removes the reconciliation prompt, and keeps compact DPR equipment details deliberate"
+    },
+    {
+      "file": "tests/guidedDprReliability.test.ts",
+      "test": "Part B — programmeBarId survives draft → update → submit (real routes) draft POST with INCOMPLETE chainage keeps the link (draft-lenient)"
+    },
+    {
+      "file": "tests/guidedDprReliability.test.ts",
+      "test": "Part B — programmeBarId survives draft → update → submit (real routes) full lifecycle: create draft → PATCH draft twice → submit — link intact at every step, exactly one DPR record"
+    },
+    {
+      "file": "tests/guidedDprReliability.test.ts",
+      "test": "Part B — programmeBarId survives draft → update → submit (real routes) submit strictly blocks a linked row with missing chainage (no silent link drop)"
+    },
+    {
+      "file": "tests/guidedDprReliability.test.ts",
+      "test": "Part B — programmeBarId survives draft → update → submit (real routes) unlinked real BOQ progress survives draft → update → submit → version with no scheduled bars"
+    },
+    {
+      "file": "tests/guidedDprReliability.test.ts",
+      "test": "Part D — out-of-range chainage reason persistence submit without a reason is blocked with PROGRAMME_LINK_INVALID"
+    },
+    {
+      "file": "tests/guidedDprReliability.test.ts",
+      "test": "Part D — out-of-range chainage reason persistence with a reason: submit succeeds, reason persisted, row stamped review_required"
+    },
+    {
+      "file": "tests/guidedDprReliability.test.ts",
+      "test": "Part E — executedBy attribution persists through the lifecycle executedBy set on a draft reaches submitDraftDpr unchanged"
+    },
+    {
+      "file": "tests/guidedDprReliability.test.ts",
+      "test": "DPR actor audit trail A-E A — passes the authenticated actor when creating a draft"
+    },
+    {
+      "file": "tests/guidedDprReliability.test.ts",
+      "test": "DPR actor audit trail A-E B — passes the authenticated actor on every draft save"
+    },
+    {
+      "file": "tests/guidedDprReliability.test.ts",
+      "test": "DPR actor audit trail A-E C — passes the authenticated submitter when submitting a draft"
+    },
+    {
+      "file": "tests/initialScopeCorrectionRoutes.test.ts",
+      "test": "draft submission scope-token handoff reads a fresh token and passes it into final draft submission"
+    },
+    {
+      "file": "tests/initialScopeCorrectionRoutes.test.ts",
+      "test": "draft submission scope-token handoff maps a correction committed during validation to 409 and does not notify as submitted"
+    },
+    {
+      "file": "tests/mat01MaterialsReceivedQueries.test.ts",
+      "test": "MAT-01 Materials Received database queries executes the received query with source-or-transporter matching and returns the source field"
+    },
+    {
+      "file": "tests/perm01SupportingReads.test.ts",
+      "test": "PERM-01 supporting read HTTP routes with real guards actually creates and edits purchase_indents_raise or site_procurement through the registered handlers"
+    },
+    {
+      "file": "tests/purchaseOrderPartC.test.ts",
+      "test": "optional PO lifecycle with isolated PostgreSQL fixture A: an order is recorded without raising a PO, for bulk and stores"
+    },
+    {
+      "file": "tests/purchaseOrderPartC.test.ts",
+      "test": "optional PO lifecycle with isolated PostgreSQL fixture B-G: material snapshot, lock, approver, approved PDF and role access"
+    },
+    {
+      "file": "tests/purchaseOrderPartC.test.ts",
+      "test": "optional PO lifecycle with isolated PostgreSQL fixture B-G: stores snapshot, lock, approver, approved PDF and role access"
+    },
+    {
+      "file": "tests/purchaseOrderPartC.test.ts",
+      "test": "optional PO lifecycle with isolated PostgreSQL fixture reject permits re-raise; only one active PO even on concurrent requests"
+    },
+    {
+      "file": "tests/purchaseOrderPartC.test.ts",
+      "test": "optional PO lifecycle with isolated PostgreSQL fixture denies unauthenticated, no-create, no-view, and out-of-site calls"
+    },
+    {
+      "file": "tests/siteDashboardActivity06X.test.ts",
+      "test": "H2: detailed DPR endpoint provides canonical BOQ label fields batch-loads unique BOQ items and attaches them to progress rows"
+    },
+    {
+      "file": "tests/siteEditDpr10.test.tsx",
+      "test": "DPR-10 SiteEdit regressions does not exempt hydrated draft rows from the prior-overlap warning"
+    },
+    {
+      "file": "tests/vehicleSupplierAssociationPostgres.integration.test.ts",
+      "test": "vehicle supplier association PostgreSQL transactions VB24: commits all 114 Soil trips over 15–22 September (direct SQL evidence)"
+    },
+    {
+      "file": "tests/vehicleSupplierAssociationPostgres.integration.test.ts",
+      "test": "vehicle supplier association PostgreSQL transactions VB24: preserves edit/site restrictions and exposes case-mismatched permitted names as zero, not success"
+    },
+    {
+      "file": "tests/vehicleSupplierAssociationPostgres.integration.test.ts",
+      "test": "vehicle supplier association PostgreSQL transactions VB24: fill blanks, per-trip history, single edit and clear, and single audit rollback"
+    },
+    {
+      "file": "tests/vehicleSupplierAssociationPostgres.integration.test.ts",
+      "test": "vehicle supplier association PostgreSQL transactions serializes two concurrent DatabaseStorage creates on real pooled connections"
+    },
+    {
+      "file": "tests/vehicleSupplierAssociationPostgres.integration.test.ts",
+      "test": "vehicle supplier association PostgreSQL transactions pins an old pair through an ordinary edit and keeps complete-history conflict"
+    },
+    {
+      "file": "tests/vendorBillHireIntegration07c.test.ts",
+      "test": "07C vendor-bill hire transaction wiring keeps source-qualified auto evidence read-only and visibly marked as auto"
+    },
+    {
+      "file": "tests/vendorBillsEquipmentHire07b.test.tsx",
+      "test": "VB-11 grouped ordinary activity pull Test A/B/C: groups mixed activity, pulls equipment only, then adds one material group without disturbing it"
+    },
+    {
+      "file": "tests/vendorBillsEquipmentHire07b.test.tsx",
+      "test": "VB-11 grouped ordinary activity pull Test D/E/F: Pull All applies rates and duplicate flags, clears the blank row, and retains Added groups"
+    }
+  ],
+  "finalFailures": [
+    {
+      "file": "tests/dieselStockGuard06mB.test.ts",
+      "test": "Task #1433 DPR invalid-source route audit maps InvalidDieselSourceError in mutation block app.post(\"/api/dprs/:id/submit\""
+    },
+    {
+      "file": "tests/dpr02Fix2EquipmentLayout.test.ts",
+      "test": "DPR-02 Fix 2 equipment layout keeps equipment setup visible instead of behind the old auto-collapsing summary"
+    },
+    {
+      "file": "tests/dpr04Fix2.test.ts",
+      "test": "DPR-04 Fix 2 — no-BOQ mismatch carve-out B/D: PATCH allows a project mismatch only for a no-BOQ draft and canonicalizes the saved project"
+    },
+    {
+      "file": "tests/dpr04Fix2.test.ts",
+      "test": "DPR-04 Fix 2 — no-BOQ mismatch carve-out keeps a saved null-project draft null when no BOQ evidence exists"
+    },
+    {
+      "file": "tests/dpr04Fix2.test.ts",
+      "test": "DPR-04 Fix 2 — no-BOQ mismatch carve-out does not treat a confirmation as permission to move a saved null-project DPR to another site"
+    },
+    {
+      "file": "tests/dpr04Fix2.test.ts",
+      "test": "DPR-04 Fix 2 — no-BOQ mismatch carve-out does not recover from BOQ evidence that replacement payload clears"
+    },
+    {
+      "file": "tests/dpr04Fix2.test.ts",
+      "test": "DPR-04 Fix 2 — no-BOQ mismatch carve-out accepts an evidence-based saved-null recovery with a target-project item"
+    },
+    {
+      "file": "tests/dpr04Fix2.test.ts",
+      "test": "DPR-04 Fix 2 — no-BOQ mismatch carve-out B: submit allows a project mismatch only for a no-BOQ draft and preserves the saved project"
+    },
+    {
+      "file": "tests/dpr04Fix2.test.ts",
+      "test": "DPR-04 Fix 2 — no-BOQ mismatch carve-out C: submit still rejects mixed real BOQ refs, including no-site-work, legacy equipment, normalized segments, allocations, and labour"
+    },
+    {
+      "file": "tests/dpr04Fix2.test.ts",
+      "test": "DPR-04 Fix 2 — no-BOQ mismatch carve-out submit automatically recovers a saved null when incoming BOQ evidence exists"
+    },
+    {
+      "file": "tests/dpr04Fix2.test.ts",
+      "test": "DPR-04 Fix 2 — no-BOQ mismatch carve-out C: PATCH also rejects a real labour/equipment BOQ reference"
+    },
+    {
+      "file": "tests/dpr04Fix2.test.ts",
+      "test": "DPR-04 Fix 2 — no-BOQ mismatch carve-out does not allow a PATCH to bypass the guard by omitting stored equipment child refs"
+    },
+    {
+      "file": "tests/dpr16B1.test.ts",
+      "test": "DPR16 B1 section presentation and evaluator shares the approved condensed activity UI with classic while keeping section-only navigation and persistence"
+    },
+    {
+      "file": "tests/equipmentConsistencyRuntime.test.ts",
+      "test": "DPR draft operational side-effect boundary persists an evidence-based null-project recovery with a newly selected target-project BOQ row"
+    },
+    {
+      "file": "tests/equipmentConsistencyRuntime.test.ts",
+      "test": "DPR draft operational side-effect boundary does not let a second recovery overwrite the first recovered project pin"
+    },
+    {
+      "file": "tests/equipmentConsistencyRuntime.test.ts",
+      "test": "all DPR write paths and route authorization remain wired keeps start identity and draft state transitions inside transaction guards"
+    },
+    {
+      "file": "tests/equipmentUsageFormReorganisation.test.ts",
+      "test": "equipment usage form reorganisation contracts uses creation-only local-time defaults without changing hydration helpers"
+    },
+    {
+      "file": "tests/equipmentUsageFormReorganisation.test.ts",
+      "test": "equipment usage form reorganisation contracts shows the same parent equipment summary in both submitted DPR views"
+    },
+    {
+      "file": "tests/focusedDprRestoration1449.test.ts",
+      "test": "focused DPR restoration keeps length read-only, removes the reconciliation prompt, and keeps compact DPR equipment details deliberate"
+    },
+    {
+      "file": "tests/guidedDprReliability.test.ts",
+      "test": "Part B — programmeBarId survives draft → update → submit (real routes) draft POST with INCOMPLETE chainage keeps the link (draft-lenient)"
+    },
+    {
+      "file": "tests/guidedDprReliability.test.ts",
+      "test": "Part B — programmeBarId survives draft → update → submit (real routes) full lifecycle: create draft → PATCH draft twice → submit — link intact at every step, exactly one DPR record"
+    },
+    {
+      "file": "tests/guidedDprReliability.test.ts",
+      "test": "Part B — programmeBarId survives draft → update → submit (real routes) submit strictly blocks a linked row with missing chainage (no silent link drop)"
+    },
+    {
+      "file": "tests/guidedDprReliability.test.ts",
+      "test": "Part B — programmeBarId survives draft → update → submit (real routes) unlinked real BOQ progress survives draft → update → submit → version with no scheduled bars"
+    },
+    {
+      "file": "tests/guidedDprReliability.test.ts",
+      "test": "Part D — out-of-range chainage reason persistence submit without a reason is blocked with PROGRAMME_LINK_INVALID"
+    },
+    {
+      "file": "tests/guidedDprReliability.test.ts",
+      "test": "Part D — out-of-range chainage reason persistence with a reason: submit succeeds, reason persisted, row stamped review_required"
+    },
+    {
+      "file": "tests/guidedDprReliability.test.ts",
+      "test": "Part E — executedBy attribution persists through the lifecycle executedBy set on a draft reaches submitDraftDpr unchanged"
+    },
+    {
+      "file": "tests/guidedDprReliability.test.ts",
+      "test": "DPR actor audit trail A-E A — passes the authenticated actor when creating a draft"
+    },
+    {
+      "file": "tests/guidedDprReliability.test.ts",
+      "test": "DPR actor audit trail A-E B — passes the authenticated actor on every draft save"
+    },
+    {
+      "file": "tests/guidedDprReliability.test.ts",
+      "test": "DPR actor audit trail A-E C — passes the authenticated submitter when submitting a draft"
+    },
+    {
+      "file": "tests/initialScopeCorrectionRoutes.test.ts",
+      "test": "draft submission scope-token handoff reads a fresh token and passes it into final draft submission"
+    },
+    {
+      "file": "tests/initialScopeCorrectionRoutes.test.ts",
+      "test": "draft submission scope-token handoff maps a correction committed during validation to 409 and does not notify as submitted"
+    },
+    {
+      "file": "tests/mat01MaterialsReceivedQueries.test.ts",
+      "test": "MAT-01 Materials Received database queries executes the received query with source-or-transporter matching and returns the source field"
+    },
+    {
+      "file": "tests/perm01SupportingReads.test.ts",
+      "test": "PERM-01 supporting read HTTP routes with real guards actually creates and edits purchase_indents_raise or site_procurement through the registered handlers"
+    },
+    {
+      "file": "tests/purchaseOrderPartC.test.ts",
+      "test": "optional PO lifecycle with isolated PostgreSQL fixture A: an order is recorded without raising a PO, for bulk and stores"
+    },
+    {
+      "file": "tests/purchaseOrderPartC.test.ts",
+      "test": "optional PO lifecycle with isolated PostgreSQL fixture B-G: material snapshot, lock, approver, approved PDF and role access"
+    },
+    {
+      "file": "tests/purchaseOrderPartC.test.ts",
+      "test": "optional PO lifecycle with isolated PostgreSQL fixture B-G: stores snapshot, lock, approver, approved PDF and role access"
+    },
+    {
+      "file": "tests/purchaseOrderPartC.test.ts",
+      "test": "optional PO lifecycle with isolated PostgreSQL fixture reject permits re-raise; only one active PO even on concurrent requests"
+    },
+    {
+      "file": "tests/purchaseOrderPartC.test.ts",
+      "test": "optional PO lifecycle with isolated PostgreSQL fixture denies unauthenticated, no-create, no-view, and out-of-site calls"
+    },
+    {
+      "file": "tests/siteDashboardActivity06X.test.ts",
+      "test": "H2: detailed DPR endpoint provides canonical BOQ label fields batch-loads unique BOQ items and attaches them to progress rows"
+    },
+    {
+      "file": "tests/siteEditDpr10.test.tsx",
+      "test": "DPR-10 SiteEdit regressions does not exempt hydrated draft rows from the prior-overlap warning"
+    },
+    {
+      "file": "tests/vehicleSupplierAssociationPostgres.integration.test.ts",
+      "test": "vehicle supplier association PostgreSQL transactions VB24: commits all 114 Soil trips over 15–22 September (direct SQL evidence)"
+    },
+    {
+      "file": "tests/vehicleSupplierAssociationPostgres.integration.test.ts",
+      "test": "vehicle supplier association PostgreSQL transactions VB24: preserves edit/site restrictions and exposes case-mismatched permitted names as zero, not success"
+    },
+    {
+      "file": "tests/vehicleSupplierAssociationPostgres.integration.test.ts",
+      "test": "vehicle supplier association PostgreSQL transactions VB24: fill blanks, per-trip history, single edit and clear, and single audit rollback"
+    },
+    {
+      "file": "tests/vehicleSupplierAssociationPostgres.integration.test.ts",
+      "test": "vehicle supplier association PostgreSQL transactions serializes two concurrent DatabaseStorage creates on real pooled connections"
+    },
+    {
+      "file": "tests/vehicleSupplierAssociationPostgres.integration.test.ts",
+      "test": "vehicle supplier association PostgreSQL transactions pins an old pair through an ordinary edit and keeps complete-history conflict"
+    },
+    {
+      "file": "tests/vendorBillHireIntegration07c.test.ts",
+      "test": "07C vendor-bill hire transaction wiring keeps source-qualified auto evidence read-only and visibly marked as auto"
+    },
+    {
+      "file": "tests/vendorBillsEquipmentHire07b.test.tsx",
+      "test": "VB-11 grouped ordinary activity pull Test A/B/C: groups mixed activity, pulls equipment only, then adds one material group without disturbing it"
+    },
+    {
+      "file": "tests/vendorBillsEquipmentHire07b.test.tsx",
+      "test": "VB-11 grouped ordinary activity pull Test D/E/F: Pull All applies rates and duplicate flags, clears the blank row, and retains Added groups"
+    }
+  ]
+}

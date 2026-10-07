@@ -30,7 +30,8 @@ import ScopeSetup from "../client/src/pages/ScopeSetup";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 
-vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({ sectionCan: () => true }) }));
+const permissionFixture = vi.hoisted(() => ({ sectionCan: vi.fn(() => true) }));
+vi.mock("@/lib/auth-context", () => ({ useAuth: () => permissionFixture }));
 
 const project = { id: 2, name: "Takkadpally", chainageFrom: "0", chainageTo: "3.8", corridorConfirmed: 1 };
 
@@ -90,7 +91,7 @@ function renderPage() {
 const heading = () => screen.getByTestId("text-scope-form-heading").textContent;
 const chainageInputs = () => screen.getAllByPlaceholderText(/e\.g\. 2\./) as HTMLInputElement[];
 
-beforeEach(() => { cleanup(); });
+beforeEach(() => { cleanup(); permissionFixture.sectionCan.mockImplementation(() => true); });
 
 describe("A/B — confirmed working reach Edit opens populated revision form", () => {
   it("loads every saved field, revision heading and note shown", async () => {
@@ -171,6 +172,18 @@ describe("F — cancel makes no data change; reopening shows confirmed values", 
 });
 
 describe("G — draft working reach editing unchanged (in-place, no revision)", () => {
+  it("keeps draft editing available when Delete is denied", async () => {
+    permissionFixture.sectionCan.mockImplementation(() => false);
+    stubFetch([draftReach]);
+    renderPage();
+    await screen.findByText("reach 4");
+    expect(screen.queryByTitle("Delete draft")).toBeNull();
+    fireEvent.click(screen.getByTitle("Edit draft"));
+    expect(heading()).toBe("Edit draft scope record");
+    expect(screen.queryByTestId("text-revision-note")).toBeNull();
+    expect(screen.getByText("Save changes")).toBeTruthy();
+    expect(chainageInputs()[0].value).toBe("0.0000");
+  });
   it("shows draft heading + Save changes, populated", async () => {
     stubFetch([draftReach]);
     renderPage();

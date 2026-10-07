@@ -1,0 +1,26 @@
+{
+  "database": "sitelog_dev",
+  "user": {
+    "id": 16,
+    "full_name": "Agent Verification",
+    "is_admin": false,
+    "is_owner": false,
+    "is_field_engineer": false,
+    "can_manage_permissions": false
+  },
+  "credentialSecret": "DEV_VERIFICATION_PASSWORD",
+  "firstLogin": 202,
+  "approvedDeviceId": 101,
+  "login": 200,
+  "protectedEndpoint": {
+    "path": "/api/auth/me",
+    "status": 200
+  },
+  "protectedPage": {
+    "path": "/account",
+    "status": 200,
+    "rendered": true,
+    "screenshot": "signed-in-account.jpg"
+  },
+  "permissionRowsUnchanged": true
+}

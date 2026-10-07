@@ -7,12 +7,12 @@ Use ordinary development login and a specifically approved device for signed-in 
 
 **Why:** Pending-device responses previously prevented live checks. Normal login plus one authorized development device approval worked without application changes.
 
-**How to apply:** Consult `reports/dev-verification-account.md` for the authorized account procedure and private-note location. Never put passwords, cookie values, or tokens in memory or the repository. Private local notes may not survive container replacement; do not claim otherwise.
+**How to apply:** Consult `reports/dev-verification-account.md` for the authorized account procedure and secret usage. Never put passwords, cookie values, or tokens in memory or the repository. Browser sessions are disposable, not a durable credential source.
 
-Long-lived verification credentials belong in a Replit Secret. Container-only credentials are a fallback that must be disclosed, including their loss on container replacement.
+Use the existing development verification password secret. If it is absent, stop sign-in verification rather than inventing another storage location.
 
-**Why:** The user requires durable credentials after container reclamation repeatedly prevented signed-in acceptance.
+**Why:** The user supplied the password through the secrets flow and explicitly prohibited another storage fallback after repeated container-reclamation failures.
 
-**How to apply:** Use supported secrets tooling and record only the secret name and usage procedure in the verification report. If the available tooling cannot store an agent-generated password, disclose that limitation rather than treating local files as durable storage.
+**How to apply:** Use supported secrets tooling to check existence, consume the value only inside the login process, and record only the secret name and usage procedure in the verification report. Reuse the ordinary account; do not create a duplicate or change flags or grants.
 
 The documented testing-agent kind was unavailable in this environment. Installed Chromium with DevTools protocol provided real signed-in screenshots instead. Select the CDP target whose type is `page`; the first target may be an extension background page.

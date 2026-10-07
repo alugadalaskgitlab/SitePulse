@@ -1,6 +1,6 @@
 # Development verification account and Part C browser acceptance
 
-Completed 2026-10-06. Development database: `sitelog_dev`.
+Latest sign-in verified 2026-10-07 (PERM-03B-1). Development database: `sitelog_dev`.
 
 ## Account
 
@@ -13,7 +13,43 @@ Completed 2026-10-06. Development database: `sitelog_dev`.
 - Session policy: **sticky**
 - Generated password is **not in this repository or report**.
 
-Private task notes are outside the repository, under
+## Durable credential restoration — PERM-03B
+
+The existing ordinary development account (ID 16) was retained. Its password
+was reset from the **DEV_VERIFICATION_PASSWORD** Replit Secret; no account
+flags or permissions were changed. The user supplied the secret through the
+secure form because the available tool could not save an agent-generated
+password. This is the disclosed deviation from agent-generated credentials.
+
+Future runs:
+
+1. Confirm the existing `DEV_VERIFICATION_PASSWORD` Replit Secret is present
+   in development. If absent, stop; do not use a container-file fallback.
+2. Start the normal application and a Chromium page with DevTools on port
+   9232 (reuse a running verification browser if present). Otherwise run:
+   `chromium --headless --no-sandbox --disable-dev-shm-usage --remote-debugging-address=127.0.0.1 --remote-debugging-port=9232 --user-data-dir=/tmp/verification-browser about:blank`
+   as a background process. This disposable profile is not password storage.
+3. Run `node scripts/permission03b1-signin.mjs`. It uses only the development
+   connection, asserts `SELECT current_database()` is `sitelog_dev` before
+   writing, reuses the existing account, checks all four admin-related flags
+   are false, and resets its password from the secret without printing it.
+4. The script uses ordinary `/api/auth/login`, approves only the pending
+   device identified by that login's own signed cookie, then logs in again.
+   It requests `/api/auth/me` and opens `/account` in the signed-in browser,
+   waiting for the actual account details before taking the screenshot.
+5. Read `reports/perm-03b1/signin-proof.json` and
+   `reports/perm-03b1/signed-in-account.jpg`. Latest login, protected API and
+   page document were all HTTP **200**, with the account page visibly rendered.
+
+The script stops rather than creating a duplicate or changing flags if the
+existing account is missing or privileged. It changes no permission rows.
+Device approval remains development-only under the explicit authorization.
+The password survives container replacement in Replit Secrets; browser sessions
+are disposable and are never the credential source.
+
+### Historical container-only notes (superseded)
+
+The old private task notes were outside the repository, under
 `/home/runner/.local/state/agent-verification/`:
 
 - `account.json`: generated account credentials; mode 0600.
