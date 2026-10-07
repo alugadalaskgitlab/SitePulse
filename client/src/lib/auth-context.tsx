@@ -209,8 +209,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function useAuth(): AuthContextType {
+export function useAuth(): AuthContextType;
+export function useAuth(options: { optional: true }): AuthContextType | null;
+export function useAuth(options?: { optional: true }): AuthContextType | null {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>");
+  if (!ctx && !options?.optional) throw new Error("useAuth must be used inside <AuthProvider>");
   return ctx;
 }
