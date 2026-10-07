@@ -1,0 +1,34 @@
+{
+  "beforeSha256": "f8ef21430a48eb30b472e5bfc8dafe9f4c45eda1b37e9e199e4cae57d020a66d",
+  "afterSha256": "f8ef21430a48eb30b472e5bfc8dafe9f4c45eda1b37e9e199e4cae57d020a66d",
+  "byteIdentical": true,
+  "gitDiff": "",
+  "ownerSubscriptions": [
+    {
+      "id": 4,
+      "userId": 2
+    },
+    {
+      "id": 5,
+      "userId": 2
+    }
+  ],
+  "ownerSubscriptionsByteIdentical": true,
+  "expiryFindings": [
+    {
+      "providerResult": "404 or 410 (existing logger does not distinguish)",
+      "retained": true,
+      "matchingOwnerSubscriptionIds": [
+        4
+      ]
+    },
+    {
+      "providerResult": "404 or 410 (existing logger does not distinguish)",
+      "retained": true,
+      "matchingOwnerSubscriptionIds": [],
+      "temporarySubscriptionId": 9,
+      "temporaryUserId": 29,
+      "correlation": "Exact logged endpoint-prefix match with the actual POST /api/push/subscribe response; endpoints redacted from evidence."
+    }
+  ]
+}

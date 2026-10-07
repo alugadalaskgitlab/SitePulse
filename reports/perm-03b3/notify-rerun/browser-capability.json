@@ -1,0 +1,11 @@
+{
+  "secureContext": true,
+  "permission": "granted",
+  "pushManagerAvailable": true,
+  "subscribed": false,
+  "errorName": "TypeError",
+  "errorMessage": "Failed to register a ServiceWorker for scope ('https://38c7ea14-bfd7-450d-9ff9-db514905afac-00-2jxsvdxptzmhz.janeway.replit.dev/') with script ('https://38c7ea14-bfd7-450d-9ff9-db514905afac-00-2jxsvdxptzmhz.janeway.replit.dev/service-worker.js'): A bad HTTP response code (404) was received when fetching the script.",
+  "exception": null,
+  "eventFired": false,
+  "applicationSubscriptionCreated": false
+}

@@ -1,0 +1,26 @@
+[
+  {
+    "user_id": 2,
+    "notifications_enabled": true,
+    "can_notify": true,
+    "subscription_id": 4
+  },
+  {
+    "user_id": 2,
+    "notifications_enabled": true,
+    "can_notify": true,
+    "subscription_id": 5
+  },
+  {
+    "user_id": 28,
+    "notifications_enabled": true,
+    "can_notify": false,
+    "subscription_id": 8
+  },
+  {
+    "user_id": 29,
+    "notifications_enabled": true,
+    "can_notify": true,
+    "subscription_id": 9
+  }
+]

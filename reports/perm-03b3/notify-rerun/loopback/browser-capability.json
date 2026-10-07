@@ -1,0 +1,12 @@
+{
+  "secureContext": true,
+  "permission": "granted",
+  "pushManagerAvailable": true,
+  "vapidPublicKeyAvailable": true,
+  "subscribed": true,
+  "providerHost": "jmt17.google.com",
+  "probeUnsubscribed": true,
+  "exception": null,
+  "eventFired": false,
+  "applicationSubscriptionCreated": false
+}

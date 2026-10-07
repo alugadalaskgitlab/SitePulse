@@ -1,0 +1,22 @@
+{
+  "users": {
+    "count": 6,
+    "checksum": "3b118f71a1b0bec5e43aff6ce7f60ccdb7d72d74371e885e0a0edb6f100096db"
+  },
+  "permissions": {
+    "count": 366,
+    "checksum": "070240778e98e64cc5c33b06028879218517021aaf892873fba1e9e6d7ca251d"
+  },
+  "ownerSubscriptions": [
+    {
+      "id": 4,
+      "userId": 2
+    },
+    {
+      "id": 5,
+      "userId": 2
+    }
+  ],
+  "ownerSubscriptionChecksum": "ee655c3583e344f6daa2f9d91ec1d098c4183eacc4d029a47c80a4e747126dc5",
+  "senderSha256": "f8ef21430a48eb30b472e5bfc8dafe9f4c45eda1b37e9e199e4cae57d020a66d"
+}

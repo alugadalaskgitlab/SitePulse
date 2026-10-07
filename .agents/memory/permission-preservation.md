@@ -48,3 +48,14 @@ alternative Notify key shared its event with another key that had real recipient
 **How to apply:** If no event is safe under the authorized scope, record the
 stored eligibility and that sending was not attempted; never claim delivery
 or non-delivery was proved, and never substitute a fake transport.
+
+Native browser push registration is not delivery evidence. Check both the
+actual provider response and the service worker's notification store.
+
+**Why:** A fresh native Chromium subscription was accepted at registration
+but rejected as stale/invalid on its first real send; an empty notification
+store for an eligible user must not be reported as a passed positive test.
+
+**How to apply:** Keep recipient eligibility, provider outcome, and observed
+receipt separate. If only one real event is authorised, do not replay it to
+repair a failed positive delivery check.
