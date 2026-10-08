@@ -35,7 +35,7 @@ describe("VB-22 site material trip source supplier UI", () => {
     ]) {
       expect(page).toContain(field);
     }
-    expect(page).toContain("Assign material source to {filteredTrips.length}");
+    expect(page).toContain("Assign material source to {bulkEligibleCount}");
     expect(page).toContain("The existing transporter values will remain untouched.");
   });
 

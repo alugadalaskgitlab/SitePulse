@@ -1,0 +1,49 @@
+{
+  "proofs": [
+    {
+      "name": "all",
+      "status": 200,
+      "count": 10,
+      "allRowsMatch": true
+    },
+    {
+      "name": "transporter",
+      "status": 200,
+      "count": 2,
+      "allRowsMatch": true
+    },
+    {
+      "name": "vehicle",
+      "status": 200,
+      "count": 1,
+      "allRowsMatch": true
+    },
+    {
+      "name": "unassigned",
+      "status": 200,
+      "count": 7,
+      "allRowsMatch": true
+    },
+    {
+      "name": "combined",
+      "status": 200,
+      "count": 2,
+      "allRowsMatch": true
+    },
+    {
+      "name": "no-match",
+      "status": 200,
+      "count": 0,
+      "allRowsMatch": true
+    }
+  ],
+  "ownSourceReadOnlyValuesProof": [
+    {
+      "id": 1
+    },
+    {
+      "id": 2
+    }
+  ],
+  "note": "VALUES query creates no stored rows; no live own-source row existed."
+}

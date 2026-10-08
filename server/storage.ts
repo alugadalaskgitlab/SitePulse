@@ -1376,7 +1376,7 @@ export interface IStorage {
   // Site Material Trips (Quick Entry)
   // Adds only nullable, backward-compatible transport fields to existing trips.
   ensureSiteMaterialTripsLinkageColumns(): Promise<void>;
-  getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; indentItemId?: number; indentId?: number; boqProjectId?: number; boqItemId?: number; programmeBarId?: number; earthworkArrangementId?: number; permittedSiteNames?: string[] }): Promise<SiteMaterialTrip[]>;
+  getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; vehicleNumber?: string; supplier?: string; onlyUnassigned?: boolean; indentItemId?: number; indentId?: number; boqProjectId?: number; boqItemId?: number; programmeBarId?: number; earthworkArrangementId?: number; permittedSiteNames?: string[] }): Promise<SiteMaterialTrip[]>;
   getSiteMaterialTripSuggestions(site: string): Promise<SiteMaterialTripSuggestions>;
   bulkAssignSiteMaterialTripMaterialSource(input: {
     dateFrom?: string;
@@ -12497,8 +12497,21 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; indentItemId?: number; indentId?: number; boqProjectId?: number; boqItemId?: number; programmeBarId?: number; earthworkArrangementId?: number; permittedSiteNames?: string[]; includeCancelled?: boolean }): Promise<SiteMaterialTrip[]> {
+  async getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; vehicleNumber?: string; supplier?: string; onlyUnassigned?: boolean; indentItemId?: number; indentId?: number; boqProjectId?: number; boqItemId?: number; programmeBarId?: number; earthworkArrangementId?: number; permittedSiteNames?: string[]; includeCancelled?: boolean }): Promise<SiteMaterialTrip[]> {
     let conditions = [];
+    // Match bulkAssignSiteMaterialTripMaterialSource, including own-source
+    // exclusion only for the unassigned view (normal lists retain own source).
+    if (filters?.vehicleNumber?.trim()) {
+      const vehicleKey = normalizeVehicleSupplierVehicle(filters.vehicleNumber);
+      conditions.push(sql`upper(regexp_replace(trim(${siteMaterialTrips.vehicleNumber}), '[[:space:]-]+', '', 'g')) = ${vehicleKey}`);
+    }
+    if (filters?.supplier?.trim()) {
+      conditions.push(sql`UPPER(TRIM(${siteMaterialTrips.supplier})) = ${normalizeVehicleSupplierName(filters.supplier)}`);
+    }
+    if (filters?.onlyUnassigned) {
+      conditions.push(sql`${siteMaterialTrips.materialSourceType} IS DISTINCT FROM 'own_source'`);
+      conditions.push(or(isNull(siteMaterialTrips.materialSourceSupplier), sql`TRIM(${siteMaterialTrips.materialSourceSupplier}) = ''`)!);
+    }
     
     if (filters?.site) conditions.push(eq(siteMaterialTrips.site, filters.site));
     if (filters?.material) conditions.push(eq(siteMaterialTrips.material, filters.material));

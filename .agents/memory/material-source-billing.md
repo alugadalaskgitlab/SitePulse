@@ -18,6 +18,15 @@ physical receipt. Own-source material creates no material-seller liability.
 Do not infer this origin for historical trips. Arrangement-work pricing is
 separate, not authorised by the origin-recording change.
 
+The user approved separate bulk-eligible and excluded-own-source counts while
+retaining own-source trips in the ordinary Material Trips list.
+
+**Why:** Own-source material is a confirmed origin, not an unassigned vendor
+field, and must remain available through the existing role filters.
+
+**How to apply:** Do not hide own-source history to make a bulk count look equal
+to the list count; explain the exclusion in the bulk action and confirmation.
+
 **Why:** The owner explicitly settled these commercial rules. A global trip-consumed flag would block a legitimate separate-party liability, while splitting same-party delivery would contradict the landed-rate rule.
 
 **How to apply:** Keep role-qualified identity in existing bill source metadata and apply vendor/alias-aware duplicate protection per role. Never derive the material seller from vehicle associations. Bulk source assignments must remain site-scoped, filtered, audited and atomic.

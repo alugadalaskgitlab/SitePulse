@@ -337,6 +337,23 @@ describe("focused role fields loading/error/empty states", () => {
 });
 
 describe("B1/B2 role list and filter scope", () => {
+  it("keeps own-source rows visible but excludes them from both bulk counts", async () => {
+    const own = trip({id:99,materialSourceType:"own_source",materialSourceSupplier:null,materialSourceVendorId:null});
+    rows.push(own);
+    try {
+      renderPage(); await ready();
+      setInput("select-filter-site","NH-44");
+      await screen.findByTestId("input-bulk-material-source-supplier");
+      setInput("input-bulk-material-source-supplier","SOURCE");
+      expect(screen.getAllByTestId(/^row-trip-/)).toHaveLength(6);
+      expect(screen.getByTestId("button-bulk-assign-material-source")).toHaveTextContent("Assign to 5 matching trips");
+      fireEvent.click(screen.getByTestId("button-bulk-assign-material-source"));
+      const dialog = await screen.findByTestId("dialog-confirm-bulk-material-source");
+      expect(dialog).toHaveTextContent("Assign material source to 5 trips?");
+      expect(dialog).toHaveTextContent("1 own-source trip excluded");
+      expect(harness.request).not.toHaveBeenCalled();
+    } finally { rows.pop(); }
+  });
   it("renders all role cases in plain words and unresolved in amber", async () => {
     renderPage(); await ready();
     expect(screen.getByTestId("trip-role-description-1")).toHaveTextContent("from SANGANNA · brought by SANGANNA");

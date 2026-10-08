@@ -415,7 +415,7 @@ export default function SiteMaterialTrips() {
       const response = await apiRequest("POST", "/api/site-material-trips/material-source/bulk", payload);
       const result: unknown = await response.json();
       const updatedCount = (result as { updatedCount?: unknown } | null)?.updatedCount;
-      if (!Number.isSafeInteger(updatedCount) || (updatedCount as number) < 0 || (updatedCount as number) > filteredTrips.length) {
+      if (!Number.isSafeInteger(updatedCount) || (updatedCount as number) < 0 || (updatedCount as number) > bulkEligibleCount) {
         throw new Error("The server returned an invalid updated-trip count. Reload the trips before trying again.");
       }
       return { updatedCount: updatedCount as number };
@@ -468,6 +468,8 @@ export default function SiteMaterialTrips() {
   };
 
   const filteredTrips = trips ?? [];
+  const bulkEligibleCount = filteredTrips.filter(trip => trip.materialSourceType !== "own_source").length;
+  const bulkExcludedCount = filteredTrips.length - bulkEligibleCount;
   const roleFilteredTrips = useMemo(() => filterTripsByRole(filteredTrips, roleFilter), [trips, roleFilter]);
   const hasUnassignedFilteredTrips = filteredTrips.some(
     (trip) => trip.materialSourceType !== "own_source" && !trip.materialSourceSupplier?.trim(),
@@ -934,7 +936,7 @@ export default function SiteMaterialTrips() {
                   <div>
                   <p className="font-medium">Prepare material-source backlog for billing</p>
                   <p className="text-xs text-muted-foreground">
-                    Assign one source supplier to the {filteredTrips.length} trip{filteredTrips.length === 1 ? "" : "s"} matching the filters above. The transporter is not changed.
+                    Assign one source supplier to the {bulkEligibleCount} eligible trip{bulkEligibleCount === 1 ? "" : "s"} matching the filters above. The transporter is not changed.
                   </p>
                   {roleFilter !== "all" && <p className="text-xs text-amber-700">Select All in the transport/source role filter before using this bulk tool. Role-filtered subsets cannot be bulk assigned.</p>}
                   </div>
@@ -951,14 +953,15 @@ export default function SiteMaterialTrips() {
                     />
                     <Button
                       type="button"
-                      disabled={roleFilter !== "all" || !bulkMaterialSourceSupplier.trim() || !filteredTrips.length || !siteFilter || siteFilter === "all"}
+                      disabled={roleFilter !== "all" || !bulkMaterialSourceSupplier.trim() || !bulkEligibleCount || !siteFilter || siteFilter === "all"}
                       onClick={() => setBulkConfirmOpen(true)}
                       data-testid="button-bulk-assign-material-source"
                     >
-                      Assign to {filteredTrips.length} matching trip{filteredTrips.length === 1 ? "" : "s"}
+                      Assign to {bulkEligibleCount} matching trip{bulkEligibleCount === 1 ? "" : "s"}
                     </Button>
                   </div>
                   {(!siteFilter || siteFilter === "all") && <p className="text-xs text-amber-700">Select one site before bulk assignment.</p>}
+                  {bulkExcludedCount > 0 && <p className="text-xs text-muted-foreground">{bulkExcludedCount} own-source trip{bulkExcludedCount === 1 ? "" : "s"} excluded from bulk assignment.</p>}
                 </div>
               </details>
             )}
@@ -1077,7 +1080,7 @@ export default function SiteMaterialTrips() {
       <AlertDialog open={bulkConfirmOpen} onOpenChange={setBulkConfirmOpen}>
         <AlertDialogContent data-testid="dialog-confirm-bulk-material-source">
           <AlertDialogHeader>
-            <AlertDialogTitle>Assign material source to {filteredTrips.length} trip{filteredTrips.length === 1 ? "" : "s"}?</AlertDialogTitle>
+            <AlertDialogTitle>Assign material source to {bulkEligibleCount} trip{bulkEligibleCount === 1 ? "" : "s"}?</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2">
                 <p>
@@ -1088,8 +1091,9 @@ export default function SiteMaterialTrips() {
                   {materialFilter && materialFilter !== "all" ? ` · ${materialFilter}` : ""}
                   {vehicleFilter ? ` · vehicle ${vehicleFilter}` : ""}
                   {supplierFilter ? ` · transporter ${supplierFilter}` : ""}
-                  {onlyUnassigned ? " · unassigned only" : ""}.
+                  {onlyUnassigned ? " · unassigned only" : " · assigned and unassigned"}.
                 </p>
+                {bulkExcludedCount > 0 && <p>{bulkExcludedCount} own-source trip{bulkExcludedCount === 1 ? "" : "s"} excluded from bulk assignment.</p>}
                 <p>The existing transporter values will remain untouched.</p>
               </div>
             </AlertDialogDescription>

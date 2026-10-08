@@ -12,6 +12,7 @@ const spies = vi.hoisted(() => ({
   getArrangement: vi.fn(),
   getArrangementsForItem: vi.fn(),
   getTrip: vi.fn(),
+  getTrips: vi.fn(),
   createTrip: vi.fn(),
   updateTrip: vi.fn(),
 }));
@@ -23,6 +24,7 @@ vi.mock("../server/storage", () => {
     getEarthworkArrangementById: spies.getArrangement,
     getEarthworkArrangementsForItem: spies.getArrangementsForItem,
     getSiteMaterialTripById: spies.getTrip, createSiteMaterialTrip: spies.createTrip,
+    getSiteMaterialTrips: spies.getTrips,
     updateSiteMaterialTrip: spies.updateTrip,
   };
   return { StockShortageError: class extends Error {}, storage: new Proxy(base, {
@@ -65,6 +67,13 @@ beforeEach(() => {
 });
 
 describe("DPR-02 site-material-trip route enforcement", () => {
+  it("passes trip list filters through with existing site scope and ignores blank values", async () => {
+    spies.getTrips.mockResolvedValue([]);
+    expect((await request(app).get("/api/site-material-trips?vehicleNumber=%20ab-12%20&supplier=%20Carrier%20&onlyUnassigned=true")).status).toBe(200);
+    expect(spies.getTrips).toHaveBeenLastCalledWith(expect.objectContaining({vehicleNumber:"ab-12",supplier:"Carrier",onlyUnassigned:true,permittedSiteNames:["Site A"]}));
+    await request(app).get("/api/site-material-trips?vehicleNumber=%20&supplier=%20&onlyUnassigned=false");
+    expect(spies.getTrips).toHaveBeenLastCalledWith(expect.objectContaining({vehicleNumber:undefined,supplier:undefined,onlyUnassigned:false}));
+  });
   it("rejects a direct create missing required BOQ linkage", async () => {
     const res = await request(app).post("/api/site-material-trips").send({ ...body, boqItemId: undefined });
     expect(res.status).toBe(400);

@@ -817,6 +817,9 @@ export async function registerRoutes(
       const filters = {
         site: req.query.site as string | undefined,
         material: req.query.material as string | undefined,
+        vehicleNumber: typeof req.query.vehicleNumber === "string" ? req.query.vehicleNumber.trim() || undefined : undefined,
+        supplier: typeof req.query.supplier === "string" ? req.query.supplier.trim() || undefined : undefined,
+        onlyUnassigned: req.query.onlyUnassigned === "true",
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
         indentItemId: req.query.indentItemId ? parseInt(req.query.indentItemId as string) : undefined,
