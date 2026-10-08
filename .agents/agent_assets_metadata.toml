@@ -5393,3 +5393,45 @@ mtime_ms = 1791385190075
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/bb2fd83c-fc9d-43d4-be5c-fde9344f70c2/58d3182a-9f67-4bb6-af28-38c33ebe3d8a"
 storage_version_token = "1791385285173159"
 content_type = "text/html"
+
+[[outputs]]
+id = "Z_WC30lYleWLM-vr3BZIh"
+uri = "file://reports/vb-arrange01/REPORT.md"
+type = "text"
+title = "VB-ARRANGE-01 verification report"
+description = "Changes, HTTP results, screenshot references, cleanup checksums, and remaining verification blockers."
+logical_id = "8a9e8b3c-5b49-4719-ad9b-12061150e9bd"
+content_hash = "sha256:060daffd8d65a77af57278e315d5f579852e6d4fef6661905f3071373c5e5e7e"
+size = 5980
+mtime_ms = 1791443040905
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8a9e8b3c-5b49-4719-ad9b-12061150e9bd/8f6792e7-614e-435a-a5b3-a525a549d742"
+storage_version_token = "1791443222449137"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "wCYE0reS243X8gvUHgwnM"
+uri = "file://reports/vb-arrange01/own-agency-filter.jpg"
+type = "image"
+title = "Own-source agency trip — signed-in filter"
+description = "One matching own-source trip in the real development list."
+logical_id = "5791ef4c-c210-46c4-83c4-cbbaeebe03d6"
+content_hash = "sha256:db683092a1c576f18027c90dfe3b3fab0a23acc5e618d85c883836b7baadce5b"
+size = 121447
+mtime_ms = 1791442863669
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/5791ef4c-c210-46c4-83c4-cbbaeebe03d6/50eeddac-6430-49cf-83c6-2e0d3c22b478"
+storage_version_token = "1791443224398657"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "t4fB6biIpi8OYLi_uMsXa"
+uri = "file://reports/vb-arrange01/missing-label-browser.jpg"
+type = "image"
+title = "Missing source label blocked"
+description = "Actual signed-in form submission displays the required validation message."
+logical_id = "766b4326-ebff-44c9-a86f-10c2bb318217"
+content_hash = "sha256:a2c47d1eeb5df2ba1b5b872719ed04261d3006a7866c8aa21f942d33e5af0d5f"
+size = 114796
+mtime_ms = 1791442870041
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/766b4326-ebff-44c9-a86f-10c2bb318217/a1575424-0086-498c-b492-ab37c180350c"
+storage_version_token = "1791443227918777"
+content_type = "image/jpeg"
