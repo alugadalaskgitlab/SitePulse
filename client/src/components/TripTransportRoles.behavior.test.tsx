@@ -337,6 +337,29 @@ describe("focused role fields loading/error/empty states", () => {
 });
 
 describe("B1/B2 role list and filter scope", () => {
+  it("shows Date before Time and challans in the existing source cell without changing other columns", async () => {
+    const originals = rows.slice();
+    rows[0] = trip({date:"2026-08-17",receiptNumber:"CH-123"});
+    rows[1] = trip({id:2,date:"2026-08-16",receiptNumber:"   "});
+    try {
+      renderPage(); await ready();
+      expect(screen.getAllByRole("columnheader").map(e=>e.textContent)).toEqual(["Date","Time","Site","Material","Transporter","Material Source","Vehicle","Qty","UOM","Location","Photos","Action"]);
+      const first=within(screen.getByTestId("row-trip-1")).getAllByRole("cell");
+      expect(first[0]).toHaveTextContent("17-AUG-2026");
+      expect(first[1]).toHaveTextContent("10:21");
+      expect(first[5]).toContainElement(screen.getByTestId("trip-receipt-1"));
+      expect(screen.getByTestId("trip-receipt-1")).toHaveTextContent("CH-123");
+      expect(screen.getByTestId("trip-receipt-2").textContent).toBe("-");
+      expect(screen.getByTestId("trip-receipt-3").textContent).toBe("-");
+      expect(within(screen.getByTestId("row-trip-2")).getAllByRole("cell")[0]).toHaveTextContent("16-AUG-2026");
+      if (process.env.TRIPS_DISPLAY_EVIDENCE) {
+        const fs = await import("node:fs");
+        const css = fs.readdirSync("dist/public/assets").find(name => name.startsWith("index-") && name.endsWith(".css"))!;
+        fs.writeFileSync("reports/trips-filter01b/blank-challan-fixture.html",
+          `<!doctype html><html><head><meta charset="utf-8"><style>${fs.readFileSync(`dist/public/assets/${css}`, "utf8")}</style></head><body class="p-6 bg-background text-foreground"><h1 class="text-xl font-bold mb-6">Component test fixture — not saved trip data</h1>${document.querySelector("table")!.outerHTML}</body></html>`);
+      }
+    } finally { rows.splice(0,rows.length,...originals); }
+  });
   it("keeps own-source rows visible but excludes them from both bulk counts", async () => {
     const own = trip({id:99,materialSourceType:"own_source",materialSourceSupplier:null,materialSourceVendorId:null});
     rows.push(own);

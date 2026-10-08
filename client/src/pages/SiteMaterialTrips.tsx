@@ -976,6 +976,7 @@ export default function SiteMaterialTrips() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b bg-muted/50">
+                      <th className="text-left p-2">Date</th>
                       <th className="text-left p-2">Time</th>
                       <th className="text-left p-2">Site</th>
                       <th className="text-left p-2">Material</th>
@@ -992,6 +993,7 @@ export default function SiteMaterialTrips() {
                   <tbody>
                     {roleFilteredTrips.map((trip) => (
                       <tr key={trip.id} className="border-b hover:bg-muted/30" data-testid={`row-trip-${trip.id}`}>
+                        <td className="p-2 whitespace-nowrap">{trip.date ? format(new Date(trip.date + "T00:00:00"), "dd-MMM-yyyy").toUpperCase() : "-"}</td>
                         <td className="p-2">{trip.time || '-'}</td>
                         <td className="p-2 font-medium">{trip.site}</td>
                         <td className="p-2">
@@ -1005,7 +1007,9 @@ export default function SiteMaterialTrips() {
                         <td className="p-2" data-testid={`trip-material-source-${trip.id}`}>{trip.materialSourceType === "own_source" ? <>
                           Our own borrow area
                           {trip.materialSourceLabel && <p className="text-xs text-muted-foreground">{trip.materialSourceLabel}</p>}
-                        </> : trip.materialSourceSupplier?.trim() || '-'}</td>
+                        </> : trip.materialSourceSupplier?.trim() || '-'}
+                          <p className="mt-1 text-xs text-muted-foreground">Receipt/Challan No.: <span className="break-words" data-testid={`trip-receipt-${trip.id}`}>{trip.receiptNumber?.trim() || "-"}</span></p>
+                        </td>
                         <td className="p-2">{trip.vehicleNumber || '-'}</td>
                         <td className="p-2 text-right font-mono">{formatTripQuantity(trip, false)}</td>
                         <td className="p-2">{trip.uom}</td>
