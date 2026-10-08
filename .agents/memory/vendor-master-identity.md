@@ -20,3 +20,14 @@ Multi-select spelling-variant linking and alias-writing were explicitly cancelle
 **Why:** The user wants other vendor roles deferred until later Vendor Bills refinements, not further linking functionality now.
 
 **How to apply:** Do not revive the earlier multi-select proposal without a new request. Keep the broader Activity view and dormant role support intact when changing review visibility.
+
+The owner's vendor master already suffers from duplicate spellings. Do not
+leave test vendors behind.
+
+**Why:** The user explicitly identified this existing data-quality problem and
+required obviously fake test names plus exact before/after count and checksum
+proof when authorizing temporary vendors.
+
+**How to apply:** Obtain authorization for vendor fixtures, label them clearly,
+remove every fixture, and prove the master is restored rather than relying
+only on successful DELETE responses.
