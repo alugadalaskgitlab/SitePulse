@@ -1,0 +1,6 @@
+{
+  "status": 409,
+  "data": {
+    "message": "Saved arrangement pricing is frozen. Its snapshot, quantity, rate and amount cannot be changed."
+  }
+}

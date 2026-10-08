@@ -1,0 +1,6 @@
+{
+  "status": 409,
+  "data": {
+    "message": "Site-material trip role auto:site_material_trip_arrangement:1900000501 is already billed on HLC/VB/2026/0047"
+  }
+}

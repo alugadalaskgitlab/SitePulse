@@ -12,6 +12,8 @@ import { normalizeDprSiteName } from "../shared/dprBoqSelection";
 import { hasDprBoqReferences } from "../shared/dprBoqReferences";
 import { isManualVendorRateCard, vendorRateCardIdentity } from "../shared/vendorRateCardIdentity";
 import { vendorBillTripCandidate } from "../shared/vendorBillTripRoles";
+import { tripBillIdentity, tripBillSourcesConflict } from "../shared/vendorBillArrangement";
+import { arrangementBillValidationError } from "../shared/vendorBillArrangementValidation";
 import {
   auditLogs,
   type AuditLog,
@@ -17627,18 +17629,24 @@ export class DatabaseStorage implements IStorage {
     vendorName: string,
     items: readonly Partial<InsertVendorBillItem>[],
     excludeBillId?: number,
+    savedItems: readonly Partial<InsertVendorBillItem>[] = [],
   ): Promise<void> {
     const candidates = items
       .map(item => String(item.source || "").trim().toLowerCase())
-      .filter(source => /^auto:site_material_trip(?:_material|_transport)?:\d+$/.test(source));
+      .filter(source => tripBillIdentity(source));
     if (candidates.length === 0) return;
 
-    if (new Set(candidates).size !== candidates.length) {
+    if (candidates.some((source, index) => candidates.slice(0, index).some(other => tripBillSourcesConflict(source, other)))) {
       throw Object.assign(new Error("The same site-material trip role cannot be added twice to one bill"), { code: "CONFLICT" });
     }
-    const sources = candidates.slice().sort();
-    for (const source of sources) {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(1432, hashtext(${source}))`);
+    const sources = Array.from(new Set(candidates.flatMap(source => {
+      const identity = tripBillIdentity(source)!;
+      return identity.role === "_arrangement"
+        ? ["", "_material", "_transport", "_arrangement"].map(role => `auto:site_material_trip${role}:${identity.tripId}`)
+        : [source, `auto:site_material_trip_arrangement:${identity.tripId}`];
+    })));
+    for (const id of Array.from(new Set(candidates.map(source => tripBillIdentity(source)!.tripId))).sort((a,b) => a-b)) {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(1432, hashtext(${`auto:site_material_trip:${id}`}))`);
     }
 
     const aliases = await tx.select().from(vendorAliases);
@@ -17655,6 +17663,21 @@ export class DatabaseStorage implements IStorage {
     for (const alias of aliases) {
       if (variants.has(alias.canonicalName.toUpperCase().trim())) variants.add(alias.alias.toUpperCase().trim());
     }
+    const newPriced = items.filter(item => item.arrangementPricing && !savedItems.some(saved => saved.source?.toLowerCase() === item.source?.toLowerCase()));
+    // Lock the rate source until the snapshot and bill item commit together.
+    const arrangementIds = Array.from(new Set(newPriced.map(item => item.arrangementPricing!.arrangementId))).sort((a,b) => a-b);
+    for (const id of arrangementIds) {
+      const [arrangement] = await tx.select().from(earthworkArrangements).where(eq(earthworkArrangements.id, id)).for("share");
+      if (!arrangement) throw Object.assign(new Error("Arrangement no longer exists"), { code: "CONFLICT" });
+      for (const item of newPriced.filter(i => i.arrangementPricing!.arrangementId === id)) {
+        const [trip] = await tx.select().from(siteMaterialTrips).where(eq(siteMaterialTrips.id, item.arrangementPricing!.tripId)).for("share");
+        const matches = (name?: string | null) => variants.has((name || "").toUpperCase().trim());
+        const candidate = trip && trip.earthworkArrangementId === id
+          ? vendorBillTripCandidate(trip, matches(trip.materialSourceSupplier), matches(trip.supplier), "all", arrangement, matches(arrangement.agencyName)) : null;
+        const error = arrangementBillValidationError([item], candidate ? [candidate] : []);
+        if (error) throw Object.assign(new Error(error), { code: "CONFLICT" });
+      }
+    }
     const vendorConditions = Array.from(variants).map(value => sql`UPPER(TRIM(${vendorBills.vendorName})) = ${value}`);
     const existing = await tx.select({
       billNo: vendorBills.billNo,
@@ -17663,7 +17686,7 @@ export class DatabaseStorage implements IStorage {
       .from(vendorBillItems)
       .innerJoin(vendorBills, eq(vendorBills.id, vendorBillItems.billId))
       .where(and(
-        inArray(vendorBillItems.source, sources),
+        sql`LOWER(${vendorBillItems.source}) IN (${sql.join(sources.map(source => sql`${source}`), sql`, `)})`,
         or(...vendorConditions),
         ...(excludeBillId ? [ne(vendorBills.id, excludeBillId)] : []),
       ))
@@ -17744,6 +17767,7 @@ export class DatabaseStorage implements IStorage {
             equipmentId: item.equipmentId,
             leadDistance: item.leadDistance ?? null,
             transportPricing: item.transportPricing ?? null,
+            arrangementPricing: item.arrangementPricing ?? null,
             siteName: (item as any).siteName?.toUpperCase() || null,
             suppliedTo: item.suppliedTo ?? null,
             transporter: item.transporter ?? null,
@@ -17970,13 +17994,17 @@ export class DatabaseStorage implements IStorage {
       // A normal legacy edit replaces only its manually supplied lines.  It
       // must not silently remove frozen/integrated hire lines when the caller
       // did not submit the optional hireGroups section.
+      const savedItems = await tx.select().from(vendorBillItems).where(eq(vendorBillItems.billId, id));
+      const frozenError = arrangementBillValidationError(data.items.filter(item => savedItems.some(saved => saved.source?.toLowerCase() === item.source?.toLowerCase())), [], savedItems);
+      if (frozenError || (savedItems.some(item => item.arrangementPricing) && existing.vendorName.toUpperCase().trim() !== data.vendorName.toUpperCase().trim()))
+        throw Object.assign(new Error(frozenError || "The vendor of a frozen arrangement bill cannot be changed"), { code: "CONFLICT" });
       await tx.delete(vendorBillItems).where(data.hireGroups === undefined
         ? and(eq(vendorBillItems.billId, id), isNull(vendorBillItems.hireStatementId))
         : eq(vendorBillItems.billId, id));
 
       let items: VendorBillItem[] = [];
       if (data.items?.length) {
-        await this.assertSiteMaterialTripItemsAvailable(tx, data.vendorName, data.items, id);
+        await this.assertSiteMaterialTripItemsAvailable(tx, data.vendorName, data.items, id, savedItems);
         const conflict = data.items.find(item => rawAutoItemCoveredByHireGroup(item, data.hireGroups));
         if (conflict) {
           throw Object.assign(new Error(`Line item for ${conflict.description} on ${conflict.date} is already covered by a hire group for this bill — remove it before saving`), { code: "CONFLICT" });
@@ -17999,6 +18027,7 @@ export class DatabaseStorage implements IStorage {
             equipmentId: item.equipmentId,
             leadDistance: item.leadDistance ?? null,
             transportPricing: item.transportPricing ?? null,
+            arrangementPricing: item.arrangementPricing ?? null,
             siteName: (item as any).siteName?.toUpperCase() || null,
             suppliedTo: item.suppliedTo ?? null,
             transporter: item.transporter ?? null,
@@ -18570,15 +18599,17 @@ export class DatabaseStorage implements IStorage {
       // One alias-aware query: same-party matches cannot emit duplicate rows.
       const trips = await db.select({
         trip: siteMaterialTrips,
+        arrangement: earthworkArrangements,
+        matchesAgency: sql<boolean>`coalesce(${vendorMatchSql(earthworkArrangements.agencyName)}, false)`,
         matchesSeller: sql<boolean>`coalesce(${vendorMatchSql(siteMaterialTrips.materialSourceSupplier)}, false)`,
         matchesTransporter: sql<boolean>`coalesce(${vendorMatchSql(siteMaterialTrips.supplier)}, false)`,
-      }).from(siteMaterialTrips).where(and(
-        or(vendorMatchSql(siteMaterialTrips.materialSourceSupplier), vendorMatchSql(siteMaterialTrips.supplier)),
+      }).from(siteMaterialTrips).leftJoin(earthworkArrangements, eq(earthworkArrangements.id, siteMaterialTrips.earthworkArrangementId)).where(and(
+        or(vendorMatchSql(siteMaterialTrips.materialSourceSupplier), vendorMatchSql(siteMaterialTrips.supplier), vendorMatchSql(earthworkArrangements.agencyName)),
         gte(siteMaterialTrips.date, periodFrom), lte(siteMaterialTrips.date, periodTo),
         eq(siteMaterialTrips.isCancelled, false), eq(siteMaterialTrips.isDeleted, false),
       ));
-      for (const { trip, matchesSeller, matchesTransporter } of trips) {
-        const candidate = vendorBillTripCandidate(trip, matchesSeller, matchesTransporter, bt);
+      for (const { trip, matchesSeller, matchesTransporter, arrangement, matchesAgency } of trips) {
+        const candidate = vendorBillTripCandidate(trip, matchesSeller, matchesTransporter, bt, arrangement, matchesAgency);
         if (candidate) items.push(candidate);
       }
     }
@@ -21739,14 +21770,15 @@ export class DatabaseStorage implements IStorage {
     };
 
     if (bt === "material" || bt === "transport" || bt === "all") {
-      const trips = await db.select().from(siteMaterialTrips).where(and(
+      const trips = await db.select({ trip: siteMaterialTrips, arrangement: earthworkArrangements }).from(siteMaterialTrips)
+        .leftJoin(earthworkArrangements, eq(earthworkArrangements.id, siteMaterialTrips.earthworkArrangementId)).where(and(
         gte(siteMaterialTrips.date, periodFrom), lte(siteMaterialTrips.date, periodTo),
         eq(siteMaterialTrips.isCancelled, false), eq(siteMaterialTrips.isDeleted, false),
       ));
-      for (const trip of trips) {
-        const names = new Set([trip.materialSourceSupplier, trip.supplier].filter((name): name is string => !!name));
+      for (const { trip, arrangement } of trips) {
+        const names = new Set([trip.materialSourceSupplier, trip.supplier, arrangement?.agencyName].filter((name): name is string => !!name));
         for (const name of names) {
-          const candidate = vendorBillTripCandidate(trip, name === trip.materialSourceSupplier, name === trip.supplier, bt);
+          const candidate = vendorBillTripCandidate(trip, name === trip.materialSourceSupplier, name === trip.supplier, bt, arrangement, name === arrangement?.agencyName);
           if (candidate) addRecord(name, candidate.category);
         }
       }
@@ -22791,8 +22823,7 @@ export class DatabaseStorage implements IStorage {
       for (const existing of existingItems) {
         const bill = billMap.get(existing.billId);
         if (!bill) continue;
-        const sourceMatch = /^auto:site_material_trip(?:_material|_transport)?:\d+$/.test(String(item.source || "").toLowerCase()) &&
-          String(existing.source || "").toLowerCase() === String(item.source || "").toLowerCase();
+        const sourceMatch = tripBillSourcesConflict(item.source, existing.source);
         if (sourceMatch) {
           duplicates.push({ index: i, billNo: bill.billNo, billStatus: bill.status });
           break;

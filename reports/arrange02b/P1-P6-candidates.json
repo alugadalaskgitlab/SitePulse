@@ -1,0 +1,343 @@
+{
+  "status": 200,
+  "data": [
+    {
+      "date": "2026-10-08",
+      "category": "other",
+      "description": "SOIL hauled against Arrangement #1900000403 — 600 CFT",
+      "source": "auto",
+      "sourceType": "site_material_trip_arrangement",
+      "sourceId": 1900000508,
+      "qty": 1,
+      "unit": "TRIP",
+      "rate": 1250,
+      "amount": 1250,
+      "siteName": "SITE: THAKADPALLY - SIRUR",
+      "vehicleNumber": "ARR02B",
+      "receiptNumber": null,
+      "arrangementPricing": {
+        "arrangementId": 1900000403,
+        "tripId": 1900000508,
+        "terms": {
+          "basis": "trip",
+          "scope": "transport_only"
+        },
+        "tripQuantity": 600,
+        "tripUom": "CFT",
+        "rateApplied": 1250,
+        "billedQty": 1,
+        "billedUnit": "TRIP",
+        "reason": null,
+        "conflict": false
+      },
+      "transportPricingNote": null
+    },
+    {
+      "date": "2026-10-08",
+      "category": "other",
+      "description": "SOIL hauled against Arrangement #1900000401 — 300 CFT",
+      "source": "auto",
+      "sourceType": "site_material_trip_arrangement",
+      "sourceId": 1900000501,
+      "qty": 1,
+      "unit": "TRIP",
+      "rate": 1000,
+      "amount": 1000,
+      "siteName": "SITE: THAKADPALLY - SIRUR",
+      "vehicleNumber": "ARR02B",
+      "receiptNumber": null,
+      "arrangementPricing": {
+        "arrangementId": 1900000401,
+        "tripId": 1900000501,
+        "terms": {
+          "basis": "trip",
+          "scope": "full_service"
+        },
+        "tripQuantity": 300,
+        "tripUom": "CFT",
+        "rateApplied": 1000,
+        "billedQty": 1,
+        "billedUnit": "TRIP",
+        "reason": null,
+        "conflict": false
+      },
+      "transportPricingNote": null
+    },
+    {
+      "date": "2026-10-08",
+      "category": "other",
+      "description": "SOIL hauled against Arrangement #1900000401 — 600 CFT",
+      "source": "auto",
+      "sourceType": "site_material_trip_arrangement",
+      "sourceId": 1900000502,
+      "qty": 1,
+      "unit": "TRIP",
+      "rate": 1250,
+      "amount": 1250,
+      "siteName": "SITE: THAKADPALLY - SIRUR",
+      "vehicleNumber": "ARR02B",
+      "receiptNumber": null,
+      "arrangementPricing": {
+        "arrangementId": 1900000401,
+        "tripId": 1900000502,
+        "terms": {
+          "basis": "trip",
+          "scope": "full_service"
+        },
+        "tripQuantity": 600,
+        "tripUom": "CFT",
+        "rateApplied": 1250,
+        "billedQty": 1,
+        "billedUnit": "TRIP",
+        "reason": null,
+        "conflict": false
+      },
+      "transportPricingNote": null
+    },
+    {
+      "date": "2026-10-08",
+      "category": "other",
+      "description": "SOIL hauled against Arrangement #1900000401 — 600 CFT",
+      "source": "auto",
+      "sourceType": "site_material_trip_arrangement",
+      "sourceId": 1900000503,
+      "qty": 1,
+      "unit": "TRIP",
+      "rate": 1250,
+      "amount": 1250,
+      "siteName": "SITE: THAKADPALLY - SIRUR",
+      "vehicleNumber": "ARR02B",
+      "receiptNumber": null,
+      "arrangementPricing": {
+        "arrangementId": 1900000401,
+        "tripId": 1900000503,
+        "terms": {
+          "basis": "trip",
+          "scope": "full_service"
+        },
+        "tripQuantity": 600,
+        "tripUom": "CFT",
+        "rateApplied": 1250,
+        "billedQty": 1,
+        "billedUnit": "TRIP",
+        "reason": null,
+        "conflict": false
+      },
+      "transportPricingNote": null
+    },
+    {
+      "date": "2026-10-08",
+      "category": "other",
+      "description": "SOIL hauled against Arrangement #1900000401 — 800 CFT",
+      "source": "auto",
+      "sourceType": "site_material_trip_arrangement",
+      "sourceId": 1900000504,
+      "qty": 1,
+      "unit": "TRIP",
+      "rate": 1500,
+      "amount": 1500,
+      "siteName": "SITE: THAKADPALLY - SIRUR",
+      "vehicleNumber": "ARR02B",
+      "receiptNumber": null,
+      "arrangementPricing": {
+        "arrangementId": 1900000401,
+        "tripId": 1900000504,
+        "terms": {
+          "basis": "trip",
+          "scope": "full_service"
+        },
+        "tripQuantity": 800,
+        "tripUom": "CFT",
+        "rateApplied": 1500,
+        "billedQty": 1,
+        "billedUnit": "TRIP",
+        "reason": null,
+        "conflict": false
+      },
+      "transportPricingNote": null
+    },
+    {
+      "date": "2026-10-08",
+      "category": "other",
+      "description": "SOIL hauled against Arrangement #1900000401 — 1000 CFT",
+      "source": "auto",
+      "sourceType": "site_material_trip_arrangement",
+      "sourceId": 1900000505,
+      "qty": 1,
+      "unit": "TRIP",
+      "rate": 1750,
+      "amount": 1750,
+      "siteName": "SITE: THAKADPALLY - SIRUR",
+      "vehicleNumber": "ARR02B",
+      "receiptNumber": null,
+      "arrangementPricing": {
+        "arrangementId": 1900000401,
+        "tripId": 1900000505,
+        "terms": {
+          "basis": "trip",
+          "scope": "full_service"
+        },
+        "tripQuantity": 1000,
+        "tripUom": "CFT",
+        "rateApplied": 1750,
+        "billedQty": 1,
+        "billedUnit": "TRIP",
+        "reason": null,
+        "conflict": false
+      },
+      "transportPricingNote": null
+    },
+    {
+      "date": "2026-10-08",
+      "category": "other",
+      "description": "SOIL hauled against Arrangement #1900000401 — 700 CFT",
+      "source": "auto",
+      "sourceType": "site_material_trip_arrangement",
+      "sourceId": 1900000506,
+      "qty": 1,
+      "unit": "TRIP",
+      "rate": 0,
+      "amount": 0,
+      "siteName": "SITE: THAKADPALLY - SIRUR",
+      "vehicleNumber": "ARR02B",
+      "receiptNumber": null,
+      "arrangementPricing": {
+        "arrangementId": 1900000401,
+        "tripId": 1900000506,
+        "terms": {
+          "basis": "trip",
+          "scope": "full_service"
+        },
+        "tripQuantity": 700,
+        "tripUom": "CFT",
+        "rateApplied": 0,
+        "billedQty": 1,
+        "billedUnit": "TRIP",
+        "reason": "Unpriced — no unique exact rate for 700 CFT in Arrangement #1900000401.",
+        "conflict": false
+      },
+      "transportPricingNote": "Unpriced — no unique exact rate for 700 CFT in Arrangement #1900000401."
+    },
+    {
+      "date": "2026-10-08",
+      "category": "other",
+      "description": "SOIL hauled against Arrangement #1900000402 — 600 CFT",
+      "source": "auto",
+      "sourceType": "site_material_trip_arrangement",
+      "sourceId": 1900000507,
+      "qty": 1,
+      "unit": "TRIP",
+      "rate": 0,
+      "amount": 0,
+      "siteName": "SITE: THAKADPALLY - SIRUR",
+      "vehicleNumber": "ARR02B",
+      "receiptNumber": null,
+      "arrangementPricing": {
+        "arrangementId": 1900000402,
+        "tripId": 1900000507,
+        "terms": null,
+        "tripQuantity": 600,
+        "tripUom": "CFT",
+        "rateApplied": 0,
+        "billedQty": 1,
+        "billedUnit": "TRIP",
+        "reason": "Unpriced — Arrangement #1900000402 has no declared commercial basis; existing rates do not declare one.",
+        "conflict": false
+      },
+      "transportPricingNote": "Unpriced — Arrangement #1900000402 has no declared commercial basis; existing rates do not declare one."
+    },
+    {
+      "date": "2026-10-08",
+      "category": "other",
+      "description": "SOIL hauled against Arrangement #1900000404 — 600 CFT",
+      "source": "auto",
+      "sourceType": "site_material_trip_arrangement",
+      "sourceId": 1900000509,
+      "qty": 16.99009194471424,
+      "unit": "CUM",
+      "rate": 100,
+      "amount": 1699.009194471424,
+      "siteName": "SITE: THAKADPALLY - SIRUR",
+      "vehicleNumber": "ARR02B",
+      "receiptNumber": null,
+      "arrangementPricing": {
+        "arrangementId": 1900000404,
+        "tripId": 1900000509,
+        "terms": {
+          "basis": "cum",
+          "scope": "full_service"
+        },
+        "tripQuantity": 600,
+        "tripUom": "CFT",
+        "rateApplied": 100,
+        "billedQty": 16.99009194471424,
+        "billedUnit": "CUM",
+        "reason": null,
+        "conflict": false
+      },
+      "transportPricingNote": null
+    },
+    {
+      "date": "2026-10-08",
+      "category": "other",
+      "description": "SOIL hauled against Arrangement #1900000405 — 600 CFT",
+      "source": "auto",
+      "sourceType": "site_material_trip_arrangement",
+      "sourceId": 1900000510,
+      "qty": 1,
+      "unit": "TRIP",
+      "rate": 0,
+      "amount": 0,
+      "siteName": "SITE: THAKADPALLY - SIRUR",
+      "vehicleNumber": "ARR02B",
+      "receiptNumber": null,
+      "arrangementPricing": {
+        "arrangementId": 1900000405,
+        "tripId": 1900000510,
+        "terms": {
+          "basis": "mt",
+          "scope": "full_service"
+        },
+        "tripQuantity": 600,
+        "tripUom": "CFT",
+        "rateApplied": 0,
+        "billedQty": 1,
+        "billedUnit": "TRIP",
+        "reason": "Unpriced — arrangement per-MT pricing is not supported in this batch; no weight or density is inferred.",
+        "conflict": false
+      },
+      "transportPricingNote": "Unpriced — arrangement per-MT pricing is not supported in this batch; no weight or density is inferred."
+    },
+    {
+      "date": "2026-10-08",
+      "category": "other",
+      "description": "SOIL hauled against Arrangement #1900000406 — 600 CFT",
+      "source": "auto",
+      "sourceType": "site_material_trip_arrangement",
+      "sourceId": 1900000511,
+      "qty": 1,
+      "unit": "TRIP",
+      "rate": 0,
+      "amount": 0,
+      "siteName": "SITE: THAKADPALLY - SIRUR",
+      "vehicleNumber": "ARR02B",
+      "receiptNumber": null,
+      "arrangementPricing": {
+        "arrangementId": 1900000406,
+        "tripId": 1900000511,
+        "terms": {
+          "basis": "km",
+          "scope": "full_service"
+        },
+        "tripQuantity": 600,
+        "tripUom": "CFT",
+        "rateApplied": 0,
+        "billedQty": 1,
+        "billedUnit": "TRIP",
+        "reason": "Unpriced — arrangement per-km pricing is not supported in this batch; the separate transport rate-card path is unchanged.",
+        "conflict": false
+      },
+      "transportPricingNote": "Unpriced — arrangement per-km pricing is not supported in this batch; the separate transport rate-card path is unchanged."
+    }
+  ]
+}

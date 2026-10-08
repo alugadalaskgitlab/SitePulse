@@ -52,6 +52,7 @@ import PayablesPreviewPanel from "@/components/vendor-bills/PayablesPreviewPanel
 import { applyTransportCard, changeTransportBasis } from "@shared/vendorBillTransport";
 import { TransportPricingRow } from "@/components/vendor-bills/TransportPricingRow";
 import { UnconfirmedTripOffers, TransportPricingNote } from "@/components/vendor-bills/TripCandidateWarnings";
+import { arrangementWorking, type ArrangementPricing } from "@shared/vendorBillArrangement";
 import { billableTripCandidates, isUnconfirmedTrip, isSiteTripTransport } from "@/components/vendor-bills/tripCandidateSafety";
 import { calcCandidateAmount, groupRateItems, stripSourceSuffix, canonicalMachineName, canonicalTransportName, canonicalMatName, deriveLabourKey, type RateGroup as SharedRateGroup } from "@shared/vendorBillCandidates";
 
@@ -85,6 +86,7 @@ interface LineItem {
   tripId?: number | null;
   roleWarning?: string | null;
   transportPricingNote?: string | null;
+  arrangementPricing?: ArrangementPricing | null;
   transportPricing?: import("@shared/vendorBillTransport").TransportPricing | null;
   actualMt?: number | null;
   equipmentLogEvidence?: EquipmentLogEvidence | null;
@@ -1135,6 +1137,7 @@ export default function VendorBills() {
         equipmentId: item.equipmentId || null,
         leadDistance: item.leadDistance ?? null,
         transportPricing: item.transportPricing ?? null,
+        arrangementPricing: item.arrangementPricing ?? null,
         siteName: inferSiteNameFromDescription(item.description, item.siteName) || null,
         suppliedTo: item.suppliedTo ?? null,
         transporter: item.transporter ?? null,
@@ -1236,6 +1239,7 @@ export default function VendorBills() {
           let manualConversionCount = 0;
           for (let i = 0; i < mapped.length; i++) {
             const item = mapped[i];
+            if (item.arrangementPricing) continue;
             const priced = applyTransportCard(item, rateCards, vendorName);
             if (isSiteTripTransport(item)) {
               mapped[i] = priced;
@@ -1649,6 +1653,7 @@ export default function VendorBills() {
   }, [includedHireCalculated.length, includedHireCalculated.map(x => `${x.group.id}:${x.result?.netAmount}:${x.result?.quantity}`).join("|")]);
 
   const updateLineItem = (index: number, field: keyof LineItem, value: any) => {
+    if (lineItems[index]?.arrangementPricing) return;
     unitEditGeneration.current++;
     if (field === "unit") {
       const before = lineItems[index];
@@ -1843,7 +1848,7 @@ export default function VendorBills() {
 
   const applyRateToSimilar = (sourceIdx: number) => {
     const source = lineItems[sourceIdx];
-    if (source.transportPricing) return;
+    if (source.transportPricing || source.arrangementPricing) return;
     if (!source.rate || source.rate <= 0) return;
     const sourceEntryType = source.description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/)?.[1] || "";
     let applied = 0;
@@ -1852,7 +1857,7 @@ export default function VendorBills() {
       const updated = [...prev];
       for (let i = 0; i < updated.length; i++) {
         if (i === sourceIdx) continue;
-        if (updated[i].transportPricing) continue;
+        if (updated[i].transportPricing || updated[i].arrangementPricing) continue;
         const itemEntryType = updated[i].description.match(/(?:- )?(HOURLY HIRE|DAILY HIRE|TRIP BASED|MONTHLY HIRE|TIME\/METER|MOBILIZATION)/)?.[1] || "";
         const sameEquipment = source.equipmentId && updated[i].equipmentId === source.equipmentId;
         const sameType = sourceEntryType && itemEntryType === sourceEntryType;
@@ -1876,7 +1881,7 @@ export default function VendorBills() {
   };
 
   const uniqueRateGroups = useMemo(() => {
-    return groupRateItems(lineItems.filter(item => !["hire_group", "hire_statement"].includes(item.source)));
+    return groupRateItems(lineItems.filter(item => !item.arrangementPricing && !["hire_group", "hire_statement"].includes(item.source)));
   }, [lineItems]);
   const bulkUnitConversions = useMemo(() => uniqueRateGroups.flatMap(group => {
     const selection = bulkRates[group.key];
@@ -1978,7 +1983,7 @@ export default function VendorBills() {
     const updated = [...lineItems];
     for (let i = 0; i < updated.length; i++) {
       const item = updated[i];
-      if (item.transportPricing) continue;
+      if (item.transportPricing || item.arrangementPricing) continue;
       if (["hire_group", "hire_statement"].includes(String(item.source || "").toLowerCase())) continue;
       const key = groupRateItems([item])[0]?.key;
       if (!key) continue;
@@ -2182,6 +2187,7 @@ export default function VendorBills() {
         equipmentId: item.equipmentId,
         leadDistance: item.leadDistance,
         transportPricing: item.transportPricing ?? null,
+        arrangementPricing: item.arrangementPricing ?? null,
         siteName: item.siteName ||
           (selectedSiteId === "all" ? null : sites.find(site => String(site.id) === selectedSiteId)?.name) ||
           null,
@@ -2191,7 +2197,7 @@ export default function VendorBills() {
     };
 
     const rateCardItems: any[] = [];
-    lineItems.filter(i => i.description && i.rate > 0 && !i.transportPricing && !["hire_group", "hire_statement"].includes(i.source)).forEach(item => {
+    lineItems.filter(i => i.description && i.rate > 0 && !i.transportPricing && !i.arrangementPricing && !["hire_group", "hire_statement"].includes(i.source)).forEach(item => {
       let itemKey = "";
       if (item.category === "transport") {
         const canonical = canonicalTransportName(item.description);
@@ -3522,7 +3528,23 @@ export default function VendorBills() {
                 { key: "plant", label: "Plant Shift", count: labourPlantCount },
               ];
 
-              const renderItemRow = (item: LineItem, idx: number) => (
+              const arrangementGroups = groupRateItems(lineItems.filter(item => item.arrangementPricing));
+              const renderItemRow = (item: LineItem, idx: number) => item.arrangementPricing ? (
+                arrangementGroups.find(group => group.items.includes(item))?.items[0] !== item ? null :
+                <tr key={idx} data-testid={`arrangement-bill-group-${idx}`} className="border-b">
+                  <td colSpan={totalColSpan} className="p-3">
+                    <strong>{item.description}</strong>
+                    <p>{arrangementGroups.find(group => group.items.includes(item))!.count} trips · Rate ₹{item.rate}</p>
+                    <p className={item.arrangementPricing.reason ? "text-amber-700" : ""}>
+                      {arrangementWorking(item.arrangementPricing, arrangementGroups.find(group => group.items.includes(item))!.count)}
+                    </p>
+                    <button type="button" className="text-xs underline" onClick={() => {
+                      const group = arrangementGroups.find(group => group.items.includes(item))!;
+                      setLineItems(prev => prev.filter(row => !group.items.includes(row)));
+                    }}>Remove group from this bill</button>
+                  </td>
+                </tr>
+              ) : (
                 <tr key={idx} className={`border-b ${item.unitRateWarning ? "bg-amber-100 dark:bg-amber-900/30" : ""}`} data-testid={`bill-item-row-${idx}`}>
                   <td className="px-2 py-1.5 text-muted-foreground text-sm">{idx + 1}</td>
                   <td className="px-2 py-1.5">

@@ -1,0 +1,16 @@
+{
+  "columnsToRemove": [],
+  "hasDiff": true,
+  "hasStructuralDataLoss": false,
+  "matViewsToRemove": [],
+  "maybeNonBackwardsCompatible": false,
+  "schemasToRemove": [],
+  "statementsToExecute": [
+    "ALTER TABLE \"vendor_bill_items\" ADD COLUMN \"arrangement_pricing\" jsonb;",
+    "ALTER TABLE \"earthwork_arrangements\" ADD COLUMN \"billing_terms\" jsonb;"
+  ],
+  "success": true,
+  "tablesToRemove": [],
+  "tablesToTruncate": [],
+  "warnings": []
+}

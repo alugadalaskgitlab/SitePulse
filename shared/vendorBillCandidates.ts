@@ -1,5 +1,6 @@
 import { vendorBillAutoSourceIdentity } from "../client/src/lib/vendorBillRateSelection";
 import type { TransportPricing } from "./vendorBillTransport";
+import type { ArrangementPricing } from "./vendorBillArrangement";
 
 export function stripSourceSuffix(desc: string): string {
   return desc.replace(/\s*\(SITE-UNLINKED\)\s*/gi, " ").replace(/\s*\(SITE TRIP MATERIAL\)\s*/gi, " ").replace(/\s*\(SITE TRIP\)\s*/gi, " ").replace(/\s*\(SITE\)\s*/gi, " ").replace(/\s*\(PLANT\)\s*/gi, " ").trim();
@@ -32,7 +33,7 @@ export function deriveLabourKey(description: string): string {
   if (parts[0] !== "LABOUR" || parts.length < 2) return head.replace(/\s+/g, "_");
   return parts[2] ? `LAB_${parts[1]}_${parts[2]}` : `LAB_${parts[1]}`;
 }
-export type CandidateGroupItem = { category: string; description: string; unit: string; equipmentId: number | null };
+export type CandidateGroupItem = { category: string; description: string; unit: string; equipmentId: number | null; arrangementPricing?: ArrangementPricing | null };
 export type RateGroup<T extends CandidateGroupItem = CandidateGroupItem> = {
   key: string; equipmentId: number | null; groupName: string; entryType: string;
   category: string; unit: string; count: number; items: T[];
@@ -43,7 +44,11 @@ export function groupRateItems<T extends CandidateGroupItem>(items: readonly T[]
   for (const item of items) {
     let key: string;
     let group: Omit<RateGroup<T>, "key" | "count" | "items">;
-    if (item.category === "transport") {
+    if (item.arrangementPricing) {
+      const p = item.arrangementPricing;
+      key = `arr_${p.arrangementId}_${p.terms?.scope}_${p.terms?.basis}_${p.tripQuantity}_${p.tripUom}_${p.rateApplied}_${p.conflict}_${p.reason?.replace(/trip #\\d+/g, "trip") ?? ""}`;
+      group = { equipmentId: null, groupName: item.description, entryType: item.unit, category: item.category, unit: item.unit };
+    } else if (item.category === "transport") {
       const canonical = canonicalTransportName(item.description);
       const unit = (item.unit || "TRIP").toUpperCase();
       key = `transport_${canonical}_${unit}`;
@@ -86,6 +91,7 @@ export function mapAutoBillItem(item: any) {
     vendorName: item.vendorName ?? null,
     physicalQuantity: item.physicalQuantity ?? (Number(item.qty) || 0), physicalUnit: item.physicalUnit ?? (item.unit || "HRS"),
     actualMt: item.actualMt ?? null,
+    arrangementPricing: item.arrangementPricing ?? null,
     rolesUnconfirmed: item.rolesUnconfirmed === true,
     tripId: item.tripId ?? null, roleWarning: item.roleWarning ?? null,
     transportPricingNote: item.transportPricingNote ?? (sourceType === "site_material_trip_transport"

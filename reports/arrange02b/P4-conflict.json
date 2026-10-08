@@ -1,0 +1,31 @@
+{
+  "date": "2026-10-08",
+  "category": "material",
+  "description": "SOIL (SITE TRIP)",
+  "source": "auto",
+  "sourceType": null,
+  "sourceId": "site_material_trip:1900000508",
+  "qty": 600,
+  "unit": "CFT",
+  "rate": 0,
+  "amount": 0,
+  "siteName": "SITE: THAKADPALLY - SIRUR",
+  "vehicleNumber": "ARR02B",
+  "receiptNumber": null,
+  "arrangementPricing": {
+    "arrangementId": 1900000403,
+    "tripId": 1900000508,
+    "terms": {
+      "basis": "trip",
+      "scope": "transport_only"
+    },
+    "tripQuantity": 600,
+    "tripUom": "CFT",
+    "rateApplied": 0,
+    "billedQty": 1,
+    "billedUnit": "TRIP",
+    "reason": "Unpriced — the landed material row already includes delivery, but transport-only Arrangement #1900000403 also covers haulage for this same vendor and trip #1900000508. The owner must decide which applies; no additional haulage row has been added.",
+    "conflict": true
+  },
+  "transportPricingNote": "Unpriced — the landed material row already includes delivery, but transport-only Arrangement #1900000403 also covers haulage for this same vendor and trip #1900000508. The owner must decide which applies; no additional haulage row has been added."
+}

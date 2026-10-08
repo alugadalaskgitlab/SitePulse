@@ -1,10 +1,12 @@
 import { transportWorking, type TransportPricing } from "@shared/vendorBillTransport";
+import { arrangementWorking, type ArrangementPricing } from "@shared/vendorBillArrangement";
 
 export function TransportPricingRow({ item, onBasisChange }: {
-  item: { rate?: number | null; leadDistance?: number | null; transportPricing?: TransportPricing | null };
+  item: { rate?: number | null; leadDistance?: number | null; transportPricing?: TransportPricing | null; arrangementPricing?: ArrangementPricing | null };
   onBasisChange?: (basis: "trip" | "mt") => void;
 }) {
   const p = item.transportPricing;
+  if (item.arrangementPricing) return <p className="mt-1 text-xs" data-testid="arrangement-working">{arrangementWorking(item.arrangementPricing)}</p>;
   if (!p) return null;
   return <div className="mt-1 space-y-1 text-xs" data-testid="transport-pricing-row">
     <p>{transportWorking(item)}</p>

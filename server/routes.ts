@@ -33,6 +33,8 @@ import { buildPurchaseOrderPdf } from "./purchase-order-pdf";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc, desc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { siteMatchesPermitted, untrustedVendorBillAutoItems, vendorBillAutoSourceFromCandidate, vendorBillItemMatchesSite, vendorBillUpdateSiteId, vendorBillVisibleToSites } from "@shared/siteName";
+import { arrangementBillingTermsSchema, tripBillIdentity } from "@shared/vendorBillArrangement";
+import { arrangementBillValidationError } from "@shared/vendorBillArrangementValidation";
 import { normalizeSiteTripHistorySite } from "@shared/siteTripHistory";
 import { normalizeVehicleSupplierVehicle } from "@shared/vehicleSupplierAssociation";
 import { calculateHireBilling, planHireRegisterRows, type HireExceptionDecisionInput } from "@shared/hireBilling";
@@ -11284,6 +11286,17 @@ export async function registerRoutes(
     selectedSiteName: string | null,
     existingItems: any[] = [],
   ): Promise<boolean> {
+    if (input.items.some(item => item.arrangementPricing && !tripBillIdentity(item.source))) {
+      res.status(400).json({ message: "Arrangement snapshots require a qualified trip source." }); return false;
+    }
+    if (input.items.some(item => item.arrangementPricing) && input.hireGroups === undefined &&
+        Math.abs(Number(input.totalAmount) - input.items.reduce((sum, item) => sum + Number(item.amount || 0), 0)) > 0.001) {
+      res.status(400).json({ message: "Bill total does not match its frozen arrangement and other line amounts." }); return false;
+    }
+    const frozenError = arrangementBillValidationError(
+      input.items.filter(item => existingItems.some(saved => saved.source?.toLowerCase() === item.source?.toLowerCase())), [], existingItems,
+    );
+    if (frozenError) { res.status(409).json({ message: frozenError }); return false; }
     const untrustedAutoItems = untrustedVendorBillAutoItems(input.items, existingItems);
     const submittedAutoSources = untrustedAutoItems
       .map(item => String(item.source || "").toLowerCase())
@@ -11307,6 +11320,8 @@ export async function registerRoutes(
       .filter(item => item.sourceType !== "site_material_trip_unresolved")
       .map(vendorBillAutoSourceFromCandidate)
       .filter((source): source is string => source != null));
+    const pricingError = arrangementBillValidationError(input.items, authoritative, existingItems);
+    if (pricingError) { res.status(409).json({ message: pricingError }); return false; }
     if (submittedAutoSources.some(source => !validSources.has(source))) {
       res.status(400).json({ message: "One or more auto-pulled items no longer match the selected site and period" });
       return false;
@@ -18249,6 +18264,7 @@ export async function registerRoutes(
               uom: a.uom,
               agreedRate: rate,
               tripRates: a.tripRates ?? null,
+              billingTerms: a.billingTerms ?? null,
               estimatedValue: rate != null ? Math.round(allocQty * rate) : null,
               plannedDailyOutput: a.plannedDailyOutput != null ? Number(a.plannedDailyOutput) : null,
               mobilisationDate: (a as any).mobilisationDate ?? null,
@@ -18683,6 +18699,8 @@ export async function registerRoutes(
       const user = (req as any).authUser ?? (req as any).user;
       const body = req.body ?? {};
       const tripRatesResult = arrangementTripRatesSchema.safeParse(body.tripRates ?? null);
+      const termsResult = arrangementBillingTermsSchema.nullable().safeParse(body.billingTerms ?? null);
+      if (!termsResult.success) return res.status(400).json({ error: "INVALID_BILLING_TERMS", message: termsResult.error.issues[0].message });
       if (!tripRatesResult.success) return res.status(400).json({
         error: "INVALID_TRIP_RATES", message: tripRatesResult.error.issues[0].message,
       });
@@ -18955,6 +18973,7 @@ export async function registerRoutes(
         chainageTo: body.chainageTo != null ? Number(body.chainageTo) : null,
         scopeSegmentIds: scopeSegmentIdsValue,
         tripRates: tripRatesResult.data,
+        billingTerms: termsResult.data,
         agreedRate: body.agreedRate != null ? Number(body.agreedRate) : null,
         borrowSource: body.borrowSource?.trim() || null,
         avgLeadKm: body.avgLeadKm != null ? Number(body.avgLeadKm) : null,
@@ -19183,6 +19202,7 @@ export async function registerRoutes(
         "arrangementType", "agencyName", "workDescription", "reachLabel",
         "chainageFrom", "chainageTo", "allocatedQty", "uom", "agreedRate",
         "tripRates",
+        "billingTerms",
         "borrowSource", "avgLeadKm",
         "mobilisationDate", "plannedStartDate", "actualStartDate", "targetCompletionDate",
         "plannedDailyOutput", "workingHoursPerShift", "numExcavators", "excavatorType",
@@ -19204,6 +19224,11 @@ export async function registerRoutes(
           error: "INVALID_TRIP_RATES", message: result.error.issues[0].message,
         });
         patch.tripRates = result.data;
+      }
+      if ("billingTerms" in patch) {
+        const result = arrangementBillingTermsSchema.nullable().safeParse(patch.billingTerms);
+        if (!result.success) return res.status(400).json({ error: "INVALID_BILLING_TERMS", message: result.error.issues[0].message });
+        patch.billingTerms = result.data;
       }
 
       // Numeric coercion

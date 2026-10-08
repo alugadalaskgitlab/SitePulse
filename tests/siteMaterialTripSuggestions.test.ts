@@ -364,7 +364,8 @@ describe("site trip suggestion storage contract", () => {
     expect(storage).toContain("vendorMatchSql(siteMaterialTrips.materialSourceSupplier)");
     expect(storage).toContain("assertSiteMaterialTripItemsAvailable");
     expect(storage).toContain("pg_advisory_xact_lock(1432, hashtext");
-    expect(storage).toContain("inArray(vendorBillItems.source, sources)");
+    expect(storage).toContain("LOWER(${vendorBillItems.source}) IN");
+    expect(storage).toContain("sources.map(source => sql`${source}`)");
     expect(storage).toContain("materialSourceSupplier: siteMaterialTrips.materialSourceSupplier");
 
     const migration = read("migrations/0033_site_material_trip_material_source.sql");

@@ -1,5 +1,6 @@
 import { isTrulyBlankManualBillRow } from "@/lib/vendorBillBlankRows";
 import { transportWorking, type TransportPricing } from "@shared/vendorBillTransport";
+import { arrangementWorking, type ArrangementPricing } from "@shared/vendorBillArrangement";
 import { projectEquipmentLogEvidence, type EquipmentLogEvidence } from "./equipmentLogEvidence";
 import { projectWholeBillScreenSections } from "./wholeBillScreenProjection";
 import type { EquipmentHireExportData } from "./EquipmentHireBillOutput";
@@ -15,6 +16,7 @@ type ScreenItem = {
   billedIn?: { billNo: string; billStatus: string } | null;
   equipmentLogEvidence?: EquipmentLogEvidence | null;
   transportPricing?: TransportPricing | null;
+  arrangementPricing?: ArrangementPricing | null;
 };
 const categories = ["equipment", "material", "transport", "labour", "other"];
 const labourSources = [
@@ -46,6 +48,7 @@ export function projectVendorBillPageItems({
       siteName: getSiteLabel(item), suppliedTo: item.suppliedTo, transporter: item.transporter,
       vehicleNumber: item.vehicleNumber, receiptNumber: item.receiptNumber, leadDistance: item.leadDistance,
       details: {
+        ...(item.arrangementPricing ? { "Arrangement working": arrangementWorking(item.arrangementPricing)! } : {}),
         ...(item.transportPricing ? {
           "Transport pricing basis": item.transportPricing.basis === "trip" ? "Per trip" : "Per MT",
           "Transport working": transportWorking(item)!,

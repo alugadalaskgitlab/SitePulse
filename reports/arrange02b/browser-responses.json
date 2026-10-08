@@ -1,0 +1,82 @@
+[
+  {
+    "url": "/api/vendor-bills/summary",
+    "status": 200
+  },
+  {
+    "url": "/api/vendor-bills",
+    "status": 200
+  },
+  {
+    "url": "/api/vendor-bills/vendor-names",
+    "status": 200
+  },
+  {
+    "url": "/api/vendor-bills",
+    "status": 200
+  },
+  {
+    "url": "/api/vendor-bills/summary",
+    "status": 200
+  },
+  {
+    "url": "/api/vendor-bills/vendor-names",
+    "status": 200
+  },
+  {
+    "url": "/api/vendor-bills/47",
+    "status": 200
+  },
+  {
+    "url": "/api/vendor-bills/hire-activities?vendorName=ARR02B%20DISPOSABLE&periodFrom=2026-10-08&periodTo=2026-10-08",
+    "status": 200
+  },
+  {
+    "url": "/api/vendor-bills/auto-items?vendorName=ARR02B%20DISPOSABLE&billType=all&periodFrom=2026-10-08&periodTo=2026-10-08&siteId=16",
+    "status": 200
+  },
+  {
+    "url": "/api/vendor-bills/check-duplicates",
+    "status": 200
+  },
+  {
+    "url": "/api/vendor-bills/47",
+    "status": 200
+  },
+  {
+    "url": "/api/vendor-bills",
+    "status": 200
+  },
+  {
+    "url": "/api/vendor-bills/47",
+    "status": 200
+  },
+  {
+    "url": "/api/vendor-bills",
+    "status": 200
+  },
+  {
+    "url": "/api/vendor-bills/summary",
+    "status": 200
+  },
+  {
+    "url": "/api/vendor-bills/vendor-names",
+    "status": 200
+  },
+  {
+    "url": "/api/vendor-bills/49",
+    "status": 200
+  },
+  {
+    "url": "/api/vendor-bills/hire-activities?vendorName=ARR02B%20DISPOSABLE&periodFrom=2026-10-08&periodTo=2026-10-08",
+    "status": 200
+  },
+  {
+    "url": "/api/vendor-bills/auto-items?vendorName=ARR02B%20DISPOSABLE&billType=all&periodFrom=2026-10-08&periodTo=2026-10-08&siteId=16",
+    "status": 200
+  },
+  {
+    "url": "/api/vendor-bills/check-duplicates",
+    "status": 200
+  }
+]

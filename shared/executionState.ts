@@ -243,6 +243,7 @@ export const MATERIAL_REVISION_FIELDS = [
   "allocatedQty",
   "agreedRate",
   "tripRates",
+  "billingTerms",
   "arrangementType",
   "components",
   "dieselResponsibility",

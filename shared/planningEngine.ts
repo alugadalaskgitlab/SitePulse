@@ -2750,6 +2750,7 @@ export type ShortageSuggestion =
 /** Instruction 023/024: summary of an earthwork arrangement, attached to ShortageRowResult. */
 export interface EarthworkArrangementSummary {
   tripRates?: import("./arrangementTripRates").ArrangementTripRate[] | null;
+  billingTerms?: import("./vendorBillArrangement").ArrangementBillingTerms | null;
   id: number;
   arrangementType: string;
   /** Full status set: draft|submitted|approved|mobilisation_pending|in_progress|on_hold|completed|returned|rejected|cancelled */

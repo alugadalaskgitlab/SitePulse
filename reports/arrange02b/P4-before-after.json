@@ -1,0 +1,88 @@
+{
+  "beforeTransport": [
+    {
+      "date": "2026-10-08",
+      "qty": 1,
+      "unit": "TRIP",
+      "source": "auto",
+      "siteName": "SITE: THAKADPALLY - SIRUR",
+      "vehicleNumber": "ARR02B",
+      "receiptNumber": null,
+      "category": "transport",
+      "description": "SOIL - TRANSPORT",
+      "physicalQuantity": 600,
+      "physicalUnit": "CFT",
+      "sourceType": "site_material_trip_transport",
+      "sourceId": 1900000508
+    }
+  ],
+  "afterTransport": [
+    {
+      "date": "2026-10-08",
+      "category": "other",
+      "description": "SOIL hauled against Arrangement #1900000403 — 600 CFT",
+      "source": "auto",
+      "sourceType": "site_material_trip_arrangement",
+      "sourceId": 1900000508,
+      "qty": 1,
+      "unit": "TRIP",
+      "rate": 1250,
+      "amount": 1250,
+      "siteName": "SITE: THAKADPALLY - SIRUR",
+      "vehicleNumber": "ARR02B",
+      "receiptNumber": null,
+      "arrangementPricing": {
+        "arrangementId": 1900000403,
+        "tripId": 1900000508,
+        "terms": {
+          "basis": "trip",
+          "scope": "transport_only"
+        },
+        "tripQuantity": 600,
+        "tripUom": "CFT",
+        "rateApplied": 1250,
+        "billedQty": 1,
+        "billedUnit": "TRIP",
+        "reason": null,
+        "conflict": false
+      },
+      "transportPricingNote": null
+    }
+  ],
+  "beforeMaterial": {
+    "status": 200,
+    "data": [
+      {
+        "date": "2026-10-08",
+        "qty": 600,
+        "unit": "CFT",
+        "source": "auto",
+        "siteName": "SITE: THAKADPALLY - SIRUR",
+        "vehicleNumber": "ARR02B",
+        "receiptNumber": null,
+        "category": "material",
+        "description": "SOIL (SITE TRIP MATERIAL)",
+        "sourceType": "site_material_trip_material",
+        "sourceId": 1900000508
+      }
+    ]
+  },
+  "afterMaterial": {
+    "status": 200,
+    "data": [
+      {
+        "date": "2026-10-08",
+        "qty": 600,
+        "unit": "CFT",
+        "source": "auto",
+        "siteName": "SITE: THAKADPALLY - SIRUR",
+        "vehicleNumber": "ARR02B",
+        "receiptNumber": null,
+        "category": "material",
+        "description": "SOIL (SITE TRIP MATERIAL)",
+        "sourceType": "site_material_trip_material",
+        "sourceId": 1900000508
+      }
+    ]
+  }
+}

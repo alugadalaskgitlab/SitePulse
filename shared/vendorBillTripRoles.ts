@@ -1,4 +1,5 @@
 import { classifyTripRoles, type TripRoleFacts } from "./tripTransportRoles";
+import { ARRANGEMENT_TRIP_SOURCE, priceArrangementTrip, type ArrangementBillingFacts } from "./vendorBillArrangement";
 
 export const TRIP_ROLE_WARNING = "Roles not confirmed — this trip may be material or transport";
 type Trip = TripRoleFacts & {
@@ -10,10 +11,32 @@ type Trip = TripRoleFacts & {
 /** Matching is supplied by the existing SQL alias matcher, never inferred here. */
 export function vendorBillTripCandidate(
   row: Trip, matchesSeller: boolean, matchesTransporter: boolean, billType: string,
+  arrangement?: ArrangementBillingFacts | null, matchesAgency = false,
 ) {
   if (row.isCancelled || row.isDeleted || !(row.quantity > 0) ||
-      (!matchesSeller && !matchesTransporter)) return null;
+      (!matchesSeller && !matchesTransporter && !matchesAgency)) return null;
   const role = classifyTripRoles(row);
+  if (arrangement && matchesAgency && ["all", "material", "transport"].includes(billType)) {
+    const keepMaterial = matchesSeller && role === "same_party" && arrangement.billingTerms?.scope !== "full_service";
+    const conflict = keepMaterial && arrangement.billingTerms?.scope === "transport_only";
+    const pricing = priceArrangementTrip(row, arrangement, conflict);
+    // No second haulage row alongside a landed-material row. Keep that row,
+    // visibly unpriced, even in a transport pull so the conflict cannot hide.
+    return {
+      date: typeof row.date === "string" ? row.date : row.date.toISOString().split("T")[0],
+      category: keepMaterial ? "material" : "other",
+      description: keepMaterial ? `${(row.material || "MATERIAL").toUpperCase()} (SITE TRIP)`
+        : `${(row.material || "MATERIAL").toUpperCase()} hauled against Arrangement #${arrangement.id} — ${row.quantity} ${row.uom || "NOS"}`,
+      source: "auto", sourceType: keepMaterial ? null : ARRANGEMENT_TRIP_SOURCE,
+      sourceId: keepMaterial ? `site_material_trip:${row.id}` : row.id,
+      qty: keepMaterial ? row.quantity : pricing.billedQty,
+      unit: keepMaterial ? row.uom || "NOS" : pricing.billedUnit,
+      rate: pricing.rateApplied, amount: keepMaterial ? 0 : pricing.rateApplied * pricing.billedQty,
+      siteName: `SITE: ${(row.site || "").toUpperCase()}`,
+      vehicleNumber: row.vehicleNumber ?? null, receiptNumber: row.receiptNumber ?? null,
+      arrangementPricing: pricing, transportPricingNote: pricing.reason,
+    };
+  }
   // Own-source material has no seller liability, even if a caller supplies
   // a stale seller match. Transport continues through the existing path.
   if (row.materialSourceType === "own_source") {

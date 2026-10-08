@@ -9,6 +9,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { arrangementBillingTermsSchema, arrangementBasisLabel, type ArrangementBillingTerms } from "@shared/vendorBillArrangement";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -359,6 +360,7 @@ export function ArrangementSummaryCard({
         </p>
       )}
       <ArrangementTripRatesView rates={arr.tripRates} />
+      <p className="text-xs font-medium">{arrangementBasisLabel(arr.billingTerms)}</p>
       <div className="flex gap-3 flex-wrap text-slate-600">
         {arr.plannedStartDate && (
           <span>Start: <span className="font-medium">{arr.plannedStartDate}</span></span>
@@ -730,6 +732,8 @@ export function EarthworkArrangementDialog({
   const [tripRateRows, setTripRateRows] = useState<TripRateDraft[]>(
     (editArrangement?.tripRates ?? []).map(row => ({quantity: String(row.quantity), uom: row.uom, rate: String(row.rate)}))
   );
+  const [billingScope, setBillingScope] = useState(editArrangement?.billingTerms?.scope ?? "");
+  const [billingBasis, setBillingBasis] = useState(editArrangement?.billingTerms?.basis ?? "");
   const [agreedRate, setAgreedRate] = useState(
     editArrangement?.agreedRate != null ? String(editArrangement.agreedRate) : ""
   );
@@ -868,6 +872,8 @@ export function EarthworkArrangementDialog({
   const buildBody = (saveIntent: "draft" | "submit") => {
     const tripRatesResult = parseTripRateDrafts(tripRateRows);
     if (!tripRatesResult.success) throw new Error(tripRatesResult.error.issues[0].message);
+    const billingTerms = !billingScope && !billingBasis ? null :
+      arrangementBillingTermsSchema.parse({ scope: billingScope, basis: billingBasis });
     const safeNum = (v: string | undefined) => {
       const n = parseFloat(v ?? "");
       return isFinite(n) ? n : null;
@@ -875,6 +881,7 @@ export function EarthworkArrangementDialog({
 
     const base = {
       tripRates: tripRatesResult.data,
+      billingTerms,
       materialLabel,
       arrangementType,
       saveIntent,
@@ -1171,6 +1178,26 @@ export function EarthworkArrangementDialog({
           </div>
 
           <ArrangementTripRatesEditor rows={tripRateRows} onChange={setTripRateRows} />
+          <fieldset className="space-y-2 rounded border p-3">
+            <legend className="text-sm font-semibold">Declared billing basis</legend>
+            <label className="block text-xs">What is paid for
+              <select className="block w-full border rounded p-2" value={billingScope} onChange={e => setBillingScope(e.target.value as ArrangementBillingTerms["scope"] | "")}>
+                <option value="">Not declared — manual review</option>
+                <option value="full_service">Full service — extraction, loading, haulage and tipping</option>
+                <option value="transport_only">Transport only</option>
+              </select>
+            </label>
+            <label className="block text-xs">How it is measured
+              <select className="block w-full border rounded p-2" value={billingBasis} onChange={e => setBillingBasis(e.target.value as ArrangementBillingTerms["basis"] | "")}>
+                <option value="">Not declared — manual review</option>
+                <option value="trip">Per trip — exact trip size rate</option>
+                <option value="cum">Per cum — agreed rate</option>
+                <option value="mt">Per MT — not auto-priced</option>
+                <option value="km">Per km — not auto-priced</option>
+              </select>
+            </label>
+            <p className="text-xs text-muted-foreground">Rates never declare a basis automatically. Existing saved bills retain their frozen rates.</p>
+          </fieldset>
 
           {estimatedValue != null && (
             <p className="text-[12px] text-emerald-700 bg-emerald-50 rounded px-2 py-1">

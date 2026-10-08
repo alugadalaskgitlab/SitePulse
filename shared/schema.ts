@@ -4,6 +4,7 @@ import { z } from "zod";
 import { relations, sql } from "drizzle-orm";
 import { equipmentStatusInputError, equipmentStatusRequiresReason } from "./equipmentStatus";
 import { transportPricingSchema, type TransportPricing } from "./vendorBillTransport";
+import { arrangementBillingTermsSchema, arrangementPricingSchema, type ArrangementBillingTerms, type ArrangementPricing } from "./vendorBillArrangement";
 import { arrangementTripRatesSchema, type ArrangementTripRate } from "./arrangementTripRates";
 
 // === TABLE DEFINITIONS ===
@@ -2434,6 +2435,7 @@ export const vendorBillItems = pgTable("vendor_bill_items", {
   equipmentId: integer("equipment_id"),
   leadDistance: real("lead_distance"),
   transportPricing: jsonb("transport_pricing").$type<TransportPricing | null>(),
+  arrangementPricing: jsonb("arrangement_pricing").$type<ArrangementPricing | null>(),
   siteName: text("site_name"),
   suppliedTo: text("supplied_to"),
   transporter: text("transporter"),
@@ -2550,6 +2552,7 @@ export const hireStatementExceptionsRelations = relations(hireStatementException
 export const insertVendorBillSchema = createInsertSchema(vendorBills).omit({ id: true, createdAt: true, vendorId: true });
 export const insertVendorBillItemSchema = createInsertSchema(vendorBillItems, {
   transportPricing: transportPricingSchema.nullish(),
+  arrangementPricing: arrangementPricingSchema.nullish(),
 }).omit({ id: true });
 export const insertHireStatementSchema = createInsertSchema(hireStatements).omit({ id: true, createdAt: true });
 export const insertHireStatementExceptionSchema = createInsertSchema(hireStatementExceptions).omit({ id: true, createdAt: true });
@@ -4548,6 +4551,7 @@ export const earthworkArrangements = pgTable("earthwork_arrangements", {
   // Commercial
   agreedRate: real("agreed_rate"),              // per UOM (e.g. per CUM)
   tripRates: jsonb("trip_rates").$type<ArrangementTripRate[] | null>(),
+  billingTerms: jsonb("billing_terms").$type<ArrangementBillingTerms | null>(),
   borrowSource: text("borrow_source"),
   avgLeadKm: real("avg_lead_km"),
 
@@ -4602,7 +4606,7 @@ export const earthworkArrangements = pgTable("earthwork_arrangements", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertEarthworkArrangementSchema = createInsertSchema(earthworkArrangements, { tripRates: arrangementTripRatesSchema.optional() }).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertEarthworkArrangementSchema = createInsertSchema(earthworkArrangements, { tripRates: arrangementTripRatesSchema.optional(), billingTerms: arrangementBillingTermsSchema.nullish() }).omit({ id: true, createdAt: true, updatedAt: true });
 export type EarthworkArrangement = typeof earthworkArrangements.$inferSelect;
 export type InsertEarthworkArrangement = z.infer<typeof insertEarthworkArrangementSchema>;
 
