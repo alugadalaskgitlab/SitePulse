@@ -1,0 +1,126 @@
+INSTRUCTION PERM-BABU-01: Find out why a ticked Edit permission did not allow Material Trips work, then make it work for an ordinary user.
+
+READ THIS FIRST
+This batch is DIAGNOSE FIRST, FIX SECOND. Part A is investigation only. Do not change any code until Part A has established the actual cause and you have reported it in the final report.
+It is entirely possible the correct outcome is NO CODE CHANGE — a configuration the owner sets himself. If so, say that plainly and do not invent work.
+Do NOT publish. Show the Publish preview and STOP.
+Do NOT change any permission, flag or site assignment for ANY REAL USER, including Mr Babu. The owner makes every change to a real account himself, after reading your findings.
+Do NOT remove or alter Mr Babu's current Administrator status. The owner removes it himself once the ordinary path is proved.
+Do NOT grant delete, export or notify to anybody.
+Do NOT weaken, remove or bypass any guard — not `assertEdit`, not `assertTripSiteAccess`, not the admin/owner bypass, not any site-scope check.
+Do NOT add a new section key, role, flag or permission concept.
+Do NOT touch VB-ARRANGE-02B, arrangements, billing, or any other module.
+PARKED — do not investigate or touch: LDO, startup data repair jobs, stock balances, rate cards, vendor bills.
+Commit and push all work to GitHub before reporting.
+
+THE SYMPTOM
+A manager had the Edit permission ticked for the relevant section in User Permissions, but could not edit Material Trips — specifically the Material Source / Our Own Source / Transporter role split, and trip–arrangement linking. Granting him Administrator made it work. The owner wants that Administrator status removed, and the work to succeed through ordinary permissions.
+
+=====================================================================
+PART A — ESTABLISH THE ACTUAL CAUSE. INVESTIGATION ONLY.
+=====================================================================
+The relevant routes are already consistent, so the cause is likely NOT a missing
+guard. Verify each of these and state which one it actually is:
+
+A1. SECTION KEY. `/site/material-trips` is gated on `site_materials`
+    (`client/src/App.tsx` ~line 291). `PATCH /api/site-material-trips/:id`
+    (`server/routes.ts` ~1061), `GET .../arrangement-options` (~893) and
+    `POST .../arrangement/preview|bulk` (~903) all call
+    `assertEdit(req, res, "site_materials")`. Confirm every route this work touches
+    guards on that same key, and list any that do not.
+
+A2. THE LABEL. In `shared/permissions.ts`, `site_materials` is labelled
+    **"Site Materials Received"**. The Material Trips page is gated on it too.
+    Determine whether the permissions screen makes that obvious, or whether a person
+    looking for "Material Trips" would reasonably tick a different row and believe
+    they had granted it. Report what the screen actually shows.
+
+A3. SITE SCOPE — THE LEADING SUSPECT. Every one of those routes also calls
+    `assertTripSiteAccess`, which returns **403 "Access denied for this site"**
+    independently of any Edit tick. It resolves through `getPermittedSiteNames`
+    (`server/routes.ts` ~487) → `storage.getUserPermittedSiteIds` →
+    `resolvePermittedSiteIds` (`shared/siteAccess.ts` ~25), where:
+      - admin or owner → `null` → ALL SITES (this is why Administrator "fixed" it);
+      - `setupComplete === false` → `[]` → **no sites at all, even if access rows exist**;
+      - `allSitesAccess` true → `null` → all sites;
+      - otherwise the explicitly selected sites;
+      - no rows and no grant → `[]` → no sites.
+    Determine which branch an ordinary manager with Edit ticked but no site selection
+    would land in, and what HTTP status and message the three operations return.
+
+A4. REPRODUCE IT. In the DEVELOPMENT database only, create a disposable ordinary
+    user that mirrors the reported shape — Edit ticked on `site_materials`, no admin
+    flags — and try all three operations: the role-split save, a single arrangement
+    link, and the bulk arrangement link. Record the exact status codes and messages.
+    Then vary ONE thing at a time (site assignment, `allSitesAccess`, `setupComplete`)
+    and record which single change makes each operation succeed.
+
+A5. STATE THE CAUSE IN ONE PARAGRAPH, in plain words a non-developer can act on.
+    If the cause is configuration rather than code, say so explicitly and name exactly
+    what the owner must tick, and where.
+
+=====================================================================
+PART B — FIX ONLY WHAT PART A PROVES IS BROKEN
+=====================================================================
+B1. If the cause is CONFIGURATION (site assignment, all-sites grant, setup not
+    complete): change NO application logic. Instead:
+      - write down the exact steps the owner takes on the User Management screen;
+      - if the screen does not make the needed setting findable, or shows a user as
+        permitted when site scope will in fact deny them, fix only that clarity
+        problem — a label, a warning, a visible "no sites assigned" state — and
+        nothing else.
+B2. If the cause is a GENUINE DEFECT (a route guarding on the wrong key, a client
+    check disagreeing with its server guard, a control hidden when it should show):
+    fix that specific defect. Do not restructure permissions.
+B3. If an operation is reachable in the UI but its API refuses an ordinary user who
+    holds the correct section permission AND site access, that is a defect — fix it.
+B4. Whatever the cause, the end state must be: an ordinary user with Edit on the
+    right section and access to the right site can do all three operations, with no
+    admin flag and no bypass.
+
+=====================================================================
+NON-NEGOTIABLE BOUNDARIES
+=====================================================================
+- `assertEdit`, `assertTripSiteAccess` and site scoping remain in force on every
+  route. Nothing is loosened, skipped or made optional.
+- No delete, export or notify is granted to anybody.
+- No access to User Management or Permission Management is granted to anybody.
+- No real user's permissions, flags or site assignments are changed by this batch.
+- The admin/owner bypass is not touched.
+- No new section key, role or flag.
+
+=====================================================================
+PROVE IT — SIGNED IN, WITH SCREENSHOTS AND STATUS CODES
+=====================================================================
+Use disposable development accounts only, in the development database, removed afterwards.
+P1. The reproduction from A4: the failing case, with exact status codes and messages
+    for all three operations.
+P2. The single change that fixes it, applied to the disposable account, with all three
+    operations then succeeding: role split saved, one trip linked, bulk link run.
+    Screenshots and status codes, signed in as that ordinary user.
+P3. Confirm that account has `isAdmin`, `isOwner`, `isFieldEngineer` and
+    `canManagePermissions` all FALSE throughout P2.
+P4. Confirm that same account CANNOT reach User Management or Permission Management,
+    and CANNOT delete a trip — show the 403s.
+P5. Confirm a user with Edit but NO access to that site is still refused (the scope
+    check still works). This is the check that proves nothing was loosened.
+P6. Confirm a user with site access but NO Edit tick is still refused.
+Z1. Before/after row counts and content checksums for `users`, the permission table
+    and `user_site_access`, proving no real user's row changed.
+Z2. Full suite against the 48 baseline. List any test added and why.
+Z3. Build passes.
+Z4. Remove and list every disposable account, device, permission row and site-access
+    row created.
+
+REPORT BACK — ONCE, AT THE END, AND KEEP IT SHORT
+1. PART A's finding: the cause, in plain words (A5).
+2. Whether this is configuration or a defect, and what you changed — if anything.
+3. **The exact steps the owner must take on the User Management screen**, written for
+   someone who is not a developer, so he can do it himself and then remove the
+   Administrator status.
+4. P1–P6 with screenshots and status codes.
+5. Z1–Z4.
+6. Anything you could not determine, and why.
+7. The Publish preview.
+
+STOP HERE. Do not publish. Do not change any real user. Do not start VB-ARRANGE-02B.
