@@ -5659,3 +5659,45 @@ mtime_ms = 1791468623217
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/64f01303-4183-49c1-95b0-292d8568be42/65fea0b5-f2ab-44e7-ab09-50803335bfd1"
 storage_version_token = "1791469227369598"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "ElFGIq2pBEUUfV7YoyTId"
+uri = "file://reports/trip-link02/REPORT.md"
+type = "text"
+title = "TRIP-LINK-02 report"
+description = "Status rule, P1–P6 signed-in results, read-only inventory, checksums, tests and cleanup."
+logical_id = "cf99e69c-be0a-4dd6-b9b5-8389502ca5c1"
+content_hash = "sha256:6cf6a9cf479598f8834e5797cc0cea69d2b930b1a8665a789cd5bd1f249aa67d"
+size = 6415
+mtime_ms = 1791471228080
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/cf99e69c-be0a-4dd6-b9b5-8389502ca5c1/64dc1b6d-9afb-4f88-b1ce-981883e31132"
+storage_version_token = "1791471321315295"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "pY2hILJoO2Oj9Z1YSsO_n"
+uri = "file://reports/trip-link02/P3-saved.jpg"
+type = "image"
+title = "Mixed-date bulk result"
+description = "One trip linked; one excluded because the arrangement was not valid on its date."
+logical_id = "0c4dbd1a-032c-4b02-8569-662c9fd4377b"
+content_hash = "sha256:221a8f30f2262d2c8a31c0cea033cbc75876613a73d81e83d331789d738088ec"
+size = 156483
+mtime_ms = 1791471113816
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/0c4dbd1a-032c-4b02-8569-662c9fd4377b/2ff298fb-26ac-4823-943b-3b3b83b11b44"
+storage_version_token = "1791471323671039"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "A4hOU2whBDYlwwpurIiM4"
+uri = "file://reports/trip-link02/P5-materials-received.jpg"
+type = "image"
+title = "Materials Received: invalid choices disabled"
+description = "Signed-in editor shows date-specific status and prevents selecting draft or cancelled arrangements."
+logical_id = "5253f922-b0aa-48a3-8c93-251f4bac0414"
+content_hash = "sha256:314b1f03aee4457204f0350de95a10d288fa553a0239a7c31afb41a837c588c6"
+size = 93362
+mtime_ms = 1791471113816
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/5253f922-b0aa-48a3-8c93-251f4bac0414/81c928ba-3f89-4805-8cb5-0149f6ecc4e1"
+storage_version_token = "1791471325569074"
+content_type = "image/jpeg"
