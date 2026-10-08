@@ -4,6 +4,7 @@ import pg from "pg";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import WebSocket from "ws";
+import { restoreVerificationGrants } from "./dev-verification-grants.mjs";
 
 if (!process.env.DEV_VERIFICATION_PASSWORD) throw new Error("DEV_VERIFICATION_PASSWORD missing; stopping");
 if (!process.env.DEV_DATABASE_URL) throw new Error("Development connection missing; stopping");
@@ -19,6 +20,8 @@ try {
   if (!user) throw new Error("Expected existing verification account; no duplicate created");
   if (user.is_admin || user.is_owner || user.is_field_engineer || user.can_manage_permissions)
     throw new Error("Verification account is privileged; refusing to change flags");
+  const grantClient = await pool.connect();
+  try { await restoreVerificationGrants(grantClient); } finally { grantClient.release(); }
   const permissions = async () => crypto.createHash("sha256").update(JSON.stringify((await pool.query("select * from user_permissions order by id")).rows)).digest("hex");
   const beforePermissions = await permissions();
   await pool.query("update users set password_hash=$1 where id=$2", [await bcrypt.hash(process.env.DEV_VERIFICATION_PASSWORD, 12), user.id]);

@@ -1,0 +1,34 @@
+{
+  "users": {
+    "count": 6,
+    "checksum": "c443c2f8f4b744eb5bc12ad72f19244b3253a0543eea9c21da3080818e7c6012",
+    "changedIds": [
+      16
+    ],
+    "changedColumns": [
+      "last_login_at"
+    ],
+    "realUsersUnchanged": true
+  },
+  "permissions": {
+    "count": 371,
+    "checksum": "21cf8ccdd31a690b4a10ba4f7244898804efded282a79ae44eb1d19197778594",
+    "realPermissionsUnchanged": true
+  },
+  "flags": {
+    "is_admin": false,
+    "is_owner": false,
+    "is_field_engineer": false,
+    "can_manage_permissions": false
+  },
+  "forbiddenGrants": [],
+  "cleanup": {
+    "remainingFixtures": {
+      "boq_projects": 0,
+      "boq_items": 0,
+      "site_material_trips": 0,
+      "arrangements": 0
+    },
+    "extraDeviceIdsRemoved": []
+  }
+}

@@ -1,0 +1,559 @@
+{
+  "database": "sitelog_dev",
+  "flags": {
+    "is_admin": false,
+    "is_owner": false,
+    "is_field_engineer": false,
+    "can_manage_permissions": false
+  },
+  "before": {
+    "users": {
+      "count": 6,
+      "checksum": "6fefdf33b3dfa80f2bf05fcb9d84affd0ee849bdd010c09f732031e1c65c13a3"
+    },
+    "permissions": {
+      "count": 366,
+      "checksum": "070240778e98e64cc5c33b06028879218517021aaf892873fba1e9e6d7ca251d"
+    },
+    "realUsersChecksum": "bb68d6afba059067834c0d373e9cbd238c8264e76090bde47daff49c57d85ea5",
+    "realPermissionsChecksum": "330f4576310042ffab6378c548f79d9ebf8582dea4287a488c05ce9e399e88f5",
+    "accountPermissions": [
+      {
+        "id": 2075,
+        "user_id": 16,
+        "section_key": "vendor_bills_view",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2076,
+        "user_id": 16,
+        "section_key": "vendor_bills_raise",
+        "can_view": true,
+        "can_create": true,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2077,
+        "user_id": 16,
+        "section_key": "site_materials",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2078,
+        "user_id": 16,
+        "section_key": "finance_hub",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2079,
+        "user_id": 16,
+        "section_key": "site_hub",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2087,
+        "user_id": 16,
+        "section_key": "dashboard",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2088,
+        "user_id": 16,
+        "section_key": "hmp_hub",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2089,
+        "user_id": 16,
+        "section_key": "masters_hub",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2090,
+        "user_id": 16,
+        "section_key": "rmc_hub",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2209,
+        "user_id": 16,
+        "section_key": "estimator_portal",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2210,
+        "user_id": 16,
+        "section_key": "concrete_calculator",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2211,
+        "user_id": 16,
+        "section_key": "mix_calculator",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      }
+    ]
+  },
+  "after": {
+    "users": {
+      "count": 6,
+      "checksum": "6fefdf33b3dfa80f2bf05fcb9d84affd0ee849bdd010c09f732031e1c65c13a3"
+    },
+    "permissions": {
+      "count": 371,
+      "checksum": "21cf8ccdd31a690b4a10ba4f7244898804efded282a79ae44eb1d19197778594"
+    },
+    "realUsersChecksum": "bb68d6afba059067834c0d373e9cbd238c8264e76090bde47daff49c57d85ea5",
+    "realPermissionsChecksum": "330f4576310042ffab6378c548f79d9ebf8582dea4287a488c05ce9e399e88f5",
+    "accountPermissions": [
+      {
+        "id": 2075,
+        "user_id": 16,
+        "section_key": "vendor_bills_view",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2076,
+        "user_id": 16,
+        "section_key": "vendor_bills_raise",
+        "can_view": true,
+        "can_create": true,
+        "can_edit": true,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2077,
+        "user_id": 16,
+        "section_key": "site_materials",
+        "can_view": true,
+        "can_create": true,
+        "can_edit": true,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2078,
+        "user_id": 16,
+        "section_key": "finance_hub",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2079,
+        "user_id": 16,
+        "section_key": "site_hub",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2087,
+        "user_id": 16,
+        "section_key": "dashboard",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2088,
+        "user_id": 16,
+        "section_key": "hmp_hub",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2089,
+        "user_id": 16,
+        "section_key": "masters_hub",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2090,
+        "user_id": 16,
+        "section_key": "rmc_hub",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2209,
+        "user_id": 16,
+        "section_key": "estimator_portal",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2210,
+        "user_id": 16,
+        "section_key": "concrete_calculator",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2211,
+        "user_id": 16,
+        "section_key": "mix_calculator",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2429,
+        "user_id": 16,
+        "section_key": "work_programme",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": true,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2430,
+        "user_id": 16,
+        "section_key": "work_programme_review",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": true,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2431,
+        "user_id": 16,
+        "section_key": "planning_masters",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2432,
+        "user_id": 16,
+        "section_key": "vendor_bills",
+        "can_view": true,
+        "can_create": true,
+        "can_edit": true,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      {
+        "id": 2435,
+        "user_id": 16,
+        "section_key": "master_parties",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      }
+    ]
+  },
+  "changed": [
+    {
+      "id": 2076,
+      "before": {
+        "id": 2076,
+        "user_id": 16,
+        "section_key": "vendor_bills_raise",
+        "can_view": true,
+        "can_create": true,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      "after": {
+        "id": 2076,
+        "user_id": 16,
+        "section_key": "vendor_bills_raise",
+        "can_view": true,
+        "can_create": true,
+        "can_edit": true,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      }
+    },
+    {
+      "id": 2077,
+      "before": {
+        "id": 2077,
+        "user_id": 16,
+        "section_key": "site_materials",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      },
+      "after": {
+        "id": 2077,
+        "user_id": 16,
+        "section_key": "site_materials",
+        "can_view": true,
+        "can_create": true,
+        "can_edit": true,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      }
+    },
+    {
+      "id": 2429,
+      "before": null,
+      "after": {
+        "id": 2429,
+        "user_id": 16,
+        "section_key": "work_programme",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": true,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      }
+    },
+    {
+      "id": 2430,
+      "before": null,
+      "after": {
+        "id": 2430,
+        "user_id": 16,
+        "section_key": "work_programme_review",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": true,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      }
+    },
+    {
+      "id": 2431,
+      "before": null,
+      "after": {
+        "id": 2431,
+        "user_id": 16,
+        "section_key": "planning_masters",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      }
+    },
+    {
+      "id": 2432,
+      "before": null,
+      "after": {
+        "id": 2432,
+        "user_id": 16,
+        "section_key": "vendor_bills",
+        "can_view": true,
+        "can_create": true,
+        "can_edit": true,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      }
+    },
+    {
+      "id": 2435,
+      "before": null,
+      "after": {
+        "id": 2435,
+        "user_id": 16,
+        "section_key": "master_parties",
+        "can_view": true,
+        "can_create": false,
+        "can_edit": false,
+        "can_view_reports": false,
+        "can_delete": false,
+        "can_export": false,
+        "can_approve": false,
+        "can_notify": false
+      }
+    }
+  ]
+}

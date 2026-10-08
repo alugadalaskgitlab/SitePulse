@@ -1,5 +1,46 @@
 # Development verification account and Part C browser acceptance
 
+## Current grants — DEV-ACCT-02 (2026-10-08)
+
+Development only: `sitelog_dev`, ordinary verification account ID 16.
+`isAdmin`, `isOwner`, `isFieldEngineer`, `canManagePermissions` remain **false**.
+No real person's rows or credentials may be changed.
+
+| Section | Actions | Screen / guarded function |
+|---|---|---|
+| `site_materials` | view, create, edit | Material Trips; bulk arrangement linking; Set roles |
+| `work_programme` | view, edit | Execution Arrangements register and rate saves |
+| `work_programme_review` | view, edit | Arrangement review/evidence and planning review |
+| `planning_masters` | view | Planning reference data |
+| `vendor_bills` | view, create, edit | Vendor Bills, including legacy single-section guards |
+| `vendor_bills_raise` | view, create, edit | Vendor bill creation/edit alternative guards |
+| `vendor_bills_view` | view | Vendor Bills navigation gate |
+| `master_parties` | view | Existing vendor choices required by Set roles and billing |
+
+Existing unrelated view-only access is retained. **Delete, Export and Notify
+must always be false on every section for this account.** A future test needing
+those actions must use its own explicitly authorized temporary account and
+remove it afterwards. No approval or permission-management rights were added.
+
+Reproduce grants with `node scripts/dev-verification-grants.mjs`. The same
+function is called by the existing account-maintenance/sign-in script
+`scripts/permission03b1-signin.mjs`. It asserts the database name before any
+write, validates the expected account identity and ordinary flags, and updates
+only its permission rows in one transaction. It is idempotent; it is not an app
+startup hook, seed hook, bypass or new feature flag. After a reset, restore the
+existing test account first; the script refuses to create a duplicate or modify
+an unexpected user occupying ID 16.
+
+For ordinary login, use `DEV_VERIFICATION_PASSWORD` directly inside the login
+process with `/api/auth/login`; never print or persist its value. Approve only
+the specifically identified disposable development device if pending. The
+maintenance script retains its existing password-restoration behavior, but
+DEV-ACCT-02 verification did **not** reset any password. See
+`scripts/dev-acct02-verify.mjs` for the normal-login/browser procedure and cleanup.
+
+The older permission inventories below describe historical runs, not current
+access. Current before/after rows are in `reports/dev-acct02/permissions.json`.
+
 Latest sign-in verified 2026-10-07 (PERM-03B-1). Development database: `sitelog_dev`.
 
 ## Account
@@ -42,7 +83,8 @@ Future runs:
    page document were all HTTP **200**, with the account page visibly rendered.
 
 The script stops rather than creating a duplicate or changing flags if the
-existing account is missing or privileged. It changes no permission rows.
+existing account is missing or privileged. It now restores only the explicitly
+approved development verification grants documented above.
 Device approval remains development-only under the explicit authorization.
 The password survives container replacement in Replit Secrets; browser sessions
 are disposable and are never the credential source.

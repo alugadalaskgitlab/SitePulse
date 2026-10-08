@@ -1,0 +1,198 @@
+[
+  {
+    "url": "/api/auth/me",
+    "status": 200
+  },
+  {
+    "url": "/api/notifications",
+    "status": 200
+  },
+  {
+    "url": "/api/notifications/unread-count",
+    "status": 200
+  },
+  {
+    "url": "/api/config",
+    "status": 200
+  },
+  {
+    "url": "/api/boq/projects/1900000000/earthwork-arrangements",
+    "status": 200
+  },
+  {
+    "url": "/api/boq/projects/1900000000/scope-segments",
+    "status": 200
+  },
+  {
+    "url": "/api/boq/projects/1900000000/arrangement-programme-allocations",
+    "status": 200
+  },
+  {
+    "url": "/api/boq/projects/1900000000/programme",
+    "status": 200
+  },
+  {
+    "url": "/api/earthwork-arrangements/46/execution-evidence",
+    "status": 200
+  },
+  {
+    "url": "/api/boq/projects/1900000000/items",
+    "status": 200
+  },
+  {
+    "url": "/api/earthwork-arrangements/46",
+    "status": 200
+  },
+  {
+    "url": "/api/boq/projects/1900000000/earthwork-arrangements",
+    "status": 200
+  },
+  {
+    "url": "/api/boq/projects/1900000000/arrangement-programme-allocations",
+    "status": 200
+  },
+  {
+    "url": "/api/boq/projects/1900000000/arrangement-programme-allocations",
+    "status": 200
+  },
+  {
+    "url": "/api/boq/projects/1900000000/programme",
+    "status": 200
+  },
+  {
+    "url": "/api/boq/projects/1900000000/earthwork-arrangements",
+    "status": 200
+  },
+  {
+    "url": "/api/boq/projects/1900000000/programme",
+    "status": 200
+  },
+  {
+    "url": "/api/auth/me",
+    "status": 200
+  },
+  {
+    "url": "/api/notifications",
+    "status": 200
+  },
+  {
+    "url": "/api/notifications/unread-count",
+    "status": 200
+  },
+  {
+    "url": "/api/config",
+    "status": 200
+  },
+  {
+    "url": "/api/sites",
+    "status": 200
+  },
+  {
+    "url": "/api/plant-module/equipment",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips?dateFrom=2026-10-08&dateTo=2026-10-08",
+    "status": 200
+  },
+  {
+    "url": "/api/vendor-master",
+    "status": 200
+  },
+  {
+    "url": "/api/dpr/programme-bars?projectId=1900000000&boqItemId=1900000000",
+    "status": 403
+  },
+  {
+    "url": "/api/boq/projects/1900000000/arrangement-programme-allocations",
+    "status": 200
+  },
+  {
+    "url": "/api/boq/projects/1900000000/items",
+    "status": 200
+  },
+  {
+    "url": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000000",
+    "status": 500
+  },
+  {
+    "url": "/api/boq/projects/1900000000/earthwork-arrangements/item/1900000000",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips?dateFrom=2026-10-08&dateTo=2026-10-08&site=THAKADPALLY+-+SIRUR",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips/suggestions?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips?dateFrom=2026-10-08&dateTo=2026-10-08&site=THAKADPALLY+-+SIRUR&vehicleNumber=DEVACCTFIXTURE",
+    "status": 200
+  },
+  {
+    "url": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000000",
+    "status": 500
+  },
+  {
+    "url": "/api/site-material-trips/arrangement-options?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips/arrangement/preview",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips/arrangement/preview",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips?dateFrom=2026-10-08&dateTo=2026-10-08&site=THAKADPALLY+-+SIRUR&material=Soil&vehicleNumber=DEVACCTFIXTURE",
+    "status": 200
+  },
+  {
+    "url": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000000",
+    "status": 500
+  },
+  {
+    "url": "/api/site-material-trips/arrangement/bulk",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips/arrangement-options?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips/suggestions?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips/arrangement/preview",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips?dateFrom=2026-10-08&dateTo=2026-10-08&site=THAKADPALLY+-+SIRUR&material=Soil&vehicleNumber=DEVACCTFIXTURE",
+    "status": 200
+  },
+  {
+    "url": "/api/boq/projects?siteId=16",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips/1900000000",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips/arrangement-options?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips?dateFrom=2026-10-08&dateTo=2026-10-08&site=THAKADPALLY+-+SIRUR&material=Soil&vehicleNumber=DEVACCTFIXTURE",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips/suggestions?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  }
+]

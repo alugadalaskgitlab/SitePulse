@@ -1,0 +1,99 @@
+INSTRUCTION DEV-ACCT-02: Give the development verification account the permissions it needs, in development only.
+
+READ THIS FIRST
+This is a TINY batch. It changes ONE user's permission rows, in the DEVELOPMENT database only. Nothing else.
+Do NOT publish. Show the Publish preview and STOP.
+Do NOT change any permission for any real user. Not one row belonging to a real person may change.
+Do NOT change any guard, section key, label, route, template, or the admin/owner bypass.
+Do NOT grant admin, owner, or `canManagePermissions` to anybody, including this account.
+Do NOT ask for, read or use any production connection variable. Development database only.
+PARKED — do not investigate or touch: LDO, startup data repair jobs, stock balances, rate cards, vendor bills, trips, arrangements.
+Commit and push all work to GitHub before reporting.
+
+WHY
+Verification has now been blocked on three consecutive batches. The development
+account (user 16 "Agent Verification", password in the `DEV_VERIFICATION_PASSWORD`
+secret) signs in successfully — HTTP 200 — but then gets 403 on the screens each
+batch needs to prove:
+
+- VB-ARRANGE-02A: `GET` and `POST /api/boq/projects/:id/earthwork-arrangements` →
+  403, sections `work_programme` / `work_programme_review`, actions view and edit.
+- TRIP-LINK-01: the bulk arrangement link and the Set-roles save → 403 on
+  `site_materials.edit`.
+
+Both batches were therefore reported on isolated fixtures rather than a real save on
+a real screen. That was the correct call — neither run granted itself access — but it
+cannot continue. The next batch (VB-ARRANGE-02B) decides what the owner pays people,
+and fixture evidence is not acceptable for that.
+
+=====================================================================
+WHAT TO DO
+=====================================================================
+A1. Assert `SELECT current_database()` returns the DEVELOPMENT database before any
+    write. If it does not, stop and report. Never read or request a production
+    connection variable.
+
+A2. For user 16 ONLY, grant the section/action permissions needed to exercise the
+    screens the recent and upcoming batches verify. At minimum:
+      - `site_materials`: view, create, edit
+      - `work_programme`, `work_programme_review`: view, edit
+      - `planning_masters`: view
+      - the sections behind the vendor bill screens: view, create, edit
+    Derive the exact list from the 403s above plus the section keys those screens
+    actually guard — read the guards, do not guess — and PRINT the final list in the
+    report with the screen each one unlocks.
+
+A3. Do NOT grant `delete`, `export` or `notify` on anything. The owner's standing
+    rule is that those stay unticked, and a verification account is no exception.
+    Where a future batch must prove Delete or Export, it creates its own temporary
+    account for that one check and removes it afterwards, as PERM-03B-3 did.
+
+A4. The account stays an ORDINARY user: `isAdmin` false, `isOwner` false,
+    `isFieldEngineer` false, `canManagePermissions` false. Confirm all four in the
+    report. The point is to exercise the real permission path, not the bypass.
+
+A5. Make this durable. If the development database is reset or reseeded, the grants
+    must be reproducible — put them in the same place the account itself is
+    maintained, so a future run restores them without a new instruction. Say where.
+
+A6. Update `reports/dev-verification-account.md`: the sections granted, how a future
+    run signs in, and the standing rule that Delete/Export/Notify are never granted
+    here. Never write the password into the repository or any report.
+
+=====================================================================
+WHAT NOT TO DO
+=====================================================================
+- Do not change any real user's permissions, flags or password.
+- Do not grant delete, export or notify to anyone.
+- Do not grant admin, owner or permission-management rights.
+- Do not change any guard, key, label or route to make a screen reachable. If a
+  screen still 403s after the grants, report it — do not weaken the guard.
+- Do not add a dev-only switch, feature flag, test mode or bypass.
+- Do not touch production. Do not publish.
+
+PROVE IT
+P1. `SELECT current_database()` output, before any write.
+P2. Before/after permission rows for user 16, every changed row listed.
+P3. Signed in as user 16: open the Execution Arrangements screen and save a trip
+    rate — the exact flow that returned 403 in VB-ARRANGE-02A. Screenshot and status
+    code.
+P4. Signed in as user 16: run the bulk arrangement link on development fixtures and
+    save a Set-roles edit — the flows that returned 403 in TRIP-LINK-01. Screenshots
+    and status codes.
+P5. Confirm the account still has all four admin flags false (A4).
+P6. Confirm `delete`, `export` and `notify` are false for user 16 on every section.
+Z1. Before/after row counts and content checksums for `users` and the permission
+    table, showing the ONLY changed rows belong to user 16, each listed.
+Z2. Confirm every real user's permission row is byte-identical.
+Z3. Full suite against the 48 baseline. Build passes.
+Z4. Remove and list anything else created for testing.
+
+REPORT BACK — ONCE, AT THE END, AND KEEP IT SHORT
+1. Files changed.
+2. The exact sections and actions granted, and the screen each one unlocks.
+3. Where the grants live so a database reset reproduces them (A5).
+4. P1–P6 with screenshots and status codes.
+5. Z1–Z4.
+6. The Publish preview.
+
+STOP HERE. Do not publish. Do not start VB-ARRANGE-02B.

@@ -13,7 +13,22 @@ Use the existing development verification password secret. If it is absent, stop
 
 **Why:** The user supplied the password through the secrets flow and explicitly prohibited another storage fallback after repeated container-reclamation failures.
 
-**How to apply:** Use supported secrets tooling to check existence, consume the value only inside the login process, and record only the secret name and usage procedure in the verification report. Reuse the ordinary account; do not create a duplicate or change flags or grants.
+**How to apply:** Use supported secrets tooling to check existence, consume the value only inside the login process, and record only the secret name and usage procedure in the verification report. Reuse the ordinary account; do not create a duplicate or change flags. Restore only the explicitly approved grants documented in the account report.
+
+The owner authorized durable development-only view/create/edit grants for
+verification. Delete, Export and Notify must remain false on every section,
+and the account must never gain admin, owner, field-engineer or
+permission-management bypass flags. Tests needing Delete or Export use a
+separate temporary account and remove it afterward.
+
+**Why:** Repeated 403s prevented real signed-in saves; the owner requires those
+saves through normal permission checks rather than substituting fixture tests.
+
+**How to apply:** Use the account-maintenance procedure in the report. Grant
+restoration is not permission to expand access beyond the approved list.
+Browser fixture sites must be active; an inactive site can exist in saved trips
+yet be absent from the live site selector. Wait for dialog animations to settle
+before capturing evidence.
 
 The documented testing-agent kind was unavailable in this environment. Installed Chromium with DevTools protocol provided real signed-in screenshots instead. Select the CDP target whose type is `page`; the first target may be an extension background page.
 

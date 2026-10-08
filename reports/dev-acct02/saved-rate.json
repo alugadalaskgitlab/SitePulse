@@ -1,0 +1,12 @@
+[
+  {
+    "id": 46,
+    "trip_rates": [
+      {
+        "uom": "CFT",
+        "rate": 1250,
+        "quantity": 600
+      }
+    ]
+  }
+]
