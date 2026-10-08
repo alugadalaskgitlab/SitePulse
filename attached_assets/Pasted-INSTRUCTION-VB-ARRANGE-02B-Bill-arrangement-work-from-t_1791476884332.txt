@@ -1,0 +1,172 @@
+INSTRUCTION VB-ARRANGE-02B: Bill arrangement work from the arrangement's own rate, once, and never from a rate that has since changed.
+
+READ THIS FIRST
+This is the batch that decides what the owner pays people. Accuracy matters more than speed. If anything below conflicts with what the code actually does, STOP and report rather than improvising.
+Do NOT publish. Show the Publish preview and STOP.
+Do NOT recalculate, reprice, migrate or touch ANY existing bill, bill item, approval, payment or historical rate. Not one existing row may change.
+Do NOT change the transport rate card, `applyTransportCard`, `changeTransportBasis` or `calcCandidateAmount`'s existing transport arithmetic.
+Do NOT change trips, roles, `classifyTripRoles`, the bulk tools, or progress calculation.
+Do NOT build a second billing mechanism. Every rule below has an existing precedent in this codebase — follow it.
+PARKED — permission guards only if strictly required, no business-logic change and no investigation: LDO, startup data repair jobs (they log stock/ledger writes on restart; leave them entirely alone), stock balances, user permissions.
+Commit and push all work to GitHub before reporting.
+
+=====================================================================
+THE EXISTING PATTERNS YOU MUST FOLLOW (verified in this repo)
+=====================================================================
+Read these before writing anything, and say in the report that you did.
+
+1. FROZEN RATE SNAPSHOT. `vendor_bill_items.transportPricing` (jsonb) with
+   `transportPricingSchema` in `shared/vendorBillTransport.ts`, documented:
+   *"Frozen on explicit bill save; never reconstructed from today's card on read."*
+   `hireStatements` states the same principle: *"Contract fields are copied here at
+   creation time; Equipment Master remains the source only for a new statement,
+   never for an approved historical statement."*
+   Arrangement pricing follows this pattern exactly.
+
+2. AUTO-SOURCE IDENTITY. `vendorBillAutoSourceIdentity`
+   (`client/src/lib/vendorBillRateSelection.ts`) builds
+   `auto:<sourceType>:<sourceId>` into `vendor_bill_items.source`. There is NO
+   trip-id column; this string IS how a billed trip is identified.
+
+3. SERVER RE-DERIVATION. `assertVendorBillAutoSources` (`server/routes.ts` ~11268)
+   re-derives the authoritative candidate set server-side and rejects any submitted
+   auto source not in it. Arrangement rows must pass through this same gate.
+
+4. CANDIDATE BUILDER. `vendorBillTripCandidate` (`shared/vendorBillTripRoles.ts`)
+   decides what a trip produces. It currently receives no arrangement.
+
+=====================================================================
+PART A — THE ARRANGEMENT DECLARES ITS COMMERCIAL BASIS
+=====================================================================
+A1. Add to `earthwork_arrangements` an explicit, nullable declaration of:
+    - WHAT IS PAID FOR: full service (extraction, loading, haulage and tipping
+      together) OR transport only.
+    - HOW IT IS MEASURED: per trip (by trip size) | per cum | per MT | per km.
+    Additive migration. Every existing arrangement keeps behaving as it does today.
+A2. Billing NEVER guesses. If the basis is not declared, no trip under that
+    arrangement is auto-priced — it is shown for manual review with a plain reason.
+    Specifically: the presence of a value in `agreedRate` or `tripRates` must NEVER
+    by itself select a basis.
+A3. The two rate stores keep their existing meanings and are read ONLY by the basis
+    that owns them: `tripRates` (VB-ARRANGE-02A) for per-trip; `agreedRate` for per
+    UOM. Do not migrate, merge or reinterpret either.
+A4. On the arrangement screen, state the declared basis in plain words next to the
+    rates, so the owner can see which rate will actually be used.
+
+=====================================================================
+PART B — WHAT A TRIP PRODUCES
+=====================================================================
+B1. `vendorBillTripCandidate` gains the trip's arrangement and its declared terms.
+    Pass them in; do not look them up inside shared code.
+B2. When a trip is linked to an arrangement whose basis is declared AND the vendor
+    being billed is that arrangement's agency:
+    - FULL SERVICE: the trip produces ONE arrangement-work row and NO transport row
+      and NO material row. The agreed amount covers everything.
+    - TRANSPORT ONLY: the trip produces an arrangement-work row for the haulage in
+      place of the existing transport row. The material side is unchanged.
+B3. PRICING IN THIS BATCH:
+    - per trip: the rate whose quantity AND uom EXACTLY match the trip's recorded
+      quantity and uom. 600 CFT at ₹1,250 means ₹1,250 for that one trip — never
+      ₹1,250 × 600. No nearest-match, no pro-rata, no unit conversion.
+    - per cum: rate × the trip's quantity converted to cum. Cft→cum is exact
+      (1 cum = 35.3147 cft); convert only between volume units you can convert
+      exactly, and leave anything else unpriced.
+    - per MT and per km: NOT PRICED IN THIS BATCH. Such trips appear unpriced with a
+      clear reason. Per-MT needs a recorded weight or a stated density, which the
+      owner has not yet decided; never infer a density. Per-km continues to use the
+      existing transport rate card, untouched.
+B4. UNPRICED IS A VISIBLE OUTCOME, NEVER A SILENT ZERO. A trip whose basis is
+    undeclared, whose size/uom matches no rate, or whose basis this batch does not
+    price, appears on the bill screen with rate 0 AND a plain-language note saying
+    why — in the same style as the existing `transportPricingNote`. It must be
+    obvious to the owner that it needs his attention.
+B5. Rows per trip-size group: group identical trip sizes so the bill reads
+    "Soil hauled against Arrangement #4 — 600 CFT × 114 trips @ ₹1,250", using the
+    existing grouping machinery, not a new one.
+B6. Give the arrangement row its OWN `sourceType` (e.g.
+    `site_material_trip_arrangement`) so its auto-source identity is distinct from
+    `site_material_trip_transport` and `site_material_trip_material`. Add it to
+    `vendorBillAutoSourceIdentity`'s qualified list.
+
+=====================================================================
+PART C — NEVER TWICE
+=====================================================================
+C1. A trip billed as arrangement work can NEVER also produce a transport row or a
+    material row for the same party on any bill. This follows from B2 and B6 — prove
+    it, do not assume it.
+C2. A trip already on a saved bill is not offered again, by the existing
+    already-billed mechanism (the `source` identity string), not a new one.
+C3. The server-side gate in `assertVendorBillAutoSources` must validate arrangement
+    rows exactly as it validates the others. A client must not be able to submit an
+    arrangement row the server would not itself have produced.
+
+=====================================================================
+PART D — THE RATE MUST STAY TRACEABLE AFTER BILLING
+=====================================================================
+D1. When a bill is saved, FREEZE the pricing facts onto the bill item, following the
+    `transportPricing` precedent: the arrangement id, the basis, the matched trip
+    size and uom, the rate applied, and the trip id. Store it as its own jsonb column
+    with a zod schema, exactly as `transportPricingSchema` is done.
+D2. A saved bill NEVER recomputes from today's arrangement. If the owner revises the
+    arrangement's rates tomorrow, every already-saved bill keeps showing and totalling
+    what was actually agreed when it was billed.
+D3. The bill screen can show the working — "₹1,250/trip × 114 trips, Arrangement #4"
+    — the way `transportWorking` already does for transport.
+D4. Existing bills have no such snapshot and must not be given one, inferred or
+    otherwise. They continue to behave exactly as they do today.
+
+=====================================================================
+WHAT NOT TO DO
+=====================================================================
+- Do not recalculate, reprice or alter any existing bill, item, approval or payment.
+- Do not auto-price anything whose basis is not declared, or whose rate is missing or
+  does not match. Show it for review.
+- Do not infer a density, a payload, a lead distance or a nearest rate.
+- Do not multiply a per-trip rate by the trip quantity.
+- Do not create a second already-billed mechanism, a second grouping mechanism, or a
+  second snapshot mechanism.
+- Do not touch the startup repair/backfill jobs, stock, ledgers or LDO.
+- Do not touch production. Do not publish.
+
+PROVE IT — SIGNED IN, WITH SCREENSHOTS, STATUS CODES AND THE ACTUAL NUMBERS
+Use the development verification account (DEV-ACCT-02 grants).
+P1. Full service, per trip: an arrangement with 300/600/800/1000 CFT rates and trips
+    of each size. Show the bill: one arrangement row per size, correct trip counts,
+    **amount = rate × number of trips**, and NO transport row and NO material row for
+    those trips. Give the arithmetic.
+P2. A trip of a size with no matching rate (e.g. 700 CFT): unpriced, with the reason
+    visible on screen. Screenshot.
+P3. An arrangement with no declared basis: nothing auto-priced, reason visible, even
+    though `tripRates` and `agreedRate` both hold values.
+P4. Transport only: the arrangement row replaces the transport row; the material side
+    is unchanged. Show both before and after.
+P5. Per cum: rate × exact cft→cum conversion. Give the arithmetic.
+P6. Per MT and per km trips: unpriced with their reason; the existing per-km transport
+    rate card path is unchanged — show one existing transport row still pricing as before.
+P7. DOUBLE-BILLING: save a bill containing an arrangement row for a trip, then pull
+    again for the same vendor and period — that trip is not offered again. Then attempt
+    to submit a transport row for the same trip directly to the API: rejected. Status codes.
+P8. TRACEABILITY: save a bill, then change the arrangement's rate, then reopen the saved
+    bill — the saved rate, amount and total are unchanged. Show the frozen snapshot and
+    the totals before and after the rate change.
+Z1. Before/after row counts and content checksums for `vendor_bills`,
+    `vendor_bill_items`, `earthwork_arrangements`, `site_material_trips` and
+    `progress_entries`. The ONLY new rows are the bills deliberately created in the
+    proofs, listed by id. Every pre-existing bill is byte-identical, including totals.
+Z2. Confirm no existing approval, payment or historical rate changed.
+Z3. Full suite against the 48 baseline. List every test added and why. Include tests
+    for: per-trip not multiplied by quantity; no matching size → unpriced; undeclared
+    basis → unpriced; double-billing refused; saved snapshot survives a rate change.
+Z4. Build passes.
+Z5. Remove and list every temporary account, arrangement, trip, bill and row created.
+
+REPORT BACK — ONCE, AT THE END, AND KEEP IT SHORT
+1. Files changed and the migration.
+2. Confirmation you read the four existing patterns above, and where you followed each.
+3. P1–P8 with screenshots, status codes and the actual arithmetic.
+4. Z1–Z5.
+5. Any choice you made on your own, and what you chose.
+6. Anything you could not do, and why.
+7. The Publish preview.
+
+STOP AFTER PART D. Do not publish. Do not start per-MT or per-km pricing.
