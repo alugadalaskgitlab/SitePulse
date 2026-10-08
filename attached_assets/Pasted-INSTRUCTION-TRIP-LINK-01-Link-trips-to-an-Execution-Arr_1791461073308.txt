@@ -1,0 +1,122 @@
+INSTRUCTION TRIP-LINK-01: Link trips to an Execution Arrangement in bulk, and let Set roles fix the work context.
+
+READ THIS FIRST
+This is a SMALL, NARROW batch. It prepares the data VB-ARRANGE-02B will price. It adds NO pricing, NO bill row and NO rate reading. Do not start 02B.
+Do NOT publish. Show the Publish preview and STOP.
+Do NOT infer, guess or auto-assign an arrangement to any trip. Every link in this batch is one the owner explicitly asks for, on trips he has filtered himself.
+Do NOT change quantities, dates, sites, materials, vendors, roles, or any role field.
+Do NOT change how progress is calculated. `progress_entries` remains the only source of BOQ progress; nothing in this batch feeds progress.
+PARKED — do not investigate or touch: LDO, startup data repair jobs, stock balances, rate cards, user permissions, vendor bills, the vendor master (including the HLC row — leave it alone).
+Commit and push all work to GitHub before reporting.
+
+WHY
+The owner has roughly 700 soil trips, and more for GSB/WMM, that must carry
+`earthworkArrangementId` before they can be billed against an arrangement.
+Today there are only two ways to set it, and both are unusable at that volume:
+- the trip entry form offers a one-click suggestion ("Link this arrangement to the
+  receipt"), which only helps at entry time;
+- the Materials Received edit form sets it one trip at a time.
+
+The Set-roles dialog on Material Trips cannot set it at all: `tripRolePayload`
+(`shared/tripTransportRoles.ts` ~line 56) writes only the role fields, and the
+dialog states "Quantities and work context are not changed."
+
+So the owner is editing trips one by one on the wrong screen. This batch gives him
+the same bulk tool he already has for material source.
+
+=====================================================================
+PART A — BULK LINK TO AN ARRANGEMENT
+=====================================================================
+A1. On the Material Trips page, beside the existing bulk material-source tool, add a
+    bulk tool that sets `earthworkArrangementId` on the trips matching the filters
+    currently on screen.
+A2. Mirror the existing bulk tool exactly in shape and safeguards — read
+    `POST /api/site-material-trips/material-source/bulk` and
+    `storage.bulkAssignSiteMaterialTripMaterialSource` and follow them:
+      - the same filter set (dateFrom, dateTo, site, material, vehicleNumber,
+        supplier), with IDENTICAL matching SQL — derive it from that handler, do not
+        write a second rule;
+      - a single site required before assigning;
+      - blocked while a role filter is active;
+      - an explicit eligible count shown on the button and in the confirm dialog,
+        equal to the set that will actually be written;
+      - zero matches returns 409, never a false success;
+      - one audit row per trip changed, recording before and after;
+      - one transaction, rolled back whole on any failure.
+A3. The arrangement is chosen from the arrangements that exist for that site's BOQ
+    project. Show enough to identify one — agency name, material, reach/chainage —
+    not just an id.
+A4. Add an "only trips not yet linked to an arrangement" option, so a re-run cannot
+    silently overwrite links the owner already set. Overwriting an existing link must
+    be a deliberate second choice, stated plainly in the confirm dialog with its own
+    count ("12 of these 111 already point at another arrangement").
+A5. The confirm dialog lists every active filter back to him, including transporter
+    and the not-yet-linked option, before he commits.
+A6. Nothing else on the trip is written. Not the BOQ item, not the programme bar, not
+    the roles, not the quantity.
+
+=====================================================================
+PART B — LET "SET ROLES" FIX THE WORK CONTEXT TOO
+=====================================================================
+B1. In the Set-roles dialog, add the work-context fields the owner currently has to
+    leave the page for: BOQ item, programme bar / reach, and arrangement. Reuse the
+    work-context component the trip entry form already uses; do not write a second one.
+B2. Keep the roles behaviour exactly as it is. The dialog may now save work context
+    IN ADDITION to the role fields — it must not change quantities, dates, site,
+    material or receipt number.
+B3. Update the dialog's wording, which currently says work context is not changed.
+B4. Leaving the work-context fields untouched must leave the stored values untouched.
+    An edit that only confirms roles must not clear a BOQ item or arrangement.
+
+=====================================================================
+PART C — SHOW WHAT IS LINKED
+=====================================================================
+C1. The trips list already prints "Arrangement: …" where one is set. Make the absence
+    equally visible — a trip with no arrangement should be identifiable at a glance,
+    so the owner can see what is left to do.
+C2. Add a filter for "trips with no arrangement", so he can work through exactly that
+    set. It combines with the existing filters and resets nothing else.
+
+=====================================================================
+WHAT NOT TO DO
+=====================================================================
+- Do not infer an arrangement from material, site, vendor, chainage or date. No
+  automatic linking, no "best match", no backfill job.
+- Do not price anything, read `trip_rates` or `agreed_rate`, or touch any bill.
+- Do not change progress calculation or make trips feed progress.
+- Do not change the role fields, `classifyTripRoles`, or the bulk material-source tool.
+- Do not touch the vendor master.
+- Do not touch production. Do not publish.
+
+PROVE IT — SIGNED IN, WITH SCREENSHOTS AND STATUS CODES
+P1. Filter to one site + material + transporter. Show the eligible count, run the bulk
+    link, and show that exactly those trips now carry the arrangement id. Status codes.
+P2. Show a trip OUTSIDE the filter was not touched.
+P3. Re-run with "only not yet linked": the already-linked trips are excluded, and the
+    count says so. Show the 409 when nothing matches.
+P4. The overwrite path: its own count, its own confirmation, and the audit rows.
+P5. Set roles now saves a BOQ item and an arrangement, and leaves quantity, date and
+    receipt number unchanged. Show the row before and after.
+P6. Set roles with the work-context fields untouched leaves the stored BOQ item and
+    arrangement unchanged (B4).
+P7. The "no arrangement" filter returns only unlinked trips, and an empty result says
+    so rather than showing everything.
+Z1. Before/after row counts and content checksums for `site_material_trips`, with
+    every changed row listed by id and the only changed columns being
+    `earthwork_arrangement_id` (PART A) and the work-context fields (PART B).
+Z2. Confirm no bill, bill row, payable or progress figure changed — show one bill and
+    one progress report before and after.
+Z3. Full suite against the 48 baseline. List any test added and why. Add a test that
+    the bulk link's eligible set and the handler's written set are identical.
+Z4. Build passes.
+Z5. Remove and list anything created for testing.
+
+REPORT BACK — ONCE, AT THE END, AND KEEP IT SHORT
+1. Files changed.
+2. The matching rule you used and the line in the material-source handler you took it from.
+3. Evidence P1–P7 with screenshots and status codes.
+4. Z1–Z5.
+5. Any choice you made on your own, and what you chose.
+6. The Publish preview.
+
+STOP HERE. Do not publish. Do not start VB-ARRANGE-02B.
