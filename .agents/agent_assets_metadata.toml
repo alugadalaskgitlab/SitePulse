@@ -5519,3 +5519,45 @@ mtime_ms = 1791447578105
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/2040ec14-1898-444f-ac70-2ccea363b133/6d16c6d0-9f02-4712-bccc-a69cfea4d9c4"
 storage_version_token = "1791448107770316"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "4nVe8hmj4KmhoswsmzACM"
+uri = "file://reports/vb-arrange02a/REPORT.md"
+type = "text"
+title = "VB-ARRANGE-02A — implementation and verification"
+description = "Migration, stored shape, checksums, tests and explicit limits of signed-in verification."
+logical_id = "75610af6-0341-4866-9e71-f99aa7d2794e"
+content_hash = "sha256:577e7da4ea249eb1b2a1f874c31c0007afd10c3e5e01f1236a559d65c9567879"
+size = 4845
+mtime_ms = 1791454894858
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/75610af6-0341-4866-9e71-f99aa7d2794e/fbd47e91-b8d6-4531-9a77-c08f7e8ddf17"
+storage_version_token = "1791454971682279"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "Br7W3mru5GgiipGQm0wvw"
+uri = "file://reports/vb-arrange02a/entry-validation.jpg"
+type = "image"
+title = "Trip-rate entry and validation — isolated fixtures"
+description = "Actual component rendering with three rates, duplicate rejection and invalid values. Not saved arrangements."
+logical_id = "3b7a884d-959c-462a-a1d9-f105c0b16154"
+content_hash = "sha256:8e960fb802ccaf28ddb251f0f2497c7ce67acb17b45fb768c5fe1732c07fe6ca"
+size = 96144
+mtime_ms = 1791454675694
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/3b7a884d-959c-462a-a1d9-f105c0b16154/15851403-cdae-4779-89f6-a21261f0380c"
+storage_version_token = "1791454973722554"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "1746rjOPooC2NKWLxfjcv"
+uri = "file://reports/vb-arrange02a/remove-clear-readonly.jpg"
+type = "image"
+title = "Removal, empty rates and read-only display — isolated fixtures"
+description = "Component evidence; operational rows were not changed."
+logical_id = "36e77538-b8fc-4f3c-a80c-e6d0799c30dd"
+content_hash = "sha256:525aa2d514c18405f81734037cb39467b0d75078f152d9171cd401c9063a47d5"
+size = 90283
+mtime_ms = 1791454675770
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/36e77538-b8fc-4f3c-a80c-e6d0799c30dd/5b06c638-7acc-4c28-a2e4-f44054d9718c"
+storage_version_token = "1791454975597223"
+content_type = "image/jpeg"
