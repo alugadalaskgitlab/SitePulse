@@ -1,0 +1,89 @@
+INSTRUCTION TRIPS-FILTER-01: The Material Trips list ignores three of its own filters. The bulk tool does not.
+
+READ THIS FIRST
+This is a SMALL, NARROW batch. Fix the defect described below, prove it, report, and STOP.
+Do NOT publish. Show the Publish preview and STOP.
+Do NOT change any trip row, backfill, infer or correct anything. The owner is tagging trips by hand right now; not one stored row may be changed by this batch.
+Do NOT change the bulk assign handler's filtering behaviour — it is the side that is already correct.
+Do NOT add new filters, redesign the filter bar, or change pagination, sorting or the role filter.
+PARKED — do not investigate or touch: LDO, startup data repair jobs, stock balances, rate cards, vendor bills, user permissions.
+Commit and push all work to GitHub before reporting.
+
+=====================================================================
+THE DEFECT
+=====================================================================
+The Material Trips screen sends five filters. The list endpoint reads two of them and silently drops the rest.
+
+`client/src/pages/SiteMaterialTrips.tsx` `buildTripsUrl()` (~line 244) correctly sends:
+  dateFrom, dateTo, site, material, **vehicleNumber**, **supplier**, **onlyUnassigned**
+
+`server/routes.ts` `app.get("/api/site-material-trips")` (~line 814) builds its `filters` object with site, material, dateFrom, dateTo and the linkage ids only. **`vehicleNumber`, `supplier` and `onlyUnassigned` are never read.**
+
+`server/storage.ts` `getSiteMaterialTrips` (~line 12500) does not accept or apply them either — not in the interface declaration (~line 1379), not in the implementation.
+
+Observed: with Transporter = "FASIUDDIN" typed in, the list still returns 545 trips and shows rows transported by GANGARAM NARSIMHULU and G SANGANNA. Same for Vehicle number. Same for the "Only trips without a material source" checkbox.
+
+=====================================================================
+WHY THIS IS URGENT AND NOT COSMETIC
+=====================================================================
+The bulk material-source tool on this same screen **does** honour all three. `app.post("/api/site-material-trips/material-source/bulk")` accepts `vehicleNumber`, `supplier` and `onlyUnassigned` in its schema and `bulkAssignSiteMaterialTripMaterialSource` applies them.
+
+So the two sides of one screen disagree:
+- The rows the owner is looking at are filtered by date/site/material ONLY.
+- The confirm dialog says "Assign to {filteredTrips.length} matching trips" using that same unfiltered count.
+- The bulk write then applies the transporter and vehicle filters the list ignored, and changes a different set of rows.
+
+The owner is about to point this tool at roughly 700 soil trips. He must not be shown one set of rows and have another set written. Fix the list so both sides mean the same thing.
+
+=====================================================================
+PART A — MAKE THE LIST HONOUR ITS OWN FILTERS
+=====================================================================
+A1. Extend `getSiteMaterialTrips` to accept `vehicleNumber`, `supplier` and `onlyUnassigned`, in BOTH the interface declaration and the implementation.
+A2. Apply them with exactly the same matching semantics the bulk path already uses — same column, same case handling, same trimming, same treatment of blank values. Read `bulkAssignSiteMaterialTripMaterialSource` and match it. Do not invent a second, different rule. If the two cannot be made identical for some reason, say so in one line rather than papering over it.
+    - `supplier` filters on the TRANSPORTER column (`supplier`), not on `materialSourceSupplier`. Confirm this against the bulk path and state what you found.
+    - `onlyUnassigned` means the trip has no material source recorded. Match the bulk path's definition exactly, including how it treats the new `materialSourceType = "own_source"` rows.
+A3. Read all three from the query string in the GET route and pass them through. Blank or whitespace-only values are treated as "no filter", as today.
+A4. Site-access restriction (`permittedSiteNames`) keeps working exactly as it does now, unchanged, and is still applied on top of the new filters.
+A5. Change nothing else about the endpoint: same response shape, same ordering, same cancelled/deleted exclusion, same BOQ quantity enrichment.
+
+=====================================================================
+PART B — THE COUNTS MUST AGREE
+=====================================================================
+B1. With the list now filtered, confirm that the "{n} matching trips" line, the bulk button's "Assign to {n} matching trips", and the confirm dialog's count all describe the SAME set the bulk write will touch.
+B2. The confirm dialog already lists the active filters back to the owner (site, material, vehicle). Add the transporter and the unassigned-only state to that summary so he can see every filter that will be applied before he confirms.
+B3. Do not change the existing guard that blocks bulk assignment when a role filter is active, or the one that requires a single site.
+
+=====================================================================
+PROVE IT — SIGNED IN, WITH SCREENSHOTS AND STATUS CODES
+=====================================================================
+Use the development verification account (user 16, password in the `DEV_VERIFICATION_PASSWORD` secret). Development database only.
+
+P1. Transporter filter: type one transporter's name. Show the row count before and after, and show that every returned row has that transporter. Give the request URL and the HTTP status.
+P2. Vehicle number filter: the same, on one vehicle.
+P3. "Only trips without a material source": show that every returned row genuinely has none, and that rows with a source are excluded.
+P4. Transporter + site + material + date range together: show they combine, not override.
+P5. A transporter name that matches nothing returns an empty list and says so on screen — it must NOT fall back to showing everything.
+P6. Own-source rows behave correctly under the unassigned-only filter, per A2.
+P7. THE ONE THAT MATTERS: set a transporter filter, then open the bulk confirm dialog. Show that the count in the dialog equals the number of rows on screen, and that a dry comparison against the bulk handler's own matching set returns the identical trip ids. Do not run the bulk write against real data to prove this — compare the sets.
+Z1. Before/after row counts and content checksums for `site_material_trips`, proving this batch changed no stored row.
+Z2. Full suite against the 48 baseline. List any test added and why. Add a test covering the list/bulk count agreement from P7.
+Z3. Build passes.
+
+=====================================================================
+WHAT NOT TO DO
+=====================================================================
+- Do not change any trip row.
+- Do not change the bulk handler's filter semantics — bring the list up to it, not the other way round.
+- Do not filter in the browser as a shortcut. The filtering belongs in the query, as the other filters already are.
+- Do not add new filter fields or change the layout of the filter bar.
+- Do not touch production. Do not publish.
+
+REPORT BACK — ONCE, AT THE END, AND KEEP IT SHORT
+1. Files changed.
+2. The matching rule you applied for each of the three filters, and the line in the bulk path you copied it from.
+3. Evidence P1–P7 with screenshots, request URLs and status codes.
+4. Z1–Z3.
+5. Any choice you made on your own, and what you chose.
+6. The Publish preview.
+
+STOP HERE. Do not publish. Do not start VB-ARRANGE-02.
