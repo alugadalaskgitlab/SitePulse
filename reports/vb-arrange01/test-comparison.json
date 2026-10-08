@@ -1,0 +1,40 @@
+{
+  "baseline": {
+    "passed": 4578,
+    "failed": 48,
+    "total": 4629,
+    "files": 332
+  },
+  "current": {
+    "passed": 4586,
+    "failed": 49,
+    "total": 4638,
+    "files": 333
+  },
+  "newFailures": [
+    "vehicleSupplierAssociationPostgres.integration.test.ts :: vehicle supplier association PostgreSQL transactions VB24: zero matches is not HTTP success; audit failure is HTTP 500 and rolls back"
+  ],
+  "resolved": [],
+  "roleTests": [
+    {
+      "file": "tripOwnSource.test.ts",
+      "status": "passed",
+      "count": 9
+    },
+    {
+      "file": "tripTransportRoles.test.ts",
+      "status": "passed",
+      "count": 15
+    },
+    {
+      "file": "vendorBillTripRoles.test.ts",
+      "status": "passed",
+      "count": 12
+    },
+    {
+      "file": "TripTransportRoles.behavior.test.tsx",
+      "status": "passed",
+      "count": 21
+    }
+  ]
+}

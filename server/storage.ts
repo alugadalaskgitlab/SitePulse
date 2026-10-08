@@ -13017,7 +13017,7 @@ export class DatabaseStorage implements IStorage {
         const [updated] = await this._mutatePiDeliverySourceWithinTx(tx, "trip", id, async () => tx.update(siteMaterialTrips)
           .set({
             ...data,
-            ...((data.materialSourceType ?? existing.materialSourceType) === "own_source"
+            ...(("materialSourceType" in data ? data.materialSourceType : existing.materialSourceType) === "own_source"
               ? { materialSourceSupplier: null, materialSourceVendorId: null }
               : ("materialSourceType" in data ? { materialSourceLabel: null } : {})),
           })

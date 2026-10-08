@@ -21,6 +21,7 @@ describe("Explicit own-source facts", () => {
   it("requires label only in new-entry validation, not historical classification", () => {
     expect(validateTripRoles({...agency,materialSourceLabel:"  "})).toContain("borrow area");
     expect(classifyTripRoles({...agency,materialSourceLabel:null})).toBe("own_source_agency");
+    expect(validateTripRoles({...agency,materialSourceLabel:null}, false)).toBeNull();
   });
   it("does not reinterpret blank legacy seller columns", () => {
     expect(classifyTripRoles({...agency,materialSourceType:null})).toBe("unresolved");

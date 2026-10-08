@@ -37,9 +37,9 @@ export function classifyTripRoles(trip: TripRoleFacts): TripTransportRole {
 }
 
 /** New-entry validation only: historical unrelated edits remain backward compatible. */
-export function validateTripRoles(trip: TripRoleFacts): string | null {
+export function validateTripRoles(trip: TripRoleFacts, requireSourceLabel = true): string | null {
   if (trip.materialSourceType === "own_source") {
-    if (!trip.materialSourceLabel?.trim()) return "Enter the borrow area / source description.";
+    if (requireSourceLabel && !trip.materialSourceLabel?.trim()) return "Enter the borrow area / source description.";
     if (trip.materialSourceSupplier != null || trip.materialSourceVendorId != null) return "Our own source must not have a material vendor.";
   } else if (!nameKey(trip.materialSourceSupplier)) return "Material from is required.";
   if (!trip.transportType) return "Choose Who brought it.";
@@ -60,6 +60,7 @@ export function tripRolePayload(
   equipment: EquipmentChoice | null,
   vehicleNumber: string,
   origin?: Pick<TripRoleFacts, "materialSourceType" | "materialSourceLabel">,
+  requireSourceLabel = true,
 ): TripRoleFacts {
   if (!choice || choice === "unresolved") throw new Error("Choose Who brought it.");
   if (origin?.materialSourceType === "own_source") {
@@ -74,7 +75,7 @@ export function tripRolePayload(
       internalEquipmentId: internal ? equipment?.id ?? null : null,
       vehicleNumber: internal ? equipment?.registrationNumber || equipment?.name || "" : vehicleNumber,
     };
-    const error = validateTripRoles(result);
+    const error = validateTripRoles(result, requireSourceLabel);
     if (error) throw new Error(error);
     return result;
   }

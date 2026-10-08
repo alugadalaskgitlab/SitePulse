@@ -1,0 +1,7 @@
+{
+  "path": "/api/site-material-trips",
+  "status": 400,
+  "data": {
+    "message": "Enter the borrow area / source description."
+  }
+}

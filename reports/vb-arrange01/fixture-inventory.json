@@ -1,0 +1,15 @@
+{
+  "accountCreated": false,
+  "permissionCreated": false,
+  "temporarilyChangedPermission": 2077,
+  "vendors": [
+    {
+      "id": 1,
+      "name": "ZZ TEST VENDOR A — VB-ARRANGE-01"
+    },
+    {
+      "id": 2,
+      "name": "ZZ TEST VENDOR B — VB-ARRANGE-01"
+    }
+  ]
+}

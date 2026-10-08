@@ -1,0 +1,66 @@
+{
+  "deleted": {
+    "trips": [
+      {
+        "id": 17
+      },
+      {
+        "id": 18
+      },
+      {
+        "id": 19
+      },
+      {
+        "id": 20
+      },
+      {
+        "id": 21
+      },
+      {
+        "id": 22
+      }
+    ],
+    "vendors": [
+      {
+        "id": 1
+      },
+      {
+        "id": 2
+      }
+    ],
+    "sessions": [
+      {
+        "id": 370
+      }
+    ],
+    "devices": [
+      {
+        "id": 116
+      }
+    ]
+  },
+  "accountsCreated": 0,
+  "permissionRowsCreated": 0,
+  "vendors": {
+    "beforeCount": 0,
+    "afterCount": 0,
+    "beforeChecksum": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "afterChecksum": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "exactMatch": true
+  },
+  "permissions": {
+    "beforeCount": 366,
+    "afterCount": 366,
+    "beforeChecksum": "81fbe6650b9de4460e9b01892b613ce93bbfdd52509c65e00da8c0fedeb4f7fb",
+    "afterChecksum": "81fbe6650b9de4460e9b01892b613ce93bbfdd52509c65e00da8c0fedeb4f7fb",
+    "exactMatch": true
+  },
+  "trips": {
+    "beforeCount": 10,
+    "afterCount": 10,
+    "beforeChecksum": "39b4ecd718e8687ec992d5b4f82d3c8eeceaccdbf19190162951230480555733",
+    "afterChecksum": "39b4ecd718e8687ec992d5b4f82d3c8eeceaccdbf19190162951230480555733",
+    "exactMatch": true
+  },
+  "historicalNewFieldsNull": true
+}

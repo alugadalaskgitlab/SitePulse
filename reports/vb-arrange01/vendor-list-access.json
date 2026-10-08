@@ -1,0 +1,9 @@
+{
+  "path": "/api/vendor-master",
+  "status": 403,
+  "data": {
+    "error": "forbidden",
+    "section": "master_parties",
+    "action": "view"
+  }
+}

@@ -48,8 +48,8 @@ export function TripRoleEditDialog({ trip, vendors, equipment, vendorsLoading, v
       const payload = tripRolePayload(choice, source, transporter, selected, draft.vehicleNumber, {
         materialSourceType: draft.materialSourceType,
         materialSourceLabel: draft.materialSourceLabel,
-      });
-      const issue = validateTripRoles(payload);
+      }, false);
+      const issue = validateTripRoles(payload, false);
       if (issue) throw new Error(issue);
       await apiRequest("PATCH", `/api/site-material-trips/${trip.id}`, payload);
     },

@@ -1,0 +1,172 @@
+[
+  {
+    "vendor": "ZZ TEST VENDOR A — VB-ARRANGE-01",
+    "billType": "all",
+    "path": "/api/vendor-bills/auto-items?vendorName=ZZ+TEST+VENDOR+A+%E2%80%94+VB-ARRANGE-01&billType=all&periodFrom=2026-10-09&periodTo=2026-10-09&siteId=16",
+    "status": 200,
+    "data": [
+      {
+        "date": "2026-10-09",
+        "qty": 600,
+        "unit": "CFT",
+        "source": "auto",
+        "siteName": "SITE: THAKADPALLY - SIRUR",
+        "vehicleNumber": "",
+        "receiptNumber": "ZZ-TEST-same-party",
+        "category": "material",
+        "description": "SOIL (SITE TRIP)",
+        "sourceId": "site_material_trip:19"
+      },
+      {
+        "date": "2026-10-09",
+        "qty": 600,
+        "unit": "CFT",
+        "source": "auto",
+        "siteName": "SITE: THAKADPALLY - SIRUR",
+        "vehicleNumber": "",
+        "receiptNumber": "ZZ-TEST-different-parties",
+        "category": "material",
+        "description": "SOIL (SITE TRIP MATERIAL)",
+        "sourceType": "site_material_trip_material",
+        "sourceId": 20
+      },
+      {
+        "date": "2026-10-09",
+        "qty": 600,
+        "unit": "CFT",
+        "source": "auto",
+        "siteName": "SITE: THAKADPALLY - SIRUR",
+        "vehicleNumber": "",
+        "receiptNumber": "ZZ-TEST-vendor-fleet",
+        "category": "material",
+        "description": "SOIL (SITE TRIP MATERIAL)",
+        "sourceType": "site_material_trip_material",
+        "sourceId": 21
+      }
+    ]
+  },
+  {
+    "vendor": "ZZ TEST VENDOR A — VB-ARRANGE-01",
+    "billType": "material",
+    "path": "/api/vendor-bills/auto-items?vendorName=ZZ+TEST+VENDOR+A+%E2%80%94+VB-ARRANGE-01&billType=material&periodFrom=2026-10-09&periodTo=2026-10-09&siteId=16",
+    "status": 200,
+    "data": [
+      {
+        "date": "2026-10-09",
+        "qty": 600,
+        "unit": "CFT",
+        "source": "auto",
+        "siteName": "SITE: THAKADPALLY - SIRUR",
+        "vehicleNumber": "",
+        "receiptNumber": "ZZ-TEST-same-party",
+        "category": "material",
+        "description": "SOIL (SITE TRIP)",
+        "sourceId": "site_material_trip:19"
+      },
+      {
+        "date": "2026-10-09",
+        "qty": 600,
+        "unit": "CFT",
+        "source": "auto",
+        "siteName": "SITE: THAKADPALLY - SIRUR",
+        "vehicleNumber": "",
+        "receiptNumber": "ZZ-TEST-different-parties",
+        "category": "material",
+        "description": "SOIL (SITE TRIP MATERIAL)",
+        "sourceType": "site_material_trip_material",
+        "sourceId": 20
+      },
+      {
+        "date": "2026-10-09",
+        "qty": 600,
+        "unit": "CFT",
+        "source": "auto",
+        "siteName": "SITE: THAKADPALLY - SIRUR",
+        "vehicleNumber": "",
+        "receiptNumber": "ZZ-TEST-vendor-fleet",
+        "category": "material",
+        "description": "SOIL (SITE TRIP MATERIAL)",
+        "sourceType": "site_material_trip_material",
+        "sourceId": 21
+      }
+    ]
+  },
+  {
+    "vendor": "ZZ TEST VENDOR B — VB-ARRANGE-01",
+    "billType": "all",
+    "path": "/api/vendor-bills/auto-items?vendorName=ZZ+TEST+VENDOR+B+%E2%80%94+VB-ARRANGE-01&billType=all&periodFrom=2026-10-09&periodTo=2026-10-09&siteId=16",
+    "status": 200,
+    "data": [
+      {
+        "date": "2026-10-09",
+        "qty": 1,
+        "unit": "TRIP",
+        "source": "auto",
+        "siteName": "SITE: THAKADPALLY - SIRUR",
+        "vehicleNumber": "",
+        "receiptNumber": "ZZ-TEST-own-agency",
+        "category": "transport",
+        "description": "SOIL - TRANSPORT",
+        "physicalQuantity": 600,
+        "physicalUnit": "CFT",
+        "sourceType": "site_material_trip_transport",
+        "sourceId": 17
+      },
+      {
+        "date": "2026-10-09",
+        "qty": 1,
+        "unit": "TRIP",
+        "source": "auto",
+        "siteName": "SITE: THAKADPALLY - SIRUR",
+        "vehicleNumber": "",
+        "receiptNumber": "ZZ-TEST-different-parties",
+        "category": "transport",
+        "description": "SOIL - TRANSPORT",
+        "physicalQuantity": 600,
+        "physicalUnit": "CFT",
+        "sourceType": "site_material_trip_transport",
+        "sourceId": 20
+      },
+      {
+        "date": "2026-10-09",
+        "qty": 600,
+        "unit": "CFT",
+        "source": "auto",
+        "siteName": "SITE: THAKADPALLY - SIRUR",
+        "vehicleNumber": "",
+        "receiptNumber": "ZZ-TEST-unresolved",
+        "category": "other",
+        "description": "SOIL (SITE TRIP)",
+        "sourceType": "site_material_trip_unresolved",
+        "sourceId": 22,
+        "rolesUnconfirmed": true,
+        "tripId": 22,
+        "roleWarning": "Roles not confirmed — this trip may be material or transport"
+      }
+    ]
+  },
+  {
+    "vendor": "ZZ TEST VENDOR B — VB-ARRANGE-01",
+    "billType": "material",
+    "path": "/api/vendor-bills/auto-items?vendorName=ZZ+TEST+VENDOR+B+%E2%80%94+VB-ARRANGE-01&billType=material&periodFrom=2026-10-09&periodTo=2026-10-09&siteId=16",
+    "status": 200,
+    "data": [
+      {
+        "date": "2026-10-09",
+        "qty": 600,
+        "unit": "CFT",
+        "source": "auto",
+        "siteName": "SITE: THAKADPALLY - SIRUR",
+        "vehicleNumber": "",
+        "receiptNumber": "ZZ-TEST-unresolved",
+        "category": "other",
+        "description": "SOIL (SITE TRIP)",
+        "sourceType": "site_material_trip_unresolved",
+        "sourceId": 22,
+        "rolesUnconfirmed": true,
+        "tripId": 22,
+        "roleWarning": "Roles not confirmed — this trip may be material or transport"
+      }
+    ]
+  }
+]

@@ -1026,7 +1026,7 @@ export async function registerRoutes(
       const existing = await storage.getSiteMaterialTripById(id);
       if (!existing) return res.status(404).json({ message: "Site material trip not found" });
       if (!await assertTripSiteAccess(req, res, existing.site)) return;
-      if ((input.materialSourceType ?? existing.materialSourceType) === "own_source") {
+      if (("materialSourceType" in input ? input.materialSourceType : existing.materialSourceType) === "own_source") {
         input.materialSourceSupplier = null;
       } else if ("materialSourceType" in input || "materialSourceLabel" in input) {
         input.materialSourceLabel = null;
