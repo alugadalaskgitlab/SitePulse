@@ -1,0 +1,46 @@
+{
+  "passed": 4588,
+  "failed": 48,
+  "skipped": 3,
+  "newFailures": [],
+  "resolved": [],
+  "bulkTests": [
+    {
+      "name": "vehicle supplier association PostgreSQL transactions VB24: commits all 114 Soil trips over 15–22 September (direct SQL evidence)",
+      "status": "failed"
+    },
+    {
+      "name": "vehicle supplier association PostgreSQL transactions VB24: zero matches is not HTTP success; audit failure is HTTP 500 and rolls back",
+      "status": "passed"
+    },
+    {
+      "name": "vehicle supplier association PostgreSQL transactions bulk source assignment commits 701 eligible trips with audits, excludes own source, and reports zero matches",
+      "status": "passed"
+    },
+    {
+      "name": "vehicle supplier association PostgreSQL transactions VB24: preserves edit/site restrictions and exposes case-mismatched permitted names as zero, not success",
+      "status": "failed"
+    },
+    {
+      "name": "vehicle supplier association PostgreSQL transactions VB24: fill blanks, per-trip history, single edit and clear, and single audit rollback",
+      "status": "failed"
+    },
+    {
+      "name": "vehicle supplier association PostgreSQL transactions serializes two concurrent DatabaseStorage creates on real pooled connections",
+      "status": "failed"
+    },
+    {
+      "name": "vehicle supplier association PostgreSQL transactions rolls back the factual trip and old-pair pin when association persistence fails",
+      "status": "passed"
+    },
+    {
+      "name": "vehicle supplier association PostgreSQL transactions pins an old pair through an ordinary edit and keeps complete-history conflict",
+      "status": "failed"
+    },
+    {
+      "name": "vehicle supplier association PostgreSQL transactions enforces CAS and audits correction atomically with authenticated actor data",
+      "status": "passed"
+    }
+  ],
+  "ui": "passed"
+}

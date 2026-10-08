@@ -80,6 +80,8 @@ describePostgres("vehicle supplier association PostgreSQL transactions", () => {
         material text,
         supplier text,
         material_source_supplier text,
+        material_source_type text,
+        material_source_label text,
         vehicle_number text,
         transport_type text,
         internal_equipment_id integer,
@@ -251,6 +253,21 @@ describePostgres("vehicle supplier association PostgreSQL transactions", () => {
     expect((await request(app).post("/api/site-material-trips/material-source/bulk").send(body)).status).toBe(500);
     expect((await testPool!.query(`SELECT material_source_supplier FROM site_material_trips`)).rows[0].material_source_supplier).toBeNull();
     expect((await testPool!.query(`SELECT * FROM audit_logs`)).rowCount).toBe(0);
+  });
+
+  it("bulk source assignment commits 701 eligible trips with audits, excludes own source, and reports zero matches", async () => {
+    await testPool!.query(`INSERT INTO site_material_trips(date,site,material)
+      SELECT '2026-09-19','SITE A','Soil' FROM generate_series(1,701)`);
+    await testPool!.query(`INSERT INTO site_material_trips(date,site,material,material_source_type,material_source_label)
+      VALUES ('2026-09-19','SITE A','Soil','own_source','Borrow area')`);
+    const body = { site: "SITE A", onlyUnassigned: true, materialSourceSupplier: "SOURCE" };
+    const response = await request(app).post("/api/site-material-trips/material-source/bulk").send(body);
+    expect(response.status).toBe(200);
+    expect(response.body.updatedCount).toBe(701);
+    expect(Number((await testPool!.query(`SELECT count(*) FROM site_material_trips WHERE material_source_supplier='SOURCE'`)).rows[0].count)).toBe(701);
+    expect(Number((await testPool!.query(`SELECT count(*) FROM audit_logs`)).rows[0].count)).toBe(701);
+    expect((await testPool!.query(`SELECT material_source_supplier,material_source_label FROM site_material_trips WHERE material_source_type='own_source'`)).rows).toEqual([{material_source_supplier:null,material_source_label:"Borrow area"}]);
+    expect((await request(app).post("/api/site-material-trips/material-source/bulk").send(body)).status).toBe(409);
   });
 
   it("VB24: preserves edit/site restrictions and exposes case-mismatched permitted names as zero, not success", async () => {

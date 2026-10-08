@@ -1018,7 +1018,7 @@ export default function SiteMaterialTrips() {
                         </td>
                         <td className="p-2 text-center">
                           <div className="flex items-center justify-center gap-1">
-                            {canEdit && <Button variant="outline" size="sm" onClick={() => setEditingRoleTrip(trip)} data-testid={`button-edit-trip-roles-${trip.id}`}>Set roles</Button>}
+                            {canEdit && <Button variant={classifyTripRoles(trip) === "unresolved" ? "default" : "outline"} className={classifyTripRoles(trip) === "unresolved" ? undefined : "text-muted-foreground"} size="sm" onClick={() => setEditingRoleTrip(trip)} data-testid={`button-edit-trip-roles-${trip.id}`}>{classifyTripRoles(trip) === "unresolved" ? "Set roles" : "Change roles"}</Button>}
                             <Button
                               variant="ghost"
                               size="icon"

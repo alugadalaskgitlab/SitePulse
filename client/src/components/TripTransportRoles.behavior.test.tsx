@@ -344,6 +344,14 @@ describe("B1/B2 role list and filter scope", () => {
     expect(screen.getByTestId("trip-role-description-3")).toHaveTextContent("from SANGANNA · brought by our TIPPER-03");
     expect(screen.getByTestId("trip-role-description-4")).toHaveTextContent("NARASIMHULU · roles not confirmed");
     expect(screen.getByTestId("trip-role-description-4")).toHaveClass("text-amber-700");
+    for (const id of [1, 2, 3]) {
+      expect(screen.getByTestId(`button-edit-trip-roles-${id}`)).toHaveTextContent("Change roles");
+      expect(screen.getByTestId(`button-edit-trip-roles-${id}`)).toHaveClass("text-muted-foreground");
+    }
+    for (const id of [4, 5]) {
+      expect(screen.getByTestId(`button-edit-trip-roles-${id}`)).toHaveTextContent("Set roles");
+      expect(screen.getByTestId(`button-edit-trip-roles-${id}`)).not.toHaveClass("text-muted-foreground");
+    }
     expect(harness.request).not.toHaveBeenCalled();
   });
   it("All is not silently scoped by legacy onlyUnassigned; every role filter returns exact count including unresolved with a source", async () => {
