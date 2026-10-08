@@ -4,6 +4,7 @@ import { z } from "zod";
 import { relations, sql } from "drizzle-orm";
 import { equipmentStatusInputError, equipmentStatusRequiresReason } from "./equipmentStatus";
 import { transportPricingSchema, type TransportPricing } from "./vendorBillTransport";
+import { arrangementTripRatesSchema, type ArrangementTripRate } from "./arrangementTripRates";
 
 // === TABLE DEFINITIONS ===
 
@@ -4546,6 +4547,7 @@ export const earthworkArrangements = pgTable("earthwork_arrangements", {
 
   // Commercial
   agreedRate: real("agreed_rate"),              // per UOM (e.g. per CUM)
+  tripRates: jsonb("trip_rates").$type<ArrangementTripRate[] | null>(),
   borrowSource: text("borrow_source"),
   avgLeadKm: real("avg_lead_km"),
 
@@ -4600,7 +4602,7 @@ export const earthworkArrangements = pgTable("earthwork_arrangements", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertEarthworkArrangementSchema = createInsertSchema(earthworkArrangements).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertEarthworkArrangementSchema = createInsertSchema(earthworkArrangements, { tripRates: arrangementTripRatesSchema.optional() }).omit({ id: true, createdAt: true, updatedAt: true });
 export type EarthworkArrangement = typeof earthworkArrangements.$inferSelect;
 export type InsertEarthworkArrangement = z.infer<typeof insertEarthworkArrangementSchema>;
 

@@ -33950,6 +33950,7 @@ export class DatabaseStorage implements IStorage {
 
     // 2. Instruction 024 — add new columns that may be missing in existing tables
     const newCols024: Array<[string, string]> = [
+      ["trip_rates", "JSONB"],
       ["boq_item_allocations", "JSONB"],
       ["mobilisation_date", "TEXT"],
       ["actual_start_date", "TEXT"],

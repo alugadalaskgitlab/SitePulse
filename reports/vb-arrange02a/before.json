@@ -1,0 +1,30 @@
+{
+  "sitelog_dev": {
+    "earthwork_arrangements": {
+      "count": 5,
+      "checksum": "dfb14827fcdc6cc450fd9f1d699c75e77e0666549592c3bc8f4a31ba5dec8d96"
+    },
+    "site_material_trips": {
+      "count": 10,
+      "checksum": "90445fec9cebf345e88be82e09dcf92faef46a2fa8ff213310c9ef05b82f01a7"
+    },
+    "vendor_bills": {
+      "count": 45,
+      "checksum": "ebcf2d052ab5e7a693aa747ac37dfcf161c05707a52e96970d7253413ade1071"
+    }
+  },
+  "heliumdb": {
+    "earthwork_arrangements": {
+      "count": 0,
+      "checksum": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "site_material_trips": {
+      "count": 3,
+      "checksum": "a481d7ab6209f921a2fe3c4ebd651fb0d695481e32eff0fcceae14a285e07513"
+    },
+    "vendor_bills": {
+      "count": 7,
+      "checksum": "62df728d4ce1f7dc792763a958771ddd2d4452c5924189f505abdabaa932e83e"
+    }
+  }
+}

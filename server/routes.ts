@@ -39,6 +39,7 @@ import { isLayerCapableItem } from "@shared/layerDisplay";
 import { boqItemDisplayName, shortItemName as sharedShortItemName, trustedCanonicalBoqName } from "@shared/boqItemName";
 import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, isContractCutToFillDescription, validateBarAllocation, executionArrangementCategoryForItem, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
 import { classifyArrangementEdit } from "@shared/executionState";
+import { arrangementTripRatesSchema } from "@shared/arrangementTripRates";
 import { appendArrangementStatusChange, arrangementStatusAsOf, hasRecordedArrangementStatusChange, isValidArrangementEffectiveDate } from "@shared/arrangementStatusHistory";
 import { computeDieselReceiptState } from "@shared/dieselReceiptStatus";
 import { validateFulfilment } from "@shared/requirementFulfilment";
@@ -18201,6 +18202,7 @@ export async function registerRoutes(
               allocatedQty: allocQty,
               uom: a.uom,
               agreedRate: rate,
+              tripRates: a.tripRates ?? null,
               estimatedValue: rate != null ? Math.round(allocQty * rate) : null,
               plannedDailyOutput: a.plannedDailyOutput != null ? Number(a.plannedDailyOutput) : null,
               mobilisationDate: (a as any).mobilisationDate ?? null,
@@ -18634,6 +18636,10 @@ export async function registerRoutes(
       const projectId = parseInt(req.params.id);
       const user = (req as any).authUser ?? (req as any).user;
       const body = req.body ?? {};
+      const tripRatesResult = arrangementTripRatesSchema.safeParse(body.tripRates ?? null);
+      if (!tripRatesResult.success) return res.status(400).json({
+        error: "INVALID_TRIP_RATES", message: tripRatesResult.error.issues[0].message,
+      });
       // Capture the scope read before any arrangement validation. The create
       // transaction rechecks this token after taking the project mutex, so a
       // correction committed while this request was validating cannot result
@@ -18902,6 +18908,7 @@ export async function registerRoutes(
         chainageFrom: body.chainageFrom != null ? Number(body.chainageFrom) : null,
         chainageTo: body.chainageTo != null ? Number(body.chainageTo) : null,
         scopeSegmentIds: scopeSegmentIdsValue,
+        tripRates: tripRatesResult.data,
         agreedRate: body.agreedRate != null ? Number(body.agreedRate) : null,
         borrowSource: body.borrowSource?.trim() || null,
         avgLeadKm: body.avgLeadKm != null ? Number(body.avgLeadKm) : null,
@@ -19129,6 +19136,7 @@ export async function registerRoutes(
       const allowedFields = [
         "arrangementType", "agencyName", "workDescription", "reachLabel",
         "chainageFrom", "chainageTo", "allocatedQty", "uom", "agreedRate",
+        "tripRates",
         "borrowSource", "avgLeadKm",
         "mobilisationDate", "plannedStartDate", "actualStartDate", "targetCompletionDate",
         "plannedDailyOutput", "workingHoursPerShift", "numExcavators", "excavatorType",
@@ -19142,6 +19150,14 @@ export async function registerRoutes(
       const patch: Record<string, unknown> = {};
       for (const field of allowedFields) {
         if (field in body) patch[field] = body[field];
+      }
+
+      if ("tripRates" in patch) {
+        const result = arrangementTripRatesSchema.safeParse(patch.tripRates);
+        if (!result.success) return res.status(400).json({
+          error: "INVALID_TRIP_RATES", message: result.error.issues[0].message,
+        });
+        patch.tripRates = result.data;
       }
 
       // Numeric coercion

@@ -9,6 +9,7 @@
  */
 import { ArrangementStatusBadge } from "@/components/EarthworkArrangementDialog";
 import { deriveEarthworkSourcingBadge, type EarthworkArrangementSummary } from "@shared/planningEngine";
+import { ArrangementTripRatesView } from "./ArrangementTripRates";
 
 export function ArrangementRegisterLink({
   arrangements, totalDemand,
@@ -41,6 +42,7 @@ export function ArrangementRegisterLink({
           {activeArrs.map(a => <ArrangementStatusBadge key={a.id} status={a.status} />)}
         </div>
       )}
+      {activeArrs.map(a => <ArrangementTripRatesView key={a.id} rates={a.tripRates} />)}
     </div>
   );
 }

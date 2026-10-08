@@ -242,6 +242,7 @@ export const MATERIAL_REVISION_FIELDS = [
   "agencyName",
   "allocatedQty",
   "agreedRate",
+  "tripRates",
   "arrangementType",
   "components",
   "dieselResponsibility",

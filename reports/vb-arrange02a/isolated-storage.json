@@ -1,0 +1,128 @@
+{
+  "scope": "Connection-local TEMP table with arrangement schema; not a saved operational arrangement",
+  "created": {
+    "id": -1,
+    "agreed_rate": 7,
+    "trip_rates": [
+      {
+        "uom": "CFT",
+        "rate": 1200,
+        "quantity": 600
+      },
+      {
+        "uom": "CFT",
+        "rate": 1600,
+        "quantity": 800
+      },
+      {
+        "uom": "CFT",
+        "rate": 2000,
+        "quantity": 1000
+      }
+    ]
+  },
+  "removed": {
+    "agreed_rate": 7,
+    "trip_rates": [
+      {
+        "uom": "CFT",
+        "rate": 1200,
+        "quantity": 600
+      },
+      {
+        "uom": "CFT",
+        "rate": 1600,
+        "quantity": 800
+      }
+    ]
+  },
+  "cleared": {
+    "agreed_rate": 7,
+    "trip_rates": null
+  },
+  "billBefore": {
+    "row": {
+      "id": 1,
+      "notes": "₹ 80,000/- WAS PAID BUT ADJUSTED ONLY ₹40,000/- FROM THIS BILL",
+      "status": "paid",
+      "bill_no": "HLC/VB/2026/0001",
+      "paid_at": "2026-03-11 07:47:52",
+      "paid_by": null,
+      "site_id": null,
+      "tds_rate": null,
+      "bill_date": "2026-03-09",
+      "bill_type": "TRANSPORT",
+      "period_to": "2026-02-05",
+      "vendor_id": null,
+      "created_at": "2026-03-09T06:32:11.93",
+      "amount_paid": null,
+      "approved_at": "2026-03-11 07:47:39",
+      "approved_by": "ADMIN",
+      "lock_status": "locked",
+      "period_from": "2026-02-04",
+      "unlocked_at": null,
+      "vendor_name": "NARSIMULU",
+      "verified_at": "2026-03-11 07:47:30",
+      "verified_by": "ADMIN",
+      "payment_mode": null,
+      "total_amount": 170040,
+      "unlock_reason": null,
+      "author_user_id": null,
+      "gst_rate_labour": null,
+      "payment_remarks": null,
+      "adjustment_label": "PAID ADVANCE TOWATDS DIESEL FOR 2 DAYS",
+      "adjustment_amount": -40000,
+      "gst_rate_material": null,
+      "gst_rate_equipment": null,
+      "gst_rate_transport": null,
+      "net_payable_amount": null,
+      "payment_account_key": null,
+      "payment_recorded_by": null,
+      "unlocked_by_user_id": null,
+      "additional_adjustments": []
+    }
+  },
+  "billAfter": {
+    "row": {
+      "id": 1,
+      "notes": "₹ 80,000/- WAS PAID BUT ADJUSTED ONLY ₹40,000/- FROM THIS BILL",
+      "status": "paid",
+      "bill_no": "HLC/VB/2026/0001",
+      "paid_at": "2026-03-11 07:47:52",
+      "paid_by": null,
+      "site_id": null,
+      "tds_rate": null,
+      "bill_date": "2026-03-09",
+      "bill_type": "TRANSPORT",
+      "period_to": "2026-02-05",
+      "vendor_id": null,
+      "created_at": "2026-03-09T06:32:11.93",
+      "amount_paid": null,
+      "approved_at": "2026-03-11 07:47:39",
+      "approved_by": "ADMIN",
+      "lock_status": "locked",
+      "period_from": "2026-02-04",
+      "unlocked_at": null,
+      "vendor_name": "NARSIMULU",
+      "verified_at": "2026-03-11 07:47:30",
+      "verified_by": "ADMIN",
+      "payment_mode": null,
+      "total_amount": 170040,
+      "unlock_reason": null,
+      "author_user_id": null,
+      "gst_rate_labour": null,
+      "payment_remarks": null,
+      "adjustment_label": "PAID ADVANCE TOWATDS DIESEL FOR 2 DAYS",
+      "adjustment_amount": -40000,
+      "gst_rate_material": null,
+      "gst_rate_equipment": null,
+      "gst_rate_transport": null,
+      "net_payable_amount": null,
+      "payment_account_key": null,
+      "payment_recorded_by": null,
+      "unlocked_by_user_id": null,
+      "additional_adjustments": []
+    }
+  },
+  "billUnchanged": true
+}

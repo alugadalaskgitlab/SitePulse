@@ -1,0 +1,88 @@
+INSTRUCTION VB-ARRANGE-02A: Let an arrangement hold a rate per trip size. Storage and entry only — no billing change.
+
+READ THIS FIRST
+This batch adds ONE thing: the ability to record, on an Execution Arrangement, a rate per trip size — e.g. 600 CFT / 800 CFT / 1000 CFT, each with its own flat per-trip amount.
+It does NOT change any bill, any rate card, any pricing, or how any trip is billed. The billing side is VB-ARRANGE-02B. Do not start it.
+Do NOT publish. Show the Publish preview and STOP.
+Do NOT change, backfill, infer or correct any existing trip or arrangement row.
+Do NOT touch the vendor rate card system (`vendor_rate_cards`, `applyTransportCard`, `shared/vendorBillTransport.ts`). This is a separate, arrangement-level rate and must not be mixed into it.
+PARKED — do not investigate or touch: LDO, startup data repair jobs, stock balances, user permissions, trips list, filters.
+Commit and push all work to GitHub before reporting.
+
+WHY
+The owner engages a vendor to extract soil from a borrow area HLC itself identified, haul it, and dump it at the work stretch. The vendor is paid a FLAT AMOUNT PER TRIP, and that amount differs by trip size: one rate for a 600 CFT trip, another for 800 CFT, another for 1000 CFT.
+
+That rate is ALL-INCLUSIVE — extraction, loading, haulage and dumping are all covered by the single per-trip figure. There is no separate transport payment for these trips. (VB-ARRANGE-02B will enforce that on the bill; this batch only stores the rates.)
+
+Today there is nowhere to put this. `earthworkArrangements.agreedRate` (shared/schema.ts ~4548) is a single `real`, documented "per UOM (e.g. per CUM)". It cannot hold three rates, and it is not per trip.
+
+The vendor transport rate card cannot express it either: `calcCandidateAmount` prices transport as `leadDistance × 2 × ratePerKm × trips`, a per-kilometre round-trip model. Forcing a flat per-trip figure through it would require a fabricated lead distance and could not vary by trip size. Do not attempt that.
+
+=====================================================================
+PART A — THE STORED RATES
+=====================================================================
+A1. Add a per-trip rate table to `earthworkArrangements`. A JSONB array is appropriate, each entry holding:
+      - trip quantity (number, e.g. 600)
+      - trip UOM (text, e.g. "CFT")
+      - rate per trip (number, the flat all-in amount in ₹)
+    Name it clearly, e.g. `tripRates`.
+A2. Nullable, defaulting to null. Every existing arrangement row stays exactly as it is and keeps behaving as it does today.
+A3. `agreedRate` is NOT touched, NOT migrated, NOT deprecated and NOT read by this batch. It keeps its current meaning (per UOM). The two coexist; 02B will decide which applies to what.
+A4. Validate on write: quantity > 0, UOM non-empty, rate >= 0, and no two entries sharing the same quantity+UOM pair (a duplicate makes the rate ambiguous and must be rejected with a clear message, not silently resolved).
+A5. Additive migration only. No existing column changes meaning. No existing row is written.
+
+=====================================================================
+PART B — ENTERING THEM
+=====================================================================
+B1. On the Execution Arrangement screen where `agreedRate` is already edited, add a small table the owner can fill in:
+
+      Trip size        UOM      Rate per trip
+      600              CFT      ₹ ____
+      800              CFT      ₹ ____
+      1000             CFT      ₹ ____          [+ Add row]  [remove]
+
+B2. Label it so a non-accountant reads it correctly — this is a flat all-in amount per trip, covering extraction, haulage and dumping. Put that in plain words near the table, in one line.
+B3. Rows can be added and removed. Saving with no rows stores null, exactly as today.
+B4. Reject a duplicate trip size + UOM on screen with a plain message before saving.
+B5. Do not change any other field, validation or behaviour on this screen. Do not change the approval workflow.
+B6. Respect the existing permission guard on this screen. Do not add, remove or weaken any guard.
+
+=====================================================================
+PART C — SHOW IT BACK
+=====================================================================
+C1. Wherever the arrangement is displayed read-only, show the trip rates in the same plain style.
+C2. Do not display these rates anywhere on the DPR page. No money, rate or ₹ figure may appear on DPR.
+
+=====================================================================
+WHAT NOT TO DO
+=====================================================================
+- Do not change any bill, bill row, bill preview, payable, or how any trip is priced. No billing code may read `tripRates` in this batch.
+- Do not touch `vendor_rate_cards`, `applyTransportCard`, `changeTransportBasis` or `calcCandidateAmount`.
+- Do not migrate, rewrite or reinterpret `agreedRate`.
+- Do not backfill rates onto any arrangement, or guess a rate from existing data.
+- Do not change trips, trip tagging, the trips list or its filters.
+- Do not put any rate on the DPR page.
+- Do not touch production. Do not publish.
+
+SELF-TEST BEFORE REPORTING
+Signed in with the development verification account, with screenshots and HTTP status codes.
+1. Open an arrangement, add three trip rates (600/800/1000 CFT), save. Show the stored row.
+2. Reopen it: the three rates come back exactly as entered.
+3. Add a duplicate 600 CFT row → rejected with a clear message, nothing saved.
+4. Add a negative rate and a zero quantity → each rejected clearly.
+5. Remove a row and save: the remaining rates are correct.
+6. An arrangement with no trip rates saves and loads exactly as before.
+7. Confirm no bill, bill preview or payable anywhere changed as a result of entering these rates — show one bill before and after.
+Z1. Before/after row counts and content checksums for `earthwork_arrangements` and `site_material_trips`, proving no existing row changed.
+Z2. Full suite against the 48 baseline. List any test added and why.
+Z3. Build passes.
+
+REPORT BACK — ONCE, AT THE END, AND KEEP IT SHORT
+1. Files changed and the migration.
+2. The exact stored shape of `tripRates`.
+3. Evidence 1–7 with screenshots and status codes.
+4. Z1–Z3.
+5. Any choice you made on your own, and what you chose.
+6. The Publish preview.
+
+STOP AFTER PART C. Do not publish. Do not start VB-ARRANGE-02B.

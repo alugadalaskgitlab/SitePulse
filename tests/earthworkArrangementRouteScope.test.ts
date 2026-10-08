@@ -12,6 +12,8 @@ const fx = vi.hoisted(() => ({
   createEarthworkArrangement: vi.fn(),
   getDprs: vi.fn(),
   createNotification: vi.fn(),
+  getEarthworkArrangementById: vi.fn(),
+  updateEarthworkArrangement: vi.fn(),
 }));
 
 vi.mock("../server/storage", () => {
@@ -20,6 +22,8 @@ vi.mock("../server/storage", () => {
     createEarthworkArrangement: fx.createEarthworkArrangement,
     getDprs: fx.getDprs,
     createNotification: fx.createNotification,
+    getEarthworkArrangementById: fx.getEarthworkArrangementById,
+    updateEarthworkArrangement: fx.updateEarthworkArrangement,
   };
   const storage = new Proxy(methods, {
     get(target, key: string) {
@@ -122,6 +126,8 @@ beforeEach(async () => {
   vi.clearAllMocks();
   fx.getProjectScopeVersionToken.mockResolvedValue("scope-token-77");
   fx.getDprs.mockResolvedValue([{ id: 1 }]);
+  fx.getEarthworkArrangementById.mockResolvedValue({id:1201,boqProjectId:77,status:"draft",allocatedQty:10,boqItemId:900,tripRates:null});
+  fx.updateEarthworkArrangement.mockImplementation(async (id,patch)=>({id,...patch}));
   fx.createEarthworkArrangement.mockResolvedValue({
     id: 1201,
     boqProjectId: 77,
@@ -134,6 +140,37 @@ beforeEach(async () => {
 });
 
 describe("POST earthwork arrangement scope handoff", () => {
+  const tripRates=[600,800,1000].map(quantity=>({quantity,uom:"CFT",rate:quantity*2}));
+  it("passes three flat rates unchanged to storage, leaving agreedRate independent", async () => {
+    const response=await request(app).post("/api/boq/projects/77/earthwork-arrangements")
+      .send({materialLabel:"Imported earth",boqItemId:900,allocatedQty:10,agreedRate:7,tripRates});
+    expect(response.status).toBe(201);
+    expect(fx.createEarthworkArrangement).toHaveBeenCalledWith(expect.objectContaining({tripRates,agreedRate:7}),"scope-token-77");
+  });
+  it("supports rate-only draft edits, removal and clear without touching agreedRate", async () => {
+    for(const rows of [tripRates,tripRates.slice(0,2),[]]){
+      const response=await request(app).patch("/api/earthwork-arrangements/1201").send({tripRates:rows});
+      expect(response.status).toBe(200);
+      expect(response.body.tripRates).toEqual(rows.length?rows:null);
+      const patch=fx.updateEarthworkArrangement.mock.lastCall![1];
+      expect(patch).not.toHaveProperty("agreedRate");
+    }
+  });
+  it.each([
+    [tripRates[0],{...tripRates[0],uom:" cft "}],
+    [{quantity:0,uom:"CFT",rate:1}],
+    [{quantity:600,uom:"CFT",rate:-1}],
+  ])("rejects invalid trip rates on POST and PATCH without a write", async (...rows) => {
+    for(const method of ["post","patch"] as const){
+      const response=await request(app)[method](method==="post"?"/api/boq/projects/77/earthwork-arrangements":"/api/earthwork-arrangements/1201")
+        .send({tripRates:rows});
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe("INVALID_TRIP_RATES");
+      expect(response.body.message).toBeTruthy();
+    }
+    expect(fx.createEarthworkArrangement).not.toHaveBeenCalled();
+    expect(fx.updateEarthworkArrangement).not.toHaveBeenCalled();
+  });
   it("forwards the captured token to the atomic arrangement write", async () => {
     const response = await request(app)
       .post("/api/boq/projects/77/earthwork-arrangements")

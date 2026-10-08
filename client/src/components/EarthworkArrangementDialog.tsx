@@ -43,6 +43,7 @@ import {
   getCategoryDescriptor,
 } from "@shared/executionArrangementCategories";
 import { boqItemDisplayName } from "@shared/boqItemName";
+import { ArrangementTripRatesEditor, ArrangementTripRatesView, parseTripRateDrafts, type TripRateDraft } from "./ArrangementTripRates";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -357,6 +358,7 @@ export function ArrangementSummaryCard({
           )}
         </p>
       )}
+      <ArrangementTripRatesView rates={arr.tripRates} />
       <div className="flex gap-3 flex-wrap text-slate-600">
         {arr.plannedStartDate && (
           <span>Start: <span className="font-medium">{arr.plannedStartDate}</span></span>
@@ -725,6 +727,9 @@ export function EarthworkArrangementDialog({
   const [allocatedQty, setAllocatedQty] = useState(
     editArrangement?.allocatedQty != null ? String(editArrangement.allocatedQty) : ""
   );
+  const [tripRateRows, setTripRateRows] = useState<TripRateDraft[]>(
+    (editArrangement?.tripRates ?? []).map(row => ({quantity: String(row.quantity), uom: row.uom, rate: String(row.rate)}))
+  );
   const [agreedRate, setAgreedRate] = useState(
     editArrangement?.agreedRate != null ? String(editArrangement.agreedRate) : ""
   );
@@ -861,12 +866,15 @@ export function EarthworkArrangementDialog({
    *   - dates → YYYY-MM-DD string or null
    */
   const buildBody = (saveIntent: "draft" | "submit") => {
+    const tripRatesResult = parseTripRateDrafts(tripRateRows);
+    if (!tripRatesResult.success) throw new Error(tripRatesResult.error.issues[0].message);
     const safeNum = (v: string | undefined) => {
       const n = parseFloat(v ?? "");
       return isFinite(n) ? n : null;
     };
 
     const base = {
+      tripRates: tripRatesResult.data,
       materialLabel,
       arrangementType,
       saveIntent,
@@ -1161,6 +1169,8 @@ export function EarthworkArrangementDialog({
               />
             </div>
           </div>
+
+          <ArrangementTripRatesEditor rows={tripRateRows} onChange={setTripRateRows} />
 
           {estimatedValue != null && (
             <p className="text-[12px] text-emerald-700 bg-emerald-50 rounded px-2 py-1">

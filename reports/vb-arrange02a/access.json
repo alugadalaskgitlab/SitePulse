@@ -1,0 +1,25 @@
+{
+  "login": 200,
+  "projectsStatus": 200,
+  "list": {
+    "url": "/api/boq/projects/2/earthwork-arrangements",
+    "status": 403,
+    "data": {
+      "error": "forbidden",
+      "sections": [
+        "work_programme",
+        "work_programme_review"
+      ],
+      "action": "view"
+    }
+  },
+  "saveAttempt": {
+    "url": "/api/boq/projects/2/earthwork-arrangements",
+    "status": 403,
+    "data": {
+      "error": "forbidden",
+      "section": "work_programme",
+      "action": "edit"
+    }
+  }
+}

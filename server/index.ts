@@ -140,7 +140,7 @@ app.use((req, res, next) => {
         const required = [
           "boq_project_id","boq_item_id","boq_item_allocations","material_label",
           "arrangement_type","agency_name","work_description","reach_label",
-          "chainage_from","chainage_to","allocated_qty","uom","agreed_rate",
+          "chainage_from","chainage_to","allocated_qty","uom","agreed_rate","trip_rates",
           "borrow_source","avg_lead_km","mobilisation_date","planned_start_date",
           "actual_start_date","target_completion_date","planned_daily_output",
           "working_hours_per_shift","num_excavators","excavator_type","num_tippers",

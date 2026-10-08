@@ -28,6 +28,7 @@ import {
   type ExecutionState,
 } from "@shared/executionState";
 import { ArrangementStatusBadge, EarthworkArrangementDialog } from "@/components/EarthworkArrangementDialog";
+import { ArrangementTripRatesView } from "@/components/ArrangementTripRates";
 import { BarArrangementPanel } from "@/components/BarArrangementPanel";
 import { useProjectArrangements, type ProjectArrangement } from "@/components/ExecutionStateBadge";
 import { useQueryClient } from "@tanstack/react-query";
@@ -79,6 +80,7 @@ interface ScopeSegmentRow {
 }
 
 type RegisterArrangement = ProjectArrangement & {
+  tripRates?: import("@shared/arrangementTripRates").ArrangementTripRate[] | null;
   materialLabel?: string | null;
   reachLabel?: string | null;
   chainageFrom?: number | null;
@@ -425,7 +427,7 @@ export default function ExecutionArrangements() {
                   </TableCell>
                   <TableCell className="capitalize">{(r.arr.arrangementType ?? "").replace(/_/g, " ")}</TableCell>
                   <TableCell className="text-right font-mono">{r.qty.toLocaleString()} {uom}</TableCell>
-                  <TableCell className="text-right font-mono">{r.rate != null ? `₹${r.rate.toLocaleString()}` : "—"}</TableCell>
+                  <TableCell className="text-right font-mono">{r.rate != null ? `₹${r.rate.toLocaleString()}` : "—"}<ArrangementTripRatesView rates={r.arr.tripRates} /></TableCell>
                   <TableCell className="text-right font-mono">{r.value != null ? `₹${(r.value / 100000).toFixed(2)} L` : "—"}</TableCell>
                   <TableCell>
                     <ArrangementStatusBadge status={r.arr.status} />
@@ -479,6 +481,7 @@ export default function ExecutionArrangements() {
                 </p>
               </DialogHeader>
               <div className="space-y-3 text-[12px]">
+                <ArrangementTripRatesView rates={a.tripRates} />
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                   <div><span className="text-slate-500">Agency:</span> {a.agencyName ?? "—"}</div>
                   <div><span className="text-slate-500">Allocated:</span> <span className="font-mono">{Number(a.allocatedQty).toLocaleString()} {uom}</span></div>
