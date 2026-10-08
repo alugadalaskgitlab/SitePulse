@@ -1,0 +1,290 @@
+[
+  {
+    "url": "/api/auth/me",
+    "status": 200
+  },
+  {
+    "url": "/api/notifications/unread-count",
+    "status": 200
+  },
+  {
+    "url": "/api/notifications",
+    "status": 200
+  },
+  {
+    "url": "/api/config",
+    "status": 200
+  },
+  {
+    "url": "/api/plant-module/equipment",
+    "status": 200
+  },
+  {
+    "url": "/api/vendor-master",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips?dateFrom=2026-10-08&dateTo=2026-10-08",
+    "status": 200
+  },
+  {
+    "url": "/api/sites",
+    "status": 200
+  },
+  {
+    "url": "/api/dpr/programme-bars?projectId=1900000200&boqItemId=1900000200",
+    "status": 403
+  },
+  {
+    "url": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000201",
+    "status": 500
+  },
+  {
+    "url": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000202",
+    "status": 500
+  },
+  {
+    "url": "/api/boq/projects/1900000200/items",
+    "status": 200
+  },
+  {
+    "url": "/api/boq/projects/1900000200/arrangement-programme-allocations",
+    "status": 200
+  },
+  {
+    "url": "/api/boq/projects/1900000200/earthwork-arrangements/item/1900000200",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips?dateFrom=2026-10-08&dateTo=2026-10-08&site=THAKADPALLY+-+SIRUR",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips/suggestions?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips?dateFrom=2026-10-01&dateTo=2026-10-08&site=THAKADPALLY+-+SIRUR",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips?dateFrom=2026-10-01&dateTo=2026-10-08&site=THAKADPALLY+-+SIRUR&vehicleNumber=LINK02P1",
+    "status": 200
+  },
+  {
+    "url": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000201",
+    "status": 500
+  },
+  {
+    "url": "/api/site-material-trips/arrangement-options?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips/arrangement/preview",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips/arrangement/bulk",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips/arrangement-options?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips?dateFrom=2026-10-01&dateTo=2026-10-08&site=THAKADPALLY+-+SIRUR&vehicleNumber=LINK02P1",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips/suggestions?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips/arrangement/preview",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips?dateFrom=2026-10-01&dateTo=2026-10-08&site=THAKADPALLY+-+SIRUR&vehicleNumber=LINK02P2",
+    "status": 200
+  },
+  {
+    "url": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000202",
+    "status": 500
+  },
+  {
+    "url": "/api/site-material-trips/arrangement/preview",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips/arrangement/preview",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips?dateFrom=2026-10-01&dateTo=2026-10-08&site=THAKADPALLY+-+SIRUR&vehicleNumber=LINK02P3",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips/arrangement/preview",
+    "status": 200
+  },
+  {
+    "url": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000204",
+    "status": 500
+  },
+  {
+    "url": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000203",
+    "status": 500
+  },
+  {
+    "url": "/api/site-material-trips/arrangement/bulk",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips/arrangement-options?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips/suggestions?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips?dateFrom=2026-10-01&dateTo=2026-10-08&site=THAKADPALLY+-+SIRUR&vehicleNumber=LINK02P3",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips/arrangement/preview",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips?dateFrom=2026-10-01&dateTo=2026-10-08&site=THAKADPALLY+-+SIRUR&vehicleNumber=LINK02P6",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips/arrangement/preview",
+    "status": 200
+  },
+  {
+    "url": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000205",
+    "status": 500
+  },
+  {
+    "url": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000202",
+    "status": 500
+  },
+  {
+    "url": "/api/site-material-trips?dateFrom=2026-10-01&dateTo=2026-10-08&site=THAKADPALLY+-+SIRUR&vehicleNumber=LINK02P2",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips/arrangement/preview",
+    "status": 200
+  },
+  {
+    "url": "/api/boq/projects?siteId=16",
+    "status": 200
+  },
+  {
+    "url": "/api/auth/me",
+    "status": 200
+  },
+  {
+    "url": "/api/notifications",
+    "status": 200
+  },
+  {
+    "url": "/api/config",
+    "status": 200
+  },
+  {
+    "url": "/api/notifications/unread-count",
+    "status": 200
+  },
+  {
+    "url": "/api/materials/suppliers?includeMaterialSources=true",
+    "status": 200
+  },
+  {
+    "url": "/api/sites",
+    "status": 200
+  },
+  {
+    "url": "/api/materials-received",
+    "status": 200
+  },
+  {
+    "url": "/api/materials-received?dateFrom=2026-10-01&dateTo=2026-10-08",
+    "status": 200
+  },
+  {
+    "url": "/api/dpr/programme-bars?projectId=1900000200&boqItemId=1900000200",
+    "status": 403
+  },
+  {
+    "url": "/api/boq/projects/1900000200/items",
+    "status": 200
+  },
+  {
+    "url": "/api/boq/projects/1900000200/earthwork-arrangements/item/1900000200",
+    "status": 200
+  },
+  {
+    "url": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000201",
+    "status": 500
+  },
+  {
+    "url": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000202",
+    "status": 500
+  },
+  {
+    "url": "/api/attachments?moduleType=site_material_trip&linkedRecordId=16",
+    "status": 500
+  },
+  {
+    "url": "/api/boq/projects/1900000200/arrangement-programme-allocations",
+    "status": 200
+  },
+  {
+    "url": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000205",
+    "status": 500
+  },
+  {
+    "url": "/api/attachments?moduleType=site_material_trip&linkedRecordId=13",
+    "status": 500
+  },
+  {
+    "url": "/api/attachments?moduleType=site_material_trip&linkedRecordId=15",
+    "status": 500
+  },
+  {
+    "url": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000204",
+    "status": 500
+  },
+  {
+    "url": "/api/attachments?moduleType=site_material_trip&linkedRecordId=14",
+    "status": 500
+  },
+  {
+    "url": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000203",
+    "status": 500
+  },
+  {
+    "url": "/api/edit-requests/check?recordType=site_material_trip&recordId=1900000202",
+    "status": 200
+  },
+  {
+    "url": "/api/edit-requests/mine",
+    "status": 200
+  },
+  {
+    "url": "/api/site-material-trips/suggestions?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  },
+  {
+    "url": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000202",
+    "status": 500
+  },
+  {
+    "url": "/api/boq/projects?siteId=16",
+    "status": 200
+  }
+]

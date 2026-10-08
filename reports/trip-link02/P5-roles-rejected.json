@@ -1,0 +1,7 @@
+{
+  "path": "/api/site-material-trips/1900000202",
+  "status": 400,
+  "data": {
+    "message": "Arrangement is not commercially valid on 2026-10-08 (status: draft). No new link was saved."
+  }
+}

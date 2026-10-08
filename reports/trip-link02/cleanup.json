@@ -1,0 +1,49 @@
+{
+  "baseline": {
+    "trips": {
+      "count": 10,
+      "checksum": "117a8e15e3eb967bcfa58d72073aa9a98720bef6352b699503e0b179a5128ed5"
+    },
+    "arrangements": {
+      "count": 5,
+      "checksum": "dedb1a21b730c8f0a51cdfa937cf05e1405291acc7ccd3a1cec01b3abb9c95ba"
+    }
+  },
+  "final": {
+    "trips": {
+      "count": 10,
+      "checksum": "117a8e15e3eb967bcfa58d72073aa9a98720bef6352b699503e0b179a5128ed5"
+    },
+    "arrangements": {
+      "count": 5,
+      "checksum": "dedb1a21b730c8f0a51cdfa937cf05e1405291acc7ccd3a1cec01b3abb9c95ba"
+    }
+  },
+  "removed": {
+    "project": 1900000200,
+    "item": 1900000200,
+    "trips": [
+      1900000201,
+      1900000202,
+      1900000203,
+      1900000204,
+      1900000205
+    ],
+    "arrangements": [
+      1900000210,
+      1900000211,
+      1900000212
+    ],
+    "deviceId": 170
+  },
+  "preExistingRowsUnchanged": true,
+  "additionalFailedLoginDevicesRemoved": [],
+  "disposableDeviceIdsAcrossAttempts": [
+    166,
+    167,
+    168,
+    169,
+    170
+  ],
+  "remainingDisposableDevices": []
+}

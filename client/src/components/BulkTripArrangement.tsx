@@ -3,7 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "@/components/ui/alert-dialog";
-import { tripArrangementLabel, type ArrangementOption, type TripArrangementPreview } from "@shared/tripArrangementLink";
+import { hasValidTripLinkPeriod, tripArrangementLabel, type ArrangementOption, type TripArrangementPreview } from "@shared/tripArrangementLink";
 
 type Filters = {
   site?: string; material?: string; supplier?: string; vehicleNumber?: string;
@@ -42,7 +42,7 @@ export function BulkTripArrangement({filters}: {filters: Filters}) {
     },
     onSuccess:result=>{
       setConfirmation(null);
-      setMessage(`Linked ${result.updatedCount} trips. No other trip fields were changed.`);
+      setMessage(`Linked ${result.updatedCount} trips. ${result.exclusionMessage || ""} No other trip fields were changed.`);
       queryClient.invalidateQueries({predicate:q=>String(q.queryKey[0]).startsWith("/api/site-material-trips")});
       queryClient.invalidateQueries({queryKey:["trip-arrangement-preview"]});
       queryClient.invalidateQueries({predicate:q=>String(q.queryKey[0]).startsWith("/api/materials-received")});
@@ -71,13 +71,14 @@ export function BulkTripArrangement({filters}: {filters: Filters}) {
       <label className="block text-sm">Execution Arrangement
         <select className="mt-1 w-full rounded border bg-background p-2" aria-label="Bulk Execution Arrangement" value={arrangementId} disabled={!filters.site || options.isFetching || save.isPending} onChange={e=>setArrangementId(e.target.value)}>
           <option value="">Choose an arrangement explicitly</option>
-          {options.data?.map(a=><option key={a.id} value={a.id}>{tripArrangementLabel(a)}</option>)}
+          {options.data?.map(a=><option key={a.id} value={a.id} disabled={!hasValidTripLinkPeriod({...a,status:a.status ?? ""})}>{tripArrangementLabel(a)}{!hasValidTripLinkPeriod({...a,status:a.status ?? ""}) ? " · Not available for new links" : " · Checked against each trip date"}</option>)}
         </select>
       </label>
       {filters.site && options.isSuccess && !options.data.length && <p>No arrangements exist for this site's BOQ project.</p>}
       <label className="flex gap-2 text-sm"><input type="checkbox" checked={onlyUnlinked} disabled={save.isPending} onChange={e=>setOnlyUnlinked(e.target.checked)} />Only trips not yet linked to an arrangement</label>
       {!onlyUnlinked && <p className="text-sm text-amber-700">Overwrite mode: existing links to another arrangement may be replaced. Review the separate count before confirming.</p>}
       {preview.isError && <p role="alert">Could not count eligible trips. <button onClick={()=>void preview.refetch()}>Retry</button></p>}
+      {ready && !preview.isFetching && preview.data?.excludedCount ? <p role="alert" data-testid="arrangement-excluded-count">{preview.data.exclusionMessage}</p> : null}
       {ready && preview.data && !preview.isFetching && <p className="text-sm" data-testid="arrangement-eligible-count">
         {preview.data.eligibleCount} eligible trips · {preview.data.overwriteCount} already point at another arrangement.
         {" "}{preview.data.alreadyLinkedCount} matching trips already have a link; {onlyUnlinked || filters.onlyWithoutArrangement ? "they are excluded" : "links already pointing at the chosen arrangement are excluded"}.
@@ -93,6 +94,7 @@ export function BulkTripArrangement({filters}: {filters: Filters}) {
         <p className="text-sm font-medium">{selected && tripArrangementLabel(selected)}</p>
         {filterSummary}
         <p className="text-sm font-medium">{confirmation?.overwriteCount} of these {confirmation?.eligibleCount} already point at another arrangement{confirmation?.overwriteCount ? " — those links will be replaced." : "."}</p>
+        {confirmation?.excludedCount ? <p role="alert">{confirmation.exclusionMessage}</p> : null}
         <AlertDialogFooter><AlertDialogCancel disabled={save.isPending}>Cancel</AlertDialogCancel><Button disabled={save.isPending} onClick={()=>save.mutate()}>{save.isPending?"Linking…":"Confirm arrangement links"}</Button></AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

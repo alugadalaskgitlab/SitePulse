@@ -1,0 +1,9 @@
+{
+  "database": "sitelog_dev",
+  "readOnly": true,
+  "totalTrips": 10,
+  "linkedTrips": 0,
+  "invalidCount": 0,
+  "invalidActiveCount": 0,
+  "rows": []
+}

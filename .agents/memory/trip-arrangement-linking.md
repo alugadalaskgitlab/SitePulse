@@ -15,3 +15,15 @@ retain their different own-source eligibility. Never infer or auto-assign a
 trip's arrangement. Existing-trip work-context corrections must preserve
 untouched links, not reuse entry-time automatic selection or clearing.
 Trip linkage is operational/commercial context, not BOQ-earned progress.
+
+New trip links must use the existing receipt-operational status set, evaluated
+on the trip's date. Planning auto-allocation's on-hold inclusion is not a receipt
+linking rule. Keep historical links visible and unchanged; do not infer or
+backfill approval dates for old arrangements.
+
+**Why:** The owner requires commercial validity before billing uses these links,
+while reserving correction of existing historical links to the owner.
+
+**How to apply:** Route new-link checks through the shared trip-link date rule.
+Existing-trip editors must not use entry-time auto-selection or clearing.
+Read-only inventories include invalid historical links without repairing them.

@@ -1,0 +1,8 @@
+{
+  "path": "/api/site-material-trips/arrangement/bulk",
+  "status": 400,
+  "data": {
+    "code": "ARRANGEMENT_NOT_VALID_ON_TRIP_DATE",
+    "message": "1 trips excluded: the arrangement was not commercially valid on their trip dates. Their links remain unchanged. Nothing was changed."
+  }
+}

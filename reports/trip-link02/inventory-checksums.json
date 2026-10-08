@@ -1,0 +1,10 @@
+{
+  "trips": {
+    "count": 10,
+    "checksum": "bc31847ef9e06fd4a478c8a2880e9669a364f70d304b2ccfb52e2e020e351f3c"
+  },
+  "arrangements": {
+    "count": 5,
+    "checksum": "dedb1a21b730c8f0a51cdfa937cf05e1405291acc7ccd3a1cec01b3abb9c95ba"
+  }
+}

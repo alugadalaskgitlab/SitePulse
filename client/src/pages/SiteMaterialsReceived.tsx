@@ -702,6 +702,7 @@ export default function SiteMaterialsReceived() {
                     value={editForm.workContext}
                     onChange={(workContext) => setEditForm((form) => form && ({ ...form, workContext }))}
                     testIdPrefix="received-edit-work-ctx"
+                    manualOnly
                   />
                   <div className="flex items-center justify-end gap-2 pt-1">
                     <Button

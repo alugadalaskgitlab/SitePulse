@@ -1,0 +1,113 @@
+INSTRUCTION TRIP-LINK-02: A new arrangement link must not attach a trip to an arrangement that was not commercially live on that trip's date.
+
+READ THIS FIRST
+This is a SMALL, NARROW batch. It closes one gap left by TRIP-LINK-01 before VB-ARRANGE-02B starts billing from these links. Do not start 02B.
+Do NOT publish. Show the Publish preview and STOP.
+Do NOT change, clear, re-point or "correct" any existing link on any trip. Existing links are preserved and shown as they are, whatever the arrangement's status.
+Do NOT invent a new status rule, list or constant. Use the helpers that already exist.
+Do NOT change arrangement statuses, the approval workflow, or any arrangement row.
+PARKED — do not investigate or touch: LDO, startup data repair jobs, stock balances, rate cards, vendor bills, user permissions.
+Commit and push all work to GitHub before reporting.
+
+THE GAP
+`bulkLinkTripArrangement` (`server/tripArrangementLink.ts` ~line 29) resolves the
+chosen arrangement by id and site only:
+
+    .where(and(eq(earthworkArrangements.id, input.earthworkArrangementId), siteMatch(input.site)))
+
+There is no status condition. The same is true of the options the selector offers,
+and the manual correction mode deliberately bypasses the normal applicable-arrangement
+resolution. So a trip can today be NEWLY attached to an arrangement that is draft,
+rejected, cancelled or superseded — and VB-ARRANGE-02B would then bill against it.
+
+The codebase already has the right tools and they must be used rather than
+duplicated:
+- `shared/arrangementStatusHistory.ts`: `arrangementStatusAsOf(arrangement, asOf)`
+  resolves the status ON A GIVEN DATE from `revisionHistory`, and
+  `isArrangementOperationalAsOf(arrangement, asOf, operationalStatuses)` tests it.
+- `shared/arrangementAutoAllocation.ts`: `AUTO_SYNC_STATUSES`
+  (`approved`, `mobilisation_pending`, `in_progress`, `on_hold`).
+- `shared/materialReceiptSummary.ts` ~line 177 shows an existing caller choosing its
+  own operational set.
+
+=====================================================================
+PART A — DECIDE THE RULE FROM WHAT EXISTS
+=====================================================================
+A1. Inspect the existing status helpers and their current callers, and determine
+    which statuses are commercially valid for a NEW billing link. Do not invent a
+    new set, and do not silently reuse one whose purpose is different. State in the
+    report which set you chose, which existing caller you took it from, and why it is
+    the right one for commercial linkage.
+A2. The test is AS OF THE TRIP'S DATE, not today. `arrangementStatusAsOf` exists for
+    exactly this reason: an arrangement approved in June and cancelled in September
+    is valid for a July trip and invalid for an October one. Use the trip's own date.
+A3. If you conclude the correct behaviour differs from what this instruction assumes,
+    say so plainly with the evidence rather than following it.
+
+=====================================================================
+PART B — APPLY IT TO NEW LINKS ONLY
+=====================================================================
+B1. The bulk link operation rejects a trip whose date falls outside the chosen
+    arrangement's commercially valid period, with a clear message naming how many
+    trips were excluded and why. It does not silently drop them from the count.
+B2. The arrangement options offered in the selector show the status, and either
+    exclude the ones that are never valid or mark them plainly. The owner must not be
+    able to pick one by accident.
+B3. The same rule applies to a link set one-at-a-time from the Set-roles dialog and
+    from the Materials Received edit form. One rule, one implementation, all entry
+    points — do not write it three times.
+B4. EXISTING LINKS ARE UNTOUCHED. A trip already pointing at an arrangement keeps
+    that link and keeps displaying it, even if that arrangement is now cancelled or
+    was never approved. Correcting history is the owner's decision, not this batch's.
+
+=====================================================================
+PART C — TELL THE OWNER WHAT IS ALREADY THERE
+=====================================================================
+C1. Produce a READ-ONLY report of trips whose existing link points at an arrangement
+    that was not commercially valid on that trip's date: trip id, date, site,
+    material, transporter, arrangement id, agency, and the status as of that date.
+C2. Write it to `reports/trip-link02/` and summarise the counts in the report back.
+    Change nothing. The owner decides what, if anything, to do about them.
+C3. If the count is zero, say so plainly — that is a useful answer.
+
+=====================================================================
+WHAT NOT TO DO
+=====================================================================
+- Do not change or clear any existing `earthwork_arrangement_id`.
+- Do not change any arrangement's status, dates or approval state.
+- Do not create a new status constant, enum or list.
+- Do not block the owner from VIEWING or filtering trips linked to any arrangement.
+- Do not change billing, rates or the bulk material-source tool.
+- Do not touch production. Do not publish.
+
+PROVE IT — SIGNED IN, WITH SCREENSHOTS AND STATUS CODES
+(The development verification account should now hold the grants from DEV-ACCT-02.
+If a screen still returns 403, report it — do not change any permission.)
+P1. Bulk link to an approved arrangement: works as before, same counts. Status code.
+P2. Bulk link to a draft or cancelled arrangement: refused, with the message, and
+    nothing written. Status code.
+P3. A set of trips spanning a status change — some before, some after — linked to
+    that arrangement: only the ones inside the valid period are linked, and the
+    message names the excluded count. Show the rows.
+P4. The selector shows status and prevents an accidental choice (B2). Screenshot.
+P5. The same rule applied from Set-roles and from the Materials Received edit form.
+P6. A trip already linked to a cancelled arrangement still shows that link, unchanged
+    (B4). Screenshot.
+Z1. Before/after row counts and content checksums for `site_material_trips` and
+    `earthwork_arrangements`, with every changed trip listed by id and the only
+    changed column being `earthwork_arrangement_id` on the P1/P3 links.
+Z2. The PART C report, with its counts.
+Z3. Full suite against the 48 baseline. List any test added and why.
+Z4. Build passes.
+Z5. Remove and list anything created for testing.
+
+REPORT BACK — ONCE, AT THE END, AND KEEP IT SHORT
+1. Files changed.
+2. The status set you chose, where you took it from, and why (A1).
+3. Confirmation the test is as of the trip's date, not today (A2).
+4. P1–P6 with screenshots and status codes.
+5. Z1–Z5, including the PART C counts.
+6. Any choice you made on your own, and what you chose.
+7. The Publish preview.
+
+STOP HERE. Do not publish. Do not start VB-ARRANGE-02B.

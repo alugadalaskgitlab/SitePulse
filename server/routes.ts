@@ -9,7 +9,7 @@ import { buildEquipmentComparison, buildDailyDieselEquipmentReport } from "./die
 import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection, classifyBoqItem, getSectorMultiplier } from "./snlAutoMapper";
 import { api } from "@shared/routes";
 import { z } from "zod";
-import { bulkTripArrangementSchema } from "../shared/tripArrangementLink";
+import { bulkTripArrangementSchema, tripArrangementLinkError } from "../shared/tripArrangementLink";
 import { bulkLinkTripArrangement, tripArrangementOptions } from "./tripArrangementLink";
 import { EquipmentActivityAllocationError } from "@shared/equipmentActivityAllocations";
 import * as xlsx from 'xlsx';
@@ -996,9 +996,9 @@ export async function registerRoutes(
       }
       if (
         earthworkArrangementId !== allowHistoricalArrangementId
-        && !["approved", "mobilisation_pending", "in_progress"].includes(arrangementStatusAsOf(arrangement, operationalDate))
+        && tripArrangementLinkError(arrangement, operationalDate)
       ) {
-        return `Arrangement ${earthworkArrangementId} is not operational on ${operationalDate ?? "the receipt date"}`;
+        return tripArrangementLinkError(arrangement, operationalDate);
       }
       // Single-item arrangements must match the receipt's BOQ item; multi-item
       // arrangements (boqItemId null + jsonb allocations) are checked against

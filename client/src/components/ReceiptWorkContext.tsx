@@ -23,6 +23,7 @@ import {
 } from "@shared/materialReceiptSummary";
 import type { Site } from "@shared/schema";
 import { arrangementStatusAsOf, cancelledEffectiveFromAsOf } from "@shared/arrangementStatusHistory";
+import { canLinkTripArrangement } from "@shared/tripArrangementLink";
 import { format } from "date-fns";
 
 export interface TripWorkContext {
@@ -313,7 +314,7 @@ export function ReceiptWorkContext({
                 <SelectContent>
                   {manualOnly && <SelectItem value="none">No arrangement</SelectItem>}
                   {resolution.applicable.map((a) => (
-                    <SelectItem key={a.id} value={String(a.id)}>{arrangementLabel(a, !manualOnly)}</SelectItem>
+                    <SelectItem key={a.id} value={String(a.id)} disabled={manualOnly && a.id !== value.earthworkArrangementId && !canLinkTripArrangement(a, operationalDate)}>{arrangementLabel(a, !manualOnly)}{manualOnly ? ` · ${arrangementStatusAsOf(a, operationalDate)}${!canLinkTripArrangement(a, operationalDate) ? " · Not valid for new links on this trip date" : ""}` : ""}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

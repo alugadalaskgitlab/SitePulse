@@ -30,6 +30,18 @@ Browser fixture sites must be active; an inactive site can exist in saved trips
 yet be absent from the live site selector. Wait for dialog animations to settle
 before capturing evidence.
 
+Buffer browser evidence until the interaction run finishes, and wait for a
+confirmation dialog to mount before clicking its action.
+
+**Why:** A verification run lost the expected screen state while writing
+evidence and advancing immediately between dialog actions; buffered output
+and explicit dialog readiness produced stable signed-in proofs.
+
+**How to apply:** Do not treat a dispatched click as proof that React has rendered
+the next dialog. Device labels are generated from the user agent, not the login
+body's requested label; identify the newly pending device by its own cookie and
+check it was absent before that login.
+
 The documented testing-agent kind was unavailable in this environment. Installed Chromium with DevTools protocol provided real signed-in screenshots instead. Select the CDP target whose type is `page`; the first target may be an extension background page.
 
 The public development domain can route to the separate mockup sandbox rather

@@ -1,0 +1,22 @@
+[
+  {
+    "text": "LINK02P2",
+    "disabled": null
+  },
+  {
+    "text": "No arrangement",
+    "disabled": null
+  },
+  {
+    "text": "LINK02 approved — Soil · approved",
+    "disabled": null
+  },
+  {
+    "text": "LINK02 draft — Soil · draft · Not valid for new links on this trip date",
+    "disabled": "true"
+  },
+  {
+    "text": "LINK02 cancelled — Soil · cancelled · Not valid for new links on this trip date",
+    "disabled": "true"
+  }
+]

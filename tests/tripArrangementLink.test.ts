@@ -30,6 +30,7 @@ beforeAll(async()=>{
   state.db=drizzle(client);
 },20000);
 beforeEach(async()=>{
+  await client.query("UPDATE pg_temp.earthwork_arrangements SET status='approved',revision_history='[]'");
   await client.query("DROP TRIGGER IF EXISTS fail_audit ON pg_temp.audit_logs");
   await client.query("TRUNCATE pg_temp.site_material_trips, pg_temp.audit_logs");
   await client.query(`INSERT INTO pg_temp.site_material_trips
@@ -46,6 +47,26 @@ beforeEach(async()=>{
 afterAll(async()=>{await client.end();});
 const rows = async()=> (await client.query("SELECT to_jsonb(t) row FROM pg_temp.site_material_trips t ORDER BY id")).rows.map(r=>r.row);
 describe("explicit bulk trip arrangement linking",()=>{
+  it("refuses drafts without writing and reports every excluded trip",async()=>{
+    await client.query("UPDATE pg_temp.earthwork_arrangements SET status='draft' WHERE id=11");
+    const before=await rows(),p=await bulkLinkTripArrangement(input);
+    expect(p).toMatchObject({eligibleCount:0,excludedCount:2});
+    await expect(bulkLinkTripArrangement({...input,previewToken:p.previewToken},actor)).rejects.toMatchObject({status:400});
+    expect(await rows()).toEqual(before);
+  });
+  it("links only trips before cancellation, preserving all other columns and existing links",async()=>{
+    await client.query(`UPDATE pg_temp.earthwork_arrangements SET status='cancelled',revision_history=$1 WHERE id=11`,[JSON.stringify([{eventType:"status_change",previousStatus:"approved",status:"cancelled",effectiveFrom:"2026-10-03",recordedAt:"2026-10-08"}])]);
+    const before=await rows(),p=await bulkLinkTripArrangement(input);
+    expect(p).toMatchObject({eligibleCount:1,excludedCount:1});
+    expect(p.exclusionMessage).toContain("1 trips excluded");
+    await bulkLinkTripArrangement({...input,previewToken:p.previewToken},actor);
+    expect(await rows()).toEqual(before.map(r=>r.id===1?{...r,earthwork_arrangement_id:11}:r));
+  });
+  it("invalidates confirmation when status evidence changes",async()=>{
+    const p=await bulkLinkTripArrangement(input);
+    await client.query("UPDATE pg_temp.earthwork_arrangements SET status='in_progress' WHERE id=11");
+    await expect(bulkLinkTripArrangement({...input,previewToken:p.previewToken},actor)).rejects.toMatchObject({code:"TRIP_SELECTION_CHANGED"});
+  });
   it("preview eligible IDs equal the actual written set, including own source; only arrangement changes",async()=>{
     const before=await rows();
     const preview=await bulkLinkTripArrangement(input);
@@ -90,7 +111,7 @@ describe("explicit bulk trip arrangement linking",()=>{
   it("requires the site's arrangement and respects deny-all site scope",async()=>{
     await expect(bulkLinkTripArrangement({...input,earthworkArrangementId:33})).rejects.toMatchObject({status:400});
     expect((await bulkLinkTripArrangement({...input,permittedSiteNames:[]})).eligibleCount).toBe(0);
-    expect((await tripArrangementOptions("TEST SITE")).map(x=>x.id)).toEqual([11,22]);
+    expect((await tripArrangementOptions("TEST SITE")).map(x=>x.id).sort((a,b)=>a-b)).toEqual([11,22]);
   });
   it("no-arrangement filtering cannot be overridden by overwrite mode",async()=>{
     expect(await bulkLinkTripArrangement({...input,onlyUnlinked:false,onlyWithoutArrangement:true})).toMatchObject({eligibleCount:2,overwriteCount:0});
