@@ -1,0 +1,24 @@
+{
+  "users": {
+    "status": 403,
+    "data": {
+      "error": "forbidden",
+      "section": "user_management",
+      "action": "view"
+    }
+  },
+  "permissions": {
+    "status": 403,
+    "data": {
+      "error": "forbidden",
+      "section": "user_management",
+      "action": "view"
+    }
+  },
+  "delete": {
+    "status": 403,
+    "data": {
+      "error": "admin_required"
+    }
+  }
+}

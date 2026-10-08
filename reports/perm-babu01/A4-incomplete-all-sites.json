@@ -1,0 +1,72 @@
+{
+  "flags": {
+    "is_admin": false,
+    "is_owner": false,
+    "is_field_engineer": false,
+    "can_manage_permissions": false,
+    "setup_complete": false,
+    "all_sites_access": true
+  },
+  "roles": {
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  "single": {
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  "options": {
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  "vendorOptions": {
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  "preview": {
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  "bulk": {
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  "rows": [
+    {
+      "id": 1900000301,
+      "material_source_type": "own_source",
+      "material_source_label": "BABU01 disposable borrow area",
+      "transport_type": "in_house",
+      "internal_equipment_id": 2,
+      "earthwork_arrangement_id": null
+    },
+    {
+      "id": 1900000302,
+      "material_source_type": "own_source",
+      "material_source_label": "Disposable source",
+      "transport_type": "in_house",
+      "internal_equipment_id": 2,
+      "earthwork_arrangement_id": null
+    },
+    {
+      "id": 1900000303,
+      "material_source_type": "own_source",
+      "material_source_label": "Disposable source",
+      "transport_type": "in_house",
+      "internal_equipment_id": 2,
+      "earthwork_arrangement_id": null
+    }
+  ]
+}

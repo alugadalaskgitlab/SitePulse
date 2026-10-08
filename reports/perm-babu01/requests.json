@@ -1,0 +1,392 @@
+[
+  {
+    "path": "/api/auth/login",
+    "method": "POST",
+    "status": 202
+  },
+  {
+    "path": "/api/auth/login",
+    "method": "POST",
+    "status": 200
+  },
+  {
+    "path": "/api/auth/me",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/1900000301",
+    "method": "PATCH",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/1900000302",
+    "method": "PATCH",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/arrangement-options?site=THAKADPALLY%20-%20SIRUR",
+    "method": "GET",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/vendor-options?site=THAKADPALLY%20-%20SIRUR",
+    "method": "GET",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/arrangement/preview",
+    "method": "POST",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/arrangement/bulk",
+    "method": "POST",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/1900000301",
+    "method": "PATCH",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/1900000302",
+    "method": "PATCH",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/arrangement-options?site=THAKADPALLY%20-%20SIRUR",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/vendor-options?site=THAKADPALLY%20-%20SIRUR",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/arrangement/preview",
+    "method": "POST",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/arrangement/bulk",
+    "method": "POST",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/1900000301",
+    "method": "PATCH",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/1900000302",
+    "method": "PATCH",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/arrangement-options?site=THAKADPALLY%20-%20SIRUR",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/vendor-options?site=THAKADPALLY%20-%20SIRUR",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/arrangement/preview",
+    "method": "POST",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/arrangement/bulk",
+    "method": "POST",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/1900000301",
+    "method": "PATCH",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/1900000302",
+    "method": "PATCH",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/arrangement-options?site=THAKADPALLY%20-%20SIRUR",
+    "method": "GET",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/vendor-options?site=THAKADPALLY%20-%20SIRUR",
+    "method": "GET",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/arrangement/preview",
+    "method": "POST",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/arrangement/bulk",
+    "method": "POST",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/1900000301",
+    "method": "PATCH",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/1900000302",
+    "method": "PATCH",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/arrangement-options?site=THAKADPALLY%20-%20SIRUR",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/vendor-options?site=THAKADPALLY%20-%20SIRUR",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/arrangement/preview",
+    "method": "POST",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/arrangement/bulk",
+    "method": "POST",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/1900000301",
+    "method": "PATCH",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/1900000302",
+    "method": "PATCH",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/arrangement-options?site=THAKADPALLY%20-%20SIRUR",
+    "method": "GET",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/vendor-options?site=THAKADPALLY%20-%20SIRUR",
+    "method": "GET",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/arrangement/preview",
+    "method": "POST",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/arrangement/bulk",
+    "method": "POST",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/1900000301",
+    "method": "PATCH",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/1900000302",
+    "method": "PATCH",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/arrangement-options?site=THAKADPALLY%20-%20SIRUR",
+    "method": "GET",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/vendor-options?site=THAKADPALLY%20-%20SIRUR",
+    "method": "GET",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/arrangement/preview",
+    "method": "POST",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/arrangement/bulk",
+    "method": "POST",
+    "status": 403,
+    "data": {
+      "message": "Access denied for this site"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/1900000301",
+    "method": "PATCH",
+    "status": 403,
+    "data": {
+      "error": "forbidden",
+      "section": "site_materials",
+      "action": "edit"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/1900000302",
+    "method": "PATCH",
+    "status": 403,
+    "data": {
+      "error": "forbidden",
+      "section": "site_materials",
+      "action": "edit"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/arrangement-options?site=THAKADPALLY%20-%20SIRUR",
+    "method": "GET",
+    "status": 403,
+    "data": {
+      "error": "forbidden",
+      "section": "site_materials",
+      "action": "edit"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/vendor-options?site=THAKADPALLY%20-%20SIRUR",
+    "method": "GET",
+    "status": 403,
+    "data": {
+      "error": "forbidden",
+      "section": "site_materials",
+      "action": "edit"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/arrangement/preview",
+    "method": "POST",
+    "status": 403,
+    "data": {
+      "error": "forbidden",
+      "section": "site_materials",
+      "action": "edit"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/arrangement/bulk",
+    "method": "POST",
+    "status": 403,
+    "data": {
+      "error": "forbidden",
+      "section": "site_materials",
+      "action": "edit"
+    }
+  },
+  {
+    "path": "/api/auth/users",
+    "method": "GET",
+    "status": 403,
+    "data": {
+      "error": "forbidden",
+      "section": "user_management",
+      "action": "view"
+    }
+  },
+  {
+    "path": "/api/auth/users/1900000300/permissions",
+    "method": "GET",
+    "status": 403,
+    "data": {
+      "error": "forbidden",
+      "section": "user_management",
+      "action": "view"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/1900000301",
+    "method": "DELETE",
+    "status": 403,
+    "data": {
+      "error": "admin_required"
+    }
+  },
+  {
+    "path": "/api/site-material-trips/vendor-options?site=THAKADPALLY%20-%20SIRUR",
+    "method": "GET",
+    "status": 200
+  }
+]

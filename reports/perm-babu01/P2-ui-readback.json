@@ -1,0 +1,26 @@
+[
+  {
+    "id": 1900000301,
+    "material_source_type": "own_source",
+    "material_source_label": "BABU01 ordinary UI saved source",
+    "transport_type": "agency_vendor",
+    "internal_equipment_id": null,
+    "earthwork_arrangement_id": null
+  },
+  {
+    "id": 1900000302,
+    "material_source_type": "own_source",
+    "material_source_label": "Disposable source",
+    "transport_type": "in_house",
+    "internal_equipment_id": 2,
+    "earthwork_arrangement_id": 2
+  },
+  {
+    "id": 1900000303,
+    "material_source_type": "own_source",
+    "material_source_label": "Disposable source",
+    "transport_type": "in_house",
+    "internal_equipment_id": 2,
+    "earthwork_arrangement_id": 2
+  }
+]

@@ -20,6 +20,16 @@ When carving new sections from an old key, preserve existing View access additiv
 
 ## Shared navigation and lookup boundaries
 
+Ordinary trip editors must not need Vendor Master or Work Programme grants just
+to choose a vendor or arrangement. Use narrowly projected operational pickers
+behind the trip's existing Edit and site checks; preserve master/detail guards.
+
+**Why:** Correct section Edit and site grants allowed writes but unrelated
+supporting-read guards hid the choices, making Administrator appear necessary.
+
+**How to apply:** Prove both the real ordinary UI and its write API. A successful
+direct PATCH alone does not establish that the user can fill in the editor.
+
 Keep the project picker reachable by the sections that genuinely use it, while
 keeping BOQ detail distinct. Shared read grants require an actual page consumer;
 do not broaden a dedicated master-list permission just because planning code
@@ -34,6 +44,18 @@ Programme-only account prevented normal navigation to its permitted screen.
 directions. A shared metadata read never implies a shared mutation grant.
 
 ## Safe live Notify acceptance
+
+Notifications from test saves may only reach temporary accounts, never a real
+user's device. Save proof is the HTTP response, database read-back and screenshot;
+notification delivery is a separate scope. Never change real notification grants
+or account settings to suppress a test.
+
+**Why:** The owner explicitly reaffirmed this boundary when a live save would
+otherwise notify a real subscriber.
+
+**How to apply:** Fence only disposable-test delivery at the outbound transport,
+restore it afterwards, and disclose the instrumentation. Do not bypass save
+handlers, authentication, permissions or site scope.
 
 Before firing a real event, check every push emission from that event against
 stored eligible users and active subscriptions, including administrators.

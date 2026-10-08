@@ -888,6 +888,18 @@ export async function registerRoutes(
     }
   });
 
+  // Operational picker only: no contacts, banking, tax, activity or master edits.
+  app.get("/api/site-material-trips/vendor-options", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "site_materials")) return;
+      const site = z.string().trim().min(1).parse(req.query.site);
+      if (!await assertTripSiteAccess(req, res, site)) return;
+      res.json(await db.select({ id: vendors.id, name: vendors.name, isActive: vendors.isActive }).from(vendors).orderBy(vendors.name));
+    } catch (err) {
+      res.status(err instanceof z.ZodError ? 400 : 500).json({ message: "Could not load trip vendor options." });
+    }
+  });
+
   app.get("/api/site-material-trips/arrangement-options", async (req, res) => {
     try {
       if (!assertEdit(req, res, "site_materials")) return;

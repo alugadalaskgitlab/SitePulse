@@ -119,7 +119,11 @@ export default function SiteMaterialTrips() {
     yardLabel: "",
   });
   // Site suggestions prioritize existing vendors; saving requires one unique master ID.
-  const vendorQuery = useQuery<ExistingTripVendor[]>({ queryKey: ["/api/vendor-master"] });
+  const vendorSite = editingRoleTrip?.site || newTrip.site || (siteFilter !== "all" ? siteFilter : "");
+  const vendorQuery = useQuery<ExistingTripVendor[]>({
+    queryKey: [canEdit ? `/api/site-material-trips/vendor-options?site=${encodeURIComponent(vendorSite)}` : "/api/vendor-master"],
+    enabled: !canEdit || !!vendorSite,
+  });
   const vendors = vendorQuery.data ?? [];
   const {
     suppliers: supplierSuggestions,

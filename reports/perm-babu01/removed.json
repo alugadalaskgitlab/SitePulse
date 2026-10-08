@@ -1,0 +1,40 @@
+{
+  "userId": 1900000300,
+  "tripIds": [
+    1900000301,
+    1900000302,
+    1900000303
+  ],
+  "permissionIds": [
+    {
+      "id": 1900000300
+    }
+  ],
+  "siteAccessIds": [
+    1900000300
+  ],
+  "deviceIds": [
+    {
+      "id": 179
+    }
+  ],
+  "sessionCount": "1",
+  "vendorId": 1900000300,
+  "disposableAssociationKeysRemoved": [
+    {
+      "key": "site_material_vehicle_supplier_associations.v1"
+    }
+  ],
+  "deviceIdsAcrossAttempts": [
+    171,
+    172,
+    173,
+    174,
+    175,
+    176,
+    177,
+    178,
+    179
+  ],
+  "remainingDisposableDevices": []
+}

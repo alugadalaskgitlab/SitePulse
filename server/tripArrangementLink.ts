@@ -14,6 +14,9 @@ export async function tripArrangementOptions(site: string) {
     chainageFrom: earthworkArrangements.chainageFrom, chainageTo: earthworkArrangements.chainageTo,
     projectName: boqProjects.name,
     status: earthworkArrangements.status, revisionHistory: earthworkArrangements.revisionHistory,
+     boqProjectId: earthworkArrangements.boqProjectId,
+     boqItemId: earthworkArrangements.boqItemId,
+     boqItemAllocations: earthworkArrangements.boqItemAllocations,
   }).from(earthworkArrangements)
     .innerJoin(boqProjects, eq(boqProjects.id, earthworkArrangements.boqProjectId))
     .innerJoin(sites, eq(sites.id, boqProjects.siteId)).where(siteMatch(site));

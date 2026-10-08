@@ -1,0 +1,202 @@
+[
+  {
+    "path": "/api/auth/me",
+    "status": 200
+  },
+  {
+    "path": "/api/config",
+    "status": 200
+  },
+  {
+    "path": "/api/notifications",
+    "status": 200
+  },
+  {
+    "path": "/api/notifications/unread-count",
+    "status": 200
+  },
+  {
+    "path": "/api/sites",
+    "status": 200
+  },
+  {
+    "path": "/api/plant-module/equipment",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips?dateFrom=2026-10-08&dateTo=2026-10-08",
+    "status": 200
+  },
+  {
+    "path": "/api/boq/projects/2/earthwork-arrangements/item/1151",
+    "status": 403
+  },
+  {
+    "path": "/api/boq/projects/2/arrangement-programme-allocations",
+    "status": 403
+  },
+  {
+    "path": "/api/dpr/programme-bars?projectId=2&boqItemId=1151",
+    "status": 403
+  },
+  {
+    "path": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000303",
+    "status": 500
+  },
+  {
+    "path": "/api/boq/projects/2/items",
+    "status": 200
+  },
+  {
+    "path": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000301",
+    "status": 500
+  },
+  {
+    "path": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000302",
+    "status": 500
+  },
+  {
+    "path": "/api/site-material-trips/vendor-options?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips?dateFrom=2026-10-08&dateTo=2026-10-08&site=THAKADPALLY+-+SIRUR",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/suggestions?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  },
+  {
+    "path": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000302",
+    "status": 500
+  },
+  {
+    "path": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000303",
+    "status": 500
+  },
+  {
+    "path": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000301",
+    "status": 500
+  },
+  {
+    "path": "/api/site-material-trips/arrangement-options?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  },
+  {
+    "path": "/api/boq/projects?siteId=16",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/1900000301",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/vendor-options?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips?dateFrom=2026-10-08&dateTo=2026-10-08&site=THAKADPALLY+-+SIRUR",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/suggestions?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/1900000302",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/vendor-options?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips?dateFrom=2026-10-08&dateTo=2026-10-08&site=THAKADPALLY+-+SIRUR",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/suggestions?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips?dateFrom=2026-10-08&dateTo=2026-10-08&site=THAKADPALLY+-+SIRUR&vehicleNumber=BABU01BULK",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/arrangement-options?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  },
+  {
+    "path": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000303",
+    "status": 500
+  },
+  {
+    "path": "/api/site-material-trips/arrangement/preview",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/arrangement/bulk",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/arrangement-options?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/vendor-options?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips?dateFrom=2026-10-08&dateTo=2026-10-08&site=THAKADPALLY+-+SIRUR&vehicleNumber=BABU01BULK",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/suggestions?site=THAKADPALLY%20-%20SIRUR",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/arrangement/preview",
+    "status": 200
+  },
+  {
+    "path": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000302",
+    "status": 500
+  },
+  {
+    "path": "/api/attachments?moduleType=site_material_trip&linkedRecordId=1900000301",
+    "status": 500
+  },
+  {
+    "path": "/api/site-material-trips?dateFrom=2026-10-08&dateTo=2026-10-08&site=THAKADPALLY+-+SIRUR",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/arrangement/preview",
+    "status": 200
+  },
+  {
+    "path": "/api/site-material-trips/1900000301",
+    "status": 403
+  },
+  {
+    "path": "/api/site-material-trips/1900000301",
+    "status": 403
+  },
+  {
+    "path": "/api/auth/me",
+    "status": 200
+  },
+  {
+    "path": "/api/notifications/unread-count",
+    "status": 200
+  },
+  {
+    "path": "/api/notifications",
+    "status": 200
+  },
+  {
+    "path": "/api/config",
+    "status": 200
+  }
+]

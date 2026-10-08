@@ -116,11 +116,14 @@ beforeEach(() => {
   harness.queries = [];
   harness.lateAssociation = null;
   queryClient.clear();
+  // These scenarios exercise loaded pickers. The catalogue is now site-keyed;
+  // prime the same fixture for the site selected by fillBasic().
+  queryClient.setQueryData(["/api/site-material-trips/vendor-options?site=NH-44"], vendors);
   queryClient.setDefaultOptions({ queries: { retry: false, queryFn: async ({ queryKey }) => {
     const url = String(queryKey[0]);
     harness.queries.push(url);
     if (url === "/api/sites") return [{ id: 11, name: "NH-44", isActive: true }];
-    if (url === "/api/vendor-master") return vendors;
+    if (url === "/api/vendor-master" || url.startsWith("/api/site-material-trips/vendor-options?site=")) return vendors;
     if (url === "/api/plant-module/equipment") return equipment;
     if (url.startsWith("/api/site-material-trips")) return url.includes("onlyUnassigned=true") ? rows.filter((row) => !row.materialSourceSupplier?.trim()) : rows;
     return [];
@@ -141,7 +144,7 @@ describe("VB-SPLIT Parts A/B entry behavior", () => {
     const payload = await submit();
     expect(payload).toMatchObject({ materialSourceSupplier: "SANGANNA", materialSourceVendorId: 7, supplier: "SANGANNA", supplierVendorId: 7, transportType: "agency_vendor", internalEquipmentId: null, quantity: 14 });
     expect(harness.request).toHaveBeenCalledTimes(1);
-    expect(harness.queries).toContain("/api/vendor-master");
+    expect(harness.queries).toContain("/api/site-material-trips/vendor-options?site=NH-44");
   });
 
   it("A2 records a different existing transporter, uses vehicle suggestions, and saves vehicle number", async () => {

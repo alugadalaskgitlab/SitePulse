@@ -1,0 +1,38 @@
+{
+  "blocked": [
+    {
+      "title": "Site Material Trip Updated",
+      "body": "Trip #1900000301 updated"
+    },
+    {
+      "title": "Site Material Trip Updated",
+      "body": "Trip #1900000302 updated"
+    },
+    {
+      "title": "Site Material Trip Updated",
+      "body": "Trip #1900000301 updated"
+    },
+    {
+      "title": "Site Material Trip Updated",
+      "body": "Trip #1900000302 updated"
+    },
+    {
+      "title": "Site Material Trip Updated",
+      "body": "Trip #1900000301 updated"
+    },
+    {
+      "title": "Site Material Trip Updated",
+      "body": "Trip #1900000302 updated"
+    },
+    {
+      "title": "Site Material Trip Updated",
+      "body": "Trip #1900000301 updated"
+    },
+    {
+      "title": "Site Material Trip Updated",
+      "body": "Trip #1900000302 updated"
+    }
+  ],
+  "restored": true,
+  "scope": "Only the three disposable trip IDs; no network delivery for these payloads"
+}

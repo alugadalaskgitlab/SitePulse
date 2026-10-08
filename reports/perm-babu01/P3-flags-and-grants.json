@@ -1,0 +1,20 @@
+{
+  "flags": {
+    "is_admin": false,
+    "is_owner": false,
+    "is_field_engineer": false,
+    "can_manage_permissions": false,
+    "setup_complete": true,
+    "all_sites_access": false
+  },
+  "grants": [
+    {
+      "section_key": "site_materials",
+      "can_view": true,
+      "can_edit": true,
+      "can_delete": false,
+      "can_export": false,
+      "can_notify": false
+    }
+  ]
+}

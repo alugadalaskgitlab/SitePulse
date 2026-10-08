@@ -1,0 +1,8 @@
+{
+  "is_admin": false,
+  "is_owner": false,
+  "is_field_engineer": false,
+  "can_manage_permissions": false,
+  "setup_complete": true,
+  "all_sites_access": false
+}

@@ -94,14 +94,21 @@ export function barLabel(b: BarRow): string {
 }
 
 /** Data hooks shared by the form section and the read-only display. */
-function useProjectContextData(boqProjectId: number | null, boqItemId: number | null) {
+function useProjectContextData(boqProjectId: number | null, boqItemId: number | null, manualSite?: string) {
   const { data: items = [] } = useQuery<BoqItemRow[]>({
     queryKey: ["/api/boq/projects", boqProjectId, "items"],
     enabled: boqProjectId != null,
   });
   const { data: arrangements = [] } = useQuery<ArrangementRow[]>({
-    queryKey: ["earthwork-arrangements-item", boqProjectId, boqItemId],
+    queryKey: ["earthwork-arrangements-item", boqProjectId, boqItemId, manualSite],
     queryFn: async () => {
+      if (manualSite !== undefined) {
+        const res = await fetch(`/api/site-material-trips/arrangement-options?site=${encodeURIComponent(manualSite)}`, { credentials: "include" });
+        if (!res.ok) throw new Error("Could not load this site's arrangements.");
+        const rows = await res.json();
+        return rows.filter((row: ArrangementRow) => row.boqProjectId === boqProjectId &&
+          (row.boqItemId === boqItemId || row.boqItemAllocations?.some((allocation) => allocation.boqItemId === boqItemId)));
+      }
       const res = await fetch(`/api/boq/projects/${boqProjectId}/earthwork-arrangements/item/${boqItemId}`, { credentials: "include" });
       return res.ok ? res.json() : [];
     },
@@ -113,7 +120,7 @@ function useProjectContextData(boqProjectId: number | null, boqItemId: number | 
       const res = await fetch(`/api/boq/projects/${boqProjectId}/arrangement-programme-allocations`, { credentials: "include" });
       return res.ok ? res.json() : [];
     },
-    enabled: boqProjectId != null,
+    enabled: boqProjectId != null && manualSite === undefined,
   });
   const { data: bars = [] } = useQuery<BarRow[]>({
     queryKey: ["/api/dpr/programme-bars", boqProjectId, boqItemId],
@@ -173,7 +180,7 @@ export function ReceiptWorkContext({
     }
   }, [projects, value.boqProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { items, arrangements, allocations, bars } = useProjectContextData(value.boqProjectId, value.boqItemId);
+  const { items, arrangements, allocations, bars } = useProjectContextData(value.boqProjectId, value.boqItemId, manualOnly ? siteName : undefined);
   const selectedBar = useMemo(
     () => bars.find((bar) => bar.id === value.programmeBarId) ?? null,
     [bars, value.programmeBarId],

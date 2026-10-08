@@ -1,0 +1,47 @@
+{
+  "before": {
+    "users": {
+      "count": 6,
+      "sha256": "a04b712bd68da45a686cf30ceb9910313de3351d1b9361c07e0e9af9274ba1f4"
+    },
+    "user_permissions": {
+      "count": 371,
+      "sha256": "21cf8ccdd31a690b4a10ba4f7244898804efded282a79ae44eb1d19197778594"
+    },
+    "user_site_access": {
+      "count": 11,
+      "sha256": "e06200ad43b2ca7d1c3c57bfb2fd89cd0adf3a1590dcd0541d844d6cebeb9d51"
+    },
+    "earthwork_arrangements": {
+      "count": 5,
+      "sha256": "dedb1a21b730c8f0a51cdfa937cf05e1405291acc7ccd3a1cec01b3abb9c95ba"
+    },
+    "vendors": {
+      "count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    }
+  },
+  "after": {
+    "users": {
+      "count": 6,
+      "sha256": "a04b712bd68da45a686cf30ceb9910313de3351d1b9361c07e0e9af9274ba1f4"
+    },
+    "user_permissions": {
+      "count": 371,
+      "sha256": "21cf8ccdd31a690b4a10ba4f7244898804efded282a79ae44eb1d19197778594"
+    },
+    "user_site_access": {
+      "count": 11,
+      "sha256": "e06200ad43b2ca7d1c3c57bfb2fd89cd0adf3a1590dcd0541d844d6cebeb9d51"
+    },
+    "earthwork_arrangements": {
+      "count": 5,
+      "sha256": "dedb1a21b730c8f0a51cdfa937cf05e1405291acc7ccd3a1cec01b3abb9c95ba"
+    },
+    "vendors": {
+      "count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    }
+  },
+  "unchanged": true
+}
