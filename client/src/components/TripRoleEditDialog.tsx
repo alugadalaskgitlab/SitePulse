@@ -22,9 +22,15 @@ type Props = {
 /** Mounted afresh per trip. Opening/closing never performs a mutation. */
 export function TripRoleEditDialog({ trip, vendors, equipment, vendorsLoading, vendorsError, onRetryVendors, onClose }: Props) {
   const storedRole = classifyTripRoles(trip);
-  const [choice, setChoice] = useState<TripTransportRole | null>(storedRole === "unresolved" ? null : storedRole);
+  const [choice, setChoice] = useState<TripTransportRole | null>(
+    storedRole === "unresolved" ? null
+      : storedRole === "own_source_agency" ? "different_parties"
+      : storedRole === "own_source_in_house" ? "in_house" : storedRole,
+  );
   const [draft, setDraft] = useState<TripRoleDraft>({
     materialSourceSupplier: trip.materialSourceSupplier || "",
+    materialSourceType: trip.materialSourceType ?? null,
+    materialSourceLabel: trip.materialSourceLabel ?? null,
     supplier: trip.supplier || "",
     vehicleNumber: trip.vehicleNumber || "",
     internalEquipmentId: trip.internalEquipmentId,
@@ -34,17 +40,22 @@ export function TripRoleEditDialog({ trip, vendors, equipment, vendorsLoading, v
   const save = useMutation({
     mutationFn: async () => {
       if (!choice || choice === "unresolved") throw new Error("Choose Who brought it before saving.");
-      if (vendorsLoading || vendorsError) throw new Error("Load the existing vendors before saving.");
-      const source = resolveTripVendor(draft.materialSourceSupplier, vendors);
+      const ownSource = draft.materialSourceType === "own_source";
+      if ((!ownSource || choice === "different_parties") && (vendorsLoading || vendorsError)) throw new Error("Load the existing vendors before saving.");
+      const source = ownSource ? { name: "", id: null } : resolveTripVendor(draft.materialSourceSupplier, vendors);
       const transporter = choice === "different_parties" ? resolveTripVendor(draft.supplier, vendors) : source;
       const selected = equipment.find((item) => item.id === draft.internalEquipmentId) ?? null;
-      const payload = tripRolePayload(choice, source, transporter, selected, draft.vehicleNumber);
+      const payload = tripRolePayload(choice, source, transporter, selected, draft.vehicleNumber, {
+        materialSourceType: draft.materialSourceType,
+        materialSourceLabel: draft.materialSourceLabel,
+      });
       const issue = validateTripRoles(payload);
       if (issue) throw new Error(issue);
       await apiRequest("PATCH", `/api/site-material-trips/${trip.id}`, payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ predicate: (query) => typeof query.queryKey[0] === "string" && query.queryKey[0].startsWith("/api/site-material-trips") });
+      queryClient.invalidateQueries({ predicate: (query) => typeof query.queryKey[0] === "string" && query.queryKey[0].startsWith("/api/materials-received") });
       invalidateSiteMaterialSuggestions(trip.site);
       onClose();
     },
@@ -62,6 +73,8 @@ export function TripRoleEditDialog({ trip, vendors, equipment, vendorsLoading, v
           <dl className="grid grid-cols-2 gap-1 break-words">
             {[
               ["materialSourceSupplier", trip.materialSourceSupplier],
+              ["materialSourceType", trip.materialSourceType],
+              ["materialSourceLabel", trip.materialSourceLabel],
               ["materialSourceVendorId", trip.materialSourceVendorId],
               ["supplier", trip.supplier],
               ["supplierVendorId", trip.supplierVendorId],

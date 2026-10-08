@@ -14,6 +14,12 @@ export function vendorBillTripCandidate(
   if (row.isCancelled || row.isDeleted || !(row.quantity > 0) ||
       (!matchesSeller && !matchesTransporter)) return null;
   const role = classifyTripRoles(row);
+  // Own-source material has no seller liability, even if a caller supplies
+  // a stale seller match. Transport continues through the existing path.
+  if (row.materialSourceType === "own_source") {
+    matchesSeller = false;
+    if (!matchesTransporter || role === "own_source_in_house" || role === "unresolved") return null;
+  }
   const base = {
     date: typeof row.date === "string" ? row.date : row.date.toISOString().split("T")[0],
     qty: row.quantity, unit: row.uom || "NOS", source: "auto",
@@ -33,7 +39,7 @@ export function vendorBillTripCandidate(
     return { ...base, category: "material", description: `${material} (SITE TRIP MATERIAL)`,
       sourceType: "site_material_trip_material", sourceId: row.id };
   }
-  if (role === "different_parties" && matchesTransporter &&
+  if ((role === "different_parties" || role === "own_source_agency") && matchesTransporter &&
       (billType === "transport" || billType === "all")) {
     return { ...base, category: "transport", description: `${material} - TRANSPORT`,
       qty: 1, unit: "TRIP", physicalQuantity: row.quantity, physicalUnit: row.uom || "NOS",

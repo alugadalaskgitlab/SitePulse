@@ -245,7 +245,11 @@ export default function SiteMaterialsReceived() {
       uom: editForm.uom.trim(),
       vehicleNumber: editForm.vehicleNumber.trim() || null,
       supplier: editForm.supplier.trim() || null,
-      materialSourceSupplier: editForm.materialSourceSupplier.trim() || null,
+      // Own-source facts are read-only here; unrelated receipt edits must not
+      // overwrite them or turn the borrow area into a vendor.
+      ...(selectedTrip.materialSourceType === "own_source" ? {} : {
+        materialSourceSupplier: editForm.materialSourceSupplier.trim() || null,
+      }),
       receiptNumber: editForm.receiptNumber.trim() || null,
       notes: editForm.notes.trim() || null,
       workType: editForm.workType || null,
@@ -429,7 +433,10 @@ export default function SiteMaterialsReceived() {
                           {unloadingLabel(trip)}{trip.source === "trip" && trip.unloadedAt === "yard" && trip.yardLabel ? ` · ${trip.yardLabel}` : ""}
                         </td>
                         <td className="p-2 border text-sm" data-testid={`cell-material-source-${trip.source}-${trip.id}`}>
-                          {trip.materialSourceSupplier || "–"}
+                          {trip.materialSourceType === "own_source" ? <>
+                            Our own borrow area
+                            {trip.materialSourceLabel && <p className="text-xs text-muted-foreground">{trip.materialSourceLabel}</p>}
+                          </> : trip.materialSourceSupplier || "–"}
                         </td>
                         <td className="p-2 border text-sm">{trip.receiptNumber || "-"}</td>
                         <td className="p-2 border text-center"><WorkTypeBadge workType={trip.workType} /></td>
@@ -626,6 +633,11 @@ export default function SiteMaterialsReceived() {
                       />
                     </div>
                     <div className="space-y-1 col-span-2">
+                      {selectedTrip.materialSourceType === "own_source" ? <>
+                        <Label className="text-xs uppercase tracking-wide text-muted-foreground">Material from · Our own source</Label>
+                        <p className="text-sm" data-testid="received-edit-own-source-label">{selectedTrip.materialSourceLabel || "Our own borrow area"}</p>
+                        <p className="text-[11px] text-muted-foreground">Source facts are preserved. Use the trip's Save roles form to change the source.</p>
+                      </> : <>
                       <Label className="text-xs uppercase tracking-wide text-muted-foreground">Material Source / Supplier (optional)</Label>
                       <FreeTextSuggestionInput
                         value={editForm.materialSourceSupplier}
@@ -638,6 +650,7 @@ export default function SiteMaterialsReceived() {
                         data-testid="input-edit-material-source-supplier"
                       />
                       <p className="text-[11px] text-muted-foreground">Who sold the material; independent from the transporter and vehicle.</p>
+                      </>}
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs uppercase tracking-wide text-muted-foreground">Work Type</Label>
@@ -745,7 +758,8 @@ export default function SiteMaterialsReceived() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Material Source / Supplier</p>
-                    <p className="font-semibold mt-0.5" data-testid="detail-material-source-supplier">{selectedTrip.materialSourceSupplier || "—"}</p>
+                    <p className="font-semibold mt-0.5" data-testid="detail-material-source-supplier">{selectedTrip.materialSourceType === "own_source" ? "Our own borrow area" : selectedTrip.materialSourceSupplier || "—"}</p>
+                    {selectedTrip.materialSourceType === "own_source" && selectedTrip.materialSourceLabel && <p className="mt-1 text-sm text-muted-foreground" data-testid="detail-material-source-label">{selectedTrip.materialSourceLabel}</p>}
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Receipt / Challan No.</p>

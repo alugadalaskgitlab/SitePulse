@@ -3,10 +3,13 @@ import type { TripTransportRole } from "@shared/tripTransportRoles";
 import type { EquipmentMasterType } from "@shared/schema";
 import { FreeTextSuggestionInput } from "@/components/FreeTextSuggestionInput";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TRIP_ROLE_OPTIONS, existingTripVendorSuggestions, type ExistingTripVendor } from "./trip-role-utils";
 
 export type TripRoleDraft = {
+  materialSourceType?: "vendor" | "own_source" | null;
+  materialSourceLabel?: string | null;
   materialSourceSupplier: string;
   supplier: string;
   vehicleNumber: string;
@@ -38,13 +41,37 @@ export function TripTransportRoleFields({
   vendorsError, onRetryVendors, onVehicleSelected, vehicleNotice, testIdPrefix = "trip",
 }: Props) {
   const radioName = useId();
+  const sourceRadioName = useId();
   const sourceId = useId();
   const transporterId = useId();
   const vehicleId = useId();
+  const ownSource = value.materialSourceType === "own_source";
+  const needsVendors = !ownSource || choice === "different_parties";
   return (
     <section className="space-y-3 rounded-lg border bg-muted/20 p-4" data-testid={`${testIdPrefix}-role-fields`}>
       <div className="max-w-xl">
-        <Label htmlFor={sourceId}>Material from *</Label>
+        <fieldset className="mb-2">
+          <legend className="mb-2 text-sm font-medium">Material from *</legend>
+          <div className="flex flex-wrap gap-4">
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input type="radio" name={sourceRadioName} checked={value.materialSourceType === "vendor"} onChange={() => onChange({ ...value, materialSourceType: "vendor", materialSourceLabel: null })} data-testid={`${testIdPrefix}-source-vendor`} />
+              A vendor
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input type="radio" name={sourceRadioName} checked={ownSource} onChange={() => {
+                onChange({ ...value, materialSourceType: "own_source", materialSourceSupplier: "" });
+                if (choice === "same_party") onChoice("different_parties");
+              }} data-testid={`${testIdPrefix}-source-own-source`} />
+              Our own source
+            </label>
+          </div>
+        </fieldset>
+        {ownSource ? <>
+          <Label htmlFor={sourceId}>Borrow area / source description *</Label>
+          <Input id={sourceId} value={value.materialSourceLabel ?? ""} onChange={(event) => onChange({ ...value, materialSourceLabel: event.target.value })} placeholder="e.g. Borrow area near Thakadpally, survey no. 212" data-testid={`input-${testIdPrefix}-material-source-label`} />
+          <p className="mt-1 text-xs text-muted-foreground">HLC's own material source — no material vendor is recorded.</p>
+        </> : <>
+        <Label htmlFor={sourceId}>Material vendor *</Label>
         <FreeTextSuggestionInput
           id={sourceId}
           value={value.materialSourceSupplier}
@@ -55,14 +82,15 @@ export function TripTransportRoleFields({
           data-testid={`input-${testIdPrefix}-material-source-supplier`}
         />
         <p className="mt-1 text-xs text-muted-foreground">Who sold the material. Only existing vendors can be saved.</p>
+        </>}
       </div>
-      {vendorsLoading && <div className="h-5 max-w-sm animate-pulse rounded bg-muted" role="status" aria-label="Loading existing vendors" />}
-      {vendorsError && <p role="alert" className="text-sm text-destructive">Existing vendors could not be loaded. <button type="button" className="underline" onClick={onRetryVendors}>Retry</button></p>}
-      {!vendorsLoading && !vendorsError && vendors.length === 0 && <p className="text-sm text-muted-foreground">No existing vendors are available. Contact the office before logging this trip.</p>}
+      {needsVendors && vendorsLoading && <div className="h-5 max-w-sm animate-pulse rounded bg-muted" role="status" aria-label="Loading existing vendors" />}
+      {needsVendors && vendorsError && <p role="alert" className="text-sm text-destructive">Existing vendors could not be loaded. <button type="button" className="underline" onClick={onRetryVendors}>Retry</button></p>}
+      {needsVendors && !vendorsLoading && !vendorsError && vendors.length === 0 && <p className="text-sm text-muted-foreground">No existing vendors are available. Contact the office before logging this trip.</p>}
       <fieldset>
         <legend className="mb-2 text-sm font-medium">Who brought it? *</legend>
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-4">
-          {TRIP_ROLE_OPTIONS.map((option) => (
+          {TRIP_ROLE_OPTIONS.filter((option) => !ownSource || option.value !== "same_party").map((option) => (
             <label key={option.value} className="flex cursor-pointer items-center gap-2 text-sm">
               <input type="radio" name={radioName} value={option.value} checked={choice === option.value} onChange={() => onChoice(option.value)} data-testid={`${testIdPrefix}-role-${option.value}`} />
               {option.label}

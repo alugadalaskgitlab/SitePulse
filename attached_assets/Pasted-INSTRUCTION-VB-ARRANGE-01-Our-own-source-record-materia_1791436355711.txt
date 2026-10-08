@@ -1,0 +1,88 @@
+INSTRUCTION VB-ARRANGE-01: "Our own source" — record material that came from HLC's own borrow area
+
+READ THIS FIRST
+This batch adds ONE thing: a way to record that the material came from HLC's own source (a borrow area HLC identified and holds the rights to), rather than from a vendor who sold it.
+It does NOT change pricing, rate cards, arrangements or vendor bills. Those come next as VB-ARRANGE-02. Do not start them.
+Do NOT publish. Show the Publish preview and STOP.
+Do NOT backfill, rewrite, infer or correct any existing trip. The owner is tagging trips by hand right now; not one stored row may be changed by this batch.
+PARKED — permission guards only if strictly required, no business-logic change and no investigation: LDO, startup data repair jobs, stock balances, rate cards, user permissions.
+Commit and push all work to GitHub before reporting.
+
+WHY
+HLC often identifies a borrow area itself and gives it to a vendor to excavate and haul. HLC owns the material; nobody sold it to HLC. Royalty is in HLC's scope (paid by the R&B department directly to the Mines department), which follows from HLC owning the source.
+
+Today the app cannot record this. `classifyTripRoles` in `shared/tripTransportRoles.ts` returns `"unresolved"` whenever `materialSourceSupplier` is empty, and the entry form only offers registered vendors for "Material from". So an own-source trip can never be confirmed.
+
+The owner must NOT be added to the vendor master to work around this. A vendor master is the list of parties HLC pays; HLC does not pay itself, and such a row would later produce a self-billed vendor and a bogus party ledger in Tally.
+
+THE SHAPE TO BUILD — mirror what transport already does
+Transport already has exactly this pattern: `transportType` is `"agency_vendor"` or `"in_house"`, and "Our own vehicle" is a third answer that is not a vendor. Material needs the same.
+
+=====================================================================
+PART A — THE STORED FACT
+=====================================================================
+A1. Add `materialSourceType` to site material trips, with values `"vendor"` and `"own_source"`. Nullable, defaulting to null so existing rows are untouched and keep classifying exactly as they do today.
+A2. Add a nullable free-text label for the borrow area (e.g. `materialSourceLabel`) used only when `materialSourceType = "own_source"` — the owner will type things like "Borrow area near Thakadpally, survey no. 212".
+A3. When `materialSourceType = "own_source"`: `materialSourceSupplier` and `materialSourceVendorId` stay NULL. Never write HLC, "OWN", "SELF" or any placeholder into a vendor column.
+A4. Additive migration only. No existing column changes meaning, no existing row is written.
+
+=====================================================================
+PART B — THE ENTRY FORM
+=====================================================================
+B1. "Material from" gains a third answer beside the vendor list, worded for site staff:
+      ( ) A vendor        → [vendor select, as today]
+      ( ) Our own source  → [borrow area / source description]
+B2. Choosing "Our own source" stores it per A3 and shows the label field. Choosing a vendor behaves exactly as today.
+B3. This combines with "Who brought it?" unchanged. The common real case is: Material from = Our own source, Who brought it = Another transporter.
+B4. Validation on NEW trips only: an own-source trip needs the label filled in. Existing trips are not forced to change.
+B5. Keep every other behaviour of this screen exactly as it is: the repeat-trip prefill, PI linkage, arrangement linkage and tagging, unloadedAt, work type, receipt number, suggestions.
+
+=====================================================================
+PART C — CLASSIFICATION
+=====================================================================
+C1. Extend `classifyTripRoles` with the new facts. Keep all four existing outcomes behaving identically for rows that do not set `materialSourceType = "own_source"` — prove this with the existing tests unchanged.
+C2. New outcomes:
+    - own source + agency transporter  → the material came from HLC; the transporter did the work
+    - own source + our own vehicle      → HLC's material, HLC's vehicle: nothing billable to anyone
+C3. A trip with `materialSourceType = "own_source"` is NEVER "unresolved" on account of the empty vendor columns — that emptiness is now a recorded fact, not a gap.
+C4. Trips that set nothing new keep classifying exactly as before, including staying "unresolved" where they are today. No historical row changes classification because of this batch.
+
+=====================================================================
+PART D — WHAT THE SCREENS SAY
+=====================================================================
+D1. The trip list states it plainly, in the style already used:
+      "SOIL 600 CFT · from our own borrow area · brought by NARSIMULU (TS15UE4470)"
+      "SOIL 600 CFT · from our own borrow area · brought by our TIPPER-03"
+D2. The roles filter gains the own-source cases so the owner can find them while tagging.
+D3. In the vendor bill, an own-source trip must produce NO material row for anybody — nobody sold HLC this material. Leave the transport side exactly as Part C of VB-SPLIT-01 already has it for now; the arrangement-work pricing is VB-ARRANGE-02.
+
+WHAT NOT TO DO
+- Do not add HLC, or any form of "self", to the vendor master or to any vendor column.
+- Do not touch pricing, rate cards, arrangements, or how any bill row is priced.
+- Do not backfill, infer or correct any existing trip.
+- Do not change stock, consumption, DPR or material accounting. Own-source material still physically arrives and must still be recorded as received exactly as it is today — only its commercial origin differs.
+- Do not change the vendor-bill pull beyond D3.
+- Do not touch production. Do not publish.
+
+SELF-TEST BEFORE REPORTING
+Signed in, using the development verification account, with screenshots and HTTP status codes.
+1. New trip: Material from = Our own source with a borrow-area label, Who brought it = Another transporter. Show the saved row: both vendor columns NULL, source type and label stored, transporter stored.
+2. The same trip in the list, reading as D1.
+3. New trip: own source + our own vehicle. Show the saved row and the list line.
+4. Own-source trip missing the label → blocked with a clear message.
+5. A vendor-source trip still saves and classifies exactly as before — one of each of the four existing cases.
+6. The roles filter returns the own-source trips.
+7. Vendor bill: pull for the transporter on an own-source trip produces no material row for anyone.
+Z1. Before/after row counts and content checksums for site material trips, proving no existing row changed.
+Z2. Full suite against the 48 baseline; every existing role test passes unchanged. List any test added and why.
+Z3. Build passes.
+
+REPORT BACK — ONCE, AT THE END, AND KEEP IT SHORT
+1. Files changed and the migration.
+2. Evidence 1–7 with screenshots and status codes.
+3. Z1–Z3.
+4. Any choice you made on your own, and what you chose.
+5. Anything you could not do, and why.
+6. The Publish preview.
+
+STOP AFTER PART D. Do not publish. Do not start VB-ARRANGE-02.

@@ -911,6 +911,8 @@ export const siteMaterialTrips = pgTable("site_material_trips", {
   // The seller/owner of the material is independent from `supplier`, which
   // remains the vehicle/transporter-side vendor.
   materialSourceSupplier: text("material_source_supplier"),
+  materialSourceType: text("material_source_type", { enum: ["vendor", "own_source"] }),
+  materialSourceLabel: text("material_source_label"),
   materialSourceVendorId: integer("material_source_vendor_id").references(() => vendors.id, { onDelete: "set null" }),
   vehicleNumber: text("vehicle_number"), // Vehicle registration
   // DPR-01 Parts 8/9: null preserves historical trips whose transport source

@@ -3,7 +3,7 @@ import { formatTripQuantity } from "@shared/tripQuantityDisplay";
 import type { SiteMaterialTrip } from "@shared/schema";
 
 export type ExistingTripVendor = { id: number; name: string };
-export type TripRoleFilter = "all" | TripTransportRole;
+export type TripRoleFilter = "all" | TripTransportRole | "own_source_agency" | "own_source_in_house";
 export const TRIP_ROLE_OPTIONS = [
   { value: "same_party", label: "Same party" },
   { value: "different_parties", label: "Another transporter" },
@@ -42,6 +42,11 @@ export function filterTripsByRole(trips: SiteMaterialTrip[], role: TripRoleFilte
 export function tripRoleDescription(trip: SiteMaterialTrip, equipmentName?: string): string {
   const prefix = `${trip.material} ${formatTripQuantity(trip, false)} ${trip.uom}`;
   const role = classifyTripRoles(trip);
+  if (role === "own_source_agency") {
+    const vehicle = trip.vehicleNumber ? ` (${trip.vehicleNumber})` : "";
+    return `${prefix} · from our own borrow area · brought by ${trip.supplier}${vehicle}`;
+  }
+  if (role === "own_source_in_house") return `${prefix} · from our own borrow area · brought by our ${equipmentName || trip.vehicleNumber || `equipment #${trip.internalEquipmentId}`}`;
   if (role === "unresolved") {
     const raw = [trip.materialSourceSupplier, trip.supplier].filter(Boolean).join(" · ");
     return `${prefix}${raw ? ` · ${raw}` : ""} · roles not confirmed`;

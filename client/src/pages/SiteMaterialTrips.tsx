@@ -100,6 +100,8 @@ export default function SiteMaterialTrips() {
     material: piParams.material || "",
     supplier: "",
     materialSourceSupplier: piParams.supplier || "",
+    materialSourceType: "vendor" as "vendor" | "own_source" | null,
+    materialSourceLabel: "" as string | null,
     vehicleNumber: "",
     transportType: "agency_vendor",
     internalEquipmentId: null as number | null,
@@ -161,7 +163,7 @@ export default function SiteMaterialTrips() {
       if (p.material && (!prev.material || prev.material === lastPrefill.material)) next.material = p.material;
       // Keep the vendor's actual master name; client-supplied metadata is not a new vendor.
       const supplierValue = p.supplier || null;
-      if (supplierValue && (!prev.materialSourceSupplier || prev.materialSourceSupplier === lastPrefill.supplier)) next.materialSourceSupplier = supplierValue;
+      if (prev.materialSourceType !== "own_source" && supplierValue && (!prev.materialSourceSupplier || prev.materialSourceSupplier === lastPrefill.supplier)) next.materialSourceSupplier = supplierValue;
       if ((p.material && prev.material && prev.material !== lastPrefill.material && prev.material !== p.material) ||
           (supplierValue && prev.materialSourceSupplier && prev.materialSourceSupplier !== lastPrefill.supplier && prev.materialSourceSupplier !== supplierValue)) {
         toast({ title: "Kept your entries", description: "Material/Supplier were not overwritten by the arrangement — update them yourself if needed." });
@@ -265,11 +267,15 @@ export default function SiteMaterialTrips() {
   );
   const buildRolePayload = (data: typeof newTrip) => {
     if (!roleChoice || roleChoice === "unresolved") throw new Error("Choose Who brought it.");
-    if (vendorQuery.isLoading || vendorQuery.isError) throw new Error("Load the existing vendors before saving.");
-    const source = resolveTripVendor(data.materialSourceSupplier, vendors);
+    const ownSource = data.materialSourceType === "own_source";
+    if ((!ownSource || roleChoice === "different_parties") && (vendorQuery.isLoading || vendorQuery.isError)) throw new Error("Load the existing vendors before saving.");
+    const source = ownSource ? { name: "", id: null } : resolveTripVendor(data.materialSourceSupplier, vendors);
     const transporter = roleChoice === "different_parties" ? resolveTripVendor(data.supplier, vendors) : source;
     const equipment = activeInternalEquipment.find((item) => item.id === data.internalEquipmentId) ?? null;
-    const roles = tripRolePayload(roleChoice, source, transporter, equipment, data.vehicleNumber);
+    const roles = tripRolePayload(roleChoice, source, transporter, equipment, data.vehicleNumber, {
+      materialSourceType: data.materialSourceType,
+      materialSourceLabel: data.materialSourceLabel,
+    });
     const issue = validateTripRoles(roles);
     if (issue) throw new Error(issue);
     if (roleChoice !== "in_house" && !data.vehicleNumber.trim()) throw new Error("Enter the agency/vendor vehicle number.");
@@ -351,6 +357,8 @@ export default function SiteMaterialTrips() {
           material: "",
           supplier: "",
            materialSourceSupplier: "",
+           materialSourceType: "vendor",
+           materialSourceLabel: "",
           vehicleNumber: "",
              transportType: "agency_vendor",
             internalEquipmentId: null,
@@ -462,7 +470,7 @@ export default function SiteMaterialTrips() {
   const filteredTrips = trips ?? [];
   const roleFilteredTrips = useMemo(() => filterTripsByRole(filteredTrips, roleFilter), [trips, roleFilter]);
   const hasUnassignedFilteredTrips = filteredTrips.some(
-    (trip) => !trip.materialSourceSupplier?.trim(),
+    (trip) => trip.materialSourceType !== "own_source" && !trip.materialSourceSupplier?.trim(),
   );
 
   const tripsByMaterial = useMemo(() => {
@@ -739,7 +747,7 @@ export default function SiteMaterialTrips() {
                   </p>
                   <p className="text-indigo-700 dark:text-indigo-300">{fulfilmentSuggestion.suggestion.note} ({fulfilmentSuggestion.materialName})</p>
                   <div className="flex items-center gap-3 flex-wrap">
-                    {fulfilmentSuggestion.suggestion.supplierSuggestion && (
+                    {newTrip.materialSourceType !== "own_source" && fulfilmentSuggestion.suggestion.supplierSuggestion && (
                       <button
                         type="button"
                         className="text-[11px] font-medium text-indigo-700 underline"
@@ -907,6 +915,8 @@ export default function SiteMaterialTrips() {
                     <SelectItem value="same_party">Same party</SelectItem>
                     <SelectItem value="different_parties">Different parties</SelectItem>
                     <SelectItem value="in_house">Our own vehicle</SelectItem>
+                    <SelectItem value="own_source_agency">Our own source · Another transporter</SelectItem>
+                    <SelectItem value="own_source_in_house">Our own source · Our own vehicle</SelectItem>
                     <SelectItem value="unresolved">Roles not confirmed</SelectItem>
                   </SelectContent>
                 </Select>
@@ -989,7 +999,10 @@ export default function SiteMaterialTrips() {
                           <TripWorkContextSummary trip={trip} testIdPrefix="trip-list-ctx" />
                         </td>
                         <td className="p-2">{trip.supplier || '-'}</td>
-                        <td className="p-2" data-testid={`trip-material-source-${trip.id}`}>{trip.materialSourceSupplier?.trim() || '-'}</td>
+                        <td className="p-2" data-testid={`trip-material-source-${trip.id}`}>{trip.materialSourceType === "own_source" ? <>
+                          Our own borrow area
+                          {trip.materialSourceLabel && <p className="text-xs text-muted-foreground">{trip.materialSourceLabel}</p>}
+                        </> : trip.materialSourceSupplier?.trim() || '-'}</td>
                         <td className="p-2">{trip.vehicleNumber || '-'}</td>
                         <td className="p-2 text-right font-mono">{formatTripQuantity(trip, false)}</td>
                         <td className="p-2">{trip.uom}</td>

@@ -5,6 +5,19 @@ description: One physical trip can support separate source-material and transpor
 
 Treat a trip's material seller and transporter as independent commercial roles when they are different parties. When the same party supplies and delivers, retain ONE landed material rate and no separate transport row. Own-fleet haulage produces no vendor-billable transport line.
 
+HLC can hold the rights to its own borrow area and hire a vendor only to excavate
+and haul. HLC owns that material; nobody sold it to HLC. Royalty is in HLC's
+scope, paid by R&B directly to Mines. HLC must never be represented as a vendor,
+or as a self/own placeholder in vendor columns.
+
+**Why:** The owner explicitly distinguishes own-source material from purchases;
+a self vendor would create bogus self-billing and a party ledger in Tally.
+
+**How to apply:** Record commercial origin independently of transport and
+physical receipt. Own-source material creates no material-seller liability.
+Do not infer this origin for historical trips. Arrangement-work pricing is
+separate, not authorised by the origin-recording change.
+
 **Why:** The owner explicitly settled these commercial rules. A global trip-consumed flag would block a legitimate separate-party liability, while splitting same-party delivery would contradict the landed-rate rule.
 
 **How to apply:** Keep role-qualified identity in existing bill source metadata and apply vendor/alias-aware duplicate protection per role. Never derive the material seller from vehicle associations. Bulk source assignments must remain site-scoped, filtered, audited and atomic.

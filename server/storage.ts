@@ -12749,6 +12749,7 @@ export class DatabaseStorage implements IStorage {
       const conditions: any[] = [
         eq(siteMaterialTrips.isCancelled, false),
         eq(siteMaterialTrips.isDeleted, false),
+        sql`${siteMaterialTrips.materialSourceType} IS DISTINCT FROM 'own_source'`,
       ];
       if (input.dateFrom) conditions.push(gte(siteMaterialTrips.date, input.dateFrom));
       if (input.dateTo) conditions.push(lte(siteMaterialTrips.date, input.dateTo));
@@ -12872,6 +12873,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip> {
+    if (data.materialSourceType === "own_source") {
+      if (!data.materialSourceLabel?.trim()) throw new Error("Enter the borrow area / source description.");
+      data = { ...data, materialSourceSupplier: null, materialSourceLabel: data.materialSourceLabel.trim() };
+    }
     const [trip] = await db.transaction(async (tx) => {
         const vehicleKey = normalizeVehicleSupplierVehicle(data.vehicleNumber);
         const inputSupplier = normalizeVehicleSupplierName(data.supplier);
@@ -12901,6 +12906,7 @@ export class DatabaseStorage implements IStorage {
         const [inserted] = await this._mutatePiDeliverySourceWithinTx(tx, "trip", null, async () => tx.insert(siteMaterialTrips).values({
           ...data,
           materialSourceSupplier,
+          ...(data.materialSourceType === "own_source" ? { materialSourceVendorId: null } : {}),
         }).returning(), data.indentItemId);
         // The association for a new pair is committed only in the same
         // successful transaction as the trip.  Conflicting history remains
@@ -13009,7 +13015,12 @@ export class DatabaseStorage implements IStorage {
         }
 
         const [updated] = await this._mutatePiDeliverySourceWithinTx(tx, "trip", id, async () => tx.update(siteMaterialTrips)
-          .set(data)
+          .set({
+            ...data,
+            ...((data.materialSourceType ?? existing.materialSourceType) === "own_source"
+              ? { materialSourceSupplier: null, materialSourceVendorId: null }
+              : ("materialSourceType" in data ? { materialSourceLabel: null } : {})),
+          })
           .where(eq(siteMaterialTrips.id, id))
           .returning(), data.indentItemId);
         if (!updated) return [undefined] as const;
@@ -13277,6 +13288,8 @@ export class DatabaseStorage implements IStorage {
       material: t.material,
       supplier: t.supplier || null,
       materialSourceSupplier: t.materialSourceSupplier || null,
+      materialSourceType: t.materialSourceType ?? null,
+      materialSourceLabel: t.materialSourceLabel ?? null,
       quantity: t.quantity || 0,
       uom: t.uom || "",
       vehicleNumber: t.vehicleNumber || null,

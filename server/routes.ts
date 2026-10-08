@@ -989,6 +989,13 @@ export async function registerRoutes(
     try {
       if (!assertCreate(req, res, "site_materials")) return;
       const input = insertSiteMaterialTripSchema.parse(req.body);
+      if (input.materialSourceType === "own_source") {
+        if (!input.materialSourceLabel?.trim()) return res.status(400).json({ message: "Enter the borrow area / source description." });
+        input.materialSourceSupplier = null;
+        input.materialSourceLabel = input.materialSourceLabel.trim();
+      } else {
+        input.materialSourceLabel = null;
+      }
       if (!await assertTripSiteAccess(req, res, input.site)) return;
       // New receipts must declare their transport route.  The base insert
       // schema intentionally remains nullable because historical data and
@@ -1019,6 +1026,11 @@ export async function registerRoutes(
       const existing = await storage.getSiteMaterialTripById(id);
       if (!existing) return res.status(404).json({ message: "Site material trip not found" });
       if (!await assertTripSiteAccess(req, res, existing.site)) return;
+      if ((input.materialSourceType ?? existing.materialSourceType) === "own_source") {
+        input.materialSourceSupplier = null;
+      } else if ("materialSourceType" in input || "materialSourceLabel" in input) {
+        input.materialSourceLabel = null;
+      }
       if ("site" in input && !await assertTripSiteAccess(req, res, input.site)) return;
       if (input.transportType != null && input.transportType !== "in_house" && input.transportType !== "agency_vendor") {
         return res.status(400).json({ message: "transportType must be in_house or agency_vendor" });
