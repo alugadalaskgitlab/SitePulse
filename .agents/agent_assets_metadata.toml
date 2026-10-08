@@ -5435,3 +5435,87 @@ mtime_ms = 1791442870041
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/766b4326-ebff-44c9-a86f-10c2bb318217/a1575424-0086-498c-b492-ab37c180350c"
 storage_version_token = "1791443227918777"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "0_uNAepKV7tMhz15pmwld"
+uri = "file://reports/trips-filter01/REPORT.md"
+type = "text"
+title = "Material Trips filter verification"
+description = "Matching rules, request URLs, P1–P7 evidence and limitations, tests and unchanged-trip checksum."
+logical_id = "2eeb4925-2692-44c2-80fc-4ac9302be0ec"
+content_hash = "sha256:d7c287f6560ec897fb2fed37fafbed26791221395ed596d359fbc75dbacd5175"
+size = 4693
+mtime_ms = 1791447026234
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/2eeb4925-2692-44c2-80fc-4ac9302be0ec/93b56f03-5142-4acb-a568-06b679351b9e"
+storage_version_token = "1791447088909177"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "dZJ3GUqlOBzkNxuw2pIWd"
+uri = "file://reports/trips-filter01/transporter.jpg"
+type = "image"
+title = "Transporter filter — 10 trips reduced to 2"
+description = "Signed-in development screen showing only NARSIMULU trips."
+logical_id = "b2facfcd-e703-4831-8639-e1119688b3f8"
+content_hash = "sha256:66b840b3393fea10856995c43044e336aeb4b18ba936a763b782f4738532f870"
+size = 124508
+mtime_ms = 1791446686993
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b2facfcd-e703-4831-8639-e1119688b3f8/7f5c6a2e-6a7b-45de-ad74-07ae44d58087"
+storage_version_token = "1791447091480710"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "6K4urCEbFwf4YaUFoJ58L"
+uri = "file://reports/trips-filter01b/desktop-dates-challans.jpg"
+type = "image"
+title = "P1 — Dates and challans across multiple days"
+description = "Signed-in development list; no stored trips changed."
+logical_id = "dac11484-cb99-4bfd-9f05-34dc816d64ec"
+content_hash = "sha256:4280968dd59d70ada2d9189bbeac249b8c6059d75edffafca1da58bf9885d96d"
+size = 187611
+mtime_ms = 1791447576245
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/dac11484-cb99-4bfd-9f05-34dc816d64ec/2e4f4636-34ec-4b68-93c4-57d0d8f6a054"
+storage_version_token = "1791448102427622"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "tnCW4qRudJddCnluG0kqF"
+uri = "file://reports/trips-filter01b/blank-challan-fixture.jpg"
+type = "image"
+title = "P2 — Present and blank challans"
+description = "Explicitly labelled component-test fixture. All saved development trips have challans; no records were edited for this example."
+logical_id = "c10f917b-7b19-4c3f-a91b-43809cba96f3"
+content_hash = "sha256:8754dd401a28d2e0bd869fb387dc4ede579d06251092fb8b52f5a0ece718f310"
+size = 90274
+mtime_ms = 1791447816037
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/c10f917b-7b19-4c3f-a91b-43809cba96f3/81983b01-ad1f-4183-94b6-ed2d6156e1f6"
+storage_version_token = "1791448104593940"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "UnJ8iJX-pi3nq90-t_MEa"
+uri = "file://reports/trips-filter01b/phone-dates.jpg"
+type = "image"
+title = "P3 — Phone dates"
+description = "390px handset viewport using the existing horizontal table scroll."
+logical_id = "63771914-e808-4fb8-9215-a0d768644591"
+content_hash = "sha256:1c98507a220603d91981b31b0cd62322121d7558d2bd3ad77331eeaa002c5666"
+size = 34052
+mtime_ms = 1791447577657
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/63771914-e808-4fb8-9215-a0d768644591/67189bcb-e97d-4d19-a587-0332ab5bb6e3"
+storage_version_token = "1791448106038752"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "SxFZPrNR3mBmqefyFz5xN"
+uri = "file://reports/trips-filter01b/phone-challans.jpg"
+type = "image"
+title = "P3 — Phone challans"
+description = "Same handset viewport, horizontally scrolled to material-source details."
+logical_id = "2040ec14-1898-444f-ac70-2ccea363b133"
+content_hash = "sha256:daa75baf5f19c309c9627dcc95e05a12ad53a9fb69421f0d232b2f1038c1fef4"
+size = 38185
+mtime_ms = 1791447578105
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/2040ec14-1898-444f-ac70-2ccea363b133/6d16c6d0-9f02-4712-bccc-a69cfea4d9c4"
+storage_version_token = "1791448107770316"
+content_type = "image/jpeg"
