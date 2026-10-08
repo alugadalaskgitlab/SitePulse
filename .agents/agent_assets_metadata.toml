@@ -5561,3 +5561,45 @@ mtime_ms = 1791454675770
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/36e77538-b8fc-4f3c-a80c-e6d0799c30dd/5b06c638-7acc-4c28-a2e4-f44054d9718c"
 storage_version_token = "1791454975597223"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "P3ZdBl7uOE8M0X4dMdQYA"
+uri = "file://reports/trip-link01/REPORT.md"
+type = "text"
+title = "TRIP-LINK-01 — implementation and verification"
+description = "Files, shared matching rule, 17 added tests, integrity checks, cleanup and signed-in acceptance limits."
+logical_id = "87cdae47-3a6e-4bb4-bedc-b2c450ac3259"
+content_hash = "sha256:0794ea69dd46d35bc293f94ec4fbb9ac1d634d98819b2aefd2b4e61786724719"
+size = 6015
+mtime_ms = 1791462781698
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/87cdae47-3a6e-4bb4-bedc-b2c450ac3259/f2b7f02c-e1bf-4e65-b60b-a6f1f25d4505"
+storage_version_token = "1791462902267893"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "ppBWwkycSubFWXqJc1wB3"
+uri = "file://reports/trip-link01/signed-in-filter.jpg"
+type = "image"
+title = "Signed-in: trips with no arrangement"
+description = "Live development list showing unlinked trips. Existing owner rows were not changed."
+logical_id = "1b381e26-c651-4179-8cf1-caabc1f021d9"
+content_hash = "sha256:9632faf9797d91f9c2f0966a9f5033ea7be46bf0200d63a9cae8cb01d78f1dc9"
+size = 146895
+mtime_ms = 1791462566542
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/1b381e26-c651-4179-8cf1-caabc1f021d9/6b2533b6-c48a-4883-a600-dd4ca9c021f8"
+storage_version_token = "1791462904359241"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "wN0gtRC-yeMz7h0ylsNl3"
+uri = "file://reports/trip-link01/signed-in-empty.jpg"
+type = "image"
+title = "Signed-in: combined filters return no matches"
+description = "No-arrangement plus nonexistent transporter returns an empty list, not all trips."
+logical_id = "f3aebb40-e5e4-4641-9e0f-ffebaff995a2"
+content_hash = "sha256:12cf876fad481006e8f3937fd20401733d68987792f9fe6e41580019360f6ef6"
+size = 97532
+mtime_ms = 1791462566850
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/f3aebb40-e5e4-4641-9e0f-ffebaff995a2/9b2c3426-b1ab-4aa7-837a-415670a863ac"
+storage_version_token = "1791462906248693"
+content_type = "image/jpeg"
