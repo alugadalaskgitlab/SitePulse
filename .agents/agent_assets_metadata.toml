@@ -5701,3 +5701,59 @@ mtime_ms = 1791471113816
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/5253f922-b0aa-48a3-8c93-251f4bac0414/81c928ba-3f89-4805-8cb5-0149f6ecc4e1"
 storage_version_token = "1791471325569074"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "nEWkWhGVSQurSg-qSqPyw"
+uri = "file://reports/perm-babu01/REPORT.md"
+type = "text"
+title = "PERM-BABU-01 findings and owner steps"
+description = "Diagnosis, exact settings, P1–P6 status codes, checksums, tests and cleanup."
+logical_id = "511a9050-da33-4ab8-b6d2-395f84f17d3e"
+content_hash = "sha256:5de33165e03bc28eebb0cf1170aa0cc5e734273e3490341bacdb9391654405d8"
+size = 7791
+mtime_ms = 1791475274397
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/511a9050-da33-4ab8-b6d2-395f84f17d3e/91043d5a-5685-41a3-b335-10ab7ddeead5"
+storage_version_token = "1791475385683191"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "jFcNQYxJD3qoNe6RI0RPg"
+uri = "file://reports/perm-babu01/P2-role-editor.jpg"
+type = "image"
+title = "Ordinary user: source and transporter"
+description = "Our own source plus another transporter; save returned 200 and stored values were verified."
+logical_id = "16a77b33-a871-4cdd-861f-d6bdcccbdb19"
+content_hash = "sha256:6bf5a5d8481dc6e98e68080de100e7d98593963657b0240dfea32e55707546cf"
+size = 132856
+mtime_ms = 1791474734936
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/16a77b33-a871-4cdd-861f-d6bdcccbdb19/02f256fb-f7c9-488e-a290-02f60ac18809"
+storage_version_token = "1791475387780401"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "WLsLGB-JNgLB7rJUUV0Jm"
+uri = "file://reports/perm-babu01/P2-single-editor.jpg"
+type = "image"
+title = "Ordinary user: single arrangement link"
+description = "Arrangement selector available without Work Programme or administrator permissions; save returned 200."
+logical_id = "253d5d4f-8505-40ae-8a21-5bac67cad7f5"
+content_hash = "sha256:88ea0957c39e0e26c97d876b9d4fbbe836ff714fa967bfc3f3ee1d0d2c90e342"
+size = 125594
+mtime_ms = 1791474734940
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/253d5d4f-8505-40ae-8a21-5bac67cad7f5/3d2825af-e061-475f-882d-e645a2472bf4"
+storage_version_token = "1791475389643767"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "seLOzbfSqxrbVKo55uABO"
+uri = "file://reports/perm-babu01/P2-bulk-saved.jpg"
+type = "image"
+title = "Ordinary user: bulk link saved"
+description = "One trip linked, HTTP 200, with database read-back confirming the saved arrangement."
+logical_id = "e7d1049e-5832-4406-b95d-228862420f03"
+content_hash = "sha256:07780550be5e308f476363101430fe2ad8da79c68224d1a27098fb95e2ec3950"
+size = 152645
+mtime_ms = 1791474734940
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e7d1049e-5832-4406-b95d-228862420f03/559bec5c-b6a0-42cc-b6f4-5fca15d7091b"
+storage_version_token = "1791475391757968"
+content_type = "image/jpeg"
