@@ -5757,3 +5757,17 @@ mtime_ms = 1791474734940
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e7d1049e-5832-4406-b95d-228862420f03/559bec5c-b6a0-42cc-b6f4-5fca15d7091b"
 storage_version_token = "1791475391757968"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "S8xR6LkrDoDsUDUwxfFGv"
+uri = "file://reports/arrange02b/report.html"
+type = "html"
+title = "VB-ARRANGE-02B — verification report"
+description = "Implementation, signed-in screenshots, arithmetic, status codes, integrity checks, cleanup, test results and Publish schema preview."
+logical_id = "2436362d-bf5a-49a4-91fc-a922c5cd78e6"
+content_hash = "sha256:169834049657d8f81e269be8eb4bdf40c4bd9ea7ef06d27e818e60b88bcbadd7"
+size = 451371
+mtime_ms = 1791479260891
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/2436362d-bf5a-49a4-91fc-a922c5cd78e6/ea89d37d-20f1-4602-8057-f12b6d646e66"
+storage_version_token = "1791479327145094"
+content_type = "text/html"
