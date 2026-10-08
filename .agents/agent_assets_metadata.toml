@@ -5603,3 +5603,59 @@ mtime_ms = 1791462566850
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/f3aebb40-e5e4-4641-9e0f-ffebaff995a2/9b2c3426-b1ab-4aa7-837a-415670a863ac"
 storage_version_token = "1791462906248693"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "YNplB1ks39-2EYGvAdtw3"
+uri = "file://reports/dev-acct02/REPORT.md"
+type = "text"
+title = "DEV-ACCT-02 verification report"
+description = "Exact grants, changed rows, checksum comparisons, real signed-in saves and cleanup."
+logical_id = "5291cf97-2793-491c-baa8-0710337e540d"
+content_hash = "sha256:6b1f2c62fe9bbe0b9e6b3f757c542dd119843e49d5c9b2d09d13afb236ca2cac"
+size = 5126
+mtime_ms = 1791469140604
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/5291cf97-2793-491c-baa8-0710337e540d/0854c4fc-59fc-4a5f-bc55-95fb83f6e0c8"
+storage_version_token = "1791469221820145"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "RRdUgOULXVCWl0Let5_6p"
+uri = "file://reports/dev-acct02/rate-edit.jpg"
+type = "image"
+title = "Signed-in trip-rate save"
+description = "Ordinary verification account: 600 CFT at ₹1,250; save returned HTTP 200 and persisted."
+logical_id = "a68b0217-2621-4a91-9880-c832e2424024"
+content_hash = "sha256:dc97f2e3ff35f605ad3069966772dab346d321025a62c4ac10ac9fc895b8a650"
+size = 57231
+mtime_ms = 1791468617833
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/a68b0217-2621-4a91-9880-c832e2424024/919f670f-5b0e-43bb-a1c3-5e24bfcb5905"
+storage_version_token = "1791469223679836"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "04yGFd6Ubsg0y1YgZEl2U"
+uri = "file://reports/dev-acct02/bulk-confirm.jpg"
+type = "image"
+title = "Signed-in bulk arrangement confirmation"
+description = "One explicitly filtered disposable trip; confirmed write returned HTTP 200."
+logical_id = "cc5467ab-462c-49c9-a3a0-9e14cc230f9c"
+content_hash = "sha256:e6ac0dbef9a7541cf7528545a6b90cf6dbe2b21afbc18f4b63d8eb729e6e36a3"
+size = 83207
+mtime_ms = 1791468621657
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/cc5467ab-462c-49c9-a3a0-9e14cc230f9c/06a96c96-08b2-40af-b51a-3e8d507d43c8"
+storage_version_token = "1791469225371529"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "DMAse6i4SmAG6sXm_CiEq"
+uri = "file://reports/dev-acct02/roles-edit.jpg"
+type = "image"
+title = "Signed-in Set roles edit"
+description = "Real dialog and ordinary permission path; Save roles returned HTTP 200."
+logical_id = "64f01303-4183-49c1-95b0-292d8568be42"
+content_hash = "sha256:ec33d2364a619c3c45a3a6379b699a0d80bb7a3a9d25591d93a907d0b89aab33"
+size = 109929
+mtime_ms = 1791468623217
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/64f01303-4183-49c1-95b0-292d8568be42/65fea0b5-f2ab-44e7-ab09-50803335bfd1"
+storage_version_token = "1791469227369598"
+content_type = "image/jpeg"
