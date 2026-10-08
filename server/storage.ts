@@ -1,4 +1,5 @@
 import { lookupTripBoqQuantity } from "../shared/tripQuantityDisplay";
+import { bulkTripConditions } from "./siteMaterialTripFilters";
 import { validatedTransportRateFields } from "../shared/transportRate";
 import { db } from "./db";
 import { insertLabourWithWorkers, readWorkerNames } from "./labourWorkers";
@@ -1376,7 +1377,7 @@ export interface IStorage {
   // Site Material Trips (Quick Entry)
   // Adds only nullable, backward-compatible transport fields to existing trips.
   ensureSiteMaterialTripsLinkageColumns(): Promise<void>;
-  getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; vehicleNumber?: string; supplier?: string; onlyUnassigned?: boolean; indentItemId?: number; indentId?: number; boqProjectId?: number; boqItemId?: number; programmeBarId?: number; earthworkArrangementId?: number; permittedSiteNames?: string[] }): Promise<SiteMaterialTrip[]>;
+  getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; vehicleNumber?: string; supplier?: string; onlyUnassigned?: boolean; onlyWithoutArrangement?: boolean; indentItemId?: number; indentId?: number; boqProjectId?: number; boqItemId?: number; programmeBarId?: number; earthworkArrangementId?: number; permittedSiteNames?: string[] }): Promise<SiteMaterialTrip[]>;
   getSiteMaterialTripSuggestions(site: string): Promise<SiteMaterialTripSuggestions>;
   bulkAssignSiteMaterialTripMaterialSource(input: {
     dateFrom?: string;
@@ -12497,8 +12498,9 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; vehicleNumber?: string; supplier?: string; onlyUnassigned?: boolean; indentItemId?: number; indentId?: number; boqProjectId?: number; boqItemId?: number; programmeBarId?: number; earthworkArrangementId?: number; permittedSiteNames?: string[]; includeCancelled?: boolean }): Promise<SiteMaterialTrip[]> {
+  async getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; vehicleNumber?: string; supplier?: string; onlyUnassigned?: boolean; onlyWithoutArrangement?: boolean; indentItemId?: number; indentId?: number; boqProjectId?: number; boqItemId?: number; programmeBarId?: number; earthworkArrangementId?: number; permittedSiteNames?: string[]; includeCancelled?: boolean }): Promise<SiteMaterialTrip[]> {
     let conditions = [];
+    if (filters?.onlyWithoutArrangement) conditions.push(isNull(siteMaterialTrips.earthworkArrangementId));
     // Match bulkAssignSiteMaterialTripMaterialSource, including own-source
     // exclusion only for the unassigned view (normal lists retain own source).
     if (filters?.vehicleNumber?.trim()) {
@@ -12759,27 +12761,8 @@ export class DatabaseStorage implements IStorage {
     if (!hasFilter) throw Object.assign(new Error("At least one trip filter is required"), { code: "BAD_REQUEST" });
 
     return db.transaction(async (tx) => {
-      const conditions: any[] = [
-        eq(siteMaterialTrips.isCancelled, false),
-        eq(siteMaterialTrips.isDeleted, false),
-        sql`${siteMaterialTrips.materialSourceType} IS DISTINCT FROM 'own_source'`,
-      ];
-      if (input.dateFrom) conditions.push(gte(siteMaterialTrips.date, input.dateFrom));
-      if (input.dateTo) conditions.push(lte(siteMaterialTrips.date, input.dateTo));
-      if (input.site) conditions.push(sql`UPPER(TRIM(${siteMaterialTrips.site})) = ${input.site.trim().toUpperCase()}`);
-      if (input.material) conditions.push(sql`UPPER(TRIM(${siteMaterialTrips.material})) = ${input.material.trim().toUpperCase()}`);
-      if (input.vehicleNumber) {
-        const vehicleKey = normalizeVehicleSupplierVehicle(input.vehicleNumber);
-        conditions.push(sql`upper(regexp_replace(trim(${siteMaterialTrips.vehicleNumber}), '[[:space:]-]+', '', 'g')) = ${vehicleKey}`);
-      }
-      if (input.supplier) conditions.push(sql`UPPER(TRIM(${siteMaterialTrips.supplier})) = ${normalizeVehicleSupplierName(input.supplier)}`);
-      if (input.onlyUnassigned) {
-        conditions.push(or(isNull(siteMaterialTrips.materialSourceSupplier), sql`TRIM(${siteMaterialTrips.materialSourceSupplier}) = ''`)!);
-      }
-      if (input.permittedSiteNames !== undefined) {
-        if (input.permittedSiteNames.length === 0) return { updatedCount: 0 };
-        conditions.push(inArray(siteMaterialTrips.site, input.permittedSiteNames));
-      }
+      if (input.permittedSiteNames?.length === 0) return { updatedCount: 0 };
+      const conditions = bulkTripConditions(input);
 
       const matched = await tx.select({
         id: siteMaterialTrips.id,

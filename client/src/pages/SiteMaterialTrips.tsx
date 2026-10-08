@@ -2,6 +2,7 @@ import { formatTripQuantity } from "@shared/tripQuantityDisplay";
 import { classifyTripRoles, tripRolePayload, validateTripRoles, type TripTransportRole } from "@shared/tripTransportRoles";
 import { TripTransportRoleFields } from "@/components/TripTransportRoleFields";
 import { TripRoleEditDialog } from "@/components/TripRoleEditDialog";
+import { BulkTripArrangement } from "@/components/BulkTripArrangement";
 import { filterTripsByRole, resolveTripVendor, tripRoleDescription, type ExistingTripVendor, type TripRoleFilter } from "@/components/trip-role-utils";
 import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -85,6 +86,7 @@ export default function SiteMaterialTrips() {
   const [vehicleFilter, setVehicleFilter] = useState("");
   const [supplierFilter, setSupplierFilter] = useState("");
   const [onlyUnassigned, setOnlyUnassigned] = useState(false);
+  const [onlyWithoutArrangement, setOnlyWithoutArrangement] = useState(false);
   const [roleFilter, setRoleFilter] = useState<TripRoleFilter>("all");
   const [roleChoice, setRoleChoice] = useState<TripTransportRole | null>("same_party");
   const roleChoiceRef = useRef(roleChoice);
@@ -250,6 +252,7 @@ export default function SiteMaterialTrips() {
     if (vehicleFilter.trim()) params.set("vehicleNumber", vehicleFilter.trim());
     if (supplierFilter.trim()) params.set("supplier", supplierFilter.trim());
     if (onlyUnassigned) params.set("onlyUnassigned", "true");
+    if (onlyWithoutArrangement) params.set("onlyWithoutArrangement", "true");
     const queryString = params.toString();
     return queryString ? `/api/site-material-trips?${queryString}` : "/api/site-material-trips";
   };
@@ -399,6 +402,7 @@ export default function SiteMaterialTrips() {
 
   const bulkAssignMutation = useMutation({
     mutationFn: async () => {
+      if (onlyWithoutArrangement) throw new Error("Clear the no-arrangement filter before using the material-source tool.");
       if (roleFilter !== "all") {
         throw new Error("Select All in the transport/source role filter before using the bulk material-source tool.");
       }
@@ -908,6 +912,10 @@ export default function SiteMaterialTrips() {
                 <input type="checkbox" checked={onlyUnassigned} onChange={(event) => { setOnlyUnassigned(event.target.checked); setRoleFilter("all"); }} data-testid="checkbox-filter-only-unassigned" />
                 Only trips without a material source
               </label>
+              <label className="flex items-end gap-2 pb-2 text-sm">
+                <input type="checkbox" checked={onlyWithoutArrangement} onChange={event=>setOnlyWithoutArrangement(event.target.checked)} data-testid="checkbox-filter-no-arrangement" />
+                Trips with no arrangement
+              </label>
               <div>
                 <Label className="text-xs">Transport/source roles</Label>
                 <Select value={roleFilter} onValueChange={(value) => { setRoleFilter(value as TripRoleFilter); setOnlyUnassigned(false); }}>
@@ -953,7 +961,7 @@ export default function SiteMaterialTrips() {
                     />
                     <Button
                       type="button"
-                      disabled={roleFilter !== "all" || !bulkMaterialSourceSupplier.trim() || !bulkEligibleCount || !siteFilter || siteFilter === "all"}
+                      disabled={roleFilter !== "all" || !bulkMaterialSourceSupplier.trim() || !bulkEligibleCount || !siteFilter || siteFilter === "all" || onlyWithoutArrangement}
                       onClick={() => setBulkConfirmOpen(true)}
                       data-testid="button-bulk-assign-material-source"
                     >
@@ -962,9 +970,17 @@ export default function SiteMaterialTrips() {
                   </div>
                   {(!siteFilter || siteFilter === "all") && <p className="text-xs text-amber-700">Select one site before bulk assignment.</p>}
                   {bulkExcludedCount > 0 && <p className="text-xs text-muted-foreground">{bulkExcludedCount} own-source trip{bulkExcludedCount === 1 ? "" : "s"} excluded from bulk assignment.</p>}
+                  {onlyWithoutArrangement && <p className="text-xs text-amber-700">Clear the no-arrangement filter to use the unchanged material-source tool.</p>}
                 </div>
               </details>
             )}
+            {canEdit && <BulkTripArrangement filters={{
+              site:siteFilter && siteFilter!=="all"?siteFilter:undefined,
+              material:materialFilter && materialFilter!=="all"?materialFilter:undefined,
+              supplier:supplierFilter.trim()||undefined, vehicleNumber:vehicleFilter.trim()||undefined,
+              dateFrom:dateFromFilter||undefined,dateTo:dateToFilter||undefined,
+              onlyUnassigned,onlyWithoutArrangement,roleFilter,
+            }} />}
             {isLoading ? (
               <div className="flex justify-center py-8">
                 <Loader2 className="w-6 h-6 animate-spin" />
@@ -1002,6 +1018,7 @@ export default function SiteMaterialTrips() {
                             {tripRoleDescription(trip, internalEquipment.find((item) => item.id === trip.internalEquipmentId)?.name)}
                           </p>
                           <TripWorkContextSummary trip={trip} testIdPrefix="trip-list-ctx" />
+                          {trip.earthworkArrangementId == null && <p className="text-xs text-amber-700" data-testid={`trip-no-arrangement-${trip.id}`}>No arrangement linked</p>}
                         </td>
                         <td className="p-2">{trip.supplier || '-'}</td>
                         <td className="p-2" data-testid={`trip-material-source-${trip.id}`}>{trip.materialSourceType === "own_source" ? <>
@@ -1065,7 +1082,7 @@ export default function SiteMaterialTrips() {
         </Card>
       </div>
 
-      {editingRoleTrip && <TripRoleEditDialog key={editingRoleTrip.id} trip={editingRoleTrip} vendors={vendors} equipment={internalEquipment} vendorsLoading={vendorQuery.isLoading} vendorsError={vendorQuery.isError} onRetryVendors={() => void vendorQuery.refetch()} onClose={() => setEditingRoleTrip(null)} />}
+      {editingRoleTrip && <TripRoleEditDialog key={editingRoleTrip.id} trip={editingRoleTrip} sitesList={sitesList} vendors={vendors} equipment={internalEquipment} vendorsLoading={vendorQuery.isLoading} vendorsError={vendorQuery.isError} onRetryVendors={() => void vendorQuery.refetch()} onClose={() => setEditingRoleTrip(null)} />}
       <CancelDialog
         open={cancelTripId !== null}
         onOpenChange={(v) => !v && setCancelTripId(null)}

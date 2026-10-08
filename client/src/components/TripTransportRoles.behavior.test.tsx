@@ -33,7 +33,7 @@ vi.mock("@/components/ReceiptWorkContext", () => ({
   TripWorkContextSummary: () => null,
   ReceiptWorkContext: ({ value, onChange, onArrangementPrefill }: any) => <div>
     <button type="button" onClick={() => onChange({ ...value, boqProjectId: 12, boqItemId: 29 })}>Choose intended item</button>
-    <button type="button" onClick={() => { onChange({ ...value, earthworkArrangementId: 31 }); onArrangementPrefill({ material: "Soil", supplier: "SANGANNA", clientSupplied: true, external: false }); }}>Apply arrangement</button>
+    <button type="button" onClick={() => { onChange({ ...value, earthworkArrangementId: 31 }); onArrangementPrefill?.({ material: "Soil", supplier: "SANGANNA", clientSupplied: true, external: false }); }}>Apply arrangement</button>
     <span data-testid="work-context-value">{JSON.stringify(value)}</span>
   </div>,
 }));
@@ -255,6 +255,26 @@ describe("VB-SPLIT Parts A/B entry behavior", () => {
 });
 
 describe("A4/A5 explicit role-only editing", () => {
+  it("explicit work-context edits accompany roles without physical receipt fields", async () => {
+    renderEditor();
+    setInput("input-edit-trip-material-source-supplier", "SANGANNA");
+    fireEvent.click(screen.getByTestId("edit-trip-role-same_party"));
+    fireEvent.click(screen.getByText("Choose intended item"));
+    fireEvent.click(screen.getByText("Apply arrangement"));
+    fireEvent.click(screen.getByTestId("button-save-trip-roles"));
+    await waitFor(()=>expect(harness.request).toHaveBeenCalled());
+    const body=harness.request.mock.calls[0][2];
+    expect(body).toMatchObject({boqProjectId:12,boqItemId:29,earthworkArrangementId:31});
+    for(const key of ["quantity","date","site","material","receiptNumber"])expect(body).not.toHaveProperty(key);
+  });
+  it("untouched saved work context is omitted, never cleared by role confirmation", async () => {
+    renderEditor({...rows[3],boqProjectId:12,boqItemId:29,programmeBarId:50,earthworkArrangementId:31});
+    setInput("input-edit-trip-material-source-supplier", "SANGANNA");
+    fireEvent.click(screen.getByTestId("edit-trip-role-same_party"));
+    fireEvent.click(screen.getByTestId("button-save-trip-roles"));
+    await waitFor(()=>expect(harness.request).toHaveBeenCalled());
+    for(const key of ["boqProjectId","boqItemId","programmeBarId","earthworkArrangementId"])expect(harness.request.mock.calls[0][2]).not.toHaveProperty(key);
+  });
   function renderEditor(row = rows[3]) {
     return render(<QueryClientProvider client={queryClient}><TripRoleEditDialog trip={row} vendors={vendors} equipment={equipment} vendorsLoading={false} vendorsError={false} onRetryVendors={vi.fn()} onClose={vi.fn()} /></QueryClientProvider>);
   }

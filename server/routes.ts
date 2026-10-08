@@ -9,6 +9,8 @@ import { buildEquipmentComparison, buildDailyDieselEquipmentReport } from "./die
 import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection, classifyBoqItem, getSectorMultiplier } from "./snlAutoMapper";
 import { api } from "@shared/routes";
 import { z } from "zod";
+import { bulkTripArrangementSchema } from "../shared/tripArrangementLink";
+import { bulkLinkTripArrangement, tripArrangementOptions } from "./tripArrangementLink";
 import { EquipmentActivityAllocationError } from "@shared/equipmentActivityAllocations";
 import * as xlsx from 'xlsx';
 import multer from 'multer';
@@ -821,6 +823,7 @@ export async function registerRoutes(
         vehicleNumber: typeof req.query.vehicleNumber === "string" ? req.query.vehicleNumber.trim() || undefined : undefined,
         supplier: typeof req.query.supplier === "string" ? req.query.supplier.trim() || undefined : undefined,
         onlyUnassigned: req.query.onlyUnassigned === "true",
+        onlyWithoutArrangement: req.query.onlyWithoutArrangement === "true",
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
         indentItemId: req.query.indentItemId ? parseInt(req.query.indentItemId as string) : undefined,
@@ -884,6 +887,37 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to bulk assign material source supplier" });
     }
   });
+
+  app.get("/api/site-material-trips/arrangement-options", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "site_materials")) return;
+      const site = z.string().trim().min(1).parse(req.query.site);
+      if (!await assertTripSiteAccess(req, res, site)) return;
+      res.json(await tripArrangementOptions(site));
+    } catch (err) {
+      res.status(err instanceof z.ZodError ? 400 : 500).json({message:"Could not load this site's arrangements."});
+    }
+  });
+  for (const mode of ["preview", "bulk"] as const) {
+    app.post(`/api/site-material-trips/arrangement/${mode}`, async (req, res) => {
+      try {
+        if (!assertEdit(req, res, "site_materials")) return;
+        const input = bulkTripArrangementSchema.parse(req.body);
+        if (!await assertTripSiteAccess(req, res, input.site)) return;
+        const permittedSiteNames = await getPermittedSiteNames(req);
+        const result = await bulkLinkTripArrangement({
+          ...input, ...(permittedSiteNames !== null ? {permittedSiteNames} : {}),
+        }, mode === "bulk" ? {
+          userId: req.authUser!.id, userName: currentUserName(req),
+          userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
+        } : undefined);
+        res.json(result);
+      } catch (err) {
+        const status = err instanceof z.ZodError ? 400 : (err as any)?.status ?? 500;
+        res.status(status).json({code:(err as any)?.code, message: status === 500 ? "Arrangement linking failed. Nothing was changed." : err instanceof z.ZodError ? err.errors[0]?.message : (err as Error).message});
+      }
+    });
+  }
 
   // 06S §2: procurement match for a Site Material Trip — informational/
   // auto-fill only. Explicit requirement→PI chain; never fuzzy, never blocks,

@@ -69,7 +69,7 @@ const fmtCh = (v: number | string | null | undefined) => {
   return `${km}+${String(Math.round((n - km) * 1000)).padStart(3, "0")}`;
 };
 
-export function arrangementLabel(a: ArrangementRow): string {
+export function arrangementLabel(a: ArrangementRow, showRate = true): string {
   if (a.arrangementType === "hlc_in_house") {
     return "HLC — In-house / Self Execution";
   }
@@ -78,7 +78,7 @@ export function arrangementLabel(a: ArrangementRow): string {
   ];
   const ch = fmtCh(a.chainageFrom) && fmtCh(a.chainageTo) ? `Ch. ${fmtCh(a.chainageFrom)}–${fmtCh(a.chainageTo)}` : null;
   if (ch) parts.push(ch);
-  const rate = a.agreedRate != null && Number(a.agreedRate) > 0 ? `₹${Number(a.agreedRate)}/${a.uom ?? ""}`.replace(/\/$/, "") : null;
+  const rate = showRate && a.agreedRate != null && Number(a.agreedRate) > 0 ? `₹${Number(a.agreedRate)}/${a.uom ?? ""}`.replace(/\/$/, "") : null;
   if (rate) parts.push(rate);
   return parts.filter(Boolean).join(" · ") || `Arrangement #${a.id}`;
 }
@@ -132,6 +132,7 @@ export function ReceiptWorkContext({
   onChange,
   onArrangementPrefill,
   required = false,
+  manualOnly = false,
   testIdPrefix = "work-ctx",
   operationalDate,
 }: {
@@ -144,6 +145,8 @@ export function ReceiptWorkContext({
   onArrangementPrefill?: (p: { material: string | null; supplier: string | null; clientSupplied: boolean; external: boolean }) => void;
   /** Standalone trip entry requires a project and intended BOQ activity. */
   required?: boolean;
+  /** Existing-trip corrections must never auto-select or clear persisted links. */
+  manualOnly?: boolean;
   testIdPrefix?: string;
   operationalDate: string;
 }) {
@@ -159,6 +162,7 @@ export function ReceiptWorkContext({
 
   // A site normally has exactly one BOQ project — auto-select it.
   useEffect(() => {
+    if (manualOnly) return;
     if (value.boqProjectId == null && projects.length === 1) {
       onChange({ ...EMPTY_WORK_CONTEXT, boqProjectId: projects[0].id });
     }
@@ -176,7 +180,9 @@ export function ReceiptWorkContext({
 
   const resolution = useMemo(
     () =>
-      value.boqProjectId != null && value.boqItemId != null
+      manualOnly
+        ? {applicable:arrangements, prefill:null, none:arrangements.length===0}
+        : value.boqProjectId != null && value.boqItemId != null
         ? resolveApplicableArrangements(arrangements, {
             boqProjectId: value.boqProjectId,
             boqItemId: value.boqItemId,
@@ -187,7 +193,7 @@ export function ReceiptWorkContext({
             operationalDate,
           }, allocations)
         : null,
-    [arrangements, allocations, value.boqProjectId, value.boqItemId, value.programmeBarId, selectedBar, operationalDate],
+    [manualOnly, arrangements, allocations, value.boqProjectId, value.boqItemId, value.programmeBarId, selectedBar, operationalDate],
   );
   const historicalInactiveArrangement = useMemo(() => {
     if (value.earthworkArrangementId == null) return null;
@@ -200,6 +206,7 @@ export function ReceiptWorkContext({
 
   // Auto-preselect when exactly one arrangement applies; fire prefill hook.
   useEffect(() => {
+    if (manualOnly) return;
     if (!resolution) return;
     if (resolution.prefill && value.earthworkArrangementId == null) {
       onChange({ ...value, earthworkArrangementId: resolution.prefill.id });
@@ -236,7 +243,7 @@ export function ReceiptWorkContext({
         </span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {projects.length > 1 && (
+        {(manualOnly || projects.length > 1) && (
           <div>
             <Label className="text-xs">Project{required ? " *" : ""}</Label>
             <Select
@@ -271,14 +278,14 @@ export function ReceiptWorkContext({
         {value.boqItemId != null && resolution && (!resolution.none || historicalInactiveArrangement != null) && (
           <div>
             <Label className="text-xs">Execution Arrangement</Label>
-            {historicalInactiveArrangement ? (
+            {!manualOnly && historicalInactiveArrangement ? (
               <p className="text-xs mt-1.5 font-medium text-muted-foreground" data-testid={`${testIdPrefix}-arrangement-historical`}>
                 Historical arrangement: {arrangementLabel(historicalInactiveArrangement)}
                 {cancelledEffectiveFromAsOf(historicalInactiveArrangement, operationalDate)
                   ? ` · Cancelled effective ${format(new Date(`${cancelledEffectiveFromAsOf(historicalInactiveArrangement, operationalDate)}T00:00:00`), "dd-MMM-yyyy")}`
                   : ` · ${arrangementStatusAsOf(historicalInactiveArrangement, operationalDate)}`}
               </p>
-            ) : resolution.applicable.length === 1 ? (
+            ) : !manualOnly && resolution.applicable.length === 1 ? (
               <p className="text-xs mt-1.5 font-medium" data-testid={`${testIdPrefix}-arrangement-single`}>
                 {arrangementLabel(resolution.applicable[0])}
                 {resolution.applicable[0].arrangementType === "client_supplied" && (
@@ -290,7 +297,7 @@ export function ReceiptWorkContext({
                 value={value.earthworkArrangementId != null ? String(value.earthworkArrangementId) : ""}
                 onValueChange={(v) => {
                   const a = resolution.applicable.find((x) => x.id === Number(v));
-                  onChange({ ...value, earthworkArrangementId: Number(v) });
+                  onChange({ ...value, earthworkArrangementId: v === "none" ? null : Number(v) });
                   if (a) {
                     const rel = receiptRelevanceForType(a.arrangementType);
                     onArrangementPrefill?.({
@@ -302,10 +309,11 @@ export function ReceiptWorkContext({
                   }
                 }}
               >
-                <SelectTrigger data-testid={`${testIdPrefix}-select-arrangement`}><SelectValue placeholder="Select arrangement (multiple apply)" /></SelectTrigger>
+                <SelectTrigger data-testid={`${testIdPrefix}-select-arrangement`}><SelectValue placeholder={manualOnly ? "Select arrangement explicitly" : "Select arrangement (multiple apply)"} /></SelectTrigger>
                 <SelectContent>
+                  {manualOnly && <SelectItem value="none">No arrangement</SelectItem>}
                   {resolution.applicable.map((a) => (
-                    <SelectItem key={a.id} value={String(a.id)}>{arrangementLabel(a)}</SelectItem>
+                    <SelectItem key={a.id} value={String(a.id)}>{arrangementLabel(a, !manualOnly)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

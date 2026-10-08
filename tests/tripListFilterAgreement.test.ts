@@ -38,6 +38,14 @@ describe("Trip list / bulk filter contract", () => {
     expect(sql).not.toContain('"vehicle_number"');
     expect(sql).not.toContain('"material_source_type"');
   });
+  it("no-arrangement filter adds IS NULL without dropping existing filters", async () => {
+    captured.conditions=[];
+    await storage.getSiteMaterialTrips({supplier:"Carrier",vehicleNumber:"TS01",onlyWithoutArrangement:true});
+    const text=clauses(captured.conditions[0]);
+    expect(text.toLowerCase()).toContain('"earthwork_arrangement_id" is null');
+    expect(text).toContain('"supplier"');
+    expect(text).toContain('"vehicle_number"');
+  });
   it("denies empty site scope without running a list query", async () => {
     captured.conditions=[];
     expect(await storage.getSiteMaterialTrips({supplier:"Carrier",permittedSiteNames:[]})).toEqual([]);

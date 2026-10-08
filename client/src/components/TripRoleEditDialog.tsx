@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { classifyTripRoles, tripRolePayload, validateTripRoles, type TripTransportRole } from "@shared/tripTransportRoles";
-import type { EquipmentMasterType, SiteMaterialTrip } from "@shared/schema";
+import type { EquipmentMasterType, SiteMaterialTrip, Site } from "@shared/schema";
+import { ReceiptWorkContext, type TripWorkContext } from "./ReceiptWorkContext";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -17,10 +18,17 @@ type Props = {
   vendorsError: boolean;
   onRetryVendors: () => void;
   onClose: () => void;
+  sitesList?: Site[];
 };
 
 /** Mounted afresh per trip. Opening/closing never performs a mutation. */
-export function TripRoleEditDialog({ trip, vendors, equipment, vendorsLoading, vendorsError, onRetryVendors, onClose }: Props) {
+export function TripRoleEditDialog({ trip, vendors, equipment, vendorsLoading, vendorsError, onRetryVendors, onClose, sitesList = [] }: Props) {
+  const initialContext: TripWorkContext = {
+    boqProjectId:trip.boqProjectId??null, boqItemId:trip.boqItemId??null,
+    programmeBarId:trip.programmeBarId??null, earthworkArrangementId:trip.earthworkArrangementId??null,
+  };
+  const [context, setContext] = useState(initialContext);
+  const [contextEdited, setContextEdited] = useState(false);
   const storedRole = classifyTripRoles(trip);
   const [choice, setChoice] = useState<TripTransportRole | null>(
     storedRole === "unresolved" ? null
@@ -51,7 +59,11 @@ export function TripRoleEditDialog({ trip, vendors, equipment, vendorsLoading, v
       }, false);
       const issue = validateTripRoles(payload, false);
       if (issue) throw new Error(issue);
-      await apiRequest("PATCH", `/api/site-material-trips/${trip.id}`, payload);
+      const contextPatch = contextEdited ? Object.fromEntries(
+        (Object.keys(initialContext) as (keyof TripWorkContext)[])
+          .filter(key=>context[key]!==initialContext[key]).map(key=>[key,context[key]])
+      ) : {};
+      await apiRequest("PATCH", `/api/site-material-trips/${trip.id}`, {...payload,...contextPatch});
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ predicate: (query) => typeof query.queryKey[0] === "string" && query.queryKey[0].startsWith("/api/site-material-trips") });
@@ -66,7 +78,7 @@ export function TripRoleEditDialog({ trip, vendors, equipment, vendorsLoading, v
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl" data-testid="dialog-trip-roles">
         <DialogHeader>
           <DialogTitle>Confirm material and transport roles · Trip #{trip.id}</DialogTitle>
-          <DialogDescription>Only the source, transporter and vehicle fields are saved. Quantities and work context are not changed.</DialogDescription>
+          <DialogDescription>Confirm roles and optionally correct the BOQ item, programme reach or arrangement. Untouched work context is preserved. Quantity, date, site, material and receipt number are not changed.</DialogDescription>
         </DialogHeader>
         <div className="rounded-md border bg-muted/20 p-3 text-xs" data-testid="trip-role-raw-values">
           <p className="mb-1 font-medium">Stored values (unchanged until Save roles)</p>
@@ -86,6 +98,9 @@ export function TripRoleEditDialog({ trip, vendors, equipment, vendorsLoading, v
         </div>
         {storedRole === "unresolved" && <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-200" data-testid="trip-roles-unresolved">Transport/source roles not yet confirmed — set Material from and Who brought it</p>}
         <TripTransportRoleFields choice={choice} onChoice={setChoice} value={draft} onChange={setDraft} vendors={vendors} equipment={equipment.filter((item) => item.ownership === "owned" && (item.isActive || item.id === draft.internalEquipmentId))} sourceSuggestions={suggestions.materialSourceSuppliers} supplierSuggestions={suggestions.suppliers} vehicleSuggestions={suggestions.vehicles} suggestionError={suggestions.error} vendorsLoading={vendorsLoading} vendorsError={vendorsError} onRetryVendors={onRetryVendors} testIdPrefix="edit-trip" />
+        <ReceiptWorkContext siteName={trip.site} sitesList={sitesList} operationalDate={trip.date}
+          value={context} onChange={next=>{setContextEdited(true);setContext(next);}}
+          manualOnly testIdPrefix="edit-trip-work-context" />
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         <DialogFooter>
           <Button type="button" variant="outline" disabled={save.isPending} onClick={onClose}>Cancel</Button>

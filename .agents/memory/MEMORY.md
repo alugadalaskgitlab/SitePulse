@@ -96,6 +96,7 @@
 - [Equipment daily status](equipment-daily-status.md) — explicit status is independent of maintenance; idle defaults preserve evidence and never auto-confirm tank dips.
 - [Material source billing](material-source-billing.md) — source seller and transporter are independent liabilities; role-qualified duplicate identity preserves both.
 - [Arrangement trip rates](arrangement-trip-rate-commercial-rule.md) — all-in flat amounts by trip size, independent of per-UOM rates and kilometre cards; billing integration needs separate approval.
+- [Trip arrangement linking](trip-arrangement-linking.md) — owner-approved inclusion of own-source trips; preserve source-tool exclusions and require explicit links, never progress credit.
 - [PI delivery progress](pi-delivery-progress.md) — retain both delivery paths across destination changes; reconcile mutations without guessing missing historical links.
 - [PI edit integrity](pi-edit-integrity.md) — preserve identities and approvals on harmless edits; ordered headers do not prove child activity or atomic receipt linkage.
 - [Vendor payment validation](vendor-payment-validation.md) — test actual payment save before paid transition; synthetic UI success cannot prove server eligibility.

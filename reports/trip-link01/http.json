@@ -1,0 +1,47 @@
+{
+  "login": 200,
+  "listStatus": 200,
+  "total": 10,
+  "unlinkedStatus": 200,
+  "unlinkedIds": [
+    13,
+    16,
+    15,
+    14,
+    12,
+    11,
+    9,
+    6,
+    5,
+    10
+  ],
+  "emptyStatus": 200,
+  "emptyCount": 0,
+  "options": {
+    "url": "/api/site-material-trips/arrangement-options?site=FDR%20KK%20ROAD",
+    "status": 403,
+    "data": {
+      "error": "forbidden",
+      "section": "site_materials",
+      "action": "edit"
+    }
+  },
+  "preview": {
+    "url": "/api/site-material-trips/arrangement/preview",
+    "status": 403,
+    "data": {
+      "error": "forbidden",
+      "section": "site_materials",
+      "action": "edit"
+    }
+  },
+  "bulk": {
+    "url": "/api/site-material-trips/arrangement/bulk",
+    "status": 403,
+    "data": {
+      "error": "forbidden",
+      "section": "site_materials",
+      "action": "edit"
+    }
+  }
+}
