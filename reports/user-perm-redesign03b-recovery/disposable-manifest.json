@@ -5,5 +5,53 @@
     "full_name": "PERM 03B Disposable Administrator"
   },
   "createdAt": "2026-10-09T13:15:33.067Z",
-  "cleanup": "pending acceptance"
+  "cleanup": "completed",
+  "sites": [
+    {
+      "id": 24,
+      "name": "PERM03B SITE A"
+    },
+    {
+      "id": 25,
+      "name": "PERM03B SITE B"
+    }
+  ],
+  "equipment": [
+    {
+      "id": 42,
+      "name": "PERM03B MACHINE A"
+    },
+    {
+      "id": 43,
+      "name": "PERM03B MACHINE B"
+    }
+  ],
+  "diesel": [
+    {
+      "id": 7
+    },
+    {
+      "id": 8
+    }
+  ],
+  "usage": [
+    {
+      "id": 82
+    },
+    {
+      "id": 83
+    }
+  ],
+  "maintenance": [
+    {
+      "id": 6
+    },
+    {
+      "id": 7
+    }
+  ],
+  "subject": {
+    "id": 94,
+    "email": "permissions03b.subject@test.invalid"
+  }
 }

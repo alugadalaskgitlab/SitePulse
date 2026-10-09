@@ -1,0 +1,605 @@
+[
+  {
+    "name": "diesel_req_view.view list",
+    "method": "GET",
+    "path": "/api/diesel-requirements",
+    "status": 200,
+    "expected": 200,
+    "ids": [
+      7
+    ]
+  },
+  {
+    "name": "diesel_req_view.view own-site detail",
+    "method": "GET",
+    "path": "/api/diesel-requirements/7",
+    "status": 200,
+    "expected": 200
+  },
+  {
+    "name": "diesel_req_view.view other-site detail",
+    "method": "GET",
+    "path": "/api/diesel-requirements/8",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "message": "You do not have access to this diesel requirement's site"
+    }
+  },
+  {
+    "name": "diesel_req_view cannot create",
+    "method": "POST",
+    "path": "/api/diesel-requirements",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "error": "forbidden",
+      "sections": [
+        "site_diesel",
+        "diesel_req_raise"
+      ],
+      "action": "create"
+    }
+  },
+  {
+    "name": "diesel_req_view cannot edit",
+    "method": "PUT",
+    "path": "/api/diesel-requirements/7",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "error": "forbidden",
+      "sections": [
+        "site_diesel",
+        "diesel_req_raise"
+      ],
+      "action": "edit"
+    }
+  },
+  {
+    "name": "diesel_req_view cannot delete",
+    "method": "DELETE",
+    "path": "/api/diesel-requirements/7",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "error": "admin_required"
+    }
+  },
+  {
+    "name": "diesel_req_view cannot approve",
+    "method": "PATCH",
+    "path": "/api/diesel-requirements/7/approve",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "error": "forbidden",
+      "section": "diesel_req_approve",
+      "action": "approve"
+    }
+  },
+  {
+    "name": "diesel_req_view cannot reject",
+    "method": "PATCH",
+    "path": "/api/diesel-requirements/7/reject",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "error": "forbidden",
+      "section": "diesel_req_approve",
+      "action": "approve"
+    }
+  },
+  {
+    "name": "diesel_req_view cannot purchase-update",
+    "method": "PATCH",
+    "path": "/api/diesel-requirements/7/purchase-update",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "error": "forbidden",
+      "sections": [
+        "site_diesel",
+        "diesel_req_raise"
+      ],
+      "action": "edit"
+    }
+  },
+  {
+    "name": "diesel_req_view cannot payment-status",
+    "method": "PATCH",
+    "path": "/api/diesel-requirements/7/payment-status",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "error": "forbidden",
+      "sections": [
+        "site_diesel",
+        "diesel_req_raise"
+      ],
+      "action": "edit"
+    }
+  },
+  {
+    "name": "granular diesel summary",
+    "method": "GET",
+    "path": "/api/diesel-requirements/summary",
+    "status": 200,
+    "expected": 200
+  },
+  {
+    "name": "granular diesel receipt status",
+    "method": "GET",
+    "path": "/api/diesel-requirements/receipt-status?ids=7",
+    "status": 200,
+    "expected": 200
+  },
+  {
+    "name": "granular diesel foreign receipt status",
+    "method": "GET",
+    "path": "/api/diesel-requirements/receipt-status?ids=8",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "message": "You do not have access to this diesel requirement's site"
+    }
+  },
+  {
+    "name": "granular diesel attachments",
+    "method": "GET",
+    "path": "/api/attachments?moduleType=diesel_purchase&linkedRecordId=7",
+    "status": 200,
+    "expected": 200,
+    "ids": []
+  },
+  {
+    "name": "granular diesel foreign attachments",
+    "method": "GET",
+    "path": "/api/attachments?moduleType=diesel_purchase&linkedRecordId=8",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "message": "You do not have access to this diesel requirement's site"
+    }
+  },
+  {
+    "name": "granular diesel does not gain comparison report",
+    "method": "GET",
+    "path": "/api/diesel-requirements/comparison?dateFrom=2026-10-09&dateTo=2026-10-09",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "error": "forbidden",
+      "action": "view"
+    }
+  },
+  {
+    "name": "granular diesel does not gain daily report",
+    "method": "GET",
+    "path": "/api/diesel-requirements/daily-report?from=2026-10-09&to=2026-10-09",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "error": "forbidden",
+      "action": "view"
+    }
+  },
+  {
+    "name": "site_diesel.view list",
+    "method": "GET",
+    "path": "/api/diesel-requirements",
+    "status": 200,
+    "expected": 200,
+    "ids": [
+      7
+    ]
+  },
+  {
+    "name": "site_diesel.view own-site detail",
+    "method": "GET",
+    "path": "/api/diesel-requirements/7",
+    "status": 200,
+    "expected": 200
+  },
+  {
+    "name": "site_diesel.view other-site detail",
+    "method": "GET",
+    "path": "/api/diesel-requirements/8",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "message": "You do not have access to this diesel requirement's site"
+    }
+  },
+  {
+    "name": "stores_inventory.view list",
+    "method": "GET",
+    "path": "/api/diesel-requirements",
+    "status": 200,
+    "expected": 200,
+    "ids": [
+      7
+    ]
+  },
+  {
+    "name": "stores_inventory.view own-site detail",
+    "method": "GET",
+    "path": "/api/diesel-requirements/7",
+    "status": 200,
+    "expected": 200
+  },
+  {
+    "name": "stores_inventory.view other-site detail",
+    "method": "GET",
+    "path": "/api/diesel-requirements/8",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "message": "You do not have access to this diesel requirement's site"
+    }
+  },
+  {
+    "name": "diesel_req_raise.create list",
+    "method": "GET",
+    "path": "/api/diesel-requirements",
+    "status": 200,
+    "expected": 200,
+    "ids": [
+      7
+    ]
+  },
+  {
+    "name": "diesel_req_raise.create own-site detail",
+    "method": "GET",
+    "path": "/api/diesel-requirements/7",
+    "status": 200,
+    "expected": 200
+  },
+  {
+    "name": "diesel_req_raise.create other-site detail",
+    "method": "GET",
+    "path": "/api/diesel-requirements/8",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "message": "You do not have access to this diesel requirement's site"
+    }
+  },
+  {
+    "name": "plant_maintenance.view list",
+    "method": "GET",
+    "path": "/api/maintenance/logs",
+    "status": 200,
+    "expected": 200,
+    "ids": [
+      6
+    ]
+  },
+  {
+    "name": "plant_maintenance.view own-site detail",
+    "method": "GET",
+    "path": "/api/maintenance/logs/6",
+    "status": 200,
+    "expected": 200
+  },
+  {
+    "name": "plant_maintenance.view other-site detail",
+    "method": "GET",
+    "path": "/api/maintenance/logs/7",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "message": "You do not have access to this maintenance record's source site"
+    }
+  },
+  {
+    "name": "plant_maintenance cannot create",
+    "method": "POST",
+    "path": "/api/maintenance/logs",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "error": "forbidden",
+      "section": "plant_equipment",
+      "action": "create"
+    }
+  },
+  {
+    "name": "plant_maintenance cannot edit",
+    "method": "PATCH",
+    "path": "/api/maintenance/logs/6",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "error": "forbidden",
+      "section": "plant_equipment",
+      "action": "edit"
+    }
+  },
+  {
+    "name": "plant_maintenance cannot delete",
+    "method": "DELETE",
+    "path": "/api/maintenance/logs/6",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "error": "admin_required"
+    }
+  },
+  {
+    "name": "plant_maintenance cannot cancel",
+    "method": "POST",
+    "path": "/api/maintenance/logs/6/cancel",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "error": "forbidden",
+      "sections": [
+        "plant_equipment"
+      ],
+      "action": "delete"
+    }
+  },
+  {
+    "name": "plant_maintenance cannot parts",
+    "method": "POST",
+    "path": "/api/maintenance/logs/6/parts",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "error": "forbidden",
+      "section": "plant_equipment",
+      "action": "create"
+    }
+  },
+  {
+    "name": "granular maintenance health-summary",
+    "method": "GET",
+    "path": "/api/maintenance/health-summary",
+    "status": 200,
+    "expected": 200,
+    "ids": [
+      42
+    ]
+  },
+  {
+    "name": "granular maintenance open-count",
+    "method": "GET",
+    "path": "/api/maintenance/open-count",
+    "status": 200,
+    "expected": 200
+  },
+  {
+    "name": "granular maintenance equipment-options",
+    "method": "GET",
+    "path": "/api/maintenance/equipment-options",
+    "status": 200,
+    "expected": 200,
+    "ids": [
+      42
+    ]
+  },
+  {
+    "name": "granular maintenance foreign attachment",
+    "method": "GET",
+    "path": "/api/attachments?moduleType=equipment_breakdown&linkedRecordId=7",
+    "status": 404,
+    "expected": 404,
+    "error": {
+      "message": "Maintenance record not found"
+    }
+  },
+  {
+    "name": "equipment master inherited reachability unchanged",
+    "method": "GET",
+    "path": "/api/plant-module/equipment",
+    "status": 200,
+    "expected": 200,
+    "ids": [
+      2,
+      1,
+      17,
+      3,
+      38,
+      4,
+      21,
+      42,
+      43,
+      7,
+      19,
+      18,
+      34,
+      33,
+      32,
+      31,
+      28,
+      30,
+      29,
+      36,
+      35,
+      25,
+      22,
+      8,
+      9,
+      12,
+      11,
+      16,
+      15,
+      37,
+      27,
+      20,
+      6
+    ]
+  },
+  {
+    "name": "granular maintenance does not gain stores",
+    "method": "GET",
+    "path": "/api/stores/items",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "error": "forbidden",
+      "section": "stores_inventory",
+      "action": "view"
+    }
+  },
+  {
+    "name": "plant_equipment.view list",
+    "method": "GET",
+    "path": "/api/maintenance/logs",
+    "status": 200,
+    "expected": 200,
+    "ids": [
+      6
+    ]
+  },
+  {
+    "name": "plant_equipment.view own-site detail",
+    "method": "GET",
+    "path": "/api/maintenance/logs/6",
+    "status": 200,
+    "expected": 200
+  },
+  {
+    "name": "plant_equipment.view other-site detail",
+    "method": "GET",
+    "path": "/api/maintenance/logs/7",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "message": "You do not have access to this maintenance record's source site"
+    }
+  },
+  {
+    "name": "all off /api/diesel-requirements",
+    "method": "GET",
+    "path": "/api/diesel-requirements",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "error": "forbidden",
+      "action": "view"
+    }
+  },
+  {
+    "name": "Administrator /api/diesel-requirements",
+    "method": "GET",
+    "path": "/api/diesel-requirements",
+    "status": 200,
+    "expected": 200,
+    "ids": [
+      7,
+      8,
+      4,
+      3,
+      2,
+      1
+    ]
+  },
+  {
+    "name": "all off /api/maintenance/logs",
+    "method": "GET",
+    "path": "/api/maintenance/logs",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "error": "forbidden",
+      "sections": [
+        "plant_equipment",
+        "plant_maintenance"
+      ],
+      "action": "view"
+    }
+  },
+  {
+    "name": "Administrator /api/maintenance/logs",
+    "method": "GET",
+    "path": "/api/maintenance/logs",
+    "status": 200,
+    "expected": 200,
+    "ids": [
+      7,
+      6,
+      1
+    ]
+  },
+  {
+    "name": "all off /api/maintenance/health-summary",
+    "method": "GET",
+    "path": "/api/maintenance/health-summary",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "error": "forbidden",
+      "sections": [
+        "plant_equipment",
+        "plant_maintenance"
+      ],
+      "action": "view"
+    }
+  },
+  {
+    "name": "Administrator /api/maintenance/health-summary",
+    "method": "GET",
+    "path": "/api/maintenance/health-summary",
+    "status": 200,
+    "expected": 200,
+    "ids": [
+      2,
+      1,
+      17,
+      3,
+      38,
+      4,
+      21,
+      42,
+      43,
+      7,
+      19,
+      18,
+      34,
+      33,
+      32,
+      31,
+      28,
+      30,
+      29,
+      36,
+      35,
+      25,
+      22,
+      8,
+      9,
+      12,
+      11,
+      16,
+      15,
+      37,
+      27,
+      20,
+      6
+    ]
+  },
+  {
+    "name": "all off /api/maintenance/open-count",
+    "method": "GET",
+    "path": "/api/maintenance/open-count",
+    "status": 403,
+    "expected": 403,
+    "error": {
+      "error": "forbidden",
+      "sections": [
+        "plant_equipment",
+        "plant_maintenance"
+      ],
+      "action": "view"
+    }
+  },
+  {
+    "name": "Administrator /api/maintenance/open-count",
+    "method": "GET",
+    "path": "/api/maintenance/open-count",
+    "status": 200,
+    "expected": 200
+  }
+]

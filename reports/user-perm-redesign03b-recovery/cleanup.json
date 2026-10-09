@@ -1,0 +1,33 @@
+{
+  "removed": {
+    "maintenance_parts_used": 0,
+    "equipment_maintenance_logs": 2,
+    "equipment_usage": 2,
+    "diesel_requirement_items": 2,
+    "diesel_requirements": 2,
+    "equipment_master": 2,
+    "user_sessions": 5,
+    "user_devices": 2,
+    "user_permissions": 92,
+    "user_site_access": 1,
+    "audit_logs": 0,
+    "users": 2,
+    "sites": 2
+  },
+  "remaining": {
+    "users": 0,
+    "user_permissions": 0,
+    "user_devices": 0,
+    "user_sessions": 0,
+    "user_site_access": 0,
+    "audit_logs": 0
+  },
+  "comparedTables": 141,
+  "differingTables": [
+    "user_devices",
+    "user_sessions"
+  ],
+  "missingLinks": {
+    "table_name": "attachment_links"
+  }
+}
