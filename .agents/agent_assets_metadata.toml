@@ -5939,3 +5939,17 @@ mtime_ms = 1791546511886
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/1636b8da-3dc3-4d6f-8dfa-742328e14f96/3e496234-5fe7-4992-88c5-ec2efd773915"
 storage_version_token = "1791546597391207"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "hkrTWasW_dxl-sGSal2pP"
+uri = "file://reports/user-perm-redesign03b-fix/report.html"
+type = "html"
+title = "03B Fix — Root causes and exact approval proposals"
+description = "Development-only table DDL, conflicting startup repair analysis, unchanged permission checks, preservation evidence and fresh Publish preview. No corrections executed."
+logical_id = "9ba392f2-d542-4a00-9a30-28f9c7dbe201"
+content_hash = "sha256:7d09c3d218296ffee2a8406a96c8b60edeee686b40622596418077089d108690"
+size = 13734
+mtime_ms = 1791547537158
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/9ba392f2-d542-4a00-9a30-28f9c7dbe201/8320b7d3-0ba1-4c8f-983c-a131c26a38fc"
+storage_version_token = "1791547552402052"
+content_type = "text/html"
