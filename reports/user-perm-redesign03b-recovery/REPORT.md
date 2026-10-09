@@ -91,6 +91,9 @@ all legacy initialization.
   unchanged and is explicitly labelled inherited in the API evidence.
 - Non-stock startup initializers remain; no claim of globally read-only
   startup or globally unchanged sequences is made.
-- Git push outcome is recorded below. Nothing was published.
+- Git push to origin/main failed: GitHub rejected the configured authentication
+  (“Invalid username or token”). Implementation is committed in `7fca52e6`;
+  acceptance evidence is committed separately. No remote update succeeded.
+  Nothing was published.
 
 No follow-up tasks were created.
