@@ -1,0 +1,239 @@
+# USER-PERM-REDESIGN-03A — controlled enforcement design
+
+9 October 2026. Investigation only. **No implementation approval assumed.**
+
+## Scope and evidence
+
+This report covers Diesel Requirements, Purchase Indents, IRNs, Material Trips,
+Equipment Maintenance and Vendor Bills. No guards, schema, accounts, grants,
+sessions, devices or business records were changed. No restart or publish occurred.
+
+The final prohibition on account changes takes precedence over the request to use
+disposable accounts in this investigation. Existing 02C disposable-account results
+are reused; they are **not new tests**. No accounts were recreated. New evidence is
+source inspection, read-only production queries and one unauthenticated production
+GET /api/auth/me (401). No production write requests were issued.
+
+The application source under client/, server/ and shared/ is unchanged from
+the Phase 2B commit. This allows the 02C evidence to inform current-source analysis,
+but does not establish that the published build is identical to workspace source.
+
+## 1. API and frontend permission mapping
+
+Companion artifacts:
+
+- `api-permission-map.csv`: 101 operations, methods, exact paths, observed permission
+  references, guard expressions and source locations from the accepted baseline.
+- `current-handler-evidence.md`: all 101 corresponding current route bodies,
+  including conditional branches, site checks and business restrictions.
+- `frontend-controls.csv`: 475 control declarations across the eight relevant pages.
+- `frontend-gates.txt`: current page authorization and disabled-control expressions.
+
+The CSV is an index, not a Boolean authorization evaluator. An empty local guard
+field does not mean unauthenticated access: global session middleware still applies.
+The complete handler evidence is authoritative for branch-specific requirements.
+Shared helpers, site checks and storage invariants must not be replaced by a union
+of permission names. Unsupported operations must remain unavailable in the editor.
+
+| Module | View | Create | Edit | Delete/cancel | Approve and other operations |
+|---|---|---|---|---|---|
+| Diesel | `assertDieselOrStoresView`: Admin/Owner, site_diesel view/create/edit, stores_inventory view, diesel_req_raise view/create/edit | site_diesel OR diesel_req_raise create | pending: either edit; non-pending full PUT: Admin; purchase/payment updates: either edit | delete Admin-only | diesel_req_approve approve; creator self-approval blocked for non-admins; equipment norm change privileged |
+| Purchase Indents | `assertPiRaiserRead`; detail additionally delivery scope; several auxiliary reads lack that helper | site_procurement OR purchase_indents_raise create | ordinary update, notify, purchaser action: either edit; PO save/submit currently uses create | delete/force-close Admin-only | purchase_indents_approve approve; stores steps use stores_inventory create; service completion and PO decisions have separate state/SoD checks; PO PDF has report/export gate |
+| IRN | main list/detail/queue/stock lookup use authentication rather than irn_view | irn_raise create | full edit Admin-only with state branching | delete Admin-only | irn_approve approve; stores verify/issue use stores_inventory create; raise-PI uses PI create; close/reopen use authentication plus their handler rules; issue voucher uses report/export gate |
+| Material Trips | list uses site filtering, not site_materials view | site_materials create plus site | site_materials edit plus old/new site; supplier/source correction and narrow pickers reuse edit | hard delete Admin; cancel site_materials delete/cancel helper | no independent trip approval operation; linked arrangement/receipt operations retain their own rules |
+| Maintenance | plant_equipment view plus source access | plant_equipment create plus source access; also parts additions | plant_equipment edit plus existing/new source access | hard delete Admin plus source; cancel plant_equipment delete/cancel; part delete plant_equipment delete plus parent access | source lifecycle restrictions remain; no invented approval operation |
+| Vendor Bills | several lists/detail/supporting reads have no local view-bit gate; hire discovery/activities have specific view helpers | vendor_bills_raise OR vendor_bills create plus source/site checks | ordinary update branches use vendor_bills OR vendor_bills_raise edit; privileged branches and immutable hire checks remain | hard delete Admin, then storage hire-state restrictions | status verify uses vendor_bills_verify approve; approve/payment uses vendor_bills_approve; creator SoD branches; export/PDF/payables have distinct report/export and field-user rules |
+
+Export is operation-specific, not implied by View. Existing `assertReportExport`
+calls, client-side print/download paths and operational supporting reads must all
+be considered separately. Do not blanket-add Export to JSON APIs that power normal
+screens, or assume that hiding a Print button prevents API export.
+
+### Known frontend/backend mismatches
+
+- Diesel UI edit is hidden on purchased/rejected records even for Administrator
+  (`DieselRequirements.tsx:1590`), whereas the non-pending PUT accepts Admin.
+- `diesel_req_view.view` alone does not satisfy the current Diesel list API helper.
+- Maintenance endpoints use plant_equipment, not plant_maintenance.
+- Vendor UI's edit alternatives include vendor_bills_verify/edit and
+  vendor_bills_approve/edit; ordinary update authorization uses the raise/broad
+  alternatives. These are different permissions, not interchangeable roles.
+- Several Delete controls are actually Administrator-only even though editable
+  matrix Delete cells exist. Turning those cells on does not grant that operation.
+
+## 2. Verified defects and smallest proposed corrections
+
+### Runtime-proven by 02C (development)
+
+1. IRN list returned six records with every permission bit off.
+2. Material Trips list returned six records with every bit off, subject to existing
+   site scope.
+3. Vendor Bills list returned 200 with an empty list under all-off permissions.
+   This proves endpoint reachability, not access to a particular populated bill.
+4. Diesel, PI and Maintenance returned 403 after all authorizing sources were
+   removed, and 200 when their broad supporting grants were restored.
+5. Diesel granular View and Maintenance granular View alone were insufficient.
+6. Stores View and Diesel Raise/Create independently authorize Diesel reads.
+
+### Proposed corrections — not implemented
+
+- First introduce named, shared policy descriptions and tests with **identical**
+  current behavior. Inventory all module aliases, PDFs, bulk routes, record detail,
+  pickers, attachment readers and receipt/service bridges before switching callers.
+- Add granular Diesel View and Maintenance View as additive alternatives only
+  after approving the intended read scope. Preserve broad grants initially.
+- For previously authentication-only lists, require reviewed module authority AND
+  existing site scope. This is an intentional access contraction: collect a
+  read-only holder/usage impact report and obtain approval before activating it.
+  Do not call it access-neutral or silently grant everyone View to compensate.
+- Split shared pickers from full record readers. Give callers only necessary
+  projected fields under their own operational authority and site checks.
+- Align UI control explanations with the actual operation. Do not advertise
+  independent revocation until a backend capability rule supports it.
+- Treat independently delegated Delete as a separate approval decision. Replacing
+  an Admin-only destructive gate with a checkbox broadens access.
+- Reconcile Vendor Bill edit alternatives explicitly; do not silently broaden
+  verification/approval roles into full bill editing.
+
+## 3. Proposed Allow / Deny / Inherit design
+
+No storage, schema or enforcement changes are authorized by this report.
+
+### Capability identity
+
+Use stable, reviewed semantic IDs (for example diesel.requirement.read and
+vendor_bill.payment.update), not route line numbers or automatically inferred
+control labels. Multiple routes and bulk variants for the same operation resolve
+to the same capability. Read, edit, approve, pay, cancel and hard-delete are
+distinct. Compound endpoints must check every required capability.
+
+### Proposed persistence contract
+
+After separate approval: a user-capability override record with unique
+(user_id, capability_id), decision Allow/Deny, version, actor, reason and audit
+timestamps. Absence means Inherit; choosing Inherit removes the active override
+while retaining immutable audit history. Unknown capabilities are rejected.
+Updates are transactional and optimistic-versioned. Audit changes and invalidate
+permission/session caches after commit. Do not delete existing matrix rows.
+
+### Evaluation order
+
+1. Require valid session, active account and approved device.
+2. Resolve trusted user, capability, resource and requested site server-side.
+3. Apply a separately approved privileged-account policy. Preserve current
+   Admin/Owner bypass semantics initially; display bypass explicitly and do not
+   promise Deny restricts those accounts. Never infer privilege from designation.
+4. For ordinary users, explicit Deny wins over **every** broad/legacy Allow.
+5. Explicit Allow supplies only that capability's permission requirement.
+6. Inherit evaluates the existing endpoint-specific rules exactly.
+7. Regardless of Allow or ordinary permission bypass, retain site/resource scope,
+   lifecycle, immutable accounting, validation, stock and approval-separation
+   rules. Existing explicit privileged exceptions remain individually documented.
+
+No alternative route may fall back to matrix checks after capability Deny.
+List queries must enforce scope before returning data; mutation checks and locking
+must use the same transaction/resource identity to avoid time-of-check races.
+Caches include a permission version; revocation must not await next login.
+Effective-access responses distinguish permission denial from site, state,
+SoD and privileged-bypass outcomes without exposing inaccessible records.
+
+Only existing authorized permission managers may manage overrides. Partial
+managers cannot grant capabilities beyond their effective authority or modify
+privileged targets. They cannot remove a Deny if doing so would grant authority
+they cannot delegate. Self-escalation and protected-target rules remain enforced.
+Template selection never writes overrides. Explicit reset requires reviewed,
+audited confirmation; migration defaults every existing user to Inherit.
+
+## 4. Production Administrator diagnosis
+
+Read-only production query found three active Administrator accounts (IDs 1, 2, 3).
+All have is_admin=true, is_owner=false, is_field_engineer=false and
+can_unlock_records=true. No passwords, tokens or cookie values were queried.
+Their manager-scope values differ, but those values do not remove Admin bypass.
+Source `sectionCan` returns true for Admin/Owner. Thus missing matrix bits or
+business designation are **not supported as the explanation** for these accounts.
+
+Production aggregates: Diesel has 49 purchased, 12 rejected and 8 approved
+records. Vendor Bills has 38 paid, 1 approved, 1 verified and 7 draft records.
+PI has pending, stores_check, approved, ordered and completed records.
+
+### Confirmed mechanisms, not a fabricated incident reproduction
+
+- Diesel's purchased/rejected Edit button restriction explains a concrete
+  Administrator UI/backend mismatch. Smallest proposed correction: deliberately
+  expose the already-supported privileged edit path, retaining validation,
+  receipt consistency and an audit trail; review business intent first.
+- Hire-backed Vendor Bills intentionally hide Edit unless the bill and every
+  linked statement are draft (`VendorBills.tsx:4484`). Storage rejects deleting
+  non-draft hire bills or bills with reviewed/approved/billed statements
+  (`storage.ts:18310` onward). Admin permission bypass does not erase this
+  immutable-accounting safeguard. Smallest correction is a clear reason in the
+  UI, not removing the restriction; revisions/reversal need separate design.
+- PI/Diesel hard-delete handlers are Admin-only; current storage deletion code
+  does not demonstrate a universal non-pending prohibition. Do not attribute an
+  unspecified Delete failure to record status without its actual error.
+- Session/device validity precedes permission checks. Active/Admin flags do not
+  prove a particular browser session is authenticated. Safe unauthenticated
+  production GET /api/auth/me returned 401, as expected.
+
+**Diagnosis limitation:** No failing record IDs, exact operations, browser errors,
+authenticated production session or deployed-source fingerprint were supplied.
+No real account was signed into. Therefore the specific reported Edit/Delete
+incidents are not fully reproduced. The state-dependent source mechanisms and
+production distributions support the explanations above, but do not prove that
+every reported incident has the same cause. Next diagnostic input should be the
+record ID, action and HTTP/error message—not a production password.
+
+## 5. Small independently testable implementation batches
+
+These are proposed report sections, not created project tasks.
+
+1. **Policy characterization:** tests for every observed predicate and route alias;
+   capture permission holders read-only; no production behavior change. Gate:
+   endpoint inventory reconciliation and identical Inherit outcomes.
+2. **Additive named-read alignment:** Diesel and Maintenance granular View support,
+   preserving broad alternatives. Gate: granular-only 200, legacy-only 200,
+   all-off 403, cross-site denial, supporting-read compatibility.
+3. **Read-gap closure:** separately switch IRN, Trips and Vendor Bills list/detail/
+   export/supporting endpoints following approved impact review. Each module can
+   ship independently. Gate: ordinary all-off denial, allowed in-site access,
+   foreign-site denial, no overexposed pickers and real page load.
+4. **Admin UI clarification:** Diesel privileged edit visibility and explicit
+   hire-bill lock explanations. Gate: exact approved states, unchanged destructive
+   and accounting safeguards; no global bypass or automatic flag change.
+5. **Override contract/storage:** only after schema and precedence approval.
+   Gate: uniqueness, concurrency, audited reset, protected users, partial-manager
+   ceilings, migration default Inherit and reviewed Publish diff.
+6. **Capability enforcement pilots:** one module at a time; enable explicit Deny/
+   Allow only where every route alias is covered. Gate: Deny beats broad grants,
+   Allow does not bypass site/state/SoD, bulk/export parity, stale-session/cache
+   revocation tests, real editor save/read-back and rollback compatibility.
+
+For each behavior-changing batch, create approved disposable development actors
+only after separate authorization, use ordinary device approval, and remove all
+fixtures. Test granted/revoked/legacy authority, two-site isolation, Admin and
+Owner distinctions, creator versus independent approver, and state transitions.
+No-self-approval currently has Admin exemptions in several modules; preserve
+those characterized rules unless their removal is explicitly approved.
+
+## 6. Preservation and regression risk
+
+Highest risks: previously open reads closing for existing operational users;
+shared picker starvation; granular/broad Boolean semantics changing; ordinary
+approval widening into edit; state locks being confused with permission failures;
+export/bulk aliases escaping Deny; stale sessions caching old grants; and partial
+manager updates silently stripping unrelated permissions.
+
+Safeguards: no automatic grant cleanup; no template overwrite; no inferred
+Owner status; no historical creator backfill; read-only impact assessment before
+tightening; one module per activation; matrix and business-table digests;
+site-scoped fixtures; full regression comparison against immutable baseline;
+signed-in save/read-back and actual non-admin requests rather than simulated
+effective-access labels. Do not restart simply to verify a report: startup repairs
+can mutate history.
+
+02C's 65 focused tests/build and live disposable results remain prior evidence,
+not a new full-suite run. Fresh cross-site, all mutation/approval paths and
+production incident reproduction remain unverified in this read-only instruction.
+
+**Approval requested for a chosen batch only. No implementation or publish done.**

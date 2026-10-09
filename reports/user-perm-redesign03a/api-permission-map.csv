@@ -1,0 +1,102 @@
+method,path,permissionKeys,middleware,guards,source
+GET,/api/site-material-trips/suggestions,site_materials,,"assertSiteMaterialSuggestionsAccess(req, res) / assertTripSiteAccess(req, res, site)",server/routes.ts:722
+PATCH,/api/site-material-trips/vehicle-supplier,site_materials,,"assertEdit(req, res, ""site_materials"") / assertTripSiteAccess(req, res, site)",server/routes.ts:755
+GET,/api/site-material-trips,,,,server/routes.ts:822
+POST,/api/site-material-trips/material-source/bulk,site_materials,,"assertEdit(req, res, ""site_materials"") / assertTripSiteAccess(req, res, input.site)",server/routes.ts:850
+GET,/api/site-material-trips/vendor-options,site_materials,,"assertEdit(req, res, ""site_materials"") / assertTripSiteAccess(req, res, site)",server/routes.ts:897
+GET,/api/site-material-trips/arrangement-options,site_materials,,"assertEdit(req, res, ""site_materials"") / assertTripSiteAccess(req, res, site)",server/routes.ts:908
+POST,/api/site-material-trips,site_materials,,"assertCreate(req, res, ""site_materials"") / assertTripSiteAccess(req, res, input.site)",server/routes.ts:1043
+PATCH,/api/site-material-trips/:id,site_materials,,"assertEdit(req, res, ""site_materials"") / assertTripSiteAccess(req, res, existing.site) / assertTripSiteAccess(req, res, input.site)",server/routes.ts:1076
+DELETE,/api/site-material-trips/:id,,,"assertAdmin(req, res)",server/routes.ts:1132
+POST,/api/site-material-trips/:id/cancel,site_materials,,"assertDeleteOrCancel(req, res, ""site_materials"")",server/routes.ts:1153
+GET,/api/purchase-indents,,,"assertPiRaiserRead(req, res)",server/routes.ts:9070
+GET,/api/purchase-indents/for-material,,,,server/routes.ts:9093
+GET,/api/purchase-indents/summary,,,,server/routes.ts:9111
+GET,/api/purchase-indents/report,,,,server/routes.ts:9131
+GET,/api/purchase-indents/route-corrections,,,"assertPiRaiserRead(req, res)",server/routes.ts:9149
+POST,/api/purchase-indents/route-corrections/apply,site_procurement; purchase_indents_raise,,"assertPiRaiserRead(req, res) / assertEditEither(req, res, ""site_procurement"", ""purchase_indents_raise"")",server/routes.ts:9161
+PATCH,/api/purchase-indents/:id/items/:itemId/destination,site_procurement; purchase_indents_raise,,"assertEditEither(req, res, ""site_procurement"", ""purchase_indents_raise"") / assertPiDeliveryScope(req, res, indentId, [req.body])",server/routes.ts:9213
+GET,/api/purchase-indents/:id,,,"assertPiRaiserRead(req, res) / assertPiDeliveryScope(req, res, id)",server/routes.ts:9225
+GET,/api/purchase-indents/:id/items/:itemId/purchase-order,,,"assertPiRaiserRead(req, res)",server/routes.ts:9321
+POST,/api/purchase-indents/:id/items/:itemId/purchase-order,site_procurement; purchase_indents_raise,,"assertCreateEither(req, res, ""site_procurement"", ""purchase_indents_raise"")",server/routes.ts:9346
+PATCH,/api/purchase-indents/:id/items/:itemId/purchase-order,site_procurement; purchase_indents_raise,,"assertCreateEither(req, res, ""site_procurement"", ""purchase_indents_raise"")",server/routes.ts:9392
+POST,/api/purchase-indents/:id/items/:itemId/purchase-order/submit,site_procurement; purchase_indents_raise,,"assertCreateEither(req, res, ""site_procurement"", ""purchase_indents_raise"")",server/routes.ts:9416
+POST,/api/purchase-indents/:id/items/:itemId/purchase-order/decision,purchase_indents_approve,,"assertApprove(req, res, ""purchase_indents_approve"") / !req.authUser?.isAdmin && (current.raisedByUserId === req.authUser?.id || scoped.indent.authorUserId === req.authUser?.id)",server/routes.ts:9428
+GET,/api/purchase-indents/:id/items/:itemId/purchase-order.pdf,purchase_indents_view; purchase_indents_raise,,"assertReportExport(req, res, ""purchase_indents_view"", ""purchase_indents_raise"") / assertPiRaiserRead(req, res)",server/routes.ts:9454
+POST,/api/purchase-indents,site_procurement; purchase_indents_view; purchase_indents_raise,,"assertCreateEither(req, res, ""site_procurement"", ""purchase_indents_raise"")",server/routes.ts:9474
+PATCH,/api/purchase-indents/:id/approve,purchase_indents_view; purchase_indents_approve,,"assertApprove(req, res, ""purchase_indents_approve"") / !req.authUser?.isAdmin && existingIndent.authorUserId && existingIndent.authorUserId === req.authUser?.id",server/routes.ts:9490
+PATCH,/api/purchase-indents/:id/reject,purchase_indents_view; purchase_indents_approve,,"assertApprove(req, res, ""purchase_indents_approve"")",server/routes.ts:9536
+PATCH,/api/purchase-indents/:id/stores-verify,purchase_indents_view; stores_inventory,,"assertCreate(req, res, ""stores_inventory"")",server/routes.ts:9561
+PATCH,/api/purchase-indents/:id/stores-bypass,purchase_indents_view; stores_inventory,,"assertCreate(req, res, ""stores_inventory"")",server/routes.ts:9591
+POST,/api/purchase-indents/:id/place-order,site_procurement; purchase_indents_raise,,"assertCreateEither(req, res, ""site_procurement"", ""purchase_indents_raise"") / assertPiDeliveryScope(req, res, id, items || [])",server/routes.ts:9613
+POST,/api/purchase-indents/:id/record-material-receipt,site_procurement; purchase_indents_raise,,"assertCreateEither(req, res, ""site_procurement"", ""purchase_indents_raise"")",server/routes.ts:9629
+GET,/api/purchase-indents/pending-for-material/:materialId,,,"assertAuthed(req, res)",server/routes.ts:9647
+PATCH,/api/purchase-indents/items/:itemId/link-receipt,site_procurement; purchase_indents_raise; plant_stock,,"assertAuthed(req, res)",server/routes.ts:9659
+GET,/api/irn/stock-lookup,,,"assertAuthed(req, res)",server/routes.ts:9688
+GET,/api/irn/procurement-queue,,,"assertAuthed(req, res)",server/routes.ts:9713
+POST,/api/irn/:id/raise-pi,site_procurement; purchase_indents_view; purchase_indents_raise,,"assertCreateEither(req, res, ""site_procurement"", ""purchase_indents_raise"")",server/routes.ts:9766
+GET,/api/irn,,,"assertAuthed(req, res)",server/routes.ts:9824
+GET,/api/irn/:id,,,"assertAuthed(req, res)",server/routes.ts:9836
+POST,/api/irn,irn_view; irn_raise,,"assertCreate(req, res, ""irn_raise"")",server/routes.ts:9850
+PATCH,/api/irn/:id/stores-verify,irn_view; stores_inventory,,"assertCreate(req, res, ""stores_inventory"")",server/routes.ts:9864
+PATCH,/api/irn/:id/approve,irn_view; irn_approve,,"assertApprove(req, res, ""irn_approve"") / !req.authUser?.isAdmin && currentUserId && existing.raisedByUserId && currentUserId === existing.raisedByUserId",server/routes.ts:9903
+PATCH,/api/irn/:id/close,irn_view; irn_approve; stores_inventory,,!req.authUser,server/routes.ts:9934
+PATCH,/api/irn/:id/reopen,irn_approve,,!req.authUser,server/routes.ts:9964
+GET,/api/irn/:id/audit-logs,,,!req.authUser,server/routes.ts:9988
+DELETE,/api/irn/:id,,,"assertAdmin(req, res)",server/routes.ts:10001
+PATCH,/api/irn/:id,,,"assertAdmin(req, res) / existing.status !== ""pending_stores"" && !req.authUser?.isAdmin",server/routes.ts:10015
+POST,/api/irn/:id/record-issue,irn_view; stores_inventory,,"assertCreate(req, res, ""stores_inventory"")",server/routes.ts:10036
+GET,/api/irn/:id/issue-vouchers,,,,server/routes.ts:10063
+GET,/api/irn/:id/issue-voucher,irn_view; irn_raise,,"assertReportExport(req, res, ""irn_view"", ""irn_raise"")",server/routes.ts:10075
+POST,/api/purchase-indents/:id/notify,site_procurement; purchase_indents_view; purchase_indents_raise,,"assertEditEither(req, res, ""site_procurement"", ""purchase_indents_raise"")",server/routes.ts:10350
+PATCH,/api/purchase-indents/:id/force-close,purchase_indents_view,,"assertAdmin(req, res)",server/routes.ts:10475
+PUT,/api/purchase-indents/:id,site_procurement; purchase_indents_raise,,"assertEditEither(req, res, ""site_procurement"", ""purchase_indents_raise"")",server/routes.ts:10501
+DELETE,/api/purchase-indents/:id,,,"assertAdmin(req, res)",server/routes.ts:10526
+GET,/api/purchase-indents/:id/transactions,,,,server/routes.ts:10555
+POST,/api/purchase-indents/:id/purchaser-action,site_procurement; purchase_indents_raise,,"assertEditEither(req, res, ""site_procurement"", ""purchase_indents_raise"") / assertPiDeliveryScope(req, res, indentId, items)",server/routes.ts:10566
+POST,/api/purchase-indents/:id/service-completion,purchase_indents_approve,,"assertApprove(req, res, ""purchase_indents_approve"")",server/routes.ts:10654
+POST,/api/purchase-indents/:id/bulk-receipt,site_procurement; purchase_indents_raise,,"assertEditEither(req, res, ""site_procurement"", ""purchase_indents_raise"") / assertPiDeliveryScope(req, res, indentId, [{ receivingLocation: location, receivingSiteId: siteId }])",server/routes.ts:10734
+GET,/api/diesel-requirements,,,"assertDieselOrStoresView(req, res)",server/routes.ts:10824
+GET,/api/diesel-requirements/summary,,,"assertDieselOrStoresView(req, res)",server/routes.ts:10840
+GET,/api/diesel-requirements/daily-report,,,"assertDieselOrStoresView(req, res)",server/routes.ts:10857
+GET,/api/diesel-requirements/comparison,,,"assertDieselOrStoresView(req, res)",server/routes.ts:10878
+GET,/api/diesel-requirements/recent-items,,,"assertDieselOrStoresView(req, res)",server/routes.ts:10909
+GET,/api/diesel-requirements/receipt-status,,,"assertDieselOrStoresView(req, res)",server/routes.ts:10924
+PATCH,/api/diesel-requirements/equipment/:id/consumption-norm,site_diesel; diesel_req_raise,,!req.authUser / !req.authUser.isAdmin && !req.authUser.isOwner,server/routes.ts:10970
+GET,/api/diesel-requirements/:id,,,"assertDieselOrStoresView(req, res)",server/routes.ts:11008
+POST,/api/diesel-requirements,site_diesel; diesel_req_raise; diesel_req_approve,,"assertCreateEither(req, res, ""site_diesel"", ""diesel_req_raise"")",server/routes.ts:11023
+PATCH,/api/diesel-requirements/:id/approve,diesel_req_raise; diesel_req_approve,,"assertApprove(req, res, ""diesel_req_approve"") / !req.authUser?.isAdmin && existingDr && existingDr.authorUserId && existingDr.authorUserId === req.authUser?.id",server/routes.ts:11039
+PATCH,/api/diesel-requirements/:id/reject,diesel_req_raise; diesel_req_approve,,"assertApprove(req, res, ""diesel_req_approve"")",server/routes.ts:11073
+PATCH,/api/diesel-requirements/:id/purchase-update,site_diesel; diesel_req_raise; plant_materials,,"assertEditEither(req, res, ""site_diesel"", ""diesel_req_raise"")",server/routes.ts:11097
+PATCH,/api/diesel-requirements/:id/payment-status,site_diesel; diesel_req_raise,,"assertEditEither(req, res, ""site_diesel"", ""diesel_req_raise"")",server/routes.ts:11142
+PUT,/api/diesel-requirements/:id,site_diesel; diesel_req_raise,,"assertAdmin(req, res) / assertEditEither(req, res, ""site_diesel"", ""diesel_req_raise"")",server/routes.ts:11216
+DELETE,/api/diesel-requirements/:id,,,"assertAdmin(req, res)",server/routes.ts:11244
+GET,/api/vendor-bills,,,,server/routes.ts:11335
+GET,/api/vendor-bills/summary,,,,server/routes.ts:11358
+GET,/api/vendor-bills/export,vendor_bills; vendor_bills_view,,"assertReportExport(req, res, ""vendor_bills"", ""vendor_bills_view"")",server/routes.ts:11397
+GET,/api/vendor-bills/vendor-names,,,,server/routes.ts:11724
+GET,/api/vendor-bills/equipment-hire-discovery,vendor_bills; vendor_bills_raise,,"assertViewEither(req, res, ""vendor_bills"", ""vendor_bills_raise"")",server/routes.ts:11737
+GET,/api/vendor-bills/discover-vendors,,,,server/routes.ts:11754
+GET,/api/vendor-bills/payables-preview,vendor_bills; vendor_bills_view,,"!req.authUser / assertReportExport(req, res, ""vendor_bills"", ""vendor_bills_view"") / !req.authUser.isAdmin && !req.authUser.isOwner && !req.authPermissions?.vendor_bills?.view_reports && !req.authPermissions?.vendor_bills_view?.view_reports / req.authUser?.isFieldEngineer",server/routes.ts:11771
+GET,/api/vendor-bills/auto-items,,,,server/routes.ts:11805
+GET,/api/vendor-bills/hire-activities,vendor_bills,,"assertView(req, res, ""vendor_bills"")",server/routes.ts:11833
+GET,/api/vendor-bills/previous-rates,,,,server/routes.ts:11847
+GET,/api/vendor-bills/company-accounts,site_diesel; diesel_req_raise; vendor_bills,,!req.authUser,server/routes.ts:11881
+GET,/api/vendor-bills/:id,,,,server/routes.ts:11904
+POST,/api/vendor-bills,vendor_bills; vendor_bills_raise; vendor_bills_approve,,"assertCreateEither(req, res, ""vendor_bills_raise"", ""vendor_bills"") / assertVendorBillAutoSources(req, res, input, selectedSite.siteName)",server/routes.ts:11926
+PUT,/api/vendor-bills/:id,vendor_bills; vendor_bills_raise,,"assertVendorBillAutoSources(req, res, input, selectedSite.siteName, existing.items) / assertAdmin(req, res) / assertEditEither(req, res, ""vendor_bills"", ""vendor_bills_raise"")",server/routes.ts:11970
+PATCH,/api/vendor-bills/:id/payment-details,vendor_bills_approve,,"assertApprove(req, res, ""vendor_bills_approve"")",server/routes.ts:12041
+PATCH,/api/vendor-bills/:id/status,vendor_bills; vendor_bills_view; vendor_bills_raise; vendor_bills_verify; vendor_bills_approve,,"assertApprove(req, res, ""vendor_bills_approve"") / !req.authUser?.isAdmin && vbForApproval && vbForApproval.authorUserId && vbForApproval.authorUserId === req.authUser?.id / assertApprove(req, res, ""vendor_bills_verify"") / !req.authUser?.isAdmin && vbForVerify && vbForVerify.authorUserId && vbForVerify.authorUserId === req.authUser?.id / assertEdit(req, res, ""vendor_bills"")",server/routes.ts:12066
+GET,/api/vendor-bills/:id/pdf,vendor_bills; vendor_bills_view,,"assertReportExport(req, res, ""vendor_bills"", ""vendor_bills_view"")",server/routes.ts:12121
+DELETE,/api/vendor-bills/:id,,,"assertAdmin(req, res)",server/routes.ts:12489
+POST,/api/vendor-bills/check-duplicates,vendor_bills; vendor_bills_raise,,"assertCreateEither(req, res, ""vendor_bills"", ""vendor_bills_raise"")",server/routes.ts:12628
+GET,/api/maintenance/logs,plant_equipment,,"assertView(req, res, ""plant_equipment"") / canAccessMaintenanceSource(req, log)",server/routes.ts:13815
+GET,/api/maintenance/logs/:id,plant_equipment,,"assertView(req, res, ""plant_equipment"") / assertMaintenanceSourceAccess(req, res, log)",server/routes.ts:13847
+POST,/api/maintenance/logs,plant_equipment,,"assertCreate(req, res, ""plant_equipment"") / assertMaintenanceSourceAccess(req, res, normalized.data)",server/routes.ts:13860
+PATCH,/api/maintenance/logs/:id,plant_equipment,,"assertEdit(req, res, ""plant_equipment"") / assertMaintenanceSourceAccess(req, res, existing) / assertMaintenanceSourceAccess(req, res, normalized.data)",server/routes.ts:13875
+DELETE,/api/maintenance/logs/:id,,,"assertAdmin(req, res) / assertMaintenanceSourceAccess(req, res, before)",server/routes.ts:13908
+POST,/api/maintenance/logs/:id/cancel,plant_equipment,,"assertDeleteOrCancel(req, res, ""plant_equipment"") / assertMaintenanceSourceAccess(req, res, before)",server/routes.ts:13933
+POST,/api/maintenance/logs/:id/parts,plant_equipment,,"assertCreate(req, res, ""plant_equipment"") / assertMaintenanceSourceAccess(req, res, parent)",server/routes.ts:13991
+DELETE,/api/maintenance/parts/:partId,plant_equipment,,"assertDelete(req, res, ""plant_equipment"") / assertMaintenanceRecordAccess(req, res, part.maintenanceLogId, true)",server/routes.ts:14009
+GET,/api/maintenance/health-summary,plant_equipment,,"assertView(req, res, ""plant_equipment"")",server/routes.ts:14027
+GET,/api/maintenance/open-count,plant_equipment,,"assertView(req, res, ""plant_equipment"")",server/routes.ts:14038

@@ -1,0 +1,214 @@
+
+## client/src/pages/DieselRequirements.tsx
+
+324:                 disabled={accountsLoading || accountsQuery.isError || !accounts?.length}
+365:           <AlertDialogAction disabled={!valid || mutation.isPending} onClick={(e) => { e.preventDefault(); mutation.mutate(); }} data-testid="button-markpaid-confirm">
+396:   const { sectionCan } = useAuth();
+397:   const canEditDiesel = sectionCan("site_diesel", "edit") || sectionCan("diesel_req_raise", "edit");
+453:             {paymentStatus !== "paid" && canEditDiesel && (
+532:   const { sectionCan, isAdmin } = useAuth();
+533:   const canEdit = sectionCan("site_diesel", "edit") || sectionCan("diesel_req_raise", "edit");
+534:   const canCreate = sectionCan("site_diesel", "create") || sectionCan("diesel_req_raise", "create");
+535:   const canApprove = sectionCan("site_diesel", "edit") || sectionCan("diesel_req_approve", "approve");
+536:   const canDelete = isAdmin;
+619:   const canRecordReceipt = isAdmin || sectionCan("plant_materials", "create");
+1128:                 disabled={deleteMutation.isPending}
+1159:               {isAdmin || sectionCan("site_diesel", "view") || sectionCan("stores_inventory", "view") || sectionCan("site_diesel", "create") || sectionCan("site_diesel", "edit") || sectionCan("diesel_req_raise", "view") || sectionCan("diesel_req_raise", "create") || sectionCan("diesel_req_raise", "edit") ? (
+1162:               {sectionCan("site_diesel", "export") && (
+1497:                             <Button type="button" size="sm" variant="outline" disabled={savingNormRow !== null}
+1527:                           disabled={formItems.length <= 1}
+1552:                 disabled={createMutation.isPending || editMutation.isPending || !formRaisedBy || formItems.every((i) => !i.equipmentName)}
+1590:                     {canEdit && selectedRequirement.status !== "purchased" && selectedRequirement.status !== "rejected" && (
+1601:                     {canDelete && (
+1690:                   {canEdit && (
+1807:                 {selectedRequirement.status === "pending" && canApprove && (
+1822:                         disabled={rejectMutation.isPending}
+1833:                       disabled={approveMutation.isPending}
+1868:                     {canEdit && (
+1879:                     {canDelete && (
+2059:                     disabled={purchaseMutation.isPending}
+2097:                     disabled={!reportDateFrom || !reportDateTo || reportDateFrom > reportDateTo}
+2243:                   <Button variant="outline" disabled={!!drillDate && (!datedBreakdown || breakdownLoading || breakdownError)} onClick={() => exportComparison(true)} data-testid="button-export-comparison-equipment">EXPORT REPORT + EQUIPMENT EXCEL</Button>
+
+## client/src/pages/PlantMaintenance.tsx
+
+141:         <Button type="button" variant="outline" size="sm" className="h-9" onClick={onAdd} disabled={!partItemId || !partQty || exceeds} data-testid="button-add-part">{addLabel}</Button>
+436:         <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-maint-log">
+572:         <Button type="submit" disabled={editMutation.isPending} data-testid="button-submit-edit-log">
+582:   canEdit,
+583:   canDelete,
+589:   canEdit: boolean;
+590:   canDelete: boolean;
+699:               {canEdit && (
+700:                 <Button variant="ghost" size="sm" className="text-sm h-7 px-2" onClick={() => resolveToggleMutation.mutate()} disabled={resolveToggleMutation.isPending} data-testid={`button-toggle-status-${log.id}`}>
+736:                 {canEdit && (
+741:                 {canEdit && (
+754:                 {canDelete && (
+916:   const { sectionVisible, sectionCan, isAdmin } = useAuth();
+987:         {sectionCan("plant_equipment", "create") && (
+1043:                 {sectionCan("plant_equipment", "create") && (
+1055:                     canEdit={sectionCan("plant_equipment", "edit")}
+1056:                     canDelete={isAdmin}
+
+## client/src/pages/PurchaseIndents.tsx
+
+675:   const { sectionCan, isAdmin, canApprove, user: currentUser } = useAuth();
+677:   const canCreate = sectionCan("site_procurement", "create") || sectionCan("purchase_indents_raise", "create");
+678:   const canEdit = sectionCan("site_procurement", "edit") || sectionCan("purchase_indents_raise", "edit") || isAdmin;
+679:   const canViewStores = sectionCan("stores_inventory", "view");
+680:   const canCreateStores = sectionCan("stores_inventory", "create");
+681:   const isApprover = canApprove("purchase_indents_approve");
+682:   const canDelete = isAdmin;
+683:   const canForceClose = isAdmin;
+2394:                 disabled={!cancelReason.trim() || cancelItemMutation.isPending}
+2431:                 disabled={!forceCloseReason.trim() || forceCloseMutation.isPending}
+2458:                 disabled={deleteMutation.isPending}
+2571:                           disabled={!canEdit || applyRouteCorrectionsMutation.isPending}
+2592:                             disabled={!canEdit || !row.canApply || applyRouteCorrectionsMutation.isPending}
+2629:                 {canEdit && (
+2632:                     disabled={selectedRouteCorrections.size === 0 || applyRouteCorrectionsMutation.isPending}
+2649:             {selectedIndent.items.filter(isBulkPiDeliveryItem).map(item => <PurchaseIndentDeliveryPanel key={`${selectedIndent.id}-${item.id}`} item={item} indentId={selectedIndent.id} indentNo={selectedIndent.indentNo} sites={allSites} canEdit={canEdit}
+3058:                   {isAdmin && (
+3306:                 disabled={createMutation.isPending || editMutation.isPending}
+3474:                             disabled={!allVerified || storesVerifyMutation.isPending}
+3525:                     {(selectedIndent.status !== "completed" || isAdmin) && canEdit && (
+3536:                     {canDelete && (
+3688:                               <Button variant="outline" size="sm" className="text-blue-600 border-blue-300 hover:bg-blue-50 text-sm" onClick={() => selectedIndentId && notifyMutation.mutate(selectedIndentId)} disabled={notifyMutation.isPending} data-testid="button-notify-stakeholders">
+3811:                                 <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white" disabled={!st.rejectReason.trim()} onClick={() => updateState({action:'rejected'})} data-testid={`button-confirm-reject-${item.id}`}>Confirm Reject</Button>
+3836:                         <Button disabled={!allActioned || approveMutation.isPending} onClick={handleFinaliseApproval} className={`w-full py-5 text-base font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${allActioned?'bg-[#F97316] hover:bg-[#EA580C] text-white shadow-lg shadow-orange-500/20':'bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed'}`} data-testid="button-finalise-approval">
+4011:                         {(selectedIndent.status !== "completed" || isAdmin) && canEdit && (
+4014:                         {canDelete && (
+4258:                             disabled={purchaserActionMutation.isPending}
+4363:                               disabled={!item.materialId}
+4434:                       canApprove={isApprover}
+4681:                                             disabled={recordDeliveryMutation.isPending}
+4749:                                   {(canEdit || isAdmin) && (
+4992:                                   disabled={procureMutation.isPending}
+5001:                                   disabled={procureMutation.isPending}
+5138:                     disabled={bulkReceiptMutation.isPending || !bulkReceivingLocation || (bulkReceivingLocation === "site" && !bulkReceivingSiteId)}
+5610:                 disabled={createGrnMutation.isPending || grnLines.every(l => !l.storeItemId) || grnLines.filter(l => l.storeItemId && parseFloat(l.qty) > 0).some(l => { const alreadyRcvd = grnReceivedByItem[l.indentItemId] ?? 0; const remaining = l.approvedQty - alreadyRcvd; const entered = parseFloat(l.qty); return !isNaN(entered) && entered > remaining; })}
+5669:                 disabled={!addStoreItemForm.name.trim() || addStoreItemMutation.isPending}
+5727:                 disabled={!serviceCompletionForm.completionStatus || serviceCompletionMutation.isPending}
+
+## client/src/pages/SiteMaterialTrips.tsx
+
+49:   const { sectionCan, isAdmin, isOwner } = useAuth();
+50:   const canEdit = sectionCan("site_materials", "edit");
+124:     queryKey: [canEdit ? `/api/site-material-trips/vendor-options?site=${encodeURIComponent(vendorSite)}` : "/api/vendor-master"],
+125:     enabled: !canEdit || !!vendorSite,
+738:                     disabled={createMutation.isPending || !hasRequiredWorkContext(workCtx)}
+942:             {canEdit && hasUnassignedFilteredTrips && (
+968:                       disabled={roleFilter !== "all" || !bulkMaterialSourceSupplier.trim() || !bulkEligibleCount || !siteFilter || siteFilter === "all" || onlyWithoutArrangement}
+981:             {canEdit && <BulkTripArrangement filters={{
+1049:                             {canEdit && <Button variant={classifyTripRoles(trip) === "unresolved" ? "default" : "outline"} className={classifyTripRoles(trip) === "unresolved" ? undefined : "text-muted-foreground"} size="sm" onClick={() => setEditingRoleTrip(trip)} data-testid={`button-edit-trip-roles-${trip.id}`}>{classifyTripRoles(trip) === "unresolved" ? "Set roles" : "Change roles"}</Button>}
+1059:                             {sectionCan("site_materials", "delete") && <Button
+1068:                             {(isAdmin || isOwner) && <Button 
+1072:                               disabled={deleteMutation.isPending}
+1133:               disabled={bulkAssignMutation.isPending || roleFilter !== "all"}
+
+## client/src/pages/VendorBills.tsx
+
+413: export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; canEditPayment: boolean }) {
+460:         {canEditPayment && !editing && (
+534:             <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} data-testid="button-save-payment-details">
+570:   const { sectionCan, sectionVisible, isAdmin, user } = useAuth();
+572:   const canCreate = sectionCan("vendor_bills", "create") || sectionCan("vendor_bills_raise", "create");
+573:   const canEdit = sectionCan("vendor_bills", "edit") || sectionCan("vendor_bills_verify", "edit") || sectionCan("vendor_bills_approve", "edit");
+575:   const canDelete = isAdmin;
+579:   const canMarkPaid = isAdmin || sectionCan("vendor_bills_approve", "approve");
+580:   const canExport = sectionCan("vendor_bills", "export") || sectionCan("vendor_bills_view", "export");
+640:   const [lineItems, setLineItems] = useState<LineItem[]>(isAdmin ? [defaultManualItem] : []);
+1067:     setLineItems(isAdmin ? [defaultManualItem] : []);
+2645:             <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
+2646:               isAdmin={user?.isAdmin} isOwner={user?.isOwner}
+2661:                   <Select value={billType} disabled={isHistoricalHireEdit} onValueChange={(val) => {
+2714:                   disabled={isHistoricalHireEdit}
+2793:                   disabled={discoveryLoading}
+3001:                       canExport={canExport}
+3002:                       disabled={equipmentPerformance.isFetching}
+3008:                         <Button type="button" variant="outline" size="sm" onClick={() => setShowEquipmentDailyActivity(true)} disabled={equipmentPerformance.isFetching} data-testid="button-view-daily-activity">{equipmentPerformance.isFetching ? "Loading daily activity…" : "View Daily Activity"}</Button>
+3009:                         {canExport && <Button type="button" variant="outline" size="sm" disabled={equipmentPerformance.isFetching} onClick={() => exportEquipmentHireBill(exportData, dailyRows, "pdf")} data-testid="button-export-equipment-hire-pdf">EXPORT PDF</Button>}
+3010:                         {canExport && <Button type="button" variant="outline" size="sm" disabled={equipmentPerformance.isFetching} onClick={() => exportEquipmentHireBill(exportData, dailyRows, "xlsx")} data-testid="button-export-equipment-hire-excel">EXPORT EXCEL</Button>}
+3029:                         <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => update({ selected: false })} disabled={current?.selected === false}>Exclude</Button>
+3031:                         <div><Label className="text-[10px] uppercase">Billable trips</Label><Input type="number" min="0" step="1" value={current?.correctedTrips ?? ""} placeholder={String(recordedTrips)} disabled={!selected} onChange={event => update({ correctedTrips: event.target.value === "" ? undefined : Number(event.target.value) })} /></div>
+3032:                         <div><Label className="text-[10px] uppercase">Decision reason / reference</Label><Input value={current?.remarks || ""} placeholder={activity.source === "site_material_trip" || activity.source === "bulk_transport_trip" ? "Required for every decision" : selected ? "Required if corrected" : "Required if excluded"} onChange={event => update({ remarks: event.target.value.toUpperCase() })} />{operationalOnSameDay && <label className="mt-2 flex items-start gap-2 font-medium"><input type="checkbox" checked={current?.separateFromOperational === true} disabled={!selected} onChange={event => update({ separateFromOperational: event.target.checked })} data-testid={`checkbox-separate-trip-${activity.sourceId}`} /><span>Verified: this delivery is a separate trip from same-day operational usage</span></label>}</div>
+3044:                       return <div key={item.sourceId} className="grid gap-2 rounded border p-2 text-xs sm:grid-cols-[1fr_180px_150px_minmax(160px,1fr)] sm:items-end"><div><strong>{formatDate(item.businessDate)} · {item.description || "Breakdown"}</strong><p className="text-muted-foreground">{Number(item.downtimeHours || 0)} actual downtime hours{item.fromTime || item.toTime ? ` · ${item.fromTime || "?"}–${item.toTime || "?"}` : ""}</p></div><Select value={current?.decision || "none"} onValueChange={value => setDecision(value)} disabled={!equipment?.hireBreakdownDeductionEnabled}><SelectTrigger className="h-8"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">No deduction</SelectItem><SelectItem value="hours" disabled={!selection.breakdownHoursPerDay}>Actual downtime</SelectItem><SelectItem value="half_day">Half day</SelectItem><SelectItem value="full_day">Full day</SelectItem><SelectItem value="manual">Manual amount</SelectItem></SelectContent></Select><div>{current?.decision === "manual" ? <Input type="number" min="0" placeholder="Deduction ₹" value={current.manualDeductionAmount ?? ""} onChange={event => setDecision("manual", { manualDeductionAmount: event.target.value === "" ? undefined : Number(event.target.value) })} /> : <span className="text-muted-foreground">{current?.decision === "hours" ? `Suggested ₹${formatCurrency(suggested)}` : ""}</span>}</div><div>{current?.decision === "manual" && <><Label className="text-[10px] uppercase">Manual deduction reason</Label><Input placeholder="Reason / reference" value={current.remarks || ""} onChange={event => setDecision("manual", { remarks: event.target.value.toUpperCase() })} /></>}</div></div>;
+3059:                         <Button type="button" size="sm" variant={selection.dieselRecoveryDecision === "accept" ? "default" : "outline"} disabled={recoveryAcceptUnavailable || !diesel?.suggestedRecoveryAmount} onClick={() => patchHireGroup(selection.id, { dieselRecoveryDecision: "accept", dieselRecoveryFinalAmount: Number(diesel?.suggestedRecoveryAmount || 0) })}>Accept Suggested</Button>
+3267:                             disabled={diesel?.rateUnavailable || diesel?.expectedDieselAvailable === false || !diesel?.suggestedRecoveryAmount}
+3295:                         canExport={canExport}
+3420:                               disabled={duplicatePreflight.isFetching || pullInFlight}
+3446:                           disabled={autoItemsLoading || pullInFlight || duplicatePreflightBlocked || group.pendingItems.length === 0}
+3461:                       disabled={autoItemsLoading || pullInFlight || duplicatePreflightBlocked}
+3477:                 <Button variant="outline" size="sm" disabled={!isAdmin && !sectionVisible("rate_cards") && !sectionVisible("vendor_masters_manage") && !sectionVisible("admin_settings")} onClick={() => {
+3489:               {isAdmin && (
+3499:                   disabled={pullInFlight}
+3654:                           disabled={["hire_group", "hire_statement"].includes(item.source)}
+3667:                         disabled={!!item.transportPricing || ["hire_group", "hire_statement"].includes(item.source)}
+3676:                     <Select value={item.unit} onValueChange={v => updateLineItem(idx, "unit", v)} disabled={!!item.transportPricing || ["hire_group", "hire_statement"].includes(item.source)}>
+3717:                         disabled={["hire_group", "hire_statement"].includes(item.source)}
+3741:                     <Button variant="ghost" size="icon" className="h-7 w-7" disabled={["hire_group", "hire_statement"].includes(item.source)} onClick={() => removeLineItem(idx)} data-testid={`button-remove-item-${idx}`}>
+4151:               <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
+4152:                 isAdmin={user?.isAdmin} isOwner={user?.isOwner}
+4159:                 disabled={createMutation.isPending || updateMutation.isPending}
+4183:               <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
+4184:                 isAdmin={user?.isAdmin} isOwner={user?.isOwner}
+4191:                 disabled={createMutation.isPending || updateMutation.isPending}
+4449:             <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
+4450:               isAdmin={user?.isAdmin} isOwner={user?.isOwner}
+4452:             {canExport && String(bill.billType || "").toLowerCase() === "equipment" && hasPersistedHireStatements && <EquipmentHireBillDetailOutput bill={bill} output={savedHireOutputs[0]} />}
+4453:             {canExport && String(bill.billType || "").toLowerCase() !== "equipment" && ["verified", "approved", "paid"].includes(bill.status) && (
+4468:             {canExport && String(bill.billType || "").toLowerCase() === "equipment" && !hasPersistedHireStatements && ["verified", "approved", "paid"].includes(bill.status) && (
+4481:             {canExport && <Button variant="outline" size="sm" onClick={() => handlePrint(bill)} data-testid="button-print">
+4484:             {canEdit && (!bill.hireStatements?.length || (bill.status === "draft" && bill.hireStatements.every((statement: any) => statement.status === "draft"))) && (
+4565:                 canEditPayment={canMarkPaid && ["approved", "paid"].includes(bill.status)}
+4584:               {canEdit && nextStatus && (
+4588:                   disabled={statusMutation.isPending}
+4595:               {canDelete && (
+4601:                   disabled={deleteMutation.isPending}
+4912:           <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
+4913:             isAdmin={user?.isAdmin} isOwner={user?.isOwner}
+4938:                   disabled={deleteMutation.isPending || !pendingDeleteAction}
+4975:           {canEdit && (
+4989:       {(sectionCan("vendor_bills", "view_reports") || sectionCan("vendor_bills_view", "view_reports")) && !user?.isFieldEngineer && <PayablesPreviewPanel vendors={vendorNames} sites={sites} canExport={canExport} />}
+5040:               {canExport && <Button
+5045:                 disabled={!filteredBills.length}
+5051:               {canExport && <Button
+5056:                 disabled={!filteredBills.length}
+5401:                 disabled={!aliasCanonical || !aliasValue || addAliasMutation.isPending}
+
+## client/src/pages/irn/IrnDetailPage.tsx
+
+78:   const { sectionCan, user, isAdmin } = useAuth();
+80:   const canVerify = sectionCan("stores_inventory", "create");
+81:   const canApprove = sectionCan("irn_approve", "create");
+82:   const canClose = sectionCan("irn_approve", "approve") || sectionCan("stores_inventory", "create");
+99:     enabled: (canVerify && irn?.status === "pending_stores") || (canApprove && irn?.status === "stores_verified") || isAdmin,
+568:   const adminBar = isAdmin ? (
+592:             disabled={deleteMutation.isPending}
+714:           {canApprove && irn.status === "stores_verified" && (
+736:                   disabled={approveMutation.isPending}
+744:                   disabled={approveMutation.isPending}
+755:           {!canApprove && irn.status === "stores_verified" && (
+776:                   disabled={closeMutation.isPending}
+1315:                                             disabled={maxQty < 0.001}
+1335:                                               disabled={maxQty < 0.001}
+1356:                                               disabled={maxQty < 0.001}
+1397:                             disabled={recordIssueMutation.isPending || !ivIssuedBy.trim() || !ivReceivedBy.trim() || !ivDate}
+1423:                 {(isAdmin || canClose) && (
+1428:                     disabled={reopenMutation.isPending}
+1482:                   disabled={closeMutation.isPending}
+1662:                               disabled={v.storesAction === "procure"}
+1676:                               disabled={v.storesAction === "issue"}
+1737:                   disabled={verifyMutation.isPending}
+
+## client/src/pages/irn/IrnListPage.tsx
+
+85:   const { sectionCan } = useAuth();
+86:   const canProcure = sectionCan("site_procurement", "create") || sectionCan("purchase_indents_raise", "create");
+164:                   disabled={isRaising}
+237:   const { sectionCan } = useAuth();
+238:   const canRaise = sectionCan("irn_raise", "create");
+
+## client/src/pages/irn/IrnRaisePage.tsx
+
+661:               disabled={mutation.isPending}

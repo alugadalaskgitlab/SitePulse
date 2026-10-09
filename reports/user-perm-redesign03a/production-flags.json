@@ -1,0 +1,6 @@
+{
+  "exitCode": 0,
+  "exitReason": null,
+  "output": "id,is_active,is_admin,is_owner,is_field_engineer,can_unlock_records,can_manage_permissions,permission_manager_scope\n1,t,t,f,f,t,t,full\n2,t,t,f,f,t,t,partial\n3,t,t,f,f,t,f,partial\n",
+  "success": true
+}
