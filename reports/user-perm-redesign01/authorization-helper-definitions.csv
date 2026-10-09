@@ -1,0 +1,326 @@
+name,source,code
+"requireUserMgmt","server/auth-routes.ts:417","requireUserMgmt = (action: ""view"" | ""create"" | ""edit"") =>
+    (req: Request, res: Response, next: NextFunction) => {
+      if (!req.authUser) return res.status(401).json({ error: ""not_authenticated"" });
+      if (req.authUser.isAdmin) return next();
+      // Full permission managers get the same access as admins for user mgmt.
+      if (req.authUser.canManagePermissions && req.authUser.permissionManagerScope === ""full"") return next();
+      // Partial permission managers can view and edit (but not create users).
+      if (req.authUser.canManagePermissions && (action === ""view"" || action === ""edit"")) return next();
+      const m = req.authPermissions;
+      if (m && m[""user_management""] && m[""user_management""][action]) return next();
+      return res.status(403).json({ error: ""forbidden"", section: ""user_management"", action });
+    }"
+"requireDeviceMgmt","server/auth-routes.ts:429","requireDeviceMgmt = (action: ""view"" | ""edit"") =>
+    (req: Request, res: Response, next: NextFunction) => {
+      if (!req.authUser) return res.status(401).json({ error: ""not_authenticated"" });
+      if (req.authUser.isAdmin) return next();
+      const m = req.authPermissions;
+      if (m && m[""device_approval""] && m[""device_approval""][action]) return next();
+      return res.status(403).json({ error: ""forbidden"", section: ""device_approval"", action });
+    }"
+"assertAdmin","server/auth-routes.ts:944","export function assertAdmin(req: Request, res: Response): boolean {
+  if (!req.authUser) {
+    res.status(401).json({ error: ""not_authenticated"" });
+    return false;
+  }
+  if (!req.authUser.isAdmin && !req.authUser.isOwner) {
+    res.status(403).json({ error: ""admin_required"" });
+    return false;
+  }
+  return true;
+}"
+"assertEdit","server/auth-routes.ts:959","export function assertEdit(req: Request, res: Response, section: SectionKey): boolean {
+  if (!req.authUser) {
+    res.status(401).json({ error: ""not_authenticated"" });
+    return false;
+  }
+  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
+  const m = req.authPermissions;
+  if (!m || !m[section] || !m[section].edit) {
+    res.status(403).json({ error: ""forbidden"", section, action: ""edit"" });
+    return false;
+  }
+  return true;
+}"
+"assertEditEither","server/auth-routes.ts:973","export function assertEditEither(req: Request, res: Response, ...sections: SectionKey[]): boolean {
+  if (!req.authUser) {
+    res.status(401).json({ error: ""not_authenticated"" });
+    return false;
+  }
+  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
+  const m = req.authPermissions;
+  if (!m || !sections.some(section => m[section]?.edit)) {
+    res.status(403).json({ error: ""forbidden"", sections, action: ""edit"" });
+    return false;
+  }
+  return true;
+}"
+"assertCreate","server/auth-routes.ts:987","export function assertCreate(req: Request, res: Response, section: SectionKey): boolean {
+  if (!req.authUser) {
+    res.status(401).json({ error: ""not_authenticated"" });
+    return false;
+  }
+  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
+  const m = req.authPermissions;
+  if (!m || !m[section] || !m[section].create) {
+    res.status(403).json({ error: ""forbidden"", section, action: ""create"" });
+    return false;
+  }
+  return true;
+}"
+"assertCreateOrEdit","server/auth-routes.ts:1001","export function assertCreateOrEdit(req: Request, res: Response, section: SectionKey): boolean {
+  if (!req.authUser) {
+    res.status(401).json({ error: ""not_authenticated"" });
+    return false;
+  }
+  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
+  const permission = req.authPermissions?.[section];
+  if (!permission?.create && !permission?.edit) {
+    res.status(403).json({ error: ""forbidden"", section, action: ""create_or_edit"" });
+    return false;
+  }
+  return true;
+}"
+"assertCreateEither","server/auth-routes.ts:1015","export function assertCreateEither(req: Request, res: Response, ...sections: SectionKey[]): boolean {
+  if (!req.authUser) {
+    res.status(401).json({ error: ""not_authenticated"" });
+    return false;
+  }
+  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
+  const m = req.authPermissions;
+  if (!m || !sections.some(section => m[section]?.create)) {
+    res.status(403).json({ error: ""forbidden"", sections, action: ""create"" });
+    return false;
+  }
+  return true;
+}"
+"assertView","server/auth-routes.ts:1029","export function assertView(req: Request, res: Response, section: SectionKey): boolean {
+  if (!req.authUser) {
+    res.status(401).json({ error: ""not_authenticated"" });
+    return false;
+  }
+  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
+  const m = req.authPermissions;
+  if (!m || !m[section] || !m[section].view) {
+    res.status(403).json({ error: ""forbidden"", section, action: ""view"" });
+    return false;
+  }
+  return true;
+}"
+"assertReportExport","server/auth-routes.ts:1043","export function assertReportExport(req: Request, res: Response, ...sections: SectionKey[]): boolean {
+  if (!req.authUser) {
+    res.status(401).json({ error: ""not_authenticated"" });
+    return false;
+  }
+  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
+  if (!sections.some(section => req.authPermissions?.[section]?.export)) {
+    res.status(403).json({ error: ""forbidden"", sections, action: ""export"" });
+    return false;
+  }
+  return true;
+}"
+"assertViewEither","server/auth-routes.ts:1056","export function assertViewEither(req: Request, res: Response, ...sections: SectionKey[]): boolean {
+  if (!req.authUser) {
+    res.status(401).json({ error: ""not_authenticated"" });
+    return false;
+  }
+  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
+  const m = req.authPermissions;
+  if (!m || !sections.some(section => m[section]?.view)) {
+    res.status(403).json({ error: ""forbidden"", sections, action: ""view"" });
+    return false;
+  }
+  return true;
+}"
+"assertApprove","server/auth-routes.ts:1070","export function assertApprove(req: Request, res: Response, section: SectionKey): boolean {
+  if (!req.authUser) {
+    res.status(401).json({ error: ""not_authenticated"" });
+    return false;
+  }
+  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
+  const m = req.authPermissions;
+  if (!m || !m[section] || !m[section].approve) {
+    res.status(403).json({ error: ""forbidden"", section, action: ""approve"" });
+    return false;
+  }
+  return true;
+}"
+"assertDeleteEither","server/auth-routes.ts:1089","export function assertDeleteEither(req: Request, res: Response, ...sections: SectionKey[]): boolean {
+  if (!req.authUser) {
+    res.status(401).json({ error: ""not_authenticated"" });
+    return false;
+  }
+  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
+  if (!sections.some(section => req.authPermissions?.[section]?.delete)) {
+    res.status(403).json({ error: ""forbidden"", sections, action: ""delete"" });
+    return false;
+  }
+  return true;
+}"
+"requireAuth","server/auth.ts:608","export async function requireAuth(req: Request, res: Response, next: NextFunction) {
+  try {
+    const sess = await lookupSessionFromCookie(req.headers.cookie);
+    if (sess.kind !== ""ok"") {
+      const reason =
+        sess.kind === ""expired"" ? ""session_expired""
+        : sess.kind === ""logged_out"" ? ""logged_out""
+        : sess.kind === ""device_revoked"" ? ""device_revoked""
+        : sess.kind === ""user_inactive"" ? ""user_inactive""
+        : ""not_authenticated"";
+      return res.status(401).json({ error: reason });
+    }
+    req.authUser = sess.user;
+    req.authSessionId = sess.sessionId;
+    req.authDeviceId = sess.deviceId;
+    req.authPermissions = await loadUserPermissionsMatrix(sess.user.id);
+    // Touch activity asynchronously (not awaited) — never blocks the request.
+    touchSessionActivity(sess.sessionId, sess.deviceId).catch(() => {});
+    next();
+  } catch (err) {
+    console.error(""requireAuth error:"", err);
+    res.status(500).json({ error: ""auth_internal_error"" });
+  }
+}"
+"requirePermission","server/auth.ts:633","export function requirePermission(section: SectionKey, action: Action) {
+  return function (req: Request, res: Response, next: NextFunction) {
+    const u = req.authUser;
+    const m = req.authPermissions;
+    if (!u || !m) return res.status(401).json({ error: ""not_authenticated"" });
+    if (u.isAdmin) return next();
+    if (m[section] && m[section][action]) return next();
+    return res.status(403).json({ error: ""forbidden"", section, action });
+  };
+}"
+"requireAdmin","server/auth.ts:644","export function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.authUser) return res.status(401).json({ error: ""not_authenticated"" });
+  if (!req.authUser.isAdmin) return res.status(403).json({ error: ""admin_required"" });
+  next();
+}"
+"assertViewReportOrAdmin","server/management-report.ts:35","function assertViewReportOrAdmin(req: Request, res: Response): boolean {
+  if (!req.authUser) {
+    res.status(401).json({ error: ""not_authenticated"" });
+    return false;
+  }
+  if (req.authUser.isAdmin) return true;
+  const m = req.authPermissions;
+  if (m?.[""report_management""]?.view || m?.[""reports""]?.view || m?.[""admin_settings""]?.view) return true;
+  res.status(403).json({ error: ""forbidden"" });
+  return false;
+}"
+"assertMixCalcWrite","server/routes.ts:152","function assertMixCalcWrite(req: Request, res: Response, action: MixCalcAction): boolean {
+  // 1. Estimator admin cookie is always accepted for writes
+  const cookieVal = parseCookie(req.headers.cookie, ESTIMATOR_COOKIE);
+  const estimatorRole = verifyRoleCookie(cookieVal);
+  if (estimatorRole === 'admin') return true;
+
+  // 2. Main-app user must be authenticated and have the right mix_calculator permission
+  if (!req.authUser) {
+    res.status(401).json({ message: ""Authentication required"" });
+    return false;
+  }
+  if (req.authUser.isAdmin) return true;
+  const perm = req.authPermissions?.[""mix_calculator""];
+  const allowed = action === 'create' ? !!perm?.create
+    : action === 'edit' ? (!!perm?.edit || !!perm?.create)
+    : !!perm?.delete;
+  if (!allowed) {
+    res.status(403).json({ message: ""You don't have permission to perform this action."" });
+    return false;
+  }
+  return true;
+}"
+"assertDieselOrStoresView","server/routes.ts:232","function assertDieselOrStoresView(req: any, res: any): boolean {
+    if (!req.authUser) {
+      res.status(401).json({ error: ""not_authenticated"" });
+      return false;
+    }
+    const canView = !!(
+      req.authUser.isAdmin ||
+      req.authUser.isOwner ||
+      req.authPermissions?.site_diesel?.view ||
+      req.authPermissions?.stores_inventory?.view ||
+      req.authPermissions?.site_diesel?.create ||
+      req.authPermissions?.site_diesel?.edit ||
+      req.authPermissions?.diesel_req_raise?.view ||
+      req.authPermissions?.diesel_req_raise?.create ||
+      req.authPermissions?.diesel_req_raise?.edit
+    );
+    if (!canView) {
+      res.status(403).json({ error: ""forbidden"", action: ""view"" });
+      return false;
+    }
+    return true;
+  }"
+"assertSiteMaterialSuggestionsAccess","server/routes.ts:532","function assertSiteMaterialSuggestionsAccess(req: Express.Request, res: Express.Response): boolean {
+    if (!req.authUser) {
+      res.status(401).json({ error: ""not_authenticated"" });
+      return false;
+    }
+    if (req.authUser.isAdmin || req.authUser.isOwner) return true;
+    const permission = req.authPermissions?.site_materials;
+    if (!permission?.view && !permission?.create && !permission?.edit) {
+      res.status(403).json({ error: ""forbidden"", section: ""site_materials"", action: ""view"" });
+      return false;
+    }
+    return true;
+  }"
+"canRecordStandaloneDieselReceipt","server/routes.ts:4574","canRecordStandaloneDieselReceipt = (req: any) => !!(
+    req.authUser?.isOwner ||
+    req.authUser?.isAdmin ||
+    req.authPermissions?.site_diesel?.edit ||
+    req.authPermissions?.diesel_req_raise?.edit
+  )"
+"assertPiRaiserRead","server/routes.ts:9056","function assertPiRaiserRead(req: Express.Request, res: Response): boolean {
+    if (!req.authUser) {
+      res.status(401).json({ error: ""not_authenticated"" });
+      return false;
+    }
+    const m = req.authPermissions;
+    if (req.authUser.isAdmin || req.authUser.isOwner ||
+        m?.purchase_indents_view?.view ||
+        m?.site_procurement?.view || m?.site_procurement?.create || m?.site_procurement?.edit ||
+        m?.purchase_indents_raise?.view || m?.purchase_indents_raise?.create || m?.purchase_indents_raise?.edit) return true;
+    res.status(403).json({ error: ""forbidden"", action: ""view"" });
+    return false;
+  }"
+"canViewScope","server/routes.ts:15098","canViewScope = (req: any): boolean => {
+    const u = req.authUser;
+    if (!u) return false;
+    if (u.isAdmin || u.isOwner) return true;
+    const m = req.authPermissions;
+    return !!(m && [m.project_scope, m.qto_boq, m.work_programme, m.work_programme_review, m.planning_masters].some(p => p?.view));
+  }"
+"assertOutcomeManagerAuthority","server/routes.ts:16585","function assertOutcomeManagerAuthority(req: any, res: any): boolean {
+    const user = req.authUser;
+    if (!user) {
+      res.status(401).json({ message: ""Authentication required"" });
+      return false;
+    }
+    const role = String(user.role ?? """").trim().toLowerCase().replace(/[\s-]+/g, ""_"");
+    const permitted = !!user.isAdmin || !!user.isOwner ||
+      [""manager"", ""pm"", ""project_manager""].includes(role);
+    if (!permitted) {
+      res.status(403).json({ message: ""Manager, PM, Admin or Owner authority is required to set arrangement status."" });
+      return false;
+    }
+    return true;
+  }"
+"assertCutFillProjectAccess","server/routes.ts:18605","async function assertCutFillProjectAccess(req: any, res: any, projectId: number, write = false): Promise<boolean> {
+    if (!assertAuthed(req, res) || !(write ? assertEdit(req, res, ""work_programme_review"") : assertView(req, res, ""work_programme_review""))) return false;
+    const [project] = await db.select({ id: boqProjectsTable.id, siteId: boqProjectsTable.siteId })
+      .from(boqProjectsTable).where(eq(boqProjectsTable.id, projectId));
+    if (!project) { res.status(404).json({ message: ""BOQ project not found"" }); return false; }
+    const permitted = await getPermittedSiteNames(req);
+    if (permitted !== null && project.siteId != null) {
+      const site = (await storage.getSites()).find((x: any) => Number(x.id) === Number(project.siteId));
+      if (!site || !siteMatchesPermitted((site as any).name, permitted)) {
+        res.status(403).json({ message: ""Access denied for this site"" }); return false;
+      }
+    }
+    if (write && !req.authUser?.isAdmin && ![""manager"", ""pm"", ""project_manager""].includes(String(req.authUser?.role ?? """").toLowerCase())) {
+      res.status(403).json({ message: ""Only a Project Manager or Admin can change cut/fill reconciliation settings."" }); return false;
+    }
+    return true;
+  }"
+"canManage","server/vendor-master.ts:73","canManage = (req: Request, res: Response) => !!req.authUser?.isOwner || assertAdmin(req, res)"

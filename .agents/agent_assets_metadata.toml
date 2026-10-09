@@ -5813,3 +5813,31 @@ mtime_ms = 1791528972514
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e2b1df82-4ee5-49ae-a524-7de97c625393/62d3593e-282a-4738-8568-90b1829f0f78"
 storage_version_token = "1791529028114486"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "vSthGE0hr7xDFcjcxpAfi"
+uri = "file://reports/user-perm-redesign01/SitePulse-permissions-investigation.html"
+type = "html"
+title = "SitePulse permissions — Phase 1 report"
+description = "Read-only findings, proposed hierarchical editor, backend changes, preservation risks, acceptance plan and approval decisions. Includes 13 searchable evidence tables."
+logical_id = "065703b7-e108-4cc4-9c93-81d1f0426ba5"
+content_hash = "sha256:584b16799d35a6746d1fab3d57a25def4baaed6bcdf2e382d699fc4ab3a468e1"
+size = 3199914
+mtime_ms = 1791536309292
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/065703b7-e108-4cc4-9c93-81d1f0426ba5/198680e1-c985-4cf7-8a5e-97abed058ca9"
+storage_version_token = "1791536381218203"
+content_type = "text/html"
+
+[[outputs]]
+id = "HWNHY_AP5ozYnuFTD9qiJ"
+uri = "file://reports/user-perm-redesign01/SitePulse-permission-inventories.zip"
+type = "unspecified"
+title = "Detailed navigation and permission inventories"
+description = "Markdown report and CSV inventories covering routes, hub tiles, nested controls, API operations, permission cells and background actions."
+logical_id = "fc84fe7b-31f5-4aaa-a64d-18b291f36086"
+content_hash = "sha256:deca7a734db06ea25f6d05bf001dccf77b95cf81c5ceb7e9a19f1e5a2e533abc"
+size = 378142
+mtime_ms = 1791536309360
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/fc84fe7b-31f5-4aaa-a64d-18b291f36086/185dcc92-174b-4e50-b859-12d62101b482"
+storage_version_token = "1791536383918527"
+content_type = "application/octet-stream"

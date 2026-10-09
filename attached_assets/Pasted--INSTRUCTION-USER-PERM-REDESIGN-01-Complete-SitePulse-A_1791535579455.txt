@@ -1,0 +1,156 @@
+# INSTRUCTION USER-PERM-REDESIGN-01
+**Complete SitePulse Application, Navigation and Permission Inventory — READ-ONLY**
+
+## Objective
+
+Prepare a comprehensive inventory and proposed design for a redesigned User Creation and Permissions Management interface.
+
+**IMPORTANT: Do not treat any examples supplied in this instruction or previous discussions as an exhaustive list of modules or actions.**
+
+Discover the complete application structure from the actual current repository, including implemented and accessible modules, hubs, tiles, pages, workflows, API operations and background actions.
+
+The final permissions editor must eventually permit an authorised Administrator to grant or revoke every relevant function and action independently, subject to system-level security and business-rule safeguards.
+
+This instruction is Phase 1 only: investigation, mapping and design. **Do not implement anything yet.**
+
+## 1. Complete application discovery
+
+Inspect the entire application systematically, including:
+
+- Main sidebar and navigation
+- Every Hub and every tile within each Hub
+- Every page, tab, subpage, dialog and workflow
+- Hidden or conditionally displayed features
+- Routes not currently linked from the main navigation
+- Create, Edit, Delete, Approve, Verify, Receive, Issue, Allocate, Assign, Transfer, Cancel, Revise, Export and other available operations
+- Backend APIs and server-side permission guards
+- Existing permission definitions, role templates and compatibility aliases
+
+Include all relevant SitePulse domains: Site Operations, DPRs, Tomorrow's Planning, Site Requirements, Diesel Requirements, IRNs, Material Trips, Labour, Equipment & Fleet, Maintenance, Procurement, Stores, Vendor Bills, Arrangements, HMP, RMC, BOQ, Estimation, Reporting, Masters, Administration and any other implemented functions discovered.
+
+These names are illustrative, not limiting.
+
+Do not omit functionality merely because it is located inside another page, behind a tab or dialog, or under a secondary navigation path.
+
+## 2. Produce a hierarchical permission map
+
+Organise the proposed permission editor in the following hierarchy:
+
+**Hub → Tile / Module → Function / Subfunction → Permitted Actions**
+
+For every function, document:
+
+1. Actual user-facing name
+2. Hub or navigation location
+3. Route/page/component
+4. Relevant API endpoints
+5. Existing permission key(s)
+6. Available actions
+7. Existing frontend checks
+8. Existing backend enforcement
+9. Legacy/alternative permissions that may also authorise the function
+10. Missing or misleading permission controls
+
+The map must include all discovered features, not just the examples.
+
+## 3. Action-level controls
+
+Determine which actions should appear as checkboxes for each function.
+
+Consider the existing standard actions:
+
+- View
+- Create
+- Edit
+- Delete
+- Approve
+- View Reports
+- Export
+- Receive Notifications
+
+Also identify genuine function-specific actions such as Verify, Submit, Issue, Allocate, Receive, Assign, Transfer, Cancel, Revise, Import, Reconcile or others actually implemented.
+
+Do not invent operational functionality merely to populate the permission panel.
+
+Where an action does not exist, show it as unavailable rather than providing a meaningless checkbox.
+
+Where one existing permission controls several different actions, identify the limitation and propose the smallest safe way to provide independent control.
+
+## 4. Legacy and overlapping permissions
+
+Investigate all broad/legacy permission keys and OR-based authorisation paths.
+
+Identify cases where granting or revoking an individual checkbox may not have the expected effect because another permission still provides access.
+
+Propose a migration-compatible solution so the redesigned editor can clearly show the user's effective permissions and any alternative authorisation paths.
+
+Do not remove, migrate, overwrite or reinterpret existing grants during this investigation.
+
+## 5. Role templates and individual users
+
+Role templates must be starting configurations only.
+
+Administrators must ultimately be able to customise each user's permissions independently, including changing individual actions without reapplying the role.
+
+Retain separate site access and account-level Owner/Administrator privileges.
+
+Do not redesign authentication, device approval or the existing company-per-deployment architecture.
+
+## 6. Navigation alignment
+
+Include the proposed NAV-01/NAV-02 requirements in the design:
+
+- Hide unauthorised hubs
+- Hide unauthorised tiles within authorised hubs
+- Hide restricted actions within otherwise accessible functions
+- Provide a usable landing page for every authorised user
+- Prevent dead-end navigation
+- Preserve backend authorisation for direct URL/API access
+
+Navigation visibility must reflect actual effective permissions, not just the presence of a role name.
+
+## 7. Proposed new interface
+
+Produce a proposed User Creation and Permissions Editor design showing:
+
+- User details and account settings
+- Starting role template
+- Site access
+- Expandable Hub → Tile → Function permission structure
+- Relevant action checkboxes
+- Grant All / Revoke All at appropriate levels, with clear safeguards
+- Individual permission overrides
+- Pending change review
+- Final Save and read-back verification
+- Sensitive permission warnings
+- Clear effective-access explanations
+
+The same editor must support existing users at any time.
+
+## 8. Deliverables — STOP BEFORE IMPLEMENTATION
+
+Provide:
+
+A. Complete application navigation inventory
+
+B. Complete function/action permission matrix
+
+C. Missing, overlapping and misleading permission controls
+
+D. Proposed hierarchical UI layout
+
+E. Proposed minimum necessary backend permission changes
+
+F. Preservation and migration-risk assessment
+
+G. Phased implementation plan with acceptance tests
+
+H. List of unresolved design decisions requiring Owner approval
+
+Confirm the inventory against both frontend navigation and backend routes so that features without obvious navigation links are not missed.
+
+Do not change application source code, permission records, role templates, existing users, databases or production.
+
+Do not publish.
+
+**STOP after producing the read-only investigation and design report. Wait for approval before implementing Phase 2.**
