@@ -23012,74 +23012,14 @@ async function seedDatabase() {
     console.error("Startup: Failed to backfill work programme calendar dates:", err);
   }
 
-  try {
-    const orphanResult = await storage.migrateOrphanStockToHLC();
-    if (orphanResult.ledgerFixed > 0 || orphanResult.balancesMerged > 0) {
-      console.log(`Startup: Migrated orphan stock to HLC - ${orphanResult.ledgerFixed} ledger entries fixed, ${orphanResult.balancesMerged} balances merged, ${orphanResult.errors} errors`);
-    }
-  } catch (err) {
-    console.error("Startup: Failed to migrate orphan stock:", err);
-  }
-
-  try {
-    const cleanupResult = await storage.cleanupSupersededDprDieselLedger();
-    if (cleanupResult.removed > 0) {
-      console.log(`Startup: Cleaned up ${cleanupResult.removed} duplicate diesel ledger entries from superseded DPRs, ${cleanupResult.errors} errors`);
-    }
-  } catch (err) {
-    console.error("Startup: Failed to cleanup superseded DPR diesel ledger:", err);
-  }
-
-  try {
-    const purchaseRepairResult = await storage.repairMissingSitePurchases();
-    if (purchaseRepairResult.repaired > 0) {
-      console.log(`Startup: Repaired ${purchaseRepairResult.repaired} missing site purchases from previous DPR versions, ${purchaseRepairResult.errors} errors`);
-    }
-  } catch (err) {
-    console.error("Startup: Failed to repair missing site purchases:", err);
-  }
-
-  try {
-    const dieselRepairResult = await storage.repairLostDieselSource();
-    if (dieselRepairResult.repaired > 0) {
-      console.log(`Startup: Repaired ${dieselRepairResult.repaired} equipment logs with lost diesel source, created ${dieselRepairResult.ledgerCreated} stock ledger entries, ${dieselRepairResult.errors} errors`);
-    }
-  } catch (err) {
-    console.error("Startup: Failed to repair lost diesel source:", err);
-  }
-
-  try {
-    const dprDieselResult = await storage.migrateDprPlantStockDieselToLedger();
-    if (dprDieselResult.created > 0) {
-      console.log(`Startup: Migrated DPR plant_stock diesel to ledger (cutoff: Feb 1, 2026) - created: ${dprDieselResult.created}, skipped: ${dprDieselResult.skipped}, errors: ${dprDieselResult.errors}`);
-    }
-  } catch (err) {
-    console.error("Startup: Failed to migrate DPR plant_stock diesel:", err);
-  }
-
-  try {
-    const recalcResult = await storage.recalculateAllDispatchConsumption();
-    if (recalcResult.varianceFixed > 0) {
-      console.log(`Startup: Recalculated dispatch variances - ${recalcResult.varianceFixed} fixed, ${recalcResult.updated} total, ${recalcResult.errors} errors`);
-    }
-  } catch (err) {
-    console.error("Startup: Failed to recalculate dispatch variances:", err);
-  }
+  // Historical stock and purchase repairs require a separately reviewed plan.
+  // Their storage implementations remain available, but startup never invokes them.
 
   try {
     const contractorLabelResult = await storage.fixNullContractorLabels();
     console.log(`Startup: Fix null contractor labels - updated: ${contractorLabelResult.updated}`);
   } catch (err) {
     console.error("Startup: Failed to fix null contractor labels:", err);
-  }
-
-  try {
-    const badStockResult = await storage.fixBadStockBalanceEntries();
-    if (!badStockResult.skipped) {
-      console.log(`Startup: Fix bad stock balance entries - fixed: ${badStockResult.fixed} rows`);
-    }
-  } catch (err) {
-    console.error("Startup: Failed to fix bad stock balance entries:", err);
   }
 
   try {

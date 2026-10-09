@@ -205,8 +205,8 @@ app.use((req, res, next) => {
   });
 
   // Kick off background migrations — these do NOT block the server.
-  // Safe because: (a) all are idempotent, (b) routes handle missing data gracefully,
-  // (c) on a warm DB the entire chain finishes in seconds.
+  // Historical stock repair chains are excluded; other legacy schema/data
+  // initialization still runs and must not be mistaken for read-only startup.
   void runBackgroundMigrations();
 })();
 
@@ -216,7 +216,6 @@ app.use((req, res, next) => {
 async function runBackgroundMigrations() {
   // ── Phase 1: Schema ensures (independent — run in parallel) ────────────────
   await Promise.all([
-    (async () => { try { await storage.resetAllSequences(); console.log("Startup: All database sequences reset successfully"); } catch (e) { console.error("Startup: Failed to reset sequences:", e); } })(),
     (async () => { try { await storage.ensureBoqProgramSettingsTables(); console.log("Startup: boq_program_settings and boq_mix_template_links tables ensured"); } catch (e) { console.error("Startup: Failed to ensure BOQ program settings tables:", e); } })(),
     (async () => { try { await storage.ensureRmcTables(); console.log("Startup: RMC tables ensured"); } catch (e) { console.error("Startup: Failed to ensure RMC tables:", e); } })(),
     (async () => { try { await storage.ensureSiteRequirementsTable(); console.log("Startup: site_requirements table ensured"); } catch (e) { console.error("Startup: Failed to ensure site_requirements table:", e); } })(),
@@ -260,74 +259,17 @@ async function runBackgroundMigrations() {
     (async () => { try { await migrateEmailPhoneSchema(); } catch (e) { console.error("Startup: migrateEmailPhoneSchema failed:", e); } })(),
     (async () => { try { await ensureBootstrapAdmin(); } catch (e) { console.error("Startup: ensureBootstrapAdmin failed:", e); } })(),
     (async () => { try { const updated = await (storage as any).migrateBulkPlantToMaterial(); if (updated > 0) console.log(`Startup: migrateBulkPlantToMaterial — renamed ${updated} item(s) from bulk_plant → material`); } catch (e) { console.error("Startup: Failed to migrate bulk_plant → material:", e); } })(),
-    (async () => { try { const r = await storage.backfillDispatchNotes(); console.log(`Startup: backfillDispatchNotes — updated: ${r.updated}, skipped: ${r.skipped}, errors: ${r.errors}`); } catch (e) { console.error("Startup: backfillDispatchNotes failed:", e); } })(),
-    (async () => { try { const r = await storage.backfillBitumenTankNumbers(); console.log(`Startup: backfillBitumenTankNumbers — updated: ${r.updated}, errors: ${r.errors}`); } catch (e) { console.error("Startup: backfillBitumenTankNumbers failed:", e); } })(),
-    (async () => { try { const r = await storage.migrate6mmDownUomFix(); console.log(`Startup: ${r.message}`); } catch (e) { console.error("Startup: migrate6mmDownUomFix failed:", e); } })(),
-    (async () => { try { await storage.purgeOrphanedDeletionReversals(); } catch (e) { console.error("Startup: purgeOrphanedDeletionReversals failed:", e); } })(),
-    (async () => { try { const r = await storage.backfillMissingDispatchAggregateRows(); if (r.applied) { if (r.dispatchesFixed > 0) console.log(`Startup: backfillMissingDispatchAggregateRows — fixed ${r.dispatchesFixed} dispatch(es) across ${r.templatesProcessed} template(s), created ${r.ledgerRowsCreated} ledger row(s)${r.errors.length ? `, ${r.errors.length} error(s)` : ""}`); else console.log("Startup: backfillMissingDispatchAggregateRows — nothing to fix (clean)"); } else console.log("Startup: backfillMissingDispatchAggregateRows — already applied, skipping."); } catch (e) { console.error("Startup: backfillMissingDispatchAggregateRows failed:", e); } })(),
-    (async () => { try { const r = await storage.cleanupGhostDispatchLedgerRows(); if (r.applied) { if (r.deleted > 0) console.log(`Startup: cleanupGhostDispatchLedgerRows — deleted ${r.deleted} ghost ledger row(s)`); else console.log("Startup: cleanupGhostDispatchLedgerRows — nothing to clean (no ghost rows found)"); } else console.log("Startup: cleanupGhostDispatchLedgerRows — already applied, skipping."); } catch (e) { console.error("Startup: cleanupGhostDispatchLedgerRows failed:", e); } })(),
     (async () => { try { await storage.deduplicateBitumenDipReadings(); } catch (e) { console.error("Startup: deduplicateBitumenDipReadings failed:", e); } })(),
     (async () => { try { const r = await storage.backfillBoqPlanningInclude(); if (r.set > 0 || r.excluded > 0) console.log(`Startup: backfillBoqPlanningInclude — set: ${r.set}, auto-excluded: ${r.excluded}`); } catch (e) { console.error("Startup: backfillBoqPlanningInclude failed:", e); } })(),
-    (async () => {
-      try {
-        const orphanFix = await db.execute(sql`
-          UPDATE stock_ledger
-          SET quantity_in = 0
-          WHERE transaction_type = 'adjustment'
-            AND notes ILIKE '%orphan balance correction%'
-            AND quantity_in > 0
-            AND quantity_out = 0
-            AND EXISTS (
-              SELECT 1
-              FROM plant_materials pm
-              WHERE pm.id = stock_ledger.material_id
-                AND UPPER(TRIM(pm.name)) NOT IN ('DIESEL', 'HSD')
-            )
-        `);
-        const orphanFixCount = (orphanFix as any).rowCount ?? 0;
-        if (orphanFixCount > 0) console.log(`Startup: fixOrphanAdjustmentLedger — zeroed quantity_in on ${orphanFixCount} wrong adjustment row(s)`);
-      } catch (e) { console.error("Startup: fixOrphanAdjustmentLedger failed:", e); }
-    })(),
   ]);
 
-  // ── Phase 4: Dispatch dedup chain (ORDER MATTERS — sequential) ─────────────
-  try {
-    const r = await storage.deduplicateStockLedgerDispatchRows();
-    if (r.rowsDeleted > 0) console.log(`Startup: deduplicateStockLedgerDispatchRows — fixed ${r.groupsFixed} groups, removed ${r.rowsDeleted} duplicate dispatch rows`);
-    else console.log("Startup: deduplicateStockLedgerDispatchRows — 0 rows removed (clean)");
-  } catch (e) { console.error("Startup: deduplicateStockLedgerDispatchRows failed:", e); }
-
+  // Historical stock repairs are not startup work. See
+  // scripts/verification/stock-repair-plan.mjs (planning only; no apply mode).
   try {
     await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS stock_ledger_dispatch_dedup_idx ON stock_ledger (material_id, COALESCE(party_id, -1), reference_id) WHERE transaction_type = 'dispatch' AND reference_id IS NOT NULL`);
     console.log("Startup: stock_ledger_dispatch_dedup_idx ensured");
   } catch (e) { console.error("Startup: Failed to create stock_ledger_dispatch_dedup_idx:", e); }
 
-  try {
-    const r = await storage.fixDoubleDeductedDispatchOwnerRows();
-    if (r.rowsFixed > 0) console.log(`Startup: fixDoubleDeductedDispatchOwnerRows — fixed ${r.rowsFixed} row(s), recomputed ${r.materialsRecomputed} material(s)`);
-    else console.log("Startup: fixDoubleDeductedDispatchOwnerRows — 0 rows to fix (clean)");
-  } catch (e) { console.error("Startup: fixDoubleDeductedDispatchOwnerRows failed:", e); }
-
-  // ── Phase 5: Dispatch reference backfills ──────────────────────────────────
-  try { const r = await storage.backfillDispatchReferenceIds(); console.log(`Startup: backfillDispatchReferenceIds — updated: ${r.updated}, skipped: ${r.skipped}, errors: ${r.errors}`); } catch (e) { console.error("Startup: backfillDispatchReferenceIds failed:", e); }
-  try { const r = await storage.backfillMissingDispatchBitumenRows(); if (r.created > 0) console.log(`Startup: backfillMissingDispatchBitumenRows — created: ${r.created}, skipped: ${r.skipped}, errors: ${r.errors}`); else console.log(`Startup: backfillMissingDispatchBitumenRows — 0 rows needed (clean), skipped: ${r.skipped}, errors: ${r.errors}`); } catch (e) { console.error("Startup: backfillMissingDispatchBitumenRows failed:", e); }
-
-  // ── Phase 6: LDO chain (ORDER MATTERS — sequential) ───────────────────────
-  try { await storage.deduplicateLdoDipReadings(); } catch (e) { console.error("Startup: deduplicateLdoDipReadings failed:", e); }
-  try { await storage.deduplicateLdoFlowSlotReadings(); } catch (e) { console.error("Startup: deduplicateLdoFlowSlotReadings failed:", e); }
-  try { await storage.backfillLdoFlowReadingsFromHeatingSessions(); } catch (e) { console.error("Startup: Failed to backfill LDO flow readings from heating sessions:", e); }
-  try { await storage.backfillLdoReceiptsFromMaterialReceipts(); } catch (e) { console.error("Startup: Failed to backfill LDO flow readings from material receipts:", e); }
-  try { const r = await storage.fixLdoDispatchTankNumbers_v1(); console.log(`Startup: ${r.message}`); } catch (e) { console.error("Startup: fixLdoDispatchTankNumbers_v1 failed:", e); }
-  try { const r = await storage.backfillLdoHeatingConsumption_v1(); console.log(`Startup: ${r.message}`); } catch (e) { console.error("Startup: backfillLdoHeatingConsumption_v1 failed:", e); }
-  try { const r = await storage.backfillLdoShiftMeterConsumption_v1(); console.log(`Startup: ${r.message}`); } catch (e) { console.error("Startup: backfillLdoShiftMeterConsumption_v1 failed:", e); }
-  try { const r = await storage.fixLdoStockDeductionErrors(); console.log(`Startup: fixLdoStockDeductionErrors — receiptsBackfilled=${r.receiptsBackfilled}, receiptLedgerRemoved=${r.receiptLedgerRemoved}, dispatchLedgerRemoved=${r.dispatchLedgerRemoved}, balancesFixed=${r.balancesFixed}, errors=${r.errors}`); } catch (e) { console.error("Startup: fixLdoStockDeductionErrors failed:", e); }
-  try { const r = await storage.fixLdoDataIssues(); console.log(`Startup: ${r.message}`); } catch (e) { console.error("Startup: fixLdoDataIssues failed:", e); }
-  try { const r = await storage.fixHlcLdoStockBalance(); console.log(`Startup: ${r.message}`); } catch (e) { console.error("Startup: fixHlcLdoStockBalance failed:", e); }
-  try { const r = await storage.backfillLdoDispatchConsumption_v1(); console.log(`Startup: ${r.message}`); } catch (e) { console.error("Startup: backfillLdoDispatchConsumption_v1 failed:", e); }
-  try { const r = await storage.fixAllLdoStockBalances_v1(); console.log(`Startup: ${r.message}`); } catch (e) { console.error("Startup: fixAllLdoStockBalances_v1 failed:", e); }
-  try { const r = await storage.rebuildLdoDispatchLedger_v1(); console.log(`Startup: ${r.message}`); } catch (e) { console.error("Startup: rebuildLdoDispatchLedger_v1 failed:", e); }
-  try { const r = await (storage as any).migrateLdoToDispatchModelOnly_v3(); console.log(`Startup: ${r.message}`); } catch (e) { console.error("Startup: migrateLdoToDispatchModelOnly_v3 failed:", e); }
-  try { const r = await storage.backfillMissingDispatchLdoRows(); if (r.created > 0) console.log(`Startup: backfillMissingDispatchLdoRows — created: ${r.created}, skipped: ${r.skipped}, errors: ${r.errors}`); else console.log(`Startup: backfillMissingDispatchLdoRows — 0 rows needed (clean), skipped: ${r.skipped}, errors: ${r.errors}`); } catch (e) { console.error("Startup: backfillMissingDispatchLdoRows failed:", e); }
 
   // ── Stale draft GRN push alert (hourly) ─────────────────────────────────────
   const _rawStaleHours = parseInt(process.env.STALE_GRN_THRESHOLD_HOURS || "48", 10);

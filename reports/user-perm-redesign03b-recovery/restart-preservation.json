@@ -1,0 +1,12 @@
+{
+  "comparedTables": 141,
+  "changedTables": [
+    "user_devices",
+    "user_sessions"
+  ],
+  "changedSequences": [
+    "app_settings_id_seq"
+  ],
+  "unexpected": [],
+  "mustStop": false
+}

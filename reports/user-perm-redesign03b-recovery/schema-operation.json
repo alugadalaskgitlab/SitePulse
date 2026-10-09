@@ -1,0 +1,72 @@
+{
+  "database": "sitelog_dev",
+  "sql": "BEGIN;\nSET LOCAL lock_timeout = '5s';\nDO $$\nBEGIN\n  IF current_database() <> 'sitelog_dev' THEN\n    RAISE EXCEPTION 'Wrong database: expected sitelog_dev';\n  END IF;\nEND $$;\nCREATE TABLE public.attachment_links (\n  id serial PRIMARY KEY,\n  attachment_id integer NOT NULL\n    REFERENCES public.attachments(id) ON DELETE CASCADE,\n  target_module_type text NOT NULL,\n  target_linked_record_id integer NOT NULL,\n  linked_by integer REFERENCES public.users(id) ON DELETE SET NULL,\n  linked_at timestamp without time zone NOT NULL DEFAULT now()\n);\nCREATE UNIQUE INDEX attachment_links_attachment_target_unique\n  ON public.attachment_links\n  (attachment_id, target_module_type, target_linked_record_id);\nCREATE INDEX attachment_links_target_lookup_idx\n  ON public.attachment_links (target_module_type, target_linked_record_id);\nCOMMIT;\n",
+  "columns": [
+    {
+      "column_name": "id",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "column_default": "nextval('attachment_links_id_seq'::regclass)"
+    },
+    {
+      "column_name": "attachment_id",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "column_name": "target_module_type",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "column_name": "target_linked_record_id",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "column_name": "linked_by",
+      "data_type": "integer",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "column_name": "linked_at",
+      "data_type": "timestamp without time zone",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    }
+  ],
+  "indexes": [
+    {
+      "indexname": "attachment_links_attachment_target_unique",
+      "indexdef": "CREATE UNIQUE INDEX attachment_links_attachment_target_unique ON public.attachment_links USING btree (attachment_id, target_module_type, target_linked_record_id)"
+    },
+    {
+      "indexname": "attachment_links_pkey",
+      "indexdef": "CREATE UNIQUE INDEX attachment_links_pkey ON public.attachment_links USING btree (id)"
+    },
+    {
+      "indexname": "attachment_links_target_lookup_idx",
+      "indexdef": "CREATE INDEX attachment_links_target_lookup_idx ON public.attachment_links USING btree (target_module_type, target_linked_record_id)"
+    }
+  ],
+  "constraints": [
+    {
+      "conname": "attachment_links_attachment_id_fkey",
+      "definition": "FOREIGN KEY (attachment_id) REFERENCES attachments(id) ON DELETE CASCADE"
+    },
+    {
+      "conname": "attachment_links_linked_by_fkey",
+      "definition": "FOREIGN KEY (linked_by) REFERENCES users(id) ON DELETE SET NULL"
+    },
+    {
+      "conname": "attachment_links_pkey",
+      "definition": "PRIMARY KEY (id)"
+    }
+  ],
+  "dependencyPassed": true,
+  "changedExistingTables": []
+}

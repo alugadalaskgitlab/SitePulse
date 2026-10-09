@@ -1,0 +1,79 @@
+# INSTRUCTION 03B-RECOVERY-01
+**Resolve Development Attachment Schema and Make Normal Startup Safe**
+
+Review `reports/user-perm-redesign03b-fix/REPORT.md` and the earlier USER-PERM-REDESIGN-03B implementation.
+
+Proceed with the following approved scope.
+
+## 1. Development attachment schema
+
+Approve creation of the missing `attachment_links` table and its two indexes in `sitelog_dev` ONLY, using the exact reviewed SQL proposed in the 03B-FIX report.
+
+Before execution:
+- Verify current_database() is exactly sitelog_dev.
+- Verify the parent tables and their expected columns exist.
+- Confirm the table is still absent.
+- Use a transactional, fail-closed operation with a short lock timeout.
+
+Do not run a broad schema push or any historical attachment backfill.
+
+Do not modify heliumdb, production or existing attachment records.
+
+After execution, verify the schema and previously failing attachment SQL dependency.
+
+## 2. Normal startup safety
+
+Implement the narrowly scoped separation of historical stock-repair routines from normal application startup, as proposed in the 03B-FIX report.
+
+Specifically:
+- Prevent the obsolete conflicting LDO dip-model repair from running automatically.
+- Identify and separate other historical stock/ledger repair calls from ordinary startup, including indirect seedDatabase paths.
+- Preserve normal operational stock posting, application authentication and necessary read-only startup checks.
+- Do not simply suppress errors or add a broad environment-variable bypass.
+
+Any maintenance command must default to read-only planning. Historical repair execution must require a separately reviewed plan and approval.
+
+Do not run any stock repair, reconciliation, backfill, balance reset or historical correction.
+
+## 3. Verify carefully
+
+Test startup behaviour using isolated mocks/spies first.
+
+Verify no historical stock repair or sequence-reset calls execute during ordinary startup.
+
+Only after the isolated tests pass, perform one controlled development restart, comparing business-table counts and content digests before and after.
+
+Verify attachment reads using authenticated disposable development accounts.
+
+Repeat the previously failing 03B attachment test and verify Maintenance Health in the actual signed-in browser.
+
+Confirm the existing Diesel and Maintenance permissions remain enforced correctly.
+
+## 4. Preservation
+
+Do not modify:
+- Existing production data
+- User permissions, roles or site assignments
+- Owner/Admin account flags
+- Site Requirements workflows
+- Vendor Bills, IRNs or Material Trips permissions
+- Historical stock balances or stock-ledger records through repair operations
+
+If safe startup separation requires changes to established business posting logic or if preservation tests show unexpected writes, STOP and report before proceeding.
+
+## 5. Delivery
+
+Provide:
+- Exact schema operation executed in development
+- Startup functions changed
+- Tests and authenticated evidence
+- Before/after business-data preservation results
+- Regression results
+- Genuine Publish preview
+- Any remaining unresolved exceptions
+
+Commit and push verified changes.
+
+DO NOT publish or modify production.
+
+STOP and report.

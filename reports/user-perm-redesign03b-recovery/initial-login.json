@@ -1,0 +1,11 @@
+{
+  "status": 202,
+  "devices": [
+    {
+      "id": 220,
+      "status": "pending",
+      "device_label": "Chrome on Linux"
+    }
+  ],
+  "normalApprovalRequired": true
+}

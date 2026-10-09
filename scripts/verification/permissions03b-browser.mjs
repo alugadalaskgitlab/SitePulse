@@ -54,8 +54,14 @@ try {
       await fs.writeFile(`${dir}/screenshots/diesel-detail.png`, Buffer.from(detail.data, "base64"));
     }
     if (name.startsWith("maintenance")) {
-      await evaluate(`Array.from(document.querySelectorAll('[role="tab"]')).find(el => el.textContent.includes('Health')).click()`);
+      const position = await evaluate(`(() => {
+        const tab = Array.from(document.querySelectorAll('[role="tab"]')).find(el => el.textContent.includes('Health'));
+        const rect = tab.getBoundingClientRect(); return { x: rect.x + rect.width/2, y: rect.y + rect.height/2 };
+      })()`);
+      await send("Input.dispatchMouseEvent", { type: "mousePressed", ...position, button: "left", clickCount: 1 });
+      await send("Input.dispatchMouseEvent", { type: "mouseReleased", ...position, button: "left", clickCount: 1 });
       await new Promise(r => setTimeout(r, 1500));
+      assert.equal(await evaluate(`Array.from(document.querySelectorAll('[role="tab"]')).find(el => el.textContent.includes('Health')).getAttribute('data-state')`), "active");
       const healthText = await evaluate("document.body.innerText");
       assert.ok(healthText.includes("PERM03B MACHINE A"));
       assert.ok(!healthText.includes("PERM03B MACHINE B"));

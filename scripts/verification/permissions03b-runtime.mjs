@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import pg from "pg";
 import assert from "node:assert/strict";
-export const dir = "reports/user-perm-redesign03b";
-export const privateDir = "/tmp/permissions03b-private";
+export const dir = process.argv.includes("--recovery") ? "reports/user-perm-redesign03b-recovery" : "reports/user-perm-redesign03b";
+export const privateDir = process.argv.includes("--recovery") ? "/tmp/permissions03b-recovery-private" : "/tmp/permissions03b-private";
 export const base = "http://127.0.0.1:5000";
 export const manifest = JSON.parse(await fs.readFile(`${dir}/disposable-manifest.json`, "utf8"));
 export const saveManifest = () => fs.writeFile(`${dir}/disposable-manifest.json`, JSON.stringify(manifest, null, 2));

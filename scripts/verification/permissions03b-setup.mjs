@@ -3,8 +3,8 @@ import fs from "node:fs/promises";
 import pg from "pg";
 import bcrypt from "bcryptjs";
 
-const dir = "reports/user-perm-redesign03b";
-const privateDir = "/tmp/permissions03b-private";
+const dir = process.argv.includes("--recovery") ? "reports/user-perm-redesign03b-recovery" : "reports/user-perm-redesign03b";
+const privateDir = process.argv.includes("--recovery") ? "/tmp/permissions03b-recovery-private" : "/tmp/permissions03b-private";
 const email = "permissions03b.admin@test.invalid";
 const config = await fs.readFile(".replit", "utf8");
 const connectionString = process.env.DEV_DATABASE_URL ??

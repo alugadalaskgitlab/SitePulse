@@ -27,7 +27,19 @@ not. Do not reverse real historical changes as if they were test fixtures.
 **Rule:** Individual data-condition or completion-marker guards do not establish
 idempotency of a startup chain when an earlier repair undoes a later one's work.
 
-**Why:** The older dip-accounting repair deletes dispatch consumption; the newer
-dispatch migration skips on its completed marker, and the final missing-row
-backfill recreates dispatch rows. Also inspect asynchronous seeding launched by
+**Why:** The previous automatic chain's older dip-accounting repair deleted dispatch consumption; the newer
+dispatch migration skipped on its completed marker, and the final missing-row
+backfill recreated dispatch rows. Also inspect asynchronous seeding launched by
 route registration, not only the main startup runner, before certifying safety.
+
+**Rule:** Historical stock repairs belong outside ordinary startup; keep normal
+operational posting intact. Maintenance tooling must default to read-only
+planning, with execution requiring a separately reviewed plan and approval.
+
+**Why:** The user approved this separation after conflicting historical models
+rewrote the ledger on routine restarts. This is a permanent startup boundary,
+not an environment-variable bypass to make verification appear clean.
+
+**How to apply:** Test startup with isolated spies and inspect transitive seed
+helpers before restarting. Compare business-content digests across the restart;
+sequence advancement from normal upserts is distinct from sequence resetting.
