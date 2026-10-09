@@ -1,0 +1,33 @@
+{
+  "passed": 4788,
+  "failed": 52,
+  "skipped": 3,
+  "files": 351,
+  "baselineFiles": 347,
+  "missingBaselineFiles": [],
+  "addedFiles": [
+    "tests/dprEqLink01.test.ts",
+    "/home/runner/workspace/client/src/components/permissions/HierarchicalPermissionsEditor.test.tsx",
+    "/home/runner/workspace/client/src/components/permissions/integration.test.tsx",
+    "/home/runner/workspace/client/src/components/permissions/model.test.ts"
+  ],
+  "additionalFailuresAgainstHistorical48": [
+    "tests/dieselPurchase06m.test.ts :: 06M diesel purchase attachments allows Stores viewers to read the register data and diesel evidence",
+    "tests/dieselStockGuard06mB.test.ts :: Task #1433 remaining public and maintenance writers excludes exact Diesel/HSD and unverified materials from orphan-adjustment startup cleanup",
+    "tests/dprBreakdownPersistence1430.test.ts :: Task #1430 DPR breakdown persistence wiring authorizes maintenance parts, attachments, health and counts through one source scope",
+    "tests/permission-map.test.ts :: generated permission editor contract matches a fresh source audit and detects deliberately corrupted output"
+  ],
+  "additionalFailuresAlsoPresentOnUnmodifiedHEAD": [
+    "tests/dieselPurchase06m.test.ts :: 06M diesel purchase attachments allows Stores viewers to read the register data and diesel evidence",
+    "tests/dieselStockGuard06mB.test.ts :: Task #1433 remaining public and maintenance writers excludes exact Diesel/HSD and unverified materials from orphan-adjustment startup cleanup",
+    "tests/dprBreakdownPersistence1430.test.ts :: Task #1430 DPR breakdown persistence wiring authorizes maintenance parts, attachments, health and counts through one source scope",
+    "tests/permission-map.test.ts :: generated permission editor contract matches a fresh source audit and detects deliberately corrupted output"
+  ],
+  "isolatedBaselineFailures": [
+    "tests/dieselPurchase06m.test.ts :: 06M diesel purchase attachments allows Stores viewers to read the register data and diesel evidence",
+    "tests/dieselStockGuard06mB.test.ts :: Task #1433 remaining public and maintenance writers excludes exact Diesel/HSD and unverified materials from orphan-adjustment startup cleanup",
+    "tests/dieselStockGuard06mB.test.ts :: Task #1433 DPR invalid-source route audit maps InvalidDieselSourceError in mutation block app.post(\"/api/dprs/:id/submit\"",
+    "tests/dprBreakdownPersistence1430.test.ts :: Task #1430 DPR breakdown persistence wiring authorizes maintenance parts, attachments, health and counts through one source scope",
+    "tests/permission-map.test.ts :: generated permission editor contract matches a fresh source audit and detects deliberately corrupted output"
+  ]
+}

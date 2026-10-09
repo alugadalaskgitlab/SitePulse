@@ -2556,7 +2556,7 @@ export async function registerRoutes(
   };
   const handleEquipmentLifecycleConflict = (err: unknown, res: any): boolean => {
     if (err instanceof EquipmentIncomingConflictError) {
-      res.status(409).json({ code: err.code, message: err.message });
+      res.status(409).json({ code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) });
       return true;
     }
     return false;
@@ -6049,7 +6049,7 @@ export async function registerRoutes(
       res.json(updated);
     } catch (err: any) {
       if (err instanceof EquipmentIncomingConflictError) {
-        return res.status(409).json({ code: err.code, message: err.message });
+        return res.status(409).json({ code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) });
       }
       if (err instanceof InvalidDieselSourceError) {
         return res.status(400).json({ code: err.code, field: err.field, message: err.message });

@@ -1,0 +1,22 @@
+{
+  "scenarios": [],
+  "fixtures": [
+    {
+      "kind": "missing",
+      "dprId": 261,
+      "logId": 539
+    }
+  ],
+  "loginStatus": 200,
+  "site": {
+    "id": 26,
+    "name": "TAKKADPALLY-SIRUR [EQLINK01 FIXTURE]"
+  },
+  "blocked": "Expected values to be strictly equal:\n\n403 !== 200\n",
+  "cleanup": "all listed fixture logs and DPRs removed",
+  "changedTables": [
+    "user_devices",
+    "user_sessions",
+    "users"
+  ]
+}

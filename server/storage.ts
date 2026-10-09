@@ -2326,7 +2326,14 @@ export function dprDieselMigrationNetDelta(oldTotal: number, replacementTotal: n
 
 export class EquipmentIncomingConflictError extends Error {
   readonly code = "EQUIPMENT_INCOMING_CONFLICT" as const;
-  constructor(message: string) {
+  constructor(message: string, readonly details?: {
+    equipmentLogId: number;
+    plantUsageId: number;
+    equipmentName: string;
+    dprId: number;
+    dprDate: string;
+    usageDate?: string;
+  }) {
     super(message);
     this.name = "EquipmentIncomingConflictError";
   }
@@ -7591,7 +7598,18 @@ export class DatabaseStorage implements IStorage {
       const [usage] = await tx.select().from(equipmentUsage)
         .where(eq(equipmentUsage.id, usageId))
         .limit(1);
-      if (!usage) throw new EquipmentIncomingConflictError("Linked equipment usage not found");
+      const conflictDetails = {
+        equipmentLogId: log.id,
+        plantUsageId: usageId,
+        equipmentName: log.machine || `Equipment ${log.equipmentId ?? "unknown"}`,
+        dprId,
+        dprDate: dpr.date,
+      };
+      const entryLabel = `${conflictDetails.equipmentName}, DPR ${dprId}, date ${dpr.date}, equipment log ${log.id}, linked usage ${usageId}`;
+      if (!usage) throw new EquipmentIncomingConflictError(
+        `Linked equipment usage not found — ${entryLabel}`,
+        conflictDetails,
+      );
 
       // cloneDpr has no editable equipment payload: this row was copied from
       // the source DPR and is a reference to the same physical operation.
@@ -7612,7 +7630,8 @@ export class DatabaseStorage implements IStorage {
       if (usage.status === "open") {
         if (usage.date !== dpr.date) {
           throw new EquipmentIncomingConflictError(
-            "Linked equipment usage date does not match the DPR date",
+            `Linked equipment usage date does not match the DPR date — ${entryLabel}; usage date ${usage.date}, DPR date ${dpr.date}`,
+            { ...conflictDetails, usageDate: usage.date },
           );
         }
         const destination = String(
