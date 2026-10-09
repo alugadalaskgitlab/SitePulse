@@ -1,0 +1,131 @@
+# INSTRUCTION USER-PERM-REDESIGN-02
+**Build Hierarchical User Permissions Editor — Phase 2B**
+
+The USER-PERM-REDESIGN-01 inventory and design are accepted as the discovery baseline.
+
+Proceed immediately with Phase 2B implementation.
+
+## Objective
+
+Build a clean, comprehensive, commercial-grade User Creation and Permissions Editor that covers ALL existing SitePulse functions.
+
+Do not limit implementation to examples mentioned in earlier instructions.
+
+Use the complete inventory files and current repository as the source of truth.
+
+## 1. Reusable permissions editor
+
+Develop one reusable editor supporting both:
+
+- Creation of a new user
+- Editing any existing user's permissions at any time
+
+Preserve the existing user creation and saving workflows while adding the new interface.
+
+## 2. Permission hierarchy
+
+Organise permissions as:
+
+Hub → Tile / Module → Function / Subfunction → Actions.
+
+Include every implemented feature identified in the inventory, even those not currently represented by a hub tile.
+
+Provide expandable groups, search, and filters for Allowed, Denied, Changed and Conflicts.
+
+A function appearing under multiple hubs must share one permission state, not independent copies.
+
+## 3. Individual action controls
+
+Display all relevant existing actions and proposed function-specific capabilities.
+
+Show unavailable actions as unavailable, not tickable.
+
+Every control must explain:
+
+- What action it controls
+- Which current permission authorises it
+- Whether legacy permissions also provide access
+- Whether site, ownership, approval or business restrictions apply
+
+Use the proposed Inherit / Allow / Deny model for the interface preview, but DO NOT yet persist or enforce new capability overrides.
+
+Clearly identify these as proposed settings until backend support is approved.
+
+## 4. Role templates
+
+Keep current commercial role templates as optional starting configurations.
+
+Administrators can customise individual permissions after applying a template.
+
+Role changes must not overwrite existing grants merely by selecting a template.
+
+## 5. Site access and account privileges
+
+Display existing site assignments, All Sites status, Administrator/Owner flags and business-role designation.
+
+Preserve their existing approved editing workflows.
+
+Do not introduce an Owner-promotion mechanism.
+
+## 6. Effective-access preview
+
+For every function and action, show:
+
+- Current permission
+- Proposed permission
+- Legacy or alternative permission sources
+- Effective access
+- Relevant business restrictions
+
+Highlight cases where unticking a legacy checkbox does not truly revoke access.
+
+Prominently indicate that Administrator/Owner bypass may make ordinary permissions non-restrictive.
+
+## 7. Review and save
+
+Build a comprehensive proposed-change review.
+
+For existing permissions supported by the current backend, preserve current save behaviour without silent mutation.
+
+Do not save or enforce proposed new capability overrides.
+
+A user must never be told that an action was revoked unless the backend actually enforces that revocation.
+
+No changes may be saved merely by opening the editor, selecting a role or previewing a change.
+
+## 8. Scope restrictions
+
+Do NOT modify:
+
+- Existing backend permission guards
+- Authentication, login, sessions or device approvals
+- Existing users, passwords, flags or permission records
+- Existing site assignments
+- Business workflow logic or historical records
+- Production database
+- Existing Owner-account status
+- Database schema
+
+Do not implement NAV-01/NAV-02 yet.
+
+Do not remove the existing Permissions editor until the replacement is verified.
+
+## 9. Testing and delivery
+
+Verify the new editor using actual application data structures and authenticated development accounts.
+
+Test all discovered hubs, tiles and functions for inventory coverage.
+
+Verify opening, editing, cancellation, template preview, legacy explanation and existing permission-save compatibility.
+
+Test that no proposed-only permission is mistakenly presented as successfully saved or enforced.
+
+Run focused tests, compare full-suite regressions and build the application.
+
+Commit and push verified implementation.
+
+Do not publish.
+
+Provide signed-in screenshots, completeness counts, preservation evidence and the Publish preview.
+
+STOP and report.

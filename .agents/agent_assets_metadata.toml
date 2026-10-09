@@ -5841,3 +5841,17 @@ mtime_ms = 1791536309360
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/fc84fe7b-31f5-4aaa-a64d-18b291f36086/185dcc92-174b-4e50-b859-12d62101b482"
 storage_version_token = "1791536383918527"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "ZgL0VGf7yWpsdqj-vN1fa"
+uri = "file://reports/user-perm-redesign02/verification-report.zip"
+type = "unspecified"
+title = "Phase 2B implementation and verification report"
+description = "Coverage counts, test comparison, unchanged user/permission/site digests, signed-in and push blockers, and the development-startup backfill exception."
+logical_id = "21053227-6152-41f3-8405-53891eff0926"
+content_hash = "sha256:5e881dcea8268e9c0c489cb5e99e96101ab79079faa939c2297f392086c37beb"
+size = 7487
+mtime_ms = 1791539773974
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/21053227-6152-41f3-8405-53891eff0926/93f50fb2-189a-4659-a696-7703b2f1aaa2"
+storage_version_token = "1791539783469294"
+content_type = "application/octet-stream"
