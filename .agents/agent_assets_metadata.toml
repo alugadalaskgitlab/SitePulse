@@ -5771,3 +5771,17 @@ mtime_ms = 1791479260891
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/2436362d-bf5a-49a4-91fc-a922c5cd78e6/ea89d37d-20f1-4602-8057-f12b6d646e66"
 storage_version_token = "1791479327145094"
 content_type = "text/html"
+
+[[outputs]]
+id = "dB-O4hvZLMAS-1gENN3hl"
+uri = "file://reports/user-role01/REPORT.md"
+type = "text"
+title = "USER-ROLE-01 implementation and verification report"
+description = "Role mappings, authenticated acceptance, preservation checks, test/build results and the genuine Publish SQL preview."
+logical_id = "b4076219-42c6-4ba6-aecf-2afdc8d1ccaf"
+content_hash = "sha256:76eb833b38b4e1a72aec7cd1706b4b91d76f38ad2e75e0167827cbb2d890cd8a"
+size = 8498
+mtime_ms = 1791513050761
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b4076219-42c6-4ba6-aecf-2afdc8d1ccaf/9d9191ce-2fdb-4208-b08c-85fe33323d0b"
+storage_version_token = "1791513143518257"
+content_type = "text/markdown"
