@@ -5799,3 +5799,17 @@ mtime_ms = 1791521792215
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/5a2db149-b214-4cb2-920a-87d8403674a9/9a14c981-2003-4293-a1c3-d0db6d6e8310"
 storage_version_token = "1791521819189602"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "ccs6EWi5IET2Y272-NCbY"
+uri = "file://reports/perm-req01/REPORT.md"
+type = "text"
+title = "PERM-REQ-01 verification and access-impact report"
+description = "Permission mapping, production approval holders, unknown-creator handling, authenticated checks, regression results, preservation caveats and Publish preview."
+logical_id = "e2b1df82-4ee5-49ae-a524-7de97c625393"
+content_hash = "sha256:04600e44e81be8c06bfee54c4a74900da38e8229fddf389ca34a2f9f7c0b95b7"
+size = 8208
+mtime_ms = 1791528972514
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e2b1df82-4ee5-49ae-a524-7de97c625393/62d3593e-282a-4738-8568-90b1829f0f78"
+storage_version_token = "1791529028114486"
+content_type = "text/markdown"
