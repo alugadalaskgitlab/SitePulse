@@ -1,0 +1,213 @@
+
+INSTRUCTION USER-ROLE-01
+Commercial User Creation, Standard Role Templates & Permissions UX
+
+OBJECTIVE
+
+Make SitePulse User Management simple and suitable for every subscribing construction company, while retaining the existing detailed permission engine and security controls.
+
+FIRST — INSPECT THE CURRENT REPOSITORY
+
+Review the latest PERM-related changes, including PERM-BABU-01, registration, user creation, role templates, section/action permissions, site access, permission-manager authority, and Owner/Admin bypass.
+
+Reuse existing functionality. Do not redesign or replace the permission engine.
+
+PART A — STANDARD COMPANY USER ROLES
+
+Provide the following standard role templates in User Management:
+
+1. Owner / Administrator
+2. Operations Director / Project Head — Full Operations
+3. Project Manager
+4. Site Engineer
+5. Site Supervisor
+6. Stores & Procurement
+7. Equipment & Fleet
+8. Accounts & Commercial
+9. Viewer / Read Only
+
+These are starting templates, not hard-coded restrictions. Each company must be able to adjust individual permissions using the existing advanced permission matrix.
+
+Use the current section/action keys and existing role/template mechanisms wherever available. Do not create duplicate permission systems.
+
+PART B — OPERATIONS DIRECTOR / PROJECT HEAD
+
+This is an important standard commercial role, suitable for a senior person managing most day-to-day construction operations.
+
+The role should have broad operational access across assigned sites, including:
+
+- Dashboard and operational hubs
+- Site operations and DPR
+- Work programmes, planning and execution
+- Materials, material receipts and Material Trips
+- Own Source / Material Source / Transporter classification
+- Individual and bulk trip linking
+- Equipment, fleet, deployment and hire
+- Diesel, fuel requirements and consumption
+- Stores, inventory and material movements
+- Procurement, indents, purchase orders and receipts
+- Vendor bills and operational commercial records
+- Reports, analytics and operational monitoring
+- Other normal operational modules supported by existing permissions
+
+Allow ordinary operational Create, View, Edit and appropriate Approve permissions according to the existing permission keys and business workflows.
+
+This role must NOT be Administrator or Owner and must NOT receive any system bypass.
+
+The following must remain excluded by default:
+
+- User creation/management and permission management
+- Administrator and Owner privileges
+- Delete permissions
+- System configuration and security administration
+- Database migrations, backfills, repairs and data-sync administration
+- Destructive bulk actions or unrestricted historical data rewriting
+- Other privileged governance operations
+
+Do not assume that the Edit permission authorises Delete or administrative operations.
+
+Normal operational correction, cancellation and revision functions must continue to follow their existing rules. Do not redesign them.
+
+PART C — SIMPLIFIED USER CREATION WORKFLOW
+
+Provide a simple, intuitive workflow:
+
+STEP 1 — USER DETAILS
+Name, login/contact details and existing required registration fields.
+
+STEP 2 — SELECT ROLE
+Choose one standard template with a short, plain-language explanation of its responsibilities.
+
+STEP 3 — SITE ACCESS
+Select permitted sites, or explicitly choose All Sites if the authorised permission manager intends company-wide operational access.
+
+STEP 4 — REVIEW
+Show a readable summary of what the user can and cannot do.
+
+For example, for Operations Director:
+
+Can:
+- Manage assigned-site operations
+- Create and edit DPRs
+- Manage materials and equipment
+- Classify material sources and transporters
+- Manage procurement and operational bills
+- Approve permitted operational transactions
+- View operational reports
+
+Cannot:
+- Delete records
+- Manage users or permissions
+- Change system configuration
+- Perform privileged database operations
+
+STEP 5 — ADVANCED PERMISSIONS
+Retain the existing detailed section × action permission matrix for granular adjustments.
+
+The normal workflow should not require customers to understand every permission checkbox.
+
+Do not automatically grant all actions simply because a role is selected.
+
+PART D — PERMISSION APPLICATION AND PRESERVATION
+
+1. Role templates apply only when explicitly selected and confirmed.
+
+2. Do not change, reset, revoke, or reapply templates to any existing user automatically.
+
+3. An authorised permission manager must be able to deliberately apply or change a role for an existing user after reviewing the resulting permissions.
+
+4. Show the exact proposed changes before applying a different role to an existing user.
+
+5. Preserve all existing individual permissions unless an authorised user explicitly confirms their replacement or modification.
+
+6. Role and individual permission changes must use the existing permission-save mechanisms.
+
+7. Site Access remains independent of section permissions.
+
+8. No ordinary role may create an Owner/Admin bypass.
+
+9. Do not weaken existing View semantics, backend guards, company isolation, or permission-manager restrictions.
+
+10. Keep permission templates and user records scoped to the correct company/tenant. Never expose one company's users, sites or records to another.
+
+PART E — USER EXPERIENCE
+
+Keep the design simple, professional and understandable to a non-technical contractor.
+
+Show role descriptions in ordinary business language rather than database permission names.
+
+The advanced matrix must remain available but should not clutter the normal registration workflow.
+
+Display a warning if a user is assigned a role without usable site access or if mandatory account setup remains incomplete.
+
+Do not claim the account is operationally ready when permissions or site setup still prevent access.
+
+PART F — STRICT NON-GOALS
+
+Do NOT:
+- Replace the current permission engine.
+- Introduce a parallel RBAC system.
+- Rewrite authentication or authorisation.
+- Change Owner/Admin bypass logic.
+- Automatically modify Babu or any existing user.
+- Grant Delete to Full Operations by default.
+- Grant User Management or Permission Management to Full Operations.
+- Change vendor billing, DPR calculations, inventory, execution, equipment or procurement business logic.
+- Redesign cancellation, reversal or historical correction workflows.
+- Modify production data.
+- Publish automatically.
+
+NAV-01/NAV-02 sidebar, landing-page and hub-tile improvements remain separate unless a minimal change is strictly necessary for this user setup workflow.
+
+PART G — VERIFICATION
+
+Prove the following using disposable development users and sites:
+
+1. Each standard role produces the intended permission template.
+
+2. Operations Director can perform representative normal operational Create/Edit actions without Administrator privileges.
+
+3. Material Trips, source/transporter classification and arrangement linking work under normal permissions, including the PERM-BABU-01 fixes.
+
+4. Operations Director cannot manage users or permissions.
+
+5. Delete and privileged administrative operations are rejected by the backend.
+
+6. Site restrictions work independently of role permissions.
+
+7. No-site and incomplete-setup accounts are handled clearly.
+
+8. Existing users, passwords, section permissions, site assignments and Administrator flags remain unchanged.
+
+9. Role changes require explicit confirmation and preserve individual adjustments unless replacement is deliberately approved.
+
+10. Company/tenant isolation is preserved.
+
+11. Existing authentication, permission and operational regression tests pass without new failures.
+
+12. Application build passes.
+
+Use real authenticated UI and API verification wherever possible. Do not treat a visible or hidden button as proof of backend access control.
+
+Before and after, verify database integrity and list every changed record. Remove disposable test records.
+
+PART H — REPORT AND STOP
+
+Report:
+
+1. Existing architecture reused.
+2. Files changed.
+3. Standard roles and their effective permission mappings.
+4. User creation flow implemented.
+5. Evidence for Full Operations access and restricted actions.
+6. Existing-user preservation evidence.
+7. Tests and build results.
+8. Any necessary migration and its exact purpose.
+9. Any incomplete or deferred functionality.
+10. Genuine Publish preview, including SQL if applicable.
+
+If implementing all parts requires a fundamental permission/schema redesign, STOP before undertaking that redesign. Report the smallest viable Phase 1 implementation and the work that must be deferred.
+
+Commit and push verified changes to GitHub.
+
+Do not publish. Await the owner's approval.
