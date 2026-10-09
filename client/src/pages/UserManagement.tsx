@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { PermissionReview, RoleChangeList, primaryRoleTemplates, proposeRole } from "@/components/user-role-review";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
@@ -76,6 +77,7 @@ type SafeUser = {
   sessionPolicy: SessionPolicy;
   canManagePermissions: boolean;
   permissionManagerScope: "full" | "partial" | null;
+  setupComplete?: boolean;
   createdAt?: string;
 };
 
@@ -85,7 +87,7 @@ type SafeUser = {
 const HUB_ACTIONS: Action[] = ["view"];
 const SECTION_ACTIONS = Object.fromEntries(
   SECTION_KEYS.map(section => [section, permissionActions[section].actions]),
-) as Record<SectionKey, readonly Action[]>;
+) as unknown as Record<SectionKey, readonly Action[]>;
 const permissionTooltip = (section: SectionKey, action: Action) =>
   (permissionActions[section].tooltips as Partial<Record<Action, string>>)[action] ?? "Not used for this section";
 const HUB_SECTIONS = new Set<SectionKey>([
@@ -110,6 +112,9 @@ function friendlyUserError(raw: string): string {
   if (/phone_exists/i.test(raw)) return "That phone number is already used by another user.";
   if (/at_least_one_contact_required/i.test(raw)) return "At least one of email or phone must be set for this user.";
   if (/cannot_demote_last_admin/i.test(raw)) return "There must always be at least one active admin. Promote another user to admin first.";
+  if (/cannot_grant_all_sites_beyond_own_scope/i.test(raw)) return "You cannot assign all sites because your own access is limited. Select sites within your access, or ask an administrator.";
+  if (/site_ids_beyond_own_scope/i.test(raw)) return "Some selected sites are outside your own access. Ask an administrator to assign those sites.";
+  if (/unknown_role_template/i.test(raw)) return "This role is not available on the server. Reload the page or ask your administrator to check the deployment.";
   return raw;
 }
 
@@ -239,7 +244,7 @@ export default function UserManagement() {
         </CardContent>
       </Card>
 
-      {createOpen && <CreateUserDialog open={createOpen} onClose={() => setCreateOpen(false)} />}
+      {createOpen && <CreateUserDialog open={createOpen} onClose={() => setCreateOpen(false)} onAdvanced={(id) => { setCreateOpen(false); setPermsUserId(id); }} />}
       {permsUserId !== null && (
         <PermissionsDialog
           userId={permsUserId}
@@ -304,6 +309,7 @@ function UserRow({
             <Badge variant="secondary">User</Badge>
           )}
           {user.isOwner && <Badge variant="default">Owner</Badge>}
+          {user.setupComplete === false && <Badge variant="outline" className="text-amber-700">Setup incomplete</Badge>}
           {user.isFieldEngineer && <Badge variant="outline">Engineer / field user</Badge>}
           {user.isFieldEngineer && (user.isAdmin || user.isOwner) && (
             <p role="status" className="basis-full text-sm text-amber-700 dark:text-amber-400" data-testid={`role-conflict-${user.id}`}>
@@ -378,7 +384,10 @@ function UserRow({
 // The server applies template + site access in the same request; on partial
 // failure the account shows "Setup incomplete" and Retry re-runs the setup on
 // the SAME user (no duplicates).
-function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function CreateUserDialog({ open, onClose, onAdvanced }: { open: boolean; onClose: () => void; onAdvanced?: (id: number) => void }) {
+  const { isAdmin: currentIsAdmin, canManagePermissions, permissionManagerScope, permissions: myPerms } = useAuth();
+  const isPartialManager = !currentIsAdmin && canManagePermissions && permissionManagerScope === "partial";
+  const canAdjust = currentIsAdmin || canManagePermissions;
   const qc = useQueryClient();
   const { toast } = useToast();
   const [step, setStep] = useState(0);
@@ -415,20 +424,23 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
   // Retry state after a partial failure
   const [failedUserId, setFailedUserId] = useState<number | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
+  const [createdId, setCreatedId] = useState<number | null>(null);
+  const creationProposal = proposeRole(emptyMatrix(), roleTemplate ? applyRoleTemplate(roleTemplate) : emptyMatrix(), "replace",
+    (section, action) => !isPartialManager || !!myPerms[section]?.[action]);
 
   const sitesQ = useQuery<{ id: number; name: string; isActive: number }[]>({ queryKey: ["/api/sites"], enabled: open });
   const activeSites = (sitesQ.data ?? []).filter((s) => s.isActive !== 0);
 
   const setupPayload = () => ({
     roleTemplate: !isAdmin && roleTemplate ? roleTemplate : undefined,
-    siteAccess: siteMode === "all"
+    siteAccess: isAdmin || siteMode === "all"
       ? { mode: "all" as const }
       : { mode: "selected" as const, siteIds: Array.from(siteIds) },
   });
 
   const finish = (data: any) => {
     qc.invalidateQueries({ queryKey: ["/api/auth/users"] });
-    if (data.setupOk === false || data.ok === false) {
+    if (data.setupOk === false || data.ok === false || data.setupComplete === false) {
       setFailedUserId(data.id ?? failedUserId);
       setSetupError(data.setupError ?? "setup_failed");
       toast({
@@ -438,8 +450,10 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
       });
       return;
     }
-    toast({ title: "User created", description: "Permissions and site access applied." });
-    onClose();
+    toast({ title: "User created", description: "Permissions and site access applied. Existing sign-in and device approval requirements still apply." });
+    setCreatedId(data.id ?? failedUserId);
+    setSetupError(null);
+    setStep(4);
   };
 
   const create = useMutation({
@@ -477,15 +491,16 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
   const basicsValid = (!!email.trim() || !!phone.trim()) && emailValid && phoneValid && !!fullName.trim() && password.length >= 8;
   const roleValid = isAdmin || roleTemplate !== null;
   const siteValid = isAdmin || siteMode === "all" || (siteMode === "selected" && siteIds.size > 0);
-  const steps = ["Details", "Role", "Site access", "Review"];
+  const steps = ["Details", "Role", "Site access", "Review", "Advanced permissions"];
   const templateLabel = isAdmin ? "Administrator — Full access (ignores permission switches)" : ROLE_TEMPLATES.find((t) => t.id === roleTemplate)?.label ?? "Custom (no template)";
   const busy = create.isPending || retry.isPending;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create user — {steps[step]}</DialogTitle>
+          <DialogDescription>Choose a starting role, assign sites, then confirm the account setup.</DialogDescription>
         </DialogHeader>
         <div className="flex items-center gap-1 mb-1">
           {steps.map((s, i) => (
@@ -536,14 +551,14 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
             {(
               <>
                 <p className="text-sm text-muted-foreground">
-                  Pick a starting role — it determines the user's type and permissions. You can fine-tune permissions any time later.
+                   Choose responsibilities for this person. Ordinary roles are starting permissions, not Administrator privileges. Step 5 offers the existing advanced editor after creation.
                 </p>
                 <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
-                  <label className="flex items-start gap-3 rounded-md border p-3 text-sm">
+                   {currentIsAdmin && <label className="flex items-start gap-3 rounded-md border p-3 text-sm">
                     <input type="checkbox" checked={isAdmin} onChange={e => setIsAdmin(e.target.checked)} data-testid="wizard-full-access" />
-                    <span><strong>Administrator — Full access</strong><span className="block">Ignores every permission switch below. This is not a role template.</span></span>
-                  </label>
-                  {[...ROLE_TEMPLATES,
+                     <span><strong>Owner / Administrator — Administrator only</strong><span className="block">Full privileged access; permission switches do not restrict this account. Owner status cannot be conferred here. This is not an ordinary template.</span></span>
+                   </label>}
+                   {[...primaryRoleTemplates(),
                     { id: "", label: "Custom (no template)", description: "Start with no permissions; grant manually afterwards." }].map((t: any) => (
                     <label
                       key={t.id || "custom"}
@@ -590,7 +605,9 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
                 </label>
                 {siteMode === "selected" && (
                   <div className="border rounded max-h-48 overflow-y-auto divide-y">
-                    {activeSites.length === 0 && <p className="px-3 py-3 text-sm text-muted-foreground">No active sites found.</p>}
+                    {sitesQ.isLoading && <div className="m-3 h-12 rounded bg-muted animate-pulse" aria-label="Loading sites" />}
+                    {sitesQ.isError && <div role="alert" className="p-3 text-sm">Sites could not be loaded. <Button size="sm" variant="outline" onClick={() => sitesQ.refetch()}>Retry</Button></div>}
+                    {!sitesQ.isLoading && !sitesQ.isError && activeSites.length === 0 && <p className="px-3 py-3 text-sm text-muted-foreground">No active sites found. Add or activate a site before assigning specific sites.</p>}
                     {activeSites.map((site) => (
                       <label key={site.id} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/40 text-sm" data-testid={`wizard-site-${site.id}`}>
                         <Checkbox
@@ -625,21 +642,31 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
                 </span>
               </div>
             </div>
+            <PermissionReview matrix={creationProposal.matrix} privileged={isAdmin} />
+            {!isAdmin && creationProposal.capped.length > 0 && <p role="status" className="text-amber-700" data-testid="wizard-role-capped">This review shows the effective permissions capped to your own grants. {creationProposal.capped.length} template grants cannot be assigned by you.</p>}
+            {!isAdmin && isFieldEngineer && <p className="text-muted-foreground">Engineer / field-user restrictions also apply, including hidden Payables Preview and Dispatches Today.</p>}
+            <p className="text-muted-foreground">Step 5 — Advanced permissions: {canAdjust ? "after creation, optionally fine-tune the account with the existing matrix and Save permissions." : "ask an administrator or permission manager to fine-tune this account after creation."} The account will exist before these optional adjustments.</p>
             {setupError && failedUserId != null && (
               <div className="flex items-start gap-2 rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-amber-800" data-testid="banner-setup-incomplete">
                 <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-                <span>Setup incomplete ({setupError}). Retry finishes the same account — it will not create a duplicate.</span>
+                <span>Setup incomplete: {friendlyUserError(setupError)}. Do not treat this account as ready. Retry finishes the same account — it will not create a duplicate. If site access is outside your scope, an administrator must complete setup.</span>
               </div>
             )}
           </div>
         )}
 
+        {step === 4 && <div className="space-y-3 text-sm" data-testid="wizard-advanced">
+          <p className="font-medium">Account created. Permissions and site setup completed.</p>
+          <p className="text-muted-foreground">The user still follows existing sign-in, device approval, field-user and workflow restrictions. Advanced adjustments are optional and saved separately; creating the account did not save any additional adjustments.</p>
+          <PermissionReview matrix={creationProposal.matrix} privileged={isAdmin} />
+          {canAdjust && onAdvanced && createdId !== null && <Button variant="outline" onClick={() => onAdvanced(createdId)} data-testid="button-wizard-advanced">Open advanced permissions</Button>}
+        </div>}
         <DialogFooter className="gap-2">
-          {step > 0 && (
-            <Button variant="outline" onClick={() => setStep(step - 1)} disabled={busy} data-testid="button-wizard-back">Back</Button>
+          {step > 0 && step < 4 && (
+            <Button variant="outline" onClick={() => setStep(step - 1)} disabled={busy || (failedUserId !== null && step !== 3)} data-testid="button-wizard-back">Back</Button>
           )}
-          <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          {step < 3 ? (
+          <Button variant="outline" onClick={onClose} disabled={busy}>{step === 4 ? "Done" : "Cancel"}</Button>
+          {step === 4 ? null : step < 3 ? (
             <Button
               onClick={() => setStep(step + 1)}
               disabled={(step === 0 && !basicsValid) || (step === 1 && !roleValid) || (step === 2 && !siteValid)}
@@ -653,7 +680,7 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
               Retry setup
             </Button>
           ) : (
-            <Button onClick={() => create.mutate()} disabled={busy || !basicsValid || !siteValid} data-testid="button-create-user-confirm">
+            <Button onClick={() => create.mutate()} disabled={busy || !basicsValid || !roleValid || !siteValid} data-testid="button-create-user-confirm">
               {create.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Create user
             </Button>
@@ -823,9 +850,15 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
   });
 
   const [matrix, setMatrix] = useState<PermissionMatrix>(emptyMatrix());
+  const initializedUserId = useRef<number | null>(null);
+  const [pendingRole, setPendingRole] = useState<string | null>(null);
+  const [roleMode, setRoleMode] = useState<"merge" | "replace">("merge");
   useEffect(() => {
-    if (permsQ.data?.matrix) setMatrix(permsQ.data.matrix);
-  }, [permsQ.data?.matrix]);
+    if (permsQ.data?.matrix && initializedUserId.current !== userId) {
+      initializedUserId.current = userId;
+      setMatrix(permsQ.data.matrix);
+    }
+  }, [permsQ.data?.matrix, userId]);
 
   const isPartialManager = !currentIsAdmin && canManagePermissions && permissionManagerScope === "partial";
 
@@ -844,9 +877,11 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
   // erasing grants outside this manager's scope.
   const hasUnmanagedGrants = isPartialManager && SECTION_KEYS.some((s) =>
     ACTIONS.some((a) => matrix[s]?.[a] && !canGrantAction(s, a)));
+  const roleProposal = pendingRole ? proposeRole(matrix, applyRoleTemplate(pendingRole), roleMode, canGrantAction) : null;
 
   const save = useMutation({
     mutationFn: async () => {
+      if (hasUnmanagedGrants || pendingRole !== null) throw new Error("Review role changes and resolve out-of-scope grants before saving.");
       const r = await apiRequest("PUT", `/api/auth/users/${userId}/permissions`, matrix);
       return r.json();
     },
@@ -862,6 +897,7 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
 
   const copy = useMutation({
     mutationFn: async (fromUserId: number) => {
+      if (hasUnmanagedGrants) throw new Error("An administrator or full permission manager must copy permissions to avoid removing existing access.");
       const r = await apiRequest("POST", `/api/auth/users/${userId}/copy-permissions`, { fromUserId });
       return r.json();
     },
@@ -1042,11 +1078,16 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
             <DialogTitle>Loading permissions</DialogTitle>
             <DialogDescription>Loading this user's section permissions.</DialogDescription>
           </DialogHeader>
-          <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin" /></div>
+          <div className="space-y-3 py-6" aria-label="Loading permissions">{[1, 2, 3].map((i) => <div key={i} className="h-12 rounded bg-muted animate-pulse" />)}</div>
         </DialogContent>
       </Dialog>
     );
   }
+  if (permsQ.isError) return <Dialog open onOpenChange={(v) => !v && onClose()}>
+    <DialogContent><DialogHeader><DialogTitle>Permissions could not be loaded</DialogTitle><DialogDescription>No permissions have been changed. Retry to load the existing matrix.</DialogDescription></DialogHeader>
+      <DialogFooter><Button variant="outline" onClick={onClose}>Close</Button><Button onClick={() => permsQ.refetch()}>Retry</Button></DialogFooter>
+    </DialogContent>
+  </Dialog>;
 
   return (
     <Dialog open={true} onOpenChange={(v) => !v && onClose()}>
@@ -1061,9 +1102,9 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
           <DialogDescription>Choose section actions, then save permissions. Grey cells are not used by that section.</DialogDescription>
         </DialogHeader>
 
-        {target?.isAdmin && (
+        {(target?.isAdmin || target?.isOwner) && (
           <div role="note" className="rounded-md border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900" data-testid="banner-admin-permissions">
-            Administrator — Full access. The switches below have no effect while this user is an Administrator.
+            Owner / Administrator — existing privileged access is separate from role templates. Applying an ordinary template does not remove these flags or restrict the existing bypass. Owner status cannot be conferred here; only an administrator can change the Administrator flag in Edit user.
           </div>
         )}
         {notifyMismatch && (
@@ -1084,23 +1125,20 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
         )}
 
         <div className="flex flex-wrap items-center gap-2 mb-2">
+          <Select
+            onValueChange={(val) => { setPendingRole(val); setRoleMode("merge"); }}
+            value={pendingRole ?? ""}
+            disabled={!!target?.isAdmin || !!target?.isOwner || save.isPending || copy.isPending}
+          >
+            <SelectTrigger className="h-8 text-xs w-52" data-testid="select-role-template">
+              <SelectValue placeholder="Preview a role template…" />
+            </SelectTrigger>
+            <SelectContent>
+              {primaryRoleTemplates().map((t) => <SelectItem key={t.id} value={t.id} data-testid={`template-${t.id}`}>{t.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
           {!isPartialManager && (
             <>
-              <Select
-                onValueChange={(val) => setMatrix(applyRoleTemplate(val))}
-                value=""
-              >
-                <SelectTrigger className="h-8 text-xs w-44" data-testid="select-role-template">
-                  <SelectValue placeholder="Load role template…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ROLE_TEMPLATES.map((t) => (
-                    <SelectItem key={t.id} value={t.id} data-testid={`template-${t.id}`}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
               <Button size="sm" variant="outline" onClick={() => setMatrix(prev => {
                 const next = fullMatrix();
                 for (const key of SECTION_KEYS) {
@@ -1120,7 +1158,7 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
           {otherUsers.length > 0 && (
             <div className="flex items-center gap-2 ml-auto">
               <Copy className="h-4 w-4 text-muted-foreground" />
-              <Select onValueChange={(v) => copy.mutate(Number(v))}>
+              <Select disabled={hasUnmanagedGrants || pendingRole !== null || copy.isPending || save.isPending} onValueChange={(v) => copy.mutate(Number(v))}>
                 <SelectTrigger className="w-52 h-8" data-testid="select-copy-from">
                   <SelectValue placeholder="Copy from another user…" />
                 </SelectTrigger>
@@ -1135,6 +1173,32 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
         </div>
 
         <div className="overflow-y-auto flex-1 pr-1">
+          {pendingRole && roleProposal && <section className="rounded-md border bg-muted/30 p-4 mb-4 space-y-3" aria-label="Role change preview" data-testid="role-change-preview">
+            <h3 className="font-semibold">Review {ROLE_TEMPLATES.find((t) => t.id === pendingRole)?.label}</h3>
+            <p className="text-sm text-muted-foreground">Nothing has changed yet. This compares against the current matrix, including unsaved individual adjustments. Site assignments, password, Administrator, Owner, field-user and permission-manager flags stay unchanged.</p>
+            <div className="space-y-2 text-sm">
+              <label className="flex items-start gap-2"><input type="radio" name="role-mode" checked={roleMode === "merge"} onChange={() => setRoleMode("merge")} data-testid="role-mode-merge" /><span>Add role permissions — preserve all existing individual adjustments (recommended).</span></label>
+              <label className="flex items-start gap-2"><input type="radio" name="role-mode" checked={roleMode === "replace"} onChange={() => setRoleMode("replace")} data-testid="role-mode-replace" /><span>Replace the matrix — remove existing grants not included in this template, including compatibility and Notify bits you may change.</span></label>
+            </div>
+            {roleProposal.capped.length > 0 && <div className="text-sm text-amber-700" data-testid="role-preview-capped">
+              <p>Your authority caps this proposal. These requested changes are excluded; unowned existing grants are preserved:</p>
+              <details><summary className="cursor-pointer">Show {roleProposal.capped.length} excluded changes</summary><RoleChangeList changes={roleProposal.capped} /></details>
+            </div>}
+            {hasUnmanagedGrants && <p className="text-sm text-amber-700">An administrator or full permission manager must save this account. Neither merge nor replacement will silently remove unowned existing grants.</p>}
+            <div className="max-h-52 overflow-y-auto rounded border p-3"><RoleChangeList changes={roleProposal.changes} /></div>
+            <PermissionReview matrix={roleProposal.matrix} />
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setPendingRole(null)} data-testid="button-cancel-role">Cancel preview</Button>
+              <Button onClick={() => { setMatrix(roleProposal.matrix); setPendingRole(null); toast({ title: "Role changes staged", description: "Not saved yet. Review the matrix, then Save permissions." }); }} disabled={hasUnmanagedGrants || save.isPending || copy.isPending} data-testid="button-confirm-role">
+                {roleMode === "replace" ? "Confirm replacement and stage" : "Confirm additions and stage"}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Confirm only stages these changes. The existing Save permissions button is required to persist them.</p>
+          </section>}
+          <details className="rounded-md border p-3 mb-3">
+            <summary className="cursor-pointer text-sm font-medium">Readable access review</summary>
+            <div className="mt-3"><PermissionReview matrix={matrix} privileged={!!target?.isAdmin || !!target?.isOwner} /></div>
+          </details>
           <Accordion type="multiple" defaultValue={visibleGroups.filter((g) => g.id !== "legacy").map((g) => g.id)}>
             {visibleGroups.map((group) => {
               const allGrantableInGroup = group.sections.flatMap((s) =>
@@ -1185,7 +1249,7 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
 
         <DialogFooter className="pt-3 border-t mt-2">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-           <Button onClick={() => save.mutate()} disabled={save.isPending || hasUnmanagedGrants} data-testid="button-save-perms">
+           <Button onClick={() => save.mutate()} disabled={save.isPending || copy.isPending || hasUnmanagedGrants || pendingRole !== null} data-testid="button-save-perms">
             {save.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
             Save permissions
           </Button>

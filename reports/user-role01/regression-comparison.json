@@ -1,0 +1,40 @@
+{
+  "baselineFailed": 48,
+  "currentFailed": 48,
+  "newFailures": [],
+  "resolvedFailures": [],
+  "currentFiles": 344,
+  "missingBaselineFiles": [],
+  "focused": [
+    {
+      "file": "perm01MatrixUi.test.tsx",
+      "status": "passed",
+      "tests": 7
+    },
+    {
+      "file": "permBabu01.test.tsx",
+      "status": "passed",
+      "tests": 2
+    },
+    {
+      "file": "permissionDelegation.test.ts",
+      "status": "passed",
+      "tests": 27
+    },
+    {
+      "file": "siteAccessSecurity.test.ts",
+      "status": "passed",
+      "tests": 18
+    },
+    {
+      "file": "userRole01.test.ts",
+      "status": "passed",
+      "tests": 16
+    },
+    {
+      "file": "user-role-review.test.tsx",
+      "status": "passed",
+      "tests": 13
+    }
+  ]
+}

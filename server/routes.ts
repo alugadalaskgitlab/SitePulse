@@ -313,6 +313,7 @@ export async function registerRoutes(
 
   app.post("/api/admin/licensed-modules", requireAuth, async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const { licensedModules } = req.body;
       if (!Array.isArray(licensedModules)) {
         return res.status(400).json({ message: "licensedModules must be an array" });
@@ -329,6 +330,7 @@ export async function registerRoutes(
 
   app.post("/api/admin/branding", requireAuth, async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const { companyName, companyShortName, appTagline, logoFile } = req.body;
       if (typeof companyName === "string" && companyName.trim())
         await storage.setSetting("company_name", companyName.trim());

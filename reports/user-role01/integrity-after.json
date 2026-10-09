@@ -1,0 +1,46 @@
+{
+  "users": {
+    "count": 6,
+    "sha256": "6620bd07492b5bbaab1a9edc88b72e5faff527ae5571c52b55e74669efddfca0"
+  },
+  "user_permissions": {
+    "count": 371,
+    "sha256": "21cf8ccdd31a690b4a10ba4f7244898804efded282a79ae44eb1d19197778594"
+  },
+  "user_site_access": {
+    "count": 11,
+    "sha256": "e06200ad43b2ca7d1c3c57bfb2fd89cd0adf3a1590dcd0541d844d6cebeb9d51"
+  },
+  "sites": {
+    "count": 8,
+    "sha256": "0fd85a19fc7b3f6e2a0134d094bd3a755cecc709f11967d2deff3ed6bc09d1c3"
+  },
+  "boq_projects": {
+    "count": 1,
+    "sha256": "348bb8fafbebaa469cdeeb3316e7f5260e5f8a1ada3b526cc704789e0d28a436"
+  },
+  "boq_items": {
+    "count": 12,
+    "sha256": "733bbef2701f9d874b9f58c4c02b01103d571ff2d4049c858eed48931c74f1fb"
+  },
+  "earthwork_arrangements": {
+    "count": 5,
+    "sha256": "61a2493103db8122d3436d81362be510d2263c4c380d662614835be701dc520f"
+  },
+  "site_material_trips": {
+    "count": 10,
+    "sha256": "117a8e15e3eb967bcfa58d72073aa9a98720bef6352b699503e0b179a5128ed5"
+  },
+  "vendors": {
+    "count": 0,
+    "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "vendor_bills": {
+    "count": 45,
+    "sha256": "a1b9cb096b6ac25c910e8a7c856d309016e8d4a0abb99e4f9fef73de74469317"
+  },
+  "vendor_bill_items": {
+    "count": 172,
+    "sha256": "b49bff3bc956b5851a1b096b6dfb06edefea49f9056bc5f70e840cfd5e2125c3"
+  }
+}

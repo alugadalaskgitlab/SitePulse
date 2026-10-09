@@ -336,6 +336,8 @@ export type RoleTemplate = {
   id: string;
   label: string;
   description: string;
+  /** Kept for saved clients and explicit legacy setup retries, not the standard picker. */
+  legacy?: boolean;
 };
 
 function buildTemplateMatrix(
@@ -455,7 +457,59 @@ function buildViewerMatrix(): PermissionMatrix {
   return m;
 }
 
+// Explicit allowlists: adding a new system permission must never grant it to
+// operational staff automatically. These templates only run on explicit setup.
+const _OPERATIONS_DIRECTOR_MATRIX = buildTemplateMatrix(
+  [
+    "site_dprs", "site_materials", "purchase_indents_raise", "irn_raise",
+    "diesel_req_raise", "vendor_bills_raise", "stores_inventory",
+    "plant_shift_logs", "plant_heating", "plant_equipment", "plant_generator_logs",
+    "plant_maintenance", "plant_production", "plant_materials", "plant_bitumen", "plant_ldo",
+    "labour_management", "qto_boq", "work_programme", "project_scope",
+    "master_equipment", "master_parties", "master_materials", "master_personnel",
+    "vendor_masters_manage", "rate_cards", "stock_reconciliation",
+    "rmc_batch_records", "rmc_mix_designs", "rmc_cube_tests",
+    "rmc_raw_materials", "rmc_delivery_challans",
+  ],
+  ["site_dprs", "purchase_indents_approve", "irn_approve", "diesel_req_approve",
+    "vendor_bills_verify", "vendor_bills_approve", "project_scope", "work_programme_review"],
+);
+for (const section of [
+  "dashboard", "site_hub", "equipment_hub", "reports_hub", "stores_hub",
+  "finance_hub", "hmp_hub", "rmc_hub", "masters_hub", "purchase_indents_view",
+  "irn_view", "diesel_req_view", "vendor_bills_view", "report_management",
+  "report_site_purchases", "plant_daily_reports", "plant_stock",
+  "plant_ldo_reconciliation", "plant_variance", "plant_audit", "plant_diesel_proc",
+  "plant_manpower_review", "plant_heating_trends", "equipment_performance_report",
+  "rmc_daily_report", "planning_masters", "norms_library", "estimator_portal",
+  "mix_calculator", "concrete_calculator",
+] satisfies SectionKey[]) {
+  _OPERATIONS_DIRECTOR_MATRIX[section] = {
+    ..._OPERATIONS_DIRECTOR_MATRIX[section], view: true, view_reports: true,
+  };
+}
+
+const _SITE_SUPERVISOR_MATRIX = buildTemplateMatrix(
+  ["site_dprs", "site_materials", "irn_raise"],
+);
+for (const section of ["dashboard", "site_hub", "equipment_hub", "reports_hub",
+  "irn_view", "work_programme", "work_programme_review", "project_scope",
+  "equipment_performance_report"] satisfies SectionKey[]) {
+  _SITE_SUPERVISOR_MATRIX[section] = { ..._SITE_SUPERVISOR_MATRIX[section], view: true };
+}
+function storesProcurementMatrix(): PermissionMatrix {
+  const result = emptyMatrix();
+  for (const section of SECTION_KEYS) for (const action of ACTIONS)
+    result[section][action] = _STORES_MATRIX[section][action] || _PROCUREMENT_MATRIX[section][action];
+  return result;
+}
+
 export const ROLE_TEMPLATES: RoleTemplate[] = [
+  {
+    id: "operations_director",
+    label: "Operations Director / Project Head — Full Operations",
+    description: "Manages assigned-site operations, planning, materials, equipment and commercial work; approves permitted transactions. No Delete, user management or system administration.",
+  },
   {
     id: "site_engineer",
     label: "Site Engineer",
@@ -470,30 +524,45 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     id: "stores",
     label: "Stores",
     description: "Store keeper. GRNs, issues, stock ledger, material receipts, IRN issue.",
+    legacy: true,
   },
   {
     id: "procurement",
     label: "Procurement",
     description: "Raises Purchase Indents and vendor bills, manages parties and materials.",
+    legacy: true,
+  },
+  {
+    id: "site_supervisor",
+    label: "Site Supervisor",
+    description: "Records daily site work and material trips, raises internal requisitions and views assigned-site plans. No commercial approvals.",
+  },
+  {
+    id: "stores_procurement",
+    label: "Stores & Procurement",
+    description: "Manages store receipts and issues, raises purchase indents and vendor bills, and issues approved internal requisitions.",
   },
   {
     id: "equipment_plant",
-    label: "Equipment / Plant",
+    label: "Equipment & Fleet",
     description: "Plant and fleet operations — shift logs, equipment usage, maintenance, diesel requests.",
   },
   {
     id: "billing_measurements",
-    label: "Billing / Measurements",
+    label: "Accounts & Commercial",
     description: "Vendor bill raise/verify, management reports, BOQ measurements.",
   },
   {
     id: "viewer",
-    label: "Viewer / Auditor",
+    label: "Viewer / Read Only",
     description: "Read-only access across operational modules. Cannot create or edit anything.",
   },
 ];
 
 const _TEMPLATE_MATRICES: Record<string, () => PermissionMatrix> = {
+  operations_director: () => _OPERATIONS_DIRECTOR_MATRIX,
+  site_supervisor: () => _SITE_SUPERVISOR_MATRIX,
+  stores_procurement: storesProcurementMatrix,
   site_engineer: () => _SITE_ENGINEER_MATRIX,
   project_manager: () => _PM_MATRIX,
   stores: () => _STORES_MATRIX,

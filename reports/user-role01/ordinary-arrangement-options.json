@@ -1,0 +1,260 @@
+{
+  "status": 200,
+  "data": [
+    {
+      "id": 1900000700,
+      "agencyName": "USERROLE01 Agency",
+      "materialLabel": "Selected Soil / Subgrade Material",
+      "reachLabel": "2.4 to 3.8",
+      "chainageFrom": 2.4,
+      "chainageTo": 3.8,
+      "projectName": "USERROLE01 Project",
+      "status": "approved",
+      "revisionHistory": [
+        {
+          "type": "material",
+          "reason": "rate wrongly entered",
+          "changes": {
+            "agreedRate": 61,
+            "components": {
+              "dumping": "agency",
+              "loading": "agency",
+              "tippers": "agency",
+              "watering": "hlc",
+              "equipment": "agency",
+              "spreading": "hlc",
+              "transport": "agency",
+              "compaction": "hlc",
+              "excavation": "agency",
+              "diesel_fuel": "agency",
+              "material_source": "hlc",
+              "quality_testing": "hlc",
+              "operators_drivers": "agency",
+              "permits_approvals": "hlc",
+              "survey_setting_out": "hlc",
+              "royalty_seigniorage": "hlc",
+              "source_identification": "hlc"
+            }
+          },
+          "outcome": "approved",
+          "version": 1,
+          "previous": {
+            "agreedRate": 850,
+            "components": {
+              "dumping": "agency",
+              "loading": "agency",
+              "tippers": "agency",
+              "watering": "hlc",
+              "equipment": "agency",
+              "spreading": "hlc",
+              "transport": "agency",
+              "compaction": "hlc",
+              "excavation": "agency",
+              "diesel_fuel": "agency",
+              "material_source": "hlc",
+              "quality_testing": "hlc",
+              "operators_drivers": "agency",
+              "permits_approvals": "hlc",
+              "survey_setting_out": "hlc",
+              "royalty_seigniorage": "hlc",
+              "source_identification": "hlc"
+            }
+          },
+          "appliedNow": true,
+          "approvedAt": "2026-08-04T03:39:22.463Z",
+          "proposedAt": "2026-08-04T03:39:22.463Z",
+          "effectiveFrom": "2026-08-04T03:39:22.463Z",
+          "approvedByUserId": 2,
+          "proposedByUserId": 2
+        },
+        {
+          "type": "material",
+          "reason": "QTY allocation",
+          "changes": {
+            "components": {
+              "dumping": "agency",
+              "loading": "agency",
+              "tippers": "agency",
+              "watering": "hlc",
+              "equipment": "agency",
+              "spreading": "hlc",
+              "transport": "agency",
+              "compaction": "hlc",
+              "excavation": "agency",
+              "diesel_fuel": "agency",
+              "material_source": "hlc",
+              "quality_testing": "hlc",
+              "operators_drivers": "agency",
+              "permits_approvals": "hlc",
+              "survey_setting_out": "hlc",
+              "royalty_seigniorage": "hlc",
+              "source_identification": "hlc"
+            },
+            "allocatedQty": 12274
+          },
+          "outcome": "approved",
+          "version": 2,
+          "previous": {
+            "components": {
+              "dumping": "agency",
+              "loading": "agency",
+              "tippers": "agency",
+              "watering": "hlc",
+              "equipment": "agency",
+              "spreading": "hlc",
+              "transport": "agency",
+              "compaction": "hlc",
+              "excavation": "agency",
+              "diesel_fuel": "agency",
+              "material_source": "hlc",
+              "quality_testing": "hlc",
+              "operators_drivers": "agency",
+              "permits_approvals": "hlc",
+              "survey_setting_out": "hlc",
+              "royalty_seigniorage": "hlc",
+              "source_identification": "hlc"
+            },
+            "allocatedQty": 12000
+          },
+          "appliedNow": true,
+          "approvedAt": "2026-08-04T03:42:15.765Z",
+          "proposedAt": "2026-08-04T03:42:15.765Z",
+          "effectiveFrom": "2026-08-04T03:42:15.765Z",
+          "approvedByUserId": 2,
+          "proposedByUserId": 2
+        },
+        {
+          "type": "material",
+          "reason": "Rate wrongly entered",
+          "changes": {
+            "components": {
+              "dumping": "agency",
+              "loading": "agency",
+              "tippers": "agency",
+              "watering": "hlc",
+              "equipment": "agency",
+              "spreading": "hlc",
+              "transport": "agency",
+              "compaction": "hlc",
+              "excavation": "agency",
+              "diesel_fuel": "agency",
+              "material_source": "hlc",
+              "quality_testing": "hlc",
+              "operators_drivers": "agency",
+              "permits_approvals": "hlc",
+              "survey_setting_out": "hlc",
+              "royalty_seigniorage": "hlc",
+              "source_identification": "hlc"
+            },
+            "allocatedQty": 12474,
+            "borrowSource": "KM 2+0 LHS"
+          },
+          "outcome": "approved",
+          "version": 3,
+          "previous": {
+            "components": {
+              "dumping": "agency",
+              "loading": "agency",
+              "tippers": "agency",
+              "watering": "hlc",
+              "equipment": "agency",
+              "spreading": "hlc",
+              "transport": "agency",
+              "compaction": "hlc",
+              "excavation": "agency",
+              "diesel_fuel": "agency",
+              "material_source": "hlc",
+              "quality_testing": "hlc",
+              "operators_drivers": "agency",
+              "permits_approvals": "hlc",
+              "survey_setting_out": "hlc",
+              "royalty_seigniorage": "hlc",
+              "source_identification": "hlc"
+            },
+            "allocatedQty": 12274,
+            "borrowSource": null
+          },
+          "approvedAt": "2026-08-04T03:42:40.173Z",
+          "proposedAt": "2026-08-04T03:41:02.877Z",
+          "effectiveFrom": "2026-08-04T03:42:40.173Z",
+          "approvedByUserId": 2,
+          "proposedByUserId": 2
+        },
+        {
+          "type": "material",
+          "reason": "OK",
+          "changes": {
+            "components": {
+              "dumping": "agency",
+              "loading": "agency",
+              "tippers": "agency",
+              "watering": "hlc",
+              "equipment": "agency",
+              "spreading": "hlc",
+              "transport": "agency",
+              "compaction": "hlc",
+              "excavation": "agency",
+              "diesel_fuel": "agency",
+              "material_source": "hlc",
+              "quality_testing": "hlc",
+              "operators_drivers": "agency",
+              "permits_approvals": "hlc",
+              "survey_setting_out": "hlc",
+              "royalty_seigniorage": "hlc",
+              "source_identification": "hlc"
+            }
+          },
+          "outcome": "approved",
+          "version": 4,
+          "previous": {
+            "components": {
+              "dumping": "agency",
+              "loading": "agency",
+              "tippers": "agency",
+              "watering": "hlc",
+              "equipment": "agency",
+              "spreading": "hlc",
+              "transport": "agency",
+              "compaction": "hlc",
+              "excavation": "agency",
+              "diesel_fuel": "agency",
+              "material_source": "hlc",
+              "quality_testing": "hlc",
+              "operators_drivers": "agency",
+              "permits_approvals": "hlc",
+              "survey_setting_out": "hlc",
+              "royalty_seigniorage": "hlc",
+              "source_identification": "hlc"
+            }
+          },
+          "appliedNow": true,
+          "approvedAt": "2026-08-08T09:10:15.171Z",
+          "proposedAt": "2026-08-08T09:10:15.171Z",
+          "effectiveFrom": "2026-08-08T09:10:15.171Z",
+          "approvedByUserId": 2,
+          "proposedByUserId": 2
+        },
+        {
+          "type": "operational",
+          "reason": "OK",
+          "changes": {
+            "chainageTo": 3.8,
+            "reachLabel": "2.4 to 3.8",
+            "chainageFrom": 2.4
+          },
+          "outcome": "applied",
+          "previous": {
+            "chainageTo": null,
+            "reachLabel": "2+0 to 3+0",
+            "chainageFrom": null
+          },
+          "changedAt": "2026-08-08T09:10:15.171Z",
+          "changedByUserId": 2
+        }
+      ],
+      "boqProjectId": 1900000700,
+      "boqItemId": 1900000700,
+      "boqItemAllocations": null
+    }
+  ]
+}

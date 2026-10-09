@@ -1,0 +1,11 @@
+{
+  "status": 200,
+  "data": {
+    "excludedCount": 0,
+    "exclusionMessage": "",
+    "eligibleCount": 1,
+    "overwriteCount": 0,
+    "alreadyLinkedCount": 0,
+    "previewToken": "700c2cfd99288169d4982d9a505aa5e5f4ba773dcfa78b1b9fee6390e749dc91"
+  }
+}

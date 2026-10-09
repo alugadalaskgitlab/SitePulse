@@ -9,6 +9,10 @@ description: Deployment model, customer approach, and multi-project architecture
 
 **Chosen approach:** One independent deployment per customer. Each customer gets their own URL, their own database, their own codebase fork.
 
+The owner reconfirmed this model for commercial user creation and role templates
+on 2026-10-09. Company isolation remains the deployment/database boundary;
+do not introduce shared-database tenancy as part of user management.
+
 **Why Option A (not multi-tenant):**
 - Construction companies each have different internal workflows, equipment names, report formats, DPR fields, approval chains, and plant configurations.
 - Customer-specific customisations are the primary driver — multi-tenant would require complex feature-flag systems for per-customer differences.

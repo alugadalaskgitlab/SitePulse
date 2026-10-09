@@ -84,6 +84,15 @@ repair a failed positive delivery check.
 
 ## Publishing access preservation
 
+Verify privileged write endpoints using authenticated ordinary-user requests;
+an `/api/admin/` prefix or admin-only UI is not proof of a backend guard.
+
+**Why:** Commercial-role acceptance found existing company branding/licensing
+writes protected only by sign-in, despite their administrative URL and UI.
+
+**How to apply:** Keep explicit Admin/Owner checks on system writes and verify
+representative refusals when adding broad operational templates.
+
 The owner does not want another recurring startup repair. Access preservation
 must be a one-time, durably marked, audited, additive View-only operation;
 admins/owners remain untouched. Do not inspect or use a production connection

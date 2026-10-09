@@ -1,0 +1,32 @@
+[
+  {
+    "path": "/api/auth/users",
+    "method": "GET",
+    "status": 403
+  },
+  {
+    "path": "/api/auth/users",
+    "method": "POST",
+    "status": 403
+  },
+  {
+    "path": "/api/auth/users/79/permissions",
+    "method": "PUT",
+    "status": 403
+  },
+  {
+    "path": "/api/admin/branding",
+    "method": "POST",
+    "status": 403
+  },
+  {
+    "path": "/api/admin/licensed-modules",
+    "method": "POST",
+    "status": 403
+  },
+  {
+    "path": "/api/site-material-trips/0",
+    "method": "DELETE",
+    "status": 403
+  }
+]
