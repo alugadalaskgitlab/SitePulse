@@ -23,6 +23,17 @@ authenticated Administrator confirmation and an atomic preservation audit.
 
 Server-owned review facts must follow a uniquely identified source row, with semantic comparisons for changes.
 
+Correction preservation checks must compare persisted resource identities and
+facts, not client-session isNew/workAssignmentEdited flags.
+
+**Why:** assignment-touch flags can survive reverting the edit and restoring a
+session draft. A generic error shared across resource sections cannot identify
+the offending row after the fact.
+
+**How to apply:** test the actual SiteEdit mapper through JSON serialization,
+retain strict identity/child/resource comparisons, and include section, row
+identity and field in rejection messages without logging private payloads.
+
 **Why:** legacy rows may have no stable entry key or normalized chainage values. Raw comparisons discard valid approvals, while duplicate source claims can copy approval onto multiple rows.
 
 **How to apply:** enforce one-to-one validated source identity before geometry exceptions and audit copying; normalize chainage and nullable booleans, ignore incoming approval fields, and reset review when relevant work facts change.

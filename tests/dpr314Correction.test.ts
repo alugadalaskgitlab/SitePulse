@@ -4,6 +4,73 @@ import { planDpr314Correction, saveDpr314Correction } from "../server/dpr314Corr
 import { auditLogs, progressEntries } from "../shared/schema";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
+import ts from "typescript";
+import { calculateLengthFromChainage } from "../shared/dprGeometry";
+import { normalizeExcavationMaterialOutcome } from "../shared/cutFillReconciliation";
+import { hydrateCutFillConsumptions } from "../client/src/lib/cutFillLedger";
+
+// Execute the actual production mapper, not a hand-maintained payload copy.
+// Extracting just the pure function avoids mounting the entire routed editor.
+function sourceFunction(path: string, name: string, dependencies: Record<string, any> = {}) {
+  const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const fn = source.statements.find(n => ts.isFunctionDeclaration(n) && n.name?.text === name)!;
+  const code = ts.transpileModule(fn.getText(source).replace("export function", "function"), {
+    compilerOptions: { target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  return new Function(...Object.keys(dependencies), `${code}; return ${name};`)(...Object.values(dependencies));
+}
+const mapRealForm = sourceFunction("client/src/pages/SiteEdit.tsx", "mapDprToFormState", {
+  calculateLengthFromChainage, normalizeExcavationMaterialOutcome, hydrateCutFillConsumptions,
+  newEntryKey: () => "test-entry", newLabourRowKey: () => "test-labour",
+  readLabourWorkerNames: sourceFunction("client/src/components/LabourWorkerNames.tsx", "readLabourWorkerNames"),
+});
+
+function hydratedFixture() {
+  const { saved } = fixture();
+  saved.progress[0].uom = "CUM";
+  saved.equipment[0].entryType = null; // actual mapper supplies time_meter
+  saved.labour = [{ id: 5, category: null, gender: null, count: 2, workerNames: ["Worker"] }];
+  saved.materials = [{ id: 6, type: null, material: "Stone", quantity: "12.000", uom: "MT" }];
+  saved.sitePurchases = [{ id: 7, itemDescription: "Consumable", amount: "50.00", quantity: "2.000" }];
+  const form = mapRealForm(saved);
+  // Match the dedicated SiteEdit POST body, which deliberately uses raw state.
+  form.structureItems = [];
+  form.baselineProgress = structuredClone(saved.progress);
+  form.progress[0].chainageFrom = "1+100";
+  form.progress[0].chainageTo = "1+200";
+  form.progress[0].chainageOverrideReason = "Correct overlap";
+  return { saved, form };
+}
+
+it("accepts actual hydrated/JSON-submitted SiteEdit rows with sticky session flags but unchanged facts", () => {
+  const { saved, form } = hydratedFixture();
+  expect(form.equipment[0].workAssignmentEdited).toBeUndefined();
+  expect(form.equipment[0].isNew).toBeUndefined();
+  // The assignment callback marks touched-then-cleared work as edited; draft
+  // restoration retains it. No persisted assignment exists in this fixture.
+  form.equipment[0].workAssignmentEdited = true;
+  form.equipment[0].activitySegments = [];
+  form.equipment[0].resourceScope = null;
+  for (const section of ["equipment", "labour", "materials", "sitePurchases"]) form[section][0].isNew = true;
+  const before = structuredClone(saved);
+  expect(planDpr314Correction(saved, JSON.parse(JSON.stringify(form)), admin, confirmation)).toHaveLength(1);
+  expect(saved).toEqual(before);
+});
+it.each(["boqItemId", "resourceScope", "structureId", "activitySegments"])("rejects actual assignment change %s in real mapped payload", field => {
+  const { saved, form } = hydratedFixture();
+  form.equipment[0].workAssignmentEdited = true;
+  form.equipment[0][field] = field === "activitySegments"
+    ? [{ startTime: "09:00", endTime: "10:00", boqItems: [{ boqItemId: 123 }] }]
+    : field === "resourceScope" ? "general" : 123;
+  expect(() => planDpr314Correction(saved, form, admin, confirmation)).toThrow(`equipment[0] (saved row 741)`);
+});
+it.each([["labour", "count"], ["materials", "quantity"], ["sitePurchases", "amount"], ["equipment", "plantUsageId"], ["equipment", "persistedId"]])(
+  "rejects real mapped %s.%s changes even with session flags", (section, field) => {
+    const { saved, form } = hydratedFixture();
+    form[section][0][field] = 999;
+    expect(() => planDpr314Correction(saved, form, admin, confirmation)).toThrow(field);
+  },
+);
 
 const admin = { id: 2, isAdmin: true, fullName: "Test Administrator" };
 const confirmation = { confirmed: true, equipmentLogId: 741, missingUsageId: 188, reason: "Correct overlapping chainages only" };

@@ -15,6 +15,24 @@ const permitted = ["chainageFrom", "chainageTo", "length", "quantity", "chainage
 const empty = (v: any): any => v === "" || v == null ? null
   : Array.isArray(v) ? (v.length ? v.map(empty) : null) : v;
 const same = (a: any, b: any) => isDeepStrictEqual(empty(a), empty(b));
+// Only mirror explicit SiteEdit hydration conversions, not arbitrary coercion.
+const hydratedDefaults: Record<string, Record<string, string>> = {
+  equipment: { entryType: "time_meter" },
+  labour: { category: "Skilled", gender: "Male" },
+  materials: { type: "Received" },
+};
+function sameResourceField(section: string, key: string, incoming: any, stored: any) {
+  if (same(incoming, stored)) return true;
+  const fallback = hydratedDefaults[section]?.[key];
+  const expected = fallback && (section === "equipment" ? stored == null : !stored) ? fallback : stored;
+  const numeric = (section === "materials" && key === "quantity")
+    || (section === "sitePurchases" && ["quantity", "amount"].includes(key));
+  if (numeric && expected != null && incoming != null && incoming !== "") {
+    return typeof incoming === "number" && Number.isFinite(incoming)
+      && Number.isFinite(Number(expected)) && incoming === Number(expected);
+  }
+  return same(incoming, expected);
+}
 function fail(message: string): never { throw new Error(`DPR314_CORRECTION: ${message}`); }
 function keysOnly(row: any, keys: string[]) {
   if (!row || typeof row !== "object" || Object.keys(row).some(k => !keys.includes(k))) fail("Unexpected correction fields");
@@ -51,13 +69,17 @@ export function planDpr314Correction(saved: any, form: any, actor: any, confirma
     rows.forEach((row: any, index: number) => {
       const old = saved[section][index];
       keysOnly(row, [...editable[section].split(" "), "persistedId", "editCreationKey", "isNew", "workAssignmentEdited", "activitySegments", "activityAllocations", "breakdowns"]);
-      if (row.isNew || row.workAssignmentEdited) fail("Equipment assignment changes are not allowed");
-      if (section !== "sitePurchases" && row.persistedId !== old.id) fail(`${section} identity changed`);
+      const context = `${section}[${index}] (saved row ${old.id})`;
+      // These are client-session provenance flags, not persisted facts. A
+      // touched-then-restored assignment may keep workAssignmentEdited=true.
+      // Identity, every resource field and all child evidence still must match.
+      if (section !== "sitePurchases" && row.persistedId !== old.id) fail(`${context}: persistedId changed`);
       for (const key of editable[section].split(" ")) {
-        if (!same(row[key], old[key])) fail(`Unrelated ${section} change: ${key}`);
+        if (!sameResourceField(section, key, row[key], old[key])) fail(`${context}: unrelated field ${key} changed`);
       }
       for (const key of ["activitySegments", "activityAllocations", "breakdowns"]) {
-        if ((row[key]?.length ?? 0) || (old[key]?.length ?? 0)) fail("Child equipment evidence requires ordinary editing");
+        if (row[key] != null && !Array.isArray(row[key])) fail(`${context}: invalid ${key}`);
+        if ((row[key]?.length ?? 0) || (old[key]?.length ?? 0)) fail(`${context}: ${key} requires ordinary editing`);
       }
     });
   }
