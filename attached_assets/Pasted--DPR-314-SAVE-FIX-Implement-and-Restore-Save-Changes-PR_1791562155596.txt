@@ -1,0 +1,83 @@
+# DPR-314-SAVE-FIX — Implement and Restore Save Changes
+
+**PRIORITY: URGENT — Complete this specific DPR correction before other development work.**
+
+The investigation is complete. Do not repeat it.
+
+## 1. Objective
+
+Allow the Administrator to save the corrected chainages and overlap reasons in DPR #314, dated 29 August 2026, TAKKADPALLY-SIRUR.
+
+The existing DPR contains equipment log #741 referencing missing equipment usage #188.
+
+Paid vendor bill #48, line #438, references log #741 for 6.5 hours and ₹5,850.
+
+Implement the smallest safe, explicitly Administrator-confirmed chainage-only correction.
+
+## 2. Strict preservation
+
+The correction must preserve:
+
+- Equipment log #741 and its existing identity
+- Original `plantUsageId = 188`
+- Equipment readings 18147.8 and 18154.3
+- All other existing equipment rows
+- Diesel and stock records
+- Equipment movement history
+- Vendor bill #48 and line #438, including payment status
+- Original DPR and revision history
+
+Do not detach or replace equipment usage #188.
+
+Do not create a new equipment-usage record.
+
+Do not delete and reinsert existing equipment logs as part of this exception.
+
+Do not alter historical equipment or financial records.
+
+## 3. Narrow correction workflow
+
+Permit only the intended progress/chainage changes and overlap reasons.
+
+Require:
+- An authenticated Administrator
+- Explicit confirmation identifying the missing usage link
+- Server-side comparison proving equipment facts remain unchanged
+- Unchanged site, date, diesel, labour, material purchases and all unrelated DPR sections
+- Normal chainage overlap validation
+- Atomic saving and an audit record containing the Administrator, time, reason and progress before/after
+
+Reject the exception if any unrelated data differs.
+
+Ensure standard DPR editing, submission and versioning remain unchanged for other reports.
+
+Do not make this a general bypass for missing equipment links.
+
+## 4. Minimal verification
+
+Test:
+- DPR #314's representative chainage-only correction succeeds
+- Changed equipment facts are rejected
+- Non-Administrator access is rejected
+- Equipment log #741 remains linked to the original paid bill
+- No new equipment usage, diesel, stock or hire transactions are generated
+- Normal DPR versioning remains intact
+
+Run focused tests and one production build.
+
+Check the actual Publish preview for destructive SQL.
+
+No further general investigations or unrelated improvements.
+
+## 5. Delivery
+
+Report briefly:
+1. Exact files changed
+2. Focused test results
+3. Build result
+4. Publish preview result
+5. Whether the existing open browser form can submit the correction after publishing or must be reopened
+
+Commit the fix.
+
+**Do not publish automatically. STOP for approval.**

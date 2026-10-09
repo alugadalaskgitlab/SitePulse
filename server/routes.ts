@@ -27,6 +27,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, vendors, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
 import { db, pool } from "./db";
+import { saveDpr314Correction } from "./dpr314Correction";
 import { readPermissionAccessAudit } from "./permissionAccessMigration";
 import { TransportRateInputError } from "@shared/transportRate";
 import { registerVendorMasterRoutes } from "./vendor-master";
@@ -3428,6 +3429,43 @@ export async function registerRoutes(
     }
     return null;
   }
+
+  app.post("/api/dprs/314/chainage-correction", async (req, res) => {
+    if (!assertAdmin(req, res) || !assertEdit(req, res, "site_dprs")) return;
+    const sites = await getPermittedSiteNames(req);
+    if (sites !== null && !siteMatchesPermitted("TAKKADPALLY-SIRUR", sites)) {
+      return res.status(403).json({ message: "Access denied for this site" });
+    }
+    try {
+      const result = await saveDpr314Correction(db, req.body.form, req.authUser, req.body.confirmation,
+        async (candidate, original) => {
+          const changed = candidate.progress.filter((row: any, i: number) =>
+            dprProgressValidationFactsChanged(original.progress[i], row)
+            || row.chainageOverrideReason !== original.progress[i].chainageOverrideReason
+            || row.lengthOverrideReason !== original.progress[i].lengthOverrideReason);
+          for (const row of changed) {
+            if (dprProgressReviewFactsChanged(original.progress.find((p: any) => p.id === row.id), row)) row.chainageReviewStatus = null;
+          }
+          const validating = { ...candidate, progress: changed };
+          const geometry = await validateVersionProgressGeometry(validating, {
+            allowLengthOverride: true, allowUomOverride: false, sourceProgress: original.progress,
+          });
+          const link = await validateProgressProgrammeLinks(validating);
+          const quantity = await validateProgressQuantitySources(validating);
+          const outcome = await validateProgressMaterialOutcomes(validating);
+          const overlaps = await evaluateChainageOverlapIssues(candidate, 314, original.progress);
+          if (geometry || link || quantity || outcome || overlaps.length) {
+            throw new Error(`DPR314_CORRECTION: ${geometry || link || quantity || outcome || overlaps.map(x => x.message).join("; ")}`);
+          }
+        });
+      res.json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Correction failed";
+      if (message.startsWith("DPR314_CORRECTION:")) return res.status(409).json({ message });
+      console.error("DPR314 correction failed", error);
+      res.status(500).json({ message: "Correction not saved. No partial changes were committed." });
+    }
+  });
 
   app.post("/api/dprs/:id/version", async (req, res) => {
     try {

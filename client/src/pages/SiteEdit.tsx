@@ -1153,6 +1153,27 @@ export default function SiteEdit() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: any) => {
+      if (Number(id) === 314 && isAdmin) {
+        if (Object.values(entryPhotos).some(files => files.length)
+            || equipment.some(row => row.breakdowns?.some(item => item.file))) {
+          throw new Error("DPR 314's correction cannot include new photos or equipment attachments.");
+        }
+        if (!window.confirm("DPR 314: equipment log 741 references missing usage 188. Confirm a chainage-only correction preserving that link, every equipment row, and paid bill 48. No equipment usage will be created.")) {
+          throw new Error("Correction cancelled. Your edits remain in this form.");
+        }
+        const reason = window.prompt("Enter the Administrator's reason for this DPR 314 chainage-only correction (minimum 10 characters):");
+        if (!reason || reason.trim().length < 10) throw new Error("A correction reason of at least 10 characters is required.");
+        const response = await apiRequest("POST", "/api/dprs/314/chainage-correction", {
+          confirmation: { confirmed: true, equipmentLogId: 741, missingUsageId: 188, reason },
+          form: {
+            header: { ...header, boqProjectId: siteBoqProjectId ?? savedDprBoqProjectId },
+            workType, progress, equipment, labour, materials, sitePurchases,
+            structureItems: workType === "structure" ? structureItems : [],
+            baselineProgress: dpr?.progress,
+          },
+        });
+        return response.json();
+      }
       // Create a new version instead of overwriting original
       // Send client's local timestamp for accurate time display
       const clientTimestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
@@ -1180,8 +1201,10 @@ export default function SiteEdit() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
       queryClient.invalidateQueries({ predicate: (q) => { const key = q.queryKey; return Array.isArray(key) && key[0] === "/api/boq/projects" && key[2] === "plan-vs-actual"; } });
       toast({
-        title: "New Version Created",
-        description: "Your edited version has been saved successfully.",
+        title: Number(id) === 314 && newVersion.id === 314 ? "Chainage correction saved" : "New Version Created",
+        description: Number(id) === 314 && newVersion.id === 314
+          ? "DPR 314 corrected. Equipment records and paid bill references were preserved."
+          : "Your edited version has been saved successfully.",
       });
       // Redirect to the new version's report
       setLocation(withReturnTo(`/site/report/${newVersion.id}`, _validatedReturnTo));

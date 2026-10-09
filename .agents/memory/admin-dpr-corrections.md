@@ -5,6 +5,18 @@ description: Why submitted-report corrections need narrow operational authority 
 
 Admin corrections must remain version-based, not overwrite the original report. Moved equipment report copies can be corrected without rewriting canonical predecessors or successor continuity.
 
+An explicitly approved incident-specific chainage correction is a narrow
+exception: the user required original equipment-log identities and paid-bill
+references to survive, with progress changed in place and before/after audit.
+This approval must not be generalized to other DPRs or other missing links.
+
+**Why:** normal equipment-log replacement can break financial source identity;
+reconstructing a missing usage from report readings invents operational history.
+
+**How to apply:** keep ordinary versioning unchanged. Any further in-place
+exception needs separate explicit approval, unchanged-section validation,
+authenticated Administrator confirmation and an atomic preservation audit.
+
 **Why:** unlocking form controls alone leaves save-time lifecycle rejections; indiscriminately adopting all linked usage rows changes unrelated operational history.
 
 **How to apply:** authorize canonical corrections for exact changed usage IDs under transaction locks, never a transaction-wide boolean. Preserve machine/link identities; use explicit reasons and valid conversion metadata for measurement/unit overrides.
