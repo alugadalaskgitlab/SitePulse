@@ -131,7 +131,7 @@ The attached instruction lists 25 names; the actual diff/inventory has 33. `remo
 - Starting workspace HEAD: **3b210b3339caa2dce34f47630311d6e04dd1d5c4**, initially clean. This is the prior code plus instruction assets.
 - Live GitHub `refs/heads/main`, queried with `git ls-remote`: **ddf6fe12a2a2960812bb700317efa38016a66add** (`remote-before.txt`). This independently confirms the previously failed code push has since reached GitHub; local tracking-ref equality alone was not used.
 - Published production source SHA: **UNKNOWN**. Deployment metadata reports an active successful autoscale build, but exposes no source SHA. The targeted available deployment log search returns revision-schema messages, not a commit. Consequently whether the published build contains **7fca52e61cab1513ba7c3f63f5d87262cab4f4fc is UNKNOWN**. Neither timestamp inference nor frontend asset similarity was substituted for proof.
-- Final evidence commit and push outcome are recorded in `delivery.txt` after the attempted push. No publication was requested or performed.
+- Verification evidence commit: **3af2972f**. **This batch's GitHub push FAILED**: GitHub returned “Invalid username or token. Password authentication is not supported for Git operations.” The prior code is present remotely, but these verification commits have not been pushed. Details are recorded in `delivery.txt`; a later local documentation commit includes this failure and the build log. No publication was requested or performed.
 
 ## Remaining limits and required decisions
 

@@ -1,0 +1,10 @@
+Starting workspace source: 3b210b3339caa2dce34f47630311d6e04dd1d5c4 (clean).
+Remote origin/main before push: ddf6fe12a2a2960812bb700317efa38016a66add.
+Verification evidence commit: 3af2972f.
+Command: git push origin HEAD:main
+Result: FAILED, exit 128.
+GitHub message: Invalid username or token. Password authentication is not supported for Git operations.
+The prior ddf6fe12 code commit is verifiably on GitHub, but this verification push did not succeed.
+No publication, database write, sequence advancement, fixture database, or application restart was performed.
+A subsequent local documentation commit records this outcome and includes the ignored-by-default build log.
+Required owner action for delivery: restore the GitHub connection's write authentication, then retry the push.
