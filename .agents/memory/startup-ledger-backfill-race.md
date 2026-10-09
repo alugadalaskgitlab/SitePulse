@@ -23,3 +23,11 @@ they differ.
 **Why:** Permission acceptance encountered legacy startup repairs that reported
 recreated LDO rows; post-cleanup stock ledger/balance counts matched but hashes did
 not. Do not reverse real historical changes as if they were test fixtures.
+
+**Rule:** Individual data-condition or completion-marker guards do not establish
+idempotency of a startup chain when an earlier repair undoes a later one's work.
+
+**Why:** The older dip-accounting repair deletes dispatch consumption; the newer
+dispatch migration skips on its completed marker, and the final missing-row
+backfill recreates dispatch rows. Also inspect asynchronous seeding launched by
+route registration, not only the main startup runner, before certifying safety.

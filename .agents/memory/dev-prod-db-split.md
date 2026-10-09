@@ -56,7 +56,10 @@ Some `app_settings`-gated migrations correctly skip. A few data-condition migrat
 - `migrateDprPlantStockDieselToLedger` — creates diesel ledger entries, 0 on subsequent boots
 - `migrateSupersededDprs` — re-flags superseded DPRs, idempotent
 
-This is expected and correct. The second boot will show all of these as 0.
+Do not assume a second boot will show zero. An older startup LDO repair deletes
+dispatch rows that a later missing-row backfill recreates, even when the newer
+dispatch-model migration is marked complete. Verify the whole chain, not each
+routine's individual idempotency claim.
 
 ## Live production DATA is NOT heliumdb (observed Aug 2026)
 The deployed app's runtime database is the Replit-managed production DB, reachable read-only via the production-environment SQL query path — its contents differ from workspace `$DATABASE_URL` (heliumdb): different bar ids, different project rows. heliumdb is only the Publish-facing schema-diff source. **How to apply:** to inspect or verify live prod data, query environment=production (read-only); to fix prod data, ship an idempotent startup backfill and have the user publish — never assume a psql write to heliumdb touched production.

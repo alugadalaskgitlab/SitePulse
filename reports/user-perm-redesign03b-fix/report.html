@@ -1,0 +1,231 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>03B Fix — investigation and approval proposals</title><style>body{max-width:1050px;margin:32px auto;padding:24px;color:#16323c;font:16px/1.6 system-ui}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}h1{line-height:1.2}.status{padding:16px;background:#fff4da;border-left:4px solid #a65e00}</style><h1>03B Fix — Investigation and Approval Proposals</h1><p class="status">No schema changes, repairs or restarts executed. Approval is required before correction.</p><pre># USER-PERM-REDESIGN-03B-FIX — investigation and approval boundary
+
+## Status
+
+Reviewed implementation commit `595c515d` and the original 03B report.
+**Investigation complete; blockers are not declared resolved.**
+No application restart, schema application, repair, balance reset, reversal,
+account mutation or production write was performed. No permissions were redesigned.
+
+Implemented only a read-only verification utility:
+`scripts/verification/permissions03b-fix-readonly.mjs`.
+It imports no app/storage/startup code, asserts the development database identity,
+uses READ ONLY transactions, records table count/content digests, probes schema
+resolution with LIMIT 0, and checks all seven 03B implementation/test files against
+the original commit. Reports are under `reports/user-perm-redesign03b-fix/`.
+
+## 1. Attachment failure
+
+### Confirmed cause
+
+- `server/db.ts` selects DEV_DATABASE_URL in development; the actual database
+  asserted by this investigation is **sitelog_dev**.
+- `drizzle.config.ts` uses DATABASE_URL, not DEV_DATABASE_URL. The managed
+  database queried separately is **heliumdb**, where attachment_links exists.
+- The six-column table is declared in `shared/schema.ts` (attachmentLinks).
+  Git history introduces it in `67cbed76` with attachment-reuse code.
+- No checked-in SQL migration under migrations creates attachment_links; no
+  startup schema ensure creates it. The schema declaration alone does not execute
+  DDL. Thus the app database can remain behind the managed schema.
+- Fresh READ ONLY query in sitelog_dev: to_regclass is NULL. The actual join
+  dependency, with LIMIT 0, fails with PostgreSQL **42P01**.
+
+This proves current target/schema drift and the missing migration path. It does
+not prove precisely when or by whom heliumdb was updated, or whether the table
+was never created versus later lost in sitelog_dev.
+
+### Actual dependency
+
+`server/storage.ts:getAttachments` reads directly owned attachments, then
+unconditionally queries attachment_links joined to attachments and users.
+An empty direct result does not avoid the join. The material-receipt legacy
+fallback runs later, so it cannot rescue a missing junction table.
+
+Other consumers include attachment counts, deletion-reference checks,
+receipt-evidence summaries and evidence linking. Catching 42P01 and returning an
+empty array would hide missing evidence and leave these other operations broken.
+The intended fix is schema alignment, not an authorization exception or fallback.
+
+### Smallest proposed correction — NOT EXECUTED, approval required
+
+Create only this missing table and its two indexes in **sitelog_dev**. No broad
+drizzle push, no startup ensure, no managed-database or production change. No
+attachment metadata/object copy and no historical link backfill are required to
+restore this missing dependency.
+
+Review the parent tables and absence again immediately before applying. Use a
+transaction, short lock timeout, verified target identity, and plain CREATE so
+unexpected existing schema aborts instead of being silently accepted:
+
+```sql
+BEGIN;
+SET LOCAL lock_timeout = &#x27;5s&#x27;;
+DO $$
+BEGIN
+  IF current_database() &lt;&gt; &#x27;sitelog_dev&#x27; THEN
+    RAISE EXCEPTION &#x27;Wrong database: expected sitelog_dev&#x27;;
+  END IF;
+END $$;
+CREATE TABLE public.attachment_links (
+  id serial PRIMARY KEY,
+  attachment_id integer NOT NULL
+    REFERENCES public.attachments(id) ON DELETE CASCADE,
+  target_module_type text NOT NULL,
+  target_linked_record_id integer NOT NULL,
+  linked_by integer REFERENCES public.users(id) ON DELETE SET NULL,
+  linked_at timestamp without time zone NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX attachment_links_attachment_target_unique
+  ON public.attachment_links
+  (attachment_id, target_module_type, target_linked_record_id);
+CREATE INDEX attachment_links_target_lookup_idx
+  ON public.attachment_links (target_module_type, target_linked_record_id);
+COMMIT;
+```
+
+This exactly matches the declared columns, defaults, nullability, relationships
+and indexes. Polymorphic targets deliberately have no record foreign key.
+The SERIAL sequence is an additional object implicitly created by this DDL.
+Do not drop the table as a rollback after links have been written; first assess
+new usage. A pre-commit failure rolls back the whole transaction.
+
+After approval/application: verify catalogs and the join, then rerun only the
+previously failing authenticated attachment paths with disposable accounts and
+normal device approval. Check granular/Admin reads, foreign-site refusal and
+all-off refusal. No application restart should be necessary for this additive
+table. This has **not** yet been verified as an HTTP 200.
+
+## 2. Startup modifications
+
+### Confirmed trigger and conflicting policies
+
+Every boot of `server/index.ts` calls runBackgroundMigrations after listen, in
+both development and production. It is unawaited by the serving lifecycle.
+Phase 6 runs the following incompatible policies in sequence:
+
+1. **fixLdoStockDeductionErrors** has no completion-marker check. If exact LDO
+   exists, its transaction deletes LDO dispatch rows, deletes dip/shift/heating
+   consumption rows, recomputes LDO stock balances (including lastUpdated), and
+   reconstructs dip-based consumption. Its comment says dispatch quantities are
+   costing-only and stock follows dips.
+2. Later **migrateLdoToDispatchModelOnly_v3** represents the opposite policy:
+   purge dip-based rows and use chronological dispatch consumption. It skips
+   when its app_settings marker is &#x27;1&#x27;.
+3. **backfillMissingDispatchLdoRows** has a data-condition guard, not a permanent
+   completion marker. Dispatches whose LDO rows were just deleted now qualify.
+   It inserts replacements with new identities/timestamps, recomputes LDO
+   balance_after and calls **reconcileStockBalancesFromLedger**, whose scope is
+   broader than LDO alone.
+
+Fresh read-only evidence confirms the v3 and dispatch-rebuild markers already
+equal &#x27;1&#x27; in sitelog_dev. Thus the later one-time migration skips while the older
+opposing routine still runs on every boot. This explains why repeated startup can
+delete/recreate rows instead of settling at zero. The obsolete deletion counter
+even adds zero after deleting dispatch rows, so its logged count is not an audit
+of how many rows it removed.
+
+The previous 03B logs reported 29 recreated rows; the previous before/after
+digests changed despite equal counts. The code establishes a concrete mechanism,
+but those aggregate snapshots cannot reconstruct every old row or prove all
+changes came from this one chain. Potential mixed dip/dispatch deductions need
+separate evidence; no claim is made that existing balances are correct.
+
+### Other startup writers that prevent a one-line safety certification
+
+Removing only the final backfill would leave the older deletion active and make
+matters worse. Removing only the older routine would stop this specific conflict,
+but does not make all startup historical stock work explicitly controlled:
+
+- Phase 1 resets all sequences.
+- Phase 3 includes 6mm unit correction, orphan-reversal purging, missing aggregate
+  reconstruction, ghost-ledger cleanup, and a direct orphan-adjustment UPDATE.
+- Phase 4 deduplicates dispatch ledger rows and corrects double deductions.
+- Phase 5 backfills dispatch references and missing bitumen rows.
+- Phase 6 contains other consumption/rebuild/balance repairs.
+- Separately, registerRoutes launches seedDatabase asynchronously; that function
+  invokes migrateDprPlantStockDieselToLedger. A fix confined to index.ts misses it.
+- Other startup routines seed/normalize business data and mix schema ensures with
+  data backfills. HTTP readiness is not proof that all background work has settled.
+
+### Proposed correction — approval boundary, NOT implemented or run
+
+1. Retire the obsolete dip-model routine from automatic startup; do not replace
+   it with a flag that falsely marks historical repair as complete.
+2. Separate the stock-writing startup calls listed above, including the seed
+   path, from normal serving. Preserve pure schema checks and the current
+   permission/access migration. Split mixed schema/data ensures where necessary.
+3. Move legitimate repairs to an explicitly invoked maintenance command, not an
+   environment toggle attached to ordinary startup. Default to read-only planning:
+   name the operation, database, candidate IDs, expected row changes and balance
+   impact. Execution requires approval of that specific plan and database.
+4. Use a database-wide repair lock, check the approved snapshot is still current,
+   stop on errors, and record before/after evidence. Existing routines use their
+   own transactions/global pools; an outer transaction wrapper is NOT enough.
+   Only individually reviewed operations should be executable. Do not expose
+   the obsolete dip model or blindly run the old phase-6 chain as one command.
+5. Test startup with mocked storage spies: zero historical stock repair/sequence
+   reset calls; test command default/read-only behavior, explicit apply checks,
+   stale-plan refusal, locking and failure behavior. Only after approval and
+   those tests, perform one deliberate development restart with pre/post snapshots.
+
+Target application files would be server/index.ts and the seed call path in
+server/routes.ts, plus a focused maintenance module/command and isolated tests.
+Permission guards and financial operational posting paths must remain untouched.
+The minimum incident fix is removal of the obsolete call; the controlled-startup
+requirement requires the broader call-path separation above.
+
+No application behavior patch was represented as safe/complete here: an isolated
+skip would leave other writers running, while wholesale movement changes repair
+policy and needs the explicit scope above. The requested schema correction also
+requires approval, so this batch stops at the proposal rather than executes it.
+No business-data repair is proposed for execution without a separate row-level
+reconciliation plan. New startup safety cannot retroactively restore 03B&#x27;s lost
+preservation evidence.
+
+## 3. Verification and preservation
+
+- The seven protected 03B source/test files compare byte-for-byte with 595c515d.
+  Original authenticated API and browser evidence remains applicable to those
+  unchanged permission paths. No deleted fixture accounts were recreated.
+- Reused results: 107 regression tests passed; build passed; 50/51 authenticated
+  request expectations matched, with the attachment failure remaining unresolved.
+  These are **prior results**, not new runs.
+- Evidence limitation found during reuse: the saved Maintenance Health screenshot
+  is byte-identical to the Maintenance list screenshot (SHA-256
+  3c6f5754b51d8297e825572d2fcd25826154625faeedbd51f8b3449698f02ecc).
+  It is not independent proof that the Health tab rendered. The prior Health API
+  check remains valid; no new Health UI verification is claimed. This qualifies
+  the original report&#x27;s screenshot claim without regenerating its evidence.
+- New verification: the read-only utility executes before/after snapshots over
+  all public tables and tests the real missing SQL dependency. See before.json,
+  after.json and preservation.json for current counts/digests and differences.
+- Result: **138/140 table digests match**, including stock_ledger,
+  stock_balances, users, user_permissions and user_site_access. Only user_devices
+  and user_sessions differ while the application remains running. Aggregate
+  snapshots cannot attribute their exact field changes. This is not a claim that
+  every database row remained unchanged. The utility made only read-only queries.
+- `node --check` and both execution phases passed. Non-session/device table
+  differences cause a failing exit status; all observed differences are recorded.
+- No new application test run imports startup code; no application build or
+  signed-in browser rerun is claimed or needed for unchanged application files.
+- The utility initially exceeded Node&#x27;s default git-output buffer on routes.ts;
+  the buffer limit was corrected before any database connection on that attempt.
+- No original 03B artifact was regenerated. No writes to grants, business data,
+  migration markers or sequences were requested by this utility.
+
+## 4. Genuine Publish preview
+
+Fresh explainSchemaDiff result: success=true, hasDiff=false,
+statementsToExecute=[], no structural loss or compatibility warning.
+Saved in publish-preview.json. This compares managed publishing schemas, not
+sitelog_dev. It neither repairs the missing development table nor certifies
+startup business-data safety. No publishing was initiated.
+
+## Remaining risks / stop
+
+Until approved corrections are applied, development attachment reads remain
+broken and ordinary restarts still invoke the historical repair chain.
+Existing stock data must not be assumed correct merely because counts match.
+The requested DDL and startup change are separate approvals; neither authorizes
+repairing historical balances or changing production. **STOP — proposals only.**
+</pre></html>

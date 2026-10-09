@@ -1,0 +1,6 @@
+{
+  "exitCode": 0,
+  "exitReason": null,
+  "output": "database,table_name,column_name,data_type,is_nullable,column_default\nheliumdb,attachment_links,id,integer,NO,nextval('attachment_links_id_seq'::regclass)\nheliumdb,attachment_links,attachment_id,integer,NO,\nheliumdb,attachment_links,target_module_type,text,NO,\nheliumdb,attachment_links,target_linked_record_id,integer,NO,\nheliumdb,attachment_links,linked_by,integer,YES,\nheliumdb,attachment_links,linked_at,timestamp without time zone,NO,now()\n",
+  "success": true
+}

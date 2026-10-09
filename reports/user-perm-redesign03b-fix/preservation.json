@@ -1,0 +1,9 @@
+{
+  "comparedTables": 140,
+  "changedTables": [
+    "user_devices",
+    "user_sessions"
+  ],
+  "permissionFilesUnchanged": 7,
+  "restartPerformed": false
+}
