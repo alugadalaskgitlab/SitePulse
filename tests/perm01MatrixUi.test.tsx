@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { PermissionsDialog } from "@/pages/UserManagement";
@@ -9,6 +9,7 @@ import { ACTIONS, emptyMatrix, type PermissionMatrix } from "@shared/permissions
 let actor = { isAdmin: true, canManagePermissions: true, permissionManagerScope: "full", permissions: emptyMatrix() };
 let stored: PermissionMatrix;
 let writes: PermissionMatrix[];
+let close: Mock<() => void>;
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => actor }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
@@ -21,6 +22,7 @@ let client: QueryClient;
 beforeEach(() => {
   stored = emptyMatrix();
   writes = [];
+  close = vi.fn();
   actor = { isAdmin: true, canManagePermissions: true, permissionManagerScope: "full", permissions: emptyMatrix() };
   client = new QueryClient({ defaultOptions: { queries: { retry: false, queryFn: getQueryFn({ on401: "throw" }) } } });
   Object.defineProperty(window, "matchMedia", { configurable: true, value: vi.fn().mockReturnValue({ matches: false, addListener: vi.fn(), removeListener: vi.fn() }) });
@@ -28,11 +30,17 @@ beforeEach(() => {
     const url = String(input);
     if (url.endsWith("/api/auth/users/41/permissions")) {
       if (init?.method === "PUT") {
-        stored = JSON.parse(String(init.body));
+        const body = JSON.parse(String(init.body));
+        expect(body).not.toHaveProperty("businessRole");
+        stored = body;
         writes.push(stored);
         return new Response(JSON.stringify({ ok: true, matrix: stored }), { status: 200 });
       }
-      return new Response(JSON.stringify({ matrix: stored, isAdmin: false }), { status: 200 });
+      return new Response(JSON.stringify({ matrix: stored, isAdmin: false, businessRole: null }), { status: 200 });
+    }
+    if (url.endsWith("/api/sites")) return new Response(JSON.stringify([]));
+    if (url.endsWith("/api/auth/users/41/site-access")) {
+      return new Response(JSON.stringify({ siteIds: [], allSites: false, setupComplete: true }));
     }
     throw new Error(`Unexpected request: ${url}`);
   }));
@@ -40,12 +48,16 @@ beforeEach(() => {
 afterEach(() => { cleanup(); client.clear(); vi.unstubAllGlobals(); });
 
 async function open() {
+  const beforeWrites = writes.length;
   const result = render(
     <QueryClientProvider client={client}>
-      <PermissionsDialog userId={41} users={users} onClose={vi.fn()} />
+      <PermissionsDialog userId={41} users={users} onClose={close} />
     </QueryClientProvider>,
   );
   await screen.findByTestId("button-save-perms");
+  await screen.findByTestId("hierarchical-permissions-editor");
+  expect(writes).toHaveLength(beforeWrites);
+  fireEvent.click(screen.getByTestId("toggle-legacy-permissions"));
   await waitFor(() => expect(checked("site_hub-access")).toBe(
     stored.site_hub.view,
   ));
@@ -60,8 +72,14 @@ const check = (key: string) => screen.getByTestId(`checkbox-${key}`);
 const checked = (key: string) => check(key).getAttribute("data-state") === "checked";
 async function save() {
   const count = writes.length;
+  const closes = close.mock.calls.length;
+  const reads = vi.mocked(fetch).mock.calls.filter(([url, init]) =>
+    String(url).endsWith("/permissions") && (!init?.method || init.method === "GET")).length;
   fireEvent.click(screen.getByTestId("button-save-perms"));
   await waitFor(() => expect(writes).toHaveLength(count + 1));
+  await waitFor(() => expect(close).toHaveBeenCalledTimes(closes + 1));
+  expect(vi.mocked(fetch).mock.calls.filter(([url, init]) =>
+    String(url).endsWith("/permissions") && (!init?.method || init.method === "GET")).length).toBeGreaterThan(reads);
 }
 
 describe("PERM-01 C actual permissions dialog", () => {

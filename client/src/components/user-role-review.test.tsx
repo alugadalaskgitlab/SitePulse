@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import type { ReactNode } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -9,8 +9,9 @@ import { PermissionReview, primaryRoleTemplates, proposeRole, retainedSensitiveP
 import { applyRoleTemplate, emptyMatrix, type PermissionMatrix } from "@shared/permissions";
 
 let actor = { isAdmin: true, canManagePermissions: true, permissionManagerScope: "full", permissions: emptyMatrix() };
+const feedback = vi.hoisted(() => ({ toast: vi.fn() }));
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => actor }));
-vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
+vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: feedback.toast }) }));
 const users = [{
   id: 41, fullName: "Kavita Rao", isAdmin: false, isOwner: false, email: "kavita@example.invalid",
   phone: null, isFieldEngineer: false, isActive: true, notificationsEnabled: true,
@@ -25,6 +26,8 @@ let client: QueryClient;
 let creationResult: { id: number; setupOk: boolean; setupComplete: boolean; setupError?: string };
 let createBodies: Record<string, unknown>[];
 let retries: number;
+let permissionReads: number;
+let permissionClose: Mock<() => void>;
 beforeEach(() => {
   stored = emptyMatrix();
   writes = [];
@@ -32,6 +35,9 @@ beforeEach(() => {
   designation = null;
   createBodies = [];
   retries = 0;
+  permissionReads = 0;
+  permissionClose = vi.fn();
+  feedback.toast.mockClear();
   creationResult = { id: 41, setupOk: true, setupComplete: true };
   actor = { isAdmin: true, canManagePermissions: true, permissionManagerScope: "full", permissions: emptyMatrix() };
   client = new QueryClient({ defaultOptions: { queries: { retry: false, queryFn: getQueryFn({ on401: "throw" }) } } });
@@ -51,9 +57,12 @@ beforeEach(() => {
         writes.push(stored);
         return new Response(JSON.stringify({ ok: true, matrix: stored, businessRole: designation }));
       }
+      permissionReads++;
       return new Response(JSON.stringify({ matrix: stored, isAdmin: false, businessRole: designation }));
     }
     if (url.endsWith("/api/sites")) return new Response(JSON.stringify([{ id: 7, name: "Eastern Link Road", isActive: 1 }]));
+    if (url.endsWith("/api/auth/users/41/site-access")) return new Response(JSON.stringify({ siteIds: [7], allSites: false, setupComplete: true }));
+    if (url.endsWith("/api/auth/users") && !init?.method) return new Response(JSON.stringify(users));
     if (url.endsWith("/api/auth/users") && init?.method === "POST") {
       createBodies.push(JSON.parse(String(init.body)));
       return new Response(JSON.stringify(creationResult));
@@ -70,9 +79,31 @@ function mount(element: ReactNode) {
   return render(<QueryClientProvider client={client}>{element}</QueryClientProvider>);
 }
 async function openPermissions() {
-  mount(<PermissionsDialog userId={41} users={users} onClose={vi.fn()} />);
+  mount(<PermissionsDialog userId={41} users={users} onClose={permissionClose} />);
   await screen.findByTestId("button-save-perms");
+  await screen.findByTestId("hierarchical-permissions-editor");
+  fireEvent.click(screen.getByTestId("toggle-legacy-permissions"));
   await waitFor(() => expect(screen.getByTestId("checkbox-site_hub-access").getAttribute("data-state")).toBe(stored.site_hub.view ? "checked" : "unchecked"));
+}
+function reviewLegacyDraft(alreadyReviewed = false) {
+  fireEvent.click(screen.getByTestId("toggle-legacy-permissions"));
+  expect(screen.getByTestId("hierarchical-permissions-editor")).toBeTruthy();
+  expect(screen.getByTestId("button-save-perms").hasAttribute("disabled")).toBe(!alreadyReviewed);
+  fireEvent.click(screen.getByRole("button", { name: /^Review \d+ legacy \+ / }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirm legacy change review" }));
+  expect(screen.getByTestId("button-save-perms").hasAttribute("disabled")).toBe(false);
+}
+async function saveReviewedDraft(alreadyReviewed = false) {
+  const reads = permissionReads;
+  const closes = permissionClose.mock.calls.length;
+  reviewLegacyDraft(alreadyReviewed);
+  fireEvent.click(screen.getByTestId("button-save-perms"));
+  await waitFor(() => expect(permissionClose).toHaveBeenCalledTimes(closes + 1));
+  expect(permissionReads).toBeGreaterThan(reads);
+  expect(feedback.toast).toHaveBeenCalledWith(expect.objectContaining({
+    title: "Existing permissions saved",
+    description: expect.stringContaining("were not saved or enforced"),
+  }));
 }
 async function chooseRole() {
   fireEvent.keyDown(screen.getByTestId("select-role-template"), { key: "ArrowDown" });
@@ -132,7 +163,7 @@ describe("USER-ROLE-01 existing-user workflow", () => {
     fireEvent.click(screen.getByTestId("button-confirm-role"));
     expect(screen.getByTestId("checkbox-site_hub-access").getAttribute("data-state")).toBe("checked");
     expect(writes).toHaveLength(0);
-    fireEvent.click(screen.getByTestId("button-save-perms"));
+    await saveReviewedDraft();
     await waitFor(() => expect(writes).toHaveLength(1));
     expect(stored.site_hub.notify).toBe(true);
     expect(stored).toEqual(proposeRole({ ...emptyMatrix(), site_hub: { ...emptyMatrix().site_hub, notify: true } }, applyRoleTemplate("site_engineer"), "merge", () => true).matrix);
@@ -145,7 +176,7 @@ describe("USER-ROLE-01 existing-user workflow", () => {
     expect(screen.getByTestId("role-change-list").textContent).toContain("Remove — Site Operations Hub (entry page) / Receive Notifications");
     expect(stored.site_hub.notify).toBe(true);
     fireEvent.click(screen.getByTestId("button-confirm-role"));
-    fireEvent.click(screen.getByTestId("button-save-perms"));
+    await saveReviewedDraft();
     await waitFor(() => expect(writes).toHaveLength(1));
     expect(stored.site_hub.notify).toBe(false);
   }, 15000);
@@ -195,7 +226,7 @@ describe("USER-ROLE-02 durable designation and reviewed saves", () => {
     fireEvent.click(screen.getByTestId("button-confirm-role"));
     expect(screen.getByTestId("staged-business-role").textContent).toContain("Site Engineer");
     expect(permissionBodies).toHaveLength(0);
-    fireEvent.click(screen.getByTestId("button-save-perms"));
+    await saveReviewedDraft();
     await waitFor(() => expect(permissionBodies).toHaveLength(1));
     expect(permissionBodies[0]).toEqual({ matrix: stored, businessRole: "site_engineer" });
     cleanup();
@@ -209,12 +240,14 @@ describe("USER-ROLE-02 durable designation and reviewed saves", () => {
     designation = "project_manager";
     await openPermissions();
     fireEvent.click(screen.getByTestId("checkbox-site_hub-access"));
-    fireEvent.click(screen.getByTestId("button-save-perms"));
+    await saveReviewedDraft();
     await waitFor(() => expect(permissionBodies).toHaveLength(1));
     expect(permissionBodies[0]).toEqual(stored);
     expect(permissionBodies[0]).not.toHaveProperty("businessRole");
     expect(designation).toBe("project_manager");
-  });
+  // Both the legacy grid and hierarchical review are rendered, then GET verifies
+  // the PUT; allow the same multi-render budget as the other reviewed saves.
+  }, 15000);
 
   it("never infers designation from a template-shaped matrix", async () => {
     stored = applyRoleTemplate("operations_director");
@@ -222,6 +255,8 @@ describe("USER-ROLE-02 durable designation and reviewed saves", () => {
     expect(screen.getByTestId("permissions-designation").textContent).toContain("Stored designation: Not designated");
     fireEvent.click(screen.getByTestId("button-save-perms"));
     await waitFor(() => expect(permissionBodies).toHaveLength(1));
+    await waitFor(() => expect(permissionClose).toHaveBeenCalledOnce());
+    expect(permissionReads).toBeGreaterThan(1);
     expect(permissionBodies[0]).not.toHaveProperty("businessRole");
     expect(designation).toBeNull();
   });
@@ -249,6 +284,8 @@ describe("USER-ROLE-02 durable designation and reviewed saves", () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     mount(<PermissionsDialog userId={41} users={[...users, { ...users[0], id: 42 }]} onClose={close} />);
     await screen.findByTestId("button-save-perms");
+    await screen.findByTestId("hierarchical-permissions-editor");
+    fireEvent.click(screen.getByTestId("toggle-legacy-permissions"));
     fireEvent.click(screen.getByTestId("checkbox-site_hub-access"));
     expect(screen.getByTestId("select-copy-from").hasAttribute("disabled")).toBe(true);
     fireEvent.keyDown(document, { key: "Escape" });
@@ -276,6 +313,9 @@ describe("USER-ROLE-02 durable designation and reviewed saves", () => {
     fireEvent.click(screen.getByTestId("button-cancel-role"));
     expect(screen.getByTestId("staged-business-role").textContent).toContain("Site Engineer");
     expect(screen.getByTestId("button-save-perms").hasAttribute("disabled")).toBe(false);
+    reviewLegacyDraft();
+    expect(screen.getByTestId("staged-business-role").textContent).toContain("Site Engineer");
+    expect(writes).toHaveLength(0);
   }, 15000);
 
   it("explicit designation clearing retains permissions and sends null only after confirmation", async () => {
@@ -287,7 +327,7 @@ describe("USER-ROLE-02 durable designation and reviewed saves", () => {
     expect(screen.getByTestId("role-change-list").textContent).toContain("No section/action changes");
     fireEvent.click(screen.getByTestId("button-confirm-role"));
     expect(writes).toHaveLength(0);
-    fireEvent.click(screen.getByTestId("button-save-perms"));
+    await saveReviewedDraft();
     await waitFor(() => expect(permissionBodies).toHaveLength(1));
     expect(permissionBodies[0]).toEqual({ matrix: applyRoleTemplate("viewer"), businessRole: null });
   }, 15000);
@@ -296,13 +336,17 @@ describe("USER-ROLE-02 durable designation and reviewed saves", () => {
     await openPermissions();
     await chooseRole();
     fireEvent.click(screen.getByTestId("button-confirm-role"));
+    reviewLegacyDraft();
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ message: "Temporary failure" }), { status: 503 }));
     fireEvent.click(screen.getByTestId("button-save-perms"));
+    await waitFor(() => expect(feedback.toast).toHaveBeenCalledWith(expect.objectContaining({ title: "Save failed" })));
     await waitFor(() => expect(screen.getByTestId("button-save-perms").hasAttribute("disabled")).toBe(false));
+    expect(permissionClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("toggle-legacy-permissions"));
     expect(screen.getByTestId("staged-business-role").textContent).toContain("Site Engineer");
     expect(screen.getByTestId("checkbox-site_hub-access").getAttribute("data-state")).toBe("checked");
-    fireEvent.click(screen.getByTestId("button-save-perms"));
+    await saveReviewedDraft(true);
     await waitFor(() => expect(permissionBodies).toHaveLength(1));
     expect(designation).toBe("site_engineer");
   }, 15000);
@@ -314,7 +358,7 @@ describe("USER-ROLE-02 durable designation and reviewed saves", () => {
     fireEvent.click(await screen.findByTestId("template-custom"));
     expect(screen.getByTestId("role-change-list").textContent).toContain("No section/action changes");
     fireEvent.click(screen.getByTestId("button-confirm-role"));
-    fireEvent.click(screen.getByTestId("button-save-perms"));
+    await saveReviewedDraft();
     await waitFor(() => expect(permissionBodies).toHaveLength(1));
     expect(designation).toBe("custom");
     expect(stored.site_hub.view).toBe(true);
@@ -341,6 +385,9 @@ describe("USER-ROLE-01 guided setup", () => {
     mount(<CreateUserDialog open onClose={vi.fn()} />);
     await fillDetails();
     fireEvent.click(screen.getByTestId("wizard-template-custom").querySelector("input")!);
+    expect(screen.getByTestId("button-wizard-next").hasAttribute("disabled")).toBe(true);
+    expect(createBodies).toHaveLength(0);
+    fireEvent.click(screen.getByTestId("button-apply-creation-role"));
     fireEvent.click(screen.getByTestId("button-wizard-next"));
     fireEvent.click(screen.getByTestId("wizard-sites-all").querySelector("input")!);
     fireEvent.click(screen.getByTestId("button-wizard-next"));
@@ -354,6 +401,12 @@ describe("USER-ROLE-01 guided setup", () => {
     await fillDetails();
     expect(screen.queryByTestId("wizard-full-access")).toBeNull();
     expect(screen.queryByTestId("wizard-template-stores")).toBeNull();
+    fireEvent.click(screen.getByTestId("toggle-legacy-creation-roles"));
+    expect(screen.getByTestId("wizard-template-stores")).toBeTruthy();
+    expect(screen.queryByTestId("wizard-full-access")).toBeNull();
+    fireEvent.click(screen.getByTestId("wizard-template-stores").querySelector("input")!);
+    expect(screen.getByTestId("button-wizard-next").hasAttribute("disabled")).toBe(true);
+    expect(createBodies).toHaveLength(0);
   });
   it("review precedes create; step five opens the existing editor only after setup succeeds", async () => {
     const advanced = vi.fn();
@@ -361,6 +414,9 @@ describe("USER-ROLE-01 guided setup", () => {
     await fillDetails();
     expect(screen.getByText(/Owner status cannot be conferred/)).toBeTruthy();
     fireEvent.click(screen.getByTestId("wizard-template-site_engineer").querySelector("input")!);
+    expect(screen.getByTestId("button-wizard-next").hasAttribute("disabled")).toBe(true);
+    expect(createBodies).toHaveLength(0);
+    fireEvent.click(screen.getByTestId("button-apply-creation-role"));
     fireEvent.click(screen.getByTestId("button-wizard-next"));
     fireEvent.click(screen.getByTestId("wizard-sites-all").querySelector("input")!);
     fireEvent.click(screen.getByTestId("button-wizard-next"));
@@ -389,6 +445,9 @@ describe("USER-ROLE-01 guided setup", () => {
     mount(<CreateUserDialog open onClose={vi.fn()} onAdvanced={vi.fn()} />);
     await fillDetails();
     fireEvent.click(screen.getByTestId("wizard-template-site_engineer").querySelector("input")!);
+    expect(screen.getByTestId("button-wizard-next").hasAttribute("disabled")).toBe(true);
+    expect(createBodies).toHaveLength(0);
+    fireEvent.click(screen.getByTestId("button-apply-creation-role"));
     fireEvent.click(screen.getByTestId("button-wizard-next"));
     fireEvent.click(screen.getByTestId("wizard-sites-all").querySelector("input")!);
     fireEvent.click(screen.getByTestId("button-wizard-next"));

@@ -1,0 +1,14 @@
+{
+  "users": {
+    "count": 6,
+    "digest": "0f54a0ee41388adf3bcd5220e4586072"
+  },
+  "user_permissions": {
+    "count": 371,
+    "digest": "0e352297be0c1b6a83535ed3fdc91e67"
+  },
+  "user_site_access": {
+    "count": 11,
+    "digest": "4a3383bd39ffb80cec346162e6a2c55a"
+  }
+}

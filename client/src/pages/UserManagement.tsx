@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { PermissionReview, RetainedAccessReview, RoleChangeList, businessRoleLabel, primaryRoleTemplates, proposeRole } from "@/components/user-role-review";
+import { PermissionReview, RetainedAccessReview, RoleChangeList, businessRoleLabel, proposeRole } from "@/components/user-role-review";
+import { HierarchicalPermissionsEditor } from "@/components/permissions/HierarchicalPermissionsEditor";
+import { SiteScopeSummary } from "@/components/permissions/SiteScopeSummary";
+import { hasObservedConflict, legacySaveBody, previewChanges, changedCells, type PreviewOverrides } from "@/components/permissions/model";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
@@ -405,6 +408,8 @@ export function CreateUserDialog({ open, onClose, onAdvanced }: { open: boolean;
   // type: "__admin__" = administrator, "site_engineer" implies field user,
   // "" = custom (no template), null = not chosen yet.
   const [roleTemplate, setRoleTemplate] = useState<string | null>(null);
+  const [rolePreview, setRolePreview] = useState<string | null>(null);
+  const [showLegacyRoles, setShowLegacyRoles] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const isFieldEngineer = !isAdmin && roleTemplate === "site_engineer";
 
@@ -492,7 +497,7 @@ export function CreateUserDialog({ open, onClose, onAdvanced }: { open: boolean;
   });
 
   const basicsValid = (!!email.trim() || !!phone.trim()) && emailValid && phoneValid && !!fullName.trim() && password.length >= 8;
-  const roleValid = isAdmin || roleTemplate !== null;
+  const roleValid = isAdmin || (roleTemplate !== null && rolePreview === roleTemplate);
   const siteValid = isAdmin || siteMode === "all" || (siteMode === "selected" && siteIds.size > 0);
   const steps = ["Details", "Role", "Site access", "Review", "Advanced permissions"];
   const templateLabel = isAdmin ? "Administrator — Full access (ignores permission switches)" : ROLE_TEMPLATES.find((t) => t.id === roleTemplate)?.label ?? "Custom (no template)";
@@ -500,7 +505,7 @@ export function CreateUserDialog({ open, onClose, onAdvanced }: { open: boolean;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-lg max-h-[90dvh] overflow-y-auto">
+      <DialogContent className={`${step === 3 ? "max-w-5xl" : "max-w-lg"} max-h-[90dvh] overflow-y-auto`}>
         <DialogHeader>
           <DialogTitle>Create user — {steps[step]}</DialogTitle>
           <DialogDescription>Choose a starting role, assign sites, then confirm the account setup.</DialogDescription>
@@ -561,19 +566,19 @@ export function CreateUserDialog({ open, onClose, onAdvanced }: { open: boolean;
                     <input type="checkbox" checked={isAdmin} onChange={e => setIsAdmin(e.target.checked)} data-testid="wizard-full-access" />
                      <span><strong>Owner / Administrator — Administrator only</strong><span className="block">Full privileged access; permission switches do not restrict this account. Owner status cannot be conferred here. This is not an ordinary template.</span></span>
                    </label>}
-                    {[...primaryRoleTemplates().filter((t) => t.id !== "custom"),
+                    {[...ROLE_TEMPLATES.filter(t => !t.legacy || showLegacyRoles),
                     { id: "", label: "Custom (no template)", description: "Start with no permissions; grant manually afterwards." }].map((t: any) => (
                     <label
                       key={t.id || "custom"}
-                      className={`flex items-start gap-3 rounded-md border px-3 py-2 cursor-pointer text-sm ${roleTemplate === t.id ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}
+                      className={`flex items-start gap-3 rounded-md border px-3 py-2 cursor-pointer text-sm ${rolePreview === t.id ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}
                       data-testid={`wizard-template-${t.id || "custom"}`}
                     >
                       <input
                         type="radio"
                         className="mt-1"
                         disabled={isAdmin}
-                        checked={!isAdmin && roleTemplate === t.id}
-                        onChange={() => setRoleTemplate(t.id)}
+                        checked={!isAdmin && rolePreview === t.id}
+                        onChange={() => setRolePreview(t.id)}
                       />
                       <span>
                         <span className="font-medium block">{t.label}</span>
@@ -581,7 +586,15 @@ export function CreateUserDialog({ open, onClose, onAdvanced }: { open: boolean;
                       </span>
                     </label>
                   ))}
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setShowLegacyRoles(v => !v)} aria-expanded={showLegacyRoles} data-testid="toggle-legacy-creation-roles">
+                    {showLegacyRoles ? "Hide legacy starting templates" : "Show legacy starting templates"}
+                  </Button>
                 </div>
+                 {!isAdmin && <>
+                   <p className="text-sm">Applied starting role: <strong>{roleTemplate === null ? "Not chosen" : ROLE_TEMPLATES.find(t => t.id === roleTemplate)?.label ?? "Custom (no template)"}</strong>. Selection is only a preview until you Apply.</p>
+                   {rolePreview !== null && <PermissionReview matrix={proposeRole(emptyMatrix(), rolePreview ? applyRoleTemplate(rolePreview) : emptyMatrix(), "replace", (section, action) => !isPartialManager || !!myPerms[section]?.[action]).matrix} />}
+                   <Button variant="outline" disabled={rolePreview === null} onClick={() => setRoleTemplate(rolePreview)} data-testid="button-apply-creation-role">Apply starting role to creation draft</Button>
+                 </>}
               </>
             )}
           </div>
@@ -646,6 +659,11 @@ export function CreateUserDialog({ open, onClose, onAdvanced }: { open: boolean;
               </div>
             </div>
             <PermissionReview matrix={creationProposal.matrix} privileged={isAdmin} />
+            <HierarchicalPermissionsEditor
+              baseline={emptyMatrix()} value={creationProposal.matrix} readOnly context="creation"
+              target={{ fullName, isAdmin, isFieldEngineer, notificationsEnabled, businessRole: roleTemplate || "custom" }}
+              siteSummary={<p>Sites: {isAdmin ? "All sites (Administrator)" : siteMode === "all" ? "All sites (explicit draft grant)" : `${siteIds.size} selected: ${activeSites.filter(s => siteIds.has(s.id)).map(s => s.name).join(", ")}`}. Saved only by the existing Create / Retry setup workflow.</p>}
+            />
             {!isAdmin && creationProposal.capped.length > 0 && <p role="status" className="text-amber-700" data-testid="wizard-role-capped">This review shows the effective permissions capped to your own grants. {creationProposal.capped.length} template grants cannot be assigned by you.</p>}
             {!isAdmin && isFieldEngineer && <p className="text-muted-foreground">Engineer / field-user restrictions also apply, including hidden Payables Preview and Dispatches Today.</p>}
             <p className="text-muted-foreground">Step 5 — Advanced permissions: {canAdjust ? "after creation, optionally fine-tune the account with the existing matrix and Save permissions." : "ask an administrator or permission manager to fine-tune this account after creation."} The account will exist before these optional adjustments.</p>
@@ -872,6 +890,11 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
   const [stagedRole, setStagedRole] = useState<string | null | undefined>(undefined);
   const [pendingRole, setPendingRole] = useState<string | null>(null);
   const [roleMode, setRoleMode] = useState<"merge" | "replace">("merge");
+  const [legacyEditor, setLegacyEditor] = useState(false);
+  const [previewOverrides, setPreviewOverrides] = useState<PreviewOverrides>({});
+  const [reviewedMatrix, setReviewedMatrix] = useState<string | null>(null);
+  const [readBackUnverified, setReadBackUnverified] = useState(false);
+  const observedConflict = initializedUserId.current === userId && hasObservedConflict(initialMatrix.current, permsQ.data?.matrix);
   useEffect(() => {
     if (permsQ.data?.matrix && initializedUserId.current !== userId) {
       initializedUserId.current = userId;
@@ -890,40 +913,58 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
   // For partial managers, a permission checkbox is only enabled if the manager themselves has that permission.
   function canGrantAction(section: SectionKey, action: Action): boolean {
     if (!isPartialManager) return true;
+    if (target?.isAdmin || target?.isOwner) return false;
     return !!myPerms[section]?.[action];
   }
 
   // The existing PUT endpoint caps every field to the partial manager's own
   // grants, including unchanged fields. Block that request rather than silently
   // erasing grants outside this manager's scope.
-  const hasUnmanagedGrants = isPartialManager && SECTION_KEYS.some((s) =>
-    ACTIONS.some((a) => matrix[s]?.[a] && !canGrantAction(s, a)));
+  const hasUnmanagedGrants = isPartialManager && (!!target?.isAdmin || !!target?.isOwner || SECTION_KEYS.some((s) =>
+    ACTIONS.some((a) => matrix[s]?.[a] && !canGrantAction(s, a))));
   const designationOnly = pendingRole === "__clear_designation__" || pendingRole === "administrator";
   const roleProposal = pendingRole ? proposeRole(matrix,
     designationOnly ? matrix : applyRoleTemplate(pendingRole), designationOnly ? "merge" : roleMode, canGrantAction) : null;
   const matrixDirty = SECTION_KEYS.some((s) => ACTIONS.some((a) => !!matrix[s]?.[a] !== !!initialMatrix.current[s]?.[a]));
-  const unsaved = matrixDirty || stagedRole !== undefined || pendingRole !== null;
+  const unsaved = matrixDirty || stagedRole !== undefined || pendingRole !== null || previewChanges(previewOverrides).length > 0;
   function requestClose() {
     if (save.isPending || copy.isPending) return;
-    if (unsaved && !window.confirm("Discard unsaved role preview, staged designation and permission edits? Nothing staged will be saved.")) return;
+    if (unsaved && !window.confirm(readBackUnverified
+      ? "Close this unverified draft? The update request was accepted and may already be stored. Reopen to inspect server state; proposed-only previews were not sent."
+      : "Discard unsaved role preview, staged designation and permission edits? Nothing staged will be saved.")) return;
     onClose();
   }
 
   const save = useMutation({
     mutationFn: async () => {
-      if (hasUnmanagedGrants || pendingRole !== null) throw new Error("Review role changes and resolve out-of-scope grants before saving.");
+      if (hasUnmanagedGrants || pendingRole !== null || observedConflict || readBackUnverified) throw new Error("Review role changes and resolve scope or observed concurrent conflicts before saving.");
+      if (!legacyEditor && reviewedMatrix !== JSON.stringify(matrix)) throw new Error("Review actual legacy changes before saving.");
       const r = await apiRequest("PUT", `/api/auth/users/${userId}/permissions`,
-        stagedRole === undefined ? matrix : { matrix, businessRole: stagedRole });
-      return r.json();
+        legacySaveBody(matrix, stagedRole));
+      const accepted = await r.json();
+      // A successful PUT is not proof that the loaded matrix matches the draft.
+      // Reuse the existing GET; no proposed override is ever sent to either call.
+      try {
+        const readBack = await apiRequest("GET", `/api/auth/users/${userId}/permissions`);
+        const stored = await readBack.json() as { matrix: PermissionMatrix; businessRole?: string | null };
+        if (!stored.matrix || changedCells(matrix, stored.matrix).length ||
+            (stagedRole !== undefined && (stored.businessRole ?? null) !== stagedRole)) {
+          throw new Error("Read-back differs from the requested legacy matrix or designation.");
+        }
+        return accepted;
+      } catch (error) {
+        setReadBackUnverified(true);
+        throw new Error(`Update request accepted, but read-back was not verified. Reload before retrying. ${error instanceof Error ? error.message : ""}`);
+      }
     },
     onSuccess: () => {
-      toast({ title: "Permissions saved" });
+      toast({ title: "Existing permissions saved", description: "Proposed Inherit / Allow / Deny choices were not saved or enforced. Sites and account flags were unchanged." });
       qc.invalidateQueries({ queryKey: ["/api/auth/users", userId, "permissions"] });
       qc.invalidateQueries({ queryKey: ["/api/auth/users"] });
       onClose();
     },
     onError: (e: Error | { message?: string }) => {
-      toast({ title: "Save failed", description: e?.message || "", variant: "destructive" });
+      toast({ title: e?.message?.startsWith("Update request accepted") ? "Save read-back not verified" : "Save failed", description: e?.message || "", variant: "destructive" });
     },
   });
 
@@ -1123,7 +1164,7 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
 
   return (
     <Dialog open={true} onOpenChange={(v) => !v && requestClose()}>
-      <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col">
+      <DialogContent className="max-w-5xl max-h-[90dvh] flex flex-col">
         <DialogHeader>
           <DialogTitle>
             Permissions — {target?.fullName ?? "User"}
@@ -1171,13 +1212,13 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
               <SelectValue placeholder="Select role to review…" />
             </SelectTrigger>
             <SelectContent>
-              {primaryRoleTemplates().filter((t) => t.id !== "custom").map((t) => <SelectItem key={t.id} value={t.id} data-testid={`template-${t.id}`}>{t.label}</SelectItem>)}
+              {ROLE_TEMPLATES.map((t) => <SelectItem key={t.id} value={t.id} data-testid={`template-${t.id}`}>{t.label}{t.legacy ? " (legacy starting template)" : ""}</SelectItem>)}
               <SelectItem value="custom" data-testid="template-custom">Custom (no template)</SelectItem>
               <SelectItem value="__clear_designation__" data-testid="template-clear">Not designated (keep permissions)</SelectItem>
               {(target?.isAdmin || target?.isOwner) && <SelectItem value="administrator" data-testid="template-administrator">Administrator designation (flags unchanged)</SelectItem>}
             </SelectContent>
           </Select>
-          {!isPartialManager && (
+          {!isPartialManager && legacyEditor && (
             <>
               <Button size="sm" variant="outline" onClick={() => setMatrix(prev => {
                 const next = fullMatrix();
@@ -1218,7 +1259,7 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
           {pendingRole && roleProposal && <section className="rounded-md border bg-muted/30 p-4 mb-4 space-y-3" aria-label="Role change preview" data-testid="role-change-preview">
             <h3 className="font-semibold">Review {businessRoleLabel(pendingRole === "__clear_designation__" ? null : pendingRole)}</h3>
             <p className="text-sm">Designation: {businessRoleLabel(stagedRole === undefined ? storedRole : stagedRole)} → {businessRoleLabel(pendingRole === "__clear_designation__" ? null : pendingRole)} (not saved).</p>
-            <p className="text-sm text-muted-foreground">Nothing has changed yet. This compares against the current matrix, including unsaved individual adjustments. Site assignments, password, Administrator, Owner, field-user and permission-manager flags stay unchanged.</p>
+                <p className="text-sm text-muted-foreground">Nothing has changed yet. This compares against the current matrix, including unsaved individual adjustments. Site assignments, password, Administrator, Owner, field-user and permission-manager flags stay unchanged.</p>
             {designationOnly ? <p className="text-sm">This changes the designation only. All matrix permissions and account flags are retained.</p> : <div className="space-y-2 text-sm">
               <label className="flex items-start gap-2"><input type="radio" name="role-mode" checked={roleMode === "merge"} onChange={() => setRoleMode("merge")} data-testid="role-mode-merge" /><span>Add role permissions — preserve all existing individual adjustments (recommended).</span></label>
               <label className="flex items-start gap-2"><input type="radio" name="role-mode" checked={roleMode === "replace"} onChange={() => setRoleMode("replace")} data-testid="role-mode-replace" /><span>Replace the matrix — remove existing grants not included in this template, including compatibility and Receive Notifications bits you may change.</span></label>
@@ -1233,12 +1274,32 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
             <PermissionReview matrix={roleProposal.matrix} privileged={!!target?.isAdmin || !!target?.isOwner} />
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={() => setPendingRole(null)} data-testid="button-cancel-role">Cancel preview</Button>
-              <Button onClick={() => { setMatrix(roleProposal.matrix); setStagedRole(pendingRole === "__clear_designation__" ? null : pendingRole); setPendingRole(null); }} disabled={hasUnmanagedGrants || save.isPending || copy.isPending} data-testid="button-confirm-role">
+              <Button onClick={() => { setMatrix(roleProposal.matrix); setStagedRole(pendingRole === "__clear_designation__" ? null : pendingRole); setPendingRole(null); setReviewedMatrix(null); }} disabled={hasUnmanagedGrants || save.isPending || copy.isPending} data-testid="button-confirm-role">
                 {designationOnly ? "Confirm designation and stage" : roleMode === "replace" ? "Confirm replacement and stage" : "Confirm additions and stage"}
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">Confirm only stages these changes. The existing Save permissions button is required to persist them.</p>
           </section>}
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <p className="text-sm">The legacy matrix remains available as a fallback. Both editors use the same unsaved matrix.</p>
+            <Button variant="outline" size="sm" onClick={() => setLegacyEditor(v => !v)} data-testid="toggle-legacy-permissions">{legacyEditor ? "Use hierarchical editor" : "Use legacy editor"}</Button>
+          </div>
+          {!legacyEditor && <>
+            <HierarchicalPermissionsEditor
+              baseline={initialMatrix.current} value={matrix}
+              onChange={setMatrix} canGrant={canGrantAction}
+              target={{ ...target, businessRole: stagedRole === undefined ? storedRole : stagedRole }}
+              previews={previewOverrides} onPreviewsChange={setPreviewOverrides}
+              onReviewed={setReviewedMatrix} conflict={observedConflict}
+              disabled={save.isPending || copy.isPending || pendingRole !== null || hasUnmanagedGrants}
+              siteSummary={<SiteScopeSummary userId={userId} isAdmin={!!target?.isAdmin} />}
+            />
+            <details className="rounded-md border p-3 my-3">
+              <summary className="cursor-pointer font-medium text-sm">Site Access — existing, separately saved workflow</summary>
+              <SiteAccessTab userId={userId} isAdmin={permsQ.data?.isAdmin ?? false} />
+            </details>
+          </>}
+          {legacyEditor && <>
           <details className="rounded-md border p-3 mb-3">
             <summary className="cursor-pointer text-sm font-medium">Readable access review</summary>
             <div className="mt-3"><PermissionReview matrix={matrix} privileged={!!target?.isAdmin || !!target?.isOwner} /></div>
@@ -1289,15 +1350,16 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
               </AccordionContent>
             </AccordionItem>
           </Accordion>
+          </>}
         </div>
 
         <DialogFooter className="pt-3 border-t mt-2">
           <div className="mr-auto text-sm" role="status" id="permissions-save-reason" data-testid="permissions-save-reason">
-            {pendingRole !== null ? "Save is disabled: review differences, then Confirm (or Cancel preview to keep prior staged edits)." : hasUnmanagedGrants ? "Save is disabled: existing grants exceed your authority." : save.isPending || copy.isPending ? "Save is disabled while a request is in progress." : !unsaved ? "No unsaved permission or designation changes." : "Confirmed role and advanced edits are unsaved. Save permissions to apply."}
+            {readBackUnverified ? "Save is disabled: the update request was accepted but read-back was not verified. Close and reload to inspect stored state before retrying." : observedConflict ? "Save is disabled: an observed server matrix change conflicts with the initial snapshot. Cancel/reload deliberately; no atomic version guard exists yet." : pendingRole !== null ? "Save is disabled: review differences, then Confirm (or Cancel preview to keep prior staged edits)." : hasUnmanagedGrants ? "Save is disabled: existing grants exceed your authority." : save.isPending || copy.isPending ? "Save is disabled while a request is in progress." : !legacyEditor && reviewedMatrix !== JSON.stringify(matrix) ? "Review actual legacy changes in the workbench, then Confirm legacy change review." : !unsaved ? "No unsaved permission or designation changes." : "Confirmed legacy edits are unsaved. Proposed-only overrides will not be saved."}
             {unsaved && <p>Copy is unavailable until unsaved changes are saved or discarded.</p>}
           </div>
           <Button variant="outline" onClick={requestClose}>Cancel</Button>
-           <Button onClick={() => save.mutate()} aria-describedby="permissions-save-reason" disabled={save.isPending || copy.isPending || hasUnmanagedGrants || pendingRole !== null} data-testid="button-save-perms">
+           <Button onClick={() => save.mutate()} aria-describedby="permissions-save-reason" disabled={save.isPending || copy.isPending || hasUnmanagedGrants || pendingRole !== null || observedConflict || readBackUnverified || (!legacyEditor && (!matrixDirty && stagedRole === undefined || reviewedMatrix !== JSON.stringify(matrix)))} data-testid="button-save-perms">
             {save.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
             Save permissions
           </Button>

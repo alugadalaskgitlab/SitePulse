@@ -2,6 +2,20 @@
 name: Permission preservation
 description: Scope and access-preservation rules for permission-matrix changes
 ---
+## Permission-editor rollout boundary
+
+Proposed function-level Inherit / Allow / Deny settings are preview-only until
+backend support is separately approved. Keep the legacy editor available until
+the replacement has been verified. Never describe a simulated denial as an
+enforced revocation.
+
+**Why:** The owner explicitly authorized a presentation-first rollout while
+preserving existing enforcement, users, site assignments and account privileges.
+
+**How to apply:** Separate preview state from every existing save/create/retry
+payload. Signed-in testing is not permission to elevate the ordinary verification
+account or approve a device when the current instruction prohibits those changes.
+
 Keep the full permission matrix, not a simplified role model. Tightening page gates requires checking existing access first and preserving it through additive View grants only; do not reapply templates to existing users or change their account flags.
 
 **Why:** The owner explicitly requires individual control over every action without locking out current users.
