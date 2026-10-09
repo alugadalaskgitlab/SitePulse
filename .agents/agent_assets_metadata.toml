@@ -5785,3 +5785,17 @@ mtime_ms = 1791513050761
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b4076219-42c6-4ba6-aecf-2afdc8d1ccaf/9d9191ce-2fdb-4208-b08c-85fe33323d0b"
 storage_version_token = "1791513143518257"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "Ue4NuQOCRk9Y95Fuku4p4"
+uri = "file://reports/user-role02/REPORT.md"
+type = "text"
+title = "USER-ROLE-02 verification report"
+description = "Reviewed role assignment, preserved access, signed-in evidence, test/build results and the actual Publish preview."
+logical_id = "5a2db149-b214-4cb2-920a-87d8403674a9"
+content_hash = "sha256:c24f53c1c5755d2bc99fbdab2a4bbc0ec4027034435c6cdbc220129979eebfae"
+size = 7273
+mtime_ms = 1791521792215
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/5a2db149-b214-4cb2-920a-87d8403674a9/9a14c981-2003-4293-a1c3-d0db6d6e8310"
+storage_version_token = "1791521819189602"
+content_type = "text/markdown"
