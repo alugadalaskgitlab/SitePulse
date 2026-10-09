@@ -578,10 +578,12 @@ export default function DieselRequirements() {
 
   const { data: equipment } = useQuery<EquipmentMasterType[]>({
     queryKey: ["/api/plant-module/equipment"],
+    enabled: canCreate || canEdit || sectionCan("plant_equipment", "view"),
   });
 
   const { data: recentEquipmentIds = [] } = useQuery<number[]>({
     queryKey: ["/api/diesel-requirements/recent-items"],
+    enabled: canCreate || canEdit,
   });
 
   const { data: sitesList } = useQuery<{ id: number; name: string }[]>({
@@ -593,6 +595,7 @@ export default function DieselRequirements() {
   const [, navigate] = useLocation();
   const { data: plantMaterialsList } = useQuery<{ id: number; name: string; defaultUom: string | null }[]>({
     queryKey: ["/api/plant-module/materials"],
+    enabled: isAdmin || sectionCan("plant_materials", "create"),
   });
   const dieselMaterial = useMemo(
     () => (plantMaterialsList || []).find((m) => {
@@ -1760,6 +1763,7 @@ export default function DieselRequirements() {
                                   type="number"
                                   className={`w-20 text-center inline-block font-bold ${isReduced ? "border-amber-400 text-amber-600 bg-amber-50 dark:bg-amber-900/20" : "border-green-300 text-green-600 bg-green-50 dark:bg-green-900/20"}`}
                                   value={approvalItem?.approvedQty ?? item.plannedQty}
+                                  disabled={!canApprove}
                                   min={0}
                                   max={item.plannedQty}
                                   onChange={(e) => {

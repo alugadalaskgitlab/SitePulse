@@ -236,8 +236,9 @@ describe("06M-C receipt-status endpoint", () => {
 
   it("ignores unknown ids and rejects garbage safely", async () => {
     const res = await request(app).get("/api/diesel-requirements/receipt-status?ids=999,abc");
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({});
+    // 03B validates record existence/site scope before returning receipt data.
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ message: "Diesel requirement not found" });
   });
 });
 

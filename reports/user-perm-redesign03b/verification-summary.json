@@ -1,0 +1,10 @@
+{
+  "build": "passed",
+  "testFiles": 4,
+  "testsPassed": 107,
+  "testCommand": "npm test -- --maxWorkers=2 tests/dieselComparisonRoute.test.ts tests/dieselPaymentStatus06mF.test.ts tests/dieselReceiptPending06mC.test.ts tests/permissionDelegation.test.ts",
+  "apiExpectedMatches": 50,
+  "apiRequests": 51,
+  "restartCount": 1,
+  "restartEvidence": "Existing backfillMissingDispatchLdoRows reported created: 29, skipped: 0, errors: 0; balances recomputed. Stock contents did not match after cleanup."
+}

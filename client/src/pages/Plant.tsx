@@ -422,7 +422,7 @@ function EquipmentFleetView({ plantName }: { plantName?: string }) {
         </Link>
       )}
 
-      {sectionVisible("plant_equipment") && (
+      {(sectionVisible("plant_equipment") || sectionVisible("plant_maintenance")) && (
         <Link href={opLink("/plant/maintenance")}>
           <Card className="hover-elevate cursor-pointer h-full" data-testid="card-maintenance">
             <CardContent className="p-6 flex items-center gap-4">
@@ -559,7 +559,7 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
 
       )}
 
-      {sectionVisible("plant_equipment") && (
+      {(sectionVisible("plant_equipment") || sectionVisible("plant_maintenance")) && (
       <Link href={opLink("/plant/maintenance")}>
         <Card className="hover-elevate cursor-pointer h-full" data-testid="card-maintenance">
           <CardContent className="p-6 flex items-center gap-4">

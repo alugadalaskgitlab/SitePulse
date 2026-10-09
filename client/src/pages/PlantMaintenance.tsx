@@ -925,16 +925,25 @@ export default function PlantMaintenance() {
   const [showNewForm, setShowNewForm] = useState(false);
   const [newFormEventType, setNewFormEventType] = useState("breakdown");
 
+  const canReadEquipment = sectionCan("plant_equipment", "view");
+  const canWriteMaintenance = sectionCan("plant_equipment", "create") || sectionCan("plant_equipment", "edit");
   const { data: equipment = [] } = useQuery<EquipmentMasterType[]>({
     queryKey: ["/api/plant-module/equipment"],
+    enabled: canReadEquipment,
+  });
+  const { data: equipmentOptions = [] } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ["/api/maintenance/equipment-options"],
+    enabled: !canReadEquipment && sectionCan("plant_maintenance", "view"),
   });
 
   const { data: storeItems = [] } = useQuery<StoreItem[]>({
     queryKey: ["/api/stores/items"],
+    enabled: canWriteMaintenance,
   });
 
   const { data: stockSummary = [] } = useQuery<StoreStockBalance[]>({
     queryKey: ["/api/stores/stock-summary"],
+    enabled: canWriteMaintenance,
   });
 
   const stockMap: Record<number, number> = Object.fromEntries(stockSummary.map(s => [s.itemId, s.balance]));
@@ -963,7 +972,7 @@ export default function PlantMaintenance() {
 
   const openBreakdownCount = logs.filter(l => l.eventType === "breakdown" && l.status === "open").length;
 
-  if (!sectionVisible("plant_equipment")) {
+  if (!sectionVisible("plant_equipment") && !sectionVisible("plant_maintenance")) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-4">
         <Wrench className="w-12 h-12 text-muted-foreground" />
@@ -1002,7 +1011,7 @@ export default function PlantMaintenance() {
             <SelectTrigger className="w-44" data-testid="filter-equipment"><SelectValue placeholder="All equipment" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All equipment</SelectItem>
-              {equipment.map(e => <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>)}
+              {(canReadEquipment ? equipment : equipmentOptions).map(e => <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={filterStatus} onValueChange={setFilterStatus}>

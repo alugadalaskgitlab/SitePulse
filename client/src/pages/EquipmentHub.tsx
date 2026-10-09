@@ -162,7 +162,7 @@ export default function EquipmentHub() {
               accent="red"
               iconBg="bg-red-100"
               badge={breakdownCount > 0 ? `${breakdownCount} open` : undefined}
-              enabled={canSeeEquip}
+              enabled={canSeeEquip || sectionVisible("plant_maintenance")}
             />
             <HubActionTile
               href={`/plant/generator-logs?returnTo=${HUB}&context=equipment`}

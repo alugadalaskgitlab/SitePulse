@@ -229,7 +229,7 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  function assertDieselOrStoresView(req: any, res: any): boolean {
+  function assertDieselOrStoresView(req: any, res: any, allowDedicatedView = false): boolean {
     if (!req.authUser) {
       res.status(401).json({ error: "not_authenticated" });
       return false;
@@ -237,6 +237,7 @@ export async function registerRoutes(
     const canView = !!(
       req.authUser.isAdmin ||
       req.authUser.isOwner ||
+      (allowDedicatedView && req.authPermissions?.diesel_req_view?.view) ||
       req.authPermissions?.site_diesel?.view ||
       req.authPermissions?.stores_inventory?.view ||
       req.authPermissions?.site_diesel?.create ||
@@ -247,6 +248,30 @@ export async function registerRoutes(
     );
     if (!canView) {
       res.status(403).json({ error: "forbidden", action: "view" });
+      return false;
+    }
+    return true;
+  }
+
+  // Dedicated View covers records, not the legacy company-wide reports.
+  // Site identity is the saved site_id, never inferred from equipment or names.
+  async function dieselReadSiteIds(req: any): Promise<number[] | null> {
+    if (req.authUser?.isAdmin || req.authUser?.isOwner) return null;
+    return storage.getUserPermittedSiteIds(req.authUser.id);
+  }
+  async function visibleDieselRequirements(req: any, rows: any[]) {
+    const ids = await dieselReadSiteIds(req);
+    return ids === null ? rows : rows.filter(row => row.siteId != null && ids.includes(row.siteId));
+  }
+  async function assertDieselRecordRead(req: any, res: any, id: number): Promise<boolean> {
+    const row = await storage.getDieselRequirement(id);
+    if (!row) {
+      res.status(404).json({ message: "Diesel requirement not found" });
+      return false;
+    }
+    const ids = await dieselReadSiteIds(req);
+    if (ids !== null && (row.siteId == null || !ids.includes(row.siteId))) {
+      res.status(403).json({ message: "You do not have access to this diesel requirement's site" });
       return false;
     }
     return true;
@@ -1438,9 +1463,12 @@ export async function registerRoutes(
       if (!moduleType || !Number.isFinite(linkedRecordId)) {
         return res.status(400).json({ message: "moduleType and linkedRecordId are required" });
       }
-      if (moduleType === "diesel_purchase" && !assertDieselOrStoresView(req, res)) return;
-      if (moduleType === "equipment_breakdown") {
-        if (!req.authUser) return res.status(401).json({ message: "not_authenticated" });
+      if (moduleType === "diesel_purchase") {
+        if (!assertDieselOrStoresView(req, res, true)) return;
+        if (!(await assertDieselRecordRead(req, res, linkedRecordId))) return;
+      }
+      if (moduleType === "equipment_breakdown" || moduleType === "equipment_maintenance") {
+        if (!assertViewEither(req, res, "plant_equipment", "plant_maintenance")) return;
         if (!(await assertMaintenanceRecordAccess(req, res, linkedRecordId, true))) return;
       }
       const list = await storage.getAttachments(moduleType, linkedRecordId);
@@ -1466,9 +1494,14 @@ export async function registerRoutes(
       if (!moduleType || ids.length === 0) {
         return res.status(400).json({ message: "moduleType and ids are required" });
       }
-      if (moduleType === "diesel_purchase" && !assertDieselOrStoresView(req, res)) return;
-      if (moduleType === "equipment_breakdown") {
-        if (!req.authUser) return res.status(401).json({ message: "not_authenticated" });
+      if (moduleType === "diesel_purchase") {
+        if (!assertDieselOrStoresView(req, res, true)) return;
+        for (const id of ids) {
+          if (!(await assertDieselRecordRead(req, res, id))) return;
+        }
+      }
+      if (moduleType === "equipment_breakdown" || moduleType === "equipment_maintenance") {
+        if (!assertViewEither(req, res, "plant_equipment", "plant_maintenance")) return;
         for (const id of ids) {
           if (!(await assertMaintenanceRecordAccess(req, res, id, true))) return;
         }
@@ -10823,14 +10856,14 @@ export async function registerRoutes(
 
   app.get("/api/diesel-requirements", async (req, res) => {
     try {
-      if (!assertDieselOrStoresView(req, res)) return;
+      if (!assertDieselOrStoresView(req, res, true)) return;
       const filters = {
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
         status: req.query.status as string | undefined,
       };
       const requirements = await storage.getDieselRequirements(filters);
-      res.json(requirements);
+      res.json(await visibleDieselRequirements(req, requirements));
     } catch (err) {
       console.error("Error fetching diesel requirements:", err);
       res.status(500).json({ message: "Failed to fetch diesel requirements" });
@@ -10839,8 +10872,8 @@ export async function registerRoutes(
 
   app.get("/api/diesel-requirements/summary", async (req, res) => {
     try {
-      if (!assertDieselOrStoresView(req, res)) return;
-      const all = await storage.getDieselRequirements();
+      if (!assertDieselOrStoresView(req, res, true)) return;
+      const all = await visibleDieselRequirements(req, await storage.getDieselRequirements());
       const summary = {
         total: all.length,
         pending: all.filter(r => r.status === "pending").length,
@@ -10926,10 +10959,13 @@ export async function registerRoutes(
       // This is a read-only register.  Stores users may reconcile deliveries,
       // while diesel users retain their existing visibility; neither grant
       // implies create/edit/approval rights on the other module.
-      if (!assertDieselOrStoresView(req, res)) return;
+      if (!assertDieselOrStoresView(req, res, true)) return;
       const ids = String(req.query.ids || "")
         .split(",").map((s) => Number(s.trim())).filter((n) => Number.isFinite(n) && n > 0);
       if (ids.length === 0) return res.json({});
+      for (const id of ids) {
+        if (!(await assertDieselRecordRead(req, res, id))) return;
+      }
       const receipts = await storage.getDieselRequirementReceipts(ids);
       const byReq: Record<number, any[]> = {};
       for (const r of receipts) {
@@ -11007,8 +11043,9 @@ export async function registerRoutes(
 
   app.get("/api/diesel-requirements/:id", async (req, res) => {
     try {
-      if (!assertDieselOrStoresView(req, res)) return;
+      if (!assertDieselOrStoresView(req, res, true)) return;
       const id = Number(req.params.id);
+      if (!(await assertDieselRecordRead(req, res, id))) return;
       const requirement = await storage.getDieselRequirement(id);
       if (!requirement) {
         return res.status(404).json({ message: "Diesel requirement not found" });
@@ -13814,7 +13851,7 @@ export async function registerRoutes(
 
   app.get("/api/maintenance/logs", async (req, res) => {
     try {
-      if (!assertView(req, res, "plant_equipment")) return;
+      if (!assertViewEither(req, res, "plant_equipment", "plant_maintenance")) return;
       const filters = {
         equipmentId: req.query.equipmentId ? Number(req.query.equipmentId) : undefined,
         eventType: req.query.eventType as string | undefined,
@@ -13846,7 +13883,7 @@ export async function registerRoutes(
 
   app.get("/api/maintenance/logs/:id", async (req, res) => {
     try {
-      if (!assertView(req, res, "plant_equipment")) return;
+      if (!assertViewEither(req, res, "plant_equipment", "plant_maintenance")) return;
       const log = await storage.getMaintenanceLog(Number(req.params.id));
       if (!log) return res.status(404).json({ error: "Not found" });
       if (!(await assertMaintenanceSourceAccess(req, res, log))) return;
@@ -14024,11 +14061,32 @@ export async function registerRoutes(
     }
   });
 
+  // Read-only filter metadata; no rates, commercial terms or equipment-master
+  // authority. Only machines in readable maintenance history are projected.
+  app.get("/api/maintenance/equipment-options", async (req, res) => {
+    try {
+      if (!assertViewEither(req, res, "plant_equipment", "plant_maintenance")) return;
+      const logs = await storage.getMaintenanceLogs();
+      const options = new Map<number, { id: number; name: string }>();
+      for (const log of logs) {
+        if (await canAccessMaintenanceSource(req, log))
+          options.set(log.equipmentId, { id: log.equipmentId, name: log.equipmentName });
+      }
+      res.json([...options.values()].sort((a, b) => a.name.localeCompare(b.name)));
+    } catch (err) {
+      console.error("GET /api/maintenance/equipment-options:", err);
+      res.status(500).json({ error: "Failed to fetch maintenance equipment options" });
+    }
+  });
+
   app.get("/api/maintenance/health-summary", async (req, res) => {
     try {
-      if (!assertView(req, res, "plant_equipment")) return;
+      if (!assertViewEither(req, res, "plant_equipment", "plant_maintenance")) return;
       const summary = await storage.getEquipmentHealthSummary(await visibleMaintenanceLogIds(req));
-      res.json(summary);
+      // Dedicated maintenance readers do not receive the unrelated fleet
+      // catalogue represented by zero-event equipment-master rows.
+      const hasEquipmentView = req.authUser?.isAdmin || req.authUser?.isOwner || req.authPermissions?.plant_equipment?.view;
+      res.json(hasEquipmentView ? summary : summary.filter(row => row.totalMaintenanceEvents > 0));
     } catch (err) {
       console.error("GET /api/maintenance/health-summary:", err);
       res.status(500).json({ error: "Failed to fetch health summary" });
@@ -14037,7 +14095,7 @@ export async function registerRoutes(
 
   app.get("/api/maintenance/open-count", async (req, res) => {
     try {
-      if (!assertView(req, res, "plant_equipment")) return;
+      if (!assertViewEither(req, res, "plant_equipment", "plant_maintenance")) return;
       const count = await storage.getOpenBreakdownCount(await visibleMaintenanceLogIds(req));
       res.json({ count });
     } catch (err) {

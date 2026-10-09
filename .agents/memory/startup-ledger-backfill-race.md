@@ -14,3 +14,12 @@ description: Transient primary-key collisions can appear when the development wo
 **Why:** The user explicitly rejected disabling repairs; startup work can otherwise be mistaken for changes caused by the feature being verified.
 
 **How to apply:** Plan verification without a restart. If one is unavoidable, separate its effects from the batch and establish the verification baseline only after asynchronous startup repairs settle.
+
+Even one ordinary restart can rewrite historical dispatch ledger contents and
+recompute balances without changing table row counts. Count equality is not
+preservation proof; compare content digests and never label the run clean when
+they differ.
+
+**Why:** Permission acceptance encountered legacy startup repairs that reported
+recreated LDO rows; post-cleanup stock ledger/balance counts matched but hashes did
+not. Do not reverse real historical changes as if they were test fixtures.

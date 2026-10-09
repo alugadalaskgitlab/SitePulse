@@ -1,0 +1,19 @@
+[
+  {
+    "name": "diesel-granular",
+    "path": "/plant/diesel-requirements",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nHMP Operations\nRMC Operations\nDiesel Requirements\nEquipment Maintenance\nP0\n\nPERM 03B Read-only Subject\n\nManager\n\nSign Out\nRefresh\nDAILY DIESEL REQUIREMENT\n\nPlan, approve, and track daily diesel purchases\n\nTHIS MONTH\n\n1\n\nRequirements raised\n\nTOTAL PLANNED\n\n10 L\n\nDiesel required\n\nTOTAL PURCHASED\n\n0 L\n\nActually bought\n\nPENDING\n\n1\n\nAwaiting approval\n\nDATE FROM\nDATE TO\nSTATUS\nALL STATUS\nLOCATION\nALL LOCATIONS\n\n09-OCT-2026 (TODAY)\n\nPERM03B SITE A\n\nRaised by PERM03B • 1 equipment/DGs\n\n10 L\n\nPlanned\n\nPENDING",
+    "failures": []
+  },
+  {
+    "name": "maintenance-granular",
+    "path": "/plant/maintenance",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nHMP Operations\nRMC Operations\nDiesel Requirements\nEquipment Maintenance\nP0\n\nPERM 03B Read-only Subject\n\nManager\n\nSign Out\nRefresh\nEquipment Maintenance\n\nBreakdown register, service logs, and equipment health\n\nAll equipment\nAll status\nAll\nBreakdowns\n1\nServices\nHealth\nPERM03B MACHINE A\nBreakdown\nOpen\n\nPERM03B fixture\n\n2026-10-09",
+    "failures": []
+  },
+  {
+    "name": "maintenance-health",
+    "text": "Site\nPulse\n\nHigh Lane Constructions Pvt Ltd\n\nNAVIGATION\n\nDashboard\nHMP Operations\nRMC Operations\nDiesel Requirements\nEquipment Maintenance\nP0\n\nPERM 03B Read-only Subject\n\nManager\n\nSign Out\nRefresh\nEquipment Maintenance\n\nBreakdown register, service logs, and equipment health\n\nAll equipment\nAll status\nAll\nBreakdowns\n1\nServices\nHealth\nPERM03B MACHINE A\nBreakdown\nOpen\n\nPERM03B fixture\n\n2026-10-09",
+    "failures": []
+  }
+]

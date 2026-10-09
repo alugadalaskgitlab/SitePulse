@@ -130,6 +130,9 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
     ...(moduleAllowed("hmp") ? [{ href: "/plant/hub", icon: Factory, label: "HMP Operations", matchPrefix: "/plant", contextKey: "hmp" }] : []),
     ...(rmcEnabled && moduleAllowed("rmc") ? [{ href: "/rmc/hub", icon: Building2, label: "RMC Operations", matchPrefix: "/rmc", contextKey: "rmc" }] : []),
     ...(sectionVisible("equipment_hub") || sectionVisible("equipment_performance_report") || sectionVisible("plant_equipment") || isAdmin ? [{ href: "/equipment/hub", icon: Wrench, label: "Equipment & Fleet", matchPrefix: "/equipment", contextKey: "equipment" }] : []),
+    // Dedicated readers need a direct entry without unrelated hub grants.
+    ...(sectionVisible("diesel_req_view") && !sectionVisible("site_hub") && !isAdmin ? [{ href: "/plant/diesel-requirements", icon: Receipt, label: "Diesel Requirements", matchPrefix: "/plant/diesel-requirements" }] : []),
+    ...(sectionVisible("plant_maintenance") && !sectionVisible("equipment_hub") && !sectionVisible("plant_equipment") && !isAdmin ? [{ href: "/plant/maintenance", icon: Wrench, label: "Equipment Maintenance", matchPrefix: "/plant/maintenance" }] : []),
     ...(sectionVisible("stores_hub") || sectionVisible("stores_inventory") || isAdmin ? [{ href: "/stores/hub", icon: Package, label: "Stores & Inventory", matchPrefix: "/stores", contextKey: "stores" }] : []),
     ...(sectionVisible("finance_hub") || isAdmin ? [{ href: "/finance/hub", icon: Receipt, label: "Procurement & Billing", matchPrefix: "/finance" }] : []),
     ...(canSeeIrn ? [{ href: "/irn", icon: ClipboardList, label: "Requisitions", matchPrefix: "/irn" }] : []),
