@@ -1,0 +1,9 @@
+{
+  "administrator": {
+    "id": 87,
+    "email": "permissions02c.admin@test.invalid",
+    "full_name": "PERM 02C Disposable Administrator"
+  },
+  "createdAt": "2026-10-09T10:36:18.841Z",
+  "cleanup": "pending acceptance"
+}
