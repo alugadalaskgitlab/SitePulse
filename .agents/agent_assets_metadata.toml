@@ -5911,3 +5911,31 @@ mtime_ms = 1791544579159
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/11f4b84c-8845-4729-a989-603c54715ae6/14fb2a10-6e4e-4b57-8548-e743364048ef"
 storage_version_token = "1791544591405642"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "ftOqqzkgoxRbFu7nloAiT"
+uri = "file://reports/user-perm-redesign03b/acceptance-report.html"
+type = "html"
+title = "03B — Permission changes and acceptance exceptions"
+description = "Changed files, before/after API results, four signed-in screenshots, cleanup, regression results and genuine Publish preview. Full acceptance is not clean."
+logical_id = "a784fb59-ad2a-423d-bc9a-19a37d680e27"
+content_hash = "sha256:472de63d864749b5c388d1165baf679c41009c42074c34260269bcb26f404c5a"
+size = 427107
+mtime_ms = 1791546511857
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/a784fb59-ad2a-423d-bc9a-19a37d680e27/617b4f04-af84-4e3d-9f7f-70c9238f949f"
+storage_version_token = "1791546594537800"
+content_type = "text/html"
+
+[[outputs]]
+id = "FMEWr20dE_KLgz6V_k6az"
+uri = "file://reports/user-perm-redesign03b/acceptance-evidence.zip"
+type = "unspecified"
+title = "03B — Complete verification evidence"
+description = "Report, 51 before/after request results, browser evidence, preservation digests, fixture cleanup and schema-preview result."
+logical_id = "1636b8da-3dc3-4d6f-8dfa-742328e14f96"
+content_hash = "sha256:b8d0f12ccf54614004f18eb6da11b492785c8ef15e19b251523813f466715f4a"
+size = 604299
+mtime_ms = 1791546511886
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/1636b8da-3dc3-4d6f-8dfa-742328e14f96/3e496234-5fe7-4992-88c5-ec2efd773915"
+storage_version_token = "1791546597391207"
+content_type = "application/octet-stream"
