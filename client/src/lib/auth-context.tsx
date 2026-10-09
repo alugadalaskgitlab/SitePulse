@@ -24,6 +24,7 @@ export type AuthUser = {
   id: number;
   email: string;
   fullName: string;
+  businessRole?: string | null;
   isAdmin: boolean;
   // Company Owner / Primary Admin — always has full control across every
   // module regardless of permission toggles, and cannot be locked out.

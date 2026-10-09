@@ -2798,6 +2798,8 @@ export type InsertVendorRateCard = z.infer<typeof insertVendorRateCardSchema>;
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
+  // Explicit business designation only; never used for authorization.
+  businessRole: text("business_role"),
   // Task #280 — email is now nullable so phone-only accounts can be created.
   // At least one of email/phone must be set (enforced at the app layer).
   email: text("email").unique(),

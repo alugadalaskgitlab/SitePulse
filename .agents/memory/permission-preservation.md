@@ -84,6 +84,18 @@ repair a failed positive delivery check.
 
 ## Publishing access preservation
 
+Business-role designations must be explicitly assigned, never inferred from a
+matching permission matrix. A designation is not authority: individual grants,
+site access and privileged flags remain independent. Introducing designations
+must not backfill existing accounts or remove their Administrator status.
+
+**Why:** The owner wants recognizable commercial roles without replacing
+individual permission control or silently reclassifying existing people.
+
+**How to apply:** Show undesignated accounts honestly, use reviewed explicit
+assignment, and warn about sensitive grants and privileged flags retained by
+Merge. Persist designation and its confirmed matrix together only on Save.
+
 Verify privileged write endpoints using authenticated ordinary-user requests;
 an `/api/admin/` prefix or admin-only UI is not proof of a backend guard.
 

@@ -10,10 +10,45 @@ const ROLE_ORDER = [
 ];
 export const primaryRoleTemplates = () =>
   ROLE_TEMPLATES
-    .filter((role) => !(role as typeof role & { legacy?: boolean }).legacy && !["stores", "procurement"].includes(role.id))
+    .filter((role) => !(role as typeof role & { legacy?: boolean }).legacy && !["stores", "procurement", "custom"].includes(role.id))
     .sort((a, b) => ROLE_ORDER.indexOf(a.id) - ROLE_ORDER.indexOf(b.id));
 
 export type RoleChange = { section: SectionKey; action: Action; enabled: boolean };
+
+export function businessRoleLabel(role: string | null | undefined) {
+  if (!role) return "Not designated";
+  if (role === "administrator") return "Administrator";
+  if (role === "custom") return "Custom (no template)";
+  return ROLE_TEMPLATES.find((template) => template.id === role)?.label ?? role;
+}
+
+// Include every persisted bit, even compatibility aliases and inactive cells.
+export function retainedSensitivePermissions(before: PermissionMatrix, after: PermissionMatrix): RoleChange[] {
+  const management = new Set<SectionKey>([
+    ...PERMISSION_GROUPS.filter((g) => ["access", "admin_tools"].includes(g.id)).flatMap((g) => g.sections),
+    "admin_hub", "admin_settings", "app_management",
+  ]);
+  return SECTION_KEYS.flatMap((section) => ACTIONS
+    .filter((action) => (["delete", "export", "notify"].includes(action) || management.has(section))
+      && before[section]?.[action] && after[section]?.[action])
+    .map((action) => ({ section, action, enabled: true })));
+}
+
+export function RetainedAccessReview({ before, after, target }: {
+  before: PermissionMatrix; after: PermissionMatrix;
+  target?: { isAdmin: boolean; isOwner?: boolean; canManagePermissions: boolean; permissionManagerScope: string | null; canUnlockRecords?: boolean };
+}) {
+  const retained = retainedSensitivePermissions(before, after);
+  return <div className="rounded-md border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900 space-y-2" data-testid="role-retained-access">
+    <h4 className="font-semibold">Existing sensitive access retained</h4>
+    <p>Merge only adds permissions. It does not remove any existing access. Ordinary roles do not grant Administrator or Owner status.</p>
+    <ul className="list-disc pl-5">
+      {retained.map(({ section, action }) => <li key={`${section}-${action}`}>Retained — {SECTION_LABELS[section]} / {ACTION_LABELS[action]}</li>)}
+      {!retained.length && <li>No existing sensitive matrix permissions retained.</li>}
+    </ul>
+    <p>Account flags remain unchanged: Administrator: {target?.isAdmin ? "enabled" : "off"}; Owner: {target?.isOwner ? "enabled" : "off"}; Permission manager: {target?.canManagePermissions ? `enabled (${target.permissionManagerScope ?? "unspecified scope"})` : "off"}; Record unlock: {target?.canUnlockRecords === undefined ? "not reported — unchanged" : target.canUnlockRecords ? "enabled" : "off"}.</p>
+  </div>;
+}
 
 // Work on all persisted bits, including compatibility aliases and hidden Notify.
 // Capping only affects proposed changes; it must never erase an unowned grant.

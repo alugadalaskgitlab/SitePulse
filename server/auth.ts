@@ -160,8 +160,13 @@ export async function loadUserPermissionsMatrix(userId: number): Promise<Permiss
   return matrix;
 }
 
-export async function setUserPermissions(userId: number, matrix: PermissionMatrix): Promise<void> {
+export async function setUserPermissions(userId: number, matrix: PermissionMatrix, businessRole?: string | null): Promise<void> {
   await db.transaction(async (tx) => {
+    // Serialize concurrent replacements, and save explicit designation atomically.
+    await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for("update");
+    if (businessRole !== undefined) {
+      await tx.update(users).set({ businessRole }).where(eq(users.id, userId));
+    }
     await tx.delete(userPermissions).where(eq(userPermissions.userId, userId));
     const rows = SECTION_KEYS.map((k) => {
       const p = matrix[k] || { view: false, create: false, edit: false, delete: false, view_reports: false, export: false, approve: false, notify: false };

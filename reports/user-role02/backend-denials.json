@@ -1,0 +1,36 @@
+{
+  "users": {
+    "status": 403,
+    "data": {
+      "error": "forbidden",
+      "section": "user_management",
+      "action": "view"
+    }
+  },
+  "permission-save": {
+    "status": 403,
+    "data": {
+      "error": "forbidden",
+      "section": "user_management",
+      "action": "edit"
+    }
+  },
+  "delete-trip": {
+    "status": 403,
+    "data": {
+      "error": "admin_required"
+    }
+  },
+  "branding": {
+    "status": 403,
+    "data": {
+      "error": "admin_required"
+    }
+  },
+  "licence": {
+    "status": 403,
+    "data": {
+      "error": "admin_required"
+    }
+  }
+}

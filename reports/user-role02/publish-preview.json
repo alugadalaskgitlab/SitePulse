@@ -1,0 +1,15 @@
+{
+  "columnsToRemove": [],
+  "hasDiff": true,
+  "hasStructuralDataLoss": false,
+  "matViewsToRemove": [],
+  "maybeNonBackwardsCompatible": false,
+  "schemasToRemove": [],
+  "statementsToExecute": [
+    "ALTER TABLE \"users\" ADD COLUMN \"business_role\" text;"
+  ],
+  "success": true,
+  "tablesToRemove": [],
+  "tablesToTruncate": [],
+  "warnings": []
+}

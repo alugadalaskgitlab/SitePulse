@@ -1,0 +1,12 @@
+{
+  "source": "Final full-suite run",
+  "files": [
+    "tests/perm01MatrixUi.test.tsx",
+    "tests/permissionDelegation.test.ts",
+    "tests/userRole01.test.ts",
+    "tests/userRole02.test.ts",
+    "client/src/components/user-role-review.test.tsx"
+  ],
+  "passed": 85,
+  "failed": 0
+}

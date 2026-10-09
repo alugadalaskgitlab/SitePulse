@@ -93,6 +93,15 @@ const permissionMatrixSchema = z.record(
   }),
 );
 
+const businessRoleSchema = z.string().refine(
+  value => value === "administrator" || value === "custom" || ROLE_TEMPLATES.some(role => role.id === value),
+  "Unknown business role",
+).nullable();
+const reviewedPermissionsSchema = z.object({
+  matrix: permissionMatrixSchema,
+  businessRole: businessRoleSchema.optional(),
+}).strict();
+
 // Guided-creation extension: role template + explicit site access are applied
 // in the SAME request so a new account is never silently left half-configured.
 const siteAccessChoiceSchema = z.object({
@@ -503,15 +512,16 @@ export function registerAuthRoutes(app: Express) {
     // Step: permissions (template, adjusted matrix, or defaults)
     try {
       if (isAdminUser) {
-        await setUserPermissions(userId, fullMatrix());
+        await setUserPermissions(userId, fullMatrix(), "administrator");
       } else if (opts.permissions) {
-        await setUserPermissions(userId, coerceAndCapMatrix(req, opts.permissions));
+        const role = opts.roleTemplate === undefined ? undefined : businessRoleSchema.parse(opts.roleTemplate);
+        await setUserPermissions(userId, coerceAndCapMatrix(req, opts.permissions), role);
       } else if (opts.roleTemplate && opts.roleTemplate !== "custom") {
         if (!ROLE_TEMPLATES.some((t) => t.id === opts.roleTemplate)) throw new Error("unknown_role_template");
         // Partial managers cannot apply templates broader than their own scope.
-        await setUserPermissions(userId, coerceAndCapMatrix(req, applyRoleTemplate(opts.roleTemplate)));
+        await setUserPermissions(userId, coerceAndCapMatrix(req, applyRoleTemplate(opts.roleTemplate)), opts.roleTemplate);
       } else {
-        await setUserPermissions(userId, emptyMatrix());
+        await setUserPermissions(userId, emptyMatrix(), opts.roleTemplate === "custom" ? "custom" : undefined);
       }
       steps.permissions = "ok";
     } catch (e: any) {
@@ -585,7 +595,7 @@ export function registerAuthRoutes(app: Express) {
       const setup = await applyGuidedSetup(req, u.id, !!u.isAdmin, { roleTemplate, permissions, siteAccess });
       const anyFailed = Object.values(setup.steps).includes("failed");
       res.status(201).json({
-        ...toSafeUser(u),
+        ...toSafeUser((await getUserById(u.id))!),
         setupComplete: setup.setupComplete,
         setupSteps: setup.steps,
         setupError: setup.error,
@@ -716,7 +726,7 @@ export function registerAuthRoutes(app: Express) {
     const u = await getUserById(id);
     if (!u) return res.status(404).json({ error: "not_found" });
     const matrix = await loadUserPermissionsMatrix(id);
-    res.json({ matrix, isAdmin: u.isAdmin });
+    res.json({ matrix, isAdmin: u.isAdmin, businessRole: u.businessRole });
   });
 
   app.put("/api/auth/users/:id/permissions", requireAuth, requireUserMgmt("edit"), async (req, res) => {
@@ -731,7 +741,9 @@ export function registerAuthRoutes(app: Express) {
         return res.status(403).json({ error: "forbidden", message: "Cannot modify permissions for an admin user." });
       }
 
-      const parsed = permissionMatrixSchema.parse(req.body);
+      const reviewed = Object.prototype.hasOwnProperty.call(req.body ?? {}, "matrix")
+        ? reviewedPermissionsSchema.parse(req.body) : null;
+      const parsed = reviewed ? reviewed.matrix : permissionMatrixSchema.parse(req.body);
       // Coerce into a full matrix (only known sections) with defaults.
       const matrix: PermissionMatrix = emptyMatrix();
       // For partial permission managers: cap each grant to what they themselves have.
@@ -753,8 +765,8 @@ export function registerAuthRoutes(app: Express) {
           notify: !!val?.notify && (actorRow ? !!actorRow.notify : true),
         };
       }
-      await setUserPermissions(id, matrix);
-      res.json({ ok: true, matrix });
+      await setUserPermissions(id, matrix, reviewed?.businessRole);
+      res.json({ ok: true, matrix, businessRole: reviewed?.businessRole === undefined ? u.businessRole : reviewed.businessRole });
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ error: "invalid_request", details: err.errors });
       console.error("[PUT /api/auth/users/:id/permissions]", err);

@@ -1,0 +1,1866 @@
+{
+  "previewUnchanged": true,
+  "cancelUnchanged": true,
+  "confirmStagesOnly": true,
+  "merged": {
+    "matrix": {
+      "dashboard": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "hmp_hub": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "site_hub": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "equipment_hub": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "reports_hub": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "stores_hub": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "finance_hub": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "masters_hub": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "admin_hub": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "rmc_hub": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "site_dprs": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": true,
+        "view_reports": true,
+        "export": true,
+        "approve": true,
+        "notify": true
+      },
+      "site_materials": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "site_procurement": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "purchase_indents_view": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "purchase_indents_raise": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "purchase_indents_approve": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": true,
+        "notify": false
+      },
+      "site_diesel": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "diesel_req_view": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "diesel_req_raise": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "diesel_req_approve": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": true,
+        "notify": false
+      },
+      "irn_view": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "irn_raise": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "irn_approve": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": true,
+        "notify": false
+      },
+      "plant_shift_logs": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_manpower_review": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_heating": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_heating_trends": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_equipment": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_generator_logs": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_maintenance": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_production": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_materials": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_bitumen": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_ldo": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_daily_reports": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_stock": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_ldo_reconciliation": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_variance": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_audit": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_diesel_proc": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "stock_reconciliation": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "equipment_performance_report": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "rmc_operations": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "rmc_batch_records": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "rmc_mix_designs": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "rmc_cube_tests": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "rmc_raw_materials": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "rmc_delivery_challans": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "rmc_daily_report": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "vendor_bills": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "vendor_bills_view": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "vendor_bills_raise": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "vendor_bills_verify": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": true,
+        "notify": false
+      },
+      "vendor_bills_approve": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": true,
+        "notify": false
+      },
+      "vendor_bill_aliases": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "reports": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "report_management": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "report_site_purchases": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "stores_inventory": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "labour_management": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "estimator_portal": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "mix_calculator": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "concrete_calculator": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "qto_boq": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "planning_masters": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "work_programme": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "work_programme_review": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": true,
+        "notify": false
+      },
+      "norms_library": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "edit_requests_review": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "project_scope": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": true,
+        "notify": false
+      },
+      "rate_cards": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "master_parties": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "master_materials": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "master_equipment": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "master_personnel": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "admin_settings": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "site_management": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "sites_plants_manage": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "vendor_masters_manage": {
+        "view": true,
+        "create": true,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "concrete_estimates_manage": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "admin_notifications_manage": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "admin_ldo_tools": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "admin_ledger_tools": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "data_sync": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "user_management": {
+        "view": false,
+        "create": false,
+        "edit": true,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "permission_manager": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "device_approval": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "push_notifications": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "hmp_operations": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "reports_analysis": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "estimates_manager": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "app_management": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      }
+    },
+    "isAdmin": false,
+    "businessRole": "operations_director"
+  },
+  "replaced": {
+    "matrix": {
+      "dashboard": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "hmp_hub": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "site_hub": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "equipment_hub": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "reports_hub": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "stores_hub": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "finance_hub": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "masters_hub": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "admin_hub": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "rmc_hub": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "site_dprs": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "site_materials": {
+        "view": true,
+        "create": false,
+        "edit": true,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "site_procurement": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "purchase_indents_view": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "purchase_indents_raise": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "purchase_indents_approve": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "site_diesel": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "diesel_req_view": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "diesel_req_raise": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "diesel_req_approve": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "irn_view": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "irn_raise": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "irn_approve": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_shift_logs": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_manpower_review": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_heating": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_heating_trends": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_equipment": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_generator_logs": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_maintenance": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_production": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_materials": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_bitumen": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_ldo": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_daily_reports": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_stock": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_ldo_reconciliation": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_variance": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_audit": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "plant_diesel_proc": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "stock_reconciliation": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "equipment_performance_report": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "rmc_operations": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "rmc_batch_records": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "rmc_mix_designs": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "rmc_cube_tests": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "rmc_raw_materials": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "rmc_delivery_challans": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "rmc_daily_report": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "vendor_bills": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "vendor_bills_view": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "vendor_bills_raise": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "vendor_bills_verify": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "vendor_bills_approve": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "vendor_bill_aliases": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "reports": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "report_management": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "report_site_purchases": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "stores_inventory": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "labour_management": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "estimator_portal": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "mix_calculator": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "concrete_calculator": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "qto_boq": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "planning_masters": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "work_programme": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "work_programme_review": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "norms_library": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "edit_requests_review": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "project_scope": {
+        "view": true,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": true,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "rate_cards": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "master_parties": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "master_materials": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "master_equipment": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "master_personnel": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "admin_settings": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "site_management": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "sites_plants_manage": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "vendor_masters_manage": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "concrete_estimates_manage": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "admin_notifications_manage": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "admin_ldo_tools": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "admin_ledger_tools": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "data_sync": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "user_management": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "permission_manager": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "device_approval": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "push_notifications": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "hmp_operations": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "reports_analysis": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "estimates_manager": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      },
+      "app_management": {
+        "view": false,
+        "create": false,
+        "edit": false,
+        "delete": false,
+        "view_reports": false,
+        "export": false,
+        "approve": false,
+        "notify": false
+      }
+    },
+    "isAdmin": false,
+    "businessRole": "viewer"
+  },
+  "advancedPreservesDesignation": true,
+  "flags": {
+    "is_admin": false,
+    "is_owner": false,
+    "can_manage_permissions": false,
+    "can_unlock_records": false,
+    "business_role": "viewer"
+  },
+  "invalidDesignationStatus": 400
+}
