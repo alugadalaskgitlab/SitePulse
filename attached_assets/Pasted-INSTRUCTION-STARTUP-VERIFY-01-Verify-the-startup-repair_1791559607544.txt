@@ -1,0 +1,160 @@
+INSTRUCTION STARTUP-VERIFY-01: Verify the startup-repair removal before it is published. Read-only.
+
+READ THIS FIRST
+This batch is READ-ONLY VERIFICATION. It changes no application behaviour, no data, no sequence, and no startup job.
+Do NOT publish. Do NOT change production. Do NOT reset, advance or alter ANY sequence anywhere, in any database, for any reason.
+Do NOT re-enable any removed startup job, and do NOT remove any further one.
+Do NOT run any repair, backfill, migration or cleanup in apply mode. `stock-repair-plan.mjs` stays planning-only.
+If a check cannot be performed read-only, say so and stop that check rather than finding a way round it.
+PARKED — do not touch: vendor billing, trips, arrangements, permissions, navigation, DPR equipment links (that is DPR-EQLINK-01).
+Commit and push all work to GitHub before reporting. If the push fails, say so explicitly in the report — a previous batch's push failed with "Invalid username or token" and the owner needs to know.
+
+CONTEXT
+Commit `7fca52e` removed 33 automatic repair/backfill calls from
+`runBackgroundMigrations` (`server/index.ts`) and `seedDatabase`
+(`server/routes.ts`), including `resetAllSequences` and the LDO chain. The owner
+and his adviser approved separating historical stock repairs from ordinary
+startup. The implementations remain; only the automatic calls were removed.
+
+That decision stands. This batch does not revisit it. It verifies the
+consequences before the change reaches production.
+
+The previous batch's verification ran four targeted test files (107 tests), not
+the full suite, and explicitly declined to claim sequences are globally unchanged.
+
+=====================================================================
+PART A — FULL SUITE AGAINST THE BASELINE
+=====================================================================
+A1. Run the COMPLETE test suite. Report passed / failed / skipped and compare the
+    failure identities against the established 48-failure baseline.
+A2. Name every failure that is NOT in that baseline. Do not summarise them into a
+    total. If a failure is a timeout or environmental, say so and re-run that file
+    singly, reporting both results.
+A3. Build passes.
+
+=====================================================================
+PART B — SEQUENCES VERSUS ACTUAL MAX IDs
+=====================================================================
+`resetAllSequences` (`server/storage.ts` ~22359) ran
+`setval(pg_get_serial_sequence(table,'id'), COALESCE(MAX(id),1))` over 42 named
+tables, swallowing every error silently. It is gone. Establish what that means.
+
+B1. For EVERY table that has an id sequence — not only the 42 it listed — report
+    read-only: table, sequence name, `last_value`, `is_called`, `MAX(id)`, and the
+    gap. Use `pg_sequences` / `pg_get_serial_sequence` with plain SELECTs. Call
+    `setval` nowhere.
+B2. Do this for the DEVELOPMENT database. For PRODUCTION, do it ONLY if a genuinely
+    read-only path exists that the owner has already authorised; if it does not,
+    say so plainly and state what the owner would have to do. Never request a
+    production connection string.
+B3. Flag every sequence whose next value would collide — i.e. `last_value` at or
+    below `MAX(id)` allowing for `is_called`. For each, state the exact table, the
+    sequence, the numbers, and the one-line correction that WOULD be needed.
+    Propose it. Do not apply it.
+B4. State plainly whether any collision is currently possible on an ordinary insert.
+
+=====================================================================
+PART C — COULD REMOVING IT CAUSE DUPLICATE KEYS? ANSWER FROM THE CODE.
+=====================================================================
+C1. A sequence only falls behind `MAX(id)` when a row is inserted with an EXPLICIT
+    id, bypassing the sequence. Search the entire server and migration code for any
+    insert that supplies an id, any `OVERRIDING SYSTEM VALUE`, any raw
+    `INSERT INTO ... (id, ...)`, and any seed or import path that does so. Report
+    every one you find, or state plainly that there are none.
+C2. If there are none, then ordinary application inserts cannot drift, and
+    `resetAllSequences` was not protecting them. Say so, with the evidence.
+C3. CONSIDER THE OPPOSITE RISK, which this instruction regards as the more serious
+    one. `setval(seq, MAX(id))` moves a sequence DOWN as well as up. If rows with
+    the highest ids were deleted or purged — and this application does delete and
+    purge rows — the next start would pull the sequence BACK, and subsequent inserts
+    would REUSE ids that previously belonged to other records.
+    Determine, from the code and from the data:
+      - whether any of the 42 tables has rows deleted or purged in ordinary
+        operation (hard deletes, `purgeOrphanedDeletionReversals`, cleanup jobs);
+      - whether any id in those tables is referenced from elsewhere WITHOUT a
+        foreign key — for example `equipment_logs.plant_usage_id`,
+        `equipment_usage.source_usage_id`, or the `auto:<type>:<id>` identity string
+        stored in `vendor_bill_items.source`;
+      - whether a reused id could therefore attach a new record to an old reference.
+    Report your conclusion and the evidence. This may explain existing dangling
+    references; do not fix anything.
+C4. Relate this to the recorded symptom in
+    `.agents/memory/startup-ledger-backfill-race.md`: transient primary-key
+    collisions during rapid restarts. State whether `resetAllSequences` running
+    asynchronously alongside concurrent startup inserts was a plausible CAUSE of
+    those collisions rather than a cure.
+
+=====================================================================
+PART D — WHICH REMOVED JOBS WERE ACTUALLY LOAD-BEARING
+=====================================================================
+The removed calls are, from the diff of `7fca52e`:
+`backfillBitumenTankNumbers`, `backfillDispatchNotes`, `backfillDispatchReferenceIds`,
+`backfillLdoFlowReadingsFromHeatingSessions`, `backfillLdoReceiptsFromMaterialReceipts`,
+`backfillMissingDispatchAggregateRows`, `backfillMissingDispatchBitumenRows`,
+`backfillMissingDispatchLdoRows`, `cleanupGhostDispatchLedgerRows`,
+`cleanupSupersededDprDieselLedger`, `deduplicateLdoDipReadings`,
+`deduplicateLdoFlowSlotReadings`, `deduplicateStockLedgerDispatchRows`,
+`fixBadStockBalanceEntries`, `fixDoubleDeductedDispatchOwnerRows`,
+`fixHlcLdoStockBalance`, `fixLdoDataIssues`, `fixLdoStockDeductionErrors`,
+`migrateDprPlantStockDieselToLedger`, `migrateOrphanStockToHLC`,
+`purgeOrphanedDeletionReversals`, `recalculateAllDispatchConsumption`,
+`repairLostDieselSource`, `repairMissingSitePurchases`, `resetAllSequences`,
+plus the inline orphan-adjustment SQL.
+
+D1. For EACH, classify it as one of:
+      HISTORICAL — fixes old data only; the current write path produces correct
+        records without it;
+      LOAD-BEARING — compensates for a gap in the CURRENT write path, so new
+        records created from today will be wrong or incomplete without it;
+      UNCERTAIN — say why.
+    Justify each from the write path, not from the job's name. The test is:
+    **if a brand-new record is created tomorrow, is it correct without this job?**
+D2. Pay particular attention to these, which look most likely to be load-bearing:
+      - `backfillDispatchReferenceIds` and the three `backfillMissingDispatch*Rows`
+        — does the dispatch CREATE path write those rows and ids itself?
+      - `recalculateAllDispatchConsumption` — is consumption computed on write, or
+        only by this job? If only here, consumption figures now go stale.
+      - `backfillLdoReceiptsFromMaterialReceipts` — does an LDO receipt get created
+        on the write path today?
+      - `backfillShiftLogLockStatus`, `ensureBoqCanonicalUnit` and any similar call
+        that may be schema-adjacent rather than a historical repair.
+D3. Confirm that NO `ensure*` schema-creation call was removed, and that a fresh
+    database still reaches a serving state with all required tables and columns.
+    Prove it on an empty development database.
+D4. For anything you classify LOAD-BEARING, propose the narrow fix: correct the
+    write path so the record is right when created. Do NOT propose re-adding the
+    startup job, and do not implement anything in this batch.
+
+=====================================================================
+PART E — WHAT IS WHERE
+=====================================================================
+E1. Report the exact current commit SHA of: GitHub `origin/main`; the Replit
+    workspace working tree (and whether it is clean or has uncommitted changes);
+    and the currently PUBLISHED production build.
+E2. State plainly whether the published production version already contains
+    `7fca52e`, or whether the startup removal is still unpublished.
+E3. Confirm whether the previous batch's failed GitHub push has since succeeded.
+
+=====================================================================
+WHAT NOT TO DO
+=====================================================================
+- Do not call `setval` or alter any sequence in any database.
+- Do not run any repair, backfill or migration in apply mode.
+- Do not re-add or remove any startup call.
+- Do not request or use a production connection string.
+- Do not change application behaviour at all. This batch should change no
+  application source file.
+- Do not publish.
+
+REPORT BACK — ONCE, AT THE END
+1. PART A: full suite against the 48 baseline, every non-baseline failure named.
+2. PART B: the sequence table, and whether any collision is possible now.
+3. PART C: whether drift is possible at all (C1/C2), the id-reuse risk (C3), and
+   whether `resetAllSequences` was a cause of the recorded collisions (C4).
+4. PART D: the classification of all 33, with your reasoning, and the proposed
+   narrow fix for anything LOAD-BEARING.
+5. PART E: the three commit identities and the publish state.
+6. Anything you could not check read-only, named, with what it would take.
+7. Your own recommendation: is this safe to publish, and what must happen first.
+
+STOP HERE. Change nothing. Do not publish.
