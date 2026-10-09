@@ -142,7 +142,7 @@ describe("USER-ROLE-01 existing-user workflow", () => {
     await openPermissions();
     await chooseRole();
     fireEvent.click(screen.getByTestId("role-mode-replace"));
-    expect(screen.getByTestId("role-change-list").textContent).toContain("Remove — Site Operations Hub (entry page) / Notify");
+    expect(screen.getByTestId("role-change-list").textContent).toContain("Remove — Site Operations Hub (entry page) / Receive Notifications");
     expect(stored.site_hub.notify).toBe(true);
     fireEvent.click(screen.getByTestId("button-confirm-role"));
     fireEvent.click(screen.getByTestId("button-save-perms"));
@@ -237,7 +237,7 @@ describe("USER-ROLE-02 durable designation and reviewed saves", () => {
     await screen.findByTestId("button-save-perms");
     await chooseRole();
     const text = screen.getByTestId("role-retained-access").textContent!;
-    for (const label of ["Delete", "Export", "Notify", "Administrator: enabled", "Owner: enabled", "Permission manager: enabled (full)", "Record unlock: enabled"]) expect(text).toContain(label);
+    for (const label of ["Delete", "Export", "Receive Notifications", "Administrator: enabled", "Owner: enabled", "Permission manager: enabled (full)", "Record unlock: enabled"]) expect(text).toContain(label);
     const retained = retainedSensitivePermissions(stored, proposeRole(stored, applyRoleTemplate("operations_director"), "merge", () => true).matrix);
     expect(retained).toContainEqual({ section: "admin_settings", action: "edit", enabled: true });
     expect(retained).toContainEqual({ section: "user_management", action: "view", enabled: true });

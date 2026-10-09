@@ -17,6 +17,17 @@ Treat the dev runtime database, Replit's managed development database used by Pu
 - On startup, if `DEV_DATABASE_URL` is active, the server logs: `[db] Using DEV_DATABASE_URL (development database)`.
 
 ## Database Roles
+
+Production read-only SQL calls should use the parameterized callback path
+(`params: []` for static queries). The non-parameterized path has returned only
+START TRANSACTION/ROLLBACK, even for erroneous queries, without results.
+
+**Why:** Transaction-only output falsely appeared successful during an approval
+impact inventory; parameterized calls exposed the SQL error and returned rows.
+
+**How to apply:** Never interpret transaction-only output as an empty result.
+Use the parameterized read-only path and require actual query output.
+
 | Role | Name | Used by |
 |---|---|---|
 | App development | `sitelog_dev` | Dev server and testing |

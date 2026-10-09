@@ -275,6 +275,12 @@ const generated = Object.fromEntries(SECTION_KEYS.map(section => {
     })[action];
     if (section === "irn_approve" && action === "create")
       meaning = "Show the IRN approval action. The server separately requires IRN Approve to accept approval.";
+    if (section === "labour_management" && action === "create")
+      meaning = "Update Labour Allocation Status on Site Requirements. Create is the existing permission key for this operation.";
+    if (section === "admin_notifications_manage" && action === "create")
+      meaning = "Create administrative notification records. This is not a broadcast or announcement composer.";
+    if (section === "site_dprs" && action === "approve")
+      meaning = "Approve or reject Site Requirements and their revision requests. This does not change DPR approval behavior. Self-approval is restricted except for the authenticated Owner.";
     if (preservedUnwired && action === "view" && !evidence.length)
       meaning = "No implemented page is controlled by this legacy switch. Retained unchanged under PERM-02 D3; it does not grant access.";
     const alternatives = [...new Set(pairs.filter(p => p.sections.includes(section) && p.actions.includes(action))

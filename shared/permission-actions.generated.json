@@ -90,6 +90,7 @@
       "edit",
       "delete",
       "export",
+      "approve",
       "notify"
     ],
     "tooltips": {
@@ -98,6 +99,7 @@
       "edit": "Edit records in Site DPRs — File & View. This does not grant deletion or cancellation.",
       "delete": "Delete records where Site DPRs — File & View's Delete permission is checked.",
       "export": "Export data where Site DPRs — File & View's Export permission is checked.",
+      "approve": "Approve or reject Site Requirements and their revision requests. This does not change DPR approval behavior. Self-approval is restricted except for the authenticated Owner.",
       "notify": "Receive notifications for Site DPRs — File & View, when user notifications and a device subscription are enabled."
     }
   },
@@ -696,7 +698,7 @@
     ],
     "tooltips": {
       "view": "Open Site Requirements — Labour Allocation. Other action switches do not grant page access. Shared pages or actions also accept: Site DPRs — File & View (View); Stores — GRNs, Issues & Ledger (View); Equipment Usage — Log & View (View).",
-      "create": "Create records in Site Requirements — Labour Allocation."
+      "create": "Update Labour Allocation Status on Site Requirements. Create is the existing permission key for this operation."
     }
   },
   "estimator_portal": {
@@ -942,7 +944,7 @@
     ],
     "tooltips": {
       "view": "No implemented page is controlled by this legacy switch. Retained unchanged under PERM-02 D3; it does not grant access.",
-      "create": "Create records in Admin Notifications — Create. Shared pages or actions also accept: Admin Settings (legacy) (Create)."
+      "create": "Create administrative notification records. This is not a broadcast or announcement composer. Shared pages or actions also accept: Admin Settings (legacy) (Create)."
     }
   },
   "admin_ldo_tools": {

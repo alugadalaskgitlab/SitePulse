@@ -1,0 +1,96 @@
+{
+  "startupChanges": [
+    {
+      "table": "stock_balances",
+      "before": {
+        "count": 18,
+        "digest": "0e80a6244968fe09839a8ea9b6389c2b"
+      },
+      "after": {
+        "count": 18,
+        "digest": "9df20b709f98c5e1e25f66770ce2c9ca"
+      }
+    },
+    {
+      "table": "stock_ledger",
+      "before": {
+        "count": 360,
+        "digest": "31f56ea3e82761f983bbffda96aa3bf4"
+      },
+      "after": {
+        "count": 360,
+        "digest": "e27725b5b1e190eba64d272aafcde56a"
+      }
+    },
+    {
+      "table": "user_devices",
+      "before": {
+        "count": 80,
+        "digest": "27b342f8cded194695dcef0262c9f110"
+      },
+      "after": {
+        "count": 80,
+        "digest": "7de91dae6a0ccc31c2eac4159ee3ac98"
+      }
+    },
+    {
+      "table": "user_sessions",
+      "before": {
+        "count": 269,
+        "digest": "31ec1a786ecff304e91149674efa5d72"
+      },
+      "after": {
+        "count": 269,
+        "digest": "8f0e6fe2b2785d185eb4b6f39101221b"
+      }
+    }
+  ],
+  "acceptanceChanges": [
+    {
+      "table": "user_devices",
+      "before": {
+        "count": 80,
+        "digest": "7de91dae6a0ccc31c2eac4159ee3ac98"
+      },
+      "after": {
+        "count": 80,
+        "digest": "6a885c37cf1440dcbf7f68cf4c4049da"
+      }
+    },
+    {
+      "table": "user_sessions",
+      "before": {
+        "count": 269,
+        "digest": "8f0e6fe2b2785d185eb4b6f39101221b"
+      },
+      "after": {
+        "count": 269,
+        "digest": "5f3c3bcd3ce9058929118c2b0b32234f"
+      }
+    }
+  ],
+  "finalVerificationChanges": [
+    {
+      "table": "user_devices",
+      "before": {
+        "count": 80,
+        "digest": "7de91dae6a0ccc31c2eac4159ee3ac98"
+      },
+      "after": {
+        "count": 80,
+        "digest": "6f7c80b59f5fed98a38dc17d623a8a70"
+      }
+    },
+    {
+      "table": "user_sessions",
+      "before": {
+        "count": 269,
+        "digest": "8f0e6fe2b2785d185eb4b6f39101221b"
+      },
+      "after": {
+        "count": 269,
+        "digest": "8c994985e2ef3fe91a42542d770efe9b"
+      }
+    }
+  ]
+}

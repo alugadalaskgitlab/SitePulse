@@ -275,7 +275,7 @@ export const ACTION_LABELS: Record<Action, string> = {
   view_reports: "Reports",
   export: "Export",
   approve: "Approve",
-  notify: "Notify",
+  notify: "Receive Notifications",
 };
 
 export type SectionPermission = {

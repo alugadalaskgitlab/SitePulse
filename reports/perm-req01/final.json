@@ -1,0 +1,565 @@
+{
+  "database": "sitelog_dev",
+  "tables": {
+    "_migration_markers": {
+      "count": 2,
+      "digest": "dcf138f93588e4025ad2a300c62c7ed0"
+    },
+    "activity_personnel": {
+      "count": 8,
+      "digest": "793b3ef2fb4c3cbda92cd52c2b1c177f"
+    },
+    "admin_notifications": {
+      "count": 87,
+      "digest": "c16270a5245e1dca954ac467ee406a50"
+    },
+    "app_settings": {
+      "count": 36,
+      "digest": "8cc68b90f879c0ac2c6a43434fbb5fb8"
+    },
+    "attachments": {
+      "count": 33,
+      "digest": "6a61973f88c52c7971a4735d1a9aceeb"
+    },
+    "audit_logs": {
+      "count": 192,
+      "digest": "49acfa314ad39e9b51fe3e51dedec243"
+    },
+    "bitumen_dip_readings": {
+      "count": 7,
+      "digest": "0742195d94406a75d81916a18261905e"
+    },
+    "bitumen_heating_sessions": {
+      "count": 1,
+      "digest": "2fd32e69a93774a7937cfda32c0bcbdc"
+    },
+    "boq_categories": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "boq_item_equipment": {
+      "count": 56,
+      "digest": "783b4a07416141096d8e7b44f02a2f40"
+    },
+    "boq_item_labour": {
+      "count": 29,
+      "digest": "3605589b5332bd9b8ab7d2f4070c6295"
+    },
+    "boq_item_materials": {
+      "count": 13,
+      "digest": "32adc03bb72470d6bcefafcc1fa7a3d7"
+    },
+    "boq_items": {
+      "count": 12,
+      "digest": "ef917f293555ef4a35c2962cba556051"
+    },
+    "boq_material_mappings": {
+      "count": 11,
+      "digest": "13de301865e929771b59b7c546673886"
+    },
+    "boq_mix_template_links": {
+      "count": 1,
+      "digest": "5cb35752c6b605365dfc846421dd45ef"
+    },
+    "boq_program_settings": {
+      "count": 1,
+      "digest": "6352bee48a60e927a660f70a2f4ac147"
+    },
+    "boq_projects": {
+      "count": 1,
+      "digest": "a880209f4ff0a45c6344f7332f0452aa"
+    },
+    "boq_revision_items": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "boq_revisions": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "concrete_estimates": {
+      "count": 1,
+      "digest": "32d3b976570418fdc69e9603efacef20"
+    },
+    "concrete_estimates_v2": {
+      "count": 2,
+      "digest": "2d6d31ce558eaf5511782a8befae539e"
+    },
+    "consumption_audit_log": {
+      "count": 2,
+      "digest": "8c65a4f29dd2bf81a871cf9aed0a1296"
+    },
+    "cut_fill_consumptions": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "cut_fill_opening_balances": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "diesel_requirement_items": {
+      "count": 7,
+      "digest": "050aef147cec6582faff016a333c3953"
+    },
+    "diesel_requirements": {
+      "count": 4,
+      "digest": "eb0adc917ad60697ff936867123b33ec"
+    },
+    "dpr_draft_stoppages": {
+      "count": 1,
+      "digest": "00cd331aa2ec6a7a9e77d1c4c0d8dc33"
+    },
+    "dpr_structure_items": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "dpr_versions": {
+      "count": 14,
+      "digest": "a9cb84fb5c37be0638d3e71f7295d581"
+    },
+    "dprs": {
+      "count": 182,
+      "digest": "e8e443c3a50cfdf3cdf3b7406dce67b9"
+    },
+    "earthwork_arrangement_programme_allocations": {
+      "count": 14,
+      "digest": "a252d2eca438df397ea0d39f1e98f4b2"
+    },
+    "earthwork_arrangements": {
+      "count": 5,
+      "digest": "0a6e9f0cd3eef52a08b36ad97ac637e1"
+    },
+    "earthwork_baselines": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "earthwork_forecasts": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "edit_permission_requests": {
+      "count": 4,
+      "digest": "e7cdf6cd29f4912ad5197ad3b20859ba"
+    },
+    "equipment_activity_allocations": {
+      "count": 2,
+      "digest": "62c4679e0bff465bfc3276b30e3d5aaf"
+    },
+    "equipment_activity_segment_boq_items": {
+      "count": 6,
+      "digest": "7059e9d1c3bc13848e55fa2ae2d71e13"
+    },
+    "equipment_activity_segments": {
+      "count": 5,
+      "digest": "bf6d5e84cc3942e62c270056f2ca0249"
+    },
+    "equipment_logs": {
+      "count": 390,
+      "digest": "c776afd31a67e408850d7fd539b8d51b"
+    },
+    "equipment_maintenance_logs": {
+      "count": 1,
+      "digest": "76a96b61e13ca2c220d007121a75e08e"
+    },
+    "equipment_master": {
+      "count": 38,
+      "digest": "b61d5365628ef5e24075cc68ddcb6054"
+    },
+    "equipment_usage": {
+      "count": 73,
+      "digest": "9200ea11251019014d0848722e323411"
+    },
+    "generator_logs": {
+      "count": 1,
+      "digest": "0aec7672e9d4afb024fd04b8e4c8db17"
+    },
+    "hire_statement_exceptions": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "hire_statements": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "internal_requisition_items": {
+      "count": 6,
+      "digest": "56e67d78b276661cd6ade5098f881d01"
+    },
+    "internal_requisitions": {
+      "count": 6,
+      "digest": "caea14186ffc89e44a7e49ccae887cb1"
+    },
+    "irn_audit_logs": {
+      "count": 13,
+      "digest": "f5f67ecc00733ccfc4c0a66b49fdf9c5"
+    },
+    "labour_log_workers": {
+      "count": 15,
+      "digest": "7d17c1d3b979820be50ed089ce4f44d5"
+    },
+    "labour_logs": {
+      "count": 108,
+      "digest": "e725ffd3996a69262c64a8a2a7f54db2"
+    },
+    "ldo_dip_readings": {
+      "count": 3,
+      "digest": "23fe2afa2190c02a484fad4f8cff7095"
+    },
+    "ldo_flow_readings": {
+      "count": 12,
+      "digest": "169be0729a14e0cef22052ea403d5952"
+    },
+    "ldo_logs": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "maintenance_parts_used": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "material_issues": {
+      "count": 11,
+      "digest": "e29a6e99742878b863d34a8ce3aa9d55"
+    },
+    "material_logs": {
+      "count": 75,
+      "digest": "3fbf1cd160595cd2d5c6d89037ffb80e"
+    },
+    "material_opening_stocks": {
+      "count": 7,
+      "digest": "f12054b8e5a0c0c1b8228d885190a85c"
+    },
+    "material_receipts": {
+      "count": 61,
+      "digest": "00944e82ccf30e953dd5648ff37d1f30"
+    },
+    "material_requirement_allocations": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "material_requirements": {
+      "count": 1,
+      "digest": "4c5805b54322cf777e89a2c773b292af"
+    },
+    "material_returns": {
+      "count": 2,
+      "digest": "bc4061061f0568670ccca8ae94783c3a"
+    },
+    "material_uom_conversions": {
+      "count": 1,
+      "digest": "8aa09bf07355fe75ccf78b95bba1dea7"
+    },
+    "mix_estimates": {
+      "count": 4,
+      "digest": "b565e596a1b39d56d9bb6e881be51a49"
+    },
+    "mix_template_components": {
+      "count": 15,
+      "digest": "b88f073df81864ad1bb6b9a6ec3a42e5"
+    },
+    "mix_templates": {
+      "count": 4,
+      "digest": "54ee6564fbb8170fa435d9fe0a238a29"
+    },
+    "mix_types": {
+      "count": 6,
+      "digest": "7f6e23965065ac367332a483bdafb67a"
+    },
+    "parties": {
+      "count": 5,
+      "digest": "9fb7c67f1805d6715f183809a3843a1f"
+    },
+    "pending_plant_receipts": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "personnel": {
+      "count": 4,
+      "digest": "7db44d2abf71c6838663c87c926590ad"
+    },
+    "pi_item_transactions": {
+      "count": 11,
+      "digest": "2ad71198d12be242289b7a999f81e775"
+    },
+    "planning_equipment_types": {
+      "count": 37,
+      "digest": "f5cf9a744bcd18e80cee2e88f8d1b037"
+    },
+    "planning_labour_types": {
+      "count": 26,
+      "digest": "25247b15e04896221e4c3e13b2264a91"
+    },
+    "plant_heating_session_versions": {
+      "count": 5,
+      "digest": "a59e9197a84e5ff621c888558c01850e"
+    },
+    "plant_materials": {
+      "count": 22,
+      "digest": "c7a386f6e2254fec8b941e48f751b0bb"
+    },
+    "plant_production": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "plant_reports": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "plant_settings": {
+      "count": 2,
+      "digest": "c0dde83d4fba1555cdc0d578b50e9608"
+    },
+    "plant_shift_log_idle": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "plant_shift_log_manpower": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "plant_shift_log_manpower_alias_activity": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "plant_shift_log_manpower_custom_aliases": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "plant_shift_log_manpower_dismissed_dups": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "plant_shift_log_manpower_dup_activity": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "plant_shift_log_manpower_relabel_batches": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "plant_shift_log_manpower_relabel_snapshots": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "plant_shift_log_versions": {
+      "count": 1,
+      "digest": "591bf451f91beac17bc86b4539f41045"
+    },
+    "plant_shift_logs": {
+      "count": 2,
+      "digest": "4954fdbfd09a83a8234f065e2e9d8c3c"
+    },
+    "plant_versions": {
+      "count": 2,
+      "digest": "8bc39ef7acc2bd5260c5cc063b96924a"
+    },
+    "price_scenarios": {
+      "count": 4,
+      "digest": "0e951a0b55652f186efa2d73fa3ddac1"
+    },
+    "programme_bar_outcome_events": {
+      "count": 5,
+      "digest": "8c6fe644b160257d9a49ef5a73aee9e7"
+    },
+    "progress_entries": {
+      "count": 199,
+      "digest": "e9ea5eaa910546a2025817eaffbae9ed"
+    },
+    "project_scope_segments": {
+      "count": 9,
+      "digest": "13b2e97ceef102b7b13f7a53ab6049d2"
+    },
+    "purchase_indent_item_history": {
+      "count": 2,
+      "digest": "410d15e156d01f2353d9d650b54a1a1e"
+    },
+    "purchase_indent_items": {
+      "count": 18,
+      "digest": "5d216955eadc384dab4d986fac923a75"
+    },
+    "purchase_indents": {
+      "count": 14,
+      "digest": "88051150b3f71b826d95893ff9eaafbb"
+    },
+    "purchase_orders": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "push_subscriptions": {
+      "count": 1,
+      "digest": "c19c168b5f29ee508d075c05f42d2943"
+    },
+    "record_unlock_log": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "rmc_batch_records": {
+      "count": 3,
+      "digest": "08c60a5b39480fefc20042a15011d256"
+    },
+    "rmc_cube_tests": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "rmc_mix_designs": {
+      "count": 4,
+      "digest": "8950af6e165ed6ce01a1af9320f3da9a"
+    },
+    "rmc_raw_material_receipts": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "road_geometry_profiles": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "service_completions": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "site_material_trips": {
+      "count": 10,
+      "digest": "542b4c3999396e796a3fc02b1f93ab63"
+    },
+    "site_purchases": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "site_requirements": {
+      "count": 6,
+      "digest": "f0a815ce83b570f4f47d700c359bb5cd"
+    },
+    "sites": {
+      "count": 8,
+      "digest": "3582950c7e22f85bba55415e79e67cb3"
+    },
+    "snl_boq_mappings": {
+      "count": 12,
+      "digest": "d0c671cdc829e9b1977621eb62a33638"
+    },
+    "snl_composite_components": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "snl_import_log": {
+      "count": 12,
+      "digest": "08ebe08ca664a8c9c45863b8699f4709"
+    },
+    "snl_item_equipment": {
+      "count": 3512,
+      "digest": "e204b93c195c66d63e6ee30da2b36e5a"
+    },
+    "snl_item_labour": {
+      "count": 5920,
+      "digest": "7ad9f732f41013b49d198c514c92717a"
+    },
+    "snl_item_materials": {
+      "count": 3560,
+      "digest": "02cb20404f7cc4c766af522c159b0bb6"
+    },
+    "snl_item_productivity": {
+      "count": 2030,
+      "digest": "8d8ad7cdac2d2a41fdcbbfd9ace9046a"
+    },
+    "snl_items": {
+      "count": 1994,
+      "digest": "0497865ad16ae35d3fe20443d18702bb"
+    },
+    "snl_mix_override_materials": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "snl_mix_overrides": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "snl_sources": {
+      "count": 6,
+      "digest": "f25bc77833622aca4fcdb5a564cb2f5b"
+    },
+    "stock_balances": {
+      "count": 18,
+      "digest": "9df20b709f98c5e1e25f66770ce2c9ca"
+    },
+    "stock_ledger": {
+      "count": 360,
+      "digest": "e27725b5b1e190eba64d272aafcde56a"
+    },
+    "stock_reconciliation_items": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "stock_reconciliation_sessions": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "store_grn_items": {
+      "count": 6,
+      "digest": "94ed0254f98d18062614c57e3d3bd907"
+    },
+    "store_grns": {
+      "count": 5,
+      "digest": "1e720e502208ef13737223f43ff9e28b"
+    },
+    "store_issue_items": {
+      "count": 4,
+      "digest": "e1432cb917a130f037bd354beb13be45"
+    },
+    "store_issues": {
+      "count": 4,
+      "digest": "ef173922a34e4cdd81eaa7643c37cf83"
+    },
+    "store_items": {
+      "count": 6,
+      "digest": "b3a09b13a2ebce027fd1db70fa2b8afd"
+    },
+    "truck_dispatches": {
+      "count": 29,
+      "digest": "2dac370c17a56802af586103e69286e6"
+    },
+    "user_devices": {
+      "count": 80,
+      "digest": "6f7c80b59f5fed98a38dc17d623a8a70"
+    },
+    "user_permissions": {
+      "count": 371,
+      "digest": "13ed0eb1207429a7868b3a6eb13d1a65"
+    },
+    "user_sessions": {
+      "count": 269,
+      "digest": "8c994985e2ef3fe91a42542d770efe9b"
+    },
+    "user_site_access": {
+      "count": 11,
+      "digest": "9df47d451b2256c9b3417a6ceffb8491"
+    },
+    "users": {
+      "count": 6,
+      "digest": "46f8a6688a48f87c198ac8253a24afe7"
+    },
+    "vendor_aliases": {
+      "count": 3,
+      "digest": "7cc7a1d43b7e85a7c093cc4de9dc48c6"
+    },
+    "vendor_bill_items": {
+      "count": 172,
+      "digest": "ebab9cae2dba0cf8464a64d5f1594d53"
+    },
+    "vendor_bills": {
+      "count": 45,
+      "digest": "aa277f33fdbd3f851a78b8d61a74baf8"
+    },
+    "vendor_rate_cards": {
+      "count": 9,
+      "digest": "9aaa2ab9acf3082d5469be18bfd16f09"
+    },
+    "vendors": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "work_program_bars": {
+      "count": 39,
+      "digest": "da8bfc8bfd0b0ec68c99580466d483f4"
+    }
+  }
+}

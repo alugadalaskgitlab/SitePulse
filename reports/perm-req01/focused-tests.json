@@ -1,0 +1,14 @@
+{
+  "files": [
+    "tests/perm01MatrixUi.test.tsx",
+    "tests/permReq01.test.ts",
+    "tests/permReq01Ui.test.tsx",
+    "tests/permission-map.test.ts",
+    "tests/permissionDelegation.test.ts",
+    "tests/userRole01.test.ts",
+    "tests/userRole02.test.ts",
+    "client/src/components/user-role-review.test.tsx"
+  ],
+  "passed": 129,
+  "failed": 0
+}

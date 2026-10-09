@@ -1,4 +1,5 @@
 import { DPR_SECTIONS, DPR_SECTION_FIELDS, normalizeDprSectionContext } from "../shared/dprSections";
+import { requirementApprovalBlock, isRequirementDecision } from "../shared/siteRequirementApproval";
 import { attachVendorBillEquipmentEvidence, resolveSavedEquipmentEvidenceSources } from "./vendorBillEquipmentEvidence";
 import { assertSectionTokens, DprSectionConflict, findSectionDrafts, readSectionAggregate, saveDprSection, sectionSnapshot } from "./dprSections";
 import type { Express, Request, Response } from "express";
@@ -23285,8 +23286,8 @@ export function registerSiteRequirementRoutes(app: Express) {
         date: body.date,
         siteId: body.siteId ? parseInt(String(body.siteId)) : null,
         // Always use server-side session for identity — never trust client-supplied values
-        submittedBy: req.session?.userId ?? null,
-        submittedByName: req.session?.username ?? null,
+        submittedBy: req.authUser.id,
+        submittedByName: req.authUser.fullName,
         plannedWork: body.plannedWork ?? null,
         materials: body.materials ?? null,
         equipment: body.equipment ?? null,
@@ -23303,15 +23304,15 @@ export function registerSiteRequirementRoutes(app: Express) {
   app.get("/api/site-requirements", requireAuth, async (req: any, res) => {
     const t0 = Date.now();
     try {
-      const role = req.session?.role ?? "engineer";
+      const canReview = req.authUser.isAdmin || req.authUser.isOwner || req.authPermissions?.site_dprs?.approve;
       const filters: any = {};
       if (req.query.dateFrom) filters.dateFrom = req.query.dateFrom as string;
       if (req.query.dateTo)   filters.dateTo   = req.query.dateTo as string;
       if (req.query.siteId)   filters.siteId   = parseInt(req.query.siteId as string);
       if (req.query.status)   filters.status   = req.query.status as string;
       // Non-admin/manager see only their own submissions
-      if (role !== "admin" && role !== "manager") {
-        filters.submittedBy = req.session?.userId;
+      if (!canReview) {
+        filters.submittedBy = req.authUser.id;
       }
       const rows = await storage.listSiteRequirements(filters);
       const dur = Date.now() - t0;
@@ -23329,10 +23330,9 @@ export function registerSiteRequirementRoutes(app: Express) {
     try {
       const row = await storage.getSiteRequirement(parseInt(req.params.id));
       if (!row) return res.status(404).json({ error: "Not found" });
-      const role = req.session?.role ?? "engineer";
-      const isManagerOrAdmin = role === "admin" || role === "manager";
-      const isOwner = row.submittedBy === req.session?.userId;
-      if (!isManagerOrAdmin && !isOwner) {
+      const canReview = req.authUser.isAdmin || req.authUser.isOwner || req.authPermissions?.site_dprs?.approve;
+      const isCreator = row.submittedBy === req.authUser.id;
+      if (!canReview && !isCreator) {
         return res.status(403).json({ error: "Access denied" });
       }
       res.json(row);
@@ -23343,16 +23343,25 @@ export function registerSiteRequirementRoutes(app: Express) {
 
   app.patch("/api/site-requirements/:id/status", requireAuth, async (req: any, res) => {
     try {
-      const role = req.session?.role ?? "engineer";
-      if (role !== "admin" && role !== "manager") {
-        return res.status(403).json({ error: "Only managers or admins can update status" });
-      }
       const { status, pmRemarks } = req.body;
       if (!status) return res.status(400).json({ error: "status is required" });
+      if (isRequirementDecision(status)) {
+        if (!assertApprove(req, res, "site_dprs")) return;
+        const existing = await storage.getSiteRequirement(parseInt(req.params.id));
+        if (!existing) return res.status(404).json({ error: "Not found" });
+        const blocked = requirementApprovalBlock(req.authUser, existing.submittedBy);
+        if (blocked) return res.status(403).json({ error: blocked });
+      } else {
+        // Non-approval allocation/status transitions retain their existing gate.
+        const role = req.session?.role ?? "engineer";
+        if (role !== "admin" && role !== "manager") {
+          return res.status(403).json({ error: "Only managers or admins can update status" });
+        }
+      }
       const row = await storage.updateSiteRequirementStatus(parseInt(req.params.id), {
         status,
         pmRemarks,
-        reviewedBy: req.session?.userId,
+        reviewedBy: req.authUser.id,
       });
       res.json(row);
     } catch (err: any) {
@@ -23647,13 +23656,12 @@ export function registerSiteRequirementRoutes(app: Express) {
   app.put("/api/site-requirements/:id", requireAuth, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id);
-      const role = req.session?.role ?? "engineer";
-      const isManagerOrAdmin = role === "admin" || role === "manager";
+      const isManagerOrAdmin = req.authUser.isAdmin || req.authUser.isOwner;
       const row = await storage.getSiteRequirement(id);
       if (!row) return res.status(404).json({ error: "Not found" });
 
       if (!isManagerOrAdmin) {
-        if (row.submittedBy !== req.session?.userId) {
+        if (row.submittedBy !== req.authUser.id) {
           return res.status(403).json({ error: "Access denied" });
         }
         const acted = isActedUpon(row);
@@ -23684,7 +23692,7 @@ export function registerSiteRequirementRoutes(app: Express) {
       const id = parseInt(req.params.id);
       const row = await storage.getSiteRequirement(id);
       if (!row) return res.status(404).json({ error: "Not found" });
-      if (row.submittedBy !== req.session?.userId) {
+      if (row.submittedBy !== req.authUser.id) {
         return res.status(403).json({ error: "You can only request revision for your own submissions" });
       }
       if (row.revisionStatus === "revision_requested") {
@@ -23702,19 +23710,19 @@ export function registerSiteRequirementRoutes(app: Express) {
   // PATCH /api/site-requirements/:id/revision-approve — PM/admin approves revision
   app.patch("/api/site-requirements/:id/revision-approve", requireAuth, async (req: any, res) => {
     try {
-      const role = req.session?.role ?? "engineer";
-      if (role !== "admin" && role !== "manager") {
-        return res.status(403).json({ error: "Only managers or admins can approve revisions" });
-      }
+      if (!assertApprove(req, res, "site_dprs")) return;
       const id = parseInt(req.params.id);
       const row = await storage.getSiteRequirement(id);
       if (!row) return res.status(404).json({ error: "Not found" });
       if (row.revisionStatus !== "revision_requested") {
         return res.status(409).json({ error: "No pending revision request for this requirement" });
       }
+      // Requests remain creator-only; no name/role inference for historical rows.
+      const blocked = requirementApprovalBlock(req.authUser, row.submittedBy);
+      if (blocked) return res.status(403).json({ error: blocked });
       const { remarks } = req.body;
       const updated = await storage.approveSiteRequirementRevision(
-        id, req.session.userId, remarks ?? ""
+        id, req.authUser.id, remarks ?? ""
       );
       res.json(updated);
     } catch (err: any) {
@@ -23725,13 +23733,12 @@ export function registerSiteRequirementRoutes(app: Express) {
   // PATCH /api/site-requirements/:id/revision-reject — PM/admin rejects revision
   app.patch("/api/site-requirements/:id/revision-reject", requireAuth, async (req: any, res) => {
     try {
-      const role = req.session?.role ?? "engineer";
-      if (role !== "admin" && role !== "manager") {
-        return res.status(403).json({ error: "Only managers or admins can reject revisions" });
-      }
+      if (!assertApprove(req, res, "site_dprs")) return;
       const id = parseInt(req.params.id);
       const row = await storage.getSiteRequirement(id);
       if (!row) return res.status(404).json({ error: "Not found" });
+      const blocked = requirementApprovalBlock(req.authUser, row.submittedBy);
+      if (blocked) return res.status(403).json({ error: blocked });
       const { remarks } = req.body;
       const updated = await storage.rejectSiteRequirementRevision(id, remarks ?? "");
       res.json(updated);

@@ -3,6 +3,7 @@ import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, addDays } from "date-fns";
 import { useAuth } from "@/lib/auth-context";
+import { requirementApprovalBlock, isRequirementDecision } from "@shared/siteRequirementApproval";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -239,11 +240,12 @@ function ItemEditPanel({
 
 // ── RequirementCard ───────────────────────────────────────────────────────────
 
-function RequirementCard({
-  req, canReview, canUpdateMaterials, canUpdateEquipment, canUpdateLabour, canUpdateImmediate, filterContext, allReqs,
+export function RequirementCard({
+  req, canReview, canApproveRequirements = false, canUpdateMaterials, canUpdateEquipment, canUpdateLabour, canUpdateImmediate, filterContext, allReqs,
 }: {
   req: any;
   canReview: boolean;
+  canApproveRequirements?: boolean;
   canUpdateMaterials: boolean;
   canUpdateEquipment: boolean;
   canUpdateLabour: boolean;
@@ -301,6 +303,9 @@ function RequirementCard({
 
   const [, setLocation] = useLocation();
   const isOwner = req.submittedBy === (user as any)?.id;
+  // isOwner above is the legacy local name for record creator, NOT account Owner.
+  const approvalBlock = user ? requirementApprovalBlock(user, req.submittedBy) : "Sign in to review.";
+  const canCorrect = canReview || !!(user?.isAdmin || user?.isOwner);
   const acted = isActedUpon(req);
   const revStatus = req.revisionStatus ?? "original";
 
@@ -894,7 +899,7 @@ function RequirementCard({
           )}
 
           {/* Engineer (submitter) revision controls */}
-          {isOwner && !canReview && (
+          {isOwner && !canCorrect && (
             <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
               {!acted && revStatus === "original" && (
                 <Button type="button" variant="outline" size="sm" className="gap-1.5 text-indigo-700 border-indigo-200 hover:bg-indigo-50"
@@ -954,7 +959,7 @@ function RequirementCard({
           )}
 
           {/* PM/Admin can always edit directly */}
-          {canReview && revStatus !== "revision_requested" && (
+          {canCorrect && revStatus !== "revision_requested" && (
             <div className="pt-1">
               <Button type="button" variant="ghost" size="sm"
                 className="gap-1.5 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 h-7 text-xs px-2"
@@ -966,18 +971,21 @@ function RequirementCard({
           )}
 
           {/* PM Revision Approval panel */}
-          {canReview && revStatus === "revision_requested" && (
+          {canApproveRequirements && revStatus === "revision_requested" && (
             <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-3 border border-amber-200 dark:border-amber-800 space-y-2">
               <p className="text-xs font-bold text-amber-700 flex items-center gap-1.5">
                 <AlertTriangle className="w-3.5 h-3.5" /> Revision Requested by site user
               </p>
+              {approvalBlock && <p role="status" className="text-xs text-amber-800">{approvalBlock}</p>}
               {!revActionOpen ? (
                 <div className="flex gap-2">
                   <Button type="button" size="sm" className="bg-green-600 hover:bg-green-700 gap-1.5"
+                    disabled={!!approvalBlock}
                     onClick={() => setRevActionOpen("approve")} data-testid={`button-approve-revision-${req.id}`}>
                     <CheckCircle className="w-3.5 h-3.5" /> Approve Revision
                   </Button>
                   <Button type="button" size="sm" variant="outline"
+                    disabled={!!approvalBlock}
                     className="text-red-600 border-red-200 hover:bg-red-50 gap-1.5"
                     onClick={() => setRevActionOpen("reject")} data-testid={`button-reject-revision-${req.id}`}>
                     <XCircle className="w-3.5 h-3.5" /> Reject
@@ -994,7 +1002,7 @@ function RequirementCard({
                     data-testid={`input-rev-action-remarks-${req.id}`} />
                   <div className="flex gap-2">
                     <Button type="button" size="sm"
-                      disabled={revApproveMutation.isPending || revRejectMutation.isPending}
+                      disabled={!!approvalBlock || revApproveMutation.isPending || revRejectMutation.isPending}
                       className={revActionOpen === "approve" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"}
                       onClick={() => revActionOpen === "approve" ? revApproveMutation.mutate() : revRejectMutation.mutate()}
                       data-testid={`button-confirm-rev-action-${req.id}`}>
@@ -1009,11 +1017,11 @@ function RequirementCard({
           )}
 
           {/* PM review controls — overall status + section allocation */}
-          {canReview && (
+          {(canReview || canApproveRequirements) && (
             <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-3">
 
               {/* Overall allocation form */}
-              {allocEditing ? (
+              {canReview && (allocEditing ? (
                 <div className="space-y-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg px-3 py-3 border border-blue-100 dark:border-blue-800">
                   <p className="text-xs font-bold text-blue-700 dark:text-blue-300">Update Overall Allocation Status</p>
                   {[
@@ -1057,16 +1065,17 @@ function RequirementCard({
                     Set Overall Allocation Status
                   </Button>
                 )
-              )}
+              ))}
 
               {/* Status review */}
+              {canApproveRequirements && approvalBlock && <p role="status" data-testid={`approval-block-${req.id}`} className="text-xs text-amber-800">{approvalBlock}</p>}
               {!editing ? (
                 <div className="flex gap-2 flex-wrap">
                   <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)} data-testid={`button-review-${req.id}`}>
                     Update Overall Status
                   </Button>
                   {/* 06J: execution outcome — only once the target date has passed */}
-                  {req.date && req.date < format(new Date(), "yyyy-MM-dd") && (
+                  {canReview && req.date && req.date < format(new Date(), "yyyy-MM-dd") && (
                     <Button type="button" variant="outline" size="sm" onClick={() => setOutcomeOpen(true)} data-testid={`button-outcome-${req.id}`}>
                       {outcomeRec ? "Change Work Outcome" : "Update Work Outcome"}
                     </Button>
@@ -1077,8 +1086,8 @@ function RequirementCard({
                   <Select value={newStatus} onValueChange={setNewStatus}>
                     <SelectTrigger className="text-sm" data-testid={`select-status-${req.id}`}><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {PM_STATUS_OPTIONS.map(s => (
-                        <SelectItem key={s} value={s}>{STATUS_CONFIG[s]?.label ?? s}</SelectItem>
+                      {PM_STATUS_OPTIONS.filter(s => isRequirementDecision(s) ? canApproveRequirements : canReview).map(s => (
+                        <SelectItem key={s} value={s} disabled={isRequirementDecision(s) && !!approvalBlock}>{STATUS_CONFIG[s]?.label ?? s}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -1086,7 +1095,7 @@ function RequirementCard({
                     placeholder="PM remarks (optional)" className="text-sm resize-none" rows={2}
                     data-testid={`input-pm-remarks-${req.id}`} />
                   <div className="flex gap-2">
-                    <Button type="button" size="sm" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending}
+                    <Button type="button" size="sm" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending || (isRequirementDecision(newStatus) ? !canApproveRequirements || !!approvalBlock : !canReview)}
                       className="bg-orange-600 hover:bg-orange-700" data-testid={`button-save-status-${req.id}`}>
                       {updateMutation.isPending ? "Saving..." : "Save Status"}
                     </Button>
@@ -1313,7 +1322,7 @@ const CONTEXT_CONFIG: Record<string, { title: string; subtitle: string; backLabe
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function SiteRequirementsList() {
-  const { sectionVisible, user, isFieldEngineer } = useAuth();
+  const { sectionVisible, canApprove, user, isFieldEngineer } = useAuth();
   const search = useSearch();
   const queryClient = useQueryClient();
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -1537,6 +1546,7 @@ export default function SiteRequirementsList() {
               key={req.id}
               req={req}
               canReview={canReview}
+              canApproveRequirements={canApprove("site_dprs")}
               canUpdateMaterials={canUpdateMaterials}
               canUpdateEquipment={canUpdateEquipment}
               canUpdateLabour={canUpdateLabour}

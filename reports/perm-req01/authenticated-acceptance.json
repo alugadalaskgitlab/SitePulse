@@ -1,0 +1,241 @@
+{
+  "creatorIdReadBack": true,
+  "checks": [
+    {
+      "label": "creator approved",
+      "status": 403,
+      "error": "You cannot approve or reject a requirement you created."
+    },
+    {
+      "label": "Administrator self approved",
+      "status": 403,
+      "error": "You cannot approve or reject a requirement you created."
+    },
+    {
+      "label": "no grant approved",
+      "status": 403,
+      "error": "forbidden"
+    },
+    {
+      "label": "different approver approved",
+      "status": 200
+    },
+    {
+      "label": "Owner self approved",
+      "status": 200
+    },
+    {
+      "label": "creator rejected",
+      "status": 403,
+      "error": "You cannot approve or reject a requirement you created."
+    },
+    {
+      "label": "Administrator self rejected",
+      "status": 403,
+      "error": "You cannot approve or reject a requirement you created."
+    },
+    {
+      "label": "no grant rejected",
+      "status": 403,
+      "error": "forbidden"
+    },
+    {
+      "label": "different approver rejected",
+      "status": 200
+    },
+    {
+      "label": "Owner self rejected",
+      "status": 200
+    },
+    {
+      "label": "creator self revision-approve",
+      "status": 403,
+      "error": "You cannot approve or reject a requirement you created."
+    },
+    {
+      "label": "no grant revision-approve",
+      "status": 403,
+      "error": "forbidden"
+    },
+    {
+      "label": "authorised revision-approve",
+      "status": 200
+    },
+    {
+      "label": "Administrator self revision-approve",
+      "status": 403,
+      "error": "You cannot approve or reject a requirement you created."
+    },
+    {
+      "label": "no grant revision-approve",
+      "status": 403,
+      "error": "forbidden"
+    },
+    {
+      "label": "authorised revision-approve",
+      "status": 200
+    },
+    {
+      "label": "no grant revision-approve",
+      "status": 403,
+      "error": "forbidden"
+    },
+    {
+      "label": "authorised revision-approve",
+      "status": 200
+    },
+    {
+      "label": "creator self revision-reject",
+      "status": 403,
+      "error": "You cannot approve or reject a requirement you created."
+    },
+    {
+      "label": "no grant revision-reject",
+      "status": 403,
+      "error": "forbidden"
+    },
+    {
+      "label": "authorised revision-reject",
+      "status": 200
+    },
+    {
+      "label": "Administrator self revision-reject",
+      "status": 403,
+      "error": "You cannot approve or reject a requirement you created."
+    },
+    {
+      "label": "no grant revision-reject",
+      "status": 403,
+      "error": "forbidden"
+    },
+    {
+      "label": "authorised revision-reject",
+      "status": 200
+    },
+    {
+      "label": "no grant revision-reject",
+      "status": 403,
+      "error": "forbidden"
+    },
+    {
+      "label": "authorised revision-reject",
+      "status": 200
+    },
+    {
+      "label": "unknown creator 1900000960 approved",
+      "status": 403,
+      "error": "Approval is unavailable because this requirement's creator is unknown."
+    },
+    {
+      "label": "unknown creator 1900000960 rejected",
+      "status": 403,
+      "error": "Approval is unavailable because this requirement's creator is unknown."
+    },
+    {
+      "label": "unknown creator 1900000960 revision-approve",
+      "status": 403,
+      "error": "Approval is unavailable because this requirement's creator is unknown."
+    },
+    {
+      "label": "unknown creator 1900000960 revision-reject",
+      "status": 403,
+      "error": "Approval is unavailable because this requirement's creator is unknown."
+    },
+    {
+      "label": "unknown creator 1900000961 approved",
+      "status": 403,
+      "error": "Approval is unavailable because this requirement's creator is unknown."
+    },
+    {
+      "label": "unknown creator 1900000961 rejected",
+      "status": 403,
+      "error": "Approval is unavailable because this requirement's creator is unknown."
+    },
+    {
+      "label": "unknown creator 1900000961 revision-approve",
+      "status": 403,
+      "error": "Approval is unavailable because this requirement's creator is unknown."
+    },
+    {
+      "label": "unknown creator 1900000961 revision-reject",
+      "status": 403,
+      "error": "Approval is unavailable because this requirement's creator is unknown."
+    },
+    {
+      "label": "unknown creator 1900000963 approved",
+      "status": 403,
+      "error": "Approval is unavailable because this requirement's creator is unknown."
+    },
+    {
+      "label": "unknown creator 1900000963 rejected",
+      "status": 403,
+      "error": "Approval is unavailable because this requirement's creator is unknown."
+    },
+    {
+      "label": "unknown creator 1900000963 revision-approve",
+      "status": 403,
+      "error": "Approval is unavailable because this requirement's creator is unknown."
+    },
+    {
+      "label": "unknown creator 1900000963 revision-reject",
+      "status": 403,
+      "error": "Approval is unavailable because this requirement's creator is unknown."
+    },
+    {
+      "label": "unknown creator 1900000964 approved",
+      "status": 403,
+      "error": "Approval is unavailable because this requirement's creator is unknown."
+    },
+    {
+      "label": "unknown creator 1900000964 rejected",
+      "status": 403,
+      "error": "Approval is unavailable because this requirement's creator is unknown."
+    },
+    {
+      "label": "unknown creator 1900000964 revision-approve",
+      "status": 403,
+      "error": "Approval is unavailable because this requirement's creator is unknown."
+    },
+    {
+      "label": "unknown creator 1900000964 revision-reject",
+      "status": 403,
+      "error": "Approval is unavailable because this requirement's creator is unknown."
+    },
+    {
+      "label": "denied materials allocation",
+      "status": 403,
+      "error": "Updating material allocation requires Stores & Inventory access"
+    },
+    {
+      "label": "materials allocation preserved",
+      "status": 200
+    },
+    {
+      "label": "denied equipment allocation",
+      "status": 403,
+      "error": "Updating equipment allocation requires Equipment & Fleet access"
+    },
+    {
+      "label": "equipment allocation preserved",
+      "status": 200
+    },
+    {
+      "label": "denied labour allocation",
+      "status": 403,
+      "error": "Updating labour allocation requires Labour Management access"
+    },
+    {
+      "label": "labour allocation preserved",
+      "status": 200
+    },
+    {
+      "label": "Approve does not grant allocation transitions",
+      "status": 403,
+      "error": "Only managers or admins can update status"
+    },
+    {
+      "label": "Real signed-in Administrator sees creator restriction",
+      "passed": true
+    }
+  ]
+}

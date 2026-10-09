@@ -1,0 +1,6 @@
+{
+  "exitCode": 0,
+  "exitReason": null,
+  "output": "report\n\"{\"\"database\"\":\"\"neondb\"\",\"\"approveHolders\"\":[{\"\"id\"\":1,\"\"full_name\"\":\"\"OWNER\"\",\"\"is_active\"\":true,\"\"is_admin\"\":true,\"\"is_owner\"\":false},{\"\"id\"\":3,\"\"full_name\"\":\"\"K V Babu\"\",\"\"is_active\"\":true,\"\"is_admin\"\":false,\"\"is_owner\"\":false}],\"\"unknownCreatorRequirements\"\":15}\"\n",
+  "success": true
+}

@@ -1146,7 +1146,7 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
           >
             <BellOff className="h-4 w-4 mt-0.5 shrink-0" />
             <span>
-              Push notifications are disabled for this user — Notify checkboxes won't fire until enabled.
+              Push notifications are disabled for this user — Receive Notifications checkboxes won't fire until enabled.
             </span>
           </div>
         )}
@@ -1221,7 +1221,7 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
             <p className="text-sm text-muted-foreground">Nothing has changed yet. This compares against the current matrix, including unsaved individual adjustments. Site assignments, password, Administrator, Owner, field-user and permission-manager flags stay unchanged.</p>
             {designationOnly ? <p className="text-sm">This changes the designation only. All matrix permissions and account flags are retained.</p> : <div className="space-y-2 text-sm">
               <label className="flex items-start gap-2"><input type="radio" name="role-mode" checked={roleMode === "merge"} onChange={() => setRoleMode("merge")} data-testid="role-mode-merge" /><span>Add role permissions — preserve all existing individual adjustments (recommended).</span></label>
-              <label className="flex items-start gap-2"><input type="radio" name="role-mode" checked={roleMode === "replace"} onChange={() => setRoleMode("replace")} data-testid="role-mode-replace" /><span>Replace the matrix — remove existing grants not included in this template, including compatibility and Notify bits you may change.</span></label>
+              <label className="flex items-start gap-2"><input type="radio" name="role-mode" checked={roleMode === "replace"} onChange={() => setRoleMode("replace")} data-testid="role-mode-replace" /><span>Replace the matrix — remove existing grants not included in this template, including compatibility and Receive Notifications bits you may change.</span></label>
             </div>}
             {roleProposal.capped.length > 0 && <div className="text-sm text-amber-700" data-testid="role-preview-capped">
               <p>Your authority caps this proposal. These requested changes are excluded; unowned existing grants are preserved:</p>

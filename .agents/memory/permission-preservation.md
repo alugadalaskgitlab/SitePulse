@@ -24,6 +24,14 @@ not change ordinary allocation or fulfilment actions. If revision-requester
 identity cannot be established safely, report the ambiguity before changing
 revision approval.
 
+Site Requirements approval/rejection deliberately reuses Site DPRs → Approve;
+this does not authorize changes to DPR approval behavior or allocation workflows.
+Unknown creator IDs block decisions even for Owner accounts. Never infer or
+backfill ownership from names, business roles or related accounts.
+
+**Why:** The user approved this precise permission reuse and requires a
+read-only report of existing holders before publishing, without changing grants.
+
 ## Delegable switches and split sections
 
 The owner explicitly authorized clearing existing Delete, Export and Notify grants for non-admin/non-owner users. Preserve admin/owner accounts and clear nothing else. These switches must not be granted automatically by templates, defaults or Grant all.
