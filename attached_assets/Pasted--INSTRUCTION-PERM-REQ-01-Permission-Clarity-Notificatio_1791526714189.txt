@@ -1,0 +1,118 @@
+# INSTRUCTION PERM-REQ-01
+**Permission Clarity, Notification Labels and No-Self-Approval Safeguard**
+
+Inspect the current repository, existing permissions implementation, USER-ROLE-01/02, and Site Requirements approval/revision guards before making changes.
+
+**Scope:** A focused permissions correction only. Do not redesign the Site Requirements workflow or modify unrelated modules.
+
+## 1. Site Requirements permission mapping
+
+Identify and document the existing permissions and backend guards governing:
+
+- Raising a new site requirement
+- Editing or correcting an existing requirement
+- Updating material allocation status
+- Updating equipment allocation status
+- Updating labour allocation status
+- Approving/rejecting requirements
+- Approving/rejecting requirement revisions
+
+Reuse existing permission keys and workflows. Do not introduce duplicate permission sections.
+
+## 2. Labour Allocation permission clarity
+
+The current **Site Requirements — Labour Allocation** permission uses the Create action to authorise labour allocation-status updates.
+
+Correct the user-facing description/tooltip so administrators understand that **Create means Update Labour Allocation Status** in this specific section.
+
+Preserve the existing permission key and stored permission values.
+
+Do not enable Edit or Approve where no corresponding independently guarded operation exists.
+
+## 3. No Self-Approval — Owner Exemption
+
+Enforce the following rule for Site Requirements:
+
+**No user may approve or reject a requirement they personally created, even when they have Approve permission, except an authenticated Owner account.**
+
+The exception must depend strictly on the existing `isOwner` account flag.
+
+- Owner (`isOwner = true`): exempt from the self-approval restriction.
+- Administrator (`isAdmin = true`, `isOwner = false`): NOT exempt.
+- Operations Director / Project Head: NOT exempt.
+- Project Manager: NOT exempt.
+- All other users: NOT exempt.
+
+The Owner exemption applies only when the user is actually authenticated as an Owner account.
+
+Do not infer ownership from the person's name, email, business role, relationship to another account, or Administrator status.
+
+**Important:** The same person may possess separate Administrator and Owner accounts. Treat them as separate authenticated identities. Do not automatically link accounts, transfer permissions, or create a cross-account exemption.
+
+Enforce this restriction on the backend using the authenticated user's ID and the requirement's actual creator ID. Do not rely only on disabled frontend buttons.
+
+The UI must disable/hide prohibited self-approval controls and explain:
+
+"You cannot approve or reject a requirement you created."
+
+Preserve existing permission and workflow checks. The Owner exemption removes only the self-approval restriction; it must not bypass unrelated validation or business rules.
+
+Apply the same principle to requirement-revision approval/rejection where the operation constitutes approval of the user's own submitted revision, after inspecting the existing revision ownership model. If the model cannot safely distinguish the revision requester, report the ambiguity before changing that path.
+
+Do not change ordinary allocation-status updates, fulfilment or other non-approval actions.
+
+## 4. Notification permission labels
+
+Change the displayed column name **Notify** to **Receive Notifications** wherever practical.
+
+Keep the underlying `notify` permission key and notification delivery logic unchanged.
+
+Clarify **Admin Notifications — Create** as permission to create administrative notification records.
+
+Do not rename it Broadcast or Announcement until a proper message-composition and recipient-selection workflow has been implemented.
+
+Do not develop that workflow in this instruction.
+
+## 5. Preserve existing permissions and data
+
+Do not change:
+
+- Existing users, roles, Owner/Admin flags or site assignments
+- Stored permission matrices
+- Historical Site Requirements
+- Requirement quantities, allocation statuses or history
+- Existing approval/revision processes beyond this safeguard
+- Billing, DPR, Material Trips, equipment, procurement or inventory modules
+
+Do not introduce new account-role architecture or redesign the permissions engine.
+
+## 6. Verification
+
+Use disposable development users and records to verify:
+
+1. Requirement creator with Approve permission cannot self-approve.
+2. A different authorised approver can approve.
+3. A user without approval authority cannot approve.
+4. An Administrator who created a requirement cannot self-approve.
+5. An Owner who created a requirement can self-approve, subject to other existing validation.
+6. Direct API calls cannot bypass the restriction.
+7. Existing allocation-status updates still work.
+8. Requirement revision approval respects the approved ownership rule.
+9. Notification receipt behaviour is unchanged.
+10. Existing accounts, permissions and business records remain unchanged.
+
+Confirm with authenticated backend tests, focused UI tests and application build.
+
+Distinguish existing baseline test failures from newly introduced failures.
+
+## 7. Report and stop
+
+Provide the permission mapping, exact changes, test evidence, regression results, preservation checks and genuine Publish preview.
+
+Commit and push verified code.
+
+**Do not publish, execute production migrations, change existing user accounts or alter production data.**
+
+Stop after reporting.
+
+**Explicitly excluded:** NAV-01/NAV-02 sidebar and hub visibility changes. Those will be handled separately.

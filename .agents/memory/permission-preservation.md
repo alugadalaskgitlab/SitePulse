@@ -8,6 +8,22 @@ Keep the full permission matrix, not a simplified role model. Tightening page ga
 
 **How to apply:** Verify the target database before permission writes. Development access-preservation evidence never proves production is migrated; production needs separately authorized checks before a rollout.
 
+## Site Requirements self-approval scope
+
+Site Requirements creators must not approve or reject their own requirements
+or their own submitted revisions. Only the authenticated account's `isOwner`
+flag exempts that account from this restriction; Administrator status and
+business designation do not. Separate accounts belonging to the same person
+must not be linked or given cross-account exemptions.
+
+**Why:** The user explicitly requires account-specific separation of approval
+duties, with an Owner-only exception.
+
+**How to apply:** Preserve other authorization and workflow validation, and do
+not change ordinary allocation or fulfilment actions. If revision-requester
+identity cannot be established safely, report the ambiguity before changing
+revision approval.
+
 ## Delegable switches and split sections
 
 The owner explicitly authorized clearing existing Delete, Export and Notify grants for non-admin/non-owner users. Preserve admin/owner accounts and clear nothing else. These switches must not be granted automatically by templates, defaults or Grant all.
