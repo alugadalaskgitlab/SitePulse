@@ -1,0 +1,15 @@
+{
+  "info": {
+    "additionalUrls": [],
+    "deploymentType": "autoscale",
+    "hasSuccessfulBuild": true,
+    "isDeployed": true,
+    "primaryUrl": "https://site-reporter--8shmmcw622.replit.app",
+    "success": true,
+    "visibility": "public"
+  },
+  "shaLogSearch": {
+    "found": true,
+    "logs": "[2026-10-09T05:09:44.230Z INFO] Startup: ensureWorkProgrammeRevisionColumns — baseline + revision history columns verified/backfilled\n[2026-10-09T05:09:53.021Z INFO] Startup: ensureWorkProgrammeRevisionColumns — baseline + revision history columns verified/backfilled"
+  }
+}

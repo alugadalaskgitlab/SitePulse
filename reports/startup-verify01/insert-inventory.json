@@ -1,0 +1,2172 @@
+[
+  {
+    "file": "scripts/arrange02a-verify.mjs",
+    "line": 25,
+    "body": "Object.values(cookies)"
+  },
+  {
+    "file": "scripts/arrange02b-verify.mjs",
+    "line": 34,
+    "body": "Object.values(cookies)"
+  },
+  {
+    "file": "scripts/dev-acct02-verify.mjs",
+    "line": 25,
+    "body": "Object.values(cookies)"
+  },
+  {
+    "file": "scripts/perm-req01-verify.mjs",
+    "line": 35,
+    "body": "Object.values(cookies)"
+  },
+  {
+    "file": "scripts/permission-audit.ts",
+    "line": 156,
+    "body": "sources.values()"
+  },
+  {
+    "file": "scripts/permission-prod01-browser.mjs",
+    "line": 33,
+    "body": "Object.values(a.cookies)"
+  },
+  {
+    "file": "scripts/permission-prod01-browser.mjs",
+    "line": 122,
+    "body": "Object.values(remaining)"
+  },
+  {
+    "file": "scripts/permission-prod01-report.mjs",
+    "line": 30,
+    "body": "Object.values(read(\"cleanup\").remaining)"
+  },
+  {
+    "file": "scripts/permission03-evidence.ts",
+    "line": 121,
+    "body": "expected.values()"
+  },
+  {
+    "file": "scripts/permission03b-browser.mjs",
+    "line": 48,
+    "body": "Object.values(patch)"
+  },
+  {
+    "file": "scripts/permission03b-verification.mjs",
+    "line": 54,
+    "body": "Object.values(cookies)"
+  },
+  {
+    "file": "scripts/permission03b-verification.mjs",
+    "line": 86,
+    "body": "Object.values(remaining)"
+  },
+  {
+    "file": "scripts/permission03b1-signin.mjs",
+    "line": 46,
+    "body": "Object.values(cookies)"
+  },
+  {
+    "file": "scripts/permission03b2-browser.mjs",
+    "line": 87,
+    "body": "Object.values(state.cookies)"
+  },
+  {
+    "file": "scripts/permission03b2-browser.mjs",
+    "line": 140,
+    "body": "Object.values(remaining)"
+  },
+  {
+    "file": "scripts/permission03b2-browser.mjs",
+    "line": 146,
+    "body": "Object.values(previous.remaining)"
+  },
+  {
+    "file": "scripts/permission03b3-browser.mjs",
+    "line": 160,
+    "body": "Object.values(remaining)"
+  },
+  {
+    "file": "scripts/permission03b3-notify-report.mjs",
+    "line": 13,
+    "body": "Object.values(read(`${run}/cleanup`).remaining)"
+  },
+  {
+    "file": "scripts/permission03b3-report.mjs",
+    "line": 49,
+    "body": "Object.values(variables)"
+  },
+  {
+    "file": "scripts/permission03b3-report.mjs",
+    "line": 49,
+    "body": "Object.values(functions)"
+  },
+  {
+    "file": "scripts/permission03b3-report.mjs",
+    "line": 51,
+    "body": "Object.values(matrix)"
+  },
+  {
+    "file": "scripts/permission03b3-report.mjs",
+    "line": 52,
+    "body": "Object.values(matrix)"
+  },
+  {
+    "file": "scripts/permission03b3-report.mjs",
+    "line": 54,
+    "body": "Object.values(matrix)"
+  },
+  {
+    "file": "scripts/trip-link01-verify.mjs",
+    "line": 27,
+    "body": "Object.values(cookies)"
+  },
+  {
+    "file": "scripts/trip-link02-verify.mjs",
+    "line": 29,
+    "body": "Object.values(cookies)"
+  },
+  {
+    "file": "scripts/trips-filter01-verify.mjs",
+    "line": 25,
+    "body": "Object.values(cookies)"
+  },
+  {
+    "file": "scripts/trips-filter01b-verify.mjs",
+    "line": 25,
+    "body": "Object.values(cookies)"
+  },
+  {
+    "file": "scripts/user-role01-verify.mjs",
+    "line": 34,
+    "body": "Object.values(client.cookies)"
+  },
+  {
+    "file": "scripts/user-role02-verify.mjs",
+    "line": 43,
+    "body": "Object.values(client)"
+  },
+  {
+    "file": "scripts/vb-arrange01-verify.mjs",
+    "line": 57,
+    "body": "Object.values(state.cookies)"
+  },
+  {
+    "file": "scripts/verification/dpr-eqlink01.mjs",
+    "line": 47,
+    "body": "Object.values(cookies)"
+  },
+  {
+    "file": "server/arrangementAllocationSync.ts",
+    "line": 166,
+    "body": "tx.insert(earthworkArrangementProgrammeAllocations).values({\n          arrangementId: arr.id,\n          programmeBarId: action.programmeBarId,\n          boqItemId: action.boqItemId,\n          allocatedQty: action.qty,\n          source: \"auto\",\n          createdBy: userId,\n        } as any)"
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 596,
+    "body": "Object.values(setup.steps)"
+  },
+  {
+    "file": "server/auth-routes.ts",
+    "line": 628,
+    "body": "Object.values(setup.steps)"
+  },
+  {
+    "file": "server/auth.ts",
+    "line": 186,
+    "body": "tx.insert(userPermissions).values(rows)"
+  },
+  {
+    "file": "server/auth.ts",
+    "line": 253,
+    "body": "db.insert(users).values({\n    email: input.email ? input.email.trim().toLowerCase() : null,\n    phone: input.phone ? input.phone.trim() : null,\n    passwordHash,\n    fullName: input.fullName.trim(),\n    isActive: true,\n    isAdmin: !!input.isAdmin,\n    isFieldEngineer: !!input.isFieldEngineer,\n    notificationsEnabled: !!input.notificationsEnabled,\n    sessionPolicy: input.sessionPolicy ?? \"strict\",\n  })"
+  },
+  {
+    "file": "server/auth.ts",
+    "line": 459,
+    "body": "db.insert(userDevices).values({\n    userId: input.userId,\n    deviceToken: token,\n    deviceLabel: input.deviceLabel.slice(0, 200),\n    userAgent: input.userAgent?.slice(0, 500),\n    ipAddress: input.ipAddress?.slice(0, 64),\n    status,\n    approvedAt: input.autoApprove ? new Date() : null,\n    approvedByUserId: input.autoApprove ? input.userId : null,\n    lastSeenAt: new Date(),\n  })"
+  },
+  {
+    "file": "server/auth.ts",
+    "line": 478,
+    "body": "db.insert(userSessions).values({\n    userId: input.userId,\n    deviceId: input.deviceId,\n    sessionToken: token,\n    loginAt: new Date(),\n    lastActivityAt: new Date(),\n  })"
+  },
+  {
+    "file": "server/auth.ts",
+    "line": 742,
+    "body": "db.insert(appSettings).values({ key: PHONE_LOGIN_MIGRATION_FLAG, value: new Date().toISOString() })"
+  },
+  {
+    "file": "server/auth.ts",
+    "line": 774,
+    "body": "tx.insert(appSettings).values({ key: PLANT_SUB_PERMS_FLAG, value: new Date().toISOString() })"
+  },
+  {
+    "file": "server/dieselComparisonEquipment.ts",
+    "line": 77,
+    "body": "buckets.values()"
+  },
+  {
+    "file": "server/dieselComparisonEquipment.ts",
+    "line": 81,
+    "body": "Object.values(remainder)"
+  },
+  {
+    "file": "server/dieselComparisonEquipment.ts",
+    "line": 87,
+    "body": "buckets.values()"
+  },
+  {
+    "file": "server/dprSections.ts",
+    "line": 88,
+    "body": "tx.insert(dprDraftStoppages).values(input.breakdowns.map((breakdown: any) => {\n      const { attachment, ...fields } = breakdown;\n      return { ...fields, ...attachment, equipmentLogId: rows[index].id };\n    }))"
+  },
+  {
+    "file": "server/dprSections.ts",
+    "line": 177,
+    "body": "tx.insert(table).values({ ...values, [ownerKey]: id })"
+  },
+  {
+    "file": "server/dprSections.ts",
+    "line": 286,
+    "body": "tx.insert(dprs).values({ ...context, site: context.site.toUpperCase(),\n          engineer: request.data.engineer.toUpperCase(), dprStatus: \"draft\", authorUserId: actorId,\n          submittedAt: null, lastEditedAt: new Date(), lastEditedByUserId: actorId })"
+  },
+  {
+    "file": "server/dprSections.ts",
+    "line": 346,
+    "body": "tx.insert(activityPersonnel).values(added.map(personnelId => ({ progressEntryId: progress[i].id, personnelId })))"
+  },
+  {
+    "file": "server/dprSections.ts",
+    "line": 377,
+    "body": "tx.insert(auditLogs).values({\n      module: \"dpr\", transactionId: id, action: created ? \"create\" : \"edit\",\n      userId: actorId, userName: request.actorName || `User #${actorId}`,\n      newValues: { sectionSaveReceipt: { version: 1, clientKey: request.clientKey, fingerprint, section } },\n      reason: `Saved DPR ${section} section`,\n    })"
+  },
+  {
+    "file": "server/labourWorkers.ts",
+    "line": 49,
+    "body": "tx.insert(labourLogs).values(values)"
+  },
+  {
+    "file": "server/labourWorkers.ts",
+    "line": 52,
+    "body": "tx.insert(labourLogWorkers).values(children)"
+  },
+  {
+    "file": "server/labourWorkers.ts",
+    "line": 61,
+    "body": "tx.insert(labourLogWorkers).values(names.map(name => ({\n      labourLogId: rows[index].id, name,\n    })))"
+  },
+  {
+    "file": "server/management-report.ts",
+    "line": 259,
+    "body": "rowMap.values()"
+  },
+  {
+    "file": "server/management-report.ts",
+    "line": 558,
+    "body": "billStatuses.values()"
+  },
+  {
+    "file": "server/management-report.ts",
+    "line": 586,
+    "body": "billMap.values()"
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 7929,
+    "body": "breakdownMap.values()"
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 9412,
+    "body": "tx.insert(purchaseOrders).values({\n        ...fields, vendorName: linkedVendor?.name ?? fields.vendorName,\n        purchaseIndentId: scoped.indent.id, purchaseIndentItemId: scoped.item.id,\n        raisedByUserId: req.authUser!.id,\n        vendorBusinessName: linkedVendor?.businessName ?? null, vendorGst: linkedVendor?.gstNumber ?? null,\n        vendorPan: linkedVendor?.panNumber ?? null, vendorAddress: linkedVendor?.address ?? null,\n        })"
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 14075,
+    "body": "options.values()"
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 16673,
+    "body": "db.insert(programmeBarOutcomeEvents).values({\n        programmeBarId: input.programmeBarId, eventDate: input.eventDate, outcome: input.outcome, reason: input.reason ?? \"\",\n        reasonOther, rescheduledDate, actualQuantity: input.actualQuantity ?? null, actualUom,\n        remarks: input.remarks?.trim() || null, createdBy: req.authUser?.id ?? null,\n      })"
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 16738,
+    "body": "arrangementByBar.values()"
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 17442,
+    "body": "mixTypeToTemplateId.values()"
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 17634,
+    "body": "combinedMap.values()"
+  },
+  {
+    "file": "server/routes.ts",
+    "line": 20018,
+    "body": "tx.insert(earthworkArrangementProgrammeAllocations).values({\n        arrangementId: opts.arrangementId, programmeBarId: barId, boqItemId: bar!.boqItemId,\n        allocatedQty: opts.allocatedQty, createdBy: opts.userId,\n      })"
+  },
+  {
+    "file": "server/snlAutoMapper.ts",
+    "line": 132,
+    "body": "wa.values()"
+  },
+  {
+    "file": "server/snlAutoMapper.ts",
+    "line": 133,
+    "body": "wb.values()"
+  },
+  {
+    "file": "server/snlAutoMapper.ts",
+    "line": 800,
+    "body": "snlTokenMap.values()"
+  },
+  {
+    "file": "server/snlAutoMapper.ts",
+    "line": 872,
+    "body": "db\n            .insert(snlBoqMappings)\n            .values({\n              boqItemId: boqRow.id,\n              snlItemId: directSnl.id,\n              projectCategory: \"MEDIUM\",\n              gradingVariant: null,\n              mappedBy: \"auto\",\n              isAutoMapped: true,\n              confidenceScore: 1,\n              notes: `Mapped by SNL code \"${directSnl.itemCode}\"`,\n            })"
+  },
+  {
+    "file": "server/snlAutoMapper.ts",
+    "line": 926,
+    "body": "db\n            .insert(snlBoqMappings)\n            .values({\n              boqItemId: boqRow.id,\n              snlItemId: ruleResult.snlItemId,\n              projectCategory: \"MEDIUM\",\n              gradingVariant: null,\n              mappedBy: \"rule\",\n              isAutoMapped: true,\n              confidenceScore: ruleUnitOk ? ruleResult.confidence : ruleResult.confidence * UNIT_MISMATCH_PENALTY,\n              notes: ruleUnitOk\n                ? `Rule-matched tag: ${ruleTag}`\n                : `Rule-matched tag: ${ruleTag} (unit mismatch — review)`,\n            })"
+  },
+  {
+    "file": "server/snlAutoMapper.ts",
+    "line": 1022,
+    "body": "db\n        .insert(snlBoqMappings)\n        .values({\n          boqItemId: boqRow.id,\n          snlItemId: top.snlItemId,\n          projectCategory: \"MEDIUM\",\n          gradingVariant: null,\n          mappedBy: \"auto\",\n          isAutoMapped: true,\n          confidenceScore: top.score,\n          notes: noteTxt,\n        })"
+  },
+  {
+    "file": "server/snlAutoMapper.ts",
+    "line": 1190,
+    "body": "db\n          .insert(snlBoqMappings)\n          .values({\n            boqItemId: item.id,\n            snlItemId: srcMapping.snlItemId,\n            projectCategory: \"MEDIUM\",\n            gradingVariant: null,\n            mappedBy: \"auto-propagated\",\n            isAutoMapped: true,\n            confidenceScore: srcMapping.confidenceScore,\n            notes: `Propagated from duplicate item #${source.id}`,\n          })"
+  },
+  {
+    "file": "server/snlImporter.ts",
+    "line": 131,
+    "body": "db\n    .insert(snlSources)\n    .values({ code: sourceCode, name: sourceName, authority: 'Government', year, isActive: true })"
+  },
+  {
+    "file": "server/snlImporter.ts",
+    "line": 193,
+    "body": "db\n          .insert(snlItems)\n          .values({\n            sourceId: source.id,\n            itemCode: code,\n            description,\n            shortLabel: description.slice(0, 60),\n            unit,\n            workCategory: itemSector,\n            sector: itemSector,\n            chapterNo: chapter,\n            isMixSpecific,\n            isActive: true,\n          })"
+  },
+  {
+    "file": "server/snlImporter.ts",
+    "line": 219,
+    "body": "db.insert(snlItemProductivity).values({\n        itemId,\n        projectCategory: 'ALL',\n        shiftOutput,\n        shiftHours,\n        outputUnit: unit,\n        derivedPerHour,\n      })"
+  },
+  {
+    "file": "server/snlImporter.ts",
+    "line": 233,
+    "body": "db.insert(snlItemEquipment).values({\n          itemId,\n          projectCategory: 'ALL',\n          sortOrder: j,\n          equipmentType: label,\n          equipmentSpec: equipmentSpec(label),\n          unit: 'hrs',\n          quantityPerShift: num(er.qty_per_shift) ?? 1,\n          shiftOutputRef: num(er.shift_output) ?? shiftOutput,\n          derivedPerUnit: num(er.hrs_per_unit),\n        })"
+  },
+  {
+    "file": "server/snlImporter.ts",
+    "line": 253,
+    "body": "db.insert(snlItemLabour).values({\n          itemId,\n          projectCategory: 'ALL',\n          sortOrder: j,\n          designation,\n          skillTier: skillTier(designation),\n          unit: 'day',\n          quantityPerShift: num(lr.qty_per_shift) ?? 1,\n          shiftOutputRef: num(lr.shift_output) ?? shiftOutput,\n          derivedPerUnit: num(lr.days_per_unit),\n        })"
+  },
+  {
+    "file": "server/snlImporter.ts",
+    "line": 278,
+    "body": "db.insert(snlItemMaterials).values({\n          itemId,\n          projectCategory: 'ALL',\n          sortOrder: j,\n          materialName: matName,\n          materialCategory: materialCategory(matName),\n          unit: matUnit,\n          quantityPerShift: qtyPerShift,\n          shiftOutputRef: shiftOutput,\n          derivedPerUnit: qtyPerUnit,\n          isDesignSpecific: boolVal(mr.is_project_specific),\n        })"
+  },
+  {
+    "file": "server/snlMorthParser.ts",
+    "line": 404,
+    "body": "db.insert(snlItems).values({\n          sourceId,\n          itemCode: item.code,\n          description: descFull,\n          shortLabel: shortLbl,\n          unit: item.unit || 'CUM',\n          workCategory: item.workCategory,\n          sector: item.sector,\n          chapterNo: item.chapterNo,\n          isActive: true,\n        })"
+  },
+  {
+    "file": "server/snlMorthParser.ts",
+    "line": 425,
+    "body": "db.insert(snlItemProductivity).values({\n        itemId,\n        projectCategory: 'ALL',\n        shiftOutput,\n        shiftHours,\n        outputUnit: item.unit || 'CUM',\n        derivedPerHour,\n      })"
+  },
+  {
+    "file": "server/snlMorthParser.ts",
+    "line": 436,
+    "body": "db.insert(snlItemEquipment).values({\n          itemId,\n          projectCategory: 'ALL',\n          sortOrder: j,\n          equipmentType: er.label,\n          equipmentSpec: null,\n          unit: 'hrs',\n          quantityPerShift: er.qty,\n          shiftOutputRef: shiftOutput,\n          derivedPerUnit: er.qty / shiftOutput,\n        })"
+  },
+  {
+    "file": "server/snlMorthParser.ts",
+    "line": 452,
+    "body": "db.insert(snlItemLabour).values({\n          itemId,\n          projectCategory: 'ALL',\n          sortOrder: j,\n          designation: lr.label,\n          skillTier: skillTier(lr.label),\n          unit: 'day',\n          quantityPerShift: lr.qty,\n          shiftOutputRef: shiftOutput,\n          derivedPerUnit: lr.qty / shiftOutput,\n        })"
+  },
+  {
+    "file": "server/snlMorthParser.ts",
+    "line": 469,
+    "body": "db.insert(snlItemMaterials).values({\n          itemId,\n          projectCategory: 'ALL',\n          sortOrder: j,\n          materialName: mr.label,\n          materialCategory: materialCategory(mr.label),\n          unit: mr.unit || item.unit || 'CUM',\n          quantityPerShift: mr.qty,\n          shiftOutputRef: shiftOutput,\n          derivedPerUnit: qtyPerUnit,\n          isDesignSpecific: false,\n        })"
+  },
+  {
+    "file": "server/snlMorthParser.ts",
+    "line": 518,
+    "body": "db\n    .insert(snlSources)\n    .values({\n      code: SOURCE_CODE,\n      name: SOURCE_NAME,\n      authority: 'MoRTH',\n      year: 2019,\n      isActive: true,\n    })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 1987,
+    "body": "groups.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 2529,
+    "body": "tx.insert(piItemTransactions).values(data)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 2564,
+    "body": "tx.insert(purchaseIndentItemHistory).values(items.map(item => ({\n        itemId: item.id,\n        action: \"RECEIPT_RECORDING_STARTED\",\n        actionBy: actionBy.toUpperCase(),\n        notes: \"Receipt eligibility verified; delivery recording started. This attempt does not confirm that a physical receipt was created.\",\n      })))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 2591,
+    "body": "snapshots.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 2594,
+    "body": "snapshots.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 2603,
+    "body": "snapshots.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 2615,
+    "body": "tx.insert(piItemTransactions).values({ indentId: item.indentId, indentItemId: itemId,\n      transactionType: evidence.kind === \"receipt\" ? \"pi_delivery_link\" : \"pi_delivery_trip\",\n      qty: null, remarks: JSON.stringify(evidence), createdBy: \"SYSTEM: DELIVERY RECONCILIATION\" })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 2688,
+    "body": "db.insert(auditLogs).values(entry)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 2776,
+    "body": "tx.insert(stockLedger).values({\n      date: transactionDate,\n      partyId: targetPartyId,\n      materialId: receipt.materialId,\n      transactionType: \"material_receipt_cancel_reversal\",\n      referenceId: id,\n      quantityIn: 0,\n      quantityOut: stockQuantity,\n      balanceAfter: newBalance,\n      uom: material.conversionToUom || receipt.uom,\n      notes: `Reversal of cancelled Material Receipt #${id} (${receipt.quantity} ${receipt.uom}) by user #${userId}. Reason: ${reason}`,\n      tankNumber: receipt.tankNumber ?? null,\n    })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 3175,
+    "body": "sourceByKey.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 3196,
+    "body": "tx.insert(cutFillConsumptions).values(resolved.map(r => ({\n      fillProgressEntryId: r.fillId, sourceProgressEntryId: r.sourceId ?? null,\n      openingBalanceId: r.openingId ?? null, quantity: r.qty,\n    })))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 3294,
+    "body": "tx.insert(attachments).values({\n        moduleType: \"equipment_breakdown\", linkedRecordId: maintenanceId,\n        fileName: attachment.fileName, objectPath: attachment.objectPath,\n        mimeType: attachment.mimeType ?? \"application/octet-stream\",\n        fileSize: attachment.fileSize ?? null,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 3354,
+    "body": "tx.insert(equipmentMaintenanceLogs).values(staged.map(x => x.values))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 3421,
+    "body": "tx.insert(dprs).values({\n        date: dprData.date,\n        site: dprData.site.toUpperCase(),\n        engineer: dprData.engineer.toUpperCase(),\n        submittedAt: submittedAt,\n        dprStatus: dprStatusVal,\n        workType: dprData.workType ?? \"road\",\n        boqProjectId: (dprData as any).boqProjectId ?? null,\n        remarks: (dprData as any).remarks ?? null,\n        authorUserId: audit?.userId ?? null,\n        submittedByUserId: dprStatusVal === \"draft\" ? null : (audit?.userId ?? null),\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 3444,
+    "body": "tx.insert(progressEntries).values(\n          progressWithPersonnel.map(p => p.progressData)\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 3450,
+    "body": "tx.insert(activityPersonnel).values(\n              pIds.map((personnelId: number) => ({ progressEntryId: insertedProgress[i].id, personnelId }))\n            )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 3462,
+    "body": "tx.insert(equipmentLogs).values(\n          normalisedEquipment.map((e: any) => ({\n            ...e,\n            dprId,\n            machine: e.machine?.toUpperCase() || e.machine,\n            operator: e.operator?.toUpperCase() || e.operator,\n            task: e.task?.toUpperCase() || e.task,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 3490,
+    "body": "tx.insert(materialLogs).values(\n          dprData.materials.map(m => ({ \n            ...m, \n            dprId,\n            vehicleNumber: m.vehicleNumber?.toUpperCase() || m.vehicleNumber,\n            supplier: m.supplier?.toUpperCase() || m.supplier,\n            location: m.location?.toUpperCase() || m.location,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 3503,
+    "body": "tx.insert(sitePurchases).values(\n          dprData.sitePurchases.map(sp => ({\n            ...sp,\n            dprId,\n            itemDescription: sp.itemDescription?.toUpperCase() || sp.itemDescription,\n            vendor: sp.vendor?.toUpperCase() || sp.vendor,\n            billNo: sp.billNo?.toUpperCase() || sp.billNo,\n            documentStatus: \"draft\" as const,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 3517,
+    "body": "tx.insert(dprStructureItems).values(\n          dprData.structureItems.map(({ persistedId: _persistedId, ...s }: any) => ({ ...s, dprId }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4143,
+    "body": "tx.insert(progressEntries).values(progressWithPersonnel.map(p => p.progressData))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4147,
+    "body": "tx.insert(activityPersonnel).values(pIds.map((personnelId: number) => ({ progressEntryId: insertedProgress[i].id, personnelId })))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4152,
+    "body": "tx.insert(cutFillConsumptions).values(remap.remaps.map(item => {\n          const old = externalSourceLinks.find(x => x.id === item.consumptionId)!;\n          return { fillProgressEntryId: old.fillProgressEntryId, sourceProgressEntryId: item.sourceProgressEntryId, openingBalanceId: null, quantity: old.quantity };\n        }))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4169,
+    "body": "tx.insert(equipmentLogs).values(values.map(({ persistedId, ...e }: any) => ({ ...e, dprId: id })))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4190,
+    "body": "tx.insert(materialLogs).values(dprData.materials.map(m => ({ ...m, dprId: id, vehicleNumber: m.vehicleNumber?.toUpperCase() || m.vehicleNumber, supplier: m.supplier?.toUpperCase() || m.supplier, location: m.location?.toUpperCase() || m.location })))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4193,
+    "body": "tx.insert(sitePurchases).values(dprData.sitePurchases.map(sp => ({ ...sp, dprId: id, itemDescription: sp.itemDescription?.toUpperCase() || sp.itemDescription, vendor: sp.vendor?.toUpperCase() || sp.vendor, billNo: sp.billNo?.toUpperCase() || sp.billNo, documentStatus: \"draft\" as const })))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4196,
+    "body": "tx.insert(dprStructureItems).values(dprData.structureItems.map(s => ({ ...s, dprId: id })))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4254,
+    "body": "tx.insert(progressEntries).values(\n          progressWithPersonnel.map(p => p.progressData)\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4260,
+    "body": "tx.insert(activityPersonnel).values(\n              pIds.map((personnelId: number) => ({ progressEntryId: insertedProgress[i].id, personnelId }))\n            )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4267,
+    "body": "tx.insert(cutFillConsumptions).values(remap.remaps.map(item => {\n          const old = externalSourceLinks.find(x => x.id === item.consumptionId)!;\n          return { fillProgressEntryId: old.fillProgressEntryId, sourceProgressEntryId: item.sourceProgressEntryId, openingBalanceId: null, quantity: old.quantity };\n        }))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4279,
+    "body": "tx.insert(equipmentLogs).values(\n          normalisedEquipment.map((e: any) => ({ ...e, dprId: id }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4292,
+    "body": "tx.insert(materialLogs).values(\n          dprData.materials.map(m => ({ ...m, dprId: id }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4298,
+    "body": "tx.insert(sitePurchases).values(\n          dprData.sitePurchases.map(sp => ({\n            ...sp,\n            dprId: id,\n            itemDescription: sp.itemDescription?.toUpperCase() || sp.itemDescription,\n            vendor: sp.vendor?.toUpperCase() || sp.vendor,\n            billNo: sp.billNo?.toUpperCase() || sp.billNo,\n            documentStatus: \"draft\" as const,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4311,
+    "body": "tx.insert(dprStructureItems).values(\n          dprData.structureItems.map(s => ({ ...s, dprId: id }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4367,
+    "body": "tx.insert(dprs).values({\n        date: original.date,\n        site: newSiteName,\n        engineer: original.engineer.toUpperCase(),\n        role: editedBy,\n        submittedAt: original.submittedAt,\n        createdAt: original.createdAt,\n        workType: (original as any).workType ?? \"road\",\n        boqProjectId: (original as any).boqProjectId ?? null,\n        remarks: (original as any).remarks ?? null,\n        authorUserId: original.authorUserId ?? null,\n        lastEditedByUserId: actorUserId ?? null,\n        lastEditedAt: new Date(),\n        submittedByUserId: original.submittedByUserId ?? null,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4387,
+    "body": "tx.insert(dprStructureItems).values(\n          (original as any).structureItems.map((s: any) => ({\n            dprId,\n            structureType: s.structureType,\n            structureSubType: s.structureSubType ?? null,\n            structureName: s.structureName,\n            stage: s.stage ?? null,\n            itemOfWork: s.itemOfWork,\n            quantity: s.quantity,\n            uom: s.uom,\n            remarks: s.remarks,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4408,
+    "body": "tx.insert(progressEntries).values(\n          original.progress.map(p => ({\n            dprId,\n            activity: p.activity?.toUpperCase() || p.activity,\n            chainageFrom: p.chainageFrom,\n            chainageTo: p.chainageTo,\n            side: p.side,\n            length: p.length,\n            width: p.width,\n            thickness: p.thickness,\n            quantity: p.quantity,\n            uom: p.uom,\n            noSiteWork: (p as any).noSiteWork || false,\n            noSiteWorkDescription: (p as any).noSiteWorkDescription,\n            // Task #1409: keep the stable entryKey so per-activity photo\n            // grouping (attachments.progress_entry_key) survives edit/clone.\n            entryKey: (p as any).entryKey ?? null,\n            boqItemId: (p as any).boqItemId ?? null,\n            earthworkArrangementId: (p as any).earthworkArrangementId ?? null,\n            // 030A: preserve programme linkage + geometry context on clone\n            programmeBarId: (p as any).programmeBarId ?? null,\n            linkReviewRequired: (p as any).linkReviewRequired ?? false,\n            chainageFromKm: (p as any).chainageFromKm ?? null,\n            chainageToKm: (p as any).chainageToKm ?? null,\n            quantitySource: (p as any).quantitySource ?? null,\n            quantitySourceNote: (p as any).quantitySourceNote ?? null,\n            chainageOverrideReason: (p as any).chainageOverrideReason ?? null,\n            lengthOverrideReason: (p as any).lengthOverrideReason ?? null,\n            // 031 Parts G/H: preserve review flag + executor attribution on clone,\n            // otherwise superseding a DPR would let review_required rows count\n            // toward bar done-qty and drop the executed-by record.\n            chainageReviewStatus: (p as any).chainageReviewStatus ?? null,\n            executedBy: (p as any).executedBy ?? null,\n            // 032: preserve scope-warning flags + override attribution on clone\n            scopeWarningType: (p as any).scopeWarningType ?? null,\n            scopeOverrideReason: (p as any).scopeOverrideReason ?? null,\n            scopeOverrideBy: (p as any).scopeOverrideBy ?? null,\n            scopeOverrideAt: (p as any).scopeOverrideAt ?? null,\n            // 06P: preserve layer/lift number on clone (null stays null).\n            layerNo: (p as any).layerNo ?? null,\n            // 06V: preserve incidental flag + description on clone.\n            isIncidental: (p as any).isIncidental ?? false,\n            incidentalDescription: (p as any).incidentalDescription != null ? ((p as any).incidentalDescription as string).toUpperCase() : null,\n            materialOutcome: (p as any).materialOutcome ?? null,\n            reusableQty: (p as any).reusableQty ?? null,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4459,
+    "body": "tx.insert(activityPersonnel).values(\n              pIds.map(personnelId => ({ progressEntryId: insertedProgress[i].id, personnelId }))\n            )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4468,
+    "body": "tx.insert(cutFillConsumptions).values(oldLinks.map(link => ({\n          fillProgressEntryId: oldToNew.get(link.fillProgressEntryId)!,\n          sourceProgressEntryId: link.sourceProgressEntryId == null ? null : (oldToNew.get(link.sourceProgressEntryId) ?? link.sourceProgressEntryId),\n          openingBalanceId: link.openingBalanceId,\n          quantity: link.quantity,\n        })))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4497,
+    "body": "tx.insert(equipmentLogs).values(\n          normalisedEquipment.map((e: any) => ({\n            dprId,\n            machine: e.machine?.toUpperCase() || e.machine,\n            operator: e.operator?.toUpperCase() || e.operator,\n            startTime: e.startTime,\n            endTime: e.endTime,\n            diesel: e.diesel,\n            task: e.task?.toUpperCase() || e.task,\n            equipmentId: e.equipmentId,\n            dieselSource: e.dieselSource,\n            fuelStation: e.fuelStation,\n            billNumber: e.billNumber,\n            amountPaid: e.amountPaid,\n            vehicleNo: e.vehicleNo,\n            openingReading: e.openingReading,\n            closingReading: e.closingReading,\n            hoursWorked: e.hoursWorked,\n            dieselNorm: e.dieselNorm,\n            expectedDiesel: e.expectedDiesel,\n            openingDiesel: e.openingDiesel,\n            dieselBalanceInTank: e.dieselBalanceInTank,\n            dieselBalanceConfirmed: e.dieselBalanceConfirmed,\n            entryType: (e as any).entryType ?? \"time_meter\",\n            numberOfTrips: (e as any).numberOfTrips ?? null,\n            tripDistance: (e as any).tripDistance ?? null,\n            totalKm: (e as any).totalKm ?? null,\n            boqItemId: e.boqItemId ?? null,\n            resourceScope: e.resourceScope ?? null,\n            usageStatus: e.usageStatus ?? null,\n            usageStatusReason: e.usageStatusReason ?? null,\n            // Preserve the dispatch linkage across clone/version chains.\n            plantUsageId: (e as any).plantUsageId ?? null,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4563,
+    "body": "tx.insert(materialLogs).values(\n          original.materials.map(m => ({\n            dprId,\n            type: m.type,\n            material: m.material,\n            supplier: m.supplier?.toUpperCase() || m.supplier,\n            quantity: m.quantity,\n            uom: m.uom,\n            vehicleNumber: m.vehicleNumber?.toUpperCase() || m.vehicleNumber,\n            location: m.location?.toUpperCase() || m.location,\n            receiptNumber: m.receiptNumber,\n            resourceScope: m.resourceScope ?? null,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4581,
+    "body": "tx.insert(sitePurchases).values(\n          original.sitePurchases.map(sp => ({\n            dprId,\n            itemDescription: sp.itemDescription?.toUpperCase() || sp.itemDescription,\n            quantity: sp.quantity,\n            uom: sp.uom,\n            vendor: sp.vendor?.toUpperCase() || sp.vendor,\n            billNo: sp.billNo?.toUpperCase() || sp.billNo,\n            amount: sp.amount,\n            documentStatus: sp.documentStatus ?? \"draft\",\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4596,
+    "body": "tx.insert(dprVersions).values({\n        originalDprId: id,\n        dprId: newDpr.id,\n        editedBy,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4611,
+    "body": "tx.insert(attachments).values(\n          originalAttachments.map((a) => ({\n            moduleType: a.moduleType,\n            linkedRecordId: dprId,\n            siteId: a.siteId,\n            boqProjectId: a.boqProjectId,\n            fileName: a.fileName,\n            objectPath: a.objectPath,\n            mimeType: a.mimeType,\n            fileSize: a.fileSize,\n            uploadedBy: a.uploadedBy,\n            docType: a.docType,\n            progressEntryKey: a.progressEntryKey,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4756,
+    "body": "tx.insert(dprs).values({\n        date: dprData.date,\n        site: newSiteName,\n        engineer: dprData.engineer.toUpperCase(),\n        role: editedBy,\n        submittedAt: originalAudit?.submittedAt ?? dateTime,\n        createdAt: originalAudit?.createdAt ?? undefined,\n        workType: dprData.workType ?? \"road\",\n        boqProjectId: (dprData as any).boqProjectId ?? null,\n        remarks: (dprData as any).remarks ?? null,\n        authorUserId: originalAudit?.authorUserId ?? null,\n        lastEditedByUserId: audit?.userId ?? null,\n        lastEditedAt: new Date(),\n        submittedByUserId: originalAudit?.submittedByUserId ?? null,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4800,
+    "body": "tx.insert(dprStructureItems).values(\n          dprData.structureItems.map(s => ({ ...s, dprId }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4807,
+    "body": "tx.insert(progressEntries).values(\n          dprData.progress.map((p, index) => {\n            const progressInput = p as any;\n            const source = progressSourceResolution.sources[index];\n            const relevantFactsChanged = !!source\n              && dprProgressReviewFactsChanged(source as any, progressInput);\n            const preservedSource = source && !relevantFactsChanged ? source : undefined;\n            const {\n              persistedId: _persistedId,\n              uomOverrideReason: _uomOverrideReason,\n              ...persistedProgress\n            } = progressInput;\n            return {\n              ...persistedProgress,\n              dprId,\n              // Version payloads intentionally expose the editable activity\n              // fields only. Carry forward server-side review/link facts so\n              // recreating a progress row cannot erase its audit history.\n              linkReviewRequired: preservedSource?.linkReviewRequired ?? false,\n              chainageReviewStatus: preservedSource?.chainageReviewStatus ?? null,\n              scopeWarningType: preservedSource?.scopeWarningType ?? null,\n              scopeOverrideReason: preservedSource?.scopeOverrideReason ?? null,\n              scopeOverrideBy: preservedSource?.scopeOverrideBy ?? null,\n              scopeOverrideAt: preservedSource?.scopeOverrideAt ?? null,\n              activity: (p as any).activity?.toUpperCase() || (p as any).activity,\n              noSiteWorkDescription: (p as any).noSiteWorkDescription?.toUpperCase() || (p as any).noSiteWorkDescription,\n              incidentalDescription: (p as any).incidentalDescription?.toUpperCase() || (p as any).incidentalDescription,\n            };\n          })\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4846,
+    "body": "tx.insert(equipmentLogs).values(\n          normalisedEquipment.map((e: any) => ({\n            ...e,\n            dprId,\n            machine: e.machine?.toUpperCase() || e.machine,\n            operator: e.operator?.toUpperCase() || e.operator,\n            task: e.task?.toUpperCase() || e.task,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4873,
+    "body": "tx.insert(materialLogs).values(\n            dprData.materials.map(({ persistedId: _persistedId, ...m }: any) => ({\n              ...m, \n              dprId,\n              vehicleNumber: m.vehicleNumber?.toUpperCase() || m.vehicleNumber,\n              supplier: m.supplier?.toUpperCase() || m.supplier,\n              location: m.location?.toUpperCase() || m.location,\n            }))\n          )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4889,
+    "body": "tx.insert(materialLogs).values(\n            originalMaterials.map(m => ({\n              dprId,\n              type: m.type,\n              material: m.material,\n              quantity: m.quantity,\n              uom: m.uom,\n              vehicleNumber: m.vehicleNumber,\n              supplier: m.supplier,\n              location: m.location,\n              receiptNumber: m.receiptNumber,\n              boqItemId: m.boqItemId,\n              resourceScope: m.resourceScope ?? null,\n              structureId: m.structureId,\n            }))\n          )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4913,
+    "body": "tx.insert(sitePurchases).values(\n            dprData.sitePurchases.map(sp => ({\n              ...sp,\n              dprId,\n              itemDescription: sp.itemDescription?.toUpperCase() || sp.itemDescription,\n              vendor: sp.vendor?.toUpperCase() || sp.vendor,\n              billNo: sp.billNo?.toUpperCase() || sp.billNo,\n              documentStatus: \"draft\" as const,\n            }))\n          )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4930,
+    "body": "tx.insert(sitePurchases).values(\n            originalPurchases.map(sp => ({\n              dprId,\n              itemDescription: sp.itemDescription,\n              quantity: sp.quantity,\n              uom: sp.uom,\n              vendor: sp.vendor,\n              billNo: sp.billNo,\n              amount: sp.amount,\n              documentStatus: sp.documentStatus ?? \"draft\",\n            }))\n          )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 4946,
+    "body": "tx.insert(dprVersions).values({\n        originalDprId: originalId,\n        dprId: newDpr.id,\n        editedBy,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 5019,
+    "body": "tx.insert(stockLedger).values({\n          date: dprDate,\n          partyId: hlcPartyId,\n          materialId: dieselMaterial.id,\n          transactionType: \"direct_purchase\",\n          referenceId: equipLogRefId,\n          quantityIn: dieselQty,\n          quantityOut: dieselQty,\n          balanceAfter: null,\n          uom: dieselMaterial.defaultUom || 'Liters',\n          notes: `Direct purchase at ${fuelStation}${billNumber ? `, Bill: ${billNumber}` : ''}${amountPaid ? `, Rs. ${amountPaid}` : ''} - ${eLog.machine || 'Equipment'} at ${siteName}`,\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 5045,
+    "body": "tx.insert(stockLedger).values({\n          date: dprDate,\n          partyId: hlcPartyId,\n          materialId: dieselMaterial.id,\n          transactionType: \"dpr_equipment_usage\",\n          referenceId: equipLogRefId,\n          quantityOut: dieselQty,\n          balanceAfter: newBalance,\n          uom: dieselMaterial.defaultUom || 'Liters',\n          notes: `DPR diesel issued to ${eLog.machine || 'Equipment'} at ${siteName}`,\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 5280,
+    "body": "tx.insert(plantReports).values({\n        date: reportData.date,\n        siteName: uppercaseBusinessText(reportData.siteName),\n        role: reportData.role || \"engineer\",\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 5289,
+    "body": "tx.insert(plantProduction).values(\n          reportData.production.map(p => ({ ...p, plantReportId }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 5307,
+    "body": "tx.insert(plantReports).values({\n        date: original.date,\n        siteName: uppercaseBusinessText(`${original.siteName} – Copy by ${roleName} – ${dateTime}`),\n        role: editedBy,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 5316,
+    "body": "tx.insert(plantProduction).values(\n          original.production.map(p => ({\n            plantReportId,\n            material: p.material,\n            quantity: p.quantity,\n            uom: p.uom,\n            supplier: p.supplier,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 5327,
+    "body": "tx.insert(plantVersions).values({\n        originalPlantId: id,\n        plantId: newReport.id,\n        editedBy,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 5354,
+    "body": "tx.insert(plantProduction).values(\n          reportData.production.map(p => ({ ...p, plantReportId: id }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 5392,
+    "body": "db.insert(appSettings).values({ key, value })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 5432,
+    "body": "db.insert(plantSettings).values({\n      plantName: input.plantName,\n      ...patch,\n    })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 5450,
+    "body": "tx.insert(plantSettings).values({\n        plantName: newName,\n        plantType: existing.plantType,\n        siteId: existing.siteId,\n        primaryPartyId: existing.primaryPartyId,\n        bitumenTank1LitresPerCm: existing.bitumenTank1LitresPerCm,\n        bitumenTank2LitresPerCm: existing.bitumenTank2LitresPerCm,\n        bitumenDensityKgPerL: existing.bitumenDensityKgPerL,\n        tankConfig: existing.tankConfig,\n        updatedAt: new Date(),\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 5477,
+    "body": "db.insert(parties).values(uppercased)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 5565,
+    "body": "db.insert(plantMaterials).values(uppercased)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 5588,
+    "body": "db.insert(mixTypes).values(uppercased)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 5623,
+    "body": "tx.insert(mixTemplates).values(uppercased)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 5625,
+    "body": "tx.insert(mixTemplateComponents).values(\n          components.map(c => ({ ...c, templateId: result.id }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 5651,
+    "body": "tx.insert(mixTemplateComponents).values(\n            components.map(c => ({ ...c, templateId: id }))\n          )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 5774,
+    "body": "db.insert(equipmentMaster).values(uppercased)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 5974,
+    "body": "tx.insert(materialReceipts).values(uppercased)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 6004,
+    "body": "tx.insert(stockLedger).values({\n        date: transactionDate,\n        partyId: targetPartyId,\n        materialId: receipt.materialId,\n        transactionType: \"receipt\",\n        referenceId: result.id,\n        quantityIn: stockQuantity,\n        balanceAfter: newBalance,\n        uom: stockUom,\n        notes: conversionNote,\n        tankNumber: receipt.tankNumber ?? null,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 6024,
+    "body": "tx.insert(ldoFlowReadings).values({\n          date: transactionDate,\n          time: receipt.time || null,\n          tankNumber: receipt.tankNumber,\n          meterReading: 0,\n          readingType: \"receipt\",\n          quantityLiters: qtyL,\n          notes: `AUTO FROM MATERIAL RECEIPT #${result.id}`,\n          plantName: receipt.plantName ?? \"Main Plant\",\n          sourceMaterialReceiptId: result.id,\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 6159,
+    "body": "tx.insert(stockLedger).values({\n        date: transactionDate,\n        partyId: newTargetPartyId,\n        materialId: newMaterialId,\n        transactionType: \"receipt\",\n        referenceId: id,\n        quantityIn: newStockQuantity,\n        balanceAfter: finalBalance,\n        uom: newStockUom,\n        notes: conversionNote,\n        tankNumber: receiptTankNumber ?? null,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 6184,
+    "body": "tx.insert(ldoFlowReadings).values({\n          date: transactionDate,\n          time: newTime || null,\n          tankNumber: newTankNumber,\n          meterReading: 0,\n          readingType: \"receipt\",\n          quantityLiters: qtyL,\n          notes: `AUTO FROM MATERIAL RECEIPT #${id}`,\n          plantName: newPlantName,\n          sourceMaterialReceiptId: id,\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 6321,
+    "body": "db.insert(truckDispatches).values(uppercased)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 6401,
+    "body": "tx.insert(consumptionAuditLog).values({\n          dispatchId: id,\n          adjustmentType: \"bitumen\",\n          previousValue: currentDispatch.actualBitumenPercent || currentDispatch.theoreticalBitumenPercent,\n          newValue: newActualBitumenPercent,\n          theoreticalValue: theoreticalBitumenPercent,\n          variancePercent: bitumenVariancePercent,\n          adjustedBy: adjustedBy || \"operator\",\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 6413,
+    "body": "tx.insert(consumptionAuditLog).values({\n          dispatchId: id,\n          adjustmentType: \"ldo\",\n          previousValue: currentDispatch.actualLdoQty || currentDispatch.theoreticalLdoQty,\n          newValue: newActualLdoQty,\n          theoreticalValue: theoreticalLdoQty,\n          variancePercent: ldoVariancePercent,\n          adjustedBy: adjustedBy || \"operator\",\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 6869,
+    "body": "tx.insert(auditLogs).values({\n        module: \"equipment_log\",\n        transactionId: id,\n        action: \"edit\",\n        userId: actor.userId ?? null,\n        userName: actor.userName,\n        userRole: actor.userRole ?? null,\n        oldValues: { equipmentId: existing.equipmentId },\n        newValues: { equipmentId },\n        reason: \"Confirmed historical equipment identity from performance report\",\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 7173,
+    "body": "tx.insert(equipmentActivitySegments).values(\n            input.activitySegments.map((segment: any) => ({\n              equipmentLogId: logs[index].id,\n              startTime: segment.startTime,\n              endTime: segment.endTime,\n              hoursWorked: segment.hoursWorked,\n            })),\n          )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 7187,
+    "body": "tx.insert(equipmentActivitySegmentBoqItems).values(links)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 7209,
+    "body": "tx.insert(equipmentActivitySegments).values(\n            segments.map(segment => ({\n              equipmentLogId: logs[index].id,\n              startTime: segment.startTime,\n              endTime: segment.endTime,\n              hoursWorked: segment.hoursWorked,\n            })),\n          )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 7219,
+    "body": "tx.insert(equipmentActivitySegmentBoqItems).values(links)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 7231,
+    "body": "tx.insert(equipmentActivityAllocations).values(legacyRows)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 7360,
+    "body": "tx.insert(equipmentUsage).values({\n        ...normalisedUsage,\n        hoursOrKmRun,\n        numberOfTrips: numberOfTrips || null,\n        tripDistance: tripDistance || null,\n        totalKm: totalKm || null,\n        expectedDiesel,\n        openingDiesel,\n        closingDiesel,\n        variance,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 7397,
+    "body": "tx.insert(stockLedger).values({\n              date: usage.date,\n              partyId: hlcPartyId,\n              materialId: dieselMaterial.id,\n              transactionType: \"equipment_usage\",\n              referenceId: result.id,\n              quantityOut: dieselIssued,\n              balanceAfter: newBalance,\n              uom: dieselMaterial.defaultUom || 'Liters',\n              notes: `Diesel issued to ${equipment?.name || 'Equipment'}`,\n            })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 7416,
+    "body": "tx.insert(stockLedger).values({\n              date: usage.date,\n              partyId: hlcPartyId,\n              materialId: dieselMaterial.id,\n              transactionType: \"direct_purchase\",\n              referenceId: result.id,\n              quantityIn: dieselIssued, // Record as procurement for reporting\n              quantityOut: dieselIssued, // Also consumed immediately\n              balanceAfter: null, // No balance change (bypasses plant stock)\n              uom: dieselMaterial.defaultUom || 'Liters',\n              notes: `Direct purchase at ${fuelStation}${billNumber ? `, Bill: ${billNumber}` : ''}${amountPaid ? `, Rs. ${amountPaid}` : ''} - ${equipment?.name || 'Equipment'} at ${siteName}`,\n            })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 7569,
+    "body": "tx.insert(equipmentUsage).values(successor as any)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 7719,
+    "body": "tx.insert(equipmentUsage).values({\n        date: dpr.date,\n        equipmentId: log.equipmentId,\n        entryType: log.entryType ?? \"time_meter\",\n        openingReading: log.openingReading,\n        closingReading: log.closingReading,\n        startTime: log.startTime,\n        endTime: log.endTime,\n        operator: log.operator,\n        task: log.task,\n        dprId,\n        siteName,\n        plantName: \"SITE\",\n        destinationType: \"site\",\n        destinationSite: siteName,\n        status: \"closed\",\n        closedByDprId: dprId,\n        closedByUserId: audit?.userId ?? null,\n        closedByUserName,\n        closedAt,\n        dieselIssued: log.diesel ?? 0,\n        dieselSource: log.dieselSource,\n        dieselIncluded: log.dieselSource === \"contractor\",\n        fuelStation: log.fuelStation,\n        billNumber: log.billNumber,\n        amountPaid: log.amountPaid,\n        numberOfTrips: log.numberOfTrips,\n        tripDistance: log.tripDistance,\n        tripBasedEntry: log.entryType === \"trip_based\",\n        openingDiesel: log.openingDiesel,\n        dieselBalanceInTank: log.dieselBalanceInTank,\n        dieselBalanceConfirmed: log.dieselBalanceConfirmed,\n        closingDiesel: log.dieselBalanceInTank,\n        totalKm: log.totalKm,\n        // The canonical operating quantity is hours for hour-meter runtime\n        // and km for odometer/trip runtime; never coerce km into hours.\n        hoursOrKmRun: log.hoursWorked ?? log.totalKm,\n        expectedDiesel: log.expectedDiesel,\n        usageStatus: log.usageStatus,\n        usageStatusReason: log.usageStatusReason,\n        variance: Number(log.diesel ?? 0) - Number(log.expectedDiesel ?? 0),\n      } as any)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 8022,
+    "body": "tx.insert(stockLedger).values({\n              date: usageDate,\n              partyId: replacementPartyId,\n              materialId: ledgerMaterial.id,\n              transactionType: \"equipment_usage\",\n              referenceId: result.id,\n              quantityOut: newDieselIssued,\n              balanceAfter: currentBalance?.balance != null ? Number(currentBalance.balance) : 0,\n              uom: ledgerMaterial.defaultUom || 'Liters',\n              notes: `Diesel issued to ${equipment?.name || 'Equipment'}`,\n            })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 8039,
+    "body": "tx.insert(stockLedger).values({\n              date: usageDate,\n              partyId: hlcPartyId,\n              materialId: ledgerMaterial.id,\n              transactionType: \"direct_purchase\",\n              referenceId: result.id,\n              quantityIn: newDieselIssued,\n              quantityOut: newDieselIssued,\n              balanceAfter: null,\n              uom: ledgerMaterial.defaultUom || 'Liters',\n              notes: `Direct purchase at ${fuelStation}${billNumber ? `, Bill: ${billNumber}` : ''}${amountPaid ? `, Rs. ${amountPaid}` : ''} - ${equipment?.name || 'Equipment'} at ${siteName}`,\n            })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 8149,
+    "body": "db.insert(generatorLogs).values({\n      ...log,\n      generatorName: log.generatorName.toUpperCase(),\n      dieselConsumed,\n      efficiency,\n    })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 8348,
+    "body": "tx.insert(stockBalances).values({\n        materialId,\n        partyId,\n        balance: newBalance,\n        uom: uom ?? 'Units',\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 8923,
+    "body": "tx.insert(stockBalances).values({\n          partyId: data.partyId, materialId: data.materialId, balance: data.physicalQty, uom: effectiveUom,\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 8932,
+    "body": "tx.insert(stockLedger).values({\n          date: data.date,\n          partyId: data.partyId,\n          materialId: data.materialId,\n          transactionType: \"adjustment\",\n          quantityIn: adjustment > 0 ? adjustment : 0,\n          quantityOut: adjustment < 0 ? -adjustment : 0,\n          balanceAfter: data.physicalQty,\n          uom: effectiveUom,\n          notes: `Physical stock correction by ${data.correctedBy}${data.notes ? ` — ${data.notes}` : \"\"}`,\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 9115,
+    "body": "tx.insert(stockReconciliationSessions).values({\n            refNo: \"\",\n            countDate: data.countDate,\n            postedBy: data.postedBy,\n            clientRequestId: data.clientRequestId,\n            notes: data.notes ?? null,\n            status: \"draft\", // flipped to 'posted' at the end of the tx\n          })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 9209,
+    "body": "tx.insert(stockLedger).values({\n              date: data.countDate,\n              partyId: c.it.partyId,\n              materialId: c.it.materialId,\n              transactionType: \"adjustment\",\n              referenceId: session.id,\n              quantityIn: c.adjustment > 0 ? c.adjustment : 0,\n              quantityOut: c.adjustment < 0 ? -c.adjustment : 0,\n              balanceAfter: c.physicalBase,\n              uom: c.stockUom,\n              notes: `${refNo} | ${c.it.reason}${c.it.note ? ` | ${c.it.note}` : \"\"} | posted by ${data.postedBy}`,\n            })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 9228,
+    "body": "tx.insert(stockReconciliationItems).values({\n            sessionId: session.id,\n            materialId: c.it.materialId,\n            partyId: c.it.partyId,\n            oldBalance: c.oldBalance,\n            physicalQty: c.physicalBase,\n            adjustment: c.adjustment,\n            sourceQty: c.it.sourceQty,\n            sourceUom: c.it.sourceUom,\n            conversionFactor: c.conv.kind === \"same\" ? null : c.conv.factor,\n            baseUom: c.stockUom,\n            reason: c.it.reason,\n            note: c.it.note ?? null,\n            ledgerEntryId,\n            verifiedNoChange: c.noChange ? 1 : 0,\n          })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 9315,
+    "body": "db.insert(stockReconciliationSessions).values({\n      refNo: \"\",\n      countDate: data.countDate,\n      postedBy: \"\",\n      status: data.status,\n      draftRows,\n      preparedBy: data.preparedBy,\n      preparedAt: new Date(),\n      updatedAt: new Date(),\n      notes: data.notes ?? null,\n    })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 9400,
+    "body": "db.insert(appSettings).values({ key: MIGRATION_FLAG, value: `skipped:gap=${gap.toFixed(0)}L` })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 9410,
+    "body": "tx.insert(stockLedger).values({\n        date: today,\n        partyId: mainBalance.partyId,\n        materialId: ldoMaterial.id,\n        transactionType: \"physical_correction\" as any,\n        referenceId: null,\n        quantityIn: 0,\n        quantityOut: Math.abs(adjustment),\n        balanceAfter: physicalTotalL,\n        uom: effectiveUom,\n        notes: `Physical stock correction — dip total ${physicalTotalL.toFixed(0)} L (book was ${bookBalance.toFixed(0)} L, gap ${gap.toFixed(0)} L). Posted automatically on startup.`,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 9429,
+    "body": "tx.insert(appSettings).values({ key: MIGRATION_FLAG, value: new Date().toISOString() })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 9574,
+    "body": "tx.insert(stockLedger).values({\n          date: dispatchData.date,\n          partyId: pId,\n          materialId: matId,\n          transactionType: \"dispatch\",\n          quantityOut: deductQty,\n          balanceAfter: newBalance,\n          uom: deductUom,\n          notes,\n          tankNumber: tankNum ?? null,\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 9754,
+    "body": "tx.insert(stockLedger).values({\n                date: dispatchData.date,\n                partyId,\n                materialId: item.matId,\n                transactionType: \"dispatch\",\n                quantityOut: 0,\n                balanceAfter: Math.max(ownerBal, 0),\n                uom: item.uom,\n                notes: item.label,\n                tankNumber: item.tankNumber ?? null,\n              })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 9795,
+    "body": "tx.insert(truckDispatches).values({\n        ...dispatchData,\n        truckNumber: dispatchData.truckNumber.toUpperCase(),\n        deliveryLocation: dispatchData.deliveryLocation?.toUpperCase(),\n        theoreticalBitumenPercent,\n        theoreticalBitumenQty,\n        theoreticalLdoQty,\n        theoreticalAggregates: JSON.stringify(theoreticalAggregates),\n        actualBitumenPercent,\n        actualBitumenQty,\n        actualLdoQty,\n        bitumenVariancePercent: Math.abs(bitumenVariancePercent) > 0.01 ? bitumenVariancePercent : null,\n        ldoVariancePercent: Math.abs(ldoVariancePercent) > 0.01 ? ldoVariancePercent : null,\n        adjustedBy: hasAdjustment ? \"operator\" : null,\n        adjustedAt: hasAdjustment ? new Date() : null,\n        stockDeducted: 1,\n        shortageWarning: shortages.length ? JSON.stringify(shortages) : null,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 9823,
+    "body": "tx.insert(consumptionAuditLog).values({\n          dispatchId: result.id,\n          adjustmentType: \"bitumen\",\n          previousValue: theoreticalBitumenQty,\n          newValue: actualBitumenQty,\n          theoreticalValue: theoreticalBitumenQty,\n          variancePercent: bitumenVariancePercent,\n          adjustedBy: \"operator\",\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 9835,
+    "body": "tx.insert(consumptionAuditLog).values({\n          dispatchId: result.id,\n          adjustmentType: \"ldo\",\n          previousValue: theoreticalLdoQty,\n          newValue: actualLdoQty,\n          theoreticalValue: theoreticalLdoQty,\n          variancePercent: ldoVariancePercent,\n          adjustedBy: \"operator\",\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 10521,
+    "body": "tx.insert(stockLedger).values({\n              date: usage.date,\n              partyId: hlcPartyId,\n              materialId: dieselMaterial.id,\n              transactionType: \"equipment_usage\",\n              referenceId: usage.id,\n              quantityOut: dieselIssued,\n              balanceAfter: newBalance,\n              uom: dieselMaterial.defaultUom || 'Liters',\n              notes: `Diesel issued to ${equipment?.name || 'Equipment'} (backfilled)`,\n            } as any)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 10692,
+    "body": "tx.insert(stockLedger).values({\n        date,\n        partyId: fromPartyId,\n        materialId,\n        transactionType: \"transfer\",\n        quantityIn: \"0\",\n        quantityOut: String(quantity),\n        uom,\n        balanceAfter: String(source.newBalance),\n        notes: `Transfer → ${toParty.name}${actorTag} [${stamp}]${notes ? `: ${notes}` : \"\"}`,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 10704,
+    "body": "tx.insert(stockLedger).values({\n        date,\n        partyId: toPartyId,\n        materialId,\n        transactionType: \"transfer\",\n        quantityIn: String(quantity),\n        quantityOut: \"0\",\n        uom,\n        balanceAfter: String(destination.newBalance),\n        notes: `Transfer from ${fromParty.name}${actorTag} [${stamp}]${notes ? `: ${notes}` : \"\"}`,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 10791,
+    "body": "balanceMap.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 10796,
+    "body": "balanceMap.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 10804,
+    "body": "balanceMap.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 10817,
+    "body": "balanceMap.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 10830,
+    "body": "tx.insert(stockBalances).values({\n              materialId: data.materialId,\n              partyId: data.partyId,\n              balance: data.balance,\n              uom: data.uom,\n            } as any)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 10891,
+    "body": "db.insert(stockLedger).values({\n          date: '2026-04-28',\n          partyId: LAXMI_PARTY_ID,\n          materialId: MAT_6MM_DOWN,\n          transactionType: 'dispatch',\n          quantityOut: 0,\n          balanceAfter: 0,\n          uom: 'Ton',\n          notes: `Aggregate dispatch (${laxmiName})`,\n          referenceId: dispatchId,\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 11122,
+    "body": "db.insert(sitePurchases).values(\n                olderPurchases.map(sp => ({\n                  dprId: latestId,\n                  itemDescription: sp.itemDescription,\n                  quantity: sp.quantity,\n                  uom: sp.uom,\n                  vendor: sp.vendor,\n                  billNo: sp.billNo,\n                  amount: sp.amount,\n                  documentStatus: sp.documentStatus ?? \"draft\",\n                }))\n              )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 11350,
+    "body": "rootToLeaves.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 11389,
+    "body": "tx.insert(stockLedger).values({\n            date: log.date,\n            partyId: hlcPartyId,\n            materialId: dieselMaterial.id,\n            transactionType: \"dpr_equipment_usage\",\n            referenceId: -log.id,\n            quantityOut: dieselAmt,\n            balanceAfter: null,\n            uom: dieselMaterial.defaultUom || 'Liters',\n            notes: `DPR diesel issued to ${log.machine || 'Equipment'} at ${siteName}`,\n          } as any)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 11451,
+    "body": "latestByKey.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 11523,
+    "body": "db.insert(adminNotifications).values(data)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 11547,
+    "body": "db\n      .insert(pushSubscriptions)\n      .values(data)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 11661,
+    "body": "tx.insert(materialIssues).values(uppercased)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 11705,
+    "body": "tx.insert(stockLedger).values({\n            date: issue.date,\n            partyId: stockPartyId,\n            materialId: issue.materialId,\n            transactionType: isTankFill ? \"tank_transfer\" : \"issue\",\n            referenceId: result.id,\n            quantityOut: stockQuantity,\n            balanceAfter: newBalance,\n            uom: stockUom,\n            notes: conversionNote,\n          })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 11719,
+    "body": "tx.insert(stockLedger).values({\n              date: issue.date,\n              partyId: stockPartyId,\n              materialId: issue.materialId,\n              transactionType: \"tank_transfer\",\n              referenceId: result.id,\n              quantityIn: stockQuantity,\n              quantityOut: 0,\n              uom: stockUom,\n              tankNumber: issue.ldoTankNumber,\n              notes: `Fill LDO Tank ${issue.ldoTankNumber} from Store (${stockQuantity.toFixed(1)} ${stockUom})`,\n            })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 11739,
+    "body": "tx.insert(ldoFlowReadings).values({\n          date: issue.date,\n          time: issue.time || null,\n          tankNumber: issue.ldoTankNumber,\n          meterReading: 0,\n          readingType: \"receipt\",\n          quantityLiters: qtyL,\n          notes: `AUTO FROM MATERIAL ISSUE #${result.id}`,\n          plantName: \"Main Plant\",\n          sourceMaterialIssueId: result.id,\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 11848,
+    "body": "tx.insert(stockLedger).values({\n            date: newDate,\n            partyId: newStockPartyId,\n            materialId: newMaterialId,\n            transactionType: isNewTankFill ? \"tank_transfer\" : \"issue\",\n            referenceId: result.id,\n            quantityOut: newStockQuantity,\n            balanceAfter: newBalance,\n            uom: newStockUom,\n            notes: conversionNote,\n          })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 11861,
+    "body": "tx.insert(stockLedger).values({\n              date: newDate,\n              partyId: newStockPartyId,\n              materialId: newMaterialId,\n              transactionType: \"tank_transfer\",\n              referenceId: result.id,\n              quantityIn: newStockQuantity,\n              quantityOut: 0,\n              uom: newStockUom,\n              tankNumber: newLdoTankNum,\n              notes: `Fill LDO Tank ${newLdoTankNum} from Store (${newStockQuantity.toFixed(1)} ${newStockUom})`,\n            })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 11883,
+    "body": "tx.insert(ldoFlowReadings).values({\n          date: newDate,\n          time: newTime || null,\n          tankNumber: newLdoTankNumber,\n          meterReading: 0,\n          readingType: \"receipt\",\n          quantityLiters: qtyL,\n          notes: `AUTO FROM MATERIAL ISSUE #${id}`,\n          plantName: \"Main Plant\",\n          sourceMaterialIssueId: id,\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 11993,
+    "body": "tx.insert(materialReturns).values(uppercased)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 12015,
+    "body": "tx.insert(stockLedger).values({\n        date: ret.date,\n        partyId: stockPartyId,\n        materialId: ret.materialId,\n        transactionType: \"return\",\n        referenceId: result.id,\n        quantityIn: stockQuantity,\n        balanceAfter: newBalance,\n        uom: stockUom,\n        notes: conversionNote,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 12123,
+    "body": "tx.insert(stockLedger).values({\n        date: newDate,\n        partyId: newPartyId,\n        materialId: newMaterialId,\n        transactionType: \"return\",\n        referenceId: result.id,\n        quantityIn: newStockQuantity,\n        balanceAfter: newBalance,\n        uom: newStockUom,\n        notes: conversionNote,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 12202,
+    "body": "tx.insert(materialOpeningStocks).values(stock)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 12231,
+    "body": "tx.insert(stockLedger).values({\n        date: stock.date,\n        partyId: stockPartyId,\n        materialId: stock.materialId,\n        transactionType: \"opening\",\n        referenceId: result.id,\n        quantityIn: stockQuantity,\n        balanceAfter: newBalance,\n        uom: stockUom,\n        tankNumber: stock.tankNumber ?? null,\n        notes: conversionNote,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 12326,
+    "body": "tx.insert(stockLedger).values({\n        date: newDate,\n        partyId: newStockPartyId,\n        materialId: newMaterialId,\n        transactionType: \"opening\",\n        referenceId: result.id,\n        quantityIn: newStockQuantity,\n        balanceAfter: newBalance,\n        uom: newStockUom,\n        tankNumber: newTankNumber,\n        notes: conversionNote,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 12662,
+    "body": "tx.insert(appSettings).values({\n        key: VEHICLE_SUPPLIER_ASSOCIATIONS_SETTING_KEY,\n        value,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 12798,
+    "body": "tx.insert(auditLogs).values(matched.map((row) => ({\n        module: \"site_material_trips\",\n        transactionId: row.id,\n        action: \"edit\",\n        userId: input.actor.userId,\n        userName: input.actor.userName,\n        userRole: input.actor.userRole ?? null,\n        oldValues: { materialSourceSupplier: row.previous },\n        newValues: { materialSourceSupplier: sourceSupplier },\n        reason: \"Bulk assigned material source supplier\",\n      })))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 12877,
+    "body": "tx.insert(auditLogs).values({\n        module: \"site_material_vehicle_supplier\",\n        transactionId: 0,\n        action: \"edit\",\n        userId: input.actor.userId,\n        userName: input.actor.userName,\n        userRole: input.actor.userRole ?? null,\n        oldValues: { site: siteKey, vehicleNumber: vehicleKey, association: before },\n        newValues: { site: siteKey, vehicleNumber: vehicleKey, association: after },\n        reason: \"Explicit vehicle supplier association correction\",\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 12923,
+    "body": "tx.insert(siteMaterialTrips).values({\n          ...data,\n          materialSourceSupplier,\n          ...(data.materialSourceType === \"own_source\" ? { materialSourceVendorId: null } : {}),\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 13049,
+    "body": "tx.insert(auditLogs).values({\n            module: \"site_material_trips\",\n            transactionId: id,\n            action: \"edit\",\n            userId: actor.userId,\n            userName: actor.userName,\n            userRole: actor.userRole ?? null,\n            oldValues: Object.fromEntries(fields.map(key => [key, existing[key]])),\n            newValues: Object.fromEntries(fields.map(key => [key, updated[key]])),\n            reason: \"Edited site material trip\",\n          })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 13211,
+    "body": "map.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 13455,
+    "body": "db.insert(consumptionAuditLog).values(data)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 13546,
+    "body": "tx.insert(userSiteAccess).values(\n          uniqueIds.map((siteId) => ({ userId, siteId, accessLevel: \"full\" as const }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 13559,
+    "body": "db.insert(sites).values({\n      ...site,\n      name: uppercaseBusinessText(site.name),\n    })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 13590,
+    "body": "db.insert(sites).values({ name: siteName })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 13602,
+    "body": "db.insert(editPermissionRequests).values(data)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 13710,
+    "body": "db.insert(bitumenDipReadings).values(uppercased)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 13760,
+    "body": "db.insert(ldoFlowReadings).values(uppercased)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 13899,
+    "body": "tx.insert(ldoFlowReadings).values({\n              date: row.date,\n              time,\n              tankNumber: tank,\n              meterReading: value,\n              readingType: rt,\n              notes: noteBits.join(\" \").toUpperCase(),\n              plantName: plant,\n              ...(tank === 2 && row.dryerFedFrom ? { dryerFedFrom: row.dryerFedFrom } : {}),\n            } satisfies InsertLdoFlowReading)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 14022,
+    "body": "tx.insert(stockBalances).values({ partyId: storePartyId, materialId: ldoMatId, balance: newBalance, uom: \"Liters\" })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 14025,
+    "body": "tx.insert(stockLedger).values({\n      date,\n      partyId: storePartyId,\n      materialId: ldoMatId,\n      transactionType: \"ldo_dip_consumption\",\n      referenceId: openingDip.id,\n      quantityOut: consumption,\n      balanceAfter: newBalance,\n      uom: \"Liters\",\n      tankNumber: tankNumber ?? 1,\n      notes: `${noteKey} Opening: ${Math.round(openingDip.volumeLiters)}L, Closing: ${Math.round(closingDip.volumeLiters)}L`,\n    })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 14059,
+    "body": "tx.insert(ldoDipReadings).values(uppercased)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 14194,
+    "body": "tx.insert(ldoDipReadings).values({\n              date: row.date,\n              time,\n              tankNumber: tank,\n              depthCm: depth,\n              volumeLiters: Math.round(volume * 100) / 100,\n              weightKg: Math.round(weight * 100) / 100,\n              readingType: rt,\n              notes: noteBits.join(\" \").toUpperCase(),\n              plantName: plant,\n            } satisfies InsertLdoDipReading)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 14431,
+    "body": "db.insert(personnel).values(uppercased)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 14437,
+    "body": "db.insert(attachments).values(data)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 14499,
+    "body": "unique.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 14583,
+    "body": "tx.insert(attachmentLinks).values(evidence.map(({ id }) => ({\n        attachmentId: id,\n        targetModuleType: \"material_receipt\",\n        targetLinkedRecordId: materialReceiptId,\n        linkedBy,\n      })))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 14639,
+    "body": "db.insert(activityPersonnel).values(\n        personnelIds.map(personnelId => ({ progressEntryId, personnelId }))\n      )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 14678,
+    "body": "groups.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 15042,
+    "body": "unique.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 15103,
+    "body": "tx.insert(auditLogs).values({\n          module: \"purchase_indent_route_correction\",\n          transactionId: request.itemId,\n          action: \"edit\",\n          userId: input.actor.userId,\n          userName: input.actor.userName,\n          userRole: input.actor.userRole ?? null,\n          oldValues: { procurementRoute: row.currentProcurementRoute },\n          newValues: { procurementRoute: \"material\" },\n          reason: \"Explicit PI-02B review correction\",\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 15143,
+    "body": "tx.insert(appSettings).values({ key: counterKey, value: String(seq) })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 15187,
+    "body": "tx.insert(purchaseIndents).values({\n        date: data.date,\n        indentNo,\n        proposedBy: uppercaseBusinessText(data.proposedBy),\n        raisedBy: uppercaseBusinessText(data.raisedBy),\n        status: piType === \"material\" ? \"pending\" : \"stores_check\",\n        remarks: data.remarks?.toUpperCase() || data.remarks,\n        siteId: (data as any).siteId ?? null,\n        raisedFrom: (data as any).raisedFrom ?? null,\n        sourceIrnId: (data as any).sourceIrnId ?? null,\n        piType,\n        ...(requirementId ? { requirementId } : {}),\n        ...(allocationId ? { allocationId } : {}),\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 15213,
+    "body": "tx.insert(purchaseIndentItems).values(\n          data.items.map(item => ({\n            indentId: indent.id,\n            description: item.description.toUpperCase(),\n            spec: (item as any).spec?.toUpperCase() || null,\n            partNo: (item as any).partNo?.toUpperCase() || null,\n            qty: item.qty,\n            uom: item.uom.toUpperCase(),\n            purpose: item.purpose.toUpperCase(),\n            priority: item.priority || \"normal\",\n            materialId: item.materialId || null,\n            storeItemId: (item as any).storeItemId ?? null,\n            estRate: item.estRate ?? null,\n            estAmount: item.estAmount ?? null,\n            requiredBy: item.requiredBy || null,\n            procurementRoute: piType === \"material\" ? \"material\" : ((item as any).procurementRoute || null),\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 15433,
+    "body": "db.insert(purchaseIndentItemHistory).values({\n        itemId,\n        action: purchaseStatus,\n        actionBy: actionBy.toUpperCase(),\n        qtyValue: updates.qtyPurchased ?? null,\n        vendor: updates.vendor ?? null,\n        billNo: updates.billNo ?? null,\n        amount: updates.amount ?? null,\n        notes: updates.purchaseRemarks ?? null,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 15527,
+    "body": "tx.insert(piItemTransactions).values({\n            indentId,\n            indentItemId: item.itemId,\n            transactionType: \"purchaser_action\",\n            qty: item.qty,\n            orderedQty: item.qty,\n            vendor: item.vendor?.toUpperCase() ?? null,\n            rate: item.rate ?? null,\n            paymentMode: item.paymentMode ?? null,\n            expectedDeliveryDate: item.expectedDeliveryDate ?? null,\n            reasonCode: \"ordered\",\n            remarks: item.remarks ?? null,\n            createdBy: actionBy.toUpperCase(),\n          })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 15560,
+    "body": "tx.insert(piItemTransactions).values({\n            indentId,\n            indentItemId: item.itemId,\n            transactionType: \"purchaser_action\",\n            qty: 0,\n            reasonCode: \"not_available\",\n            remarks: item.remarks ?? null,\n            createdBy: actionBy.toUpperCase(),\n          })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 15580,
+    "body": "tx.insert(piItemTransactions).values({\n            indentId,\n            indentItemId: item.itemId,\n            transactionType: \"purchaser_action\",\n            qty: 0,\n            reasonCode: \"recommend_cancellation\",\n            remarks: item.remarks ?? null,\n            createdBy: actionBy.toUpperCase(),\n          })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 15594,
+    "body": "tx.insert(piItemTransactions).values({\n            indentId,\n            indentItemId: item.itemId,\n            transactionType: \"purchaser_action\",\n            qty: item.qty,\n            orderedQty: item.orderedQty ?? item.qty,\n            vendor: item.vendor?.toUpperCase() ?? null,\n            rate: item.rate ?? null,\n            amount: item.amount ?? null,\n            paymentMode: item.paymentMode ?? null,\n            paidBy: item.paidBy ?? null,\n            expectedDeliveryDate: item.expectedDeliveryDate ?? null,\n            reasonCode: item.reasonCode ?? null,\n            remarks: item.remarks ?? null,\n            createdBy: actionBy.toUpperCase(),\n          })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 15780,
+    "body": "db.insert(storeItems).values({\n            name: uppercaseBusinessText(item.description),\n            category: \"General\",\n            uom: item.uom,\n            isActive: 1,\n          })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 15805,
+    "body": "tx.insert(storeGrns).values({\n      grnNumber,\n      date: today,\n      supplier: vendor.toUpperCase(),\n      status: \"draft\",\n      acceptanceStatus: \"accepted\",\n      indentRef: `PI-${indentId}`,\n      createdByUserId,\n      sourcePiIndentId: indentId,\n    })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 15817,
+    "body": "tx.insert(storeGrnItems).values(grnItemsData.map(it => ({ ...it, grnId: grn.id })))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 15850,
+    "body": "tx.insert(piItemTransactions).values({\n        indentId: data.indentId,\n        indentItemId: data.indentItemId,\n        transactionType: \"handover\",\n        handoverQty: data.handoverQty,\n        acceptedQty: data.acceptedQty,\n        rejectedQty: data.rejectedQty,\n        handoverDate: data.handoverDate ?? null,\n        receivedBy: data.receivedBy ?? null,\n        storesRemarks: data.storesRemarks ?? null,\n        remarks: data.remarks ?? null,\n        createdBy: actionBy.toUpperCase(),\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 15995,
+    "body": "tx.insert(pendingPlantReceipts).values(values)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 15999,
+    "body": "tx.insert(piItemTransactions).values({\n        indentId,\n        indentItemId: item.itemId,\n        transactionType: \"bulk_receipt_pending\",\n        qty: item.qty,\n        vendor: item.vendor?.toUpperCase() ?? null,\n        rate: item.rate ?? null,\n        amount: item.rate != null ? item.rate * item.qty : null,\n        remarks: item.remarks ?? null,\n        createdBy: createdBy.toUpperCase(),\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 16104,
+    "body": "tx.insert(serviceCompletions).values({\n      indentId: data.indentId,\n      indentItemId: data.indentItemId,\n      itemDescription: data.itemDescription ?? null,\n      completionStatus: data.completionStatus,\n      completionDate: data.completionDate ?? null,\n      qty: data.qty ?? null,\n      hours: data.hours ?? null,\n      remarks: data.remarks ?? null,\n      documentUrl: data.documentUrl ?? null,\n      verifiedByUserId: data.verifiedByUserId,\n      verifiedByName: data.verifiedByName.toUpperCase(),\n      createdByUserId: data.createdByUserId,\n    })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 16119,
+    "body": "tx.insert(piItemTransactions).values({\n      indentId: data.indentId,\n      indentItemId: data.indentItemId,\n      transactionType: \"service_completion\",\n      qty: data.qty ?? null,\n      remarks: data.remarks ?? null,\n      createdBy: data.verifiedByName.toUpperCase(),\n    })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 16279,
+    "body": "tx.insert(pendingPlantReceipts).values({\n        indentId, indentNo: indent.indentNo, indentItemId: itemId,\n        materialName: item.description, materialId: item.materialId, uom: item.uom,\n        qty: qty ?? Math.max(0, (item.orderedQty ?? item.qtyPurchased ?? item.qty) - item.deliveredQty),\n        vendor: item.vendor, rate: item.rate, ...destination,\n        createdByUserId: userId, createdBy: actor.toUpperCase(), status: \"pending\",\n        remarks: \"PI-01 destination assignment\",\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 16288,
+    "body": "tx.insert(piItemTransactions).values({ indentId, indentItemId: itemId,\n      transactionType: \"delivery_destination\", remarks: JSON.stringify({ ...destination,\n        previous: pending.map((p: any) => ({ id: p.id, receivingLocation: p.receivingLocation, receivingSiteId: p.receivingSiteId })) }),\n      createdBy: actor.toUpperCase() })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 16350,
+    "body": "tx.insert(piItemTransactions).values({\n          indentId: id,\n          indentItemId: indentItem.id,\n          transactionType: \"purchaser_action\",\n          qty: resolvedOrderedQty,\n          orderedQty: resolvedOrderedQty,\n          vendor: itemInput?.vendor?.toUpperCase() ?? null,\n          expectedDeliveryDate: itemInput?.expectedDelivery ?? null,\n          createdBy: actionBy.toUpperCase(),\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 16588,
+    "body": "tx.insert(piItemTransactions).values({\n        indentId: existingItem.indentId,\n        indentItemId: itemId,\n        transactionType: \"delivery_receipt\",\n        qty: data.deliveredQty,\n        vendor: existingItem.vendor ?? null,\n        rate: existingItem.rate ?? null,\n        paymentMode: data.paymentMode ?? existingItem.paymentMode ?? null,\n        paidBy: data.paidBy ?? null,\n        expectedDeliveryDate: data.deliveryDate ?? null,\n        reasonCode: data.challanNo ? `challan:${data.challanNo}` : null,\n        remarks: data.remarks ?? null,\n        createdBy: actionBy.toUpperCase(),\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 16611,
+    "body": "tx.insert(purchaseIndentItemHistory).values({\n        itemId,\n        action: `DELIVERY_${newStatus}`,\n        actionBy: actionBy.toUpperCase(),\n        notes: data.remarks ? data.remarks.toUpperCase() : null,\n        qtyValue: data.deliveredQty,\n        vendor: existingItem.vendor ?? null,\n        rate: existingItem.rate ?? null,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 16789,
+    "body": "db.insert(materialRequirements).values({\n      ...data,\n      // Work Demand requirements start as awaiting_review; manual entry keeps whatever status is passed\n      status: data.status ?? \"awaiting_review\",\n      balanceQty: data.requiredQty,\n      unallocatedBalanceQty: data.requiredQty,\n      physicallyUnfulfilledQty: data.requiredQty,\n    })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 16813,
+    "body": "db.insert(materialRequirementAllocations).values({\n      ...data,\n      status: \"authorized\",\n    })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 16879,
+    "body": "tx.insert(materialRequirementAllocations).values({\n        requirementId: params.requirementId,\n        allocationType: params.allocationType,\n        authorizedQty: params.authorizedQty,\n        authorizedByUserId: params.authorizedByUserId,\n        status: \"authorized\",\n        reason: params.reason,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 16996,
+    "body": "db.insert(purchaseIndentItemHistory).values({\n        itemId,\n        action: updates.purchaseStatus.toUpperCase(),\n        actionBy: actionBy.toUpperCase(),\n        notes: updates.purchaseRemarks || null,\n        qtyValue: updates.qtyPurchased || null,\n        vendor: updates.vendor || null,\n        billNo: updates.billNo || null,\n        rate: updates.rate || null,\n        amount: updates.amount || null,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 17039,
+    "body": "db.insert(purchaseIndentItemHistory).values({\n      itemId,\n      action: \"CANCELLED\",\n      actionBy: cancelledBy.toUpperCase(),\n      notes: reason.toUpperCase(),\n      qtyValue: null,\n      vendor: null,\n      billNo: null,\n      rate: null,\n      amount: null,\n    })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 17083,
+    "body": "db.insert(purchaseIndentItemHistory).values({\n          itemId: item.id,\n          action: \"CANCELLED\",\n          actionBy: closedBy.toUpperCase(),\n          notes: `FORCE CLOSED: ${reason.toUpperCase()}`,\n          qtyValue: null,\n          vendor: null,\n          billNo: null,\n          rate: null,\n          amount: null,\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 17208,
+    "body": "tx.insert(purchaseIndentItems).values({ indentId: id, ...item.values })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 17621,
+    "body": "tx.insert(hireStatements).values(patch)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 17623,
+    "body": "tx.insert(hireStatementExceptions).values(decisions.map(d => ({\n        statementId: statement!.id, sourceType: d.sourceType, sourceId: d.sourceId ?? null, exceptionType: d.exceptionType || \"manual\",\n        exceptionDate: d.date || null, description: d.remarks || \"Hire billing decision.\", decision: d.decision || null,\n        manualDeductionAmount: d.manualDeductionAmount ?? null, remarks: d.remarks ?? null,\n      })))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 17629,
+    "body": "tx.insert(vendorBillItems).values({ billId: bill.id, hireStatementId: statement.id,\n        date: group.periodTo, category: \"equipment\", description: `HIRE - ${equipment.name} (${group.periodFrom} TO ${group.periodTo})`,\n        qty: calc.quantity, unit, rate: terms.rate, amount: netAfterBillAdjustments, source: \"hire_statement\", equipmentId: group.equipmentId })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 17735,
+    "body": "tx.insert(vendorBills).values({\n        siteId: data.siteId ?? null,\n        billDate: data.billDate,\n        billNo,\n        billType: data.billType.toUpperCase(),\n        vendorName: uppercaseBusinessText(data.vendorName),\n        periodFrom: data.periodFrom,\n        periodTo: data.periodTo,\n        status: data.status || \"draft\",\n        notes: data.notes?.toUpperCase() || data.notes,\n        totalAmount: data.totalAmount,\n        adjustmentLabel: (data as any).adjustmentLabel?.toUpperCase() || null,\n        adjustmentAmount: (data as any).adjustmentAmount || 0,\n        additionalAdjustments: normalizeVendorBillAdditionalAdjustments((data as any).additionalAdjustments),\n        gstRateEquipment: (data as any).gstRateEquipment || null,\n        gstRateMaterial: (data as any).gstRateMaterial || null,\n        gstRateTransport: (data as any).gstRateTransport || null,\n        gstRateLabour: (data as any).gstRateLabour || null,\n        tdsRate: (data as any).tdsRate || null,\n        verifiedBy: data.verifiedBy?.toUpperCase() || data.verifiedBy,\n        verifiedAt: data.verifiedAt,\n        approvedBy: data.approvedBy?.toUpperCase() || data.approvedBy,\n        approvedAt: data.approvedAt,\n        paidAt: data.paidAt,\n        amountPaid: [\"equipment\", \"all\"].includes(data.billType.toLowerCase()) ? 0 : null,\n        paymentAccountKey: (data as any).paymentAccountKey ?? null,\n        paymentRemarks: data.paymentRemarks?.toUpperCase() || data.paymentRemarks,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 17775,
+    "body": "tx.insert(vendorBillItems).values(\n          ordinaryItems.map(item => ({\n            billId: bill.id,\n            date: item.date ?? null,\n            category: item.category ?? null,\n            description: item.description.toUpperCase(),\n            qty: item.qty,\n            unit: item.unit?.toUpperCase() || item.unit,\n            rate: item.rate,\n            amount: item.amount,\n            source: item.source || \"manual\",\n            equipmentId: item.equipmentId,\n            leadDistance: item.leadDistance ?? null,\n            transportPricing: item.transportPricing ?? null,\n            arrangementPricing: item.arrangementPricing ?? null,\n            siteName: (item as any).siteName?.toUpperCase() || null,\n            suppliedTo: item.suppliedTo ?? null,\n            transporter: item.transporter ?? null,\n            hireStatementId: null,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 17847,
+    "body": "tx.insert(hireStatements).values(data)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 17867,
+    "body": "tx.insert(hireStatementExceptions).values(rows.map(row => ({ ...row, statementId })))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 17915,
+    "body": "tx.insert(vendorBills).values({\n        billDate: data.billDate, billNo, billType: data.billType.toUpperCase(), vendorName: uppercaseBusinessText(data.vendorName),\n        periodFrom: statement.periodFrom, periodTo: statement.periodTo, status: \"draft\", notes: data.notes, totalAmount: statement.netAmount,\n        adjustmentLabel: (data as any).adjustmentLabel?.toUpperCase() || null,\n        adjustmentAmount: (data as any).adjustmentAmount || 0,\n        additionalAdjustments: normalizeVendorBillAdditionalAdjustments((data as any).additionalAdjustments),\n        amountPaid: 0,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 17926,
+    "body": "tx.insert(vendorBillItems).values(data.items.map(item => ({\n        ...item, billId: bill.id, hireStatementId: item.equipmentId === statement.equipmentId ? statement.id : null,\n        date: statement.periodTo, qty: statement.quantity,\n        unit: statement.billingBasis === \"monthly\" ? \"MONTHS\" : statement.billingBasis === \"daily\" ? \"DAYS\" : statement.billingBasis === \"hourly\" ? \"HRS\" : \"TRIPS\",\n        rate: statement.rate, amount: statement.netAmount,\n      })))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 18035,
+    "body": "tx.insert(vendorBillItems).values(\n          ordinaryItems.map(item => ({\n            billId: id,\n            date: item.date ?? null,\n            category: item.category ?? null,\n            description: item.description.toUpperCase(),\n            qty: item.qty,\n            unit: item.unit?.toUpperCase() || item.unit,\n            rate: item.rate,\n            amount: item.amount,\n            source: item.source || \"manual\",\n            equipmentId: item.equipmentId,\n            leadDistance: item.leadDistance ?? null,\n            transportPricing: item.transportPricing ?? null,\n            arrangementPricing: item.arrangementPricing ?? null,\n            siteName: (item as any).siteName?.toUpperCase() || null,\n            suppliedTo: item.suppliedTo ?? null,\n            transporter: item.transporter ?? null,\n            hireStatementId: null,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 19031,
+    "body": "groups.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 19080,
+    "body": "plantGroups.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 19200,
+    "body": "tx.insert(dieselRequirements).values({\n        date: data.date,\n        raisedBy: data.raisedBy.toUpperCase(),\n        totalPlanned: data.totalPlanned,\n        status: data.status || \"pending\",\n        remarks: data.remarks?.toUpperCase() || data.remarks,\n        siteId: (data as any).siteId ?? null,\n        raisedFrom: (data as any).raisedFrom ?? null,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 19212,
+    "body": "tx.insert(dieselRequirementItems).values(\n          data.items.map(item => ({\n            requirementId: requirement.id,\n            equipmentId: item.equipmentId,\n            equipmentName: item.equipmentName.toUpperCase(),\n            purpose: item.purpose?.toUpperCase() || item.purpose,\n            estHours: item.estHours,\n            norm: item.norm,\n            plannedQty: item.plannedQty,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 19415,
+    "body": "tx.insert(dieselRequirementItems).values(\n          data.items.map(item => ({\n            requirementId: id,\n            equipmentId: item.equipmentId,\n            equipmentName: item.equipmentName.toUpperCase(),\n            purpose: item.purpose?.toUpperCase() || item.purpose,\n            estHours: item.estHours,\n            norm: item.norm,\n            plannedQty: item.plannedQty,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 20151,
+    "body": "db.insert(appSettings).values({ key: MIGRATION_FLAG, value: \"applied\" })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 20248,
+    "body": "tx.insert(ldoFlowReadings).values(ldoRows)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 20261,
+    "body": "db.insert(appSettings).values({ key: MIGRATION_FLAG, value: new Date().toISOString() })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 20298,
+    "body": "db.insert(appSettings).values({ key: MIGRATION_FLAG, value: new Date().toISOString() })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 20332,
+    "body": "db.insert(appSettings).values({ key: MIGRATION_FLAG, value: new Date().toISOString() })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 20368,
+    "body": "db.insert(appSettings).values({ key: MIGRATION_FLAG, value: new Date().toISOString() })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 20408,
+    "body": "db.insert(ldoFlowReadings).values({\n            date: receipt.date,\n            time: receipt.time || null,\n            tankNumber: receipt.tankNumber ?? 1,\n            meterReading: 0,\n            readingType: \"receipt\",\n            quantityLiters: qtyL,\n            notes: `AUTO FROM MATERIAL RECEIPT #${receipt.id}`,\n            plantName: receipt.plantName ?? \"Main Plant\",\n            sourceMaterialReceiptId: receipt.id,\n          })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 20490,
+    "body": "tx.insert(stockBalances).values({\n              partyId: targetPartyId,\n              materialId: rcpt.materialId,\n              balance: stockQty,\n              uom: stockUom,\n            })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 20499,
+    "body": "tx.insert(stockLedger).values({\n            date: rcpt.date,\n            partyId: targetPartyId,\n            materialId: rcpt.materialId,\n            transactionType: \"receipt\",\n            referenceId: rcpt.id,\n            quantityIn: stockQty,\n            balanceAfter: newBalance,\n            uom: stockUom,\n            notes: convNote,\n          })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 20648,
+    "body": "tx.insert(stockBalances).values({ partyId: storePartyId, materialId: ldoMatId, balance: newBalance, uom: \"Liters\" })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 20651,
+    "body": "tx.insert(stockLedger).values({\n            date: pair.date,\n            partyId: storePartyId,\n            materialId: ldoMatId,\n            transactionType: \"ldo_dip_consumption\",\n            referenceId: pair.opening.id,\n            quantityOut: consumption,\n            balanceAfter: newBalance,\n            uom: \"Liters\",\n            tankNumber: pair.tankNumber ?? 1,\n            notes: `${noteKey} Opening: ${Math.round(pair.opening.volumeLiters)}L, Closing: ${Math.round(pair.closing.volumeLiters)}L`,\n          })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 21057,
+    "body": "groups.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 21166,
+    "body": "pairCount.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 21169,
+    "body": "tokenPairCount.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 21231,
+    "body": "tx.insert(plantShiftLogManpowerRelabelBatches).values({\n        actor: actorTrim,\n        fromNames: fromNamesUpper,\n        toName: toNameUpper,\n        contractorName: canonicalContractor,\n        category,\n        gender,\n        rowCount: matchedRows.length,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 21242,
+    "body": "tx.insert(plantShiftLogManpowerRelabelSnapshots).values(\n        matchedRows.map(r => ({\n          batchId: batch.id,\n          manpowerId: r.id,\n          prevName: r.name,\n          prevContractorName: r.contractorName,\n          prevCategory: r.category,\n          prevGender: r.gender,\n        }))\n      )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 21391,
+    "body": "db.insert(plantShiftLogManpowerDismissedDups)\n      .values(values)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 21472,
+    "body": "db.insert(plantShiftLogManpowerDupActivity).values({\n      actor: actorTrim,\n      plantName: plant,\n      action: input.action,\n      pairs: cleanPairs,\n      pairCount: cleanPairs.length,\n    })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 21533,
+    "body": "db.insert(plantShiftLogManpowerCustomAliases)\n      .values({ tokenA, tokenB, kind: input.kind, createdBy: actorTrim })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 21586,
+    "body": "db.insert(plantShiftLogManpowerAliasActivity).values({\n      actor: actorTrim,\n      action: input.action,\n      kind: input.kind,\n      tokenA,\n      tokenB,\n    })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 21635,
+    "body": "db.insert(plantShiftLogManpowerAliasActivity).values({\n            actor: actorTrim,\n            action: \"remove\",\n            kind: a.kind,\n            tokenA: a.tokenA,\n            tokenB: a.tokenB,\n          })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 21657,
+    "body": "db.insert(plantShiftLogManpowerAliasActivity).values({\n              actor: actorTrim,\n              action: \"add\",\n              kind: a.kind,\n              tokenA: result.alias.tokenA,\n              tokenB: result.alias.tokenB,\n            })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 21680,
+    "body": "db.insert(vendorAliases).values({\n      canonicalName: canonicalName.toUpperCase().trim(),\n      alias: alias.toUpperCase().trim(),\n    })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 22267,
+    "body": "tx.insert(vendorBills).values(freshBills)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 22268,
+    "body": "tx.insert(hireStatements).values(freshStatements)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 22269,
+    "body": "tx.insert(vendorBillItems).values(freshItems)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 22270,
+    "body": "tx.insert(hireStatementExceptions).values(freshExceptions)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 22292,
+    "body": "db.insert(table).values(row)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 22295,
+    "body": "db.insert(table).values(rest)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 22420,
+    "body": "db.insert(vendorRateCards).values({\n      category: data.category,\n      itemLabel: data.itemLabel,\n      unit: data.unit,\n      rate: data.rate,\n      notes: data.notes,\n      vendorName: upperVendor,\n      itemKey: upperKey,\n    })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 22990,
+    "body": "db.insert(mixEstimates).values(data)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 23019,
+    "body": "db.insert(priceScenarios).values(data)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 23053,
+    "body": "db.insert(concreteEstimates).values(data)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 23080,
+    "body": "db.insert(concreteEstimatesV2).values(data)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 23204,
+    "body": "tx.insert(ldoFlowReadings).values(ldoRows)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 23231,
+    "body": "tx.insert(bitumenDipReadings).values(bitumenRows)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 23257,
+    "body": "tx.insert(ldoDipReadings).values(ldoDipRows)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 23333,
+    "body": "tx.insert(plantShiftLogVersions).values({\n          shiftLogId: existing.id,\n          snapshot: { header: existing, manpower: priorMp, idleEvents: priorIdle } as any,\n          editedBy: editedBy || \"operator\",\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 23347,
+    "body": "tx.insert(plantShiftLogs).values({ ...header, shiftCode, plantName })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 23352,
+    "body": "tx.insert(plantShiftLogManpower).values(\n          manpower.map((m: any) => ({\n            shiftLogId: saved.id,\n            name: m.name,\n            role: m.role || null,\n            contractorName: m.contractorName ? String(m.contractorName).toUpperCase().trim() : null,\n            category: m.category ? String(m.category).toUpperCase().trim() : null,\n            gender: m.gender ? String(m.gender).toUpperCase().trim() : null,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 23364,
+    "body": "tx.insert(plantShiftLogIdle).values(\n          idleEvents.map((e: any) => ({\n            shiftLogId: saved.id,\n            startTime: e.startTime,\n            endTime: e.endTime || null,\n            reason: e.reason,\n            remarks: e.remarks || null,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 23563,
+    "body": "map.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 23705,
+    "body": "map.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 23895,
+    "body": "byMixMap.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 23924,
+    "body": "receiptsByMaterial.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 24104,
+    "body": "map.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 24291,
+    "body": "tx.insert(plantHeatingSessionVersions).values({\n          sessionId: existing.id,\n          snapshot: existing as Record<string, unknown>,\n          editedBy: editedBy || \"operator\",\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 24302,
+    "body": "tx.insert(bitumenHeatingSessions)\n          .values({ ...payload, createdBy: editedBy || \"operator\" } as any)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 24333,
+    "body": "tx.insert(generatorLogs).values(dgRow)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 24394,
+    "body": "tx.insert(equipmentUsage).values({\n            date: saved.date,\n            equipmentId: genEquip.id,\n            entryType: \"time_meter\",\n            startTime: saved.dgStartTime || null,\n            endTime: saved.dgEndTime || null,\n            hoursOrKmRun: hours ?? 0,\n            openingReading: saved.dgOpeningHourMeter ?? null,\n            closingReading: saved.dgClosingHourMeter ?? null,\n            openingDiesel: opening ?? 0,\n            dieselIssued: issued ?? 0,\n            closingDiesel: closing,\n            expectedDiesel: expected,\n            variance: (consumed != null && expected != null)\n              ? Math.round((consumed - expected) * 100) / 100\n              : null,\n            plantName: saved.plantName,\n            remarks: `Auto from heating session #${saved.id}`,\n            sourceHeatingSessionId: saved.id,\n          } as any)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 24455,
+    "body": "tx.insert(ldoFlowReadings).values(ldoRows)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 24488,
+    "body": "tx.insert(ldoDipReadings).values(dipRows)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 24684,
+    "body": "rowMap.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 26187,
+    "body": "tx.insert(stockLedger).values({\n              date: row.date,\n              partyId: stockPartyId,\n              materialId: row.material_id,\n              transactionType: 'issue',\n              referenceId: row.id,\n              quantityOut: stockQty,\n              balanceAfter: newBalance,\n              uom: stockUom,\n              notes: note,\n            } as any)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 26548,
+    "body": "tx.insert(stockLedger).values({\n          date: session.date,\n          partyId: storePartyId,\n          materialId: ldoMat.id,\n          transactionType: 'ldo_heating_consumption',\n          referenceId: session.id,\n          quantityOut: session.ldoTank1Consumed!,\n          uom: 'Liters',\n          tankNumber: 1,\n          notes: `Heating session #${session.id} (${session.date}): ${session.ldoTank1Consumed}L from Tank 1`,\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 26623,
+    "body": "tx.insert(stockLedger).values({\n          date: log.date,\n          partyId: storePartyId,\n          materialId: ldoMat.id,\n          transactionType: 'ldo_shift_consumption',\n          referenceId: log.id,\n          quantityOut: totalConsumed,\n          uom: 'Liters',\n          tankNumber: 1,\n          notes: `Shift meter (${log.date}): boiler+dryer ${totalConsumed.toFixed(1)}L from Tank 1`,\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 26972,
+    "body": "tx.insert(auditLogs).values({\n        module: \"store_grn\",\n        transactionId: id,\n        action: \"cancel\",\n        userId,\n        userName: actor?.fullName ?? `User #${userId}`,\n        userRole: actor?.role ?? null,\n        reason,\n        stockImpact: `GRN ${grn.grnNumber ?? String(id)} cancelled; quantities excluded from stock totals.${linkedNote}`,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 27006,
+    "body": "tx.insert(auditLogs).values({\n        module: \"store_issue\",\n        transactionId: id,\n        action: \"cancel\",\n        userId,\n        userName: actorForAudit?.fullName ?? `User #${userId}`,\n        userRole: actorForAudit?.role ?? null,\n        reason,\n        stockImpact: `Issue Voucher ${issue.issueNumber ?? String(id)} cancelled; quantities returned to available stock.`,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 27048,
+    "body": "tx.insert(irnAuditLogs).values({\n          irnId,\n          event: \"issue_cancelled\",\n          actorName: actor?.fullName ?? `User #${userId}`,\n          notes: `Issue Voucher #${issue.issueNumber ?? id} cancelled. Reason: ${reason}. IRN status reverted to ${newStatus}.`,\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 27097,
+    "body": "db.insert(storeItems).values({\n      ...data,\n      name: uppercaseBusinessText(data.name),\n    })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 27460,
+    "body": "tx.insert(storeGrns).values({ ...grnData, grnNumber })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 27462,
+    "body": "tx.insert(storeGrnItems).values(items.map(it => ({ ...it, grnId: grn.id })))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 27507,
+    "body": "tx.insert(storeGrnItems).values(items.map(it => ({ ...it, grnId: id })))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 27582,
+    "body": "db.insert(storeIssues).values({ ...issueData, issueNumber })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 27584,
+    "body": "db.insert(storeIssueItems).values(items.map(it => ({ ...it, issueId: issue.id })))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 27779,
+    "body": "db.insert(equipmentMaintenanceLogs).values(logData)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 27806,
+    "body": "db.insert(maintenancePartsUsed).values({\n            maintenanceLogId: log.id,\n            storeItemId: parts[i].storeItemId,\n            qty: parts[i].qty,\n            uom: parts[i].uom,\n            autoIssueItemId: issueItem.id,\n          })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 27849,
+    "body": "db.insert(auditLogs).values({\n          module: \"store_issue\",\n          transactionId: log.autoIssueId,\n          action: \"cancel\",\n          userId,\n          userName: actor?.fullName ?? `User #${userId}`,\n          userRole: actor?.role ?? null,\n          reason: \"Maintenance log deleted\",\n          stockImpact: `Auto-issue cancelled when maintenance log #${id} was deleted.`,\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 27888,
+    "body": "db.insert(storeIssueItems).values({ issueId, itemId: part.storeItemId, qty: part.qty, uom: part.uom })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 27889,
+    "body": "db.insert(maintenancePartsUsed).values({\n        maintenanceLogId: logId,\n        storeItemId: part.storeItemId,\n        qty: part.qty,\n        uom: part.uom,\n        autoIssueItemId: issueItem.id,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 28079,
+    "body": "db.insert(rmcMixDesigns).values(d)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 28190,
+    "body": "tx.insert(stockLedger).values({\n          date: batch.date,\n          partyId: null,\n          materialId: mat.id,\n          transactionType: 'rmc_batch',\n          referenceId: batch.id,\n          quantityOut: qtyTon,\n          balanceAfter: newBalance,\n          uom: 'Ton',\n          notes: `RMC ${design.grade} — ${volM3.toFixed(3)} m³`,\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 28208,
+    "body": "tx.insert(rmcBatchRecords).values(r)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 28297,
+    "body": "tx.insert(stockLedger).values({\n            date: batch.date,\n            partyId: null,\n            materialId: mat.id,\n            transactionType: 'rmc_batch',\n            referenceId: batch.id,\n            quantityOut: qtyTon,\n            balanceAfter: newBalance,\n            uom: 'Ton',\n            notes: `RMC ${design.grade} — ${volM3.toFixed(3)} m³ [reprocessed]`,\n          })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 28343,
+    "body": "db.insert(rmcCubeTests).values(t)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 28374,
+    "body": "db.insert(rmcRawMaterialReceipts).values(r)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 28663,
+    "body": "tx\n        .insert(internalRequisitionItems)\n        .values(\n          data.items.map((item) => ({\n            irnId: id,\n            material: item.material.toUpperCase(),\n            qty: item.qty,\n            uom: item.uom.toUpperCase(),\n            urgency: item.urgency ?? \"normal\",\n            purpose: item.purpose.toUpperCase(),\n            needByDate: item.needByDate ?? null,\n            itemStatus: \"pending\",\n          })),\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 28742,
+    "body": "tx\n        .insert(internalRequisitions)\n        .values({\n          irnNo,\n          date: data.date,\n          raisedBy: data.raisedBy.toUpperCase(),\n          raisedByUserId: data.raisedByUserId ?? null,\n          raisedFrom: data.raisedFrom,\n          siteId: data.siteId ?? null,\n          status: \"pending_stores\",\n          remarks: data.remarks?.toUpperCase() ?? null,\n          ...(irnRequirementId ? { requirementId: irnRequirementId } : {}),\n          ...(irnAllocationId ? { allocationId: irnAllocationId } : {}),\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 28767,
+    "body": "tx\n        .insert(internalRequisitionItems)\n        .values(\n          data.items.map((item) => ({\n            irnId: irn.id,\n            material: item.material.toUpperCase(),\n            qty: item.qty,\n            uom: item.uom.toUpperCase(),\n            urgency: item.urgency ?? \"normal\",\n            purpose: item.purpose.toUpperCase(),\n            needByDate: item.needByDate ?? null,\n            itemStatus: \"pending\",\n            materialId: item.materialId ?? null,\n            storeItemId: (item as any).storeItemId ?? null,\n          })),\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 28785,
+    "body": "tx.insert(irnAuditLogs).values({\n        irnId: irn.id,\n        event: \"opened\",\n        actorName: data.raisedBy.toUpperCase(),\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 28835,
+    "body": "tx.insert(irnAuditLogs).values({\n        irnId: id,\n        event: \"stores_verified\",\n        actorName: data.verifiedBy.toUpperCase(),\n        notes: data.storesRemarks ? data.storesRemarks.toUpperCase() : null,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 28898,
+    "body": "tx.insert(irnAuditLogs).values({\n        irnId: id,\n        event: data.action === \"approve\" ? \"approved\" : \"rejected\",\n        actorName: data.actionBy.toUpperCase(),\n        notes: data.remarks ? data.remarks.toUpperCase() : null,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 28929,
+    "body": "tx.insert(irnAuditLogs).values({\n        irnId: id,\n        event: \"closed\",\n        actorName: closedBy.toUpperCase(),\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 28959,
+    "body": "tx.insert(irnAuditLogs).values({\n        irnId: id,\n        event: \"reopened\",\n        actorName: reopenedBy.toUpperCase(),\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 28975,
+    "body": "db\n      .insert(irnAuditLogs)\n      .values({ irnId, event, actorName: actorName.toUpperCase(), notes: notes ?? null })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 29036,
+    "body": "tx.insert(storeIssues).values({\n        issueNumber,\n        date: data.date,\n        issuedToSection,\n        issuedToDetail: irn.raisedBy,\n        siteId: irn.siteId ?? null,\n        purpose: `IRN ${irn.irnNo}`,\n        remarks: data.movementRemarks ?? null,\n        irnId,\n        issuedBy: data.issuedBy.toUpperCase(),\n        issuedAt: new Date(),\n        receivedBy: data.receivedBy.toUpperCase(),\n        receiverDesignation: data.receiverDesignation?.toUpperCase() ?? null,\n        vehicleType: data.deliveryMode === \"vehicle\" ? (data.vehicleType ?? null) : \"hand_carried\",\n        vehicleNo: data.deliveryMode === \"vehicle\" ? (data.vehicleNo?.toUpperCase() ?? null) : null,\n        driverName: data.deliveryMode === \"vehicle\" ? (data.driverName?.toUpperCase() ?? null) : null,\n        movementRemarks: data.movementRemarks?.toUpperCase() ?? null,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 29058,
+    "body": "tx.insert(storeIssueItems).values(\n          nonZeroItems.map(it => ({\n            issueId: issue.id,\n            itemId: it.storeItemId ?? null,\n            materialText: it.materialText,\n            qty: it.actualIssuedQty,\n            uom: it.uom,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 29098,
+    "body": "tx.insert(stockLedger).values({\n          date: data.date,\n          partyId: stockPartyId,\n          materialId: reqItem.materialId,\n          transactionType: \"issue\",\n          referenceId: issue.id,\n          quantityOut: stockQty,\n          balanceAfter: newBalance,\n          uom: stockUom,\n          notes: `IRN Issue: ${irn.irnNo} — ${reqItem.materialText} to ${irn.raisedBy}`,\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 29146,
+    "body": "tx.insert(irnAuditLogs).values({\n        irnId,\n        event: \"issue_recorded\",\n        actorName: data.issuedBy.toUpperCase(),\n        notes: `Issue Voucher ${issueNumber} recorded. Received by: ${data.receivedBy.toUpperCase()}`,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 29220,
+    "body": "db.insert(boqProjects)\n      .values(normalizeBoqProjectBusinessText(data))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 29789,
+    "body": "affectedByDraft.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 29909,
+    "body": "tx.insert(auditLogs).values({\n        module: \"project_scope\",\n        transactionId: Number(segment.boqProjectId),\n        action: \"initial_scope_corrected\",\n        userId: audit.userId ?? null,\n        userName: audit.userName,\n        userRole: audit.userRole ?? null,\n        oldValues,\n        newValues,\n        reason: trimmedReason,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 29928,
+    "body": "tx.insert(projectScopeSegments).values(data)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 29958,
+    "body": "tx.insert(projectScopeSegments).values({\n          ...base, ...data,\n          status: \"draft\",\n          revisionOf: existing.id,\n          createdBy: userId ?? existing.createdBy,\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 30046,
+    "body": "db.insert(roadGeometryProfiles)\n      .values({ ...(data as any), boqProjectId })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 30056,
+    "body": "tx.insert(boqProjects).values({\n        siteId: src.siteId,\n        name: uppercaseBusinessText(`Copy of ${src.name}`),\n        contractNo: src.contractNo,\n        client: uppercaseOptionalBusinessText(src.client),\n        contractor: uppercaseOptionalBusinessText(src.contractor),\n        roadLengthKm: src.roadLengthKm,\n        startDate: src.startDate,\n        totalMonths: src.totalMonths,\n        workingDaysPerMonth: src.workingDaysPerMonth,\n        workingHoursPerDay: src.workingHoursPerDay,\n        status: \"draft\",\n        createdBy: src.createdBy,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 30074,
+    "body": "tx.insert(boqCategories).values({\n          boqProjectId: newProject.id,\n          name: cat.name,\n          sortOrder: cat.sortOrder,\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 30085,
+    "body": "tx.insert(boqItems).values({\n          boqProjectId: newProject.id,\n          categoryId: item.categoryId != null ? (catIdMap.get(item.categoryId) ?? null) : null,\n          itemCode: item.itemCode,\n          description: item.description,\n          unit: item.unit,\n          boqQty: item.boqQty,\n          currentQty: item.currentQty,\n          clientRate: item.clientRate,\n          clientAmount: item.clientAmount,\n          sortOrder: item.sortOrder,\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 30104,
+    "body": "tx.insert(workProgramBars).values({\n          boqProjectId: newProject.id,\n          boqItemId: newItemId,\n          reachLabel: bar.reachLabel,\n          chainageFrom: bar.chainageFrom,\n          chainageTo: bar.chainageTo,\n          startMonth: bar.startMonth,\n          endMonth: bar.endMonth,\n          plannedQty: bar.plannedQty,\n          isQtyOverride: bar.isQtyOverride ?? false,\n          isDurationOverride: bar.isDurationOverride ?? false,\n          notes: bar.notes,\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 30162,
+    "body": "db.insert(boqCategories).values({\n      boqProjectId,\n      name,\n      sourceBillNo: cleanBillNo,\n      sortOrder: sortOrder ?? 0,\n    })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 30380,
+    "body": "db.insert(boqItems).values({\n        boqProjectId,\n        categoryId,\n        itemCode: item.itemCode ?? null,\n        snlCode: item.snlCode ?? null,\n        description: item.description,\n        unit: canonicalizeUnit(item.unit),\n        boqQty: item.boqQty ?? 0,\n        currentQty: item.boqQty ?? 0,\n        clientRate: item.clientRate ?? null,\n        clientAmount,\n        sortOrder: item.sortOrder ?? i,\n        excelRow: item.excelRow ?? null,\n        canonicalUnit,\n        workCategory,\n        includedInPlanning,\n        // This text column predates richer planning contexts and is NOT NULL.\n        // Preserve unresolved intent explicitly rather than silently defaulting\n        // ambiguous items to a confident road or structure classification.\n        planningWorkType: planning.planningWorkType ?? \"needs_review\",\n        needsReview: planning.context === \"needs_review\",\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 30605,
+    "body": "tx\n        .insert(boqProgramSettings)\n        .values({ ...data, projectId, updatedAt: new Date() } as any)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 30635,
+    "body": "tx.insert(boqProgramSettings)\n          .values({ ...operation.settings, projectId, updatedAt: new Date() } as any)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 30720,
+    "body": "tx.insert(workProgramBars).values({\n          ...data,\n          boqProjectId: projectId,\n          startDate,\n          endDate,\n          baselineStartDate: startDate,\n          baselineEndDate: endDate,\n          revisionHistory: [],\n        } as InsertWorkProgramBar)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 30775,
+    "body": "tx.insert(boqProgramSettings)\n        .values({ ...data, projectId, updatedAt: new Date() } as any)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 30877,
+    "body": "db.insert(boqMixTemplateLinks).values(data)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 30885,
+    "body": "db\n      .insert(boqMixTemplateLinks)\n      .values({ boqProjectId: projectId, mixType: data.mixType, mixTemplateId: data.mixTemplateId ?? null, mixTemplateName: data.mixTemplateName ?? null })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 30961,
+    "body": "tx\n        .insert(boqRevisions)\n        .values({\n          boqProjectId,\n          revisionNo: nextNo,\n          label: data.label,\n          notes: data.notes ?? null,\n          createdBy: data.createdBy ?? null,\n          status: \"draft\",\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 30974,
+    "body": "tx.insert(boqRevisionItems).values(\n          items.map((it) => ({ revisionId: rev.id, boqItemId: it.boqItemId, revisedQty: it.revisedQty, changeReason: it.changeReason }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 31185,
+    "body": "tx.insert(workProgramBars).values(initial)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 32093,
+    "body": "tx.insert(workProgramBars).values({\n          ...b,\n          boqProjectId,\n          startDate,\n          endDate,\n          baselineStartDate: startDate,\n          baselineEndDate: endDate,\n          revisionHistory: [],\n        } as InsertWorkProgramBar)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 32142,
+    "body": "targetMap.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 32238,
+    "body": "actualMap.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 32398,
+    "body": "tx\n        .insert(boqItemEquipment)\n        .values(rows.map((r, i) => ({ ...r, boqItemId, sortOrder: r.sortOrder ?? i })))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 32425,
+    "body": "tx\n        .insert(boqItemLabour)\n        .values(rows.map((r, i) => ({ ...r, boqItemId, sortOrder: r.sortOrder ?? i })))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 32447,
+    "body": "tx\n        .insert(boqItemMaterials)\n        .values(rows.map((r, i) => ({ ...r, boqItemId, sortOrder: r.sortOrder ?? i })))"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 32543,
+    "body": "db.insert(planningEquipmentTypes).values(data)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 32566,
+    "body": "db.insert(planningLabourTypes).values(data)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 32601,
+    "body": "db.insert(planningEquipmentTypes).values({\n        name: seed.name,\n        category: seed.category,\n        sortOrder: seed.sortOrder,\n        standardOutputs: seed.standardOutputs,\n        consumptionNorm: fuel?.ltrPerHr ?? null,\n        fuelType: fuel?.fuelType ?? null,\n        isActive: true,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 32616,
+    "body": "db.insert(planningLabourTypes).values({\n        designation: seed.designation,\n        skillTier: seed.skillTier,\n        sortOrder: seed.sortOrder,\n        standardOutputs: seed.standardOutputs ?? null,\n        isActive: true,\n      })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 32674,
+    "body": "db\n      .insert(snlSources)\n      .values(data)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 32748,
+    "body": "db\n      .insert(snlItems)\n      .values(data)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 32765,
+    "body": "tx.insert(snlItemProductivity).values(opts.productivity)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 32769,
+    "body": "tx.insert(snlItemEquipment).values(opts.equipment)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 32773,
+    "body": "tx.insert(snlItemLabour).values(opts.labour)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 32777,
+    "body": "tx.insert(snlItemMaterials).values(opts.materials)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 32788,
+    "body": "db\n      .insert(snlBoqMappings)\n      .values(data)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 32839,
+    "body": "tx.insert(boqItemEquipment).values(\n          equipment.map((e, i) => ({\n            boqItemId,\n            sortOrder: e.sortOrder ?? i,\n            equipmentName: e.equipmentType + (e.equipmentSpec ? ` (${e.equipmentSpec})` : \"\"),\n            qtyPerBoqUnit: e.derivedPerUnit ?? 0,\n            count: 1,\n            planningEquipmentTypeId: matchPlanTypeId(e.equipmentType),\n            notes: e.notes ?? `SNL ${itemFull.itemCode} [${projectCategory}]`,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 32854,
+    "body": "tx.insert(boqItemLabour).values(\n          labour.map((l, i) => ({\n            boqItemId,\n            sortOrder: l.sortOrder ?? i,\n            designation: l.designation,\n            qtyPerBoqUnit: l.derivedPerUnit ?? 0,\n            count: 1,\n            notes: `SNL ${itemFull.itemCode} [${projectCategory}]`,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 32868,
+    "body": "tx.insert(boqItemMaterials).values(\n          gradingMaterials.map((m, i) => ({\n            boqItemId,\n            sortOrder: m.sortOrder ?? i,\n            materialName: m.materialName,\n            uom: m.unit,\n            qtyPerBoqUnit: m.derivedPerUnit ?? 0,\n            isAuto: true,\n            notes: m.notes ?? `SNL ${itemFull.itemCode}`,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 32965,
+    "body": "db.insert(snlCompositeComponents).values(\n      components.map(c => ({\n        boqItemId,\n        componentIndex: c.componentIndex,\n        componentTag: c.componentTag,\n        componentDescription: c.componentDescription,\n        snlItemId: c.snlItemId ?? null,\n        confidenceScore: c.confidenceScore ?? null,\n        status: c.status ?? \"unmapped\",\n        notes: c.notes ?? null,\n      }))\n    )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 33043,
+    "body": "tx.insert(boqItemEquipment).values(\n          allEquip.map(e => ({\n            boqItemId,\n            sortOrder: e.sortBase,\n            equipmentName: e.equipmentType + (e.spec ? ` (${e.spec})` : \"\"),\n            qtyPerBoqUnit: e.derivedPerUnit,\n            count: 1,\n            planningEquipmentTypeId: matchPlanTypeId(e.equipmentType),\n            notes: `Composite SNL [${e.projectCategory}]`,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 33057,
+    "body": "tx.insert(boqItemLabour).values(\n          allLabour.map(l => ({\n            boqItemId,\n            sortOrder: l.sortBase,\n            designation: l.designation,\n            qtyPerBoqUnit: l.derivedPerUnit,\n            count: 1,\n            notes: `Composite SNL [${l.projectCategory}]`,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 33070,
+    "body": "tx.insert(boqItemMaterials).values(\n          allMaterials.map(m => ({\n            boqItemId,\n            sortOrder: m.sortBase,\n            materialName: m.materialName,\n            uom: m.unit,\n            qtyPerBoqUnit: m.derivedPerUnit,\n            isAuto: true,\n            notes: `Composite SNL`,\n          }))\n        )"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 33299,
+    "body": "db.insert(snlImportLog).values({\n      sourceId: source.id,\n      importedBy: \"system\",\n      itemCount: count,\n      method: \"MANUAL\",\n      notes: `SNL seed v2 — ${count} MoRTH SDB 2019 items (Ch.2–9)`,\n    })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 33337,
+    "body": "db.insert(siteRequirements).values({\n      date: String(data.date),\n      siteId: data.siteId ?? null,\n      submittedBy: data.submittedBy ?? null,\n      submittedByName: data.submittedByName ?? null,\n      plannedWork: data.plannedWork ?? null,\n      materials: data.materials ?? null,\n      equipment: data.equipment ?? null,\n      labour: data.labour ?? null,\n      immediateRequirements: data.immediateRequirements ?? null,\n      status: \"submitted\",\n    })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 33456,
+    "body": "tx.insert(siteRequirements).values({\n          date: String(built.create.date),\n          siteId: built.create.siteId ?? null,\n          submittedBy: built.create.submittedBy ?? null,\n          submittedByName: built.create.submittedByName ?? null,\n          plannedWork: built.create.plannedWork ?? null,\n          materials: built.create.materials ?? null,\n          equipment: built.create.equipment ?? null,\n          labour: built.create.labour ?? null,\n          immediateRequirements: built.create.immediateRequirements ?? null,\n          status: \"submitted\",\n          allocationStatus: built.allocationStatus,\n        })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 33829,
+    "body": "db.insert(boqMaterialMappings).values({\n      boqProjectId: data.boqProjectId ?? null,\n      materialLabel: data.materialLabel,\n      ...updateFields,\n    })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 33912,
+    "body": "db.insert(materialUomConversions).values({\n      materialId: data.materialId,\n      fromUom: data.fromUom,\n      toUom: data.toUom,\n      conversionFactor: data.conversionFactor,\n      conversionBasis: data.conversionBasis ?? null,\n      conversionType: data.conversionType ?? \"fixed_factor\",\n      notes: data.notes ?? null,\n      createdBy: data.createdBy ?? null,\n      updatedAt: new Date(),\n    })"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 34214,
+    "body": "grouped.values()"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 34326,
+    "body": "tx.insert(earthworkArrangements).values(data)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 34388,
+    "body": "db.insert(earthworkArrangementProgrammeAllocations).values(data)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 34473,
+    "body": "db.insert(earthworkBaselines).values(data)"
+  },
+  {
+    "file": "server/storage.ts",
+    "line": 34501,
+    "body": "db.insert(earthworkForecasts).values(data)"
+  },
+  {
+    "file": "server/tripArrangementLink.ts",
+    "line": 66,
+    "body": "tx.insert(auditLogs).values(selected.map(row => ({\n      module: \"site_material_trips\", transactionId: row.id, action: \"edit\",\n      ...actor, oldValues: {earthworkArrangementId: row.previous},\n      newValues: {earthworkArrangementId: input.earthworkArrangementId},\n      reason: \"Explicit bulk arrangement link\",\n    })))"
+  },
+  {
+    "file": "server/vendor-master.ts",
+    "line": 108,
+    "body": "db.insert(vendors).values(input)"
+  },
+  {
+    "file": "server/vendor-master.ts",
+    "line": 182,
+    "body": "tx.insert(vendors).values(input.newVendor!)"
+  },
+  {
+    "file": "server/vendorPayablesPreview.ts",
+    "line": 200,
+    "body": "Object.values(gstByCategory)"
+  }
+]

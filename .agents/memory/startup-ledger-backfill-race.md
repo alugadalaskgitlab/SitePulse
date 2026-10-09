@@ -5,7 +5,7 @@ description: Transient primary-key collisions can appear when the development wo
 
 **Rule:** Do not attribute a one-off stock-ledger primary-key collision during a rapid development restart to the feature under test without checking a settled restart and the changed paths.
 
-**Why:** Legacy startup backfills delete, reseed, and recreate ledger rows asynchronously. Closely spaced workflow restarts can overlap that work, producing one reported duplicate-key row while the application still reaches its serving state.
+**Why:** Legacy startup backfills deleted, reseeded, and recreated ledger rows asynchronously. A duplicate-key row was reported during closely spaced restarts while the application still reached its serving state. Overlap is a plausible mechanism, not proven incident causation.
 
 **How to apply:** Avoid unnecessary consecutive restarts. Check whether existing startup work has settled; serving HTTP does not mean the asynchronous repairs have finished. Treat a persistent collision as separate stock-ledger migration work rather than silently folding it into an unrelated feature.
 
@@ -43,3 +43,14 @@ not an environment-variable bypass to make verification appear clean.
 **How to apply:** Test startup with isolated spies and inspect transitive seed
 helpers before restarting. Compare business-content digests across the restart;
 sequence advancement from normal upserts is distinct from sequence resetting.
+
+**Rule:** Do not treat a MAX(id)-based sequence reset as harmless protection against
+duplicate keys. It can lower allocation after deletions, reuse identities still
+referenced without foreign keys, or race an uncommitted insert.
+
+**Why:** The removal review required distinguishing these plausible mechanisms
+from proven causes of historical dangling references and restart collisions.
+
+**How to apply:** Inspect current write paths for runtime-filtered IDs, read sequence
+state without advancing it, and require transaction-time evidence before assigning
+incident causation. A sequence above MAX is not an error to repair.

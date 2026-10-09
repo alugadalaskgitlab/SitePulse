@@ -1,0 +1,103 @@
+migrations/0028_vendor_bill_hire_payment_snapshot.sql:9:INSERT INTO app_settings (key, value)
+migrations/0028_vendor_bill_hire_payment_snapshot.sql:10:VALUES (
+migrations/0028_vendor_bill_hire_payment_snapshot.sql:11:  'vendor_bill_company_accounts',
+migrations/0028_vendor_bill_hire_payment_snapshot.sql:12:  '[{"id":"bank_of_baroda_od","name":"Bank of Baroda - OD","type":"OD"},{"id":"hdfc_ca","name":"HDFC - CA","type":"CA"}]'
+scripts/verification/dpr-eqlink01.mjs:57:  const fixtureSite = (await db.query("insert into sites(name,is_active) values('TAKKADPALLY-SIRUR [EQLINK01 FIXTURE]',1) returning id,name")).rows[0];
+scripts/verification/dpr-eqlink01.mjs:61:    const dpr = (await db.query(`insert into dprs(date,site,engineer,work_type,dpr_status,lock_status,author_user_id)
+scripts/verification/dpr-eqlink01.mjs:62:      values('2026-10-09',$1,'EQLINK01 FIXTURE','road','submitted','unlocked',16) returning id`,[site])).rows[0];
+scripts/verification/dpr-eqlink01.mjs:67:    const log = (await db.query(`insert into equipment_logs(dpr_id,machine,plant_usage_id,entry_type,hours_worked,diesel,task)
+scripts/verification/dpr-eqlink01.mjs:68:      values($1,'EQLINK01 FIXTURE MACHINE',$2,'hourly',2,0,'INCIDENTAL') returning id`,[dpr.id,usageId])).rows[0];
+scripts/verification/permissions03b-setup.mjs:42:    `insert into users(email,password_hash,full_name,is_active,is_admin,is_owner,notifications_enabled)
+scripts/verification/permissions03b-setup.mjs:43:     values($1,$2,$3,true,true,false,false) returning id,email,full_name`,
+server/routes.ts:18719:      INSERT INTO cut_fill_opening_balances (boq_project_id, source_excavation_boq_item_id, quantity, uom, remarks, confirmed_by_user_id, updated_at)
+server/routes.ts:18720:      VALUES (${projectId}, ${sourceBoqItemId}, ${quantity}, 'CUM', ${typeof req.body?.remarks === "string" ? req.body.remarks.trim() : null}, ${req.authUser?.id ?? null}, NOW())
+server/permissionAccessMigration.ts:76:          : await client.query(`INSERT INTO user_permissions
+server/permissionAccessMigration.ts:77:              (user_id,section_key,can_view,can_create,can_edit,can_delete,can_view_reports,can_export,can_approve,can_notify)
+server/permissionAccessMigration.ts:78:              VALUES($1,$2,true,false,false,false,false,false,false,false) RETURNING id`, [user.id, section]);
+server/permissionAccessMigration.ts:83:        const audit = await client.query("INSERT INTO app_settings(key,value) VALUES($1,$2) RETURNING id",
+scripts/verification/permissions03b-fixtures.mjs:10:    "insert into sites(name,is_active) values('PERM03B SITE A',1),('PERM03B SITE B',1) returning id,name"
+scripts/verification/permissions03b-fixtures.mjs:13:    "insert into equipment_master(name,meter_type) values('PERM03B MACHINE A','hours'),('PERM03B MACHINE B','hours') returning id,name"
+scripts/verification/permissions03b-fixtures.mjs:19:      "insert into diesel_requirements(date,raised_by,total_planned,site_id,author_user_id,remarks) values('2026-10-09','PERM03B',10,$1,$2,'PERM03B fixture') returning id",
+scripts/verification/permissions03b-fixtures.mjs:20:      [sites[i].id, manifest.administrator.id]
+scripts/verification/permissions03b-fixtures.mjs:22:    await db.query("insert into diesel_requirement_items(requirement_id,equipment_id,equipment_name,planned_qty) values($1,$2,$3,10)",
+scripts/verification/permissions03b-fixtures.mjs:23:      [diesel.id, equipment[i].id, equipment[i].name]);
+scripts/verification/permissions03b-fixtures.mjs:25:      "insert into equipment_usage(date,equipment_id,destination_site,remarks) values('2026-10-09',$1,$2,'PERM03B fixture') returning id",
+scripts/verification/permissions03b-fixtures.mjs:26:      [equipment[i].id, sites[i].name]
+scripts/verification/permissions03b-fixtures.mjs:29:      "insert into equipment_maintenance_logs(date,equipment_id,event_type,description,source_type,source_record_id) values('2026-10-09',$1,'breakdown','PERM03B fixture','plant_usage',$2) returning id",
+scripts/verification/permissions03b-fixtures.mjs:30:      [equipment[i].id, usage.id]
+scripts/verification/permissions02c-setup.mjs:40:    `insert into users(email,password_hash,full_name,is_active,is_admin,is_owner,notifications_enabled)
+scripts/verification/permissions02c-setup.mjs:41:     values($1,$2,$3,true,true,false,false) returning id,email,full_name`,
+scripts/task1474-real-regression.test.ts:641:        `INSERT INTO ${quoteIdentifier(schemaName)}."sites" (id, name, is_active)
+scripts/permission03b3-browser.mjs:86:    const userId=(await pool.query("insert into users(email,password_hash,full_name,session_policy,setup_complete) values($1,$2,$3,'sticky',true) returning id",["perm03b3@test.invalid",await bcrypt.hash(password,12),"PERM-03B-3 Temporary Verification"])).rows[0].id;
+scripts/perm-req01-verify.mjs:26:  await db.query("insert into users(id,email,full_name,password_hash,is_admin,is_owner,setup_complete,notifications_enabled) values($1,$2,$3,$4,$5,$6,true,false)",
+scripts/perm-req01-verify.mjs:27:    [id,email,`PERMREQ01 ${offset}`,await bcrypt.hash(process.env.DEV_VERIFICATION_PASSWORD,10),admin,owner]);
+scripts/perm-req01-verify.mjs:29:  await db.query("insert into user_permissions(user_id,section_key,can_view,can_approve) values($1,'site_dprs',true,$2)",[id,approve]);
+scripts/perm-req01-verify.mjs:31:    await db.query("insert into user_permissions(user_id,section_key,can_create) values($1,$2,true)",[id,key]);
+scripts/user-role02-verify.mjs:70:  await p.query("insert into users(id,email,full_name,password_hash,is_admin,is_owner,setup_complete,notifications_enabled) values($1,'userrole02-admin@test.invalid','USERROLE02 Admin',$2,true,false,true,false)",
+scripts/user-role02-verify.mjs:71:    [id, await bcrypt.hash(process.env.DEV_VERIFICATION_PASSWORD, 10)]);
+scripts/permission-delegation-migration.ts:57:        id = (await db.query("insert into user_permissions(user_id,section_key,can_view) values($1,$2,true) returning id", [p.user_id,p.section_key])).rows[0].id;
+scripts/permission-delegation-migration.ts:61:        "insert into audit_logs(module,transaction_id,action,user_name,old_values,new_values,reason) values('permissions',$1,'edit','Owner-authorized development permission migration',$2,$3,$4) returning id",
+scripts/permission-delegation-migration.ts:62:        [id, JSON.stringify(change.before), JSON.stringify(p), "Explicit Delete/Export/Notify reset and additive View preservation; admin/owner rows excluded"],
+scripts/user-role01-verify.mjs:58: await p.query("insert into users(id,email,full_name,password_hash,is_admin,is_owner,setup_complete,notifications_enabled) values($1,'userrole01-admin@test.invalid','USERROLE01 Admin',$2,true,false,true,false)",[id,hash]);
+scripts/user-role01-verify.mjs:60:  await p.query("insert into sites(id,name,is_active) values($1,$2,1)",[siteId,name]);
+scripts/permission03b2-browser.mjs:73:    const user=(await pool.query("insert into users(email,password_hash,full_name,session_policy,setup_complete) values($1,$2,$3,'sticky',true) returning id",["perm03b2@test.invalid",await bcrypt.hash(password,12),"PERM-03B-2 Temporary Verification"])).rows[0];
+scripts/permission03b2-browser.mjs:78:      const row=(await pool.query("insert into user_permissions(user_id,section_key,can_view_reports) values($1,$2,true) returning *",[user.id,key])).rows[0];
+scripts/permission03b2-browser.mjs:82:    for(const s of sites){const row=(await pool.query("insert into user_site_access(user_id,site_id,access_level) values($1,$2,'view') returning *",[user.id,s.site_id])).rows[0];writes.push({table:"user_site_access",inserted:row});}
+scripts/permission03b2-browser.mjs:83:    state.projectId=(await pool.query("insert into boq_projects(name,site_id,start_date,total_months,chainage_from,chainage_to,corridor_confirmed) values('PERM-03B-2 temporary',$1,'2026-10-01',12,0,1000,1) returning id",[sites[0].site_id])).rows[0].id;
+scripts/arrange02b-verify.mjs:51:   const id=start+100+(++k);await p.query(`insert into site_material_trips
+scripts/arrange02b-verify.mjs:52:   (id,date,site,material,quantity,uom,supplier,vehicle_number,material_source_type,material_source_supplier,transport_type,boq_project_id,boq_item_id,earthwork_arrangement_id)
+scripts/vb-arrange01-verify.mjs:51:  for(const letter of ["A","B"]){state.vendors.push((await write("insert into vendors(name) values($1) returning id,name",[`ZZ TEST VENDOR ${letter} — VB-ARRANGE-01`])).rows[0]);persist();}
+scripts/perm-babu01-verify.mjs:38: if(selected)await p.query("insert into user_site_access (id,user_id,site_id) values ($1,$1,16)",[uid]);
+scripts/perm-babu01-verify.mjs:78: await p.query("insert into users (id,email,password_hash,full_name) values ($1,'perm-babu01@test.invalid',$2,'Disposable ordinary verifier')",[uid,await bcrypt.hash(password,10)]);created=true;
+scripts/perm-babu01-verify.mjs:79: await p.query("insert into vendors (id,name) values ($1,'BABU01 DISPOSABLE TRANSPORTER')",[uid]);
+scripts/perm-babu01-verify.mjs:80: await p.query("insert into user_permissions (id,user_id,section_key,can_view,can_edit) values ($1,$1,'site_materials',true,true)",[uid]);
+scripts/perm-babu01-verify.mjs:81: for(const [index,id]of trips.entries())await p.query("insert into site_material_trips (id,date,site,material,quantity,uom,supplier,vehicle_number,material_source_type,material_source_label,transport_type,internal_equipment_id,boq_project_id,boq_item_id,receipt_number) values ($1,'2026-10-08',$2,'Selected Soil / Subgrade Material',600,'CFT','',$3,'own_source','Disposable source','in_house',2,2,1151,$4)",[id,site,index===2?"BABU01BULK":`BABU01-${index+1}`,`BABU01-${index+1}`]);
+scripts/permission03b-browser.mjs:57:    const userId=(await pool.query("insert into users(email,password_hash,full_name,session_policy,setup_complete) values($1,$2,$3,'sticky',true) returning id",["perm03b.acceptance@test.invalid",await bcrypt.hash(password,12),"PERM-03B Temporary Acceptance"])).rows[0].id;
+scripts/permission-prod01-browser.mjs:77:   const id=(await pool.query("insert into users(email,password_hash,full_name,session_policy,setup_complete) values($1,$2,$3,'sticky',true) returning id",[email,await bcrypt.hash(password,12),`PERM-PROD-01 ${label}`])).rows[0].id;
+scripts/permission-prod01-browser.mjs:79:   if(section)await pool.query(`insert into user_permissions(user_id,section_key,${bit}) values($1,$2,true)`,[id,section]);
+scripts/permission-prod01-browser.mjs:80:   await pool.query("insert into user_site_access(user_id,site_id,access_level) values($1,$2,'view')",[id,site.id]);
+scripts/permission-prod01-browser.mjs:83:  state.dprId=(await pool.query("insert into dprs(date,site,engineer,dpr_status,author_user_id) values('2026-10-07',$1,'PERM-PROD-01 temporary','draft',$2) returning id",[site.name,state.accounts[0].id])).rows[0].id;persist();
+scripts/trip-link02-verify.mjs:42:  await p.query("insert into boq_projects select (jsonb_populate_record(null::boq_projects,to_jsonb(t)||jsonb_build_object('id',$1::int,'site_id',16,'name','TRIP LINK02 DISPOSABLE'))).* from boq_projects t where id=2",[f]);
+scripts/trip-link02-verify.mjs:43:  await p.query("insert into boq_items select (jsonb_populate_record(null::boq_items,to_jsonb(t)||jsonb_build_object('id',$1::int,'boq_project_id',$1::int,'description','TRIP LINK02 DISPOSABLE'))).* from boq_items t where boq_project_id=2 limit 1",[f]);
+scripts/trip-link02-verify.mjs:46:   await p.query("insert into earthwork_arrangements (id,boq_project_id,boq_item_id,material_label,agency_name,arrangement_type,status,revision_history) values ($1,$2,$2,'Soil',$3,'hlc_source_outsourced_execution',$4,$5)",[f+n,f,`LINK02 ${status}`,status,JSON.stringify(n===12?history:[])]);
+scripts/trip-link02-verify.mjs:48:   await p.query("insert into site_material_trips (id,date,site,material,quantity,uom,supplier,vehicle_number,material_source_type,transport_type,internal_equipment_id,boq_project_id,boq_item_id,earthwork_arrangement_id,receipt_number) values ($1,$2,'THAKADPALLY - SIRUR','Soil',600,'CFT','',$3,'own_source','in_house',2,$4,$4,$5,$6)",[f+n,date,vehicle,f,link,`LINK02-${n}`]);
+scripts/permission03b3-notify-live.mjs:41:  const id=(await pool.query("insert into users(email,password_hash,full_name,session_policy,setup_complete,notifications_enabled) values($1,$2,$3,'sticky',true,true) returning id",[email,await bcrypt.hash(password,12),`PERM03B3 Notify ${enabled?'ON':'OFF'}`])).rows[0].id;
+scripts/permission03b3-notify-live.mjs:43:  await pool.query("insert into user_permissions(user_id,section_key,can_view,can_edit,can_delete,can_notify) values($1,'site_dprs',true,true,true,$2),($1,'dashboard',true,true,false,false)",[id,enabled]);
+scripts/permission03b3-notify-live.mjs:45:  await pool.query("insert into user_site_access(user_id,site_id,access_level) values($1,$2,'view')",[id,site]);
+scripts/permission03b3-notify-live.mjs:67: dprId=(await pool.query("insert into dprs(date,site,engineer,dpr_status,author_user_id,remarks) values('2026-10-07',$1,'PERM03B3 NOTIFICATION TEST','submitted',$2,'Temporary single-event Notify acceptance') returning id",[site,accounts[0].id])).rows[0].id;
+scripts/dev-acct02-verify.mjs:54: await pool.query("insert into boq_projects select (jsonb_populate_record(null::boq_projects,to_jsonb(t)||jsonb_build_object('id',1900000000,'site_id',16,'name','DEV ACCT DISPOSABLE PROJECT'))).* from boq_projects t where id=2");
+scripts/dev-acct02-verify.mjs:55: await pool.query("insert into boq_items select (jsonb_populate_record(null::boq_items,to_jsonb(t)||jsonb_build_object('id',1900000000,'boq_project_id',1900000000,'current_qty',1000,'description','DEV ACCT DISPOSABLE EMBANKMENT'))).* from boq_items t where boq_project_id=2 limit 1");
+scripts/dev-acct02-verify.mjs:59: await pool.query("insert into site_material_trips (id,date,site,material,quantity,uom,supplier,vehicle_number,material_source_type,transport_type,internal_equipment_id,boq_project_id,boq_item_id,receipt_number) values ($1,current_date,'THAKADPALLY - SIRUR','Soil',600,'CFT','','DEVACCTFIXTURE','own_source','in_house',2,$1,$1,'DEV-ACCT-DISPOSABLE')",[fid]);
+server/storage.ts:18088:    await db.execute(sql.raw(`INSERT INTO app_settings (key, value)
+server/storage.ts:18089:      VALUES ('vendor_bill_company_accounts', '[{"id":"bank_of_baroda_od","name":"Bank of Baroda - OD","type":"OD"},{"id":"hdfc_ca","name":"HDFC - CA","type":"CA"}]')
+server/storage.ts:22377:          `SELECT setval(pg_get_serial_sequence('${table}', 'id'), COALESCE((SELECT MAX(id) FROM "${table}"), 1))`
+server/storage.ts:25811:          INSERT INTO stock_ledger
+server/storage.ts:25812:            (date, party_id, material_id, transaction_type, quantity_out, balance_after, uom, notes, reference_id, tank_number)
+server/storage.ts:25813:          VALUES
+server/storage.ts:25814:            (${row.date}, ${chargePartyId}, ${bitumenMat.id}, 'dispatch',
+server/storage.ts:25945:          INSERT INTO stock_ledger
+server/storage.ts:25946:            (date, party_id, material_id, transaction_type, quantity_out, balance_after, uom, notes, reference_id, tank_number)
+server/storage.ts:25947:          VALUES
+server/storage.ts:25948:            (${row.date}, ${chargePartyId}, ${ldoMat.id}, 'dispatch',
+server/storage.ts:26452:          INSERT INTO stock_ledger (date, party_id, material_id, transaction_type, reference_id, quantity_in, quantity_out, uom, notes)
+server/storage.ts:26453:          VALUES (${d.date}, ${targetPartyId}, ${ldoMaterialId}, 'dispatch', ${d.id}, 0, ${ldo}, 'Liters', ${label || 'Dispatch'})
+server/storage.ts:26743:            INSERT INTO stock_ledger
+server/storage.ts:26744:              (date, party_id, material_id, transaction_type, reference_id, quantity_in, quantity_out, uom, notes, tank_number)
+server/storage.ts:26745:            VALUES
+server/storage.ts:26746:              (${d.date}, ${targetId}, ${ldoMatId}, 'dispatch', ${d.id}, 0, ${ldo}, ${ldoUom}, ${label}, ${tankNum})
+server/storage.ts:26760:              INSERT INTO stock_ledger
+server/storage.ts:26761:                (date, party_id, material_id, transaction_type, reference_id, quantity_in, quantity_out, uom, notes, tank_number)
+server/storage.ts:26762:              VALUES
+server/storage.ts:26763:                (${d.date}, ${dispatchPartyId}, ${ldoMatId}, 'dispatch', ${d.id}, 0, ${fromOwner}, ${ldoUom}, ${label}, ${tankNum})
+server/storage.ts:26775:              INSERT INTO stock_ledger
+server/storage.ts:26776:                (date, party_id, material_id, transaction_type, reference_id, quantity_in, quantity_out, uom, notes, tank_number)
+server/storage.ts:26777:              VALUES
+server/storage.ts:26778:                (${d.date}, ${dispatchPartyId}, ${ldoMatId}, 'dispatch', ${d.id}, 0, 0, ${ldoUom}, ${label}, ${tankNum})
+server/storage.ts:26788:              INSERT INTO stock_ledger
+server/storage.ts:26789:                (date, party_id, material_id, transaction_type, reference_id, quantity_in, quantity_out, uom, notes, tank_number)
+server/storage.ts:26790:              VALUES
+server/storage.ts:26791:                (${d.date}, ${hlcPartyId}, ${ldoMatId}, 'dispatch', ${d.id}, 0, ${remaining}, ${ldoUom}, ${borrowLabel}, ${tankNum})
+server/storage.ts:26802:              INSERT INTO stock_ledger
+server/storage.ts:26803:                (date, party_id, material_id, transaction_type, reference_id, quantity_in, quantity_out, uom, notes, tank_number)
+server/storage.ts:26804:              VALUES
+server/storage.ts:26805:                (${d.date}, ${dispatchPartyId}, ${ldoMatId}, 'dispatch', ${d.id}, 0, ${remaining}, ${ldoUom}, ${shortLabel}, ${tankNum})

@@ -1,0 +1,57 @@
+{
+  "mode": "read-only offline planning inventory",
+  "executable": false,
+  "requiredBeforeExecution": [
+    "Named operation and target database",
+    "Read-only candidate and balance-impact analysis",
+    "Preservation snapshot",
+    "Separately reviewed plan and approval",
+    "Locking and failure/rollback design"
+  ],
+  "note": "This inventory is not an approved repair plan; the obsolete dip-model repair must not be run.",
+  "operations": [
+    {
+      "path": "server/index.ts",
+      "retiredAutomaticCalls": [
+        "resetAllSequences",
+        "backfillDispatchNotes",
+        "backfillBitumenTankNumbers",
+        "migrate6mmDownUomFix",
+        "purgeOrphanedDeletionReversals",
+        "backfillMissingDispatchAggregateRows",
+        "cleanupGhostDispatchLedgerRows",
+        "deduplicateStockLedgerDispatchRows",
+        "fixDoubleDeductedDispatchOwnerRows",
+        "backfillDispatchReferenceIds",
+        "backfillMissingDispatchBitumenRows",
+        "deduplicateLdoDipReadings",
+        "deduplicateLdoFlowSlotReadings",
+        "backfillLdoFlowReadingsFromHeatingSessions",
+        "backfillLdoReceiptsFromMaterialReceipts",
+        "fixLdoDispatchTankNumbers_v1",
+        "backfillLdoHeatingConsumption_v1",
+        "backfillLdoShiftMeterConsumption_v1",
+        "fixLdoStockDeductionErrors",
+        "fixLdoDataIssues",
+        "fixHlcLdoStockBalance",
+        "backfillLdoDispatchConsumption_v1",
+        "fixAllLdoStockBalances_v1",
+        "rebuildLdoDispatchLedger_v1",
+        "migrateLdoToDispatchModelOnly_v3",
+        "backfillMissingDispatchLdoRows"
+      ]
+    },
+    {
+      "path": "server/routes.ts",
+      "retiredAutomaticCalls": [
+        "migrateOrphanStockToHLC",
+        "cleanupSupersededDprDieselLedger",
+        "repairMissingSitePurchases",
+        "repairLostDieselSource",
+        "migrateDprPlantStockDieselToLedger",
+        "recalculateAllDispatchConsumption",
+        "fixBadStockBalanceEntries"
+      ]
+    }
+  ]
+}
