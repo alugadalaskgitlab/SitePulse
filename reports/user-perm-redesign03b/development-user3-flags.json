@@ -1,0 +1,10 @@
+[
+  {
+    "id": 3,
+    "is_active": true,
+    "is_admin": false,
+    "is_owner": false,
+    "is_field_engineer": true,
+    "can_manage_permissions": true
+  }
+]

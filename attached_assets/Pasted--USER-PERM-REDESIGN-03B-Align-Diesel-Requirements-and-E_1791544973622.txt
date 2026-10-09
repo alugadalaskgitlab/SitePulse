@@ -1,0 +1,90 @@
+# USER-PERM-REDESIGN-03B
+**Align Diesel Requirements and Equipment Maintenance View Permissions**
+
+## Objective
+
+Implement the first controlled backend permission correction using the approved USER-PERM-REDESIGN-03A investigation.
+
+Scope is strictly limited to Diesel Requirements and Equipment Maintenance.
+
+## 1. Diesel Requirements
+
+Make the existing `diesel_req_view.view` permission independently sufficient to access the authorised Diesel Requirements list and corresponding read-only details.
+
+Preserve existing authorised alternatives, including legacy Diesel, Stores and legitimate operational supporting access.
+
+Do not broaden Create, Edit, Approve, Delete, Export or payment authority.
+
+Preserve site-level restrictions and existing record-state rules.
+
+## 2. Equipment Maintenance
+
+Make the existing dedicated `plant_maintenance.view` permission sufficient for its intended maintenance read-only screens and records.
+
+Preserve the existing Equipment permissions as compatible alternatives.
+
+Do not broaden equipment editing, maintenance creation, deletion, stock issuing or other operations.
+
+Preserve source/site access restrictions.
+
+## 3. Supporting APIs and UI
+
+Inspect all relevant supporting read endpoints used by the two screens.
+
+Ensure the corrected View permission allows the screen to function without unnecessarily granting access to unrelated modules or sensitive information.
+
+Keep frontend navigation and actual backend guards consistent for these two functions.
+
+Do not implement general NAV-01/NAV-02 in this batch.
+
+## 4. Administrator account discrepancy
+
+The 03A production report lists user ID 3 as Administrator, whereas earlier verification identified it as non-admin.
+
+Perform a fresh READ-ONLY check to establish the current account flags and explain the discrepancy if possible.
+
+Do not change account flags, permissions, roles or login credentials.
+
+Keep this investigation separate from the two permission corrections.
+
+## 5. Acceptance tests
+
+Use disposable development accounts and two test sites.
+
+Verify:
+
+1. Diesel granular View alone permits authorised read-only access.
+2. Diesel legacy View continues to work.
+3. Diesel with all authorising permissions off returns 403.
+4. Maintenance granular View alone permits authorised read-only access.
+5. Existing Equipment View remains compatible.
+6. Maintenance with all authorising permissions off returns 403.
+7. Cross-site access is refused.
+8. View alone does not permit Create/Edit/Delete/Approve.
+9. Existing Administrator access remains unchanged.
+10. No existing user grants or business records are changed.
+
+Use actual authenticated API requests and signed-in UI checks.
+
+## 6. Restrictions
+
+DO NOT modify:
+
+- Other modules' backend permissions
+- Existing stored user permission matrices
+- Owner/Administrator flags
+- Site Requirements workflows
+- Authentication, sessions or device approval architecture
+- Vendor Bills, IRNs or Material Trips enforcement
+- Proposed Allow/Deny/Inherit override storage
+- Database schema or production data
+
+Do not initiate unnecessary application restarts that could trigger historical backfills.
+
+## 7. Report and stop
+
+Provide exact changed files, before/after API results, browser evidence, preservation checks, regression tests and genuine Publish preview.
+
+Commit and push verified changes.
+
+**Do not publish. STOP and report.**
