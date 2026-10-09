@@ -1,0 +1,98 @@
+# INSTRUCTION USER-PERM-REDESIGN-03A
+**Backend Permission Enforcement — First Controlled Batch**
+
+## Objective
+
+Make SitePulse's individual permission controls reliable, without disrupting existing operations or user access.
+
+Use USER-PERM-REDESIGN-01, 02 and 02C findings as the baseline.
+
+## 1. Investigate and correct verified gaps
+
+Focus exclusively on:
+
+- Diesel Requirements
+- Purchase Indents
+- Internal Requisition Notes (IRNs)
+- Material Trips
+- Equipment Maintenance
+- Vendor Bills
+
+For each module, inspect all relevant frontend permissions and backend API guards.
+
+Document which existing permissions authorise View, Create, Edit, Delete, Approve, Export and other implemented operations.
+
+## 2. Preserve existing permission behaviour initially
+
+Before changing any guard, compare its current behaviour with the intended individual permission control.
+
+Identify legacy/broad permission alternatives.
+
+Do not immediately remove alternative grants because existing users may depend on them.
+
+Where existing permissions cannot express a reliable independent denial, propose the smallest safe enforcement change.
+
+## 3. Explicit Allow / Deny / Inherit
+
+The new hierarchical editor already displays proposed capability overrides.
+
+Do not activate or persist these until the complete storage, precedence and enforcement rules have been reviewed.
+
+Prepare the backend design covering:
+
+- Explicit Deny overrides legacy/broad Allow for the specific capability.
+- Explicit Allow permits only the intended capability, subject to site restrictions and business rules.
+- Inherit follows existing permission rules.
+- Ordinary users cannot bypass Deny through alternate routes.
+- Owner/Administrator privileges remain separately controlled.
+
+Do not implement new override storage in this batch without approval.
+
+## 4. Administrator access
+
+Investigate why existing production Administrator accounts reportedly cannot Edit/Delete certain records.
+
+Use read-only production checks and safe, non-mutating requests.
+
+Separate:
+- Authentication and Administrator flags
+- Frontend disabled/hidden controls
+- Backend permission denials
+- Record-state restrictions
+- Business approval safeguards
+
+Do not modify production users or permissions.
+
+Report the cause and smallest proposed correction.
+
+## 5. Verification
+
+Use disposable development accounts.
+
+Test:
+- Permissions granted and revoked
+- Legacy alternative grants
+- Ordinary-user API denials
+- Site access restrictions
+- Administrator bypass behaviour
+- No-self-approval safeguards
+- Existing business workflows unaffected
+
+Do not create or delete production business records.
+
+## 6. Deliverables
+
+Provide:
+
+1. Exact API/permission mapping for all six modules.
+2. Verified defects and proposed corrections.
+3. Explicit Allow/Deny/Inherit enforcement design.
+4. Administrator access diagnosis.
+5. Implementation plan divided into small, independently testable batches.
+6. Preservation and regression-risk assessment.
+
+**This is an investigation and design instruction. Do not modify backend guards, database schema, user accounts or production data yet.**
+
+Do not publish.
+
+Commit the report and stop for approval.

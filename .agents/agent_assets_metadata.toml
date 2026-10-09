@@ -5883,3 +5883,31 @@ mtime_ms = 1791543087290
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/87a3a3e4-f0a8-445f-bca4-1a0da89bf98e/cf5b472b-8afe-44c8-8af7-5dccc9c28647"
 storage_version_token = "1791543126574982"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "iqXw5txeVRViwYfUzwx8L"
+uri = "file://reports/user-perm-redesign03a/investigation-report.html"
+type = "html"
+title = "03A — Backend permission investigation and design"
+description = "Six-module mapping, production Administrator findings, proposed override precedence, controlled implementation batches and verification limits."
+logical_id = "6800710b-a440-4d34-b4ef-21828f9b855a"
+content_hash = "sha256:5d845d66a664cb6656ac1fcbb6a69fb69dbac7d309ed36e98f2525fd846a64e6"
+size = 16951
+mtime_ms = 1791544579144
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/6800710b-a440-4d34-b4ef-21828f9b855a/2c709daf-fc90-47f6-b2e2-762cf9667916"
+storage_version_token = "1791544589199232"
+content_type = "text/html"
+
+[[outputs]]
+id = "AopS_WP0egqmUYzQKz2we"
+uri = "file://reports/user-perm-redesign03a/investigation-evidence.zip"
+type = "unspecified"
+title = "03A — Mapping and source evidence"
+description = "101 API operations, current handlers, 475 frontend controls, 258 frontend API calls, production privilege flags and the investigation report."
+logical_id = "11f4b84c-8845-4729-a989-603c54715ae6"
+content_hash = "sha256:5b19bf27b3d9546825c60a7ea2bded00eeea9fa0399bd36e68a13fbb68a3605c"
+size = 99527
+mtime_ms = 1791544579159
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/11f4b84c-8845-4729-a989-603c54715ae6/14fb2a10-6e4e-4b57-8548-e743364048ef"
+storage_version_token = "1791544591405642"
+content_type = "application/octet-stream"
