@@ -1,0 +1,169 @@
+INSTRUCTION DPR-EQLINK-01: A dangling equipment link blocks an unrelated DPR correction. Diagnose it, try to restore it, and only then allow a last-resort detach.
+
+READ THIS FIRST
+This batch is INVESTIGATE FIRST, FIX SECOND. Parts A and B are investigation and reporting. Do not write any corrective feature until Part A has established the real cause and Part B has established whether the data can be restored.
+It is a valid and welcome outcome that the missing reference can be RESTORED, or that the real fix is to stop unnecessary processing — in which case no detach feature is built at all. Say so plainly rather than inventing work.
+Do NOT publish. Show the Publish preview and STOP.
+Do NOT automatically clear, null, re-point or "repair" any `plant_usage_id`, equipment log, equipment usage row or DPR. Nothing is corrected except by an explicit, audited action the owner takes on one named record.
+Do NOT add a startup repair/backfill job. The owner has 73 startup entry points already and does not want another.
+Do NOT weaken, remove or bypass the existing conflict check. A genuinely missing linked usage must still block the equipment closure path.
+Do NOT modify any valid equipment record, equipment usage row, diesel issue, hire calculation or historical DPR.
+PARKED — do not investigate or touch: LDO, startup data repair jobs, stock balances, rate cards, vendor bills, user permissions, navigation.
+Commit and push all work to GitHub before reporting.
+
+THE SYMPTOM
+The owner was required by the app to correct overlapping DPR chainages, supplied the
+reason the app demanded, and could not save. The screen showed:
+
+    Conflict — Linked equipment usage not found
+
+He changed no equipment on that DPR.
+
+WHERE IT COMES FROM
+`server/storage.ts` ~7594, inside `finalizeDprEquipmentUsageTx`:
+
+    for (const log of linkedLogs) {
+      const usageId = Number(log.plantUsageId);
+      await tx.execute(sql`SELECT id FROM equipment_usage WHERE id = ${usageId} FOR UPDATE`);
+      const [usage] = await tx.select().from(equipmentUsage).where(eq(equipmentUsage.id, usageId)).limit(1);
+      if (!usage) throw new EquipmentIncomingConflictError("Linked equipment usage not found");
+
+`equipment_logs.plant_usage_id` (`shared/schema.ts` ~242) points at an
+`equipment_usage` row that is not there. It surfaces as **HTTP 409** via
+`handleEquipmentLifecycleConflict` (`server/routes.ts` ~2558, also ~6051), with a
+message naming no equipment, no date and no id.
+
+=====================================================================
+PART A — INVESTIGATION. NO FEATURE WORK.
+=====================================================================
+A1. IDENTIFY THE EXACT MISSING REFERENCE. For a reproduction of this failure,
+    establish precisely which `equipment_logs` row, which `plant_usage_id`, which
+    DPR, date, site and equipment are involved. State them.
+
+A2. WHY DOES A CHAINAGE-ONLY REVISION TOUCH EQUIPMENT AT ALL? This is the central
+    question. Observed: `finalizeDprEquipmentUsageTx` is called from the DPR update
+    path at `server/storage.ts` ~4192 under `if (isSubmitting)`, with
+    `insertedEquipLogs` — i.e. it appears to run on every submit regardless of
+    whether any equipment fact changed, over equipment logs that may have been
+    re-inserted rather than left alone.
+    Determine, with evidence from the code:
+      - whether the equipment closure genuinely must run when no equipment field,
+        hour, meter, diesel or linkage has changed;
+      - whether the equipment logs are deleted and re-inserted on an unrelated
+        revision, and if so what that implies for their identity and links;
+      - what side effects closure performs (stock, diesel, hire, movement
+        successors) and which of them are no-ops when nothing changed.
+A3. If the processing is unnecessary for unchanged equipment rows, PROPOSE a narrow
+    fix: skip or no-op the closure work for equipment rows whose stored facts are
+    unchanged, leaving changed rows fully processed exactly as today. Describe it in
+    the report; do not implement it until Part A is reported, and never implement it
+    by relaxing a validity check.
+A4. SAY WHAT CAUSED THE DANGLING LINK, if the code shows it: a deleted usage, a
+    movement successor, a clone, a failed transaction, a migration. Do not fix the
+    cause in this batch — name it.
+
+=====================================================================
+PART B — CAN IT BE RESTORED? INVESTIGATION AND REPORT.
+=====================================================================
+B1. Establish whether the missing `equipment_usage` row can be safely RESTORED or
+    CORRECTED rather than discarded. Look for: a successor or predecessor row
+    (`source_usage_id`), an audit record of its deletion, a movement chain, a row
+    whose identity matches on equipment, date and site, or any other evidence that
+    identifies what the link was meant to point at.
+B2. Report what you found and your honest confidence. "The original can be
+    identified with certainty", "a candidate exists but cannot be proven", and
+    "nothing survives that identifies it" are all acceptable answers — say which.
+B3. If restoration is safely possible, propose it as the FIRST remedy, as an explicit
+    owner-confirmed action on one record, with the evidence shown on screen before he
+    confirms. Do not restore anything in this batch.
+B4. Do NOT fabricate a replacement usage row from assumed values. A reconstructed
+    record that looks real but was guessed is worse than a visible gap.
+
+=====================================================================
+PART C — DETACH: LAST RESORT ONLY
+=====================================================================
+Build this ONLY if Parts A and B show it is still needed — that is, the processing
+genuinely must run, and the reference cannot be restored.
+
+C1. Detaching clears ONLY `plant_usage_id` on ONE named equipment log. Nothing else
+    on that log, that DPR, or any other record changes. Equipment activity, hours,
+    meters, diesel issues, hire calculations and historical DPR records are preserved
+    exactly — prove this, do not assert it.
+C2. ADMINISTRATOR ONLY. Use the existing administrator guard; do not add a new
+    section key, role or flag, and do not extend it to ordinary users.
+C3. Explicit and informed: before confirming, the screen states which equipment entry,
+    which DPR and date, the `plant_usage_id` being removed, what Part B found about
+    restoration, and that this cannot be undone except from the audit.
+C4. Audited: record who detached, when, the log id, the removed `plant_usage_id`, and
+    the reason the administrator typed. The removed value must be recoverable from
+    the audit.
+C5. Never offered when the linked usage EXISTS. This must not become a way to break a
+    healthy link. One record at a time — no bulk action, no "repair all".
+
+=====================================================================
+PART D — MAKE THE FAILURE READABLE, AND SIZE THE PROBLEM
+=====================================================================
+D1. When the linked usage is missing, the error and the screen must name the row:
+    equipment name, the log's date, the equipment log id and the missing
+    `plant_usage_id`. Keep the 409 and the existing error class; only the message and
+    payload become useful. Apply the same to the sibling check that throws "Linked
+    equipment usage date does not match the DPR date" — name the row and both dates.
+D2. READ-ONLY audit: every equipment log whose `plant_usage_id` is set but points at
+    no `equipment_usage` row — log id, DPR id, date, site, equipment name, missing
+    usage id, DPR status. Write it to `reports/dpr-eqlink01/` and give the counts.
+    Change nothing. If the count is zero in development, say so and note that the
+    owner's own data is the real test.
+D3. Do not act on that list.
+
+=====================================================================
+WHAT NOT TO DO
+=====================================================================
+- Do not clear, null or re-point any `plant_usage_id` except through PART C.
+- Do not create, delete or alter any `equipment_usage` row.
+- Do not alter equipment activity, diesel, hire billing or any historical DPR.
+- Do not let a DPR save succeed while a genuinely dangling link is still attached.
+- Do not relax a validity check to make a save pass.
+- Do not add a startup job, scheduled repair or "fix all" button.
+- Do not touch production. Do not publish.
+
+PROVE IT — SIGNED IN, WITH SCREENSHOTS AND STATUS CODES
+Development fixtures only, using the DEV-ACCT-02 grants.
+P1. Reproduce: a submitted DPR with an equipment log pointing at a missing usage.
+    Save → **409**, and the message and screen now name equipment, date, log id and
+    missing usage id (D1). Screenshot.
+P2. PART A2 evidence: demonstrate on a fixture whether a chainage-only revision, with
+    no equipment change, still enters the closure loop and locks usage rows. Show it.
+P3. PART B findings for that fixture, with the evidence and your confidence.
+P4. If PART C was built: detach with the confirmation and a typed reason, then save
+    the DPR including the chainage correction. Show the chainage change persisted.
+P5. If PART C was built: show ONLY `plant_usage_id` cleared on that one log — every
+    other column on that log, every other log on that DPR, the DPR row, every
+    equipment usage row, diesel issue and hire record byte-identical.
+P6. If PART C was built: show the audit row, and show a non-administrator refused.
+P7. A DPR whose linked usage EXISTS behaves exactly as before, offers no detach, and
+    saves normally.
+P8. The date-mismatch case now names its row and both dates. Screenshot.
+Z1. Before/after row counts and content checksums for `equipment_logs`,
+    `equipment_usage`, `dprs`, `progress_entries`, `diesel`-related tables and any
+    hire tables, with the only changed value being a single `plant_usage_id` in P4,
+    listed by log id. If PART C was not built, nothing changed at all.
+Z2. The PART D audit and its counts.
+Z3. Full suite against the 48 baseline. List every test added and why. Include: a
+    dangling link still blocks the save until resolved; a healthy link is never
+    detachable; a non-administrator cannot detach.
+Z4. Build passes.
+Z5. Remove and list every fixture created.
+
+REPORT BACK — ONCE, AT THE END, AND KEEP IT SHORT
+1. PART A: the exact missing reference, and whether the chainage-only revision
+   genuinely needs to run equipment closure (A2). Your proposed narrow fix if not.
+2. PART A4: what caused the dangling link, as far as the code shows.
+3. PART B: whether it can be restored, with your confidence.
+4. Whether you built PART C, and why or why not.
+5. P1–P8 with screenshots and status codes.
+6. Z1–Z5, including the PART D counts.
+7. Any choice you made on your own, and what you chose.
+8. The Publish preview.
+
+STOP HERE. Do not publish. Do not repair any data. Do not implement the A3 fix until
+PART A is reported and the owner has approved it.
