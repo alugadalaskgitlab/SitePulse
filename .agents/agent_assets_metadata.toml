@@ -5855,3 +5855,31 @@ mtime_ms = 1791539773974
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/21053227-6152-41f3-8405-53891eff0926/93f50fb2-189a-4659-a696-7703b2f1aaa2"
 storage_version_token = "1791539783469294"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "w9-WNO0dNrSUXDbOFHx64"
+uri = "file://reports/user-perm-redesign02c/acceptance-report.html"
+type = "html"
+title = "Authenticated permissions acceptance — report and 25 screenshots"
+description = "Real signed-in editor evidence, save/read-back/reopen results, restricted-manager checks, current backend enforcement exceptions, cleanup and genuine publishing schema preview."
+logical_id = "78f939c6-9930-44e6-953a-c43b8df637fc"
+content_hash = "sha256:13907c2f9df6c9699dbe589ea6e245414b9ede095895f53a2e13154823f4b34f"
+size = 8316349
+mtime_ms = 1791543086570
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/78f939c6-9930-44e6-953a-c43b8df637fc/5c3c973e-2fc7-4fcf-81e6-7b57769a950e"
+storage_version_token = "1791543121843259"
+content_type = "text/html"
+
+[[outputs]]
+id = "0446zEWKWD_PgIC_dcyQv"
+uri = "file://reports/user-perm-redesign02c/acceptance-evidence.zip"
+type = "unspecified"
+title = "Complete acceptance evidence"
+description = "Download the report, original signed-in screenshots, focused-test results, build log, API findings, preservation checks and disposable-account cleanup evidence."
+logical_id = "87a3a3e4-f0a8-445f-bca4-1a0da89bf98e"
+content_hash = "sha256:e6ce72c5225cac18da833cf5f1bb79fc8bebe393dfbdd9b3d2b72b373f71194c"
+size = 12251433
+mtime_ms = 1791543087290
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/87a3a3e4-f0a8-445f-bca4-1a0da89bf98e/cf5b472b-8afe-44c8-8af7-5dccc9c28647"
+storage_version_token = "1791543126574982"
+content_type = "application/octet-stream"

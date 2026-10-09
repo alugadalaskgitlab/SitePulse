@@ -5,5 +5,22 @@
     "full_name": "PERM 02C Disposable Administrator"
   },
   "createdAt": "2026-10-09T10:36:18.841Z",
-  "cleanup": "pending acceptance"
+  "cleanup": "completed",
+  "subject": {
+    "id": 88,
+    "email": "permissions02c.subject@test.invalid",
+    "fullName": "PERM 02C Disposable Subject",
+    "deviceId": 216
+  },
+  "manager": {
+    "id": 89,
+    "email": "permissions02c.manager@test.invalid",
+    "fullName": "PERM 02C Restricted Manager",
+    "deviceId": 217
+  },
+  "siteId": 16,
+  "limitedTarget": {
+    "id": 90,
+    "email": "permissions02c.limited@test.invalid"
+  }
 }

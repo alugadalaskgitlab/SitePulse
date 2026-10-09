@@ -1,0 +1,276 @@
+[
+  {
+    "test": "subject: normal device approval and login",
+    "evidence": {
+      "pending": 202,
+      "approval": 200,
+      "login": 200,
+      "approvedByDisposableAdministrator": true
+    }
+  },
+  {
+    "test": "All permission bits unchecked",
+    "evidence": {
+      "grants": [],
+      "statuses": {
+        "/api/diesel-requirements": {
+          "status": 403
+        },
+        "/api/purchase-indents": {
+          "status": 403
+        },
+        "/api/irn": {
+          "status": 200,
+          "returnedRows": 6
+        },
+        "/api/site-material-trips": {
+          "status": 200,
+          "returnedRows": 6
+        },
+        "/api/maintenance/logs": {
+          "status": 403
+        },
+        "/api/vendor-bills": {
+          "status": 200,
+          "returnedRows": 0
+        }
+      }
+    }
+  },
+  {
+    "test": "Granular view-only grants",
+    "evidence": {
+      "grants": [
+        [
+          "diesel_req_view",
+          "view"
+        ],
+        [
+          "purchase_indents_view",
+          "view"
+        ],
+        [
+          "irn_view",
+          "view"
+        ],
+        [
+          "site_materials",
+          "view"
+        ],
+        [
+          "plant_maintenance",
+          "view"
+        ],
+        [
+          "vendor_bills_view",
+          "view"
+        ]
+      ],
+      "statuses": {
+        "/api/diesel-requirements": {
+          "status": 403
+        },
+        "/api/purchase-indents": {
+          "status": 200,
+          "returnedRows": 1
+        },
+        "/api/irn": {
+          "status": 200,
+          "returnedRows": 6
+        },
+        "/api/site-material-trips": {
+          "status": 200,
+          "returnedRows": 6
+        },
+        "/api/maintenance/logs": {
+          "status": 403
+        },
+        "/api/vendor-bills": {
+          "status": 200,
+          "returnedRows": 0
+        }
+      }
+    }
+  },
+  {
+    "test": "Broad legacy view grants; granular view bits off",
+    "evidence": {
+      "grants": [
+        [
+          "site_diesel",
+          "view"
+        ],
+        [
+          "site_procurement",
+          "view"
+        ],
+        [
+          "plant_equipment",
+          "view"
+        ],
+        [
+          "vendor_bills",
+          "view"
+        ]
+      ],
+      "statuses": {
+        "/api/diesel-requirements": {
+          "status": 200,
+          "returnedRows": 4
+        },
+        "/api/purchase-indents": {
+          "status": 200,
+          "returnedRows": 1
+        },
+        "/api/irn": {
+          "status": 200,
+          "returnedRows": 6
+        },
+        "/api/site-material-trips": {
+          "status": 200,
+          "returnedRows": 6
+        },
+        "/api/maintenance/logs": {
+          "status": 200,
+          "returnedRows": 1
+        },
+        "/api/vendor-bills": {
+          "status": 200,
+          "returnedRows": 0
+        }
+      }
+    }
+  },
+  {
+    "test": "Diesel supporting stores alternative",
+    "evidence": {
+      "grants": [
+        [
+          "stores_inventory",
+          "view"
+        ]
+      ],
+      "statuses": {
+        "/api/diesel-requirements": {
+          "status": 200,
+          "returnedRows": 4
+        },
+        "/api/purchase-indents": {
+          "status": 403
+        },
+        "/api/irn": {
+          "status": 200,
+          "returnedRows": 6
+        },
+        "/api/site-material-trips": {
+          "status": 200,
+          "returnedRows": 6
+        },
+        "/api/maintenance/logs": {
+          "status": 403
+        },
+        "/api/vendor-bills": {
+          "status": 200,
+          "returnedRows": 0
+        }
+      }
+    }
+  },
+  {
+    "test": "Diesel raise/create alternative",
+    "evidence": {
+      "grants": [
+        [
+          "diesel_req_raise",
+          "create"
+        ]
+      ],
+      "statuses": {
+        "/api/diesel-requirements": {
+          "status": 200,
+          "returnedRows": 4
+        },
+        "/api/purchase-indents": {
+          "status": 403
+        },
+        "/api/irn": {
+          "status": 200,
+          "returnedRows": 6
+        },
+        "/api/site-material-trips": {
+          "status": 200,
+          "returnedRows": 6
+        },
+        "/api/maintenance/logs": {
+          "status": 403
+        },
+        "/api/vendor-bills": {
+          "status": 200,
+          "returnedRows": 0
+        }
+      }
+    }
+  },
+  {
+    "test": "Final revocation: all sources off again",
+    "evidence": {
+      "grants": [],
+      "statuses": {
+        "/api/diesel-requirements": {
+          "status": 403
+        },
+        "/api/purchase-indents": {
+          "status": 403
+        },
+        "/api/irn": {
+          "status": 200,
+          "returnedRows": 6
+        },
+        "/api/site-material-trips": {
+          "status": 200,
+          "returnedRows": 6
+        },
+        "/api/maintenance/logs": {
+          "status": 403
+        },
+        "/api/vendor-bills": {
+          "status": 200,
+          "returnedRows": 0
+        }
+      }
+    }
+  },
+  {
+    "test": "manager: normal device approval and login",
+    "evidence": {
+      "pending": 202,
+      "approval": 200,
+      "login": 200,
+      "approvedByDisposableAdministrator": true
+    }
+  },
+  {
+    "test": "Partial manager cannot modify disposable Administrator",
+    "evidence": {
+      "status": 403
+    }
+  },
+  {
+    "test": "Current backend caps out-of-scope grants",
+    "evidence": {
+      "status": 200,
+      "allowedDieselViewStored": true,
+      "unownedVendorViewStored": false
+    }
+  },
+  {
+    "test": "Site access preserved through all matrix updates",
+    "evidence": {
+      "siteIds": [
+        16
+      ],
+      "allSites": false,
+      "setupComplete": true
+    }
+  }
+]

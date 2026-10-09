@@ -1,0 +1,25 @@
+[
+  {
+    "test": "Partial manager cannot overwrite existing out-of-scope grants",
+    "evidence": {
+      "saveDisabled": true,
+      "preservationWarningShown": true
+    }
+  },
+  {
+    "test": "Partial manager actual UI save within own grants",
+    "evidence": {
+      "allowedControlEnabled": true,
+      "outOfScopeControlDisabled": true,
+      "allowedViewPersisted": true,
+      "legacyViewRemainedOff": true
+    }
+  },
+  {
+    "test": "Administrator bypass is disclosed",
+    "evidence": {
+      "disposableAdministratorOnly": true,
+      "warningShown": true
+    }
+  }
+]

@@ -1,0 +1,94 @@
+[
+  {
+    "test": "Signed-in module: SiteHub",
+    "evidence": {
+      "screenshot": "screenshots/02-site-operations.png"
+    }
+  },
+  {
+    "test": "Signed-in module: DieselRequirements",
+    "evidence": {
+      "screenshot": "screenshots/03-diesel-requirements.png"
+    }
+  },
+  {
+    "test": "Signed-in module: IrnListPage",
+    "evidence": {
+      "screenshot": "screenshots/04-irns.png"
+    }
+  },
+  {
+    "test": "Signed-in module: PurchaseIndents",
+    "evidence": {
+      "screenshot": "screenshots/05-purchase-indents.png"
+    }
+  },
+  {
+    "test": "Signed-in module: SiteMaterialTrips",
+    "evidence": {
+      "screenshot": "screenshots/06-material-trips.png"
+    }
+  },
+  {
+    "test": "Signed-in module: PlantMaintenance",
+    "evidence": {
+      "screenshot": "screenshots/07-equipment-maintenance.png"
+    }
+  },
+  {
+    "test": "Signed-in module: VendorBills",
+    "evidence": {
+      "screenshot": "screenshots/08-vendor-bills.png"
+    }
+  },
+  {
+    "test": "Editing does not save; legacy alternative disclosed",
+    "evidence": {
+      "storedBeforeSave": true,
+      "staged": false,
+      "alternative": "site_diesel.view"
+    }
+  },
+  {
+    "test": "Real UI save → API read-back",
+    "evidence": {
+      "status": 200,
+      "diesel_req_view": false,
+      "site_diesel": true,
+      "payloadOnlyLegacyMatrix": true,
+      "proposedOverridesExcluded": true,
+      "readBackRequests": 3
+    }
+  },
+  {
+    "test": "Reopened persistence and preview reset",
+    "evidence": {
+      "legacyOffPersisted": true,
+      "previewsAllInherit": true
+    }
+  },
+  {
+    "test": "Cancel/discard",
+    "evidence": {
+      "confirmedDiscard": true,
+      "databaseUnchanged": true,
+      "reopenedOff": true
+    }
+  },
+  {
+    "test": "Template selection is preview only",
+    "evidence": {
+      "databaseUnchanged": true,
+      "role": "site_engineer"
+    }
+  },
+  {
+    "test": "Explicit role application, save, reopen and site preservation",
+    "evidence": {
+      "selectedRole": "site_engineer",
+      "stageDidNotSave": true,
+      "savedDesignation": "site_engineer",
+      "sitesUnchanged": true
+    }
+  }
+]

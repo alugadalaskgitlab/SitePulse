@@ -1,0 +1,23 @@
+{
+  "removed": {
+    "user_sessions": 3,
+    "user_devices": 3,
+    "user_permissions": 276,
+    "user_site_access": 3,
+    "audit_logs": 0,
+    "users": 4
+  },
+  "remaining": {
+    "user_sessions": 0,
+    "user_devices": 0,
+    "user_permissions": 0,
+    "user_site_access": 0,
+    "audit_logs": 0,
+    "users": 0
+  },
+  "comparedTables": 140,
+  "differingTables": [
+    "user_devices",
+    "user_sessions"
+  ]
+}
