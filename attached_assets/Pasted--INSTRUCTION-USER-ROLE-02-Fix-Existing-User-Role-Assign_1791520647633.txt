@@ -1,0 +1,49 @@
+
+INSTRUCTION USER-ROLE-02
+Fix Existing User Role Assignment, Visibility and Permission Save UX
+
+Inspect the latest USER-ROLE-01 implementation and PERM-BABU-01 before making changes.
+
+PROBLEM
+
+The new Operations Director / Project Head template is visible in the Permissions dialog, but the Save Permissions button remains disabled until a separate role-preview confirmation is completed.
+
+The workflow is confusing to an ordinary administrator.
+
+Also, Edit User does not display the user's assigned business role. Standard commercial roles currently behave as permission templates rather than identifiable user designations.
+
+REQUIREMENTS
+
+1. Make the existing-user role assignment workflow straightforward:
+
+   Select Role → Review Permission Differences → Confirm → Save.
+
+2. Clearly explain why Save Permissions is disabled when a role preview is still pending. Do not silently discard staged changes.
+
+3. Show the selected business role in Edit User, with an appropriate way to change it through the existing reviewed permission workflow.
+
+4. Preserve the distinction between a business role designation and actual effective permissions. Advanced adjustments must remain possible.
+
+5. Do not infer a user's assigned role merely because their permission matrix resembles a template.
+
+6. If durable role identification requires a database change, first report the proposed minimal schema change and stop for approval. Do not introduce a new RBAC engine.
+
+7. Operations Director / Project Head must remain an ordinary non-admin role with broad operational permissions.
+
+8. Its default template must exclude Delete, User Management, Permission Management and privileged system operations.
+
+9. When applying the role to an existing user, clearly show any existing sensitive permissions that would remain under Add/Merge mode. Never imply that Merge removes those privileges.
+
+10. Preserve all current users, individual permissions, site assignments, passwords and administrator flags unless the owner explicitly confirms a change.
+
+11. Do not automatically modify K V Babu's account or remove his Administrator status.
+
+12. Verify actual signed-in role selection, staged changes, final saves, reopening and permission read-back.
+
+13. Test that restricted backend actions remain blocked for ordinary users.
+
+14. Keep billing, material trips, DPR, equipment, inventory and all unrelated modules untouched.
+
+15. No publishing or production changes. Commit verified changes and report test/build results and Publish preview.
+
+STOP after this focused correction.
