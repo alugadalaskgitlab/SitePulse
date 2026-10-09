@@ -5953,3 +5953,17 @@ mtime_ms = 1791547537158
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/9ba392f2-d542-4a00-9a30-28f9c7dbe201/8320b7d3-0ba1-4c8f-983c-a131c26a38fc"
 storage_version_token = "1791547552402052"
 content_type = "text/html"
+
+[[outputs]]
+id = "WupTUphlzpw3DKaLmiM6c"
+uri = "file://reports/startup-verify01/REPORT.md"
+type = "text"
+title = "Startup-removal verification report"
+description = "Read-only findings, all 33 classifications, sequence evidence and publish blockers."
+logical_id = "031aa021-b787-4b70-a832-308ae5ca4f82"
+content_hash = "sha256:03f837af5a2cc9dde12520e01bdeeff325f0fec611d178891dc774aff3460539"
+size = 19925
+mtime_ms = 1791560520202
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/031aa021-b787-4b70-a832-308ae5ca4f82/aad41ad0-01b5-44a6-88b7-ab6f2c785025"
+storage_version_token = "1791560588752039"
+content_type = "text/markdown"
