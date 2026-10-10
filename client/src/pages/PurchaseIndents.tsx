@@ -386,7 +386,7 @@ function ItemHistoryTimeline({ itemId }: { itemId: number }) {
                   {entry.action.toUpperCase().replace("_", " ")}
                 </Badge>
                 <span className="text-muted-foreground">
-                  {entry.actionAt ? format(new Date(entry.actionAt), "dd-MMM-yyyy HH:mm").toUpperCase() : "-"}
+                  {formatPiTimestamp(entry.actionAt)}
                 </span>
                 <span className="font-semibold">BY {entry.actionBy}</span>
               </div>
@@ -506,6 +506,22 @@ function StatusSteps({ status, storesStatus, piType }: { status: string; storesS
   );
 }
 
+import { buildPiTimeline, formatPiTimestamp, type PiEvent } from "@shared/piTimeline";
+
+function piEvents(indent: PurchaseIndentWithItems): PiEvent[] {
+  return (indent as any).timeline ?? buildPiTimeline(indent);
+}
+
+function PiItemEvents({ item }: { item: any }) {
+  return <div className="text-xs text-muted-foreground space-y-1 mt-2" data-testid={`pi-item-events-${item.id}`}>
+    {(item.timeline ?? []).map((event: PiEvent) => <p key={event.id}>
+      {event.label}: {formatPiTimestamp(event.at)} · {event.actor || "Person not recorded"}
+    </p>)}
+    {item.liveStockQty != null && <p>Live stock: {item.liveStockQty} {item.uom}</p>}
+    {item.liveStockNote && <p>{item.liveStockNote}</p>}
+  </div>;
+}
+
 function IndentAuditTrail({ indent }: { indent: PurchaseIndentWithItems }) {
   const [open, setOpen] = useState(false);
 
@@ -519,105 +535,19 @@ function IndentAuditTrail({ indent }: { indent: PurchaseIndentWithItems }) {
     dotClass: string;
   };
 
-  const events: AuditEvent[] = [];
-
-  const fmt = (ts: string | null | undefined) => {
-    if (!ts) return null;
-    try {
-      return format(new Date(ts), "dd-MMM-yyyy HH:mm").toUpperCase();
-    } catch {
-      return ts;
-    }
-  };
-
-  const storesStatus = (indent as any).storesStatus as string | null;
-  const storesVerifiedBy = (indent as any).storesVerifiedBy as string | null;
-  const storesVerifiedAt = (indent as any).storesVerifiedAt as string | null;
-  const createdAt = (indent as any).createdAt as string | null;
-
-  events.push({
-    icon: FileText,
-    label: "Indent Raised",
-    actor: indent.raisedBy,
-    timestamp: fmt(createdAt),
-    note: null,
-    colorClass: "text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700",
+  const events: AuditEvent[] = piEvents(indent).map(event => ({
+    icon: event.label === "Indent Raised" ? FileText : event.label === "Rejected" ? XCircle : ClipboardCheck,
+    label: `${event.label}${event.itemDescription ? ` · ${event.itemDescription}` : ""}`,
+    actor: event.actor || "Person not recorded", timestamp: formatPiTimestamp(event.at), note: event.note,
+    colorClass: /Rejected|Cancelled/.test(event.label)
+      ? "text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700"
+      : /Bypass|Unlocked/.test(event.label)
+      ? "text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-900/30 border-orange-200 dark:border-orange-700"
+      : /Approved|Verified|Received|Completed/.test(event.label)
+      ? "text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-700"
+      : "text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700",
     dotClass: "bg-blue-500",
-  });
-
-  const unlockedByName = (indent as any).unlockedByName as string | null;
-  const unlockedAt = (indent as any).unlockedAt as string | null;
-  const unlockReason = (indent as any).unlockReason as string | null;
-
-  if (indent.lockStatus !== "locked" && (unlockedByName || unlockedAt)) {
-    events.push({
-      icon: LockOpen,
-      label: "Unlocked",
-      actor: unlockedByName,
-      timestamp: fmt(unlockedAt),
-      note: unlockReason,
-      colorClass: "text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-700",
-      dotClass: "bg-amber-500",
-    });
-  }
-
-  if (storesStatus === "verified" && storesVerifiedBy) {
-    events.push({
-      icon: ClipboardCheck,
-      label: "Stores Verified",
-      actor: storesVerifiedBy,
-      timestamp: fmt(storesVerifiedAt),
-      note: null,
-      colorClass: "text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-700",
-      dotClass: "bg-emerald-500",
-    });
-  } else if (
-    storesStatus === "bypassed" ||
-    (storesStatus === null &&
-      (indent.status === "approved" || indent.status === "completed"))
-  ) {
-    const bypassNote = (() => {
-      const r = indent.approvalRemarks ?? "";
-      const m = r.match(/\[BYPASS:\s*(.*?)\]/i);
-      return m ? m[1].trim() : null;
-    })();
-    events.push({
-      icon: AlertTriangle,
-      label: "Stores Check Bypassed",
-      actor: indent.approvedBy ?? null,
-      timestamp: null,
-      note: bypassNote,
-      colorClass: "text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-900/30 border-orange-200 dark:border-orange-700",
-      dotClass: "bg-orange-400",
-    });
-  }
-
-  if (indent.status === "approved" || indent.status === "completed") {
-    const cleanRemarks = (() => {
-      const r = indent.approvalRemarks ?? "";
-      const stripped = r.replace(/\[BYPASS:[^\]]*\]/gi, "").trim();
-      return stripped || null;
-    })();
-    events.push({
-      icon: CheckCircle2,
-      label: "Approved",
-      actor: indent.approvedBy ?? null,
-      timestamp: fmt((indent as any).approvedAt),
-      note: cleanRemarks,
-      colorClass: "text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-700",
-      dotClass: "bg-emerald-600",
-    });
-  } else if (indent.status === "rejected") {
-    events.push({
-      icon: XCircle,
-      label: "Rejected",
-      actor: indent.approvedBy ?? null,
-      timestamp: fmt((indent as any).approvedAt),
-      note: indent.rejectionReason ?? null,
-      colorClass: "text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700",
-      dotClass: "bg-red-500",
-    });
-  }
+  }));
 
   return (
     <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden" data-testid="panel-audit-trail">
@@ -977,6 +907,10 @@ export default function PurchaseIndents() {
 
   const { data: indents, isLoading } = useQuery<PurchaseIndentWithItems[]>({
     queryKey: ["/api/purchase-indents"],
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    refetchInterval: view === "list" ? 30000 : false,
   });
   const { data: pendingPurchaseOrders = [] } = useQuery<{ id: number; itemId: number; indentId: number; indentNo: string; description: string }[]>({
     queryKey: ["/api/purchase-orders/pending"],
@@ -1104,6 +1038,9 @@ export default function PurchaseIndents() {
   const { data: selectedIndent, isLoading: isLoadingDetail } = useQuery<PurchaseIndentWithItems>({
     queryKey: ["/api/purchase-indents", selectedIndentId],
     enabled: !!selectedIndentId,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: view === "detail",
   });
 
   const { data: piTxns = [] } = useQuery<any[]>({
@@ -2157,11 +2094,6 @@ export default function PurchaseIndents() {
                .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     };
 
-    const fmtTs = (ts: string | null | undefined) => {
-      if (!ts) return "—";
-      try { return format(new Date(ts), "dd-MMM-yyyy HH:mm").toUpperCase(); } catch { return esc(ts); }
-    };
-
     const statusLabel = (s: string) => ({
       pending: "PENDING", stores_check: "STORES CHECK", approved: "APPROVED",
       rejected: "REJECTED", completed: "COMPLETED",
@@ -2174,30 +2106,11 @@ export default function PurchaseIndents() {
       sitesList
     );
 
-    const storesStatus = (indent as any).storesStatus as string | null;
-    const storesVerifiedBy = (indent as any).storesVerifiedBy as string | null;
-    const storesVerifiedAt = (indent as any).storesVerifiedAt as string | null;
-    const createdAt = (indent as any).createdAt as string | null;
-
-    type AuditRow = { label: string; actor: string | null; timestamp: string | null; note: string | null };
-    const auditEvents: AuditRow[] = [];
-
-    auditEvents.push({ label: "Indent Raised", actor: indent.raisedBy, timestamp: fmtTs(createdAt), note: null });
-
-    if (storesStatus === "verified" && storesVerifiedBy) {
-      auditEvents.push({ label: "Stores Verified", actor: storesVerifiedBy, timestamp: fmtTs(storesVerifiedAt), note: null });
-    } else if (storesStatus === "bypassed" || (storesStatus === null && (indent.status === "approved" || indent.status === "completed"))) {
-      const m = (indent.approvalRemarks ?? "").match(/\[BYPASS:\s*(.*?)\]/i);
-      auditEvents.push({ label: "Stores Check Bypassed", actor: indent.approvedBy ?? null, timestamp: null, note: m ? m[1].trim() : null });
-    }
-
-    if (indent.status === "approved" || indent.status === "completed") {
-      const cleanRemarks = (indent.approvalRemarks ?? "").replace(/\[BYPASS:[^\]]*\]/gi, "").trim() || null;
-      auditEvents.push({ label: "Approved", actor: indent.approvedBy ?? null, timestamp: fmtTs((indent as any).approvedAt), note: cleanRemarks });
-    } else if (indent.status === "rejected") {
-      auditEvents.push({ label: "Rejected", actor: indent.approvedBy ?? null, timestamp: fmtTs((indent as any).approvedAt), note: indent.rejectionReason ?? null });
-    }
-
+    // Print uses the same evidence projection as the on-screen timeline.
+    const auditEvents = piEvents(indent).map(event => ({
+      label: `${event.label}${event.itemDescription ? ` · ${event.itemDescription}` : ""}`,
+      actor: event.actor || "Person not recorded", timestamp: formatPiTimestamp(event.at), note: event.note,
+    }));
     const itemRows = indent.items.map((item, i) => {
       const approvedCell = item.approvedQty != null ? `${item.approvedQty} ${esc(item.uom)}` : "—";
       const statusCell = isBulkPiDeliveryItem(item) ? esc(deliveryProgress(item)) : item.purchaseStatus ? esc(item.purchaseStatus.toUpperCase()) : (item.cancelledBy ? "CANCELLED" : "—");
@@ -2220,7 +2133,7 @@ export default function PurchaseIndents() {
         <td style="padding:6px 8px;font-style:italic;color:#6b7280;">${esc(ev.note)}</td>
       </tr>`).join("");
 
-    const printedAt = format(new Date(), "dd-MMM-yyyy HH:mm").toUpperCase();
+    const printedAt = formatPiTimestamp(new Date());
     const indentDate = format(new Date(indent.date + "T00:00:00"), "dd-MMM-yyyy").toUpperCase();
 
     const html = `<!DOCTYPE html>
@@ -2853,10 +2766,10 @@ export default function PurchaseIndents() {
 
                           {/* Audit trail timestamps */}
                           {(() => {
-                            const raised = indent.createdAt ? format(new Date(indent.createdAt as any), "dd-MMM-yy HH:mm") : null;
-                            const verified = (indent as any).storesVerifiedAt ? format(new Date((indent as any).storesVerifiedAt), "dd-MMM-yy HH:mm") : null;
-                            const approved = (indent as any).approvedAt ? format(new Date((indent as any).approvedAt), "dd-MMM-yy HH:mm") : null;
-                            const ordered = (indent as any).orderedAt ? format(new Date((indent as any).orderedAt), "dd-MMM-yy HH:mm") : null;
+                            const raised = formatPiTimestamp(indent.createdAt);
+                            const verified = (indent as any).storesVerifiedAt ? formatPiTimestamp((indent as any).storesVerifiedAt) : null;
+                            const approved = (indent as any).approvedAt ? formatPiTimestamp((indent as any).approvedAt) : null;
+                            const ordered = (indent as any).orderedAt ? formatPiTimestamp((indent as any).orderedAt) : null;
                             const earliestExpected = indent.items?.reduce((min: string | null, it: any) => {
                               if (!it.expectedDelivery) return min;
                               return (!min || it.expectedDelivery < min) ? it.expectedDelivery : min;
@@ -3584,8 +3497,8 @@ export default function PurchaseIndents() {
                     const _createdAt = (selectedIndent as any).createdAt as string | null;
                     const _storesVerifiedAt = (selectedIndent as any).storesVerifiedAt as string | null;
                     const _storesStatus = (selectedIndent as any).storesStatus as string | null;
-                    const fmtDate = (ts: string | null) => { try { return ts ? format(new Date(ts), "dd-MMM-yyyy") : null; } catch { return null; } };
-                    const fmtTs = (ts: string | null) => { try { return ts ? format(new Date(ts), "dd-MMM-yyyy HH:mm") : null; } catch { return null; } };
+                    const fmtDate = formatPiTimestamp;
+                    const fmtTs = formatPiTimestamp;
                     const raisedLabel = fmtDate(_createdAt);
                     const storesLabel = _storesStatus === "verified" && _storesVerifiedAt
                       ? `Stores verified: ${fmtTs(_storesVerifiedAt)}`
@@ -3740,6 +3653,7 @@ export default function PurchaseIndents() {
                             </div>
                           </div>
                           {stockBadge}
+                          <PiItemEvents item={item} />
                           <div className={`flex items-start gap-2 text-sm py-1.5 px-2 rounded-md ${st.action==='approved'?'text-emerald-700 bg-emerald-100/50':st.action==='rejected'?'text-red-700 bg-red-100/50':'text-amber-800 bg-amber-100/50'}`}>
                             {st.action==='approved' && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />}
                             {st.action==='rejected' && <XCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />}
@@ -3919,6 +3833,7 @@ export default function PurchaseIndents() {
                             {expandedHistoryItems.has(item.id) ? <ChevronUp className="w-3 h-3 mr-1" /> : <ChevronDown className="w-3 h-3 mr-1" />}
                             HISTORY
                           </Button>
+                          <PiItemEvents item={item} />
                           {expandedHistoryItems.has(item.id) && <ItemHistoryTimeline itemId={item.id} />}
                         </div>
                       </Card>
@@ -4324,6 +4239,7 @@ export default function PurchaseIndents() {
                               {tx.qty > 0 && <span className="text-muted-foreground">{tx.qty} {relItem.uom}</span>}
                               {tx.rate != null && <span className="text-muted-foreground">@₹{tx.rate}</span>}
                               {tx.vendor && <span className="font-medium">{tx.vendor}</span>}
+                              <span className="w-full text-xs text-muted-foreground">{formatPiTimestamp(tx.createdAt)} · {tx.createdBy || "Person not recorded"}</span>
                             </div>
                           );
                         })}
@@ -4403,6 +4319,10 @@ export default function PurchaseIndents() {
                             <div className="flex items-center gap-3 min-w-0">
                               <span className="font-mono text-sm font-bold text-emerald-700 dark:text-emerald-400 shrink-0">{grn.grnNumber}</span>
                               <span className="text-sm text-gray-600 dark:text-gray-400 shrink-0">{format(new Date(grn.date + "T00:00:00"), "dd MMM yyyy")}</span>
+                              <span className="w-full text-xs text-muted-foreground">
+                                {(() => { const event = piEvents(selectedIndent).find(e => e.id.startsWith(`grn-${grn.id}-`));
+                                  return `${formatPiTimestamp(event?.at)} · ${event?.actor || "Person not recorded"}`; })()}
+                              </span>
                               <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{grn.supplier}</span>
                             </div>
                             <div className="flex items-center gap-3 shrink-0 ml-2">
@@ -4492,6 +4412,7 @@ export default function PurchaseIndents() {
                               </div>
                             </div>
                             {stockBadge && <div className="mt-2">{stockBadge}</div>}
+                            <PiItemEvents item={item} />
                             <div className="mt-3 flex items-center gap-2 text-sm text-gray-500 bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2.5">
                               <Ban className="w-4 h-4 text-gray-400 shrink-0" />
                               <span>Manager Rejected — No procurement needed</span>
@@ -4522,6 +4443,7 @@ export default function PurchaseIndents() {
                               </div>
                             </div>
                             {stockBadge && <div className="mb-2">{stockBadge}</div>}
+                            <PiItemEvents item={item} />
                             <div className="bg-emerald-100/60 dark:bg-emerald-900/40 border border-emerald-200 dark:border-emerald-800 rounded-lg px-3 py-2.5 flex items-center gap-2.5">
                               <PackageCheck className="w-4 h-4 text-emerald-600 shrink-0" />
                               <div>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatPiTimestamp } from "@shared/piTimeline";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -108,9 +109,9 @@ export function PurchaseOrderWorkflow({ indentId, itemId, canRaise, allowNew, ca
             </div>
             {input("Delivery destination", "destination")}
             {order && <div className="rounded border bg-muted/40 p-3 text-sm space-y-1">
-              <p>Raised by: {order.raisedByName || "User record unavailable"} · {new Date(order.raisedAt).toLocaleDateString("en-IN")}</p>
-              {order.submittedAt && <p>Submitted: {new Date(order.submittedAt).toLocaleDateString("en-IN")}</p>}
-              {order.approvedAt && <p>Approved by: {order.approvedByName || "User record unavailable"} · {new Date(order.approvedAt).toLocaleDateString("en-IN")}</p>}
+              <p>Raised by: {order.raisedByName || "User record unavailable"} · {formatPiTimestamp(order.raisedAt)}</p>
+              {order.submittedAt && <p>Submitted: {formatPiTimestamp(order.submittedAt)}</p>}
+              {order.approvedAt && <p>Approved by: {order.approvedByName || "User record unavailable"} · {formatPiTimestamp(order.approvedAt)}</p>}
               {order.rejectionReason && <p>Rejection reason: {order.rejectionReason}</p>}
             </div>}
             <div className="flex flex-wrap gap-2">

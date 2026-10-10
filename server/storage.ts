@@ -1,4 +1,7 @@
 import { lookupTripBoqQuantity } from "../shared/tripQuantityDisplay";
+import { buildPiTimeline } from "../shared/piTimeline";
+import { purchaseOrders } from "../shared/schema";
+import { linkedPiStoreStock } from "../shared/piStoreStock";
 import { bulkTripConditions } from "./siteMaterialTripFilters";
 import { validatedTransportRateFields } from "../shared/transportRate";
 import { db } from "./db";
@@ -14702,6 +14705,19 @@ export class DatabaseStorage implements IStorage {
   // PURCHASE INDENTS CRUD
   // ============================================
 
+  private async piStoreLinks(items: any[]): Promise<Map<number, number | null>> {
+    const ids = items.map(i => i.id);
+    const links = ids.length ? await db.select().from(storeGrnItems).where(or(
+      inArray(storeGrnItems.sourcePiItemId, ids), inArray(storeGrnItems.indentItemId, ids),
+    )) : [];
+    return new Map(items.map(item => {
+      if (item.storeItemId != null) return [item.id, item.storeItemId];
+      const linked = Array.from(new Set(links.filter(l => l.sourcePiItemId === item.id || l.indentItemId === item.id)
+        .map(l => l.itemId).filter((id): id is number => id != null)));
+      return [item.id, linked.length === 1 ? linked[0] : linked.length > 1 ? -1 : null];
+    }));
+  }
+
   async getPurchaseIndents(filters?: { dateFrom?: string; dateTo?: string; status?: string; priority?: string }): Promise<PurchaseIndentWithItems[]> {
     let conditions: any[] = [];
     if (filters?.dateFrom) conditions.push(gte(purchaseIndents.date, filters.dateFrom));
@@ -14731,10 +14747,13 @@ export class DatabaseStorage implements IStorage {
       ? await db.select({ id: plantMaterials.id, procurementRoute: plantMaterials.procurementRoute })
         .from(plantMaterials).where(inArray(plantMaterials.id, catalogIds))
       : []).map(row => [row.id, row.procurementRoute]));
+    const storeLinks = await this.piStoreLinks(indents.flatMap(i => i.items));
+    const linkedStoreIds = Array.from(new Set(Array.from(storeLinks.values()).filter((id): id is number => id != null && id > 0)));
+    const liveStores = linkedStoreIds.length ? await this.getStoreItemsWithBalance(linkedStoreIds) : [];
     const enrichedIndents = await Promise.all(indents.map(async indent => ({
       ...indent,
       items: await Promise.all(indent.items.map(async item => {
-        const withCatalog = { ...item, catalogProcurementRoute: item.materialId ? catalogRoutes.get(item.materialId) ?? null : null };
+        const withCatalog = { ...item, ...linkedPiStoreStock({ ...item, storeItemId: storeLinks.get(item.id) }, liveStores), catalogProcurementRoute: item.materialId ? catalogRoutes.get(item.materialId) ?? null : null };
         if (!isBulkPiDeliveryItem(withCatalog)) return withCatalog;
         return { ...withCatalog, ...reconcileDeliveryEvidence(await this._getPiDeliveryEvidence(db, item.id), item.uom) };
       })),
@@ -14760,7 +14779,8 @@ export class DatabaseStorage implements IStorage {
     // 2nd: plant stockBalances matched by materialId (when item was picked from catalogue)
     // 3rd: plant material name match (when item was typed manually, materialId is null)
     // UOM conversion is applied server-side using per-material conversionFactor (CFT↔MT).
-    const storeGrnBalances = await this.getStoreItemsWithBalance();
+    const storeLinks = await this.piStoreLinks(indent.items);
+    const storeGrnBalances = await this.getStoreItemsWithBalance(Array.from(storeLinks.values()).filter((id): id is number => id != null && id > 0));
     const plantBalanceRows = await db
       .select({
         materialId: stockBalances.materialId,
@@ -14791,7 +14811,7 @@ export class DatabaseStorage implements IStorage {
         });
       }
       plantStockByMaterialId.get(key)!.breakdowns.push({
-        balance: row.balance,
+        balance: Number(row.balance),
         uom: (row.uom ?? "").toUpperCase().trim(),
       });
     }
@@ -14840,11 +14860,13 @@ export class DatabaseStorage implements IStorage {
     const enrichedItems = (indent as any).items.map((item: any) => {
       const descLower = (item.description as string).toLowerCase().trim();
       const requestedUom: string = (item.uom as string) || "";
+      const linkedStock = linkedPiStoreStock({ ...item, storeItemId: storeLinks.get(item.id) }, storeGrnBalances);
+      if (linkedStock) return { ...item, ...linkedStock };
 
       // 1st: stores GRN name match (exact, substring, or reverse substring)
       const storesMatch = storeGrnBalances.find(si => {
         const nameLower = si.name.toLowerCase().trim();
-        return nameLower === descLower || nameLower.includes(descLower) || descLower.includes(nameLower);
+        return si.isActive === 1 && (nameLower === descLower || nameLower.includes(descLower) || descLower.includes(nameLower));
       });
       if (storesMatch != null) {
         return { ...item, liveStockQty: storesMatch.balance, liveStoreItemName: storesMatch.name };
@@ -14897,11 +14919,13 @@ export class DatabaseStorage implements IStorage {
     // Enrich Material Indent items: resolve linkedReceiptNo from materialReceipts
     const linkedIds = enrichedItems.map((i: any) => i.linkedReceiptId).filter(Boolean) as number[];
     let linkedReceiptNoMap = new Map<number, string>();
+    let linkedReceiptRows: any[] = [];
     if (linkedIds.length > 0) {
       const linkedReceipts = await db
-        .select({ id: materialReceipts.id, receiptNo: materialReceipts.receiptNo, challanNumber: materialReceipts.challanNumber })
+        .select()
         .from(materialReceipts)
         .where(inArray(materialReceipts.id, linkedIds));
+      linkedReceiptRows = linkedReceipts;
       for (const r of linkedReceipts) {
         linkedReceiptNoMap.set(r.id, r.receiptNo ?? r.challanNumber ?? `#${r.id}`);
       }
@@ -14950,7 +14974,59 @@ export class DatabaseStorage implements IStorage {
         receivingLocation: destination?.receivingLocation ?? null,
         receivingSiteId: destination?.receivingSiteId ?? null };
     }));
-    return { ...indent, items: deliveryItems, unlockedByName } as PurchaseIndentWithItems | undefined;
+    const transactions = await this.getPiItemTransactions(id);
+    const audits = await db.select().from(auditLogs).where(and(
+      inArray(auditLogs.module, ["purchase_indent", "purchase_indents", "pi"]),
+      eq(auditLogs.transactionId, id),
+    ));
+    // Exact saved receipt links only. A GRN's creation is not its finalization.
+    const itemIds = deliveryItems.map(i => i.id);
+    const grnLinks = itemIds.length ? await db.select().from(storeGrnItems).where(or(
+      inArray(storeGrnItems.sourcePiItemId, itemIds), inArray(storeGrnItems.indentItemId, itemIds),
+    )) : [];
+    const grnIds = Array.from(new Set([...deliveryItems.map(i => i.linkedGrnId).filter((n): n is number => n != null), ...grnLinks.map(g => g.grnId)]));
+    const grns = grnIds.length ? await db.select().from(storeGrns).where(inArray(storeGrns.id, grnIds)) : [];
+    const grnAudits = grnIds.length ? await db.select().from(auditLogs).where(and(
+      inArray(auditLogs.module, ["store_grn", "store_grns"]), inArray(auditLogs.transactionId, grnIds),
+    )) : [];
+    const receiptEvents: any[] = [];
+    const receiptAudits = linkedIds.length ? await db.select().from(auditLogs).where(and(
+      eq(auditLogs.module, "material_receipt"), inArray(auditLogs.transactionId, linkedIds),
+      inArray(auditLogs.action, ["create", "submit", "final_submit", "finalize"]),
+    )).orderBy(asc(auditLogs.id)) : [];
+    for (const item of deliveryItems) {
+      for (const grn of grns.filter(g => g.id === item.linkedGrnId || grnLinks.some(l => l.grnId === g.id && (l.sourcePiItemId === item.id || l.indentItemId === item.id)))) {
+      if (grn.status === "finalized") {
+        const finalization = grnAudits.find(a => a.transactionId === grn.id && ["finalized", "finalize", "finalize_override", "approved"].includes(a.action));
+        receiptEvents.push({ id: `grn-${grn.id}-${item.id}`, itemId: item.id,
+          at: finalization?.createdAt, actor: finalization?.userName,
+          note: `GRN ${grn.grnNumber} · receipt date ${grn.date}${grn.isCancelled ? " · subsequently cancelled" : ""}` });
+      }
+      }
+      if (item.linkedReceiptId && !transactions.some(t => t.indentItemId === item.id && ["bulk_receipt", "delivery_receipt"].includes(t.transactionType))) {
+        const receipt = linkedReceiptRows.find(r => r.id === item.linkedReceiptId && r.documentStatus !== "draft");
+        if (!receipt) continue;
+        receiptEvents.push({ id: `receipt-${item.linkedReceiptId}-${item.id}`, itemId: item.id,
+          label: "Received (receipt recorded)", at: receipt?.finalSubmittedAt ?? receipt?.createdAt,
+          actor: receiptAudits.find(a => a.transactionId === receipt.id)?.userName ?? null,
+          note: `Linked material receipt #${item.linkedReceiptId} · receipt date ${receipt?.invoiceDate ?? receipt?.date ?? "not recorded"}` });
+      }
+    }
+    const orders = await db.select().from(purchaseOrders).where(eq(purchaseOrders.purchaseIndentId, id));
+    const actorIds = Array.from(new Set([...orders.flatMap(o => [o.raisedByUserId, o.approvedByUserId]),
+      ...linkedReceiptRows.map(r => r.finalSubmittedBy)].filter((n): n is number => n != null)));
+    const actors = actorIds.length ? await db.select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, actorIds)) : [];
+    const actorName = (id: number | null) => actors.find(a => a.id === id)?.fullName || null;
+    for (const receipt of linkedReceiptRows) {
+      for (const event of receiptEvents.filter(e => e.id.startsWith(`receipt-${receipt.id}-`))) event.actor = actorName(receipt.finalSubmittedBy) ?? event.actor;
+    }
+    for (const order of orders) {
+      receiptEvents.push({ id: `po-${order.id}-raised`, label: "Purchase Order Raised", itemId: order.purchaseIndentItemId, at: order.raisedAt, actor: actorName(order.raisedByUserId), note: order.orderNo });
+      if (order.approvedAt) receiptEvents.push({ id: `po-${order.id}-approved`, label: "Purchase Order Approved", itemId: order.purchaseIndentItemId, at: order.approvedAt, actor: actorName(order.approvedByUserId), note: order.orderNo });
+      if (order.status === "rejected") receiptEvents.push({ id: `po-${order.id}-rejected`, label: "Purchase Order Rejected", itemId: order.purchaseIndentItemId, at: null, actor: null, note: order.rejectionReason });
+    }
+    const timeline = buildPiTimeline({ ...indent, unlockedByName, items: deliveryItems }, transactions, audits, receiptEvents);
+    return { ...indent, items: deliveryItems.map(item => ({ ...item, timeline: timeline.filter(e => e.itemId === item.id) })), timeline, unlockedByName } as PurchaseIndentWithItems | undefined;
   }
 
   private async purchaseIndentRouteCorrectionRows(tx: any, itemIds?: number[]): Promise<PurchaseIndentRouteCorrection[]> {
@@ -15239,7 +15315,7 @@ export class DatabaseStorage implements IStorage {
     if (!existing) return undefined;
 
     return await db.transaction(async (tx) => {
-      const approvedAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+      const approvedAt = new Date().toISOString();
       const combinedRemarks = bypassReason
         ? `[BYPASS: ${bypassReason.toUpperCase()}]${remarks ? ` ${remarks.toUpperCase()}` : ""}`
         : remarks?.toUpperCase() || remarks;
@@ -15279,7 +15355,7 @@ export class DatabaseStorage implements IStorage {
         status: "rejected",
         rejectionReason: reason.toUpperCase(),
         approvedBy: rejectedBy.toUpperCase(),
-        approvedAt: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
+        approvedAt: new Date().toISOString(),
       })
       .where(eq(purchaseIndents.id, id));
 
@@ -15312,7 +15388,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     return await db.transaction(async (tx) => {
-      const verifiedAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+      const verifiedAt = new Date().toISOString();
 
       await tx.update(purchaseIndents)
         .set({
@@ -15349,7 +15425,7 @@ export class DatabaseStorage implements IStorage {
       throw new Error(`Cannot request stores bypass for an indent in '${existing.status}' status.`);
     }
 
-    const bypassedAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+    const bypassedAt = new Date().toISOString();
     await db.update(purchaseIndents)
       .set({
         storesStatus: "bypass_requested",
@@ -16318,7 +16394,7 @@ export class DatabaseStorage implements IStorage {
         throw new Error(`Item ${item.itemId} does not belong to indent ${id}`);
       }
     }
-    const orderedAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+    const orderedAt = new Date().toISOString();
     await db.transaction(async (tx) => {
       const [headerUpdated] = await tx.update(purchaseIndents)
         .set({ status: "ordered", orderedAt })
@@ -27057,9 +27133,9 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async getStoreItemsWithBalance(): Promise<Array<StoreItem & { balance: number }>> {
+  async getStoreItemsWithBalance(includeIds: number[] = []): Promise<Array<StoreItem & { balance: number }>> {
     const items = await db.select().from(storeItems)
-      .where(eq(storeItems.isActive, 1))
+      .where(includeIds.length ? or(eq(storeItems.isActive, 1), inArray(storeItems.id, includeIds)) : eq(storeItems.isActive, 1))
       .orderBy(asc(storeItems.category), asc(storeItems.name));
 
     // Exclude cancelled GRNs from received totals
