@@ -8,6 +8,9 @@ export interface DprCorrectionChange {
   oldValue: unknown;
   newValue: unknown;
   requiresApproval: boolean;
+  /** Server provenance; omitted by older correction history records. */
+  derived?: boolean;
+  rowLabel?: string;
 }
 
 export interface DprCorrectionReview {
@@ -55,6 +58,38 @@ export function correctionValue(value: unknown): string {
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "object") return JSON.stringify(value, null, 2);
   return String(value);
+}
+
+export type CorrectionDisposition = "Can save" | "Requires approval" | "Blocked";
+
+export function correctionDisposition(change: DprCorrectionChange, blocked: DprCorrectionReview["blocked"] = []): CorrectionDisposition {
+  return blocked.some(block => block.section === change.section && block.rowId === change.rowId
+    && (block.field === change.field || block.field === "row"))
+    ? "Blocked" : change.requiresApproval ? "Requires approval" : "Can save";
+}
+
+/** Group by stable row identity, never by display label (labels may repeat). */
+export function groupCorrectionChanges(changes: DprCorrectionChange[], blocked: DprCorrectionReview["blocked"] = []) {
+  const groups = new Map<string, {
+    key: string; label: string; section: string; changes: DprCorrectionChange[]; disposition: CorrectionDisposition;
+  }>();
+  for (const change of changes) {
+    const key = JSON.stringify([change.section, change.rowId]);
+    const disposition = correctionDisposition(change, blocked);
+    const group = groups.get(key);
+    if (group) {
+      group.changes.push(change);
+      if (change.rowLabel?.trim()) group.label = change.rowLabel;
+      if (disposition === "Blocked" || (disposition === "Requires approval" && group.disposition === "Can save")) {
+        group.disposition = disposition;
+      }
+    } else {
+      const sectionLabel = change.section === "progress" ? "Work item" : change.section === "equipment" ? "Equipment" : change.section;
+      groups.set(key, { key, section: change.section, label: change.rowLabel?.trim()
+        || (change.rowId == null ? "Report" : `${sectionLabel} #${change.rowId}`), changes: [change], disposition });
+    }
+  }
+  return Array.from(groups.values());
 }
 
 export function correctionCanSubmit(review: DprCorrectionReview | null, reason: string, confirmed: boolean): boolean {

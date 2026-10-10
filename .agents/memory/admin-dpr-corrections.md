@@ -17,6 +17,18 @@ Commercial or privileged changes require a different Administrator; approval
 of operational facts is not permission to rewrite stock, usage or paid bills.
 Financial adjustments require a separate reviewed action.
 
+Historical correction approval also covers missing or corrected equipment BOQ
+assignments and activity segments; these are not unconditional blockers.
+Clearing placeholder tank zeroes to null is an explicit correction, not a
+stock transaction. Geometry-derived changes must be identified in the review.
+
+**Why:** the user expanded the correction workflow to include these historical
+facts without inventing readings or disturbing paid bills and usage identities.
+
+**How to apply:** validate and normalize assignment segments using the shared
+clock-duration rules, preserve the parent equipment record, and show intentional
+and derived changes separately. Never invoke diesel/usage financial finalizers.
+
 **Why:** unlocking form controls alone leaves save-time lifecycle rejections; indiscriminately adopting all linked usage rows changes unrelated operational history.
 
 **How to apply:** authorize canonical corrections for exact changed usage IDs under transaction locks, never a transaction-wide boolean. Preserve machine/link identities; use explicit reasons and valid conversion metadata for measurement/unit overrides.

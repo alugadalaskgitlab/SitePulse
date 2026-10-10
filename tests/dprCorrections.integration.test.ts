@@ -143,3 +143,49 @@ it("rolls back correction and retains all evidence if its audit cannot be insert
   finally { await pg.exec("ALTER TABLE audit_logs DROP CONSTRAINT fail_correction_audit"); }
   expect(await db.select().from(schema.progressEntries).where(eq(schema.progressEntries.id, f.p.id))).toEqual(before);
 });
+it("DPR314: approves cleared placeholder tanks, assignments, layer and derived quantity; preserves log741/usage188 and paid bill48", async () => {
+  const f = await fixture();
+  await db.update(schema.dprs).set({ id: 314, boqProjectId: 77 }).where(eq(schema.dprs.id, f.id));
+  await db.update(schema.progressEntries).set({ dprId: 314, width: 2, thickness: 0.5, quantitySource: "calculated", boqItemId: 710 }).where(eq(schema.progressEntries.id, f.p.id));
+  await db.update(schema.equipmentLogs).set({ id: 741, dprId: 314, openingDiesel: 0, dieselBalanceInTank: 0, startTime: "08:00", endTime: "16:00" }).where(eq(schema.equipmentLogs.id, f.e.id));
+  await db.insert(schema.boqProjects).values({ id: 77, name: "FIXTURE PROJECT" });
+  await db.insert(schema.boqItems).values([{ id: 710, boqProjectId: 77, description: "Earthwork", unit: "CUM" }, { id: 711, boqProjectId: 77, description: "Second activity", unit: "CUM" }]);
+  await db.insert(schema.vendorBills).values({ id: 48, billNo: "FIX48", vendorName: "Fixture", billDate: "2026-08-29", billType: "equipment", status: "paid", totalAmount: "5850" });
+  await db.insert(schema.vendorBillItems).values({ id: 438, billId: 48, source: "auto:dpr_equipment:741", description: "Paid hire", qty: 6.5, amount: 5850 });
+  const saved = await db.query.dprs.findFirst({ where: eq(schema.dprs.id, 314), with: { progress: true, equipment: true, labour: true, materials: true, sitePurchases: true, structureItems: true } });
+  const source = ts.createSourceFile("SiteEdit.tsx", readFileSync("client/src/pages/SiteEdit.tsx", "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const fn = source.statements.find(n => ts.isFunctionDeclaration(n) && n.name?.text === "mapDprToFormState")!;
+  const js = ts.transpileModule(fn.getText(source).replace("export function", "function"), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const map = new Function("calculateLengthFromChainage", "normalizeExcavationMaterialOutcome", "hydrateCutFillConsumptions", "newEntryKey", "newLabourRowKey", "readLabourWorkerNames", `${js};return mapDprToFormState;`)(
+    calculateLengthFromChainage, normalizeExcavationMaterialOutcome, hydrateCutFillConsumptions, () => "fixture314", () => "worker314", (r: any) => r.workerNames);
+  const form = map(saved); form.structureItems = [];
+  Object.assign(form.progress[0], { chainageFrom: "1+100", chainageTo: "1+300", layerNo: 2, chainageOverrideReason: "Corrected lift and site register chainages" });
+  Object.assign(form.equipment[0], { openingDiesel: null, dieselBalanceInTank: null, boqItemId: 710,
+    activitySegments: [{ startTime: "08:00", endTime: "12:00", boqItems: [{ boqItemId: 710 }, { boqItemId: 711 }] }] });
+  const billBefore = await db.select().from(schema.vendorBills).where(eq(schema.vendorBills.id, 48));
+  const lineBefore = await db.select().from(schema.vendorBillItems).where(eq(schema.vendorBillItems.id, 438));
+  const review = await service.preview(314, JSON.parse(JSON.stringify(form)), author);
+  expect(review.blocked).toEqual([]);
+  expect(review.changes).toContainEqual(expect.objectContaining({ field: "quantity", newValue: 200, derived: true }));
+  expect(review.changes).toContainEqual(expect.objectContaining({ field: "activitySegments", requiresApproval: true }));
+  const pending: any = await service.submit(314, { form, baseHash: review.baseHash, reason: "Verified contemporaneous site register", confirmImpact: true }, author);
+  expect(pending.pending).toBe(true);
+  await service.decide(314, pending.requestId, { approve: true, reason: "Reviewed register and financial impact", confirmImpact: true }, admin);
+  const [equipment] = await db.select().from(schema.equipmentLogs).where(eq(schema.equipmentLogs.id, 741));
+  expect(equipment).toMatchObject({ plantUsageId: 188, hoursWorked: 6.5, openingReading: 18147.8, closingReading: 18154.3, openingDiesel: null, dieselBalanceInTank: null, diesel: 20 });
+  const segments = await db.select().from(schema.equipmentActivitySegments).where(eq(schema.equipmentActivitySegments.equipmentLogId, 741));
+  expect(segments).toHaveLength(1); expect(segments[0].hoursWorked).toBe(4);
+  expect(await db.select().from(schema.vendorBills).where(eq(schema.vendorBills.id, 48))).toEqual(billBefore);
+  expect(await db.select().from(schema.vendorBillItems).where(eq(schema.vendorBillItems.id, 438))).toEqual(lineBefore);
+  expect(await db.select().from(schema.equipmentUsage)).toHaveLength(0);
+  expect(await db.select().from(schema.stockLedger)).toHaveLength(0);
+  const invalid = structuredClone(form);
+  invalid.equipment[0].activitySegments.push({ startTime: "11:00", endTime: "13:00", boqItems: [{ boqItemId: 710 }] });
+  expect((await service.preview(314, invalid, author)).blocked.some(b => b.field === "activitySegments")).toBe(true);
+  const foreign = structuredClone(form);
+  foreign.equipment[0].activitySegments[0].boqItems = [{ boqItemId: 999999 }];
+  expect((await service.preview(314, foreign, author)).blocked.some(b => b.message.includes("saved project"))).toBe(true);
+  const duration = structuredClone(form);
+  duration.equipment[0].activitySegments = [{ startTime: "08:00", endTime: "16:30", boqItems: [{ boqItemId: 710 }] }];
+  expect((await service.preview(314, duration, author)).blocked.some(b => b.field === "activitySegments")).toBe(true);
+});

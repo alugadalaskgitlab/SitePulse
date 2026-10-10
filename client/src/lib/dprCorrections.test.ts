@@ -1,12 +1,35 @@
 import { describe, expect, it } from "vitest";
-import { canReviewCorrection, correctionCanSubmit, correctionErrorMessage, correctionValue, snapshotCorrectionForm, type DprCorrectionForm, type DprCorrectionRequest, type DprCorrectionReview } from "./dprCorrections";
+import { canReviewCorrection, correctionCanSubmit, correctionDisposition, correctionErrorMessage, correctionValue, groupCorrectionChanges, snapshotCorrectionForm, type DprCorrectionForm, type DprCorrectionRequest, type DprCorrectionReview } from "./dprCorrections";
 import { computeEquipmentFuelSummary } from "@/lib/equipmentUsage";
+import { validateDieselTankBalance } from "@shared/dieselEntryValidation";
 
 const review: DprCorrectionReview = {
   baseHash: "saved-facts-7", revision: 7, blocked: [], requiresApproval: false, impact: [],
   changes: [{ section: "progress", rowId: 28, field: "chainageTo", oldValue: "2+275", newValue: "2+248", requiresApproval: false }],
 };
 describe("historical DPR correction UI contracts", () => {
+  it("groups duplicate display labels by identity and gives integrity blocks precedence", () => {
+    const changes = [
+      { ...review.changes[0], rowLabel: "Subgrade" },
+      { ...review.changes[0], field: "quantity", derived: true, rowLabel: "Subgrade", requiresApproval: true },
+      { ...review.changes[0], rowId: 29, rowLabel: "Subgrade" },
+    ];
+    expect(groupCorrectionChanges(changes).map(group => group.disposition)).toEqual(["Requires approval", "Can save"]);
+    const blocked = [{ section: "progress", rowId: 28, field: "row", message: "Referenced row cannot be removed" }];
+    expect(groupCorrectionChanges(changes, blocked)[0].disposition).toBe("Blocked");
+    expect(correctionDisposition(changes[0], blocked)).toBe("Blocked");
+  });
+  it("retains ordinary entry requirements for positive plant-stock diesel", () => {
+    expect(validateDieselTankBalance({
+      dieselSource: "plant_stock", openingDiesel: null, diesel: 3, dieselBalanceInTank: 0,
+    }, "Roller")).toBeTruthy();
+    expect(validateDieselTankBalance({
+      dieselSource: "plant_stock", openingDiesel: 0, diesel: 3, dieselBalanceInTank: -1,
+    }, "Roller")).toBeTruthy();
+    expect(validateDieselTankBalance({
+      dieselSource: "plant_stock", openingDiesel: 0, diesel: 3, dieselBalanceInTank: 0,
+    }, "Roller")).toBeNull();
+  });
   it("retains every raw row, null, genuine zero and dangling canonical reference without filtering", () => {
     const form: DprCorrectionForm = {
       header: { remarks: "", boqProjectId: null }, workType: "road", structureItems: [{ itemOfWork: "unused form default" }],

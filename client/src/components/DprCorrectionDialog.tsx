@@ -7,24 +7,33 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import { correctionCanSubmit, correctionValue, type DprCorrectionChange, type DprCorrectionReview } from "@/lib/dprCorrections";
+import { correctionCanSubmit, correctionDisposition, correctionValue, groupCorrectionChanges, type DprCorrectionChange, type DprCorrectionReview } from "@/lib/dprCorrections";
 import "./dpr-corrections.css";
 
 export function CorrectionChanges({ changes, blocked = [] }: { changes: DprCorrectionChange[]; blocked?: DprCorrectionReview["blocked"] }) {
+  const groups = groupCorrectionChanges(changes, blocked);
+  const dispositionClass = (value: string) => value === "Blocked" ? "border-destructive text-destructive"
+    : value === "Requires approval" ? "border-amber-300 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900";
   return <div className="dpr-correction-list">
-    {changes.map((change, index) => <article key={`${change.section}-${change.rowId}-${change.field}-${index}`} className="rounded-lg border bg-card p-3" data-testid="correction-change">
+    {groups.map(group => <details key={group.key} className="dpr-correction-group rounded-lg border bg-card" data-testid="correction-group">
+      <summary>
+        <span className="ml-1 text-sm font-semibold">{group.label}</span>
+        <span className="ml-2 text-xs text-muted-foreground">{group.changes.length} change{group.changes.length === 1 ? "" : "s"} · {group.changes.filter(change => !change.derived).length} intentional · {group.changes.filter(change => change.derived).length} derived</span>
+        <Badge variant="outline" className={`ml-2 ${dispositionClass(group.disposition)}`}>{group.disposition}</Badge>
+        <span className="mt-1 block text-xs text-muted-foreground">{group.section} · Expand to review recorded and proposed facts</span>
+      </summary>
+      <div className="space-y-3 p-3">{group.changes.map((change, index) => <article key={`${change.field}-${index}`} className="rounded-lg border bg-card p-3" data-testid="correction-change">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <h4 className="text-sm font-semibold">{change.section} · {change.rowId == null ? "Report" : `Row #${change.rowId}`} · {change.field}</h4>
-        <Badge variant="outline" className={blocked.some(block => block.section === change.section && block.rowId === change.rowId && block.field === change.field) ? "border-destructive text-destructive" : change.requiresApproval ? "border-amber-300 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}>
-          {blocked.some(block => block.section === change.section && block.rowId === change.rowId && block.field === change.field) ? "Blocked" : change.requiresApproval ? "Requires approval" : "Permitted immediately"}
-        </Badge>
+        <h4 className="text-sm font-semibold">{change.field}</h4>
+        <div className="flex flex-wrap gap-2"><Badge variant="outline">{change.derived ? "Automatically derived" : "Intentional change"}</Badge>
+          <Badge variant="outline" className={dispositionClass(correctionDisposition(change, blocked))}>{correctionDisposition(change, blocked)}</Badge></div>
       </div>
       <div className="grid gap-2 text-sm sm:grid-cols-[1fr_auto_1fr]">
         <div><p className="mb-1 text-xs text-muted-foreground">Recorded value</p><div className="dpr-correction-value rounded bg-muted/50 p-2">{correctionValue(change.oldValue)}</div></div>
         <ArrowRight className="hidden h-4 w-4 self-center text-muted-foreground sm:block" />
         <div><p className="mb-1 text-xs text-muted-foreground">Proposed value</p><div className="dpr-correction-value rounded border p-2 font-medium">{correctionValue(change.newValue)}</div></div>
       </div>
-    </article>)}
+    </article>)}</div></details>)}
   </div>;
 }
 

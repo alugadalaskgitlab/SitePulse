@@ -133,10 +133,10 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
   const assignmentKey = JSON.stringify((row.activitySegments ?? []).map(({ startTime, endTime, boqItems }) => ({ startTime, endTime, boqItems: boqItems.map(({ boqItemId, programmeBarId }) => ({ boqItemId, programmeBarId })) })));
   const provenance = row[resourceSuggestion];
   useEffect(() => {
-    if (!editable || !suggestNewRow || row.resourceScope === "general" || row.persistedId != null || provenance === "manual") return;
+    if (historicalCorrection || !editable || !suggestNewRow || row.resourceScope === "general" || row.persistedId != null || provenance === "manual") return;
     if (provenance !== "suggested" && (row.activitySegments?.length || row.activityAllocations?.length || row.boqItemId != null)) return;
     if (suggestionKey !== assignmentKey) assignmentCallback.current?.(JSON.parse(suggestionKey), "suggestion");
-  }, [editable, suggestNewRow, row.resourceScope, row.persistedId, provenance, row.activitySegments?.length, row.activityAllocations?.length, row.boqItemId, suggestionKey, assignmentKey]);
+  }, [historicalCorrection, editable, suggestNewRow, row.resourceScope, row.persistedId, provenance, row.activitySegments?.length, row.activityAllocations?.length, row.boqItemId, suggestionKey, assignmentKey]);
   const continuityAppliedFor = useRef<string | null>(null);
   const readingContinuityAppliedFor = useRef<string | null>(null);
   const closingReadingEdited = useRef(false);
@@ -258,7 +258,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
     const usageStatus = value === "unspecified" ? null : value as DprEquipmentFields["usageStatus"];
     const idle = usageStatus === "idle_no_work" || usageStatus === "idle_no_operator";
     const patch: Partial<DprEquipmentFields> = { usageStatus };
-    if (idle || usageStatus === "breakdown") {
+    if (!historicalCorrection && (idle || usageStatus === "breakdown")) {
       if (row.closingReading == null && row.openingReading != null && !closingReadingEdited.current) patch.closingReading = row.openingReading;
       if (row.diesel == null && !dieselIssuedEdited.current && !linkedSourceLocked) patch.diesel = 0;
       if (!historicalCorrection && isPlantStock && row.dieselBalanceInTank == null && row.openingDiesel != null && !closingTankEdited.current) patch.dieselBalanceInTank = row.openingDiesel;
@@ -393,8 +393,8 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
              <Detail label="Diesel Issued / Added" value={`${number(row.diesel)} L`} />
              <Detail label="Diesel Source" value={dash(row.dieselSource).replace("_", " ")} />
              {isPlantStock && <>
-               <Detail label="Opening Tank (L)" value={`${number(row.openingDiesel)} L`} />
-               <Detail label="Closing Tank / Physical Dip (L)" value={`${number(row.dieselBalanceInTank)} L`} />
+               <Detail label="Opening Tank (L)" value={row.openingDiesel == null ? "Not recorded" : `${number(row.openingDiesel)} L`} />
+               <Detail label="Closing Tank / Physical Dip (L)" value={row.dieselBalanceInTank == null ? "Not recorded" : `${number(row.dieselBalanceInTank)} L`} />
                <Detail label="Physical Tank Balance" value={row.dieselBalanceConfirmed ? "Confirmed" : tankKnown ? "Pending confirmation" : "—"} emphasis />
              </>}
            </>}
@@ -404,7 +404,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
           <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
            {isPlantStock && <>
              <div className="col-span-full border-t border-slate-200 pt-3 dark:border-slate-700"><SectionHeading><span className="flex items-center gap-2"><Droplets className="h-4 w-4 text-amber-700 dark:text-amber-400" /> Fuel Performance</span></SectionHeading></div>
-             <Detail label="Actual Consumed" value={fuel.actualConsumed == null ? "Awaiting tank dip" : `${number(fuel.actualConsumed)} L`} emphasis />
+             <Detail label="Actual Consumed" value={fuel.actualConsumed == null ? historicalCorrection ? "Not recorded" : "Awaiting tank dip" : `${number(fuel.actualConsumed)} L`} emphasis />
              <Detail label="Expected" value={fuel.expectedDiesel == null ? "—" : `${number(fuel.expectedDiesel)} L`} />
              <Detail label="Variance" value={fuel.variance == null ? "—" : `${fuel.variance > 0 ? "+" : ""}${number(fuel.variance)} L`} emphasis />
              <Detail label={hasConfirmedActualRate ? "Actual Consumption Rate · from confirmed tank dip" : "Expected Consumption Rate · from norm, actual unavailable"} value={hasConfirmedActualRate ? `${number(fuel.actualRate)} ${fuel.actualRateUnit}` : consumptionNorm == null ? "—" : `${number(consumptionNorm)} ${consumptionNormUnit}`} emphasis />

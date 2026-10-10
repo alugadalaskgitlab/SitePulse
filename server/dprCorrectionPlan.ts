@@ -2,7 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import { parseChainageKm } from "../shared/barSide";
 import { computeEquipmentUsage, isMeaningfulEquipmentRow } from "../shared/equipmentUsage";
 import { isFilledLabourRow } from "../shared/labourEntry";
-import { validateEquipmentActivityAllocations, validateEquipmentActivitySegments } from "../shared/equipmentActivityAllocations";
+import { validateEquipmentActivityAllocations, validateEquipmentActivitySegments, resolveEquipmentAllocationParentHours, groupLegacyEquipmentActivityAllocations } from "../shared/equipmentActivityAllocations";
 import { normalizeExcavationMaterialOutcome } from "../shared/cutFillReconciliation";
 import { calculateLengthFromChainage } from "../shared/dprGeometry";
 
@@ -25,7 +25,7 @@ const defaults: Record<string, any> = {
 };
 const nullable = (v: any): any => v === "" || v == null ? null : Array.isArray(v) ? v.map(nullable) : v;
 const same = (a: any, b: any) => isDeepStrictEqual(nullable(a), nullable(b));
-export type CorrectionChange = { section: string; rowId: number; field: string; oldValue: any; newValue: any; requiresApproval: boolean };
+export type CorrectionChange = { section: string; rowId: number; field: string; oldValue: any; newValue: any; requiresApproval: boolean; derived?: boolean; rowLabel?: string };
 export type CorrectionBlock = { section: string; rowId: number; field: string; message: string };
 export function correctionError(message: string, status = 409): never {
   throw Object.assign(new Error(message), { code: "DPR_CORRECTION_CONFLICT", status });
@@ -95,6 +95,7 @@ export function planDprCorrection(saved: any, form: any) {
         return;
       }
       ids.add(old.id);
+      const values: any = {};
       const extra = new Set(["persistedId", "entryKey", "editCreationKey", "isNew", "workAssignmentEdited", "activitySegments", "activityAllocations", "breakdowns", "allocations"]);
       for (const key of Object.keys(row)) {
         if (!correctionFields[section].includes(key) && !extra.has(key)) block(section, old.id, key, "Unknown submitted field; reload the current editor.");
@@ -107,10 +108,24 @@ export function planDprCorrection(saved: any, form: any) {
         const project = (v: any): any => Array.isArray(v) ? v.map(project) : v && typeof v === "object"
           ? Object.fromEntries(Object.entries(v).filter(([k]) => !["id", "persistedId", "equipmentLogId", "segmentId", "dprId", "createdAt", "updatedAt"].includes(k)).map(([k, x]) => [k, project(x)]))
           : nullable(v);
-        if (!same(project(row[key]), project(old[key] ?? []))) block(section, old.id, key, "Child assignments, stoppages or cut/fill allocations changed. Correct them in their dedicated reviewed workflow; this save retains existing evidence.");
+        if (section === "equipment" && ["activitySegments", "activityAllocations"].includes(key)) {
+          if (key === "activityAllocations" && Array.isArray(row.activitySegments) && row.activitySegments.length) continue;
+          if (key === "activitySegments" && !row[key].length && row.activityAllocations?.length) continue;
+          if (same(project(row[key]), project(old[key] ?? []))) continue;
+          try {
+            const parent = { ...old, ...row };
+            const segments = key === "activitySegments" ? row[key] : groupLegacyEquipmentActivityAllocations(row[key]);
+            const proposed = validateEquipmentActivitySegments(segments, resolveEquipmentAllocationParentHours(parent), parent).segments;
+            const existing = old.activitySegments?.length ? old.activitySegments : groupLegacyEquipmentActivityAllocations(old.activityAllocations ?? []);
+            // Persist only real normalized assignment changes, not hydration IDs.
+            if (!same(project(proposed), project(existing))) {
+              values.activitySegments = proposed;
+              changes.push({ section, rowId: old.id, field: "activitySegments", oldValue: project(existing), newValue: proposed, requiresApproval: true });
+            }
+          } catch (error: any) { block(section, old.id, key, error.message); }
+        } else if (!same(project(row[key]), project(old[key] ?? []))) block(section, old.id, key, "Stoppage or cut/fill evidence changed. Review it in its dedicated workflow; this save retains existing evidence.");
       }
       if (old.entryKey && row.entryKey && row.entryKey !== old.entryKey) block(section, old.id, "entryKey", "Photo/progress identity cannot change.");
-      const values: any = {};
       for (const field of correctionFields[section]) {
         // Optional omitted fields represent no intent; the UI sends explicit
         // null when a measured value is deliberately cleared.
@@ -152,6 +167,7 @@ export function planDprCorrection(saved: any, form: any) {
       else {
         const target = candidate[section].find((x: any) => x.id === old.id);
         Object.assign(target, values);
+        if (section === "equipment" && Object.hasOwn(values, "activitySegments")) target.activityAllocations = undefined;
         if (section === "progress" && Object.keys(values).some(k => ["chainageFrom", "chainageTo"].includes(k))) {
           values.chainageFromKm = parseChainageKm(target.chainageFrom);
           values.chainageToKm = parseChainageKm(target.chainageTo);
@@ -179,15 +195,15 @@ export function planDprCorrection(saved: any, form: any) {
               const next = computed[field] ?? null;
               if (!same(next, old[field])) {
                 const existing = changes.find(c => c.section === section && c.rowId === old.id && c.field === field);
-                if (existing) existing.newValue = next;
-                else changes.push({ section, rowId: old.id, field, oldValue: old[field] ?? null, newValue: next, requiresApproval: true });
+                if (existing) { existing.newValue = next; existing.derived = true; }
+                else changes.push({ section, rowId: old.id, field, oldValue: old[field] ?? null, newValue: next, requiresApproval: true, derived: true });
                 values[field] = next;
                 target[field] = next;
               }
             }
             try {
-              if (target.activitySegments?.length) validateEquipmentActivitySegments(target.activitySegments, target.hoursWorked, target);
-              else if (target.activityAllocations?.length) validateEquipmentActivityAllocations(target.activityAllocations, target.hoursWorked, target);
+              if (target.activitySegments?.length) validateEquipmentActivitySegments(target.activitySegments, resolveEquipmentAllocationParentHours(target), target);
+              else if (target.activityAllocations?.length) validateEquipmentActivityAllocations(target.activityAllocations, resolveEquipmentAllocationParentHours(target), target);
             } catch (error: any) {
               block(section, old.id, "activitySegments", error.message);
             }

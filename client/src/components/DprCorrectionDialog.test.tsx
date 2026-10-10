@@ -2,7 +2,7 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { DprCorrectionDialog } from "./DprCorrectionDialog";
+import { CorrectionChanges, DprCorrectionDialog } from "./DprCorrectionDialog";
 import { DprCorrectionHistory } from "./DprCorrectionHistory";
 import type { DprCorrectionRequest, DprCorrectionReview } from "@/lib/dprCorrections";
 
@@ -15,12 +15,28 @@ const review: DprCorrectionReview = {
 const props = { open: true, dprId: 427, review, loading: false, saving: false, onClose: vi.fn(), onRetry: vi.fn(), onSubmit: vi.fn() };
 
 describe("DPR correction review dialog", () => {
+  it("groups by stable work/equipment identity with expandable intentional and derived facts", () => {
+    render(<CorrectionChanges changes={[
+      { ...review.changes[0], rowLabel: "Subgrade · 2+100–2+248" },
+      { ...review.changes[0], rowLabel: "Subgrade · 2+100–2+248", field: "quantity", oldValue: 175, newValue: 148, derived: true },
+      { section: "equipment", rowId: 741, rowLabel: "Tandem Roller · TS-09-EL-4267", field: "activitySegments", oldValue: [], newValue: [{ startTime: "07:35", endTime: "14:05", boqItems: [{ boqItemId: 28 }] }], requiresApproval: true },
+    ]} />);
+    const groups = screen.getAllByTestId("correction-group") as HTMLDetailsElement[];
+    expect(groups).toHaveLength(2);
+    expect(groups[0].open).toBe(false);
+    fireEvent.click(screen.getByText("Subgrade · 2+100–2+248"));
+    expect(groups[0].open).toBe(true);
+    expect(screen.getByText("Automatically derived")).toBeTruthy();
+    expect(screen.getAllByText("Intentional change")).toHaveLength(2);
+    expect(screen.getByText("Tandem Roller · TS-09-EL-4267")).toBeTruthy();
+    expect(screen.getByText(/2 changes · 1 intentional · 1 derived/)).toBeTruthy();
+  });
   it("shows exact old/new facts and requires a reason and explicit consequence confirmation", () => {
     const onSubmit = vi.fn();
     render(<DprCorrectionDialog {...props} onSubmit={onSubmit} />);
     expect(screen.getByText("2+275")).toBeTruthy();
     expect(screen.getByText("2+248")).toBeTruthy();
-    expect(screen.getByText("Permitted immediately")).toBeTruthy();
+    expect(screen.getAllByText("Can save")).toHaveLength(2);
     const submit = screen.getByRole("button", { name: "Confirm & save correction" }) as HTMLButtonElement;
     expect(submit.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText("Correction reason (required)"), { target: { value: "Site register rechecked" } });
@@ -37,7 +53,7 @@ describe("DPR correction review dialog", () => {
     expect(screen.getAllByText("Not recorded")).toHaveLength(2);
     expect(screen.getByText("0")).toBeTruthy();
     expect(screen.getByText("07:35")).toBeTruthy();
-    expect(screen.getAllByText("Requires approval")).toHaveLength(2);
+    expect(screen.getAllByText("Requires approval")).toHaveLength(3);
     expect(screen.getByRole("button", { name: "Submit for approval" })).toBeTruthy();
     expect(screen.getByRole("status").textContent).toContain("recorded DPR remains unchanged");
   });

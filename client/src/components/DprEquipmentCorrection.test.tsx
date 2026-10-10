@@ -43,6 +43,26 @@ describe("submitted DPR historical equipment observations", () => {
     expect(onChange).not.toHaveBeenCalled();
     expect((screen.getByTestId("equipment-compact-opening-meter-0") as HTMLInputElement).value).toBe("");
   });
+  it("allows clearing placeholder tank zeroes to null without inferred consumption", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<DprEquipmentCompact row={{ ...row, openingDiesel: 0, dieselBalanceInTank: 0 }} historicalCorrection onChange={onChange} />);
+    fireEvent.change(screen.getByTestId("equipment-compact-opening-tank-0"), { target: { value: "" } });
+    expect(onChange).toHaveBeenLastCalledWith({ openingDiesel: null });
+    fireEvent.change(screen.getByTestId("equipment-compact-closing-tank-0"), { target: { value: "" } });
+    expect(onChange).toHaveBeenLastCalledWith({ dieselBalanceInTank: null });
+    rerender(<DprEquipmentCompact row={row} historicalCorrection editable={false} />);
+    expect(screen.getAllByText("Not recorded")).toHaveLength(3);
+    expect(screen.queryByText("12.00 L", { selector: ".font-bold" })).toBeNull();
+    expect(screen.getByText(/actual unavailable/)).toBeTruthy();
+  });
+  it("keeps historical assignments editable even with a dangling canonical usage reference", () => {
+    const onWorkAssignmentChange = vi.fn();
+    render(<DprEquipmentCompact row={{ ...row, resourceScope: null }} historicalCorrection onWorkAssignmentChange={onWorkAssignmentChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Assign Item" }));
+    expect(onWorkAssignmentChange).toHaveBeenCalledWith([
+      { startTime: "", endTime: "", boqItems: [{ boqItemId: 0, programmeBarId: null }] },
+    ], "manual");
+  });
   it("shows actual consumption as unavailable if either tank observation is absent", () => {
     render(<DprEquipmentCompact row={{ ...row, dieselBalanceInTank: 0 }} editable={false} />);
     expect(screen.getByText("Awaiting tank dip")).toBeTruthy();

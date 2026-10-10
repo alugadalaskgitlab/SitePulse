@@ -4,10 +4,12 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   dprs, progressEntries, equipmentLogs, labourLogs, materialLogs, sitePurchases,
   dprStructureItems, auditLogs, editPermissionRequests, equipmentMaintenanceLogs,
-  cutFillConsumptions, vendorBillItems, vendorBills, equipmentMaster,
+  cutFillConsumptions, vendorBillItems, vendorBills, equipmentMaster, equipmentActivitySegments,
+  equipmentActivitySegmentBoqItems, equipmentActivityAllocations, boqItems, workProgramBars,
 } from "../shared/schema";
 import { readWorkerNames, replaceLabourWorkers } from "./labourWorkers";
 import { correctionError, correctionFields, needsApproval, planDprCorrection } from "./dprCorrectionPlan";
+import { calculateLengthFromChainage, geometryQtyForRow } from "../shared/dprGeometry";
 
 const tables: Record<string, any> = { header: dprs, progress: progressEntries, equipment: equipmentLogs, labour: labourLogs, materials: materialLogs, sitePurchases, structureItems: dprStructureItems };
 export const correctionHash = (value: any) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -79,6 +81,45 @@ export function dprCorrectionService(database: any, validate: Validate) {
   }
   async function review(tx: any, saved: any, form: any, actor: Actor) {
     const plan = planDprCorrection(saved, form);
+    const setDerived = (row: any, field: string, value: any) => {
+      const old = saved.progress.find((p: any) => p.id === row.id);
+      if (value == null) return;
+      row[field] = value;
+      let patch = plan.patches.progress.find(p => p.id === row.id);
+      if (!patch) { patch = { id: row.id, values: {} }; plan.patches.progress.push(patch); }
+      patch.values[field] = value;
+      const existing = plan.changes.find(c => c.section === "progress" && c.rowId === row.id && c.field === field);
+      if (existing) { existing.newValue = value; existing.derived = true; }
+      else if (old[field] !== value) plan.changes.push({ section: "progress", rowId: row.id, field, oldValue: old[field] ?? null, newValue: value, requiresApproval: needsApproval("progress", field), derived: true });
+    };
+    for (const row of plan.candidate.progress) {
+      const fields = plan.changes.filter(c => c.section === "progress" && c.rowId === row.id).map(c => c.field);
+      if (!fields.some(f => ["chainageFrom", "chainageTo", "length", "width", "thickness", "boqItemId"].includes(f)) || row.noSiteWork) continue;
+      if (fields.some(f => ["chainageFrom", "chainageTo"].includes(f)) && !row.lengthOverrideReason?.trim()) {
+        setDerived(row, "length", calculateLengthFromChainage(row.chainageFrom ?? "", row.chainageTo ?? ""));
+      }
+      const item = row.boqItemId != null ? (await tx.select().from(boqItems).where(eq(boqItems.id, row.boqItemId)))[0] : undefined;
+      const qty = geometryQtyForRow(row, item ?? { unit: row.uom });
+      if (qty != null && row.quantitySource !== "manual") {
+        setDerived(row, "quantity", qty);
+        setDerived(row, "quantitySource", "calculated");
+      }
+    }
+    for (const patch of plan.patches.equipment) {
+      if (!Object.hasOwn(patch.values, "activitySegments")) continue;
+      for (const segment of patch.values.activitySegments) {
+        for (const link of segment.boqItems) {
+          const [item] = await tx.select().from(boqItems).where(eq(boqItems.id, link.boqItemId));
+          if (!item || saved.boqProjectId == null || item.boqProjectId !== saved.boqProjectId) {
+            plan.blocked.push({ section: "equipment", rowId: patch.id, field: "activitySegments", message: `BOQ #${link.boqItemId} must belong to the DPR's saved project.` });
+          }
+          if (link.programmeBarId != null) {
+            const [bar] = await tx.select().from(workProgramBars).where(eq(workProgramBars.id, link.programmeBarId));
+            if (!bar || bar.boqProjectId !== saved.boqProjectId || bar.boqItemId !== link.boqItemId) plan.blocked.push({ section: "equipment", rowId: patch.id, field: "activitySegments", message: "The assignment's programme bar must belong to its BOQ item and project." });
+          }
+        }
+      }
+    }
     for (const change of plan.changes) {
       if (change.section === "progress" && ["quantity", "reusableQty", "materialOutcome", "boqItemId", "earthworkArrangementId"].includes(change.field)
           && [...saved.correctionCutFillLinks, ...saved.correctionCutFillSourceLinks].some(l => l.fillProgressEntryId === change.rowId || l.sourceProgressEntryId === change.rowId)) {
@@ -87,7 +128,7 @@ export function dprCorrectionService(database: any, validate: Validate) {
     }
     for (const [section, patches] of Object.entries(plan.patches)) {
       for (const patch of patches) {
-        const { workerNames, ...values } = patch.values;
+        const { workerNames, activitySegments, ...values } = patch.values;
         const parsed = createInsertSchema(tables[section]).partial().safeParse(values);
         if (!parsed.success) for (const issue of parsed.error.issues) plan.blocked.push({
           section, rowId: patch.id, field: issue.path.join("."), message: issue.message,
@@ -110,8 +151,8 @@ export function dprCorrectionService(database: any, validate: Validate) {
             for (const field of correctionFields[section]) {
               if (JSON.stringify(row[field]) === JSON.stringify(before?.[field])) continue;
               const existing = plan.changes.find(c => c.section === section && c.rowId === row.id && c.field === field);
-              if (existing) existing.newValue = row[field] ?? null;
-              else plan.changes.push({ section, rowId: row.id, field, oldValue: saved[section].find((r: any) => r.id === row.id)?.[field] ?? null, newValue: row[field] ?? null, requiresApproval: needsApproval(section, field) });
+              if (existing) { existing.newValue = row[field] ?? null; existing.derived = true; }
+              else plan.changes.push({ section, rowId: row.id, field, oldValue: saved[section].find((r: any) => r.id === row.id)?.[field] ?? null, newValue: row[field] ?? null, requiresApproval: needsApproval(section, field), derived: true });
               let patch = plan.patches[section].find(p => p.id === row.id);
               if (!patch) { patch = { id: row.id, values: {} }; plan.patches[section].push(patch); }
               patch.values[field] = row[field] ?? null;
@@ -123,6 +164,12 @@ export function dprCorrectionService(database: any, validate: Validate) {
         if (!error?.message) throw error;
         plan.blocked.push({ section: error.correctionSection ?? "validation", rowId: error.correctionRowId ?? saved.id, field: error.correctionField ?? "changedRows", message: error.message });
       }
+    }
+    plan.changes = plan.changes.filter(c => JSON.stringify(c.oldValue) !== JSON.stringify(c.newValue));
+    plan.requiresApproval = plan.changes.some(c => c.requiresApproval);
+    for (const change of plan.changes) {
+      const row = change.section === "header" ? saved : saved[change.section]?.find((r: any) => r.id === change.rowId);
+      change.rowLabel = row?.machine || row?.activity || row?.itemOfWork || `${change.section} #${change.rowId}`;
     }
     const impact: string[] = [];
     if (plan.requiresApproval) {
@@ -154,7 +201,17 @@ export function dprCorrectionService(database: any, validate: Validate) {
     }
     for (const [section, patches] of Object.entries(review.patches) as [string, any[]][]) {
       for (const patch of patches) {
-        const { workerNames, ...values } = patch.values;
+        const { workerNames, activitySegments, ...values } = patch.values;
+        if (section === "equipment" && activitySegments !== undefined) {
+          const previous = await tx.select({ id: equipmentActivitySegments.id }).from(equipmentActivitySegments).where(eq(equipmentActivitySegments.equipmentLogId, patch.id));
+          if (previous.length) await tx.delete(equipmentActivitySegmentBoqItems).where(inArray(equipmentActivitySegmentBoqItems.segmentId, previous.map((s: any) => s.id)));
+          await tx.delete(equipmentActivitySegments).where(eq(equipmentActivitySegments.equipmentLogId, patch.id));
+          await tx.delete(equipmentActivityAllocations).where(eq(equipmentActivityAllocations.equipmentLogId, patch.id));
+          for (const segment of activitySegments) {
+            const [inserted] = await tx.insert(equipmentActivitySegments).values({ equipmentLogId: patch.id, startTime: segment.startTime, endTime: segment.endTime, hoursWorked: segment.hoursWorked }).returning();
+            if (segment.boqItems.length) await tx.insert(equipmentActivitySegmentBoqItems).values(segment.boqItems.map((link: any) => ({ ...link, segmentId: inserted.id })));
+          }
+        }
         if (Object.keys(values).length) await tx.update(tables[section]).set(values).where(eq(tables[section].id, patch.id));
         if (section === "labour" && workerNames !== undefined) await replaceLabourWorkers(tx, [{ id: patch.id }], [{ workerNames }]);
       }

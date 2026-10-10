@@ -556,16 +556,12 @@ describe("Task #1433 remaining public and maintenance writers", () => {
     expect(method).toContain("if (err instanceof InsufficientPlantStockError) throw err");
   });
 
-  it("excludes exact Diesel/HSD and unverified materials from orphan-adjustment startup cleanup", () => {
+  it("does not run the retired orphan-adjustment ledger cleanup during startup", () => {
     const src = require("fs").readFileSync("server/index.ts", "utf8");
-    const marker = src.indexOf("fixOrphanAdjustmentLedger");
-    const statementStart = src.lastIndexOf("UPDATE stock_ledger", marker);
-    const statement = src.slice(statementStart, marker);
-    expect(statementStart).toBeGreaterThan(0);
-    expect(statement).toContain("EXISTS (");
-    expect(statement).toContain("pm.id = stock_ledger.material_id");
-    expect(statement).toContain("UPPER(TRIM(pm.name)) NOT IN ('DIESEL', 'HSD')");
-    expect(statement.indexOf("UPPER(TRIM(pm.name))")).toBeLessThan(statement.indexOf("`);"));
+    // Startup no longer contains this historical SQL. Guard its removal,
+    // rather than searching for the safeguards in a nonexistent statement.
+    expect(src).not.toContain("fixOrphanAdjustmentLedger");
+    expect(src).not.toContain("UPDATE stock_ledger");
   });
 
   it("keeps the Task #427 script as a secured storage delegation only", () => {
@@ -663,8 +659,8 @@ describe("Task #1433 generic ledger mutation boundaries", () => {
 
 describe("Task #1433 DPR invalid-source route audit", () => {
   it.each([
-    ['app.patch("/api/dprs/:id/draft"', 'app.post("/api/dprs/:id/submit"'],
-    ['app.post("/api/dprs/:id/submit"', "// Export all data"],
+    ['app.patch("/api/dprs/:id/draft"', 'app.post(["/api/dprs/:id/submit"'],
+    ['app.post(["/api/dprs/:id/submit"', "// Export all data"],
     ['app.post("/api/dprs/:id/version"', 'app.post("/api/dprs/:id/clone"'],
     ['app.post("/api/dprs/:id/clone"', 'app.delete("/api/dprs/:id"'],
   ])("maps InvalidDieselSourceError in mutation block %s", (startMarker, endMarker) => {

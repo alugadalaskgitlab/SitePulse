@@ -11,3 +11,17 @@
   max-height: 90dvh;
   overflow-y: auto;
 }
+.dpr-correction-group > summary {
+  cursor: pointer;
+  padding: 0.875rem;
+  border-radius: 0.5rem;
+  background: hsl(var(--muted) / 0.35);
+}
+.dpr-correction-group > summary:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+.dpr-correction-group[open] > summary {
+  border-bottom: 1px solid hsl(var(--border));
+  border-radius: 0.5rem 0.5rem 0 0;
+}

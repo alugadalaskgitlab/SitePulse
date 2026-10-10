@@ -1,0 +1,75 @@
+# DPR-CORRECTION-02 — Complete Historical DPR Corrections
+
+Review the implemented DPR-CORRECTION-01 workflow.
+
+**Objective:** Allow legitimate historical DPR corrections through one consistent, audited workflow without forcing false diesel readings or disturbing financial records.
+
+## 1. Historical diesel readings
+
+Correct the form and validation so missing opening/closing tank readings can remain null.
+
+- Blank means Not recorded, not zero.
+- Zero means a genuine measured zero.
+- Never manufacture diesel consumption from unavailable readings.
+- Retain negative-stock prevention for actual stock-changing transactions.
+- Distinguish missing historical readings from genuine negative stock.
+- Do not create, reverse or recalculate stock ledger entries merely because a historical reading is left blank.
+
+For DPR #314, allow the user to remove placeholder zeros and leave those readings Not recorded.
+
+## 2. Equipment work assignments
+
+Allow corrections to previously missing BOQ/activity assignments and activity segments.
+
+- Compare existing and proposed assignments.
+- Treat new or corrected assignments as reviewable operational changes rather than unconditional errors.
+- Require appropriate Administrator approval.
+- Preserve original equipment-log IDs, meter readings, canonical usage references, activity duration and hire/billing references.
+- Never duplicate equipment hours across multiple BOQ allocations.
+- Never automatically change an already-paid vendor bill.
+
+## 3. Progress corrections
+
+Support:
+- Corrected overlapping chainages
+- Corrected layer numbers
+- Derived quantities recalculated from the changed geometry
+- Required overlap reasons
+- Programme-bar linkage preservation unless deliberately changed
+
+Clearly show intentional versus automatically derived changes in the review.
+
+## 4. Correction review
+
+Show only genuine changes, not unchanged form defaults.
+
+Categorise them as:
+- Can save
+- Requires approval
+- Blocked for a specific integrity reason
+
+Show a concise summary by work item/equipment, with expandable detail rather than one overwhelming list.
+
+## 5. Preserve financial and operational integrity
+
+For missing canonical usage links such as DPR #314, equipment log #741 → missing usage #188, preserve the historical identity.
+
+Do not detach, fabricate replacement usage or silently change diesel, stock, hire statements or paid bill #48.
+
+Any necessary financial adjustment must be separately reviewed.
+
+## 6. Testing and delivery
+
+Use real SiteEdit payload structures.
+
+Test DPR #314's representative changes, including missing diesel readings, corrected work assignments and derived quantities.
+
+Test existing ordinary DPR entry and stock safeguards for regressions.
+
+Run focused tests and one build only.
+
+No production database changes, historical backfills, automatic publishing or unrelated modules.
+
+Provide one concise completion report stating whether this correction workflow is ready for publication.
+
+STOP.
