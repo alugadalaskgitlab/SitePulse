@@ -23,6 +23,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { useUpload } from "@/hooks/use-upload";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
 import { FreeTextSuggestionInput } from "@/components/FreeTextSuggestionInput";
+import { TripHireLinkDialog } from "@/components/TripHireLinkDialog";
 import { ReceiptWorkContext, TripWorkContextSummary, EMPTY_WORK_CONTEXT, hasRequiredWorkContext, type TripWorkContext } from "@/components/ReceiptWorkContext";
 import { findAllocationEntry, receiptSuggestionFromFulfilment, fulfilmentLabel } from "@shared/requirementFulfilment";
 import {
@@ -79,11 +80,13 @@ export default function SiteMaterialTrips() {
   const today = format(new Date(), "yyyy-MM-dd");
   const currentTime = format(new Date(), "HH:mm");
 
-  const [dateFromFilter, setDateFromFilter] = useState(today);
-  const [dateToFilter, setDateToFilter] = useState(today);
+  const hireEvidenceParams = new URLSearchParams(window.location.search);
+  const hireEvidenceDate = /^\d{4}-\d{2}-\d{2}$/.test(hireEvidenceParams.get("hireDate") || "") ? hireEvidenceParams.get("hireDate")! : today;
+  const [dateFromFilter, setDateFromFilter] = useState(hireEvidenceDate);
+  const [dateToFilter, setDateToFilter] = useState(hireEvidenceDate);
   const [siteFilter, setSiteFilter] = useState(piParams.site || "");
   const [materialFilter, setMaterialFilter] = useState("");
-  const [vehicleFilter, setVehicleFilter] = useState("");
+  const [vehicleFilter, setVehicleFilter] = useState(hireEvidenceParams.get("hireVehicle") || "");
   const [supplierFilter, setSupplierFilter] = useState("");
   const [onlyUnassigned, setOnlyUnassigned] = useState(false);
   const [onlyWithoutArrangement, setOnlyWithoutArrangement] = useState(false);
@@ -92,6 +95,8 @@ export default function SiteMaterialTrips() {
   const roleChoiceRef = useRef(roleChoice);
   roleChoiceRef.current = roleChoice;
   const [editingRoleTrip, setEditingRoleTrip] = useState<SiteMaterialTrip | null>(null);
+  const [hireLinkTrip, setHireLinkTrip] = useState<SiteMaterialTrip | null>(null);
+  const [newHireEquipmentId, setNewHireEquipmentId] = useState("");
   const [bulkMaterialSourceSupplier, setBulkMaterialSourceSupplier] = useState("");
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
 
@@ -308,10 +313,14 @@ export default function SiteMaterialTrips() {
       if (workCtx.boqItemId != null) payload.boqItemId = workCtx.boqItemId;
       if (workCtx.programmeBarId != null) payload.programmeBarId = workCtx.programmeBarId;
       if (workCtx.earthworkArrangementId != null) payload.earthworkArrangementId = workCtx.earthworkArrangementId;
+      if (newHireEquipmentId) payload.hireEquipmentLink = {
+        equipmentId: Number(newHireEquipmentId), reason: "Existing hired vehicle explicitly selected during trip entry",
+      };
       const res = await apiRequest("POST", "/api/site-material-trips", payload);
       return res.json();
     },
     onSuccess: async (trip: any) => {
+      setNewHireEquipmentId("");
       if (stagedPhotos.length > 0 && trip?.id) {
         await uploadStagedPhotos(trip.id);
         queryClient.invalidateQueries({ queryKey: ["/api/attachments", "site_material_trip", trip.id] });
@@ -540,6 +549,25 @@ export default function SiteMaterialTrips() {
               </div>
             )}
             <form onSubmit={handleSubmit} className="space-y-4">
+              {canEdit && <div className="space-y-1">
+                <Label htmlFor="trip-hired-vehicle">Hired vehicle for billing (optional)</Label>
+                <select id="trip-hired-vehicle" className="w-full rounded border bg-background p-2 text-sm" value={newHireEquipmentId}
+                  onChange={event => {
+                    const id = event.target.value;
+                    setNewHireEquipmentId(id);
+                    const equipment = internalEquipment.find(e => String(e.id) === id);
+                    if (equipment) {
+                      setRoleChoice("different_parties");
+                      setNewTrip(prev => ({ ...prev, vehicleNumber: equipment.registrationNumber || "",
+                        supplier: equipment.vendorName || "", transportType: "agency_vendor", internalEquipmentId: null }));
+                    }
+                  }}>
+                  <option value="">Free-text / unregistered vehicle</option>
+                  {internalEquipment.filter(e => e.ownership === "hired" && e.isActive && e.registrationNumber).map(e =>
+                    <option key={e.id} value={e.id}>{e.registrationNumber} · {e.name} · {e.vendorName}</option>)}
+                </select>
+                <p className="text-xs text-muted-foreground">Selection confirms the transport vehicle only; material source and quantity are unchanged.</p>
+              </div>}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <Label className="text-sm">Date</Label>
@@ -1047,6 +1075,7 @@ export default function SiteMaterialTrips() {
                         <td className="p-2 text-center">
                           <div className="flex items-center justify-center gap-1">
                             {canEdit && <Button variant={classifyTripRoles(trip) === "unresolved" ? "default" : "outline"} className={classifyTripRoles(trip) === "unresolved" ? undefined : "text-muted-foreground"} size="sm" onClick={() => setEditingRoleTrip(trip)} data-testid={`button-edit-trip-roles-${trip.id}`}>{classifyTripRoles(trip) === "unresolved" ? "Set roles" : "Change roles"}</Button>}
+                            {canEdit && <Button variant="outline" size="sm" onClick={() => setHireLinkTrip(trip)}>Hire billing link</Button>}
                             <Button
                               variant="ghost"
                               size="icon"
@@ -1087,6 +1116,7 @@ export default function SiteMaterialTrips() {
       </div>
 
       {editingRoleTrip && <TripRoleEditDialog key={editingRoleTrip.id} trip={editingRoleTrip} sitesList={sitesList} vendors={vendors} equipment={internalEquipment} vendorsLoading={vendorQuery.isLoading} vendorsError={vendorQuery.isError} onRetryVendors={() => void vendorQuery.refetch()} onClose={() => setEditingRoleTrip(null)} />}
+      {hireLinkTrip && <TripHireLinkDialog key={hireLinkTrip.id} trip={hireLinkTrip} onClose={() => setHireLinkTrip(null)} />}
       <CancelDialog
         open={cancelTripId !== null}
         onOpenChange={(v) => !v && setCancelTripId(null)}

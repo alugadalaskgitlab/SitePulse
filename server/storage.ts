@@ -1,5 +1,7 @@
 import { lookupTripBoqQuantity } from "../shared/tripQuantityDisplay";
 import { buildPiTimeline } from "../shared/piTimeline";
+import { confirmTripHireLink, readTripHireLinks, guardTripHireOrdinaryItems, type NewTripHireLink } from "./tripHireLink";
+import { validTripHireLink } from "../shared/tripHireLink";
 import { purchaseOrders } from "../shared/schema";
 import { linkedPiStoreStock } from "../shared/piStoreStock";
 import { bulkTripConditions } from "./siteMaterialTripFilters";
@@ -1413,7 +1415,7 @@ export interface IStorage {
     before: VehicleSupplierAssociationView;
     after: VehicleSupplierAssociationView;
   }>;
-  createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip>;
+  createSiteMaterialTrip(data: InsertSiteMaterialTrip, hireLink?: NewTripHireLink): Promise<SiteMaterialTrip>;
   getSiteMaterialTripById(id: number): Promise<SiteMaterialTrip | undefined>;
   updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>, actor?: { userId: number; userName: string; userRole?: string | null }): Promise<SiteMaterialTrip>;
   deleteSiteMaterialTrip(id: number): Promise<void>;
@@ -12892,7 +12894,7 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip> {
+  async createSiteMaterialTrip(data: InsertSiteMaterialTrip, hireLink?: NewTripHireLink): Promise<SiteMaterialTrip> {
     if (data.materialSourceType === "own_source") {
       if (!data.materialSourceLabel?.trim()) throw new Error("Enter the borrow area / source description.");
       data = { ...data, materialSourceSupplier: null, materialSourceLabel: data.materialSourceLabel.trim() };
@@ -12938,6 +12940,7 @@ export class DatabaseStorage implements IStorage {
             await this.writeVehicleSupplierAssociationsTx(tx, state.associations, state.settingExists);
           }
         }
+        if (hireLink) await confirmTripHireLink(tx, inserted, hireLink, hireLink.actor, true);
         return [inserted] as const;
     });
     // If this trip is linked to a PI item, recompute receipt completion
@@ -17612,7 +17615,37 @@ export class DatabaseStorage implements IStorage {
         breakdownGraceDays: (group as any).breakdownGraceDays ?? 0 };
       const decisions = (group.exceptionDecisions ?? []).map(d => ({ sourceType: d.sourceType, sourceId: d.sourceId ?? undefined,
         exceptionType: d.exceptionType, date: d.date, decision: d.decision, manualDeductionAmount: d.manualDeductionAmount ?? undefined, remarks: d.remarks })) as HireExceptionDecisionInput[];
-      const activities = canonical.filter(row => row.source !== "maintenance" && row.equipmentId === group.equipmentId);
+      // Reload daily evidence after the shared equipment lock. A concurrent
+      // trip confirmation must not change identity between preview and save.
+      const activities = (equipment.hireBillingBasis === "daily"
+        ? await this.getVendorBillHireActivities(bill.vendorName, group.periodFrom, group.periodTo, tx)
+        : canonical).filter(row => row.source !== "maintenance" && row.equipmentId === group.equipmentId);
+      const tripHireDates = new Set(activities.filter(row => row.confirmedForDailyHire &&
+        row.businessDate >= group.periodFrom && row.businessDate <= group.periodTo &&
+        (!equipment.hireStartDate || row.businessDate >= equipment.hireStartDate) &&
+        (!equipment.hireEndDate || row.businessDate <= equipment.hireEndDate)).map(row => row.businessDate));
+      if (equipment.hireBillingBasis === "daily" && tripHireDates.size) {
+        for (const date of Array.from(tripHireDates)) {
+          const decision = group.dailyDecisions?.find(d => d.date === date);
+          if (!decision?.reason?.trim()) throw Object.assign(new Error(`Review the full/half/excluded hire day ${date} and enter a reason.`), { code: "BAD_REQUEST" });
+        }
+        const chargeDates = Array.from(new Set(activities.filter(row => (row.source === "dpr_log" || row.source === "plant_usage" || row.confirmedForDailyHire) &&
+          row.status !== "open" && (!equipment.hireStartDate || row.businessDate >= equipment.hireStartDate) &&
+          (!equipment.hireEndDate || row.businessDate <= equipment.hireEndDate) && row.businessDate >= group.periodFrom &&
+          row.businessDate <= group.periodTo && group.dailyDecisions?.find(d => d.date === row.businessDate)?.decision !== "exclude")
+          .map(row => row.businessDate)));
+        if (chargeDates.length) {
+          const [billed] = await tx.select({ billNo: vendorBills.billNo }).from(vendorBillItems)
+            .innerJoin(vendorBills, eq(vendorBills.id, vendorBillItems.billId)).where(and(
+              eq(vendorBillItems.equipmentId, group.equipmentId), inArray(vendorBillItems.date, chargeDates),
+              sql`${vendorBills.id} <> ${bill.id}`, sql`${vendorBills.status} NOT IN ('cancelled', 'rejected')`,
+            )).limit(1);
+          if (billed) throw Object.assign(new Error(`Vehicle/date already billed on ${billed.billNo}. Exclude the billed day before saving.`), { code: "CONFLICT" });
+          if (data.items?.some(item => !["hire_group", "hire_statement"].includes(item.source || "") &&
+            item.equipmentId === group.equipmentId && item.category?.toLowerCase() === "equipment" && item.date && chargeDates.includes(item.date)))
+            throw Object.assign(new Error("Remove ordinary equipment rows covered by this daily-hire group."), { code: "CONFLICT" });
+        }
+      }
       const dieselPurchases = canonical.filter(row => row.source === "diesel_rate").map(row => ({
         id: row.sourceId, date: row.date, rate: row.rate, qtyPurchased: row.qtyPurchased, purchasedAt: row.purchasedAt,
       }));
@@ -17795,6 +17828,7 @@ export class DatabaseStorage implements IStorage {
     const billNo = await this.generateVendorBillNo();
 
     return await db.transaction(async (tx) => {
+      await guardTripHireOrdinaryItems(tx, data.items ?? [], data.hireGroups);
       if (["equipment", "all"].includes(data.billType.toLowerCase()) && data.periodFrom && data.periodTo && data.hireGroups === undefined) {
         const activityMetadata = await this.getVendorBillHireActivities(data.vendorName, data.periodFrom, data.periodTo, tx);
         const monthly = activityMetadata.filter((row: any) => row.source === "equipment_default" &&
@@ -18023,6 +18057,7 @@ export class DatabaseStorage implements IStorage {
 
   async updateVendorBill(id: number, data: CreateVendorBillRequest): Promise<VendorBillWithItems | undefined> {
     return await db.transaction(async (tx) => {
+      await guardTripHireOrdinaryItems(tx, data.items ?? [], data.hireGroups, id);
       const [existing] = await tx.select().from(vendorBills).where(eq(vendorBills.id, id)).limit(1).for("update");
       if (!existing) return undefined;
       const linkedStatements: HireStatement[] = await tx.select().from(hireStatements)
@@ -18420,7 +18455,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getVendorBillHireActivities(vendorName: string, periodFrom: string, periodTo: string, executor: any = db): Promise<any[]> {
-    const vendorVariants = await this.resolveVendorAliases(vendorName);
+    const vendorVariants = await this.resolveVendorAliases(vendorName, executor);
     const vendorMatch = vendorVariants.length === 1
       ? sql`UPPER(TRIM(${equipmentMaster.vendorName})) = ${vendorVariants[0]}`
       : sql`UPPER(TRIM(${equipmentMaster.vendorName})) IN (${sql.join(vendorVariants.map(v => sql`${v}`), sql`, `)})`;
@@ -18476,6 +18511,7 @@ export class DatabaseStorage implements IStorage {
     const materialTripRows: any[] = await executor.select({
       id: siteMaterialTrips.id, date: siteMaterialTrips.date, site: siteMaterialTrips.site,
       vehicleNumber: siteMaterialTrips.vehicleNumber, internalEquipmentId: siteMaterialTrips.internalEquipmentId,
+      transportType: siteMaterialTrips.transportType,
       material: siteMaterialTrips.material, quantity: siteMaterialTrips.quantity, uom: siteMaterialTrips.uom,
       location: siteMaterialTrips.location, receiptNumber: siteMaterialTrips.receiptNumber, supplier: siteMaterialTrips.supplier,
     }).from(siteMaterialTrips).where(and(
@@ -18485,6 +18521,7 @@ export class DatabaseStorage implements IStorage {
     // Bulk plant dispatches are delivery evidence, not an inferred payable
     // trip. Their transport-equipment link/vehicle text can nominate a hired
     // vehicle, but every candidate requires an explicit reconciliation choice.
+    const confirmedTripLinks = await readTripHireLinks(executor, materialTripRows.map(row => row.id));
     const bulkTransportRows: any[] = await executor.select({
       id: truckDispatches.id, date: truckDispatches.date, truckNumber: truckDispatches.truckNumber,
       transportEquipmentId: truckDispatches.transportEquipmentId, loadWeight: truckDispatches.loadWeight,
@@ -18560,19 +18597,28 @@ export class DatabaseStorage implements IStorage {
           equipment: equipmentDefault };
       }),
        ...materialTripRows.map(row => {
+         const confirmation = confirmedTripLinks.get(row.id);
+         const confirmedEquipment = equipment.find(e => e.id === confirmation?.newValues?.equipmentId);
+         const confirmedForDailyHire = !!confirmedEquipment && confirmedEquipment.hireBillingBasis === "daily" &&
+           validTripHireLink(row, confirmedEquipment, confirmation?.newValues);
          const exactEquipmentId = ids.includes(Number(row.internalEquipmentId)) ? Number(row.internalEquipmentId) : undefined;
          const vehicleMatchedEquipmentId = equipmentByRegistration.get(cleanRegistration(row.vehicleNumber));
-         const equipmentId = exactEquipmentId ?? vehicleMatchedEquipmentId;
+         const equipmentId = confirmedForDailyHire ? confirmedEquipment!.id : exactEquipmentId ?? vehicleMatchedEquipmentId;
          if (!equipmentId) return null;
          const equipmentDefault = defaults.get(equipmentId);
+         if (equipmentDefault?.hireBillingBasis === "daily" && !confirmedForDailyHire) return null;
          return {
            source: "site_material_trip", sourceId: row.id, equipmentId, businessDate: isoDate(row.date),
-           entryType: "trip_based", numberOfTrips: 1, status: "closed", site: row.site,
+           vehicleNumber: row.vehicleNumber,
+           entryType: confirmedForDailyHire ? "daily_hire" : "trip_based", numberOfTrips: 1, status: "closed", site: row.site,
+           confirmedForDailyHire,
+           hireConfirmation: confirmedForDailyHire ? { auditId: confirmation.id, actor: confirmation.userName,
+             at: confirmation.createdAt, reason: confirmation.reason, ...confirmation.newValues } : undefined,
             task: `DELIVERY: ${row.material || "MATERIAL"} · ${row.quantity ?? "—"} ${row.uom || ""}${row.supplier ? ` · FROM ${row.supplier}` : ""}`,
            equipmentName: equipmentDefault?.name, movementReference: row.location || row.receiptNumber || null,
            // A site delivery can be strong evidence after a user confirms it,
            // but has no join key to DPR/plant usage, so this stays review-only.
-           requiresTripReview: true,
+           requiresTripReview: !confirmedForDailyHire,
            deliveryEvidence: { material: row.material, quantity: row.quantity, uom: row.uom, source: row.supplier, destination: row.site, receiptNumber: row.receiptNumber },
            equipment: equipmentDefault,
          };
@@ -21765,9 +21811,9 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
-  async resolveVendorAliases(vendorName: string): Promise<string[]> {
+  async resolveVendorAliases(vendorName: string, executor: any = db): Promise<string[]> {
     const upper = vendorName.toUpperCase().trim();
-    const allAliases = await db.select().from(vendorAliases);
+    const allAliases = await executor.select().from(vendorAliases);
     const names = new Set<string>();
     names.add(upper);
     for (const a of allAliases) {
@@ -21863,6 +21909,21 @@ export class DatabaseStorage implements IStorage {
       existing.categories.add(category);
       vendorRecords.set(canonical, existing);
     };
+    if (bt === "equipment" || bt === "all") {
+      const trips = await db.select().from(siteMaterialTrips).where(and(gte(siteMaterialTrips.date, periodFrom),
+        lte(siteMaterialTrips.date, periodTo), eq(siteMaterialTrips.isCancelled, false), eq(siteMaterialTrips.isDeleted, false)));
+      const links = await readTripHireLinks(db, trips.map(t => t.id));
+      const masters = await db.select().from(equipmentMaster).where(eq(equipmentMaster.hireBillingBasis, "daily"));
+      const seen = new Set<string>();
+      for (const trip of trips) {
+        const evidence = links.get(trip.id)?.newValues;
+        const master = masters.find(e => e.id === evidence?.equipmentId);
+        if (master && validTripHireLink(trip, master, evidence) && !seen.has(`${master.id}:${trip.date}`)) {
+          seen.add(`${master.id}:${trip.date}`);
+          addRecord(master.vendorName!, "equipment");
+        }
+      }
+    }
 
     if (bt === "material" || bt === "transport" || bt === "all") {
       const trips = await db.select({ trip: siteMaterialTrips, arrangement: earthworkArrangements }).from(siteMaterialTrips)

@@ -78,6 +78,7 @@
 - [Arrangement effective status history](arrangement-effective-status-history.md) — status changes use explicit business dates in append-only revision history; never infer from updatedAt.
 - [Startup ledger backfill race](startup-ledger-backfill-race.md) — rapid workflow restarts can collide in a legacy stock-ledger backfill even while the app serves; verify a settled restart before diagnosing new work.
 - [Hired Equipment Billing](hired-equipment-billing.md) — billing derives from operational records; exception decisions, immutable snapshots, overlap locks, and idempotent bill creation preserve auditability.
+- [Tipper daily hire](tipper-daily-hire.md) — audited identity confirmation is separate from material ownership; one equipment/date charge, original trips preserved, audit retention required.
 - [Vendor import integrity](vendor-import-integrity.md) — atomic linked-record recovery, schema-aware date normalization, safe ID retries and sequence advancement.
 - [DPR equipment canonicalization](dpr-equipment-canonicalization.md) — DPR and standalone usage share one calculator; reports keep snapshots; clones never repost the same Diesel.
 - [Equipment activity attribution](equipment-activity-attribution.md) — one physical equipment-day may split BOQ hours into authoritative child allocations without multiplying operational facts.

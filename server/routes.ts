@@ -31,6 +31,8 @@ import { dprCorrectionService } from "./dprCorrections";
 import { readPermissionAccessAudit } from "./permissionAccessMigration";
 import { TransportRateInputError } from "@shared/transportRate";
 import { registerVendorMasterRoutes } from "./vendor-master";
+import { confirmTripHireLink, tripHireReview } from "./tripHireLink";
+import { siteMaterialTrips } from "@shared/schema";
 import { buildPurchaseOrderPdf } from "./purchase-order-pdf";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc, desc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
@@ -1066,6 +1068,34 @@ export async function registerRoutes(
   };
 
   // Create a new site material trip
+  app.get("/api/site-material-trips/:id/hire-link", async (req, res) => {
+    try {
+      if (!assertView(req, res, "site_materials")) return;
+      const trip = await storage.getSiteMaterialTripById(Number(req.params.id));
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+      if (!await assertTripSiteAccess(req, res, trip.site)) return;
+      res.json(await tripHireReview(db, trip));
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+  const tripHireConfirmationSchema = z.object({
+    equipmentId: z.number().int().positive(), reason: z.string().trim().min(3),
+    acceptConflict: z.boolean().optional(), fingerprint: z.string().optional(), version: z.number().int().nullable().optional(),
+  });
+  app.post("/api/site-material-trips/:id/hire-link", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "site_materials")) return;
+      const input = tripHireConfirmationSchema.parse(req.body);
+      const trip = await storage.getSiteMaterialTripById(Number(req.params.id));
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+      if (!await assertTripSiteAccess(req, res, trip.site)) return;
+      const result = await db.transaction(async tx => {
+        const [current] = await tx.select().from(siteMaterialTrips).where(eq(siteMaterialTrips.id, trip.id)).for("update");
+        if (!current || current.site !== trip.site) throw Object.assign(new Error("Trip changed; reload."), { status: 409 });
+        return confirmTripHireLink(tx, current, input, req.authUser!);
+      });
+      res.json(result);
+    } catch (err: any) { res.status(err instanceof z.ZodError ? 400 : err.status || 500).json({ message: err.message }); }
+  });
   app.post("/api/site-material-trips", async (req, res) => {
     try {
       if (!assertCreate(req, res, "site_materials")) return;
@@ -1089,12 +1119,17 @@ export async function registerRoutes(
       }
       const linkageError = await validateTripLinkage({ ...input, operationalDate: input.date, requireProjectItemPair: true });
       if (linkageError) return res.status(400).json({ message: linkageError });
-      const trip = await storage.createSiteMaterialTrip(input);
+      let hireLink;
+      if (req.body.hireEquipmentLink) {
+        if (!assertEdit(req, res, "site_materials")) return;
+        hireLink = { ...tripHireConfirmationSchema.parse(req.body.hireEquipmentLink), actor: req.authUser! };
+      }
+      const trip = await storage.createSiteMaterialTrip(input, hireLink);
       sendPushToSection("site_materials", "Site Material Trip Added", `${input.material || 'Material'} - ${input.site || ''}`, "/site-reports").catch(() => {});
       res.status(201).json(trip);
     } catch (err) {
       console.error("Error creating site material trip:", err);
-      res.status(500).json({ message: "Failed to create site material trip" });
+      res.status(err instanceof z.ZodError ? 400 : (err as any)?.status || 500).json({ message: (err as any)?.status ? (err as any).message : "Failed to create site material trip" });
     }
   });
 

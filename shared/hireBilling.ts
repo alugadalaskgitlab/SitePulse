@@ -501,6 +501,8 @@ export interface HireActivity {
   movementReference?: string | null;
   /** Vehicle/text matched delivery evidence always requires bill-review selection. */
   requiresTripReview?: boolean;
+  /** Explicit, current, audited identity; never inferred from trip counts. */
+  confirmedForDailyHire?: boolean;
   deliveryEvidence?: { material?: string | null; quantity?: number | null; uom?: string | null; source?: string | null; destination?: string | null; receiptNumber?: string | null } | null;
 }
 export interface HireTripDecision {
@@ -1022,7 +1024,8 @@ function applyAuthoritativeDieselPeriod(
 export function calculateHireGroup(input: HireGroupCalculationInput): HireGroupCalculationResult {
   const periodActivities = normalizeHireActivities(input.activities).filter(a =>
     (a.source === "dpr_log" || a.source === "plant_usage" ||
-      ((a.source === "site_material_trip" || a.source === "bulk_transport_trip") && input.terms.billingBasis === "trip")) &&
+      ((a.source === "site_material_trip" || a.source === "bulk_transport_trip") && input.terms.billingBasis === "trip") ||
+      (a.source === "site_material_trip" && a.confirmedForDailyHire === true && input.terms.billingBasis === "daily")) &&
     a.businessDate >= input.periodFrom && a.businessDate <= input.periodTo
   );
   const decisionMap = new Map((input.tripDecisions ?? []).map(d => [`${d.source}:${d.sourceId}`, d]));
