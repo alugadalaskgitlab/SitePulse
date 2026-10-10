@@ -1,4 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useDprCorrections } from "@/hooks/use-dpr-corrections";
+import { DprCorrectionDialog } from "@/components/DprCorrectionDialog";
+import { DprCorrectionHistory } from "@/components/DprCorrectionHistory";
+import { correctionErrorMessage, snapshotCorrectionForm, type DprCorrectionForm } from "@/lib/dprCorrections";
 import { isFilledLabourRow } from "@shared/labourEntry";
 import { LabourContractorInput, LabourHoursInput } from "@/components/LabourEntryFields";
 import { ResourceWorkItemSelect } from "@/components/ResourceWorkItemSelect";
@@ -463,6 +467,21 @@ export default function SiteEdit() {
     return false;
   });
   const { data: dpr, isLoading } = useDpr(id);
+  const isSubmittedCorrection = dpr?.dprStatus === "submitted";
+  const corrections = useDprCorrections(id, isSubmittedCorrection && editGranted);
+  const [correctionOpen, setCorrectionOpen] = useState(false);
+  const correctionFormRef = useRef<DprCorrectionForm | null>(null);
+  const [correctionError, setCorrectionError] = useState("");
+  const [pendingCorrectionId, setPendingCorrectionId] = useState<number | null>(null);
+  const correctionBusy = corrections.preview.isPending || corrections.save.isPending;
+  const pendingOwnCorrection = corrections.history.data?.find(request =>
+    request.status === "pending" && Number(request.requestedBy) === Number(authUser?.id));
+  const awaitingCorrectionApproval = pendingOwnCorrection != null || pendingCorrectionId != null;
+  useEffect(() => {
+    if (pendingCorrectionId == null) return;
+    const request = corrections.history.data?.find(item => item.id === pendingCorrectionId);
+    if (request && request.status !== "pending") setPendingCorrectionId(null);
+  }, [corrections.history.data, pendingCorrectionId]);
 
   // Auto-grant for draft DPRs, admins, and Permission-Panel direct editors
   // when DPR/auth data arrives (permissions may load after mount).
@@ -488,6 +507,7 @@ export default function SiteEdit() {
 
   const [draftRestored, setDraftRestored] = useState(false);
   const formInitializedRef = useRef(false);
+  const formInitializedForIdRef = useRef<number | null>(null);
   // JSON snapshot of the server-provided form state; used to detect real user edits before saving a draft
   const serverSnapshotRef = useRef<string | null>(null);
   const draftWriteTokensRef = useRef<DprWriteTokens | null>(null);
@@ -863,6 +883,9 @@ export default function SiteEdit() {
 
   useEffect(() => {
     if (!dpr) return;
+    // Submitted corrections retain mounted raw input across history refreshes,
+    // pending submissions and administrative decisions.
+    if (dpr.dprStatus === "submitted" && formInitializedForIdRef.current === id) return;
     // Do not silently advance a mounted draft's baseline on query refetch.
     // Its fields and tokens must describe the same snapshot the user reviewed.
     if (draftSnapshotHydratedRef.current && formInitializedRef.current) return;
@@ -921,6 +944,7 @@ export default function SiteEdit() {
           if (draft.structureItems?.length) setStructureItems(draft.structureItems);
           setDraftRestored(true);
           formInitializedRef.current = true;
+          formInitializedForIdRef.current = id;
            setBoqCataloguePreviewReady(true);
           return;
         }
@@ -942,6 +966,7 @@ export default function SiteEdit() {
     setMaterials(mat);
     setSitePurchases(sp);
     formInitializedRef.current = true;
+    formInitializedForIdRef.current = id;
     setBoqCataloguePreviewReady(true);
   }, [dpr]);
 
@@ -1153,27 +1178,6 @@ export default function SiteEdit() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: any) => {
-      if (Number(id) === 314 && isAdmin) {
-        if (Object.values(entryPhotos).some(files => files.length)
-            || equipment.some(row => row.breakdowns?.some(item => item.file))) {
-          throw new Error("DPR 314's correction cannot include new photos or equipment attachments.");
-        }
-        if (!window.confirm("DPR 314: equipment log 741 references missing usage 188. Confirm a chainage-only correction preserving that link, every equipment row, and paid bill 48. No equipment usage will be created.")) {
-          throw new Error("Correction cancelled. Your edits remain in this form.");
-        }
-        const reason = window.prompt("Enter the Administrator's reason for this DPR 314 chainage-only correction (minimum 10 characters):");
-        if (!reason || reason.trim().length < 10) throw new Error("A correction reason of at least 10 characters is required.");
-        const response = await apiRequest("POST", "/api/dprs/314/chainage-correction", {
-          confirmation: { confirmed: true, equipmentLogId: 741, missingUsageId: 188, reason },
-          form: {
-            header: { ...header, boqProjectId: siteBoqProjectId ?? savedDprBoqProjectId },
-            workType, progress, equipment, labour, materials, sitePurchases,
-            structureItems: workType === "structure" ? structureItems : [],
-            baselineProgress: dpr?.progress,
-          },
-        });
-        return response.json();
-      }
       // Create a new version instead of overwriting original
       // Send client's local timestamp for accurate time display
       const clientTimestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
@@ -1201,10 +1205,8 @@ export default function SiteEdit() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
       queryClient.invalidateQueries({ predicate: (q) => { const key = q.queryKey; return Array.isArray(key) && key[0] === "/api/boq/projects" && key[2] === "plan-vs-actual"; } });
       toast({
-        title: Number(id) === 314 && newVersion.id === 314 ? "Chainage correction saved" : "New Version Created",
-        description: Number(id) === 314 && newVersion.id === 314
-          ? "DPR 314 corrected. Equipment records and paid bill references were preserved."
-          : "Your edited version has been saved successfully.",
+        title: "New Version Created",
+        description: "Your edited version has been saved successfully.",
       });
       // Redirect to the new version's report
       setLocation(withReturnTo(`/site/report/${newVersion.id}`, _validatedReturnTo));
@@ -1687,6 +1689,21 @@ export default function SiteEdit() {
   };
 
   const handleSave = () => {
+    if (isSubmittedCorrection) {
+      // Legacy facts must be reviewed as entered, not recomputed, filtered or
+      // forced through new-DPR readiness checks.
+      if (correctionBusy || awaitingCorrectionApproval) return;
+      setCorrectionError("");
+      corrections.preview.reset();
+      correctionFormRef.current = snapshotCorrectionForm({
+        header: { ...header, boqProjectId: savedDprBoqProjectId ?? null },
+        workType, progress, equipment, labour, materials, sitePurchases,
+        structureItems: workType === "structure" || dpr?.structureItems?.length ? structureItems : [],
+      });
+      setCorrectionOpen(true);
+      void reviewCorrection();
+      return;
+    }
     if (equipment.some((row) => Number(row.diesel || 0) > 0 && !row.dieselSource)) {
       toast({ title: "Select diesel source for every equipment row with positive diesel", variant: "destructive" });
       return;
@@ -1704,6 +1721,48 @@ export default function SiteEdit() {
     if (!validateCutFillForFinal()) return;
     const payload = buildPayload();
     updateMutation.mutate(payload);
+  };
+
+  const reviewCorrection = async () => {
+    if (!correctionFormRef.current) return;
+    setCorrectionError("");
+    corrections.preview.reset();
+    try {
+      await corrections.preview.mutateAsync(correctionFormRef.current);
+      if (Object.values(entryPhotos).some(files => files.length)
+          || equipment.some(row => row.breakdowns?.some(item => item.file))) {
+        setCorrectionError("New staged photos or equipment files cannot be submitted through this correction contract. Keep them staged or remove them before reviewing again. Existing attachments are preserved.");
+      }
+    } catch (error) {
+      setCorrectionError(correctionErrorMessage(error));
+    }
+  };
+
+  const submitCorrection = async (reason: string) => {
+    const review = corrections.preview.data;
+    if (!review || !correctionFormRef.current || correctionBusy || review.blocked.length || !reason.trim()) return;
+    setCorrectionError("");
+    try {
+      const result = await corrections.save.mutateAsync({
+        form: correctionFormRef.current, baseHash: review.baseHash, reason, confirmImpact: true,
+      });
+      if (result.pending) {
+        // A request is not a save. Retain credentials, draft and all live
+        // input, and do not upload attachments or navigate to a "saved" report.
+        setPendingCorrectionId(result.requestId ?? -1);
+        setCorrectionOpen(false);
+        toast({ title: "Awaiting approval", description: "Your correction was submitted for Administrator review. The recorded DPR is unchanged; your edits remain here." });
+        return;
+      }
+      clearCredentials();
+      sessionStorage.removeItem(DRAFT_KEY);
+      void queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/dprs/:id", id] });
+      toast({ title: "Correction saved", description: `DPR #${result.id} has been corrected.` });
+      setLocation(withReturnTo(`/site/report/${result.id}`, _validatedReturnTo));
+    } catch (error) {
+      setCorrectionError(correctionErrorMessage(error));
+    }
   };
 
   // Display-only: use the same normalized physical quantities and BOQ cut/fill
@@ -1804,7 +1863,24 @@ export default function SiteEdit() {
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-20 animate-in fade-in duration-300">
       <InsufficientDieselDialog payload={dieselShortage} onClose={() => setDieselShortage(null)} />
-      {liveReadiness ? liveReadiness.mandatory.length > 0 && (
+      {isSubmittedCorrection && <>
+        <DprCorrectionDialog key={correctionOpen ? "open-review" : "closed-review"} open={correctionOpen} dprId={id}
+          review={corrections.preview.data ?? null} loading={corrections.preview.isPending} saving={corrections.save.isPending}
+          error={correctionError} onClose={() => setCorrectionOpen(false)} onRetry={() => void reviewCorrection()}
+          onSubmit={reason => void submitCorrection(reason)} />
+        {awaitingCorrectionApproval && <aside role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950" data-testid="correction-awaiting-approval">
+          <h2 className="font-semibold">DPR #{id} · Awaiting Administrator approval</h2>
+          <p className="mt-1">The correction request is pending, not saved. The recorded report remains unchanged. Your entered edits are retained below; another Administrator must review the consequences.</p>
+        </aside>}
+        <DprCorrectionHistory requests={corrections.history.data ?? []} loading={corrections.history.isLoading}
+          error={corrections.history.error?.message} isAdmin={isAdmin} userId={authUser?.id} busy={corrections.decide.isPending}
+          onRetry={() => void corrections.history.refetch()}
+          onDecide={async (requestId, approve, reason) => {
+            await corrections.decide.mutateAsync({ requestId, approve, reason, confirmImpact: true });
+            toast({ title: approve ? "Correction approved" : "Correction denied", description: "Decision recorded. Current entered edits have been retained; open the report to see recorded facts." });
+          }} />
+      </>}
+      {!isSubmittedCorrection && (liveReadiness ? liveReadiness.mandatory.length > 0 && (
         <aside role="status" aria-label="Items needed before submission" className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-2" data-testid="classic-edit-readiness-banner">
           <h2 className="font-semibold">{liveReadiness.mandatory.length} {liveReadiness.mandatory.length === 1 ? "item" : "items"} to resolve before submission</h2>
           {liveReadiness.mandatory.map((issue, index) => <div key={`${issue.section}-${issue.rowIndex ?? issue.rowKey ?? index}-${issue.message}`} className="flex flex-wrap items-center gap-2 text-sm">
@@ -1818,7 +1894,7 @@ export default function SiteEdit() {
           : boqItemsLoaded && progress.some(p => p.boqItemId != null && !siteBoqItems.some(item => Number(item.id) === Number(p.boqItemId)))
             ? "An activity's BOQ item could not be resolved; submission readiness is unavailable."
             : "Checking submission readiness against BOQ items…"}
-      </p>}
+      </p>)}
       {isDraftMode && (
         <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
           <Shield className="w-4 h-4 shrink-0" />
@@ -1831,7 +1907,7 @@ export default function SiteEdit() {
             <ChevronLeft className="w-5 h-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold font-display">{isDraftMode ? "Complete DPR" : "Edit Report"}</h1>
+            <h1 className="text-2xl font-bold font-display">{isDraftMode ? "Complete DPR" : "Edit Report"} · DPR #{id}</h1>
             <p className="text-muted-foreground text-sm">{isDraftMode ? "Add closing details and submit when ready" : "Modify and save your changes"}</p>
             {/* Batch 06V: "Back to Progress Report" link when returnTo is set
                 from a SiteReport deep-link (e.g. /site/report/123) */}
@@ -1885,7 +1961,7 @@ export default function SiteEdit() {
             )}
           </div>
         ) : (
-          <Button onClick={handleSave} disabled={updateMutation.isPending} className="gap-2" data-testid="button-save">
+          <Button onClick={handleSave} disabled={updateMutation.isPending || correctionBusy || awaitingCorrectionApproval} className="gap-2" data-testid="button-save">
             {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             Save Changes
           </Button>
@@ -3305,7 +3381,8 @@ export default function SiteEdit() {
                     reachLabel: [entry.chainageFrom, entry.chainageTo].filter(Boolean).join("–") || null,
                     side: entry.side || null,
                   }] : [])}
-                    enableTankContinuity={entry.dieselSource === "plant_stock"}
+                    enableTankContinuity={!isSubmittedCorrection && entry.dieselSource === "plant_stock"}
+                   historicalCorrection={isSubmittedCorrection}
                    allowLinkedSourceEdit={isAdmin}
                    onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, ...patch } as EquipmentEntry : row))}
                   onWorkAssignmentChange={(activitySegments, source) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? {
@@ -3602,7 +3679,7 @@ export default function SiteEdit() {
             )}
           </div>
         ) : (
-          <Button onClick={handleSave} disabled={updateMutation.isPending} className="gap-2" data-testid="button-save-bottom">
+          <Button onClick={handleSave} disabled={updateMutation.isPending || correctionBusy || awaitingCorrectionApproval} className="gap-2" data-testid="button-save-bottom">
             {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             Save Changes
           </Button>

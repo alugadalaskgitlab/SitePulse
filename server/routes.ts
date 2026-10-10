@@ -27,7 +27,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, vendors, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
 import { db, pool } from "./db";
-import { saveDpr314Correction } from "./dpr314Correction";
+import { dprCorrectionService } from "./dprCorrections";
 import { readPermissionAccessAudit } from "./permissionAccessMigration";
 import { TransportRateInputError } from "@shared/transportRate";
 import { registerVendorMasterRoutes } from "./vendor-master";
@@ -1400,6 +1400,9 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const reqRecord = await storage.getEditPermissionRequest(id);
       if (!reqRecord) return res.status(404).json({ error: "Request not found." });
+      if (reqRecord.recordType === "dpr_correction") {
+        return res.status(409).json({ error: "Open this DPR's correction review to approve its exact changes and financial disposition." });
+      }
       // Self-approval prevention
       if (reqRecord.requestedBy === u.id) {
         return res.status(403).json({ error: "You cannot approve your own edit request." });
@@ -3430,41 +3433,82 @@ export async function registerRoutes(
     return null;
   }
 
-  app.post("/api/dprs/314/chainage-correction", async (req, res) => {
-    if (!assertAdmin(req, res) || !assertEdit(req, res, "site_dprs")) return;
+  const corrections = dprCorrectionService(db, async (candidate, original, changes, actor, tx) => {
+    const changedIds = new Set(changes.filter(c => c.section === "progress").map(c => c.rowId));
+    const changed = candidate.progress.filter((row: any) => changedIds.has(row.id));
+    for (const row of changed) {
+      row.persistedId = row.id;
+      const old = original.progress.find((p: any) => p.id === row.id);
+      if (dprProgressReviewFactsChanged(old, row)) {
+        row.chainageReviewStatus = null;
+        row.linkReviewRequired = false;
+        row.scopeWarningType = null;
+        row.scopeOverrideReason = null;
+        row.scopeOverrideBy = null;
+        row.scopeOverrideAt = null;
+      }
+    }
+    for (const row of changed) {
+      const validating = { ...candidate, progress: [row] };
+      const fail = (message: string | null | undefined, field: string) => {
+        if (message) throw Object.assign(new Error(message), { correctionSection: "progress", correctionRowId: row.id, correctionField: field });
+      };
+      const old = original.progress.find((p: any) => p.id === row.id);
+      // A remarks/reason-only edit must not revalidate unrelated missing
+      // historical geometry or quantity-source information.
+      if (dprProgressValidationFactsChanged(old, row)
+          || changes.some(c => c.section === "progress" && c.rowId === row.id && ["lengthOverrideReason", "uomOverrideReason"].includes(c.field))) {
+        fail(await validateVersionProgressGeometry(validating, { allowLengthOverride: true, allowUomOverride: true, sourceProgress: original.progress }), "geometry");
+        fail(await validateProgressProgrammeLinks(validating), "programmeBarId");
+        fail(await validateProgressQuantitySources(validating), "quantity");
+        fail(await validateProgressMaterialOutcomes(validating), "materialOutcome");
+        const scope = await validateProgressScope(validating, { authUser: actor });
+        fail(scope?.error, "chainageFrom");
+      }
+    }
+    const overlaps = changed.length ? await evaluateChainageOverlapIssues(candidate, original.id, original.progress) : [];
+    if (overlaps.length) throw Object.assign(new Error(overlaps.map(x => x.message).join("; ")), {
+      correctionSection: "progress", correctionRowId: changed[0]?.id, correctionField: "chainageOverrideReason",
+    });
+    // Use the existing project-link validator, inside the correction transaction.
+    const changedLinks = (section: string) => (candidate[section] ?? []).filter((row: any) =>
+      changes.some(c => c.section === section && c.rowId === row.id && ["boqItemId", "structureId", "programmeBarId"].includes(c.field)));
+    await (storage as any).assertDprProjectLinksTx(tx, original.id, original.boqProjectId,
+      { ...candidate, progress: changedLinks("progress"), labour: changedLinks("labour"),
+        materials: changedLinks("materials"), structureItems: changedLinks("structureItems") },
+      changedLinks("equipment"), { versionSourceDprId: original.id });
+  });
+  const correctionAccess = async (req: any, res: any) => {
+    if (!assertEdit(req, res, "site_dprs")) return false;
+    const dpr = await storage.getDpr(Number(req.params.id));
+    if (!dpr) { res.status(404).json({ message: "DPR not found." }); return false; }
     const sites = await getPermittedSiteNames(req);
-    if (sites !== null && !siteMatchesPermitted("TAKKADPALLY-SIRUR", sites)) {
-      return res.status(403).json({ message: "Access denied for this site" });
+    if (sites !== null && !siteMatchesPermitted(dpr.site, sites)) {
+      res.status(403).json({ message: "Access denied for this site." }); return false;
     }
+    return true;
+  };
+  const correctionFailure = (res: any, error: any) => {
+    console.error("DPR correction:", error?.message);
+    res.status(error?.status ?? 409).json({ code: error?.code ?? "DPR_CORRECTION_CONFLICT", message: error?.message ?? "Correction failed; no partial changes saved." });
+  };
+  app.post("/api/dprs/:id/correction-review", async (req, res) => {
     try {
-      const result = await saveDpr314Correction(db, req.body.form, req.authUser, req.body.confirmation,
-        async (candidate, original) => {
-          const changed = candidate.progress.filter((row: any, i: number) =>
-            dprProgressValidationFactsChanged(original.progress[i], row)
-            || row.chainageOverrideReason !== original.progress[i].chainageOverrideReason
-            || row.lengthOverrideReason !== original.progress[i].lengthOverrideReason);
-          for (const row of changed) {
-            if (dprProgressReviewFactsChanged(original.progress.find((p: any) => p.id === row.id), row)) row.chainageReviewStatus = null;
-          }
-          const validating = { ...candidate, progress: changed };
-          const geometry = await validateVersionProgressGeometry(validating, {
-            allowLengthOverride: true, allowUomOverride: false, sourceProgress: original.progress,
-          });
-          const link = await validateProgressProgrammeLinks(validating);
-          const quantity = await validateProgressQuantitySources(validating);
-          const outcome = await validateProgressMaterialOutcomes(validating);
-          const overlaps = await evaluateChainageOverlapIssues(candidate, 314, original.progress);
-          if (geometry || link || quantity || outcome || overlaps.length) {
-            throw new Error(`DPR314_CORRECTION: ${geometry || link || quantity || outcome || overlaps.map(x => x.message).join("; ")}`);
-          }
-        });
-      res.json(result);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Correction failed";
-      if (message.startsWith("DPR314_CORRECTION:")) return res.status(409).json({ message });
-      console.error("DPR314 correction failed", error);
-      res.status(500).json({ message: "Correction not saved. No partial changes were committed." });
-    }
+      if (!await correctionAccess(req, res)) return;
+      res.json(await corrections.preview(Number(req.params.id), req.body.form, req.authUser!));
+    } catch (error) { correctionFailure(res, error); }
+  });
+  app.get("/api/dprs/:id/corrections", async (req, res) => {
+    try {
+      if (!await correctionAccess(req, res)) return;
+      res.json(await corrections.list(Number(req.params.id)));
+    } catch (error) { correctionFailure(res, error); }
+  });
+  app.post("/api/dprs/:id/corrections/:requestId", async (req, res) => {
+    try {
+      if (!await correctionAccess(req, res) || !assertApprove(req, res, "edit_requests_review")) return;
+      res.json(await corrections.decide(Number(req.params.id), Number(req.params.requestId), req.body, req.authUser!));
+    } catch (error) { correctionFailure(res, error); }
   });
 
   app.post("/api/dprs/:id/version", async (req, res) => {
@@ -3487,6 +3531,14 @@ export async function registerRoutes(
         if (permittedSiteNames !== null && !siteMatchesPermitted(versionOriginal.site, permittedSiteNames)) {
           return res.status(403).json({ message: "Access denied for this site" });
         }
+      }
+      if (versionOriginal.dprStatus === "submitted") {
+        if (!req.body.correction) {
+          return res.status(409).json({ code: "DPR_CORRECTION_REVIEW_REQUIRED", message: "Review this submitted DPR's correction summary before saving. Keep any unsaved edits when reopening the current editor." });
+        }
+        try {
+          return res.json(await corrections.submit(originalId, req.body.correction, req.authUser!));
+        } catch (error) { return correctionFailure(res, error); }
       }
       if (versionOriginal.dprStatus === "draft") {
         return res.status(409).json({

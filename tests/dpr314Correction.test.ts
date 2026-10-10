@@ -147,12 +147,13 @@ it("normal overlap rejection prevents every write", async () => {
   await expect(saveDpr314Correction(database, form, admin, confirmation, async () => { throw Error("overlap"); })).rejects.toThrow("overlap");
   expect(writes).toEqual([]);
 });
-it("normal DPR versioning and submitted finalizer paths remain wired", () => {
+it("submitted correction now uses the general review while version storage remains available", () => {
   const routes = readFileSync("server/routes.ts", "utf8");
   const client = readFileSync("client/src/pages/SiteEdit.tsx", "utf8");
   expect(routes).toContain('app.post("/api/dprs/:id/version"');
   expect(routes).toContain("await storage.createVersionDpr(");
-  expect(client).toContain('Number(id) === 314 && isAdmin');
+  expect(client).not.toContain('Number(id) === 314 && isAdmin');
+  expect(routes).toContain("corrections.submit(originalId");
   expect(client).toContain('`/api/dprs/${id}/version`');
 });
 

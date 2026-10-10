@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format, formatDistanceToNow } from "date-fns";
 import {
@@ -30,6 +31,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { EditPermissionRequest } from "@shared/schema";
 
 const RECORD_TYPE_LABELS: Record<string, string> = {
+  dpr_correction: "DPR Correction",
   dpr: "Daily Progress Report",
   plant_shift_log: "Plant Shift Log",
   heating_session: "Heating Session",
@@ -112,7 +114,8 @@ function RequestCard({
         </p>
       )}
 
-      {showActions && req.status === "pending" && (
+      {req.recordType === "dpr_correction" && <Link href={`/site/edit/${req.recordId}`} className="inline-flex min-h-10 items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted" data-testid={`review-correction-${req.id}`}>Review DPR #{req.recordId} correction <ChevronRight className="h-4 w-4" /></Link>}
+      {req.recordType !== "dpr_correction" && showActions && req.status === "pending" && (
         <div className="flex gap-2 pt-1">
           <Button
             size="sm"

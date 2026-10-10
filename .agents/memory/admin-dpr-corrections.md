@@ -3,19 +3,19 @@ name: Admin DPR correction constraints
 description: Why submitted-report corrections need narrow operational authority and semantic audit preservation.
 ---
 
-Admin corrections must remain version-based, not overwrite the original report. Moved equipment report copies can be corrected without rewriting canonical predecessors or successor continuity.
-
-An explicitly approved incident-specific chainage correction is a narrow
-exception: the user required original equipment-log identities and paid-bill
-references to survive, with progress changed in place and before/after audit.
-This approval must not be generalized to other DPRs or other missing links.
+The user explicitly expanded the incident-specific exception to a reusable
+submitted-DPR correction workflow. Keep existing row identities and preserve
+before/after revision snapshots in the audit history; do not run replacement
+version finalizers for these corrections.
 
 **Why:** normal equipment-log replacement can break financial source identity;
 reconstructing a missing usage from report readings invents operational history.
 
-**How to apply:** keep ordinary versioning unchanged. Any further in-place
-exception needs separate explicit approval, unchanged-section validation,
-authenticated Administrator confirmation and an atomic preservation audit.
+**How to apply:** reuse the existing version endpoint, edit-request approval
+queue and audit infrastructure. Compare persisted facts, never UI touch flags.
+Commercial or privileged changes require a different Administrator; approval
+of operational facts is not permission to rewrite stock, usage or paid bills.
+Financial adjustments require a separate reviewed action.
 
 **Why:** unlocking form controls alone leaves save-time lifecycle rejections; indiscriminately adopting all linked usage rows changes unrelated operational history.
 

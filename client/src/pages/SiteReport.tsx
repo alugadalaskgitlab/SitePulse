@@ -164,7 +164,7 @@ export default function SiteReport() {
     <header className="dpr-management-header">
       <div>
         <Link href={backLink} className="inline-flex items-center text-xs text-muted-foreground mb-2 print:hidden" data-testid="button-back"><ChevronLeft className="w-4 h-4" /> Back</Link>
-        <h1>{dpr.site}</h1>
+        <h1>{dpr.site} <span className="whitespace-nowrap">· DPR #{dpr.id}</span></h1>
         <p className="dpr-management-subtle mt-1">Daily Progress Report · {format(parseISO(dpr.date.slice(0, 10)), "EEE dd MMM yyyy")} · DPR #{dpr.id} · Engineer: {dpr.engineer} · <strong className="text-foreground">{(dpr as any).dprStatus || "Submitted"}</strong></p>
       </div>
       <div className="dpr-management-actions print:hidden">

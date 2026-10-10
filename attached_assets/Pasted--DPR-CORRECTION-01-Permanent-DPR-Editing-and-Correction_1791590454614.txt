@@ -1,0 +1,117 @@
+# DPR-CORRECTION-01 — Permanent DPR Editing and Correction Workflow
+
+**Priority: HIGH. Replace recurring DPR-specific fixes with one reusable solution.**
+
+The existing DPR #314 correction attempts exposed a general limitation.
+
+The user corrected overlapping chainages, entered previously unrecorded equipment timings from the contemporaneous site register, and entered zero diesel tank readings because the form would not accept blanks.
+
+The current special chainage-only correction correctly detects changes to equipment facts, but ordinary authorised users need a safe, practical way to correct existing DPRs.
+
+## 1. General-purpose correction workflow
+
+Implement a reusable correction mechanism for ALL submitted DPRs, not hardcoded DPR #314.
+
+Support independently:
+- Chainage and quantity corrections
+- Overlap reason corrections
+- Equipment timings and meter readings
+- Diesel details
+- Other editable DPR information
+
+Preserve the existing DPR editing interface wherever practical.
+
+Show the existing DPR number prominently in List, View and Edit.
+
+## 2. Handle changes correctly
+
+Compare actual persisted values against the submitted corrections.
+
+Distinguish:
+- Unchanged values
+- Form hydration/defaulting differences
+- Genuine user corrections
+
+Do not interpret temporary UI flags as actual data changes.
+
+Do not reject legitimate edits merely because unrelated legacy fields are missing.
+
+## 3. Missing versus zero
+
+Allow historical diesel opening and closing tank readings to remain blank/null when not recorded.
+
+Never silently convert missing values to zero.
+
+An explicitly entered zero means a known measurement of zero, not missing information.
+
+Do not invent readings or infer actual diesel consumption from an absent tank reading.
+
+Preserve existing valid diesel calculations and validations.
+
+## 4. Financial and equipment integrity
+
+Maintain equipment-log identity where existing financial or equipment records reference it.
+
+For an existing missing canonical usage link, preserve the original reference and prevent automatic duplication.
+
+Do not create replacement equipment usage merely because a submitted DPR is being corrected.
+
+If actual equipment hours, diesel or other commercially significant facts change, show the impact and require the appropriate existing authority and explicit confirmation.
+
+Never silently modify a paid vendor bill, stock ledger, equipment hire statement or completed accounting record.
+
+Where a correction requires a financial adjustment or reversal, present it as a separate reviewed action, not an automatic side effect.
+
+## 5. Approval and audit
+
+Authorised users should be able to submit corrections within their permitted scope.
+
+Privileged or financially consequential changes require appropriate Administrator approval and must not enable self-approval contrary to the intended approval policy.
+
+Record:
+- DPR ID and revision
+- Corrected field and old/new values
+- User and approver, where required
+- Date/time and reason
+- Financial impact and disposition
+
+Preserve existing history.
+
+## 6. User experience
+
+Before Save, display a simple correction summary.
+
+Clearly distinguish:
+- Changes permitted immediately
+- Changes requiring approval
+- Changes blocked by genuine integrity restrictions
+
+Identify the exact row/field causing an error and provide a practical resolution.
+
+Do not make users manually edit unrelated equipment records to save a chainage correction.
+
+## 7. Scope and testing
+
+Use the existing DPR versioning, equipment usage, diesel and audit infrastructure wherever safe.
+
+Do not rewrite unrelated modules or perform historical migrations.
+
+Test representative submitted DPRs, including:
+- Chainage-only correction
+- Missing legacy equipment timings
+- Equipment timing entered from site register
+- Missing diesel readings
+- Genuine zero readings
+- Missing canonical equipment usage reference
+- Equipment linked to an already-paid vendor bill
+- Unauthorised and stale correction attempts
+
+Keep verification economical: focused tests and one build.
+
+Before implementing, identify whether an existing submitted-DPR correction path already covers parts of this functionality; reuse it instead of creating a parallel subsystem.
+
+Deliver the complete working correction flow, not another diagnostics-only patch.
+
+Do not publish automatically or modify production records during development.
+
+Provide one concise completion report and STOP.

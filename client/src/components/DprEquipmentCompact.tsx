@@ -79,7 +79,7 @@ const statusLabel = (status: DprEquipmentFields["usageStatus"], editable = false
   : status === "idle_no_operator" ? "Idle · Operator Unavailable"
   : status === "breakdown" ? "Breakdown" : editable ? "Not recorded" : "Not specified";
 
-export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignmentChange, activityIds = [], suggestNewRow = false, editable = true, index = 0, beforeDate, site, boqItems, programmeBars, showTankBalance = true, enableTankContinuity = true, hideIdentity = false, allowLinkedSourceEdit = false, sectionPresentation = false, equipmentPickerSlot, ownerTypeSlot, dieselSourceSlot, stoppageSlot, headerActionSlot, headerConfirmationSlot, onToggle }: {
+export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignmentChange, activityIds = [], suggestNewRow = false, editable = true, index = 0, beforeDate, site, boqItems, programmeBars, showTankBalance = true, enableTankContinuity = true, historicalCorrection = false, hideIdentity = false, allowLinkedSourceEdit = false, sectionPresentation = false, equipmentPickerSlot, ownerTypeSlot, dieselSourceSlot, stoppageSlot, headerActionSlot, headerConfirmationSlot, onToggle }: {
   row: DprEquipmentFields;
   equipment?: { meterType?: string | null; consumptionNorm?: number | null; ownership?: string | null; vendorName?: string | null; entryType?: string | null; hireBillingBasis?: string | null } | null;
   onChange?: (patch: Partial<DprEquipmentFields>) => void;
@@ -98,6 +98,8 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
    * hidden control cannot receive an invisible value.
    */
   enableTankContinuity?: boolean;
+  /** Historical blanks are facts, not an invitation to suggest readings. */
+  historicalCorrection?: boolean;
   /**
    * The surrounding entry form may already render the machine identity. Keep
    * the compact header's status and expand/collapse controls, while allowing
@@ -214,7 +216,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
 
   useEffect(() => {
     let cancelled = false;
-    if (!editable || !onChange || row.plantUsageId != null || row.openingReading != null || row.equipmentId == null || !beforeDate || !site) return;
+    if (historicalCorrection || !editable || !onChange || row.plantUsageId != null || row.openingReading != null || row.equipmentId == null || !beforeDate || !site) return;
     const equipmentId = row.equipmentId;
     const requestKey = `${equipmentId}:${beforeDate}:${site}`;
     fetchLatestPriorClosing(equipmentId, beforeDate, site).then(data => {
@@ -227,11 +229,11 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
       onChange(patch);
     });
     return () => { cancelled = true; };
-  }, [editable, onChange, row.plantUsageId, row.openingReading, row.closingReading, row.equipmentId, beforeDate, site, isIdle]);
+  }, [historicalCorrection, editable, onChange, row.plantUsageId, row.openingReading, row.closingReading, row.equipmentId, beforeDate, site, isIdle]);
 
   useEffect(() => {
     let cancelled = false;
-    if (!editable || !onChange || !isPlantStock || !enableTankContinuity || row.openingDiesel != null || row.equipmentId == null || !beforeDate || !site) return;
+    if (historicalCorrection || !editable || !onChange || !isPlantStock || !enableTankContinuity || row.openingDiesel != null || row.equipmentId == null || !beforeDate || !site) return;
     const requestKey = `${row.equipmentId}:${beforeDate}:${site}`;
     fetch(`/api/equipment/${row.equipmentId}/latest-confirmed-diesel-tank?beforeDate=${encodeURIComponent(beforeDate)}&site=${encodeURIComponent(site)}`, { credentials: "include" })
       .then(res => res.ok ? res.json() : null)
@@ -248,7 +250,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
       })
       .catch(() => undefined);
     return () => { cancelled = true; };
-  }, [editable, onChange, isPlantStock, enableTankContinuity, row.equipmentId, row.openingDiesel, row.dieselBalanceInTank, beforeDate, site, isIdle]);
+  }, [historicalCorrection, editable, onChange, isPlantStock, enableTankContinuity, row.equipmentId, row.openingDiesel, row.dieselBalanceInTank, beforeDate, site, isIdle]);
 
   const setNumber = (key: keyof DprEquipmentFields, value: string) =>
     onChange?.({ [key]: value === "" ? null : Number(value) } as Partial<DprEquipmentFields>);
@@ -259,7 +261,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
     if (idle || usageStatus === "breakdown") {
       if (row.closingReading == null && row.openingReading != null && !closingReadingEdited.current) patch.closingReading = row.openingReading;
       if (row.diesel == null && !dieselIssuedEdited.current && !linkedSourceLocked) patch.diesel = 0;
-      if (isPlantStock && row.dieselBalanceInTank == null && row.openingDiesel != null && !closingTankEdited.current) patch.dieselBalanceInTank = row.openingDiesel;
+      if (!historicalCorrection && isPlantStock && row.dieselBalanceInTank == null && row.openingDiesel != null && !closingTankEdited.current) patch.dieselBalanceInTank = row.openingDiesel;
     }
     onChange?.(patch);
     if (usageStatus === "breakdown") setExpanded(true);
@@ -415,6 +417,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
            {dieselSourceSlot}
          {editable && showTankBalance && <section className="border-t border-slate-200 px-3 py-3 sm:px-4 dark:border-slate-700" data-testid={`equipment-compact-fuel-${index}`}>
         <SectionHeading><span className="flex items-center gap-2"><Fuel className="h-4 w-4 text-amber-700 dark:text-amber-400" /> Fuel</span></SectionHeading>
+          {historicalCorrection && <p className="mb-3 text-xs text-muted-foreground">Historical readings may be left blank when not recorded. Zero is a known empty tank. Actual consumption is unavailable unless both tank readings and diesel issued are recorded.</p>}
           {editable && onChange ? <><div className="mb-2 text-[11px] text-slate-500">Diesel source: <strong className="text-slate-700 dark:text-slate-200">{dash(row.dieselSource).replaceAll("_", " ")}</strong></div><div className={`grid grid-cols-2 gap-2 ${isPlantStock ? "lg:grid-cols-[140px_160px_140px_minmax(190px,1fr)]" : "lg:grid-cols-[140px]"} lg:items-end`}>
            {isPlantStock && <><div><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Opening Tank (L)</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-950/50" type="number" step="0.1" value={row.openingDiesel ?? ""} onChange={e => setNumber("openingDiesel", e.target.value)} placeholder="Not recorded" data-testid={`equipment-compact-opening-tank-${index}`} /></div>
             <div><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Closing / Physical Dip (L)</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-950/50" type="number" step="0.1" value={row.dieselBalanceInTank ?? ""} onChange={e => { closingTankEdited.current = true; setNumber("dieselBalanceInTank", e.target.value); }} placeholder="Not recorded" data-testid={`equipment-compact-closing-tank-${index}`} /></div></>}

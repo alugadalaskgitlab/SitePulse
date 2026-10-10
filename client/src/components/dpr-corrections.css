@@ -1,0 +1,13 @@
+.dpr-correction-value {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-variant-numeric: tabular-nums;
+}
+.dpr-correction-list {
+  display: grid;
+  gap: 0.75rem;
+}
+.dpr-correction-dialog {
+  max-height: 90dvh;
+  overflow-y: auto;
+}
