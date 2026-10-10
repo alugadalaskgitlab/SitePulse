@@ -1,0 +1,82 @@
+# VB-TIPPER-01 — Daily-Hire Tipper Billing from Material Trip Register
+
+**Objective:** Enable SitePulse to prepare Equipment Hire Vendor Bills for daily-hired tippers using trips already recorded in Site Operations → Material Movement / Trip Register, without requiring duplicate equipment logs in submitted DPRs.
+
+## 1. Reuse existing records
+
+The current trip register stores vehicleNumber, supplier, materialSourceType, transportType, site, date and quantity.
+
+Equipment Master stores registrationNumber, ownership, vendorName, hireBillingBasis and hireRate.
+
+Existing Vendor Bill hire logic already supports DPR, equipment usage and material-trip activities.
+
+Reuse that infrastructure. Do not build a separate billing system.
+
+## 2. Match hired tippers with Equipment Master
+
+For historical trips:
+
+- Match normalized registration numbers against Equipment Master.
+- Check the transport vendor/owner against the hired-equipment vendor.
+- Only suggest matches with a unique, credible identity.
+- Flag missing registrations, conflicting owners and multiple equipment matches for manual review.
+- Never silently assign an uncertain vehicle or vendor.
+
+Provide a simple confirmation mechanism so an authorised user can link historical trips to the correct Equipment Master vehicle for billing.
+
+Preserve the original trip, vehicle number, supplier, receipt, material source and quantities.
+
+For future trips, allow selecting an existing hired vehicle from Equipment Master while retaining free-text entry for unregistered vehicles.
+
+Do not treat Own Source material as company-owned transport.
+
+## 3. Daily-hire billing
+
+For equipment configured with Daily Hire terms:
+
+- Collect the confirmed trip dates for the selected vehicle, vendor and billing period.
+- Count each equipment/date only once, regardless of number of trips.
+- Use the applicable hire terms and daily rate from Equipment Master.
+- Allow reviewer-approved full-day, half-day or excluded-day decisions, with reasons.
+- Display the trip counts as supporting evidence, not as the hire-charge multiplier.
+- Do not infer missing clock times, meter readings, diesel consumption or working hours from trip counts.
+
+## 4. Vendor Bill integration
+
+In New Vendor Bill → Equipment Hire:
+
+- Include confirmed historical material-trip working days alongside existing eligible DPR/equipment usage.
+- Show vehicle, date, number of trips, hire days, rate and amount.
+- Provide links to underlying trip records.
+- Prevent double billing where the same tipper/date is already represented by DPR or equipment usage.
+- Check existing bills and previously billed activity.
+- Preserve existing monthly, hourly and trip-rate billing logic.
+
+Importantly, do not accidentally bill the material itself when the purpose is only hiring the vehicle.
+
+## 5. Historical and financial safeguards
+
+Do not backfill DPR equipment logs, generate fake equipment usage, rewrite material-trip history, or alter existing vendor bills.
+
+Any new trip-to-equipment association must be traceable and reviewable.
+
+Do not change stock, diesel, material receipts, Equipment Master hire rates or paid accounting records.
+
+## 6. Verification
+
+Test:
+- One hired tipper making several trips on one date: one billable day.
+- Same tipper working on multiple dates.
+- Multiple tippers belonging to one vendor.
+- Historical manually entered vehicle numbers.
+- Incorrect/ambiguous vehicle or vendor matches.
+- A date already appearing in DPR equipment logs.
+- Existing billed/paid activity.
+- Own Source material with agency-hired transport.
+- Future trip entry with Equipment Master selection.
+
+Use focused tests and one production build. Avoid broad refactoring, full-suite testing and unrelated modules.
+
+Provide one concise report explaining how historical trip matching is confirmed, how daily-hire lines reach Vendor Bills, whether a schema change is required, and the verification result.
+
+Do not publish automatically or modify production records during development. STOP.
