@@ -1196,6 +1196,17 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
             Saving is unavailable: this user has grants outside your scope. An administrator or full permission manager must edit these permissions to avoid removing existing access.
           </p>
         )}
+        <label className="flex items-start gap-3 rounded-md border p-3 text-sm">
+          <Checkbox
+            checked={!!target?.isOwner || !!matrix.vendor_financials?.view}
+            disabled={!!target?.isOwner || !canGrantAction("vendor_financials", "view")}
+            onCheckedChange={() => toggleCell("vendor_financials", "view")}
+            data-testid="checkbox-view-vendor-financials"
+          />
+          <span><strong>View Vendor Financials</strong><span className="block text-xs text-muted-foreground">
+            Owner always permitted. Administrators also require this explicit grant. Applies to the saved-bill summary, Vendor Statement and Taxes Register; normal bill permissions are unchanged. Save permissions to apply.
+          </span></span>
+        </label>
         <div className="rounded-md border bg-muted/30 p-3 text-sm" data-testid="permissions-designation">
           Stored designation: <strong>{businessRoleLabel(storedRole)}</strong>.
           {stagedRole !== undefined && <p role="status" data-testid="staged-business-role">Unsaved designation: <strong>{businessRoleLabel(stagedRole)}</strong>. Confirmed and staged only — Save permissions persists it.</p>}

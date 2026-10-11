@@ -7,6 +7,7 @@ export interface GstRegisterPdfInput {
   metadata: string[];
   categories: (string | number)[][];
   details: (string | number)[][];
+  tds?: (string | number)[][];
 }
 
 const printable = (value: string | number) => String(value)
@@ -51,6 +52,8 @@ export function buildGstRegisterPdf(input: GstRegisterPdfInput): Buffer {
   };
   table("GST by Category", ["Category", "Bills", "Taxable", "GST"], input.categories);
   table("Bill Detail", ["Bill No", "Date", "Vendor", "Category", "Taxable", "GST", "Total"], input.details);
+  if (input.tds) table("TDS — saved amounts only; missing deductions not inferred",
+    ["Bill No", "Date", "Vendor", "Status", "Saved TDS rate (%)", "Recorded TDS"], input.tds);
   const pages = doc.getNumberOfPages();
   for (let page = 1; page <= pages; page++) {
     doc.setPage(page); doc.setFont("helvetica", "normal"); doc.setFontSize(8);

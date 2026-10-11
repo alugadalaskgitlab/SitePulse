@@ -1,0 +1,119 @@
+# VB-UI-SIMPLIFY-01 — Compact Vendor Bill Summary, Taxes Register & Financial Permission
+
+**Objective:** Simplify the existing Vendor Bills financial overview and provide explicit, per-user permission control for financial visibility.
+
+Do not redesign Vendor Bills or change the existing billing workflow.
+
+## 1. Compact financial summary
+
+Replace the large financial overview with ONE compact horizontal row containing:
+
+1. No. of Bills
+2. Total Gross Bill Amount
+3. Paid Amount
+4. Total Net Payable / Outstanding
+
+Use ONLY the existing Vendor Bills list filters, including status, date, vendor, site and category.
+
+With no filters selected, show the totals for all authorised saved bills.
+
+All figures must update automatically when existing filters change.
+
+Calculate from saved Vendor Bills only. Do not include unsaved Payables Preview information.
+
+Distinguish provisional Draft/Verified bills, genuinely recorded payments, positive outstanding balances and negative vendor credits. Do not silently net credits across unrelated vendors.
+
+For missing historical payment evidence, display an appropriate warning rather than claiming an exact payment balance.
+
+## 2. Taxes Register
+
+Rename the existing **GST Register** to **Taxes Register**.
+
+Preserve its GST details and exports.
+
+Add a TDS section using actual recorded TDS values, with relevant bill-wise columns and totals.
+
+Do not infer or invent TDS deductions.
+
+Reuse existing export functions for GST/TDS reporting, avoiding duplicate buttons.
+
+## 3. Remove redundant Payables Preview
+
+Remove the separate visible Payables Preview panel from the Vendor Bills list.
+
+Keep the normal New Vendor Bill process unchanged.
+
+Do not delete shared backend services used elsewhere.
+
+## 4. Financial visibility permission — implement now
+
+Introduce one explicit permission:
+
+**View Vendor Financials**
+
+Add it as a checkbox/toggle in the existing user permissions management screen.
+
+Behaviour:
+
+- Owner: Always permitted.
+- Administrator: Permitted only when the checkbox is enabled for that user.
+- Babu: Treat like any other Administrator; enable the permission through his own user settings, not by hardcoding his name.
+- All other users: Denied unless explicitly granted under the existing permissions architecture.
+
+Initially, enable this permission only for the Owner by default. The Owner must be able to enable it for Babu and selected Administrators.
+
+Use the existing permission framework and user-specific overrides. Do not introduce a parallel permission system.
+
+Apply this permission to:
+- Compact Vendor Bills financial summary
+- Vendor-wise running statement
+- Taxes Register financial totals and exports
+
+Preserve existing permissions for Vendor Bill creation, editing, verification, approval and normal bill viewing.
+
+Do not allow a user to gain access merely by knowing an API URL.
+
+Enforce access at backend endpoints as well as frontend controls.
+
+Respect existing site scope: users with site-restricted access must never receive company-wide financial information.
+
+Do not expose financial information through hidden export, cached or alternate API paths when the permission is denied.
+
+## 5. Preserve existing functionality
+
+Do not modify:
+- Saved Equipment Hire Activity Calendars
+- VM-VB-01 vendor identity and tipper billing
+- Existing Vendor Bills, amounts, rates, GST, TDS, adjustments or payments
+- Vendor Bill approval workflows
+- DPR, equipment usage, stock, diesel or accounting records
+- PI, PO and material receipts
+
+Keep the Vendor Running Statement within authorised Vendor Bill Detail views.
+
+No historical data corrections or financial backfills.
+
+## 6. Verification
+
+Test:
+- Owner always has financial access.
+- Administrator without permission cannot access financial summaries or protected endpoints.
+- Administrator with permission can view permitted financial information.
+- Babu's permission can be enabled through the existing user management interface.
+- A site-restricted Administrator sees only permitted-site figures.
+- Existing bill entry/approval permissions remain unchanged.
+- Filters correctly update the four totals.
+- Draft, Verified, Approved and Paid bills.
+- Partial payments, negative bills and missing payment records.
+- GST/TDS register and exports.
+- Saved Activity Calendars remain functional.
+
+Use focused tests and one production build only.
+
+Avoid full-suite testing, unrelated permission redesign, historical backfills and production-data changes.
+
+If a safe additive permission migration is required, report it before publication.
+
+Deliver one concise completion report and STOP.
+
+Do not publish automatically.

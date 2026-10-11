@@ -7,6 +7,8 @@ import { siteMatchesPermitted, vendorBillVisibleToSites, vendorBillItemMatchesSi
 import { aggregateGstBreakdown, computeBillGstByCategory } from "../shared/vendor-bill-gst";
 import PDFDocument from "pdfkit";
 import { buildGstRegisterPdf } from "../server/gstRegisterPdf";
+import { financialSites, vendorFinancialGuard } from "../server/vendorFinancialAccess";
+import { recordedVendorTds } from "../shared/vendorFinancialAccess";
 import * as xlsx from "xlsx";
 import archiver from "archiver";
 import { normalizeVendorBillAdditionalAdjustments } from "../shared/schema";
@@ -45,6 +47,7 @@ const endpoints = [
 let permissions: Record<string, any>;
 let permittedIds: number[];
 const storage = {
+  getUserSiteAccess: vi.fn(async () => permittedIds.map(siteId => ({ siteId }))),
   getUserPermittedSiteIds: vi.fn(async () => permittedIds),
   getSites: vi.fn(async () => [{ id: 1, name: "SITE A" }, { id: 2, name: "SITE B" }]),
   listPlantSettings: vi.fn(async () => [{ plantName: "Plant A", siteName: "SITE A" }, { plantName: "Plant B", siteName: "SITE B" }]),
@@ -66,7 +69,9 @@ const storage = {
 const app = express();
 app.use(express.json());
 app.use((req: any, _res, next) => { req.authUser = { id: 7 }; req.authPermissions = permissions; next(); });
+app.use(vendorFinancialGuard(storage));
 const dependencies = { storage, siteMatchesPermitted, vendorBillVisibleToSites, vendorBillItemMatchesSite,
+  financialSites, recordedVendorTds,
   aggregateGstBreakdown, computeBillGstByCategory, normalizeVendorBillAdditionalAdjustments, PDFDocument, xlsx, archiver, buildGstRegisterPdf,
   getCompanyLogoPath: () => null,
   // Report layout is not under test here; preserve actual PDF/ZIP streaming.
@@ -82,9 +87,39 @@ for (const [method, path] of endpoints) {
   const compiled = ts.transpile(body, { target: ts.ScriptTarget.ES2022 });
   app[method](path, new Function(...Object.keys(dependencies), compiled)(...Object.values(dependencies)));
 }
-beforeEach(() => { permissions = {}; permittedIds = [1]; vi.clearAllMocks(); });
+beforeEach(() => { permissions = { vendor_financials: { view: true } }; permittedIds = [1]; vi.clearAllMocks(); });
 
 describe("GST Register PDF parity and authorization", () => {
+  it("blocks old export URLs despite ordinary export permission when financial access is off", async () => {
+    permissions.vendor_financials = { view: false };
+    permissions.vendor_bills = { export: true };
+    for (const format of ["pdf", "xlsx", "csv"]) {
+      expect((await request(app).get(`/api/vendor-bills/export?format=${format}`)).status).toBe(403);
+    }
+    expect(storage.getVendorBills).not.toHaveBeenCalled();
+  });
+  it("exports recorded TDS in the existing Excel action without inventing missing deductions", async () => {
+    permissions.vendor_bills = { export: true };
+    storage.getVendorBills.mockResolvedValueOnce([
+      { id: 1, siteId: 1, billNo: "TDS-SAVED", billDate: "2026-10-01", vendorName: "VENDOR",
+        billType: "equipment", totalAmount: 1000, tdsRate: 2, items: [],
+        hireStatements: [{ calculationSnapshot: { financials: { tdsAmount: 17 } } }] },
+      { id: 2, siteId: 1, billNo: "TDS-MISSING", billDate: "2026-10-01", vendorName: "VENDOR",
+        billType: "material", totalAmount: 1000, tdsRate: 2, items: [] },
+    ] as any);
+    const response = await request(app).get("/api/vendor-bills/export?format=xlsx")
+      .buffer(true).parse((res, callback) => {
+        const chunks: Buffer[] = [];
+        res.on("data", chunk => chunks.push(chunk));
+        res.on("end", () => callback(null, Buffer.concat(chunks)));
+      });
+    expect(response.status).toBe(200);
+    const workbook = xlsx.read(response.body, { type: "buffer" });
+    expect(workbook.SheetNames).toEqual(["Summary", "Detail", "TDS"]);
+    const rows = xlsx.utils.sheet_to_json(workbook.Sheets.TDS, { header: 1 }) as any[][];
+    expect(rows.find(row => row[0] === "TDS-SAVED")?.[5]).toBe(17);
+    expect(rows.find(row => row[0] === "TDS-MISSING")?.[5]).toBe("Not established");
+  });
   it("requires the same report permission as Excel", async () => {
     const response = await request(app).get("/api/vendor-bills/export?format=pdf");
     expect(response.status).toBe(403);

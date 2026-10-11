@@ -93,7 +93,7 @@ describe("financial overview and statement", () => {
     expect(screen.getByText("3")).toBeTruthy();
     rerender(<VendorBillFinancialSummary bills={[rows[1]]} totals={totals} />);
     expect(screen.getByText("1")).toBeTruthy();
-    const eligible = screen.getByText("Approved unpaid — eligible for payment").parentElement!;
+    const eligible = screen.getByText("Total Net Payable / Outstanding").parentElement!;
     expect(within(eligible).getByText("₹1,000.00")).toBeTruthy();
   });
   it("uses confirmed identity despite different names, never joins free-text lookalikes", () => {
@@ -106,12 +106,12 @@ describe("financial overview and statement", () => {
     const current = bill(2, { hireStatements: [statement(1)] });
     const earlier = bill(1, { amountPaid: 200, hireStatements: [statement(2)] });
     const before = JSON.stringify([current, earlier]);
-    const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => earlier });
+    const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => [earlier, current] });
     vi.stubGlobal("fetch", fetcher);
     renderQuery(<VendorRunningStatement bill={current} bills={[current, earlier, bill(3, { vendorId: 99 })]} totals={totals} />);
     const details = screen.getByTestId("vendor-running-statement") as HTMLDetailsElement;
     details.open = true; fireEvent(details, new Event("toggle"));
-    await waitFor(() => expect(fetcher).toHaveBeenCalledWith("/api/vendor-bills/1", { credentials: "include" }));
+    await waitFor(() => expect(fetcher).toHaveBeenCalledWith("/api/vendor-bills/2/statement", { credentials: "include", cache: "no-store" }));
     expect(fetcher).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(screen.getAllByText(/Previously verified advance/)).toHaveLength(2));
     expect(screen.getByText(/Historical opening balance/).textContent).toContain("Not established");

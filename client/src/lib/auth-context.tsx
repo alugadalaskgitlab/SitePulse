@@ -11,6 +11,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { bindDprEntryModeUser } from "@/lib/dprEntryMode";
 import { bindWorkspaceModeUser } from "@/lib/workspaceMode";
+import { canViewVendorFinancials } from "@shared/vendorFinancialAccess";
 import {
   STRICT_IDLE_MINUTES,
   type PermissionMatrix,
@@ -149,6 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const sectionCan = (section: SectionKey, action: Action): boolean => {
       if (!u) return false;
+      if (section === "vendor_financials") return action === "view" && canViewVendorFinancials(u, perms);
       if (u.isAdmin || u.isOwner) return true;
       const row = perms[section];
       return !!row && !!row[action];
@@ -156,6 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const sectionVisible = (section: SectionKey): boolean => {
       if (!u) return false;
+      if (section === "vendor_financials") return canViewVendorFinancials(u, perms);
       if (u.isAdmin || u.isOwner) return true;
       const row = perms[section];
       return !!row && !!row.view;

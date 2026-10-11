@@ -23,6 +23,7 @@ import { format } from "date-fns";
 import type { VendorBillWithItems, VendorAlias, Site } from "@shared/schema";
 import { siteMatchesPermitted, vendorBillItemMatchesSite } from "@shared/siteName";
 import { aggregateGstBreakdown } from "@shared/vendor-bill-gst";
+import { recordedVendorTds } from "@shared/vendorFinancialAccess";
 import { defaultConvertedQuantity, isDifferentBillingUnit, matchingRateCardsForGroup, normalizeRateCardPart, selectAutoMaterialRateConversion, type RateCardUnitOption, type VendorRateCardRecord } from "@/lib/vendorBillRateSelection";
 import { autoBillItemIdentity, availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateHireGroup, duplicateBillItemPayload, mergeOtherBillItems, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, uniqueDuplicateBillMatches, type DuplicateBillItemMatch, type HireActivity, type HireBillingBasis } from "@shared/hireBilling";
 import { TripDailyHireReview } from "@/components/TripDailyHireReview";
@@ -51,7 +52,6 @@ import type { WholeBillSnapshot } from "@/components/vendor-bills/wholeBillSnaps
 import { BillDateGroupControls, BillDateGroupRows } from "@/components/vendor-bills/BillDateGroups";
 import { isTrulyBlankManualBillRow } from "@/lib/vendorBillBlankRows";
 import RateCards from "@/pages/RateCards";
-import PayablesPreviewPanel from "@/components/vendor-bills/PayablesPreviewPanel";
 import { applyTransportCard, changeTransportBasis } from "@shared/vendorBillTransport";
 import { TransportPricingRow } from "@/components/vendor-bills/TransportPricingRow";
 import { UnconfirmedTripOffers, TransportPricingNote } from "@/components/vendor-bills/TripCandidateWarnings";
@@ -571,6 +571,24 @@ export default function VendorBills() {
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "stock" });
   const { sectionCan, sectionVisible, isAdmin, user } = useAuth();
+  const canViewFinancials = sectionCan("vendor_financials", "view");
+  useEffect(() => {
+    if (!canViewFinancials) queryClient.removeQueries({ predicate: query =>
+      query.queryKey[0] === "/api/vendor-bills/financial-review" ||
+      (query.queryKey[0] === "/api/vendor-bills" && query.queryKey[2] === "statement") });
+  }, [canViewFinancials]);
+  const financialReview = useQuery<VendorBillWithItems[]>({
+    queryKey: ["/api/vendor-bills/financial-review", user?.id],
+    queryFn: async () => {
+      const response = await fetch("/api/vendor-bills/financial-review", { credentials: "include", cache: "no-store" });
+      if (!response.ok) throw new Error("Financial information is not available.");
+      return response.json();
+    },
+    enabled: canViewFinancials,
+    gcTime: 0,
+    staleTime: 0,
+    retry: false,
+  });
   const { companyName, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("vendor_bills", "create") || sectionCan("vendor_bills_raise", "create");
   const canEdit = sectionCan("vendor_bills", "edit") || sectionCan("vendor_bills_verify", "edit") || sectionCan("vendor_bills_approve", "edit");
@@ -731,22 +749,6 @@ export default function VendorBills() {
     queryKey: ["/api/vendor-bills"],
   });
 
-  const { data: billSummary } = useQuery<{
-    total: number;
-    totalAmount: number;
-    draft: number;
-    draftAmount: number;
-    verified: number;
-    verifiedAmount: number;
-    approved: number;
-    approvedAmount: number;
-    paid: number;
-    paidAmount: number;
-    gstByCategory: { equipment: number; material: number; transport: number; labour: number; other: number };
-    totalGst: number;
-  }>({
-    queryKey: ["/api/vendor-bills/summary"],
-  });
 
   const { data: billDetail } = useQuery<VendorBillWithItems>({
     queryKey: ["/api/vendor-bills", selectedBillId],
@@ -2314,11 +2316,16 @@ export default function VendorBills() {
     });
   }, [bills, sites, filterDateFrom, filterDateTo, filterVendor, filterStatus, filterCategory, filterParty, filterSite]);
 
-  const gstBreakdown = useMemo(() => aggregateGstBreakdown(filteredBills), [filteredBills]);
+  const financialBills = useMemo(() => {
+    if (!canViewFinancials || financialReview.isError) return [];
+    const visibleIds = new Set(filteredBills.map(b => b.id));
+    return (financialReview.data || []).filter(b => visibleIds.has(b.id));
+  }, [canViewFinancials, financialReview.data, financialReview.isError, filteredBills]);
+  const gstBreakdown = useMemo(() => aggregateGstBreakdown(financialBills), [financialBills]);
 
   const labourSplit = useMemo(() => {
     let site = 0, plant = 0, other = 0;
-    for (const bill of filteredBills) {
+    for (const bill of financialBills) {
       for (const item of (bill.items || []) as any[]) {
         if ((item.category || "other") !== "labour") continue;
         const amt = item.amount || 0;
@@ -2329,9 +2336,10 @@ export default function VendorBills() {
       }
     }
     return { site, plant, other, total: site + plant + other };
-  }, [filteredBills]);
+  }, [financialBills]);
 
   const handleGstRegisterExport = async (fmt: "pdf" | "xlsx") => {
+    if (!canViewFinancials || financialReview.isError) return;
     if (!filteredBills.length) {
       toast({ title: "Nothing to export", description: "Adjust the filters to include some bills." });
       return;
@@ -2343,6 +2351,7 @@ export default function VendorBills() {
       if (filterVendor && filterVendor !== "all") params.set("vendor", filterVendor);
       if (filterStatus && filterStatus !== "all") params.set("status", filterStatus);
       if (filterCategory && filterCategory !== "all") params.set("category", filterCategory);
+      if (filterParty !== "all") params.set("party", filterParty);
       if (filterSite) {
         const selectedSite = sites.find(site => siteMatchesPermitted(site.name, [filterSite]));
         if (!selectedSite) throw new Error("Select a registered site before exporting this site filter.");
@@ -2360,7 +2369,7 @@ export default function VendorBills() {
       const toD = filterDateTo || sortedDates[sortedDates.length - 1] || "";
       const range = !fromD && !toD ? "all-dates" : (fromD === toD ? fromD : `${fromD || "…"}_to_${toD || "…"}`);
       const isLedger = filterVendor && filterVendor !== "all";
-      const scope = isLedger ? `vendor-ledger-${filterVendor}` : "gst-register";
+      const scope = isLedger ? `vendor-ledger-${filterVendor}` : "taxes-register";
       const filename = `${scope}-${range}.${fmt}`.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/_(pdf|xlsx)$/, ".$1");
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -4612,7 +4621,7 @@ export default function VendorBills() {
             </div>
 
             <SavedBillCalendars bill={bill} canExport={canExport} />
-            <VendorRunningStatement bill={bill} bills={bills || []} totals={getBillFinancialTotals} loading={isLoading} error={billListError} />
+            {canViewFinancials && <VendorRunningStatement bill={bill} bills={[]} totals={getBillFinancialTotals} />}
             {/* 06M-A: Payment Mode / Paid By — entry preferred once PAID, shown
                 whenever values exist. No payment evidence/QR upload here. */}
             {(hasCumulativeVendorPayment(bill.billType) || bill.status === "paid" || (bill as any).paymentMode || (bill as any).paidBy) && (
@@ -5043,7 +5052,6 @@ export default function VendorBills() {
       </div>
 
       {/* Management Report context banner */}
-      {(sectionCan("vendor_bills", "view_reports") || sectionCan("vendor_bills_view", "view_reports")) && !user?.isFieldEngineer && <PayablesPreviewPanel vendors={vendorNames} sites={sites} canExport={canExport} />}
       {mgmtReportSite && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300" data-testid="banner-management-report">
           <BarChart2 className="w-4 h-4 flex-shrink-0 text-amber-500" />
@@ -5051,18 +5059,20 @@ export default function VendorBills() {
         </div>
       )}
 
-      <VendorBillFinancialSummary bills={filteredBills} totals={getBillFinancialTotals} />
-      <Card data-testid="card-gst-register">
+      {canViewFinancials && (financialReview.isPending ? <p role="status">Loading permitted financial information…</p>
+        : financialReview.isError ? <p role="alert">Financial information is unavailable. <Button variant="link" onClick={() => financialReview.refetch()}>Retry</Button></p>
+        : <VendorBillFinancialSummary bills={financialBills} totals={getBillFinancialTotals} />)}
+      {canViewFinancials && financialReview.isSuccess && <Card data-testid="card-gst-register">
         <CardHeader className="py-2 px-3">
           <CardTitle className="text-sm uppercase tracking-wider text-muted-foreground flex items-center justify-between gap-2 flex-wrap">
             <span>
               {filterVendor !== "all"
-                ? `Vendor Ledger — GST (${filterVendor})`
-                : "GST Register — Category Breakdown"}
+                ? `Taxes Register — ${filterVendor}`
+                : "Taxes Register"}
             </span>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[12px] normal-case font-normal text-muted-foreground">
-                Reflects current filters &middot; {filteredBills.length} bill{filteredBills.length !== 1 ? "s" : ""}
+                Reflects current filters &middot; {financialBills.length} bills
               </span>
               {canExport && <Button
                 variant="outline"
@@ -5146,8 +5156,22 @@ export default function VendorBills() {
               </div>
             </div>
           )}
+          <div className="mt-3 border-t pt-3 overflow-x-auto">
+            <h3 className="text-sm font-semibold">TDS — recorded amounts</h3>
+            <p className="text-xs text-muted-foreground">Saved deduction amounts only, not inferred from rates. Hire snapshot amounts cover the linked hire statements only. Missing historical deductions are not established.</p>
+            <table className="w-full text-xs mt-2">
+              <thead><tr>{["Bill / Date", "Vendor", "Status", "Saved TDS rate", "Recorded TDS"].map(label => <th key={label} className="text-left p-2">{label}</th>)}</tr></thead>
+              <tbody>{financialBills.map(b => <tr key={b.id} className="border-t">
+                <td className="p-2">{b.billNo} · {b.billDate}</td><td className="p-2">{b.vendorName}</td><td className="p-2">{b.status}</td>
+                <td className="p-2">{b.tdsRate == null ? "Not recorded" : `${b.tdsRate}%`}</td>
+                <td className="p-2">{recordedVendorTds(b) == null ? "Not established" : `₹${formatCurrency(recordedVendorTds(b)!)}`}</td>
+              </tr>)}</tbody>
+              <tfoot><tr className="border-t font-semibold"><td colSpan={4} className="p-2">Total recorded TDS (excludes unavailable amounts)</td>
+                <td className="p-2">₹{formatCurrency(financialBills.reduce((sum, b) => sum + (recordedVendorTds(b) ?? 0), 0))}</td></tr></tfoot>
+            </table>
+          </div>
         </CardContent>
-      </Card>
+      </Card>}
 
       <Card>
         <CardContent className="py-3">

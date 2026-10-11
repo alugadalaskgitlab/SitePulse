@@ -60,6 +60,9 @@ import { syncArrangementBarAllocations } from "./arrangementAllocationSync";
 import { AUTO_SYNC_STATUSES } from "@shared/arrangementAutoAllocation";
 import { buildVendorPayablesPreview } from "./vendorPayablesPreview";
 import { buildGstRegisterPdf } from "./gstRegisterPdf";
+import { recordedVendorTds } from "@shared/vendorFinancialAccess";
+import { financialSites, vendorFinancialGuard } from "./vendorFinancialAccess";
+import { vendorStatementBills } from "@shared/vendorBillReview";
 import {
   classifyBarExecutionState,
   deriveItemStatus,
@@ -522,6 +525,8 @@ export async function registerRoutes(
   // Returns null for admins or users with no site restrictions (all sites).
   // Returns string[] of permitted site names when the user is restricted.
   async function getPermittedSiteNames(req: Express.Request): Promise<string[] | null> {
+    const financialScope = financialSites(req);
+    if (financialScope !== undefined) return financialScope;
     if (!req.authUser || req.authUser.isAdmin || req.authUser.isOwner) return null;
     const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id);
     if (permittedIds === null) return null;
@@ -11531,8 +11536,29 @@ export async function registerRoutes(
     }
   });
 
+  app.use(vendorFinancialGuard(storage));
+
+  app.get("/api/vendor-bills/financial-review", async (req, res) => {
+    if (!assertViewEither(req, res, "vendor_bills", "vendor_bills_view")) return;
+    try {
+      res.json(await scopeVendorBillsToSiteAccess(req, await storage.getVendorBills({})));
+    } catch { res.status(500).json({ message: "Unable to load financial review" }); }
+  });
+
+  app.get("/api/vendor-bills/:id/statement", async (req, res) => {
+    if (!assertViewEither(req, res, "vendor_bills", "vendor_bills_view")) return;
+    try {
+      const rows = await scopeVendorBillsToSiteAccess(req, await storage.getVendorBills({}));
+      const current = rows.find(row => row.id === Number(req.params.id));
+      if (!current) return res.status(404).json({ message: "Bill not available within financial site scope" });
+      const linked = vendorStatementBills(current, rows);
+      res.json(await Promise.all(linked.map(row => storage.getVendorBill(row.id))));
+    } catch { res.status(500).json({ message: "Unable to load vendor statement" }); }
+  });
+
   app.get("/api/vendor-bills/summary", async (req, res) => {
     try {
+      if (!assertViewEither(req, res, "vendor_bills", "vendor_bills_view")) return;
       const filters = {
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
@@ -11591,12 +11617,14 @@ export async function registerRoutes(
             vendorBillItemMatchesSite(item.siteName, selectedSite.siteName!))));
       }
       // Apply category filter the same way the UI does (combined => "all" billType).
-      const bills = categoryFilter === "all"
+      const categoryBills = categoryFilter === "all"
         ? billsRaw
         : billsRaw.filter(b => {
             const target = categoryFilter === "combined" ? "all" : categoryFilter;
             return (b.billType || "").toLowerCase() === target;
           });
+      const bills = req.query.party && req.query.party !== "all"
+        ? categoryBills.filter(b => b.items?.some(item => item.suppliedTo === req.query.party)) : categoryBills;
       // Sort newest first for both summary and detail.
       bills.sort((a, b) => (b.billDate || "").localeCompare(a.billDate || ""));
 
@@ -11607,7 +11635,7 @@ export async function registerRoutes(
 
       const vendorScope = vendor && vendor !== "all" ? vendor : "All vendors";
       const isLedger = vendor && vendor !== "all";
-      const reportLabel = isLedger ? `Vendor Ledger — ${vendorScope}` : "GST Register — Category Breakdown";
+      const reportLabel = isLedger ? `Taxes Register — ${vendorScope}` : "Taxes Register — GST / TDS";
 
       const sortedDates = bills.map(b => b.billDate).filter(Boolean).sort();
       const fromD = dateFrom || sortedDates[0] || "";
@@ -11619,7 +11647,7 @@ export async function registerRoutes(
       const filenameRange = fromD && toD
         ? (fromD === toD ? fromD : `${fromD}_to_${toD}`)
         : "all-dates";
-      const filenameScope = isLedger ? `vendor-ledger-${vendorScope}` : "gst-register";
+      const filenameScope = isLedger ? `vendor-ledger-${vendorScope}` : "taxes-register";
       const safeFilename = `${filenameScope}-${filenameRange}`.replace(/[^A-Za-z0-9._-]+/g, "_");
 
       // Per-bill numbers. Bills are internal-only records, so a single GST
@@ -11646,6 +11674,11 @@ export async function registerRoutes(
       const totals = aggregateGstBreakdown(bills);
       const totalTaxable = bills.reduce((s, b) => s + (b.totalAmount || 0), 0);
       const grandTotal = totalTaxable + totals.total;
+      const tdsRows = bills.map(b => [b.billNo, b.billDate, b.vendorName, b.status,
+        b.tdsRate ?? "Not recorded", recordedVendorTds(b) ?? "Not established"]);
+      const recordedTdsTotal = bills.reduce((sum, b) => sum + (recordedVendorTds(b) ?? 0), 0);
+      tdsRows.push(["TOTAL RECORDED", "", "", "", "", recordedTdsTotal]);
+      const tdsHeaders = ["Bill No", "Date", "Vendor", "Status", "Saved TDS rate (%)", "Recorded TDS"];
 
       // Category summary — always show the 4 main categories so empty buckets
       // appear as "—" rows instead of being silently dropped. "Other" is only
@@ -11715,6 +11748,7 @@ export async function registerRoutes(
       if (format === "pdf") {
         const config = await getCompanyConfig();
         const pdf = buildGstRegisterPdf({
+          tds: tdsRows,
           title: reportLabel, company: config.companyName,
           metadata: [
             `Range: ${rangeLabel}`, `Vendor: ${vendorScope}`,
@@ -11782,6 +11816,8 @@ export async function registerRoutes(
           }
           lines.push(toLine(["TOTAL", "", "", "", fmtNum(totalTaxable), fmtNum(totals.total), fmtNum(grandTotal)]));
         }
+        lines.push("", toLine(["TDS — saved amounts only; missing deductions not inferred"]), toLine(tdsHeaders));
+        tdsRows.forEach(row => lines.push(toLine(row)));
         const body = "\uFEFF" + lines.join("\r\n") + "\r\n";
         res.setHeader("Content-Type", "text/csv; charset=utf-8");
         res.setHeader("Content-Disposition", `attachment; filename="${safeFilename}.csv"`);
@@ -11840,6 +11876,9 @@ export async function registerRoutes(
         { wch: 14 }, { wch: 14 }, { wch: 14 },
       ];
       xlsx.utils.book_append_sheet(wb, detailSheet, "Detail");
+      xlsx.utils.book_append_sheet(wb, xlsx.utils.aoa_to_sheet([
+        ["TDS — saved amounts only; missing deductions not inferred"], tdsHeaders, ...tdsRows,
+      ]), "TDS");
 
       const buf = xlsx.write(wb, { type: "buffer", bookType: "xlsx" });
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");

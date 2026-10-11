@@ -6,40 +6,49 @@ const money = (value: number | null) => value == null ? "Not established" : `₹
 type Props = { bills: any[]; totals: (bill: any) => any };
 
 export function VendorBillFinancialSummary({ bills, totals }: Props) {
-  const summary = summarizeBillReview(bills.map(b => billReviewAmounts(b, totals(b))));
+  const rows = bills.map(b => billReviewAmounts(b, totals(b)));
+  const summary = summarizeBillReview(rows);
+  const provisional = summarizeBillReview(rows.filter(row => row.provisional));
   const figures = [
-    ["Number of bills", summary.count.toString()], ["Gross amount", money(summary.gross)],
-    ["Deductions / adjustments (signed, incl. TDS)", money(summary.adjustments)],
-    ["GST", money(summary.gst)], ["Net bill value", money(summary.net)], ["Recorded payments", money(summary.paid)],
-    ["Positive outstanding", money(summary.outstanding)], ["Negative balances / vendor credits", money(summary.credits)],
-    ["Approved unpaid — eligible for payment", money(summary.eligible)],
+    { label: "No. of Bills", value: summary.count.toString(), detail: `${provisional.count} provisional · Draft / Verified` },
+    { label: "Total Gross Bill Amount", value: money(summary.gross), detail: "Displayed line-item subtotal" },
+    { label: "Paid Amount", value: money(summary.paid), detail: "Recorded payments only" },
+    { label: "Total Net Payable / Outstanding", value: money(summary.outstanding), detail: `Vendor credits: ${money(summary.credits)} · not offset` },
   ];
   return <section className="rounded-lg border p-3 space-y-2" aria-label="Filtered bill financial summary">
     <h2 className="font-semibold text-sm">Financial summary · current filters</h2>
-    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">{figures.map(([label, value]) =>
-      <div key={label}><p className="text-xs text-muted-foreground">{label}</p><p className="font-semibold tabular-nums">{value}</p></div>)}</div>
-    <p className="text-xs text-muted-foreground">Gross is the displayed line-item subtotal. Draft and Verified values are provisional. Credits are shown separately, never offset across bills or vendors.</p>
-    {summary.unknownPayments > 0 && <p className="text-xs text-amber-700">Payment totals/balances are not established for {summary.unknownPayments} bill(s). Their unrecorded payments and unknown positive balances are excluded from payment and payable totals, not assumed to be zero.</p>}
+    <div className="overflow-x-auto" role="region" aria-label="Bill summary figures" tabIndex={0}>
+      <dl className="grid grid-cols-[minmax(120px,0.6fr)_minmax(200px,1fr)_minmax(160px,0.8fr)_minmax(280px,1.4fr)] min-w-[800px] divide-x">
+        {figures.map(({ label, value, detail }, index) =>
+          <div key={label} className={index === 0 ? "pr-4" : "px-4"}>
+            <dt className="text-xs text-muted-foreground whitespace-nowrap">{label}</dt>
+            <dd className="mt-1 text-lg font-semibold tabular-nums whitespace-nowrap">{value}</dd>
+            <dd className="mt-1 text-xs text-muted-foreground">{detail}</dd>
+          </div>)}
+      </dl>
+    </div>
+    <p className="text-xs text-muted-foreground">Draft and Verified values are provisional, not approved for payment. Outstanding includes {money(provisional.outstanding)} provisional; only positive known balances are totaled. Credits are never offset across bills or vendors.</p>
+    {summary.unknownPayments > 0 && <p role="note" className="text-xs text-amber-700">Payment totals/balances are not established for {summary.unknownPayments} bill(s). Their unrecorded payments and unknown positive balances are excluded from payment and payable totals, not assumed to be zero.</p>}
   </section>;
 }
 
 export function VendorRunningStatement({ bill, bills, totals, loading, error }: Props & { bill: any; loading?: boolean; error?: boolean }) {
   const [open, setOpen] = useState(false);
-  const permittedRows = vendorStatementBills(bill, bills);
   const history = useQuery<any[]>({
-    queryKey: ["/api/vendor-bills", "running-statement", bill.id, permittedRows.map(row => row.id)],
+    queryKey: ["/api/vendor-bills", bill.id, "statement"],
     enabled: open && !loading && !error,
-    queryFn: () => Promise.all(permittedRows.filter(row => row.id !== bill.id).map(async row => {
-      // Existing detail endpoint independently re-checks site access on every GET.
-      const response = await fetch(`/api/vendor-bills/${row.id}`, { credentials: "include" });
+    queryFn: async () => {
+      const response = await fetch(`/api/vendor-bills/${bill.id}/statement`, { credentials: "include", cache: "no-store" });
       if (!response.ok) throw new Error("Could not load permitted bill history");
       return response.json();
-    })),
+    },
+    gcTime: 0,
+    staleTime: 0,
     retry: false,
   });
-  const rows = vendorStatementBills(bill, history.data || permittedRows).filter(row => row.id !== bill.id);
-  // The selected detail is already permission scoped; retain it if the list has not refreshed yet.
-  if (!rows.some(row => row.id === bill.id)) rows.push(bill);
+  // Never fall back to the ordinary bill list: financial scope can be narrower.
+  const rows = open && history.isSuccess && !history.isFetching
+    ? vendorStatementBills(bill, history.data || []) : [];
   rows.sort((a, b) => String(a.billDate).localeCompare(String(b.billDate)) || a.id - b.id);
   let subtotal = 0;
   let paymentGap = false;
@@ -49,7 +58,7 @@ export function VendorRunningStatement({ bill, bills, totals, loading, error }: 
       <p className="text-xs">Read-only, permitted-site information — not an accounting ledger. Historical opening balance: <strong>Not established</strong>. No advances or credits are automatically carried forward or consumed.</p>
       {bill.vendorId == null && <p className="text-xs text-amber-700">Unlinked/free-text vendor: only this bill is shown. Other names are not assumed to represent the same party.</p>}
       {(loading || (open && history.isFetching)) && <p role="status">Loading permitted bill history…</p>}
-      {(error || history.isError) && <p role="alert">Full bill history could not be loaded. Displayed list details may be incomplete. <button type="button" className="underline" onClick={() => history.refetch()}>Retry</button></p>}
+      {(error || history.isError) && <p role="alert">Financial history is unavailable or not permitted. <button type="button" className="underline" onClick={() => history.refetch()}>Retry</button></p>}
       <div className="overflow-x-auto"><table className="w-full text-xs">
         <thead><tr>{["Bill date / bill", "Status", "Net bill value", "Recorded payments", "This bill balance", "Credit", "Calculated cumulative movement*"].map(h => <th className="p-2 text-left" key={h}>{h}</th>)}</tr></thead>
         <tbody>{rows.map(row => {

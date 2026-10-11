@@ -1,4 +1,10 @@
 {
+  "vendor_financials": {
+    "actions": ["view"],
+    "tooltips": {
+      "view": "View Vendor Financials: saved-bill summary, vendor statement and Taxes Register. Required even for Administrators; Owner always permitted."
+    }
+  },
   "dashboard": {
     "actions": [
       "view",

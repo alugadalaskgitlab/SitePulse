@@ -73,6 +73,7 @@ export const SECTION_KEYS = [
   // ── Vendor Bills (granular: view / raise / verify / approve / aliases) ────
   "vendor_bills",                // legacy broad key — kept for backward compat
   "vendor_bills_view",
+  "vendor_financials",
   "vendor_bills_raise",
   "vendor_bills_verify",
   "vendor_bills_approve",
@@ -205,6 +206,7 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
   // Vendor Bills
   vendor_bills: "Vendor Bills (legacy)",
   vendor_bills_view: "Vendor Bills — View List",
+  vendor_financials: "View Vendor Financials",
   vendor_bills_raise: "Vendor Bills — Raise / Create",
   vendor_bills_verify: "Vendor Bills — Mark Verified",
   vendor_bills_approve: "Vendor Bills — Final Approve / Mark Paid",
@@ -323,6 +325,7 @@ export function emptyMatrix(): PermissionMatrix {
 export function fullMatrix(): PermissionMatrix {
   const out = {} as PermissionMatrix;
   for (const k of SECTION_KEYS) out[k] = { ...FULL_PERMISSION };
+  out.vendor_financials = { ...EMPTY_PERMISSION };
   return out;
 }
 
@@ -648,6 +651,7 @@ export const PERMISSION_GROUPS: { id: string; label: string; sections: SectionKe
     label: "Vendor Bills",
     sections: [
       "vendor_bills_view", "vendor_bills_raise",
+      "vendor_financials",
       "vendor_bills_verify", "vendor_bills_approve", "vendor_bill_aliases",
     ],
   },
