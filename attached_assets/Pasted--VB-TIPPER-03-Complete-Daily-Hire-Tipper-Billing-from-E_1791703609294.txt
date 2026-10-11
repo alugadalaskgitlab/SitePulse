@@ -1,0 +1,141 @@
+# VB-TIPPER-03 — Complete Daily-Hire Tipper Billing from Existing Material Trips
+
+**Objective:** Make the already implemented VM-VB-01 and VB-TIPPER-01 workflows operational for actual historical tipper trips and daily-hire Vendor Bills.
+
+This is a focused completion and correction task, NOT a new billing system.
+
+## 1. Fix the complete linked-trip workflow
+
+Trace and complete:
+
+Material Trip Register → Hire Billing Link → Equipment Master → Confirmed Vendor Master → Equipment Hire Vendor Bill.
+
+The real-world scenario is:
+
+- HLC transports soil from Own Source using agency-hired tippers.
+- Site engineers manually recorded vehicle numbers and transporter names in Material Trips.
+- Several tippers exist in Equipment Master with different recorded owner-name spellings.
+- The same party now has one confirmed Vendor Master identity.
+- Some equipment activities also exist in DPR Equipment Logs.
+- Previously, even after confirming a Hire Billing Link, the relevant tipper was not appearing in Vendor Bills.
+
+Ensure confirmed records become discoverable in the correct Vendor Bill without altering their original names or material receipts.
+
+## 2. Use verified vendor identity
+
+Use the reviewed Vendor Master association wherever it exists, not free-text spelling alone.
+
+In Vendor Master → Link Vendors, allow authorised confirmation of the existing Equipment Master owner and relevant trip transporter identities.
+
+When these confirmations are valid, the correct vendor should appear consistently in billing discovery.
+
+For one-time vendors without Vendor Master registration, preserve the existing free-text billing workflow. Do not require permanent vendor registration just to issue a bill.
+
+Do not automatically combine similarly named parties.
+
+If a tipper remains excluded, display the actual reason and corrective action, rather than a generic instruction to link trips.
+
+## 3. Daily-hire calculation
+
+For each hired tipper configured on Daily Hire:
+
+- Include confirmed material-trip activity within the selected billing period.
+- Include existing DPR/Equipment Usage evidence where applicable.
+- Count one eligible vehicle/date only once across all sources.
+- Show recorded trip count and links to original evidence.
+- Never multiply daily hire charges by the number of trips.
+- Never invent working hours, meter readings or diesel consumption from trip counts.
+- Use the applicable agreed daily hire rate and hire dates.
+
+Provide a simple date-wise review:
+
+**Date | Vehicle | Trips | DPR activity | Full/Half/Excluded | Reason | Amount**
+
+The billing reviewer must be able to decide:
+
+- Full day — 1 day
+- Half day — 0.5 day
+- Excluded — 0 days
+
+A reason is required for every trip-supported day. A breakdown or early departure must not automatically become a full-day entitlement.
+
+## 4. Existing billed days and duplicates
+
+Before saving, verify that no payable equipment-day has already been billed through:
+
+- DPR-sourced equipment activity
+- Standalone Equipment Usage
+- Confirmed Material Trips
+- Existing Vendor Bills
+- Existing hire statements
+
+Do not automatically discard supporting evidence just because another source exists.
+
+For daily hire, consolidate evidence into one vehicle/date decision.
+
+If a date is already billed, show the existing bill reference and prevent a duplicate charge. Allow the reviewer to exclude that date with a reason.
+
+Enforce the duplicate check on the server when saving, not only in the UI.
+
+## 5. Preserve the existing Vendor Bill interface
+
+Use the established **New Vendor Bill → Equipment Hire** workflow.
+
+Do not introduce a separate Tipper Bill screen.
+
+The user should be able to select:
+
+Vendor → Bill period → Eligible tipper → Review daily activity → Prepare draft bill.
+
+Keep the existing Vendor Bill financial fields, advances, taxes, approval process and saved-calendar functionality.
+
+Do not modify the newly completed Unpaid/All financial overview or Excel exports.
+
+## 6. Historical and operational safeguards
+
+Do not:
+- Rewrite existing Material Trips, receipts or vehicle numbers
+- Require engineers to re-enter activities in submitted DPRs
+- Create duplicate equipment usage entries
+- Recalculate historical diesel or meter readings
+- Change existing paid bills, hire snapshots or payment records
+- Change Vendor Master associations without authorised confirmation
+- Alter stock, PI, PO, material receipts or accounting data
+
+Any new identity confirmation must remain auditable.
+
+## 7. End-to-end verification
+
+Use realistic saved-record structures and existing application routes to verify:
+
+1. A historical Own Source soil trip with a manually entered vehicle and supplier.
+2. Equipment Master vendor name differing from the reviewed Vendor Master name.
+3. Confirmed vehicle and owner appearing under the correct vendor in Equipment Hire.
+4. Multiple trips by the same tipper on one date producing one hire day.
+5. Multiple dates for the same tipper.
+6. Multiple tippers owned by the same vendor.
+7. A tipper appearing in both DPR and Material Trips on the same date.
+8. Full-day, half-day and excluded-day decisions.
+9. Existing billed/paid days and duplicate protection.
+10. One-time free-text vendors remaining billable.
+11. Saving and reopening an actual draft bill with its reviewed daily decisions.
+12. Existing monthly/hours/trip billing remaining unaffected.
+
+Prioritise a working end-to-end test that exercises the real Vendor Bill save and reload paths, rather than only testing calculation helpers.
+
+Run focused tests and ONE production build. Do not run the full suite or repeat broad investigations.
+
+## 8. Completion report
+
+Provide a concise report covering:
+
+- The precise cause of the previously missing confirmed tipper
+- What was corrected
+- How to select and bill a historical tipper in the actual application
+- Focused test counts and build result
+- Any remaining limitations or permissions needed
+- Whether publishing requires SQL changes
+
+Do not publish automatically, backfill production data or modify actual historical bills.
+
+**STOP after implementation and verification.**
