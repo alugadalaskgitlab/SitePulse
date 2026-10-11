@@ -10,7 +10,9 @@ type Vendor = {
   bankIfsc?: string | null; bankName?: string | null; contactPersonName: string | null;
   contactPhone: string | null; contactEmail: string | null; isActive: boolean;
 };
-type Proposal = { role: string; name: string; ids: number[]; count: number; hint: string | null; suggestionId: number | null };
+type Proposal = { role: string; name: string; ids: number[]; count: number; hint: string | null; suggestionId: number | null;
+  registration?: string; version?: number | null; linkedVendorId?: number | null; conflict?: string | null;
+  confirmedBy?: string; confirmedAt?: string; confirmationReason?: string };
 type Activity = { vendor: Vendor; sites: { site: string; equipment: number; material: number; transport: number; labour: number }[] };
 const keys = ["name", "businessName", "gstNumber", "panNumber", "address", "contactPersonName", "contactPhone", "contactEmail", "bankAccountName", "bankAccountNumber", "bankIfsc", "bankName"] as const;
 const labels: Record<string, string> = {
@@ -19,7 +21,7 @@ const labels: Record<string, string> = {
   bankAccountName: "Account holder", bankAccountNumber: "Account number", bankIfsc: "IFSC", bankName: "Bank name",
 };
 const roleLabels: Record<string, string> = {
-  bills: "Vendor bills", rates: "Rate cards", indents: "Bulk material purchase indents", transport: "Trip transporter", materialSource: "Trip material source",
+  equipment: "Hired equipment owner", bills: "Vendor bills", rates: "Rate cards", indents: "Bulk material purchase indents", transport: "Trip transporter", materialSource: "Trip material source",
 };
 const empty = () => Object.fromEntries(keys.map(k => [k, ""])) as Record<typeof keys[number], string>;
 function Editor({ initial, onSave, onCancel, busy }: {
@@ -43,12 +45,14 @@ function Editor({ initial, onSave, onCancel, busy }: {
 }
 
 export default function VendorMaster() {
-  const { isAdmin } = useAuth();
+  const { isAdmin: admin, isOwner } = useAuth();
+  const isAdmin = admin || isOwner;
   const qc = useQueryClient();
   const [tab, setTab] = useState<"master" | "review">("master");
   const [editing, setEditing] = useState<Partial<Vendor> | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [chosen, setChosen] = useState<Record<string, string>>({});
+  const [reasons, setReasons] = useState<Record<string, string>>({});
   const [creating, setCreating] = useState<Proposal | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -58,14 +62,17 @@ export default function VendorMaster() {
   const refresh = () => { qc.invalidateQueries({ queryKey: ["/api/vendor-master"] }); qc.invalidateQueries({ queryKey: ["/api/vendor-master/review"] }); if (detailId) qc.invalidateQueries({ queryKey: [`/api/vendor-master/${detailId}/activity`] }); };
   const run = async (fn: () => Promise<void>) => { setBusy(true); setMessage(""); try { await fn(); refresh(); } catch (e) { setMessage(e instanceof Error ? e.message : "Operation failed"); } finally { setBusy(false); } };
   const confirm = (p: Proposal, vendorId?: number, newVendor?: Record<string, string | boolean>) => run(async () => {
-    await apiRequest("POST", "/api/vendor-master/review/confirm", { role: p.role, name: p.name, ids: p.ids, ...(vendorId ? { vendorId } : { newVendor }) });
+    await apiRequest("POST", "/api/vendor-master/review/confirm", { role: p.role, name: p.name, ids: p.ids,
+      version: p.version, reason: reasons[`${p.role}:${p.ids.join(",")}`], ...(vendorId ? { vendorId } : { newVendor }) });
+    qc.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" &&
+      (q.queryKey[0].startsWith("/api/vendor-bills") || q.queryKey[0].startsWith("/api/site-material-trips") || q.queryKey[0].startsWith("/api/plant-module/equipment")) });
     setCreating(null);
     setMessage(`Confirmed ${p.count} ${roleLabels[p.role]} link(s) for ${p.name}. Free-text names remain unchanged.`);
   });
   const available = vendors.data || [];
   return <main className="max-w-6xl mx-auto p-5 space-y-5">
     <Link href="/masters/hub" className="text-sm text-blue-700 hover:underline">← Master Data</Link>
-    <div><h1 className="text-2xl font-bold">Vendor Master</h1><p className="text-sm text-slate-600">Structured vendor details and explicitly reviewed links. Existing bill and rate matching stays name-based.</p></div>
+    <div><h1 className="text-2xl font-bold">Vendor Master</h1><p className="text-sm text-slate-600">One party, one Vendor Master. Material supplier, transporter and equipment owner remain separate roles. Linking preserves recorded names and existing bills.</p></div>
     <div className="flex gap-2 border-b">{(["master", "review"] as const).map(t => <button key={t} onClick={() => { setTab(t); setMessage(""); }} className={`px-4 py-2 ${tab === t ? "border-b-2 border-blue-700 font-semibold" : ""}`}>{t === "master" ? "Vendors" : "Link Vendors"}</button>)}</div>
     {message && <p role="alert" className="rounded border bg-amber-50 p-3 text-sm">{message}</p>}
     {tab === "master" ? <>
@@ -92,20 +99,23 @@ export default function VendorMaster() {
         </>}
       </section>}
     </> : isAdmin ? <>
-      <h2 className="text-lg font-semibold">Bulk Material Purchase Indent vendors</h2>
-      <p className="text-sm text-slate-600">Only unlinked bulk-material purchase indent vendors appear here. Other vendor names and stores purchase indents are not included. Alias hints are suggestions only; nothing is linked until you confirm.</p>
+      <h2 className="text-lg font-semibold">Review vendor identities</h2>
+      <p className="text-sm text-slate-600">Review equipment owners, trip roles, unlinked bills, rate cards and bulk purchase indents. Several vehicles can share one vendor. Suggestions are not confirmations; verify each identity. Existing bill-specific references remain unchanged.</p>
       {review.isError && <p role="alert">Unable to load proposals: {String(review.error)}</p>}
-      {review.data?.length === 0 && <p>No unlinked bulk-material purchase indent vendors found.</p>}
+      {review.data?.length === 0 && <p>No vendor identities need review.</p>}
       <div className="space-y-3">{review.data?.map(p => {
-        const key = `${p.role}:${p.name}`;
-        const target = chosen[key] ?? String(p.suggestionId ?? "");
+        const key = `${p.role}:${p.ids.join(",")}`;
+        const target = chosen[key] ?? String(p.linkedVendorId ?? p.suggestionId ?? "");
         return <div key={key} className="rounded-lg border bg-white p-4 flex flex-wrap items-center gap-4">
-          <div className="flex-1 min-w-52"><strong>{p.name}</strong><p className="text-sm text-slate-600">{roleLabels[p.role]} · {p.count} unlinked record(s){p.hint ? ` · Alias hint: ${p.hint}` : ""}</p></div>
+          <div className="flex-1 min-w-52"><strong>{p.name || "Owner name missing"}</strong><p className="text-sm text-slate-600">{roleLabels[p.role]} · {p.count} record(s) · {p.registration}{p.linkedVendorId ? " · Linked" : " · Unlinked"}{p.hint ? ` · Alias hint: ${p.hint}` : ""}</p>
+            {p.conflict && <p className="text-sm text-amber-700">{p.conflict}</p>}
+            {p.confirmedBy && <p className="text-xs text-slate-600">Confirmed by {p.confirmedBy}{p.confirmedAt ? ` · ${new Date(p.confirmedAt).toLocaleString()}` : ""} · {p.confirmationReason}</p>}</div>
           <select aria-label={`Master match for ${p.name} ${p.role}`} className="border rounded px-2 py-2" value={target} onChange={e => setChosen({ ...chosen, [key]: e.target.value })}>
             <option value="">Select master vendor</option>{available.filter(v => v.isActive).map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
           </select>
-          <button disabled={!target || busy} className="bg-blue-700 text-white rounded px-3 py-2 disabled:opacity-40" onClick={() => confirm(p, Number(target))}>Confirm link</button>
-          <button className="border rounded px-3 py-2" onClick={() => setCreating(p)}>Create new</button>
+          {p.role === "equipment" && <input aria-label={`Verification reason ${p.registration}`} className="border rounded p-2" placeholder="Identity verification reason" value={reasons[key] || ""} onChange={e => setReasons({ ...reasons, [key]: e.target.value })} />}
+          <button disabled={!target || busy || (p.role === "equipment" && (reasons[key] || "").trim().length < 3)} className="bg-blue-700 text-white rounded px-3 py-2 disabled:opacity-40" onClick={() => confirm(p, Number(target))}>Confirm link</button>
+          {p.role !== "equipment" && <button className="border rounded px-3 py-2" onClick={() => setCreating(p)}>Create new</button>}
         </div>;
       })}</div>
       {creating && <div className="fixed inset-0 bg-black/40 z-50 overflow-auto p-4 flex items-start justify-center"><div className="w-full max-w-2xl mt-8">

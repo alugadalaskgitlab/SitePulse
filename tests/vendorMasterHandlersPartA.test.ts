@@ -156,8 +156,8 @@ describe("Vendor Master Part A real Express handlers, synthetic transaction DB b
       expect.objectContaining({ role: "indents", name: "SYNTHETIC Alias Ltd", ids: [31, 32, 33], count: 3, suggestionId: 1 }),
       expect.objectContaining({ role: "indents", name: "SYNTHETIC Catalog Bulk", ids: [38], count: 1 }),
     ]));
-    expect(review.body).toHaveLength(2);
-    expect(review.body.every((p: any) => p.role === "indents")).toBe(true);
+    expect(review.body.filter((p: any) => p.role === "indents")).toHaveLength(2);
+    expect(review.body.some((p: any) => p.role === "bills")).toBe(true);
     expect(memory.bills.every(row => row.vendorId == null)).toBe(true);
     expect(memory.rates.every(row => row.vendorId == null)).toBe(true);
 
@@ -168,7 +168,7 @@ describe("Vendor Master Part A real Express handlers, synthetic transaction DB b
     expect(memory.pi.filter(row => [31, 32, 33].includes(row.id)).every(row => row.vendorId === 1)).toBe(true);
     expect(memory.pi.find(row => row.id === 34)?.vendorId).toBeNull();
     expect(memory.pi.find(row => row.id === 35)?.vendorId).toBeNull();
-    expect((await request(api()).get("/api/vendor-master/review")).body).toEqual([
+    expect((await request(api()).get("/api/vendor-master/review")).body.filter((p: any) => p.role === "indents")).toEqual([
       expect.objectContaining({ ids: [38] }),
     ]);
   });
@@ -193,7 +193,7 @@ describe("Vendor Master Part A real Express handlers, synthetic transaction DB b
     memory.activityBills = [{ itemId: 31, vendorId: 1, siteName: "SYNTHETIC North Site", siteId: null, billType: "equipment", category: "Equipment Hire" }];
     memory.pi = [{ id: 50, name: "SYNTHETIC Stores Only", vendorId: 1, siteId: 7, procurementRoute: "stores", catalogProcurementRoute: null }];
     memory.trips = [{ site: "SYNTHETIC North Site", supplierId: 1, materialId: 1 }];
-    expect((await request(api()).get("/api/vendor-master/review")).body).toEqual([]);
+    expect((await request(api()).get("/api/vendor-master/review")).body.filter((p: any) => p.role === "indents")).toEqual([]);
     const activity = await request(api()).get("/api/vendor-master/1/activity");
     expect(activity.status).toBe(200);
     expect(activity.body.sites).toEqual([
@@ -231,7 +231,7 @@ describe("Vendor Master Part A real Express handlers, synthetic transaction DB b
     memory.aliases = [{ alias: "synthetic alias ltd", canonicalName: "synthetic canonical" }];
     const review = await request(app).get("/api/vendor-master/review");
     expect(review.status).toBe(200);
-    expect(review.body).toEqual([]);
+    expect(review.body).toEqual(expect.arrayContaining([expect.objectContaining({ role: "bills", suggestionId: 1 })]));
     const inline = await request(app).post("/api/vendor-master/review/confirm").send({
       role: "rates", name: "SYNTHETIC New Supplier", ids: [20],
       newVendor: { name: "  new Supplier  ", businessName: "  Supply house  " },
@@ -261,7 +261,7 @@ describe("Vendor Master Part A real Express handlers, synthetic transaction DB b
     const app = api();
     const review = await request(app).get("/api/vendor-master/review");
     expect(review.status).toBe(200);
-    expect(review.body).toEqual([]);
+    expect(review.body).toEqual(expect.arrayContaining([expect.objectContaining({ role: "bills", ids: [10, 11], suggestionId: 1 })]));
     expect(memory.bills.every(row => row.vendorId === null)).toBe(true);
     const confirmed = await request(app).post("/api/vendor-master/review/confirm")
       .send({ role: "bills", name: "SYNTHETIC Alias Ltd", ids: [10, 11], vendorId: 1 });

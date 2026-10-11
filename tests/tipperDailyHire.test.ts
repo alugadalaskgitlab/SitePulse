@@ -20,6 +20,10 @@ beforeAll(async () => {
   await pg.exec("ALTER TABLE audit_logs ALTER COLUMN created_at SET DEFAULT NOW()");
   db = holder.db = drizzle(pg, { schema });
   storage = new (await import("../server/storage")).DatabaseStorage();
+  await db.insert(schema.vendors).values({ id: 9, name: "Agency", isActive: true });
+  await db.insert(schema.auditLogs).values([1, 2].map(transactionId => ({ module: "equipment_master", transactionId,
+    action: "confirm_vendor_identity", userId: 4, userName: "Reviewer", reason: "Reviewed owner identity",
+    newValues: { vendorId: 9, recordedName: "AGENCY" } })));
 }, 60000);
 afterAll(async () => pg.close());
 const master = { id: 1, name: "Tipper", ownership: "hired", registrationNumber: "TS01AB1234", vendorName: "Agency", hireBillingBasis: "daily", hireRate: 2000, hireStartDate: "2026-01-01" };

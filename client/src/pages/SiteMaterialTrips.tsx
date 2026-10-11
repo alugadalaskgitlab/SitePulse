@@ -277,6 +277,10 @@ export default function SiteMaterialTrips() {
   const activeInternalEquipment = internalEquipment.filter(
     (equipment) => equipment.isActive && equipment.ownership === "owned",
   );
+  const hiredOptions = useQuery<any[]>({
+    queryKey: ["/api/site-material-trips/hired-vehicle-options"],
+    enabled: canEdit, staleTime: 0, refetchOnMount: "always",
+  });
   const buildRolePayload = (data: typeof newTrip) => {
     if (!roleChoice || roleChoice === "unresolved") throw new Error("Choose Who brought it.");
     const ownSource = data.materialSourceType === "own_source";
@@ -321,6 +325,7 @@ export default function SiteMaterialTrips() {
     },
     onSuccess: async (trip: any) => {
       setNewHireEquipmentId("");
+      queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && q.queryKey[0].startsWith("/api/vendor-bills") });
       if (stagedPhotos.length > 0 && trip?.id) {
         await uploadStagedPhotos(trip.id);
         queryClient.invalidateQueries({ queryKey: ["/api/attachments", "site_material_trip", trip.id] });
@@ -555,18 +560,19 @@ export default function SiteMaterialTrips() {
                   onChange={event => {
                     const id = event.target.value;
                     setNewHireEquipmentId(id);
-                    const equipment = internalEquipment.find(e => String(e.id) === id);
+                    const equipment = hiredOptions.data?.find(e => String(e.id) === id);
                     if (equipment) {
                       setRoleChoice("different_parties");
                       setNewTrip(prev => ({ ...prev, vehicleNumber: equipment.registrationNumber || "",
-                        supplier: equipment.vendorName || "", transportType: "agency_vendor", internalEquipmentId: null }));
+                        supplier: equipment.linkedVendorName || equipment.vendorName || "", transportType: "agency_vendor", internalEquipmentId: null }));
                     }
                   }}>
                   <option value="">Free-text / unregistered vehicle</option>
-                  {internalEquipment.filter(e => e.ownership === "hired" && e.isActive && e.registrationNumber).map(e =>
-                    <option key={e.id} value={e.id}>{e.registrationNumber} · {e.name} · {e.vendorName}</option>)}
+                  {(hiredOptions.data || []).filter(e => e.isActive && e.registrationNumber).map(e =>
+                    <option key={e.id} value={e.id}>{e.registrationNumber} · {e.name} · {e.linkedVendorName || `${e.vendorName || "No owner"} — Unlinked Vendor Master`}</option>)}
                 </select>
-                <p className="text-xs text-muted-foreground">Selection confirms the transport vehicle only; material source and quantity are unchanged.</p>
+                <p className="text-xs text-muted-foreground">Selection confirms the transport vehicle only; material source and quantity are unchanged. Unlinked owners require Vendor Master review before hire billing.</p>
+                {hiredOptions.isError && <p role="alert">Could not load hired vehicles. <button type="button" onClick={() => hiredOptions.refetch()}>Retry</button></p>}
               </div>}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
@@ -624,11 +630,17 @@ export default function SiteMaterialTrips() {
               <TripTransportRoleFields
                 choice={roleChoice}
                 onChoice={(choice) => {
+                  setNewHireEquipmentId("");
                   setRoleChoice(choice);
                   setNewTrip((prev) => ({ ...prev, transportType: choice === "in_house" ? "in_house" : "agency_vendor", internalEquipmentId: choice === "in_house" ? prev.internalEquipmentId : null }));
                 }}
                 value={newTrip}
-                onChange={(draft) => setNewTrip((prev) => ({ ...prev, ...draft }))}
+                onChange={(draft) => {
+                  if (("vehicleNumber" in draft && draft.vehicleNumber !== newTrip.vehicleNumber) ||
+                    ("supplier" in draft && draft.supplier !== newTrip.supplier) ||
+                    ("transportType" in draft && draft.transportType !== newTrip.transportType)) setNewHireEquipmentId("");
+                  setNewTrip((prev) => ({ ...prev, ...draft }));
+                }}
                 vendors={vendors}
                 equipment={activeInternalEquipment}
                 sourceSuggestions={materialSourceSupplierSuggestions}

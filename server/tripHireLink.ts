@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { auditLogs, equipmentMaster, hireStatements, siteMaterialTrips, vendorBillItems, vendorBills } from "../shared/schema";
 import { tripHireFingerprint, tripHireMatch, tripHireRegistration, tripHireVendor, validTripHireLink } from "../shared/tripHireLink";
+import { equipmentVendorIdentities } from "./equipmentVendorIdentity";
 
 export const TRIP_HIRE_LINK_ACTION = "confirm_hire_equipment";
 export type NewTripHireLink = { equipmentId: number; reason: string; acceptConflict?: boolean;
@@ -16,14 +17,25 @@ export async function readTripHireLinks(executor: any, ids: number[]) {
 }
 export async function tripHireReview(executor: any, trip: any) {
   const equipment = await executor.select().from(equipmentMaster);
+  const identities = await equipmentVendorIdentities(executor, equipment);
+  const match = tripHireMatch(trip, equipment);
+  const sameRegistration = equipment.filter((e: any) => e.ownership === "hired" &&
+    tripHireRegistration(trip.vehicleNumber) && tripHireRegistration(e.registrationNumber) === tripHireRegistration(trip.vehicleNumber));
+  if (sameRegistration.length === 1 && trip.transportType !== "in_house" && trip.supplierVendorId &&
+    identities.get(sameRegistration[0].id)?.vendor?.id === trip.supplierVendorId &&
+    equipment.filter((e: any) => tripHireRegistration(e.registrationNumber) === tripHireRegistration(trip.vehicleNumber)).length === 1) {
+    match.suggestedEquipmentId = sameRegistration[0].id;
+    match.issue = null;
+  }
   const link = (await readTripHireLinks(executor, [trip.id])).get(trip.id);
   return {
-    ...tripHireMatch(trip, equipment), fingerprint: tripHireFingerprint(trip), version: link?.id ?? null,
+    ...match, fingerprint: tripHireFingerprint(trip), version: link?.id ?? null,
     confirmation: link ? { ...link.newValues, actor: link.userName, at: link.createdAt, reason: link.reason,
       valid: validTripHireLink(trip, equipment.find((e: any) => e.id === link.newValues?.equipmentId), link.newValues) } : null,
     equipment: equipment.filter((e: any) => e.ownership === "hired").map((e: any) => ({
       id: e.id, name: e.name, registrationNumber: e.registrationNumber, vendorName: e.vendorName,
       hireBillingBasis: e.hireBillingBasis, hireRate: e.hireRate,
+      vendorId: identities.get(e.id)?.vendor?.id, linkedVendorName: identities.get(e.id)?.vendor?.name,
     })),
   };
 }

@@ -1,9 +1,10 @@
 import type { Express, Request, Response } from "express";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "./db";
 import { assertAdmin, assertView } from "./auth-routes";
-import { vendors, vendorBills, vendorBillItems, vendorRateCards, vendorAliases, purchaseIndentItems, purchaseIndents, plantMaterials, siteMaterialTrips, sites } from "@shared/schema";
+import { vendors, vendorBills, vendorBillItems, vendorRateCards, vendorAliases, purchaseIndentItems, purchaseIndents, plantMaterials, siteMaterialTrips, sites, equipmentMaster, auditLogs } from "@shared/schema";
+import { equipmentVendorIdentities, EQUIPMENT_VENDOR_LINK, ownerNameKey } from "./equipmentVendorIdentity";
 import { siteMatchesPermitted } from "@shared/siteName";
 import { isBulkPiDeliveryItem } from "@shared/purchaseIndentDelivery";
 
@@ -34,7 +35,7 @@ const roles = {
 type Role = keyof typeof roles;
 // Review only the currently actionable PI links; retain other roles for confirmation
 // and for a future review-scope expansion.
-const reviewRoles: Role[] = ["indents"];
+const reviewRoles: Role[] = ["indents", "bills", "rates", "transport", "materialSource"];
 function bulkReviewItem(row: { procurementRoute: string | null; catalogProcurementRoute: string | null }) {
   return isBulkPiDeliveryItem(row);
 }
@@ -126,6 +127,16 @@ export function registerVendorMasterRoutes(app: Express, permittedSites: (req: R
       const master = await db.select({ id: vendors.id, name: vendors.name }).from(vendors);
       const aliases = await db.select().from(vendorAliases);
       const proposals = [];
+      const equipment = await db.select().from(equipmentMaster).where(eq(equipmentMaster.ownership, "hired"));
+      const identities = await equipmentVendorIdentities(db, equipment);
+      for (const machine of equipment) {
+        const identity = identities.get(machine.id);
+        proposals.push({ role: "equipment", name: machine.vendorName || "", ids: [machine.id], count: 1,
+          registration: machine.registrationNumber, version: identity.auditId,
+          linkedVendorId: identity.vendor?.id ?? null, conflict: identity.conflict,
+          confirmedBy: identity.confirmedBy, confirmedAt: identity.confirmedAt, confirmationReason: identity.confirmationReason,
+          ...proposeVendorMatch(machine.vendorName || "", master, aliases) });
+      }
       for (const role of reviewRoles) {
         const { table, name, id, fk } = roles[role];
         const rows = role === "indents"
@@ -136,14 +147,16 @@ export function registerVendorMasterRoutes(app: Express, permittedSites: (req: R
           }).from(purchaseIndentItems)
             .leftJoin(plantMaterials, eq(plantMaterials.id, purchaseIndentItems.materialId))
             .where(isNull(purchaseIndentItems.vendorId))).filter(bulkReviewItem)
-          : await db.select({ id, name }).from(table).where(isNull(fk));
+          : await db.select({ id, name, ...(["transport", "materialSource"].includes(role) ? { registration: siteMaterialTrips.vehicleNumber } : {}) }).from(table).where(isNull(fk));
         const grouped = new Map<string, number[]>();
         for (const row of rows) {
           if (!row.name?.trim()) continue;
           grouped.set(row.name, [...(grouped.get(row.name) || []), row.id]);
         }
         for (const [name, ids] of Array.from(grouped)) {
-          proposals.push({ role, name, count: ids.length, ids: ids.sort((a: number,b: number) => a-b), ...proposeVendorMatch(name, master, aliases) });
+          proposals.push({ role, name, count: ids.length, ids: ids.sort((a: number,b: number) => a-b), ...proposeVendorMatch(name, master, aliases),
+            registration: Array.from(new Set(rows.filter(r => ids.includes(r.id)).map((r: any) => r.registration).filter(Boolean))).join(", "),
+            conflict: proposeVendorMatch(name, master, aliases).suggestionId ? null : "No unique exact or alias match. Manual identity review required." });
         }
       }
       res.json(proposals);
@@ -152,6 +165,26 @@ export function registerVendorMasterRoutes(app: Express, permittedSites: (req: R
   app.post("/api/vendor-master/review/confirm", async (req, res) => {
     if (!canManage(req, res)) return;
     try {
+      if (req.body.role === "equipment") {
+        const input = z.object({ name: z.string(), ids: z.array(z.number().int().positive()).length(1),
+          vendorId: z.number().int().positive(), version: z.number().int().positive().nullable(),
+          reason: z.string().trim().min(3), }).parse(req.body);
+        const result = await db.transaction(async tx => {
+          await tx.execute(sql`SELECT pg_advisory_xact_lock(1426, ${input.ids[0]})`);
+          const [machine] = await tx.select().from(equipmentMaster).where(eq(equipmentMaster.id, input.ids[0])).for("update");
+          if (!machine || machine.ownership !== "hired" || (machine.vendorName || "") !== input.name) return null;
+          const identity = (await equipmentVendorIdentities(tx, [machine])).get(machine.id);
+          if (identity.auditId !== input.version) return null;
+          const [target] = await tx.select().from(vendors).where(eq(vendors.id, input.vendorId));
+          if (!target?.isActive) return null;
+          await tx.insert(auditLogs).values({ module: "equipment_master", transactionId: machine.id,
+            action: EQUIPMENT_VENDOR_LINK, userId: req.authUser!.id, userName: req.authUser!.fullName,
+            reason: input.reason, oldValues: { vendorId: identity.vendor?.id ?? null },
+            newValues: { vendorId: target.id, recordedName: ownerNameKey(machine.vendorName) } });
+          return { vendorId: target.id, linked: 1 };
+        });
+        return result ? res.json(result) : res.status(409).json({ message: "Equipment/vendor review changed. Refresh and review again." });
+      }
       const input = z.object({
         role: z.enum(["bills", "rates", "indents", "transport", "materialSource"]),
         name: z.string().min(1),
@@ -189,6 +222,13 @@ export function registerVendorMasterRoutes(app: Express, permittedSites: (req: R
         const updated = await tx.update(table).set({ [columnKey]: vendorId })
           .where(and(inArray(id, input.ids), eq(name, input.name), isNull(fk))).returning({ id });
         if (!sameReviewIds(updated.map(row => row.id), input.ids)) throw new Error("Vendor review changed during confirmation");
+        for (const sourceId of input.ids) await tx.insert(auditLogs).values({
+          module: "vendor_identity", transactionId: sourceId, action: "confirm_vendor_identity",
+          userId: req.authUser!.id, userName: req.authUser!.fullName,
+          reason: "Administrator/Owner explicitly confirmed existing recorded party",
+          oldValues: { role: input.role, recordedName: input.name, vendorId: null },
+          newValues: { role: input.role, recordedName: input.name, vendorId },
+        });
         return { vendorId, linked: updated.length };
       });
       if ("conflict" in result) return res.status(409).json({ message: "Review is stale. Refresh proposals and confirm again." });

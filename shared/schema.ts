@@ -2662,6 +2662,7 @@ export const hireGroupRequestSchema = z.object({
 export type HireGroupRequest = z.infer<typeof hireGroupRequestSchema>;
 
 export const createVendorBillRequestSchema = insertVendorBillSchema.extend({
+  billingVendorId: z.number().int().positive().optional(),
   additionalAdjustments: z.array(vendorBillAdditionalAdjustmentSchema).nullish().transform((value) => value ?? []),
   items: z.array(insertVendorBillItemSchema.omit({ billId: true })),
   hireGroups: z.array(hireGroupRequestSchema).optional(),

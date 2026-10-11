@@ -32,6 +32,10 @@ import { readPermissionAccessAudit } from "./permissionAccessMigration";
 import { TransportRateInputError } from "@shared/transportRate";
 import { registerVendorMasterRoutes } from "./vendor-master";
 import { confirmTripHireLink, tripHireReview } from "./tripHireLink";
+import { tripHireEligibility } from "./tripHireEligibility";
+import { equipmentVendorIdentities } from "./equipmentVendorIdentity";
+import { equipmentMaster as hireIdentityEquipment } from "@shared/schema";
+import { vendors as billingIdentityVendors } from "@shared/schema";
 import { siteMaterialTrips } from "@shared/schema";
 import { buildPurchaseOrderPdf } from "./purchase-order-pdf";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc, desc } from "drizzle-orm";
@@ -931,6 +935,16 @@ export async function registerRoutes(
     } catch (err) {
       res.status(err instanceof z.ZodError ? 400 : 500).json({ message: "Could not load trip vendor options." });
     }
+  });
+  app.get("/api/site-material-trips/hired-vehicle-options", async (req, res) => {
+    if (!assertEdit(req, res, "site_materials")) return;
+    try {
+      const rows = await db.select().from(hireIdentityEquipment).where(eq(hireIdentityEquipment.ownership, "hired"));
+      const identities = await equipmentVendorIdentities(db, rows);
+      res.json(rows.map(row => ({ id: row.id, name: row.name, registrationNumber: row.registrationNumber,
+        vendorName: row.vendorName, isActive: row.isActive, vendorId: identities.get(row.id)?.vendor?.id,
+        linkedVendorName: identities.get(row.id)?.vendor?.name })));
+    } catch (error: any) { res.status(500).json({ message: "Could not load hired vehicle identities" }); }
   });
 
   app.get("/api/site-material-trips/arrangement-options", async (req, res) => {
@@ -12004,6 +12018,21 @@ export async function registerRoutes(
     } catch (err: any) {
       res.status(err instanceof z.ZodError ? 400 : 500).json({ message: err?.message || "Failed to fetch hire activities" });
     }
+  });
+  app.get("/api/vendor-bills/vendor-identities", async (req, res) => {
+    if (!assertView(req, res, "vendor_bills")) return;
+    try { res.json(await db.select({ id: billingIdentityVendors.id, name: billingIdentityVendors.name })
+      .from(billingIdentityVendors).where(eq(billingIdentityVendors.isActive, true))); }
+    catch { res.status(500).json({ message: "Could not load Vendor Master identities" }); }
+  });
+
+  app.get("/api/vendor-bills/trip-hire-eligibility", async (req, res) => {
+    if (!assertView(req, res, "vendor_bills")) return;
+    try {
+      const query = z.object({ vendorName: z.string().min(1), periodFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        periodTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(req.query);
+      res.json(await tripHireEligibility(db, query.vendorName, query.periodFrom, query.periodTo));
+    } catch (error: any) { res.status(error instanceof z.ZodError ? 400 : 500).json({ message: error.message }); }
   });
 
   app.get("/api/vendor-bills/previous-rates", async (req, res) => {

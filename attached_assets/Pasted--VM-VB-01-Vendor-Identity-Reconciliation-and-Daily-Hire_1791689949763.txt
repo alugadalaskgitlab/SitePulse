@@ -1,0 +1,117 @@
+# VM-VB-01 — Vendor Identity Reconciliation and Daily-Hire Tipper Billing
+
+**Priority:** Complete Stages 1 and 2 together. This replaces the earlier unsent VB-TIPPER-02 instruction.
+
+## Objective
+
+Make Vendor Master the authoritative identity for parties across Equipment Master, Material Trip Register and Vendor Bills.
+
+A single party may supply materials, own hired equipment and provide transport. All activities must link to ONE Vendor Master ID while retaining their separate operational and commercial roles.
+
+HLC maintains one Tally creditor ledger per party. Expense classifications will be addressed in a later Tally export phase.
+
+## 1. Vendor Master reconciliation
+
+Extend the existing **Masters → Vendor Master → Link Vendors** functionality.
+
+Include:
+- Equipment Master hired-equipment owners
+- Material Trip transport suppliers
+- Material Trip material suppliers
+- Vendor Bills and existing party references where applicable
+
+Show the recorded name, suggested Vendor Master, vehicle registration where relevant, source record count and any conflict.
+
+Allow Administrator/Owner confirmation of the correct vendor.
+
+Use existing stable vendor IDs. Add a nullable Vendor Master reference to Equipment Master only if genuinely necessary, through a safe additive migration.
+
+**Do not merge vendors, overwrite historical names, or automatically confirm uncertain matches.**
+
+Multiple equipment records must be linkable to the same Vendor Master.
+
+Examples to verify, without assuming identity:
+- NARASIMHULU → GANGARAM NARSIMHULU
+- SANGANNA → G SANGANNA
+- FASIUDDIN → MD FASIUDDIN
+- MAHIPAL → MAHIPAL KALPAGURI
+
+Preserve any existing bill-specific vendor references.
+
+## 2. Material supplier versus transporter
+
+Maintain independent identities for:
+- Material seller/source
+- Transport vendor
+- Hired equipment owner
+
+Own Source means HLC's material source; it does not mean company-owned transportation.
+
+Do not alter historical material receipts, supplier names, trip quantities, vehicle numbers or receipt references.
+
+For future transactions, prefer selecting an existing Vendor Master entry. Preserve manual-name entry where required, but clearly identify unlinked names.
+
+## 3. Fix confirmed tipper discovery
+
+A confirmed Material Trip → Equipment Master hire link must become visible in Equipment Hire Vendor Bills under the correct linked Vendor Master, even if historical names differ.
+
+Fix the vendor-filtered retrieval, frontend options and query refresh together.
+
+If linked evidence is still excluded, show its exact reason: missing Vendor Master link, missing daily-hire terms, invalid confirmation, wrong vendor, outside hire period, already billed, or another genuine restriction.
+
+Do not ask engineers to re-enter the same trips into submitted DPRs.
+
+## 4. Daily-hire billing
+
+Reuse VB-TIPPER-01 and the existing hire calculator.
+
+- One vehicle/date = at most one payable hire day.
+- Combine DPR equipment logs, standalone usage and confirmed Material Trips without double-charging.
+- Treat trip counts as supporting evidence, never as automatic full-day entitlement.
+- Allow Full Day, Half Day and Excluded Day with recorded reasons.
+- Preserve agreed daily rates and hire periods.
+- Detect prior billed activity and overlapping hire statements.
+- Do not fabricate operating hours, meter readings or diesel consumption.
+
+## 5. Keep accounting identity separate
+
+One Vendor Master represents one party, regardless of transaction type.
+
+Do not create separate Vendor Master records merely because the party supplies materials and hires equipment.
+
+Do not implement Tally export yet. Do not add expense-ledger accounting rules in this batch.
+
+## 6. Financial/data safeguards
+
+Do not rewrite:
+- Existing Vendor Bills, paid bills or hire snapshots
+- DPRs and equipment logs
+- Material Trip history
+- Stock/diesel transactions
+- Existing supplier rates or hire terms
+- Purchase Indents, Purchase Orders or receipts
+
+If schema changes are required, use only additive, nondestructive changes. No mass historical backfill.
+
+All vendor linking must be authorised, reviewable and auditable.
+
+## 7. Verification
+
+Use representative real-world data structures with differing supplier names.
+
+Test:
+1. Several tippers from the same vendor, with different historical owner-name spellings.
+2. One Vendor Master for both material supply and equipment hire.
+3. HLC Own Source material carried by a hired tipper.
+4. Previously confirmed tipper becoming available in the correct Vendor Bill.
+5. Several trips and a DPR equipment log on the same date resulting in one hire day.
+6. Full, half and excluded days.
+7. Incorrect vendor association and ambiguous identities.
+8. Already-billed or paid days.
+9. Existing unrelated Vendor Bills and historical records unaffected.
+
+Run focused tests and one production build. No full-suite testing or unrelated refactoring.
+
+Implement the complete working flow. Provide one concise completion report stating changes, test results, migrations and steps for verifying one real vendor/tipper.
+
+Do not publish automatically or change production records during development. STOP.

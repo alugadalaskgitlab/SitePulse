@@ -756,6 +756,8 @@ export default function VendorBills() {
   });
 
   const vendorNames = vendorNamesData || [];
+  const billingIdentities = useQuery<{ id: number; name: string }[]>({ queryKey: ["/api/vendor-bills/vendor-identities"] });
+  const matchingBillingIdentities = (billingIdentities.data || []).filter(v => v.name.trim().toUpperCase() === vendorName.trim().toUpperCase());
   const { data: sites = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
 
   const { data: vendorAliasesData } = useQuery<VendorAlias[]>({
@@ -846,12 +848,27 @@ export default function VendorBills() {
   const hireActivitiesUrl = vendorName && periodFrom && periodTo
     ? `/api/vendor-bills/hire-activities?vendorName=${encodeURIComponent(vendorName)}&periodFrom=${encodeURIComponent(periodFrom)}&periodTo=${encodeURIComponent(periodTo)}`
     : "";
-  const { data: hireActivityRows = [], isFetching: hireActivitiesLoading } = useQuery<any[]>({
+  const { data: hireActivityRows = [], isFetching: hireActivitiesLoading, isError: hireActivitiesError, refetch: reloadHireActivities } = useQuery<any[]>({
     queryKey: ["/api/vendor-bills/hire-activities", vendorName, periodFrom, periodTo],
-    queryFn: () => fetch(hireActivitiesUrl).then(r => r.ok ? r.json() : []),
+    queryFn: async () => {
+      const response = await fetch(hireActivitiesUrl);
+      if (!response.ok) throw new Error("Could not load hire evidence. Retry before preparing the bill.");
+      return response.json();
+    },
+    staleTime: 0, refetchOnMount: "always", refetchOnWindowFocus: true,
     // Monthly lines are generated in the shared itemized bill flow too.  This
     // feed is evidence only; the server re-reads it before saving.
     enabled: !!hireActivitiesUrl && (isHistoricalHireEdit || billType === "equipment" || billType === "all"),
+  });
+  const tripHireEligibility = useQuery<any[]>({
+    queryKey: ["/api/vendor-bills/trip-hire-eligibility", vendorName, periodFrom, periodTo],
+    queryFn: async () => {
+      const response = await fetch(`/api/vendor-bills/trip-hire-eligibility?vendorName=${encodeURIComponent(vendorName)}&periodFrom=${periodFrom}&periodTo=${periodTo}`);
+      if (!response.ok) throw new Error("Could not load tipper eligibility");
+      return response.json();
+    },
+    enabled: !!hireActivitiesUrl && ["equipment", "all"].includes(billType),
+    staleTime: 0, refetchOnMount: "always", refetchOnWindowFocus: true,
   });
   const hireEquipment = useMemo(() => {
     if (isHistoricalHireEdit && ["equipment", "all"].includes(billType)) {
@@ -2143,6 +2160,7 @@ export default function VendorBills() {
       billType,
       siteId: selectedSiteId === "all" ? null : Number(selectedSiteId),
       vendorName: vendorName.toUpperCase(),
+      ...(matchingBillingIdentities.length === 1 ? { billingVendorId: matchingBillingIdentities[0].id } : {}),
       periodFrom: periodFrom || null,
       periodTo: periodTo || null,
       status: "draft",
@@ -3087,6 +3105,15 @@ export default function VendorBills() {
             <CardHeader><CardTitle className="text-sm">Daily-hire vehicles from confirmed material trips</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               <p className="text-xs text-muted-foreground">Confirm historical identities using “Hire billing link” in the Trip Register. Select a vehicle below to combine its confirmed trip dates with existing DPR/equipment activity.</p>
+              {hireActivitiesError && <p role="alert">Could not load hire evidence. <Button type="button" onClick={() => reloadHireActivities()}>Retry</Button></p>}
+              <p className="text-xs">If recorded owner names differ, an Administrator/Owner must confirm the equipment owner in Masters → Vendor Master → Link Vendors. Do not re-enter trips in DPRs.</p>
+              <p className="text-sm">{matchingBillingIdentities.length === 1 ? `Vendor Master linked: ${matchingBillingIdentities[0].name}` : "Unlinked or ambiguous vendor name — select the unique Vendor Master name for confirmed tipper billing."}</p>
+              {tripHireEligibility.isError && <p role="alert">{tripHireEligibility.error.message} <Button type="button" onClick={() => tripHireEligibility.refetch()}>Retry</Button></p>}
+              {(tripHireEligibility.data || []).some(row => row.reasons.length) && <details>
+                <summary className="cursor-pointer text-sm">Excluded or restricted confirmed trip evidence</summary>
+                <div className="max-h-64 overflow-auto text-xs space-y-2">{tripHireEligibility.data!.filter(row => row.reasons.length).map(row =>
+                  <p key={row.tripId}>Trip #{row.tripId} · {row.date} · {row.registration} · Recorded owner: {row.recordedOwner || "Missing"} · {row.reasons.join("; ")}</p>)}</div>
+              </details>}
               {hireEquipment.filter((e: any) => e.hireBillingBasis === "daily" &&
                 normalizedHireActivities.some(a => a.equipmentId === e.id && a.confirmedForDailyHire) &&
                 !hireGroups.some(g => g.equipmentId === e.id)).map((e: any) =>

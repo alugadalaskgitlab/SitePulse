@@ -19,7 +19,7 @@ export function TripHireLinkDialog({ trip, onClose }: { trip: any; onClose: () =
     mutationFn: async () => apiRequest("POST", url, { equipmentId, reason, acceptConflict,
       fingerprint: data.fingerprint, version: data.version }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills/hire-activities"] });
+      queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && q.queryKey[0].startsWith("/api/vendor-bills") });
       queryClient.invalidateQueries({ queryKey: [url] });
       onClose();
     },
@@ -37,7 +37,7 @@ export function TripHireLinkDialog({ trip, onClose }: { trip: any; onClose: () =
         <Label htmlFor="hire-link-equipment">Hired Equipment Master vehicle</Label>
         <select id="hire-link-equipment" className="w-full rounded border bg-background p-2" value={equipmentId || ""} onChange={e => { setChosen(e.target.value); setAcceptConflict(false); }}>
           <option value="">Select vehicle</option>
-          {data.equipment.map((e: any) => <option key={e.id} value={e.id}>{e.registrationNumber || e.name} · {e.vendorName} · {e.hireBillingBasis || "Terms missing"}</option>)}
+          {data.equipment.map((e: any) => <option key={e.id} value={e.id}>{e.registrationNumber || e.name} · {e.linkedVendorName || `${e.vendorName || "Missing owner"} — Unlinked Vendor Master`} · {e.hireBillingBasis || "Terms missing"}</option>)}
         </select>
         <Label htmlFor="hire-link-reason">Verification reason / reference</Label>
         <Input id="hire-link-reason" value={reason} onChange={e => setReason(e.target.value)} placeholder="How the vehicle and transport owner were verified" />

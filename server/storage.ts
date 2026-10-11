@@ -1,6 +1,8 @@
 import { lookupTripBoqQuantity } from "../shared/tripQuantityDisplay";
 import { buildPiTimeline } from "../shared/piTimeline";
 import { confirmTripHireLink, readTripHireLinks, guardTripHireOrdinaryItems, type NewTripHireLink } from "./tripHireLink";
+import { equipmentVendorIdentities, ownerNameKey } from "./equipmentVendorIdentity";
+import { vendors as identityVendors } from "@shared/schema";
 import { validTripHireLink } from "../shared/tripHireLink";
 import { purchaseOrders } from "../shared/schema";
 import { linkedPiStoreStock } from "../shared/piStoreStock";
@@ -17617,9 +17619,13 @@ export class DatabaseStorage implements IStorage {
         exceptionType: d.exceptionType, date: d.date, decision: d.decision, manualDeductionAmount: d.manualDeductionAmount ?? undefined, remarks: d.remarks })) as HireExceptionDecisionInput[];
       // Reload daily evidence after the shared equipment lock. A concurrent
       // trip confirmation must not change identity between preview and save.
-      const activities = (equipment.hireBillingBasis === "daily"
+      const groupEvidence = equipment.hireBillingBasis === "daily"
         ? await this.getVendorBillHireActivities(bill.vendorName, group.periodFrom, group.periodTo, tx)
-        : canonical).filter(row => row.source !== "maintenance" && row.equipmentId === group.equipmentId);
+        : canonical;
+      const ownerEvidence = groupEvidence.find(row => row.source === "equipment_default" && row.equipmentId === group.equipmentId);
+      if (!ownerEvidence || (bill.vendorId && ownerEvidence.equipment?.vendorId && bill.vendorId !== ownerEvidence.equipment.vendorId))
+        throw Object.assign(new Error("Equipment Vendor Master identity changed or conflicts with this bill. Reload and review."), { code: "CONFLICT" });
+      const activities = groupEvidence.filter(row => row.source !== "maintenance" && row.equipmentId === group.equipmentId);
       const tripHireDates = new Set(activities.filter(row => row.confirmedForDailyHire &&
         row.businessDate >= group.periodFrom && row.businessDate <= group.periodTo &&
         (!equipment.hireStartDate || row.businessDate >= equipment.hireStartDate) &&
@@ -17829,6 +17835,11 @@ export class DatabaseStorage implements IStorage {
 
     return await db.transaction(async (tx) => {
       await guardTripHireOrdinaryItems(tx, data.items ?? [], data.hireGroups);
+      if (data.billingVendorId) {
+        const [identity] = await tx.select().from(identityVendors).where(eq(identityVendors.id, data.billingVendorId));
+        if (!identity?.isActive || ownerNameKey(identity.name) !== ownerNameKey(data.vendorName))
+          throw Object.assign(new Error("Selected Vendor Master identity does not match the bill vendor"), { code: "BAD_REQUEST" });
+      }
       if (["equipment", "all"].includes(data.billType.toLowerCase()) && data.periodFrom && data.periodTo && data.hireGroups === undefined) {
         const activityMetadata = await this.getVendorBillHireActivities(data.vendorName, data.periodFrom, data.periodTo, tx);
         const monthly = activityMetadata.filter((row: any) => row.source === "equipment_default" &&
@@ -17848,6 +17859,7 @@ export class DatabaseStorage implements IStorage {
         billNo,
         billType: data.billType.toUpperCase(),
         vendorName: uppercaseBusinessText(data.vendorName),
+        vendorId: data.billingVendorId ?? null,
         periodFrom: data.periodFrom,
         periodTo: data.periodTo,
         status: data.status || "draft",
@@ -18459,9 +18471,14 @@ export class DatabaseStorage implements IStorage {
     const vendorMatch = vendorVariants.length === 1
       ? sql`UPPER(TRIM(${equipmentMaster.vendorName})) = ${vendorVariants[0]}`
       : sql`UPPER(TRIM(${equipmentMaster.vendorName})) IN (${sql.join(vendorVariants.map(v => sql`${v}`), sql`, `)})`;
-    const equipment: EquipmentMasterType[] = await executor.select().from(equipmentMaster).where(and(
-      eq(equipmentMaster.ownership, "hired"), vendorMatch,
-    ));
+    const allHired: EquipmentMasterType[] = await executor.select().from(equipmentMaster).where(eq(equipmentMaster.ownership, "hired"));
+    const identities = await equipmentVendorIdentities(executor, allHired);
+    const matchingMasters = (await executor.select().from(identityVendors)).filter((v: any) => ownerNameKey(v.name) === ownerNameKey(vendorName));
+    const equipment = allHired.filter(row => {
+      const identity = identities.get(row.id);
+      return identity?.vendor ? matchingMasters.length === 1 && identity.vendor.id === matchingMasters[0].id && identity.vendor.isActive
+        : !identity?.auditId && vendorVariants.includes(ownerNameKey(row.vendorName));
+    });
     if (!equipment.length) return [];
     const ids = equipment.map(row => row.id);
     const defaults = new Map<number, {
@@ -18559,7 +18576,8 @@ export class DatabaseStorage implements IStorage {
       // Metadata-only rows make zero-activity monthly equipment discoverable.
       // calculateHireGroup explicitly ignores this source.
       ...equipment.map((row: EquipmentMasterType) => ({ source: "equipment_default", sourceId: row.id, equipmentId: row.id,
-        businessDate: periodFrom, equipment: defaults.get(row.id) })),
+        businessDate: periodFrom, equipment: { ...defaults.get(row.id), vendorId: identities.get(row.id)?.vendor?.id,
+          linkedVendorName: identities.get(row.id)?.vendor?.name } })),
       ...dprRows.map((row: any) => {
         const equipmentDefault = defaults.get(row.equipmentId!);
         const calculated = computeEquipmentUsage(
@@ -18600,6 +18618,7 @@ export class DatabaseStorage implements IStorage {
          const confirmation = confirmedTripLinks.get(row.id);
          const confirmedEquipment = equipment.find(e => e.id === confirmation?.newValues?.equipmentId);
          const confirmedForDailyHire = !!confirmedEquipment && confirmedEquipment.hireBillingBasis === "daily" &&
+           !!identities.get(confirmedEquipment.id)?.vendor?.isActive &&
            validTripHireLink(row, confirmedEquipment, confirmation?.newValues);
          const exactEquipmentId = ids.includes(Number(row.internalEquipmentId)) ? Number(row.internalEquipmentId) : undefined;
          const vehicleMatchedEquipmentId = equipmentByRegistration.get(cleanRegistration(row.vehicleNumber));
@@ -18614,6 +18633,8 @@ export class DatabaseStorage implements IStorage {
            confirmedForDailyHire,
            hireConfirmation: confirmedForDailyHire ? { auditId: confirmation.id, actor: confirmation.userName,
              at: confirmation.createdAt, reason: confirmation.reason, ...confirmation.newValues } : undefined,
+           equipmentVendorIdentity: confirmedForDailyHire ? { vendorId: identities.get(equipmentId)?.vendor?.id,
+             auditId: identities.get(equipmentId)?.auditId } : undefined,
             task: `DELIVERY: ${row.material || "MATERIAL"} · ${row.quantity ?? "—"} ${row.uom || ""}${row.supplier ? ` · FROM ${row.supplier}` : ""}`,
            equipmentName: equipmentDefault?.name, movementReference: row.location || row.receiptNumber || null,
            // A site delivery can be strong evidence after a user confirms it,
@@ -18649,6 +18670,12 @@ export class DatabaseStorage implements IStorage {
 
   async getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null, siteName?: string | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null; actualMt?: number | null; physicalQuantity?: number; physicalUnit?: string | null })[]> {
     const vendorVariants = await this.resolveVendorAliases(vendorName);
+    const selectedIdentities = (await db.select().from(identityVendors)).filter(v => ownerNameKey(v.name) === ownerNameKey(vendorName));
+    const selectedIdentity = selectedIdentities.length === 1 ? selectedIdentities[0].id : null;
+    const ownerEquipment = await db.select().from(equipmentMaster);
+    const ownerIdentities = await equipmentVendorIdentities(db, ownerEquipment);
+    const reviewedIds = ownerEquipment.filter(e => ownerIdentities.get(e.id)?.auditId).map(e => e.id);
+    const matchingIds = ownerEquipment.filter(e => ownerIdentities.get(e.id)?.vendor?.id === selectedIdentity).map(e => e.id);
     const bt = billType.toLowerCase();
     const items: (Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null; actualMt?: number | null; physicalQuantity?: number; physicalUnit?: string | null })[] = [];
 
@@ -18730,6 +18757,14 @@ export class DatabaseStorage implements IStorage {
     };
 
     const vendorMatchSql = (col: any) => {
+      const legacy = vendorVariants.length === 1 ? sql`UPPER(TRIM(${col})) = ${vendorVariants[0]}`
+        : sql`UPPER(TRIM(${col})) IN (${sql.join(vendorVariants.map(v => sql`${v}`), sql`, `)})`;
+      const fk = col === siteMaterialTrips.supplier ? siteMaterialTrips.supplierVendorId
+        : col === siteMaterialTrips.materialSourceSupplier ? siteMaterialTrips.materialSourceVendorId : null;
+      if (fk) return sql`CASE WHEN ${fk} IS NOT NULL THEN ${selectedIdentity == null ? sql`false` : sql`${fk} = ${selectedIdentity}`} ELSE ${legacy} END`;
+      if (col === equipmentMaster.vendorName && reviewedIds.length) return sql`(
+        ${matchingIds.length ? inArray(equipmentMaster.id, matchingIds) : sql`false`} OR
+        (${equipmentMaster.id} NOT IN (${sql.join(reviewedIds.map(id => sql`${id}`), sql`, `)}) AND ${legacy}))`;
       if (vendorVariants.length === 1) {
         return sql`UPPER(TRIM(${col})) = ${vendorVariants[0]}`;
       }
@@ -19229,6 +19264,7 @@ export class DatabaseStorage implements IStorage {
 
   async getVendorNames(): Promise<string[]> {
     const names = new Set<string>();
+    for (const vendor of await db.select().from(identityVendors).where(eq(identityVendors.isActive, true))) names.add(vendor.name);
 
     const eqVendors = await db.select({ name: equipmentMaster.vendorName })
       .from(equipmentMaster)
@@ -21889,6 +21925,8 @@ export class DatabaseStorage implements IStorage {
   }[]> {
     const bt = billType.toLowerCase();
     const vendorRecords = new Map<string, { count: number; categories: Set<string> }>();
+    const masterParties = await db.select().from(identityVendors);
+    const partyName = (id: number | null, recorded: string | null) => id == null ? recorded : masterParties.find(v => v.id === id)?.name ?? null;
 
     const allAliases = await db.select().from(vendorAliases);
     const aliasToCanonical = new Map<string, string>();
@@ -21898,6 +21936,7 @@ export class DatabaseStorage implements IStorage {
 
     const resolveCanonical = (name: string): string => {
       const upper = name.toUpperCase().trim();
+      if (masterParties.filter(v => ownerNameKey(v.name) === upper).length === 1) return upper;
       return aliasToCanonical.get(upper) || upper;
     };
 
@@ -21914,13 +21953,15 @@ export class DatabaseStorage implements IStorage {
         lte(siteMaterialTrips.date, periodTo), eq(siteMaterialTrips.isCancelled, false), eq(siteMaterialTrips.isDeleted, false)));
       const links = await readTripHireLinks(db, trips.map(t => t.id));
       const masters = await db.select().from(equipmentMaster).where(eq(equipmentMaster.hireBillingBasis, "daily"));
+      const ownerLinks = await equipmentVendorIdentities(db, masters);
       const seen = new Set<string>();
       for (const trip of trips) {
         const evidence = links.get(trip.id)?.newValues;
         const master = masters.find(e => e.id === evidence?.equipmentId);
         if (master && validTripHireLink(trip, master, evidence) && !seen.has(`${master.id}:${trip.date}`)) {
           seen.add(`${master.id}:${trip.date}`);
-          addRecord(master.vendorName!, "equipment");
+          const identity = ownerLinks.get(master.id);
+          addRecord(identity?.vendor?.name || master.vendorName!, "equipment");
         }
       }
     }
@@ -21932,9 +21973,11 @@ export class DatabaseStorage implements IStorage {
         eq(siteMaterialTrips.isCancelled, false), eq(siteMaterialTrips.isDeleted, false),
       ));
       for (const { trip, arrangement } of trips) {
-        const names = new Set([trip.materialSourceSupplier, trip.supplier, arrangement?.agencyName].filter((name): name is string => !!name));
+        const seller = partyName(trip.materialSourceVendorId, trip.materialSourceSupplier);
+        const carrier = partyName(trip.supplierVendorId, trip.supplier);
+        const names = new Set([seller, carrier, arrangement?.agencyName].filter((name): name is string => !!name));
         for (const name of names) {
-          const candidate = vendorBillTripCandidate(trip, name === trip.materialSourceSupplier, name === trip.supplier, bt, arrangement, name === arrangement?.agencyName);
+          const candidate = vendorBillTripCandidate(trip, name === seller, name === carrier, bt, arrangement, name === arrangement?.agencyName);
           if (candidate) addRecord(name, candidate.category);
         }
       }
@@ -21949,14 +21992,15 @@ export class DatabaseStorage implements IStorage {
         ));
 
       if (hiredEquipment.length > 0) {
-        const eqIdToVendor = new Map(hiredEquipment.map(e => [e.id, e.vendorName!]));
+        const reviewedOwners = await equipmentVendorIdentities(db, hiredEquipment);
+        const eqIdToVendor = new Map(hiredEquipment.map(e => [e.id, reviewedOwners.get(e.id)?.vendor?.name || e.vendorName!]));
         const eqIds = hiredEquipment.map(e => e.id);
         // Monthly hire is availability-based.  It must be discoverable even
         // when no DPR/Plant activity exists in the selected period.
         for (const equipment of hiredEquipment) {
           if ((equipment.hireBillingBasis || "").toLowerCase() === "monthly" &&
               isEquipmentHireBillEligible(equipment, periodFrom, periodTo) && equipment.vendorName) {
-            addRecord(equipment.vendorName, "equipment");
+            addRecord(eqIdToVendor.get(equipment.id)!, "equipment");
           }
         }
 

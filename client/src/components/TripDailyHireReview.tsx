@@ -13,7 +13,7 @@ export function TripDailyHireReview({ group, equipment, result, activities, onCh
   };
   return <section className="space-y-3 rounded border p-3" data-testid={`daily-trip-hire-${group.equipmentId}`}>
     <div className="flex justify-between gap-2">
-      <strong>{equipment?.registrationNumber || equipment?.name} · {equipment?.vendorName} · Daily hire</strong>
+      <strong>{equipment?.registrationNumber || equipment?.name} · {equipment?.linkedVendorName || equipment?.vendorName} · Daily hire</strong>
       <Button type="button" variant="ghost" size="sm" onClick={onRemove}>Remove hire group</Button>
     </div>
     <p className="text-xs text-muted-foreground">Trips support attendance only. Each vehicle/date earns at most one hire day, including dates also present in DPR or equipment usage. Review each trip-backed day and enter a reason. No hours, readings or diesel are inferred.</p>
