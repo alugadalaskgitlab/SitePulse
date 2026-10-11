@@ -1,0 +1,123 @@
+# VB-HIRE-TERMS-01 — Hire Basis and Rate per Vendor Bill
+
+**Objective:** Allow the same hired equipment to be billed on different hire bases and rates for different assignments or billing periods, without changing Equipment Master or historical records.
+
+This is a focused correction to the existing Equipment Hire Vendor Bill workflow. Do not create a new billing module.
+
+## 1. Equipment Master — Keep Default Terms Only
+
+Retain the existing Hire Basis, Hire Rate and Hire Dates in Equipment Master for compatibility.
+
+However, treat these as **default suggestions**, not compulsory terms for every Vendor Bill.
+
+Do not modify existing Equipment Master records or automatically convert any equipment from Trip to Daily Hire.
+
+Equipment identity, registration number and verified vendor/owner association must remain independent of its billing basis.
+
+## 2. Vendor Bill — Select Actual Hire Terms
+
+In **New Vendor Bill → Equipment Hire**, after selecting the vendor and equipment, display:
+
+- **Hire Basis:** Trip / Daily / Hourly / Monthly
+- **Hire Rate (₹):** Editable amount
+- **Rate Unit:** Automatically displays ₹/Trip, ₹/Day, ₹/Hour or ₹/Month
+- **Billing Period:** From and To dates
+
+Pre-fill Hire Basis and Rate from Equipment Master when available, but allow the authorised bill preparer to change them for this bill.
+
+The selected Hire Basis and Rate must govern the calculation—not the current Equipment Master defaults.
+
+Where multiple equipment items are included, each must have its own terms.
+
+## 3. Calculation and Evidence
+
+Reuse existing SitePulse calculations and operational records.
+
+- **Trip Basis:** Use eligible recorded trips and the agreed rate per trip.
+- **Daily Basis:** Use the existing VB-TIPPER-03 date-wise review, confirmed trip evidence and Full/Half/Excluded decisions. Multiple trips by the same tipper on one date must not multiply the daily charge.
+- **Hourly Basis:** Use actual recorded working hours. Never infer hours from the number of trips.
+- **Monthly Basis:** Use the existing monthly hire calculation, divisor rules, daily evidence, breakdown and idle-day treatment.
+
+Show the calculation clearly before adding the charge to the bill:
+
+**Hire Basis | Rate | Billable Quantity | Unit | Gross Amount**
+
+Example:
+
+Daily | ₹5,000 | 8.5 | Days | ₹42,500
+
+Do not fabricate missing trips, hours or daily activity.
+
+## 4. Preserve Terms with Each Bill
+
+When saving the bill, preserve the selected Hire Basis, Rate, Billing Period, Billable Quantity and calculation evidence in its existing hire-statement/bill snapshot structure.
+
+When reopening a Draft, Verified, Approved or Paid bill, display the original saved terms—not newly changed Equipment Master defaults.
+
+Existing saved bills must retain their current calculation and financial figures.
+
+An authorised user editing an eligible Draft may change its hire terms, with the affected calculation reviewed again before saving.
+
+## 5. Vendor and Trip Linking
+
+Keep VB-TIPPER-03's existing confirmed Hire Billing Links and reviewed vendor identity associations.
+
+Selecting Daily Hire at the bill stage must make the correctly linked tipper eligible even if its Equipment Master default says Trip Hire.
+
+Likewise, switching between billing bases must not require:
+
+- Creating another equipment record
+- Renaming the vendor
+- Re-linking already confirmed trips
+- Editing submitted DPRs
+- Changing historical Equipment Master terms
+
+Keep duplicate-billing protection across billing bases. A switch from Trip to Daily must not allow the same payable equipment activity to be charged twice. Flag overlapping existing charges for explicit review rather than silently permitting them.
+
+## 6. User Interface — Keep It Simple
+
+Use the existing Equipment Hire billing form.
+
+Do not expose internal terms such as groups, snapshots, overrides or fractions unless required in an advanced review.
+
+A bill preparer should follow this straightforward sequence:
+
+**Vendor → Equipment → Hire Basis → Rate → Period → Activity Review → Bill Calculation → Save Draft**
+
+The selected basis and rate should also be visible in the saved Bill Detail and vendor-facing PDF/Excel.
+
+## 7. Verification
+
+Test these specific situations:
+
+1. Equipment Master default Trip; current bill Daily.
+2. Equipment Master default Monthly; current bill Hourly.
+3. One tipper billed on different bases in different non-overlapping periods.
+4. Multiple tippers belonging to one vendor with different hire bases and rates.
+5. Daily Hire correctly reading confirmed historical Material Trips.
+6. Existing billed activity preventing duplicate charging across hire bases.
+7. Saving and reopening a Draft preserves the selected terms.
+8. Editing a Draft recalculates only that draft.
+9. Existing Verified, Approved and Paid bills remain unchanged.
+10. Current monthly hire, recovery and saved-calendar workflows continue functioning.
+
+Use focused tests and one production build.
+
+Do not run the full suite, perform historical backfills or alter unrelated modules.
+
+## 8. Do Not Touch
+
+- Existing historical Vendor Bills or payment statuses
+- Equipment Master saved defaults
+- Submitted DPRs
+- Material Trips and receipts
+- Vendor Master identities or confirmed links
+- Diesel, procurement, inventory or Tally integration
+- Unpaid/All overview, tax summary or financial exports
+- Existing approval and financial permissions
+
+Do not publish automatically or perform destructive database migrations.
+
+Report any necessary schema/index changes before publication.
+
+**STOP after implementation, focused verification and one build.**

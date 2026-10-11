@@ -13,7 +13,7 @@ export async function tripHireEligibility(db: any, vendorName: string, from: str
   const confirmations = await readTripHireLinks(db, trips.map((t: any) => t.id));
   const billedByEquipment = new Map<number, Awaited<ReturnType<typeof dailyHireBilledDays>>>();
   for (const e of equipment) {
-    if (e.hireBillingBasis === "daily") billedByEquipment.set(e.id, await dailyHireBilledDays(db, e.id, from, to, excludeBillId));
+    if (e.ownership === "hired") billedByEquipment.set(e.id, await dailyHireBilledDays(db, e.id, from, to, excludeBillId));
   }
   return trips.flatMap((trip: any) => {
     const confirmation = confirmations.get(trip.id);
@@ -32,10 +32,6 @@ export async function tripHireEligibility(db: any, vendorName: string, from: str
     else if (identity?.vendor && (selected.length !== 1 || selected[0].id !== identity.vendor.id)) reasons.push(`Wrong vendor: linked to ${identity.vendor.name} — select that reviewed vendor in Equipment Hire.`);
     if (!dailyHireOwnerEligible(identity, trip.supplierVendorId) && trip.supplierVendorId != null)
       reasons.push("Reviewed trip transporter and equipment owner do not agree — an Administrator/Owner must review both roles in Vendor Master → Link Vendors.");
-    if (machine?.hireBillingBasis !== "daily" || !(Number(machine?.hireRate) > 0) || !machine?.hireStartDate)
-      reasons.push("Missing daily-hire terms — set Daily Hire, a positive daily rate and hire start date in Equipment Master.");
-    if (machine?.hireStartDate && (trip.date < machine.hireStartDate || (machine.hireEndDate && trip.date > machine.hireEndDate)))
-      reasons.push("Outside hire period — check the agreed hire dates in Equipment Master.");
     const billedDays = billedByEquipment.get(machine?.id) || [];
     const previous = billedDays.find(b => b.date === trip.date);
     if (previous) reasons.push(`Already billed: ${previous.billNo} — exclude this date with a reason.`);

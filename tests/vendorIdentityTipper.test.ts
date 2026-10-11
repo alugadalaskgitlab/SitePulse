@@ -107,8 +107,8 @@ it("saves under the reviewed party, freezes identity evidence and reports prior 
 it("reports incomplete terms, outside-period evidence and invalidated confirmations explicitly", async () => {
   await db.update(schema.equipmentMaster).set({ hireRate: null, hireStartDate: "2026-11-01" }).where(eq(schema.equipmentMaster.id, 2));
   let result = (await tripHireEligibility(db, "GANGARAM NARSIMHULU", "2026-10-01", "2026-10-01")).find((r: any) => r.tripId === 2);
-  expect(result.reasons.join()).toContain("Missing daily-hire terms");
-  expect(result.reasons.join()).toContain("Outside hire period");
+  expect(result.reasons.join()).not.toContain("Missing daily-hire terms");
+  expect(result.reasons.join()).not.toContain("Outside hire period");
   await db.update(schema.siteMaterialTrips).set({ vehicleNumber: "CHANGED" }).where(eq(schema.siteMaterialTrips.id, 2));
   result = (await tripHireEligibility(db, "GANGARAM NARSIMHULU", "2026-10-01", "2026-10-01")).find((r: any) => r.tripId === 2);
   expect(result.reasons.join()).toContain("Invalid confirmation");

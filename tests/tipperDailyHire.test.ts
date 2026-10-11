@@ -162,3 +162,45 @@ it("real create/reload routes retain reviewed multi-date, multi-source, one-time
   expect(remaining.body.items[0]).toMatchObject({ qty: 1, amount: 2000 });
   expect((await db.select().from(schema.siteMaterialTrips).where(eq(schema.siteMaterialTrips.id, 21)))[0]).toMatchObject(originals[0]);
 });
+
+it("saves independent bill terms across bases, edits only a draft and freezes completed bills", async () => {
+  const tripMaster = { ...master, id: 30, registrationNumber: "TERMS30", vendorName: "TERMS OWNER",
+    hireBillingBasis: "trip", hireRate: 10, hireStartDate: "2027-01-01" };
+  const monthlyMaster = { ...tripMaster, id: 31, registrationNumber: "TERMS31", hireBillingBasis: "monthly", hireRate: 90000 };
+  await db.insert(schema.equipmentMaster).values([tripMaster, monthlyMaster]);
+  const t = { ...trip, id: 30, date: "2026-12-01", vehicleNumber: "TERMS30", supplier: "TERMS OWNER" };
+  await db.insert(schema.siteMaterialTrips).values(t);
+  await db.transaction((tx: any) => confirmTripHireLink(tx, t, { equipmentId: 30, reason: "Identity confirmed" }, { id: 4, fullName: "Reviewer" }, true));
+  await db.insert(schema.equipmentUsage).values({ id: 31, equipmentId: 31, date: t.date, entryType: "hourly", hoursOrKmRun: 4, status: "closed" });
+  const payload: any = { billDate: t.date, billType: "equipment", vendorName: "TERMS OWNER", periodFrom: t.date,
+    periodTo: t.date, status: "draft", items: [], hireGroups: [
+      { equipmentId: 30, basis: "daily", rate: 5000, periodFrom: t.date, periodTo: t.date,
+        dailyDecisions: [{ date: t.date, decision: "half_day", reason: "Reviewed partial day" }] },
+      { equipmentId: 31, basis: "hourly", rate: 300, periodFrom: t.date, periodTo: t.date },
+    ] };
+  const bill = await storage.createVendorBill(payload);
+  expect(bill.items.map((i: any) => [i.qty, i.rate, i.amount])).toEqual([[.5, 5000, 2500], [4, 300, 1200]]);
+  const before = await storage.getVendorBill(bill.id);
+  expect(before.hireStatements.map((s: any) => s.billingBasis).sort()).toEqual(["daily", "hourly"]);
+  const edited = await storage.updateVendorBill(bill.id, { ...payload, hireGroups: payload.hireGroups.map((g: any) => ({
+    ...g, rate: g.equipmentId === 30 ? 6000 : 300,
+    hireStatementId: before.hireStatements.find((s: any) => s.equipmentId === g.equipmentId).id,
+  })) });
+  expect(edited.items.find((i: any) => i.equipmentId === 30).amount).toBe(3000);
+  const overlap = { ...payload, hireGroups: [{ equipmentId: 30, basis: "trip", rate: 500, periodFrom: t.date, periodTo: t.date,
+    tripDecisions: [{ source: "site_material_trip", sourceId: 30, selected: true, remarks: "Reviewed" }] }] };
+  await expect(storage.createVendorBill(overlap)).rejects.toThrow(/overlapping/i);
+  const nextTrip = { ...t, id: 31, date: "2026-12-02" };
+  await db.insert(schema.siteMaterialTrips).values(nextTrip);
+  await db.transaction((tx: any) => confirmTripHireLink(tx, nextTrip, { equipmentId: 30, reason: "Next assignment" }, { id: 4, fullName: "Reviewer" }, true));
+  const next = await storage.createVendorBill({ ...overlap, periodFrom: nextTrip.date, periodTo: nextTrip.date,
+    hireGroups: [{ ...overlap.hireGroups[0], periodFrom: nextTrip.date, periodTo: nextTrip.date,
+      tripDecisions: [{ source: "site_material_trip", sourceId: 31, selected: true, remarks: "Agreed trip assignment" }] }] });
+  expect(next.items[0]).toMatchObject({ qty: 1, rate: 500, amount: 500 });
+  for (const status of ["verified", "approved", "paid"]) {
+    await db.update(schema.vendorBills).set({ status }).where(eq(schema.vendorBills.id, bill.id));
+    await expect(storage.updateVendorBill(bill.id, payload)).rejects.toThrow(/frozen/);
+    expect((await storage.getVendorBill(bill.id)).items.find((i: any) => i.equipmentId === 30).amount).toBe(3000);
+  }
+  expect((await db.select().from(schema.equipmentMaster).where(eq(schema.equipmentMaster.id, 30)))[0]).toMatchObject(tripMaster);
+});

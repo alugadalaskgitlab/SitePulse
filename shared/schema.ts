@@ -2583,6 +2583,8 @@ export const hireGroupRequestSchema = z.object({
   periodTo: hireGroupDate,
   basis: z.enum(["monthly", "daily", "hourly", "trip"]),
   rate: z.number().finite().nonnegative(),
+  monthlyDivisorType: z.enum(["calendar", "30", "custom"]).optional(),
+  monthlyDivisor: z.number().finite().positive().nullable().optional(),
   dailyDecisions: z.array(z.object({
     date: hireGroupDate,
     decision: z.enum(["full_day", "half_day", "exclude"]),

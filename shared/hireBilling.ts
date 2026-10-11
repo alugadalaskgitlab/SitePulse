@@ -1041,7 +1041,8 @@ export function calculateHireGroup(input: HireGroupCalculationInput): HireGroupC
     if (decision?.selected === false) return [];
     // A delivery matched to an operational trip can only add another payable
     // trip when the reviewer expressly records it as separately verified.
-    if (activity.requiresTripReview && (!decision || (hasOperationalCounterpart && !decision.separateFromOperational))) return [];
+    const needsTripReview = input.terms.billingBasis === "trip" && (activity.requiresTripReview || activity.source === "site_material_trip" || activity.source === "bulk_transport_trip");
+    if (needsTripReview && (decision?.selected !== true || (hasOperationalCounterpart && !decision.separateFromOperational))) return [];
     // No inferred trips: only selected positive stored/corrected values reach
     // the shared trip calculator.
     const trips = activity.requiresTripReview && !decision ? 0

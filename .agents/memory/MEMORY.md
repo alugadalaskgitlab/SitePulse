@@ -79,6 +79,7 @@
 - [Startup ledger backfill race](startup-ledger-backfill-race.md) — rapid workflow restarts can collide in a legacy stock-ledger backfill even while the app serves; verify a settled restart before diagnosing new work.
 - [Hired Equipment Billing](hired-equipment-billing.md) — billing derives from operational records; exception decisions, immutable snapshots, overlap locks, and idempotent bill creation preserve auditability.
 - [Tipper daily hire](tipper-daily-hire.md) — audited identity confirmation is separate from material ownership; one equipment/date charge, original trips preserved, audit retention required.
+- [Bill-specific hire terms](bill-specific-hire-terms.md) — Master terms are suggestions; selected bill terms and frozen history govern integrated hire billing across bases.
 - [Vendor import integrity](vendor-import-integrity.md) — atomic linked-record recovery, schema-aware date normalization, safe ID retries and sequence advancement.
 - [DPR equipment canonicalization](dpr-equipment-canonicalization.md) — DPR and standalone usage share one calculator; reports keep snapshots; clones never repost the same Diesel.
 - [Equipment activity attribution](equipment-activity-attribution.md) — one physical equipment-day may split BOQ hours into authoritative child allocations without multiplying operational facts.
