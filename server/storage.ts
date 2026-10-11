@@ -4,6 +4,8 @@ import { confirmTripHireLink, readTripHireLinks, guardTripHireOrdinaryItems, typ
 import { equipmentVendorIdentities, ownerNameKey } from "./equipmentVendorIdentity";
 import { vendors as identityVendors } from "@shared/schema";
 import { validTripHireLink } from "../shared/tripHireLink";
+import { dailyHireBilledDays } from "./dailyHireBilledDays";
+import { dailyHireOwnerEligible } from "./equipmentVendorIdentity";
 import { purchaseOrders } from "../shared/schema";
 import { linkedPiStoreStock } from "../shared/piStoreStock";
 import { bulkTripConditions } from "./siteMaterialTripFilters";
@@ -17556,7 +17558,10 @@ export class DatabaseStorage implements IStorage {
       if (!statement) {
         statement = (await tx.select().from(hireStatements).where(and(eq(hireStatements.equipmentId, group.equipmentId),
           eq(hireStatements.periodFrom, group.periodFrom), eq(hireStatements.periodTo, group.periodTo))).limit(1))[0];
-        if (statement && statement.vendorBillId !== bill.id) throw Object.assign(new Error("This equipment already has an overlapping hire statement"), { code: "CONFLICT" });
+        if (statement && statement.vendorBillId !== bill.id) {
+          if (group.basis === "daily") statement = undefined;
+          else throw Object.assign(new Error("This equipment already has an overlapping hire statement"), { code: "CONFLICT" });
+        }
       }
       // Existing saved groups keep their historical period shape. Only a new
       // automatic monthly group must be one of this bill's exact calendar
@@ -17594,7 +17599,7 @@ export class DatabaseStorage implements IStorage {
         gte(hireStatements.periodTo, group.periodFrom),
         ...(statement ? [sql`${hireStatements.id} <> ${statement.id}`] : []),
       )).limit(1);
-      if (overlap) throw Object.assign(new Error("This equipment already has an overlapping hire statement"), { code: "CONFLICT" });
+      if (overlap && group.basis !== "daily") throw Object.assign(new Error("This equipment already has an overlapping hire statement"), { code: "CONFLICT" });
       // Freeze the master fuel basis even for a zero-activity period.  A bill
       // must never infer its norm/unit from whatever activity happened to be
       // present while the draft was saved.
@@ -17630,22 +17635,23 @@ export class DatabaseStorage implements IStorage {
         row.businessDate >= group.periodFrom && row.businessDate <= group.periodTo &&
         (!equipment.hireStartDate || row.businessDate >= equipment.hireStartDate) &&
         (!equipment.hireEndDate || row.businessDate <= equipment.hireEndDate)).map(row => row.businessDate));
-      if (equipment.hireBillingBasis === "daily" && tripHireDates.size) {
+      if (equipment.hireBillingBasis === "daily") {
         for (const date of Array.from(tripHireDates)) {
           const decision = group.dailyDecisions?.find(d => d.date === date);
-          if (!decision?.reason?.trim()) throw Object.assign(new Error(`Review the full/half/excluded hire day ${date} and enter a reason.`), { code: "BAD_REQUEST" });
+          if (!decision?.reason?.trim() || !["full_day", "half_day", "exclude"].includes(decision.decision)) throw Object.assign(new Error(`Review the full/half/excluded hire day ${date} and enter a reason.`), { code: "BAD_REQUEST" });
         }
         const chargeDates = Array.from(new Set(activities.filter(row => (row.source === "dpr_log" || row.source === "plant_usage" || row.confirmedForDailyHire) &&
           row.status !== "open" && (!equipment.hireStartDate || row.businessDate >= equipment.hireStartDate) &&
           (!equipment.hireEndDate || row.businessDate <= equipment.hireEndDate) && row.businessDate >= group.periodFrom &&
           row.businessDate <= group.periodTo && group.dailyDecisions?.find(d => d.date === row.businessDate)?.decision !== "exclude")
           .map(row => row.businessDate)));
+        const billedDays = await dailyHireBilledDays(tx, group.equipmentId, group.periodFrom, group.periodTo, bill.id);
+        for (const decision of group.dailyDecisions || []) {
+          if (decision.decision === "exclude" && billedDays.some(row => row.date === decision.date) && !decision.reason?.trim())
+            throw Object.assign(new Error(`Enter a reason for excluding already-billed date ${decision.date}.`), { code: "BAD_REQUEST" });
+        }
         if (chargeDates.length) {
-          const [billed] = await tx.select({ billNo: vendorBills.billNo }).from(vendorBillItems)
-            .innerJoin(vendorBills, eq(vendorBills.id, vendorBillItems.billId)).where(and(
-              eq(vendorBillItems.equipmentId, group.equipmentId), inArray(vendorBillItems.date, chargeDates),
-              sql`${vendorBills.id} <> ${bill.id}`, sql`${vendorBills.status} NOT IN ('cancelled', 'rejected')`,
-            )).limit(1);
+          const billed = billedDays.find(row => chargeDates.includes(row.date));
           if (billed) throw Object.assign(new Error(`Vehicle/date already billed on ${billed.billNo}. Exclude the billed day before saving.`), { code: "CONFLICT" });
           if (data.items?.some(item => !["hire_group", "hire_statement"].includes(item.source || "") &&
             item.equipmentId === group.equipmentId && item.category?.toLowerCase() === "equipment" && item.date && chargeDates.includes(item.date)))
@@ -18531,6 +18537,7 @@ export class DatabaseStorage implements IStorage {
       transportType: siteMaterialTrips.transportType,
       material: siteMaterialTrips.material, quantity: siteMaterialTrips.quantity, uom: siteMaterialTrips.uom,
       location: siteMaterialTrips.location, receiptNumber: siteMaterialTrips.receiptNumber, supplier: siteMaterialTrips.supplier,
+      supplierVendorId: siteMaterialTrips.supplierVendorId,
     }).from(siteMaterialTrips).where(and(
       gte(siteMaterialTrips.date, periodFrom), lte(siteMaterialTrips.date, periodTo),
       eq(siteMaterialTrips.isCancelled, false), eq(siteMaterialTrips.isDeleted, false),
@@ -18618,7 +18625,7 @@ export class DatabaseStorage implements IStorage {
          const confirmation = confirmedTripLinks.get(row.id);
          const confirmedEquipment = equipment.find(e => e.id === confirmation?.newValues?.equipmentId);
          const confirmedForDailyHire = !!confirmedEquipment && confirmedEquipment.hireBillingBasis === "daily" &&
-           !!identities.get(confirmedEquipment.id)?.vendor?.isActive &&
+           dailyHireOwnerEligible(identities.get(confirmedEquipment.id), row.supplierVendorId) &&
            validTripHireLink(row, confirmedEquipment, confirmation?.newValues);
          const exactEquipmentId = ids.includes(Number(row.internalEquipmentId)) ? Number(row.internalEquipmentId) : undefined;
          const vehicleMatchedEquipmentId = equipmentByRegistration.get(cleanRegistration(row.vehicleNumber));
@@ -21958,7 +21965,7 @@ export class DatabaseStorage implements IStorage {
       for (const trip of trips) {
         const evidence = links.get(trip.id)?.newValues;
         const master = masters.find(e => e.id === evidence?.equipmentId);
-        if (master && validTripHireLink(trip, master, evidence) && !seen.has(`${master.id}:${trip.date}`)) {
+        if (master && validTripHireLink(trip, master, evidence) && dailyHireOwnerEligible(ownerLinks.get(master.id), trip.supplierVendorId) && !seen.has(`${master.id}:${trip.date}`)) {
           seen.add(`${master.id}:${trip.date}`);
           const identity = ownerLinks.get(master.id);
           addRecord(identity?.vendor?.name || master.vendorName!, "equipment");

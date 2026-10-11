@@ -7,6 +7,11 @@ import * as schema from "../shared/schema";
 import { tripHireMatch, tripHireFingerprint, validTripHireLink } from "../shared/tripHireLink";
 import { calculateHireGroup } from "../shared/hireBilling";
 import { confirmTripHireLink, tripHireReview, guardTripHireOrdinaryItems } from "../server/tripHireLink";
+import express from "express";
+import request from "supertest";
+import fs from "node:fs";
+import ts from "typescript";
+import { z } from "zod";
 const holder = vi.hoisted(() => ({ db: null as any }));
 vi.mock("../server/db", () => ({ get db() { return holder.db; }, pool: {} }));
 vi.mock("../server/push", () => ({ sendPushToAll: vi.fn() }));
@@ -79,7 +84,7 @@ it("saves a real daily hire bill from confirmed trips, preserving source evidenc
   expect(bill.items[0]).toMatchObject({ category: "equipment", qty: .5, rate: 2000, amount: 1000 });
   const [statement] = await db.select().from(schema.hireStatements);
   expect(statement.calculationSnapshot.sourceEvidence.activities.some((a: any) => a.hireConfirmation?.actor === "Reviewer")).toBe(true);
-  await expect(storage.createVendorBill(data)).rejects.toThrow(/overlapping/);
+  await expect(storage.createVendorBill(data)).rejects.toThrow(/already billed/);
 });
 it("saves future hired-vehicle confirmation atomically alongside a real trip", async () => {
   await pg.exec("SELECT setval(pg_get_serial_sequence('site_material_trips', 'id'), 10)");
@@ -104,4 +109,56 @@ it("blocks confirmed-link changes on paid activity and ordinary rows covered by 
   await expect(db.transaction((tx: any) => confirmTripHireLink(tx, trip, { equipmentId: 1, reason: "Reconfirm", fingerprint: review.fingerprint, version: review.version }, { id: 4, fullName: "Reviewer" }))).rejects.toThrow(/billing evidence/);
   await db.insert(schema.hireStatements).values({ id: 100, equipmentId: 2, billingBasis: "daily", periodFrom: trip.date, periodTo: trip.date, vendorBillId: 100 });
   await expect(db.transaction((tx: any) => guardTripHireOrdinaryItems(tx, [{ equipmentId: 2, date: trip.date, category: "equipment" }]))).rejects.toThrow(/already covers/);
+});
+
+it("real create/reload routes retain reviewed multi-date, multi-source, one-time tipper days and reject recharges", async () => {
+  await pg.exec(`CREATE UNIQUE INDEX hire_statements_equipment_period_uq ON hire_statements(equipment_id,period_from,period_to) WHERE NOT (billing_basis = 'daily' AND vendor_bill_id IS NOT NULL)`);
+  const machine = { ...master, id: 20, registrationNumber: "TEST20", vendorName: "ONE TIME TEST OWNER" };
+  await db.insert(schema.equipmentMaster).values(machine);
+  const originals = [21, 22, 23].map((id, i) => ({ ...trip, id, vehicleNumber: "TEST20", supplier: machine.vendorName,
+    date: i < 2 ? "2026-11-01" : "2026-11-02" }));
+  await db.insert(schema.siteMaterialTrips).values(originals);
+  for (const t of originals) await db.transaction((tx: any) => confirmTripHireLink(tx, t, { equipmentId: 20, reason: "Historical attendance checked" }, { id: 4, fullName: "Reviewer" }, true));
+  await db.insert(schema.dprs).values({ id: 20, date: "2026-11-01", site: "ROAD", isSuperseded: false, dprStatus: "submitted" });
+  await db.insert(schema.equipmentLogs).values({ id: 20, dprId: 20, equipmentId: 20, entryType: "daily", hoursWorked: 3 });
+  const app = express(); app.use(express.json());
+  const src = fs.readFileSync("server/routes.ts", "utf8");
+  const ast = ts.createSourceFile("routes.ts", src, ts.ScriptTarget.Latest, true);
+  const routes: string[] = [];
+  function visit(n: ts.Node) {
+    if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && n.expression.expression.getText(ast) === "app" &&
+      ((n.expression.name.text === "post" && n.arguments[0]?.getText(ast) === '"/api/vendor-bills"') ||
+       (n.expression.name.text === "get" && n.arguments[0]?.getText(ast) === '"/api/vendor-bills/:id"'))) routes.push(n.getText(ast));
+    ts.forEachChild(n, visit);
+  }
+  visit(ast);
+  expect(routes).toHaveLength(2);
+  const deps = { app, storage, z, createVendorBillRequestSchema: schema.createVendorBillRequestSchema,
+    assertCreateEither: () => true, resolveVendorBillSite: async () => ({}), getPermittedSiteNames: async () => null,
+    assertVendorBillAutoSources: async () => true, sendPushToSection: async () => {},
+    scopeVendorBillsToSiteAccess: async (_req: any, rows: any[]) => rows,
+    resolveSavedEquipmentEvidenceSources: (rows: any[]) => rows,
+    attachVendorBillEquipmentEvidence: async (rows: any[]) => rows };
+  new Function(...Object.keys(deps), ts.transpileModule(routes.join(";\n"), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText)(...Object.values(deps));
+  const payload = (first: string, second: string) => ({
+    billDate: "2026-11-02", billNo: "AUTO", billType: "equipment", vendorName: machine.vendorName, status: "draft", totalAmount: 0,
+    periodFrom: "2026-11-01", periodTo: "2026-11-02", items: [], hireBillingMode: "vb10_automatic",
+    hireGroups: [{ equipmentId: 20, basis: "daily", rate: 2000, periodFrom: "2026-11-01", periodTo: "2026-11-02",
+      dailyDecisions: [{ date: "2026-11-01", decision: first, reason: "DPR and two trips checked" },
+        { date: "2026-11-02", decision: second, reason: "Reviewed second day" }], tripDecisions: [], exceptionDecisions: [] }],
+  });
+  const saved = await request(app).post("/api/vendor-bills").send(payload("half_day", "exclude"));
+  expect(saved.status, JSON.stringify(saved.body)).toBe(201);
+  const reopened = await request(app).get(`/api/vendor-bills/${saved.body.id}`);
+  expect(reopened.status).toBe(200);
+  expect(reopened.body.items[0]).toMatchObject({ qty: .5, amount: 1000 });
+  expect(reopened.body.hireStatements[0].calculationSnapshot.dailyDecisions).toEqual(payload("half_day", "exclude").hireGroups[0].dailyDecisions);
+  const evidence = reopened.body.hireStatements[0].calculationSnapshot.sourceEvidence.activities;
+  expect(evidence.filter((a: any) => a.confirmedForDailyHire)).toHaveLength(3);
+  expect(evidence.some((a: any) => a.source === "dpr_log")).toBe(true);
+  expect((await request(app).post("/api/vendor-bills").send(payload("full_day", "full_day"))).status).toBe(409);
+  const remaining = await request(app).post("/api/vendor-bills").send(payload("exclude", "full_day"));
+  expect(remaining.status, JSON.stringify(remaining.body)).toBe(201);
+  expect(remaining.body.items[0]).toMatchObject({ qty: 1, amount: 2000 });
+  expect((await db.select().from(schema.siteMaterialTrips).where(eq(schema.siteMaterialTrips.id, 21)))[0]).toMatchObject(originals[0]);
 });

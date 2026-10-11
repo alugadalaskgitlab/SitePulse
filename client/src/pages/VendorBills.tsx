@@ -546,6 +546,10 @@ export default function VendorBills() {
 
   const [view, setView] = useState<ViewMode>("list");
   const [selectedBillId, setSelectedBillId] = useState<number | null>(null);
+  useEffect(() => {
+    const id = Number(new URLSearchParams(window.location.search).get("billId"));
+    if (Number.isSafeInteger(id) && id > 0) { setSelectedBillId(id); setView("detail"); }
+  }, []);
   const [editingBillId, setEditingBillId] = useState<number | null>(null);
   const [editingBillStatus, setEditingBillStatus] = useState("draft");
   const { rememberCalendar, readCalendars } = useWholeBillCalendarSnapshots();
@@ -809,9 +813,9 @@ export default function VendorBills() {
     enabled: !!hireActivitiesUrl && (isHistoricalHireEdit || billType === "equipment" || billType === "all"),
   });
   const tripHireEligibility = useQuery<any[]>({
-    queryKey: ["/api/vendor-bills/trip-hire-eligibility", vendorName, periodFrom, periodTo],
+    queryKey: ["/api/vendor-bills/trip-hire-eligibility", vendorName, periodFrom, periodTo, editingBillId],
     queryFn: async () => {
-      const response = await fetch(`/api/vendor-bills/trip-hire-eligibility?vendorName=${encodeURIComponent(vendorName)}&periodFrom=${periodFrom}&periodTo=${periodTo}`);
+      const response = await fetch(`/api/vendor-bills/trip-hire-eligibility?vendorName=${encodeURIComponent(vendorName)}&periodFrom=${periodFrom}&periodTo=${periodTo}${editingBillId ? `&billId=${editingBillId}` : ""}`);
       if (!response.ok) throw new Error("Could not load tipper eligibility");
       return response.json();
     },
@@ -2034,6 +2038,16 @@ export default function VendorBills() {
     }
     for (let i = 0; i < includedHireGroups.length; i++) {
       const group = includedHireGroups[i];
+      if (group.basis === "daily") {
+        const dates = activityForGroup(group).filter(a => a.confirmedForDailyHire &&
+          a.businessDate >= group.periodFrom && a.businessDate <= group.periodTo &&
+          (!hireEquipmentFor(group.equipmentId)?.hireStartDate || a.businessDate >= hireEquipmentFor(group.equipmentId).hireStartDate) &&
+          (!hireEquipmentFor(group.equipmentId)?.hireEndDate || a.businessDate <= hireEquipmentFor(group.equipmentId).hireEndDate));
+        if (dates.some(a => {
+          const decision = group.dailyDecisions?.find(d => d.date === a.businessDate);
+          return !decision?.reason?.trim() || !["full_day", "half_day", "exclude"].includes(decision.decision);
+        })) { toast({ title: "Choose Full/Half/Excluded and enter a reason for every trip-supported day", variant: "destructive" }); return; }
+      }
       if (includedHireGroups.some((other, j) => j !== i && other.equipmentId === group.equipmentId &&
           group.periodFrom <= other.periodTo && group.periodTo >= other.periodFrom)) {
         toast({ title: "Equipment hire periods cannot overlap", variant: "destructive" });
@@ -3035,7 +3049,7 @@ export default function VendorBills() {
               <p className="text-xs text-muted-foreground">Confirm historical identities using “Hire billing link” in the Trip Register. Select a vehicle below to combine its confirmed trip dates with existing DPR/equipment activity.</p>
               {hireActivitiesError && <p role="alert">Could not load hire evidence. <Button type="button" onClick={() => reloadHireActivities()}>Retry</Button></p>}
               <p className="text-xs">If recorded owner names differ, an Administrator/Owner must confirm the equipment owner in Masters → Vendor Master → Link Vendors. Do not re-enter trips in DPRs.</p>
-              <p className="text-sm">{matchingBillingIdentities.length === 1 ? `Vendor Master linked: ${matchingBillingIdentities[0].name}` : "Unlinked or ambiguous vendor name — select the unique Vendor Master name for confirmed tipper billing."}</p>
+              <p className="text-sm">{matchingBillingIdentities.length === 1 ? `Vendor Master linked: ${matchingBillingIdentities[0].name}` : "One-time vendor: billing can use the recorded Equipment owner after explicit Hire Billing Link confirmation. Reviewed identity conflicts must be resolved in Vendor Master."}</p>
               {tripHireEligibility.isError && <p role="alert">{tripHireEligibility.error.message} <Button type="button" onClick={() => tripHireEligibility.refetch()}>Retry</Button></p>}
               {(tripHireEligibility.data || []).some(row => row.reasons.length) && <details>
                 <summary className="cursor-pointer text-sm">Excluded or restricted confirmed trip evidence</summary>
@@ -3056,6 +3070,7 @@ export default function VendorBills() {
               {hireGroups.filter(g => g.basis === "daily").map(group =>
                 <TripDailyHireReview key={group.id} group={group} equipment={hireEquipmentFor(group.equipmentId)}
                   result={hireCalculated.find(c => c.group.id === group.id)?.result} activities={activityForGroup(group)}
+                  billedDays={(tripHireEligibility.data || []).filter(row => row.equipmentId === group.equipmentId).flatMap(row => row.billedDays || [])}
                   onChange={patch => patchHireGroup(group.id, patch)}
                   onRemove={() => setHireGroups(prev => prev.filter(g => g.id !== group.id))} />)}
               {!normalizedHireActivities.some(a => a.confirmedForDailyHire) && <p className="text-sm text-muted-foreground">No confirmed daily-hire trips for this vendor and period.</p>}

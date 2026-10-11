@@ -4,6 +4,13 @@ import { auditLogs, vendors } from "../shared/schema";
 export const EQUIPMENT_VENDOR_LINK = "confirm_vendor_identity";
 export const ownerNameKey = (name: unknown) => String(name ?? "").trim().toUpperCase().replace(/\s+/g, " ");
 
+/** Never require registration for a one-time owner, or bypass a reviewed conflict. */
+export function dailyHireOwnerEligible(identity: any, transporterVendorId?: number | null) {
+  if (identity?.vendor) return !!identity.vendor.isActive &&
+    (transporterVendorId == null || transporterVendorId === identity.vendor.id);
+  return !identity?.auditId && transporterVendorId == null;
+}
+
 /** Explicit identity evidence, never an alias or a rewrite of the owner name. */
 export async function equipmentVendorIdentities(executor: any, equipment: any[]) {
   const masters = await executor.select().from(vendors);

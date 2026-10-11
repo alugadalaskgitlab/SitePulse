@@ -45,8 +45,8 @@ afterAll(() => pg.close());
 it("shows missing identity instead of billing a guessed owner", async () => {
   const reasons = await tripHireEligibility(db, "GANGARAM NARSIMHULU", "2026-10-01", "2026-10-01");
   expect(reasons).toHaveLength(2);
-  expect(reasons[0].reasons).toContain("Missing Vendor Master link");
-  expect((await storage.getVendorBillHireActivities("NARASIMHULU", "2026-10-01", "2026-10-01")).filter((r: any) => r.confirmedForDailyHire)).toHaveLength(0);
+  expect(reasons[0].reasons.join()).toContain("Missing Vendor Master link");
+  expect((await storage.getVendorBillHireActivities("NARASIMHULU", "2026-10-01", "2026-10-01")).filter((r: any) => r.confirmedForDailyHire)).toHaveLength(1);
 });
 it("requires authorised review and links several spellings to one ID without changing originals", async () => {
   const before = await db.select().from(schema.siteMaterialTrips);
@@ -107,8 +107,8 @@ it("saves under the reviewed party, freezes identity evidence and reports prior 
 it("reports incomplete terms, outside-period evidence and invalidated confirmations explicitly", async () => {
   await db.update(schema.equipmentMaster).set({ hireRate: null, hireStartDate: "2026-11-01" }).where(eq(schema.equipmentMaster.id, 2));
   let result = (await tripHireEligibility(db, "GANGARAM NARSIMHULU", "2026-10-01", "2026-10-01")).find((r: any) => r.tripId === 2);
-  expect(result.reasons).toContain("Missing daily-hire terms");
-  expect(result.reasons).toContain("Outside hire period");
+  expect(result.reasons.join()).toContain("Missing daily-hire terms");
+  expect(result.reasons.join()).toContain("Outside hire period");
   await db.update(schema.siteMaterialTrips).set({ vehicleNumber: "CHANGED" }).where(eq(schema.siteMaterialTrips.id, 2));
   result = (await tripHireEligibility(db, "GANGARAM NARSIMHULU", "2026-10-01", "2026-10-01")).find((r: any) => r.tripId === 2);
   expect(result.reasons.join()).toContain("Invalid confirmation");

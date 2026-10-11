@@ -2487,7 +2487,8 @@ export const hireStatements = pgTable("hire_statements", {
 }, (table) => ({
   equipmentIdx: index("hire_statements_equipment_idx").on(table.equipmentId),
   periodIdx: index("hire_statements_period_idx").on(table.periodFrom, table.periodTo),
-  equipmentPeriodUq: uniqueIndex("hire_statements_equipment_period_uq").on(table.equipmentId, table.periodFrom, table.periodTo),
+  equipmentPeriodUq: uniqueIndex("hire_statements_equipment_period_uq").on(table.equipmentId, table.periodFrom, table.periodTo)
+    .where(sql`NOT (${table.billingBasis} = 'daily' AND ${table.vendorBillId} IS NOT NULL)`),
   vendorBillIdx: index("hire_statements_vendor_bill_idx").on(table.vendorBillId),
   equipmentFk: foreignKey({
     columns: [table.equipmentId],

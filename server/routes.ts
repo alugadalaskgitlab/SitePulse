@@ -12094,8 +12094,9 @@ export async function registerRoutes(
     if (!assertView(req, res, "vendor_bills")) return;
     try {
       const query = z.object({ vendorName: z.string().min(1), periodFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-        periodTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(req.query);
-      res.json(await tripHireEligibility(db, query.vendorName, query.periodFrom, query.periodTo));
+        periodTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), billId: z.coerce.number().int().positive().optional()
+      }).refine(q => q.periodFrom <= q.periodTo).parse(req.query);
+      res.json(await tripHireEligibility(db, query.vendorName, query.periodFrom, query.periodTo, query.billId));
     } catch (error: any) { res.status(error instanceof z.ZodError ? 400 : 500).json({ message: error.message }); }
   });
 

@@ -35,3 +35,22 @@ read-only alias resolution.
 
 **Why:** Real bill-save tests exposed a nested global-pool read stalling under a
 single-connection PostgreSQL test runtime; independent reads also weaken consistency.
+
+Reviewed bill-linked daily hire uses charged vehicle/dates, not a blanket period
+reservation. An excluded date can be billed later, even within the same period.
+Unknown legacy snapshot coverage stays conservatively blocked. Non-daily period
+constraints remain unchanged.
+
+**Why:** The user requires reasoned exclusions of existing billed days while
+billing remaining dates; the old equipment/period uniqueness blocked this.
+
+**How to apply:** Keep the partial period-unique index aligned in both development
+database targets before publishing; no startup DDL or financial backfills.
+Duplicate detection must read immutable payable-day snapshots under the equipment
+lock, ignoring generated statement line dates as extra charges.
+
+One-time free-text owners remain billable through an explicitly confirmed Hire
+Billing Link without permanent Vendor Master registration. Reviewed associations
+and conflicts still take precedence.
+
+**Why:** The user explicitly requires the existing one-time vendor workflow.

@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { auditLogs, equipmentMaster, hireStatements, siteMaterialTrips, vendorBillItems, vendorBills } from "../shared/schema";
 import { tripHireFingerprint, tripHireMatch, tripHireRegistration, tripHireVendor, validTripHireLink } from "../shared/tripHireLink";
 import { equipmentVendorIdentities } from "./equipmentVendorIdentity";
+import { statementChargesDate } from "./dailyHireBilledDays";
 
 export const TRIP_HIRE_LINK_ACTION = "confirm_hire_equipment";
 export type NewTripHireLink = { equipmentId: number; reason: string; acceptConflict?: boolean;
@@ -44,12 +45,12 @@ export async function guardTripHireOrdinaryItems(executor: any, items: any[], gr
   const ids = Array.from(new Set<number>([...items.map(i => i.equipmentId), ...groups.map(g => g.equipmentId)].filter(Boolean))).sort((a, b) => a - b);
   for (const id of ids) await executor.execute(sql`SELECT pg_advisory_xact_lock(1426, ${id})`);
   for (const item of items.filter(i => !["hire_group", "hire_statement"].includes(i.source) && i.equipmentId && i.date && i.category?.toLowerCase() === "equipment")) {
-    const [existing] = await executor.select({ id: hireStatements.id }).from(hireStatements).where(and(
+    const existing = await executor.select().from(hireStatements).where(and(
       eq(hireStatements.equipmentId, item.equipmentId), eq(hireStatements.billingBasis, "daily"),
       sql`${hireStatements.periodFrom} <= ${item.date}`, sql`${hireStatements.periodTo} >= ${item.date}`,
       ...(billId ? [sql`(${hireStatements.vendorBillId} IS NULL OR ${hireStatements.vendorBillId} <> ${billId})`] : []),
-    )).limit(1);
-    if (existing) throw Object.assign(conflict("An existing daily hire statement already covers this vehicle/date."), { code: "CONFLICT" });
+    ));
+    if (existing.some((s: any) => statementChargesDate(s, item.date))) throw Object.assign(conflict("An existing daily hire statement already covers this vehicle/date."), { code: "CONFLICT" });
   }
 }
 /** Called inside the trip/bill identity transaction; only appends audit evidence. */
