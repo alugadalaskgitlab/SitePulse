@@ -16,3 +16,12 @@ substitute mutable master defaults. Deliberate draft term changes require renewe
 activity review. Preserve cross-basis duplicate guards and never derive hours
 from trips. This supersedes earlier compulsory Master monthly/daily billing rules
 for the integrated Vendor Bill workflow, not the separate hire register.
+
+Do not introduce Hire Type into Material Trip entry or linking.
+
+**Why:** The user clarified that trips record actual activity; only Vendor Bill
+terms decide whether the same confirmed evidence is charged per trip or per day.
+
+**How to apply:** Keep evidence discovery independent of the Equipment Master
+default and selected bill basis. Daily billing reviews one vehicle/date with
+Full/Half/Excluded decisions; trip billing reviews individual eligible trips.

@@ -163,6 +163,57 @@ it("real create/reload routes retain reviewed multi-date, multi-source, one-time
   expect((await db.select().from(schema.siteMaterialTrips).where(eq(schema.siteMaterialTrips.id, 21)))[0]).toMatchObject(originals[0]);
 });
 
+it.each(["trip", "daily"])("keeps the same confirmed historical trips eligible across bill basis changes with master default %s", async (defaultBasis) => {
+  const id = defaultBasis === "trip" ? 80 : 81;
+  const date = "2026-12-20";
+  const machine = { ...master, id, registrationNumber: `BASIS${id}`, vendorName: `BASIS OWNER ${id}`,
+    hireBillingBasis: defaultBasis, hireRate: 17 };
+  await db.insert(schema.equipmentMaster).values(machine);
+  const originals = [id * 10, id * 10 + 1].map(tripId => ({
+    ...trip, id: tripId, date, vehicleNumber: machine.registrationNumber, supplier: machine.vendorName,
+  }));
+  await db.insert(schema.siteMaterialTrips).values(originals);
+  for (const row of originals) await db.transaction((tx: any) => confirmTripHireLink(tx, row,
+    { equipmentId: id, reason: "Historical vehicle identity verified" }, { id: 4, fullName: "Reviewer" }, true));
+  const activities = await storage.getVendorBillHireActivities(machine.vendorName, date, date);
+  const evidence = activities.filter((a: any) => a.equipmentId === id && a.confirmedForDailyHire);
+  expect(evidence.map((a: any) => a.sourceId).sort()).toEqual(originals.map(t => t.id));
+  const decisions = originals.map(row => ({ source: "site_material_trip", sourceId: row.id, selected: true, remarks: "Individual trip checked" }));
+  const group = (basis: string) => ({ equipmentId: id, basis, rate: 1000, periodFrom: date, periodTo: date,
+    tripDecisions: decisions, dailyDecisions: [{ date, decision: "full_day", reason: "Both trips reviewed together" }] });
+  // Charge against the opposite of the master default first, then edit the same
+  // draft to the other basis, retaining these exact persisted source IDs.
+  const firstBasis = defaultBasis === "trip" ? "daily" : "trip";
+  const payload: any = { billDate: date, billType: "equipment", vendorName: machine.vendorName,
+    periodFrom: date, periodTo: date, status: "draft", items: [], hireGroups: [group(firstBasis)] };
+  const bill = await storage.createVendorBill(payload);
+  expect(bill.items[0]).toMatchObject({ qty: firstBasis === "daily" ? 1 : 2 });
+  const first = await storage.getVendorBill(bill.id);
+  const changed = await storage.updateVendorBill(bill.id, { ...payload,
+    hireGroups: [{ ...group(defaultBasis), hireStatementId: first.hireStatements[0].id }] });
+  expect(changed.items[0]).toMatchObject({ qty: defaultBasis === "daily" ? 1 : 2 });
+  const reopened = await storage.getVendorBill(bill.id);
+  expect(reopened.hireStatements[0].billingBasis).toBe(defaultBasis);
+  const savedEvidence = reopened.hireStatements[0].calculationSnapshot.sourceEvidence.activities;
+  expect(savedEvidence.filter((a: any) => a.confirmedForDailyHire).map((a: any) => a.sourceId).sort())
+    .toEqual(originals.map(t => t.id));
+  for (const [decision, expected] of [["full_day", 1], ["half_day", .5], ["exclude", 0]] as const) {
+    const result = calculateHireGroup({ equipmentId: id, terms: { billingBasis: "daily", rate: 1000 },
+      periodFrom: date, periodTo: date, activities: evidence,
+      dailyDecisions: [{ date, decision, reason: "Reviewed vehicle day" }] });
+    expect(result.quantity).toBe(expected);
+  }
+  expect(calculateHireGroup({ equipmentId: id, terms: { billingBasis: "hourly", rate: 1000 },
+    periodFrom: date, periodTo: date, activities: evidence, tripDecisions: decisions }).quantity).toBe(0);
+  for (const row of originals) {
+    const [saved] = await db.select().from(schema.siteMaterialTrips).where(eq(schema.siteMaterialTrips.id, row.id));
+    expect(saved).toMatchObject(row);
+    expect((await tripHireReview(db, saved)).confirmation.valid).toBe(true);
+  }
+  expect((await db.select().from(schema.equipmentMaster).where(eq(schema.equipmentMaster.id, id)))[0])
+    .toMatchObject({ hireBillingBasis: defaultBasis, hireRate: 17 });
+});
+
 it("saves independent bill terms across bases, edits only a draft and freezes completed bills", async () => {
   const tripMaster = { ...master, id: 30, registrationNumber: "TERMS30", vendorName: "TERMS OWNER",
     hireBillingBasis: "trip", hireRate: 10, hireStartDate: "2027-01-01" };
