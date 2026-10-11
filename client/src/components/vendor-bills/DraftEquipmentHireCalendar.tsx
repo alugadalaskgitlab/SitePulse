@@ -19,7 +19,7 @@ import type { BillExportCalendar } from "./wholeBillSnapshot";
 
 type CalendarMode = "draft" | "detail";
 
-function EquipmentHirePeriodTotals({
+export function EquipmentHirePeriodTotals({
   rows,
   dieselResponsibility,
   consumptionNorm: _consumptionNorm,
@@ -256,9 +256,9 @@ export default function DraftEquipmentHireCalendar({
 }
 
 /**
- * Itemized equipment bills predate hire statements and therefore have no
- * frozen daily snapshot to render.  Their calendar export is deliberately
- * live, while "Bill" remains the original generic Vendor Bills PDF action.
+ * Legacy itemized equipment bills have no frozen calendar snapshot.
+ * Do not reconstruct their history from current performance. "Bill" remains
+ * the original generic Vendor Bills PDF action.
  * This component keeps that generic trigger/test id and adds the choice only
  * after the user clicks it.
  */
@@ -284,28 +284,7 @@ export function SavedEquipmentCalendarExport({
   const periodFrom = String(bill?.periodFrom || "");
   const periodTo = String(bill?.periodTo || "");
   const validPeriod = !!periodFrom && !!periodTo && periodFrom <= periodTo;
-  const reports = useQuery<EquipmentPerformanceReport[]>({
-    queryKey: ["/api/reports/equipment-performance", "saved-equipment-calendar", bill?.id, equipmentIds, periodFrom, periodTo],
-    queryFn: async () => Promise.all(equipmentIds.map(async equipmentId => {
-      const url = `/api/reports/equipment-performance?dateFrom=${encodeURIComponent(periodFrom)}&dateTo=${encodeURIComponent(periodTo)}&equipmentId=${encodeURIComponent(String(equipmentId))}`;
-      const response = await fetch(url, { credentials: "include" });
-      if (!response.ok) throw new Error((await response.text()) || `Could not load activity for equipment ${equipmentId}`);
-      return response.json() as Promise<EquipmentPerformanceReport>;
-    })),
-    enabled: equipmentIds.length > 0 && validPeriod,
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
-  const rows = useMemo(() => {
-    if (!reports.isSuccess) return [];
-    return reports.data.flatMap((report, index) => {
-      const equipmentId = equipmentIds[index];
-      const fleetRow = Array.isArray(report?.fleet)
-        ? report.fleet.find((row: any) => Number(row.equipmentId) === equipmentId)
-        : undefined;
-      return buildBillingDailyRows(fleetRow?.dailyRows || [], periodFrom, periodTo);
-    });
-  }, [equipmentIds, periodFrom, periodTo, reports.data, reports.isSuccess]);
+  const rows = useMemo<BillingDailyRow[]>(() => [], []);
   const equipmentName = useMemo(() => {
     const descriptions = equipmentItems
       .map((item: any) => String(item.description || "").trim())
@@ -341,31 +320,25 @@ export function SavedEquipmentCalendarExport({
   useEffect(() => {
     savedSnapshotCallback.current?.({
       equipmentName, periodFrom, periodTo, rows,
-      unavailableReason: reports.isFetching || reports.isPending
-        ? "Loading daily equipment activity…"
-        : reports.isError ? "Could not load daily equipment activity." : undefined,
+      unavailableReason: "Frozen daily activity is unavailable for this itemized bill.",
     });
-  }, [equipmentName, periodFrom, periodTo, rows, reports.isFetching, reports.isPending, reports.isError]);
+  }, [equipmentName, periodFrom, periodTo, rows]);
   const [exporting, setExporting] = useState(false);
   const exportSelection = async (format: EquipmentHireExportFormat, mode: "calendar" | "bill" | "both") => {
     setExporting(true);
     setChoiceOpen(false);
     try {
       if (mode === "bill" || mode === "both") await onExportBill(format);
-      if ((mode === "calendar" || mode === "both") && reports.isSuccess) {
-        exportEquipmentHireCalendar(data, rows, format);
-      }
     } finally {
       setExporting(false);
     }
   };
-  const loading = equipmentIds.length > 0 && (reports.isPending || reports.isFetching);
-  const calendarUnavailable = equipmentIds.length === 0 || !reports.isSuccess || !!reports.isError;
+  const calendarUnavailable = true;
   const errorMessage = equipmentIds.length === 0
     ? "Calendar export unavailable: no linked equipment ID is present on this itemized bill."
     : !validPeriod
       ? "Calendar export unavailable: this bill does not have a valid inclusive period."
-    : reports.error instanceof Error ? reports.error.message : null;
+    : "Calendar export unavailable: frozen daily activity was not saved with this bill.";
 
   return (
     <div className="flex flex-wrap gap-2">
@@ -379,7 +352,6 @@ export function SavedEquipmentCalendarExport({
       >
         Export PDF
       </Button>
-      {loading && <span className="self-center text-xs text-muted-foreground">Loading daily activity…</span>}
       {errorMessage && <span role="alert" className="self-center text-xs text-red-700">{errorMessage}</span>}
       <Dialog open={choiceOpen} onOpenChange={setChoiceOpen}>
         <DialogContent className="max-w-md">

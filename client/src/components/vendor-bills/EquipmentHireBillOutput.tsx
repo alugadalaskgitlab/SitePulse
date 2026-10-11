@@ -649,7 +649,7 @@ export function EquipmentHireBillDetailOutput({ bill, output: suppliedOutput }: 
   const { data, rows, hasFrozenDailyRows } = output;
   return <div className="flex flex-wrap gap-2">
     {!hasFrozenDailyRows && <span className="self-center text-xs text-amber-700">Frozen daily activity is unavailable for this historical bill.</span>}
-    <Button type="button" variant="outline" size="sm" onClick={() => setShowDaily(true)} data-testid="button-detail-view-daily-activity">View Daily Activity</Button>
+    <Button type="button" variant="outline" size="sm" disabled={!hasFrozenDailyRows} onClick={() => setShowDaily(true)} data-testid="button-detail-view-daily-activity">View Daily Activity</Button>
     <EquipmentHireExportButtons data={data} rows={rows} />
     <EquipmentHireDailyActivity open={showDaily} onOpenChange={setShowDaily} rows={rows} dieselResponsibility={data.dieselResponsibility} consumptionNorm={data.consumptionNorm} meterType={data.meterType} consumptionRateUnit={data.consumptionRateUnit} />
   </div>;

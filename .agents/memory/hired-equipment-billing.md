@@ -123,7 +123,7 @@ Unlinked delivery/operational trip matches require review. Excluding an operatio
 
 Paid and Balance are strictly per bill. Null payment compatibility is only for genuinely historical bills without a frozen net snapshot.
 
-**Why:** Treating a new bill's null paid amount as legacy full payment bypasses the outstanding-balance check. The user rejected running balances and advance ledgers.
+**Why:** Treating a new bill's null paid amount as legacy full payment bypasses the outstanding-balance check. Automatic running-account settlement and advance ledgers remain outside scope; the later read-only vendor statement is informational only.
 
 **How to apply:** Initialize modern bills to numeric zero, disallow clearing it to null, freeze net and supporting daily evidence, and keep other bills independent.
 

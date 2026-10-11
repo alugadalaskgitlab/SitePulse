@@ -39,6 +39,8 @@ import {
   type EquipmentHireExportData,
 } from "@/components/vendor-bills/EquipmentHireBillOutput";
 import DraftEquipmentHireCalendar, { SavedEquipmentCalendarExport } from "@/components/vendor-bills/DraftEquipmentHireCalendar";
+import SavedBillCalendars from "@/components/vendor-bills/SavedBillCalendars";
+import { VendorBillFinancialSummary, VendorRunningStatement } from "@/components/vendor-bills/VendorBillReview";
 import HireActivityBreakdownCalendar, { hireActivityBreakdownSheetRows } from "@/components/vendor-bills/HireActivityBreakdownCalendar";
 import WholeBillExportButtons from "@/components/vendor-bills/WholeBillExportButtons";
 import EquipmentLogFacts from "@/components/vendor-bills/EquipmentLogFacts";
@@ -188,7 +190,7 @@ function getBillFinancialTotals(bill: any) {
     additional,
     additionalTotal,
     tds,
-    netTotal: totalAmount + totalGst + primaryAdjustment + additionalTotal - tds,
+    netTotal: bill.netPayableAmount == null ? totalAmount + totalGst + primaryAdjustment + additionalTotal - tds : Number(bill.netPayableAmount),
   };
 }
 
@@ -725,7 +727,7 @@ export default function VendorBills() {
     activePullContextRef.current = `${view}|${editingBillId ?? ""}|${type}|${vendor}|${from}|${to}`;
   };
 
-  const { data: bills, isLoading } = useQuery<VendorBillWithItems[]>({
+  const { data: bills, isLoading, isError: billListError } = useQuery<VendorBillWithItems[]>({
     queryKey: ["/api/vendor-bills"],
   });
 
@@ -4609,6 +4611,8 @@ export default function VendorBills() {
               </div>
             </div>
 
+            <SavedBillCalendars bill={bill} canExport={canExport} />
+            <VendorRunningStatement bill={bill} bills={bills || []} totals={getBillFinancialTotals} loading={isLoading} error={billListError} />
             {/* 06M-A: Payment Mode / Paid By — entry preferred once PAID, shown
                 whenever values exist. No payment evidence/QR upload here. */}
             {(hasCumulativeVendorPayment(bill.billType) || bill.status === "paid" || (bill as any).paymentMode || (bill as any).paidBy) && (
@@ -5047,37 +5051,7 @@ export default function VendorBills() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card>
-          <CardContent className="py-3 text-center">
-            <p className="text-sm text-muted-foreground uppercase" data-testid="label-total">Total Bills</p>
-            <p className="text-xl font-bold" data-testid="text-summary-total">{billSummary?.total || 0}</p>
-            <p className="text-sm text-muted-foreground">{formatCurrency(billSummary?.totalAmount)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-3 text-center">
-            <p className="text-sm text-muted-foreground uppercase" data-testid="label-draft">Draft</p>
-            <p className="text-xl font-bold text-amber-600 dark:text-amber-400" data-testid="text-summary-draft">{billSummary?.draft || 0}</p>
-            <p className="text-sm text-muted-foreground">{formatCurrency(billSummary?.draftAmount)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-3 text-center">
-            <p className="text-sm text-muted-foreground uppercase" data-testid="label-verified">Verified</p>
-            <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400" data-testid="text-summary-verified">{billSummary?.verified || 0}</p>
-            <p className="text-sm text-muted-foreground">{formatCurrency(billSummary?.verifiedAmount)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-3 text-center">
-            <p className="text-sm text-muted-foreground uppercase" data-testid="label-paid">Paid</p>
-            <p className="text-xl font-bold text-blue-600 dark:text-blue-400" data-testid="text-summary-paid">{billSummary?.paid || 0}</p>
-            <p className="text-sm text-muted-foreground">{formatCurrency(billSummary?.paidAmount)}</p>
-          </CardContent>
-        </Card>
-      </div>
-
+      <VendorBillFinancialSummary bills={filteredBills} totals={getBillFinancialTotals} />
       <Card data-testid="card-gst-register">
         <CardHeader className="py-2 px-3">
           <CardTitle className="text-sm uppercase tracking-wider text-muted-foreground flex items-center justify-between gap-2 flex-wrap">

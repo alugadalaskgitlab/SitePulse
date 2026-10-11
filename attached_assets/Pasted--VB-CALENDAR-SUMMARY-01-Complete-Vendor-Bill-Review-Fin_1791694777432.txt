@@ -1,0 +1,117 @@
+# VB-CALENDAR-SUMMARY-01 — Complete Vendor Bill Review & Financial Visibility
+
+**Objective:** Improve the existing Vendor Bills module in one focused implementation, covering three requirements:
+
+1. Restore the Activity / Breakdown Calendar in saved Equipment Hire bills.
+2. Add filter-responsive payment summaries to the Vendor Bills list.
+3. Add a read-only, vendor-wise running statement.
+
+Reuse existing components, billing calculations, payment records and financial safeguards. Do not redesign Vendor Bills.
+
+## PART A — Saved Equipment Hire Activity Calendar
+
+**Existing problem:** The Activity / Breakdown Calendar works while preparing monthly equipment-hire bills, but is unavailable or shows no information after saving as Draft, Verified, Approved or Paid.
+
+Review the existing calendar components and Vendor Bill Detail rendering.
+
+Requirements:
+
+- Show an expandable **View Activity / Breakdown Calendar** for each applicable equipment item in saved Vendor Bills.
+- Support Draft, Verified, Approved and Paid bills.
+- Include date-wise working activity, recorded hours/trips, breakdown, no-work days, diesel where applicable, hire deductions, decisions and period totals.
+- Reuse the existing preparation-calendar presentation wherever practical.
+- Use frozen historical evidence and billing decisions for approved/paid bills, not silently recalculated current activity.
+- For legacy bills without complete saved evidence, show available read-only information and clearly identify unavailable details.
+- Fix nonfunctional existing calendar buttons.
+- Preserve existing Bill PDF/Excel and independent Calendar export formats.
+
+## PART B — Filter-Responsive Vendor Bill Totals
+
+Add a compact financial summary above the existing Vendor Bills list.
+
+The totals must respond to all currently selected filters: status, vendor, date range, site and bill type/category.
+
+Show:
+
+- Number of bills
+- Gross amount
+- Deductions/adjustments
+- Net bill value
+- Recorded payments
+- Positive outstanding balances
+- Negative balances/vendor credits separately
+- Approved and unpaid amount eligible for payment
+
+When no status filter is selected, include all permitted bills in the financial overview, but do not classify Draft, Verified or Paid bills as approved outstanding payable.
+
+Use the existing authoritative bill financial totals and payment fields.
+
+Never simply offset one vendor's negative bills against another vendor's payable amount.
+
+Keep summary figures consistent with the bill amounts displayed below.
+
+## PART C — Read-Only Vendor Running Statement
+
+In Vendor Bill Detail, provide an expandable **Vendor Statement**.
+
+Show chronological information, where recorded, for:
+
+- Previous bills
+- Current bill
+- Bill statuses
+- Existing recorded payments
+- Verified advances and adjustments
+- Outstanding amounts
+- Negative net balances and available credits
+
+Use confirmed Vendor Master identity where available.
+
+For one-time/free-text vendors, do not merge parties solely because names are similar.
+
+**Important:** This statement is initially informational, not an automatic accounting ledger.
+
+Show missing historical opening balances and payments as **Not established** rather than assuming zero.
+
+Distinguish actual recorded transactions from calculated balances and provisional amounts.
+
+Do not automatically carry forward, offset or consume previous advances.
+
+## PART D — Existing Financial Records Must Remain Unchanged
+
+Do not change:
+
+- Vendor Bill amounts, line items, rates or GST calculations
+- Existing advances, payments or adjustments
+- Paid, approved or verified status
+- Hire calculation snapshots
+- VM-VB-01 vendor identity logic
+- DPRs or equipment usage
+- Stock, diesel, procurement or accounting records
+
+No migration or historical financial backfill unless an essential additive change is identified and explicitly reported for approval.
+
+Do not implement Tally export or automatic advance settlement in this batch.
+
+## PART E — Focused Verification
+
+Test:
+
+1. Saved monthly-hire calendar in Draft, Verified, Approved and Paid bills.
+2. Multiple equipment items and breakdown/idle days.
+3. Legacy bills with incomplete calendar evidence.
+4. Status-filtered and unfiltered financial summaries.
+5. Partially paid and fully paid bills.
+6. Negative bills and advance deductions.
+7. Different vendors and site-scoped visibility.
+8. Linked and temporary/free-text vendors.
+9. Preservation of all existing financial records.
+
+Run focused tests and one production build only. Avoid full-suite testing, unrelated refactoring and repeated investigations.
+
+Deliver one concise report containing:
+- What was corrected
+- Test count and build result
+- Any unresolved limitation
+- Publication readiness
+
+**Do not publish automatically. STOP.**
