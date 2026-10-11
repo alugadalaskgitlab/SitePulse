@@ -11,10 +11,10 @@ const suggestions = read("client/src/hooks/use-site-material-suggestions.ts");
 
 describe("VB-22 site material trip source supplier UI", () => {
   it("keeps the source supplier independent from vehicle/transporter autofill", () => {
-    expect(roleFields).toContain('data-testid={`input-${testIdPrefix}-material-source-supplier`}');
+    expect(roleFields).toContain('testId={`input-${testIdPrefix}-material-source-supplier`}');
     expect(roleFields).toContain("materialSourceSupplier: name.toUpperCase()");
     expect(page).toContain('roleChoiceRef.current === "different_parties"');
-    expect(page).toContain("? { supplier: association.supplier }");
+    expect(page).toContain("? { supplier: association.supplier, supplierVendorId: null }");
     expect(page).not.toContain("? { supplier: association.supplier, materialSourceSupplier:");
     expect(page).toContain("trip.materialSourceSupplier?.trim() || '-'");
     expect(suggestions).toContain("materialSourceSuppliers: string[]");

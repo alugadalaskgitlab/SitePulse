@@ -20,6 +20,11 @@ export function resolveTripVendor(name: string, vendors: ExistingTripVendor[]): 
   return matches[0];
 }
 
+export function resolveSelectedTripVendor(name: string, id: number | null | undefined, vendors: ExistingTripVendor[]): ExistingTripVendor {
+  const selected = id != null ? vendors.find(v => v.id === id && vendorKey(v.name) === vendorKey(name)) : null;
+  return selected || resolveTripVendor(name, vendors);
+}
+
 export function existingTripVendorSuggestions(recent: string[], vendors: ExistingTripVendor[]): string[] {
   const ordered = [...recent, ...vendors.map((vendor) => vendor.name)];
   const seen = new Set<number>();

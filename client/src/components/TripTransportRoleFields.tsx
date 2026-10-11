@@ -5,7 +5,8 @@ import { FreeTextSuggestionInput } from "@/components/FreeTextSuggestionInput";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TRIP_ROLE_OPTIONS, existingTripVendorSuggestions, type ExistingTripVendor } from "./trip-role-utils";
+import { TRIP_ROLE_OPTIONS, type ExistingTripVendor } from "./trip-role-utils";
+import { TripVendorPicker } from "./TripVendorPicker";
 
 export type TripRoleDraft = {
   materialSourceType?: "vendor" | "own_source" | null;
@@ -14,6 +15,10 @@ export type TripRoleDraft = {
   supplier: string;
   vehicleNumber: string;
   internalEquipmentId: number | null;
+  materialSourceVendorId?: number | null;
+  supplierVendorId?: number | null;
+  materialSourceManual?: boolean;
+  supplierManual?: boolean;
 };
 
 type Props = {
@@ -32,18 +37,19 @@ type Props = {
   onRetryVendors: () => void;
   onVehicleSelected?: (vehicle: string) => void;
   vehicleNotice?: ReactNode;
+  vehiclePicker?: ReactNode;
+  allowManualParties?: boolean;
   testIdPrefix?: string;
 };
 
 export function TripTransportRoleFields({
-  choice, onChoice, value, onChange, vendors, equipment, sourceSuggestions,
-  supplierSuggestions, vehicleSuggestions, suggestionError, vendorsLoading,
-  vendorsError, onRetryVendors, onVehicleSelected, vehicleNotice, testIdPrefix = "trip",
+  choice, onChoice, value, onChange, vendors, equipment,
+  vehicleSuggestions, suggestionError, vendorsLoading,
+  vendorsError, onRetryVendors, onVehicleSelected, vehicleNotice, vehiclePicker, allowManualParties = false, testIdPrefix = "trip",
 }: Props) {
   const radioName = useId();
   const sourceRadioName = useId();
   const sourceId = useId();
-  const transporterId = useId();
   const vehicleId = useId();
   const ownSource = value.materialSourceType === "own_source";
   const needsVendors = !ownSource || choice === "different_parties";
@@ -59,7 +65,7 @@ export function TripTransportRoleFields({
             </label>
             <label className="flex cursor-pointer items-center gap-2 text-sm">
               <input type="radio" name={sourceRadioName} checked={ownSource} onChange={() => {
-                onChange({ ...value, materialSourceType: "own_source", materialSourceSupplier: "" });
+                onChange({ ...value, materialSourceType: "own_source", materialSourceSupplier: "", materialSourceVendorId: null });
                 if (choice === "same_party") onChoice("different_parties");
               }} data-testid={`${testIdPrefix}-source-own-source`} />
               Our own source
@@ -71,17 +77,18 @@ export function TripTransportRoleFields({
           <Input id={sourceId} value={value.materialSourceLabel ?? ""} onChange={(event) => onChange({ ...value, materialSourceLabel: event.target.value })} placeholder="e.g. Borrow area near Thakadpally, survey no. 212" data-testid={`input-${testIdPrefix}-material-source-label`} />
           <p className="mt-1 text-xs text-muted-foreground">HLC's own material source — no material vendor is recorded.</p>
         </> : <>
-        <Label htmlFor={sourceId}>Material vendor *</Label>
-        <FreeTextSuggestionInput
-          id={sourceId}
-          value={value.materialSourceSupplier}
-          onChange={(name) => onChange({ ...value, materialSourceSupplier: name.toUpperCase() })}
-          suggestions={existingTripVendorSuggestions([...sourceSuggestions, ...supplierSuggestions], vendors)}
+        <TripVendorPicker
+          label="Material vendor *"
+          name={value.materialSourceSupplier}
+          vendorId={value.materialSourceVendorId}
+          manual={value.materialSourceManual}
+          onManualChange={allowManualParties ? manual => onChange({ ...value, materialSourceManual: manual, materialSourceVendorId: null }) : undefined}
+          vendors={vendors}
+          onChange={(name, id) => onChange({ ...value, materialSourceSupplier: name.toUpperCase(), materialSourceVendorId: id })}
           disabled={vendorsLoading || vendorsError}
-          placeholder="Choose an existing material vendor"
-          data-testid={`input-${testIdPrefix}-material-source-supplier`}
+          testId={`input-${testIdPrefix}-material-source-supplier`}
         />
-        <p className="mt-1 text-xs text-muted-foreground">Who sold the material. Only existing vendors can be saved.</p>
+        <p className="mt-1 text-xs text-muted-foreground">Who sold the material. A master selection saves the party ID; outside parties remain recorded text only.</p>
         </>}
       </div>
       {needsVendors && vendorsLoading && <div className="h-5 max-w-sm animate-pulse rounded bg-muted" role="status" aria-label="Loading existing vendors" />}
@@ -101,12 +108,13 @@ export function TripTransportRoleFields({
       {choice === "same_party" && <p className="text-xs text-muted-foreground">The material vendor is also recorded explicitly as the transporter.</p>}
       {choice === "different_parties" && (
         <div className="max-w-xl">
-          <Label htmlFor={transporterId}>Transporter *</Label>
-          <FreeTextSuggestionInput id={transporterId} value={value.supplier} onChange={(supplier) => onChange({ ...value, supplier: supplier.toUpperCase() })} suggestions={existingTripVendorSuggestions(supplierSuggestions, vendors)} disabled={vendorsLoading || vendorsError} placeholder="Choose an existing transporter" data-testid={`input-${testIdPrefix}-supplier`} />
+          <TripVendorPicker label="Transporter *" name={value.supplier} vendorId={value.supplierVendorId} vendors={vendors} onChange={(supplier, id) => onChange({ ...value, supplier: supplier.toUpperCase(), supplierVendorId: id })} disabled={vendorsLoading || vendorsError} testId={`input-${testIdPrefix}-supplier`}
+            manual={value.supplierManual} onManualChange={allowManualParties ? manual => onChange({ ...value, supplierManual: manual, supplierVendorId: null }) : undefined} />
         </div>
       )}
       {(choice === "same_party" || choice === "different_parties") && (
         <div className="max-w-xl">
+          {vehiclePicker}
           <Label htmlFor={vehicleId}>Vehicle number *</Label>
           <FreeTextSuggestionInput id={vehicleId} value={value.vehicleNumber} onChange={(vehicleNumber) => onChange({ ...value, vehicleNumber: vehicleNumber.toUpperCase() })} onSuggestionSelected={onVehicleSelected} suggestions={vehicleSuggestions} match="vehicle" suggestionsError={suggestionError} placeholder="e.g. TS15UF4308" data-testid={`input-${testIdPrefix}-vehicle`} />
           {vehicleNotice}

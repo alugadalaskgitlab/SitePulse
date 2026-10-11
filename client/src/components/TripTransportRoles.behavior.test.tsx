@@ -13,6 +13,7 @@ import { existingTripVendorSuggestions, filterTripsByRole, resolveTripVendor, tr
 const harness = vi.hoisted(() => ({
   search: "", toast: vi.fn(), request: vi.fn(), queries: [] as string[],
   lateAssociation: null as null | (() => void),
+  canEdit: true,
 }));
 vi.mock("@/lib/queryClient", async (original) => ({ ...await original<object>(), apiRequest: harness.request }));
 vi.mock("wouter", () => ({
@@ -21,7 +22,7 @@ vi.mock("wouter", () => ({
   Link: ({ children }: any) => <span>{children}</span>,
 }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: harness.toast }) }));
-vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({ sectionCan: () => true }) }));
+vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({ sectionCan: () => harness.canEdit, isAdmin: false, isOwner: false }) }));
 vi.mock("@/lib/featureFlags", () => ({ useFeatureFlags: () => ({ companyName: "HLC", logoFile: "logo.png" }) }));
 vi.mock("@/hooks/use-upload", () => ({ useUpload: () => ({ uploadFile: vi.fn() }) }));
 vi.mock("@/components/AttachmentGallery", () => ({ AttachmentGallery: () => null }));
@@ -115,6 +116,7 @@ beforeEach(() => {
   harness.toast.mockReset();
   harness.queries = [];
   harness.lateAssociation = null;
+  harness.canEdit = true;
   queryClient.clear();
   // These scenarios exercise loaded pickers. The catalogue is now site-keyed;
   // prime the same fixture for the site selected by fillBasic().
@@ -125,10 +127,18 @@ beforeEach(() => {
     if (url === "/api/sites") return [{ id: 11, name: "NH-44", isActive: true }];
     if (url === "/api/vendor-master" || url.startsWith("/api/site-material-trips/vendor-options?site=")) return vendors;
     if (url === "/api/plant-module/equipment") return equipment;
+    if (url === "/api/site-material-trips/hired-vehicle-options") return [];
+    const reviewMatch = url.match(/^\/api\/site-material-trips\/(\d+)\/hire-link$/);
+    if (reviewMatch) return { trip: rows.find(row => row.id === Number(reviewMatch[1])),
+      equipment: [], confirmation: null, suggestedEquipmentId: null, fingerprint: "reviewed-trip", version: null };
     if (url.startsWith("/api/site-material-trips")) return url.includes("onlyUnassigned=true") ? rows.filter((row) => !row.materialSourceSupplier?.trim()) : rows;
     return [];
   } }, mutations: { retry: false } });
-  harness.request.mockResolvedValue({ json: async () => ({ id: 101 }) });
+  harness.request.mockImplementation(async (method, url, payload) => ({
+    json: async () => method === "PATCH"
+      ? { ...rows.find(row => url === `/api/site-material-trips/${row.id}`), ...payload }
+      : { id: 101 },
+  }));
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
   Object.defineProperty(window, "matchMedia", { configurable: true, value: () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} }) });
 });
@@ -259,7 +269,7 @@ describe("VB-SPLIT Parts A/B entry behavior", () => {
 
 describe("A4/A5 explicit role-only editing", () => {
   it("explicit work-context edits accompany roles without physical receipt fields", async () => {
-    renderEditor();
+    await openEditor();
     setInput("input-edit-trip-material-source-supplier", "SANGANNA");
     fireEvent.click(screen.getByTestId("edit-trip-role-same_party"));
     fireEvent.click(screen.getByText("Choose intended item"));
@@ -271,7 +281,7 @@ describe("A4/A5 explicit role-only editing", () => {
     for(const key of ["quantity","date","site","material","receiptNumber"])expect(body).not.toHaveProperty(key);
   });
   it("untouched saved work context is omitted, never cleared by role confirmation", async () => {
-    renderEditor({...rows[3],boqProjectId:12,boqItemId:29,programmeBarId:50,earthworkArrangementId:31});
+    await openEditor({...rows[3],boqProjectId:12,boqItemId:29,programmeBarId:50,earthworkArrangementId:31});
     setInput("input-edit-trip-material-source-supplier", "SANGANNA");
     fireEvent.click(screen.getByTestId("edit-trip-role-same_party"));
     fireEvent.click(screen.getByTestId("button-save-trip-roles"));
@@ -281,8 +291,15 @@ describe("A4/A5 explicit role-only editing", () => {
   function renderEditor(row = rows[3]) {
     return render(<QueryClientProvider client={queryClient}><TripRoleEditDialog trip={row} vendors={vendors} equipment={equipment} vendorsLoading={false} vendorsError={false} onRetryVendors={vi.fn()} onClose={vi.fn()} /></QueryClientProvider>);
   }
+  async function openEditor(row = rows[3]) {
+    const view = renderEditor(row);
+    const edit = screen.getByRole("button", { name: "Correct roles / work context" });
+    await waitFor(() => expect(edit).not.toBeDisabled());
+    fireEvent.click(edit);
+    return view;
+  }
   it("A4 ambiguous existing trip has no option selected and save is blocked without a choice", async () => {
-    renderEditor();
+    await openEditor();
     expect(screen.getByTestId("trip-roles-unresolved")).toHaveTextContent("Transport/source roles not yet confirmed — set Material from and Who brought it");
     for (const radio of screen.getAllByRole("radio")) expect(radio).not.toBeChecked();
     setInput("input-edit-trip-material-source-supplier", "SANGANNA");
@@ -295,24 +312,24 @@ describe("A4/A5 explicit role-only editing", () => {
     const view = renderEditor();
     expect(screen.getByTestId("trip-role-raw-values")).toHaveTextContent("materialSourceSupplierNULL");
     expect(screen.getByTestId("trip-role-raw-values")).toHaveTextContent('supplier"NARASIMHULU"');
-    fireEvent.click(screen.getByText("Cancel"));
+    fireEvent.click(screen.getByText("Close review"));
     view.unmount();
     expect(harness.request).not.toHaveBeenCalled();
     expect(JSON.stringify(rows[3])).toBe(before);
   });
   it("PATCH contains only role fields and only occurs on explicit save", async () => {
-    renderEditor();
+    await openEditor();
     setInput("input-edit-trip-material-source-supplier", "SANGANNA");
     fireEvent.click(screen.getByTestId("edit-trip-role-same_party"));
     expect(harness.request).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("button-save-trip-roles"));
     await waitFor(() => expect(harness.request).toHaveBeenCalledWith("PATCH", "/api/site-material-trips/4", {
-      materialSourceSupplier: "SANGANNA", materialSourceVendorId: 7, supplier: "SANGANNA", supplierVendorId: 7, transportType: "agency_vendor", internalEquipmentId: null, vehicleNumber: "TS15UF4308",
+      materialSourceSupplier: "SANGANNA", materialSourceVendorId: null, supplier: "SANGANNA", supplierVendorId: null, transportType: "agency_vendor", internalEquipmentId: null, vehicleNumber: "TS15UF4308",
     }));
     expect(harness.request).toHaveBeenCalledTimes(1);
   });
   it.each(["different_parties", "in_house"] as const)("role-only editing can explicitly save %s without quantity/context fields", async (choice) => {
-    renderEditor();
+    await openEditor();
     setInput("input-edit-trip-material-source-supplier", "SANGANNA");
     fireEvent.click(screen.getByTestId(`edit-trip-role-${choice}`));
     if (choice === "in_house") setInput("select-edit-trip-internal-equipment", "42");
@@ -322,12 +339,12 @@ describe("A4/A5 explicit role-only editing", () => {
     expect(Object.keys(payload).sort()).toEqual(["materialSourceSupplier", "materialSourceVendorId", "supplier", "supplierVendorId", "transportType", "internalEquipmentId", "vehicleNumber"].sort());
     expect(payload).toMatchObject(choice === "in_house"
       ? { transportType: "in_house", supplier: null, supplierVendorId: null, internalEquipmentId: 42, vehicleNumber: "TS09AB4321" }
-      : { transportType: "agency_vendor", supplier: "NARASIMHULU", supplierVendorId: 18, materialSourceVendorId: 7 });
+      : { transportType: "agency_vendor", supplier: "NARASIMHULU", supplierVendorId: 18, materialSourceVendorId: null });
   });
   it("failed explicit PATCH leaves the editor open with actionable error and does not mutate stored raw values", async () => {
     const before = JSON.stringify(rows[3]);
     harness.request.mockRejectedValueOnce(new Error("Roles could not be saved. Retry."));
-    renderEditor();
+    await openEditor();
     setInput("input-edit-trip-material-source-supplier", "SANGANNA");
     fireEvent.click(screen.getByTestId("edit-trip-role-same_party"));
     fireEvent.click(screen.getByTestId("button-save-trip-roles"));
@@ -335,6 +352,16 @@ describe("A4/A5 explicit role-only editing", () => {
     expect(screen.getByTestId("dialog-trip-roles")).toBeInTheDocument();
     expect(JSON.stringify(rows[3])).toBe(before);
     expect(harness.request).toHaveBeenCalledTimes(1);
+  });
+  it("a view-only user can inspect original links but cannot enter the correction form", async () => {
+    harness.canEdit = false;
+    renderEditor();
+    expect(screen.getByTestId("dialog-trip-roles")).toBeInTheDocument();
+    expect(screen.getByTestId("trip-role-raw-values")).toHaveTextContent('supplier"NARASIMHULU"');
+    expect(screen.queryByRole("button", { name: "Correct roles / work context" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("button-save-trip-roles")).not.toBeInTheDocument();
+    expect(screen.queryByText("Confirm vendor links")).not.toBeInTheDocument();
+    expect(harness.request).not.toHaveBeenCalled();
   });
 });
 
@@ -407,13 +434,8 @@ describe("B1/B2 role list and filter scope", () => {
     expect(screen.getByTestId("trip-role-description-3")).toHaveTextContent("from SANGANNA · brought by our TIPPER-03");
     expect(screen.getByTestId("trip-role-description-4")).toHaveTextContent("NARASIMHULU · roles not confirmed");
     expect(screen.getByTestId("trip-role-description-4")).toHaveClass("text-amber-700");
-    for (const id of [1, 2, 3]) {
-      expect(screen.getByTestId(`button-edit-trip-roles-${id}`)).toHaveTextContent("Change roles");
-      expect(screen.getByTestId(`button-edit-trip-roles-${id}`)).toHaveClass("text-muted-foreground");
-    }
-    for (const id of [4, 5]) {
-      expect(screen.getByTestId(`button-edit-trip-roles-${id}`)).toHaveTextContent("Set roles");
-      expect(screen.getByTestId(`button-edit-trip-roles-${id}`)).not.toHaveClass("text-muted-foreground");
+    for (const id of [1, 2, 3, 4, 5]) {
+      expect(screen.getByTestId(`button-edit-trip-roles-${id}`)).toHaveTextContent("Trip Details / Review Links");
     }
     expect(harness.request).not.toHaveBeenCalled();
   });
@@ -452,6 +474,10 @@ describe("B1/B2 role list and filter scope", () => {
     renderPage(); await ready();
     fireEvent.click(screen.getByTestId("button-edit-trip-roles-4"));
     expect(await screen.findByTestId("dialog-trip-roles")).toBeInTheDocument();
+    expect(within(screen.getByTestId("dialog-trip-roles")).queryAllByRole("radio")).toHaveLength(0);
+    const edit = screen.getByRole("button", { name: "Correct roles / work context" });
+    await waitFor(() => expect(edit).not.toBeDisabled());
+    fireEvent.click(edit);
     for (const radio of within(screen.getByTestId("dialog-trip-roles")).getAllByRole("radio")) expect(radio).not.toBeChecked();
     expect(harness.request).not.toHaveBeenCalled();
   });

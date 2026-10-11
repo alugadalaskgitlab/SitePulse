@@ -89,7 +89,7 @@ it("preserves nontrip daily pricing and the remove action", () => {
   expect(screen.getByText(/1 hire days/).textContent).toContain("2,400");
   fireEvent.change(screen.getByLabelText(`Hire reason ${date}`), { target: { value: "Usage verified" } });
   expect(onChange).toHaveBeenCalledWith({ dailyDecisions: [{ date, decision: "full_day", reason: "Usage verified" }] });
-  fireEvent.click(screen.getByRole("button", { name: "Remove hire group" }));
+  fireEvent.click(screen.getByRole("button", { name: "Remove equipment charge" }));
   expect(onRemove).toHaveBeenCalledOnce();
 });
 

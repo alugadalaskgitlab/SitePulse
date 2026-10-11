@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import { auditLogs, equipmentMaster, hireStatements, siteMaterialTrips, vendorBillItems, vendorBills } from "../shared/schema";
+import { auditLogs, equipmentMaster, hireStatements, siteMaterialTrips, vendorBillItems, vendorBills, vendors } from "../shared/schema";
 import { tripHireFingerprint, tripHireMatch, tripHireRegistration, tripHireVendor, validTripHireLink } from "../shared/tripHireLink";
 import { equipmentVendorIdentities } from "./equipmentVendorIdentity";
 import { statementChargesDate } from "./dailyHireBilledDays";
@@ -29,14 +29,24 @@ export async function tripHireReview(executor: any, trip: any) {
     match.issue = null;
   }
   const link = (await readTripHireLinks(executor, [trip.id])).get(trip.id);
+  const parties = await executor.select({ id: vendors.id, name: vendors.name }).from(vendors);
   return {
+    trip: { id: trip.id, supplier: trip.supplier, supplierVendorId: trip.supplierVendorId,
+      materialSourceSupplier: trip.materialSourceSupplier, materialSourceVendorId: trip.materialSourceVendorId,
+      materialSourceType: trip.materialSourceType, materialSourceLabel: trip.materialSourceLabel,
+      vehicleNumber: trip.vehicleNumber, transportType: trip.transportType,
+      linkedTransporterName: parties.find((v: any) => v.id === trip.supplierVendorId)?.name,
+      linkedMaterialSupplierName: parties.find((v: any) => v.id === trip.materialSourceVendorId)?.name },
     ...match, fingerprint: tripHireFingerprint(trip), version: link?.id ?? null,
     confirmation: link ? { ...link.newValues, actor: link.userName, at: link.createdAt, reason: link.reason,
       valid: validTripHireLink(trip, equipment.find((e: any) => e.id === link.newValues?.equipmentId), link.newValues) } : null,
     equipment: equipment.filter((e: any) => e.ownership === "hired").map((e: any) => ({
       id: e.id, name: e.name, registrationNumber: e.registrationNumber, vendorName: e.vendorName,
-      hireBillingBasis: e.hireBillingBasis, hireRate: e.hireRate,
+      hireBillingBasis: e.hireBillingBasis, equipmentType: e.equipmentType,
       vendorId: identities.get(e.id)?.vendor?.id, linkedVendorName: identities.get(e.id)?.vendor?.name,
+      ownerReviewIssue: identities.get(e.id)?.conflict ||
+        (identities.get(e.id)?.vendor && !identities.get(e.id)?.vendor.isActive ? "Linked owner Vendor Master is inactive" :
+          !identities.get(e.id)?.vendor ? "Equipment owner Vendor Master identity has not been confirmed" : null),
     })),
   };
 }

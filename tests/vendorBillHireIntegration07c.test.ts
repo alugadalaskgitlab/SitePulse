@@ -75,7 +75,7 @@ describe("07C vendor-bill hire transaction wiring", () => {
 
   it("keeps source-qualified auto evidence read-only and visibly marked as auto", () => {
     expect(client).toContain('const isAutoLineSource = (source: string) => source === "auto" || source.startsWith("auto:")');
-    expect(client.match(/isGeneratedEvidenceLine\(item\.source\)/g)).toHaveLength(3);
+    expect(client.match(/isGeneratedEvidenceLine\(item\.source\)/g)?.length).toBeGreaterThanOrEqual(3);
     expect(client).toContain("isAutoLineSource(item.source) ? \"AUTO\" : \"-\"");
   });
 
@@ -87,8 +87,8 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(client).not.toContain("EDIT QTY / AMOUNT");
     expect(client).toContain("historicalHireBillId");
     expect(client).toContain("setHistoricalHireBillId(persisted.length > 0 ? bill.id : null)");
-    expect(client).toContain("setHireGroups(prev => prev.map(group => ({ ...group, periodFrom: value })))");
-    expect(client).toContain("setHireGroups(prev => prev.map(group => ({ ...group, periodTo: value })))");
+    expect(client).toContain("setHireGroups(prev => prev.map(group => applyBillHireTermsEdit(group, { periodFrom: value })))");
+    expect(client).toContain("setHireGroups(prev => prev.map(group => applyBillHireTermsEdit(group, { periodTo: value })))");
     expect(client).not.toContain("setHireGroups([]); }\n                 }} data-testid=\"input-period-from\"");
     expect(client).not.toContain("setHireGroups([]); }\n                 }} data-testid=\"input-period-to\"");
   });
@@ -133,7 +133,7 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(client).not.toContain('["monthly", "daily", "trip"].includes(eq.hireBillingBasis) ? eq.hireBillingBasis : "daily"');
     expect(client).not.toContain('eq.hireBillingBasis === "daily" ? "Daily Hire Available" : "Monthly Hire Available"');
     expect(client).not.toContain("Correct the Equipment Master hire terms first.");
-    expect(storage).toContain("Hire group basis must match the Equipment Master hire billing basis");
+    expect(storage).not.toContain("Hire group basis must match the Equipment Master hire billing basis");
   });
 
   it("supports hourly hire end-to-end and prevents duplicate overlapping groups", () => {

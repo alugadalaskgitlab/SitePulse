@@ -12,7 +12,7 @@ type Vendor = {
 };
 type Proposal = { role: string; name: string; ids: number[]; count: number; hint: string | null; suggestionId: number | null;
   registration?: string; version?: number | null; linkedVendorId?: number | null; conflict?: string | null;
-  confirmedBy?: string; confirmedAt?: string; confirmationReason?: string };
+  linkedVendorName?: string | null; confirmedBy?: string; confirmedAt?: string; confirmationReason?: string };
 type Activity = { vendor: Vendor; sites: { site: string; equipment: number; material: number; transport: number; labour: number }[] };
 const keys = ["name", "businessName", "gstNumber", "panNumber", "address", "contactPersonName", "contactPhone", "contactEmail", "bankAccountName", "bankAccountNumber", "bankIfsc", "bankName"] as const;
 const labels: Record<string, string> = {
@@ -49,6 +49,8 @@ export default function VendorMaster() {
   const isAdmin = admin || isOwner;
   const qc = useQueryClient();
   const [tab, setTab] = useState<"master" | "review">("master");
+  const [reviewStatus, setReviewStatus] = useState<"pending" | "confirmed">("pending");
+  const [reviewSearch, setReviewSearch] = useState("");
   const [editing, setEditing] = useState<Partial<Vendor> | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [chosen, setChosen] = useState<Record<string, string>>({});
@@ -57,9 +59,9 @@ export default function VendorMaster() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const vendors = useQuery<Vendor[]>({ queryKey: ["/api/vendor-master"] });
-  const review = useQuery<Proposal[]>({ queryKey: ["/api/vendor-master/review"], enabled: tab === "review" && isAdmin });
+  const review = useQuery<Proposal[]>({ queryKey: [`/api/vendor-master/review?status=${reviewStatus}`], enabled: tab === "review" && isAdmin });
   const activity = useQuery<Activity>({ queryKey: [`/api/vendor-master/${detailId}/activity`], enabled: !!detailId });
-  const refresh = () => { qc.invalidateQueries({ queryKey: ["/api/vendor-master"] }); qc.invalidateQueries({ queryKey: ["/api/vendor-master/review"] }); if (detailId) qc.invalidateQueries({ queryKey: [`/api/vendor-master/${detailId}/activity`] }); };
+  const refresh = () => { qc.invalidateQueries({ queryKey: ["/api/vendor-master"] }); qc.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && q.queryKey[0].startsWith("/api/vendor-master/review") }); if (detailId) qc.invalidateQueries({ queryKey: [`/api/vendor-master/${detailId}/activity`] }); };
   const run = async (fn: () => Promise<void>) => { setBusy(true); setMessage(""); try { await fn(); refresh(); } catch (e) { setMessage(e instanceof Error ? e.message : "Operation failed"); } finally { setBusy(false); } };
   const confirm = (p: Proposal, vendorId?: number, newVendor?: Record<string, string | boolean>) => run(async () => {
     await apiRequest("POST", "/api/vendor-master/review/confirm", { role: p.role, name: p.name, ids: p.ids,
@@ -70,6 +72,7 @@ export default function VendorMaster() {
     setMessage(`Confirmed ${p.count} ${roleLabels[p.role]} link(s) for ${p.name}. Free-text names remain unchanged.`);
   });
   const available = vendors.data || [];
+  const proposals = (review.data || []).filter(p => [p.name, p.registration, p.linkedVendorName].filter(Boolean).join(" ").toUpperCase().includes(reviewSearch.trim().toUpperCase()));
   return <main className="max-w-6xl mx-auto p-5 space-y-5">
     <Link href="/masters/hub" className="text-sm text-blue-700 hover:underline">← Master Data</Link>
     <div><h1 className="text-2xl font-bold">Vendor Master</h1><p className="text-sm text-slate-600">One party, one Vendor Master. Material supplier, transporter and equipment owner remain separate roles. Linking preserves recorded names and existing bills.</p></div>
@@ -101,27 +104,40 @@ export default function VendorMaster() {
     </> : isAdmin ? <>
       <h2 className="text-lg font-semibold">Review vendor identities</h2>
       <p className="text-sm text-slate-600">Review equipment owners, trip roles, unlinked bills, rate cards and bulk purchase indents. Several vehicles can share one vendor. Suggestions are not confirmations; verify each identity. Existing bill-specific references remain unchanged.</p>
-      {review.isError && <p role="alert">Unable to load proposals: {String(review.error)}</p>}
-      {review.data?.length === 0 && <p>No vendor identities need review.</p>}
-      <div className="space-y-3">{review.data?.map(p => {
+      <div className="flex flex-wrap gap-2" aria-label="Link status">
+        {(["pending", "confirmed"] as const).map(status => <button key={status} aria-pressed={reviewStatus === status} className={`rounded-md border px-4 py-2 text-sm ${reviewStatus === status ? "bg-primary text-primary-foreground" : "bg-card"}`} onClick={() => { setReviewStatus(status); setMessage(""); setCreating(null); }}>{status === "pending" ? "Pending Links" : "Confirmed Links"}</button>)}
+      </div>
+      <label className="block text-sm">Search vendor or registration
+        <input className="mt-1 w-full rounded-md border bg-background p-2" placeholder="Vendor name or TS15UE4470" value={reviewSearch} onChange={e => setReviewSearch(e.target.value)} />
+      </label>
+      <>
+      {review.isLoading && <div role="status" aria-label="Loading vendor links" className="h-32 rounded-lg bg-muted animate-pulse" />}
+      {review.isError && <p role="alert">Unable to load proposals: {String(review.error)} <button className="underline" onClick={() => review.refetch()}>Retry</button></p>}
+      {!review.isLoading && !review.isError && !proposals.length && <div className="rounded-lg border bg-muted/20 p-6"><h3 className="font-semibold">{reviewSearch ? "No matching links" : reviewStatus === "confirmed" ? "No confirmed links yet" : "No vendor identities need review"}</h3><p className="mt-1 text-sm text-muted-foreground">{reviewSearch ? "Try another vendor spelling or registration." : "Confirmed associations are kept separately from the pending queue."}</p></div>}
+      <div className="space-y-3">{proposals.map(p => {
         const key = `${p.role}:${p.ids.join(",")}`;
         const target = chosen[key] ?? String(p.linkedVendorId ?? p.suggestionId ?? "");
         return <div key={key} className="rounded-lg border bg-white p-4 flex flex-wrap items-center gap-4">
           <div className="flex-1 min-w-52"><strong>{p.name || "Owner name missing"}</strong><p className="text-sm text-slate-600">{roleLabels[p.role]} · {p.count} record(s) · {p.registration}{p.linkedVendorId ? " · Linked" : " · Unlinked"}{p.hint ? ` · Alias hint: ${p.hint}` : ""}</p>
+            {p.registration && <p className="mt-1 font-mono font-semibold">{p.registration}</p>}
+            {p.linkedVendorId && <p className="text-sm font-medium">Vendor Master: {p.linkedVendorName || available.find(v => v.id === p.linkedVendorId)?.name || `#${p.linkedVendorId}`}</p>}
             {p.conflict && <p className="text-sm text-amber-700">{p.conflict}</p>}
             {p.confirmedBy && <p className="text-xs text-slate-600">Confirmed by {p.confirmedBy}{p.confirmedAt ? ` · ${new Date(p.confirmedAt).toLocaleString()}` : ""} · {p.confirmationReason}</p>}</div>
+          {reviewStatus === "pending" && isAdmin && <>
           <select aria-label={`Master match for ${p.name} ${p.role}`} className="border rounded px-2 py-2" value={target} onChange={e => setChosen({ ...chosen, [key]: e.target.value })}>
             <option value="">Select master vendor</option>{available.filter(v => v.isActive).map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
           </select>
           {p.role === "equipment" && <input aria-label={`Verification reason ${p.registration}`} className="border rounded p-2" placeholder="Identity verification reason" value={reasons[key] || ""} onChange={e => setReasons({ ...reasons, [key]: e.target.value })} />}
           <button disabled={!target || busy || (p.role === "equipment" && (reasons[key] || "").trim().length < 3)} className="bg-blue-700 text-white rounded px-3 py-2 disabled:opacity-40" onClick={() => confirm(p, Number(target))}>Confirm link</button>
           {p.role !== "equipment" && <button className="border rounded px-3 py-2" onClick={() => setCreating(p)}>Create new</button>}
+          </>}
         </div>;
       })}</div>
+      </>
       {creating && <div className="fixed inset-0 bg-black/40 z-50 overflow-auto p-4 flex items-start justify-center"><div className="w-full max-w-2xl mt-8">
         <p className="bg-white px-5 pt-4 font-medium">Create & link: {creating.name} ({roleLabels[creating.role]})</p>
         <Editor key={`${creating.role}:${creating.name}`} initial={{ name: creating.name }} busy={busy} onCancel={() => setCreating(null)} onSave={form => confirm(creating, undefined, form)} />
       </div></div>}
-    </> : <p role="alert">Only administrators can review and link vendor names.</p>}
+    </> : <p role="alert">Only Administrator / Owner reviewers can view pending or confirmed vendor identity reviews. Operational trip links are available in Trip Details / Review Links.</p>}
   </main>;
 }

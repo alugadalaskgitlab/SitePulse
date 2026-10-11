@@ -9,6 +9,17 @@ Vendor identity is an explicitly reviewed association. Reviewed Vendor Master ID
 
 **How to apply:** Keep free-text names functional and visibly unlinked. A subsequent recorded-name change must invalidate its reviewed association, independently for each role. Do not treat alias or spelling suggestions as confirmed identity.
 
+Historical trip linking must preserve recorded names and registration; use the
+explicit role-correction flow only when the operational facts are genuinely wrong.
+Opening an already reviewed trip is inspection, not a new confirmation.
+
+**Why:** The user requested one combined trip review without repeated linking or
+automatic historical rewrites, while keeping hire terms independent of identity.
+
+**How to apply:** Confirm IDs separately, check both prior IDs and recorded party
+names for stale reviews, and never invalidate identity merely because bill terms
+or the screen's open/closed state changed.
+
 HLC maintains one Tally creditor ledger per party, regardless of whether it supplies material, owns hired equipment or provides transport.
 
 **Why:** The user stated this business rule while authorising equipment-owner reconciliation.

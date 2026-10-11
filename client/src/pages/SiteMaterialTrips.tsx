@@ -3,7 +3,7 @@ import { classifyTripRoles, tripRolePayload, validateTripRoles, type TripTranspo
 import { TripTransportRoleFields } from "@/components/TripTransportRoleFields";
 import { TripRoleEditDialog } from "@/components/TripRoleEditDialog";
 import { BulkTripArrangement } from "@/components/BulkTripArrangement";
-import { filterTripsByRole, resolveTripVendor, tripRoleDescription, type ExistingTripVendor, type TripRoleFilter } from "@/components/trip-role-utils";
+import { filterTripsByRole, resolveSelectedTripVendor, tripRoleDescription, type ExistingTripVendor, type TripRoleFilter } from "@/components/trip-role-utils";
 import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useSearch, useLocation } from "wouter";
@@ -23,7 +23,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { useUpload } from "@/hooks/use-upload";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
 import { FreeTextSuggestionInput } from "@/components/FreeTextSuggestionInput";
-import { TripHireLinkDialog } from "@/components/TripHireLinkDialog";
+import { TripEquipmentPicker } from "@/components/TripEquipmentPicker";
 import { ReceiptWorkContext, TripWorkContextSummary, EMPTY_WORK_CONTEXT, hasRequiredWorkContext, type TripWorkContext } from "@/components/ReceiptWorkContext";
 import { findAllocationEntry, receiptSuggestionFromFulfilment, fulfilmentLabel } from "@shared/requirementFulfilment";
 import {
@@ -95,7 +95,6 @@ export default function SiteMaterialTrips() {
   const roleChoiceRef = useRef(roleChoice);
   roleChoiceRef.current = roleChoice;
   const [editingRoleTrip, setEditingRoleTrip] = useState<SiteMaterialTrip | null>(null);
-  const [hireLinkTrip, setHireLinkTrip] = useState<SiteMaterialTrip | null>(null);
   const [newHireEquipmentId, setNewHireEquipmentId] = useState("");
   const [bulkMaterialSourceSupplier, setBulkMaterialSourceSupplier] = useState("");
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
@@ -106,7 +105,11 @@ export default function SiteMaterialTrips() {
     site: piParams.site || "",
     material: piParams.material || "",
     supplier: "",
+    supplierVendorId: null as number | null,
+    supplierManual: false,
     materialSourceSupplier: piParams.supplier || "",
+    materialSourceVendorId: null as number | null,
+    materialSourceManual: false,
     materialSourceType: "vendor" as "vendor" | "own_source" | null,
     materialSourceLabel: "" as string | null,
     vehicleNumber: "",
@@ -126,8 +129,8 @@ export default function SiteMaterialTrips() {
   // Site suggestions prioritize existing vendors; saving requires one unique master ID.
   const vendorSite = editingRoleTrip?.site || newTrip.site || (siteFilter !== "all" ? siteFilter : "");
   const vendorQuery = useQuery<ExistingTripVendor[]>({
-    queryKey: [canEdit ? `/api/site-material-trips/vendor-options?site=${encodeURIComponent(vendorSite)}` : "/api/vendor-master"],
-    enabled: !canEdit || !!vendorSite,
+    queryKey: [`/api/site-material-trips/vendor-options?site=${encodeURIComponent(vendorSite)}`],
+    enabled: canEdit && !!vendorSite,
   });
   const vendors = vendorQuery.data ?? [];
   const {
@@ -155,7 +158,7 @@ export default function SiteMaterialTrips() {
         ...prev,
         vehicleNumber: vehicleNumber.toUpperCase(),
         ...(roleChoiceRef.current === "different_parties" && association?.status === "linked" && association.supplier
-          ? { supplier: association.supplier }
+          ? { supplier: association.supplier, supplierVendorId: null }
           : {}),
       };
     });
@@ -284,9 +287,9 @@ export default function SiteMaterialTrips() {
   const buildRolePayload = (data: typeof newTrip) => {
     if (!roleChoice || roleChoice === "unresolved") throw new Error("Choose Who brought it.");
     const ownSource = data.materialSourceType === "own_source";
-    if ((!ownSource || roleChoice === "different_parties") && (vendorQuery.isLoading || vendorQuery.isError)) throw new Error("Load the existing vendors before saving.");
-    const source = ownSource ? { name: "", id: null } : resolveTripVendor(data.materialSourceSupplier, vendors);
-    const transporter = roleChoice === "different_parties" ? resolveTripVendor(data.supplier, vendors) : source;
+    if (((!ownSource && !data.materialSourceManual) || (roleChoice === "different_parties" && !data.supplierManual)) && (vendorQuery.isLoading || vendorQuery.isError)) throw new Error("Load the existing vendors before saving.");
+    const source = ownSource ? { name: "", id: null } : data.materialSourceManual ? { name: data.materialSourceSupplier.trim(), id: null } : resolveSelectedTripVendor(data.materialSourceSupplier, data.materialSourceVendorId, vendors);
+    const transporter = roleChoice === "different_parties" ? data.supplierManual ? { name: data.supplier.trim(), id: null } : resolveSelectedTripVendor(data.supplier, data.supplierVendorId, vendors) : source;
     const equipment = activeInternalEquipment.find((item) => item.id === data.internalEquipmentId) ?? null;
     const roles = tripRolePayload(roleChoice, source, transporter, equipment, data.vehicleNumber, {
       materialSourceType: data.materialSourceType,
@@ -307,6 +310,8 @@ export default function SiteMaterialTrips() {
         // 06S: yard label only meaningful for yard receipts.
         yardLabel: data.unloadedAt === "yard" ? data.yardLabel : undefined,
       };
+      delete payload.materialSourceManual;
+      delete payload.supplierManual;
       if (isPILinked) {
         payload.indentId = piParams.piIndentId;
         payload.indentItemId = piParams.piItemId;
@@ -377,7 +382,11 @@ export default function SiteMaterialTrips() {
           site: newTrip.site,
           material: "",
           supplier: "",
+          supplierVendorId: null,
+          supplierManual: false,
            materialSourceSupplier: "",
+           materialSourceVendorId: null,
+           materialSourceManual: false,
            materialSourceType: "vendor",
            materialSourceLabel: "",
           vehicleNumber: "",
@@ -511,7 +520,7 @@ export default function SiteMaterialTrips() {
   }, [roleFilteredTrips]);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-[100dvh] bg-background">
       <header className="bg-card border-b sticky top-0 z-10">
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center gap-3">
@@ -554,26 +563,6 @@ export default function SiteMaterialTrips() {
               </div>
             )}
             <form onSubmit={handleSubmit} className="space-y-4">
-              {canEdit && <div className="space-y-1">
-                <Label htmlFor="trip-hired-vehicle">Hired vehicle for billing (optional)</Label>
-                <select id="trip-hired-vehicle" className="w-full rounded border bg-background p-2 text-sm" value={newHireEquipmentId}
-                  onChange={event => {
-                    const id = event.target.value;
-                    setNewHireEquipmentId(id);
-                    const equipment = hiredOptions.data?.find(e => String(e.id) === id);
-                    if (equipment) {
-                      setRoleChoice("different_parties");
-                      setNewTrip(prev => ({ ...prev, vehicleNumber: equipment.registrationNumber || "",
-                        supplier: equipment.linkedVendorName || equipment.vendorName || "", transportType: "agency_vendor", internalEquipmentId: null }));
-                    }
-                  }}>
-                  <option value="">Free-text / unregistered vehicle</option>
-                  {(hiredOptions.data || []).filter(e => e.isActive && e.registrationNumber).map(e =>
-                    <option key={e.id} value={e.id}>{e.registrationNumber} · {e.name} · {e.linkedVendorName || `${e.vendorName || "No owner"} — Unlinked Vendor Master`}</option>)}
-                </select>
-                <p className="text-xs text-muted-foreground">Selection confirms the transport vehicle only; material source and quantity are unchanged. Unlinked owners require Vendor Master review before hire billing.</p>
-                {hiredOptions.isError && <p role="alert">Could not load hired vehicles. <button type="button" onClick={() => hiredOptions.refetch()}>Retry</button></p>}
-              </div>}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <Label className="text-sm">Date</Label>
@@ -628,6 +617,7 @@ export default function SiteMaterialTrips() {
               </div>
 
               <TripTransportRoleFields
+                allowManualParties
                 choice={roleChoice}
                 onChoice={(choice) => {
                   setNewHireEquipmentId("");
@@ -651,6 +641,23 @@ export default function SiteMaterialTrips() {
                 vendorsError={vendorQuery.isError}
                 onRetryVendors={() => void vendorQuery.refetch()}
                 onVehicleSelected={applyVehicleSuggestion}
+                vehiclePicker={canEdit ? <div className="mb-3 space-y-2">
+                  {hiredOptions.isLoading ? <div className="h-20 animate-pulse rounded bg-muted" aria-label="Loading hired vehicles" role="status" /> :
+                    <TripEquipmentPicker options={(hiredOptions.data || []).filter(e => e.isActive && e.registrationNumber)}
+                      value={newHireEquipmentId} registration={newTrip.vehicleNumber} allowOutside onChange={id => {
+                        setNewHireEquipmentId(id);
+                        const equipment = hiredOptions.data?.find(e => String(e.id) === id);
+                        if (equipment) {
+                          // Selecting a vehicle never changes the material supplier.
+                          if (roleChoice === "different_parties") setNewTrip(prev => ({ ...prev,
+                            vehicleNumber: equipment.registrationNumber || "", supplier: equipment.linkedVendorName || equipment.vendorName || "",
+                            supplierVendorId: equipment.vendorId ?? null, supplierManual: !equipment.vendorId, transportType: "agency_vendor", internalEquipmentId: null }));
+                          else setNewTrip(prev => ({ ...prev, vehicleNumber: equipment.registrationNumber || "" }));
+                        }
+                      }} />}
+                  <p className="text-xs text-muted-foreground">Select only after reviewing the recorded owner and confirmed identity. Material source stays unchanged. An outside vehicle can be entered manually.</p>
+                  {hiredOptions.isError && <p role="alert">Could not load hired vehicles. <button type="button" onClick={() => hiredOptions.refetch()}>Retry</button></p>}
+                </div> : undefined}
                 vehicleNotice={roleChoice === "different_parties" ? <VehicleSupplierAssociationNotice
                     site={newTrip.site}
                     vehicleNumber={newTrip.vehicleNumber}
@@ -662,7 +669,7 @@ export default function SiteMaterialTrips() {
                          roleChoiceRef.current === "different_parties" && prev.site === context.site &&
                         normalizeVehicleSupplierKey(prev.vehicleNumber) ===
                           normalizeVehicleSupplierKey(context.vehicleNumber)
-                          ? { ...prev, supplier }
+                          ? { ...prev, supplier, supplierVendorId: null }
                           : prev,
                       )
                     }
@@ -1086,8 +1093,7 @@ export default function SiteMaterialTrips() {
                         </td>
                         <td className="p-2 text-center">
                           <div className="flex items-center justify-center gap-1">
-                            {canEdit && <Button variant={classifyTripRoles(trip) === "unresolved" ? "default" : "outline"} className={classifyTripRoles(trip) === "unresolved" ? undefined : "text-muted-foreground"} size="sm" onClick={() => setEditingRoleTrip(trip)} data-testid={`button-edit-trip-roles-${trip.id}`}>{classifyTripRoles(trip) === "unresolved" ? "Set roles" : "Change roles"}</Button>}
-                            {canEdit && <Button variant="outline" size="sm" onClick={() => setHireLinkTrip(trip)}>Hire billing link</Button>}
+                            <Button variant="outline" size="sm" onClick={() => setEditingRoleTrip(trip)} data-testid={`button-edit-trip-roles-${trip.id}`}>Trip Details / Review Links</Button>
                             <Button
                               variant="ghost"
                               size="icon"
@@ -1128,7 +1134,6 @@ export default function SiteMaterialTrips() {
       </div>
 
       {editingRoleTrip && <TripRoleEditDialog key={editingRoleTrip.id} trip={editingRoleTrip} sitesList={sitesList} vendors={vendors} equipment={internalEquipment} vendorsLoading={vendorQuery.isLoading} vendorsError={vendorQuery.isError} onRetryVendors={() => void vendorQuery.refetch()} onClose={() => setEditingRoleTrip(null)} />}
-      {hireLinkTrip && <TripHireLinkDialog key={hireLinkTrip.id} trip={hireLinkTrip} onClose={() => setHireLinkTrip(null)} />}
       <CancelDialog
         open={cancelTripId !== null}
         onOpenChange={(v) => !v && setCancelTripId(null)}

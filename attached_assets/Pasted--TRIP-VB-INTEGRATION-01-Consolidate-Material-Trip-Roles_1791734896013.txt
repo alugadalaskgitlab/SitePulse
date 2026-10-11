@@ -1,0 +1,244 @@
+# TRIP-VB-INTEGRATION-01 — Consolidate Material Trip Roles, Vendor/Equipment Links and Hire Billing
+
+**Objective:** Complete the existing Material Trip → Vendor Master → Equipment Master → Vendor Bill workflow so site staff can identify the material source, transporter and actual vehicle in one clear form, without repeated linking or duplicate records.
+
+This is one consolidated, focused integration task. Reuse the existing components, APIs, audit confirmations, eligibility calculations and VB-TIPPER-03 / VB-HIRE-TERMS-01 functionality.
+
+Do not build parallel masters, separate billing screens or a new rate-card system.
+
+## 1. Material Trip — Clear Roles
+
+In the existing Material Trip form and historical **Set / Change Roles** dialog, retain the distinction:
+
+**Material Source**
+- Vendor-supplied material → select the material supplier from Vendor Master.
+- Own Source → select Own Source and enter the source/borrow-area description.
+
+**Transport**
+- Same vendor transports the material.
+- Different transporter brings the material.
+- Own vehicle transports the material.
+
+When selecting an existing material supplier or transporter, use an actual Vendor Master dropdown/search and save its ID alongside the recorded name.
+
+For an existing historical free-text name, display the previously recorded value and suggest an appropriate master match without automatically changing the record.
+
+Allow authorised confirmation after reviewing the actual party.
+
+Do not assume the material supplier and transporter are the same merely because both appear on one trip.
+
+## 2. Vehicle Selection — Link Equipment Master
+
+Add an Equipment Master vehicle selector to the trip roles form when transport is by an agency-hired vehicle.
+
+Display:
+- Registration number
+- Equipment type
+- Recorded owner
+- Confirmed Vendor Master identity, where available
+
+Allow search by registration number.
+
+If the registration matches exactly one Equipment Master vehicle, suggest it.
+
+If multiple matches exist, require manual selection.
+
+For a genuine outside vehicle not registered in Equipment Master, retain manual registration entry. Do not automatically create another Equipment Master record.
+
+For HLC's own vehicle, reuse the existing internal equipment selection.
+
+After an authorised confirmation, preserve the existing trip registration number and save the confirmed equipment association through the existing audited Hire Billing Link mechanism.
+
+Do not silently replace an existing confirmed equipment identity.
+
+## 3. Combine Role and Hire-Link Review
+
+The existing **Set / Change Roles** and **Hire Billing Link** buttons perform related functions.
+
+Do not remove their underlying capabilities.
+
+Provide one understandable **Trip Details / Review Links** action that presents:
+
+- Material Source
+- Material Supplier
+- Transporter
+- Vehicle Registration
+- Equipment Master Match
+- Equipment Owner / Vendor Master Match
+- Hire Billing Link Status
+
+Use the existing role-editing and audited hire-confirmation operations within this workflow.
+
+Do not require the user to open multiple dialogs just to complete one trip.
+
+Where information has already been confirmed, show the saved result instead of repeatedly asking for confirmation.
+
+Show clear states such as:
+- Roles Pending
+- Roles Confirmed
+- Vehicle Link Pending
+- Vehicle Linked
+- Review Required
+
+A user may reopen a completed trip to inspect the details, but must not be prompted to confirm it again unless something relevant has actually changed.
+
+## 4. Historical Trips — Preserve Original Records
+
+Existing trip data must remain safe.
+
+Do not rewrite:
+- Trip date
+- Vehicle registration
+- Original transporter text
+- Material and quantity
+- Receipt number
+- Site and source information
+- Submitted DPR information
+
+Where an association is missing, permit authorised confirmation of the correct Vendor Master and Equipment Master IDs.
+
+Store the confirmation separately or through existing supported foreign keys and audit evidence.
+
+If saved role information genuinely requires correction, use the existing authorised edit flow with audit history.
+
+A historical link should become invalid only when a relevant identity or supporting record has actually changed.
+
+Reopening or refreshing a trip must not cause an already valid link to disappear.
+
+## 5. Vendor Master Linking — Remove Repetitive Confusion
+
+In **Vendor Master → Link Vendors**, display two views:
+
+**Pending Links** — default; only genuinely unlinked or invalid associations.
+
+**Confirmed Links** — previously confirmed records, searchable by vendor and vehicle registration.
+
+For Equipment Master records:
+- Show registration number prominently.
+- Display confirmed Vendor Master name.
+- Display confirmation date and user.
+- Do not repeatedly show a successfully confirmed equipment row as pending.
+
+Several vehicles may belong to one Vendor Master party.
+
+Different recorded spellings may be linked to the same reviewed party through authorised confirmation.
+
+Do not automatically merge vendors based on similar names.
+
+Ensure the Pending/Confirmed status reflects persisted database evidence after a refresh or a new login.
+
+## 6. Hire Basis and Rates
+
+Keep hire terms independent of equipment identity.
+
+Equipment Master retains default rates and hire bases.
+
+Vendor Bill selects the actual agreed basis for that bill:
+- Trip
+- Daily
+- Hourly
+- Monthly
+
+Preserve VB-HIRE-TERMS-01's per-bill editable rate and period.
+
+Do not require changes to Equipment Master merely because the current assignment uses a different hire basis.
+
+The existing Vendor Bill Rate Card may be used to suggest applicable vendor/vehicle rates **only where it already supports that agreement and those terms**.
+
+Do not assume a general transport rate card is automatically the correct equipment hire rate.
+
+If the Rate Card does not support multiple hire bases, do not force its structure to change in this batch. Retain direct bill-specific rate entry.
+
+A future rate-card extension can be considered separately.
+
+## 7. Vendor Bill Integration
+
+When preparing **New Vendor Bill → Equipment Hire**:
+
+- Select the vendor.
+- Select the eligible linked equipment.
+- Choose actual hire basis, rate and billing period.
+- Pull relevant confirmed Material Trips and DPR/equipment activity.
+- Review supported payable quantities.
+- Save the draft with its agreed terms and supporting evidence.
+
+For Daily Hire:
+- Multiple trips on one date count as one vehicle/date.
+- Full/Half/Excluded decisions remain explicit.
+- Show supporting trip evidence.
+- Preserve server-side duplicate billing protection.
+
+For Trip Hire:
+- Use eligible individual trips without duplicating the same charged trip.
+
+For Hourly Hire:
+- Use recorded hours only.
+
+For Monthly Hire:
+- Continue the existing monthly hire calculation.
+
+Do not infer working hours from trip counts or treat every confirmed trip as automatically payable.
+
+## 8. Permissions
+
+Apply existing permissions consistently.
+
+- Site staff may record trips and view their permitted operational information.
+- Only users with relevant edit/confirmation rights may change roles or confirm equipment links.
+- Vendor Master identity confirmation requires the existing Administrator/Owner authority.
+- Vendor Bill financial details, rates and approval actions remain restricted to users with financial permissions.
+- Do not expose private rates, payments or bills to staff merely because they can view a trip.
+
+## 9. Verification — One Realistic End-to-End Workflow
+
+Test a historical case structured like Trip #737:
+
+Material vendor: SARAVANA METAL INDUSTRIES  
+Transporter: NARSIMULU  
+Vehicle: TS15UE4470
+
+Do not assume the actual database's parties or vehicle registration are correctly matched without reviewing their persisted IDs.
+
+Verify:
+
+1. Material supplier is linked to its own Vendor Master.
+2. Transporter is linked to the correct Vendor Master.
+3. Vehicle is linked to the correct existing Equipment Master.
+4. Equipment owner identity remains independently verified.
+5. Previously confirmed links survive refresh and reopening.
+6. Pending rows disappear from Pending Links after successful confirmation.
+7. Confirmed links remain visible under Confirmed Links.
+8. Same vendor owning several tippers is supported.
+9. Own Source with a different hired transporter works.
+10. One-time free-text transporter and vehicle remain supported.
+11. A confirmed historical trip becomes discoverable for Vendor Bill preparation.
+12. Daily Hire calculates one vehicle/date despite multiple trips.
+13. Trip Hire counts chargeable individual trips.
+14. Existing billed activity cannot be billed again under another hire basis.
+15. Saving and reopening the draft preserves terms and evidence.
+16. Existing submitted DPRs, material receipts, inventory and historical bills remain unchanged.
+
+Use focused automated tests and one production build.
+
+Where feasible, inspect the signed-in operational workflow. If that is unavailable, report it clearly rather than claiming visual verification.
+
+## 10. Scope and Completion
+
+Do not touch unrelated procurement, diesel, payroll, stock, Tally integration, the Vendor Bills financial overview or historical payment data.
+
+Avoid destructive database migrations, unnecessary new tables, duplicate UI controls and wholesale component rewrites.
+
+If a schema change is genuinely necessary, identify it and report its production implications before publication.
+
+Do not publish automatically.
+
+Provide one concise completion report with:
+- Root causes
+- Changes made
+- Exact user navigation for linking an existing trip
+- Any remaining limitations
+- Focused test results
+- Production build result
+- SQL/migration requirements
+
+**STOP after implementation and verification.**

@@ -32,6 +32,7 @@ import { readPermissionAccessAudit } from "./permissionAccessMigration";
 import { TransportRateInputError } from "@shared/transportRate";
 import { registerVendorMasterRoutes } from "./vendor-master";
 import { confirmTripHireLink, tripHireReview } from "./tripHireLink";
+import { confirmTripPartyIdentities, tripIdentityLinksInput } from "./tripIdentityLinks";
 import { tripHireEligibility } from "./tripHireEligibility";
 import { equipmentVendorIdentities } from "./equipmentVendorIdentity";
 import { equipmentMaster as hireIdentityEquipment } from "@shared/schema";
@@ -949,7 +950,7 @@ export async function registerRoutes(
       const rows = await db.select().from(hireIdentityEquipment).where(eq(hireIdentityEquipment.ownership, "hired"));
       const identities = await equipmentVendorIdentities(db, rows);
       res.json(rows.map(row => ({ id: row.id, name: row.name, registrationNumber: row.registrationNumber,
-        vendorName: row.vendorName, isActive: row.isActive, vendorId: identities.get(row.id)?.vendor?.id,
+        equipmentType: row.equipmentType, vendorName: row.vendorName, isActive: row.isActive, vendorId: identities.get(row.id)?.vendor?.id,
         linkedVendorName: identities.get(row.id)?.vendor?.name })));
     } catch (error: any) { res.status(500).json({ message: "Could not load hired vehicle identities" }); }
   });
@@ -1089,6 +1090,22 @@ export async function registerRoutes(
   };
 
   // Create a new site material trip
+  app.post("/api/site-material-trips/:id/identity-links", async (req, res) => {
+    if (!req.authUser?.isOwner && !assertAdmin(req, res)) return;
+    if (!assertEdit(req, res, "site_materials")) return;
+    try {
+      const input = tripIdentityLinksInput.parse(req.body);
+      const trip = await storage.getSiteMaterialTripById(Number(req.params.id));
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+      if (!await assertTripSiteAccess(req, res, trip.site)) return;
+      const saved = await db.transaction(async tx => {
+        const [current] = await tx.select().from(siteMaterialTrips).where(eq(siteMaterialTrips.id, trip.id)).for("update");
+        if (!current || current.site !== trip.site) throw Object.assign(new Error("Trip changed. Reload."), { status: 409 });
+        return confirmTripPartyIdentities(tx, current, input, req.authUser);
+      });
+      res.json(saved);
+    } catch (err: any) { res.status(err instanceof z.ZodError ? 400 : err.status || 500).json({ message: err.message }); }
+  });
   app.get("/api/site-material-trips/:id/hire-link", async (req, res) => {
     try {
       if (!assertView(req, res, "site_materials")) return;
@@ -1163,6 +1180,11 @@ export async function registerRoutes(
       const existing = await storage.getSiteMaterialTripById(id);
       if (!existing) return res.status(404).json({ message: "Site material trip not found" });
       if (!await assertTripSiteAccess(req, res, existing.site)) return;
+      if (!req.authUser?.isAdmin && !req.authUser?.isOwner &&
+          (["supplierVendorId", "materialSourceVendorId"] as const).some(key =>
+            input[key] != null && input[key] !== existing[key])) {
+        return res.status(403).json({ message: "An Administrator/Owner must confirm historical Vendor Master identities." });
+      }
       if (("materialSourceType" in input ? input.materialSourceType : existing.materialSourceType) === "own_source") {
         input.materialSourceSupplier = null;
       } else if ("materialSourceType" in input || "materialSourceLabel" in input) {
