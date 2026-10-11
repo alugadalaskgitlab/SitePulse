@@ -1,4 +1,5 @@
 import { billReviewAmounts, summarizeBillReview, vendorStatementBills } from "@shared/vendorBillReview";
+import { billPaymentPosition } from "@shared/vendorBillFinancialReport";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
@@ -9,6 +10,7 @@ export function VendorBillFinancialSummary({ bills, totals }: Props) {
   const rows = bills.map(b => billReviewAmounts(b, totals(b)));
   const summary = summarizeBillReview(rows);
   const provisional = summarizeBillReview(rows.filter(row => row.provisional));
+  const unconfirmed = bills.filter(bill => billPaymentPosition(bill).unconfirmed).length;
   const figures = [
     { label: "No. of Bills", value: summary.count.toString(), detail: `${provisional.count} provisional · Draft / Verified` },
     { label: "Total Gross Bill Amount", value: money(summary.gross), detail: "Displayed line-item subtotal" },
@@ -16,7 +18,10 @@ export function VendorBillFinancialSummary({ bills, totals }: Props) {
     { label: "Total Net Payable / Outstanding", value: money(summary.outstanding), detail: `Vendor credits: ${money(summary.credits)} · not offset` },
   ];
   return <section className="rounded-lg border p-3 space-y-2" aria-label="Filtered bill financial summary">
-    <h2 className="font-semibold text-sm">Financial summary · current filters</h2>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <h2 className="font-semibold text-sm">Financial summary · current filters</h2>
+      {unconfirmed > 0 && <span role="note" className="text-xs text-amber-700" title="Missing or contradictory recorded payment evidence. Unknown payments and balances are not assumed to be zero.">Unconfirmed: {unconfirmed}</span>}
+    </div>
     <div className="overflow-x-auto" role="region" aria-label="Bill summary figures" tabIndex={0}>
       <dl className="grid grid-cols-[minmax(120px,0.6fr)_minmax(200px,1fr)_minmax(160px,0.8fr)_minmax(280px,1.4fr)] min-w-[800px] divide-x">
         {figures.map(({ label, value, detail }, index) =>
@@ -27,8 +32,7 @@ export function VendorBillFinancialSummary({ bills, totals }: Props) {
           </div>)}
       </dl>
     </div>
-    <p className="text-xs text-muted-foreground">Draft and Verified values are provisional, not approved for payment. Outstanding includes {money(provisional.outstanding)} provisional; only positive known balances are totaled. Credits are never offset across bills or vendors.</p>
-    {summary.unknownPayments > 0 && <p role="note" className="text-xs text-amber-700">Payment totals/balances are not established for {summary.unknownPayments} bill(s). Their unrecorded payments and unknown positive balances are excluded from payment and payable totals, not assumed to be zero.</p>}
+    <p className="text-xs text-muted-foreground">Draft and Verified values are provisional, not approved for payment. Outstanding includes {money(provisional.outstanding)} provisional; only established positive balances, without credit offsets.</p>
   </section>;
 }
 

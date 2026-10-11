@@ -9,6 +9,8 @@ import PDFDocument from "pdfkit";
 import { buildGstRegisterPdf } from "../server/gstRegisterPdf";
 import { financialSites, vendorFinancialGuard } from "../server/vendorFinancialAccess";
 import { recordedVendorTds } from "../shared/vendorFinancialAccess";
+import { filterFinancialBills } from "../shared/vendorBillFinancialReport";
+import { buildVendorFinancialWorkbook } from "../server/vendorFinancialWorkbook";
 import * as xlsx from "xlsx";
 import archiver from "archiver";
 import { normalizeVendorBillAdditionalAdjustments } from "../shared/schema";
@@ -71,7 +73,7 @@ app.use(express.json());
 app.use((req: any, _res, next) => { req.authUser = { id: 7 }; req.authPermissions = permissions; next(); });
 app.use(vendorFinancialGuard(storage));
 const dependencies = { storage, siteMatchesPermitted, vendorBillVisibleToSites, vendorBillItemMatchesSite,
-  financialSites, recordedVendorTds,
+  financialSites, recordedVendorTds, filterFinancialBills, buildVendorFinancialWorkbook,
   aggregateGstBreakdown, computeBillGstByCategory, normalizeVendorBillAdditionalAdjustments, PDFDocument, xlsx, archiver, buildGstRegisterPdf,
   getCompanyLogoPath: () => null,
   // Report layout is not under test here; preserve actual PDF/ZIP streaming.
@@ -90,6 +92,32 @@ for (const [method, path] of endpoints) {
 beforeEach(() => { permissions = { vendor_financials: { view: true } }; permittedIds = [1]; vi.clearAllMocks(); });
 
 describe("GST Register PDF parity and authorization", () => {
+  it("exports the exact financially scoped selection to three sheets", async () => {
+    permissions.vendor_bills = { export: true };
+    const response = await request(app).get("/api/vendor-bills/export?report=financial-summary&scope=unpaid&billIds=1")
+      .buffer(true).parse((res, done) => {
+        const chunks: Buffer[] = [];
+        res.on("data", c => chunks.push(c)); res.on("end", () => done(null, Buffer.concat(chunks)));
+      });
+    expect(response.status).toBe(200);
+    expect(response.headers["cache-control"]).toContain("no-store");
+    const book = xlsx.read(response.body, { type: "buffer" });
+    expect(book.SheetNames).toEqual(["Vendor Bills", "GST Register", "TDS (IT) Register"]);
+    for (const name of book.SheetNames) {
+      const rows = xlsx.utils.sheet_to_json(book.Sheets[name], { header: 1 }) as any[][];
+      expect(rows.filter(r => typeof r[0] === "number").map(r => r[0])).toEqual([1]);
+      expect(JSON.stringify(rows)).not.toContain("VENDOR-2");
+    }
+  });
+  it.each(["1,2", "2", "1,1", "bad"])("rejects stale, unauthorised or malformed export selection %s", async ids => {
+    permissions.vendor_bills = { export: true };
+    expect((await request(app).get(`/api/vendor-bills/export?report=financial-summary&billIds=${ids}`)).status).toBe(409);
+  });
+  it("financial workbook cannot bypass the saved financial permission", async () => {
+    permissions.vendor_bills = { export: true };
+    permissions.vendor_financials = { view: false };
+    expect((await request(app).get("/api/vendor-bills/export?report=financial-summary&scope=all&billIds=1")).status).toBe(403);
+  });
   it("blocks old export URLs despite ordinary export permission when financial access is off", async () => {
     permissions.vendor_financials = { view: false };
     permissions.vendor_bills = { export: true };

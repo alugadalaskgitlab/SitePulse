@@ -75,7 +75,7 @@ describe("compact filtered vendor bill summary", () => {
       .toContain("Outstanding includes ₹500.00 provisional");
   });
 
-  it("warns about unknown payments without inferring payment from paid status", () => {
+  it("counts unknown payments without inferring payment from paid status", () => {
     render(<VendorBillFinancialSummary bills={[
       { status: "paid", netPayableAmount: 900 },
       { status: "approved", netPayableAmount: 600, amountPaid: null },
@@ -83,8 +83,21 @@ describe("compact filtered vendor bill summary", () => {
     ]} totals={totals} />);
     expect(valueFor("Paid Amount")).toBe("₹100.00");
     expect(valueFor("Total Net Payable / Outstanding")).toBe("₹300.00");
-    expect(screen.getByRole("note").textContent).toContain("not established for 2 bill(s)");
-    expect(screen.getByRole("note").textContent).toContain("not assumed to be zero");
+    expect(screen.getByRole("note").textContent).toBe("Unconfirmed: 2");
+    expect(screen.getByRole("note").title).toContain("not assumed to be zero");
+  });
+
+  it("counts contradictory paid-status evidence alongside missing payments", () => {
+    render(<VendorBillFinancialSummary bills={[
+      { status: "paid", netPayableAmount: 900, amountPaid: 200 },
+      { status: "paid", netPayableAmount: 300, amountPaid: 450 },
+      { status: "approved", netPayableAmount: 400 },
+      { status: "paid", netPayableAmount: 500, amountPaid: 500 },
+    ]} totals={totals} />);
+    expect(screen.getByRole("note").textContent).toBe("Unconfirmed: 3");
+    expect(valueFor("Paid Amount")).toBe("₹1,150.00");
+    expect(valueFor("Total Net Payable / Outstanding")).toBe("₹700.00");
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("uses calculated net when saved net is absent and treats recorded zero as known", () => {

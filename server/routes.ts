@@ -61,6 +61,8 @@ import { AUTO_SYNC_STATUSES } from "@shared/arrangementAutoAllocation";
 import { buildVendorPayablesPreview } from "./vendorPayablesPreview";
 import { buildGstRegisterPdf } from "./gstRegisterPdf";
 import { recordedVendorTds } from "@shared/vendorFinancialAccess";
+import { filterFinancialBills } from "@shared/vendorBillFinancialReport";
+import { buildVendorFinancialWorkbook } from "./vendorFinancialWorkbook";
 import { financialSites, vendorFinancialGuard } from "./vendorFinancialAccess";
 import { vendorStatementBills } from "@shared/vendorBillReview";
 import {
@@ -11609,6 +11611,29 @@ export async function registerRoutes(
 
       const selectedSite = await resolveVendorBillSite(req, res, req.query.siteId);
       if (!selectedSite) return;
+      if (req.query.report === "financial-summary") {
+        const sites = await storage.getSites();
+        const scope = req.query.scope === "all" ? "all" : "unpaid";
+        const available = await scopeVendorBillsToSiteAccess(req, await storage.getVendorBills({}));
+        const selected = filterFinancialBills(available, {
+          scope, dateFrom, dateTo, vendor, status, category: categoryFilter,
+          party: typeof req.query.party === "string" ? req.query.party : undefined,
+          site: selectedSite.siteName || undefined,
+        }, sites);
+        // Do not silently export a different selection if permissions or bills
+        // changed after the list loaded. Client IDs can constrain, never grant.
+        const ids = String(req.query.billIds || "").split(",").filter(Boolean).map(Number);
+        if (!ids.length || ids.some(id => !Number.isSafeInteger(id)) ||
+            new Set(ids).size !== ids.length || ids.length !== selected.length ||
+            selected.some(b => !ids.includes(b.id))) {
+          return res.status(409).json({ message: "The bill selection has changed. Refresh the list before exporting." });
+        }
+        const byId = new Map(selected.map(b => [b.id, b]));
+        const workbook = buildVendorFinancialWorkbook(ids.map(id => byId.get(id)!), sites);
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        res.setHeader("Content-Disposition", 'attachment; filename="vendor-financial-summary.xlsx"');
+        return res.send(xlsx.write(workbook, { type: "buffer", bookType: "xlsx" }));
+      }
       let billsRaw = await scopeVendorBillsToSiteAccess(req,
         await storage.getVendorBills({ dateFrom, dateTo, vendor, status }));
       if (selectedSite.siteName) {

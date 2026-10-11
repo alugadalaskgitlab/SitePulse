@@ -14,3 +14,9 @@ Taxes reporting must use recorded deduction amounts, not infer TDS deductions fr
 **Why:** The user said not to invent deductions or correct historical financial data.
 
 **How to apply:** Keep available GST reporting, label absent TDS amounts as unavailable, and distinguish frozen hire-statement evidence from a complete whole-bill deduction. The compact overview uses saved bills only; the separate visible Payables Preview was intentionally removed.
+
+Unpaid is a payment-evidence scope, not a workflow-status filter. Keep missing-evidence bills Unconfirmed, include Paid bills when recorded payments leave a positive balance, and never offset credits against other bills.
+
+**Why:** The user explicitly requires one identical selected bill set for the list, financial totals, category taxes and all three Excel sheets.
+
+**How to apply:** Apply the existing filters within Unpaid/All; default to Unpaid. Preserve recorded partial TDS evidence as an incomplete subtotal. Do not invent category allocations for whole-bill TDS or treat hire-only snapshots as evidence for unrelated lines.

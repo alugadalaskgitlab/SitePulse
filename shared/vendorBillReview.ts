@@ -1,7 +1,7 @@
 /** Read-only projections. Never settle credits or infer a payment from status. */
 export function billReviewAmounts(bill: any, totals: { totalAmount: number; totalGst: number; primaryAdjustment: number; additionalTotal: number; tds: number; netTotal: number }) {
   const net = bill.netPayableAmount == null ? totals.netTotal : Number(bill.netPayableAmount);
-  const paid = bill.amountPaid == null ? null : Number(bill.amountPaid);
+  const paid = bill.amountPaid == null || bill.amountPaid === "" || !Number.isFinite(Number(bill.amountPaid)) ? null : Number(bill.amountPaid);
   const balance = paid == null ? null : net - paid;
   return {
     gross: totals.totalAmount, gst: totals.totalGst,

@@ -1,0 +1,169 @@
+# VB-UI-FINAL-02 — Vendor Bills Overview, Taxes & Filtered Excel Export
+
+**Objective:** Simplify the existing Vendor Bills page based on live user feedback. Implement the following as ONE focused task, using existing components, filters, permissions and financial calculations.
+
+Do not redesign Vendor Bills or introduce additional financial panels.
+
+## 1. Unpaid / All Bills selector
+
+Add one small selector:
+
+**Unpaid | All Bills**
+
+Default: Unpaid.
+
+The selector must control the Vendor Bill list, financial summary, taxes summary and exports together.
+
+**Unpaid:**
+- Include Draft, Verified and Approved bills with a genuine outstanding positive balance.
+- Include partially paid bills where an amount remains outstanding, regardless of their workflow status.
+- Exclude fully settled bills.
+- Do not classify bills by status alone.
+- Where a bill is marked Paid but reliable payment evidence contradicts that status, flag the inconsistency briefly and include it if a positive balance remains.
+- Where historical payment evidence is missing, retain the bill as **Unconfirmed** rather than assuming it is settled or treating an unknown payment as zero.
+- Show negative/credit bills through All Bills, without automatically offsetting them against other bills.
+
+**All Bills:**
+- Include all saved bills, irrespective of status or payment position.
+
+Apply all existing filters—vendor, site, date, status, category and others—to the chosen Unpaid/All scope.
+
+Do not add duplicate filter controls.
+
+## 2. Compact Financial Summary
+
+Immediately above the existing filters/list, show one compact horizontal row:
+
+| No. of Bills | Gross Bill Amount | Paid Amount | Net Payable / Outstanding |
+|---|---|---|---|
+
+All four totals must represent exactly the bills currently visible under Unpaid/All and the existing filters.
+
+Use existing authoritative financial totals and recorded payment amounts.
+
+For the fourth figure, sum only established positive outstanding balances. Do not silently offset negative/credit balances across bills or vendors.
+
+Draft and Verified balances may be included but are provisional, not authorised for payment. Explain this using a brief caption or tooltip.
+
+If records contain missing or contradictory payment information, use a small **Unconfirmed** indicator with a count. Do not add elaborate warnings, separate reconciliation panels or assumptions.
+
+Validate arithmetic against actual bill detail calculations, including advance deductions, additional adjustments, GST, TDS and partial payments.
+
+Do not infer that Paid status alone proves the amount actually paid.
+
+## 3. Compact Taxes Summary — retain category columns
+
+Keep the existing category structure and display a small taxes summary, not a bill-wise register.
+
+Use the layout:
+
+| Tax | Equipment | Material | Transport | Labour | Total |
+|---|---|---|---|---|---|
+| GST | Amount | Amount | Amount | Amount | Total |
+| TDS (IT) | Amount | Amount | Amount | Amount | Total |
+| Total | Amount | Amount | Amount | Amount | Grand Total |
+
+- Use actual recorded GST and TDS amounts only.
+- Do not calculate TDS from a saved TDS percentage when the deducted amount was not recorded.
+- Preserve the existing GST calculations and category allocation.
+- Distinguish Not established from genuine zero.
+- The Total row adds the displayed tax amounts for reporting only; it is not another tax or an additional bill liability.
+- No bill-wise listing or long TDS register table on the main Vendor Bills page.
+- No additional tax filters.
+
+All tax figures must respond to the same Unpaid/All selection and existing Vendor Bill filters.
+
+Detailed GST/TDS rates and bill-wise information belong in the Excel export.
+
+## 4. One filtered Excel export
+
+Provide one **Export Financial Summary** action near the compact summary.
+
+The Excel workbook must contain three sheets:
+
+**Sheet 1 — Vendor Bills**
+- Bill ID and number
+- Bill date and vendor
+- Site, type/category and status
+- Gross amount
+- GST
+- Adjustments/deductions
+- Net bill value
+- Recorded paid amount
+- Positive outstanding or negative credit
+- Small indicator for unconfirmed payment evidence
+
+**Sheet 2 — GST Register**
+- Existing bill-wise GST information
+- Equipment, Material, Transport and Labour classifications
+- Applicable recorded GST rates and amounts
+- Relevant totals
+
+**Sheet 3 — TDS (IT) Register**
+- Bill-wise TDS information
+- Applicable recorded TDS rate
+- Recorded taxable/base amount, if available
+- Actual recorded deduction amount
+- Relevant totals
+- Not established where the deducted amount was not recorded
+
+**Critical:** All three sheets must contain the same selected bills as the visible Vendor Bill list.
+
+Unpaid/All and all existing filters must apply to the export.
+
+Use existing trusted export utilities. Do not add a second independent vendor/date/status selection for exporting.
+
+Include totals and a brief note when payment or TDS information is incomplete.
+
+Do not change existing Vendor Bill PDF, Activity Calendar PDF/Excel, or other operational exports.
+
+## 5. Financial permissions
+
+Preserve the already implemented **View Vendor Financials** permission exactly as it works now.
+
+- Owner always has access.
+- Administrators, including Babu, require their individually saved permission grant.
+- The financial summary, taxes summary, Vendor Statement and financial exports require that permission.
+- Respect site-level access in both UI and backend.
+
+Do not redesign the User Permissions page or change normal bill-entry, verification, approval and payment permissions.
+
+## 6. Preserve existing features and data
+
+Keep:
+- Saved Equipment Hire Activity Calendars in all bill statuses
+- Vendor Running Statement
+- Vendor Master identity reconciliation
+- Daily-hire tipper billing and duplicate protections
+- Vendor Bill editing and lifecycle
+- Existing financial records and snapshots
+
+Do not alter bills, payments, advance deductions, GST/TDS postings, hire terms, stock, diesel, equipment usage, DPRs, PI, PO or receipts.
+
+Remove only redundant financial display elements from the Vendor Bills list.
+
+Do not delete shared backend services used elsewhere.
+
+## 7. Focused verification
+
+Test:
+1. Unpaid and All scopes with correct bill counts.
+2. Draft, Verified, Approved, Paid and partially paid bills.
+3. Paid-status bills with missing or contradictory payment evidence.
+4. Negative-net and credit bills.
+5. Missing historical payment information.
+6. Combined vendor, site, date, category and status filters.
+7. Correct totals matching the bill details and filtered list.
+8. GST and recorded TDS by Equipment, Material, Transport and Labour.
+9. Missing TDS amount with a recorded percentage.
+10. Three-sheet Excel export, identical bill selection across sheets.
+11. Owner and granted/ungranted Administrator financial access.
+12. Existing calendar, bill review and normal bill workflows unaffected.
+
+Run focused tests and ONE production build only. Do not run the full test suite.
+
+Avoid unrelated investigation, refactoring, schema migration, historical backfill or production-data changes.
+
+Give a concise completion report with test counts, build result, any limitations and publication readiness.
+
+**Do not publish automatically. STOP.**

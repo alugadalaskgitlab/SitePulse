@@ -21,9 +21,9 @@ import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
 import type { VendorBillWithItems, VendorAlias, Site } from "@shared/schema";
-import { siteMatchesPermitted, vendorBillItemMatchesSite } from "@shared/siteName";
-import { aggregateGstBreakdown } from "@shared/vendor-bill-gst";
-import { recordedVendorTds } from "@shared/vendorFinancialAccess";
+import { siteMatchesPermitted } from "@shared/siteName";
+import { filterFinancialBills, billPaymentPosition, getBillFinancialTotals, type BillScope } from "@shared/vendorBillFinancialReport";
+import { VendorBillTaxesSummary } from "@/components/vendor-bills/VendorBillTaxesSummary";
 import { defaultConvertedQuantity, isDifferentBillingUnit, matchingRateCardsForGroup, normalizeRateCardPart, selectAutoMaterialRateConversion, type RateCardUnitOption, type VendorRateCardRecord } from "@/lib/vendorBillRateSelection";
 import { autoBillItemIdentity, availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateHireGroup, duplicateBillItemPayload, mergeOtherBillItems, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, uniqueDuplicateBillMatches, type DuplicateBillItemMatch, type HireActivity, type HireBillingBasis } from "@shared/hireBilling";
 import { TripDailyHireReview } from "@/components/TripDailyHireReview";
@@ -135,63 +135,6 @@ function normalizeAdditionalAdjustments(value: unknown): AdditionalAdjustment[] 
 
 function billAdditionalAdjustments(bill: any): AdditionalAdjustment[] {
   return normalizeAdditionalAdjustments(bill?.additionalAdjustments ?? bill?.additional_adjustments);
-}
-
-/**
- * Keep list/history totals on the same taxable/GST/TDS basis as the detail and
- * print views. totalAmount remains the pre-tax line-item subtotal; adjustments
- * are applied after GST and before TDS, matching those existing views.
- */
-function getBillFinancialTotals(bill: any) {
-  const items = Array.isArray(bill?.items) ? bill.items : [];
-  const categoryTotals: Record<string, number> = {};
-  items.forEach((item: any) => {
-    const category = item.category || "other";
-    categoryTotals[category] = (categoryTotals[category] || 0) + (Number(item.amount) || 0);
-  });
-  const shouldGroup = Object.values(categoryTotals).filter(amount => amount !== 0).length > 1;
-  const billType = String(bill?.billType || "").toLowerCase();
-  const isAllType = billType === "all";
-  const usePerGroupGst = isAllType || shouldGroup;
-  const gstEquipmentRate = Number(bill?.gstRateEquipment) || 0;
-  const gstMaterialRate = Number(bill?.gstRateMaterial) || 0;
-  const gstTransportRate = Number(bill?.gstRateTransport) || 0;
-  const gstLabourRate = Number(bill?.gstRateLabour) || 0;
-  const groupedGst =
-    (categoryTotals.equipment || 0) * gstEquipmentRate / 100 +
-    (categoryTotals.material || 0) * gstMaterialRate / 100 +
-    (categoryTotals.transport || 0) * gstTransportRate / 100 +
-    (categoryTotals.labour || 0) * gstLabourRate / 100;
-  const singleGstRate = !usePerGroupGst
-    ? billType === "equipment" ? gstEquipmentRate
-      : billType === "material" ? gstMaterialRate
-      : billType === "transport" ? gstTransportRate
-      : billType === "labour" ? gstLabourRate : 0
-    : 0;
-  const totalAmount = Number(bill?.totalAmount) || 0;
-  const totalGst = usePerGroupGst ? groupedGst : totalAmount * singleGstRate / 100;
-  const primaryAdjustment = Number(bill?.adjustmentAmount) || 0;
-  const additional = billAdditionalAdjustments(bill);
-  const additionalTotal = additional.reduce((sum, adjustment) => sum + (Number(adjustment.amount) || 0), 0);
-  const tdsRate = Number(bill?.tdsRate) || 0;
-  const tds = totalAmount * tdsRate / 100;
-  return {
-    totalAmount,
-    totalGst,
-    gstRows: usePerGroupGst
-      ? [
-        { label: `GST ON EQUIPMENT @ ${gstEquipmentRate}%`, amount: (categoryTotals.equipment || 0) * gstEquipmentRate / 100, rate: gstEquipmentRate },
-        { label: `GST ON MATERIAL @ ${gstMaterialRate}%`, amount: (categoryTotals.material || 0) * gstMaterialRate / 100, rate: gstMaterialRate },
-        { label: `GST ON TRANSPORT @ ${gstTransportRate}%`, amount: (categoryTotals.transport || 0) * gstTransportRate / 100, rate: gstTransportRate },
-        { label: `GST ON LABOUR @ ${gstLabourRate}%`, amount: (categoryTotals.labour || 0) * gstLabourRate / 100, rate: gstLabourRate },
-      ].filter((row, index) => row.rate > 0 && categoryTotals[["equipment", "material", "transport", "labour"][index]] != null)
-      : singleGstRate > 0 ? [{ label: `GST @ ${singleGstRate}%`, amount: totalGst, rate: singleGstRate }] : [],
-    primaryAdjustment,
-    additional,
-    additionalTotal,
-    tds,
-    netTotal: bill.netPayableAmount == null ? totalAmount + totalGst + primaryAdjustment + additionalTotal - tds : Number(bill.netPayableAmount),
-  };
 }
 
 const categoryOrder: Record<string, number> = { equipment: 0, material: 1, transport: 2, labour: 3, other: 4 };
@@ -567,6 +510,7 @@ function HistoricalHireWorkingSheet({ snapshot }: { snapshot: any }) {
 }
 
 export default function VendorBills() {
+  const [billScope, setBillScope] = useState<BillScope>("unpaid");
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "stock" });
@@ -574,11 +518,11 @@ export default function VendorBills() {
   const canViewFinancials = sectionCan("vendor_financials", "view");
   useEffect(() => {
     if (!canViewFinancials) queryClient.removeQueries({ predicate: query =>
-      query.queryKey[0] === "/api/vendor-bills/financial-review" ||
+      (query.queryKey[0] === "/api/vendor-bills" && query.queryKey[1] === "financial-review") ||
       (query.queryKey[0] === "/api/vendor-bills" && query.queryKey[2] === "statement") });
   }, [canViewFinancials]);
   const financialReview = useQuery<VendorBillWithItems[]>({
-    queryKey: ["/api/vendor-bills/financial-review", user?.id],
+    queryKey: ["/api/vendor-bills", "financial-review", user?.id],
     queryFn: async () => {
       const response = await fetch("/api/vendor-bills/financial-review", { credentials: "include", cache: "no-store" });
       if (!response.ok) throw new Error("Financial information is not available.");
@@ -2294,50 +2238,20 @@ export default function VendorBills() {
   }, [bills]);
 
   const filteredBills = useMemo(() => {
-    if (!bills) return [];
-    return bills.filter(bill => {
-      if (filterDateFrom && bill.billDate < filterDateFrom) return false;
-      if (filterDateTo && bill.billDate > filterDateTo) return false;
-      if (filterVendor !== "all" && bill.vendorName.toUpperCase() !== filterVendor) return false;
-      if (filterStatus !== "all" && bill.status !== filterStatus) return false;
-      if (filterCategory !== "all") {
-        const bt = (bill.billType || "").toLowerCase();
-        const target = filterCategory === "combined" ? "all" : filterCategory;
-        if (bt !== target) return false;
-      }
-      if (filterParty !== "all" && !bill.items?.some((it: any) => it.suppliedTo === filterParty)) return false;
-      if (filterSite) {
-        const persistedSite = sites.find(site => site.id === (bill as any).siteId)?.name;
-        const headerMatches = persistedSite ? siteMatchesPermitted(persistedSite, [filterSite]) : false;
-        const itemMatches = bill.items?.some((it: any) => vendorBillItemMatchesSite(it.siteName, filterSite));
-        if (!headerMatches && !itemMatches) return false;
-      }
-      return true;
-    });
-  }, [bills, sites, filterDateFrom, filterDateTo, filterVendor, filterStatus, filterCategory, filterParty, filterSite]);
+    // Financial viewers use the very same authorised snapshot for list and totals.
+    // Ordinary viewers retain their normal bill access and workflows.
+    const source = canViewFinancials ? (financialReview.data || []) : (bills || []);
+    return filterFinancialBills(source, {
+      scope: billScope, dateFrom: filterDateFrom, dateTo: filterDateTo, vendor: filterVendor,
+      status: filterStatus, category: filterCategory, party: filterParty, site: filterSite,
+    }, sites);
+  }, [bills, financialReview.data, canViewFinancials, billScope, sites, filterDateFrom, filterDateTo, filterVendor, filterStatus, filterCategory, filterParty, filterSite]);
 
   const financialBills = useMemo(() => {
     if (!canViewFinancials || financialReview.isError) return [];
     const visibleIds = new Set(filteredBills.map(b => b.id));
     return (financialReview.data || []).filter(b => visibleIds.has(b.id));
   }, [canViewFinancials, financialReview.data, financialReview.isError, filteredBills]);
-  const gstBreakdown = useMemo(() => aggregateGstBreakdown(financialBills), [financialBills]);
-
-  const labourSplit = useMemo(() => {
-    let site = 0, plant = 0, other = 0;
-    for (const bill of financialBills) {
-      for (const item of (bill.items || []) as any[]) {
-        if ((item.category || "other") !== "labour") continue;
-        const amt = item.amount || 0;
-        const src = getLabourSource(item);
-        if (src === "site") site += amt;
-        else if (src === "plant") plant += amt;
-        else other += amt;
-      }
-    }
-    return { site, plant, other, total: site + plant + other };
-  }, [financialBills]);
-
   const handleGstRegisterExport = async (fmt: "pdf" | "xlsx") => {
     if (!canViewFinancials || financialReview.isError) return;
     if (!filteredBills.length) {
@@ -2358,6 +2272,9 @@ export default function VendorBills() {
         params.set("siteId", String(selectedSite.id));
       }
       params.set("format", fmt);
+      params.set("report", "financial-summary");
+      params.set("scope", billScope);
+      params.set("billIds", filteredBills.map(b => b.id).join(","));
       const res = await fetch(`/api/vendor-bills/export?${params.toString()}`, { credentials: "include" });
       if (!res.ok) {
         const msg = await res.text().catch(() => "");
@@ -5059,119 +4976,20 @@ export default function VendorBills() {
         </div>
       )}
 
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div role="group" aria-label="Bill payment scope" className="inline-flex gap-1">
+          <Button size="sm" variant={billScope === "unpaid" ? "default" : "outline"} aria-pressed={billScope === "unpaid"} onClick={() => setBillScope("unpaid")}>Unpaid</Button>
+          <Button size="sm" variant={billScope === "all" ? "default" : "outline"} aria-pressed={billScope === "all"} onClick={() => setBillScope("all")}>All Bills</Button>
+        </div>
+        {canViewFinancials && canExport && <Button variant="outline" size="sm" onClick={() => handleGstRegisterExport("xlsx")}
+          disabled={!filteredBills.length || !financialReview.isSuccess || financialReview.isFetching} data-testid="button-export-financial-summary">
+          <Download className="w-3 h-3 mr-1" />Export Financial Summary
+        </Button>}
+      </div>
       {canViewFinancials && (financialReview.isPending ? <p role="status">Loading permitted financial information…</p>
         : financialReview.isError ? <p role="alert">Financial information is unavailable. <Button variant="link" onClick={() => financialReview.refetch()}>Retry</Button></p>
         : <VendorBillFinancialSummary bills={financialBills} totals={getBillFinancialTotals} />)}
-      {canViewFinancials && financialReview.isSuccess && <Card data-testid="card-gst-register">
-        <CardHeader className="py-2 px-3">
-          <CardTitle className="text-sm uppercase tracking-wider text-muted-foreground flex items-center justify-between gap-2 flex-wrap">
-            <span>
-              {filterVendor !== "all"
-                ? `Taxes Register — ${filterVendor}`
-                : "Taxes Register"}
-            </span>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[12px] normal-case font-normal text-muted-foreground">
-                Reflects current filters &middot; {financialBills.length} bills
-              </span>
-              {canExport && <Button
-                variant="outline"
-                size="sm"
-                className="h-7 px-2 text-xs normal-case"
-                onClick={() => handleGstRegisterExport("pdf")}
-                disabled={!filteredBills.length}
-                data-testid="button-export-gst-pdf"
-              >
-                <Download className="w-3 h-3 mr-1" />
-                Export PDF
-              </Button>}
-              {canExport && <Button
-                variant="outline"
-                size="sm"
-                className="h-7 px-2 text-xs normal-case"
-                onClick={() => handleGstRegisterExport("xlsx")}
-                disabled={!filteredBills.length}
-                data-testid="button-export-gst-excel"
-              >
-                <Download className="w-3 h-3 mr-1" />
-                Export Excel
-              </Button>}
-            </div>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="py-2 px-3">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <div className="text-center" data-testid="gst-card-equipment">
-              <p className="text-[12px] text-muted-foreground uppercase">GST Equipment</p>
-              <p className="text-base font-bold text-blue-700 dark:text-blue-400" data-testid="text-gst-equipment">
-                {formatCurrency(gstBreakdown.equipment)}
-              </p>
-            </div>
-            <div className="text-center" data-testid="gst-card-material">
-              <p className="text-[12px] text-muted-foreground uppercase">GST Material</p>
-              <p className="text-base font-bold text-emerald-700 dark:text-emerald-400" data-testid="text-gst-material">
-                {formatCurrency(gstBreakdown.material)}
-              </p>
-            </div>
-            <div className="text-center" data-testid="gst-card-transport">
-              <p className="text-[12px] text-muted-foreground uppercase">GST Transport</p>
-              <p className="text-base font-bold text-amber-700 dark:text-amber-400" data-testid="text-gst-transport">
-                {formatCurrency(gstBreakdown.transport)}
-              </p>
-            </div>
-            <div className="text-center" data-testid="gst-card-labour">
-              <p className="text-[12px] text-muted-foreground uppercase">GST Labour</p>
-              <p className="text-base font-bold text-purple-700 dark:text-purple-400" data-testid="text-gst-labour">
-                {formatCurrency(gstBreakdown.labour)}
-              </p>
-            </div>
-            <div className="text-center border-l md:pl-2" data-testid="gst-card-total">
-              <p className="text-[12px] text-muted-foreground uppercase">Total GST</p>
-              <p className="text-base font-bold text-green-700 dark:text-green-400" data-testid="text-gst-total">
-                {formatCurrency(gstBreakdown.total)}
-              </p>
-            </div>
-          </div>
-          {labourSplit.site > 0 && labourSplit.plant > 0 && (
-            <div className="mt-2 pt-2 border-t flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm" data-testid="labour-split-summary">
-              <span className="uppercase text-muted-foreground tracking-wider text-[12px]">
-                Labour Split &middot; Total <span className="font-semibold text-foreground" data-testid="text-labour-split-total">₹{formatCurrency(labourSplit.total)}</span>
-              </span>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                <span data-testid="text-labour-split-site">
-                  <span className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-1 align-middle"></span>
-                  DPR Site: <span className="font-semibold">₹{formatCurrency(labourSplit.site)}</span>
-                  <span className="text-muted-foreground"> ({labourSplit.total > 0 ? Math.round((labourSplit.site / labourSplit.total) * 100) : 0}%)</span>
-                </span>
-                <span data-testid="text-labour-split-plant">
-                  <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1 align-middle"></span>
-                  Plant Shift: <span className="font-semibold">₹{formatCurrency(labourSplit.plant)}</span>
-                  <span className="text-muted-foreground"> ({labourSplit.total > 0 ? Math.round((labourSplit.plant / labourSplit.total) * 100) : 0}%)</span>
-                </span>
-                {labourSplit.other > 0 && (
-                  <span data-testid="text-labour-split-other" className="text-muted-foreground">
-                    Other: <span className="font-semibold">₹{formatCurrency(labourSplit.other)}</span>
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-          <div className="mt-3 border-t pt-3 overflow-x-auto">
-            <h3 className="text-sm font-semibold">TDS — recorded amounts</h3>
-            <p className="text-xs text-muted-foreground">Saved deduction amounts only, not inferred from rates. Hire snapshot amounts cover the linked hire statements only. Missing historical deductions are not established.</p>
-            <table className="w-full text-xs mt-2">
-              <thead><tr>{["Bill / Date", "Vendor", "Status", "Saved TDS rate", "Recorded TDS"].map(label => <th key={label} className="text-left p-2">{label}</th>)}</tr></thead>
-              <tbody>{financialBills.map(b => <tr key={b.id} className="border-t">
-                <td className="p-2">{b.billNo} · {b.billDate}</td><td className="p-2">{b.vendorName}</td><td className="p-2">{b.status}</td>
-                <td className="p-2">{b.tdsRate == null ? "Not recorded" : `${b.tdsRate}%`}</td>
-                <td className="p-2">{recordedVendorTds(b) == null ? "Not established" : `₹${formatCurrency(recordedVendorTds(b)!)}`}</td>
-              </tr>)}</tbody>
-              <tfoot><tr className="border-t font-semibold"><td colSpan={4} className="p-2">Total recorded TDS (excludes unavailable amounts)</td>
-                <td className="p-2">₹{formatCurrency(financialBills.reduce((sum, b) => sum + (recordedVendorTds(b) ?? 0), 0))}</td></tr></tfoot>
-            </table>
-          </div>
-        </CardContent>
-      </Card>}
+      {canViewFinancials && financialReview.isSuccess && <VendorBillTaxesSummary bills={financialBills} />}
 
       <Card>
         <CardContent className="py-3">
@@ -5403,6 +5221,7 @@ export default function VendorBills() {
                     <Badge variant="outline" className={`uppercase ${getStatusBadgeClass(bill.status)} no-default-hover-elevate no-default-active-elevate`} data-testid={`badge-bill-status-${bill.id}`}>
                       {bill.status}
                     </Badge>
+                    {billPaymentPosition(bill).unconfirmed && <Badge variant="outline" className="text-amber-700" title={billPaymentPosition(bill).contradictory ? "Recorded payments contradict Paid status" : "Payment evidence is missing"}>Unconfirmed</Badge>}
                   </div>
                 </div>
               </CardContent>
