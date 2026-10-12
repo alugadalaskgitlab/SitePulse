@@ -41,14 +41,20 @@ Located in `.local/backups/` (not committed to git — push manually to GitHub i
 - `production_full_20260718_105812.sql` — 2.6MB, 114 tables, pre-deletion snapshot
 - `production_clean_seed_20260718_110523.sql` — 2.1MB, 114 tables, seed used for sitelog_dev
 
-## Re-seeding sitelog_dev
-If the dev database needs to be reset from a fresh production snapshot:
-```bash
-pg_dump "$DATABASE_URL" -Fp -f .local/backups/new_seed.sql
-psql "${DATABASE_URL/heliumdb/sitelog_dev}" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
-psql "${DATABASE_URL/heliumdb/sitelog_dev}" -f .local/backups/new_seed.sql
-```
-Then restart the dev server — startup migrations will self-correct any missing data.
+## Production-to-development cloning
+The user requires a one-way replacement, never a merge or ongoing sync.
+Production is a read-only source; investigation does not authorize backups,
+restores, replacement, production migrations or publication.
+
+**Why:** Explicit clone safety requirements. Workspace DATABASE_URL is the
+Publish-facing development database, not the live production source, and normal
+startup routines can mutate a restored snapshot.
+
+**How to apply:** Obtain explicit execution approval. Verify the production source,
+back up and test-restore both environments, restore production schema and data
+together into a fresh candidate, and gate startup writes and outbound services
+before opening Preview. Preserve the old development database for rollback.
+Document security/testing-access overlays as deviations from the exact snapshot.
 
 ## Startup Migration Behaviour on First Boot of a Restored Dev DB
 Some `app_settings`-gated migrations correctly skip. A few data-condition migrations (not flag-gated) run once and self-correct:

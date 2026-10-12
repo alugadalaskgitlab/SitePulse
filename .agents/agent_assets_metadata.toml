@@ -5967,3 +5967,17 @@ mtime_ms = 1791560520202
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/031aa021-b787-4b70-a832-308ae5ca4f82/aad41ad0-01b5-44a6-88b7-ab6f2c785025"
 storage_version_token = "1791560588752039"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "iw-dt5xEatLzrZcjGm8Vb"
+uri = "file://reports/sitepulse-db-clone-readiness.html"
+type = "html"
+title = "SitePulse database clone — investigation and execution plan"
+description = "Read-only findings, compatibility blockers, storage and login safeguards, backup verification, cutover and rollback plan. No clone executed."
+logical_id = "bbe72cbd-ba0d-40b2-9a5a-a4b986d621c5"
+content_hash = "sha256:2b16f3d9eaf49693ec64e7e87e68e65db457c71aa03607666d852c1432fec02b"
+size = 17063
+mtime_ms = 1791773488917
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/bbe72cbd-ba0d-40b2-9a5a-a4b986d621c5/df2a5aca-abf5-4f02-9bba-d5dfd79ce9dc"
+storage_version_token = "1791773489998617"
+content_type = "text/html"

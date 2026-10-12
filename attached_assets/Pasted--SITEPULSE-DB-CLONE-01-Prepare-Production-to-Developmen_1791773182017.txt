@@ -1,0 +1,28 @@
+**SITEPULSE-DB-CLONE-01 — Prepare Production-to-Development Database Clone**
+
+We want the Development/Preview environment to contain an exact working copy of the Live/Production SitePulse data, so we can test historical trips, Vendor Bills, masters and other workflows before deployment.
+
+This must be a **one-way replacement**, not a merge or ongoing sync.
+
+Please investigate and report:
+
+1. Confirm that Production and Development use physically separate databases. Identify their environments and database identifiers without exposing credentials.
+2. Check database engine, schema versions, migrations, tables and constraints for compatibility.
+3. Identify any production attachments, bill images, trip documents or other files held outside the database that are required for a usable development copy.
+4. Identify risks involving users, permissions, sessions, external services, notifications, storage and production credentials.
+5. Propose a verified backup of Production and a separate backup of Development before replacing Development.
+6. Explain how to replace Development data completely with the Production snapshot, preserve relationships and sequence counters, and verify record counts and integrity.
+7. Ensure Development remains isolated after cloning, cannot write to Production, and cannot trigger real payments, messages or external business operations.
+8. Explain whether existing Development login credentials or test users would be affected, and how authorised testing access would be retained.
+9. Provide the exact execution plan, estimated downtime, rollback procedure and any limitations.
+
+**Strict safety requirements:**
+- Production is a read-only source throughout this operation.
+- No production schema or data changes.
+- No automatic deployment.
+- No merge or partial copying that leaves inconsistent records.
+- Never expose database credentials or sensitive production data in the report.
+- Do not run migrations against Production.
+- Do not begin restoring or replacing either database yet.
+
+**STOP after investigation and report. Wait for explicit approval before executing the clone.**
