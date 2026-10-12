@@ -2,12 +2,12 @@
 
 Updated: 2026-10-13. Reference: `75fd8e337d27`, direct parent of `4d4fba9b54fb`.
 
-## Outcome: incomplete verification; NOT SAFE TO PUBLISH
+## Outcome: recovery completed within authorized scope; NOT CLEARED TO PUBLISH
 
 Selective recovery code and the expressly authorized development-only index
-alignment are implemented. Exactly one production build passed. The task remains
-incomplete: authenticated historical-bill UI verification and publication safety
-have not been established. The focused regression gate is now green.
+alignment are implemented. Exactly one production build passed. The focused
+regression gate is green, and ordinary signed-in development browser verification
+is complete. Production browser testing and publication safety are not claimed.
 Nothing was published. No Production schema, index or record mutation was executed.
 
 ## Exact development index alignment
@@ -73,8 +73,26 @@ can be projected for export, and rejects recalculation without changing its
 snapshot. No production records were copied into fixtures.
 
 This is **not** proof that actual Production bills open in the restored UI.
-The public screenshot reached the existing application splash/authentication
-boundary only (anonymous request received 401). Signed-in UI was not verified.
+After the user expressly approved development authentication writes only,
+ordinary development login and device approval succeeded, without password resets,
+grant changes, auth bypasses or API fixtures. The live register and preparation
+screen rendered, and all four saved development bills opened through the actual
+detail UI and API (HTTP 200). Their totals, recorded payments and statuses matched
+the register data.
+
+All four development bills have zero hire statements. Therefore frozen
+hire-statement compatibility is established by the isolated database/output tests,
+not by a live Production or development hire-statement browser inspection.
+
+Before/after fingerprints were unchanged for vendor bills, bill items, hire
+statements/exceptions, permissions, equipment masters and material trips.
+The account password and privilege flags were also unchanged. No bill was saved.
+The only authorized writes were normal development sessions/login auditing and
+approval of the specifically identified pending verification devices.
+The reproducible harness is `scripts/vb-recovery-browser.mjs`; it explicitly
+checks the application development database identity and never connects to
+Production. Screenshots and aggregate proof were inspected in
+`/tmp/vb-recovery-browser-proof/`; they contain no exported credentials.
 
 ## Verification
 
@@ -96,9 +114,12 @@ boundary only (anonymous request received 401). Signed-in UI was not verified.
 - `git diff --check`: passed.
 - **Exactly one `npm run build`: passed** for client and server. Only documentation
   and memory updates initially followed it; the 2026-10-13 continuation changes
-  only tests and this report, not application code. No second build was run.
+  only tests, a verification harness and this report, not application code.
+  No second build was run.
   Large-chunk/Browserslist warnings remain.
 - No full-suite or live authenticated export verification claim is made.
+  The real export route callback and authorization cases pass in the isolated
+  focused tests; this account's export grants were not expanded for browser tests.
 
 ## Startup and publication blockers
 
@@ -111,9 +132,9 @@ bypass or unrelated migration refactor was introduced.
 On the 2026-10-13 continuation the existing application workflow was already
 running with the restored source. No restart was performed by this continuation,
 and no startup bypass was added. Normal signed-in browser verification may write
-development sessions, device approval and login-audit records. A narrow exception
-for those authentication records is being requested before proceeding; it does
-not permit bill, operational, role, password or Production changes.
+development sessions, device approval and login-audit records. The user approved
+that narrow exception and browser checks completed. No bill, operational, role,
+password or Production changes were authorized or performed by verification.
 
 Managed development and Production expose the same 141 public table names and
 identical public index definitions. A column-definition comparison also identified
@@ -127,4 +148,6 @@ migration preview and no-write startup have not been verified; zero Production S
 for an actual publication cannot be promised. Do not publish. Any proposed
 Production schema/index change must stop for explicit approval.
 
-No follow-up tasks were created. The recovery task is not marked complete.
+No follow-up tasks were created. Recovery implementation and verification within
+the authorized scope are complete; publication remains a separate, unapproved
+action subject to the restrictions above.
