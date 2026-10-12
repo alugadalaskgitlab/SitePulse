@@ -1,0 +1,70 @@
+**VB-RECOVERY-STARTUP-01 — Final Startup Safety Verification**
+
+The Vendor Bills rollback has been completed and verified. Do not change Vendor Bills again.
+
+Please investigate the existing application startup routines and establish a safe path to republish the restored application.
+
+**1. Inventory the startup operations**
+
+Inspect `server/index.ts`, `server/storage.ts`, `server/routes.ts` and the functions invoked during startup.
+
+For each potentially data-changing operation, report:
+
+- Function name and file location.
+- Which tables or records it can modify.
+- Whether it is essential for every startup or is a one-time migration/backfill.
+- Whether Production already satisfies its intended conditions.
+- Whether it can modify Production records during the next republish.
+
+**2. Verify against Production safely**
+
+Use read-only queries to determine which Production records, if any, would qualify for each operation.
+
+Do not execute the startup functions against Production.
+
+Classify each operation as:
+
+- Required and safe.
+- Already completed / unnecessary.
+- Requires correction or explicit approval.
+
+If a routine depends on external effects or cannot be proven safe through read-only inspection, clearly identify that limitation.
+
+**3. Establish safe startup behaviour**
+
+Prefer the smallest safe correction, if genuinely required.
+
+Do not disable essential startup functions indiscriminately.
+
+Any one-time data migration or repair should run only through an explicitly controlled migration process, not automatically on every application restart.
+
+If code changes are necessary, keep them restricted to startup safety. Do not alter Vendor Bills calculations, DPRs, Masters, permissions, financial data or unrelated business logic.
+
+**4. Verify before publication**
+
+Use isolated Development testing to establish that the application starts correctly and that protected business records remain unchanged.
+
+Compare before/after database fingerprints and relevant record counts.
+
+Verify that normal authentication and Vendor Bills reading still work.
+
+Run focused tests and one production build only if application code changes.
+
+**5. Final report**
+
+Provide a concise table showing each startup routine, its Production impact and proposed treatment.
+
+State clearly:
+
+- Whether any Production data-changing startup operations remain.
+- Whether any Production SQL/index changes would be required.
+- Whether the restored application is ready for a controlled publication attempt.
+- Any remaining limitations.
+
+Do not modify Production data or schema.
+
+Do not publish automatically.
+
+Do not change Vendor Bills.
+
+**STOP after verification and report.**

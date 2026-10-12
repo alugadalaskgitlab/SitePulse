@@ -77,6 +77,7 @@
 - [Arrangement execution evidence](arrangement-execution-evidence.md) — derive live DPR/trip evidence per bar; status overrides are append-only evidence, never payable quantity.
 - [Arrangement effective status history](arrangement-effective-status-history.md) — status changes use explicit business dates in append-only revision history; never infer from updatedAt.
 - [Startup ledger backfill race](startup-ledger-backfill-race.md) — rapid workflow restarts can collide in a legacy stock-ledger backfill even while the app serves; verify a settled restart before diagnosing new work.
+- [Read-only startup readiness](startup-readiness-only.md) — no automatic seeds or historical repairs; fail closed on missing prerequisites; retained push housekeeping prevents an absolute no-write guarantee.
 - [Hired Equipment Billing](hired-equipment-billing.md) — billing derives from operational records; exception decisions, immutable snapshots, overlap locks, and idempotent bill creation preserve auditability.
 - [Tipper daily hire](tipper-daily-hire.md) — audited identity confirmation is separate from material ownership; one equipment/date charge, original trips preserved, audit retention required.
 - [Bill-specific hire terms](bill-specific-hire-terms.md) — recovery restores Master-based new bills; frozen historical bill-specific terms must survive unchanged.

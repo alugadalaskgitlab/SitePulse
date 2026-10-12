@@ -123,6 +123,12 @@ Production. Screenshots and aggregate proof were inspected in
 
 ## Startup and publication blockers
 
+**Later startup-safety review:** see [vb-recovery-startup-safety.md](vb-recovery-startup-safety.md).
+It supersedes the startup/publication findings below: actual publishing SQL is
+empty, automatic legacy initialization was removed, and read-only startup was
+verified. The preserved notification subscription-cleanup limitation remains.
+The following paragraphs retain the original recovery verification history.
+
 Normal startup invokes schema ensures and data backfills, including uppercase
 business text, material density, arrangement allocations, site IDs and permissions.
 It has not been established that all would be no-ops. Under the no-backfill and

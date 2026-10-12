@@ -23087,21 +23087,9 @@ export async function registerRoutes(
 
   // ─── END SNL ────────────────────────────────────────────────────────────
 
-  // Run schema migrations first (await) so the columns exist before any seed
-  // function queries the affected tables, then fire the rest concurrently.
-  (async () => {
-    await ensureDprBoqProjectColumn();
-    await ensureBoqItemNameColumn();
-    await ensureDprEntryKeyColumns();
-    await ensureProgressLayerNoColumn();
-    await ensureBoqDprConversionFactor();
-    seedDatabase();
-    seedPlantMasterData();
-    seedPlanningMasters();
-    seedSnlItems();
-    storage.backfillBoqPlanningInclude().catch(err => console.error("backfillBoqPlanningInclude failed:", err));
-    storage.backfillBoqWorkType().catch(err => console.error("backfillBoqWorkType failed:", err));
-  })().catch((err) => console.error("Startup tasks failed:", err));
+  // Schema readiness is checked before route registration. Historical migration,
+  // seed and reclassification functions below are NOT application-startup work.
+  // They require an explicitly reviewed migration, never an environment toggle.
 
   registerSiteRequirementRoutes(app);
 
