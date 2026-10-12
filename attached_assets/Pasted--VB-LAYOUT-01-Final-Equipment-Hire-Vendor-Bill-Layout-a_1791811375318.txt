@@ -1,0 +1,394 @@
+# VB-LAYOUT-01 — Final Equipment Hire Vendor Bill Layout and Month-wise Billing Presentation
+
+**Objective:** Implement the approved SitePulse Equipment Hire Vendor Bill design for preparation, verification, approval and vendor acceptance.
+
+Use the final mockups already approved by the user:
+
+- Single-month Bill Detail with expandable Activity Calendar.
+- Multi-month Bill Detail showing one calendar per month, separate month-wise billing rows and one consolidated financial total.
+
+**This is primarily a layout, presentation and review task. Preserve the existing billing engine, recorded evidence, saved calculations, permissions and historical data.**
+
+Do not create another Vendor Bill module, introduce duplicate calculation workflows or rebuild previously completed trip/equipment/vendor linking.
+
+## 1. Simplify the Bill Header
+
+Replace the present confusing Equipment Hire Calculation Snapshot presentation with a clear bill header.
+
+Display:
+
+- Vendor — Business Name from the confirmed Vendor Master, where available
+- Bill No.
+- Bill Date
+- Bill Type — Equipment Hire
+- Hire Basis — Monthly / Daily / Hourly / Trip
+- Rate / Unit — ₹ per Month / Day / Hour / Trip
+- Billing Period — From and To
+- Equipment — Type, Registration Number and Equipment Master reference
+- Bill Status — Draft / Verified / Approved / Paid
+
+Keep the layout compact, as shown in the approved mockup.
+
+Where one bill contains multiple equipment items or different agreed hire rates, display their individual terms in the respective equipment sections rather than incorrectly presenting one rate as applicable to everything.
+
+Retain the existing Edit, Export Excel, Export PDF and Print actions.
+
+Do not show unnecessary internal headings such as “Monthly Draft”, “Qty 1”, “Group”, “Snapshot” or “Override” on the normal bill display.
+
+**Important:** Do not delete saved calculation snapshots. They remain necessary for evidence preservation and auditing. Only simplify their presentation.
+
+## 2. Previous Billing Summary
+
+Replace the verbose Vendor Statement on the main Bill Detail screen with a compact section titled:
+
+**Previous Billing Summary**
+
+Display four values:
+
+1. **Total Gross Bills up to Previous**
+2. **Paid up to Previous**
+3. **Balance up to Previous Bill**
+4. **Last Payment** — Amount, Date, Time and Bill No.
+
+Include a **View Previous Bills** action using the existing permitted bill-review functionality.
+
+Use the same confirmed Vendor Master identity for vendor-wide balances. If the statement is intentionally equipment-specific, label that scope explicitly; never silently combine vendor-wide and equipment-only figures.
+
+Exclude the current bill from all previous-bill figures.
+
+### Payment evidence safeguards
+
+Use existing saved Vendor Bill payment information and status history correctly.
+
+A historical Paid status is evidence of the recorded status, but does not establish the precise date or amount of an earlier cash/bank payment unless those details were saved.
+
+Do not invent payment entries, assume payment dates, auto-settle previous bills or post advances again.
+
+The user currently records Mode, Paid By and Account when marking a bill Paid. Preserve that workflow in this batch; do not create a new payment ledger or require retroactive entry of past payments.
+
+For the current presentation:
+
+- Keep Draft, Verified, Approved and Paid statuses meaningful.
+- Do not display repeated “Unconfirmed” or “Not Established” warning badges throughout the normal bill.
+- Where an amount genuinely cannot be calculated from saved evidence, show a neutral dash (—), not a fabricated ₹0.00.
+- An actual recorded zero may display ₹0.00.
+- Show Last Payment only from a real saved payment timestamp and identifiable bill reference; otherwise display —.
+- Avoid counting advances deducted inside a bill as additional payments against that same bill.
+
+Do not modify historical payment records or the existing Unpaid/All Bills financial summary in this task.
+
+## 3. Activity Calendar — One per Calendar Month
+
+Directly below Previous Billing Summary, show the Equipment Activity Calendar.
+
+For a one-month bill, show one calendar.
+
+For a bill spanning multiple months, show separate expandable calendars in chronological order.
+
+Example:
+
+**Activity Calendar — August 2026**
+
+**Activity Calendar — September 2026**
+
+Both remain on the same Bill Detail page.
+
+The calendar sections should be collapsible/expandable individually.
+
+Show the billing dates falling within each month and distinguish recorded activity categories:
+
+- Worked
+- Idle — Work Not Available
+- Breakdown / Operator Unavailable
+- Outside Hire/Deployment Period
+- Activity Not Recorded
+
+Use the saved activity evidence, existing equipment logs, maintenance records, confirmed material trips where relevant, and current approved billing decisions.
+
+**Do not classify a day as Idle merely because there is no DPR or Equipment Usage entry.**
+
+Likewise, missing activity does not automatically establish a vendor breakdown or operator absence.
+
+Preserve the existing saved/frozen calendars for historical bills. Do not reconstruct unknown historical events or silently update saved approval evidence.
+
+Where complete daily evidence is unavailable, display the available information without fabricating a classification.
+
+For bills containing multiple equipment items, each equipment must have its own identifiable activity calendar.
+
+## 4. Monthly Billing Summary — The Approved Table
+
+Immediately below the calendar sections, show:
+
+**Monthly Billing Summary**
+
+Columns, in this order:
+
+| Sl. No. | Bill Period | Days Billed | Worked Days | Idle Days (Work Not Available) | Breakdown / Opr. Unavailable Days | Gross Amount (₹) |
+|---|---|---|---|---|---|---|
+
+Use consistent, professional capitalisation and alignment.
+
+Amounts right-aligned. Day counts centred or right-aligned consistently.
+
+Use ordinary sentence/title case, not unnecessary all-uppercase labels.
+
+### Month-wise presentation
+
+If the period is within one calendar month, show one row.
+
+If the period crosses calendar months, show one row for each month.
+
+For example:
+
+- August 2026 — the August portion of the selected period
+- September 2026 — the September portion of the selected period
+
+Each row must correspond to its own calendar above.
+
+Do not combine August and September into one unexplained quantity.
+
+Use the existing approved bill-specific hire basis, rate and period.
+
+### Definitions
+
+**Worked Days:** Dates with verified recorded equipment working activity.
+
+**Idle Days (Work Not Available):** Dates explicitly established as equipment available but without work provided by HLC.
+
+**Breakdown / Opr. Unavailable Days:** Dates supported by breakdown, maintenance or recorded operator-unavailability evidence and applicable reviewer decisions.
+
+**Days Billed:** The commercially payable day-equivalent count under the selected hire terms, including any applicable payable idle days and excluding agreed non-payable periods.
+
+**Gross Amount:** Calculated using the existing hire calculation and bill-specific commercial terms, before tax and financial adjustments.
+
+Worked Days must not be treated as automatically equal to Days Billed.
+
+Do not infer idle, breakdown or availability merely from missing records.
+
+Where calendar classifications are incomplete, show the recorded figures and a short neutral indication that the remaining dates require review. Do not invent totals just to make the calendar add up.
+
+## 5. Monthly Hire Calculation — Preserve Correct Commercial Logic
+
+The existing monthly hire engine is period/availability based, with applicable deductions. Retain that contractual logic.
+
+Do not replace it with:
+
+**Worked Days × Monthly Rate / Days in Month**
+
+unless an explicit bill-specific contractual rule already requires that calculation.
+
+Instead, visibly explain the existing calculation basis:
+
+- Agreed monthly hire rate
+- Applicable billing-period portion
+- Monthly divisor (Calendar Days / 30 Days / Custom), as selected
+- Eligible payable period
+- Recorded and reviewed non-payable breakdown/operator-unavailable days
+- Applicable contractual deductions
+- Resulting Days Billed and Gross Amount
+
+The calendar may show three Worked Days while the hire contract covers an entire month. That difference is not automatically a calculation error.
+
+However, do not treat absence of activity records as confirmed machine availability without indicating the evidence limitation.
+
+**Critical:** Do not change `calculateHireBilling`, `calculateHireGroup`, monthly divisor arithmetic, breakdown grace rules, diesel recovery or payable quantity logic merely to make figures resemble the mockup.
+
+The mockup amounts and day counts are illustrative, not instructions to replace real calculations.
+
+If an existing calculation produces a genuine mismatch between the displayed Days Billed, actual contracted days and Gross Amount, report the precise source and demonstrate it with focused tests. Do not quietly change the commercial rule in this layout task.
+
+## 6. Multiple Equipment and Different Hire Bases
+
+Support the existing Vendor Bill structure where one vendor can supply multiple machines.
+
+Each equipment section must display its own:
+
+- Equipment Type and Registration
+- Hire Basis
+- Agreed Rate / Unit
+- Applicable Period
+- Activity Calendar
+- Month-wise Billing Summary
+
+Consolidate all equipment charges into the final bill Financial Breakdown.
+
+For Daily Hire from Material Trips, continue using VB-TIPPER-03 and subsequent integration rules: multiple trips for one vehicle/date count as one potential Daily Hire day, with Full/Half/Excluded decisions.
+
+For Trip Hire, count eligible confirmed trips individually.
+
+For Hourly Hire, use actual recorded hours.
+
+For Monthly Hire, use the existing monthly contractual calculation.
+
+Do not create duplicate equipment activity or allow the same payable evidence to be billed twice across different hire bases.
+
+## 7. Financial Breakdown — One Consolidated Total
+
+Below the monthly billing summary, show:
+
+**Financial Breakdown**
+
+- Gross Hire Amount
+- GST, if applicable under existing bill rules
+- HSD / Diesel Recovery, if applicable
+- Breakdown or Other Deductions, where applicable and not already incorporated into Gross Hire
+- Advance Deduction
+- TDS (IT)
+- Other Adjustments / Credits
+- **Net Payable**
+
+Show only applicable rows, following the existing calculation and tax rules.
+
+Maintain negative adjustments as deductions and positive credits/additions according to the current saved bill model.
+
+**Never deduct breakdown or downtime twice** if the charge has already been reduced in the calculated gross.
+
+Do not double-count advances, taxes or diesel recovery.
+
+Negative Net Payable may remain negative when recorded adjustments exceed charges; do not silently force it to zero or automatically offset another bill.
+
+For multi-month bills, consolidate all monthly Gross Amount rows into one correct Gross Hire Amount before applying bill-level adjustments.
+
+Do not silently change the amount of any existing saved bill.
+
+## 8. Bill Status and Actions
+
+Keep the existing status sequence:
+
+**Draft → Verified → Approved → Paid**
+
+Show the existing status progress controls below the bill.
+
+Retain current permission checks, including no self-approval where applicable and Owner exceptions already implemented.
+
+Do not introduce new payment stages or payment-entry forms in this batch.
+
+Retain existing Save/Edit, Mark as Verified, Approval, Paid and Delete safeguards.
+
+## 9. Vendor-Facing PDF, Excel and Print
+
+The same approved presentation must be usable by:
+
+- Bill preparer
+- Verifier
+- Approver
+- Vendor receiving the bill for acceptance
+
+Ensure the existing Vendor Bill PDF, Excel and print output reflect the meaningful bill details:
+
+- Vendor and Bill No.
+- Equipment and actual Hire Basis/Rate
+- Billing Period
+- Month-wise billed days and amounts
+- Breakdown/operator-unavailable deductions where applicable
+- Consolidated financial total and Net Payable
+
+Preserve existing export operations and financial permissions.
+
+Detailed operational evidence/calendars may be an appendix or expandable on-screen section. Do not force lengthy internal technical diagnostics into the vendor-facing document.
+
+Do not expose internal IDs, database field names or reviewer debugging information to vendors.
+
+## 10. UI Rules
+
+Use the approved compact Bill Detail mockup as the visual reference.
+
+Do not use the alternative oversized calendar/dashboard mockup.
+
+Avoid unnecessary explanation panels, extra financial previews or multiple versions of the same summary.
+
+Use a clear hierarchy:
+
+1. Bill Header
+2. Previous Billing Summary
+3. Activity Calendar(s)
+4. Monthly Billing Summary
+5. Financial Breakdown
+6. Bill Status and Actions
+
+Keep the calendar expandable so ordinary Bill Detail remains compact.
+
+On smaller screens, permit sensible table scrolling rather than squeezing financial columns until illegible.
+
+Use correct labels:
+
+- **Idle Days (Work Not Available)**
+- **Breakdown / Opr. Unavailable Days**
+- **Last Payment**
+- **Days Billed**
+- **Worked Days**
+- **Net Payable**
+
+Do not show “Idle Pays”, “Monthly Draft” or “Qty 1” as prominent normal bill labels.
+
+## 11. Historical Safety and Existing Integration
+
+Do not change:
+
+- Existing saved or Paid Vendor Bill amounts
+- Historical advances or payment entries
+- Existing Equipment Master ownership or hire defaults
+- Vendor Master IDs and confirmed associations
+- Material Trips, receipt numbers or quantities
+- DPRs and equipment logs
+- Saved hire evidence/snapshots
+- Diesel purchase, issue or recovery records
+- Financial Overview / Unpaid/All filters
+- Tax Register or Financial Summary Excel export
+- Vendor Bill Rate Card architecture
+- Site permissions or approval policies
+- PI, PO, purchase, inventory or Tally integration
+
+Read existing frozen financial and daily evidence wherever available. Where older bills lack those snapshots, show only verifiable records and avoid inventing missing history.
+
+No historical backfill, destructive migration or production-data correction.
+
+## 12. Focused Verification
+
+Test:
+
+1. Single-calendar-month bill.
+2. Billing period spanning two months, displaying two independent calendars and two monthly rows.
+3. Billing period spanning three months.
+4. Partial first and last months.
+5. Month-specific Worked, Idle and Breakdown/Operator Unavailable classifications.
+6. Missing activity remaining unknown, not automatically Idle.
+7. Three worked days with a full-month contractual hire rate: preserve correct monthly logic and show the difference between Worked and Days Billed.
+8. Monthly divisor selection and partial-month calculations.
+9. Breakdown deduction and operator unavailability without double deduction.
+10. Two equipment items belonging to one vendor with different agreed hire rates.
+11. Mixed monthly and daily equipment in the same saved bill.
+12. Correct consolidated Gross Hire Amount and Net Payable.
+13. Advance adjustment and TDS calculated only once.
+14. Previous Billing Summary excluding the current bill.
+15. Last Payment appearing only when actual reliable payment information exists.
+16. Legacy Paid bill with incomplete payment evidence not displaying fabricated amounts.
+17. Draft save/reopen retaining its saved terms and calendar.
+18. Verified, Approved and Paid historical bills remaining financially unchanged.
+19. Existing Daily Hire from Material Trips and cross-basis duplicate protection remaining intact.
+20. PDF, Excel and Print including the correct month-wise bill information.
+21. Existing permissions and no-self-approval rules remaining intact.
+
+Use focused tests and **one production build**.
+
+Where feasible, visually inspect both the single-month and two-month Bill Detail layouts in a signed-in browser using isolated test data.
+
+Do not modify real production bills for testing.
+
+## 13. Completion Report and Stop
+
+Provide a concise completion report explaining:
+
+- Which existing components were reused
+- Whether the approved layout is implemented in Draft and saved Bill Detail
+- How a multi-month bill displays month-wise activity and amounts
+- How Days Billed differs from Worked Days
+- Confirmation that monthly hire calculations were not silently rewritten
+- Whether PDF/Excel/Print reflect the new layout
+- Focused test count and build result
+- Any remaining historical payment or calendar evidence limitations
+- Any unavoidable SQL/schema changes
+
+**Do not publish automatically.**
+
+**STOP after implementation and verification. Do not continue into unrelated modules or redesigns.**
