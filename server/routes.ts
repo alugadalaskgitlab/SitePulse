@@ -19,6 +19,7 @@ import multer from 'multer';
 import { importSdbXlsx, buildImportTemplate } from './snlImporter';
 import { importMorthSdbXlsx, isMorthFormat } from './snlMorthParser';
 import PDFDocument from 'pdfkit';
+import { projectBillHireReviews, hireReviewTable, MONTHLY_BILL_HEADERS } from "../shared/vendorBillLayout";
 import { pipeOperatorManualPdf } from './operator-manual-pdf';
 import { pipeAdminGuidePdf } from './admin-guide-pdf';
 import { pipeEstimatorGuidePdf } from './estimator-guide-pdf';
@@ -12493,6 +12494,31 @@ export async function registerRoutes(
       }
       doc.moveDown(0.8);
 
+      for (const review of projectBillHireReviews(bill)) {
+        const printable = (value: unknown) => String(value ?? "-").replace(/₹/g, "Rs. ").replace(/[—–]/g, "-");
+        if (doc.y > 630) doc.addPage();
+        doc.font("Helvetica-Bold").fontSize(10).text(printable(`Monthly Billing Summary - ${review.name}`), 40);
+        doc.font("Helvetica").fontSize(8).text(printable(`Hire Basis: ${review.basis} | Rate: ${review.rate ?? "-"} | Period: ${review.from} to ${review.to}`), { width: pageW });
+        if (review.basis === "monthly") doc.text(`Monthly divisor: ${review.divisor}`);
+        const widths = [25, 135, 50, 50, 80, 95, 80];
+        const drawMonthRow = (cells: unknown[], header = false) => {
+          if (doc.y > 710) doc.addPage();
+          const top = doc.y;
+          let x = 40;
+          let bottom = top + 20;
+          doc.font(header ? "Helvetica-Bold" : "Helvetica").fontSize(7);
+          cells.forEach((cell, index) => {
+            doc.text(printable(cell), x + 2, top + 3, { width: widths[index] - 4, align: index > 1 ? "right" : "left" });
+            bottom = Math.max(bottom, doc.y + 4);
+            x += widths[index];
+          });
+          doc.y = bottom;
+        };
+        drawMonthRow(MONTHLY_BILL_HEADERS, true);
+        hireReviewTable(review).forEach(row => drawMonthRow(row));
+        doc.fontSize(8).text(printable(`Recorded period Gross Hire: ${review.gross ?? "-"} | ${review.note}`), 40, doc.y, { width: pageW });
+        doc.moveDown();
+      }
       const hasLeadDist = bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0);
       const colWidths = hasLeadDist
         ? [20, 52, 30, 160, 35, 28, 55, 55, 80]

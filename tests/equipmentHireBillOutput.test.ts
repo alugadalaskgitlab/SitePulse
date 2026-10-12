@@ -337,7 +337,7 @@ describe("equipment hire bill output", () => {
     expect(output?.rows[1]).toMatchObject({ status: "Breakdown", downtimeHours: 4 });
   });
 
-  it("keeps a legacy paid hire bill paid in full when amountPaid is absent", () => {
+  it("retains legacy paid bill net without inventing a payment when amountPaid is absent", () => {
     const output = buildSavedEquipmentHireBillOutput({
       billNo: "VB-EH-LEGACY", vendorName: "ACME HIRE", billType: "equipment",
       periodFrom: "2026-01-10", periodTo: "2026-01-11", status: "paid", amountPaid: null,
@@ -348,6 +348,6 @@ describe("equipment hire bill output", () => {
       }],
     });
     expect(output?.data.netPayable).toBe(8820);
-    expect(output?.data.paid).toBe(8820);
+    expect(output?.data.paid).toBeNull();
   });
 });

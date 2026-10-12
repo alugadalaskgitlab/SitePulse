@@ -54,6 +54,7 @@ beforeEach(() => {
       ...(typeof init?.body === "string" ? { body: JSON.parse(init.body) } : {}) });
     const json = (value: unknown) => new Response(JSON.stringify(value), { status: 200 });
     if (/\/api\/vendor-bills\/731(?:\?|$)/.test(url)) return json(bill);
+    if (url === "/api/vendor-bills/financial-review") return json([bill]);
     if (/\/api\/vendor-bills(?:\?|$)/.test(url)) return json([bill]);
     if (url.includes("/summary")) return json({
       total: 1, totalAmount: bill.totalAmount, draft: 1, verified: 0, approved: 0, paid: 0, gstByCategory: {},
@@ -71,6 +72,20 @@ async function openDetail() {
   fireEvent.click(await screen.findByTestId("card-bill-731"));
   await screen.findByTestId("text-detail-title");
 }
+
+describe("VB-LAYOUT-01 recorded payment display", () => {
+  it.each(["draft", "paid"])("keeps missing %s payment and balance neutral", async status => {
+    bill.billType = "equipment";
+    bill.status = status;
+    bill.amountPaid = null;
+    bill.netPayableAmount = 1000;
+    await openDetail();
+    const payment = screen.getByTestId("section-payment-details").textContent;
+    expect(payment).toContain("PAID: —");
+    expect(payment).toContain("BALANCE THIS BILL: —");
+    expect(payment).not.toContain("PAID: ₹0.00");
+  });
+});
 async function clickExport(position: "header" | "footer", kind: "excel" | "pdf" = "excel") {
   await waitFor(() => expect(queryClient.isFetching()).toBe(0));
   const before = requests.length;

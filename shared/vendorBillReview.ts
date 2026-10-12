@@ -31,3 +31,19 @@ export function vendorStatementBills(current: any, permitted: any[]) {
     : b.id === current.id).sort((a, b) =>
     String(a.billDate).localeCompare(String(b.billDate)) || Number(a.id) - Number(b.id));
 }
+
+/** Permitted, confirmed identity only; later bills are not previous bills. */
+export function previousBillingSummary(current: any, permitted: any[], totals: (bill: any) => any) {
+  if (current.vendorId == null || !current.billDate) return { rows: [], gross: null, paid: null, balance: null, lastPayment: null };
+  const rows = vendorStatementBills(current, permitted).filter(row => row.id !== current.id &&
+    (String(row.billDate) < String(current.billDate) ||
+      (row.billDate === current.billDate && Number(row.id) < Number(current.id))));
+  const amounts = rows.map(row => billReviewAmounts(row, totals(row)));
+  const known = amounts.every(row => row.paid != null);
+  // paidAt is a status timestamp, not a transaction timestamp. The existing
+  // cumulative amountPaid does not establish the last payment amount.
+  return { rows, gross: amounts.reduce((s, a) => s + a.gross, 0),
+    paid: known ? amounts.reduce((s, a) => s + a.paid!, 0) : null,
+    balance: known ? amounts.reduce((s, a) => s + a.balance!, 0) : null,
+    lastPayment: null };
+}

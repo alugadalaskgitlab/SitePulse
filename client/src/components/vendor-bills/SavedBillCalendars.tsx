@@ -2,6 +2,8 @@ import { buildSavedEquipmentHireBillOutput, EquipmentHireDailyTable, exportEquip
 import { EquipmentHirePeriodTotals } from "./DraftEquipmentHireCalendar";
 import HireActivityBreakdownCalendar from "./HireActivityBreakdownCalendar";
 import { Button } from "@/components/ui/button";
+import HireMonthlyReview from "./HireMonthlyReview";
+import { projectHireReview } from "@shared/vendorBillLayout";
 
 const show = (v: unknown) => v == null ? "Not established" : String(v);
 
@@ -28,8 +30,10 @@ export default function SavedBillCalendars({ bill, canExport = false }: { bill: 
         ...(snapshot.dailyDecisions || []), ...(snapshot.exceptionDecisions || []), ...(snapshot.tripDecisions || []),
       ];
       const name = statement.equipmentName || snapshot.equipmentName || `Equipment #${statement.equipmentId}`;
-      return <details className="rounded-lg border p-3" key={statement.id || index}>
-        <summary className="cursor-pointer font-semibold text-sm">View Activity / Breakdown Calendar · {name}</summary>
+      return <div className="space-y-3" key={statement.id || index}>
+        <HireMonthlyReview review={projectHireReview(statement, bill)} />
+        <details className="rounded-lg border p-3">
+        <summary className="cursor-pointer font-semibold text-sm">Detailed recorded evidence · {name}</summary>
         <div className="space-y-3 pt-3">
           <p className="text-xs">Saved evidence · {bill.status} · {statement.periodFrom || bill.periodFrom} to {statement.periodTo || bill.periodTo}. Current equipment activity is not substituted.</p>
           {output?.hasFrozenDailyRows ? <>
@@ -60,15 +64,20 @@ export default function SavedBillCalendars({ bill, canExport = false }: { bill: 
           {Object.entries(snapshot.adjustments || {}).filter(([key]) => !key.toLowerCase().includes("reason")).map(([key, value]) =>
             <p className="text-xs" key={key}>{key}: {show(value)}{snapshot.adjustments[`${key}Reason`] ? ` · ${snapshot.adjustments[`${key}Reason`]}` : ""}</p>)}
         </div>
-      </details>;
+      </details></div>;
     })}
-    {Array.from(legacyGroups, ([key, items]) => <details className="rounded-lg border p-3" key={key}>
-      <summary className="cursor-pointer font-semibold text-sm">View Activity / Breakdown Calendar · {items[0].description || key}</summary>
+    {Array.from(legacyGroups, ([key, items]) => <div className="space-y-3" key={key}>
+      <HireMonthlyReview review={projectHireReview({
+        equipmentName: items[0].description || "Equipment", equipmentId: items[0].equipmentId,
+        periodFrom: bill.periodFrom, periodTo: bill.periodTo,
+      }, bill)} />
+      <details className="rounded-lg border p-3">
+      <summary className="cursor-pointer font-semibold text-sm">Available saved bill lines · {items[0].description || "Equipment"}</summary>
       <div className="space-y-2 pt-3">
         <p className="text-sm text-amber-700">Frozen activity/breakdown evidence is unavailable for this legacy/itemized bill. Working hours, idle days, diesel and historical decisions: Not established. Current activity has not been used to reconstruct history.</p>
         <p className="text-xs">Saved period: {bill.periodFrom || "Not established"} to {bill.periodTo || "Not established"}. Available saved bill lines:</p>
         {items.map((item: any, i: number) => <p className="text-xs" key={item.id || i}>{item.date} · {item.description} · {show(item.qty)} {item.unit} × {show(item.rate)} = {show(item.amount)}</p>)}
       </div>
-    </details>)}
+    </details></div>)}
   </section>;
 }

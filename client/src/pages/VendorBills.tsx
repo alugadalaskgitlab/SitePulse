@@ -45,6 +45,8 @@ import {
 } from "@/components/vendor-bills/EquipmentHireBillOutput";
 import DraftEquipmentHireCalendar, { SavedEquipmentCalendarExport } from "@/components/vendor-bills/DraftEquipmentHireCalendar";
 import SavedBillCalendars from "@/components/vendor-bills/SavedBillCalendars";
+import HireMonthlyReview from "@/components/vendor-bills/HireMonthlyReview";
+import { projectHireReview, projectBillHireReviews, hireReviewTable, hireFinancialBridge, MONTHLY_BILL_HEADERS } from "@shared/vendorBillLayout";
 import { VendorBillFinancialSummary, VendorRunningStatement } from "@/components/vendor-bills/VendorBillReview";
 import HireActivityBreakdownCalendar, { hireActivityBreakdownSheetRows } from "@/components/vendor-bills/HireActivityBreakdownCalendar";
 import WholeBillExportButtons from "@/components/vendor-bills/WholeBillExportButtons";
@@ -376,9 +378,10 @@ export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; 
     bill.paymentAccountKey,
   );
   const netPayable = bill.netPayableAmount != null ? Number(bill.netPayableAmount) : Number(bill.totalAmount || 0);
-  // Historic all-or-nothing paid bills deliberately have no backfill; display
-  // them as fully paid without changing any source record.
-  const effectivePaid = bill.amountPaid != null ? Number(bill.amountPaid) : bill.status === "paid" ? netPayable : 0;
+  // A Paid status is not evidence of the cash/bank amount. Display only the
+  // recorded cumulative figure; keep the existing payment-entry workflow.
+  const effectivePaid = bill.amountPaid != null && bill.amountPaid !== "" && Number.isFinite(Number(bill.amountPaid))
+    ? Number(bill.amountPaid) : null;
   const selectedAccount = accountsQuery.selectedAccount;
 
   const saveMutation = useMutation({
@@ -422,8 +425,8 @@ export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; 
             PAID BY: {!bill.paidBy ? "\u2014" : bill.paidBy === "company" ? "COMPANY ACCOUNT" : `PERSONAL${bill.paidBy !== "PERSONAL" ? ` \u2014 ${bill.paidBy}` : ""}`}
           </Badge>
           {isEquipmentHire && <>
-            <Badge variant="outline">PAID: ₹{formatCurrency(effectivePaid)}</Badge>
-            <Badge variant="outline">BALANCE THIS BILL: ₹{formatCurrency(Math.max(0, netPayable - effectivePaid))}</Badge>
+            <Badge variant="outline">PAID: {effectivePaid == null ? "—" : `₹${formatCurrency(effectivePaid)}`}</Badge>
+            <Badge variant="outline">BALANCE THIS BILL: {effectivePaid == null ? "—" : `₹${formatCurrency(netPayable - effectivePaid)}`}</Badge>
           </>}
           {selectedAccount && <Badge variant="outline">ACCOUNT: {selectedAccount.name}</Badge>}
         </div>
@@ -1784,6 +1787,15 @@ export default function VendorBills() {
       billType, billTypeLabel: getBillTypeLabel(billType), saved: editingBillId !== null,
       status: editingBillId !== null ? editingBillStatus : "unsaved", generatedAt: new Date().toISOString(),
       sections,
+      hireFinancialRows: hireFinancialBridge({
+        hireStatements: hireOutputs.map(output => ({ grossAmount: output.grossHire, netAmount: output.taxableAmount })),
+      }, isHistoricalHireEdit ? displayedHireTotals(hireOutputs).subtotal : totalAmount),
+      hireReviews: included.map(group => projectHireReview({
+        equipmentName: formatEquipmentOptionLabel(hireEquipmentFor(group.equipmentId) || {}),
+        periodFrom: group.periodFrom, periodTo: group.periodTo, billingBasis: group.basis, rate: group.rate,
+        calculationSnapshot: { ...hireCalculated.find(entry => entry.group.id === group.id)?.result,
+          terms: calculationTermsForBill(group, hireEquipmentFor(group.equipmentId) || {}) },
+      })),
       calendars: included.flatMap(group => {
         const calendar = readCalendars([calendarKey(group)])[0];
         return [calendar || {
@@ -2453,6 +2465,13 @@ export default function VendorBills() {
         ${bill.periodFrom && bill.periodTo ? `<div class="item"><div class="label">Period</div><div class="value">${escHtml(formatDate(bill.periodFrom))} to ${escHtml(formatDate(bill.periodTo))}</div></div>` : ""}
         <div class="item"><div class="label">Status</div><div class="value"><span class="status-badge">${escHtml(bill.status.toUpperCase())}</span></div></div>
       </div>
+      ${projectBillHireReviews(bill).map(review => {
+        return `<h3>${escHtml(review.name)} · ${escHtml(review.basis)} · Rate ${escHtml(String(review.rate ?? "—"))}</h3>
+          <h4>Monthly Billing Summary</h4><table><thead><tr>${MONTHLY_BILL_HEADERS.map(h => `<th>${escHtml(h)}</th>`).join("")}</tr></thead>
+          <tbody>${hireReviewTable(review).map(row => `<tr>${row.map(cell => `<td>${escHtml(String(cell))}</td>`).join("")}</tr>`).join("")}</tbody></table>
+          <p>${escHtml(review.note)}${review.basis === "monthly" ? ` Monthly divisor: ${escHtml(review.divisor)}.` : ""}</p>`;
+      }).join("")}
+      <h3>Financial Breakdown</h3>
       <table><thead><tr><th>#</th><th>Date</th><th>Type</th><th>Description</th>${hasSuppliedOrTransporter ? "<th>Supplied To</th><th>Transporter</th>" : ""}<th>Qty</th><th>Unit</th>${hasLeadDistance ? "<th>Lead (KM)</th>" : ""}<th style="text-align:right">Rate (₹)</th><th style="text-align:right">Amount (₹)</th></tr></thead>
       <tbody>${rows}</tbody>
       <tfoot>
@@ -2977,6 +2996,11 @@ export default function VendorBills() {
                    dieselResponsibility: equipment?.hireDieselResponsibility, consumptionNorm: equipment?.consumptionNorm,
                 };
                 renderedHireOutputs.current.set(calendarKey(selection), exportData);
+                exportData.hireReview = projectHireReview({
+                  equipmentId: selection.equipmentId, equipmentName: exportData.equipmentName,
+                  periodFrom: selection.periodFrom, periodTo: selection.periodTo, billingBasis: selection.basis, rate: selection.rate,
+                  calculationSnapshot: { ...result, terms: calculationTermsForBill(selection, equipment || {}) },
+                });
                 rememberCalendar(calendarKey(selection), {
                   equipmentName: exportData.equipmentName, periodFrom: selection.periodFrom, periodTo: selection.periodTo,
                   rows: dailyRows, dieselResponsibility: exportData.dieselResponsibility,
@@ -2997,6 +3021,11 @@ export default function VendorBills() {
                   <div className="rounded bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
                     Master terms · {String(equipment?.hireDieselResponsibility || "").toLowerCase() === "vendor" ? "Fuel / Diesel: Contractor Scope" : `Diesel: ${String(equipment?.hireDieselResponsibility || "Not recorded")}`} · Breakdown deductions: {equipment?.hireBreakdownDeductionEnabled ? "Enabled" : "Not enabled"}
                   </div>
+                  {billType === "equipment" && <HireMonthlyReview review={projectHireReview({
+                    equipmentName: exportData.equipmentName, periodFrom: selection.periodFrom, periodTo: selection.periodTo,
+                    billingBasis: selection.basis, rate: selection.rate,
+                    calculationSnapshot: { ...result, terms: calculationTermsForBill(selection, equipment || {}) },
+                  })} />}
                   {billType === "equipment" ? (
                     <DraftEquipmentHireCalendar
                       onExportSnapshot={calendar => rememberCalendar(calendarKey(selection), calendar)}
@@ -3173,6 +3202,11 @@ export default function VendorBills() {
                    : `₹${formatCurrency(suggestedRate)}`;
                  const showExcessFuelLine = !vendorDieselScope && financials.hsdRecovery > 0;
                  const exportData: EquipmentHireExportData = {
+                   hireReview: projectHireReview({
+                     equipmentId: group.equipmentId, equipmentName: formatEquipmentOptionLabel(equipment || {}),
+                     periodFrom: group.periodFrom, periodTo: group.periodTo, billingBasis: group.basis, rate: group.rate,
+                     calculationSnapshot: { ...result, terms: calculationTermsForBill(group, equipment || {}) },
+                   }),
                    billNo, vendorName, equipmentName: formatEquipmentOptionLabel(equipment || {}),
                    periodFrom: group.periodFrom, periodTo: group.periodTo,
                    hireBasis: HIRE_BASIS_LABELS[group.basis], rate: group.rate,
@@ -3315,6 +3349,11 @@ export default function VendorBills() {
                         </div>}
                       </div>
                     )}
+                    {billType === "equipment" && <HireMonthlyReview review={projectHireReview({
+                      equipmentName: exportData.equipmentName, periodFrom: group.periodFrom, periodTo: group.periodTo,
+                      billingBasis: group.basis, rate: group.rate,
+                      calculationSnapshot: { ...result, terms: calculationTermsForBill(group, equipment || {}) },
+                    })} />}
                     {billType === "equipment" ? (
                       <DraftEquipmentHireCalendar
                         onExportSnapshot={calendar => rememberCalendar(calendarKey(group), calendar)}
@@ -4411,6 +4450,9 @@ export default function VendorBills() {
         ...(index > 0 ? { netPayableAmount: undefined } : {}),
       }));
     const detailFinancials = getBillFinancialTotals(bill);
+    const confirmedVendor = (bill as any).vendorId == null ? undefined :
+      billingIdentities.data?.find(identity => identity.id === Number((bill as any).vendorId));
+    const detailVendorName = confirmedVendor?.businessName?.trim() || confirmedVendor?.name || bill.vendorName;
     const detailSubtotals: Record<string, number> = {};
     bill.items.forEach((item: any) => {
       const category = item.category || "other";
@@ -4425,11 +4467,13 @@ export default function VendorBills() {
       const outputs = savedHireOutputs.flatMap((output: ReturnType<typeof buildSavedEquipmentHireBillOutput>) =>
         output ? [output.data] : []);
       return {
-        companyName: companyName || "HLC", vendorName: bill.vendorName, billNo: bill.billNo, billDate: bill.billDate,
+        companyName: companyName || "HLC", vendorName: detailVendorName, billNo: bill.billNo, billDate: bill.billDate,
         periodFrom: bill.periodFrom || "", periodTo: bill.periodTo || "",
         site: b.siteName || (b.siteId == null ? "All sites" : sites?.find(site => site.id === b.siteId)?.name || ""),
         billType: type, billTypeLabel: getBillTypeLabel(type), saved: true, status: bill.status,
         generatedAt: new Date().toISOString(), notes: bill.notes || "",
+        hireReviews: projectBillHireReviews(bill),
+        hireFinancialRows: hireFinancialBridge(bill, detailFinancials.totalAmount),
         sections: projectVendorBillPageItems({
           items: bill.items, subtotals: detailSubtotals, shouldGroup, billType: type, total: detailFinancials.totalAmount,
           getLabourSource: item => getLabourSource({ siteName: item.siteName, description: item.description || "" }),
@@ -4479,13 +4523,13 @@ export default function VendorBills() {
             <Button variant="ghost" size="icon" onClick={() => { setSelectedBillId(null); setView("list"); }} data-testid="button-back-detail">
               <ChevronLeft className="w-5 h-5" />
             </Button>
-            <h1 className="text-xl font-bold" data-testid="text-detail-title">BILL DETAIL</h1>
+            <h1 className="text-xl font-bold" data-testid="text-detail-title">Bill Detail</h1>
           </div>
           <div className="flex gap-2 flex-wrap items-center">
             <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
               isAdmin={user?.isAdmin} isOwner={user?.isOwner}
               position="header" getSnapshot={getCurrentDetailSnapshot} />
-            {canExport && String(bill.billType || "").toLowerCase() === "equipment" && hasPersistedHireStatements && <EquipmentHireBillDetailOutput bill={bill} output={savedHireOutputs[0]} />}
+            {canExport && String(bill.billType || "").toLowerCase() === "equipment" && (bill as any).hireStatements?.length === 1 && <EquipmentHireBillDetailOutput bill={bill} output={savedHireOutputs[0]} />}
             {canExport && String(bill.billType || "").toLowerCase() !== "equipment" && ["verified", "approved", "paid"].includes(bill.status) && (
               <Button
                 variant="outline"
@@ -4530,44 +4574,12 @@ export default function VendorBills() {
           </div>
         </div>
 
-        {Array.isArray((bill as any).hireStatements) && (bill as any).hireStatements.length > 0 && (
-          <Card className="border-orange-200 dark:border-orange-800">
-            <CardHeader className="py-3"><CardTitle className="text-sm uppercase tracking-wider">EQUIPMENT HIRE CALCULATION SNAPSHOT</CardTitle></CardHeader>
-            <CardContent className="pt-0 space-y-2">{(bill as any).hireStatements.map((s: any, i: number) => {
-              const snap = s.calculationSnapshot || {};
-              const diesel = snap.diesel || {};
-              const frozenRates = Array.from(new Set((diesel.dailyPricing || [])
-                .map((day: any) => day.applicableRate).filter((rate: any) => rate != null))) as number[];
-              const frozenRateLabel = diesel.rateUnavailable
-                ? "RATE UNAVAILABLE"
-                : frozenRates.length > 1
-                  ? `₹${formatCurrency(diesel.applicableRate)} / L`
-                  : diesel.applicableRate != null
-                    ? `₹${formatCurrency(diesel.applicableRate)} / L`
-                    : "—";
-              return <div key={s.id || i} className="border rounded p-3 text-xs grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <p className="col-span-2 sm:col-span-4" data-testid={`saved-hire-ownership-${s.id || i}`}>
-                  {equipmentOwnershipLabel(snap.equipment || { ownership: snap.ownership }, snap.equipment?.linkedVendorName || snap.linkedVendorName)}
-                </p>
-                <strong>{formatDate(s.periodFrom)}–{formatDate(s.periodTo)}</strong><strong>{String(s.billingBasis || snap.terms?.billingBasis || "HIRE").toUpperCase()} · {String(s.status || "draft").toUpperCase()}</strong>
-                <span>QTY {s.quantity ?? snap.quantity ?? "—"} {HIRE_QUANTITY_UNITS[(s.billingBasis || snap.terms?.billingBasis || "daily") as HireBillingBasis]} · RATE ₹{formatCurrency(s.rate ?? snap.terms?.rate)} {HIRE_RATE_UNITS[(s.billingBasis || snap.terms?.billingBasis || "daily") as HireBillingBasis]?.replace("₹", "")}</span><strong className="text-orange-700">NET ₹{formatCurrency(s.netAmount ?? snap.netAmount)}</strong>
-                <span>GROSS ₹{formatCurrency(s.grossAmount ?? snap.grossAmount)}</span><span>DEDUCTION ₹{formatCurrency(s.deductionAmount ?? snap.deductionAmount)}</span>
-                <span>HSD ACTUAL / EXPECTED {Number(diesel.actualDiesel || 0).toFixed(2)} / {Number(diesel.expectedDiesel || 0).toFixed(2)} L</span>
-                <span>NET EXCESS {Number(diesel.suggestedExcess || 0).toFixed(2)} L · APPLICABLE WEIGHTED HSD RATE {frozenRateLabel}</span>
-                <span>SUGGESTED ₹{formatCurrency(diesel.suggestedRecoveryAmount)} · FINAL RECOVERY ₹{formatCurrency(diesel.finalRecoveryAmount || 0)}</span>
-                {Array.isArray(s.exceptions) && s.exceptions.length > 0 && <span className="col-span-2 sm:col-span-4 text-muted-foreground">{s.exceptions.length} REVIEWED BREAKDOWN / EXCEPTION DECISION{s.exceptions.length === 1 ? "" : "S"}</span>}
-                {(String(s.status || "").toLowerCase() === "approved" || String(bill.status).toLowerCase() !== "draft") && <HistoricalHireWorkingSheet snapshot={snap} />}
-              </div>;
-            })}</CardContent>
-          </Card>
-        )}
-
         <Card>
           <CardContent className="py-4 space-y-4">
             <div className="flex justify-between items-start flex-wrap gap-3">
               <div>
                 <p className="text-sm text-muted-foreground uppercase">Vendor</p>
-                <p className="text-xl font-bold" data-testid="text-vendor-name">{bill.vendorName}</p>
+                <p className="text-xl font-bold" data-testid="text-vendor-name">{detailVendorName}</p>
               </div>
               <Badge variant="outline" className={`uppercase text-sm ${getStatusBadgeClass(bill.status)} no-default-hover-elevate no-default-active-elevate`} data-testid="badge-bill-status">
                 {bill.status}
@@ -4595,8 +4607,25 @@ export default function VendorBills() {
               </div>
             </div>
 
-            <SavedBillCalendars bill={bill} canExport={canExport} />
             {canViewFinancials && <VendorRunningStatement bill={bill} bills={[]} totals={getBillFinancialTotals} />}
+            <SavedBillCalendars bill={bill} canExport={canExport} />
+            <section className="rounded border p-3" aria-label="Financial Breakdown">
+              <h2 className="text-sm font-semibold mb-2">Financial Breakdown</h2>
+              <dl className="ml-auto max-w-lg text-sm divide-y">
+                {[
+                  ...(hireFinancialBridge(bill, detailFinancials.totalAmount).length ? hireFinancialBridge(bill, detailFinancials.totalAmount) :
+                    [{ label: hasPersistedHireStatements &&
+                      Math.abs(savedHireOutputs.reduce((sum: number, output: ReturnType<typeof buildSavedEquipmentHireBillOutput>) =>
+                        sum + (output?.data.grossHire || 0), 0) - detailFinancials.totalAmount) < 0.005
+                      ? "Gross Hire Amount" : "Bill subtotal", amount: detailFinancials.totalAmount }]),
+                  ...detailFinancials.gstRows.filter(row => row.amount !== 0),
+                  ...(detailFinancials.primaryAdjustment ? [{ label: (bill as any).adjustmentLabel || "Advance Deduction", amount: detailFinancials.primaryAdjustment }] : []),
+                  ...detailFinancials.additional.filter(row => row.amount !== 0),
+                  ...(detailFinancials.tds ? [{ label: "TDS (IT)", amount: -detailFinancials.tds }] : []),
+                  { label: "Net Payable", amount: detailFinancials.netTotal },
+                ].map((row, index) => <div key={index} className="flex justify-between gap-4 py-2 last:font-bold last:bg-amber-50 dark:last:bg-amber-900/20"><dt>{row.label}</dt><dd className="tabular-nums whitespace-nowrap">₹{formatCurrency(row.amount)}</dd></div>)}
+              </dl>
+            </section>
             {/* 06M-A: Payment Mode / Paid By — entry preferred once PAID, shown
                 whenever values exist. No payment evidence/QR upload here. */}
             {(hasCumulativeVendorPayment(bill.billType) || bill.status === "paid" || (bill as any).paymentMode || (bill as any).paidBy) && (
@@ -4608,7 +4637,7 @@ export default function VendorBills() {
             )}
 
             <div className="border-t pt-4">
-              <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-2">Status Progress</p>
+              <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 mb-2">Bill Status</p>
               {renderStatusSteps(bill.status, {
                 createdAt: bill.createdAt,
                 verifiedAt: bill.verifiedAt,
@@ -4650,6 +4679,8 @@ export default function VendorBills() {
           </CardContent>
         </Card>
 
+        <details>
+        <summary className="cursor-pointer text-sm font-semibold">View recorded bill lines and tax details</summary>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2">
             <span className="font-bold text-amber-600 dark:text-amber-400" data-testid="text-detail-total">
@@ -4940,6 +4971,7 @@ export default function VendorBills() {
           </CardContent>
         </Card>
 
+        </details>
         {bill.notes && (
           <Card>
             <CardContent className="py-4">

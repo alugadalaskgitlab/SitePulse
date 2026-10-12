@@ -1,4 +1,5 @@
 import type { BillingDailyRow } from "./EquipmentHireBillOutput";
+import type { HireReview } from "@shared/vendorBillLayout";
 
 export type BillExportCell = string | number | null;
 export type BillExportRow = {
@@ -59,6 +60,8 @@ export type WholeBillSnapshot = {
   generatedAt: string;
   sections: BillExportSection[];
   calendars: BillExportCalendar[];
+  hireReviews?: HireReview[];
+  hireFinancialRows?: BillExportAdjustment[];
   /** All values are supplied by the current screen financial path. */
   totals: {
     subtotal: number;
@@ -138,7 +141,9 @@ export function billSummaryRows(snapshot: WholeBillSnapshot): BillExportCell[][]
     ...(snapshot.billType === "all"
       ? populatedBillSections(snapshot).map(section => [BILL_EXPORT_SHEET_NAMES[section.category] || section.category, section.subtotal])
       : []),
-    ["SUB-TOTAL", snapshot.totals.subtotal],
+    ...(snapshot.hireFinancialRows?.length
+      ? snapshot.hireFinancialRows.map(row => [row.label, row.amount])
+      : [["SUB-TOTAL", snapshot.totals.subtotal]]),
     ...snapshot.totals.gst.map(row => [row.label, row.amount, row.reason || ""]),
     ["TOTAL GST", snapshot.totals.totalGst],
     ...snapshot.totals.adjustments.map(row => [row.label, row.amount, row.reason || ""]),

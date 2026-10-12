@@ -1,6 +1,7 @@
 import { GState, jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
+import { MONTHLY_BILL_HEADERS, hireReviewTable } from "@shared/vendorBillLayout";
 import { equipmentHireActivitySheetRows } from "./EquipmentHireBillOutput";
 import {
   BILL_EXPORT_SHEET_NAMES, DRAFT_BILL_NOTICE, billExportIsDraft, billExportStatus,
@@ -18,6 +19,17 @@ export function buildWholeBillWorkbook(snapshot: WholeBillSnapshot): XLSX.WorkBo
   const summary = XLSX.utils.aoa_to_sheet([["VENDOR BILL"], ...billSummaryRows(snapshot)]);
   summary["!cols"] = [{ wch: 42 }, { wch: 68 }, { wch: 48 }];
   XLSX.utils.book_append_sheet(workbook, summary, "Summary");
+  if (snapshot.hireReviews?.length) {
+    const rows = snapshot.hireReviews.flatMap(review => [
+      [review.name, review.basis, review.rate ?? "—", review.from, review.to],
+      ...(review.basis === "monthly" ? [["Monthly divisor", review.divisor]] : []),
+      MONTHLY_BILL_HEADERS, ...hireReviewTable(review), [review.note],
+      ["Recorded period Gross Hire", review.gross ?? "—"], [],
+    ]);
+    const sheet = XLSX.utils.aoa_to_sheet(rows);
+    sheet["!cols"] = [10, 52, 18, 18, 32, 38, 24].map(wch => ({ wch }));
+    XLSX.utils.book_append_sheet(workbook, sheet, "Monthly Billing Summary");
+  }
   const populated = populatedBillSections(snapshot);
   const sections = snapshot.billType === "all" ? populated : [{
     category: snapshot.billType,
@@ -65,9 +77,11 @@ export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
     doc.addPage();
     autoTable(doc, {
       startY: pageHeaderHeight,
-      head: [[title, ...Array(headers.length - 1).fill("")], headers.map(printable)],
-      body: rows.map(row => row.map((value, index) => {
-        const money = headers[index] === "Amount" || (headers[index] === "Value / Amount" && typeof value === "number");
+      head: [[{ content: printable(title), colSpan: headers.length }], headers.map(printable)],
+      body: rows.map(row => row.length > 1 && row.slice(1).every(value => value === "") && String(row[0]).length > 80
+        ? [{ content: printable(row[0]), colSpan: headers.length }]
+        : row.map((value, index) => {
+        const money = headers[index] === "Amount" || headers[index] === "Gross Amount (₹)" || (headers[index] === "Value / Amount" && typeof value === "number");
         const qty = headers[index] === "Qty";
         return typeof value === "number" && (money || qty)
           ? value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -75,6 +89,12 @@ export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
       })),
       theme: "grid", styles: { fontSize: 6.4, cellPadding: 1.5, overflow: "linebreak" },
       headStyles: { fillColor: [180, 83, 9] },
+      ...(headers === MONTHLY_BILL_HEADERS ? { columnStyles: {
+        0: { cellWidth: 30 }, 1: { cellWidth: 57 },
+        2: { halign: "right" as const }, 3: { halign: "right" as const },
+        4: { halign: "right" as const }, 5: { halign: "right" as const },
+        6: { halign: "right" as const, cellWidth: 35 },
+      } } : {}),
       margin: { top: pageHeaderHeight, bottom: 14, left: 10, right: 10 },
       showHead: "everyPage",
       didParseCell: cell => {
@@ -85,6 +105,11 @@ export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
     });
   };
   // Remove the initial empty page after tables are generated.
+  for (const review of snapshot.hireReviews || []) {
+    table(`Monthly Billing Summary: ${review.name} / ${review.basis} / Rate ${review.rate ?? "-"} / ${review.divisor}`,
+      MONTHLY_BILL_HEADERS, [...hireReviewTable(review), ["Recorded period Gross Hire", "", "", "", "", "", review.gross ?? "—"],
+        [review.note, "", "", "", "", "", ""]]);
+  }
   for (const section of populatedBillSections(snapshot)) {
     const content = billSectionTable(section);
     table(BILL_EXPORT_SHEET_NAMES[section.category] || section.category, content.headers, content.values);

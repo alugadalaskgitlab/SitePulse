@@ -7,6 +7,7 @@ import { Download, FileText } from "lucide-react";
 import type { EquipmentPerformanceDailyRow } from "@shared/equipmentPerformance";
 import { computeEquipmentUsage, formatEquipmentDuration, formatEquipmentTime } from "@shared/equipmentUsage";
 import { calculateEquipmentHireFinancials } from "@shared/hireBilling";
+import { projectHireReview, hireReviewTable, MONTHLY_BILL_HEADERS, type HireReview } from "@shared/vendorBillLayout";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -64,7 +65,8 @@ export type EquipmentHireExportData = {
   tdsRate: number;
   tdsAmount: number;
   netPayable: number;
-  paid: number;
+  paid: number | null;
+  hireReview?: HireReview;
   dieselResponsibility?: "hlc" | "vendor" | string | null;
   consumptionNorm?: number | null;
   meterType?: string | null;
@@ -190,7 +192,7 @@ function dailyValues(
       expectedLitres(item?.expectedDiesel),
       norm,
     ]),
-    `${row.status}${row.downtimeHours ? ` · ${number(row.downtimeHours, 2)}h downtime` : ""}${row.remarks ? ` — ${row.remarks}` : ""}`,
+    `${row.status === "No Work" ? "Activity Not Recorded" : row.status === "Breakdown" ? "Breakdown / Operator Unavailable" : row.status}${row.downtimeHours ? ` · ${number(row.downtimeHours, 2)}h downtime` : ""}${row.remarks ? ` — ${row.remarks}` : ""}`,
   ];
 }
 
@@ -342,7 +344,7 @@ export function EquipmentHireDailyActivity({ open, onOpenChange, rows, dieselRes
 }
 
 export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: BillingDailyRow[], format: "pdf" | "xlsx") {
-  const balance = Math.max(0, data.netPayable - data.paid);
+  const balance = data.paid == null ? null : data.netPayable - data.paid;
   const summary = [
     ["Vendor", data.vendorName], ["Equipment", data.equipmentName], ...(data.projectSite ? [["Project / Site", data.projectSite]] : []), ["Bill period", `${dateLabel(data.periodFrom)} to ${dateLabel(data.periodTo)}`],
     ["Hire basis", data.hireBasis], ["Rate", money(data.rate)], ["Gross Hire", money(data.grossHire)],
@@ -354,7 +356,7 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
     ...(String(data.dieselResponsibility).toLowerCase() === "vendor" ? [["Fuel / Diesel", "Contractor Scope"]] : []),
     ["Taxable / Bill Amount", money(data.taxableAmount)],
     [`GST @ ${data.gstRate}%`, `+ ${money(data.gstAmount)}`], ["Invoice Total", money(data.invoiceTotal)],
-    [`TDS @ ${data.tdsRate}%`, `− ${money(data.tdsAmount)}`], ["NET PAYABLE", money(data.netPayable)], ["Paid", money(data.paid)], ["Balance This Bill", money(balance)],
+    [`TDS @ ${data.tdsRate}%`, `− ${money(data.tdsAmount)}`], ["NET PAYABLE", money(data.netPayable)], ["Paid", data.paid == null ? "—" : money(data.paid)], ["Balance This Bill", balance == null ? "—" : money(balance)],
   ];
   const safeName = (data.billNo || "equipment-hire-bill").replace(/[^\w-]+/g, "-");
   const consumptionUnit = calendarConsumptionUnit(rows, data.meterType, data.consumptionRateUnit);
@@ -370,6 +372,11 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
     ]);
     activitySheet["!cols"] = activity.columns;
     XLSX.utils.book_append_sheet(workbook, summarySheet, "Bill Summary");
+    if (data.hireReview) {
+      const sheet = XLSX.utils.aoa_to_sheet([MONTHLY_BILL_HEADERS, ...hireReviewTable(data.hireReview), [data.hireReview.note]]);
+      sheet["!cols"] = [10, 50, 16, 16, 32, 38, 22].map(wch => ({ wch }));
+      XLSX.utils.book_append_sheet(workbook, sheet, "Monthly Billing Summary");
+    }
     XLSX.utils.book_append_sheet(workbook, activitySheet, "Daily Activity");
     XLSX.writeFile(workbook, `${safeName}.xlsx`);
     return;
@@ -394,6 +401,14 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
       }
     },
   });
+  if (data.hireReview) {
+    doc.addPage("a4", "landscape");
+    doc.setFontSize(12);
+    doc.text("Monthly Billing Summary", 14, 16);
+    autoTable(doc, { startY: 22, head: [MONTHLY_BILL_HEADERS.map(pdfText)],
+      body: hireReviewTable(data.hireReview).map(row => row.map(value => pdfText(String(value)))),
+      styles: { fontSize: 8 }, headStyles: { fillColor: [180, 83, 9] } });
+  }
   // The activity always begins on a new page, keeping the summary cleanly on page one.
   doc.addPage("a4", "landscape");
   doc.setFontSize(13);
@@ -610,15 +625,11 @@ export function buildSavedEquipmentHireBillOutput(bill: any): { data: EquipmentH
     gstRate: frozenFinancials.gstRate ?? bill.gstRateEquipment,
     tdsRate: frozenFinancials.tdsRate ?? bill.tdsRate,
   });
-  // Legacy paid bills did not store amountPaid. Preserve their paid-in-full
-  // rendering against the frozen net (or the exact reconstructed financial
-  // chain), rather than treating the absent field as zero.
-  const paid = bill.amountPaid != null
-    ? Number(bill.amountPaid)
-    : bill.status === "paid"
-      ? Number(bill.netPayableAmount ?? frozenFinancials.netPayable ?? financials.netPayable)
-      : 0;
+  // Paid status and paidAt do not establish a cash/bank amount.
+  const paid = bill.amountPaid != null && bill.amountPaid !== "" && Number.isFinite(Number(bill.amountPaid))
+    ? Number(bill.amountPaid) : null;
   const data: EquipmentHireExportData = {
+    hireReview: projectHireReview(statement, bill),
     billNo: bill.billNo, vendorName: bill.vendorName, equipmentName: statement.equipmentName || snapshot.equipmentName || `Equipment #${equipmentId}`, projectSite: snapshot.projectSite,
     periodFrom, periodTo, hireBasis: String(statement.billingBasis || snapshot.terms?.billingBasis || "Hire").toUpperCase(),
     rate: Number(statement.rate ?? snapshot.terms?.rate ?? 0), grossHire, breakdownDeduction, hsdRecovery,
