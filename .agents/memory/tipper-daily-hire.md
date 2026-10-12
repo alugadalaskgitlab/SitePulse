@@ -3,6 +3,14 @@ name: Tipper daily hire from trips
 description: Confirmed transport identity, original-trip preservation, and daily-hire financial safeguards.
 ---
 
+## Current recovery direction
+
+Daily-hire tippers will henceforth be recorded in DPR Equipment Logs and billed through the earlier supported equipment-hire workflow. Remove newer Material Trip-to-Hire dependencies from Vendor Bills only; preserve unrelated trip operations and all saved financial evidence.
+
+**Why:** The user explicitly replaced the trip-sourced daily-hire direction with scoped Vendor Bills recovery, not further feature development.
+
+**How to apply:** The older integration requirements below are historical context, not authorization to re-enable trip-sourced daily hire. Establish compatibility with newer saved statements and indexes without production data changes; stop if this cannot be done safely. Never roll back the repository or production database.
+
 Material ownership and transport ownership are independent. Own Source material
 can arrive in an agency-hired tipper. Historical trip registration matches are
 only suggestions, never permission to charge.
