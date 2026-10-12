@@ -20,12 +20,14 @@ type Props = {
   trip: SiteMaterialTrip; vendors: ExistingTripVendor[]; equipment: EquipmentMasterType[];
   vendorsLoading: boolean; vendorsError: boolean; onRetryVendors: () => void;
   onClose: () => void; sitesList?: Site[];
+  onSaved?: (trip: SiteMaterialTrip) => void;
 };
 
 /** One ordinary edit/save; exceptional reviewed corrections remain separate. */
-export function TripRoleEditDialog({ trip: originalTrip, vendors, equipment, vendorsLoading, vendorsError, onRetryVendors, onClose, sitesList = [] }: Props) {
+export function TripRoleEditDialog({ trip: originalTrip, vendors, equipment, vendorsLoading, vendorsError, onRetryVendors, onClose, onSaved, sitesList = [] }: Props) {
   const { sectionCan, isAdmin, isOwner } = useAuth();
-  const canEdit = sectionCan("site_materials", "edit");
+  // Match the server's assertEdit guard; a UI unlock is not an edit right.
+  const canEdit = isAdmin || isOwner || sectionCan("site_materials", "edit");
   const [trip, setTrip] = useState(originalTrip);
   const [exceptional, setExceptional] = useState(false);
   const [linksBusy, setLinksBusy] = useState(false);
@@ -93,12 +95,13 @@ export function TripRoleEditDialog({ trip: originalTrip, vendors, equipment, ven
       });
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (updated: SiteMaterialTrip) => {
       queryClient.invalidateQueries({ predicate: q => {
         const key = q.queryKey[0];
         return typeof key === "string" && ["/api/site-material-trips", "/api/vendor-bills", "/api/materials-received"].some(prefix => key.startsWith(prefix));
       } });
-      invalidateSiteMaterialSuggestions(trip.site);
+      invalidateSiteMaterialSuggestions([trip.site, updated.site]);
+      onSaved?.(updated);
       onClose();
     },
     onError: cause => setError(cause instanceof Error ? cause.message : "Trip could not be saved. Retry."),

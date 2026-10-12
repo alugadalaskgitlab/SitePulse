@@ -71,6 +71,15 @@ Vehicle field, never a search box followed by a separate dropdown.
 **Why:** The user rejected the two-control implementation and requires suggestions
 directly beneath the same input; Material Supplier must behave exactly like Transporter.
 
+Historical trips should be correctable directly from Materials Received → View →
+Edit, without navigating away and rebuilding Material Trips filters.
+
+**Why:** The user designated the report as the convenient historical-correction
+entry point and requires identical editing behavior, not a separate editor.
+
+**How to apply:** Preserve the report position, receipt details, photos and work
+context; reuse the same editor and server protections from both entry points.
+
 **Why:** The user explicitly requires Master-based search and selection, including
 Own Source material transported by a separately hired party.
 

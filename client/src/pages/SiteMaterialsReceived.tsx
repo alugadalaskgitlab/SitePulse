@@ -14,28 +14,20 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
-import {
-  ReceiptWorkContext,
-  TripWorkContextSummary,
-  type TripWorkContext,
-} from "@/components/ReceiptWorkContext";
+import { TripWorkContextSummary } from "@/components/ReceiptWorkContext";
+import { ReceivedTripEditor } from "@/components/ReceivedTripEditor";
 import { AttachmentUploader } from "@/components/AttachmentUploader";
-import { FreeTextSuggestionInput } from "@/components/FreeTextSuggestionInput";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
 import { useAuth } from "@/lib/auth-context";
 import {
   invalidateSiteMaterialSuggestions,
-  normalizeVehicleSupplierKey,
-  vehicleSupplierAssociationFor,
-  useSiteMaterialSuggestions,
 } from "@/hooks/use-site-material-suggestions";
-import { VehicleSupplierAssociationNotice } from "@/components/VehicleSupplierAssociationNotice";
 import type { Site } from "@shared/schema";
 import { isEditableMaterialReceiptSource } from "@shared/materialReceiptSummary";
 import { summarizeReceived, unloadingLabel } from "@/lib/materialUnloadingSummary";
@@ -44,26 +36,6 @@ const MATERIAL_OPTIONS = [
   "WMM", "GSB", "Soil", "Dust", "6MM DOWN", "10/12MM", "20MM", "BC Mix", "DBM Mix",
   "Water", "Bitumen", "Emulsion", "Diesel",
 ];
-
-const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs", "Tons"];
-
-interface TripEditForm {
-  unloadedAt: string;
-  yardLabel: string;
-  date: string;
-  time: string;
-  site: string;
-  material: string;
-  quantity: string;
-  uom: string;
-  vehicleNumber: string;
-  supplier: string;
-  materialSourceSupplier: string;
-  receiptNumber: string;
-  notes: string;
-  workType: string;
-  workContext: TripWorkContext;
-}
 
 function SourceBadge({ source }: { source: string }) {
   if (source === "dpr")
@@ -117,15 +89,7 @@ export default function SiteMaterialsReceived() {
 
   const [selectedTrip, setSelectedTrip] = useState<any | null>(null);
   const [editUnlocked, setEditUnlocked] = useState(false);
-  const [editForm, setEditForm] = useState<TripEditForm | null>(null);
-  const {
-    suppliers: supplierSuggestions,
-    materialSourceSuppliers: materialSourceSupplierSuggestions,
-    vehicles: vehicleSuggestions,
-    error: suggestionError,
-    vehicleSuppliers,
-    canCorrectVehicleSupplier,
-  } = useSiteMaterialSuggestions(editForm?.site || selectedTrip?.site || filters.site || "");
+  const [editingTrip, setEditingTrip] = useState(false);
 
   const hasActiveFilters =
     !!filters.dateFrom ||
@@ -180,98 +144,13 @@ export default function SiteMaterialsReceived() {
     onError: () => toast({ title: "Error", description: "Failed to delete.", variant: "destructive" }),
   });
 
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, payload }: { id: number; payload: Record<string, any> }) => {
-      const res = await apiRequest("PATCH", `/api/site-material-trips/${id}`, payload);
-      return res.json();
-    },
-    onSuccess: (updated: any, variables) => {
-      queryClient.invalidateQueries({ predicate: (q) =>
-        typeof q.queryKey[0] === "string" &&
-        (q.queryKey[0].startsWith("/api/site-material-trips") || q.queryKey[0].startsWith("/api/materials-received"))
-      });
-      // An edit may move a receipt to another site. Refresh both cache
-      // entries (all is also safe when a legacy row omits its old site).
-      invalidateSiteMaterialSuggestions([
-        selectedTrip?.site,
-        variables.payload?.site,
-      ]);
-      setSelectedTrip((prev: any) => prev ? { ...prev, ...updated } : prev);
-      setEditForm(null);
-      toast({ title: "Saved", description: "Material entry updated." });
-    },
-    onError: (err: any) => {
-      toast({ title: "Error", description: err?.message || "Failed to update entry.", variant: "destructive" });
-    },
-  });
-
-  const startEditingFields = (trip: any) => {
-    setEditForm({
-      date: trip.date || "",
-      time: trip.time || "",
-      site: trip.site || "",
-      material: trip.material || "",
-      quantity: trip.quantity != null ? String(trip.quantity) : "",
-      uom: trip.uom || "",
-      vehicleNumber: trip.vehicleNumber || "",
-      supplier: trip.supplier || "",
-      materialSourceSupplier: trip.materialSourceSupplier || "",
-      receiptNumber: trip.receiptNumber || "",
-      notes: trip.notes || "",
-      workType: trip.workType || "",
-      unloadedAt: trip.unloadedAt || "",
-      yardLabel: trip.yardLabel || "",
-      workContext: {
-        boqProjectId: trip.boqProjectId ?? null,
-        boqItemId: trip.boqItemId ?? null,
-        programmeBarId: trip.programmeBarId ?? null,
-        earthworkArrangementId: trip.earthworkArrangementId ?? null,
-      },
-    });
-  };
-
-  const handleSaveEdit = () => {
-    if (!selectedTrip || !editForm) return;
-    if (!editForm.site.trim() || !editForm.material.trim() || !editForm.quantity) {
-      toast({ title: "Required Fields", description: "Site, Material, and Quantity cannot be empty.", variant: "destructive" });
-      return;
-    }
-    const payload = {
-      date: editForm.date,
-      time: editForm.time || null,
-      site: editForm.site.trim(),
-      material: editForm.material.trim(),
-      quantity: parseFloat(editForm.quantity) || 0,
-      uom: editForm.uom.trim(),
-      vehicleNumber: editForm.vehicleNumber.trim() || null,
-      supplier: editForm.supplier.trim() || null,
-      // Own-source facts are read-only here; unrelated receipt edits must not
-      // overwrite them or turn the borrow area into a vendor.
-      ...(selectedTrip.materialSourceType === "own_source" ? {} : {
-        materialSourceSupplier: editForm.materialSourceSupplier.trim() || null,
-      }),
-      receiptNumber: editForm.receiptNumber.trim() || null,
-      notes: editForm.notes.trim() || null,
-      workType: editForm.workType || null,
-      unloadedAt: editForm.unloadedAt || null,
-      yardLabel: editForm.unloadedAt === "yard" ? editForm.yardLabel.trim() || null : null,
-      boqProjectId: editForm.workContext.boqProjectId,
-      boqItemId: editForm.workContext.boqItemId,
-      programmeBarId: editForm.workContext.programmeBarId,
-      earthworkArrangementId: editForm.workContext.earthworkArrangementId,
-    };
-    updateMutation.mutate({ id: selectedTrip.id, payload });
-  };
-
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-6xl mx-auto p-4 space-y-4">
         {/* Header */}
         <div className="flex items-center gap-3">
-          <Link href={returnTo}>
-            <Button variant="ghost" size="icon" data-testid="button-back">
-              <ChevronLeft className="w-5 h-5" />
-            </Button>
+          <Link href={returnTo} className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent" aria-label="Back" data-testid="button-back">
+            <ChevronLeft className="w-5 h-5" />
           </Link>
           <div className="flex items-center gap-2">
             <Package className="w-6 h-6 text-emerald-600" />
@@ -487,244 +366,37 @@ export default function SiteMaterialsReceived() {
       </div>
 
       {/* Detail Dialog */}
-      <Dialog open={!!selectedTrip} onOpenChange={(open) => { if (!open) { setSelectedTrip(null); setEditUnlocked(false); setEditForm(null); } }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <Dialog open={!!selectedTrip && !editingTrip} onOpenChange={(open) => { if (!open) { setSelectedTrip(null); setEditUnlocked(false); } }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto"
+          onCloseAutoFocus={event => { if (editingTrip) event.preventDefault(); }}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Package className="w-5 h-5 text-emerald-600" />
               Material Entry — {selectedTrip?.material}
             </DialogTitle>
+            <DialogDescription>Receipt details, linked work context and photos.</DialogDescription>
           </DialogHeader>
 
           {selectedTrip && (
             <div className="space-y-4">
-              {/* Edit Request button on trip entries. Non-admins request/consume real
-                  permission; admins/owners get a plain Edit button plus a "preview as
-                  requester" toggle so they can test the non-admin flow themselves. */}
-              {isEditableMaterialReceiptSource(selectedTrip.source) && !editForm && (
+               {/* Keep the existing request flow. Opening/cancelling must not
+                   consume a one-shot approval before the PATCH is accepted. */}
+               {isEditableMaterialReceiptSource(selectedTrip.source) && (
                 <div className="flex justify-end">
                   <EditPermissionButton
                     recordType="site_material_trip"
                     recordId={selectedTrip.id}
+                     deferConsumeUntilSave
                     onEditGranted={() => {
                       setEditUnlocked(true);
-                      startEditingFields(selectedTrip);
+                       setEditingTrip(true);
                     }}
-                    label="Request Edit"
+                     label="Edit"
                     size="sm"
                   />
                 </div>
               )}
 
-              {editForm ? (
-                <div className="space-y-3 text-sm">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs uppercase tracking-wide text-muted-foreground">Date</Label>
-                      <Input
-                        type="date"
-                        value={editForm.date}
-                        onChange={(e) => setEditForm(f => f && { ...f, date: e.target.value })}
-                        data-testid="input-edit-date"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs uppercase tracking-wide text-muted-foreground">Time</Label>
-                      <Input
-                        type="time"
-                        value={editForm.time}
-                        onChange={(e) => setEditForm(f => f && { ...f, time: e.target.value })}
-                        data-testid="input-edit-time"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs uppercase tracking-wide text-muted-foreground">Site</Label>
-                      <Input
-                        value={editForm.site}
-                        onChange={(e) => setEditForm(f => f && { ...f, site: e.target.value })}
-                        data-testid="input-edit-site"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs uppercase tracking-wide text-muted-foreground">Material</Label>
-                      <Select value={editForm.material} onValueChange={(v) => setEditForm(f => f && { ...f, material: v })}>
-                        <SelectTrigger data-testid="select-edit-material"><SelectValue placeholder="Select material" /></SelectTrigger>
-                        <SelectContent>
-                          {!MATERIAL_OPTIONS.includes(editForm.material) && editForm.material && (
-                            <SelectItem value={editForm.material}>{editForm.material}</SelectItem>
-                          )}
-                          {MATERIAL_OPTIONS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs uppercase tracking-wide text-muted-foreground">Quantity</Label>
-                      <Input
-                        type="number"
-                        step="any"
-                        value={editForm.quantity}
-                        onChange={(e) => setEditForm(f => f && { ...f, quantity: e.target.value })}
-                        data-testid="input-edit-quantity"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs uppercase tracking-wide text-muted-foreground">UOM</Label>
-                      <Select value={editForm.uom} onValueChange={(v) => setEditForm(f => f && { ...f, uom: v })}>
-                        <SelectTrigger data-testid="select-edit-uom"><SelectValue placeholder="Select unit" /></SelectTrigger>
-                        <SelectContent>
-                          {!UOM_OPTIONS.includes(editForm.uom) && editForm.uom && (
-                            <SelectItem value={editForm.uom}>{editForm.uom}</SelectItem>
-                          )}
-                          {UOM_OPTIONS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs uppercase tracking-wide text-muted-foreground">Vehicle No.</Label>
-                      <FreeTextSuggestionInput
-                        value={editForm.vehicleNumber}
-                        onChange={(value) => setEditForm(f => f && { ...f, vehicleNumber: value.toUpperCase() })}
-                        onSuggestionSelected={(vehicleNumber) =>
-                          setEditForm((current) => {
-                            if (!current) return current;
-                            const association = vehicleSupplierAssociationFor(vehicleSuppliers, vehicleNumber);
-                            return {
-                              ...current,
-                              vehicleNumber: vehicleNumber.toUpperCase(),
-                              ...(association?.status === "linked" && association.supplier
-                                ? { supplier: association.supplier }
-                                : {}),
-                            };
-                          })
-                        }
-                        suggestions={vehicleSuggestions}
-                        match="vehicle"
-                        suggestionsError={suggestionError}
-                        data-testid="input-edit-vehicle"
-                      />
-                      <VehicleSupplierAssociationNotice
-                        site={editForm.site}
-                        vehicleNumber={editForm.vehicleNumber}
-                        supplier={editForm.supplier}
-                        association={vehicleSupplierAssociationFor(vehicleSuppliers, editForm.vehicleNumber)}
-                        canCorrectVehicleSupplier={canCorrectVehicleSupplier}
-                        onSupplierApplied={(supplier, context) =>
-                          setEditForm((current) =>
-                            current &&
-                            current.site === context.site &&
-                            normalizeVehicleSupplierKey(current.vehicleNumber) ===
-                              normalizeVehicleSupplierKey(context.vehicleNumber)
-                              ? { ...current, supplier }
-                              : current,
-                          )
-                        }
-                        testIdPrefix="received-edit"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs uppercase tracking-wide text-muted-foreground">Supplier / Party</Label>
-                      <FreeTextSuggestionInput
-                        value={editForm.supplier}
-                        onChange={(value) => setEditForm(f => f && { ...f, supplier: value.toUpperCase() })}
-                        suggestions={supplierSuggestions}
-                        match="supplier"
-                        suggestionsError={suggestionError}
-                        data-testid="input-edit-supplier"
-                      />
-                    </div>
-                    <div className="space-y-1 col-span-2">
-                      {selectedTrip.materialSourceType === "own_source" ? <>
-                        <Label className="text-xs uppercase tracking-wide text-muted-foreground">Material from · Our own source</Label>
-                        <p className="text-sm" data-testid="received-edit-own-source-label">{selectedTrip.materialSourceLabel || "Our own borrow area"}</p>
-                        <p className="text-[11px] text-muted-foreground">Source facts are preserved. Use the trip's Save roles form to change the source.</p>
-                      </> : <>
-                      <Label className="text-xs uppercase tracking-wide text-muted-foreground">Material Source / Supplier (optional)</Label>
-                      <FreeTextSuggestionInput
-                        value={editForm.materialSourceSupplier}
-                        onChange={(value) => setEditForm(f => f && { ...f, materialSourceSupplier: value.toUpperCase() })}
-                        suggestions={materialSourceSupplierSuggestions}
-                        match="supplier"
-                        suggestionsError={suggestionError}
-                        placeholder="Leave blank to clear"
-                        className="uppercase"
-                        data-testid="input-edit-material-source-supplier"
-                      />
-                      <p className="text-[11px] text-muted-foreground">Who sold the material; independent from the transporter and vehicle.</p>
-                      </>}
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs uppercase tracking-wide text-muted-foreground">Work Type</Label>
-                      <Select value={editForm.workType} onValueChange={(v) => setEditForm(f => f && { ...f, workType: v })}>
-                        <SelectTrigger data-testid="select-edit-worktype"><SelectValue placeholder="Select work type" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="road">Road</SelectItem>
-                          <SelectItem value="structure">Structure</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label>Unloaded at</Label>
-                      <Select value={editForm.unloadedAt} onValueChange={(v) => setEditForm(f => f && { ...f, unloadedAt: v })}>
-                        <SelectTrigger data-testid="select-edit-unloaded-at"><SelectValue placeholder="Select unloading point" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="stretch">Work Stretch</SelectItem>
-                          <SelectItem value="yard">Temporary Yard</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {editForm.unloadedAt === "yard" && (
-                      <div className="space-y-1">
-                        <Label>Yard Label</Label>
-                        <Input value={editForm.yardLabel} onChange={(e) => setEditForm(f => f && { ...f, yardLabel: e.target.value })} data-testid="input-edit-yard-label" />
-                      </div>
-                    )}
-                    <div className="space-y-1 col-span-2">
-                      <Label className="text-xs uppercase tracking-wide text-muted-foreground">Receipt / Challan No.</Label>
-                      <Input
-                        value={editForm.receiptNumber}
-                        onChange={(e) => setEditForm(f => f && { ...f, receiptNumber: e.target.value })}
-                        data-testid="input-edit-receipt"
-                      />
-                    </div>
-                    <div className="space-y-1 col-span-2">
-                      <Label className="text-xs uppercase tracking-wide text-muted-foreground">Remarks</Label>
-                      <Input
-                        value={editForm.notes}
-                        onChange={(e) => setEditForm(f => f && { ...f, notes: e.target.value })}
-                        data-testid="input-edit-remarks"
-                      />
-                    </div>
-                  </div>
-                  <ReceiptWorkContext
-                    siteName={editForm.site}
-                    operationalDate={editForm.date}
-                    sitesList={sitesList}
-                    value={editForm.workContext}
-                    onChange={(workContext) => setEditForm((form) => form && ({ ...form, workContext }))}
-                    testIdPrefix="received-edit-work-ctx"
-                    manualOnly
-                  />
-                  <div className="flex items-center justify-end gap-2 pt-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setEditForm(null)}
-                      disabled={updateMutation.isPending}
-                      data-testid="button-cancel-edit"
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={handleSaveEdit}
-                      disabled={updateMutation.isPending}
-                      data-testid="button-save-edit"
-                    >
-                      {updateMutation.isPending ? "Saving…" : "Save Changes"}
-                    </Button>
-                  </div>
-                </div>
-              ) : (
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
                   <div>
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Date</p>
@@ -787,20 +459,6 @@ export default function SiteMaterialsReceived() {
                     </div>
                   )}
                 </div>
-              )}
-
-              {selectedTrip.source === "trip" && editUnlocked && !editForm && (
-                <div className="flex justify-end">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => startEditingFields(selectedTrip)}
-                    data-testid="button-edit-fields"
-                  >
-                    Edit Fields
-                  </Button>
-                </div>
-              )}
 
               {/* Photos */}
               {selectedTrip.source === "trip" && (
@@ -844,6 +502,15 @@ export default function SiteMaterialsReceived() {
           )}
         </DialogContent>
       </Dialog>
+      {selectedTrip && editingTrip && <ReceivedTripEditor
+        receipt={selectedTrip} sitesList={sitesList}
+        onClose={() => setEditingTrip(false)}
+        onSaved={updated => {
+          setSelectedTrip((previous: any) => previous ? { ...previous, ...updated, source: previous.source } : previous);
+          // Do not retain a one-shot photo unlock after saving.
+          setEditUnlocked(false);
+        }}
+      />}
     </div>
   );
 }
