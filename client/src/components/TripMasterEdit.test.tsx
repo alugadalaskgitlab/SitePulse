@@ -17,8 +17,8 @@ vi.mock("./TripIdentityLinks", () => ({ TripIdentityLinks: () => <div>Exceptiona
 vi.mock("./TripHireLinkDialog", () => ({ TripHireLinkReview: () => <div>Exceptional vehicle correction</div> }));
 vi.mock("@/hooks/use-trip-masters", () => ({
   useTripEquipmentMasters: () => ({
-    master: { data: [{ id: 41, name: "Tipper", registrationNumber: "TS15UE4470", ownership: "hired", isActive: true }] },
-    owners: { data: [{ id: 41, vendorId: 27, linkedVendorName: "G N Transport" }] },
+    master: { data: [{ id: 30, name: "Tipper", registrationNumber: "TS15UF 4308", ownership: "hired", isActive: true }] },
+    owners: { data: [{ id: 30, vendorId: 27, linkedVendorName: "G N Transport" }] },
   }),
 }));
 const vendors = [
@@ -38,12 +38,22 @@ function open(trip = original, confirmation: unknown = null) {
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(apiRequest).mockResolvedValue({ json: async () => ({ trip: original }) } as Response); });
 afterEach(() => { cleanup(); queryClient.clear(); });
 describe("ordinary historical trip Edit → Save", () => {
+  it("dismisses suggestions with Escape without closing the real Edit dialog", () => {
+    open();
+    const input = screen.getByRole("combobox", { name: /Material Supplier/ });
+    input.focus();
+    fireEvent.change(input, { target: { value: "SARA" } });
+    expect(screen.getByRole("option", { name: "SARAVANA METAL INDUSTRIES" })).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(close).not.toHaveBeenCalled();
+    expect(screen.queryByRole("listbox")).toBeNull();
+  });
   it("opens directly in editable normal trip fields without confirmation UI", () => {
     open();
     expect((screen.getByLabelText("Date") as HTMLInputElement).value).toBe(original.date);
     expect(screen.getByRole("button", { name: "Save" })).toBeTruthy();
     expect(screen.queryByText("Exceptional vendor correction")).toBeNull();
-    expect(screen.getByText(/Recorded \/ unselected value: Legacy source/)).toBeTruthy();
+    expect((screen.getByRole("combobox", { name: /Material Supplier/ }) as HTMLInputElement).value).toBe("Legacy source");
   });
   it("saves quantity in one PATCH without guessing legacy associations", async () => {
     open();
@@ -55,25 +65,51 @@ describe("ordinary historical trip Edit → Save", () => {
     expect(payload.masterSelection).toBeUndefined();
   });
   it("saves selected supplier, transporter and hired equipment together", async () => {
-    open();
+    const view = open();
     fireEvent.change(screen.getByTestId("input-edit-trip-material-source-supplier"), { target: { value: "SARA" } });
-    fireEvent.change(screen.getByRole("combobox", { name: /Material Supplier/ }), { target: { value: "13" } });
+    const supplierOption = screen.getByRole("option", { name: "SARAVANA METAL INDUSTRIES" });
+    expect(screen.getByRole("dialog").contains(supplierOption)).toBe(true);
+    fireEvent.click(supplierOption);
     fireEvent.change(screen.getByTestId("input-edit-trip-supplier"), { target: { value: "NARSI" } });
-    fireEvent.change(screen.getByRole("combobox", { name: /Transporter/ }), { target: { value: "27" } });
-    fireEvent.change(screen.getByRole("combobox", { name: "Vehicle / Tipper · Equipment Master" }), { target: { value: "41" } });
+    fireEvent.keyDown(screen.getByRole("combobox", { name: /Transporter/ }), { key: "ArrowDown" });
+    fireEvent.keyDown(screen.getByRole("combobox", { name: /Transporter/ }), { key: "Enter" });
+    fireEvent.change(screen.getByRole("combobox", { name: /Vehicle \/ Tipper/ }), { target: { value: "4308" } });
+    const vehicleOption = screen.getByRole("option", { name: /TS15UF 4308/ });
+    fireEvent.pointerDown(vehicleOption, { pointerType: "touch" });
+    fireEvent.pointerUp(vehicleOption, { pointerType: "touch" });
+    fireEvent.click(vehicleOption);
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledTimes(1));
     const payload = vi.mocked(apiRequest).mock.calls[0][2] as any;
-    expect(payload).toMatchObject({ supplierVendorId: 27, materialSourceVendorId: 13, internalEquipmentId: null, masterSelection: { equipmentId: 41 } });
+    expect(payload).toMatchObject({ supplierVendorId: 27, materialSourceVendorId: 13, internalEquipmentId: null, masterSelection: { equipmentId: 30 } });
     expect(payload.reason).toBeUndefined();
     expect(payload.fingerprint).toBeUndefined();
+    view.unmount();
+    open({ ...original, ...payload }, { equipmentId: payload.masterSelection.equipmentId, valid: true });
+    expect((screen.getByRole("combobox", { name: /Material Supplier/ }) as HTMLInputElement).value).toBe("SARAVANA METAL INDUSTRIES");
+    expect((screen.getByRole("combobox", { name: /Transporter/ }) as HTMLInputElement).value).toBe("G N Transport");
+    await waitFor(() => expect((screen.getByRole("combobox", { name: /Vehicle \/ Tipper/ }) as HTMLInputElement).value).toContain("TS15UF 4308"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(apiRequest).mock.calls[1][2]).toMatchObject({ materialSourceVendorId: 13, supplierVendorId: 27 });
+    expect((vi.mocked(apiRequest).mock.calls[1][2] as any).masterSelection).toBeUndefined();
   });
   it("reopens linked evidence preselected and keeps its link on ordinary save", async () => {
-    open({ ...original, materialSourceSupplier: "Saravana", materialSourceVendorId: 13, supplier: "Gangaram Narsimulu", supplierVendorId: 27, vehicleNumber: "TS15UE4470" }, { equipmentId: 41, valid: true });
-    await waitFor(() => expect((screen.getByRole("combobox", { name: "Vehicle / Tipper · Equipment Master" }) as HTMLSelectElement).value).toBe("41"));
+    open({ ...original, materialSourceSupplier: "Saravana", materialSourceVendorId: 13, supplier: "Gangaram Narsimulu", supplierVendorId: 27, vehicleNumber: "TS15UF 4308" }, { equipmentId: 30, valid: true });
+    await waitFor(() => expect((screen.getByRole("combobox", { name: /Vehicle \/ Tipper/ }) as HTMLInputElement).value).toContain("TS15UF 4308"));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledTimes(1));
     expect((vi.mocked(apiRequest).mock.calls[0][2] as any).masterSelection).toBeUndefined();
+  });
+  it("typing an exact Master name or an unknown name never saves a guessed ID", async () => {
+    open();
+    for (const name of ["Saravana", "UNKNOWN PARTY"]) {
+      fireEvent.change(screen.getByRole("combobox", { name: /Material Supplier/ }), { target: { value: name } });
+      fireEvent.blur(screen.getByRole("combobox", { name: /Material Supplier/ }));
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Select an active Vendor Master"));
+      expect(apiRequest).not.toHaveBeenCalled();
+    }
   });
   it("retains exceptional authorised corrections separately", () => {
     open();

@@ -1,0 +1,23 @@
+**UX-SIMPLE-02 — Correct the Material Trip Searchable Dropdowns**
+
+The current UI is not acceptable. It displays two controls per field: a search text box and a separate dropdown. We require **one searchable combobox per field**.
+
+Please correct the existing Material Trip Add/Edit form only.
+
+1. For **Material Supplier, Transporter and Vehicle / Tipper**, use one editable searchable combobox each. As the user types, show matching Master records directly beneath the same input. Clicking a suggestion fills that input and saves the corresponding Master ID.
+
+2. Search Vendor Master using any part of Master Name or Business Name, displaying the Business Name. Search Equipment Master by any part of registration, including the last four digits, displaying **Equipment Type · Registration · Ownership · Vendor Business Name**.
+
+3. Master-only results: no historical free-text names among suggestions. Existing old text may appear as the initial field value, but it must not count as a selected Master record.
+
+4. **Material Supplier must work exactly like Transporter.** Fix its current failure to populate Vendor Master results. For Own Source, show the source-description field instead.
+
+5. Remove the second dropdown, duplicate labels and excessive helper text. Preserve an explicit **Other / Not in Master** exception for authorised one-time entries.
+
+6. Support mouse, keyboard and mobile interaction. Require actual Master selection for ordinary entries, not merely typing a matching name.
+
+7. Preserve the one-Save operation, existing IDs, trip audit history, permissions and billing protections. Do not change billing calculations, Master records or historical bills.
+
+8. Test typing `SARA`, `NARSI` and `4308`, selecting the result, saving, reopening and verifying the saved Master IDs. Visually test the actual signed-in form, including Material Supplier.
+
+Run focused tests and one production build. No migration, no unrelated modifications and no automatic publication. Stop after verification.

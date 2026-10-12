@@ -91,6 +91,7 @@ function setInput(id: string, value: string) {
 }
 async function ready() {
   await screen.findByTestId("row-trip-1");
+  setInput("select-trip-site", "NH-44");
   await waitFor(() => expect(screen.getByTestId("input-trip-material-source-supplier")).not.toBeDisabled());
 }
 function fillBasic() {
@@ -103,10 +104,18 @@ function fillBasic() {
   fireEvent.click(screen.getByText("Choose intended item"));
 }
 function selectVendor(label: string, id: string) {
-  fireEvent.change(screen.getByRole("combobox", { name: new RegExp(`${label}.*Vendor Master`) }), { target: { value: id } });
+  const vendor = vendors.find(item => item.id === Number(id))!;
+  const input = screen.getByRole("combobox", { name: new RegExp(label) });
+  fireEvent.focus(input);
+  fireEvent.change(input, { target: { value: vendor.name } });
+  fireEvent.click(screen.getByRole("option", { name: vendor.name }));
 }
 function selectVehicle(id: string) {
-  fireEvent.change(screen.getByRole("combobox", { name: "Vehicle / Tipper · Equipment Master" }), { target: { value: id } });
+  const vehicle = equipment.find(item => item.id === Number(id))!;
+  const input = screen.getByRole("combobox", { name: /Vehicle \/ Tipper/ });
+  fireEvent.focus(input);
+  fireEvent.change(input, { target: { value: vehicle.registrationNumber } });
+  fireEvent.click(screen.getByRole("option", { name: new RegExp(vehicle.registrationNumber!) }));
 }
 function chooseEditSource() {
   setInput("input-edit-trip-material-source-supplier", "SANGANNA");
@@ -150,6 +159,48 @@ beforeEach(() => {
 afterEach(() => { cleanup(); queryClient.clear(); vi.unstubAllGlobals(); });
 
 describe("VB-SPLIT Parts A/B entry behavior", () => {
+  it("loads Supplier and Transporter from the same site-scoped records; SARA/NARSI/4308 survive Add → Edit", async () => {
+    const fixtureVendors = [
+      { id: 7, name: "Saravana", businessName: "SARAVANA METAL INDUSTRIES", isActive: true },
+      { id: 18, name: "Gangaram Narsimulu", businessName: "G N Transport", isActive: true },
+    ];
+    const page = renderPage();
+    await screen.findByTestId("row-trip-1");
+    expect(screen.getByTestId("input-trip-material-source-supplier")).toBeDisabled();
+    expect(screen.getByText("Choose Site to search Vendor Master.")).toBeInTheDocument();
+    expect(harness.queries.some(url => url.startsWith("/api/site-material-trips/vendor-options"))).toBe(false);
+    await ready();
+    queryClient.setQueryData(["/api/site-material-trips/vendor-options?site=NH-44"], fixtureVendors);
+    fireEvent.click(screen.getByTestId("trip-role-different_parties"));
+    const source = screen.getByRole("combobox", { name: /Material Supplier/ });
+    fireEvent.change(source, { target: { value: "SARA" } });
+    fireEvent.click(await screen.findByRole("option", { name: "SARAVANA METAL INDUSTRIES" }));
+    const transporter = screen.getByRole("combobox", { name: /Transporter/ });
+    fireEvent.change(transporter, { target: { value: "NARSI" } });
+    fireEvent.keyDown(transporter, { key: "ArrowDown" });
+    fireEvent.keyDown(transporter, { key: "Enter" });
+    const vehicle = screen.getByRole("combobox", { name: /Vehicle \/ Tipper/ });
+    fireEvent.change(vehicle, { target: { value: "4308" } });
+    fireEvent.click(screen.getByRole("option", { name: /TS15UF4308/ }));
+    setInput("select-trip-material", "Soil");
+    setInput("input-trip-quantity", "14");
+    fireEvent.click(screen.getByText("Choose intended item"));
+    const payload = await submit();
+    expect(payload).toMatchObject({ materialSourceVendorId: 7, supplierVendorId: 18, masterSelection: { equipmentId: 43 } });
+    expect(harness.request).toHaveBeenCalledTimes(1);
+    page.unmount();
+    const saved = trip({ ...payload, id: 101 });
+    queryClient.setQueryData(["/api/site-material-trips/101/hire-link"], { trip: saved, confirmation: { equipmentId: 43, valid: true } });
+    render(<QueryClientProvider client={queryClient}><TripRoleEditDialog trip={saved} vendors={fixtureVendors} equipment={equipment}
+      vendorsLoading={false} vendorsError={false} onRetryVendors={vi.fn()} onClose={vi.fn()} /></QueryClientProvider>);
+    expect(screen.getByRole("combobox", { name: /Material Supplier/ })).toHaveValue("SARAVANA METAL INDUSTRIES");
+    expect(screen.getByRole("combobox", { name: /Transporter/ })).toHaveValue("G N Transport");
+    await waitFor(() => expect((screen.getByRole("combobox", { name: /Vehicle \/ Tipper/ }) as HTMLInputElement).value).toContain("TS15UF4308"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(harness.request).toHaveBeenCalledTimes(2));
+    expect(harness.request.mock.calls[1][2]).toMatchObject({ materialSourceVendorId: 7, supplierVendorId: 18 });
+    expect(harness.request.mock.calls[1][2]).not.toHaveProperty("masterSelection");
+  });
   it("A1 saves selected source and same-party transporter IDs with the hired Equipment Master ID", async () => {
     renderPage(); await ready(); fillBasic();
     expect(screen.getByTestId("trip-role-same_party")).toBeChecked();
@@ -223,7 +274,7 @@ describe("VB-SPLIT Parts A/B entry behavior", () => {
     const payload = await submit();
     expect(payload).toMatchObject({ unloadedAt: "yard", yardLabel: "YARD A", earthworkArrangementId: 31, boqProjectId: 12, boqItemId: 29, workType: "road", receiptNumber: "CH-28", uom: "Cum", materialSourceSupplier: "SANGANNA" });
     await waitFor(() => expect(screen.getByTestId("input-trip-quantity")).toHaveValue(null));
-    expect(screen.getByRole("combobox", { name: "Vehicle / Tipper · Equipment Master" })).toHaveValue("");
+    expect(screen.getByRole("combobox", { name: /Vehicle \/ Tipper/ })).toHaveValue("");
     expect(screen.getByTestId("input-trip-receipt")).toHaveValue("");
     expect(screen.getByTestId("select-trip-material")).toHaveValue("Soil");
     expect(screen.getByTestId("input-trip-material-source-supplier")).toHaveValue("SANGANNA");
@@ -243,7 +294,7 @@ describe("VB-SPLIT Parts A/B entry behavior", () => {
     const payload = await submit();
     expect(payload).toMatchObject({ indentId: 53, indentItemId: 87, pendingReceiptId: 92, material: "Soil", site: "NH-44", uom: "Cum", unloadedAt: "stretch", location: "5.200", supplierVendorId: 7, materialSourceVendorId: 7 });
     expect(payload.yardLabel).toBeUndefined();
-    await waitFor(() => expect(screen.getByRole("combobox", { name: "Vehicle / Tipper · Equipment Master" })).toHaveValue(""));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /Vehicle \/ Tipper/ })).toHaveValue(""));
     expect(screen.getByTestId("input-trip-material-source-supplier")).toHaveValue("SANGANNA");
     expect(screen.getByTestId("input-trip-location")).toHaveValue("5.200");
   });

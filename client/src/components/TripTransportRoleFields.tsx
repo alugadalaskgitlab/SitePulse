@@ -34,6 +34,7 @@ type Props = {
   vehicleSuggestions?: string[];
   suggestionError?: unknown;
   vendorsLoading?: boolean;
+  vendorsDisabled?: boolean;
   vendorsError?: boolean;
   onRetryVendors: () => void;
   onVehicleSelected?: (vehicle: string) => void;
@@ -44,7 +45,7 @@ type Props = {
 };
 
 export function TripTransportRoleFields({
-  choice, onChoice, value, onChange, vendors, vendorsLoading,
+  choice, onChoice, value, onChange, vendors, vendorsLoading, vendorsDisabled,
   vendorsError, onRetryVendors, allowManualParties = false, testIdPrefix = "trip",
 }: Props) {
   const radioName = useId();
@@ -74,7 +75,6 @@ export function TripTransportRoleFields({
         {ownSource ? <>
           <Label htmlFor={sourceId}>Borrow area / source description *</Label>
           <Input id={sourceId} value={value.materialSourceLabel ?? ""} onChange={(event) => onChange({ ...value, materialSourceLabel: event.target.value })} placeholder="e.g. Borrow area near Thakadpally, survey no. 212" data-testid={`input-${testIdPrefix}-material-source-label`} />
-          <p className="mt-1 text-xs text-muted-foreground">HLC's own material source — no material vendor is recorded.</p>
         </> : <>
         <TripVendorPicker
           label="Material Supplier *"
@@ -84,14 +84,14 @@ export function TripTransportRoleFields({
           onManualChange={allowManualParties ? manual => onChange({ ...value, materialSourceManual: manual, materialSourceVendorId: null }) : undefined}
           vendors={vendors}
           onChange={(name, id) => onChange({ ...value, materialSourceSupplier: name.toUpperCase(), materialSourceVendorId: id })}
-          disabled={vendorsLoading || vendorsError}
+          disabled={vendorsDisabled || vendorsLoading || vendorsError}
           testId={`input-${testIdPrefix}-material-source-supplier`}
         />
         </>}
       </div>
       {needsVendors && vendorsLoading && <div className="h-5 max-w-sm animate-pulse rounded bg-muted" role="status" aria-label="Loading existing vendors" />}
       {needsVendors && vendorsError && <p role="alert" className="text-sm text-destructive">Existing vendors could not be loaded. <button type="button" className="underline" onClick={onRetryVendors}>Retry</button></p>}
-      {needsVendors && !vendorsLoading && !vendorsError && vendors.length === 0 && <p className="text-sm text-muted-foreground">No existing vendors are available. Contact the office before logging this trip.</p>}
+      {needsVendors && !vendorsDisabled && !vendorsLoading && !vendorsError && vendors.length === 0 && <p className="text-sm text-muted-foreground">No existing vendors are available. Contact the office before logging this trip.</p>}
       <fieldset>
         <legend className="mb-2 text-sm font-medium">Who brought it? *</legend>
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-4">
@@ -106,10 +106,9 @@ export function TripTransportRoleFields({
           ))}
         </div>
       </fieldset>
-      {choice === "same_party" && <p className="text-xs text-muted-foreground">The material vendor is also recorded explicitly as the transporter.</p>}
       {choice === "different_parties" && (
         <div className="max-w-xl">
-          <TripVendorPicker label="Transporter *" name={value.supplier} vendorId={value.supplierVendorId} vendors={vendors} onChange={(supplier, id) => onChange({ ...value, supplier: supplier.toUpperCase(), supplierVendorId: id })} disabled={vendorsLoading || vendorsError} testId={`input-${testIdPrefix}-supplier`}
+          <TripVendorPicker label="Transporter *" name={value.supplier} vendorId={value.supplierVendorId} vendors={vendors} onChange={(supplier, id) => onChange({ ...value, supplier: supplier.toUpperCase(), supplierVendorId: id })} disabled={vendorsDisabled || vendorsLoading || vendorsError} testId={`input-${testIdPrefix}-supplier`}
             manual={value.supplierManual} onManualChange={allowManualParties ? manual => onChange({ ...value, supplierManual: manual, supplierVendorId: null }) : undefined} />
         </div>
       )}

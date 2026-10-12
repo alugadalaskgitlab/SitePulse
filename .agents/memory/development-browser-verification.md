@@ -53,3 +53,12 @@ message instead of the application's JSON response.
 **How to apply:** If this occurs, use the main workflow's verified port for the
 disposable local browser harness; do not change port exposure or authentication
 to make verification work.
+
+Browser-only fixture interception must bypass the service worker and browser cache
+in the disposable CDP session, without changing application caching.
+
+**Why:** The service worker returned the real empty vendor response instead of the
+intercepted fixture, producing a misleading no-results UI during a combobox check.
+
+**How to apply:** Clearly disclose browser fixtures as UI-only evidence, never proof
+of real persistence; do not seed or alter Masters when those writes are prohibited.

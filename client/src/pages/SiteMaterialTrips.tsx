@@ -149,7 +149,10 @@ export default function SiteMaterialTrips() {
       if (p.material && (!prev.material || prev.material === lastPrefill.material)) next.material = p.material;
       // Keep the vendor's actual master name; client-supplied metadata is not a new vendor.
       const supplierValue = p.supplier || null;
-      if (prev.materialSourceType !== "own_source" && supplierValue && (!prev.materialSourceSupplier || prev.materialSourceSupplier === lastPrefill.supplier)) next.materialSourceSupplier = supplierValue;
+      if (prev.materialSourceType !== "own_source" && supplierValue && (!prev.materialSourceSupplier || prev.materialSourceSupplier === lastPrefill.supplier)) {
+        next.materialSourceSupplier = supplierValue;
+        if (supplierValue !== prev.materialSourceSupplier) next.materialSourceVendorId = null;
+      }
       if ((p.material && prev.material && prev.material !== lastPrefill.material && prev.material !== p.material) ||
           (supplierValue && prev.materialSourceSupplier && prev.materialSourceSupplier !== lastPrefill.supplier && prev.materialSourceSupplier !== supplierValue)) {
         toast({ title: "Kept your entries", description: "Material/Supplier were not overwritten by the arrangement — update them yourself if needed." });
@@ -590,6 +593,7 @@ export default function SiteMaterialTrips() {
                 </div>
               </div>
 
+              {!newTrip.site && <p className="text-sm text-muted-foreground">Choose Site to search Vendor Master.</p>}
               <TripTransportRoleFields
                 allowManualParties
                 choice={roleChoice}
@@ -604,6 +608,7 @@ export default function SiteMaterialTrips() {
                 vendors={vendors}
                 equipment={activeInternalEquipment}
                 vendorsLoading={vendorQuery.isLoading}
+                vendorsDisabled={!masterPickerSite}
                 vendorsError={vendorQuery.isError}
                 onRetryVendors={() => void vendorQuery.refetch()}
               />
@@ -739,7 +744,10 @@ export default function SiteMaterialTrips() {
                       <button
                         type="button"
                         className="text-[11px] font-medium text-indigo-700 underline"
-                        onClick={() => setNewTrip(prev => ({ ...prev, materialSourceSupplier: prev.materialSourceSupplier || fulfilmentSuggestion.suggestion.supplierSuggestion || "" }))}
+                        onClick={() => setNewTrip(prev => ({ ...prev,
+                          materialSourceSupplier: prev.materialSourceSupplier || fulfilmentSuggestion.suggestion.supplierSuggestion || "",
+                          materialSourceVendorId: prev.materialSourceSupplier ? prev.materialSourceVendorId : null,
+                        }))}
                         data-testid="button-apply-fulfilment-supplier"
                       >
                         Use "{fulfilmentSuggestion.suggestion.supplierSuggestion}" as supplier

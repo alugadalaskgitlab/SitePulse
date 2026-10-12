@@ -104,7 +104,13 @@ export function TripRoleEditDialog({ trip: originalTrip, vendors, equipment, ven
     onError: cause => setError(cause instanceof Error ? cause.message : "Trip could not be saved. Retry."),
   });
   return <Dialog open onOpenChange={open => !open && !save.isPending && !linksBusy && onClose()}>
-    <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl" data-testid="dialog-trip-roles">
+    <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl" data-testid="dialog-trip-roles"
+      onEscapeKeyDown={event => {
+        // Radix handles Escape in document capture, before the input can dismiss its list.
+        const focused = document.activeElement;
+        if (focused?.getAttribute("role") === "combobox" && focused.getAttribute("aria-expanded") === "true")
+          event.preventDefault();
+      }}>
       <DialogHeader><DialogTitle>{canEdit ? "Edit Material Trip" : "Material Trip Details"}</DialogTitle><DialogDescription>{trip.date} · {trip.site} · {trip.material}</DialogDescription></DialogHeader>
       {evidence.isLoading && <div className="h-8 animate-pulse rounded bg-muted" role="status" aria-label="Loading saved vehicle association" />}
       {evidence.isError && <p role="alert" className="text-sm text-destructive">Saved vehicle association unavailable. <button type="button" className="underline" onClick={() => evidence.refetch()}>Retry</button></p>}

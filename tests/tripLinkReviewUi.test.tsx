@@ -65,11 +65,11 @@ afterEach(() => { cleanup(); holder.qc.clear(); });
 describe("one operational trip review", () => {
   it("opens one read-only ordinary form showing persisted master selections without reconfirming or exposing terms", async () => {
     renderDetails();
-    await waitFor(() => expect(screen.getByLabelText("Vehicle / Tipper · Equipment Master")).toHaveValue("41"));
+    await waitFor(() => expect((screen.getByRole("combobox", { name: /Vehicle \/ Tipper/ }) as HTMLInputElement).value).toContain("TS15UE4470"));
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
     expect(screen.getByTestId("input-edit-trip-material-source-supplier")).toHaveValue("SARAVANA METAL INDUSTRIES");
     expect(screen.getByTestId("input-edit-trip-supplier")).toHaveValue("GANGARAM NARSIMHULU");
-    expect(screen.getByLabelText("Vehicle / Tipper · Equipment Master")).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: /Vehicle \/ Tipper/ })).toBeDisabled();
     expect(screen.queryByText("Confirm vehicle link")).not.toBeInTheDocument();
     expect(screen.queryByText("Correct roles / work context")).not.toBeInTheDocument();
     expect(screen.queryByText("Confirm vendor links")).not.toBeInTheDocument();
@@ -113,11 +113,11 @@ describe("one operational trip review", () => {
     renderDetails(unlinked);
     fireEvent.click(screen.getByText("Authorised identity corrections"));
     await screen.findByText("Vehicle Link Pending");
-    await waitFor(() => expect(screen.getByLabelText("Transporter match · Vendor Master")).not.toBeDisabled());
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Transporter match" })).not.toBeDisabled());
     fireEvent.change(screen.getByLabelText("Material supplier match"), { target: { value: "SARA" } });
-    fireEvent.change(screen.getByLabelText("Material supplier match · Vendor Master"), { target: { value: "11" } });
+    fireEvent.click(screen.getByRole("option", { name: "SARAVANA METAL INDUSTRIES" }));
     fireEvent.change(screen.getByLabelText("Transporter match"), { target: { value: "GANG" } });
-    fireEvent.change(screen.getByLabelText("Transporter match · Vendor Master"), { target: { value: "12" } });
+    fireEvent.click(screen.getByRole("option", { name: "GANGARAM NARSIMHULU" }));
     fireEvent.change(screen.getByLabelText("Vendor identity verification reason"), { target: { value: "Parties reviewed independently" } });
     fireEvent.click(screen.getByText("Confirm vendor links"));
     await waitFor(() => expect(holder.request).toHaveBeenCalledWith("POST", "/api/site-material-trips/737/identity-links", {
@@ -134,7 +134,7 @@ describe("one operational trip review", () => {
   it("nonadmin editors save ordinary trip fields once and keep exceptional vendor confirmation separate", async () => {
     holder.canEdit = true;
     renderDetails();
-    await waitFor(() => expect(screen.getByLabelText("Vehicle / Tipper · Equipment Master")).toHaveValue("41"));
+    await waitFor(() => expect((screen.getByRole("combobox", { name: /Vehicle \/ Tipper/ }) as HTMLInputElement).value).toContain("TS15UE4470"));
     expect(screen.queryByText("Change vendor links")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Verification reason / reference")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Quantity"), { target: { value: "192.25" } });
@@ -187,7 +187,7 @@ describe("new-entry selectors", () => {
     const draft = JSON.parse(screen.getByTestId("draft").textContent || "{}");
     expect(draft).toMatchObject({ supplierManual: true, supplierVendorId: null, supplier: "OUTSIDE TRANSPORTER",
       vehicleNumber: "TS99AB1234", materialSourceType: "own_source", materialSourceSupplier: "" });
-    expect(screen.queryByLabelText("Transporter * · Vendor Master")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /Transporter/ })).not.toBeInTheDocument();
     expect(holder.request).not.toHaveBeenCalled();
   });
 });

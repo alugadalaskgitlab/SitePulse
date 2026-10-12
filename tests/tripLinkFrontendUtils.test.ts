@@ -21,9 +21,9 @@ describe("trip link selection safety", () => {
     expect(() => buildTripIdentityLinkPayload(original, { supplierVendorId: 12 }, "")).toThrow("reason");
   });
   it("resolves duplicate master names only through an explicit selected ID", () => {
-    const options = [{ id: 11, name: "SAME PARTY" }, { id: 12, name: "SAME PARTY" }];
+    const options = [{ id: 11, name: "SAME PARTY", isActive: true }, { id: 12, name: "SAME PARTY", isActive: true }];
     expect(resolveSelectedTripVendor("SAME PARTY", 12, options).id).toBe(12);
-    expect(() => resolveSelectedTripVendor("SAME PARTY", null, options)).toThrow("multiple");
+    expect(() => resolveSelectedTripVendor("SAME PARTY", null, options)).toThrow("Select an active Vendor Master");
   });
   it("labels owner, confirmed identity and equipment type without any financial data", () => {
     const label = equipmentIdentityLabel({ id: 41, name: "Tipper 7", equipmentType: "Tipper",

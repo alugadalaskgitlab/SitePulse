@@ -9,6 +9,12 @@ Test custom suggestion menus inside the real modal, not only as standalone input
 
 **How to apply:** Keep custom options within the active dialog subtree or use a modal-aware primitive. Account for container scrolling when positioning absolute menus and preserve shared input styling.
 
+An expanded combobox must consume the first Escape without closing its parent dialog.
+
+**Why:** Radix processes Escape in document capture before the input's bubble handler; input-level stopPropagation alone failed in the signed-in browser.
+
+**How to apply:** Prevent dialog dismissal while the focused combobox is expanded, and let the input dismiss its suggestions. Test against the actual modal.
+
 Touch-picker verification must cover both sides of responsive breakpoints and final-item selection, not just a change in scrollTop.
 
 **Why:** The BOQ picker uses a Drawer below 768px but a Popover at iPad widths. A list could reach its mathematical scroll bottom while its last option remained below the screen; mobile-only testing missed this.

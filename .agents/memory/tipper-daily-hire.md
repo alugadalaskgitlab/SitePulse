@@ -65,6 +65,12 @@ Equipment Masters, never historical or locally remembered names. The material
 seller and transporter are independent; an explicit Other / Not in Master option
 retains one-time free text without creating a master or implying a hire confirmation.
 
+Use one editable searchable combobox per Material Supplier, Transporter and
+Vehicle field, never a search box followed by a separate dropdown.
+
+**Why:** The user rejected the two-control implementation and requires suggestions
+directly beneath the same input; Material Supplier must behave exactly like Transporter.
+
 **Why:** The user explicitly requires Master-based search and selection, including
 Own Source material transported by a separately hired party.
 
