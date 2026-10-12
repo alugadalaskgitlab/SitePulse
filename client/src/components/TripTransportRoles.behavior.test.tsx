@@ -12,7 +12,6 @@ import { existingTripVendorSuggestions, filterTripsByRole, resolveTripVendor, tr
 
 const harness = vi.hoisted(() => ({
   search: "", toast: vi.fn(), request: vi.fn(), queries: [] as string[],
-  lateAssociation: null as null | (() => void),
   canEdit: true,
 }));
 vi.mock("@/lib/queryClient", async (original) => ({ ...await original<object>(), apiRequest: harness.request }));
@@ -38,11 +37,8 @@ vi.mock("@/components/ReceiptWorkContext", () => ({
     <span data-testid="work-context-value">{JSON.stringify(value)}</span>
   </div>,
 }));
-vi.mock("@/components/VehicleSupplierAssociationNotice", () => ({
-  VehicleSupplierAssociationNotice: ({ onSupplierApplied, site, vehicleNumber }: any) => {
-    harness.lateAssociation = () => onSupplierApplied("NARASIMHULU", { site, vehicleNumber });
-    return <button type="button" onClick={harness.lateAssociation}>Apply vehicle transporter</button>;
-  },
+vi.mock("@/hooks/use-trip-masters", () => ({
+  useTripEquipmentMasters: () => ({ master: { data: equipment }, owners: { data: [hiredEquipment] } }),
 }));
 vi.mock("@/hooks/use-site-material-suggestions", async (original) => ({
   ...await original<object>(),
@@ -69,8 +65,9 @@ vi.mock("@/components/ui/select", async () => {
   };
 });
 
-const vendors = [{ id: 7, name: "SANGANNA" }, { id: 18, name: "NARASIMHULU" }];
-const equipment = [{ id: 42, name: "TIPPER-03", registrationNumber: "TS09AB4321", ownership: "owned", isActive: 1 }] as EquipmentMasterType[];
+const vendors = [{ id: 7, name: "SANGANNA", isActive: true }, { id: 18, name: "NARASIMHULU", isActive: true }];
+const hiredEquipment = { id: 43, name: "Hired Tipper", registrationNumber: "TS15UF4308", ownership: "hired", isActive: 1, vendorId: 18, linkedVendorName: "NARASIMHULU" };
+const equipment = [{ id: 42, name: "TIPPER-03", registrationNumber: "TS09AB4321", ownership: "owned", isActive: 1 }, hiredEquipment] as EquipmentMasterType[];
 function trip(overrides: Partial<SiteMaterialTrip> = {}): SiteMaterialTrip {
   return {
     id: 1, date: "2026-08-17", time: "10:21", site: "NH-44", material: "Soil", quantity: 14, uom: "Cum",
@@ -100,9 +97,20 @@ function fillBasic() {
   setInput("select-trip-site", "NH-44");
   setInput("select-trip-material", "Soil");
   setInput("input-trip-material-source-supplier", "sanganna");
+  selectVendor("Material Supplier", "7");
   setInput("input-trip-quantity", "14");
-  setInput("input-trip-vehicle", "TS15UF4308");
+  selectVehicle("43");
   fireEvent.click(screen.getByText("Choose intended item"));
+}
+function selectVendor(label: string, id: string) {
+  fireEvent.change(screen.getByRole("combobox", { name: new RegExp(`${label}.*Vendor Master`) }), { target: { value: id } });
+}
+function selectVehicle(id: string) {
+  fireEvent.change(screen.getByRole("combobox", { name: "Vehicle / Tipper · Equipment Master" }), { target: { value: id } });
+}
+function chooseEditSource() {
+  setInput("input-edit-trip-material-source-supplier", "SANGANNA");
+  selectVendor("Material Supplier", "7");
 }
 async function submit() {
   fireEvent.click(screen.getByTestId("button-submit-trip"));
@@ -115,11 +123,8 @@ beforeEach(() => {
   harness.request.mockReset();
   harness.toast.mockReset();
   harness.queries = [];
-  harness.lateAssociation = null;
   harness.canEdit = true;
   queryClient.clear();
-  // These scenarios exercise loaded pickers. The catalogue is now site-keyed;
-  // prime the same fixture for the site selected by fillBasic().
   queryClient.setQueryData(["/api/site-material-trips/vendor-options?site=NH-44"], vendors);
   queryClient.setDefaultOptions({ queries: { retry: false, queryFn: async ({ queryKey }) => {
     const url = String(queryKey[0]);
@@ -145,34 +150,31 @@ beforeEach(() => {
 afterEach(() => { cleanup(); queryClient.clear(); vi.unstubAllGlobals(); });
 
 describe("VB-SPLIT Parts A/B entry behavior", () => {
-  it("A1 explicitly writes same existing vendor and ID into both columns; source wins over vehicle associations", async () => {
+  it("A1 saves selected source and same-party transporter IDs with the hired Equipment Master ID", async () => {
     renderPage(); await ready(); fillBasic();
     expect(screen.getByTestId("trip-role-same_party")).toBeChecked();
-    const vehicle = screen.getByTestId("input-trip-vehicle");
-    fireEvent.focus(vehicle);
-    fireEvent.click(await screen.findByRole("option", { name: "TS15UF4308" }));
     const payload = await submit();
     expect(payload).toMatchObject({ materialSourceSupplier: "SANGANNA", materialSourceVendorId: 7, supplier: "SANGANNA", supplierVendorId: 7, transportType: "agency_vendor", internalEquipmentId: null, quantity: 14 });
     expect(harness.request).toHaveBeenCalledTimes(1);
-    expect(harness.queries).toContain("/api/site-material-trips/vendor-options?site=NH-44");
+    expect(payload.masterSelection).toEqual({ equipmentId: 43 });
+    expect(payload).not.toHaveProperty("hireEquipmentLink");
+    expect(harness.queries.some(url => url.includes("/api/vendor-master"))).toBe(false);
   });
 
-  it("A2 records a different existing transporter, uses vehicle suggestions, and saves vehicle number", async () => {
-    renderPage(); await ready(); fillBasic();
+  it("A2 records a different transporter and prefills a blank carrier from the confirmed hired Master owner", async () => {
+    renderPage(); await ready();
     fireEvent.click(screen.getByTestId("trip-role-different_parties"));
-    fireEvent.focus(screen.getByTestId("input-trip-vehicle"));
-    fireEvent.click(await screen.findByRole("option", { name: "TS15UF4308" }));
+    fillBasic();
     expect(screen.getByTestId("input-trip-supplier")).toHaveValue("NARASIMHULU");
     const payload = await submit();
     expect(payload).toMatchObject({ materialSourceSupplier: "SANGANNA", materialSourceVendorId: 7, supplier: "NARASIMHULU", supplierVendorId: 18, vehicleNumber: "TS15UF4308", transportType: "agency_vendor", internalEquipmentId: null });
   });
 
-  it("a late transporter-association callback after switching to Same party cannot replace the source", async () => {
+  it("switching to Same party keeps the selected source; historical names never enter the vehicle picker", async () => {
     renderPage(); await ready(); fillBasic();
     fireEvent.click(screen.getByTestId("trip-role-different_parties"));
-    const delayedCallback = harness.lateAssociation;
     fireEvent.click(screen.getByTestId("trip-role-same_party"));
-    delayedCallback?.();
+    expect(screen.queryByRole("option", { name: "UNREGISTERED NAME" })).not.toBeInTheDocument();
     expect(screen.getByTestId("input-trip-material-source-supplier")).toHaveValue("SANGANNA");
     const payload = await submit();
     expect(payload).toMatchObject({ supplier: "SANGANNA", supplierVendorId: 7, materialSourceVendorId: 7 });
@@ -181,16 +183,15 @@ describe("VB-SPLIT Parts A/B entry behavior", () => {
   it("A3 requires equipment-master selection and writes NULL transporter columns and master vehicle number", async () => {
     renderPage(); await ready(); fillBasic();
     fireEvent.click(screen.getByTestId("trip-role-different_parties"));
-    const delayedCallback = harness.lateAssociation;
     fireEvent.click(screen.getByTestId("trip-role-in_house"));
-    delayedCallback?.();
     expect(screen.queryByTestId("input-trip-vehicle")).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId("button-submit-trip"));
     expect(harness.request).not.toHaveBeenCalled();
     expect(harness.toast).toHaveBeenLastCalledWith(expect.objectContaining({ description: "Choose our own vehicle from the equipment master." }));
-    setInput("select-trip-internal-equipment", "42");
+    selectVehicle("42");
     const payload = await submit();
     expect(payload).toMatchObject({ materialSourceSupplier: "SANGANNA", materialSourceVendorId: 7, supplier: null, supplierVendorId: null, transportType: "in_house", internalEquipmentId: 42, vehicleNumber: "TS09AB4321" });
+    expect(payload.masterSelection).toEqual({ equipmentId: 42 });
   });
 
   it("blocks unregistered/ambiguous names, blank source, and same vendor under Another transporter", async () => {
@@ -201,8 +202,10 @@ describe("VB-SPLIT Parts A/B entry behavior", () => {
       expect(harness.request).not.toHaveBeenCalled();
     }
     setInput("input-trip-material-source-supplier", "SANGANNA");
+    selectVendor("Material Supplier", "7");
     fireEvent.click(screen.getByTestId("trip-role-different_parties"));
     setInput("input-trip-supplier", "SANGANNA");
+    selectVendor("Transporter", "7");
     fireEvent.click(screen.getByTestId("button-submit-trip"));
     expect(harness.request).not.toHaveBeenCalled();
     expect(harness.toast).toHaveBeenLastCalledWith(expect.objectContaining({ description: "Choose a different transporter, or select Same party." }));
@@ -220,7 +223,7 @@ describe("VB-SPLIT Parts A/B entry behavior", () => {
     const payload = await submit();
     expect(payload).toMatchObject({ unloadedAt: "yard", yardLabel: "YARD A", earthworkArrangementId: 31, boqProjectId: 12, boqItemId: 29, workType: "road", receiptNumber: "CH-28", uom: "Cum", materialSourceSupplier: "SANGANNA" });
     await waitFor(() => expect(screen.getByTestId("input-trip-quantity")).toHaveValue(null));
-    expect(screen.getByTestId("input-trip-vehicle")).toHaveValue("");
+    expect(screen.getByRole("combobox", { name: "Vehicle / Tipper · Equipment Master" })).toHaveValue("");
     expect(screen.getByTestId("input-trip-receipt")).toHaveValue("");
     expect(screen.getByTestId("select-trip-material")).toHaveValue("Soil");
     expect(screen.getByTestId("input-trip-material-source-supplier")).toHaveValue("SANGANNA");
@@ -233,13 +236,14 @@ describe("VB-SPLIT Parts A/B entry behavior", () => {
     harness.search = "?piIndentId=53&piItemId=87&pendingReceiptId=92&material=Soil&supplier=SANGANNA&qty=14&uom=Cum&site=NH-44";
     renderPage(); await ready();
     expect(screen.getByTestId("input-trip-material-source-supplier")).toHaveValue("SANGANNA");
-    setInput("input-trip-vehicle", "TS15UF4308");
+    selectVendor("Material Supplier", "7");
+    selectVehicle("43");
     setInput("input-trip-location", "5.200");
     fireEvent.click(screen.getByText("Choose intended item"));
     const payload = await submit();
     expect(payload).toMatchObject({ indentId: 53, indentItemId: 87, pendingReceiptId: 92, material: "Soil", site: "NH-44", uom: "Cum", unloadedAt: "stretch", location: "5.200", supplierVendorId: 7, materialSourceVendorId: 7 });
     expect(payload.yardLabel).toBeUndefined();
-    await waitFor(() => expect(screen.getByTestId("input-trip-vehicle")).toHaveValue(""));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Vehicle / Tipper · Equipment Master" })).toHaveValue(""));
     expect(screen.getByTestId("input-trip-material-source-supplier")).toHaveValue("SANGANNA");
     expect(screen.getByTestId("input-trip-location")).toHaveValue("5.200");
   });
@@ -258,6 +262,7 @@ describe("VB-SPLIT Parts A/B entry behavior", () => {
     renderPage(); await ready(); fillBasic();
     fireEvent.click(screen.getByTestId("trip-role-different_parties"));
     setInput("input-trip-supplier", "NARASIMHULU");
+    selectVendor("Transporter", "18");
     fireEvent.click(within(screen.getByTestId("checkbox-keep-context")).getByRole("checkbox"));
     await submit();
     await waitFor(() => expect(screen.getByTestId("trip-role-same_party")).toBeChecked());
@@ -267,10 +272,10 @@ describe("VB-SPLIT Parts A/B entry behavior", () => {
   });
 });
 
-describe("A4/A5 explicit role-only editing", () => {
-  it("explicit work-context edits accompany roles without physical receipt fields", async () => {
+describe("A4/A5 ordinary master-based editing", () => {
+  it("explicit work-context edits accompany roles and normal trip fields in one PATCH", async () => {
     await openEditor();
-    setInput("input-edit-trip-material-source-supplier", "SANGANNA");
+    chooseEditSource();
     fireEvent.click(screen.getByTestId("edit-trip-role-same_party"));
     fireEvent.click(screen.getByText("Choose intended item"));
     fireEvent.click(screen.getByText("Apply arrangement"));
@@ -278,11 +283,11 @@ describe("A4/A5 explicit role-only editing", () => {
     await waitFor(()=>expect(harness.request).toHaveBeenCalled());
     const body=harness.request.mock.calls[0][2];
     expect(body).toMatchObject({boqProjectId:12,boqItemId:29,earthworkArrangementId:31});
-    for(const key of ["quantity","date","site","material","receiptNumber"])expect(body).not.toHaveProperty(key);
+    expect(body).toMatchObject({ quantity: 14, date: "2026-08-17", site: "NH-44", material: "Soil", receiptNumber: "", masterSelection: { equipmentId: null } });
   });
   it("untouched saved work context is omitted, never cleared by role confirmation", async () => {
     await openEditor({...rows[3],boqProjectId:12,boqItemId:29,programmeBarId:50,earthworkArrangementId:31});
-    setInput("input-edit-trip-material-source-supplier", "SANGANNA");
+    chooseEditSource();
     fireEvent.click(screen.getByTestId("edit-trip-role-same_party"));
     fireEvent.click(screen.getByTestId("button-save-trip-roles"));
     await waitFor(()=>expect(harness.request).toHaveBeenCalled());
@@ -293,59 +298,62 @@ describe("A4/A5 explicit role-only editing", () => {
   }
   async function openEditor(row = rows[3]) {
     const view = renderEditor(row);
-    const edit = screen.getByRole("button", { name: "Correct roles / work context" });
-    await waitFor(() => expect(edit).not.toBeDisabled());
-    fireEvent.click(edit);
+    await waitFor(() => expect(screen.queryByRole("status", { name: "Loading saved vehicle association" })).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
     return view;
   }
   it("A4 ambiguous existing trip has no option selected and save is blocked without a choice", async () => {
     await openEditor();
-    expect(screen.getByTestId("trip-roles-unresolved")).toHaveTextContent("Transport/source roles not yet confirmed — set Material from and Who brought it");
-    for (const radio of screen.getAllByRole("radio")) expect(radio).not.toBeChecked();
-    setInput("input-edit-trip-material-source-supplier", "SANGANNA");
+    for (const choice of ["same_party", "different_parties", "in_house"]) expect(screen.getByTestId(`edit-trip-role-${choice}`)).not.toBeChecked();
+    chooseEditSource();
     fireEvent.click(screen.getByTestId("button-save-trip-roles"));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Choose Who brought it");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Choose the transporter arrangement");
     expect(apiRequest).not.toHaveBeenCalled();
   });
-  it("A5 opening, reading raw values and closing ambiguous history writes nothing and leaves the object byte-for-byte unchanged", async () => {
+  it("A5 opening and cancelling ambiguous history writes nothing and leaves the original unchanged", async () => {
     const before = JSON.stringify(rows[3]);
     const view = renderEditor();
-    expect(screen.getByTestId("trip-role-raw-values")).toHaveTextContent("materialSourceSupplierNULL");
-    expect(screen.getByTestId("trip-role-raw-values")).toHaveTextContent('supplier"NARASIMHULU"');
-    fireEvent.click(screen.getByText("Close review"));
+    expect(screen.getByTestId("input-edit-trip-material-source-supplier")).toHaveValue("");
+    fireEvent.click(screen.getByTestId("edit-trip-role-different_parties"));
+    expect(screen.getByTestId("input-edit-trip-supplier")).toHaveValue("NARASIMHULU");
+    fireEvent.click(screen.getByText("Cancel"));
     view.unmount();
     expect(harness.request).not.toHaveBeenCalled();
     expect(JSON.stringify(rows[3])).toBe(before);
   });
-  it("PATCH contains only role fields and only occurs on explicit save", async () => {
+  it("PATCH contains selected IDs alongside normal trip fields and only occurs on explicit Save", async () => {
     await openEditor();
-    setInput("input-edit-trip-material-source-supplier", "SANGANNA");
+    chooseEditSource();
     fireEvent.click(screen.getByTestId("edit-trip-role-same_party"));
     expect(harness.request).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("button-save-trip-roles"));
-    await waitFor(() => expect(harness.request).toHaveBeenCalledWith("PATCH", "/api/site-material-trips/4", {
-      materialSourceSupplier: "SANGANNA", materialSourceVendorId: null, supplier: "SANGANNA", supplierVendorId: null, transportType: "agency_vendor", internalEquipmentId: null, vehicleNumber: "TS15UF4308",
-    }));
+    await waitFor(() => expect(harness.request).toHaveBeenCalledWith("PATCH", "/api/site-material-trips/4", expect.objectContaining({
+      materialSourceSupplier: "SANGANNA", materialSourceVendorId: 7, supplier: "SANGANNA", supplierVendorId: 7, transportType: "agency_vendor", internalEquipmentId: null, vehicleNumber: "TS15UF4308",
+      quantity: 14, masterSelection: { equipmentId: null },
+    })));
     expect(harness.request).toHaveBeenCalledTimes(1);
   });
-  it.each(["different_parties", "in_house"] as const)("role-only editing can explicitly save %s without quantity/context fields", async (choice) => {
+  it.each(["different_parties", "in_house"] as const)("ordinary editing saves %s plus unchanged normal trip fields", async (choice) => {
     await openEditor();
-    setInput("input-edit-trip-material-source-supplier", "SANGANNA");
+    chooseEditSource();
     fireEvent.click(screen.getByTestId(`edit-trip-role-${choice}`));
-    if (choice === "in_house") setInput("select-edit-trip-internal-equipment", "42");
+    if (choice === "in_house") selectVehicle("42");
     fireEvent.click(screen.getByTestId("button-save-trip-roles"));
     await waitFor(() => expect(harness.request).toHaveBeenCalledTimes(1));
     const payload = harness.request.mock.calls[0][2];
-    expect(Object.keys(payload).sort()).toEqual(["materialSourceSupplier", "materialSourceVendorId", "supplier", "supplierVendorId", "transportType", "internalEquipmentId", "vehicleNumber"].sort());
+    expect(payload).toMatchObject({ quantity: 14, date: "2026-08-17", materialSourceVendorId: 7 });
+    expect(payload).not.toHaveProperty("fingerprint");
+    expect(payload).not.toHaveProperty("reason");
     expect(payload).toMatchObject(choice === "in_house"
       ? { transportType: "in_house", supplier: null, supplierVendorId: null, internalEquipmentId: 42, vehicleNumber: "TS09AB4321" }
-      : { transportType: "agency_vendor", supplier: "NARASIMHULU", supplierVendorId: 18, materialSourceVendorId: null });
+      : { transportType: "agency_vendor", supplier: "NARASIMHULU", supplierVendorId: 18, materialSourceVendorId: 7 });
+    expect(payload.masterSelection).toEqual({ equipmentId: choice === "in_house" ? 42 : null });
   });
   it("failed explicit PATCH leaves the editor open with actionable error and does not mutate stored raw values", async () => {
     const before = JSON.stringify(rows[3]);
     harness.request.mockRejectedValueOnce(new Error("Roles could not be saved. Retry."));
     await openEditor();
-    setInput("input-edit-trip-material-source-supplier", "SANGANNA");
+    chooseEditSource();
     fireEvent.click(screen.getByTestId("edit-trip-role-same_party"));
     fireEvent.click(screen.getByTestId("button-save-trip-roles"));
     expect(await screen.findByRole("alert")).toHaveTextContent("Roles could not be saved. Retry.");
@@ -357,8 +365,9 @@ describe("A4/A5 explicit role-only editing", () => {
     harness.canEdit = false;
     renderEditor();
     expect(screen.getByTestId("dialog-trip-roles")).toBeInTheDocument();
-    expect(screen.getByTestId("trip-role-raw-values")).toHaveTextContent('supplier"NARASIMHULU"');
-    expect(screen.queryByRole("button", { name: "Correct roles / work context" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Quantity")).toBeDisabled();
+    expect(screen.getByTestId("input-edit-trip-material-source-supplier")).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Authorised identity corrections" })).not.toBeInTheDocument();
     expect(screen.queryByTestId("button-save-trip-roles")).not.toBeInTheDocument();
     expect(screen.queryByText("Confirm vendor links")).not.toBeInTheDocument();
     expect(harness.request).not.toHaveBeenCalled();
@@ -375,7 +384,7 @@ describe("focused role fields loading/error/empty states", () => {
     };
     const view = render(<TripTransportRoleFields {...props} vendorsLoading />);
     expect(screen.getByRole("status", { name: "Loading existing vendors" })).toBeInTheDocument();
-    for (const radio of screen.getAllByRole("radio")) expect(radio).not.toBeChecked();
+    for (const choice of ["same_party", "different_parties", "in_house"]) expect(screen.getByTestId(`trip-role-${choice}`)).not.toBeChecked();
     expect(screen.getByTestId("input-trip-material-source-supplier")).toBeDisabled();
     view.rerender(<TripTransportRoleFields {...props} vendorsError />);
     fireEvent.click(screen.getByText("Retry"));
@@ -435,7 +444,7 @@ describe("B1/B2 role list and filter scope", () => {
     expect(screen.getByTestId("trip-role-description-4")).toHaveTextContent("NARASIMHULU · roles not confirmed");
     expect(screen.getByTestId("trip-role-description-4")).toHaveClass("text-amber-700");
     for (const id of [1, 2, 3, 4, 5]) {
-      expect(screen.getByTestId(`button-edit-trip-roles-${id}`)).toHaveTextContent("Trip Details / Review Links");
+      expect(screen.getByTestId(`button-edit-trip-roles-${id}`)).toHaveTextContent("Edit");
     }
     expect(harness.request).not.toHaveBeenCalled();
   });
@@ -474,11 +483,8 @@ describe("B1/B2 role list and filter scope", () => {
     renderPage(); await ready();
     fireEvent.click(screen.getByTestId("button-edit-trip-roles-4"));
     expect(await screen.findByTestId("dialog-trip-roles")).toBeInTheDocument();
-    expect(within(screen.getByTestId("dialog-trip-roles")).queryAllByRole("radio")).toHaveLength(0);
-    const edit = screen.getByRole("button", { name: "Correct roles / work context" });
-    await waitFor(() => expect(edit).not.toBeDisabled());
-    fireEvent.click(edit);
-    for (const radio of within(screen.getByTestId("dialog-trip-roles")).getAllByRole("radio")) expect(radio).not.toBeChecked();
+    expect(within(screen.getByTestId("dialog-trip-roles")).getByRole("button", { name: "Save" })).toBeInTheDocument();
+    for (const choice of ["same_party", "different_parties", "in_house"]) expect(screen.getByTestId(`edit-trip-role-${choice}`)).not.toBeChecked();
     expect(harness.request).not.toHaveBeenCalled();
   });
   it("existing suggestions omit unknown and duplicate ambiguous vendor names; role utility remains read-only", () => {

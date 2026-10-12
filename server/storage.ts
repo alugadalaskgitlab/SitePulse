@@ -1,6 +1,7 @@
 import { lookupTripBoqQuantity } from "../shared/tripQuantityDisplay";
 import { buildPiTimeline } from "../shared/piTimeline";
 import { confirmTripHireLink, readTripHireLinks, guardTripHireOrdinaryItems, type NewTripHireLink } from "./tripHireLink";
+import { prepareTripMasterSelection, saveTripMasterSelection, type TripMasterSelection } from "./tripMasterSelection";
 import { equipmentVendorIdentities, ownerNameKey } from "./equipmentVendorIdentity";
 import { vendors as identityVendors } from "@shared/schema";
 import { validTripHireLink } from "../shared/tripHireLink";
@@ -1419,9 +1420,9 @@ export interface IStorage {
     before: VehicleSupplierAssociationView;
     after: VehicleSupplierAssociationView;
   }>;
-  createSiteMaterialTrip(data: InsertSiteMaterialTrip, hireLink?: NewTripHireLink): Promise<SiteMaterialTrip>;
+  createSiteMaterialTrip(data: InsertSiteMaterialTrip, hireLink?: NewTripHireLink, masterSelection?: TripMasterSelection): Promise<SiteMaterialTrip>;
   getSiteMaterialTripById(id: number): Promise<SiteMaterialTrip | undefined>;
-  updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>, actor?: { userId: number; userName: string; userRole?: string | null }): Promise<SiteMaterialTrip>;
+  updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>, actor?: { userId: number; userName: string; userRole?: string | null }, masterSelection?: TripMasterSelection): Promise<SiteMaterialTrip>;
   deleteSiteMaterialTrip(id: number): Promise<void>;
   getSiteMaterialReconciliation(filters?: { permittedSiteNames?: string[]; dateFrom?: string; dateTo?: string }): Promise<{
     site: string; material: string; matched: boolean; uom: string;
@@ -12898,12 +12899,13 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async createSiteMaterialTrip(data: InsertSiteMaterialTrip, hireLink?: NewTripHireLink): Promise<SiteMaterialTrip> {
+  async createSiteMaterialTrip(data: InsertSiteMaterialTrip, hireLink?: NewTripHireLink, masterSelection?: TripMasterSelection): Promise<SiteMaterialTrip> {
     if (data.materialSourceType === "own_source") {
       if (!data.materialSourceLabel?.trim()) throw new Error("Enter the borrow area / source description.");
       data = { ...data, materialSourceSupplier: null, materialSourceLabel: data.materialSourceLabel.trim() };
     }
     const [trip] = await db.transaction(async (tx) => {
+        if (masterSelection) await prepareTripMasterSelection(tx, data, masterSelection);
         const vehicleKey = normalizeVehicleSupplierVehicle(data.vehicleNumber);
         const inputSupplier = normalizeVehicleSupplierName(data.supplier);
         let state: { associations: VehicleSupplierAssociations; settingExists: boolean } | null = null;
@@ -12945,6 +12947,7 @@ export class DatabaseStorage implements IStorage {
           }
         }
         if (hireLink) await confirmTripHireLink(tx, inserted, hireLink, hireLink.actor, true);
+        if (masterSelection) await saveTripMasterSelection(tx, inserted, masterSelection);
         return [inserted] as const;
     });
     // If this trip is linked to a PI item, recompute receipt completion
@@ -13004,7 +13007,7 @@ export class DatabaseStorage implements IStorage {
     return trip;
   }
 
-  async updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>, actor?: { userId: number; userName: string; userRole?: string | null }): Promise<SiteMaterialTrip> {
+  async updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>, actor?: { userId: number; userName: string; userRole?: string | null }, masterSelection?: TripMasterSelection): Promise<SiteMaterialTrip> {
     const [trip] = await db.transaction(async (tx) => {
         if (data.materialSourceSupplier !== undefined) {
           data = {
@@ -13019,6 +13022,15 @@ export class DatabaseStorage implements IStorage {
           .limit(1)
           .for("update");
         if (!existing) return [undefined] as const;
+        if (masterSelection) await prepareTripMasterSelection(tx, { ...existing, ...data }, masterSelection, existing);
+        else if (actor) {
+          const priorLink = (await readTripHireLinks(tx, [existing.id])).get(existing.id);
+          await prepareTripMasterSelection(tx, { ...existing, ...data }, {
+            equipmentId: priorLink?.newValues?.equipmentId ?? existing.internalEquipmentId ?? null,
+            actor: { id: actor.userId, fullName: actor.userName,
+              isAdmin: actor.userRole === "admin", isOwner: actor.userRole === "owner" },
+          }, existing);
+        }
 
         const oldKey = normalizeVehicleSupplierVehicle(existing.vehicleNumber);
         const nextVehicle = data.vehicleNumber !== undefined ? data.vehicleNumber : existing.vehicleNumber;
@@ -13051,6 +13063,7 @@ export class DatabaseStorage implements IStorage {
           .where(eq(siteMaterialTrips.id, id))
           .returning(), data.indentItemId);
         if (!updated) return [undefined] as const;
+        if (masterSelection) await saveTripMasterSelection(tx, updated, masterSelection, existing);
 
         // Audit in the same transaction as the edit and PI reconciliation:
         // an audit failure must not acknowledge an unaudited committed edit.
@@ -18483,12 +18496,14 @@ export class DatabaseStorage implements IStorage {
     if (!equipment.length) return [];
     const ids = equipment.map(row => row.id);
     const defaults = new Map<number, {
+      ownership: string | null; linkedVendorName: string | null;
       id: number; name: string; vendorName: string | null; hireBillingBasis: string | null;
       hireRate: number | null; hireMonthlyDivisorType: string | null;
       hireMonthlyDivisor: number | null; hireStartDate: string | null;
        hireEndDate: string | null; consumptionNorm: number | null; meterType: string | null; registrationNumber: string | null;
        hireDieselResponsibility: string | null; hireBreakdownDeductionEnabled: boolean | null;
     }>(equipment.map(row => [row.id, {
+      ownership: row.ownership, linkedVendorName: identities.get(row.id)?.vendor?.businessName || identities.get(row.id)?.vendor?.name || null,
       id: row.id, name: row.name, vendorName: row.vendorName, hireBillingBasis: row.hireBillingBasis,
       hireRate: row.hireRate, hireMonthlyDivisorType: row.hireMonthlyDivisorType,
       hireMonthlyDivisor: row.hireMonthlyDivisor, hireStartDate: row.hireStartDate,
@@ -18579,7 +18594,7 @@ export class DatabaseStorage implements IStorage {
       // calculateHireGroup explicitly ignores this source.
       ...equipment.map((row: EquipmentMasterType) => ({ source: "equipment_default", sourceId: row.id, equipmentId: row.id,
         businessDate: periodFrom, equipment: { ...defaults.get(row.id), vendorId: identities.get(row.id)?.vendor?.id,
-          linkedVendorName: identities.get(row.id)?.vendor?.name } })),
+          linkedVendorName: identities.get(row.id)?.vendor?.businessName || identities.get(row.id)?.vendor?.name } })),
       ...dprRows.map((row: any) => {
         const equipmentDefault = defaults.get(row.equipmentId!);
         const calculated = computeEquipmentUsage(

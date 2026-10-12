@@ -10,6 +10,7 @@ import { buildEquipmentComparison, buildDailyDieselEquipmentReport } from "./die
 import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection, classifyBoqItem, getSectorMultiplier } from "./snlAutoMapper";
 import { api } from "@shared/routes";
 import { z } from "zod";
+import { tripMasterSelectionSchema, tripMasterPartyFields } from "./tripMasterSelection";
 import { bulkTripArrangementSchema, tripArrangementLinkError } from "../shared/tripArrangementLink";
 import { bulkLinkTripArrangement, tripArrangementOptions } from "./tripArrangementLink";
 import { EquipmentActivityAllocationError } from "@shared/equipmentActivityAllocations";
@@ -936,22 +937,23 @@ export async function registerRoutes(
   // Operational picker only: no contacts, banking, tax, activity or master edits.
   app.get("/api/site-material-trips/vendor-options", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "site_materials")) return;
+      if (!assertCreateOrEdit(req, res, "site_materials")) return;
       const site = z.string().trim().min(1).parse(req.query.site);
       if (!await assertTripSiteAccess(req, res, site)) return;
-      res.json(await db.select({ id: vendors.id, name: vendors.name, isActive: vendors.isActive }).from(vendors).orderBy(vendors.name));
+      res.json(await db.select({ id: vendors.id, name: vendors.name, businessName: vendors.businessName, isActive: vendors.isActive }).from(vendors).orderBy(vendors.name));
     } catch (err) {
       res.status(err instanceof z.ZodError ? 400 : 500).json({ message: "Could not load trip vendor options." });
     }
   });
   app.get("/api/site-material-trips/hired-vehicle-options", async (req, res) => {
-    if (!assertEdit(req, res, "site_materials")) return;
+    if (!assertCreateOrEdit(req, res, "site_materials")) return;
     try {
       const rows = await db.select().from(hireIdentityEquipment).where(eq(hireIdentityEquipment.ownership, "hired"));
       const identities = await equipmentVendorIdentities(db, rows);
       res.json(rows.map(row => ({ id: row.id, name: row.name, registrationNumber: row.registrationNumber,
         equipmentType: row.equipmentType, vendorName: row.vendorName, isActive: row.isActive, vendorId: identities.get(row.id)?.vendor?.id,
-        linkedVendorName: identities.get(row.id)?.vendor?.name })));
+        linkedVendorName: identities.get(row.id)?.vendor?.isActive
+          ? identities.get(row.id)?.vendor?.businessName || identities.get(row.id)?.vendor?.name : null })));
     } catch (error: any) { res.status(500).json({ message: "Could not load hired vehicle identities" }); }
   });
 
@@ -1137,7 +1139,9 @@ export async function registerRoutes(
   app.post("/api/site-material-trips", async (req, res) => {
     try {
       if (!assertCreate(req, res, "site_materials")) return;
-      const input = insertSiteMaterialTripSchema.parse(req.body);
+      const masterSelection = req.body.masterSelection === undefined ? undefined :
+        { ...tripMasterSelectionSchema.parse(req.body.masterSelection), actor: req.authUser! };
+      const input = (masterSelection ? insertSiteMaterialTripSchema.extend(tripMasterPartyFields) : insertSiteMaterialTripSchema).parse(req.body);
       if (input.materialSourceType === "own_source") {
         if (!input.materialSourceLabel?.trim()) return res.status(400).json({ message: "Enter the borrow area / source description." });
         input.materialSourceSupplier = null;
@@ -1158,11 +1162,11 @@ export async function registerRoutes(
       const linkageError = await validateTripLinkage({ ...input, operationalDate: input.date, requireProjectItemPair: true });
       if (linkageError) return res.status(400).json({ message: linkageError });
       let hireLink;
-      if (req.body.hireEquipmentLink) {
+      if (req.body.hireEquipmentLink && !masterSelection) {
         if (!assertEdit(req, res, "site_materials")) return;
         hireLink = { ...tripHireConfirmationSchema.parse(req.body.hireEquipmentLink), actor: req.authUser! };
       }
-      const trip = await storage.createSiteMaterialTrip(input, hireLink);
+      const trip = await storage.createSiteMaterialTrip(input, hireLink, masterSelection);
       sendPushToSection("site_materials", "Site Material Trip Added", `${input.material || 'Material'} - ${input.site || ''}`, "/site-reports").catch(() => {});
       res.status(201).json(trip);
     } catch (err) {
@@ -1176,11 +1180,14 @@ export async function registerRoutes(
     try {
       if (!assertEdit(req, res, "site_materials")) return;
       const id = Number(req.params.id);
-      const input = insertSiteMaterialTripSchema.partial().parse(req.body);
+      const masterSelection = req.body.masterSelection === undefined ? undefined :
+        { ...tripMasterSelectionSchema.parse(req.body.masterSelection), actor: req.authUser! };
+      const input: Partial<z.infer<typeof insertSiteMaterialTripSchema>> & { supplierVendorId?: number | null; materialSourceVendorId?: number | null } =
+        (masterSelection ? insertSiteMaterialTripSchema.extend(tripMasterPartyFields) : insertSiteMaterialTripSchema).partial().parse(req.body);
       const existing = await storage.getSiteMaterialTripById(id);
       if (!existing) return res.status(404).json({ message: "Site material trip not found" });
       if (!await assertTripSiteAccess(req, res, existing.site)) return;
-      if (!req.authUser?.isAdmin && !req.authUser?.isOwner &&
+      if (!masterSelection && !req.authUser?.isAdmin && !req.authUser?.isOwner &&
           (["supplierVendorId", "materialSourceVendorId"] as const).some(key =>
             input[key] != null && input[key] !== existing[key])) {
         return res.status(403).json({ message: "An Administrator/Owner must confirm historical Vendor Master identities." });
@@ -1222,13 +1229,13 @@ export async function registerRoutes(
         userId: req.authUser!.id,
         userName: currentUserName(req),
         userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
-      });
+      }, masterSelection);
       if (!trip) return res.status(404).json({ message: "Site material trip not found" });
       sendPushToSection("site_materials", "Site Material Trip Updated", `Trip #${id} updated`, "/site-reports").catch(() => {});
       res.json(trip);
     } catch (err) {
       console.error("Error updating site material trip:", err);
-      res.status(500).json({ message: "Failed to update site material trip" });
+      res.status(err instanceof z.ZodError ? 400 : (err as any)?.status || 500).json({ message: (err as any)?.status ? (err as any).message : "Failed to update site material trip" });
     }
   });
 

@@ -23,11 +23,15 @@ vi.mock("@/hooks/use-site-material-suggestions", async (importOriginal) => ({
   invalidateSiteMaterialSuggestions: vi.fn(),
 }));
 vi.mock("@/components/ReceiptWorkContext", () => ({ ReceiptWorkContext: () => <div>Work context</div> }));
+vi.mock("@/hooks/use-trip-masters", () => ({
+  useTripEquipmentMasters: () => ({ master: { data: equipment }, owners: { data: equipment } }),
+}));
 
-const vendors = [{ id: 11, name: "SARAVANA METAL INDUSTRIES" }, { id: 12, name: "GANGARAM NARSIMHULU" }];
+const vendors = [{ id: 11, name: "SARAVANA METAL INDUSTRIES", isActive: true }, { id: 12, name: "GANGARAM NARSIMHULU", isActive: true }];
 const equipment = [{
   id: 41, name: "Tipper 07", equipmentType: "Tipper", registrationNumber: "TS15UE4470",
   vendorName: "NARSIMULU", vendorId: 12, linkedVendorName: "GANGARAM NARSIMHULU",
+  ownership: "hired", isActive: true,
   hireBillingBasis: "daily", hireRate: 8731,
 }];
 const trip = {
@@ -59,14 +63,13 @@ beforeEach(() => {
 afterEach(() => { cleanup(); holder.qc.clear(); });
 
 describe("one operational trip review", () => {
-  it("opens one read-only dialog showing persisted separate parties and equipment without reconfirming or exposing terms", async () => {
+  it("opens one read-only ordinary form showing persisted master selections without reconfirming or exposing terms", async () => {
     renderDetails();
-    expect(await screen.findByText("Vehicle Linked")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("Vehicle / Tipper · Equipment Master")).toHaveValue("41"));
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
-    expect(screen.getByTestId("trip-vendor-saved-results")).toHaveTextContent("NARSIMULU");
-    expect(screen.getByTestId("trip-vendor-saved-results")).toHaveTextContent("GANGARAM NARSIMHULU");
-    expect(screen.getByTestId("trip-hire-saved-result")).toHaveTextContent("Recorded owner: NARSIMULU");
-    expect(screen.getByTestId("trip-hire-saved-result")).toHaveTextContent("Tipper");
+    expect(screen.getByTestId("input-edit-trip-material-source-supplier")).toHaveValue("SARAVANA METAL INDUSTRIES");
+    expect(screen.getByTestId("input-edit-trip-supplier")).toHaveValue("GANGARAM NARSIMHULU");
+    expect(screen.getByLabelText("Vehicle / Tipper · Equipment Master")).toBeDisabled();
     expect(screen.queryByText("Confirm vehicle link")).not.toBeInTheDocument();
     expect(screen.queryByText("Correct roles / work context")).not.toBeInTheDocument();
     expect(screen.queryByText("Confirm vendor links")).not.toBeInTheDocument();
@@ -108,9 +111,12 @@ describe("one operational trip review", () => {
       return { json: async () => updated };
     });
     renderDetails(unlinked);
+    fireEvent.click(screen.getByText("Authorised identity corrections"));
     await screen.findByText("Vehicle Link Pending");
     await waitFor(() => expect(screen.getByLabelText("Transporter match · Vendor Master")).not.toBeDisabled());
+    fireEvent.change(screen.getByLabelText("Material supplier match"), { target: { value: "SARA" } });
     fireEvent.change(screen.getByLabelText("Material supplier match · Vendor Master"), { target: { value: "11" } });
+    fireEvent.change(screen.getByLabelText("Transporter match"), { target: { value: "GANG" } });
     fireEvent.change(screen.getByLabelText("Transporter match · Vendor Master"), { target: { value: "12" } });
     fireEvent.change(screen.getByLabelText("Vendor identity verification reason"), { target: { value: "Parties reviewed independently" } });
     fireEvent.click(screen.getByText("Confirm vendor links"));
@@ -125,35 +131,32 @@ describe("one operational trip review", () => {
     expect(holder.request.mock.calls[0][2]).not.toHaveProperty("vehicleNumber");
   });
 
-  it("nonadmin editors cannot confirm historical vendors; role correction refreshes evidence before vehicle confirmation", async () => {
+  it("nonadmin editors save ordinary trip fields once and keep exceptional vendor confirmation separate", async () => {
     holder.canEdit = true;
     renderDetails();
-    await screen.findByText("Vehicle Linked");
+    await waitFor(() => expect(screen.getByLabelText("Vehicle / Tipper · Equipment Master")).toHaveValue("41"));
     expect(screen.queryByText("Change vendor links")).not.toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText("Correct roles / work context")).not.toBeDisabled());
-    fireEvent.click(screen.getByText("Correct roles / work context"));
-    expect(screen.getByText("Change link")).toBeDisabled();
-    fireEvent.change(screen.getByTestId("input-edit-trip-vehicle"), { target: { value: "TS15UE4471" } });
+    expect(screen.queryByLabelText("Verification reason / reference")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Quantity"), { target: { value: "192.25" } });
     holder.request.mockImplementation(async (method, _url, body) => {
       if (method === "PATCH") {
         const updated = { ...trip, ...body };
-        review = { ...review, trip: updated, fingerprint: "after-correction", version: 91,
-          confirmation: { ...review.confirmation, valid: false } };
+        review = { ...review, trip: updated };
         return { json: async () => updated };
       }
-      review = { ...review, confirmation: { ...review.confirmation, valid: true } };
       return { json: async () => ({}) };
     });
-    fireEvent.click(screen.getByText("Save roles"));
-    await screen.findByText("Review Required");
-    await waitFor(() => expect(screen.getByLabelText("Verification reason / reference")).not.toBeDisabled());
-    fireEvent.change(screen.getByLabelText("Verification reason / reference"), { target: { value: "Correction checked" } });
-    fireEvent.click(screen.getByText("Confirm vehicle link"));
-    await waitFor(() => expect(holder.request).toHaveBeenLastCalledWith("POST", "/api/site-material-trips/737/hire-link", expect.objectContaining({
-      fingerprint: "after-correction", version: 91, equipmentId: 41,
+    fireEvent.click(screen.getByText("Save"));
+    await waitFor(() => expect(holder.request).toHaveBeenCalledWith("PATCH", "/api/site-material-trips/737", expect.objectContaining({
+      quantity: 192.25, supplier: "NARSIMULU", supplierVendorId: 12, vehicleNumber: "TS15UE4470",
     })));
     const patch = holder.request.mock.calls[0][2];
-    expect(patch).toMatchObject({ supplier: "NARSIMULU", supplierVendorId: 12, vehicleNumber: "TS15UE4471" });
+    expect(patch).not.toHaveProperty("masterSelection");
+    expect(patch).not.toHaveProperty("fingerprint");
+    expect(patch).not.toHaveProperty("reason");
+    expect(holder.request).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByText("Authorised identity corrections"));
+    expect(screen.queryByText("Confirm vendor links")).not.toBeInTheDocument();
   });
 });
 
@@ -176,9 +179,10 @@ describe("new-entry selectors", () => {
         vendors={vendors} equipment={[]} sourceSuggestions={[]} supplierSuggestions={[]} vehicleSuggestions={[]} onRetryVendors={vi.fn()} allowManualParties />
         <output data-testid="draft">{JSON.stringify(value)}</output></>;
     }
-    render(<Draft />);
-    fireEvent.click(screen.getByLabelText(/Outside \/ one-time party/));
+    renderQuery(<Draft />);
+    fireEvent.click(screen.getAllByLabelText("Other / Not in Master")[0]);
     fireEvent.change(screen.getByTestId("input-trip-supplier"), { target: { value: "Outside transporter" } });
+    fireEvent.click(screen.getAllByLabelText("Other / Not in Master")[1]);
     fireEvent.change(screen.getByTestId("input-trip-vehicle"), { target: { value: "TS99AB1234" } });
     const draft = JSON.parse(screen.getByTestId("draft").textContent || "{}");
     expect(draft).toMatchObject({ supplierManual: true, supplierVendorId: null, supplier: "OUTSIDE TRANSPORTER",

@@ -12,7 +12,7 @@ it("shows vehicle/date trip evidence and updates half-day pricing without multip
       equipmentId: 1, businessDate: "2026-10-01", entryType: "daily_hire", confirmedForDailyHire: true, numberOfTrips: 1, status: "closed" }));
     const result = calculateHireGroup({ terms: { billingBasis: "daily", rate: 2000 }, periodFrom: "2026-10-01",
       periodTo: "2026-10-01", activities, maintenance: [], dailyDecisions: group.dailyDecisions });
-    return <TripDailyHireReview group={group} equipment={{ registrationNumber: "TS01AB1234", vendorName: "Agency" }}
+    return <TripDailyHireReview group={group} equipment={{ registrationNumber: "TS01AB1234", ownership: "hired", vendorName: "Recorded owner", linkedVendorName: "Ravi Earthworks" }}
       result={result} activities={activities} onChange={patch => setGroup({ ...group, ...patch })} onRemove={() => {}} />;
   }
   render(<Harness />);
@@ -20,6 +20,9 @@ it("shows vehicle/date trip evidence and updates half-day pricing without multip
   expect(screen.getByText(/0 hire days/).textContent).toContain("1 day needs review");
   expect(screen.getAllByRole("link")).toHaveLength(3);
   expect(screen.getByRole("link", { name: "Trip #1" }).getAttribute("href")).toContain("hireDate=2026-10-01");
+  expect(screen.getByRole("link", { name: "Trip #1" }).getAttribute("href")).toContain("hireVehicle=TS01AB1234");
+  expect(screen.getByText(/Ravi Earthworks · Daily hire/)).toBeTruthy();
+  expect(screen.queryByText(/Confirm vendor links|Confirm vehicle link|Review Links/)).toBeNull();
   fireEvent.change(screen.getByLabelText("Hire reason 2026-10-01"), { target: { value: "Attendance verified" } });
   expect((screen.getByLabelText("Hire decision 2026-10-01") as HTMLSelectElement).value).toBe("");
   expect(screen.getByText("Needs review")).toBeTruthy();

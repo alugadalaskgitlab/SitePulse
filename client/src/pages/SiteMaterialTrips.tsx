@@ -4,7 +4,7 @@ import { TripTransportRoleFields } from "@/components/TripTransportRoleFields";
 import { TripRoleEditDialog } from "@/components/TripRoleEditDialog";
 import { BulkTripArrangement } from "@/components/BulkTripArrangement";
 import { filterTripsByRole, resolveSelectedTripVendor, tripRoleDescription, type ExistingTripVendor, type TripRoleFilter } from "@/components/trip-role-utils";
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useSearch, useLocation } from "wouter";
 import { format } from "date-fns";
@@ -23,16 +23,12 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { useUpload } from "@/hooks/use-upload";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
 import { FreeTextSuggestionInput } from "@/components/FreeTextSuggestionInput";
-import { TripEquipmentPicker } from "@/components/TripEquipmentPicker";
 import { ReceiptWorkContext, TripWorkContextSummary, EMPTY_WORK_CONTEXT, hasRequiredWorkContext, type TripWorkContext } from "@/components/ReceiptWorkContext";
 import { findAllocationEntry, receiptSuggestionFromFulfilment, fulfilmentLabel } from "@shared/requirementFulfilment";
 import {
   invalidateSiteMaterialSuggestions,
-  normalizeVehicleSupplierKey,
-  vehicleSupplierAssociationFor,
   useSiteMaterialSuggestions,
 } from "@/hooks/use-site-material-suggestions";
-import { VehicleSupplierAssociationNotice } from "@/components/VehicleSupplierAssociationNotice";
 import { useAuth } from "@/lib/auth-context";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -92,10 +88,7 @@ export default function SiteMaterialTrips() {
   const [onlyWithoutArrangement, setOnlyWithoutArrangement] = useState(false);
   const [roleFilter, setRoleFilter] = useState<TripRoleFilter>("all");
   const [roleChoice, setRoleChoice] = useState<TripTransportRole | null>("same_party");
-  const roleChoiceRef = useRef(roleChoice);
-  roleChoiceRef.current = roleChoice;
   const [editingRoleTrip, setEditingRoleTrip] = useState<SiteMaterialTrip | null>(null);
-  const [newHireEquipmentId, setNewHireEquipmentId] = useState("");
   const [bulkMaterialSourceSupplier, setBulkMaterialSourceSupplier] = useState("");
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
 
@@ -115,6 +108,8 @@ export default function SiteMaterialTrips() {
     vehicleNumber: "",
     transportType: "agency_vendor",
     internalEquipmentId: null as number | null,
+    equipmentId: null as number | null,
+    vehicleManual: false,
     quantity: piParams.qty || "",
     uom: piParams.uom || "CFT",
     location: "",
@@ -126,21 +121,13 @@ export default function SiteMaterialTrips() {
     unloadedAt: "stretch",
     yardLabel: "",
   });
-  // Site suggestions prioritize existing vendors; saving requires one unique master ID.
-  const vendorSite = editingRoleTrip?.site || newTrip.site || (siteFilter !== "all" ? siteFilter : "");
+  // Normal entry searches Vendor Master only; historical suggestions remain filters only.
+  const masterPickerSite = editingRoleTrip?.site || newTrip.site;
   const vendorQuery = useQuery<ExistingTripVendor[]>({
-    queryKey: [`/api/site-material-trips/vendor-options?site=${encodeURIComponent(vendorSite)}`],
-    enabled: canEdit && !!vendorSite,
+    queryKey: [`/api/site-material-trips/vendor-options?site=${encodeURIComponent(masterPickerSite)}`],
+    enabled: (canEdit || sectionCan("site_materials", "create")) && !!masterPickerSite,
   });
   const vendors = vendorQuery.data ?? [];
-  const {
-    suppliers: supplierSuggestions,
-    materialSourceSuppliers: materialSourceSupplierSuggestions,
-    vehicles: vehicleSuggestions,
-    error: suggestionError,
-    vehicleSuppliers,
-    canCorrectVehicleSupplier,
-  } = useSiteMaterialSuggestions(newTrip.site);
   const {
     suppliers: filterSupplierSuggestions,
     materialSourceSuppliers: filterMaterialSourceSupplierSuggestions,
@@ -148,21 +135,6 @@ export default function SiteMaterialTrips() {
     error: filterSuggestionError,
   } = useSiteMaterialSuggestions(siteFilter && siteFilter !== "all" ? siteFilter : "");
 
-  const applyVehicleSuggestion = (vehicleNumber: string) => {
-    // FreeTextSuggestionInput calls onChange first and this callback second.
-    // A functional update makes the pair atomic even under React batching and
-    // avoids applying a supplier from a stale form closure.
-    setNewTrip((prev) => {
-      const association = vehicleSupplierAssociationFor(vehicleSuppliers, vehicleNumber);
-      return {
-        ...prev,
-        vehicleNumber: vehicleNumber.toUpperCase(),
-        ...(roleChoiceRef.current === "different_parties" && association?.status === "linked" && association.supplier
-          ? { supplier: association.supplier, supplierVendorId: null }
-          : {}),
-      };
-    });
-  };
 
   // Batch 06E-F / DPR-02: standalone trips require project + intended item.
   const [workCtx, setWorkCtx] = useState<TripWorkContext>(EMPTY_WORK_CONTEXT);
@@ -272,18 +244,13 @@ export default function SiteMaterialTrips() {
   const { data: trips, isLoading } = useQuery<SiteMaterialTrip[]>({
     queryKey: [buildTripsUrl()],
   });
-  // Reuse the existing equipment-master endpoint. The number field remains
-  // editable because older/internal vehicles may not yet have a master row.
+  // The authoritative master contains both owned and hired equipment.
   const { data: internalEquipment = [] } = useQuery<EquipmentMasterType[]>({
     queryKey: ["/api/plant-module/equipment"],
   });
   const activeInternalEquipment = internalEquipment.filter(
     (equipment) => equipment.isActive && equipment.ownership === "owned",
   );
-  const hiredOptions = useQuery<any[]>({
-    queryKey: ["/api/site-material-trips/hired-vehicle-options"],
-    enabled: canEdit, staleTime: 0, refetchOnMount: "always",
-  });
   const buildRolePayload = (data: typeof newTrip) => {
     if (!roleChoice || roleChoice === "unresolved") throw new Error("Choose Who brought it.");
     const ownSource = data.materialSourceType === "own_source";
@@ -298,6 +265,7 @@ export default function SiteMaterialTrips() {
     const issue = validateTripRoles(roles);
     if (issue) throw new Error(issue);
     if (roleChoice !== "in_house" && !data.vehicleNumber.trim()) throw new Error("Enter the agency/vendor vehicle number.");
+    if (!data.equipmentId && !data.vehicleManual) throw new Error("Select an Equipment Master vehicle, or choose Other / Not in Master.");
     return roles;
   };
 
@@ -306,12 +274,15 @@ export default function SiteMaterialTrips() {
       const payload: Record<string, any> = {
         ...data,
         ...buildRolePayload(data),
+        masterSelection: { equipmentId: data.equipmentId },
         quantity: parseFloat(data.quantity) || 0,
         // 06S: yard label only meaningful for yard receipts.
         yardLabel: data.unloadedAt === "yard" ? data.yardLabel : undefined,
       };
       delete payload.materialSourceManual;
       delete payload.supplierManual;
+      delete payload.vehicleManual;
+      delete payload.equipmentId;
       if (isPILinked) {
         payload.indentId = piParams.piIndentId;
         payload.indentItemId = piParams.piItemId;
@@ -322,14 +293,10 @@ export default function SiteMaterialTrips() {
       if (workCtx.boqItemId != null) payload.boqItemId = workCtx.boqItemId;
       if (workCtx.programmeBarId != null) payload.programmeBarId = workCtx.programmeBarId;
       if (workCtx.earthworkArrangementId != null) payload.earthworkArrangementId = workCtx.earthworkArrangementId;
-      if (newHireEquipmentId) payload.hireEquipmentLink = {
-        equipmentId: Number(newHireEquipmentId), reason: "Existing hired vehicle explicitly selected during trip entry",
-      };
       const res = await apiRequest("POST", "/api/site-material-trips", payload);
       return res.json();
     },
     onSuccess: async (trip: any) => {
-      setNewHireEquipmentId("");
       queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && q.queryKey[0].startsWith("/api/vendor-bills") });
       if (stagedPhotos.length > 0 && trip?.id) {
         await uploadStagedPhotos(trip.id);
@@ -358,6 +325,8 @@ export default function SiteMaterialTrips() {
         setNewTrip(prev => ({
           ...prev,
           vehicleNumber: "",
+          equipmentId: null,
+          vehicleManual: false,
             internalEquipmentId: null,
           quantity: "",
           receiptNumber: "",
@@ -371,6 +340,9 @@ export default function SiteMaterialTrips() {
           ...prev,
           time: format(new Date(), "HH:mm"),
           vehicleNumber: "",
+          equipmentId: null,
+          internalEquipmentId: null,
+          vehicleManual: false,
           quantity: "",
           receiptNumber: "",
           notes: "",
@@ -390,6 +362,8 @@ export default function SiteMaterialTrips() {
            materialSourceType: "vendor",
            materialSourceLabel: "",
           vehicleNumber: "",
+          equipmentId: null,
+          vehicleManual: false,
              transportType: "agency_vendor",
             internalEquipmentId: null,
           quantity: "",
@@ -620,61 +594,18 @@ export default function SiteMaterialTrips() {
                 allowManualParties
                 choice={roleChoice}
                 onChoice={(choice) => {
-                  setNewHireEquipmentId("");
                   setRoleChoice(choice);
                   setNewTrip((prev) => ({ ...prev, transportType: choice === "in_house" ? "in_house" : "agency_vendor", internalEquipmentId: choice === "in_house" ? prev.internalEquipmentId : null }));
                 }}
                 value={newTrip}
                 onChange={(draft) => {
-                  if (("vehicleNumber" in draft && draft.vehicleNumber !== newTrip.vehicleNumber) ||
-                    ("supplier" in draft && draft.supplier !== newTrip.supplier) ||
-                    ("transportType" in draft && draft.transportType !== newTrip.transportType)) setNewHireEquipmentId("");
                   setNewTrip((prev) => ({ ...prev, ...draft }));
                 }}
                 vendors={vendors}
                 equipment={activeInternalEquipment}
-                sourceSuggestions={materialSourceSupplierSuggestions}
-                supplierSuggestions={supplierSuggestions}
-                vehicleSuggestions={vehicleSuggestions}
-                suggestionError={suggestionError}
                 vendorsLoading={vendorQuery.isLoading}
                 vendorsError={vendorQuery.isError}
                 onRetryVendors={() => void vendorQuery.refetch()}
-                onVehicleSelected={applyVehicleSuggestion}
-                vehiclePicker={canEdit ? <div className="mb-3 space-y-2">
-                  {hiredOptions.isLoading ? <div className="h-20 animate-pulse rounded bg-muted" aria-label="Loading hired vehicles" role="status" /> :
-                    <TripEquipmentPicker options={(hiredOptions.data || []).filter(e => e.isActive && e.registrationNumber)}
-                      value={newHireEquipmentId} registration={newTrip.vehicleNumber} allowOutside onChange={id => {
-                        setNewHireEquipmentId(id);
-                        const equipment = hiredOptions.data?.find(e => String(e.id) === id);
-                        if (equipment) {
-                          // Selecting a vehicle never changes the material supplier.
-                          if (roleChoice === "different_parties") setNewTrip(prev => ({ ...prev,
-                            vehicleNumber: equipment.registrationNumber || "", supplier: equipment.linkedVendorName || equipment.vendorName || "",
-                            supplierVendorId: equipment.vendorId ?? null, supplierManual: !equipment.vendorId, transportType: "agency_vendor", internalEquipmentId: null }));
-                          else setNewTrip(prev => ({ ...prev, vehicleNumber: equipment.registrationNumber || "" }));
-                        }
-                      }} />}
-                  <p className="text-xs text-muted-foreground">Select only after reviewing the recorded owner and confirmed identity. Material source stays unchanged. An outside vehicle can be entered manually.</p>
-                  {hiredOptions.isError && <p role="alert">Could not load hired vehicles. <button type="button" onClick={() => hiredOptions.refetch()}>Retry</button></p>}
-                </div> : undefined}
-                vehicleNotice={roleChoice === "different_parties" ? <VehicleSupplierAssociationNotice
-                    site={newTrip.site}
-                    vehicleNumber={newTrip.vehicleNumber}
-                    supplier={newTrip.supplier}
-                    association={vehicleSupplierAssociationFor(vehicleSuppliers, newTrip.vehicleNumber)}
-                    canCorrectVehicleSupplier={canCorrectVehicleSupplier}
-                    onSupplierApplied={(supplier, context) =>
-                      setNewTrip((prev) =>
-                         roleChoiceRef.current === "different_parties" && prev.site === context.site &&
-                        normalizeVehicleSupplierKey(prev.vehicleNumber) ===
-                          normalizeVehicleSupplierKey(context.vehicleNumber)
-                          ? { ...prev, supplier, supplierVendorId: null }
-                          : prev,
-                      )
-                    }
-                    testIdPrefix="trip"
-                  /> : undefined}
               />
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
@@ -1093,7 +1024,7 @@ export default function SiteMaterialTrips() {
                         </td>
                         <td className="p-2 text-center">
                           <div className="flex items-center justify-center gap-1">
-                            <Button variant="outline" size="sm" onClick={() => setEditingRoleTrip(trip)} data-testid={`button-edit-trip-roles-${trip.id}`}>Trip Details / Review Links</Button>
+                            <Button variant="outline" size="sm" onClick={() => setEditingRoleTrip(trip)} data-testid={`button-edit-trip-roles-${trip.id}`}>{canEdit ? "Edit" : "Details"}</Button>
                             <Button
                               variant="ghost"
                               size="icon"

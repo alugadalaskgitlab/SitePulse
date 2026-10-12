@@ -1,0 +1,365 @@
+# UX-SIMPLE-01 — Master-Based Entry, Trip Linking and Equipment Ownership
+
+**Objective:** Simplify SitePulse's existing Material Trip entry/editing and Equipment Hire Vendor Bill workflow into a practical **Search → Select → Save** experience.
+
+Users should not need to understand internal IDs, identity links, audit versions, fingerprints or separate confirmation processes simply to record or correct a trip.
+
+**This is one consolidated, focused task covering:**
+
+1. Simple Material Trip Add/Edit.
+2. Searchable selections exclusively from the respective Masters.
+3. Automatic Vendor/Equipment association for billing.
+4. Correct Owned/Hired equipment identification in Vendor Bills.
+
+Reuse the existing functionality developed under TRIP-VB-INTEGRATION-01, VB-TIPPER-03 and VB-HIRE-TERMS-01. Do not rebuild these features or create parallel workflows.
+
+## 1. One Simple Material Trip Form
+
+Use the existing Add/Edit Material Trip form for both new and historical entries.
+
+The normal form should clearly show:
+
+**Material Details**
+- Material Source: Vendor Supply / Own Source
+- Material Supplier or Own Source description
+- Material, Quantity and Unit
+- Site and Date
+
+**Transportation Details**
+- Transporter
+- Vehicle / Tipper
+- Existing trip particulars
+
+Preserve the existing BOQ/work context where applicable, without creating another separate review process.
+
+Use the normal existing **Edit** action for permitted users.
+
+The user should complete the required selections and click **Save** once.
+
+Avoid separate *Set Roles*, *Review Links*, *Confirm Vendor Identity* and *Hire Billing Link* steps in the ordinary workflow.
+
+Keep exceptional historical correction mechanisms available internally where necessary.
+
+## 2. Vendor Master — Searchable Dropdowns
+
+Material Supplier and Transporter must use **Vendor Master exclusively** for normal searchable suggestions.
+
+Requirements:
+
+- Search by entering two or more characters.
+- Match characters appearing anywhere in the Master Name or Business Name.
+- Search should be case-insensitive.
+- Display **Business Name** prominently.
+- If Business Name is blank, display the Master Name.
+- Where necessary, show both names to distinguish similar vendors.
+- Save the selected **Vendor Master ID**, not merely the displayed text.
+- Use only active Vendor Master records.
+
+**Example:**
+
+Typing `SARA` should show:
+
+SARAVANA METAL INDUSTRIES
+
+Typing `NARSI` should show the relevant Vendor Master parties containing that text.
+
+Do not mix historical free-text names, previously entered trip names, locally remembered suppliers or cached alternatives into the dropdown results.
+
+Selecting a Master should establish the existing supported vendor association automatically.
+
+Do not create duplicate Vendor Master entries.
+
+### Own Source
+
+Where material comes from HLC's own source:
+
+- Select **Own Source**.
+- Enter the borrow-area/source description.
+- Do not require a material supplier.
+- Still allow a separate hired transporter and vehicle.
+
+The material supplier and transporter must remain independent identities.
+
+## 3. Equipment Master — Searchable Vehicle Dropdown
+
+Vehicle/Tipper selection must come from **Equipment Master exclusively** for normal suggestions.
+
+Search by any part of the registration number, including the last four digits.
+
+**Example:**
+
+Typing `4470` should display matching Equipment Master vehicles such as:
+
+Tipper · TS15UE4470 · Hired · Gangaram Narsimulu
+
+Display:
+
+- Equipment Type
+- Registration Number
+- Ownership: Owned / Hired
+- Owner/Vendor Business Name when hired
+
+Save the selected **Equipment Master ID**.
+
+For hired equipment, resolve the owner through its confirmed Vendor Master association wherever available.
+
+Do not use historical trip vehicle numbers, locally cached vehicle lists or manually typed registrations as normal dropdown suggestions.
+
+If several registrations match, display all matching Master records for the user to select.
+
+Do not automatically create duplicate equipment records.
+
+## 4. Automatic Owner and Transporter Association
+
+When a hired vehicle is selected:
+
+- Identify its confirmed Equipment Master owner.
+- Suggest the corresponding Vendor Master transporter.
+- If the transporter has not yet been selected, prefill the suggested Master party where the association is unambiguous.
+- If the selected transporter differs from the confirmed equipment owner, show one short, understandable warning.
+
+Do not silently change an already selected transporter.
+
+A genuine difference may be valid, so preserve the ability for an authorised user to review it.
+
+For normal unambiguous selections, saving the form should automatically establish the existing vendor/equipment billing association.
+
+Use the current backend ID validation and audit mechanisms internally.
+
+**No separate confirmation button, technical review screen or mandatory verification reason should be required for routine valid selections.**
+
+## 5. Historical Trips — Simple Correction
+
+For existing trips, including those where supplier, transporter and vehicle were originally typed manually:
+
+- Open the ordinary Edit form.
+- Display the existing recorded information.
+- If a Master association already exists, preselect the correct Master.
+- If unlinked, show the old value as a legacy recorded value, clearly distinguished from a verified Master selection.
+- Allow the authorised user to search and select the correct Vendor Master and Equipment Master records.
+- Save all selected associations in one operation.
+
+Preserve original historical values and changes through the existing audit/history mechanisms.
+
+Do not silently rewrite submitted or protected transactional evidence.
+
+For an actual identity conflict, locked record or previously billed vehicle/date, retain existing safeguards and show one concise explanation of the required authorised action.
+
+Do not bypass permissions, approved correction controls or duplicate-billing checks.
+
+The user must not have to repeat the same confirmation every time the form is reopened.
+
+## 6. Explicit Outside-Vendor / Outside-Vehicle Exception
+
+Normal suggestions must come only from Masters.
+
+For a genuine one-time external vendor or unregistered vehicle, provide a clearly separated:
+
+**Other / Not in Master**
+
+option, subject to existing permissions.
+
+This allows exceptional free-text entry without polluting Master dropdowns.
+
+Such entries must remain distinguishable from Master-linked records.
+
+Do not automatically create Vendor Master or Equipment Master entries.
+
+Where an outside vehicle cannot be linked to a registered equipment record, do not pretend its Hire Billing Link is confirmed.
+
+The existing permitted one-time billing workflow must remain available where applicable.
+
+## 7. Simplify the Visible Interface
+
+Remove unnecessary clutter from normal trip Add/Edit:
+
+- Technical internal IDs
+- Audit fingerprints and version numbers
+- Large explanatory paragraphs
+- Multiple role/link confirmation buttons
+- Repeated identity warnings
+- Mandatory reasons for ordinary valid selections
+
+Replace separate routine link actions with one normal **Edit → Save** workflow.
+
+Keep audit details accessible through existing History/Admin functionality.
+
+Use clear, consistent field labels, capitalisation and concise validation messages.
+
+Ensure dropdown search is keyboard-friendly and practical on smaller screens.
+
+Do not add another full-screen review interface.
+
+## 8. Correct Equipment Ownership in Vendor Bills
+
+Some equipment appearing in **Equipment Hire Vendor Bills** is displaying **Owned**, although the equipment may actually be hired.
+
+Trace ownership and equipment identity through:
+
+Equipment Master → Vendor Bill equipment selection → Hire calculation → Saved Bill Detail → PDF/Excel.
+
+Determine whether the issue is caused by:
+
+- Incorrect Equipment Master matching
+- Wrong selected Equipment Master ID
+- Incorrect ownership display logic
+- A genuine incorrect ownership value in Equipment Master
+
+Use the actual saved Equipment Master ownership field as the authoritative source.
+
+Display:
+
+**Hired — Vendor Business Name**
+
+for hired equipment with a confirmed vendor.
+
+Display:
+
+**Owned — HLC**
+
+for HLC-owned equipment.
+
+Do not infer ownership from an equipment type, vehicle number fragment, free-text name or billing basis.
+
+If a saved Equipment Master record genuinely says Owned, do not automatically change it to Hired. Report the discrepancy for authorised correction.
+
+### Important billing safeguard
+
+HLC-owned equipment must not automatically generate an outside vendor's equipment-hire liability.
+
+Investigate the current Auto-Generated Monthly Hire selection to ensure only genuinely eligible hired equipment is used for vendor-payable hire bills.
+
+Preserve legitimate operational usage of HLC-owned equipment.
+
+Do not alter existing bills or historical financial calculations merely to correct a displayed label.
+
+## 9. Keep Hire Basis Independent of Ownership
+
+Ownership and Hire Basis are different concepts.
+
+An equipment item may belong to one vendor but be billed on different bases for different assignments.
+
+Preserve the existing Vendor Bill selection of:
+
+- Trip
+- Daily
+- Hourly
+- Monthly
+
+Equipment Master values remain default suggestions only.
+
+The actual agreed basis, rate and period must be selected and preserved in the Vendor Bill.
+
+Do not introduce Hire Basis or Hire Rate into the Material Trip form.
+
+Do not alter the existing Vendor Bill Rate Card structure in this batch.
+
+## 10. Vendor Bill — Automatic Trip Discovery
+
+Once a Material Trip has the correct saved Vendor Master and Equipment Master associations, it must become available as supporting evidence for the relevant Equipment Hire Vendor Bill without another routine linking operation.
+
+Preserve the current billing rules:
+
+**Trip Hire**
+- Count eligible confirmed trips individually.
+- Do not include already billed trips again.
+
+**Daily Hire**
+- Combine eligible activity by vehicle/date.
+- Multiple trips on the same date count as one vehicle/day.
+- Retain Full/Half/Excluded decisions and reasons.
+
+**Hourly Hire**
+- Use actual recorded working hours only.
+- Never infer hours from trip count.
+
+**Monthly Hire**
+- Preserve the existing monthly calculation, calendar and contractual terms.
+
+The selected Hire Basis in the Vendor Bill governs charging, regardless of Equipment Master's default basis.
+
+Keep the existing server-side cross-basis duplicate-billing protection.
+
+Do not create duplicate Equipment Usage records from Material Trips.
+
+## 11. Permissions and Historical Safety
+
+Respect the existing permission system.
+
+- Permitted site staff can create and edit ordinary trips within their authorised scope.
+- Read-only users cannot edit.
+- Master maintenance remains restricted to authorised users.
+- Exceptional historical identity conflicts must follow existing authorised correction safeguards.
+- Vendor Bill financial rates, amounts, payments and approvals remain protected by existing financial permissions.
+
+Do not change existing approvals, DPR correction rules or Vendor Bill financial access.
+
+Preserve submitted DPRs, Material Receipts, inventory, diesel records, paid bills and accounting data.
+
+Never silently overwrite an already billed or protected trip identity.
+
+## 12. Focused Verification
+
+Test the actual combined workflow:
+
+1. Search `SARA` and select SARAVANA METAL INDUSTRIES from Vendor Master.
+2. Search `NARSI` and select the correct transporter from Vendor Master.
+3. Search `4470` and select the correct Equipment Master tipper.
+4. Confirm that the actual Master IDs are persisted.
+5. Confirm that selecting a hired vehicle suggests its reviewed owner.
+6. Verify that selecting an existing transporter does not silently overwrite it.
+7. Create and save a new trip through one form.
+8. Edit an unlinked historical trip and save the corrected Master associations once.
+9. Reopen the trip and confirm the associations persist without repeated confirmation.
+10. Verify Own Source with a different hired transporter.
+11. Verify exceptional one-time vendor and outside-vehicle entry.
+12. Verify Master dropdowns contain no historical/local free-text suggestions.
+13. Verify actual Owned/Hired classification in Vendor Bills.
+14. Verify HLC-owned equipment is not automatically billed as vendor hire.
+15. Verify linked trip evidence is available for both Trip Hire and Daily Hire.
+16. Verify daily-hire deduplication and cross-basis duplicate protection.
+17. Verify bill-specific rates and saved hire terms remain unaffected.
+18. Verify existing permissions and protected historical records.
+19. Verify normal Add/Edit is usable without navigating through separate linking dialogs.
+20. Confirm no changes to existing financial figures or historical bills.
+
+Use focused automated tests and one production build.
+
+Where feasible, visually inspect the signed-in Add/Edit Material Trip and Vendor Bill equipment selection.
+
+Do not run unrelated broad test suites.
+
+## 13. Strict Scope — Do Not Touch
+
+Do not modify:
+
+- Historical Vendor Bill amounts or payment records
+- Vendor Bill financial overview, GST/TDS reports or Excel exports
+- Submitted DPR calculations
+- Diesel or inventory accounting
+- Purchase Indents, Purchase Orders or Material Receipts
+- Payroll or employee records
+- Tally integration
+- Vendor Bill Rate Card architecture
+- Unrelated app menus, permissions or modules
+
+Do not perform database cloning, synchronisation, production-data backfills or automatic master-data corrections.
+
+Avoid unnecessary schema changes. If one is unavoidable, explain the exact requirement and production impact before proceeding.
+
+**Do not publish automatically.**
+
+## 14. Completion Report
+
+Provide one concise completion report stating:
+
+- What was simplified in the actual Add/Edit form
+- How Vendor and Equipment Master-only searches work
+- How historical trips are corrected without separate routine link steps
+- How the correct Owned/Hired ownership is determined
+- Whether HLC-owned equipment is excluded from vendor-payable hire calculations
+- How confirmed trips are discovered by Vendor Bills
+- Focused test count and production build result
+- Any limitations or SQL/migration requirements
+
+**STOP after implementation and verification. Do not continue into unrelated improvements.**

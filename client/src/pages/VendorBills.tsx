@@ -31,7 +31,7 @@ import { HireBillTermsEditor } from "@/components/vendor-bills/HireBillTermsEdit
 import { HireBillActivityReview } from "@/components/vendor-bills/HireBillActivityReview";
 import { applyBillHireTermsEdit, calculationTermsForBill, defaultBillHireTerms, segmentBillHireTerms, HIRE_RATE_UNITS, HIRE_QUANTITY_UNITS, type BillHireTerms } from "@/components/vendor-bills/hireBillTerms";
 import type { EquipmentPerformanceReport } from "@shared/equipmentPerformance";
-import { formatEquipmentOptionLabel } from "@shared/equipmentLabel";
+import { vendorHireEquipmentLabel as formatEquipmentOptionLabel, equipmentOwnershipLabel, isVendorPayableEquipment } from "@/components/trip-master-selection";
 import { authoritativeDieselPeriodFromFleet, hasIncludedOperationalTripOnSameDay, initialVendorBillPaidAmount, isPerformanceReadyForHireSubmission } from "@/components/vendor-bills/equipmentHireUi";
 import {
   buildBillingDailyRows,
@@ -835,7 +835,7 @@ export default function VendorBills() {
     hireActivityRows.filter((row: any) => row.source === "equipment_default").forEach((row: any) => {
       byId.set(Number(row.equipmentId), { id: Number(row.equipmentId), ...(row.equipment || {}) });
     });
-    return Array.from(byId.values());
+    return Array.from(byId.values()).filter(isVendorPayableEquipment);
   }, [billType, discoveredVendors, hireActivityRows, vendorName, isHistoricalHireEdit]);
   const selectedHireEquipmentId = hireGroups[0]?.equipmentId;
   const equipmentPerformanceQueries = useQueries({
@@ -869,6 +869,7 @@ export default function VendorBills() {
   useEffect(() => {
     if (isHistoricalHireEdit || editingBillId !== null || !vendorName || !validHireDate(periodFrom) || !validHireDate(periodTo) || periodFrom > periodTo || !["equipment", "all"].includes(billType) || hireActivitiesLoading) return;
     const monthly = hireEquipment.filter((equipment: any) =>
+      isVendorPayableEquipment(equipment) &&
       String(equipment.hireBillingBasis || "").toLowerCase() === "monthly" &&
       Number(equipment.hireRate) > 0 &&
       (String(equipment.hireMonthlyDivisorType || "30").toLowerCase() !== "custom" || Number(equipment.hireMonthlyDivisor) > 0),
@@ -2876,7 +2877,7 @@ export default function VendorBills() {
                 <Label htmlFor="add-bill-hire-equipment">Equipment</Label>
                 <Select value="" disabled={hireActivitiesLoading || hireActivitiesError || !hireEquipment.length} onValueChange={value => {
                   const equipment = hireEquipmentFor(Number(value));
-                  if (!equipment) return;
+                  if (!equipment || !isVendorPayableEquipment(equipment)) return;
                   const base: HireGroup = {
                     id: `bill-hire-${equipment.id}-${Date.now()}`, equipmentId: Number(equipment.id),
                     ...defaultBillHireTerms(equipment, periodFrom, periodTo),
@@ -2888,7 +2889,7 @@ export default function VendorBills() {
                 }}>
                   <SelectTrigger id="add-bill-hire-equipment" data-testid="select-add-bill-hire-equipment"><SelectValue placeholder="Add equipment to this bill" /></SelectTrigger>
                   <SelectContent>{hireEquipment.map((equipment: any) => <SelectItem key={equipment.id} value={String(equipment.id)}
-                    disabled={hireGroups.some(group => group.equipmentId === Number(equipment.id))}>{formatEquipmentOptionLabel(equipment)}</SelectItem>)}</SelectContent>
+                    disabled={!isVendorPayableEquipment(equipment) || hireGroups.some(group => group.equipmentId === Number(equipment.id))}>{formatEquipmentOptionLabel(equipment)}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               {hireGroups.map(group => <Fragment key={group.id}>
@@ -4541,6 +4542,9 @@ export default function VendorBills() {
                     ? `₹${formatCurrency(diesel.applicableRate)} / L`
                     : "—";
               return <div key={s.id || i} className="border rounded p-3 text-xs grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <p className="col-span-2 sm:col-span-4" data-testid={`saved-hire-ownership-${s.id || i}`}>
+                  {equipmentOwnershipLabel(snap.equipment || { ownership: snap.ownership }, snap.equipment?.linkedVendorName || snap.linkedVendorName)}
+                </p>
                 <strong>{formatDate(s.periodFrom)}–{formatDate(s.periodTo)}</strong><strong>{String(s.billingBasis || snap.terms?.billingBasis || "HIRE").toUpperCase()} · {String(s.status || "draft").toUpperCase()}</strong>
                 <span>QTY {s.quantity ?? snap.quantity ?? "—"} {HIRE_QUANTITY_UNITS[(s.billingBasis || snap.terms?.billingBasis || "daily") as HireBillingBasis]} · RATE ₹{formatCurrency(s.rate ?? snap.terms?.rate)} {HIRE_RATE_UNITS[(s.billingBasis || snap.terms?.billingBasis || "daily") as HireBillingBasis]?.replace("₹", "")}</span><strong className="text-orange-700">NET ₹{formatCurrency(s.netAmount ?? snap.netAmount)}</strong>
                 <span>GROSS ₹{formatCurrency(s.grossAmount ?? snap.grossAmount)}</span><span>DEDUCTION ₹{formatCurrency(s.deductionAmount ?? snap.deductionAmount)}</span>

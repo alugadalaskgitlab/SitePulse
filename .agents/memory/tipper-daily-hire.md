@@ -10,9 +10,14 @@ only suggestions, never permission to charge.
 **Why:** The user requires billing from existing material trips without duplicate
 DPR/equipment logs, fabricated hours/meters/diesel, or rewritten receipt history.
 
-**How to apply:** Require an authorised, reasoned identity confirmation; conflicting
-or missing identities need explicit acknowledgement. Keep the original vehicle,
-supplier and material facts untouched. Confirmation is append-only audit evidence
+**How to apply:** Routine valid Master selections are confirmed atomically by the
+ordinary trip Save, with an internal audit reason, not another mandatory review.
+Conflicting or missing identities still use the authorised exceptional review.
+**Why:** The user requires Search → Select → Save and no repeated confirmations;
+normal selections must persist Master IDs rather than guessed name matches.
+Preserve original vehicle, supplier and material facts in audit history when an
+authorised ordinary edit corrects an unprotected trip. Never silently rewrite
+billed or protected identity evidence. Confirmation is append-only audit evidence
 with a source-identity fingerprint, not an in-house fleet association. Changes to
 trip or master identity invalidate it for new bills. Audit retention must preserve
 these confirmations because they are domain evidence, not disposable diagnostics.
@@ -54,3 +59,15 @@ Billing Link without permanent Vendor Master registration. Reviewed associations
 and conflicts still take precedence.
 
 **Why:** The user explicitly requires the existing one-time vendor workflow.
+
+Normal trip entry suggestions must come exclusively from active Vendor and
+Equipment Masters, never historical or locally remembered names. The material
+seller and transporter are independent; an explicit Other / Not in Master option
+retains one-time free text without creating a master or implying a hire confirmation.
+
+**Why:** The user explicitly requires Master-based search and selection, including
+Own Source material transported by a separately hired party.
+
+**How to apply:** Save selected IDs in the ordinary form transaction. Suggest the
+confirmed hired-equipment owner only when the transporter is blank; do not overwrite
+a deliberate transporter choice. Keep billing basis/rates in Vendor Bills only.

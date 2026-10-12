@@ -2,7 +2,13 @@ import { classifyTripRoles, type TripTransportRole } from "@shared/tripTransport
 import { formatTripQuantity } from "@shared/tripQuantityDisplay";
 import type { SiteMaterialTrip } from "@shared/schema";
 
-export type ExistingTripVendor = { id: number; name: string };
+export type ExistingTripVendor = { id: number; name: string; businessName?: string | null; isActive?: boolean | number };
+export const tripVendorLabel = (vendor: ExistingTripVendor) => vendor.businessName?.trim() || vendor.name;
+export function searchTripVendors(vendors: ExistingTripVendor[], search: string) {
+  const needle = search.trim().toLocaleUpperCase();
+  return needle.length < 2 ? [] : vendors.filter(v => !!v.isActive &&
+    [v.name, v.businessName || ""].some(name => name.toLocaleUpperCase().includes(needle)));
+}
 export type TripRoleFilter = "all" | TripTransportRole | "own_source_agency" | "own_source_in_house";
 export const TRIP_ROLE_OPTIONS = [
   { value: "same_party", label: "Same party" },
@@ -21,8 +27,9 @@ export function resolveTripVendor(name: string, vendors: ExistingTripVendor[]): 
 }
 
 export function resolveSelectedTripVendor(name: string, id: number | null | undefined, vendors: ExistingTripVendor[]): ExistingTripVendor {
-  const selected = id != null ? vendors.find(v => v.id === id && vendorKey(v.name) === vendorKey(name)) : null;
-  return selected || resolveTripVendor(name, vendors);
+  const selected = id != null ? vendors.find(v => v.id === id && !!v.isActive) : null;
+  if (!selected) throw new Error("Select an active Vendor Master party, or choose Other / Not in Master.");
+  return selected;
 }
 
 export function existingTripVendorSuggestions(recent: string[], vendors: ExistingTripVendor[]): string[] {
