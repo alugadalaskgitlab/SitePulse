@@ -12114,7 +12114,7 @@ export async function registerRoutes(
   });
   app.get("/api/vendor-bills/vendor-identities", async (req, res) => {
     if (!assertView(req, res, "vendor_bills")) return;
-    try { res.json(await db.select({ id: billingIdentityVendors.id, name: billingIdentityVendors.name })
+    try { res.json(await db.select({ id: billingIdentityVendors.id, name: billingIdentityVendors.name, businessName: billingIdentityVendors.businessName })
       .from(billingIdentityVendors).where(eq(billingIdentityVendors.isActive, true))); }
     catch { res.status(500).json({ message: "Could not load Vendor Master identities" }); }
   });

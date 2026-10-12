@@ -25,3 +25,14 @@ terms decide whether the same confirmed evidence is charged per trip or per day.
 **How to apply:** Keep evidence discovery independent of the Equipment Master
 default and selected bill basis. Daily billing reviews one vehicle/date with
 Full/Half/Excluded decisions; trip billing reviews individual eligible trips.
+
+Verify the vendor-discovery stage as well as the hire-activity feed and save path.
+
+**Why:** A Daily-only Master filter in vendor discovery hid confirmed trip-only
+tippers with Trip defaults before users could choose Daily terms, even though
+the activity feed and calculators already supported those trips.
+
+**How to apply:** Regression fixtures must have zero DPR/equipment usage and go
+through discovery, activity retrieval, draft save and reload. Confirmed owner IDs
+must survive differing legacy owner spellings; business labels must not replace
+canonical request values.

@@ -21968,7 +21968,9 @@ export class DatabaseStorage implements IStorage {
       const trips = await db.select().from(siteMaterialTrips).where(and(gte(siteMaterialTrips.date, periodFrom),
         lte(siteMaterialTrips.date, periodTo), eq(siteMaterialTrips.isCancelled, false), eq(siteMaterialTrips.isDeleted, false)));
       const links = await readTripHireLinks(db, trips.map(t => t.id));
-      const masters = await db.select().from(equipmentMaster).where(eq(equipmentMaster.hireBillingBasis, "daily"));
+      // Discovery is evidence-based. The current bill, not the Master default,
+      // chooses Daily/Trip/Hourly/Monthly terms.
+      const masters = await db.select().from(equipmentMaster).where(eq(equipmentMaster.ownership, "hired"));
       const ownerLinks = await equipmentVendorIdentities(db, masters);
       const seen = new Set<string>();
       for (const trip of trips) {

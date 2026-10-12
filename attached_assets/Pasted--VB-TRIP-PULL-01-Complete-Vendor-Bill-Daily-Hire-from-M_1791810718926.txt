@@ -1,0 +1,118 @@
+# VB-TRIP-PULL-01 — Complete Vendor Bill Daily Hire from Material Trips
+
+**Objective:** Correct Equipment Hire Vendor Bills so hired tippers recorded in Material Trips are discovered and billed even when they have no DPR Equipment Log entry for those dates.
+
+This is a focused end-to-end correction. Do not redesign Material Trips or add a Hire Type field to the Trip form.
+
+## 1. Trace the Actual Trip-to-Bill Flow
+
+Review the existing implementation:
+
+Material Trip → Selected Equipment Master ID → Confirmed Transporter/Vendor ID → Saved Hire Billing Evidence → Vendor Bill Equipment Hire.
+
+Find why a correctly saved, master-linked historical trip is not appearing in the Vendor Bill hire activity list.
+
+Check the complete data retrieval and filtering path, including the existing trip hire confirmation, vendor matching, equipment eligibility and activity aggregation.
+
+Do not assume a DPR equipment entry exists.
+
+## 2. Material Trips Must Be an Independent Activity Source
+
+A correctly linked, eligible Material Trip must contribute trip evidence without a DPR Equipment Log or Equipment Usage record.
+
+For a hired vehicle with a valid Equipment Master selection and verified matching vendor:
+
+- Use its persisted trip and Master associations.
+- Reuse or complete the existing internal hire-confirmation evidence.
+- Make it discoverable in the Vendor Bill for the selected vendor and date period.
+- Do not require any new role/link confirmation for an already valid saved selection.
+
+Do not automatically validate ambiguous free-text records or mismatched owners.
+
+When evidence is missing or invalid, show a concise, specific exclusion reason in the Vendor Bill.
+
+## 3. Vendor Bill — Correct Eligibility and Charging
+
+When the user selects the vendor and billing period, eligible hired tippers should appear even if they have **trip activity only**.
+
+The user then selects the actual Hire Basis:
+
+**Daily Hire**
+- Group activity by Equipment Master vehicle and date.
+- Multiple trips on the same date count as one potential hire day.
+- Preserve Full/Half/Excluded decisions and their reasons.
+- Calculate gross hire using agreed daily rate × payable days.
+
+**Trip Hire**
+- Count individually eligible confirmed trips.
+- Apply the bill-specific rate per trip.
+
+**Hourly Hire**
+- Require actual recorded working hours.
+- Do not convert trip counts into hours.
+
+**Monthly Hire**
+- Retain the existing monthly calculation and evidence rules.
+
+Where DPR/equipment activity and Material Trips coexist, show the supporting evidence without duplicate charges.
+
+Preserve existing cross-basis duplicate-billing safeguards.
+
+## 4. Vendor and Equipment Identity
+
+Use the actual persisted Vendor Master and Equipment Master IDs.
+
+Use Vendor Master Business Name for display, with the existing Master Name as fallback.
+
+Do not incorrectly reject a vehicle because its original free-text owner spelling differs from the confirmed Master name.
+
+For genuine ownership or transporter conflicts, preserve authorised review rather than silently reassigning the vehicle.
+
+Do not modify equipment ownership, hire defaults or past trip records.
+
+## 5. Test the Exact Failure
+
+Create isolated test fixtures representing:
+
+1. A hired tipper with multiple Material Trips but **zero DPR Equipment Logs and zero Equipment Usage records**.
+2. Correctly selected Equipment Master vehicle and confirmed matching transporter/vendor.
+3. Equipment Master default Trip Hire, while the current Vendor Bill uses Daily Hire.
+4. Two or more trips on one date and additional trips on another date.
+5. The tipper appearing under the correct vendor and selected billing period.
+6. Daily Hire counting each payable vehicle/date once.
+7. Trip Hire counting each individually eligible trip.
+8. Saving and reopening the Draft preserving the trip evidence and agreed hire terms.
+9. A genuine owner mismatch remaining excluded with a clear reason.
+10. A previously billed date being blocked from duplicate charging.
+
+Test the actual route and save/reload path, not calculation helpers alone.
+
+Where possible, test the signed-in Vendor Bill screen. Do not change real historical records merely to perform the test.
+
+## 6. Strict Safeguards
+
+Do not touch unrelated:
+- DPRs or equipment logs
+- Material Trip quantities, dates or receipts
+- Equipment or Vendor Master records
+- Vendor Bill financial overview, tax calculations or payment status
+- Procurement, inventory, diesel or Tally integration
+
+Do not create artificial DPR usage records to make trips billable.
+
+Use focused tests and one production build. Do not run the full suite.
+
+Do not publish automatically or perform production-data changes.
+
+## 7. Report
+
+Explain:
+
+- The precise cause of the missing trip-only tippers.
+- The code correction.
+- How the user should select and bill them.
+- Focused test results and build result.
+- Whether any migration is required.
+- Remaining limitations, if any.
+
+**STOP after verification.**

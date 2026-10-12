@@ -15,6 +15,7 @@ import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Chec
 import { queryClient, apiRequest, isForbiddenError, NO_PERMISSION_DESCRIPTION } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { vendorBillStatusError } from "@/lib/vendorBillStatusError";
+import { vendorBillingIdentityLabel, type VendorBillingIdentity } from "@/components/vendor-bills/vendorBillingIdentityLabel";
 import { hasCumulativeVendorPayment } from "@shared/vendorBillPayment";
 export { hasCumulativeVendorPayment } from "@shared/vendorBillPayment";
 import { useAuth } from "@/lib/auth-context";
@@ -711,8 +712,10 @@ export default function VendorBills() {
   });
 
   const vendorNames = vendorNamesData || [];
-  const billingIdentities = useQuery<{ id: number; name: string }[]>({ queryKey: ["/api/vendor-bills/vendor-identities"] });
+  const billingIdentities = useQuery<VendorBillingIdentity[]>({ queryKey: ["/api/vendor-bills/vendor-identities"] });
   const matchingBillingIdentities = (billingIdentities.data || []).filter(v => v.name.trim().toUpperCase() === vendorName.trim().toUpperCase());
+  const isHireVendorDisplay = ["equipment", "all"].includes(billType);
+  const selectedHireVendorLabel = vendorBillingIdentityLabel(vendorName, billingIdentities.data);
   const { data: sites = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
 
   const { data: vendorAliasesData } = useQuery<VendorAlias[]>({
@@ -758,8 +761,9 @@ export default function VendorBills() {
 
   const filteredVendorNames = useMemo(() => {
     if (!vendorSearch) return vendorNames;
-    return vendorNames.filter(n => n.includes(vendorSearch.toUpperCase()));
-  }, [vendorNames, vendorSearch]);
+    return vendorNames.filter(n => n.includes(vendorSearch.toUpperCase()) ||
+      (isHireVendorDisplay && vendorBillingIdentityLabel(n, billingIdentities.data).toUpperCase().includes(vendorSearch.toUpperCase())));
+  }, [vendorNames, vendorSearch, isHireVendorDisplay, billingIdentities.data]);
 
   interface DiscoveredVendor {
     vendorName: string;
@@ -2674,7 +2678,7 @@ export default function VendorBills() {
               <div className="relative">
                 <Label className="text-sm uppercase">Vendor / Supplier Name</Label>
                 <Input
-                  value={vendorName || vendorSearch}
+                  value={(vendorName && isHireVendorDisplay ? selectedHireVendorLabel : vendorName) || vendorSearch}
                   disabled={isHistoricalHireEdit}
                   onChange={e => {
                     const v = e.target.value.toUpperCase();
@@ -2721,7 +2725,7 @@ export default function VendorBills() {
                         }}
                         data-testid={`vendor-option-${name}`}
                       >
-                        {name}
+                        {isHireVendorDisplay ? vendorBillingIdentityLabel(name, billingIdentities.data) : name}
                       </button>
                     ))}
                   </div>
@@ -2800,7 +2804,7 @@ export default function VendorBills() {
                     >
                       <div className="flex flex-col gap-1 min-w-0 flex-1">
                         <span className="font-semibold text-sm truncate" data-testid={`text-vendor-name-${vendor.vendorName}`}>
-                           {vendor.vendorName}
+                           {isHireVendorDisplay ? vendorBillingIdentityLabel(vendor.vendorName, billingIdentities.data) : vendor.vendorName}
                         </span>
                         <div className="flex items-center gap-2 flex-wrap">
                            <span className="text-sm text-muted-foreground" data-testid={`text-record-count-${vendor.vendorName}`}>
@@ -3093,10 +3097,10 @@ export default function VendorBills() {
           <Card data-testid="trip-daily-hire-composer">
             <CardHeader><CardTitle className="text-sm">Daily hire · activity and confirmed material trips</CardTitle></CardHeader>
             <CardContent className="space-y-3">
-              <p className="text-xs text-muted-foreground">Confirm historical identities using “Hire billing link” in the Trip Register. Select a vehicle below to combine its confirmed trip dates with existing DPR/equipment activity.</p>
+              <p className="text-xs text-muted-foreground">Saved, confirmed trips appear automatically, even without DPR equipment activity. Select a vehicle and the agreed hire basis for this bill.</p>
               {hireActivitiesError && <p role="alert">Could not load hire evidence. <Button type="button" onClick={() => reloadHireActivities()}>Retry</Button></p>}
-              <p className="text-xs">If recorded owner names differ, an Administrator/Owner must confirm the equipment owner in Masters → Vendor Master → Link Vendors. Do not re-enter trips in DPRs.</p>
-              <p className="text-sm">{matchingBillingIdentities.length === 1 ? `Vendor Master linked: ${matchingBillingIdentities[0].name}` : "One-time vendor: billing can use the recorded Equipment owner after explicit Hire Billing Link confirmation. Reviewed identity conflicts must be resolved in Vendor Master."}</p>
+              <p className="text-xs">Confirmed Vendor Master identities take precedence over spelling differences. Only unconfirmed or conflicting owners need authorised review; do not re-enter trips in DPRs.</p>
+              <p className="text-sm">{matchingBillingIdentities.length === 1 ? `Vendor Master linked: ${selectedHireVendorLabel}` : "One-time vendor: billing can use the recorded Equipment owner after explicit Hire Billing Link confirmation. Reviewed identity conflicts must be resolved in Vendor Master."}</p>
               {tripHireEligibility.isError && <p role="alert">{tripHireEligibility.error.message} <Button type="button" onClick={() => tripHireEligibility.refetch()}>Retry</Button></p>}
               {(tripHireEligibility.data || []).some(row => row.reasons.length) && <details>
                 <summary className="cursor-pointer text-sm">Excluded or restricted confirmed trip evidence</summary>
