@@ -35,7 +35,6 @@ import { TransportRateInputError } from "@shared/transportRate";
 import { registerVendorMasterRoutes } from "./vendor-master";
 import { confirmTripHireLink, tripHireReview } from "./tripHireLink";
 import { confirmTripPartyIdentities, tripIdentityLinksInput } from "./tripIdentityLinks";
-import { tripHireEligibility } from "./tripHireEligibility";
 import { equipmentVendorIdentities } from "./equipmentVendorIdentity";
 import { equipmentMaster as hireIdentityEquipment } from "@shared/schema";
 import { vendors as billingIdentityVendors } from "@shared/schema";
@@ -12120,15 +12119,6 @@ export async function registerRoutes(
     catch { res.status(500).json({ message: "Could not load Vendor Master identities" }); }
   });
 
-  app.get("/api/vendor-bills/trip-hire-eligibility", async (req, res) => {
-    if (!assertView(req, res, "vendor_bills")) return;
-    try {
-      const query = z.object({ vendorName: z.string().min(1), periodFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-        periodTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), billId: z.coerce.number().int().positive().optional()
-      }).refine(q => q.periodFrom <= q.periodTo).parse(req.query);
-      res.json(await tripHireEligibility(db, query.vendorName, query.periodFrom, query.periodTo, query.billId));
-    } catch (error: any) { res.status(error instanceof z.ZodError ? 400 : 500).json({ message: error.message }); }
-  });
 
   app.get("/api/vendor-bills/previous-rates", async (req, res) => {
     try {

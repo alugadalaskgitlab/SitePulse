@@ -4,9 +4,8 @@ import { confirmTripHireLink, readTripHireLinks, guardTripHireOrdinaryItems, typ
 import { prepareTripMasterSelection, saveTripMasterSelection, type TripMasterSelection } from "./tripMasterSelection";
 import { equipmentVendorIdentities, ownerNameKey } from "./equipmentVendorIdentity";
 import { vendors as identityVendors } from "@shared/schema";
-import { validTripHireLink } from "../shared/tripHireLink";
 import { dailyHireBilledDays } from "./dailyHireBilledDays";
-import { dailyHireOwnerEligible } from "./equipmentVendorIdentity";
+import { hasFrozenTripDailyHire, FROZEN_TRIP_DAILY_MESSAGE } from "../shared/vendorBillRecovery";
 import { purchaseOrders } from "../shared/schema";
 import { linkedPiStoreStock } from "../shared/piStoreStock";
 import { bulkTripConditions } from "./siteMaterialTripFilters";
@@ -17519,7 +17518,7 @@ export class DatabaseStorage implements IStorage {
       (!equipment.hireStartDate || !isEquipmentHireBillEligible({ ...equipment, ownership: "hired" }, bill.periodFrom!, bill.periodTo!)) &&
       (!equipment.hireStartDate || equipment.hireStartDate <= bill.periodTo!) &&
       (!equipment.hireEndDate || equipment.hireEndDate >= bill.periodFrom!));
-    if (invalidMonthly && !groups.length && !data.items?.length) {
+    if (invalidMonthly && !groups.some(group => group.hireStatementId)) {
       throw Object.assign(new Error(`Monthly hire terms are incomplete for ${invalidMonthly.name}; correct its Equipment Master rate, start date, and monthly divisor before billing.`), { code: "BAD_REQUEST" });
     }
     const requiredMonthlyIds = new Set(monthlyMasters
@@ -17551,6 +17550,13 @@ export class DatabaseStorage implements IStorage {
         : undefined;
       if (existingById && existingById.vendorBillId !== bill.id) throw Object.assign(new Error("A hire group cannot claim another bill's statement"), { code: "CONFLICT" });
       if (existingById && existingById.equipmentId !== group.equipmentId) throw Object.assign(new Error("hireStatementId belongs to a different equipment"), { code: "BAD_REQUEST" });
+      if (group.hireStatementId && !existingById) throw Object.assign(new Error("Saved hire statement no longer exists"), { code: "CONFLICT" });
+      // New bills use the pre-tipper Master terms. Saved statements retain
+      // their own terms; current Master edits must not reinterpret history.
+      if (!existingById && (!isEquipmentHireBillEligible(equipment, bill.periodFrom, bill.periodTo) ||
+          group.basis !== equipment.hireBillingBasis)) {
+        throw Object.assign(new Error("Hire group basis and period must match eligible Equipment Master hire terms"), { code: "BAD_REQUEST" });
+      }
       {
         const validBasis = ["monthly", "daily", "hourly", "trip"];
         const monthlyDivisorType = group.monthlyDivisorType || equipment.hireMonthlyDivisorType || "30";
@@ -17563,10 +17569,7 @@ export class DatabaseStorage implements IStorage {
       if (!statement) {
         statement = (await tx.select().from(hireStatements).where(and(eq(hireStatements.equipmentId, group.equipmentId),
           eq(hireStatements.periodFrom, group.periodFrom), eq(hireStatements.periodTo, group.periodTo))).limit(1))[0];
-        if (statement && statement.vendorBillId !== bill.id) {
-          if (group.basis === "daily") statement = undefined;
-          else throw Object.assign(new Error("This equipment already has an overlapping hire statement"), { code: "CONFLICT" });
-        }
+        if (statement && statement.vendorBillId !== bill.id) throw Object.assign(new Error("This equipment already has an overlapping hire statement"), { code: "CONFLICT" });
       }
       // Existing saved groups keep their historical period shape. Only a new
       // automatic monthly group must be one of this bill's exact calendar
@@ -17574,8 +17577,10 @@ export class DatabaseStorage implements IStorage {
       if (group.basis === "monthly" && !statement) {
         const submittedFrom = Date.parse(`${group.periodFrom}T00:00:00.000Z`);
         const submittedTo = Date.parse(`${group.periodTo}T00:00:00.000Z`);
-        const activeFrom = group.periodFrom;
-        const activeTo = group.periodTo;
+        const activeFrom = equipment.hireStartDate && equipment.hireStartDate > bill.periodFrom
+          ? equipment.hireStartDate : bill.periodFrom;
+        const activeTo = equipment.hireEndDate && equipment.hireEndDate < bill.periodTo
+          ? equipment.hireEndDate : bill.periodTo;
         // Current automatic groups retain bill-month boundaries and the
         // calculator clips their active range to Master dates. Also accept the
         // directly clipped shape emitted by earlier VB-20 clients.
@@ -17602,7 +17607,7 @@ export class DatabaseStorage implements IStorage {
         gte(hireStatements.periodTo, group.periodFrom),
         ...(statement ? [sql`${hireStatements.id} <> ${statement.id}`] : []),
       )).limit(1);
-      if (overlap && group.basis !== "daily") throw Object.assign(new Error("This equipment already has an overlapping hire statement"), { code: "CONFLICT" });
+      if (overlap) throw Object.assign(new Error("This equipment already has an overlapping hire statement"), { code: "CONFLICT" });
       if (group.basis !== "daily") {
         const billed = (await dailyHireBilledDays(tx, group.equipmentId, group.periodFrom, group.periodTo, bill.id))[0];
         if (billed) throw Object.assign(new Error(`Overlapping equipment charge on ${billed.billNo} (${billed.date}); review the existing bill and choose an unbilled period.`), { code: "CONFLICT" });
@@ -17614,10 +17619,11 @@ export class DatabaseStorage implements IStorage {
       const savedTerms = (statement?.calculationSnapshot as any)?.terms;
       const sameCommercialTerms = statement && statement.billingBasis === group.basis && statement.rate === group.rate &&
         statement.periodFrom === group.periodFrom && statement.periodTo === group.periodTo;
-      const terms = { billingBasis: group.basis, rate: group.rate,
-        hireStartDate: sameCommercialTerms ? savedTerms?.hireStartDate ?? group.periodFrom : group.periodFrom,
-        hireEndDate: sameCommercialTerms ? savedTerms?.hireEndDate ?? group.periodTo : group.periodTo,
-        monthlyDivisorType: group.monthlyDivisorType || equipment.hireMonthlyDivisorType as any || "30", monthlyDivisor: group.monthlyDivisor ?? equipment.hireMonthlyDivisor,
+      const terms = { billingBasis: group.basis, rate: statement ? group.rate : Number(equipment.hireRate),
+        hireStartDate: statement ? (sameCommercialTerms ? savedTerms?.hireStartDate ?? statement.hireStartDate ?? group.periodFrom : group.periodFrom) : equipment.hireStartDate,
+        hireEndDate: statement ? (sameCommercialTerms ? savedTerms?.hireEndDate ?? statement.hireEndDate ?? group.periodTo : group.periodTo) : equipment.hireEndDate,
+        monthlyDivisorType: (statement ? group.monthlyDivisorType || savedTerms?.monthlyDivisorType || statement.monthlyDivisorType : equipment.hireMonthlyDivisorType) as any || "30",
+        monthlyDivisor: statement ? group.monthlyDivisor ?? savedTerms?.monthlyDivisor ?? statement.monthlyDivisor : equipment.hireMonthlyDivisor,
         dieselResponsibility: equipment.hireDieselResponsibility,
         meterType: equipment.meterType,
         consumptionNorm: equipment.consumptionNorm,
@@ -17634,22 +17640,15 @@ export class DatabaseStorage implements IStorage {
         breakdownGraceDays: (group as any).breakdownGraceDays ?? 0 };
       const decisions = (group.exceptionDecisions ?? []).map(d => ({ sourceType: d.sourceType, sourceId: d.sourceId ?? undefined,
         exceptionType: d.exceptionType, date: d.date, decision: d.decision, manualDeductionAmount: d.manualDeductionAmount ?? undefined, remarks: d.remarks })) as HireExceptionDecisionInput[];
-      // Reload daily evidence after the shared equipment lock. A concurrent
-      // trip confirmation must not change identity between preview and save.
+      // Reload operational evidence under the equipment lock. Material trips
+      // remain eligible only for the earlier explicitly reviewed trip basis.
       const groupEvidence = await this.getVendorBillHireActivities(bill.vendorName, group.periodFrom, group.periodTo, tx);
       const ownerEvidence = groupEvidence.find(row => row.source === "equipment_default" && row.equipmentId === group.equipmentId);
       if (!ownerEvidence || (bill.vendorId && ownerEvidence.equipment?.vendorId && bill.vendorId !== ownerEvidence.equipment.vendorId))
         throw Object.assign(new Error("Equipment Vendor Master identity changed or conflicts with this bill. Reload and review."), { code: "CONFLICT" });
       const activities = groupEvidence.filter(row => row.source !== "maintenance" && row.equipmentId === group.equipmentId);
-      const tripHireDates = new Set(activities.filter(row => row.confirmedForDailyHire &&
-        row.businessDate >= group.periodFrom && row.businessDate <= group.periodTo &&
-        row.businessDate >= terms.hireStartDate && row.businessDate <= terms.hireEndDate).map(row => row.businessDate));
       if (group.basis === "daily") {
-        for (const date of Array.from(tripHireDates)) {
-          const decision = group.dailyDecisions?.find(d => d.date === date);
-          if (!decision?.reason?.trim() || !["full_day", "half_day", "exclude"].includes(decision.decision)) throw Object.assign(new Error(`Review the full/half/excluded hire day ${date} and enter a reason.`), { code: "BAD_REQUEST" });
-        }
-        const chargeDates = Array.from(new Set(activities.filter(row => (row.source === "dpr_log" || row.source === "plant_usage" || row.confirmedForDailyHire) &&
+        const chargeDates = Array.from(new Set(activities.filter(row => (row.source === "dpr_log" || row.source === "plant_usage") &&
           row.status !== "open" && row.businessDate >= group.periodFrom &&
           row.businessDate <= group.periodTo && group.dailyDecisions?.find(d => d.date === row.businessDate)?.decision !== "exclude")
           .map(row => row.businessDate)));
@@ -18088,6 +18087,9 @@ export class DatabaseStorage implements IStorage {
       if (!existing) return undefined;
       const linkedStatements: HireStatement[] = await tx.select().from(hireStatements)
         .where(eq(hireStatements.vendorBillId, id)).for("update");
+      if (hasFrozenTripDailyHire({ hireStatements: linkedStatements })) {
+        throw Object.assign(new Error(FROZEN_TRIP_DAILY_MESSAGE), { code: "CONFLICT" });
+      }
       if (linkedStatements.length > 0 && data.hireGroups === undefined) {
         throw Object.assign(new Error("Edits to a bill with linked hire statements must include its hire groups"), { code: "CONFLICT" });
       }
@@ -18555,7 +18557,6 @@ export class DatabaseStorage implements IStorage {
     // Bulk plant dispatches are delivery evidence, not an inferred payable
     // trip. Their transport-equipment link/vehicle text can nominate a hired
     // vehicle, but every candidate requires an explicit reconciliation choice.
-    const confirmedTripLinks = await readTripHireLinks(executor, materialTripRows.map(row => row.id));
     const bulkTransportRows: any[] = await executor.select({
       id: truckDispatches.id, date: truckDispatches.date, truckNumber: truckDispatches.truckNumber,
       transportEquipmentId: truckDispatches.transportEquipmentId, loadWeight: truckDispatches.loadWeight,
@@ -18632,25 +18633,15 @@ export class DatabaseStorage implements IStorage {
           equipment: equipmentDefault };
       }),
        ...materialTripRows.map(row => {
-         const confirmation = confirmedTripLinks.get(row.id);
-         const confirmedEquipment = equipment.find(e => e.id === confirmation?.newValues?.equipmentId);
-          const confirmedForDailyHire = !!confirmedEquipment &&
-           dailyHireOwnerEligible(identities.get(confirmedEquipment.id), row.supplierVendorId) &&
-           validTripHireLink(row, confirmedEquipment, confirmation?.newValues);
          const exactEquipmentId = ids.includes(Number(row.internalEquipmentId)) ? Number(row.internalEquipmentId) : undefined;
          const vehicleMatchedEquipmentId = equipmentByRegistration.get(cleanRegistration(row.vehicleNumber));
-         const equipmentId = confirmedForDailyHire ? confirmedEquipment!.id : exactEquipmentId ?? vehicleMatchedEquipmentId;
+         const equipmentId = exactEquipmentId ?? vehicleMatchedEquipmentId;
          if (!equipmentId) return null;
          const equipmentDefault = defaults.get(equipmentId);
          return {
            source: "site_material_trip", sourceId: row.id, equipmentId, businessDate: isoDate(row.date),
            vehicleNumber: row.vehicleNumber,
             entryType: "trip_based", numberOfTrips: 1, status: "closed", site: row.site,
-           confirmedForDailyHire,
-           hireConfirmation: confirmedForDailyHire ? { auditId: confirmation.id, actor: confirmation.userName,
-             at: confirmation.createdAt, reason: confirmation.reason, ...confirmation.newValues } : undefined,
-           equipmentVendorIdentity: confirmedForDailyHire ? { vendorId: identities.get(equipmentId)?.vendor?.id,
-             auditId: identities.get(equipmentId)?.auditId } : undefined,
             task: `DELIVERY: ${row.material || "MATERIAL"} · ${row.quantity ?? "—"} ${row.uom || ""}${row.supplier ? ` · FROM ${row.supplier}` : ""}`,
            equipmentName: equipmentDefault?.name, movementReference: row.location || row.receiptNumber || null,
            // A site delivery can be strong evidence after a user confirms it,
@@ -21964,25 +21955,6 @@ export class DatabaseStorage implements IStorage {
       existing.categories.add(category);
       vendorRecords.set(canonical, existing);
     };
-    if (bt === "equipment" || bt === "all") {
-      const trips = await db.select().from(siteMaterialTrips).where(and(gte(siteMaterialTrips.date, periodFrom),
-        lte(siteMaterialTrips.date, periodTo), eq(siteMaterialTrips.isCancelled, false), eq(siteMaterialTrips.isDeleted, false)));
-      const links = await readTripHireLinks(db, trips.map(t => t.id));
-      // Discovery is evidence-based. The current bill, not the Master default,
-      // chooses Daily/Trip/Hourly/Monthly terms.
-      const masters = await db.select().from(equipmentMaster).where(eq(equipmentMaster.ownership, "hired"));
-      const ownerLinks = await equipmentVendorIdentities(db, masters);
-      const seen = new Set<string>();
-      for (const trip of trips) {
-        const evidence = links.get(trip.id)?.newValues;
-        const master = masters.find(e => e.id === evidence?.equipmentId);
-        if (master && validTripHireLink(trip, master, evidence) && dailyHireOwnerEligible(ownerLinks.get(master.id), trip.supplierVendorId) && !seen.has(`${master.id}:${trip.date}`)) {
-          seen.add(`${master.id}:${trip.date}`);
-          const identity = ownerLinks.get(master.id);
-          addRecord(identity?.vendor?.name || master.vendorName!, "equipment");
-        }
-      }
-    }
 
     if (bt === "material" || bt === "transport" || bt === "all") {
       const trips = await db.select({ trip: siteMaterialTrips, arrangement: earthworkArrangements }).from(siteMaterialTrips)

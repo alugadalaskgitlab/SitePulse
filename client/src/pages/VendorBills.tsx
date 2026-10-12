@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { vendorBillStatusError } from "@/lib/vendorBillStatusError";
 import { vendorBillingIdentityLabel, type VendorBillingIdentity } from "@/components/vendor-bills/vendorBillingIdentityLabel";
 import { hasCumulativeVendorPayment } from "@shared/vendorBillPayment";
+import { hasFrozenTripDailyHire, FROZEN_TRIP_DAILY_MESSAGE } from "@shared/vendorBillRecovery";
 export { hasCumulativeVendorPayment } from "@shared/vendorBillPayment";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
@@ -27,12 +28,9 @@ import { filterFinancialBills, billPaymentPosition, getBillFinancialTotals, type
 import { VendorBillTaxesSummary } from "@/components/vendor-bills/VendorBillTaxesSummary";
 import { defaultConvertedQuantity, isDifferentBillingUnit, matchingRateCardsForGroup, normalizeRateCardPart, selectAutoMaterialRateConversion, type RateCardUnitOption, type VendorRateCardRecord } from "@/lib/vendorBillRateSelection";
 import { autoBillItemIdentity, availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateHireGroup, duplicateBillItemPayload, mergeOtherBillItems, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, uniqueDuplicateBillMatches, type DuplicateBillItemMatch, type HireActivity, type HireBillingBasis } from "@shared/hireBilling";
-import { TripDailyHireReview } from "@/components/TripDailyHireReview";
-import { HireBillTermsEditor } from "@/components/vendor-bills/HireBillTermsEditor";
-import { HireBillActivityReview } from "@/components/vendor-bills/HireBillActivityReview";
-import { applyBillHireTermsEdit, calculationTermsForBill, defaultBillHireTerms, segmentBillHireTerms, HIRE_RATE_UNITS, HIRE_QUANTITY_UNITS, type BillHireTerms } from "@/components/vendor-bills/hireBillTerms";
+import { calculationTermsForBill as savedCalculationTermsForBill, type BillHireTerms } from "@/components/vendor-bills/hireBillTerms";
 import type { EquipmentPerformanceReport } from "@shared/equipmentPerformance";
-import { vendorHireEquipmentLabel as formatEquipmentOptionLabel, equipmentOwnershipLabel, isVendorPayableEquipment } from "@/components/trip-master-selection";
+import { vendorHireEquipmentLabel as formatEquipmentOptionLabel } from "@/components/trip-master-selection";
 import { authoritativeDieselPeriodFromFleet, hasIncludedOperationalTripOnSameDay, initialVendorBillPaidAmount, isPerformanceReadyForHireSubmission } from "@/components/vendor-bills/equipmentHireUi";
 import {
   buildBillingDailyRows,
@@ -45,8 +43,6 @@ import {
 } from "@/components/vendor-bills/EquipmentHireBillOutput";
 import DraftEquipmentHireCalendar, { SavedEquipmentCalendarExport } from "@/components/vendor-bills/DraftEquipmentHireCalendar";
 import SavedBillCalendars from "@/components/vendor-bills/SavedBillCalendars";
-import HireMonthlyReview from "@/components/vendor-bills/HireMonthlyReview";
-import { projectHireReview, projectBillHireReviews, hireReviewTable, hireFinancialBridge, MONTHLY_BILL_HEADERS } from "@shared/vendorBillLayout";
 import { VendorBillFinancialSummary, VendorRunningStatement } from "@/components/vendor-bills/VendorBillReview";
 import HireActivityBreakdownCalendar, { hireActivityBreakdownSheetRows } from "@/components/vendor-bills/HireActivityBreakdownCalendar";
 import WholeBillExportButtons from "@/components/vendor-bills/WholeBillExportButtons";
@@ -178,11 +174,24 @@ type HireGroup = BillHireTerms & {
 };
 
 const HIRE_BASIS_LABELS: Record<HireBillingBasis, string> = {
-  monthly: "Monthly",
-  daily: "Daily",
-  trip: "Trip",
-  hourly: "Hourly",
+  monthly: "Monthly Hire Available",
+  daily: "Daily Hire Available",
+  trip: "Trip Hire Available",
+  hourly: "Hourly Hire Available",
 };
+// New bill previews use the restored Master contract; historical selections
+// continue to use saved bill-specific terms rather than today's Master values.
+function calculationTermsForBill(group: HireGroup, equipment: any) {
+  if (group.hireStatementId) return savedCalculationTermsForBill(group, equipment);
+  return {
+    billingBasis: group.basis, rate: group.rate,
+    hireStartDate: equipment.hireStartDate, hireEndDate: equipment.hireEndDate,
+    monthlyDivisorType: equipment.hireMonthlyDivisorType || "30",
+    monthlyDivisor: equipment.hireMonthlyDivisor,
+    dieselResponsibility: equipment.hireDieselResponsibility,
+    breakdownDeductionEnabled: !!equipment.hireBreakdownDeductionEnabled,
+  };
+}
 const validHireDate = (value: unknown): value is string =>
   typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 
@@ -824,16 +833,6 @@ export default function VendorBills() {
     // feed is evidence only; the server re-reads it before saving.
     enabled: !!hireActivitiesUrl && (isHistoricalHireEdit || billType === "equipment" || billType === "all"),
   });
-  const tripHireEligibility = useQuery<any[]>({
-    queryKey: ["/api/vendor-bills/trip-hire-eligibility", vendorName, hireEvidenceFrom, hireEvidenceTo, editingBillId],
-    queryFn: async () => {
-      const response = await fetch(`/api/vendor-bills/trip-hire-eligibility?vendorName=${encodeURIComponent(vendorName)}&periodFrom=${hireEvidenceFrom}&periodTo=${hireEvidenceTo}${editingBillId ? `&billId=${editingBillId}` : ""}`);
-      if (!response.ok) throw new Error("Could not load tipper eligibility");
-      return response.json();
-    },
-    enabled: !!hireActivitiesUrl && ["equipment", "all"].includes(billType),
-    staleTime: 0, refetchOnMount: "always", refetchOnWindowFocus: true,
-  });
   const hireEquipment = useMemo(() => {
     if (isHistoricalHireEdit && ["equipment", "all"].includes(billType)) {
       return discoveredVendors?.find(v => v.vendorName === vendorName)?.equipment || [];
@@ -842,7 +841,7 @@ export default function VendorBills() {
     hireActivityRows.filter((row: any) => row.source === "equipment_default").forEach((row: any) => {
       byId.set(Number(row.equipmentId), { id: Number(row.equipmentId), ...(row.equipment || {}) });
     });
-    return Array.from(byId.values()).filter(isVendorPayableEquipment);
+    return Array.from(byId.values());
   }, [billType, discoveredVendors, hireActivityRows, vendorName, isHistoricalHireEdit]);
   const selectedHireEquipmentId = hireGroups[0]?.equipmentId;
   const equipmentPerformanceQueries = useQueries({
@@ -871,13 +870,14 @@ export default function VendorBills() {
     [hireActivityRows],
   );
 
-  // Retain automatic monthly segmentation. Defaults seed a new composer once;
-  // refetches and master changes must never overwrite a reviewer's bill terms.
+  // Restore monthly Master availability. Daily/hourly/trip machines use the
+  // earlier ordinary equipment items; no material-trip daily-hire composer.
   useEffect(() => {
     if (isHistoricalHireEdit || editingBillId !== null || !vendorName || !validHireDate(periodFrom) || !validHireDate(periodTo) || periodFrom > periodTo || !["equipment", "all"].includes(billType) || hireActivitiesLoading) return;
     const monthly = hireEquipment.filter((equipment: any) =>
-      isVendorPayableEquipment(equipment) &&
       String(equipment.hireBillingBasis || "").toLowerCase() === "monthly" &&
+      validHireDate(equipment.hireStartDate) && equipment.hireStartDate <= periodTo &&
+      (!equipment.hireEndDate || equipment.hireEndDate >= periodFrom) &&
       Number(equipment.hireRate) > 0 &&
       (String(equipment.hireMonthlyDivisorType || "30").toLowerCase() !== "custom" || Number(equipment.hireMonthlyDivisor) > 0),
     );
@@ -887,7 +887,7 @@ export default function VendorBills() {
     monthlyHireSeedRef.current = seedKey;
     if (hireGroups.length && (!previousVendor || previousVendor === vendorName)) return;
     setHireGroups(monthly.flatMap((equipment: any) => {
-      // Each segment is bill-owned, not clipped by Equipment Master dates.
+      // Calendar month boundaries; the calculator clips to Master hire dates.
       return monthlyHireSegments(
         Date.parse(`${periodFrom}T00:00:00.000Z`),
         Date.parse(`${periodTo}T00:00:00.000Z`),
@@ -896,7 +896,6 @@ export default function VendorBills() {
         const segmentTo = new Date(segment.to).toISOString().slice(0, 10);
         return {
           id: `monthly-auto-${equipment.id}-${segmentFrom}-${segmentTo}`, equipmentId: Number(equipment.id),
-          ...defaultBillHireTerms(equipment, segmentFrom, segmentTo),
           periodFrom: segmentFrom, periodTo: segmentTo, basis: "monthly" as const, rate: Number(equipment.hireRate),
           includeInBill: true, dailyDecisions: [], tripDecisions: [], exceptionDecisions: [], breakdownGraceDays: 0,
         };
@@ -1083,6 +1082,12 @@ export default function VendorBills() {
   };
 
   const loadBillForEdit = (bill: VendorBillWithItems) => {
+    if (hasFrozenTripDailyHire(bill as any)) {
+      toast({ title: "Historical bill preserved", description: FROZEN_TRIP_DAILY_MESSAGE });
+      setSelectedBillId(bill.id);
+      setView("detail");
+      return;
+    }
     cancelActivePull();
     formGenerationRef.current++;
     activeEditingBillIdRef.current = bill.id;
@@ -1381,18 +1386,13 @@ export default function VendorBills() {
   const patchHireGroup = (id: string, patch: Partial<HireGroup>) => {
     const current = hireGroups.find(g => g.id === id);
     if (!current) return;
-    const next = applyBillHireTermsEdit(current, patch);
+    const next = { ...current, ...patch };
     if (next.periodFrom && next.periodTo && next.periodFrom <= next.periodTo &&
         hireGroups.some(g => g.id !== id && g.equipmentId === next.equipmentId && next.periodFrom <= g.periodTo && next.periodTo >= g.periodFrom)) {
       toast({ title: "THIS EQUIPMENT HIRE PERIOD OVERLAPS ANOTHER SELECTION", variant: "destructive" });
       return;
     }
-    const segments = ("basis" in patch || "periodFrom" in patch || "periodTo" in patch)
-      ? segmentBillHireTerms(next) : [next];
-    const nextGroups = hireGroups.flatMap(g => g.id === id ? segments.map((segment, index) => ({
-      ...segment, id: index === 0 ? id : `${id}-${segment.periodFrom}`,
-      hireStatementId: index === 0 ? segment.hireStatementId : undefined,
-    })) : [g]);
+    const nextGroups = hireGroups.map(g => g.id === id ? next : g);
     setHireGroups(nextGroups);
     const covered = lineItems.filter(item => rawAutoItemCoveredByHireGroup(item, [next]));
     if (covered.length) {
@@ -1787,15 +1787,6 @@ export default function VendorBills() {
       billType, billTypeLabel: getBillTypeLabel(billType), saved: editingBillId !== null,
       status: editingBillId !== null ? editingBillStatus : "unsaved", generatedAt: new Date().toISOString(),
       sections,
-      hireFinancialRows: hireFinancialBridge({
-        hireStatements: hireOutputs.map(output => ({ grossAmount: output.grossHire, netAmount: output.taxableAmount })),
-      }, isHistoricalHireEdit ? displayedHireTotals(hireOutputs).subtotal : totalAmount),
-      hireReviews: included.map(group => projectHireReview({
-        equipmentName: formatEquipmentOptionLabel(hireEquipmentFor(group.equipmentId) || {}),
-        periodFrom: group.periodFrom, periodTo: group.periodTo, billingBasis: group.basis, rate: group.rate,
-        calculationSnapshot: { ...hireCalculated.find(entry => entry.group.id === group.id)?.result,
-          terms: calculationTermsForBill(group, hireEquipmentFor(group.equipmentId) || {}) },
-      })),
       calendars: included.flatMap(group => {
         const calendar = readCalendars([calendarKey(group)])[0];
         return [calendar || {
@@ -2032,10 +2023,6 @@ export default function VendorBills() {
       toast({ title: "Enter a positive hire rate and valid monthly divisor for each equipment charge", variant: "destructive" });
       return;
     }
-    if (includedHireGroups.some(group => group.activityReviewRequired)) {
-      toast({ title: "Review the activity after changing hire terms, then confirm the review", variant: "destructive" });
-      return;
-    }
     // Historical hire edits are persisted through hireGroups/statements and
     // intentionally strip the generated hire line before those groups are
     // rehydrated. The itemized flow requires at least one meaningful row;
@@ -2048,7 +2035,7 @@ export default function VendorBills() {
       toast({ title: "Correct the equipment hire date range", variant: "destructive" });
       return;
     }
-    if (includedHireGroups.some(group => !(group.basis === "daily" && activityForGroup(group).some(a => a.confirmedForDailyHire)) && !isPerformanceReadyForHireSubmission(performanceForGroup(group)))) {
+    if (includedHireGroups.some(group => !isPerformanceReadyForHireSubmission(performanceForGroup(group)))) {
       toast({ title: "Wait for authoritative Equipment Performance data before saving equipment hire", variant: "destructive" });
       return;
     }
@@ -2058,14 +2045,6 @@ export default function VendorBills() {
     }
     for (let i = 0; i < includedHireGroups.length; i++) {
       const group = includedHireGroups[i];
-      if (group.basis === "daily") {
-        const dates = activityForGroup(group).filter(a => a.confirmedForDailyHire &&
-          a.businessDate >= group.periodFrom && a.businessDate <= group.periodTo);
-        if (dates.some(a => {
-          const decision = group.dailyDecisions?.find(d => d.date === a.businessDate);
-          return !decision?.reason?.trim() || !["full_day", "half_day", "exclude"].includes(decision.decision);
-        })) { toast({ title: "Choose Full/Half/Excluded and enter a reason for every trip-supported day", variant: "destructive" }); return; }
-      }
       if (includedHireGroups.some((other, j) => j !== i && other.equipmentId === group.equipmentId &&
           group.periodFrom <= other.periodTo && group.periodTo >= other.periodFrom)) {
         toast({ title: "Equipment hire periods cannot overlap", variant: "destructive" });
@@ -2465,13 +2444,6 @@ export default function VendorBills() {
         ${bill.periodFrom && bill.periodTo ? `<div class="item"><div class="label">Period</div><div class="value">${escHtml(formatDate(bill.periodFrom))} to ${escHtml(formatDate(bill.periodTo))}</div></div>` : ""}
         <div class="item"><div class="label">Status</div><div class="value"><span class="status-badge">${escHtml(bill.status.toUpperCase())}</span></div></div>
       </div>
-      ${projectBillHireReviews(bill).map(review => {
-        return `<h3>${escHtml(review.name)} · ${escHtml(review.basis)} · Rate ${escHtml(String(review.rate ?? "—"))}</h3>
-          <h4>Monthly Billing Summary</h4><table><thead><tr>${MONTHLY_BILL_HEADERS.map(h => `<th>${escHtml(h)}</th>`).join("")}</tr></thead>
-          <tbody>${hireReviewTable(review).map(row => `<tr>${row.map(cell => `<td>${escHtml(String(cell))}</td>`).join("")}</tr>`).join("")}</tbody></table>
-          <p>${escHtml(review.note)}${review.basis === "monthly" ? ` Monthly divisor: ${escHtml(review.divisor)}.` : ""}</p>`;
-      }).join("")}
-      <h3>Financial Breakdown</h3>
       <table><thead><tr><th>#</th><th>Date</th><th>Type</th><th>Description</th>${hasSuppliedOrTransporter ? "<th>Supplied To</th><th>Transporter</th>" : ""}<th>Qty</th><th>Unit</th>${hasLeadDistance ? "<th>Lead (KM)</th>" : ""}<th style="text-align:right">Rate (₹)</th><th style="text-align:right">Amount (₹)</th></tr></thead>
       <tbody>${rows}</tbody>
       <tfoot>
@@ -2757,7 +2729,7 @@ export default function VendorBills() {
                    updateActivePullContext(billType, vendorName, value, periodTo);
                   setPeriodFrom(value);
                   if (isHistoricalHireEdit) {
-                    setHireGroups(prev => prev.map(group => applyBillHireTermsEdit(group, { periodFrom: value })));
+                    setHireGroups(prev => prev.map(group => ({ ...group, periodFrom: value })));
                   }
                 }} data-testid="input-period-from" />
               </div>
@@ -2768,7 +2740,7 @@ export default function VendorBills() {
                    updateActivePullContext(billType, vendorName, periodFrom, value);
                   setPeriodTo(value);
                   if (isHistoricalHireEdit) {
-                    setHireGroups(prev => prev.map(group => applyBillHireTermsEdit(group, { periodTo: value })));
+                    setHireGroups(prev => prev.map(group => ({ ...group, periodTo: value })));
                   }
                 }} data-testid="input-period-to" />
               </div>
@@ -2884,48 +2856,8 @@ export default function VendorBills() {
           </Card>
         )}
 
-        {["equipment", "all"].includes(billType) && vendorName && periodFrom && periodTo && (
-          <Card className="border-orange-200 dark:border-orange-800" data-testid="equipment-hire-terms-composer">
-            <CardHeader className="py-3"><CardTitle className="flex items-center gap-2 text-sm uppercase tracking-wider">
-              <Calculator className="h-4 w-4 text-orange-600" />Equipment hire terms for this bill
-            </CardTitle></CardHeader>
-            <CardContent className="space-y-3 pt-0">
-              <p className="text-xs text-muted-foreground">Select equipment, agree its basis and rate, then review activity for its billing period. Equipment Master values are suggestions only; saving does not change them.</p>
-              {hireActivitiesLoading && <div className="h-10 animate-pulse rounded bg-muted" aria-label="Loading hired equipment" />}
-              {hireActivitiesError && <p role="alert" className="text-sm">Could not load equipment or activity. <Button type="button" variant="outline" size="sm" onClick={() => reloadHireActivities()}>Retry</Button></p>}
-              {!hireActivitiesLoading && !hireActivitiesError && !hireEquipment.length && <p className="rounded border border-dashed p-3 text-xs text-muted-foreground">
-                No vendor-owned hired equipment is available for this vendor. Check the confirmed equipment owner association; hire dates, default basis and default rate are not required.
-              </p>}
-              <div className="max-w-xl">
-                <Label htmlFor="add-bill-hire-equipment">Equipment</Label>
-                <Select value="" disabled={hireActivitiesLoading || hireActivitiesError || !hireEquipment.length} onValueChange={value => {
-                  const equipment = hireEquipmentFor(Number(value));
-                  if (!equipment || !isVendorPayableEquipment(equipment)) return;
-                  const base: HireGroup = {
-                    id: `bill-hire-${equipment.id}-${Date.now()}`, equipmentId: Number(equipment.id),
-                    ...defaultBillHireTerms(equipment, periodFrom, periodTo),
-                    includeInBill: true, dailyDecisions: [], tripDecisions: [], exceptionDecisions: [], breakdownGraceDays: 0,
-                  };
-                  const additions = segmentBillHireTerms(base).map((segment, index) => ({ ...segment, id: `${base.id}-${index}` }));
-                  setHireGroups(prev => [...prev, ...additions]);
-                  setLineItems(prev => prev.filter(item => !rawAutoItemCoveredByHireGroup(item, additions)));
-                }}>
-                  <SelectTrigger id="add-bill-hire-equipment" data-testid="select-add-bill-hire-equipment"><SelectValue placeholder="Add equipment to this bill" /></SelectTrigger>
-                  <SelectContent>{hireEquipment.map((equipment: any) => <SelectItem key={equipment.id} value={String(equipment.id)}
-                    disabled={!isVendorPayableEquipment(equipment) || hireGroups.some(group => group.equipmentId === Number(equipment.id))}>{formatEquipmentOptionLabel(equipment)}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              {hireGroups.map(group => <Fragment key={group.id}>
-                <HireBillTermsEditor group={group} equipmentName={formatEquipmentOptionLabel(hireEquipmentFor(group.equipmentId) || {})}
-                  result={hireCalculated.find(calculated => calculated.group.id === group.id)?.result}
-                  onChange={patch => patchHireGroup(group.id, patch)}
-                  onRemove={() => setHireGroups(prev => prev.filter(candidate => candidate.id !== group.id))} />
-                {group.basis !== "monthly" && (!isHistoricalHireEdit || group.basis !== "trip") && <HireBillActivityReview group={group}
-                  activities={activityForGroup(group)} result={hireCalculated.find(calculated => calculated.group.id === group.id)?.result}
-                  onChange={patch => patchHireGroup(group.id, patch)} />}
-              </Fragment>)}
-            </CardContent>
-          </Card>
+        {hireActivitiesError && ["equipment", "all"].includes(billType) && (
+          <p role="alert">Could not load equipment activity. <Button type="button" onClick={() => reloadHireActivities()}>Retry</Button></p>
         )}
 
         {/* The former equipment-only guard was
@@ -2996,11 +2928,6 @@ export default function VendorBills() {
                    dieselResponsibility: equipment?.hireDieselResponsibility, consumptionNorm: equipment?.consumptionNorm,
                 };
                 renderedHireOutputs.current.set(calendarKey(selection), exportData);
-                exportData.hireReview = projectHireReview({
-                  equipmentId: selection.equipmentId, equipmentName: exportData.equipmentName,
-                  periodFrom: selection.periodFrom, periodTo: selection.periodTo, billingBasis: selection.basis, rate: selection.rate,
-                  calculationSnapshot: { ...result, terms: calculationTermsForBill(selection, equipment || {}) },
-                });
                 rememberCalendar(calendarKey(selection), {
                   equipmentName: exportData.equipmentName, periodFrom: selection.periodFrom, periodTo: selection.periodTo,
                   rows: dailyRows, dieselResponsibility: exportData.dieselResponsibility,
@@ -3021,11 +2948,6 @@ export default function VendorBills() {
                   <div className="rounded bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
                     Master terms · {String(equipment?.hireDieselResponsibility || "").toLowerCase() === "vendor" ? "Fuel / Diesel: Contractor Scope" : `Diesel: ${String(equipment?.hireDieselResponsibility || "Not recorded")}`} · Breakdown deductions: {equipment?.hireBreakdownDeductionEnabled ? "Enabled" : "Not enabled"}
                   </div>
-                  {billType === "equipment" && <HireMonthlyReview review={projectHireReview({
-                    equipmentName: exportData.equipmentName, periodFrom: selection.periodFrom, periodTo: selection.periodTo,
-                    billingBasis: selection.basis, rate: selection.rate,
-                    calculationSnapshot: { ...result, terms: calculationTermsForBill(selection, equipment || {}) },
-                  })} />}
                   {billType === "equipment" ? (
                     <DraftEquipmentHireCalendar
                       onExportSnapshot={calendar => rememberCalendar(calendarKey(selection), calendar)}
@@ -3122,37 +3044,13 @@ export default function VendorBills() {
           </Card>
         )}
 
-        {["equipment", "all"].includes(billType) && vendorName && periodFrom && periodTo && (
-          <Card data-testid="trip-daily-hire-composer">
-            <CardHeader><CardTitle className="text-sm">Daily hire · activity and confirmed material trips</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-xs text-muted-foreground">Saved, confirmed trips appear automatically, even without DPR equipment activity. Select a vehicle and the agreed hire basis for this bill.</p>
-              {hireActivitiesError && <p role="alert">Could not load hire evidence. <Button type="button" onClick={() => reloadHireActivities()}>Retry</Button></p>}
-              <p className="text-xs">Confirmed Vendor Master identities take precedence over spelling differences. Only unconfirmed or conflicting owners need authorised review; do not re-enter trips in DPRs.</p>
-              <p className="text-sm">{matchingBillingIdentities.length === 1 ? `Vendor Master linked: ${selectedHireVendorLabel}` : "One-time vendor: billing can use the recorded Equipment owner after explicit Hire Billing Link confirmation. Reviewed identity conflicts must be resolved in Vendor Master."}</p>
-              {tripHireEligibility.isError && <p role="alert">{tripHireEligibility.error.message} <Button type="button" onClick={() => tripHireEligibility.refetch()}>Retry</Button></p>}
-              {(tripHireEligibility.data || []).some(row => row.reasons.length) && <details>
-                <summary className="cursor-pointer text-sm">Excluded or restricted confirmed trip evidence</summary>
-                <div className="max-h-64 overflow-auto text-xs space-y-2">{tripHireEligibility.data!.filter(row => row.reasons.length).map(row =>
-                  <p key={row.tripId}>Trip #{row.tripId} · {row.date} · {row.registration} · Recorded owner: {row.recordedOwner || "Missing"} · {row.reasons.join("; ")}</p>)}</div>
-              </details>}
-              {hireGroups.filter(g => g.basis === "daily").map(group =>
-                <TripDailyHireReview key={group.id} group={group} equipment={hireEquipmentFor(group.equipmentId)}
-                  result={hireCalculated.find(c => c.group.id === group.id)?.result} activities={activityForGroup(group)}
-                  billedDays={(tripHireEligibility.data || []).filter(row => row.equipmentId === group.equipmentId).flatMap(row => row.billedDays || [])}
-                  onChange={patch => patchHireGroup(group.id, patch)}
-                  onRemove={() => setHireGroups(prev => prev.filter(g => g.id !== group.id))} />)}
-              {!normalizedHireActivities.some(a => a.confirmedForDailyHire) && <p className="text-sm text-muted-foreground">No confirmed material-trip attendance for this vendor and period. Recorded DPR/equipment activity remains available for daily review.</p>}
-            </CardContent>
-          </Card>
-        )}
         {!isHistoricalHireEdit && hireGroups.some(g => g.basis === "monthly") && (
           <Card className="border-orange-200 dark:border-orange-800" data-testid="monthly-hire-auto-summary">
             <CardHeader className="py-3">
               <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-wider"><Calculator className="h-4 w-4 text-orange-600" />Auto-generated monthly hire</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 pt-0">
-              <p className="text-xs text-muted-foreground">Monthly hire uses this bill's agreed rate and billing period, even with no DPR/Plant log. Existing breakdown and recovery calculations remain in place; evidence is frozen on save.</p>
+              <p className="text-xs text-muted-foreground">Monthly equipment is billed for its active hire-date overlap even with no DPR/Plant log. Only recorded breakdowns reduce the line; the server recalculates and freezes this evidence on save.</p>
               {hireGroups.filter(g => g.basis === "monthly").map((group) => {
                 const equipment = hireEquipmentFor(group.equipmentId);
                 const result = hireCalculated.find(c => c.group.id === group.id)?.result;
@@ -3202,11 +3100,6 @@ export default function VendorBills() {
                    : `₹${formatCurrency(suggestedRate)}`;
                  const showExcessFuelLine = !vendorDieselScope && financials.hsdRecovery > 0;
                  const exportData: EquipmentHireExportData = {
-                   hireReview: projectHireReview({
-                     equipmentId: group.equipmentId, equipmentName: formatEquipmentOptionLabel(equipment || {}),
-                     periodFrom: group.periodFrom, periodTo: group.periodTo, billingBasis: group.basis, rate: group.rate,
-                     calculationSnapshot: { ...result, terms: calculationTermsForBill(group, equipment || {}) },
-                   }),
                    billNo, vendorName, equipmentName: formatEquipmentOptionLabel(equipment || {}),
                    periodFrom: group.periodFrom, periodTo: group.periodTo,
                    hireBasis: HIRE_BASIS_LABELS[group.basis], rate: group.rate,
@@ -3349,11 +3242,6 @@ export default function VendorBills() {
                         </div>}
                       </div>
                     )}
-                    {billType === "equipment" && <HireMonthlyReview review={projectHireReview({
-                      equipmentName: exportData.equipmentName, periodFrom: group.periodFrom, periodTo: group.periodTo,
-                      billingBasis: group.basis, rate: group.rate,
-                      calculationSnapshot: { ...result, terms: calculationTermsForBill(group, equipment || {}) },
-                    })} />}
                     {billType === "equipment" ? (
                       <DraftEquipmentHireCalendar
                         onExportSnapshot={calendar => rememberCalendar(calendarKey(group), calendar)}
@@ -4472,8 +4360,6 @@ export default function VendorBills() {
         site: b.siteName || (b.siteId == null ? "All sites" : sites?.find(site => site.id === b.siteId)?.name || ""),
         billType: type, billTypeLabel: getBillTypeLabel(type), saved: true, status: bill.status,
         generatedAt: new Date().toISOString(), notes: bill.notes || "",
-        hireReviews: projectBillHireReviews(bill),
-        hireFinancialRows: hireFinancialBridge(bill, detailFinancials.totalAmount),
         sections: projectVendorBillPageItems({
           items: bill.items, subtotals: detailSubtotals, shouldGroup, billType: type, total: detailFinancials.totalAmount,
           getLabourSource: item => getLabourSource({ siteName: item.siteName, description: item.description || "" }),
@@ -4523,7 +4409,7 @@ export default function VendorBills() {
             <Button variant="ghost" size="icon" onClick={() => { setSelectedBillId(null); setView("list"); }} data-testid="button-back-detail">
               <ChevronLeft className="w-5 h-5" />
             </Button>
-            <h1 className="text-xl font-bold" data-testid="text-detail-title">Bill Detail</h1>
+            <h1 className="text-xl font-bold" data-testid="text-detail-title">BILL DETAIL</h1>
           </div>
           <div className="flex gap-2 flex-wrap items-center">
             <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
@@ -4608,24 +4494,6 @@ export default function VendorBills() {
             </div>
 
             {canViewFinancials && <VendorRunningStatement bill={bill} bills={[]} totals={getBillFinancialTotals} />}
-            <SavedBillCalendars bill={bill} canExport={canExport} />
-            <section className="rounded border p-3" aria-label="Financial Breakdown">
-              <h2 className="text-sm font-semibold mb-2">Financial Breakdown</h2>
-              <dl className="ml-auto max-w-lg text-sm divide-y">
-                {[
-                  ...(hireFinancialBridge(bill, detailFinancials.totalAmount).length ? hireFinancialBridge(bill, detailFinancials.totalAmount) :
-                    [{ label: hasPersistedHireStatements &&
-                      Math.abs(savedHireOutputs.reduce((sum: number, output: ReturnType<typeof buildSavedEquipmentHireBillOutput>) =>
-                        sum + (output?.data.grossHire || 0), 0) - detailFinancials.totalAmount) < 0.005
-                      ? "Gross Hire Amount" : "Bill subtotal", amount: detailFinancials.totalAmount }]),
-                  ...detailFinancials.gstRows.filter(row => row.amount !== 0),
-                  ...(detailFinancials.primaryAdjustment ? [{ label: (bill as any).adjustmentLabel || "Advance Deduction", amount: detailFinancials.primaryAdjustment }] : []),
-                  ...detailFinancials.additional.filter(row => row.amount !== 0),
-                  ...(detailFinancials.tds ? [{ label: "TDS (IT)", amount: -detailFinancials.tds }] : []),
-                  { label: "Net Payable", amount: detailFinancials.netTotal },
-                ].map((row, index) => <div key={index} className="flex justify-between gap-4 py-2 last:font-bold last:bg-amber-50 dark:last:bg-amber-900/20"><dt>{row.label}</dt><dd className="tabular-nums whitespace-nowrap">₹{formatCurrency(row.amount)}</dd></div>)}
-              </dl>
-            </section>
             {/* 06M-A: Payment Mode / Paid By — entry preferred once PAID, shown
                 whenever values exist. No payment evidence/QR upload here. */}
             {(hasCumulativeVendorPayment(bill.billType) || bill.status === "paid" || (bill as any).paymentMode || (bill as any).paidBy) && (
@@ -4637,7 +4505,7 @@ export default function VendorBills() {
             )}
 
             <div className="border-t pt-4">
-              <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 mb-2">Bill Status</p>
+              <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 mb-2">Status Progress</p>
               {renderStatusSteps(bill.status, {
                 createdAt: bill.createdAt,
                 verifiedAt: bill.verifiedAt,
@@ -4679,8 +4547,24 @@ export default function VendorBills() {
           </CardContent>
         </Card>
 
-        <details>
-        <summary className="cursor-pointer text-sm font-semibold">View recorded bill lines and tax details</summary>
+        {hasPersistedHireStatements && (
+          <Card className="border-orange-200 dark:border-orange-800">
+            <CardHeader className="py-3"><CardTitle className="text-sm uppercase tracking-wider">EQUIPMENT HIRE CALCULATION SNAPSHOT</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              {hasFrozenTripDailyHire(bill as any) && <p className="text-sm text-amber-700">{FROZEN_TRIP_DAILY_MESSAGE}</p>}
+              {(bill as any).hireStatements.map((statement: any) => (
+                <div key={statement.id} className="border rounded p-3 text-xs space-y-2">
+                  <p>{formatDate(statement.periodFrom)}–{formatDate(statement.periodTo)} · {String(statement.billingBasis).toUpperCase()} · {String(statement.status).toUpperCase()}</p>
+                  <p>QTY {statement.quantity} · RATE ₹{formatCurrency(statement.rate)} · GROSS ₹{formatCurrency(statement.grossAmount)} · DEDUCTION ₹{formatCurrency(statement.deductionAmount)} · NET ₹{formatCurrency(statement.netAmount)}</p>
+                  <p>HSD ACTUAL / EXPECTED {statement.calculationSnapshot?.diesel?.actualDiesel ?? "—"} / {statement.calculationSnapshot?.diesel?.expectedDiesel ?? "—"} L</p>
+                  <p>NET EXCESS {statement.calculationSnapshot?.diesel?.suggestedExcess ?? "—"} L · FINAL RECOVERY {statement.calculationSnapshot?.diesel?.finalRecoveryAmount == null ? "—" : `₹${formatCurrency(statement.calculationSnapshot.diesel.finalRecoveryAmount)}`}</p>
+                  <HistoricalHireWorkingSheet snapshot={statement.calculationSnapshot || {}} />
+                </div>
+              ))}
+              <SavedBillCalendars bill={bill} canExport={canExport} />
+            </CardContent>
+          </Card>
+        )}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2">
             <span className="font-bold text-amber-600 dark:text-amber-400" data-testid="text-detail-total">
@@ -4971,7 +4855,6 @@ export default function VendorBills() {
           </CardContent>
         </Card>
 
-        </details>
         {bill.notes && (
           <Card>
             <CardContent className="py-4">

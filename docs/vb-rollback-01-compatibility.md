@@ -1,69 +1,118 @@
-# Vendor Bills recovery compatibility gate
+# Vendor Bills recovery — implementation and verification report
 
-## Outcome
+Date: 2026-10-12. Reference: `75fd8e337d27`, direct parent of `4d4fba9b54fb`.
 
-Stopped before application-code restoration. Task remains incomplete.
-No schema, index, data, workflow or deployment changes were performed.
-Queries were SELECT-only through the supported managed database interfaces.
+## Outcome: incomplete verification; NOT SAFE TO PUBLISH
 
-## Reference
+Selective recovery code and the expressly authorized development-only index
+alignment are implemented. Exactly one production build passed. The task remains
+incomplete: the broader regression gate is not green, and restored server startup
+and authenticated historical-bill UI verification have not been established.
+Nothing was published. No Production schema, index or record mutation was executed.
 
-`75fd8e337d27` is the direct parent of `4d4fba9b54fb`.
-The current tree contains later changes across the Vendor Bills page,
-calendars/exports, request validation, calculation engine and shared route/storage
-files. Restoring only the page would not restore a compatible workflow.
-Shared route/storage files also contain unrelated operational changes and must
-not be restored wholesale.
+## Exact development index alignment
 
-## Verified database findings
+Both targets were explicitly identified, locked, checked for duplicate
+equipment/period groups and fingerprinted before replacement. Both had zero hire
+statements and zero duplicate groups. Both retained the same statement fingerprint
+after replacement. The script does not import application startup code.
 
-The managed production database has the original unconditional unique index on
-hire statements' equipment, period start and period end. The managed development
-database used for publication has a partial version of the same index that
-excludes daily statements linked to Vendor Bills. Current schema source agrees
-with that partial version.
+For **managed development `heliumdb`** and, separately, **application development
+`sitelog_dev`**, the before definition was:
 
-The production aggregate inspection returned:
+```sql
+CREATE UNIQUE INDEX hire_statements_equipment_period_uq ON public.hire_statements USING btree (equipment_id, period_from, period_to) WHERE (NOT ((billing_basis = 'daily'::text) AND (vendor_bill_id IS NOT NULL)))
+```
 
-- 56 Vendor Bills: 38 Paid, 1 Approved, 1 Verified, 16 Draft.
-- 8 hire statements, all Monthly/Draft; 7 linked to bills.
-- All 8 have object-shaped calculation snapshots; 7 have working-sheet arrays.
-- No orphan statement-to-bill references.
-- No daily hire statements; no snapshots matching the checked
-  confirmedForDailyHire=true pattern. This pattern check is not a complete
-  classification of all historical source evidence.
+For **each target**, the committed after definition is:
 
-Managed development has no duplicate equipment/period groups at query time.
-The separate application development database has not been checked.
-No private bill contents were copied into this report.
+```sql
+CREATE UNIQUE INDEX hire_statements_equipment_period_uq ON public.hire_statements USING btree (equipment_id, period_from, period_to)
+```
 
-## Scope blocker
+The after definition matches Production's existing index, confirmed read-only.
+The schema declaration also matches. No record conversion, deletion or backfill
+was performed. The alignment script is not wired into startup or publishing.
 
-The accepted recovery plan explicitly excludes schema/index rollback and
-migrations while requiring current schema/index retention. That leaves a
-pre-existing production/development index mismatch unresolved. Code restoration
-alone cannot establish a no-schema-change publication outcome.
+## Coordinated recovery changes
 
-This is not proof of corrupt bills or a runtime incompatibility with either
-index. It is an unresolved publication/schema-compatibility gate. Do not
-silently choose to relax the production constraint, restore the development
-constraint or introduce migration/startup DDL.
+- Removed the newer Vendor Bills equipment-terms and daily-trip composers and
+  the daily-trip eligibility endpoint. Operational Material Trip linking remains.
+- Removed confirmed Material Trip daily-attendance sourcing from Vendor Bills;
+  daily calculations use DPR/ordinary equipment activity. Preserved explicitly
+  reviewed trip-basis candidates and ordinary material/transport billing.
+- Restored Master basis/rate/date/divisor rules for new hire groups and monthly
+  availability, with calendar-month selection and active-date proration.
+- Restored unconditional equipment-period and overlap rejection, retaining
+  cross-source historical duplicate-billing protections.
+- Restored visible bill-line/tax details and the saved hire calculation snapshot.
+  Removed the newer monthly-review summaries from the active preparation,
+  detail and print/export projections.
+- Retained current financial permissions, vendor-identity safeguards,
+  recorded-only payment evidence, and frozen multi-statement calendar readers.
+  These are deliberate compatibility differences from a wholesale baseline revert.
+- Saved statement terms remain usable without substituting new Master commercial
+  defaults. Historical daily-trip snapshots are readable and exportable; their
+  edit/recalculation path now refuses to reinterpret them under DPR-only rules.
+  Payment/status endpoints were not replaced.
+- No unrelated DPR, Masters, procurement, inventory or operational trip rollback.
+  Shared modules were patched selectively; no repository reset or broad revert.
 
-The narrow potential resolution is separately authorized development-only
-alignment with production's existing index, after checking both development
-targets for conflicting saved statements and preserving every record. This
-would require updating the schema declaration consistently, checking post-merge
-behavior, and confirming the resulting publish schema comparison; it has NOT
-been performed or approved by this report.
+## Historical evidence
 
-## Verification status
+Read-only Production aggregates: 56 bills (38 paid, 1 approved, 1 verified,
+16 draft); 8 monthly/draft hire statements, 7 linked; all 8 object snapshots,
+7 working-sheet arrays; no orphan statement-to-bill links. No daily statements
+or snapshots matching the checked confirmed-daily-trip pattern were found.
+That pattern check is not exhaustive historical-source classification.
 
-- Historical database integrity checks above: performed, read-only.
-- Historical bills opening in a restored UI: not tested; restoration not started.
-- Focused recovery regression tests: not run.
-- Production build: not run; reserved for completed recovery changes.
-- Publish safety: not established. Do not publish this as the completed recovery.
+Isolated PGlite fixtures exercise actual storage save/reopen/edit, monthly
+proration, duplicate rejection, and newer daily-trip history. The historical
+fixture preserves its stored amount, recorded payment, status and snapshot,
+can be projected for export, and rejects recalculation without changing its
+snapshot. No production records were copied into fixtures.
 
-All application modules remain unchanged, including Vendor Bills, DPR, Masters,
-Material Trips, procurement, inventory and permissions. No production data or
-database rollback was performed. No follow-up tasks were created.
+This is **not** proof that actual Production bills open in the restored UI.
+The public screenshot reached the existing application splash/authentication
+boundary only (anonymous request received 401). Signed-in UI was not verified.
+
+## Verification
+
+- Focused 20-file run: **267 passed, 9 failed**, 276 tests.
+- All nine failing test cases also fail in an isolated unchanged starting-revision
+  checkout. Most concern outdated storage mocks; one concerns source-string
+  expectations and one the authorized PDF route fixture. These remain unresolved;
+  the suite must not be reported as passing.
+- After final output edits: **31/31 passed** across recovery, monthly-selection,
+  saved-output and activity-calendar suites.
+- Recovery fixtures cover DPR sourcing, no trip-derived daily attendance,
+  reviewed trip basis, save/reopen/edit, duplicate protection, Master monthly
+  proration, Master basis validation and historical snapshot/payment preservation.
+- Typecheck is not clean: 500 diagnostics were reported across the repository.
+  No clean-typecheck claim or complete baseline attribution is made.
+- `git diff --check`: passed.
+- **Exactly one `npm run build`: passed** for client and server. Only documentation
+  and memory updates followed it. Large-chunk/Browserslist warnings remain.
+- No full-suite or live authenticated export verification claim is made.
+
+## Startup and publication blockers
+
+Normal startup invokes schema ensures and data backfills, including uppercase
+business text, material density, arrangement allocations, site IDs and permissions.
+It has not been established that all would be no-ops. Under the no-backfill and
+no-record-change instruction, the workflow was **not restarted**. No startup
+bypass or unrelated migration refactor was introduced.
+
+Managed development and Production expose the same 141 public table names and
+identical public index definitions. A column-definition comparison also identified
+different textual defaults on three stock numeric columns: development `0`
+versus Production `'0'::numeric`, with matching numeric precision/scale.
+No change to those defaults is proposed or authorized.
+
+**Production SQL:** the recovery's hire-index change requires no Production DDL,
+because Production already has the target index. However, a complete publish
+migration preview and no-write startup have not been verified; zero Production SQL
+for an actual publication cannot be promised. Do not publish. Any proposed
+Production schema/index change must stop for explicit approval.
+
+No follow-up tasks were created. The recovery task is not marked complete.

@@ -1024,8 +1024,7 @@ function applyAuthoritativeDieselPeriod(
 export function calculateHireGroup(input: HireGroupCalculationInput): HireGroupCalculationResult {
   const periodActivities = normalizeHireActivities(input.activities).filter(a =>
     (a.source === "dpr_log" || a.source === "plant_usage" ||
-      ((a.source === "site_material_trip" || a.source === "bulk_transport_trip") && input.terms.billingBasis === "trip") ||
-      (a.source === "site_material_trip" && a.confirmedForDailyHire === true && input.terms.billingBasis === "daily")) &&
+      ((a.source === "site_material_trip" || a.source === "bulk_transport_trip") && input.terms.billingBasis === "trip")) &&
     a.businessDate >= input.periodFrom && a.businessDate <= input.periodTo
   );
   const decisionMap = new Map((input.tripDecisions ?? []).map(d => [`${d.source}:${d.sourceId}`, d]));
