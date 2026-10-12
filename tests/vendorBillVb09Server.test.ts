@@ -54,6 +54,12 @@ const fakeDb: any = {
 };
 
 vi.mock("../server/db", () => ({ db: fakeDb }));
+// These tests isolate itemized-bill persistence. The real cross-source guard
+// is exercised against PGlite in vendorBillRollbackRecovery.test.ts.
+vi.mock("../server/tripHireLink", async importOriginal => ({
+  ...await importOriginal<typeof import("../server/tripHireLink")>(),
+  guardTripHireOrdinaryItems: vi.fn(async () => {}),
+}));
 
 let DatabaseStorage: any;
 beforeEach(async () => {

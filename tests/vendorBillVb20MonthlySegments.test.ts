@@ -1,5 +1,11 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+// This unit fixture isolates calendar segmentation. Cross-source duplicate
+// checks run against actual SQL in vendorBillRollbackRecovery.test.ts.
+vi.mock("../server/dailyHireBilledDays", async importOriginal => ({
+  ...await importOriginal<typeof import("../server/dailyHireBilledDays")>(),
+  dailyHireBilledDays: vi.fn(async () => []),
+}));
 import {
   calculateHireGroup,
   monthlyGross,

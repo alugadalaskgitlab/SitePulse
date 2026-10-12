@@ -87,8 +87,8 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(client).not.toContain("EDIT QTY / AMOUNT");
     expect(client).toContain("historicalHireBillId");
     expect(client).toContain("setHistoricalHireBillId(persisted.length > 0 ? bill.id : null)");
-    expect(client).toContain("setHireGroups(prev => prev.map(group => applyBillHireTermsEdit(group, { periodFrom: value })))");
-    expect(client).toContain("setHireGroups(prev => prev.map(group => applyBillHireTermsEdit(group, { periodTo: value })))");
+    expect(client).toContain("setHireGroups(prev => prev.map(group => ({ ...group, periodFrom: value })))");
+    expect(client).toContain("setHireGroups(prev => prev.map(group => ({ ...group, periodTo: value })))");
     expect(client).not.toContain("setHireGroups([]); }\n                 }} data-testid=\"input-period-from\"");
     expect(client).not.toContain("setHireGroups([]); }\n                 }} data-testid=\"input-period-to\"");
   });

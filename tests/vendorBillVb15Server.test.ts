@@ -11,6 +11,7 @@ const fx = vi.hoisted(() => {
       where: () => q,
       innerJoin: () => q,
       leftJoin: () => q,
+      orderBy: () => q,
       then: (resolve: any, reject: any) => Promise.resolve(rows).then(resolve, reject),
     };
     return q;
@@ -27,6 +28,7 @@ function query(rows: any[] = []) {
     where: () => q,
     innerJoin: () => q,
     leftJoin: () => q,
+    orderBy: () => q,
     then: (resolve: any, reject: any) => Promise.resolve(rows).then(resolve, reject),
   };
   return q;
@@ -77,10 +79,14 @@ function queueAutoEquipmentRows() {
 describe("VB-15 vendor-bill activity mirror suppression", () => {
   it("suppresses only the explicitly linked same-equipment Plant mirror", async () => {
     fx.executorRows = [
+      [], // vendor aliases, read through the supplied transaction
       [
         { id: 1, name: "SITE JCB", vendorName: "MIRROR VENDOR", ownership: "hired", meterType: "hour_meter", consumptionNorm: 2 },
         { id: 2, name: "PLANT ROLLER", vendorName: "MIRROR VENDOR", ownership: "hired", meterType: "hour_meter", consumptionNorm: 2 },
       ],
+      [], // Vendor Master identities
+      [], // identity confirmation audits
+      [], // selected Vendor Master
       [
         {
           id: 10, equipmentId: 1, date: "2026-08-31", entryType: "hourly",
@@ -139,6 +145,8 @@ describe("VB-15 vendor-bill activity mirror suppression", () => {
     for (const billType of ["equipment", "all"]) {
       queueAutoEquipmentRows();
       if (billType === "all") fx.dbRows.splice(1, 0, []); // role-aware trip query after aliases
+      const equipment = fx.dbRows[billType === "all" ? 2 : 1];
+      fx.dbRows.splice(1, 0, [], equipment, [], []); // selected vendor, owner equipment, vendor identities, audits
       const storage = new DatabaseStorage();
       const items = await storage.getVendorBillAutoItems(
         "Mirror Vendor",

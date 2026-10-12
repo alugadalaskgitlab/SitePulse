@@ -1,13 +1,13 @@
 # Vendor Bills recovery — implementation and verification report
 
-Date: 2026-10-12. Reference: `75fd8e337d27`, direct parent of `4d4fba9b54fb`.
+Updated: 2026-10-13. Reference: `75fd8e337d27`, direct parent of `4d4fba9b54fb`.
 
 ## Outcome: incomplete verification; NOT SAFE TO PUBLISH
 
 Selective recovery code and the expressly authorized development-only index
 alignment are implemented. Exactly one production build passed. The task remains
-incomplete: the broader regression gate is not green, and restored server startup
-and authenticated historical-bill UI verification have not been established.
+incomplete: authenticated historical-bill UI verification and publication safety
+have not been established. The focused regression gate is now green.
 Nothing was published. No Production schema, index or record mutation was executed.
 
 ## Exact development index alignment
@@ -78,11 +78,14 @@ boundary only (anonymous request received 401). Signed-in UI was not verified.
 
 ## Verification
 
-- Focused 20-file run: **267 passed, 9 failed**, 276 tests.
-- All nine failing test cases also fail in an isolated unchanged starting-revision
-  checkout. Most concern outdated storage mocks; one concerns source-string
-  expectations and one the authorized PDF route fixture. These remain unresolved;
-  the suite must not be reported as passing.
+- Latest focused 20-file run: **276 passed, 0 failed, 0 skipped**.
+- The earlier nine failing cases were reproduced in an unchanged starting-revision
+  checkout. Corrected test fixtures: identity-query ordering, transaction alias
+  reads, missing PDF projection dependencies, and restored period-edit expectations.
+  Itemized-persistence and calendar-segmentation unit fixtures now isolate their
+  duplicate-guard dependencies explicitly; actual cross-source guard rejection
+  remains tested against PGlite in the recovery suite. Application guards were
+  not disabled or weakened.
 - After final output edits: **31/31 passed** across recovery, monthly-selection,
   saved-output and activity-calendar suites.
 - Recovery fixtures cover DPR sourcing, no trip-derived daily attendance,
@@ -92,7 +95,9 @@ boundary only (anonymous request received 401). Signed-in UI was not verified.
   No clean-typecheck claim or complete baseline attribution is made.
 - `git diff --check`: passed.
 - **Exactly one `npm run build`: passed** for client and server. Only documentation
-  and memory updates followed it. Large-chunk/Browserslist warnings remain.
+  and memory updates initially followed it; the 2026-10-13 continuation changes
+  only tests and this report, not application code. No second build was run.
+  Large-chunk/Browserslist warnings remain.
 - No full-suite or live authenticated export verification claim is made.
 
 ## Startup and publication blockers
@@ -102,6 +107,13 @@ business text, material density, arrangement allocations, site IDs and permissio
 It has not been established that all would be no-ops. Under the no-backfill and
 no-record-change instruction, the workflow was **not restarted**. No startup
 bypass or unrelated migration refactor was introduced.
+
+On the 2026-10-13 continuation the existing application workflow was already
+running with the restored source. No restart was performed by this continuation,
+and no startup bypass was added. Normal signed-in browser verification may write
+development sessions, device approval and login-audit records. A narrow exception
+for those authentication records is being requested before proceeding; it does
+not permit bill, operational, role, password or Production changes.
 
 Managed development and Production expose the same 141 public table names and
 identical public index definitions. A column-definition comparison also identified
