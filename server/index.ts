@@ -81,8 +81,7 @@ app.use((req, res, next) => {
 });
 
 // Preserve the existing operational reminder independently of migrations.
-// This is NOT a historical repair. Its push provider can prune expired
-// subscriptions; this external-effect limitation is documented in the audit.
+// Delivery remains enabled, but this automatic path cannot prune subscriptions.
 function startStaleGrnNotifications() {
   const raw = parseInt(process.env.STALE_GRN_THRESHOLD_HOURS || "48", 10);
   const threshold = Number.isFinite(raw) && raw > 0 && raw <= 8760 ? raw : 48;
@@ -93,7 +92,9 @@ function startStaleGrnNotifications() {
       const body = stale.length === 1
         ? `Draft GRN ${stale[0].grnNumber} has been waiting for a PI for over ${threshold}h`
         : `${stale.length} draft GRNs have been waiting for a PI for over ${threshold}h`;
-      await sendPushToAudience("⏳ Stale Draft GRN Alert", body, "/stores/grns", "managers");
+      await sendPushToAudience("⏳ Stale Draft GRN Alert", body, "/stores/grns", "managers", {
+        pruneExpiredSubscriptions: false,
+      });
       console.log(`[StaleGRN] Notified managers — ${stale.length} stale draft GRN(s)`);
     } catch (error) {
       console.error("[StaleGRN] Check failed:", error);

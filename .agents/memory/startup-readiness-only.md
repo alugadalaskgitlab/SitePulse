@@ -16,11 +16,13 @@ and route registration. Do not introduce a restart environment toggle that
 reenables all legacy repairs. Preserve runtime permission checks and account
 prerequisites instead of silently bypassing them.
 
-The recurring GRN reminder was preserved; it may remove expired push subscriptions.
-Do not claim every Production table stays unchanged merely because migration
-startup is read-only. External push effects require separate review.
+The recurring GRN reminder must preserve notification delivery without deleting
+expired subscriptions. Other notification callers retain their existing cleanup.
+Database-read-only does not mean no external effects: reminders still contact
+the push provider, and ordinary user actions/authentication still write records.
 
-**Why:** Silently disabling operational notifications was not authorized.
+**Why:** The owner authorized resolving the remaining automatic-write blocker
+while preserving notifications; silently disabling reminders was not authorized.
 
 **How to apply:** Distinguish protected business records, normal authentication
 activity, and external-provider housekeeping in publication-safety reports.

@@ -138,6 +138,7 @@ export async function sendPushToAudience(
   body: string,
   url?: string,
   audience: "all" | "managers" = "all",
+  options: { pruneExpiredSubscriptions?: boolean } = {},
 ) {
   if (!pushInitialized) return;
 
@@ -175,8 +176,12 @@ export async function sendPushToAudience(
           );
         } catch (err: any) {
           if (err.statusCode === 410 || err.statusCode === 404) {
-            console.log(`[Push] Removing stale subscription: ${sub.endpoint.slice(0, 60)}...`);
-            await storage.deletePushSubscriptionByEndpoint(sub.endpoint);
+            // Startup-scheduled reminders must not mutate persisted records.
+            // Interactive notification paths retain their existing cleanup.
+            if (options.pruneExpiredSubscriptions !== false) {
+              console.log(`[Push] Removing stale subscription: ${sub.endpoint.slice(0, 60)}...`);
+              await storage.deletePushSubscriptionByEndpoint(sub.endpoint);
+            }
           } else {
             console.error(`[Push] Failed to send to ${sub.endpoint.slice(0, 60)}:`, err.message);
           }

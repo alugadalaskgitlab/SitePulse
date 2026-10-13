@@ -126,7 +126,9 @@ Production. Screenshots and aggregate proof were inspected in
 **Later startup-safety review:** see [vb-recovery-startup-safety.md](vb-recovery-startup-safety.md).
 It supersedes the startup/publication findings below: actual publishing SQL is
 empty, automatic legacy initialization was removed, and read-only startup was
-verified. The preserved notification subscription-cleanup limitation remains.
+verified. The follow-up also resolves the automatic reminder's subscription
+cleanup and the three focused equipment-test failures; see its full-suite
+qualification before treating this as an application-wide release gate.
 The following paragraphs retain the original recovery verification history.
 
 Normal startup invokes schema ensures and data backfills, including uppercase

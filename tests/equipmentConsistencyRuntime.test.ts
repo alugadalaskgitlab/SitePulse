@@ -480,7 +480,7 @@ describe("DPR draft operational side-effect boundary", () => {
       boqProjectId: 2,
     });
 
-    expect(tx.execute).toHaveBeenCalledTimes(1);
+    expect(tx.execute).toHaveBeenCalledTimes(2); // identity mutex + persisted BOQ evidence
     expect(fx.writes).toContainEqual(expect.objectContaining({ boqProjectId: 2 }));
     expect(effects.diesel).not.toHaveBeenCalled();
   });
@@ -542,8 +542,9 @@ describe("DPR draft operational side-effect boundary", () => {
       [],
       [{ id: 2, siteId: 19 }],
       [{ id: 19, name: "SITE A" }],
-       [{ id: 99, projectId: 2 }],
-      [],
+      [{ id: 99, projectId: 2 }],
+      [], // old progress
+      [], // old labour (worker-name preservation)
       // Second transaction locks both its optimistic source and requested
       // target before observing the first pin under the DPR lock.
       [{ id: 7, dprStatus: "draft", boqProjectId: 2, site: "SITE A" }],
@@ -560,6 +561,7 @@ describe("DPR draft operational side-effect boundary", () => {
     await expect(storage.updateDraftDpr(7, recovery(3) as any, undefined, undefined, true))
       .rejects.toMatchObject({ code: "DPR_PROJECT_MISMATCH" });
     expect(fx.writes).toHaveLength(writesAfterFirst);
+    expect(fx.queue).toHaveLength(0);
   });
 
   it("rejects a version's foreign direct and nested BOQ links before child insertion", async () => {
@@ -767,7 +769,13 @@ describe("all DPR write paths and route authorization remain wired", () => {
   });
 
   it("keeps start identity and draft state transitions inside transaction guards", () => {
-    expect(source).toContain("pg_advisory_xact_lock(1437");
+    const sections = fs.readFileSync("server/dprSections.ts", "utf8");
+    expect(sections).toContain("pg_advisory_xact_lock(1437");
+    const start = source.indexOf("private async _replaceDprChildRecords(");
+    const replace = source.slice(start, source.indexOf("\n  async ", start + 10));
+    expect(replace).toContain("db.transaction(async (tx)");
+    expect(replace).toContain("await lockDprIdentity(tx, dprData)");
+    expect(replace.indexOf("await lockDprIdentity(tx, dprData)")).toBeLessThan(replace.indexOf('.for("update")'));
     expect(source).toContain('eq(dprs.dprStatus, "draft")');
   });
 });

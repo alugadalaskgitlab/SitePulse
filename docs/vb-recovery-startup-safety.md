@@ -3,7 +3,45 @@
 Review date: 2026-10-13. Production inspection was SELECT-only. No Production
 restart, DDL, data mutation, migration or publication was performed.
 
-## Decision
+## Follow-up verification — 2026-10-13
+
+**The two identified startup-publication blockers are resolved.** This is a
+scoped startup/recovery result, not certification of the entire application.
+
+- The scheduled GRN reminder still delivers notifications, but explicitly opts
+  out of deleting expired subscriptions. Other notification callers retain their
+  existing cleanup. Automated tests exercise 404, 410 and 500 provider failures,
+  successful delivery, audience filtering and the timer's option wiring.
+- All three equipment-consistency failures were outdated fixtures/assertions:
+  the shared identity mutex adds an SQL execution, worker-name preservation adds
+  a labour read before the next mocked transaction, and the mutex implementation
+  lives in the shared section helper. Fixtures now reflect those reads; assertions
+  still require transaction locking, immutable recovered pins and no writes on
+  rejection. No DPR storage/business logic was changed.
+- **80/80 tests across 7 files passed**, including startup readiness, reminder
+  delivery, equipment consistency, permission migration, calendar backfill,
+  Vendor Bills recovery and notification-section coverage.
+- **One production build passed for this follow-up.** The real production bundle
+  then passed isolated PostgreSQL startup and ordinary login/device authentication,
+  Vendor Bills API reading and before/after comparisons across 138 protected
+  tables. No protected table changed. No signed-in browser UI claim is made.
+- Development restarted cleanly; 2,061 schema columns were checked.
+- A fresh publishing schema preview returned `hasDiff: false`, empty SQL and
+  no warnings. No Production schema/data writes or publication were performed.
+
+**Remaining qualification:** the existing whole-project test workflow has an
+earlier failed run (125 failures across 39 files, with 13 unhandled errors).
+That run predates these changes and was not re-run or fully attributed here.
+Do not mistake the successful focused gate for a clean full-suite release.
+External push delivery remains intentional; no guarantee of successful delivery
+to every provider/device is made. Normal user actions/authentication still write
+records; the guarantee being tested is startup and its automatic reminder.
+
+The inventory and original findings below are retained as historical review
+evidence. Their subscription-cleanup blocker and three-test-failure statements
+are superseded by this follow-up.
+
+## Original decision (superseded for the two blockers above)
 
 **Automatic business-data repair has been removed from startup. Publication is
 not unconditionally cleared under a strict “no Production records change” rule.**
