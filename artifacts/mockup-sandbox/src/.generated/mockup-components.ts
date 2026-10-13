@@ -56,6 +56,6 @@ export const modules: ModuleMap = {
   "./components/mockups/route-a-procurement/RouteAStep4GrnPreview.tsx": () => import("../components/mockups/route-a-procurement/RouteAStep4GrnPreview.tsx"),
   "./components/mockups/site-report-home/Dashboard.tsx": () => import("../components/mockups/site-report-home/Dashboard.tsx"),
   "./components/mockups/sitepulse-login/LoginScreen.tsx": () => import("../components/mockups/sitepulse-login/LoginScreen.tsx"),
-  "./components/mockups/vb28/Proposed.tsx": () => import("../components/mockups/vb28/Proposed.tsx"),
-  "./components/mockups/sitepulse-splash/SplashScreen.tsx": () => import("../components/mockups/sitepulse-splash/SplashScreen.tsx")
+  "./components/mockups/sitepulse-splash/SplashScreen.tsx": () => import("../components/mockups/sitepulse-splash/SplashScreen.tsx"),
+  "./components/mockups/vb28/Proposed.tsx": () => import("../components/mockups/vb28/Proposed.tsx")
 };
