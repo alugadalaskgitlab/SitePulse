@@ -1,0 +1,295 @@
+# INSTRUCTION — VB-VIEW-01
+
+**Finding bills, and restoring the monthly hire review that a rollback unplugged.**
+
+Baseline commit: `57a03cc`.
+
+Six items. Items 1–5 are read-and-display only. Item 6 connects an existing
+recorded field to the bill and is the only item that can touch a calculation;
+it carries its own guard rails.
+
+---
+
+## Standing rules for this batch
+
+- No production data changes, migrations, automatic repairs or publishing
+  without our review.
+- No sequence resets. Do not call or re-expose `resetAllSequences`.
+- Preserve all existing users, credentials, site access, permissions and
+  administrator privileges. Do not grant, revoke or reset anything.
+- Do not weaken or bypass any existing permission or site-scope check. Every
+  change here is inside an already-authorised result set.
+- Approved, verified and paid bills must not change value. Frozen snapshots
+  stay frozen.
+- Report against the written benchmark of **5,159 passed / 0 failed**, not
+  against the previous batch.
+
+---
+
+## Item 1 — Filter bills by the billed period, not the bill date
+
+**Problem.** The Vendor Bills date filter compares `bill.billDate`. A user
+searching August 2026 is looking for the bill that *covers* August, not the
+bill that was *typed* in August. Observed: bill `HLC/VB/2026/0045` (period
+19-Jul to 31-Jul) appears in a 1-Aug-to-30-Sep search, while
+`HLC/VB/2026/0058` (period 01-Sep to 30-Sep) does not, because its bill date
+is 12-Oct-2026.
+
+**Where.** `shared/vendorBillFinancialReport.ts`, `filterFinancialBills` —
+the first two conditions.
+
+**Required.** Match on the bill's period overlapping the requested range:
+include a bill when `periodFrom <= dateTo` and `periodTo >= dateFrom`. Fall
+back to `billDate` only when a bill has no period recorded, and say so in the
+UI help text.
+
+Label the two date inputs so the basis is unambiguous (for example
+"Billed period from / to"). If you keep a bill-date search as well, it must be
+a separate, clearly labelled control — not the same two boxes behaving
+differently.
+
+The same basis must apply to the list, the financial summary, the taxes
+summary and every export sheet, since they share this one function.
+
+---
+
+## Item 2 — Stop the "Unpaid" view hiding bills in silence
+
+**Problem.** The `unpaid` scope drops any bill whose net is negative or that
+carries a credit:
+
+```ts
+if (filters.scope === "unpaid") {
+  const position = billPaymentPosition(bill);
+  if (position.net < 0 || position.credit > 0) return false;
+  ...
+```
+
+Bill `HLC/VB/2026/0056` is a draft August hire bill: gross ₹29,032.26, less a
+₹50,000 advance and ₹580.65 TDS, net **₹-21,548.39**. It is invisible in the
+default view, with no count, no note and no indication that anything was
+withheld. A user concluded the bill did not exist and tried to create it
+again.
+
+**Required.** Keep the filtering logic, remove the silence. When the active
+scope excludes bills, show a visible, accurate line such as
+"2 bills hidden by the Unpaid view (credit or negative net)" with a control to
+show them. Do not change the arithmetic of `billPaymentPosition`.
+
+A filter that removes records without saying so is indistinguishable from data
+loss. That is the defect being fixed here.
+
+---
+
+## Item 3 — Filter by the linked vendor, not the typed name
+
+**Problem.** Two screens answer "whose bill is this?" differently:
+
+- The list matches the **name string**:
+  `String(bill.vendorName).toUpperCase() !== filters.vendor.toUpperCase()`
+  (`shared/vendorBillFinancialReport.ts`), and server-side
+  `eq(vendorBills.vendorName, filters.vendor.toUpperCase())`
+  (`server/storage.ts` `getVendorBills`).
+- The Previous Billing Summary matches the **linked vendor record**:
+  `Number(b.vendorId) === Number(current.vendorId)`
+  (`shared/vendorBillReview.ts` `vendorStatementBills`).
+
+So once a vendor master is linked, a bill saved under another spelling of the
+same party shows in the finance summary and stays missing from the list. This
+master data has at least eight spellings in use.
+
+**Required.** When the selected vendor resolves to a linked vendor record,
+filter by that record (plus its aliases, via the existing alias resolution) so
+every spelling of that party is returned together. Where a bill has no linked
+vendor, keep the existing exact-name behaviour and do not assume that an
+unlinked name represents the same party — that rule stays.
+
+Do not merge, rename or edit any vendor master record in this item. This is a
+read change only.
+
+---
+
+## Item 4 — Make the overlap refusal name the blocking bill
+
+**Problem.** Saving a hire bill returns
+`409 "This equipment already has an overlapping hire statement"` with nothing
+to act on. The user cannot see hire statements anywhere in the application, so
+the message is a dead end. The sibling check immediately below it already does
+this correctly:
+
+```
+Overlapping equipment charge on ${billed.billNo} (${billed.date}); review the
+existing bill and choose an unbilled period.
+```
+
+**Where.** `server/storage.ts` — the three sites raising
+`"This equipment already has an overlapping hire statement"`; surfaced at
+`server/routes.ts` (the 409 responder).
+
+**Required.** Include the blocking bill number, its status and the overlapping
+dates, in the same shape as the sibling message. Where the overlapping
+statement has no parent bill, say that explicitly ("an orphaned hire record
+for 26-Aug-2026 to 31-Aug-2026") rather than naming nothing — an orphan is
+currently unfindable and must at least be reportable.
+
+Do not relax the check. Do not add any route or action that deletes or detaches
+a hire statement.
+
+---
+
+## Item 5 — Restore the Monthly Billing Summary and Activity Calendars
+
+**This is a restoration, not a new build. Do not rebuild it.**
+
+- Commit `f4830da` (12-Oct-2026 13:58) built it: `shared/vendorBillLayout.ts`,
+  `client/src/components/vendor-bills/HireMonthlyReview.tsx`, their tests, and
+  the wiring.
+- Commit `0d7003d` (12-Oct-2026 16:27), part of the vendor-bill rollback,
+  removed the wiring — not the work.
+
+Removed by `0d7003d`:
+
+- `<HireMonthlyReview review={projectHireReview(statement, bill)} />` from
+  `client/src/components/vendor-bills/SavedBillCalendars.tsx`
+- `<HireMonthlyReview ... />` from
+  `client/src/components/vendor-bills/VendorBillReview.tsx`
+- `hireReview: projectHireReview(statement, bill)` from
+  `client/src/pages/VendorBills.tsx`
+
+Current state: `shared/vendorBillLayout.ts` and `HireMonthlyReview.tsx` are
+intact and tested but orphaned. `projectHireReview` is imported in
+`EquipmentHireBillOutput.tsx` and never called. `data.hireReview` is never
+populated by any client caller, so the Excel "Monthly Billing Summary" sheet
+and the client PDF page are both silently skipped. The only live path is the
+server PDF at `server/routes.ts` (`projectBillHireReviews`).
+
+**Required.** Reconnect all three so the Monthly Billing Summary and the
+per-month Activity Calendars appear:
+
+- on the Bill Detail page for saved hire bills,
+- in the Excel export ("Monthly Billing Summary" sheet),
+- in the client PDF export,
+- and keep the server PDF working as it does now.
+
+Do not change `shared/vendorBillLayout.ts` in this item except as Item 6
+requires. Restore the removed call sites; do not write new equivalents.
+
+**Multi-month must be verified on real data, not only in unit tests.** A bill
+whose period spans two calendar months must produce one row and one Activity
+Calendar per month. Note the existing safeguard: if the per-month figures do
+not reconcile to the stored total within 0.02, the code blanks **every**
+month's Days Billed and Gross. That behaviour is correct and must stay, but it
+means one unreconciled day empties the whole table. Report, with evidence,
+whether a genuine two-month bill reconciles or blanks, and if it blanks, why.
+
+---
+
+## Item 6 — Carry the recorded DPR status through to the bill, and split the columns
+
+**Read this item in full before changing anything. An earlier reading of ours
+was wrong and we do not want it repeated: the equipment usage status is
+already recorded. Do not add a new field for it, and do not ask the site to
+enter a reason.**
+
+**What exists.** `equipment_logs.usage_status` and
+`equipment_usage.usage_status` already store four values, chosen from a
+dropdown in `client/src/components/DprEquipmentCompact.tsx`:
+
+- `working`
+- `idle_no_work` — Idle · No Work Available
+- `idle_no_operator` — Idle · Operator Unavailable
+- `breakdown`
+
+A companion `usage_status_reason` column exists, and
+`equipmentStatusRequiresReason` already governs when it is mandatory. Leave
+that rule exactly as it is.
+
+**What is broken.** The bill never reads any of it.
+`shared/hireBilling.ts`, in `buildHireActivityDays`:
+
+```ts
+activity: breakdowns.length ? "breakdown" : dayActivities.length ? "worked" : "no_activity",
+```
+
+The day's state is inferred from whether a maintenance record and activity
+rows happen to exist. `usageStatus` is not in the `HireActivity` interface and
+never enters the pipeline. `HireActivityDay.activity` is a three-value union,
+so both kinds of idle collapse into `no_activity`, which
+`activityClassification` then reports as "Activity Not Recorded".
+
+Consequence on real bills: `HLC/VB/2026/0056` shows 6 days billed, 6 worked,
+**Idle 0, Breakdown 0**. On `HLC/VB/2026/0058` the operator-unavailable days
+had to be entered by hand as a manual adjustment
+("OPERATOR UNAVAILABLE FOR TWO DAYS (13TH&14TH): −10,000.00"). That manual
+line is standing in for this missing connection.
+
+This matters commercially, because the two are opposite: *no work available*
+is HLC's own cost and normally payable; *operator unavailable* is the vendor's
+and normally deductible.
+
+**Note also** that `activityClassification` in `shared/vendorBillLayout.ts`
+already accepts richer vocabulary — `idle`, `work_not_available`,
+`operator_unavailable` — that nothing produces. This was evidently intended
+and left unfinished. Both ends need to agree, and neither currently matches
+the DPR's own words.
+
+**Required.**
+
+1. Carry `usageStatus` (and `usageStatusReason` where present) from the DPR
+   and plant usage rows into the hire activity pipeline. `EquipmentStatusRecord`
+   in `server/storage.ts` already assembles exactly this from both sources —
+   reuse that assembly rather than writing a new query.
+2. Widen `HireActivityDay.activity` to carry the four recorded states plus
+   "not recorded", and set it from the recorded status. Where a day has a
+   recorded status, that status decides; the existing maintenance-record and
+   activity-row inference remains only as the fallback for days with no
+   recorded status, which must still report as "Activity Not Recorded" and
+   never as Idle or Breakdown.
+3. Align `activityClassification` with the DPR's actual values. Keep the
+   existing accepted spellings for compatibility.
+4. Split the single "Breakdown / Opr. Unavailable Days" column into two:
+   **Breakdown Days** (machine) and **Operator / Driver Unavailable Days**.
+   Update `MONTHLY_BILL_HEADERS` and `hireReviewTable`, and the Excel and PDF
+   exports that consume them, together — they share one definition.
+
+**Guard rails for Item 6 — these are not optional.**
+
+- Frozen snapshots stay frozen. A saved statement's
+  `calculationSnapshot` is never re-derived on read. New behaviour applies to
+  new calculations only.
+- No approved, verified or paid bill changes value. Prove it: state
+  `HLC/VB/2026/0058`'s net before and after, and show it is identical.
+- Do not create any automatic deduction from an operator-unavailable day. This
+  item makes the day **visible and correctly labelled**. Whether it is
+  deducted stays a human decision through the existing exception and
+  adjustment flow. Do not alter deduction arithmetic in this batch.
+- No backfill of historical days. Days already recorded keep whatever they
+  have. Do not infer a status for a past day from anything.
+- Additive migration only if one is needed at all; show the Publish preview
+  before publishing.
+
+---
+
+## Verification required before you report back
+
+Report in plain terms. No test-name inventories.
+
+1. For each of items 1–4: the before and after behaviour on the named real
+   bills — `0045`, `0056`, `0058` — and confirmation that the list, the
+   financial summary, the taxes summary and the exports all agree with each
+   other.
+2. Item 5: screenshots or exported files showing the Monthly Billing Summary
+   and Activity Calendars present on screen, in Excel and in both PDFs; plus
+   the genuine two-month result and whether it reconciled or blanked.
+3. Item 6: a day recorded as Idle · No Work Available, a day recorded as Idle ·
+   Operator Unavailable, a Breakdown day and a day with no recorded status,
+   each shown landing in the correct column; plus `0058`'s net unchanged.
+4. Confirmation that no permission check, site-scope check or deduction
+   calculation was modified.
+5. The full suite result stated against the **5,159 / 0** benchmark, with any
+   new failure named individually.
+
+Stop and ask once if any item cannot be done without breaking a standing rule
+above. Do not work around a rule and report it afterwards.
+
+Nothing is to be published. We will review and publish.

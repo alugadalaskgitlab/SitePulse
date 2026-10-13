@@ -17437,10 +17437,7 @@ export class DatabaseStorage implements IStorage {
   // ============================================
 
   async getVendorBills(filters?: { dateFrom?: string; dateTo?: string; vendor?: string; status?: string }): Promise<VendorBillWithItems[]> {
-    let conditions: any[] = [];
-    if (filters?.dateFrom) conditions.push(gte(vendorBills.billDate, filters.dateFrom));
-    if (filters?.dateTo) conditions.push(lte(vendorBills.billDate, filters.dateTo));
-    if (filters?.vendor) conditions.push(eq(vendorBills.vendorName, filters.vendor.toUpperCase()));
+    const conditions: any[] = [];
     if (filters?.status) conditions.push(eq(vendorBills.status, filters.status));
 
     const bills = await db.query.vendorBills.findMany({
@@ -17448,12 +17445,61 @@ export class DatabaseStorage implements IStorage {
       with: { items: true, hireStatements: { with: { exceptions: true } } },
       orderBy: desc(vendorBills.billDate),
     });
-    return bills.map((bill) => ({
+    const aliases = await db.select().from(vendorAliases);
+    const resolveAliases = (vendorName: string) => {
+      const upper = vendorName.toUpperCase().trim();
+      const names = new Set<string>([upper]);
+      for (const alias of aliases) {
+        if (alias.canonicalName === upper || alias.alias === upper) {
+          names.add(alias.canonicalName);
+          names.add(alias.alias);
+        }
+      }
+      const relatedCanonicals = [...names];
+      for (const alias of aliases) {
+        if (relatedCanonicals.includes(alias.canonicalName)) names.add(alias.alias);
+      }
+      return [...names];
+    };
+    let result = bills.map((bill) => ({
       ...bill,
+      // Alias data is exposed only for linked bills; free-text vendor names
+      // continue to match exactly and are never merged by spelling.
+      vendorAliasNames: bill.vendorId == null ? [] : resolveAliases(bill.vendorName),
       // VB18 is additive; historical rows may have NULL or may come from a
       // replica predating the column. Keep every API response list-shaped.
       additionalAdjustments: normalizeVendorBillAdditionalAdjustments((bill as any).additionalAdjustments),
-    })) as VendorBillWithItems[];
+    }));
+
+    const normaliseDate = (value: unknown) => value == null || value === "" ? null : String(value).slice(0, 10);
+    if (filters?.dateFrom || filters?.dateTo) {
+      result = result.filter(bill => {
+        const recordedFrom = normaliseDate(bill.periodFrom);
+        const recordedTo = normaliseDate(bill.periodTo);
+        const hasPeriod = recordedFrom != null || recordedTo != null;
+        const from = hasPeriod ? recordedFrom : normaliseDate(bill.billDate);
+        const to = hasPeriod ? recordedTo : normaliseDate(bill.billDate);
+        return !(filters.dateFrom && to && to < filters.dateFrom) &&
+          !(filters.dateTo && from && from > filters.dateTo);
+      });
+    }
+
+    if (filters?.vendor) {
+      const selected = filters.vendor.toUpperCase().trim();
+      const linkedIds = new Set(result
+        .filter(bill => bill.vendorId != null && (
+          bill.vendorName.toUpperCase().trim() === selected ||
+          bill.vendorAliasNames.some(name => name === selected)
+        ))
+        .map(bill => Number(bill.vendorId)));
+      const linkedId = linkedIds.size === 1 ? [...linkedIds][0] : null;
+      result = result.filter(bill => {
+        const exactName = bill.vendorName.toUpperCase().trim() === selected;
+        return linkedId == null ? exactName
+          : bill.vendorId == null ? exactName : Number(bill.vendorId) === linkedId;
+      });
+    }
+    return result as VendorBillWithItems[];
   }
 
   async getVendorBill(id: number): Promise<VendorBillWithItems | undefined> {

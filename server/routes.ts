@@ -11590,13 +11590,18 @@ export async function registerRoutes(
   app.get("/api/vendor-bills/summary", async (req, res) => {
     try {
       if (!assertViewEither(req, res, "vendor_bills", "vendor_bills_view")) return;
-      const filters = {
+      const sites = await storage.getSites();
+      const available = await scopeVendorBillsToSiteAccess(req, await storage.getVendorBills({}));
+      const bills = filterFinancialBills(available, {
+        scope: "all",
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
         vendor: req.query.vendor as string | undefined,
         status: req.query.status as string | undefined,
-      };
-      const bills = await scopeVendorBillsToSiteAccess(req, await storage.getVendorBills(filters));
+        category: req.query.category as string | undefined,
+        party: req.query.party as string | undefined,
+        site: req.query.site as string | undefined,
+      }, sites);
 
       const { total: totalGst, ...gstByCategory } = aggregateGstBreakdown(bills);
 
@@ -11663,22 +11668,14 @@ export async function registerRoutes(
         res.setHeader("Content-Disposition", 'attachment; filename="vendor-financial-summary.xlsx"');
         return res.send(xlsx.write(workbook, { type: "buffer", bookType: "xlsx" }));
       }
-      let billsRaw = await scopeVendorBillsToSiteAccess(req,
-        await storage.getVendorBills({ dateFrom, dateTo, vendor, status }));
-      if (selectedSite.siteName) {
-        billsRaw = billsRaw.filter(bill => bill.siteId === selectedSite.siteId ||
-          (bill.siteId == null && bill.items?.some((item: any) =>
-            vendorBillItemMatchesSite(item.siteName, selectedSite.siteName!))));
-      }
-      // Apply category filter the same way the UI does (combined => "all" billType).
-      const categoryBills = categoryFilter === "all"
-        ? billsRaw
-        : billsRaw.filter(b => {
-            const target = categoryFilter === "combined" ? "all" : categoryFilter;
-            return (b.billType || "").toLowerCase() === target;
-          });
-      const bills = req.query.party && req.query.party !== "all"
-        ? categoryBills.filter(b => b.items?.some(item => item.suppliedTo === req.query.party)) : categoryBills;
+      const sites = await storage.getSites();
+      const billsRaw = await scopeVendorBillsToSiteAccess(req, await storage.getVendorBills({}));
+      const bills = filterFinancialBills(billsRaw, {
+        scope: req.query.scope === "unpaid" ? "unpaid" : "all",
+        dateFrom, dateTo, vendor, status, category: categoryFilter,
+        party: typeof req.query.party === "string" ? req.query.party : undefined,
+        site: selectedSite.siteName || undefined,
+      }, sites);
       // Sort newest first for both summary and detail.
       bills.sort((a, b) => (b.billDate || "").localeCompare(a.billDate || ""));
 

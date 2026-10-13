@@ -47,10 +47,29 @@ export interface FinancialFilters {
 }
 /** Input must already be authorised. One selection for UI and every workbook sheet. */
 export function filterFinancialBills<T extends Record<string, any>>(bills: T[], filters: FinancialFilters, sites: { id: number; name: string }[] = []): T[] {
+  const selectedVendor = filters.vendor && filters.vendor !== "all" ? filters.vendor.trim().toUpperCase() : null;
+  const matchingVendorIds = selectedVendor ? new Set(bills
+    .filter(bill => bill.vendorId != null && (
+      String(bill.vendorName || "").trim().toUpperCase() === selectedVendor ||
+      (Array.isArray(bill.vendorAliasNames) && bill.vendorAliasNames.some((name: unknown) => String(name).trim().toUpperCase() === selectedVendor))
+    ))
+    .map(bill => Number(bill.vendorId))) : new Set<number>();
+  const selectedVendorId = matchingVendorIds.size === 1 ? [...matchingVendorIds][0] : null;
+
   return bills.filter(bill => {
-    if (filters.dateFrom && bill.billDate < filters.dateFrom) return false;
-    if (filters.dateTo && bill.billDate > filters.dateTo) return false;
-    if (filters.vendor && filters.vendor !== "all" && String(bill.vendorName).toUpperCase() !== filters.vendor.toUpperCase()) return false;
+    const rawFrom = bill.periodFrom == null || bill.periodFrom === "" ? null : String(bill.periodFrom).slice(0, 10);
+    const rawTo = bill.periodTo == null || bill.periodTo === "" ? null : String(bill.periodTo).slice(0, 10);
+    const hasPeriod = rawFrom != null || rawTo != null;
+    const periodFrom = hasPeriod ? rawFrom : String(bill.billDate || "").slice(0, 10);
+    const periodTo = hasPeriod ? rawTo : String(bill.billDate || "").slice(0, 10);
+    if (filters.dateFrom && periodTo && periodTo < filters.dateFrom) return false;
+    if (filters.dateTo && periodFrom && periodFrom > filters.dateTo) return false;
+    if (selectedVendor) {
+      const exactName = String(bill.vendorName || "").trim().toUpperCase() === selectedVendor;
+      if (selectedVendorId != null) {
+        if (bill.vendorId == null ? !exactName : Number(bill.vendorId) !== selectedVendorId) return false;
+      } else if (!exactName) return false;
+    }
     if (filters.status && filters.status !== "all" && bill.status !== filters.status) return false;
     if (filters.category && filters.category !== "all" && String(bill.billType || "").toLowerCase() !== (filters.category === "combined" ? "all" : filters.category)) return false;
     if (filters.party && filters.party !== "all" && !bill.items?.some((item: any) => item.suppliedTo === filters.party)) return false;

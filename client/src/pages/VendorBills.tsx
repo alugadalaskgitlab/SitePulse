@@ -2249,15 +2249,23 @@ export default function VendorBills() {
     return Array.from(set).sort();
   }, [bills]);
 
-  const filteredBills = useMemo(() => {
+  const scopeIndependentBills = useMemo(() => {
     // Financial viewers use the very same authorised snapshot for list and totals.
     // Ordinary viewers retain their normal bill access and workflows.
     const source = canViewFinancials ? (financialReview.data || []) : (bills || []);
     return filterFinancialBills(source, {
-      scope: billScope, dateFrom: filterDateFrom, dateTo: filterDateTo, vendor: filterVendor,
+      scope: "all", dateFrom: filterDateFrom, dateTo: filterDateTo, vendor: filterVendor,
       status: filterStatus, category: filterCategory, party: filterParty, site: filterSite,
     }, sites);
-  }, [bills, financialReview.data, canViewFinancials, billScope, sites, filterDateFrom, filterDateTo, filterVendor, filterStatus, filterCategory, filterParty, filterSite]);
+  }, [bills, financialReview.data, canViewFinancials, sites, filterDateFrom, filterDateTo, filterVendor, filterStatus, filterCategory, filterParty, filterSite]);
+  const filteredBills = useMemo(() => billScope === "all" ? scopeIndependentBills : filterFinancialBills(
+    canViewFinancials ? (financialReview.data || []) : (bills || []),
+    {
+      scope: billScope, dateFrom: filterDateFrom, dateTo: filterDateTo, vendor: filterVendor,
+      status: filterStatus, category: filterCategory, party: filterParty, site: filterSite,
+    }, sites,
+  ), [scopeIndependentBills, bills, financialReview.data, canViewFinancials, billScope, sites, filterDateFrom, filterDateTo, filterVendor, filterStatus, filterCategory, filterParty, filterSite]);
+  const billsHiddenByUnpaid = billScope === "unpaid" ? Math.max(0, scopeIndependentBills.length - filteredBills.length) : 0;
 
   const financialBills = useMemo(() => {
     if (!canViewFinancials || financialReview.isError) return [];
@@ -4958,6 +4966,10 @@ export default function VendorBills() {
           disabled={!filteredBills.length || !financialReview.isSuccess || financialReview.isFetching} data-testid="button-export-financial-summary">
           <Download className="w-3 h-3 mr-1" />Export Financial Summary
         </Button>}
+        {billsHiddenByUnpaid > 0 && <p role="status" className="text-xs text-muted-foreground">
+          {billsHiddenByUnpaid} bill{billsHiddenByUnpaid === 1 ? "" : "s"} hidden by the Unpaid view (credit, negative net, or no remaining balance).
+          {" "}<Button type="button" variant="link" size="sm" className="h-auto p-0" onClick={() => setBillScope("all")}>Show hidden bills</Button>
+        </p>}
       </div>
       {canViewFinancials && (financialReview.isPending ? <p role="status">Loading permitted financial information…</p>
         : financialReview.isError ? <p role="alert">Financial information is unavailable. <Button variant="link" onClick={() => financialReview.refetch()}>Retry</Button></p>
@@ -4967,8 +4979,11 @@ export default function VendorBills() {
       <Card>
         <CardContent className="py-3">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <p className="col-span-2 md:col-span-4 text-xs text-muted-foreground">
+              Dates match the billed period when it overlaps the selected range. Bills without a recorded billed period use the bill date.
+            </p>
             <div>
-              <Label className="text-sm uppercase">Date From</Label>
+              <Label className="text-sm uppercase">Billed Period From</Label>
               <div className="relative">
                 <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} data-testid="filter-date-from" />
                 {filterDateFrom && (
@@ -4979,7 +4994,7 @@ export default function VendorBills() {
               </div>
             </div>
             <div>
-              <Label className="text-sm uppercase">Date To</Label>
+              <Label className="text-sm uppercase">Billed Period To</Label>
               <div className="relative">
                 <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} data-testid="filter-date-to" />
                 {filterDateTo && (
