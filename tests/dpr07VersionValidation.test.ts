@@ -1,10 +1,8 @@
 /**
- * DPR-07 Fix 2 — submitted-DPR version validation is scoped to semantic
- * progress changes, while fresh create keeps all-row validation.
- *
- * These tests register the real Express routes and use only mocked storage.
- * They deliberately include legacy-invalid rows so a labour-only version edit
- * proves that the untouched rows are carried through without being rechecked.
+ * Submitted-DPR version requests must enter the correction-review workflow.
+ * These tests use the real Express routes and verify direct writes stop before
+ * validation, lifecycle lookups, or persistence. Fresh creates retain their
+ * separate all-row validation coverage below.
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
@@ -216,6 +214,12 @@ function reset() {
   });
 }
 
+function expectCorrectionReviewRequired(response: any) {
+  expect(response.status).toBe(409);
+  expect(response.body.code).toBe("DPR_CORRECTION_REVIEW_REQUIRED");
+  expect(fx.versions).toHaveLength(0);
+}
+
 beforeEach(reset);
 
 function putVersionFixture(progress: any[], overrides: Record<string, unknown> = {}) {
@@ -263,8 +267,8 @@ function payloadEquipment(source: any, overrides: Record<string, unknown> = {}) 
   };
 }
 
-describe("DPR-07 Fix 2 — version validators use changed/new progress only", () => {
-  it("F: accepts a labour-only edit and preserves untouched invalid rows and review facts", async () => {
+describe("submitted DPR changes require explicit correction review", () => {
+  it("requires correction review before applying a labour-only edit", async () => {
     const invalidQuantity = sourceRow(101, {
       activity: "LEGACY INVALID QUANTITY SOURCE",
       quantity: 5,
@@ -321,21 +325,10 @@ describe("DPR-07 Fix 2 — version validators use changed/new progress only", ()
       })
       .set("Content-Type", "application/json");
 
-    expect(response.status).toBe(201);
-    expect(fx.versions).toHaveLength(1);
-    const saved = fx.versions[0].input;
-    expect(saved.labour[0].task).toBe("CORRECTED LABOUR");
-    expect(saved.progress).toHaveLength(3);
-    expect(saved.progress[0].quantitySource).toBeNull();
-    expect(saved.progress[1]).toEqual(expect.objectContaining({
-      linkReviewRequired: true,
-      chainageReviewStatus: "approved",
-      scopeWarningType: "legacy_warning",
-    }));
-    expect(saved.progress[2].programmeBarId).toBe(999999);
+    expectCorrectionReviewRequired(response);
   });
 
-  it("rechecks programme rows when the BOQ-project header changes context", async () => {
+  it("requires correction review before changing the BOQ-project context", async () => {
     const linked = sourceRow(104, {
       activity: "UNCHANGED LINKED ROW",
       boqItemId: 3004,
@@ -356,13 +349,10 @@ describe("DPR-07 Fix 2 — version validators use changed/new progress only", ()
       })
       .set("Content-Type", "application/json");
 
-    expect(response.status).toBe(400);
-    expect(response.body.code).toBe("PROGRAMME_LINK_INVALID");
-    expect(response.body.message).toContain("different BOQ project");
-    expect(fx.versions).toHaveLength(0);
+    expectCorrectionReviewRequired(response);
   });
 
-  it("versions a saved-null source with a newly chosen target-project BOQ row", async () => {
+  it("requires review before assigning a BOQ item to a saved-null source", async () => {
     putVersionFixture([], { boqProjectId: null });
     fx.boqItems.set(3005, { id: 3005, boqProjectId: PROJECT_ID + 1, unit: "MT" });
     const { id: _id, dprId: _dprId, ...newProgress } = sourceRow(105, {
@@ -383,16 +373,10 @@ describe("DPR-07 Fix 2 — version validators use changed/new progress only", ()
       })
       .set("Content-Type", "application/json");
 
-    expect(response.status).toBe(201);
-    expect(fx.versions).toHaveLength(1);
-    expect(fx.versions[0].input).toMatchObject({
-      boqProjectId: PROJECT_ID + 1,
-      progress: [expect.objectContaining({ boqItemId: 3005 })],
-    });
-    expect(fx.versions[0].scopeVersionToken).toBe("version-scope-token");
+    expectCorrectionReviewRequired(response);
   });
 
-  it("does not route a second version from a source already superseded by the first", async () => {
+  it("requires correction review before checking superseded-source state", async () => {
     putVersionFixture([], { isSuperseded: true });
 
     const response = await request(app)
@@ -401,11 +385,11 @@ describe("DPR-07 Fix 2 — version validators use changed/new progress only", ()
       .set("Content-Type", "application/json");
 
     expect(response.status).toBe(409);
-    expect(response.body.code).toBe("DPR_ALREADY_SUPERSEDED");
+    expect(response.body.code).toBe("DPR_CORRECTION_REVIEW_REQUIRED");
     expect(fx.versions).toHaveLength(0);
   });
 
-  it("uses the pre-validation target scope token when a correction lands during programme validation", async () => {
+  it("requires review before running validation or writing a version", async () => {
     const linked = sourceRow(106, {
       activity: "SCOPE TOKEN RACE",
       boqItemId: 3006,
@@ -438,21 +422,19 @@ describe("DPR-07 Fix 2 — version validators use changed/new progress only", ()
       .set("Content-Type", "application/json");
 
     expect(response.status).toBe(409);
-    expect(response.body.code).toBe("SCOPE_CHANGED_DURING_PLANNING");
-    expect(fx.events.indexOf("scope-token")).toBeLessThan(fx.events.indexOf("programme-validation"));
-    expect(fx.versions).toHaveLength(0);
+    expectCorrectionReviewRequired(response);
+    expect(fx.events).toEqual([]);
   });
 
   it.each([
-    { label: "A manager contractor", isAdmin: false, dieselSource: "contractor", diesel: 25, status: 201 },
-    { label: "B manager direct purchase", isAdmin: false, dieselSource: "direct_purchase", diesel: 25, status: 201 },
-    { label: "C manager plant stock", isAdmin: false, dieselSource: "plant_stock", diesel: 25, status: 403 },
-    { label: "D admin plant stock", isAdmin: true, dieselSource: "plant_stock", diesel: 25, status: 201 },
-  ])("$label linked equipment diesel edit follows source-aware admin guard", async ({
+    { label: "A manager contractor", isAdmin: false, dieselSource: "contractor", diesel: 25 },
+    { label: "B manager direct purchase", isAdmin: false, dieselSource: "direct_purchase", diesel: 25 },
+    { label: "C manager plant stock", isAdmin: false, dieselSource: "plant_stock", diesel: 25 },
+    { label: "D admin plant stock", isAdmin: true, dieselSource: "plant_stock", diesel: 25 },
+  ])("$label linked equipment diesel edit requires correction review", async ({
     isAdmin,
     dieselSource,
     diesel,
-    status,
   }) => {
     const usageId = 970401;
     const original = linkedEquipment(970411, usageId, dieselSource);
@@ -478,17 +460,8 @@ describe("DPR-07 Fix 2 — version validators use changed/new progress only", ()
       })
       .set("Content-Type", "application/json");
 
-    expect(response.status).toBe(status);
-    if (status === 201) {
-      expect(fx.versions).toHaveLength(1);
-      expect(fx.versions[0].input.equipment[0].diesel).toBe(diesel);
-      // Both post-guard lifecycle checks must run successfully for the
-      // non-plant-stock manager cases and the admin plant-stock case.
-      expect(fx.equipmentLifecycleCalls.length).toBeGreaterThanOrEqual(2);
-    } else {
-      expect(response.body.error).toBe("LINKED_EQUIPMENT_ADMIN_EDIT_REQUIRED");
-      expect(fx.versions).toHaveLength(0);
-    }
+    expectCorrectionReviewRequired(response);
+    expect(fx.equipmentLifecycleCalls).toHaveLength(0);
   });
 
   it.each([
@@ -534,13 +507,13 @@ describe("DPR-07 Fix 2 — version validators use changed/new progress only", ()
       change: { programmeBarId: 999998 },
       message: "selected programme bar no longer exists",
     },
-  ])("G: rejects genuinely changed invalid $name data with the existing response", async ({
-    code,
+  ])("G: requires review before validating changed $name data", async ({
+    code: _code,
     itemId: _itemId,
     source,
     item,
     change,
-    message,
+    message: _message,
   }) => {
     fx.boqItems.set(Number(item.id), item);
     putVersionFixture([source]);
@@ -555,9 +528,7 @@ describe("DPR-07 Fix 2 — version validators use changed/new progress only", ()
       })
       .set("Content-Type", "application/json");
 
-    expect(response.status).toBe(400);
-    expect(response.body.code).toBe(code);
-    expect(response.body.message).toContain(message);
+    expectCorrectionReviewRequired(response);
     expect(fx.versions).toHaveLength(beforeVersions);
   });
 });

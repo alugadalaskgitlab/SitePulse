@@ -1,10 +1,12 @@
 # Full-suite publication verification — 2026-10-13
 
-## DPR draft and correction verification — subsequent focused pass
+## DPR draft, correction, and version-route verification — focused pass
 
-39 tests pass across guidedDprReliability, initialScopeCorrectionRoutes, and
-dprCorrections.integration. This resolves the 12 previously failing cases in
-the first two files and adds two cases; it is not a new full-suite result.
+54 tests pass across dpr07VersionValidation, guidedDprReliability,
+initialScopeCorrectionRoutes, and dprCorrections.integration. The legacy
+submitted-version route cases now assert the required review gate and no-write
+behavior; they no longer assert the retired unreviewed version semantics. This
+is not a new full-suite result.
 
 Draft fixtures now use the saved aggregate and real section-token calculations,
 preserving the production token guards. Explicit stale tokens are not replaced
@@ -12,16 +14,16 @@ by the harness, and a negative case checks rejection with no submission or
 saved-draft mutation. Scope-token handoff still reaches the final storage call;
 a concurrent scope correction still rejects submission without a notification.
 
-The obsolete unreviewed version success expectation is replaced by an explicit
-correction-review-required check. Its positive unlinked-BOQ quantity-correction
-coverage is exercised through the real correction service with isolated PGlite,
-review, submission and separate Administrator approval. Row/equipment identities
-and the unlinked programme reference are preserved.
+Positive unlinked-BOQ quantity-correction coverage is exercised through the
+real correction service with isolated PGlite, review, submission and separate
+Administrator approval. Row/equipment identities and the unlinked programme
+reference are preserved. Fresh-DPR all-row validation cases remain active.
 
 Only tests changed in this focused pass. Production and application behaviour
-are unchanged. Older submitted-version suites remain unresolved; deployment
-clearance and signed-in UI verification are still outstanding.
-Evidence: /tmp/dpr-current-contract.json and /tmp/dpr-current-contract.log.
+are unchanged. The older SiteEdit version-route suite still needs migration to
+the correction-review contract; deployment clearance and signed-in UI
+verification are still outstanding.
+Evidence: /tmp/dpr-round2.json and /tmp/dpr-round2.log.
 
 ## Repair pass — latest result
 
