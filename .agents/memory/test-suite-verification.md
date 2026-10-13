@@ -103,3 +103,14 @@ also misses failures in the supported operational billing path.
 and Master-aligned terms. Check retained source identities, operational charges,
 duplicate protection and frozen snapshots independently of retired-input
 eligibility. Do not restore withdrawn application behavior to satisfy old tests.
+
+Exercise release exports through the production-format server bundle, not only
+through test-runner imports of the renderer.
+
+**Why:** External dependency interop caused an export to fail only in the
+minified CommonJS server even while its renderer and route tests passed.
+
+**How to apply:** Match the production package boundaries in a bundle regression
+test, then request actual files from the built server with normal authenticated
+synthetic accounts and disposable persistence. A successful build alone does
+not prove that a lazily executed export function works.

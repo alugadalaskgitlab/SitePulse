@@ -1,6 +1,88 @@
 # Full-suite publication verification — 2026-10-13
 
-## Current verification result
+## Current publishing clearance
+
+**Cleared to publish the current workspace build. Nothing was published by this verification.**
+
+The final post-fix full suite passes: **5,159 passed, 0 failed, 1 intentionally
+skipped**, out of **5,160 cases across 386 discovered files**. Both opt-in native
+PostgreSQL labour tests were enabled and passed. The remaining skip is the
+standalone `VB23B_BROWSER_FIXTURE` server, which is not a normal finite suite
+test. The additional discovered file is the production-bundle PDF regression.
+
+A fresh production build passes. A new regression reproduced the GST register
+PDF failure in the minified CommonJS server before the fix and passed afterward.
+The sole application-code change uses the PDF library's named export instead
+of its incompatible bundled default import. This restores the existing PDF
+export without changing financial calculations, permission rules, or billing
+lifecycle rules. The focused export checks passed 38 tests.
+
+### Actual isolated release acceptance
+
+The rebuilt production server ran against a disposable, schema-only development
+database containing synthetic fixtures. Normal login and matching synthetic
+device approval were used; no authentication bypass or shared-account changes
+were made.
+
+- An ordinary creator pulled a synthetic material receipt, saved its bill for
+  Rs. 250, reopened and edited it to Rs. 300, and changed notes. Direct database
+  readback confirmed one source-linked item and preservation of site and draft
+  identity.
+- Equipment, transport, labour, miscellaneous, and combined draft bills were
+  saved through the real UI. These manual-line cases used a separate synthetic
+  administrator because Add Item is an existing admin-only affordance. They
+  do not claim to replace the suite's operational-source billing coverage.
+- The ordinary creator saved a DPR draft and reopened it in the detailed
+  editor to change its remarks and save progress. Database readback confirmed
+  the same single DPR, retained site and draft status, and persisted changes.
+- A separate non-admin reviewer with explicit grants performed real
+  authenticated HTTP verification, approval, payment-detail saves, and paid
+  transitions for all six bill types. These lifecycle requests were actual
+  server requests, not browser-click coverage or mocked successes. Saved actor
+  evidence and payment facts were checked directly in the isolated database.
+- Invalid draft-to-paid transitions were rejected. Equipment/combined
+  overpayments and partially paid terminal transitions were rejected; saving
+  full payment before the paid transition succeeded. Other bill types rejected
+  unsupported cumulative-payment amounts but retained their normal payment
+  details.
+- The restricted ordinary creator received HTTP 403 for approval and PDF
+  export. Each bill type produced a real individual PDF after review/payment.
+  Register PDF, Excel and CSV exports all succeeded; PDF signatures and
+  workbook/CSV contents were checked.
+
+The temporary server/browser/profile were removed and the synthetic database
+was dropped. Zero bill-verification databases remained. Suite database writes
+were separately isolated on a temporary native PostgreSQL server with all four
+test database URLs redirected; that server was stopped and its files removed.
+No shared-development business records or grants, Production data/schema, or
+publication settings were modified.
+
+### Publishing prerequisites and limits
+
+The publishing schema-diff check reports `hasDiff: false`, no SQL statements,
+no destructive changes, and no compatibility warnings. Read-only comparisons
+also found matching managed publishing-source and Production column inventories
+and index/constraint names, with required Production startup prerequisites
+present. No migration is pending according to the publishing check.
+
+The main development workflow restarted cleanly, reporting read-only startup
+readiness for 2,061 columns and serving on its existing port 5000. The app
+preview rendered and the port-specific signed-out authentication request
+returned the expected HTTP 401. Existing port mappings were preserved.
+
+This clearance concerns the tested workspace build, not an assertion that its
+changes are already live. The published site's sign-in route returned HTTP 200
+and signed-out authentication returned HTTP 401, but no signed-in Production
+business writes or post-publication acceptance were performed.
+
+Evidence: `/tmp/release-clearance-suite.json`,
+`/tmp/release-clearance-suite.log`, `/tmp/release-clearance-build.log`,
+`/tmp/vendor-bill-isolated/result.json`, and the isolated UI screenshots.
+The repeatable UI/HTTP acceptance command is
+`node scripts/verification/vendor-bill-isolated.mjs --release`.
+Temporary evidence contains no generated passwords or session/device cookies.
+
+## Earlier full-suite result before the PDF compatibility fix
 
 The final controlled full suite passes: **5,156 passed, 0 failed, 3 skipped**
 out of **5,159 cases across 385 discovered files**. File inventories match the
