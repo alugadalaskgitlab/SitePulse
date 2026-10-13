@@ -9,6 +9,15 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { createServer } from "http";
 import request from "supertest";
+import { sectionSnapshot } from "../server/dprSections";
+
+vi.mock("../server/db", () => ({
+  db: { transaction: async (callback: any) => callback({ execute: async () => [] }) },
+}));
+vi.mock("../server/dprSections", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../server/dprSections")>(),
+  readSectionAggregate: async (_tx: unknown, id: number) => fx.getDpr(id),
+}));
 
 const fx = vi.hoisted(() => ({
   user: { id: 17, name: "Scope Admin", username: "scope-admin", role: "admin", isAdmin: true, isOwner: false },
@@ -42,7 +51,7 @@ vi.mock("../server/storage", () => {
     getDpr: fx.getDpr,
     getProjectScopeVersionToken: fx.getProjectScopeVersionToken,
     submitDraftDpr: fx.submitDraftDpr,
-    // registerRoutes starts a non-empty-data seed guard in the background.
+    // Deterministic collection fixture; startup no longer seeds records.
     getDprs: fx.getDprs,
     createNotification: fx.createNotification,
   };
@@ -171,6 +180,14 @@ function correctionBody(overrides: Record<string, unknown> = {}) {
 beforeAll(async () => {
   app = express();
   app.use(express.json());
+  app.use(async (req, _res, next) => {
+    if (req.path === "/api/dprs/1200/submit") {
+      const saved = await fx.getDpr(1200);
+      const snapshot = sectionSnapshot(saved);
+      req.body = { headerToken: snapshot.headerToken, sectionTokens: snapshot.sectionTokens, ...req.body };
+    }
+    next();
+  });
   await registerRoutes(createServer(app), app);
 });
 
@@ -422,6 +439,7 @@ describe("draft submission scope-token handoff", () => {
 
   it("reads a fresh token and passes it into final draft submission", async () => {
     fx.getDpr.mockResolvedValue({
+      ...draftPayload,
       id: 1200,
       dprStatus: "draft",
       site: "ALIPUR",
@@ -448,11 +466,17 @@ describe("draft submission scope-token handoff", () => {
       expect.objectContaining({ userId: 17 }),
       "scope-token-17",
       false,
+      expect.objectContaining({
+        headerToken: sectionSnapshot(await fx.getDpr(1200)).headerToken,
+        sectionTokens: sectionSnapshot(await fx.getDpr(1200)).sectionTokens,
+        stored: true,
+      }),
     );
   });
 
   it("maps a correction committed during validation to 409 and does not notify as submitted", async () => {
     fx.getDpr.mockResolvedValue({
+      ...draftPayload,
       id: 1200,
       dprStatus: "draft",
       site: "ALIPUR",

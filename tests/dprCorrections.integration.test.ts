@@ -73,6 +73,24 @@ it("saves chainage-only on any submitted DPR and preserves missing usage, tanks 
   expect((await db.select().from(schema.stockLedger))).toHaveLength(0);
   expect((await db.select().from(schema.auditLogs).where(eq(schema.auditLogs.transactionId, f.id)))[0].newValues.revision).toBe(1);
 });
+it("preserves an unlinked BOQ item through reviewed quantity correction without creating a version or equipment usage", async () => {
+  const f = await fixture();
+  const reportsBefore = await db.select().from(schema.dprs);
+  const usageBefore = await db.select().from(schema.equipmentUsage);
+  await db.update(schema.progressEntries).set({ boqItemId: 701, programmeBarId: null })
+    .where(eq(schema.progressEntries.id, f.p.id));
+  Object.assign(f.form.progress[0], { boqItemId: 701, programmeBarId: null, quantity: 1250 });
+  const pending: any = await submit(f);
+  expect(pending.requestId).toBeTypeOf("number");
+  await service.decide(f.id, pending.requestId, {
+    approve: true, reason: "Measured quantity checked against site register", confirmImpact: true,
+  }, admin);
+  const row = await db.query.progressEntries.findFirst({ where: eq(schema.progressEntries.id, f.p.id) });
+  expect(row).toMatchObject({ dprId: f.id, boqItemId: 701, programmeBarId: null, quantity: 1250 });
+  expect(await db.select().from(schema.equipmentLogs).where(eq(schema.equipmentLogs.id, f.e.id))).toEqual([f.e]);
+  expect((await db.select().from(schema.dprs)).map((row: any) => row.id).sort()).toEqual(reportsBefore.map((row: any) => row.id).sort());
+  expect(await db.select().from(schema.equipmentUsage)).toEqual(usageBefore);
+});
 it("site-register timing is staged then approved by another Administrator without updating a paid bill", async () => {
   const f = await fixture();
   await db.insert(schema.vendorBills).values({ id: f.id, billNo: `FIX-${f.id}`, vendorName: "FIXTURE VENDOR", billDate: "2026-08-29", billType: "equipment", status: "paid", totalAmount: "5850" });

@@ -26,6 +26,7 @@ import { createServer } from "http";
 import request from "supertest";
 import { barBalanceFigures } from "../shared/dprProgrammeLink";
 import { creditExecutedEntries } from "../shared/planOutcome";
+import { sectionSnapshot } from "../server/dprSections";
 
 const PROJECT_ID = 910001;
 const BAR_ID = 8101;
@@ -64,7 +65,17 @@ vi.mock("../server/auth", async (importOriginal) => {
   return { ...actual, requireAuth: inject, optionalAuth: inject };
 });
 
-vi.mock("../server/storage", () => {
+vi.mock("../server/db", () => ({
+  db: { transaction: async (callback: any) => callback({ execute: async () => [] }) },
+}));
+
+vi.mock("../server/dprSections", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../server/dprSections")>(),
+  readSectionAggregate: async (_tx: unknown, id: number) => fx.drafts.get(id),
+}));
+
+vi.mock("../server/storage", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../server/storage")>();
   const methods: Record<string, ReturnType<typeof vi.fn>> = {};
   const storageProxy = new Proxy(methods, {
     get(target, prop: string) {
@@ -73,9 +84,7 @@ vi.mock("../server/storage", () => {
     },
   });
 
-  // registerRoutes fires a background seedDatabase() that seeds an example
-  // DPR when getDprs() is empty — return a non-empty list so it never runs
-  // (its createDpr call would race with the tests' drafts).
+  // Deterministic collection fixture; startup no longer seeds records.
   methods.getDprs = vi.fn(async () => [{ id: 1 }]);
   methods.getBoqItem = vi.fn(async (id: number) => fx.boqItems.get(id) ?? null);
   methods.getWorkProgramBar = vi.fn(async (id: number) => fx.bars.find(b => b.id === id) ?? undefined);
@@ -108,7 +117,7 @@ vi.mock("../server/storage", () => {
   });
   methods.getReportedQtyByBar = vi.fn(async () => new Map());
 
-  return { storage: storageProxy };
+  return { ...actual, storage: storageProxy };
 });
 
 let app: express.Express;
@@ -117,6 +126,17 @@ beforeAll(async () => {
   const { registerRoutes } = await import("../server/routes");
   app = express();
   app.use(express.json());
+  // Model a client carrying tokens from its latest saved snapshot. Token
+  // calculation and validation remain real; only persistence is mocked.
+  app.use((req, _res, next) => {
+    const id = Number(req.path.match(/^\/api\/dprs\/(\d+)/)?.[1]);
+    const saved = fx.drafts.get(id);
+    if (saved?.dprStatus === "draft" && req.method !== "GET") {
+      const snapshot = sectionSnapshot(saved);
+      req.body = { headerToken: snapshot.headerToken, sectionTokens: snapshot.sectionTokens, ...req.body };
+    }
+    next();
+  });
   const httpServer = createServer(app);
   await registerRoutes(httpServer, app);
 });
@@ -242,6 +262,16 @@ describe("Part A — guided draft state round-trips losslessly", () => {
 // ---------------------------------------------------------------------------
 
 describe("Part B — programmeBarId survives draft → update → submit (real routes)", () => {
+  it("rejects stale client tokens before submitting the saved draft", async () => {
+    const created = await request(app).post("/api/dprs").send(guidedPayload({ asDraft: true }));
+    expect(created.status).toBe(201);
+    const before = JSON.stringify(fx.drafts.get(created.body.id));
+    const response = await request(app).post(`/api/dprs/${created.body.id}/submit`)
+      .send({ headerToken: "stale-client-token" });
+    expect(response.status).toBe(409);
+    expect(calls.submits).toHaveLength(0);
+    expect(JSON.stringify(fx.drafts.get(created.body.id))).toBe(before);
+  });
   it("draft POST with INCOMPLETE chainage keeps the link (draft-lenient)", async () => {
     const res = await request(app).post("/api/dprs").send(guidedPayload({
       asDraft: true,
@@ -298,7 +328,7 @@ describe("Part B — programmeBarId survives draft → update → submit (real r
     expect(fx.drafts.get(id).progress[0].programmeBarId).toBe(BAR_ID);
   });
 
-  it("unlinked real BOQ progress survives draft → update → submit → version with no scheduled bars", async () => {
+  it("unlinked BOQ progress survives draft → update → submit, then requires correction review", async () => {
     // This is the production path for an item selected from the BOQ picker
     // when its project has no programme bars. No link validation should run,
     // but the real BOQ id and quantity must remain billable.
@@ -359,11 +389,13 @@ describe("Part B — programmeBarId survives draft → update → submit (real r
           progressOverrides: { ...unlinked, quantity: 1250 },
         }),
       });
-    expect(version.status).toBe(201);
-    expect(calls.versionInputs[0].progress[0]).toEqual(expect.objectContaining({
+    expect(version.status).toBe(409);
+    expect(version.body.code).toBe("DPR_CORRECTION_REVIEW_REQUIRED");
+    expect(calls.versionInputs).toHaveLength(0);
+    expect(fx.drafts.get(id).progress[0]).toEqual(expect.objectContaining({
       boqItemId: 701,
       programmeBarId: null,
-      quantity: 1250,
+      quantity: 1200,
     }));
   });
 

@@ -19,8 +19,6 @@ description: Programme-driven Guided DPR screen — routing, entry-mode preferen
 - Local autosave (`use-autosave`, key `guided-dpr-new`) restores the whole form incl. draftId via a banner; server draft lifecycle is POST → PATCH `/api/dprs/:id/draft` → POST `/api/dprs/:id/submit` (one record, never duplicates).
 - Tests: `tests/guidedDprReliability.test.ts` (route-level lifecycle, real handlers + mocked storage, 030A scaffolding pattern).
 - Filter DPR lists with `!isSuperseded` when computing "already reported".
-**Rule:** route-level tests that mock `server/storage` must stub `getDprs()` non-empty and use incrementing ids in `createDpr` mocks.
-**Why:** `registerRoutes` fires a background `seedDatabase()` when `getDprs()` is empty — its `createDpr` call races the tests and a fixed mock id lets it clobber the test's draft (intermittent "Only draft DPRs can be submitted").
 
 **Guided calc correction (Aug 2026):** `client/src/lib/guidedEntryGeometry.ts` is the pure brain for Guided entry quantity: UOM-aware fields (`requiredDims`), auto-recalc on geometry edits unless `qtyOverridden`, override detection on manual qty edits, `overrideMismatch` flag (never silently recalc an overridden qty), `deriveOverridden` on draft hydration.
 **Why:** the pre-fix screen buried W/T behind "Add details" and let engineers type raw quantities with no geometry cross-check; silent recalc of a deliberate manual qty is a data-loss risk (architect flagged the one-shot-derivation version).
