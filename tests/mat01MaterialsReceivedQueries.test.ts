@@ -16,6 +16,8 @@ describe("MAT-01 Materials Received database queries", () => {
       CREATE TABLE site_material_trips (
         id serial PRIMARY KEY, date date NOT NULL, time text, site text NOT NULL,
         material text NOT NULL, supplier text, material_source_supplier text,
+        supplier_vendor_id integer, material_source_vendor_id integer,
+        material_source_type text, material_source_label text,
         vehicle_number text, transport_type text, internal_equipment_id integer,
         quantity real NOT NULL, uom text NOT NULL, location text, receipt_number text,
         entered_by text, notes text, work_type text, indent_id integer,

@@ -9,6 +9,7 @@ import { buildVendorPayablesPreview, type PayablesPreviewReader } from "../serve
 import { authoritativeHireDieselPeriod, calculateEquipmentHireFinancials, calculateHireGroup } from "../shared/hireBilling";
 import { buildPayablesPreviewWorkbook, buildPayablesPreviewPdf } from "../client/src/components/vendor-bills/payablesPreviewExport";
 import { vendorBillItemMatchesSite, siteMatchesPermitted } from "../shared/siteName";
+import { financialSites } from "../server/vendorFinancialAccess";
 
 const input = { vendorName: "KAVERI WORKS", periodFrom: "2026-06-01", periodTo: "2026-06-30" };
 const fullScope = { permittedSiteNames: null, siteId: null, siteName: null };
@@ -216,7 +217,7 @@ const guard = productionNode(fs.readFileSync("server/auth-routes.ts", "utf8"), n
 const route = productionNode(source, n => ts.isCallExpression(n) && n.expression.getText().startsWith("app.get") && n.arguments[0]?.getText() === '"/api/vendor-bills/payables-preview"');
 const app = express();
 app.use((req: any, _res, next) => { req.authUser = { id: 5, isFieldEngineer: fieldEngineer }; req.authPermissions = permissions; next(); });
-const dependencies = { app, storage: reader, z, buildVendorPayablesPreview, vendorBillItemMatchesSite, siteMatchesPermitted };
+const dependencies = { app, storage: reader, z, buildVendorPayablesPreview, vendorBillItemMatchesSite, siteMatchesPermitted, financialSites };
 const compiled = ts.transpile(`${guard}\n${["getPermittedSiteNames", "assertTripSiteAccess", "resolveVendorBillSite"].map(fn).join("\n")}\n${route}`, { target: ts.ScriptTarget.ES2022 });
 new Function(...Object.keys(dependencies), compiled)(...Object.values(dependencies));
 describe("VB-EXPORT-01 Part B actual endpoint permission and site gates", () => {
@@ -260,6 +261,9 @@ describe("VB-EXPORT-01 Part B actual endpoint permission and site gates", () => 
     const ui = fs.readFileSync("client/src/components/vendor-bills/PayablesPreviewPanel.tsx", "utf8");
     expect(ui.indexOf("await requestPayablesPreview(request, true)")).toBeGreaterThan(-1);
     expect(ui.indexOf("await requestPayablesPreview(request, true)")).toBeLessThan(ui.indexOf("exportPayablesPreview(fresh, format)"));
-    expect(fs.readFileSync("client/src/pages/VendorBills.tsx", "utf8")).toContain('sectionCan("vendor_bills", "view_reports")');
+    const page = fs.readFileSync("client/src/pages/VendorBills.tsx", "utf8");
+    // The approved financial overview replaced the unsaved Payables Preview.
+    expect(page).toContain('sectionCan("vendor_financials", "view")');
+    expect(page).not.toContain("<PayablesPreviewPanel");
   });
 });

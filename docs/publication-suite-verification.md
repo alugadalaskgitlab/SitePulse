@@ -1,5 +1,62 @@
 # Full-suite publication verification — 2026-10-13
 
+## Repair pass — latest result
+
+**Deployment is not yet cleared.** The repair pass resolves 42 of the previous
+122 failed cases, but 80 failures across 29 files remain. The production build
+passes. This is a partial repair, not completion of the deployment-readiness
+request.
+
+| Measure | Before repair | After repair |
+|---|---:|---:|
+| Passed | 5,025 | 5,067 |
+| Failed | 122 | 80 |
+| Skipped | 5 | 5 |
+| Files discovered | 385 | 385 |
+| Failing files | 38 | 29 |
+
+The run exited 1. Comparison by file and test name found no new failures.
+No files were excluded, and the setup-blocked vendorTripOnlyPull cases remain
+visible rather than being treated as harmless skips.
+
+The permission editor now includes persisted sections absent from its older
+discovery snapshot, including vendor_financials, without fabricating route
+evidence or changing grants or server enforcement. Test repairs update missing
+mock exports, synthetic schema columns, saved-draft submission fixtures,
+financial-review API fixtures, explicit rate-card units/vendor identity, and
+saved-calendar presentation expectations. Vendor Bills implementation and
+calculations were not changed.
+
+Remaining failures include:
+
+- Submitted-DPR tests calling the old version flow without the mandatory
+  correction review; draft tests lacking current saved-section prerequisites.
+- Tests requiring the deliberately removed bill-owned terms and material-trip
+  daily-hire integration. Restoring these to satisfy tests would contradict
+  the approved Vendor Bills recovery.
+- Source-string/layout assertions, including tests expecting startup backfills
+  that were deliberately removed.
+- Supporting-read, trip-update, and grouped activity-pull assertions that still
+  need review. The grouped billing UI file is not fully passing.
+
+These categories are triage findings, not a blanket determination that every
+remaining failure is harmless. Do not publish on the strength of this report.
+
+Evidence: /tmp/deployment-readiness-current.json and
+/tmp/deployment-readiness-current.log; build log:
+/tmp/deployment-readiness-build.log. Tests used the disposable PostgreSQL
+instance with all four test database URLs redirected and two workers. It was
+stopped afterward. The production build ran separately. No Production data,
+schema, or published application was modified.
+
+Development restarted successfully with read-only readiness reporting 2,061
+checked columns. The unauthenticated screenshot rendered the branded startup
+screen; signed-in permissions and billing screens were not browser-verified.
+Generated PDFs and the test-added port mapping were restored to their pre-run
+state.
+
+The sections below retain the earlier comparison as historical evidence.
+
 ## Verdict
 
 No new failing tests were detected relative to the revision immediately before the latest startup/reminder fixes. All 122 current test failures reproduce in that baseline. This supports the latest fixes, but does not certify the whole application as defect-free or the full suite as passing. The baseline already contains the Vendor Bills recovery and initial startup hardening; this is not a comparison against the currently published application.

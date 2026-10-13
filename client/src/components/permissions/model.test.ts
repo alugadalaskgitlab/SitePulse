@@ -16,7 +16,7 @@ describe("display inventory completeness and safe provenance", () => {
   it("accounts for every discovery declaration without fabricating permissions", () => {
     expect(inventory.counts).toMatchObject({
       routes: 130, tiles: 92, operations: 643, controls: 2995, pages: 125,
-      cells: 736, background: 106, notifications: 191,
+      cells: SECTION_KEYS.length * ACTIONS.length, background: 106, notifications: 191,
       navigationConfigurations: 43, navigationLinks: 351, frontendApiCalls: 2010,
     });
     expect(inventory.routes).toHaveLength(130);
@@ -27,7 +27,7 @@ describe("display inventory completeness and safe provenance", () => {
     expect(inventory.systems).toHaveLength(297);
     expect(inventory.apiCalls).toHaveLength(2010);
     expect(inventory.cells).toHaveLength(SECTION_KEYS.length * ACTIONS.length);
-    expect(SECTION_KEYS).toHaveLength(92);
+    expect(SECTION_KEYS).toHaveLength(93);
   });
   it("maps every stored section and all 92 actual tiles to canonical functions", () => {
     for (const section of SECTION_KEYS) {
@@ -38,6 +38,10 @@ describe("display inventory completeness and safe provenance", () => {
       expect((tile[3] as string[]).length, String(tile[0])).toBeGreaterThan(0);
       for (const id of tile[3] as string[]) expect(functionById.has(id)).toBe(true);
     }
+    expect(functionById.get("legacy:vendor_financials")).toMatchObject({
+      sections: ["vendor_financials"], routes: [], controls: [], operations: [],
+      classification: "stored-bits",
+    });
     for (const [route, id] of inventory.routes) expect(functionById.get(String(id))?.routes.some(r => r[0] === route)).toBe(true);
   });
   it("retains all controls and operation records including navigation-unlinked evidence", () => {

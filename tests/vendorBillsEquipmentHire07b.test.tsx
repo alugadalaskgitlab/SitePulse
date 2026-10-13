@@ -73,6 +73,9 @@ beforeEach(() => {
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    if (url.includes("/api/vendor-bills/financial-review")) {
+      return new Response(JSON.stringify([historicalBill, itemizedEquipmentBill]));
+    }
     if (url.endsWith("/api/vendor-bills")) {
       if (init?.method === "POST" || init?.method === "PUT") {
         vendorBillWrites.push({ method: init.method, body: init.body ? JSON.parse(String(init.body)) : null });
@@ -378,7 +381,7 @@ async function openVb11MixedBill() {
 describe("VB-11 grouped ordinary activity pull", () => {
   it("Test A/B/C: groups mixed activity, pulls equipment only, then adds one material group without disturbing it", async () => {
     autoItemsForTest = vb11Items;
-    rateCardsForTest = [{ itemKey: "EQ_JCB_HRS", category: "equipment", rate: 250 }];
+    rateCardsForTest = [{ itemKey: "EQ_JCB_HRS", category: "equipment", unit: "HRS", vendorName: "ABC EQUIPMENT", rate: 250 }];
     duplicateRowsForTest = [{ index: 1, billNo: "VB-OTHER-2", billStatus: "approved" }];
     await openVb11MixedBill();
 
@@ -432,8 +435,8 @@ describe("VB-11 grouped ordinary activity pull", () => {
   it("Test D/E/F: Pull All applies rates and duplicate flags, clears the blank row, and retains Added groups", async () => {
     autoItemsForTest = vb11Items;
     rateCardsForTest = [
-      { itemKey: "EQ_JCB_HRS", category: "equipment", rate: 250 },
-      { itemKey: "MAT_SOIL_MT", category: "material", rate: 80 },
+      { itemKey: "EQ_JCB_HRS", category: "equipment", unit: "HRS", vendorName: "ABC EQUIPMENT", rate: 250 },
+      { itemKey: "MAT_SOIL_MT", category: "material", unit: "MT", vendorName: "ABC EQUIPMENT", rate: 80 },
     ];
     duplicateRowsForTest = [{ index: 2, billNo: "VB-OTHER-3", billStatus: "verified" }];
     await openVb11MixedBill();

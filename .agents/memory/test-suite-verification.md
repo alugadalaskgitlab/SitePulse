@@ -32,6 +32,17 @@ Run a pre-change baseline from an immutable source snapshot if implementation wi
 
 **How to apply:** Either finish the baseline before editing, or run it from a separate snapshot with the same test-file inventory. Avoid overlapping heavy test runs as well as overlapping builds.
 
+Do not restore deliberately removed business features or startup mutations merely
+to satisfy older tests.
+
+**Why:** The suite contains both pre-recovery billing expectations and current
+recovery tests with intentionally opposite contracts. Failure-count reduction
+alone cannot determine which product behaviour is authorized.
+
+**How to apply:** Establish the approved contract first, retain historical saved
+data coverage, and report unresolved contradictory tests explicitly. Do not
+suppress their discovery or call a partially repaired suite deployment-ready.
+
 Browser-only API fixtures must bypass service workers as well as disabling cache.
 
 **Why:** A registered worker bypassed CDP request interception and sent fixture-authenticated browser requests to the real server, producing 401s and misleading login redirects.

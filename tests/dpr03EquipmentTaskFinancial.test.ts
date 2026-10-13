@@ -8,6 +8,7 @@ const fx = vi.hoisted(() => {
       where: () => q,
       innerJoin: () => q,
       leftJoin: () => q,
+      orderBy: () => q,
       then: (resolve: any, reject: any) => Promise.resolve(rows).then(resolve, reject),
     };
     return q;
@@ -60,6 +61,10 @@ const dprLog = (overrides: Record<string, unknown> = {}) => ({
 function queueAutoItemPull(row: Record<string, unknown>, masterOverrides: Record<string, unknown> = {}) {
   fx.dbRows.push(
     [], // vendor aliases
+    [], // selected Vendor Master identities
+    [equipmentMaster(masterOverrides)], // owner identity candidates
+    [], // Vendor Masters used by identity resolver
+    [], // reviewed owner-link audit evidence
     [equipmentMaster(masterOverrides)], // hired Equipment Master rows
     [dprLog(row)], // linked DPR equipment rows
     [], // independent Plant Usage rows

@@ -43,10 +43,14 @@ describe("saved calendars", () => {
     const before = JSON.stringify(input);
     const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
     render(<SavedBillCalendars bill={input} canExport />);
-    expect(screen.getAllByText(/View Activity \/ Breakdown Calendar/)).toHaveLength(2);
-    fireEvent.click(screen.getByText(/View Activity \/ Breakdown Calendar · Machine 2/));
+    expect(screen.getAllByText(/Detailed recorded evidence/)).toHaveLength(2);
+    screen.getAllByText(/Detailed recorded evidence/).forEach(summary => {
+      const details = summary.closest("details")!;
+      details.open = true;
+      fireEvent(details, new Event("toggle"));
+    });
     expect(screen.getAllByText(/Hose repair/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/No Work/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Activity Not Recorded/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Attendance verified/)).toHaveLength(2);
     expect(screen.getAllByTestId("equipment-hire-period-totals")).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: "Export Calendar PDF" })).toHaveLength(2);
@@ -113,7 +117,9 @@ describe("financial overview and statement", () => {
     details.open = true; fireEvent(details, new Event("toggle"));
     await waitFor(() => expect(fetcher).toHaveBeenCalledWith("/api/vendor-bills/2/statement", { credentials: "include", cache: "no-store" }));
     expect(fetcher).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(screen.getAllByText(/Previously verified advance/)).toHaveLength(2));
+    // The running statement shows each saved advance once, not once per
+    // historical calendar plus another copy in the statement.
+    await waitFor(() => expect(screen.getAllByText(/Previously verified advance/)).toHaveLength(1));
     expect(screen.getByText(/Historical opening balance/).textContent).toContain("Not established");
     expect(JSON.stringify([current, earlier])).toBe(before);
   });

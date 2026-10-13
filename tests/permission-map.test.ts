@@ -21,8 +21,9 @@ describe("generated permission editor contract", () => {
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }, 120000);
 
-  it("retains the original sections plus five independent review/planning keys and all eight actions", () => {
-    expect(SECTION_KEYS).toHaveLength(92);
+  it("retains all current sections including the independent financial grant and all eight actions", () => {
+    expect(SECTION_KEYS).toHaveLength(93);
+    expect(SECTION_KEYS).toContain("vendor_financials");
     expect(ACTIONS).toHaveLength(8);
     expect(Object.keys(map).sort()).toEqual([...SECTION_KEYS].sort());
     for (const section of SECTION_KEYS) {

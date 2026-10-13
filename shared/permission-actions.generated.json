@@ -1,10 +1,4 @@
 {
-  "vendor_financials": {
-    "actions": ["view"],
-    "tooltips": {
-      "view": "View Vendor Financials: saved-bill summary, vendor statement and Taxes Register. Required even for Administrators; Owner always permitted."
-    }
-  },
   "dashboard": {
     "actions": [
       "view",
@@ -185,9 +179,9 @@
       "notify"
     ],
     "tooltips": {
-      "view": "Open Diesel Requirements (legacy). Other action switches do not grant page access. Shared pages or actions also accept: Diesel Requirements — View List (View); Diesel Requirements — Raise / Submit (View); Stores — GRNs, Issues & Ledger (View); Stores — GRNs, Issues & Ledger (View / Create / Edit); Diesel Requirements — Raise / Submit (View / Create / Edit).",
-      "create": "Create records in Diesel Requirements (legacy). Shared pages or actions also accept: Diesel Requirements — Raise / Submit (Create); Stores — GRNs, Issues & Ledger (View / Create / Edit); Diesel Requirements — Raise / Submit (View / Create / Edit).",
-      "edit": "Edit records in Diesel Requirements (legacy). This does not grant deletion or cancellation. Shared pages or actions also accept: Diesel Requirements — Raise / Submit (Edit); Stores — GRNs, Issues & Ledger (View / Create / Edit); Diesel Requirements — Raise / Submit (View / Create / Edit).",
+      "view": "Open Diesel Requirements (legacy). Other action switches do not grant page access. Shared pages or actions also accept: Diesel Requirements — View List (View); Diesel Requirements — Raise / Submit (View); Stores — GRNs, Issues & Ledger (View); Diesel Requirements — View List (View / Create / Edit); Stores — GRNs, Issues & Ledger (View / Create / Edit); Diesel Requirements — Raise / Submit (View / Create / Edit).",
+      "create": "Create records in Diesel Requirements (legacy). Shared pages or actions also accept: Diesel Requirements — Raise / Submit (Create); Diesel Requirements — View List (View / Create / Edit); Stores — GRNs, Issues & Ledger (View / Create / Edit); Diesel Requirements — Raise / Submit (View / Create / Edit).",
+      "edit": "Edit records in Diesel Requirements (legacy). This does not grant deletion or cancellation. Shared pages or actions also accept: Diesel Requirements — Raise / Submit (Edit); Diesel Requirements — View List (View / Create / Edit); Stores — GRNs, Issues & Ledger (View / Create / Edit); Diesel Requirements — Raise / Submit (View / Create / Edit).",
       "delete": "Delete records where Diesel Requirements (legacy)'s Delete permission is checked. Shared pages or actions also accept: Diesel Requirements — Raise / Submit (Delete).",
       "export": "Export data where Diesel Requirements (legacy)'s Export permission is checked.",
       "notify": "Receive notifications for Diesel Requirements (legacy), when user notifications and a device subscription are enabled."
@@ -198,7 +192,7 @@
       "view"
     ],
     "tooltips": {
-      "view": "Open Diesel Requirements — View List. Other action switches do not grant page access. Shared pages or actions also accept: Diesel Requirements (legacy) (View); Diesel Requirements — Raise / Submit (View); Stores — GRNs, Issues & Ledger (View)."
+      "view": "Open Diesel Requirements — View List. Other action switches do not grant page access. Shared pages or actions also accept: Diesel Requirements (legacy) (View); Diesel Requirements — Raise / Submit (View); Stores — GRNs, Issues & Ledger (View); Diesel Requirements (legacy) (View / Create / Edit); Stores — GRNs, Issues & Ledger (View / Create / Edit); Diesel Requirements — Raise / Submit (View / Create / Edit)."
     }
   },
   "diesel_req_raise": {
@@ -210,9 +204,9 @@
       "notify"
     ],
     "tooltips": {
-      "view": "Open Diesel Requirements — Raise / Submit. Other action switches do not grant page access. Shared pages or actions also accept: Diesel Requirements — View List (View); Diesel Requirements (legacy) (View); Diesel Requirements (legacy) (View / Create / Edit); Stores — GRNs, Issues & Ledger (View / Create / Edit).",
-      "create": "Create records in Diesel Requirements — Raise / Submit. Shared pages or actions also accept: Diesel Requirements (legacy) (Create); Diesel Requirements (legacy) (View / Create / Edit); Stores — GRNs, Issues & Ledger (View / Create / Edit).",
-      "edit": "Edit records in Diesel Requirements — Raise / Submit. This does not grant deletion or cancellation. Shared pages or actions also accept: Diesel Requirements (legacy) (Edit); Diesel Requirements (legacy) (View / Create / Edit); Stores — GRNs, Issues & Ledger (View / Create / Edit).",
+      "view": "Open Diesel Requirements — Raise / Submit. Other action switches do not grant page access. Shared pages or actions also accept: Diesel Requirements — View List (View); Diesel Requirements (legacy) (View); Diesel Requirements — View List (View / Create / Edit); Diesel Requirements (legacy) (View / Create / Edit); Stores — GRNs, Issues & Ledger (View / Create / Edit).",
+      "create": "Create records in Diesel Requirements — Raise / Submit. Shared pages or actions also accept: Diesel Requirements (legacy) (Create); Diesel Requirements — View List (View / Create / Edit); Diesel Requirements (legacy) (View / Create / Edit); Stores — GRNs, Issues & Ledger (View / Create / Edit).",
+      "edit": "Edit records in Diesel Requirements — Raise / Submit. This does not grant deletion or cancellation. Shared pages or actions also accept: Diesel Requirements (legacy) (Edit); Diesel Requirements — View List (View / Create / Edit); Diesel Requirements (legacy) (View / Create / Edit); Stores — GRNs, Issues & Ledger (View / Create / Edit).",
       "delete": "Delete records where Diesel Requirements — Raise / Submit's Delete permission is checked. Shared pages or actions also accept: Diesel Requirements (legacy) (Delete).",
       "notify": "Receive notifications for Diesel Requirements — Raise / Submit, when user notifications and a device subscription are enabled."
     }
@@ -601,6 +595,14 @@
       "notify": "Receive notifications for Vendor Bills — View List, when user notifications and a device subscription are enabled."
     }
   },
+  "vendor_financials": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open View Vendor Financials. Other action switches do not grant page access."
+    }
+  },
   "vendor_bills_raise": {
     "actions": [
       "view",
@@ -690,9 +692,9 @@
       "notify"
     ],
     "tooltips": {
-      "view": "Open Stores — GRNs, Issues & Ledger. Other action switches do not grant page access. Shared pages or actions also accept: Stores & Inventory Hub (entry page) (View); Site DPRs — File & View (View); Equipment Usage — Log & View (View); Site Requirements — Labour Allocation (View); Diesel Requirements — View List (View); Diesel Requirements (legacy) (View); Diesel Requirements (legacy) (View / Create / Edit); Diesel Requirements — Raise / Submit (View / Create / Edit).",
-      "create": "Create records in Stores — GRNs, Issues & Ledger. Shared pages or actions also accept: Diesel Requirements (legacy) (View / Create / Edit); Diesel Requirements — Raise / Submit (View / Create / Edit).",
-      "edit": "Edit records in Stores — GRNs, Issues & Ledger. This does not grant deletion or cancellation. Shared pages or actions also accept: Diesel Requirements (legacy) (View / Create / Edit); Diesel Requirements — Raise / Submit (View / Create / Edit).",
+      "view": "Open Stores — GRNs, Issues & Ledger. Other action switches do not grant page access. Shared pages or actions also accept: Stores & Inventory Hub (entry page) (View); Site DPRs — File & View (View); Equipment Usage — Log & View (View); Site Requirements — Labour Allocation (View); Diesel Requirements — View List (View); Diesel Requirements (legacy) (View); Diesel Requirements — View List (View / Create / Edit); Diesel Requirements (legacy) (View / Create / Edit); Diesel Requirements — Raise / Submit (View / Create / Edit).",
+      "create": "Create records in Stores — GRNs, Issues & Ledger. Shared pages or actions also accept: Diesel Requirements — View List (View / Create / Edit); Diesel Requirements (legacy) (View / Create / Edit); Diesel Requirements — Raise / Submit (View / Create / Edit).",
+      "edit": "Edit records in Stores — GRNs, Issues & Ledger. This does not grant deletion or cancellation. Shared pages or actions also accept: Diesel Requirements — View List (View / Create / Edit); Diesel Requirements (legacy) (View / Create / Edit); Diesel Requirements — Raise / Submit (View / Create / Edit).",
       "delete": "Delete records where Stores — GRNs, Issues & Ledger's Delete permission is checked.",
       "notify": "Receive notifications for Stores — GRNs, Issues & Ledger, when user notifications and a device subscription are enabled."
     }

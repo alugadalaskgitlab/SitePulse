@@ -9,7 +9,7 @@ import { execFileSync } from "node:child_process";
 
 const fx = vi.hoisted(() => ({
   db: null as any, user: { id: 7, isAdmin: false, isOwner: false } as any,
-  permissions: { view: true, create: true, approve: false } as Record<string, boolean>,
+  permissions: { view: true, create: true, export: true, approve: false } as Record<string, boolean>,
   allowed: [1] as number[] | null,
   indent: null as any,
   purchaserAction: vi.fn().mockResolvedValue({ txnIdsByItemId: {}, grnIdsByItemId: {}, routeWarnings: [] }),
@@ -27,7 +27,14 @@ vi.mock("../server/storage", () => ({ storage: new Proxy({
 }, { get(target: any, key: string) { return key in target ? target[key] : vi.fn().mockResolvedValue([]); } }) }));
 vi.mock("../server/push", () => ({ sendPushToAll: vi.fn(), sendPushToAudience: vi.fn(), sendPushToSection: vi.fn(), sendTestPush: vi.fn() }));
 vi.mock("../server/auth", () => ({
-  requireAuth: (req: Request, _res: Response, next: NextFunction) => { (req as any).authUser = fx.user; next(); },
+  requireAuth: (req: Request, res: Response, next: NextFunction) => {
+    if (!fx.user) return void res.status(401).json({ message: "Sign in required" });
+    (req as any).authUser = fx.user;
+    (req as any).authPermissions = {
+      purchase_indents_view: { view: fx.permissions.view, export: fx.permissions.export },
+    };
+    next();
+  },
   isPublicApiPath: () => false, isOptionalAuthPath: () => false,
   optionalAuth: (_req: Request, _res: Response, next: NextFunction) => next(),
   lookupSessionFromCookie: vi.fn(), loadUserPermissionsMatrix: vi.fn(),
@@ -40,11 +47,13 @@ const permit = (req: Request, res: Response, action: string) => {
 vi.mock("../server/auth-routes", () => ({
   registerAuthRoutes: vi.fn(), assertCreate: (req: Request, res: Response) => permit(req, res, "create"),
   assertEdit: (req: Request, res: Response) => permit(req, res, "create"),
+  assertEditEither: (req: Request, res: Response) => permit(req, res, "create"),
+  assertReportExport: (req: Request, res: Response) => permit(req, res, "export"),
   assertView: (req: Request, res: Response) => permit(req, res, "view"),
   assertApprove: (req: Request, res: Response) => permit(req, res, "approve"),
   assertAdmin: (req: Request, res: Response) => permit(req, res, "approve"),
   assertViewEither: () => true, assertAuthed: () => true, assertCreateOrEdit: () => true,
-  assertCreateEither: () => true, assertDeleteOrCancel: () => true,
+  assertCreateEither: (req: Request, res: Response) => permit(req, res, "create"), assertDeleteOrCancel: () => true,
   currentUserName: (req: any) => req.authUser?.id === 7 ? "Ramesh Kumar" : "Suresh Reddy",
 }));
 
@@ -80,7 +89,7 @@ beforeEach(async () => {
   await pg.exec("DELETE FROM purchase_orders; ALTER SEQUENCE purchase_orders_id_seq RESTART WITH 1");
   fx.indent = { id: 1, indentNo: "PI-SYN", siteId: 1, raisedFrom: "SYNTHETIC Site A", piType: "material", status: "ordered", authorUserId: 9, items: [{ ...item }] };
   fx.user = { id: 7, isAdmin: false, isOwner: false };
-  fx.permissions = { view: true, create: true, approve: false };
+  fx.permissions = { view: true, create: true, export: true, approve: false };
   fx.allowed = [1];
   fx.purchaserAction.mockClear();
 });

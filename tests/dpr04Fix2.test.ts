@@ -12,6 +12,7 @@ import { createServer } from "http";
 import request from "supertest";
 import { createDprRequestSchema } from "../shared/schema";
 import { hasDprBoqReferences, hasPreservedDprBoqReferences } from "../shared/dprBoqReferences";
+import { sectionSnapshot } from "../server/dprSections";
 
 const PROJECT_A = 940001;
 const PROJECT_B = 940002;
@@ -43,11 +44,20 @@ vi.mock("../server/db", () => {
   };
   return {
     db: {
+      execute: vi.fn(async () => []),
+      transaction: async (callback: any) => callback({ execute: async () => [] }),
       // The accepted-recovery route test reaches only the ownership lookup.
       select: vi.fn(() => query),
     },
   };
 });
+
+// This suite isolates route-level project recovery. Keep the real token
+// calculation/validation, while aggregate reads use the same fixture as storage.
+vi.mock("../server/dprSections", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../server/dprSections")>(),
+  readSectionAggregate: async (_tx: unknown, id: number) => fx.drafts.get(id),
+}));
 
 vi.mock("../server/auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../server/auth")>();
@@ -60,7 +70,8 @@ vi.mock("../server/auth", async (importOriginal) => {
   return { ...actual, requireAuth: inject, optionalAuth: inject };
 });
 
-vi.mock("../server/storage", () => {
+vi.mock("../server/storage", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../server/storage")>();
   const methods: Record<string, ReturnType<typeof vi.fn>> = {};
   const storageProxy = new Proxy(methods, {
     get(target, prop: string) {
@@ -97,6 +108,7 @@ vi.mock("../server/storage", () => {
   methods.createNotification = vi.fn(async () => ({}));
 
   return {
+    ...actual,
     storage: storageProxy,
     // The route only needs this class for instanceof handling.  No test case
     // reaches storage's transaction-level mismatch guard.
@@ -110,6 +122,15 @@ beforeAll(async () => {
   const { registerRoutes } = await import("../server/routes");
   app = express();
   app.use(express.json());
+  app.use((req, _res, next) => {
+    const id = Number(req.path.match(/^\/api\/dprs\/(\d+)/)?.[1]);
+    const saved = fx.drafts.get(id);
+    if (saved?.dprStatus === "draft" && req.method !== "GET") {
+      const snapshot = sectionSnapshot(saved);
+      req.body = { ...req.body, headerToken: snapshot.headerToken, sectionTokens: snapshot.sectionTokens };
+    }
+    next();
+  });
   await registerRoutes(createServer(app), app);
 });
 
@@ -297,7 +318,7 @@ describe("DPR-04 Fix 2 — no-BOQ mismatch carve-out", () => {
     expect(submitted.body.boqProjectId).toBe(PROJECT_A);
   });
 
-  it("C: submit still rejects mixed real BOQ refs, including no-site-work, legacy equipment, normalized segments, allocations, and labour", async () => {
+  it("C: saving mixed real BOQ refs is rejected before submission, including equipment segments and labour", async () => {
     const created = await request(app).post("/api/dprs").send(noBoqPayload(PROJECT_A));
     expect(created.status).toBe(201);
 
@@ -328,7 +349,7 @@ describe("DPR-04 Fix 2 — no-BOQ mismatch carve-out", () => {
     };
 
     const rejected = await request(app)
-      .post(`/api/dprs/${created.body.id}/submit`)
+      .patch(`/api/dprs/${created.body.id}/draft`)
       .send(mixed);
 
     expect(rejected.status).toBe(400);
@@ -336,7 +357,7 @@ describe("DPR-04 Fix 2 — no-BOQ mismatch carve-out", () => {
     expect(fx.submitted).toHaveLength(0);
   });
 
-  it("submit automatically recovers a saved null when incoming BOQ evidence exists", async () => {
+  it("submit uses BOQ evidence explicitly saved through draft recovery", async () => {
     fx.drafts.set(DRAFT_ID, {
       ...noBoqPayload(PROJECT_A),
       id: DRAFT_ID,
@@ -344,10 +365,10 @@ describe("DPR-04 Fix 2 — no-BOQ mismatch carve-out", () => {
       dprStatus: "draft",
     });
 
-    const submitted = await request(app)
-      .post(`/api/dprs/${DRAFT_ID}/submit`)
+    const recovered = await request(app)
+      .patch(`/api/dprs/${DRAFT_ID}/draft`)
       .send({
-        ...noBoqPayload(PROJECT_B, false),
+        ...noBoqPayload(PROJECT_B),
         progress: [{
           activity: "RECOVERED SUBMIT WORK",
           noSiteWork: true,
@@ -355,7 +376,8 @@ describe("DPR-04 Fix 2 — no-BOQ mismatch carve-out", () => {
           boqItemId: 709,
         }],
       });
-
+    expect(recovered.status).toBe(200);
+    const submitted = await request(app).post(`/api/dprs/${DRAFT_ID}/submit`).send({});
     expect(submitted.status).toBe(200);
     expect(fx.submitted).toHaveLength(1);
     expect(fx.submitted[0]).toMatchObject({

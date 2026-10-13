@@ -17,7 +17,27 @@ export type OperationEvidence = [string, string, string[][], string, string[], s
 export type Inventory = Omit<typeof projection, "functions" | "controls" | "operations"> & {
   functions: FunctionNode[]; controls: ControlEvidence[]; operations: OperationEvidence[];
 };
-export const inventory = projection as unknown as Inventory;
+// Discovery evidence is a snapshot, but the persisted permission library can
+// grow independently. Never hide a real stored section merely because that
+// snapshot predates it; do not invent routes or runtime enforcement evidence.
+const missingSections = SECTION_KEYS.filter(section =>
+  !projection.functions.some(node => node.id === `legacy:${section}`));
+const missingCells = missingSections.flatMap(section => ACTIONS.map(action => [
+  section, action,
+  (permissionActions[section].actions as readonly Action[]).includes(action) ? "Available in current map" : "Unavailable",
+  [], projection.cells.length + missingSections.indexOf(section) * ACTIONS.length + ACTIONS.indexOf(action) + 1,
+]));
+export const inventory = {
+  ...projection,
+  counts: { ...projection.counts, cells: projection.cells.length + missingCells.length },
+  functions: [...projection.functions, ...missingSections.map(section => ({
+    id: `legacy:${section}`, label: SECTION_LABELS[section],
+    file: "shared/permissions.ts",
+    locations: [["Stored permission library", "Compatibility & persisted bits"]],
+    sections: [section], routes: [], controls: [], operations: [], classification: "stored-bits",
+  }))],
+  cells: [...projection.cells, ...missingCells],
+} as unknown as Inventory;
 export const functionById = new Map(inventory.functions.map(node => [node.id, node]));
 export const operationByName = new Map(inventory.operations.map(operation => [operation[0], operation]));
 export const availableActions = (section: SectionKey) =>
