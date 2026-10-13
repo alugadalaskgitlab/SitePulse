@@ -27,12 +27,13 @@ describe("VB-TRIP-PULL-01 hire vendor display identity", () => {
     expect(source).toContain("useQuery<VendorBillingIdentity[]>");
     expect(source).toContain("vendorBillingIdentityLabel(vendor.vendorName, billingIdentities.data)");
     expect(source).toContain("value={(vendorName && isHireVendorDisplay ? selectedHireVendorLabel : vendorName) || vendorSearch}");
-    expect(source).toContain("Vendor Master linked: ${selectedHireVendorLabel}");
+    expect(source).toContain("isHireVendorDisplay ? vendorBillingIdentityLabel(name, billingIdentities.data) : name");
     expect(source).toContain("setVendorName(vendor.vendorName)");
     expect(source).toContain("setVendorName(name)");
     expect(source).toContain("vendorName=${encodeURIComponent(vendorName)}");
     expect(source).toContain("billingVendorId: matchingBillingIdentities[0].id");
-    expect(source).toContain('data-testid="text-vendor-name">{bill.vendorName}');
+    expect(source).toContain('data-testid="text-vendor-name">{detailVendorName}');
+    expect(source).toContain('data-testid={`text-bill-vendor-${bill.id}`}>{bill.vendorName}');
     expect(source).not.toMatch(/setVendorName\((?:selectedHireVendorLabel|vendorBillingIdentityLabel)/);
   });
 });

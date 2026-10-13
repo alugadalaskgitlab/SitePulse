@@ -15,9 +15,10 @@ describe("DPR-02 Fix 2 equipment layout", () => {
     // Guided uses the compact header for machine identity; Edit retains its
     // identity-suppressed header. Neither hides the picker on an empty row.
     expect(guided).toContain("!isVisibleEquipmentRow({ ...pt, machine: eq.machine, vehicleNo: eq.vehicleNo, operator: eq.operator, task: eq.task }) && equipmentPickerSlot");
-    expect(siteEdit).toContain("{!isVisibleEquipmentRow({ ...entry }) && equipmentPickerSlot}");
+    expect(siteEdit).toContain("const visible = isVisibleEquipmentRow({ ...entry });");
+    expect(siteEdit).toContain("{!visible && equipmentPickerSlot}");
     expect(guided).toContain("equipmentPickerSlot={equipmentPickerSlot}");
-    expect(siteEdit).toContain("equipmentPickerSlot={isVisibleEquipmentRow({ ...entry }) ? equipmentPickerSlot : undefined}");
+    expect(siteEdit).toContain("equipmentPickerSlot={visible ? equipmentPickerSlot : undefined}");
     expect((guided.match(/hideIdentity/g) ?? []).length).toBe(0);
     expect((siteEdit.match(/hideIdentity/g) ?? []).length).toBe(1);
   });

@@ -1,12 +1,104 @@
 # Full-suite publication verification — 2026-10-13
 
+## Current verification result
+
+The final controlled full suite passes: **5,156 passed, 0 failed, 3 skipped**
+out of **5,159 cases across 385 discovered files**. File inventories match the
+preceding controlled run exactly: no files were removed or added.
+
+The preceding run had 5,137 passed, 17 failed and 5 skipped, plus a route-collector
+setup failure. All 17 failures are resolved. The repaired collector now executes
+its two previously skipped billing cases; this explains the reduction from five
+skips to three. The remaining skips are explicit opt-ins:
+
+- Two native PostgreSQL labour tests require `LABOUR01_PG_TEST=1`.
+- The standalone browser HTTP/storage fixture requires `VB23B_BROWSER_FIXTURE=1`
+  and intentionally does not run as a normal suite test.
+
+A fresh **production build passes**. The bundler reports large-chunk warnings,
+not build failures. Application behavior, Vendor Bills application code,
+Production data and schema were not changed, and no publishing was performed.
+Changes are limited to test fixtures/assertions, the development-only browser
+verification helper, documentation and verification lessons.
+
+Positive billing checks still exercise actual saves/reloads, operational
+DPR/equipment evidence, Master-aligned new-bill terms, reviewed vendor identity,
+overlap/duplicate protection and frozen historical snapshots. Material delivery
+history remains audit/review evidence; it is not converted into daily hire.
+Tests also retain deliberate source-removal suppression in the current draft
+rather than restoring the withdrawn re-pull expectation.
+
+Tests used a disposable native PostgreSQL instance, with all four test database
+URLs redirected and two workers. PostgreSQL and Vitest ran in one long-lived
+shell; the disposable server was confirmed stopped afterward. No application
+database was used for suite fixtures. The build ran separately.
+
+Full-suite evidence: `/tmp/deployment-readiness-final.json` and
+`/tmp/deployment-readiness-final.log`. Build evidence:
+`/tmp/deployment-readiness-build-final.log`.
+
+## Signed-in development browser check and limits
+
+The documented ordinary development verification account successfully signed
+in through the normal login and device-approval flow. No authentication bypass,
+password reset, grant expansion or privileged account flags were used.
+
+The signed-in account screen, Vendor Bills list and new-bill form rendered.
+Protected Vendor Bills and DPR read APIs returned HTTP 200. The field-specific
+DPR dashboard rendered its permission-denied screen for this account. Shared
+API access is not proof that the account can use a differently gated field route.
+
+No business mutations were sent by the browser check. The blank bill form was
+closed without saving; the session was logged out, the newly approved disposable
+device removed and Chromium/profile cleaned up. Evidence is in
+`/tmp/deployment-readiness-browser/result.json` and its screenshots. The helper
+is `scripts/verification/deployment-readiness-browser.mjs`; it consumes the
+existing secret only inside normal login and never logs credentials or cookies.
+
+**Automated suite and build gates pass.** Live signed-in DPR edit/save and billing
+save/payment/export acceptance were not exercised by this read-only check.
+This is not blanket deployment clearance or verification of the published app.
+
+## Additional unchanged observation
+
+In the isolated route harness, requesting the removed
+`/api/vendor-bills/trip-hire-eligibility` URL matched the generic bill-detail
+route and returned HTTP 500 rather than 404. The collector now checks that the
+literal retired route is absent instead of expecting its old response. This
+invalid-path handling was not changed because Vendor Bills application changes
+are outside this instruction. It is not a verified Production finding.
+
+## Earlier verification history
+
+The previous controlled comparison had 5,115 passed, 37 failed and 5 skipped.
+Subsequent DPR presentation, trip-editor and permission fixture repairs passed
+200 tests across 16 files; with the earlier correction group, focused checks
+covered 287 passing tests across 23 files. An earlier attempted run had database
+setup failures and 33 skips and is retained only as diagnostic evidence.
+
+The sections below describe earlier results and do not override the final
+full-suite result above.
+
 ## DPR draft, correction, and version-route verification — focused pass
 
-54 tests pass across dpr07VersionValidation, guidedDprReliability,
-initialScopeCorrectionRoutes, and dprCorrections.integration. The legacy
-submitted-version route cases now assert the required review gate and no-write
-behavior; they no longer assert the retired unreviewed version semantics. This
-is not a new full-suite result.
+87 tests pass across dpr07VersionValidation, guidedDprReliability,
+initialScopeCorrectionRoutes, dprCorrections.integration,
+siteEditDispatch06XHF6, fieldHomeDprResponseGuard and
+uppercaseBusinessTextMigration. No failures or skips in this focused run.
+This is not a new full-suite result.
+
+The migrated SiteEdit cases exercise the real correction planner as well as
+the review-required route response. Existing row identities, required approvals
+and source references are asserted; adding or removing submitted evidence is
+explicitly blocked. Invalid opening/closing pairs are not restored as successful
+Administrator corrections.
+
+The production route's actual semantic-validator callback is exercised without
+replacing its behavior. Invalid changed quantity sources, programme links and
+material outcomes are rejected. Untouched historical rows survive a labour-only
+change. Changed chainages reset review facts, while override reasons cannot
+bypass quantity validation. These tests complement, rather than replace, the
+isolated PGlite service/persistence tests.
 
 Draft fixtures now use the saved aggregate and real section-token calculations,
 preserving the production token guards. Explicit stale tokens are not replaced
@@ -20,12 +112,12 @@ Administrator approval. Row/equipment identities and the unlinked programme
 reference are preserved. Fresh-DPR all-row validation cases remain active.
 
 Only tests changed in this focused pass. Production and application behaviour
-are unchanged. The older SiteEdit version-route suite still needs migration to
-the correction-review contract; deployment clearance and signed-in UI
-verification are still outstanding.
+are unchanged. Startup assertions require read-only readiness before serving
+traffic and explicitly reject the removed automatic backfills. Deployment
+clearance and signed-in UI verification are still outstanding.
 Evidence: /tmp/dpr-round2.json and /tmp/dpr-round2.log.
 
-## Repair pass — latest result
+## Repair pass — previous full baseline
 
 **Deployment is not yet cleared.** The repair pass resolves 42 of the previous
 122 failed cases, but 80 failures across 29 files remain. The production build

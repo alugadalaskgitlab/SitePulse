@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { TripDailyHireReview } from "../client/src/components/TripDailyHireReview";
 import { calculateHireGroup } from "../shared/hireBilling";
 afterEach(cleanup);
-it("shows vehicle/date trip evidence and updates half-day pricing without multiplying by trips", () => {
+it("does not offer trip-only dates for hire billing after the trip integration was removed", () => {
   function Harness() {
     const [group, setGroup] = useState<any>({ equipmentId: 1, rate: 2000, dailyDecisions: [] });
     const activities = [1, 2, 3].map(sourceId => ({ source: "site_material_trip" as const, sourceId,
@@ -16,21 +16,12 @@ it("shows vehicle/date trip evidence and updates half-day pricing without multip
       result={result} activities={activities} onChange={patch => setGroup({ ...group, ...patch })} onRemove={() => {}} />;
   }
   render(<Harness />);
-  expect(screen.getByText("Needs review")).toBeTruthy();
-  expect(screen.getByText(/0 hire days/).textContent).toContain("1 day needs review");
-  expect(screen.getAllByRole("link")).toHaveLength(3);
-  expect(screen.getByRole("link", { name: "Trip #1" }).getAttribute("href")).toContain("hireDate=2026-10-01");
-  expect(screen.getByRole("link", { name: "Trip #1" }).getAttribute("href")).toContain("hireVehicle=TS01AB1234");
+  expect(screen.getByText(/0 hire days/)).toBeTruthy();
+  expect(screen.queryByText("Needs review")).toBeNull();
+  expect(screen.queryByRole("link", { name: "Trip #1" })).toBeNull();
+  expect(screen.queryByLabelText("Hire decision 2026-10-01")).toBeNull();
   expect(screen.getByText(/Ravi Earthworks · Daily hire/)).toBeTruthy();
   expect(screen.queryByText(/Confirm vendor links|Confirm vehicle link|Review Links/)).toBeNull();
-  fireEvent.change(screen.getByLabelText("Hire reason 2026-10-01"), { target: { value: "Attendance verified" } });
-  expect((screen.getByLabelText("Hire decision 2026-10-01") as HTMLSelectElement).value).toBe("");
-  expect(screen.getByText("Needs review")).toBeTruthy();
-  fireEvent.change(screen.getByLabelText("Hire decision 2026-10-01"), { target: { value: "half_day" } });
-  fireEvent.change(screen.getByLabelText("Hire reason 2026-10-01"), { target: { value: "Half day verified" } });
-  expect(screen.getByText(/0.5 hire days/).textContent).toContain("1,000");
-  fireEvent.change(screen.getByLabelText("Hire decision 2026-10-01"), { target: { value: "exclude" } });
-  expect(screen.getByText(/0 hire days/)).toBeTruthy();
 });
 
 const date = "2026-10-02";

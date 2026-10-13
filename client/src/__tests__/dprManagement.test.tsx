@@ -284,7 +284,7 @@ describe("DPR-PAGE-01 materials, page and sharing", () => {
     state.dpr.remarks = "Rain stopped work at 16:20";
     state.receipts = [{ id: 1, source: "trip", material: "WMM", uom: "MT", quantity: 141.034, unloadedAt: "stretch" }];
     render(<SiteReport />);
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(state.dpr.site);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(`${state.dpr.site} · DPR #${state.dpr.id}`);
     expect(screen.getByTestId("dpr-remarks").textContent).toBe(state.dpr.remarks);
     const labour = screen.getByRole("table", { name: "Labour" });
     expect(within(labour).queryByRole("columnheader", { name: "Hours" })).toBeNull();

@@ -242,7 +242,8 @@ describe("H2: detailed DPR endpoint provides canonical BOQ label fields", () => 
       routes.indexOf("// Get site material logs", routes.indexOf('app.get("/api/dprs/with-details"')),
     );
     expect(route).toContain("boqItemIds");
-    expect(route).toContain("drizzleInArray(boqItems.id, boqItemIds)");
+    expect(route).toContain("new Set([...boqItemIds, ...readinessItemIds])");
+    expect(route).toContain("drizzleInArray(boqItems.id, allBoqItemIds)");
     expect(route).toContain("boqItem:");
   });
 });

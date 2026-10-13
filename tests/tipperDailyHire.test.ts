@@ -47,18 +47,19 @@ const calculate = (activities: any[], dailyDecisions: any[] = []) => calculateHi
   terms: { billingBasis: "daily", rate: 2000 }, periodFrom: "2026-10-01", periodTo: "2026-10-03",
   activities, maintenance: [], dailyDecisions,
 });
-it("counts many trips once per day, merges DPR evidence, and supports reviewed half/excluded days", () => {
+it("charges operational days once and never turns material trips into daily hire", () => {
   const activities = [activity(1, trip.date), activity(2, trip.date), activity(3, "2026-10-02"),
-    { source: "dpr_log", sourceId: 4, equipmentId: 1, businessDate: trip.date, entryType: "daily_hire", status: "closed" }];
+    { source: "dpr_log", sourceId: 4, equipmentId: 1, businessDate: trip.date, entryType: "daily_hire", status: "closed" },
+    { source: "plant_usage", sourceId: 5, equipmentId: 1, businessDate: "2026-10-02", entryType: "daily_hire", status: "closed" }];
   expect(calculate(activities).quantity).toBe(2);
   expect(calculate(activities).grossAmount).toBe(4000);
   const result = calculate(activities, [{ date: trip.date, decision: "half_day", reason: "Reviewed partial attendance" },
     { date: "2026-10-02", decision: "exclude", reason: "Already billed" }]);
   expect(result.quantity).toBe(.5);
   expect(result.grossAmount).toBe(1000);
-  expect(calculate([{ ...activity(1, trip.date), confirmedForDailyHire: false }]).quantity).toBe(0);
+  expect(calculate([activity(1, trip.date), activity(2, trip.date)]).quantity).toBe(0);
 });
-it("persists append-only confirmation, leaves original trips untouched, and exposes daily evidence without equipment logs", async () => {
+it("persists append-only confirmation and retains deliveries as non-daily evidence", async () => {
   await db.insert(schema.equipmentMaster).values([master, { ...master, id: 2, registrationNumber: "TS02CD5555" }]);
   await db.insert(schema.siteMaterialTrips).values([trip, { ...trip, id: 2, vehicleNumber: "TS02CD5555" }]);
   const review = await tripHireReview(db, trip);
@@ -66,14 +67,17 @@ it("persists append-only confirmation, leaves original trips untouched, and expo
   await db.transaction((tx: any) => confirmTripHireLink(tx, { ...trip, id: 2, vehicleNumber: "TS02CD5555" }, { equipmentId: 2, reason: "Future selection" }, { id: 4, fullName: "Reviewer" }, true));
   expect((await db.select().from(schema.siteMaterialTrips).where(eq(schema.siteMaterialTrips.id, 1)))[0]).toMatchObject(trip);
   const rows = await storage.getVendorBillHireActivities("Agency", trip.date, "2026-10-03");
-  expect(rows.filter((r: any) => r.confirmedForDailyHire)).toHaveLength(2);
-  expect(rows.find((r: any) => r.confirmedForDailyHire)).toMatchObject({ hireConfirmation: { actor: "Reviewer" }, numberOfTrips: 1 });
-  expect(rows.find((r: any) => r.confirmedForDailyHire).hoursOrKmRun).toBeUndefined();
+  expect(rows.filter((r: any) => r.source === "site_material_trip")).toHaveLength(2);
+  expect(rows.filter((r: any) => r.source === "site_material_trip").every((r: any) => r.requiresTripReview)).toBe(true);
+  expect(await db.select().from(schema.equipmentLogs)).toHaveLength(0);
   const current = await tripHireReview(db, trip);
+  expect(current.confirmation.valid).toBe(true);
   expect(validTripHireLink({ ...trip, supplier: "Different" }, master, current.confirmation)).toBe(false);
   await expect(db.transaction((tx: any) => confirmTripHireLink(tx, trip, { equipmentId: 1, reason: "Stale request", version: null, fingerprint: tripHireFingerprint(trip) }, { id: 4, fullName: "Reviewer" }))).rejects.toThrow(/changed/);
 });
-it("saves a real daily hire bill from confirmed trips, preserving source evidence and blocking a second bill", async () => {
+it("saves a real daily bill from a DPR log without charging confirmed material trips", async () => {
+  await db.insert(schema.dprs).values({ id: 1, date: trip.date, site: trip.site, dprStatus: "submitted", isSuperseded: false });
+  await db.insert(schema.equipmentLogs).values({ id: 1, dprId: 1, equipmentId: 1, entryType: "daily", status: "closed" });
   const data = { billDate: trip.date, billType: "equipment", vendorName: "Agency", periodFrom: trip.date,
     periodTo: trip.date, status: "draft", items: [{ equipmentId: 1, date: trip.date, source: "hire_group", category: "equipment",
       description: "Generated preview", qty: .5, rate: 2000, amount: 1000 }], hireBillingMode: "vb10_automatic",
@@ -83,8 +87,10 @@ it("saves a real daily hire bill from confirmed trips, preserving source evidenc
   expect(bill.items).toHaveLength(1);
   expect(bill.items[0]).toMatchObject({ category: "equipment", qty: .5, rate: 2000, amount: 1000 });
   const [statement] = await db.select().from(schema.hireStatements);
-  expect(statement.calculationSnapshot.sourceEvidence.activities.some((a: any) => a.hireConfirmation?.actor === "Reviewer")).toBe(true);
-  await expect(storage.createVendorBill(data)).rejects.toThrow(/already billed/);
+  expect(statement.calculationSnapshot.sourceEvidence.activities.some((a: any) => a.source === "dpr_log")).toBe(true);
+  expect(statement.calculationSnapshot.sourceEvidence.activities.filter((a: any) => a.source === "site_material_trip")).toHaveLength(1);
+  expect(statement.calculationSnapshot.sourceEvidence.activities.filter((a: any) => a.source === "site_material_trip" && a.confirmedForDailyHire)).toHaveLength(0);
+  await expect(storage.createVendorBill(data)).rejects.toThrow(/already billed|overlap/i);
 });
 it("saves future hired-vehicle confirmation atomically alongside a real trip", async () => {
   await pg.exec("SELECT setval(pg_get_serial_sequence('site_material_trips', 'id'), 10)");
@@ -94,11 +100,13 @@ it("saves future hired-vehicle confirmation atomically alongside a real trip", a
   expect((await tripHireReview(db, created)).confirmation.valid).toBe(true);
   expect(created.materialSourceType).toBe("own_source");
   expect(created.quantity).toBe(50);
-  expect(await db.select().from(schema.equipmentLogs)).toHaveLength(0);
+  expect(await db.select().from(schema.equipmentLogs)).toHaveLength(1);
   expect(await db.select().from(schema.equipmentUsage)).toHaveLength(0);
   expect(await db.select().from(schema.stockLedger)).toHaveLength(0);
 });
 it("blocks confirmed-link changes on paid activity and ordinary rows covered by a daily hire statement", async () => {
+  await db.insert(schema.dprs).values({ id: 2, date: trip.date, site: trip.site, dprStatus: "submitted", isSuperseded: false });
+  await db.insert(schema.equipmentLogs).values({ id: 2, dprId: 2, equipmentId: 2, entryType: "daily", status: "closed" });
   await db.insert(schema.vendorBills).values({ id: 100, status: "paid", billNo: "PAID" });
   await db.insert(schema.vendorBillItems).values({ id: 100, billId: 100, equipmentId: 1, date: trip.date, category: "equipment", description: "Earlier daily hire" });
   await db.insert(schema.vendorBillItems).values({ id: 101, billId: 100, equipmentId: 2, date: trip.date, category: "equipment", description: "Paid operational day" });
@@ -111,7 +119,7 @@ it("blocks confirmed-link changes on paid activity and ordinary rows covered by 
   await expect(db.transaction((tx: any) => guardTripHireOrdinaryItems(tx, [{ equipmentId: 2, date: trip.date, category: "equipment" }]))).rejects.toThrow(/already covers/);
 });
 
-it("real create/reload routes retain reviewed multi-date, multi-source, one-time tipper days and reject recharges", async () => {
+it("real routes preserve trip evidence but reject a second bill in an overlapping Master hire period", async () => {
   await pg.exec(`CREATE UNIQUE INDEX hire_statements_equipment_period_uq ON hire_statements(equipment_id,period_from,period_to) WHERE NOT (billing_basis = 'daily' AND vendor_bill_id IS NOT NULL)`);
   const machine = { ...master, id: 20, registrationNumber: "TEST20", vendorName: "ONE TIME TEST OWNER" };
   await db.insert(schema.equipmentMaster).values(machine);
@@ -120,7 +128,11 @@ it("real create/reload routes retain reviewed multi-date, multi-source, one-time
   await db.insert(schema.siteMaterialTrips).values(originals);
   for (const t of originals) await db.transaction((tx: any) => confirmTripHireLink(tx, t, { equipmentId: 20, reason: "Historical attendance checked" }, { id: 4, fullName: "Reviewer" }, true));
   await db.insert(schema.dprs).values({ id: 20, date: "2026-11-01", site: "ROAD", isSuperseded: false, dprStatus: "submitted" });
-  await db.insert(schema.equipmentLogs).values({ id: 20, dprId: 20, equipmentId: 20, entryType: "daily", hoursWorked: 3 });
+  await db.insert(schema.dprs).values({ id: 21, date: "2026-11-02", site: "ROAD", isSuperseded: false, dprStatus: "submitted" });
+  await db.insert(schema.equipmentLogs).values([
+    { id: 20, dprId: 20, equipmentId: 20, entryType: "daily", status: "closed", hoursWorked: 3 },
+    { id: 21, dprId: 21, equipmentId: 20, entryType: "daily", status: "closed", hoursWorked: 3 },
+  ]);
   const app = express(); app.use(express.json());
   const src = fs.readFileSync("server/routes.ts", "utf8");
   const ast = ts.createSourceFile("routes.ts", src, ts.ScriptTarget.Latest, true);
@@ -154,16 +166,17 @@ it("real create/reload routes retain reviewed multi-date, multi-source, one-time
   expect(reopened.body.items[0]).toMatchObject({ qty: .5, amount: 1000 });
   expect(reopened.body.hireStatements[0].calculationSnapshot.dailyDecisions).toEqual(payload("half_day", "exclude").hireGroups[0].dailyDecisions);
   const evidence = reopened.body.hireStatements[0].calculationSnapshot.sourceEvidence.activities;
-  expect(evidence.filter((a: any) => a.confirmedForDailyHire)).toHaveLength(3);
-  expect(evidence.some((a: any) => a.source === "dpr_log")).toBe(true);
+  expect(evidence.filter((a: any) => a.source === "dpr_log")).toHaveLength(2);
+  expect(evidence.filter((a: any) => a.source === "site_material_trip")).toHaveLength(3);
+  expect(evidence.filter((a: any) => a.source === "site_material_trip" && a.confirmedForDailyHire)).toHaveLength(0);
   expect((await request(app).post("/api/vendor-bills").send(payload("full_day", "full_day"))).status).toBe(409);
   const remaining = await request(app).post("/api/vendor-bills").send(payload("exclude", "full_day"));
-  expect(remaining.status, JSON.stringify(remaining.body)).toBe(201);
-  expect(remaining.body.items[0]).toMatchObject({ qty: 1, amount: 2000 });
+  expect(remaining.status, JSON.stringify(remaining.body)).toBe(409);
+  expect(remaining.body.message).toMatch(/overlap/i);
   expect((await db.select().from(schema.siteMaterialTrips).where(eq(schema.siteMaterialTrips.id, 21)))[0]).toMatchObject(originals[0]);
 });
 
-it.each(["trip", "daily"])("keeps the same confirmed historical trips eligible across bill basis changes with master default %s", async (defaultBasis) => {
+it.each(["trip", "daily"])("keeps confirmed trip evidence without charging it as daily hire under Master %s terms", async (defaultBasis) => {
   const id = defaultBasis === "trip" ? 80 : 81;
   const date = "2026-12-20";
   const machine = { ...master, id, registrationNumber: `BASIS${id}`, vendorName: `BASIS OWNER ${id}`,
@@ -175,36 +188,37 @@ it.each(["trip", "daily"])("keeps the same confirmed historical trips eligible a
   await db.insert(schema.siteMaterialTrips).values(originals);
   for (const row of originals) await db.transaction((tx: any) => confirmTripHireLink(tx, row,
     { equipmentId: id, reason: "Historical vehicle identity verified" }, { id: 4, fullName: "Reviewer" }, true));
+  if (defaultBasis === "daily") {
+    await db.insert(schema.dprs).values({ id, date, site: "ROAD", dprStatus: "submitted", isSuperseded: false });
+    await db.insert(schema.equipmentLogs).values({ id, dprId: id, equipmentId: id, entryType: "daily", status: "closed" });
+  }
   const activities = await storage.getVendorBillHireActivities(machine.vendorName, date, date);
-  const evidence = activities.filter((a: any) => a.equipmentId === id && a.confirmedForDailyHire);
+  const evidence = activities.filter((a: any) => a.equipmentId === id && a.source === "site_material_trip");
   expect(evidence.map((a: any) => a.sourceId).sort()).toEqual(originals.map(t => t.id));
+  expect(evidence.every((a: any) => a.requiresTripReview)).toBe(true);
   const decisions = originals.map(row => ({ source: "site_material_trip", sourceId: row.id, selected: true, remarks: "Individual trip checked" }));
   const group = (basis: string) => ({ equipmentId: id, basis, rate: 1000, periodFrom: date, periodTo: date,
     tripDecisions: decisions, dailyDecisions: [{ date, decision: "full_day", reason: "Both trips reviewed together" }] });
-  // Charge against the opposite of the master default first, then edit the same
-  // draft to the other basis, retaining these exact persisted source IDs.
-  const firstBasis = defaultBasis === "trip" ? "daily" : "trip";
   const payload: any = { billDate: date, billType: "equipment", vendorName: machine.vendorName,
-    periodFrom: date, periodTo: date, status: "draft", items: [], hireGroups: [group(firstBasis)] };
+    periodFrom: date, periodTo: date, status: "draft", items: [], hireGroups: [group(defaultBasis)] };
   const bill = await storage.createVendorBill(payload);
-  expect(bill.items[0]).toMatchObject({ qty: firstBasis === "daily" ? 1 : 2 });
-  const first = await storage.getVendorBill(bill.id);
-  const changed = await storage.updateVendorBill(bill.id, { ...payload,
-    hireGroups: [{ ...group(defaultBasis), hireStatementId: first.hireStatements[0].id }] });
-  expect(changed.items[0]).toMatchObject({ qty: defaultBasis === "daily" ? 1 : 2 });
+  expect(bill.items[0]).toMatchObject({ qty: defaultBasis === "daily" ? 1 : 2 });
   const reopened = await storage.getVendorBill(bill.id);
   expect(reopened.hireStatements[0].billingBasis).toBe(defaultBasis);
   const savedEvidence = reopened.hireStatements[0].calculationSnapshot.sourceEvidence.activities;
-  expect(savedEvidence.filter((a: any) => a.confirmedForDailyHire).map((a: any) => a.sourceId).sort())
+  expect(savedEvidence.filter((a: any) => a.source === "site_material_trip").map((a: any) => a.sourceId).sort())
     .toEqual(originals.map(t => t.id));
+  expect(savedEvidence.filter((a: any) => a.source === "dpr_log")).toHaveLength(defaultBasis === "daily" ? 1 : 0);
+  await expect(storage.createVendorBill({ ...payload, hireGroups: [group(defaultBasis === "trip" ? "daily" : "trip")] }))
+    .rejects.toThrow(/Master hire terms/);
   for (const [decision, expected] of [["full_day", 1], ["half_day", .5], ["exclude", 0]] as const) {
     const result = calculateHireGroup({ equipmentId: id, terms: { billingBasis: "daily", rate: 1000 },
-      periodFrom: date, periodTo: date, activities: evidence,
+      periodFrom: date, periodTo: date, activities,
       dailyDecisions: [{ date, decision, reason: "Reviewed vehicle day" }] });
-    expect(result.quantity).toBe(expected);
+    expect(result.quantity).toBe(defaultBasis === "daily" ? expected : 0);
   }
   expect(calculateHireGroup({ equipmentId: id, terms: { billingBasis: "hourly", rate: 1000 },
-    periodFrom: date, periodTo: date, activities: evidence, tripDecisions: decisions }).quantity).toBe(0);
+    periodFrom: date, periodTo: date, activities, tripDecisions: decisions }).quantity).toBe(0);
   for (const row of originals) {
     const [saved] = await db.select().from(schema.siteMaterialTrips).where(eq(schema.siteMaterialTrips.id, row.id));
     expect(saved).toMatchObject(row);
@@ -214,34 +228,35 @@ it.each(["trip", "daily"])("keeps the same confirmed historical trips eligible a
     .toMatchObject({ hireBillingBasis: defaultBasis, hireRate: 17 });
 });
 
-it("saves independent bill terms across bases, edits only a draft and freezes completed bills", async () => {
+it("saves Master-based hire groups, permits draft edits and freezes completed bills", async () => {
   const tripMaster = { ...master, id: 30, registrationNumber: "TERMS30", vendorName: "TERMS OWNER",
-    hireBillingBasis: "trip", hireRate: 10, hireStartDate: "2027-01-01" };
+    hireBillingBasis: "trip", hireRate: 500, hireStartDate: "2027-01-01" };
   const monthlyMaster = { ...tripMaster, id: 31, registrationNumber: "TERMS31", hireBillingBasis: "monthly", hireRate: 90000 };
   await db.insert(schema.equipmentMaster).values([tripMaster, monthlyMaster]);
-  const t = { ...trip, id: 30, date: "2026-12-01", vehicleNumber: "TERMS30", supplier: "TERMS OWNER" };
+  const t = { ...trip, id: 30, date: "2027-01-01", vehicleNumber: "TERMS30", supplier: "TERMS OWNER" };
   await db.insert(schema.siteMaterialTrips).values(t);
   await db.transaction((tx: any) => confirmTripHireLink(tx, t, { equipmentId: 30, reason: "Identity confirmed" }, { id: 4, fullName: "Reviewer" }, true));
   await db.insert(schema.equipmentUsage).values({ id: 31, equipmentId: 31, date: t.date, entryType: "hourly", hoursOrKmRun: 4, status: "closed" });
   const payload: any = { billDate: t.date, billType: "equipment", vendorName: "TERMS OWNER", periodFrom: t.date,
     periodTo: t.date, status: "draft", items: [], hireGroups: [
-      { equipmentId: 30, basis: "daily", rate: 5000, periodFrom: t.date, periodTo: t.date,
-        dailyDecisions: [{ date: t.date, decision: "half_day", reason: "Reviewed partial day" }] },
-      { equipmentId: 31, basis: "hourly", rate: 300, periodFrom: t.date, periodTo: t.date },
+      { equipmentId: 30, basis: "trip", rate: 500, periodFrom: t.date, periodTo: t.date,
+        tripDecisions: [{ source: "site_material_trip", sourceId: 30, selected: true, remarks: "Recorded trip reviewed" }] },
+      { equipmentId: 31, basis: "monthly", rate: 90000, periodFrom: t.date, periodTo: t.date },
     ] };
   const bill = await storage.createVendorBill(payload);
-  expect(bill.items.map((i: any) => [i.qty, i.rate, i.amount])).toEqual([[.5, 5000, 2500], [4, 300, 1200]]);
+  expect(bill.items.find((i: any) => i.equipmentId === 30)).toMatchObject({ qty: 1, rate: 500, amount: 500 });
+  expect(bill.items.some((i: any) => i.equipmentId === 31)).toBe(true);
   const before = await storage.getVendorBill(bill.id);
-  expect(before.hireStatements.map((s: any) => s.billingBasis).sort()).toEqual(["daily", "hourly"]);
+  expect(before.hireStatements.map((s: any) => s.billingBasis).sort()).toEqual(["monthly", "trip"]);
   const edited = await storage.updateVendorBill(bill.id, { ...payload, hireGroups: payload.hireGroups.map((g: any) => ({
-    ...g, rate: g.equipmentId === 30 ? 6000 : 300,
+    ...g, rate: g.equipmentId === 30 ? 600 : 90000,
     hireStatementId: before.hireStatements.find((s: any) => s.equipmentId === g.equipmentId).id,
   })) });
-  expect(edited.items.find((i: any) => i.equipmentId === 30).amount).toBe(3000);
+  expect(edited.items.find((i: any) => i.equipmentId === 30).amount).toBe(600);
   const overlap = { ...payload, hireGroups: [{ equipmentId: 30, basis: "trip", rate: 500, periodFrom: t.date, periodTo: t.date,
     tripDecisions: [{ source: "site_material_trip", sourceId: 30, selected: true, remarks: "Reviewed" }] }] };
   await expect(storage.createVendorBill(overlap)).rejects.toThrow(/overlapping/i);
-  const nextTrip = { ...t, id: 31, date: "2026-12-02" };
+  const nextTrip = { ...t, id: 31, date: "2027-01-02" };
   await db.insert(schema.siteMaterialTrips).values(nextTrip);
   await db.transaction((tx: any) => confirmTripHireLink(tx, nextTrip, { equipmentId: 30, reason: "Next assignment" }, { id: 4, fullName: "Reviewer" }, true));
   const next = await storage.createVendorBill({ ...overlap, periodFrom: nextTrip.date, periodTo: nextTrip.date,
@@ -251,7 +266,7 @@ it("saves independent bill terms across bases, edits only a draft and freezes co
   for (const status of ["verified", "approved", "paid"]) {
     await db.update(schema.vendorBills).set({ status }).where(eq(schema.vendorBills.id, bill.id));
     await expect(storage.updateVendorBill(bill.id, payload)).rejects.toThrow(/frozen/);
-    expect((await storage.getVendorBill(bill.id)).items.find((i: any) => i.equipmentId === 30).amount).toBe(3000);
+    expect((await storage.getVendorBill(bill.id)).items.find((i: any) => i.equipmentId === 30).amount).toBe(600);
   }
   expect((await db.select().from(schema.equipmentMaster).where(eq(schema.equipmentMaster.id, 30)))[0]).toMatchObject(tripMaster);
 });

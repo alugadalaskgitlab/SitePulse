@@ -26,25 +26,29 @@ describe("focused DPR restoration", () => {
   });
 
   it("keeps length read-only, removes the reconciliation prompt, and keeps compact DPR equipment details deliberate", async () => {
-    const [siteEntry, siteEdit, guided] = await Promise.all([
+    const [siteEntry, siteEdit, guided, compact] = await Promise.all([
       readSource("client/src/pages/SiteEntry.tsx"),
       readSource("client/src/pages/SiteEdit.tsx"),
       readSource("client/src/pages/GuidedDpr.tsx"),
+      readSource("client/src/components/DprEquipmentCompact.tsx"),
     ]);
 
     for (const source of [siteEntry, siteEdit, guided]) {
       expect(source).not.toContain("Chainage changed — recalculated length");
     }
-    // DPR16 B1 keeps classic details open; the section equipment summary
-    // deliberately starts collapsed without removing the underlying editors.
-    expect(siteEntry).toContain('<details {...(!sectionEditor ? { open: true } : {})} className="group peer">');
+    // The shared card owns deliberate expansion. The mutually exclusive
+    // populated/placeholder branches each instantiate that same editor once.
+    expect(compact).toContain("sectionPresentation ? false : index === 0 || !rowLooksComplete");
     expect(siteEntry).toContain('{(!sectionEditor || sectionEditor.section === "equipment") && (');
-    expect(siteEntry.match(/\{compactEquipment\}/g)).toHaveLength(1);
-    expect(siteEntry).toMatch(/const compactEquipment = <DprEquipmentCompact\b(?:(?!\/>;)[\s\S])*?\bsectionPresentation\b/);
+    expect(siteEntry.match(/compactEquipment\(action, prompt, dismiss\)/g)).toHaveLength(1);
+    expect(siteEntry.match(/compactEquipment\(null, null, dismiss\)/g)).toHaveLength(1);
+    expect(siteEntry).toMatch(/const compactEquipment = \([^]*?\) => <DprEquipmentCompact\b(?:(?!\/>;)[\s\S])*?\bsectionPresentation\b/);
     for (const source of [siteEdit, guided]) {
       expect(source).not.toContain("Equipment setup and additional usage details");
-      expect(source).toContain("hideIdentity");
+      expect(source).toContain("<DprEquipmentCompact");
     }
+    expect(siteEdit).toContain("hideIdentity");
+    expect(guided).not.toContain("hideIdentity");
     expect(siteEntry).toMatch(/data-testid=\{`input-progress-length-\$\{idx\}`\}[\s\S]{0,500}?\/>/);
     expect(siteEntry).toMatch(/<Input[\s\S]{0,350}?readOnly[\s\S]{0,350}?data-testid=\{`input-progress-length-\$\{idx\}`\}/);
     expect(siteEdit).toContain("readOnly={!isAdmin}");

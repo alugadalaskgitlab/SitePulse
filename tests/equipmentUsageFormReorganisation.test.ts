@@ -21,7 +21,8 @@ describe("equipment usage form reorganisation contracts", () => {
       expect(source).not.toContain("currentLocalEquipmentTime(");
     }
     expect(guided).toContain('passthrough: newResourceRow({ startTime: "", endTime: "", usageStatus: "working" })');
-    expect(edit).toContain("setEquipment((draft.equipment as EquipmentEntry[]).map(({ isNew: _isNew, editCreationKey: _key, ...row }) => row))");
+    expect(edit).toContain("setEquipment((draft.equipment as EquipmentEntry[]).map(({ isNew: _isNew, editCreationKey: _key, ...row }) =>");
+    expect(edit).toContain("row.persistedId == null ? { editCreationKey: newEntryKey() } : {}");
   });
 
   it("keeps the canonical continuity lookup in Guided, Detailed and Edit DPR", () => {
@@ -88,8 +89,10 @@ describe("equipment usage form reorganisation contracts", () => {
   });
 
   it("shows the same parent equipment summary in both submitted DPR views", () => {
-    expect(submitted).toContain("<DprEquipmentCompact");
-    expect(report).toContain("<DprEquipmentCompact");
+    for (const source of [submitted, report]) {
+      expect(source).toContain("<DprEquipmentReadOnlyTable");
+      expect(source).toContain("<DprEquipmentReadOnlyRow");
+    }
     expect(compact).toContain('!editable && <div data-testid={`equipment-compact-readonly-${index}`}');
     expect(compact).toContain('testId={`equipment-compact-read-group-identity-${index}`}');
     expect(compact).toContain('testId={`equipment-compact-read-group-readings-${index}`}');

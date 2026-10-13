@@ -70,7 +70,8 @@ describe("DPR16 B2 classic SiteEdit", () => {
     const compactStart = edit.indexOf("<DprEquipmentCompact", edit.indexOf("<CardTitle>Equipment Log"));
     const compact = edit.slice(compactStart, edit.indexOf("/>", compactStart) + 2);
     expect(compact).toContain("sectionPresentation");
-    expect(compact).toContain('enableTankContinuity={entry.dieselSource === "plant_stock"}');
+    expect(compact).toContain('enableTankContinuity={!isSubmittedCorrection && entry.dieselSource === "plant_stock"}');
+    expect(compact).toContain("historicalCorrection={isSubmittedCorrection}");
     expect(compact).toContain("allowLinkedSourceEdit={isAdmin}");
     expect(compact).toContain("stoppageSlot={stoppageSlot}");
     expect(edit).toContain("const stoppageSlot = (");

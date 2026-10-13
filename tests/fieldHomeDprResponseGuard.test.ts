@@ -12,15 +12,16 @@ describe("FieldHome DPR response reliability", () => {
     );
   });
 
-  it("ensures equipment log columns before registering routes", () => {
+  it("checks read-only startup readiness before registering routes or listening", () => {
     const source = fs.readFileSync("server/index.ts", "utf8");
-    const ensureIndex = source.indexOf("await (storage as any).ensureEquipmentUsageAuditColumns()");
+    const readinessIndex = source.indexOf("await verifyStartupReadiness(pool)");
     const routesIndex = source.indexOf("await registerRoutes(httpServer, app)");
     const listenIndex = source.indexOf("httpServer.listen");
 
-    expect(ensureIndex).toBeGreaterThan(-1);
-    expect(ensureIndex).toBeLessThan(routesIndex);
+    expect(readinessIndex).toBeGreaterThan(-1);
+    expect(readinessIndex).toBeLessThan(routesIndex);
     expect(routesIndex).toBeLessThan(listenIndex);
+    expect(source).not.toContain("ensureEquipmentUsageAuditColumns(");
   });
 
   it("shows the real trip UOM and keeps mixed units separate", () => {

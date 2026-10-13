@@ -136,7 +136,12 @@ describe("PERM-01 supporting read HTTP routes with real guards", () => {
       const updated = await request(app).put(`${path}/1`).send(input);
       expect(updated.status, JSON.stringify(updated.body)).toBe(200);
       expect(updated.body).toMatchObject({ id: 1, date: input.date, items: input.items });
-      expect(storage[`update${name}`]).toHaveBeenCalledWith(1, expect.objectContaining(input));
+      const editInput: Record<string, unknown> = { ...input };
+      if (name === "PurchaseIndent") delete editInput.indentNo;
+      expect(storage[`update${name}`]).toHaveBeenCalledWith(1, expect.objectContaining(editInput));
+      if (name === "PurchaseIndent") {
+        expect(storage[`update${name}`].mock.calls.at(-1)[1]).not.toHaveProperty("indentNo");
+      }
     }
     expect(storage[`create${name}`]).toHaveBeenCalledTimes(2);
     expect(storage[`update${name}`]).toHaveBeenCalledTimes(2);

@@ -92,11 +92,9 @@ describe("Task #1430 DPR breakdown persistence wiring", () => {
     expect(routes).toContain("getEquipmentHealthSummary(await visibleMaintenanceLogIds(req))");
     expect(routes).toContain("getOpenBreakdownCount(await visibleMaintenanceLogIds(req))");
     expect(storage).toContain("visibleMaintenanceLogIds.length === 0");
-    const attachmentReads = routes.slice(
-      routes.indexOf('app.get("/api/attachments"'),
-      routes.indexOf('app.post("/api/attachments"'),
-    );
-    expect(attachmentReads.split("if (!req.authUser) return res.status(401)").length - 1).toBe(2);
+    // Authentication is centralized before the attachment read handlers;
+    // source-site authorization remains in each handler above.
+    expect(routes).toMatch(/app\.use\("\/api",[\s\S]{0,1200}return requireAuth\(req, res, next\)/);
   });
 
   it("excludes cancelled or deleted stoppages from Fleet health and open counts", () => {

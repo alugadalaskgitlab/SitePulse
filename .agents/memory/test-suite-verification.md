@@ -66,3 +66,40 @@ The documented testing-subagent kind is not always available in this runtime.
 **Why:** A launch using the documented `config.$kind: "testing"` was rejected as `Unknown config kind: testing`.
 
 **How to apply:** Use available browser tooling instead where feasible. Do not equate mocked component tests with signed-in development verification or bypass device approval to complete acceptance evidence.
+
+Test route-supplied semantic validators separately when persistence fixtures
+inject a no-op validator. A review-required response proves rejection of the
+old request shape, not successful validation of a reviewed correction.
+
+**Why:** Isolated correction-service tests proved transactional saves and
+approval rules but could not detect failures in the real route's validation
+callback. Simply changing legacy success assertions to the review gate would
+lose meaningful coverage.
+
+**How to apply:** Exercise the actual callback alongside the real planner and
+isolated persistence/approval tests; keep invalid-data and untouched-history
+cases when migrating tests away from retired endpoints.
+
+Keep a disposable native PostgreSQL server and the full-suite command in the
+same long-lived background shell, with a server-stop trap on exit.
+
+**Why:** A server started in a separate short-lived shell became unavailable
+between calls, causing extra setup-related skips despite unchanged file
+discovery. Starting it inside the test shell kept it available for the run.
+
+**How to apply:** Confirm the server accepts connections after the shell starts,
+preserve failed setup evidence, and require the expected explicit-skip count
+before treating a full run as a comparable release gate.
+
+When retiring a billing input, preserve audit-evidence checks and positive
+bill-save coverage separately from the new non-billability checks.
+
+**Why:** Delivery rows can remain as historical or review-only evidence after
+they stop supplying daily hire. Assuming non-billability means the rows must
+disappear loses audit coverage; replacing every successful save with a rejection
+also misses failures in the supported operational billing path.
+
+**How to apply:** Give positive new-bill fixtures actual DPR or equipment usage
+and Master-aligned terms. Check retained source identities, operational charges,
+duplicate protection and frozen snapshots independently of retired-input
+eligibility. Do not restore withdrawn application behavior to satisfy old tests.

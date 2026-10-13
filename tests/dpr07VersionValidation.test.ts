@@ -28,7 +28,21 @@ const fx = vi.hoisted(() => ({
   changeScopeDuringValidation: false,
   scopeChanged: false,
   events: [] as string[],
+  correctionValidator: null as null | ((...args: any[]) => Promise<void>),
 }));
+
+// Capture the production route's validator, without replacing its behavior.
+// Persistence/approval remains covered by the real-service PGlite suite.
+vi.mock("../server/dprCorrections", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../server/dprCorrections")>();
+  return {
+    ...actual,
+    dprCorrectionService: (database: any, validate: any) => {
+      fx.correctionValidator = validate;
+      return actual.dprCorrectionService(database, validate);
+    },
+  };
+});
 
 vi.mock("../server/push", () => ({
   sendPushToSection: vi.fn().mockResolvedValue(undefined),
@@ -326,6 +340,15 @@ describe("submitted DPR changes require explicit correction review", () => {
       .set("Content-Type", "application/json");
 
     expectCorrectionReviewRequired(response);
+    const original = fx.dprs.get(DPR_ID);
+    const candidate = structuredClone(original);
+    candidate.labour = [{ id: 501, category: "Skilled", count: 2, task: "CORRECTED LABOUR" }];
+    await expect(fx.correctionValidator!(
+      candidate, original,
+      [{ section: "labour", rowId: 501, field: "task" }],
+      { id: 9701, isAdmin: true }, {},
+    )).resolves.toBeUndefined();
+    expect(candidate.progress).toEqual(original.progress);
   });
 
   it("requires correction review before changing the BOQ-project context", async () => {
@@ -513,7 +536,7 @@ describe("submitted DPR changes require explicit correction review", () => {
     source,
     item,
     change,
-    message: _message,
+    message,
   }) => {
     fx.boqItems.set(Number(item.id), item);
     putVersionFixture([source]);
@@ -529,6 +552,14 @@ describe("submitted DPR changes require explicit correction review", () => {
       .set("Content-Type", "application/json");
 
     expectCorrectionReviewRequired(response);
+    expect(fx.versions).toHaveLength(beforeVersions);
+    const original = fx.dprs.get(DPR_ID);
+    const candidate = structuredClone(original);
+    Object.assign(candidate.progress[0], change);
+    const changes = Object.keys(change).map(field => ({ section: "progress", rowId: source.id, field }));
+    await expect(fx.correctionValidator!(
+      candidate, original, changes, { id: 9701, isAdmin: true }, {},
+    )).rejects.toThrow(message);
     expect(fx.versions).toHaveLength(beforeVersions);
   });
 });
@@ -579,5 +610,55 @@ describe("DPR-07 Fix 2 — fresh create remains all-row strict", () => {
     expect(response.body.code).toBe(code);
     expect(response.body.message).toContain(message);
     expect(fx.created).toHaveLength(0);
+  });
+});
+
+describe("submitted correction uses the production route validator", () => {
+  it("clears review facts for changed chainage without changing the saved source", async () => {
+    const source = sourceRow(701, {
+      chainageFrom: "1+000", chainageTo: "1+100", length: 100,
+      side: "Full Width",
+      quantity: 10, quantitySource: "measured",
+      chainageReviewStatus: "approved", linkReviewRequired: true,
+      scopeWarningType: "legacy_warning", scopeOverrideReason: "Historical approval",
+      scopeOverrideBy: 99, scopeOverrideAt: "2026-09-01T00:00:00.000Z",
+    });
+    putVersionFixture([source]);
+    const original = structuredClone(fx.dprs.get(DPR_ID));
+    const candidate = structuredClone(original);
+    Object.assign(candidate.progress[0], {
+      chainageFrom: "1+100", chainageTo: "1+200",
+      chainageFromKm: 1.1, chainageToKm: 1.2,
+      chainageOverrideReason: "Checked against source site register",
+    });
+    await fx.correctionValidator!(candidate, original,
+      [{ section: "progress", rowId: source.id, field: "chainageFrom" },
+        { section: "progress", rowId: source.id, field: "chainageTo" }],
+      { id: 9701, isAdmin: true }, {});
+    expect(candidate.progress[0]).toMatchObject({
+      chainageReviewStatus: null, linkReviewRequired: false,
+      scopeWarningType: null, scopeOverrideReason: null,
+      scopeOverrideBy: null, scopeOverrideAt: null,
+    });
+    expect(original.progress[0]).toEqual(source);
+    expect(fx.versions).toHaveLength(0);
+  });
+
+  it("does not let an override-reason edit bypass missing quantity-source validation", async () => {
+    const source = sourceRow(702, {
+      boqItemId: 1001, quantity: 5, quantitySource: null,
+      chainageReviewStatus: "approved", linkReviewRequired: true,
+      scopeWarningType: "legacy_warning",
+    });
+    fx.boqItems.set(1001, { id: 1001, unit: "MT", dprMeasurementMethod: "MT_manual" });
+    putVersionFixture([source]);
+    const original = structuredClone(fx.dprs.get(DPR_ID));
+    const candidate = structuredClone(original);
+    candidate.progress[0].chainageOverrideReason = "Clarified original site register reference";
+    await expect(fx.correctionValidator!(candidate, original,
+      [{ section: "progress", rowId: source.id, field: "chainageOverrideReason" }],
+      { id: 9701, isAdmin: true }, {})).rejects.toThrow("pick how it was determined");
+    expect(original.progress[0]).toEqual(source);
+    expect(fx.versions).toHaveLength(0);
   });
 });

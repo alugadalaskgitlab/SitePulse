@@ -57,7 +57,7 @@ describe("DPR16 B3 shared read-only equipment card", () => {
     expect(valueFor("Clock Duration")).toContain("—");
     expect(valueFor("Opening Meter")).toContain("—");
     expect(valueFor("Diesel Issued / Added")).toContain("— L");
-    expect(valueFor("Closing Tank / Physical Dip (L)")).toContain("— L");
+    expect(valueFor("Closing Tank / Physical Dip (L)")).toContain("Not recorded");
     expect(valueFor("Physical Tank Balance")).toContain("Pending confirmation");
     expect(valueFor("Actual Consumed")).toContain("Awaiting tank dip");
     expect(valueFor("Expected")).toContain("—");

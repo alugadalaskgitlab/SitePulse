@@ -423,13 +423,15 @@ describe("VB-11 grouped ordinary activity pull", () => {
     expect(screen.getAllByTestId(/text-item-desc-/).filter(node => node.textContent?.includes("JCB-SITE"))).toHaveLength(2);
     expect(screen.getByTestId(groupRowId(vb11GroupIds.sand)).textContent).toContain("PULL 1");
 
-    // Removing one source row makes that exact source-qualified candidate
-    // pullable again; the retained group is not permanently hidden.
+    // Deliberately removed sources stay suppressed for this draft. Other
+    // unpulled sources remain available without restoring the removed row.
     fireEvent.click(screen.getByTestId("button-remove-item-0"));
-    await waitFor(() => expect(screen.getByTestId(groupRowId(vb11GroupIds.equipment)).textContent).toContain("PULL 2"));
-    fireEvent.click(screen.getByTestId(vb11GroupIds.equipment));
-    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(5));
-    expect(screen.getAllByTestId(/text-item-desc-/).filter(node => node.textContent?.includes("JCB-SITE"))).toHaveLength(3);
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(3));
+    expect(screen.getByTestId(groupRowId(vb11GroupIds.equipment)).textContent).toContain("2 ITEMS");
+    expect(screen.getByTestId(groupRowId(vb11GroupIds.equipment)).textContent).toContain("PULL 1");
+    fireEvent.click(screen.getByTestId(vb11GroupIds.sand));
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(4));
+    expect(screen.getAllByTestId(/text-item-desc-/).filter(node => node.textContent?.includes("JCB-SITE"))).toHaveLength(1);
   });
 
   it("Test D/E/F: Pull All applies rates and duplicate flags, clears the blank row, and retains Added groups", async () => {

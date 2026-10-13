@@ -55,6 +55,8 @@ vi.mock("../server/storage", () => {
   });
   methods.getAttachments = vi.fn(async () => fx.attachments);
   methods.getAttachmentCounts = vi.fn(async (_moduleType: string, _ids: number[], docTypes?: string[]) => ({ docTypes }));
+  methods.getDieselRequirement = vi.fn(async (id: number) => id === 42 ? { id, siteId: 18 } : undefined);
+  methods.getUserPermittedSiteIds = vi.fn().mockResolvedValue([18]);
   return { storage: storageProxy };
 });
 
@@ -118,7 +120,7 @@ describe("06M diesel purchase-update payment details", () => {
 });
 
 describe("06M diesel purchase attachments", () => {
-  it("allows Stores viewers to read the register data and diesel evidence", async () => {
+  it("allows assigned Stores viewers to read the register data and diesel evidence", async () => {
     fx.role = "manager";
     fx.permissions = { stores_inventory: { view: true } };
     const [requirements, attachments, counts] = await Promise.all([
@@ -129,6 +131,17 @@ describe("06M diesel purchase attachments", () => {
     expect(requirements.status).toBe(200);
     expect(attachments.status).toBe(200);
     expect(counts.status).toBe(200);
+    fx.role = "admin";
+    fx.permissions = {};
+  });
+
+  it("does not let Stores permission bypass a missing site grant for diesel evidence", async () => {
+    fx.role = "manager";
+    fx.permissions = { stores_inventory: { view: true } };
+    storage.getUserPermittedSiteIds.mockResolvedValueOnce([]);
+    const response = await request(app).get("/api/attachments?moduleType=diesel_purchase&linkedRecordId=42");
+    expect(response.status).toBe(403);
+    expect(response.body.message).toMatch(/site/i);
     fx.role = "admin";
     fx.permissions = {};
   });

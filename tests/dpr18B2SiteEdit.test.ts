@@ -28,7 +28,8 @@ describe("DPR18 B2 SiteEdit equipment wiring", () => {
     expect(editor).toContain("value={entry.breakdowns ?? []}");
     expect(editor).toContain("draftOnly={isDraftMode}");
     expect(card).toContain("allowLinkedSourceEdit={isAdmin}");
-    expect(card).toContain('enableTankContinuity={entry.dieselSource === "plant_stock"}');
+    expect(card).toContain('enableTankContinuity={!isSubmittedCorrection && entry.dieselSource === "plant_stock"}');
+    expect(card).toContain("historicalCorrection={isSubmittedCorrection}");
     expect(editor).toContain("disabled={entry.plantUsageId != null && !isAdmin}");
   });
 

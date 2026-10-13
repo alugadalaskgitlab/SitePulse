@@ -126,6 +126,18 @@ it("rejects stale review, unauthenticated save, non-admin approval and reassigne
   f.form.equipment[0].plantUsageId = null;
   expect((await service.preview(f.id, f.form, author)).blocked.some(b => b.field === "plantUsageId")).toBe(true);
 });
+it("blocks submitted equipment removal through reviewed corrections and preserves its original identity", async () => {
+  const f = await fixture();
+  f.form.equipment = [];
+  const review = await service.preview(f.id, f.form, author);
+  expect(review.blocked).toContainEqual(expect.objectContaining({ section: "equipment", field: "rows" }));
+  await expect(service.submit(f.id, {
+    form: f.form, baseHash: review.baseHash,
+    reason: "Attempted removal from historical report", confirmImpact: true,
+  }, { ...author, isAdmin: true })).rejects.toThrow();
+  expect(await db.select().from(schema.equipmentLogs).where(eq(schema.equipmentLogs.id, f.e.id))).toEqual([f.e]);
+  expect(await db.select().from(schema.editPermissionRequests).where(eq(schema.editPermissionRequests.recordId, f.id))).toEqual([]);
+});
 it("rejects a proposal made stale before approval, without modifying records", async () => {
   const f = await fixture(); f.form.equipment[0].openingDiesel = 0;
   const pending: any = await submit(f);

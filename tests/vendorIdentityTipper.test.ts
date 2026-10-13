@@ -47,7 +47,9 @@ it("shows missing identity instead of billing a guessed owner", async () => {
   const reasons = await tripHireEligibility(db, "GANGARAM NARSIMHULU", "2026-10-01", "2026-10-01");
   expect(reasons).toHaveLength(2);
   expect(reasons[0].reasons.join()).toContain("Missing Vendor Master link");
-  expect((await storage.getVendorBillHireActivities("NARASIMHULU", "2026-10-01", "2026-10-01")).filter((r: any) => r.confirmedForDailyHire)).toHaveLength(1);
+  const activities = await storage.getVendorBillHireActivities("NARASIMHULU", "2026-10-01", "2026-10-01");
+  expect(activities.filter((r: any) => r.source === "site_material_trip")).toHaveLength(1);
+  expect(activities.filter((r: any) => r.source === "site_material_trip").every((r: any) => r.requiresTripReview)).toBe(true);
 });
 it("requires authorised review and links several spellings to one ID without changing originals", async () => {
   const before = await db.select().from(schema.siteMaterialTrips);
@@ -65,8 +67,9 @@ it("requires authorised review and links several spellings to one ID without cha
   expect(await db.select().from(schema.siteMaterialTrips)).toEqual(before);
   expect((await db.select().from(schema.equipmentMaster))[0].vendorName).toBe("NARASIMHULU");
   const activities = await storage.getVendorBillHireActivities("GANGARAM NARSIMHULU", "2026-10-01", "2026-10-01");
-  expect(activities.filter((r: any) => r.confirmedForDailyHire)).toHaveLength(2);
-  expect((await storage.discoverVendors("equipment", "2026-10-01", "2026-10-01")).some((v: any) => v.vendorName === "GANGARAM NARSIMHULU")).toBe(true);
+  expect(activities.filter((r: any) => r.source === "site_material_trip")).toHaveLength(2);
+  expect(activities.filter((r: any) => r.source === "equipment_default").map((r: any) => r.equipment.vendorId)).toEqual([11, 11]);
+  expect((await storage.discoverVendors("equipment", "2026-10-01", "2026-10-01")).some((v: any) => v.vendorName === "GANGARAM NARSIMHULU")).toBe(false);
   expect((await tripHireEligibility(db, "OTHER PARTY", "2026-10-01", "2026-10-01"))[0].reasons.join()).toContain("Wrong vendor");
 });
 it("supports the same party for source and transporter, without replacing existing bill references", async () => {
@@ -79,7 +82,8 @@ it("supports the same party for source and transporter, without replacing existi
   }
   const [trip] = await db.select().from(schema.siteMaterialTrips).where(eq(schema.siteMaterialTrips.id, 3));
   expect(trip).toMatchObject({ supplierVendorId: 11, materialSourceVendorId: 11, supplier: "NARASIMHULU", receiptNumber: "KEEP", quantity: 10 });
-  await db.insert(schema.vendorBills).values({ id: 88, vendorName: "NARASIMHULU", vendorId: 12, status: "paid", totalAmount: 3210 });
+  await db.insert(schema.vendorBills).values({ id: 88, vendorName: "NARASIMHULU", vendorId: 12,
+    billType: "material", status: "paid", totalAmount: 3210 });
   const before = await db.select().from(schema.vendorBills);
   await request(app).post("/api/vendor-master/review/confirm").send({ role: "bills", name: "NARASIMHULU", ids: [88], vendorId: 11 }).expect(409);
   expect(await db.select().from(schema.vendorBills)).toEqual(before);
@@ -99,6 +103,7 @@ it("saves under the reviewed party, freezes identity evidence and reports prior 
   await db.transaction((tx: any) => confirmTripHireLink(tx, { ...original, id: 4 }, { equipmentId: 1, reason: "Second trip same verified vehicle" }, { id: 1, fullName: "Reviewer" }, true));
   await db.insert(schema.dprs).values({ id: 1, date: "2026-10-01", site: "TEST SITE", dprStatus: "submitted", isSuperseded: false });
   await db.insert(schema.equipmentLogs).values({ id: 1, dprId: 1, equipmentId: 1, entryType: "daily", machine: "Tipper" });
+  expect((await storage.discoverVendors("equipment", "2026-10-01", "2026-10-01")).some((v: any) => v.vendorName === "GANGARAM NARSIMHULU")).toBe(true);
   const bill = await storage.createVendorBill({ billDate: "2026-10-01", billType: "equipment", vendorName: "GANGARAM NARSIMHULU",
     billingVendorId: 11, periodFrom: "2026-10-01", periodTo: "2026-10-01", items: [], hireGroups: [{
       equipmentId: 1, basis: "daily", rate: 2000, periodFrom: "2026-10-01", periodTo: "2026-10-01",
@@ -107,7 +112,8 @@ it("saves under the reviewed party, freezes identity evidence and reports prior 
   expect(bill.items[0].amount).toBe(1000);
   expect((await tripHireEligibility(db, "GANGARAM NARSIMHULU", "2026-10-01", "2026-10-01")).find((r: any) => r.tripId === 1).reasons.join()).toContain("Already billed");
   const [snapshot] = await db.select().from(schema.hireStatements);
-  expect(snapshot.calculationSnapshot.sourceEvidence.activities.find((a: any) => a.confirmedForDailyHire).equipmentVendorIdentity.vendorId).toBe(11);
+  expect(snapshot.calculationSnapshot.sourceEvidence.activities.find((a: any) => a.source === "equipment_default").equipment.vendorId).toBe(11);
+  expect(snapshot.calculationSnapshot.sourceEvidence.activities.some((a: any) => a.source === "dpr_log")).toBe(true);
 });
 it("reports incomplete terms, outside-period evidence and invalidated confirmations explicitly", async () => {
   await db.update(schema.equipmentMaster).set({ hireRate: null, hireStartDate: "2026-11-01" }).where(eq(schema.equipmentMaster.id, 2));
@@ -133,7 +139,8 @@ it("independently links historical supplier, transporter and equipment then save
   await db.insert(schema.vendors).values([{ id: 80, name: "SARAVANA METAL INDUSTRIES", isActive: true },
     { id: 81, name: "REVIEWED NARSIMULU", isActive: true }]);
   await db.insert(schema.equipmentMaster).values({ id: 80, name: "Tipper", registrationNumber: "TS15UE4470",
-    ownership: "hired", vendorName: "NARSIMULU OLD SPELLING", hireBillingBasis: "trip", hireRate: 99 });
+    ownership: "hired", vendorName: "NARSIMULU OLD SPELLING", hireBillingBasis: "daily", hireRate: 5000,
+    hireStartDate: "2026-12-10" });
   const original = { id: 737, date: "2026-12-10", site: "TEST SITE", vehicleNumber: "TS15UE4470",
     supplier: "NARSIMULU", materialSourceSupplier: "SARAVANA METAL INDUSTRIES", materialSourceType: "vendor",
     transportType: "agency_vendor", material: "Stone", quantity: 10, uom: "CFT",
@@ -164,6 +171,10 @@ it("independently links historical supplier, transporter and equipment then save
   expect(first.confirmation.valid).toBe(true);
   expect((await tripHireReview(db, savedTrip)).confirmation).toEqual(first.confirmation);
   expect(first.equipment[0]).not.toHaveProperty("hireRate");
+  await db.insert(schema.dprs).values({ id: 80, date: original.date, site: original.site,
+    dprStatus: "submitted", isSuperseded: false });
+  await db.insert(schema.equipmentLogs).values({ id: 80, dprId: 80, equipmentId: 80,
+    entryType: "daily", status: "closed" });
   const payload: any = { billDate: original.date, billType: "equipment", vendorName: "REVIEWED NARSIMULU",
     periodFrom: original.date, periodTo: original.date, status: "draft", items: [], hireGroups: [{
       equipmentId: 80, basis: "daily", rate: 5000, periodFrom: original.date, periodTo: original.date,
@@ -172,7 +183,12 @@ it("independently links historical supplier, transporter and equipment then save
   const bill = await storage.createVendorBill(payload);
   expect(bill.items[0]).toMatchObject({ qty: 1, rate: 5000, amount: 5000 });
   const reopened = await storage.getVendorBill(bill.id);
-  expect(reopened.hireStatements[0].calculationSnapshot.sourceEvidence.activities.filter((a: any) => a.confirmedForDailyHire)).toHaveLength(2);
+  expect(reopened.hireStatements[0].calculationSnapshot.sourceEvidence.activities.filter((a: any) => a.source === "site_material_trip")).toHaveLength(2);
+  expect(reopened.hireStatements[0].calculationSnapshot.sourceEvidence.activities.filter((a: any) => a.source === "dpr_log")).toHaveLength(1);
+  await db.update(schema.equipmentMaster).set({ hireBillingBasis: "trip", hireRate: 700 }).where(eq(schema.equipmentMaster.id, 80));
+  const frozen = await storage.getVendorBill(bill.id);
+  expect(frozen.hireStatements[0].billingBasis).toBe("daily");
+  expect(frozen.items[0]).toMatchObject({ qty: 1, rate: 5000, amount: 5000 });
   await expect(storage.createVendorBill({ ...payload, hireGroups: [{ ...payload.hireGroups[0], basis: "trip" }] })).rejects.toThrow(/overlapping/i);
   const next = "2026-12-11";
   const nextBill = await storage.createVendorBill({ ...payload, periodFrom: next, periodTo: next, hireGroups: [{

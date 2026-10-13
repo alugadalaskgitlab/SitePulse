@@ -42,7 +42,7 @@ function queryWrapper({ children }: React.PropsWithChildren) {
 }
 
 describe("DPR-10 SiteEdit regressions", () => {
-  it("gates the bottom action by draft mode without changing the submitted version action", () => {
+  it("gates draft actions separately from busy or pending submitted correction review", () => {
     const bottom = siteEditSource.slice(
       siteEditSource.indexOf('<div className="flex justify-end gap-4 pt-4">'),
     );
@@ -53,12 +53,14 @@ describe("DPR-10 SiteEdit regressions", () => {
     expect(bottom).toContain("draftSaveMutation.isPending || submitDraftMutation.isPending");
     expect(bottom).toContain("submitDraftMutation.isPending || draftSaveMutation.isPending");
     expect(bottom).toContain("onClick={handleSave}");
-    expect(bottom).toContain("disabled={updateMutation.isPending}");
+    expect(bottom).toContain("disabled={updateMutation.isPending || correctionBusy || awaitingCorrectionApproval}");
+    expect(siteEditSource).toContain("const corrections = useDprCorrections(id, isSubmittedCorrection && editGranted)");
+    expect(siteEditSource).toContain("void reviewCorrection()");
     expect(siteEditSource).toContain('`/api/dprs/${id}/version`');
   });
 
   it("does not exempt hydrated draft rows from the prior-overlap warning", () => {
-    expect(siteEditSource).toContain("const isDraftDpr = (dpr as any)?.dprStatus === \"draft\";");
+    expect(siteEditSource).toContain("const isDraftDpr = (dpr as any)?.dprStatus === \"draft\" || draftSnapshotHydratedRef.current;");
     expect(siteEditSource).toContain(
       "const unchangedOverlapRowKeys = isDraftDpr\n    ? new Set<string | number>()",
     );

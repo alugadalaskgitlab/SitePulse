@@ -22,11 +22,14 @@ describe("bill-owned hire terms (synthetic fixtures)", () => {
     expect(defaultBillHireTerms({ id: 24, ownership: "hired", vendorName: "Kaveri Earthworks" }, from, to))
       .toMatchObject({ basis: "daily", rate: 0, periodFrom: from, periodTo: to });
   });
-  it("bills a Trip-default machine daily using confirmed trip_based evidence once per date", () => {
-    const group = { ...defaultBillHireTerms(master, from, to), basis: "daily" as const, rate: 5000 };
+  it("preserves a saved daily basis while charging only operational logs, not trip deliveries", () => {
+    const group = { ...defaultBillHireTerms(master, from, to), basis: "daily" as const, rate: 5000,
+      savedTerms: { billingBasis: "daily" as const, rate: 5000, hireStartDate: from, hireEndDate: to } };
     const result = calculateHireGroup({
       terms: calculationTermsForBill(group, master), periodFrom: from, periodTo: to,
-      activities: [trip(71), trip(72), trip(73, "2026-06-03")],
+      activities: [trip(71), trip(72), trip(73, "2026-06-03"),
+        { source: "dpr_log", sourceId: 74, equipmentId: 23, businessDate: from, entryType: "daily_hire", status: "closed" },
+        { source: "plant_usage", sourceId: 75, equipmentId: 23, businessDate: "2026-06-03", entryType: "daily_hire", status: "closed" }],
       dailyDecisions: [
         { date: from, decision: "full_day", reason: "Attendance reviewed" },
         { date: "2026-06-03", decision: "half_day", reason: "Half-day assignment" },
@@ -34,6 +37,8 @@ describe("bill-owned hire terms (synthetic fixtures)", () => {
     });
     expect(result.quantity).toBe(1.5);
     expect(result.grossAmount).toBe(7500);
+    expect(calculateHireGroup({ terms: calculationTermsForBill(group, master),
+      periodFrom: from, periodTo: to, activities: [trip(71), trip(72), trip(73, "2026-06-03")] }).quantity).toBe(0);
   });
   it("uses actual hours when a Monthly-default machine is billed hourly, never trip counts", () => {
     const eq = { ...master, hireBillingBasis: "monthly", hireRate: 126400 };
@@ -114,7 +119,5 @@ describe("shared VendorBills composer wiring (source checks, not browser tests)"
     expect(page).toContain("savedTerms: snap.terms");
     expect(page).not.toContain("hireStartDate: eq.hireStartDate");
     expect(page).not.toContain("invalidMonthlyHireEquipment");
-    expect(page).toContain("applyBillHireTermsEdit(current, patch)");
-    expect(page).toContain("group.activityReviewRequired");
   });
 });

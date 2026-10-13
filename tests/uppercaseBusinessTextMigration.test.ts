@@ -16,12 +16,12 @@ describe("uppercase business-text migration", () => {
     expect(sql).not.toMatch(/\bDELETE\b/i);
   });
 
-  it("runs the required BOQ backfill before routes begin serving traffic", () => {
+  it("does not run the BOQ backfill automatically during read-only startup", () => {
     const startup = fs.readFileSync("server/index.ts", "utf8");
-    const backfill = startup.indexOf("await storage.backfillUppercaseBusinessText()");
+    const readiness = startup.indexOf("await verifyStartupReadiness(pool)");
     const routes = startup.indexOf("await registerRoutes(httpServer, app)");
-    expect(backfill).toBeGreaterThanOrEqual(0);
-    expect(routes).toBeGreaterThan(backfill);
-    expect(startup.match(/await storage\.backfillUppercaseBusinessText\(\)/g)).toHaveLength(1);
+    expect(readiness).toBeGreaterThanOrEqual(0);
+    expect(routes).toBeGreaterThan(readiness);
+    expect(startup).not.toContain("backfillUppercaseBusinessText(");
   });
 });

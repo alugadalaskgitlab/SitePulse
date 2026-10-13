@@ -3,6 +3,7 @@ import type { NextFunction, Request, Response } from "express";
 import express from "express";
 import { createServer } from "http";
 import request from "supertest";
+import { correctionFields, correctionSections, planDprCorrection } from "../server/dprCorrectionPlan";
 import {
   adoptOpenUsageIntoDprRow,
   linkedUsageIds,
@@ -37,6 +38,34 @@ const {
   createEquipmentUsageSpy: vi.fn(),
   authState: { isAdmin: true, isOwner: false },
 }));
+
+// Old request fixtures describe editor input, not the submitted correction
+// envelope. Project them onto the current editor contract, with stable saved
+// row IDs as actual hydration supplies. Explicit incoming identities are kept
+// so conflicting claims remain testable, never silently repaired.
+function currentCorrectionAttempt(original: any, response: any) {
+  expect(response.status).toBe(409);
+  expect(response.body.code).toBe("DPR_CORRECTION_REVIEW_REQUIRED");
+  expect(createVersionDprSpy).not.toHaveBeenCalled();
+  expect(updateEquipmentUsageSpy).not.toHaveBeenCalled();
+  expect(createEquipmentUsageSpy).not.toHaveBeenCalled();
+  const data = response.request._data.data;
+  const saved = structuredClone(original);
+  saved.workType ??= data.workType;
+  const pick = (row: any, fields: string[]) => Object.fromEntries(
+    fields.filter(key => Object.hasOwn(row, key)).map(key => [key, row[key]]));
+  const form: any = { workType: data.workType, header: pick(data, correctionFields.header) };
+  correctionSections.forEach((section, sectionIndex) => {
+    saved[section] = (saved[section] ?? []).map((row: any, index: number) => ({
+      ...row, id: row.id ?? 10000 + sectionIndex * 100 + index,
+    }));
+    form[section] = (data[section] ?? []).map((row: any, index: number) => ({
+      ...pick(row, [...correctionFields[section], "entryKey", "activitySegments", "activityAllocations"]),
+      persistedId: row.persistedId ?? saved[section][index]?.id,
+    }));
+  });
+  return planDprCorrection(saved, form);
+}
 
 vi.mock("../server/storage", () => {
   const base: Record<string, ReturnType<typeof vi.fn>> = {
@@ -374,7 +403,7 @@ describe("06X-HF6 version-route closure", () => {
     updateEquipmentUsageSpy.mockResolvedValue({ ...OPEN_USAGE, status: "closed", closedByDprId: 400 });
   });
 
-  it("B: passes linked equipment and closure audit into the atomic version transaction", async () => {
+  it("B: rejects adding a later dispatch through unreviewed submitted versioning", async () => {
     const response = await request(app)
       .post("/api/dprs/266/version")
       .send({
@@ -411,27 +440,12 @@ describe("06X-HF6 version-route closure", () => {
         },
       });
 
-    expect(response.status).toBe(201);
-    expect(createVersionDprSpy).toHaveBeenCalledTimes(1);
-    expect(createVersionDprSpy).toHaveBeenCalledWith(
-      266,
-      expect.objectContaining({
-        equipment: [expect.objectContaining({
-          plantUsageId: 161,
-          closingReading: 2521.6,
-          endTime: "17:00",
-        })],
-      }),
-      "admin",
-      "2026-08-24 19:30:00",
-      expect.objectContaining({ userId: 42 }),
-      null,
-    );
-    expect(updateEquipmentUsageSpy).not.toHaveBeenCalled();
-    expect(createEquipmentUsageSpy).not.toHaveBeenCalled();
+    const original = await getDprSpy.mock.results[0].value;
+    const plan = currentCorrectionAttempt(original, response);
+    expect(plan.blocked).toContainEqual(expect.objectContaining({ section: "equipment", field: "rows" }));
   });
 
-  it("parses a normalized restored legacy payload without weakening version guards", async () => {
+  it("normalizes restored legacy fields without bypassing submitted correction review", async () => {
     const original = {
       id: 26601,
       date: DATE,
@@ -521,9 +535,8 @@ describe("06X-HF6 version-route closure", () => {
     const raw = await request(app)
       .post("/api/dprs/26601/version")
       .send({ data: legacyData });
-    expect(raw.status).toBe(400);
-    expect(raw.body.field).toBe("data.progress.0.uomOverrideReason");
-    expect(raw.body.message).toContain("Expected string");
+    expect(raw.status).toBe(409);
+    expect(raw.body.code).toBe("DPR_CORRECTION_REVIEW_REQUIRED");
     expect(createVersionDprSpy).not.toHaveBeenCalled();
 
     getDprSpy.mockReset().mockResolvedValueOnce(original);
@@ -536,13 +549,14 @@ describe("06X-HF6 version-route closure", () => {
     const normalized = await request(app)
       .post("/api/dprs/26601/version")
       .send({ data: normalizedData });
-    expect(normalized.status).toBe(201);
-    expect(createVersionDprSpy).toHaveBeenCalledTimes(1);
-    expect(createVersionDprSpy.mock.calls[0][1].progress[0]).not.toHaveProperty("uomOverrideReason");
-    expect(createVersionDprSpy.mock.calls[0][1].equipment[0]).not.toHaveProperty("activitySegments");
+    expect(normalized.status).toBe(409);
+    expect(normalized.body.code).toBe("DPR_CORRECTION_REVIEW_REQUIRED");
+    expect(createVersionDprSpy).not.toHaveBeenCalled();
+    expect(normalizedData.progress[0]).not.toHaveProperty("uomOverrideReason");
+    expect(normalizedData.equipment[0]).not.toHaveProperty("activitySegments");
   });
 
-  it("admin saves activity, equipment, labour, and header edits while retaining lifecycle and review facts", async () => {
+  it("plans existing admin edits but blocks new labour evidence and preserves source review facts", async () => {
     const original = {
       id: 267,
       date: DATE,
@@ -633,12 +647,9 @@ describe("06X-HF6 version-route closure", () => {
         },
       });
 
-    expect(response.status).toBe(201);
-    const [originalId, edited, actor, timestamp, audit] = createVersionDprSpy.mock.calls[0];
-    expect(originalId).toBe(267);
-    expect(actor).toBe("admin");
-    expect(timestamp).toBe("2026-08-24 19:31:00");
-    expect(audit).toEqual(expect.objectContaining({ userId: 42 }));
+    const plan = currentCorrectionAttempt(original, response);
+    const edited = plan.candidate;
+    expect(plan.blocked).toContainEqual(expect.objectContaining({ section: "labour", field: "rows" }));
     expect(edited.remarks).toBe("ADMIN HEADER EDIT");
     expect(edited.progress[0]).toEqual(expect.objectContaining({
       activity: "NEW ACTIVITY",
@@ -653,16 +664,12 @@ describe("06X-HF6 version-route closure", () => {
       equipmentId: 47,
       plantUsageId: 161,
     }));
-    expect(edited.labour[0]).toEqual(expect.objectContaining({
-      count: 6,
-      task: "NEW TASK",
-      contractor: "NEW CONTRACTOR",
-    }));
+    expect(edited.labour).toEqual([]);
     expect(original.remarks).toBe("ORIGINAL HEADER");
     expect(original.equipment[0].plantUsageId).toBe(161);
   });
 
-  it("rejects a non-admin linked opening-meter correction before version persistence", async () => {
+  it("blocks unreviewed non-admin readings and flags closing below corrected opening", async () => {
     authState.isAdmin = false;
     authState.isOwner = true;
     const original = {
@@ -718,12 +725,11 @@ describe("06X-HF6 version-route closure", () => {
         },
       });
 
-    expect(response.status).toBe(403);
-    expect(response.body.error).toBe("LINKED_EQUIPMENT_ADMIN_EDIT_REQUIRED");
-    expect(createVersionDprSpy).not.toHaveBeenCalled();
+    const plan = currentCorrectionAttempt(original, response);
+    expect(plan.blocked).toContainEqual(expect.objectContaining({ section: "equipment", field: "closingReading" }));
   });
 
-  it("lets an authenticated admin correct an unowned closed usage in the atomic version audit", async () => {
+  it("keeps unowned closed usage identity while rejecting invalid readings and unreviewed writes", async () => {
     const original = {
       id: 2681,
       date: DATE,
@@ -784,13 +790,12 @@ describe("06X-HF6 version-route closure", () => {
         },
       });
 
-    expect(response.status).toBe(201);
-    expect(createVersionDprSpy.mock.calls[0][4]).toEqual(expect.objectContaining({
-      allowUnownedLinkedCorrectionIds: [171],
-    }));
+    const plan = currentCorrectionAttempt(original, response);
+    expect(plan.blocked).toContainEqual(expect.objectContaining({ section: "equipment", field: "closingReading" }));
+    expect(plan.candidate.equipment[0].plantUsageId).toBe(171);
   });
 
-  it("passes only materially changed unowned usage ids to canonical finalization", async () => {
+  it("keeps unchanged linked usage alongside the corrected row without canonical finalization", async () => {
     const original = {
       id: 26811,
       date: DATE,
@@ -854,13 +859,12 @@ describe("06X-HF6 version-route closure", () => {
         },
       });
 
-    expect(response.status).toBe(201);
-    expect(createVersionDprSpy.mock.calls[0][4]).toEqual(expect.objectContaining({
-      allowUnownedLinkedCorrectionIds: [171],
-    }));
+    const plan = currentCorrectionAttempt(original, response);
+    expect(plan.blocked).toContainEqual(expect.objectContaining({ section: "equipment", field: "closingReading" }));
+    expect(plan.candidate.equipment.map((row: any) => row.plantUsageId)).toEqual(original.equipment.map(row => row.plantUsageId));
   });
 
-  it("allows an administrator to correct a moved report copy without mutating its canonical predecessor", async () => {
+  it("requires review for a moved report copy while retaining its predecessor reference", async () => {
     const original = {
       id: 2682,
       date: DATE,
@@ -921,13 +925,12 @@ describe("06X-HF6 version-route closure", () => {
         },
       });
 
-    expect(response.status).toBe(201);
-    expect(createVersionDprSpy.mock.calls[0][4]).toEqual(expect.objectContaining({
-      allowMovedSourceCorrection: true,
-    }));
+    const plan = currentCorrectionAttempt(original, response);
+    expect(plan.candidate.equipment[0].plantUsageId).toBe(172);
+    expect(plan.changes.every(change => change.section !== "equipment" || change.field !== "plantUsageId")).toBe(true);
   });
 
-  it("enforces administrator-only physical length overrides with a persisted reason", async () => {
+  it("requires review and approval for physical length overrides even with an admin reason", async () => {
     authState.isAdmin = false;
     authState.isOwner = true;
     const original = {
@@ -964,10 +967,10 @@ describe("06X-HF6 version-route closure", () => {
       sitePurchases: [],
       structureItems: [],
     };
+    Object.assign(original, { progress: [{ ...payload.progress[0], id: 831, length: 100 }] });
     const blocked = await request(app).post("/api/dprs/2683/version").send({ data: payload });
-    expect(blocked.status).toBe(400);
-    expect(blocked.body.code).toBe("DPR_GEOMETRY_INVALID");
-    expect(createVersionDprSpy).not.toHaveBeenCalled();
+    const unreviewed = currentCorrectionAttempt(original, blocked);
+    expect(unreviewed.changes).toContainEqual(expect.objectContaining({ field: "length", requiresApproval: true }));
 
     authState.isAdmin = true;
     getDprSpy.mockReset().mockResolvedValueOnce(original);
@@ -978,14 +981,13 @@ describe("06X-HF6 version-route closure", () => {
         progress: [{ ...payload.progress[0], lengthOverrideReason: "survey measured curve" }],
       },
     });
-    expect(allowed.status).toBe(201);
-    expect(createVersionDprSpy.mock.calls[0][1].progress[0]).toEqual(expect.objectContaining({
-      length: 999,
-      lengthOverrideReason: "survey measured curve",
+    const proposed = currentCorrectionAttempt(original, allowed);
+    expect(proposed.changes).toContainEqual(expect.objectContaining({
+      field: "lengthOverrideReason", newValue: "survey measured curve", requiresApproval: true,
     }));
   });
 
-  it("rejects an explicit length when chainage is invalid unless an admin documents the correction", async () => {
+  it("requires reviewed approval for explicit length and override reasons with invalid chainage", async () => {
     authState.isAdmin = false;
     authState.isOwner = true;
     const original = {
@@ -1023,10 +1025,10 @@ describe("06X-HF6 version-route closure", () => {
       structureItems: [],
     };
     getDprSpy.mockReset().mockResolvedValueOnce(original);
+    Object.assign(original, { progress: [{ ...payload.progress[0], id: 832, length: null }] });
     const blocked = await request(app).post("/api/dprs/2684/version").send({ data: payload });
-    expect(blocked.status).toBe(400);
-    expect(blocked.body.code).toBe("DPR_GEOMETRY_INVALID");
-    expect(createVersionDprSpy).not.toHaveBeenCalled();
+    const unreviewed = currentCorrectionAttempt(original, blocked);
+    expect(unreviewed.changes).toContainEqual(expect.objectContaining({ field: "length", requiresApproval: true }));
 
     authState.isAdmin = true;
     getDprSpy.mockReset().mockResolvedValueOnce(original);
@@ -1037,14 +1039,13 @@ describe("06X-HF6 version-route closure", () => {
         progress: [{ ...payload.progress[0], lengthOverrideReason: "survey measured curve" }],
       },
     });
-    expect(allowed.status).toBe(201);
-    expect(createVersionDprSpy.mock.calls[0][1].progress[0]).toEqual(expect.objectContaining({
-      length: 42,
-      lengthOverrideReason: "survey measured curve",
+    const proposed = currentCorrectionAttempt(original, allowed);
+    expect(proposed.changes).toContainEqual(expect.objectContaining({
+      field: "lengthOverrideReason", newValue: "survey measured curve", requiresApproval: true,
     }));
   });
 
-  it("resets approval facts when a validated progress row changes its chainage", async () => {
+  it("plans chainage changes without trusting incoming approval facts or writing an unreviewed version", async () => {
     const original = {
       id: 26841,
       date: DATE,
@@ -1105,12 +1106,11 @@ describe("06X-HF6 version-route closure", () => {
         },
       });
 
-    expect(response.status).toBe(201);
-    expect(createVersionDprSpy.mock.calls[0][1].progress[0]).toEqual(expect.objectContaining({
-      chainageReviewStatus: null,
-      scopeWarningType: null,
-      scopeOverrideReason: null,
-    }));
+    const plan = currentCorrectionAttempt(original, response);
+    expect(plan.changes).toContainEqual(expect.objectContaining({ field: "chainageTo" }));
+    expect(plan.candidate.progress[0].scopeOverrideReason).toBe(original.progress[0].scopeOverrideReason);
+    // Actual review reset after semantic validation is covered by the
+    // captured production validator in dpr07VersionValidation.
   });
 
   it("rejects duplicate and conflicting progress identity claims before preserving facts", async () => {
@@ -1149,9 +1149,8 @@ describe("06X-HF6 version-route closure", () => {
       const response = await request(app)
         .post("/api/dprs/26842/version")
         .send({ data: { ...baseData, progress } });
-      expect(response.status).toBe(400);
-      expect(response.body.code).toBe("DPR_PROGRESS_IDENTITY_INVALID");
-      expect(createVersionDprSpy).not.toHaveBeenCalled();
+      const plan = currentCorrectionAttempt(original, response);
+      expect(plan.blocked.some(block => ["rows", "persistedId", "entryKey"].includes(block.field))).toBe(true);
     }
   });
 
@@ -1217,8 +1216,9 @@ describe("06X-HF6 version-route closure", () => {
         },
       });
 
-    expect(response.status).toBe(201);
-    expect(createVersionDprSpy.mock.calls[0][1].progress[0].chainageReviewStatus).toBe("approved");
+    const plan = currentCorrectionAttempt(original, response);
+    expect(plan.blocked).toEqual([]);
+    expect(plan.candidate.progress[0].chainageReviewStatus).toBe("approved");
   });
 
   it("preserves an unchanged legacy length when old chainage fields are absent", async () => {
@@ -1268,14 +1268,15 @@ describe("06X-HF6 version-route closure", () => {
         },
       });
 
-    expect(response.status).toBe(201);
-    expect(createVersionDprSpy.mock.calls[0][1].progress[0]).toEqual(expect.objectContaining({
+    const plan = currentCorrectionAttempt(original, response);
+    expect(plan.blocked).toEqual([]);
+    expect(plan.candidate.progress[0]).toEqual(expect.objectContaining({
       length: 42,
-      persistedId: 55,
+      id: 55,
     }));
   });
 
-  it("normalizes a physical UOM alias instead of rejecting an administrator save", async () => {
+  it("does not allow a physical UOM alias to add new submitted progress evidence", async () => {
     getBoqItemSpy.mockResolvedValue({
       id: 77,
       unit: "Sq.m",
@@ -1324,14 +1325,14 @@ describe("06X-HF6 version-route closure", () => {
         },
       });
 
-    expect(response.status).toBe(201);
-    expect(createVersionDprSpy.mock.calls[0][1].progress[0].uom).toBe("SQM");
+    const plan = currentCorrectionAttempt(original, response);
+    expect(plan.blocked).toContainEqual(expect.objectContaining({ section: "progress", field: "rows" }));
   });
 
   it.each([
     { sourceUom: "CUM", expectedStatus: 400, expectedQuantity: null },
     { sourceUom: "Kg", expectedStatus: 201, expectedQuantity: 0.01 },
-  ])("normalizes supported $sourceUom input without reusing a BOQ credit factor", async ({ sourceUom, expectedStatus, expectedQuantity }) => {
+  ])("blocks new $sourceUom evidence through submitted correction regardless of BOQ credit factor", async ({ sourceUom }) => {
     getBoqItemSpy.mockResolvedValue({
       id: 78,
       unit: "MT",
@@ -1377,21 +1378,11 @@ describe("06X-HF6 version-route closure", () => {
         },
       });
 
-    expect(response.status).toBe(expectedStatus);
-    if (expectedStatus === 400) {
-      // MT_manual + an unrelated saved credit factor is not a density profile.
-      expect(response.body.message).toMatch(/supported input-unit normalization/);
-      expect(createVersionDprSpy).not.toHaveBeenCalled();
-      return;
-    }
-    expect(createVersionDprSpy.mock.calls[0][1].progress[0]).toEqual(expect.objectContaining({
-      uom: "MT",
-      quantity: expectedQuantity,
-    }));
-    expect(createVersionDprSpy.mock.calls[0][1].progress[0].quantitySourceNote).toContain("Physical input normalization Kg -> MT (x0.001)");
+    const plan = currentCorrectionAttempt(original, response);
+    expect(plan.blocked).toContainEqual(expect.objectContaining({ section: "progress", field: "rows" }));
   });
 
-  it("allows an admin to remove a linked DPR row without reassigning its lifecycle identity", async () => {
+  it("blocks direct removal of submitted linked equipment without lifecycle writes", async () => {
     const original = {
       id: 269,
       date: DATE,
@@ -1441,8 +1432,10 @@ describe("06X-HF6 version-route closure", () => {
         },
       });
 
-    expect(response.status).toBe(201);
-    expect(createVersionDprSpy).toHaveBeenCalledTimes(1);
-    expect(createVersionDprSpy.mock.calls[0][1].equipment).toEqual([]);
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe("DPR_CORRECTION_REVIEW_REQUIRED");
+    expect(createVersionDprSpy).not.toHaveBeenCalled();
+    expect(updateEquipmentUsageSpy).not.toHaveBeenCalled();
+    expect(createEquipmentUsageSpy).not.toHaveBeenCalled();
   });
 });

@@ -62,3 +62,15 @@ intercepted fixture, producing a misleading no-results UI during a combobox chec
 
 **How to apply:** Clearly disclose browser fixtures as UI-only evidence, never proof
 of real persistence; do not seed or alter Masters when those writes are prohibited.
+
+Pair signed-in UI checks with the permission scope of that particular route,
+not just a successful shared API response.
+
+**Why:** An ordinary verification account could read shared DPR data through
+management access while the field-specific DPR dashboard correctly denied
+access. Treating the API's success as permission to view every DPR route caused
+a misleading browser readiness expectation.
+
+**How to apply:** Verify the authorized screen or document the actual denial.
+Do not expand verification-account grants merely to make a browser check pass;
+keep live edit/save acceptance separate from read-only screen verification.
