@@ -2,6 +2,8 @@ import { buildSavedEquipmentHireBillOutput, EquipmentHireDailyTable, exportEquip
 import { EquipmentHirePeriodTotals } from "./DraftEquipmentHireCalendar";
 import HireActivityBreakdownCalendar from "./HireActivityBreakdownCalendar";
 import { Button } from "@/components/ui/button";
+import HireMonthlyReview from "./HireMonthlyReview";
+import { projectHireReview } from "@shared/vendorBillLayout";
 
 const show = (v: unknown) => v == null ? "Not established" : String(v);
 
@@ -29,6 +31,7 @@ export default function SavedBillCalendars({ bill, canExport = false }: { bill: 
       ];
       const name = statement.equipmentName || snapshot.equipmentName || `Equipment #${statement.equipmentId}`;
       return <div className="space-y-3" key={statement.id || index}>
+        <HireMonthlyReview review={projectHireReview(statement, bill)} />
         <p className="text-sm font-semibold">{name} · {statement.billingBasis} · Saved rate {show(statement.rate)}</p>
         <details className="rounded-lg border p-3">
         <summary className="cursor-pointer font-semibold text-sm">Detailed recorded evidence · {name}</summary>
@@ -65,6 +68,10 @@ export default function SavedBillCalendars({ bill, canExport = false }: { bill: 
       </details></div>;
     })}
     {Array.from(legacyGroups, ([key, items]) => <div className="space-y-3" key={key}>
+      <HireMonthlyReview review={projectHireReview({
+        equipmentName: items[0].description || "Equipment", equipmentId: items[0].equipmentId,
+        periodFrom: bill.periodFrom, periodTo: bill.periodTo,
+      }, bill)} />
       <details className="rounded-lg border p-3">
       <summary className="cursor-pointer font-semibold text-sm">Available saved bill lines · {items[0].description || "Equipment"}</summary>
       <div className="space-y-2 pt-3">

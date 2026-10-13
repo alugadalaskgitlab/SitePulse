@@ -1,5 +1,7 @@
 import { billReviewAmounts, summarizeBillReview, vendorStatementBills, previousBillingSummary } from "@shared/vendorBillReview";
 import { billPaymentPosition } from "@shared/vendorBillFinancialReport";
+import HireMonthlyReview from "./HireMonthlyReview";
+import { projectHireReview } from "@shared/vendorBillLayout";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
@@ -59,6 +61,8 @@ export function VendorRunningStatement({ bill, bills, totals, loading, error }: 
   const display = (value: number | null | undefined) => value == null ? "—" : money(value);
   return <section className="rounded-lg border p-3 space-y-3" data-testid="vendor-running-statement">
     <h2 className="text-sm font-semibold">Previous Billing Summary</h2>
+    {(bill.hireStatements || []).map((statement: any, index: number) =>
+      <HireMonthlyReview key={statement.id || index} review={projectHireReview(statement, bill)} calendars={false} />)}
     <dl className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
       {[
         ["Total Gross Bills up to Previous", display(previous?.gross)],

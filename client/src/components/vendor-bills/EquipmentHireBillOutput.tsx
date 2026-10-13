@@ -629,6 +629,7 @@ export function buildSavedEquipmentHireBillOutput(bill: any): { data: EquipmentH
   const paid = bill.amountPaid != null && bill.amountPaid !== "" && Number.isFinite(Number(bill.amountPaid))
     ? Number(bill.amountPaid) : null;
   const data: EquipmentHireExportData = {
+    hireReview: bill.hireReview || projectHireReview(statement, bill),
     billNo: bill.billNo, vendorName: bill.vendorName, equipmentName: statement.equipmentName || snapshot.equipmentName || `Equipment #${equipmentId}`, projectSite: snapshot.projectSite,
     periodFrom, periodTo, hireBasis: String(statement.billingBasis || snapshot.terms?.billingBasis || "Hire").toUpperCase(),
     rate: Number(statement.rate ?? snapshot.terms?.rate ?? 0), grossHire, breakdownDeduction, hsdRecovery,

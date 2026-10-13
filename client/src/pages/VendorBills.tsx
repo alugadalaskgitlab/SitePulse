@@ -43,6 +43,7 @@ import {
 } from "@/components/vendor-bills/EquipmentHireBillOutput";
 import DraftEquipmentHireCalendar, { SavedEquipmentCalendarExport } from "@/components/vendor-bills/DraftEquipmentHireCalendar";
 import SavedBillCalendars from "@/components/vendor-bills/SavedBillCalendars";
+import { projectHireReview } from "@shared/vendorBillLayout";
 import { VendorBillFinancialSummary, VendorRunningStatement } from "@/components/vendor-bills/VendorBillReview";
 import HireActivityBreakdownCalendar, { hireActivityBreakdownSheetRows } from "@/components/vendor-bills/HireActivityBreakdownCalendar";
 import WholeBillExportButtons from "@/components/vendor-bills/WholeBillExportButtons";
@@ -4342,6 +4343,7 @@ export default function VendorBills() {
     const savedHireOutputs = ((bill as any).hireStatements || []).map((statement: any, index: number) =>
       buildSavedEquipmentHireBillOutput({
         ...bill, hireStatements: [statement],
+        hireReview: projectHireReview(statement, bill),
         // Bill-wide net must not be repeated once for each statement.
         ...(index > 0 ? { netPayableAmount: undefined } : {}),
       }));

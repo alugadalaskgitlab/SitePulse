@@ -54,7 +54,7 @@ export function filterFinancialBills<T extends Record<string, any>>(bills: T[], 
       (Array.isArray(bill.vendorAliasNames) && bill.vendorAliasNames.some((name: unknown) => String(name).trim().toUpperCase() === selectedVendor))
     ))
     .map(bill => Number(bill.vendorId))) : new Set<number>();
-  const selectedVendorId = matchingVendorIds.size === 1 ? [...matchingVendorIds][0] : null;
+  const selectedVendorId = matchingVendorIds.size === 1 ? Array.from(matchingVendorIds)[0] : null;
 
   return bills.filter(bill => {
     const rawFrom = bill.periodFrom == null || bill.periodFrom === "" ? null : String(bill.periodFrom).slice(0, 10);

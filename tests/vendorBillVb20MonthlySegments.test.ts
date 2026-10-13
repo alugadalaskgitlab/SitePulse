@@ -235,7 +235,10 @@ describe("VB-20 monthly hire calendar segments", () => {
     expect(persisted.map(row => row.grossAmount)).toEqual([60_000, 40_000]);
 
     await expect(reconcile(103, "2026-08-01", "2026-08-31", "2026-08-01", "2026-08-31"))
-      .rejects.toMatchObject({ code: "CONFLICT", message: "This equipment already has an overlapping hire statement" });
+      .rejects.toMatchObject({
+        code: "CONFLICT",
+        message: expect.stringContaining("This equipment already has an overlapping hire statement: an orphaned hire record for 1-Aug-2026 to 31-Aug-2026"),
+      });
     expect(persisted).toHaveLength(2);
 
     // Earlier VB-20 clients clipped first/last segments to Master hire dates.

@@ -4567,9 +4567,8 @@ export async function registerRoutes(
        const equipmentStatements = (await storage.getHireStatements()).filter(s => s.equipmentId === input.equipmentId);
        const old = equipmentStatements.find(s => s.periodFrom === input.billingFrom && s.periodTo === input.billingTo);
       if (old) return res.json(await hireResponse(old, equipment));
-       if (equipmentStatements.some(s => s.periodFrom <= input.billingTo && s.periodTo >= input.billingFrom)) {
-         return res.status(409).json({ message: "This equipment already has an overlapping hire statement" });
-       }
+      // The storage transaction owns the authoritative overlap guard so its
+      // conflict response can identify the blocking bill (or orphaned record).
       const snapshotInput = {
         id: 0,
         equipmentId: equipment.id,

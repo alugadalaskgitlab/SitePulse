@@ -72,7 +72,10 @@ describe("selective pre-tipper billing recovery", () => {
       dailyDecisions: [{ date: "2026-10-01", decision: "half_day", reason: "Half day worked" }] } as any;
     const updated = await storage.updateVendorBill(bill.id, payload);
     expect(updated.items[0]).toMatchObject({ qty: .5, amount: 1000 });
-    await expect(storage.createVendorBill(dailyPayload())).rejects.toThrow(/overlapping hire statement/);
+    await expect(storage.createVendorBill(dailyPayload())).rejects.toMatchObject({
+      code: "CONFLICT",
+      message: expect.stringContaining(`${bill.billNo} (draft), overlapping 1-Oct-2026 to 2-Oct-2026`),
+    });
   });
 
   it("blocks ordinary equipment rows from rebilling frozen hire days", async () => {

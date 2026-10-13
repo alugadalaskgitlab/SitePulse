@@ -41,6 +41,24 @@ describe("one saved-bill financial selection", () => {
     expect(filterFinancialBills(rows, filters, sites).map(b => b.id)).toEqual([1]);
     expect(filterFinancialBills(rows, { ...filters, scope: "all" }, sites).map(b => b.id)).toEqual([1, 8]);
   });
+  it("matches overlapping billed periods and falls back to bill date only when no period is recorded", () => {
+    const rows = [
+      bill(1, { billDate: "2026-10-12", periodFrom: "2026-09-01", periodTo: "2026-09-30" }),
+      bill(2, { billDate: "2026-08-19", periodFrom: "2026-07-19", periodTo: "2026-07-31" }),
+      bill(3, { billDate: "2026-08-15", periodFrom: null, periodTo: null }),
+    ];
+    expect(filterFinancialBills(rows, { dateFrom: "2026-08-01", dateTo: "2026-09-30" }).map(row => row.id)).toEqual([1, 3]);
+  });
+  it("matches a linked vendor across aliases but keeps unlinked names exact", () => {
+    const rows = [
+      bill(1, { vendorId: 7, vendorName: "ACME LIMITED", vendorAliasNames: ["ACME LIMITED", "ACME LTD"] }),
+      bill(2, { vendorId: 7, vendorName: "A.C.M.E.", vendorAliasNames: ["ACME LIMITED", "ACME LTD"] }),
+      bill(3, { vendorId: null, vendorName: "ACME LTD" }),
+      bill(4, { vendorId: null, vendorName: "ACME LIMITED" }),
+      bill(5, { vendorId: 8, vendorName: "OTHER", vendorAliasNames: ["OTHER"] }),
+    ];
+    expect(filterFinancialBills(rows, { vendor: "ACME LTD" }).map(row => row.id)).toEqual([1, 2, 3]);
+  });
   it("matches bill-detail math with GST, deductions, additional adjustments and partial payment", () => {
     const row = bill(1, { gstRateEquipment: 18, tdsRate: 2, adjustmentAmount: -100,
       additionalAdjustments: [{ label: "Deduction", amount: -50 }, { label: "Credit", amount: 25 }], amountPaid: 300 });

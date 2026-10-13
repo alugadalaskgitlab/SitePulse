@@ -22,6 +22,7 @@ describe("saved hire terms in existing vendor-facing output (synthetic fixtures)
     const output = buildSavedEquipmentHireBillOutput(bill);
     expect(output?.data).toMatchObject({ hireBasis: "DAILY", rate: 5000, grossHire: 42500,
       periodFrom: "2026-06-02", periodTo: "2026-06-12", netPayable: 42500 });
+    expect(output?.data.hireReview?.months.map(month => month.label)).toEqual(["June 2026"]);
     expect(JSON.stringify(bill)).toBe(before);
   });
   it("falls back to frozen snapshot terms for legacy statement fields, never live defaults", () => {

@@ -2520,6 +2520,26 @@ export class PurchaseIndentRouteCorrectionConflictError extends Error {
   }
 }
 
+function hireOverlapConflict(statement: any, parentBill: any, requestedFrom: string, requestedTo: string) {
+  const statementFrom = String(statement.periodFrom).slice(0, 10);
+  const statementTo = String(statement.periodTo).slice(0, 10);
+  const overlapFrom = statementFrom > requestedFrom ? statementFrom : requestedFrom;
+  const overlapTo = statementTo < requestedTo ? statementTo : requestedTo;
+  const readableDate = (value: string) => {
+    const [year, month, day] = value.split("-");
+    const monthName = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(month) - 1];
+    return monthName ? `${Number(day)}-${monthName}-${year}` : value;
+  };
+  const range = `${readableDate(overlapFrom)} to ${readableDate(overlapTo)}`;
+  const blocker = parentBill
+    ? `${parentBill.billNo || `bill #${parentBill.id}`} (${parentBill.status || "status not recorded"}), overlapping ${range}`
+    : `an orphaned hire record for ${range}`;
+  return Object.assign(
+    new Error(`This equipment already has an overlapping hire statement: ${blocker}; review the existing bill and choose an unbilled period.`),
+    { code: "CONFLICT" },
+  );
+}
+
 export class DatabaseStorage implements IStorage {
   /** Acquire sorted item locks before creating an application-owned reference. */
   async _lockPiItemsWithinTx(tx: any, ids: number[], indentId?: number): Promise<PurchaseIndentItem[]> {
@@ -17455,7 +17475,7 @@ export class DatabaseStorage implements IStorage {
           names.add(alias.alias);
         }
       }
-      const relatedCanonicals = [...names];
+      const relatedCanonicals = Array.from(names);
       for (const alias of aliases) {
         if (relatedCanonicals.includes(alias.canonicalName)) names.add(alias.alias);
       }
@@ -17492,7 +17512,7 @@ export class DatabaseStorage implements IStorage {
           bill.vendorAliasNames.some(name => name === selected)
         ))
         .map(bill => Number(bill.vendorId)));
-      const linkedId = linkedIds.size === 1 ? [...linkedIds][0] : null;
+      const linkedId = linkedIds.size === 1 ? Array.from(linkedIds)[0] : null;
       result = result.filter(bill => {
         const exactName = bill.vendorName.toUpperCase().trim() === selected;
         return linkedId == null ? exactName
@@ -17615,7 +17635,11 @@ export class DatabaseStorage implements IStorage {
       if (!statement) {
         statement = (await tx.select().from(hireStatements).where(and(eq(hireStatements.equipmentId, group.equipmentId),
           eq(hireStatements.periodFrom, group.periodFrom), eq(hireStatements.periodTo, group.periodTo))).limit(1))[0];
-        if (statement && statement.vendorBillId !== bill.id) throw Object.assign(new Error("This equipment already has an overlapping hire statement"), { code: "CONFLICT" });
+        if (statement && statement.vendorBillId !== bill.id) {
+          const [parentBill] = statement.vendorBillId == null ? [] :
+            await tx.select().from(vendorBills).where(eq(vendorBills.id, statement.vendorBillId)).limit(1);
+          throw hireOverlapConflict(statement, parentBill, group.periodFrom, group.periodTo);
+        }
       }
       // Existing saved groups keep their historical period shape. Only a new
       // automatic monthly group must be one of this bill's exact calendar
@@ -17648,12 +17672,16 @@ export class DatabaseStorage implements IStorage {
         }
       }
       if (statement && statement.status !== "draft") throw Object.assign(new Error("Approved or billed statement calculations are immutable"), { code: "CONFLICT" });
-      const [overlap] = await tx.select({ id: hireStatements.id }).from(hireStatements).where(and(
+      const [overlap] = await tx.select().from(hireStatements).where(and(
         eq(hireStatements.equipmentId, group.equipmentId), lte(hireStatements.periodFrom, group.periodTo),
         gte(hireStatements.periodTo, group.periodFrom),
         ...(statement ? [sql`${hireStatements.id} <> ${statement.id}`] : []),
       )).limit(1);
-      if (overlap) throw Object.assign(new Error("This equipment already has an overlapping hire statement"), { code: "CONFLICT" });
+      if (overlap) {
+        const [parentBill] = overlap.vendorBillId == null ? [] :
+          await tx.select().from(vendorBills).where(eq(vendorBills.id, overlap.vendorBillId)).limit(1);
+        throw hireOverlapConflict(overlap, parentBill, group.periodFrom, group.periodTo);
+      }
       if (group.basis !== "daily") {
         const billed = (await dailyHireBilledDays(tx, group.equipmentId, group.periodFrom, group.periodTo, bill.id))[0];
         if (billed) throw Object.assign(new Error(`Overlapping equipment charge on ${billed.billNo} (${billed.date}); review the existing bill and choose an unbilled period.`), { code: "CONFLICT" });
@@ -18023,7 +18051,9 @@ export class DatabaseStorage implements IStorage {
       )).limit(1);
       if (overlap) {
         if (overlap.periodFrom === data.periodFrom && overlap.periodTo === data.periodTo) return { statement: overlap, created: false };
-        throw Object.assign(new Error("This equipment already has an overlapping hire statement"), { code: "CONFLICT" });
+        const [parentBill] = overlap.vendorBillId == null ? [] :
+          await tx.select().from(vendorBills).where(eq(vendorBills.id, overlap.vendorBillId)).limit(1);
+        throw hireOverlapConflict(overlap, parentBill, data.periodFrom, data.periodTo);
       }
       const [statement] = await tx.insert(hireStatements).values(data).returning();
       return { statement, created: true };
