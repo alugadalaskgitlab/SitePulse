@@ -29,10 +29,13 @@ scoped startup/recovery result, not certification of the entire application.
 - A fresh publishing schema preview returned `hasDiff: false`, empty SQL and
   no warnings. No Production schema/data writes or publication were performed.
 
-**Remaining qualification:** the existing whole-project test workflow has an
-earlier failed run (125 failures across 39 files, with 13 unhandled errors).
-That run predates these changes and was not re-run or fully attributed here.
-Do not mistake the successful focused gate for a clean full-suite release.
+**Updated full-suite qualification:** see
+[publication-suite-verification.md](publication-suite-verification.md).
+The current full suite has 5,025 passing cases, 122 failing cases across 38
+failing files, five skipped cases and 13 unhandled errors. Every current failed
+case also fails in the pre-fix baseline; no new failures were detected, three
+were resolved and seven new reminder tests pass. This does not establish that
+every pre-existing failure is harmless or provide a clean full-suite release.
 External push delivery remains intentional; no guarantee of successful delivery
 to every provider/device is made. Normal user actions/authentication still write
 records; the guarantee being tested is startup and its automatic reminder.

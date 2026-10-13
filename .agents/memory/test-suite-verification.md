@@ -5,6 +5,17 @@ description: Avoid misleading full-suite comparisons and setup-related skips in 
 
 Use `--maxWorkers` without `--minWorkers` for bounded runs on Vitest 4.
 
+Route every PostgreSQL integration-test URL to a disposable native server for
+whole-suite comparisons; a schema-only development copy is sufficient.
+
+**Why:** Some tests that advertise rollback-only safety insert into public
+tables. Rolling back those inserts does not roll back PostgreSQL sequences.
+Leaving even one test URL pointed at an application database can change state.
+
+**How to apply:** Override process-local default, development and dedicated
+integration-test connection URLs together, and stop the disposable server
+after both current and baseline runs. Do not change workspace secrets.
+
 **Why:** The installed Vitest CLI rejects `--minWorkers` before collecting any tests.
 
 **How to apply:** Do not copy older Vitest worker flags into verification commands.

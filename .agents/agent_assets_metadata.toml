@@ -5995,3 +5995,17 @@ mtime_ms = 1791855600448
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/0e9b97e6-4ccc-4ea6-82c8-60fb0804705b/315dd7b2-b578-4dcd-8be0-c8c98e5ab1d7"
 storage_version_token = "1791855632831541"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "m4T02UfY-1_7DLBO7Lwtu"
+uri = "file://docs/publication-suite-verification.md"
+type = "text"
+title = "Full-suite verification and baseline comparison"
+description = "5,025 passing tests; all 122 failures reproduced before the latest fixes; zero new failures. Includes remaining risks and failed-file inventory."
+logical_id = "8ceb3f41-84f9-41af-803f-9b74e9a59662"
+content_hash = "sha256:4ff586f4186ef67c479be9df75657134f22c2df7951d8b24f0f15e601c35c432"
+size = 5419
+mtime_ms = 1791856663176
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8ceb3f41-84f9-41af-803f-9b74e9a59662/768a9b39-f226-4be8-9893-53acc18057af"
+storage_version_token = "1791856666087217"
+content_type = "text/markdown"
