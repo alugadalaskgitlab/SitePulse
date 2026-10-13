@@ -74,3 +74,14 @@ a misleading browser readiness expectation.
 **How to apply:** Verify the authorized screen or document the actual denial.
 Do not expand verification-account grants merely to make a browser check pass;
 keep live edit/save acceptance separate from read-only screen verification.
+
+Wait for the first-tab startup splash to finish before interacting with routed
+forms; a mounted control alone does not prove startup has settled.
+
+**Why:** Signed-in isolation checks could open and populate a bill form while
+the splash was still finishing. Its completion re-render reset local route
+state, making browser failures look like lost edits or missing controls.
+
+**How to apply:** Allow startup overlays and their completion re-render to
+settle before opening a form. Keep authentication and application behavior
+unchanged; correct the runner's readiness checks instead.

@@ -55,9 +55,57 @@ device removed and Chromium/profile cleaned up. Evidence is in
 is `scripts/verification/deployment-readiness-browser.mjs`; it consumes the
 existing secret only inside normal login and never logs credentials or cookies.
 
-**Automated suite and build gates pass.** Live signed-in DPR edit/save and billing
-save/payment/export acceptance were not exercised by this read-only check.
-This is not blanket deployment clearance or verification of the published app.
+**Automated suite and build gates pass.** The separate isolated check below
+extends acceptance to one material bill's save/edit path. DPR edit/save,
+billing approval/payment/export, other bill types and the published app remain
+outside this acceptance check. This is not blanket deployment clearance.
+
+## Isolated signed-in Vendor Bill save/edit verification
+
+**Passed.** A disposable sibling database was created on the development
+PostgreSQL host using a **schema-only** dump. No business rows were copied.
+The existing production build ran separately on port 5099 against that database;
+the running application was not repointed and workflow configuration was not
+changed.
+
+All fixtures were synthetic: one active site, one material-trip receipt and a
+new ordinary account with only Vendor Bills view/create/edit grants and access
+to that site. The account remained non-admin/non-owner, without permission
+management or all-sites access. Ordinary login returned HTTP 200 after approval
+of only that login's pending device inside the disposable database. An unused
+synthetic administrator satisfied the application's startup prerequisite; it
+was never used to sign in or perform the bill test.
+
+Through the real signed-in UI, the account selected the site, pulled the
+synthetic material receipt, entered a rate and saved a draft:
+
+| Check | Verified result |
+|---|---|
+| Create | HTTP 201; 2.5 MT × ₹100 = ₹250 persisted |
+| Reopen/edit | Saved bill opened through its detail screen and Edit action |
+| Update | HTTP 200; rate changed to ₹120 and total to ₹300 |
+| Persisted evidence | Updated note, original site and draft status retained |
+| Integrity | Exactly one bill and one source-linked item; original quantity retained |
+| Rendered readback | Updated detail screen showed ₹300 and the edited note |
+
+Direct database readback confirmed these values; this was not mocked API
+success or browser-only fixture interception. Storage assigned its normal bill
+number rather than retaining the suggested form number. No verify/approve/pay,
+delete or export action was taken.
+
+The temporary application and browser were stopped, the browser profile was
+removed, and database deletion was verified. A final catalogue check found
+**zero** remaining databases created by this bill-verification helper, including
+earlier diagnostic attempts. Shared development received no bill or permission
+writes; Production data/schema, Vendor Bills application behavior and
+publication settings were untouched. Nothing was published.
+
+The repeatable helper is `scripts/verification/vendor-bill-isolated.mjs`.
+Successful-run evidence is `/tmp/vendor-bill-isolated/result.json` and
+`/tmp/vendor-bill-isolated/edited-detail.jpg`; temporary evidence is not a durable
+artifact. The helper keeps generated passwords and session/device cookies in
+memory and excludes them from evidence. Its first-tab browser waits for the
+startup splash to finish before starting unsaved form interactions.
 
 ## Additional unchanged observation
 
