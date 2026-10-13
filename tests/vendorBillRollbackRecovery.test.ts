@@ -9,6 +9,10 @@ import { calculateHireGroup } from "../shared/hireBilling";
 import { hasFrozenTripDailyHire } from "../shared/vendorBillRecovery";
 import { statementChargesDate } from "../server/dailyHireBilledDays";
 import { buildSavedEquipmentHireBillOutput } from "../client/src/components/vendor-bills/EquipmentHireBillOutput";
+import { projectHireReview, hireReviewTable } from "../shared/vendorBillLayout";
+import SavedBillCalendars from "../client/src/components/vendor-bills/SavedBillCalendars";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 const holder = vi.hoisted(() => ({ db: null as any }));
 vi.mock("../server/db", () => ({ get db() { return holder.db; }, pool: {} }));
@@ -100,6 +104,54 @@ describe("selective pre-tipper billing recovery", () => {
     const reopened = await storage.getVendorBill(bill.id);
     expect(reopened.items[0]).toMatchObject({ rate: 90000, amount: 51000 });
     expect(reopened.hireStatements[0].calculationSnapshot.terms.hireStartDate).toBe("2026-05-15");
+  });
+
+  it("reopens a disposable two-month statement with reconciled rows and two Activity Calendars", async () => {
+    const terms = {
+      billingBasis: "monthly" as const, rate: 60000, monthlyDivisorType: "30" as const,
+      hireStartDate: "2026-08-20", hireEndDate: "2026-09-15", dieselResponsibility: "vendor",
+    };
+    const calc = calculateHireGroup({
+      terms, periodFrom: "2026-08-20", periodTo: "2026-09-15", activities: [], maintenance: [],
+    });
+    // Historical spanning statements remain readable, although new automatic
+    // bills save one statement per calendar-month segment.
+    await db.insert(schema.vendorBills).values({
+      id: 700, billNo: "SYNTHETIC-TWO-MONTH", billType: "equipment", vendorName: "SYNTHETIC OWNER",
+      billDate: "2026-09-15", periodFrom: "2026-08-20", periodTo: "2026-09-15",
+      status: "draft", totalAmount: calc.netAmount, netPayableAmount: calc.netAmount,
+    });
+    await db.insert(schema.hireStatements).values({
+      id: 700, equipmentId: 700, vendorBillId: 700, vendorName: "SYNTHETIC OWNER",
+      billingBasis: "monthly", rate: terms.rate, monthlyDivisorType: "30",
+      hireStartDate: terms.hireStartDate, hireEndDate: terms.hireEndDate,
+      periodFrom: "2026-08-20", periodTo: "2026-09-15", status: "draft",
+      quantity: calc.quantity, grossAmount: calc.grossAmount, deductionAmount: calc.deductionAmount,
+      netAmount: calc.netAmount, calculationSnapshot: { ...calc, terms },
+    });
+    await db.insert(schema.vendorBillItems).values({
+      billId: 700, hireStatementId: 700, equipmentId: 700, category: "equipment",
+      description: "Synthetic monthly hire", source: "hire_statement",
+      qty: calc.quantity, rate: terms.rate, amount: calc.netAmount,
+    });
+    const saved = await storage.getVendorBill(700);
+    const before = JSON.stringify(saved);
+    const review = projectHireReview(saved.hireStatements[0], saved);
+    expect(review.months.map(m => [m.label, m.from, m.to, m.daysBilled, m.gross])).toEqual([
+      ["August 2026", "2026-08-20", "2026-08-31", 12, 24000],
+      ["September 2026", "2026-09-01", "2026-09-15", 15, 30000],
+    ]);
+    expect(hireReviewTable(review)).toHaveLength(2);
+    expect(review.months.reduce((sum, month) => sum + month.gross!, 0)).toBe(Number(saved.totalAmount));
+    expect(Number(saved.totalAmount)).toBe(54000);
+    const html = renderToStaticMarkup(createElement(SavedBillCalendars, { bill: saved }));
+    expect(html.match(/Activity Calendar —/g)).toHaveLength(2);
+    expect(buildSavedEquipmentHireBillOutput(saved)?.data.hireReview?.months).toHaveLength(2);
+    expect(JSON.stringify(saved)).toBe(before);
+
+    const mismatch = projectHireReview({ ...saved.hireStatements[0], grossAmount: 54001 }, saved);
+    expect(mismatch.months.every(m => m.gross === null && m.daysBilled === null)).toBe(true);
+    expect(mismatch.gross).toBe(54001);
   });
 
   it("keeps new groups on their Master basis", async () => {

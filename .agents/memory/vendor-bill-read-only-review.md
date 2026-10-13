@@ -20,3 +20,9 @@ The approved bill presentation uses one expandable calendar and billing row per 
 **Why:** The user explicitly approved the compact single-month and multi-month references and prohibited further redesign or changes to commercial calculations.
 
 **How to apply:** Keep Worked Days distinct from commercially payable Days Billed; absent operational evidence is unknown, never inferred idle. Preserve frozen totals when a legacy monthly split cannot be established, and disclose missing allocation rather than silently apportioning it.
+
+The user bills month by month. Multi-month hire billing is an occasional exception that has not yet occurred in Production; its absence must not prevent verification.
+
+**Why:** The user explicitly requires synthetic multi-month checks without creating, altering, or publishing Production bills to manufacture an example.
+
+**How to apply:** Persist synthetic spanning hire bills only in a disposable development/test database, verify monthly rows and Activity Calendars against stored totals, and check real single-month bills read-only.
