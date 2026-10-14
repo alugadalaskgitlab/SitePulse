@@ -1,0 +1,185 @@
+# INSTRUCTION — VB-VIEW-02
+
+**Bill Detail page: fix one placement fault and remove duplicated evidence.**
+
+Baseline commit: `dff7f55`.
+
+**This batch is display only.** No calculation, no stored value, no permission and no
+site scope changes. If any item appears to require a calculation change, stop and
+ask once rather than changing it.
+
+Do **not** start the DPR-status work (the previous batch's item 6). It stays held.
+
+---
+
+## Standing rules
+
+- No production data changes, migrations, automatic repairs or publishing without
+  our review.
+- No sequence resets. Do not call or re-expose `resetAllSequences`.
+- Preserve all existing users, credentials, site access, permissions and
+  administrator privileges.
+- Approved, verified and paid bills must not change value. Frozen snapshots stay
+  frozen and are never re-derived on read.
+- Report against the written benchmark: **5,160 passed · 3 skipped · 0 failed**
+  (`npm test`, 386 files, opt-in flags `LABOUR01_PG_TEST` and
+  `VB23B_BROWSER_FIXTURE` **not** set). State which flags were set in your run.
+
+---
+
+## Item 1 — The monthly table is under the wrong heading, and renders twice
+
+**Problem.** `client/src/components/vendor-bills/VendorBillReview.tsx` renders the
+heading `Previous Billing Summary` and then, immediately beneath it, the **current
+bill's** `HireMonthlyReview`. The heading describes the vendor's account *before*
+this bill; the content under it is *this* bill. On screen the two are
+indistinguishable.
+
+The same `HireMonthlyReview` is then rendered again further down the page by
+`client/src/components/vendor-bills/SavedBillCalendars.tsx`, so the user sees the
+identical Monthly Billing Summary table, and its identical footnotes, twice.
+
+**Required.**
+
+- Remove the `HireMonthlyReview` render from inside the `Previous Billing Summary`
+  section. That section must contain only previous-bill information.
+- Keep exactly **one** Monthly Billing Summary per equipment on the page, in the
+  Equipment Hire section where the rest of this bill's detail lives.
+- Do not delete `HireMonthlyReview`, `projectHireReview` or
+  `shared/vendorBillLayout.ts`. This is a placement fix.
+
+---
+
+## Item 2 — Previous billing should not appear when there is no previous billing
+
+**Problem.** When a vendor has no earlier bill, the section still renders a
+four-box grid reading `—  —  —  —`, plus a paragraph explaining what the dashes
+mean. Four empty boxes and an explanation of their emptiness.
+
+`shared/vendorBillReview.ts` already returns nulls throughout when there is no
+confirmed vendor or no earlier bill, so the condition is available.
+
+**Required.**
+
+- When there are **no previous bills**, replace the whole block with one short
+  line, in the same spirit as the existing unlinked-vendor line
+  (*"Unlinked/free-text vendor: previous balances are unavailable..."*) — for
+  example *"No previous bills for this vendor."* Do not render the empty grid and
+  do not render the explanatory paragraph.
+- When there **are** previous bills, show them: the bills with their dates, status
+  and net value, and the balance carried up to this bill. The existing
+  `View Previous Bills` expandable already lists them — surface the latest bill
+  and the carried balance without requiring the user to expand it.
+- Keep the scope caveat (confirmed vendor · permitted sites · excludes this and
+  later bills) but shorten it to one line, and show it only when there is
+  something to caveat.
+
+**`Last Payment` must be resolved, not left as it is.** It is currently
+hardcoded to `—` and can never display a value, because the application records
+the moment a status was set to paid, not a payment date or amount. Either remove
+the field, or label it honestly as not recorded. **Do not** substitute the
+paid-status timestamp for a payment date, and do not infer a last payment amount
+from a cumulative paid figure.
+
+---
+
+## Item 3 — The same days are shown three times; keep one table
+
+**Problem.** Three components present the same saved daily evidence for the same
+bill at three depths:
+
+1. **Activity Calendar** — inside `HireMonthlyReview`
+   (`client/src/components/vendor-bills/HireMonthlyReview.tsx`): date plus one
+   classification word, built from `snapshot.workingSheet`.
+2. **Historical working sheet** — `HistoricalHireWorkingSheet` in
+   `client/src/pages/VendorBills.tsx` (rendered at the per-statement block inside
+   the Equipment Hire Calculation Snapshot card): ten columns from the same
+   `snapshot.workingSheet`.
+3. **Detailed recorded evidence** — `SavedBillCalendars.tsx`, via
+   `EquipmentHireDailyTable`: the same days with readings, hours, trips, diesel,
+   consumption and status.
+
+None of these is previous-bill information. All three describe the bill on screen.
+
+**Required.** Keep **one** day-by-day table per equipment and remove the other two
+renders.
+
+**The one that remains must not lose information.** Before removing anything,
+compare the columns. The historical working sheet carries at least four things the
+detailed table does not: **expected diesel**, the **recorded decision** per day,
+**remarks**, and **movement references**. Carry those into the surviving table
+rather than dropping them.
+
+**Verify on a legacy bill specifically.** `Detailed recorded evidence` only renders
+its full table when `hasFrozenDailyRows` is true; otherwise it degrades to
+*"Complete frozen daily activity is unavailable for this legacy bill."* The
+historical working sheet reads `snapshot.workingSheet` directly and can still show
+rows in that case. **Do not leave legacy bills with less detail than they have
+today.** If the surviving table cannot cover a legacy bill, say so and stop rather
+than removing the sheet that can.
+
+---
+
+## Item 4 — Cut the explanatory text, keep the one sentence that carries information
+
+**Remove** these, on screen and in the exports:
+
+- *"Days Billed follows the hire terms, not Worked Days. Gross is before
+  separately recorded deductions."*
+- *"Recorded evidence only. Missing activity is not Idle or Breakdown."*
+- The paragraph explaining what a dash means in the previous-billing grid (Item 2
+  removes the grid anyway when it is empty).
+
+**Keep, and make more prominent rather than less:**
+
+> *"September 2026: 11 dates require review."*
+
+This is not boilerplate. On the bill that prompted this batch the table reads
+**Days Billed 30, Worked Days 19, Idle 0, Breakdown 0** — nineteen days have
+recorded activity and eleven do not, inside a month that is being billed in full.
+That sentence is the application stating what it does not know, and it is the most
+useful line on the page. Keep its wording factual and keep the count exact. Do not
+soften it, and do not imply those days were idle or breakdown.
+
+Keep the *"Monthly allocation / payable day-equivalent is unavailable from saved
+evidence"* note, since it appears only when figures are genuinely blank and
+explains why the row is empty.
+
+---
+
+## What must not change
+
+- Every figure on every bill. `HLC/VB/2026/0058` net payable must remain
+  **₹1,07,600** and the Tractor-Ratnam September bill must remain **₹30,000** gross,
+  **30 Days Billed, 19 Worked Days**. State all of these before and after.
+- The blanking safeguard: when per-month figures do not reconcile to the stored
+  total within 0.02, every month's Days Billed and Gross still blanks.
+- The read-only property: projecting the review must not alter the saved bill. The
+  existing test asserting the bill is byte-identical after projection must still
+  pass.
+- Export contents, other than the removed sentences and the removed duplicate
+  table.
+
+---
+
+## Verification required
+
+Report in plain terms. No test-name inventories.
+
+1. Screenshots of the Bill Detail page before and after, for: a hire bill with no
+   previous bills, a hire bill **with** previous bills, and a **legacy** hire bill
+   whose frozen daily rows are incomplete.
+2. Confirmation that the Monthly Billing Summary now appears once, under a heading
+   that describes it, and that `Previous Billing Summary` contains only
+   previous-bill information.
+3. For the legacy bill: which day-by-day table survived, and a column-by-column
+   statement that nothing shown today has been lost.
+4. What you did with `Last Payment`, and confirmation that no paid-status
+   timestamp is being presented as a payment date.
+5. The before/after figures listed under **What must not change**.
+6. The full suite result against **5,160 / 3 / 0**, naming the flags set and any
+   new failure individually.
+
+Stop and ask once if any item cannot be done without breaking a rule above.
+
+Nothing is to be published. We will review and publish.
