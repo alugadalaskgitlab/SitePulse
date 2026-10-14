@@ -1,7 +1,11 @@
 import { monthlyGross, normalizeHireActivities, type HireTerms } from "./hireBilling";
 
 /** Display-only: never writes evidence or feeds a billing calculation. */
-export const MONTHLY_BILL_HEADERS = ["Sl. No.", "Bill Period", "Days Billed", "Worked Days", "Idle Days (Work Not Available)", "Breakdown / Opr. Unavailable Days", "Gross Amount (₹)"];
+export const MONTHLY_BILL_HEADERS = [
+  "Sl. No.", "Bill Period", "Days Billed", "Worked Days",
+  "Idle Days (Work Not Available)", "Breakdown Days",
+  "Operator / Driver Unavailable Days", "Gross Amount (₹)",
+];
 const DAY = 86400000;
 const finite = (v: unknown): number | null => v == null || v === "" || !Number.isFinite(Number(v)) ? null : Number(v);
 const round = (n: number) => Math.round(n * 100) / 100;
@@ -21,9 +25,10 @@ export function calendarMonths(from: string, to: string) {
 export function activityClassification(row: any): string {
   const state = String(row?.activity ?? row?.status ?? "").toLowerCase();
   if (["outside_hire", "outside_deployment", "outside hire/deployment period"].includes(state)) return "Outside Hire/Deployment Period";
-  if (["idle", "work_not_available", "idle_work_not_available"].includes(state)) return "Idle — Work Not Available";
-  if (["breakdown", "operator_unavailable", "maintenance"].includes(state)) return "Breakdown / Operator Unavailable";
-  if (state === "worked" && !(row?.openActivityCount > 0 && !row?.billableActivityCount)) return "Worked";
+  if (["idle", "work_not_available", "idle_work_not_available", "idle_no_work"].includes(state)) return "Idle — Work Not Available";
+  if (["idle_no_operator", "operator_unavailable"].includes(state)) return "Operator / Driver Unavailable";
+  if (["breakdown", "maintenance"].includes(state)) return "Breakdown";
+  if (["worked", "working"].includes(state) && !(row?.openActivityCount > 0 && !row?.billableActivityCount)) return "Worked";
   return "Activity Not Recorded";
 }
 export function projectHireReview(statement: any, bill: any = {}) {
@@ -83,7 +88,8 @@ export function projectHireReview(statement: any, bill: any = {}) {
     return { ...month, days, daysBilled, gross: amount,
       worked: days.filter(d => d.classification === "Worked").length,
       idle: days.filter(d => d.classification === "Idle — Work Not Available").length,
-      breakdown: days.filter(d => d.classification === "Breakdown / Operator Unavailable").length,
+      breakdown: days.filter(d => d.classification === "Breakdown").length,
+      operatorUnavailable: days.filter(d => d.classification === "Operator / Driver Unavailable").length,
       unknown: days.filter(d => d.classification === "Activity Not Recorded").length };
   });
   // Stored commercial overrides win. Never proportion a historical total
@@ -146,5 +152,8 @@ export function projectBillHireReviews(bill: any): HireReview[] {
   return [...statements.map(s => projectHireReview(s, bill)), ...Array.from(groups.values(), s => projectHireReview(s, bill))];
 }
 export function hireReviewTable(review: HireReview) {
-  return review.months.map((m, i) => [i + 1, `${m.label} · ${m.from} to ${m.to}`, m.daysBilled ?? "—", m.worked, m.idle, m.breakdown, m.gross ?? "—"]);
+  return review.months.map((m, i) => [
+    i + 1, `${m.label} · ${m.from} to ${m.to}`, m.daysBilled ?? "—",
+    m.worked, m.idle, m.breakdown, m.operatorUnavailable, m.gross ?? "—",
+  ]);
 }

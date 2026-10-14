@@ -19,6 +19,41 @@ export interface EquipmentStatusRecord {
   plantUsageId?: number | null;
 }
 
+type EquipmentStatusSourceRow = {
+  recordId: number;
+  equipmentId: number;
+  date: string;
+  status?: unknown;
+  reason?: string | null;
+  plantUsageId?: number | null;
+};
+
+/** Maps the existing DPR and Plant Usage query results into the shared status contract. */
+export function assembleEquipmentStatusRecords(
+  dprRows: readonly EquipmentStatusSourceRow[],
+  usageRows: readonly EquipmentStatusSourceRow[],
+): EquipmentStatusRecord[] {
+  return [
+    ...dprRows.map((row) => ({
+      source: "dpr_log" as const,
+      recordId: row.recordId,
+      equipmentId: Number(row.equipmentId),
+      date: row.date,
+      status: (row.status ?? null) as EquipmentUsageStatus | null,
+      reason: row.reason ?? null,
+      plantUsageId: row.plantUsageId ?? null,
+    })),
+    ...usageRows.map((row) => ({
+      source: "plant_usage" as const,
+      recordId: row.recordId,
+      equipmentId: Number(row.equipmentId),
+      date: row.date,
+      status: (row.status ?? null) as EquipmentUsageStatus | null,
+      reason: row.reason ?? null,
+    })),
+  ];
+}
+
 export interface FleetStatusDayRecord {
   source: EquipmentStatusSource;
   recordId: number;

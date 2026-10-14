@@ -3,6 +3,9 @@
  * database dependency: callers pass canonical operational rows and persist
  * the resulting snapshot/exception decisions themselves.
  */
+import { getBaseSiteName } from "./siteName";
+import { isEquipmentUsageStatus, resolveFleetStatusDay, type EquipmentStatusRecord, type EquipmentUsageStatus } from "./equipmentStatus";
+
 export type HireBillingBasis = "monthly" | "daily" | "hourly" | "trip";
 export type MonthlyDivisorType = "calendar" | "30" | "custom";
 export type HireExceptionDecision = "full_day" | "half_day" | "hours" | "none" | "manual";
@@ -476,6 +479,8 @@ export interface HireActivity {
   businessDate: string;
   entryType?: string | null;
   status?: string | null;
+  usageStatus?: EquipmentUsageStatus | null;
+  usageStatusReason?: string | null;
   numberOfTrips?: number | null;
   hoursOrKmRun?: number | null;
   /** A DPR row is a mirror only when this explicit link is present. */
@@ -583,7 +588,9 @@ export interface HireDailyDieselPricing {
 }
 export interface HireActivityDay {
   date: string;
-  activity: "worked" | "no_activity" | "breakdown";
+  /** New snapshots use recorded states; older snapshots retain legacy values. */
+  activity: EquipmentUsageStatus | "worked" | "no_activity" | "not_recorded";
+  usageStatusReason?: string | null;
   hours: number;
   trips: number;
   actualDiesel: number;
@@ -599,6 +606,12 @@ export interface HireActivityDay {
   activityDescriptions: readonly string[];
   openingReadings: readonly number[];
   closingReadings: readonly number[];
+  /** Frozen from the canonical Equipment Performance daily row on fresh saves. */
+  openingDiesel?: number | null;
+  closingDiesel?: number | null;
+  consumptionRate?: number | null;
+  consumptionRateUnit?: "L/hr" | "L/km" | null;
+  consumptionIncomplete?: boolean;
   maintenanceDescriptions: readonly string[];
   movementReferences: readonly string[];
 }
@@ -842,12 +855,30 @@ export function buildHireActivityDays(
   for (let cursor = dateAtUtc(periodFrom); cursor <= dateAtUtc(periodTo); cursor += DAY_MS) {
     const date = iso(cursor);
     const dayActivities = normalized.filter(activity => activity.businessDate === date);
+    const statusRecords: EquipmentStatusRecord[] = activities
+      .filter(activity =>
+        (activity.source === "dpr_log" || activity.source === "plant_usage") &&
+        activity.businessDate === date
+      )
+      .map(activity => ({
+        source: activity.source as "dpr_log" | "plant_usage",
+        recordId: activity.sourceId,
+        equipmentId: activity.equipmentId,
+        date,
+        status: activity.usageStatus ?? null,
+        reason: activity.usageStatusReason ?? null,
+        plantUsageId: activity.plantUsageId ?? null,
+      }));
+    const resolvedStatus = resolveFleetStatusDay(date, statusRecords);
+    const recordedStatus = isEquipmentUsageStatus(resolvedStatus.status) ? resolvedStatus.status : null;
     const breakdowns = maintenance.filter(row =>
       row.date.slice(0, 10) === date && (row.eventType || "").toLowerCase() === "breakdown"
     );
+    const activity = recordedStatus ?? (breakdowns.length ? "breakdown" : dayActivities.length ? "worked" : "not_recorded");
     days.push({
       date,
-      activity: breakdowns.length ? "breakdown" : dayActivities.length ? "worked" : "no_activity",
+      activity,
+      usageStatusReason: recordedStatus ? resolvedStatus.reason : null,
       hours: money(dayActivities.reduce((sum, row) => sum + (Number(row.hoursOrKmRun) || 0), 0)),
       trips: money(dayActivities.reduce((sum, row) => sum + (Number(row.numberOfTrips) || 0), 0)),
       actualDiesel: money(dayActivities.reduce((sum, row) => sum + (Number(row.actualDiesel) || 0), 0)),
@@ -865,7 +896,9 @@ export function buildHireActivityDays(
       billableActivityCount: dayActivities.filter(row => row.status !== "open").length,
       openActivityCount: dayActivities.filter(row => row.status === "open").length,
       equipmentNames: Array.from(new Set(dayActivities.map(row => row.equipmentName).filter((value): value is string => !!value))),
-      siteLocations: Array.from(new Set(dayActivities.map(row => row.site).filter((value): value is string => !!value))),
+      siteLocations: Array.from(new Set(dayActivities
+        .map(row => typeof row.site === "string" ? getBaseSiteName(row.site) : null)
+        .filter((value): value is string => !!value))),
       activityDescriptions: Array.from(new Set(dayActivities.map(row => row.task).filter((value): value is string => !!value))),
       openingReadings: Array.from(new Set(dayActivities.map(row => row.openingReading).filter((value): value is number => Number.isFinite(value)))),
       closingReadings: Array.from(new Set(dayActivities.map(row => row.closingReading).filter((value): value is number => Number.isFinite(value)))),

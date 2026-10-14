@@ -1,5 +1,6 @@
 import { calculateEquipmentClockDuration, computeEquipmentUsage, type UsageBasis } from "./equipmentUsage";
 import { isVisibleEquipmentRow } from "./equipmentUsage";
+import { getBaseSiteName } from "./siteName";
 
 export type EquipmentConfidence = "linked" | "confirmed_legacy_match" | "unclassified";
 export type EquipmentEventSource = "plant_usage" | "dpr_log";
@@ -564,7 +565,12 @@ export function buildEquipmentPerformanceDailyRows(
     const orderedRows = sortOperationalEvents(rows);
     const metrics = managementMetrics(orderedRows, master, fullEquipmentEvents, forceConsumptionIncomplete);
     const ambiguousOrdering = hasAmbiguousSameDayOrdering(orderedRows);
-    const locations = Array.from(new Set(orderedRows.map((row) => [row.project, row.site ?? row.plant].filter(Boolean).join(" / "))));
+    const locations = Array.from(new Set(orderedRows.map((row) =>
+      [row.project, row.site ?? row.plant]
+        .filter((value): value is string => typeof value === "string" && !!value)
+        .map(getBaseSiteName)
+        .join(" / "),
+    )));
     return {
       key: `${orderedRows[0].equipmentId ?? "unclassified"}:${date}`,
       date,

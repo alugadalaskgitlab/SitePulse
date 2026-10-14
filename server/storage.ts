@@ -182,9 +182,12 @@ import {
   type EquipmentPerformanceReport,
 } from "@shared/equipmentPerformance";
 import {
+  assembleEquipmentStatusRecords,
   assertValidEquipmentStatus,
   buildFleetEquipmentStatus,
+  isEquipmentUsageStatus,
   normalizeEquipmentStatusFields,
+  resolveFleetStatusDay,
   type EquipmentStatusRecord,
   type FleetStatusResponse,
 } from "@shared/equipmentStatus";
@@ -6681,25 +6684,7 @@ export class DatabaseStorage implements IStorage {
     const visibleMasters = masters.filter((master) =>
       (master.ownership === "owned" || master.ownership === "hired")
       && (unrestricted || visibleIds.has(master.id)));
-    const records: EquipmentStatusRecord[] = [
-      ...visibleDprRows.map((row) => ({
-        source: "dpr_log" as const,
-        recordId: row.recordId,
-        equipmentId: Number(row.equipmentId),
-        date: row.date,
-        status: row.status as any,
-        reason: row.reason,
-        plantUsageId: row.plantUsageId,
-      })),
-      ...visibleUsageRows.map((row) => ({
-        source: "plant_usage" as const,
-        recordId: row.recordId,
-        equipmentId: row.equipmentId,
-        date: row.date,
-        status: row.status as any,
-        reason: row.reason,
-      })),
-    ];
+    const records = assembleEquipmentStatusRecords(visibleDprRows, visibleUsageRows);
     return {
       dateFrom,
       dateTo,
@@ -6710,14 +6695,16 @@ export class DatabaseStorage implements IStorage {
   async getEquipmentPerformanceReport(
     filters?: EquipmentPerformanceFilters,
     options?: { permittedSiteNames?: string[] | null },
+    executor?: any,
   ): Promise<EquipmentPerformanceReport> {
-    const activeProjects = await db.select({
+    const queryDb = executor ?? db;
+    const activeProjects = await queryDb.select({
       id: boqProjects.id, name: boqProjects.name, status: boqProjects.status,
     }).from(boqProjects).where(eq(boqProjects.status, "active"));
     const unrestricted = options?.permittedSiteNames === null || options?.permittedSiteNames === undefined;
     const projectIds = activeProjects.map((project) => project.id);
     const liveDprRows = projectIds.length
-      ? await db.select().from(dprs).where(and(
+      ? await queryDb.select().from(dprs).where(and(
           inArray(dprs.boqProjectId, projectIds),
           eq(dprs.isDeleted, false),
           eq(dprs.isCancelled, false),
@@ -6736,7 +6723,7 @@ export class DatabaseStorage implements IStorage {
       : activeProjects.filter((project) => visibleProjectIds.has(project.id));
     const dprIds = liveDprs.map((dpr) => dpr.id);
     const logs = dprIds.length
-      ? await db.select().from(equipmentLogs).where(inArray(equipmentLogs.dprId, dprIds))
+      ? await queryDb.select().from(equipmentLogs).where(inArray(equipmentLogs.dprId, dprIds))
       : [];
     const logIds = logs.map((log) => log.id);
     // A historical log can be blank while its allocation/segment is the
@@ -6744,9 +6731,9 @@ export class DatabaseStorage implements IStorage {
     // before it applies the placeholder suppression rule.
     const [activityAllocations, activitySegments] = logIds.length
       ? await Promise.all([
-        db.select().from(equipmentActivityAllocations)
+        queryDb.select().from(equipmentActivityAllocations)
           .where(inArray(equipmentActivityAllocations.equipmentLogId, logIds)),
-        db.select().from(equipmentActivitySegments)
+        queryDb.select().from(equipmentActivitySegments)
           .where(inArray(equipmentActivitySegments.equipmentLogId, logIds)),
       ])
       : [[], []];
@@ -6777,8 +6764,8 @@ export class DatabaseStorage implements IStorage {
       ? or(isNull(equipmentUsage.dprId), ...linkedConditions)
       : isNull(equipmentUsage.dprId);
     const [loadedUsages, masters] = await Promise.all([
-      db.select().from(equipmentUsage).where(usageCondition),
-      this.getEquipmentMaster(true),
+      queryDb.select().from(equipmentUsage).where(usageCondition),
+      executor ? queryDb.select().from(equipmentMaster) : this.getEquipmentMaster(true),
     ]);
     // Site-restricted callers may see only usages explicitly attached to their
     // visible DPR/log set. Standalone plant rows have no site grant to verify.
@@ -6801,7 +6788,7 @@ export class DatabaseStorage implements IStorage {
       ));
     }
     const breakdowns = breakdownSourceConditions.length
-      ? await db.select({
+      ? await queryDb.select({
           sourceType: equipmentMaintenanceLogs.sourceType,
           sourceRecordId: equipmentMaintenanceLogs.sourceRecordId,
           description: equipmentMaintenanceLogs.description,
@@ -18592,7 +18579,10 @@ export class DatabaseStorage implements IStorage {
       id: equipmentLogs.id, equipmentId: equipmentLogs.equipmentId, date: dprs.date,
       entryType: equipmentLogs.entryType, numberOfTrips: equipmentLogs.numberOfTrips,
       hoursOrKmRun: equipmentLogs.hoursWorked, openingReading: equipmentLogs.openingReading,
-      closingReading: equipmentLogs.closingReading, status: dprs.dprStatus, plantUsageId: equipmentLogs.plantUsageId,
+      closingReading: equipmentLogs.closingReading, status: dprs.dprStatus,
+      usageStatus: equipmentLogs.usageStatus, usageStatusReason: equipmentLogs.usageStatusReason,
+      isDeleted: dprs.isDeleted, isCancelled: dprs.isCancelled, isSuperseded: dprs.isSuperseded,
+      plantUsageId: equipmentLogs.plantUsageId,
       startTime: equipmentLogs.startTime, endTime: equipmentLogs.endTime, tripDistance: equipmentLogs.tripDistance,
        actualDiesel: equipmentLogs.diesel, dieselSource: equipmentLogs.dieselSource,
        openingDiesel: equipmentLogs.openingDiesel, closingDiesel: equipmentLogs.dieselBalanceInTank,
@@ -18604,6 +18594,36 @@ export class DatabaseStorage implements IStorage {
     const usageRows: EquipmentUsage[] = await executor.select().from(equipmentUsage).where(and(
       inArray(equipmentUsage.equipmentId, ids), gte(equipmentUsage.date, periodFrom), lte(equipmentUsage.date, periodTo),
     ));
+    const isoDate = (date: any) => typeof date === "string" ? date.slice(0, 10) : date.toISOString().slice(0, 10);
+    // Use the same DPR/Plant status record shape and conflict resolver as the
+    // fleet-status view. These are the existing hire-activity source queries;
+    // no separate status query is needed.
+    const statusRecords = assembleEquipmentStatusRecords(
+      dprRows
+        .filter(row => row.status !== "draft" && row.isDeleted !== true && row.isCancelled !== true && row.isSuperseded !== true)
+        .map(row => ({
+          recordId: Number(row.id), equipmentId: Number(row.equipmentId),
+          date: isoDate(row.date), status: row.usageStatus, reason: row.usageStatusReason,
+          plantUsageId: row.plantUsageId,
+        })),
+      usageRows.map(row => ({
+        recordId: Number(row.id), equipmentId: Number(row.equipmentId),
+        date: isoDate(row.date), status: row.usageStatus, reason: row.usageStatusReason,
+      })),
+    );
+    const statusRecordsByDay = new Map<string, EquipmentStatusRecord[]>();
+    for (const row of statusRecords) {
+      const key = `${row.equipmentId}:${row.date}`;
+      statusRecordsByDay.set(key, [...(statusRecordsByDay.get(key) ?? []), row]);
+    }
+    const resolvedStatusesByDay = new Map(
+      Array.from(statusRecordsByDay, ([key, records]) => [
+        key,
+        resolveFleetStatusDay(records[0].date, records),
+      ]),
+    );
+    const resolvedStatusFor = (equipmentId: number, date: any) =>
+      resolvedStatusesByDay.get(`${equipmentId}:${isoDate(date)}`);
     // A Site DPR can have an explicitly linked Plant Usage mirror for the
     // same equipment. The DPR row is authoritative for billing; keep
     // genuinely independent Plant Usage rows, including same-date rows.
@@ -18661,7 +18681,6 @@ export class DatabaseStorage implements IStorage {
       sql`${dieselRequirements.rate} IS NOT NULL AND ${dieselRequirements.rate} > 0`,
       sql`${dieselRequirements.qtyPurchased} IS NOT NULL AND ${dieselRequirements.qtyPurchased} > 0`,
     ));
-    const isoDate = (date: any) => typeof date === "string" ? date.slice(0, 10) : date.toISOString().slice(0, 10);
     const cleanRegistration = (value: unknown) => String(value || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
     const equipmentByRegistration = new Map(equipment
       .filter(row => cleanRegistration(row.registrationNumber))
@@ -18681,8 +18700,11 @@ export class DatabaseStorage implements IStorage {
         const expectedDiesel = Number(row.expectedDiesel) > 0
           ? Number(row.expectedDiesel)
           : calculated.expectedDiesel;
+        const resolvedStatus = resolvedStatusFor(Number(row.equipmentId), row.date);
         return { source: "dpr_log", sourceId: row.id, equipmentId: row.equipmentId,
           businessDate: isoDate(row.date), occurredAt: row.startTime ? `${isoDate(row.date)}T${row.startTime}` : null, entryType: row.entryType, status: row.status, numberOfTrips: row.numberOfTrips,
+          usageStatus: isEquipmentUsageStatus(resolvedStatus?.status) ? resolvedStatus.status : null,
+          usageStatusReason: isEquipmentUsageStatus(resolvedStatus?.status) ? resolvedStatus.reason : null,
           hoursOrKmRun: (row.hoursOrKmRun ?? calculated.runtime) || null, openingReading: row.openingReading, closingReading: row.closingReading,
            plantUsageId: row.plantUsageId, actualDiesel: row.actualDiesel, dieselSource: row.dieselSource,
            openingDiesel: row.openingDiesel, closingDiesel: row.closingDiesel,
@@ -18697,8 +18719,11 @@ export class DatabaseStorage implements IStorage {
         const expectedDiesel = Number(row.expectedDiesel) > 0
           ? Number(row.expectedDiesel)
           : calculated.expectedDiesel;
+        const resolvedStatus = resolvedStatusFor(Number(row.equipmentId), row.date);
         return { source: "plant_usage", sourceId: row.id, equipmentId: row.equipmentId,
           businessDate: isoDate(row.date), occurredAt: row.createdAt ? new Date(row.createdAt).toISOString() : null, entryType: row.entryType, status: row.status, numberOfTrips: row.numberOfTrips,
+          usageStatus: isEquipmentUsageStatus(resolvedStatus?.status) ? resolvedStatus.status : null,
+          usageStatusReason: isEquipmentUsageStatus(resolvedStatus?.status) ? resolvedStatus.reason : null,
           hoursOrKmRun: (row.hoursOrKmRun ?? calculated.runtime) || null, openingReading: row.openingReading, closingReading: row.closingReading,
            actualDiesel: row.dieselIssued, dieselSource: row.dieselSource,
            openingDiesel: row.openingDiesel, closingDiesel: row.dieselBalanceInTank,
