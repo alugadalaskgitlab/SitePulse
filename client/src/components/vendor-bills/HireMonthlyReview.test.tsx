@@ -26,6 +26,16 @@ describe("approved month review presentation", () => {
     expect(screen.getByText("Idle Days (Work Not Available)")).toBeTruthy();
     expect(screen.getByText("Breakdown / Opr. Unavailable Days")).toBeTruthy();
     expect(review.months.map(m => [m.worked, m.idle, m.breakdown])).toEqual([[1, 0, 0], [0, 1, 1]]);
+    expect(container.textContent).not.toContain("Recorded evidence only. Missing activity is not Idle or Breakdown.");
+  });
+  it("keeps the factual review sentence prominent without the removed activity calendar or boilerplate", () => {
+    const { container } = render(<HireMonthlyReview review={review} calendars={false} />);
+    expect(container.querySelectorAll("details")).toHaveLength(0);
+    const requiredDays = review.months.filter(month => month.unknown > 0)
+      .map(month => `${month.label}: ${month.unknown} dates require review.`);
+    expect(screen.getAllByTestId("hire-review-required-days").map(node => node.textContent)).toEqual(requiredDays);
+    expect(container.textContent).not.toContain("Days Billed follows the hire terms");
+    expect(container.textContent).not.toContain("Recorded evidence only");
   });
   it("carries identical month rows and stored totals to Excel and PDF", () => {
     const snapshot: WholeBillSnapshot = {
@@ -44,6 +54,11 @@ describe("approved month review presentation", () => {
     expect(pdf).toContain("Monthly Billing Summary");
     expect(pdf).toContain("August 2026");
     expect(pdf).toContain("September 2026");
+    const pdfText = Array.from(pdf.matchAll(/\((.*?)\) Tj/g), match => match[1]).join(" ");
+    expect(pdfText).toMatch(/August 2026: 30 dates\s+require review\./);
+    expect(pdf).not.toContain("Days Billed follows the hire terms");
+    expect(pdf).not.toContain("Recorded evidence only");
+    expect(rows.some(row => String(row[0]).includes("dates require review"))).toBe(true);
     expect(JSON.stringify(snapshot)).toBe(before);
   });
 });

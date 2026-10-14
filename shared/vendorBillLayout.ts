@@ -105,7 +105,7 @@ export function projectHireReview(statement: any, bill: any = {}) {
     divisor: terms.monthlyDivisorType === "calendar" ? "Calendar Days" : terms.monthlyDivisorType === "custom" ? `Custom (${terms.monthlyDivisor ?? "—"})` : "30 Days",
     note: months.some(m => m.gross == null || m.daysBilled == null)
       ? "Monthly allocation / payable day-equivalent is unavailable from saved evidence. Recorded period amounts are retained; hours and trips are not converted to days."
-      : "Days Billed follows the hire terms, not Worked Days. Gross is before separately recorded deductions.",
+      : "",
   };
 }
 
@@ -125,6 +125,14 @@ export function hireFinancialBridge(bill: any, storedSubtotal: number) {
     { label: "Hire subtotal after recorded deductions", amount: storedSubtotal }];
 }
 export type HireReview = ReturnType<typeof projectHireReview>;
+/** Display-only review notices shared by the page and its saved bill exports. */
+export function hireReviewDisclosureLines(review: HireReview): string[] {
+  const reviewRequired = review.months
+    .filter(month => month.unknown > 0)
+    .map(month => `${month.label}: ${month.unknown} dates require review.`);
+  return [...reviewRequired, ...(review.note ? [review.note] : [])];
+}
+
 export function projectBillHireReviews(bill: any): HireReview[] {
   const statements: any[] = bill.hireStatements || [];
   const covered = new Set(statements.map(s => Number(s.equipmentId)));

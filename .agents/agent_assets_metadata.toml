@@ -6009,3 +6009,45 @@ mtime_ms = 1791856663176
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8ceb3f41-84f9-41af-803f-9b74e9a59662/768a9b39-f226-4be8-9893-53acc18057af"
 storage_version_token = "1791856666087217"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "rOAzJJyrxeDi_JChenLHz"
+uri = "file://generated-artifacts/vb-view-02/01-no-previous-bills.jpg"
+type = "image"
+title = "VB-VIEW-02 — no previous bills"
+description = "Authenticated synthetic bill detail with no prior vendor history; captured from a disposable development database."
+logical_id = "dac0e608-6bc5-4a3d-8d61-32eb9ec0725d"
+content_hash = "sha256:8cdfa19e5d5fbe83147d0616f260db5513a768d2a109795570d26a2bccec7006"
+size = 178396
+mtime_ms = 1791951921114
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/dac0e608-6bc5-4a3d-8d61-32eb9ec0725d/486343cc-53ba-4b17-b12d-46d98dc36521"
+storage_version_token = "1791952373810811"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "iTW52LNg0IR2iBdAcHPB7"
+uri = "file://generated-artifacts/vb-view-02/02-with-previous-bills.jpg"
+type = "image"
+title = "VB-VIEW-02 — prior bill history"
+description = "Authenticated synthetic bill detail showing only the earlier bill in Previous Billing Summary; captured from a disposable development database."
+logical_id = "349599eb-e1fc-4110-bf8a-732412794498"
+content_hash = "sha256:25fb2e61f6f544de50b814cc5c62bc1be770aee9269af9bf6bbe5a6a5df88ca4"
+size = 242936
+mtime_ms = 1791951923858
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/349599eb-e1fc-4110-bf8a-732412794498/33cb75d5-33f7-4b4b-a43e-b0051d1c0c29"
+storage_version_token = "1791952376155072"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "shNeiKzFhq_-y-zQLbHqO"
+uri = "file://generated-artifacts/vb-view-02/03-legacy-incomplete-evidence.jpg"
+type = "image"
+title = "VB-VIEW-02 — legacy incomplete evidence"
+description = "Authenticated synthetic legacy bill detail with saved working-sheet evidence and the missing frozen-performance notice; captured from a disposable development database."
+logical_id = "d419441a-6553-42e1-9482-6f6a61f4687d"
+content_hash = "sha256:01e847550e0dc96a1df5e721b1acf047fd93ee1a14bf330969d8f8a27069a142"
+size = 279278
+mtime_ms = 1791951926390
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d419441a-6553-42e1-9482-6f6a61f4687d/c11fdfa2-60d9-49e9-be4d-5d65cfffde21"
+storage_version_token = "1791952378609381"
+content_type = "image/jpeg"

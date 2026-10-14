@@ -7,7 +7,8 @@ import { Download, FileText } from "lucide-react";
 import type { EquipmentPerformanceDailyRow } from "@shared/equipmentPerformance";
 import { computeEquipmentUsage, formatEquipmentDuration, formatEquipmentTime } from "@shared/equipmentUsage";
 import { calculateEquipmentHireFinancials } from "@shared/hireBilling";
-import { projectHireReview, hireReviewTable, MONTHLY_BILL_HEADERS, type HireReview } from "@shared/vendorBillLayout";
+import { activityClassification, projectHireReview, hireReviewDisclosureLines, hireReviewTable, MONTHLY_BILL_HEADERS, type HireReview } from "@shared/vendorBillLayout";
+import { formatConsumptionRate } from "./HireActivityBreakdownCalendar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -27,7 +28,132 @@ export type BillingDailyRow = {
   status: "Worked" | "Breakdown" | "No Work";
   remarks: string;
   downtimeHours: number;
+  savedEvidence?: {
+    displayStatus?: string;
+    workingSheet: string;
+    dieselSummary: string;
+    decisions: string;
+    remarksAndMovements: string;
+  };
 };
+
+const SAVED_EVIDENCE_HEADERS = [
+  "Saved working-sheet activity",
+  "Saved expected diesel / variance",
+  "Recorded decisions",
+  "Saved remarks / movement references",
+];
+
+const list = (value: unknown): any[] => Array.isArray(value) ? value : [];
+const joined = (value: unknown): string => list(value).filter(item => item != null && item !== "").map(String).join(" · ") || "—";
+const knownDisplay = (value: unknown, suffix = "") =>
+  value == null || value === "" || !Number.isFinite(Number(value)) ? "—" : `${number(Number(value))}${suffix}`;
+
+function savedHireEvidenceForDate(
+  date: string,
+  snapshot: any,
+  review: HireReview,
+  data: Pick<EquipmentHireExportData, "consumptionNorm" | "meterType" | "consumptionRateUnit">,
+  isWorkingSheetFallback = false,
+) {
+  const day = list(snapshot.workingSheet).find(row => row?.date === date);
+  const activity = [
+    ...list(snapshot.dailyDecisions), ...list(snapshot.decisions?.daily),
+  ].filter(row => (row?.date || row?.businessDate || row?.key) === date);
+  const trips = [
+    ...list(snapshot.tripDecisions), ...list(snapshot.decisions?.trip),
+  ].filter(row => (row?.businessDate || row?.date || row?.key) === date);
+  const exceptions = [
+    ...list(snapshot.exceptions), ...list(snapshot.exceptionDecisions),
+  ].filter(row => (row?.date || row?.exceptionDate || row?.businessDate) === date);
+  const maintenance = list(snapshot.sourceEvidence?.maintenance).filter(row =>
+    (row?.businessDate || row?.date) === date);
+  const monthlyClassification = review.months.flatMap(month => month.days).find(row => row.date === date)?.classification;
+  const classification = monthlyClassification || activityClassification(day);
+  const workingSheetClassification = day?.activity === "breakdown" ? "BREAKDOWN"
+    : day?.activity === "no_activity" ? "NO WORK / NO ACTIVITY"
+      : day?.billableActivityCount === 0 && day?.openActivityCount > 0 ? "OPEN — NOT BILLABLE" : day ? "WORKED" : "Not recorded";
+  const equipment = joined(day?.equipmentNames);
+  const site = joined(day?.siteLocations);
+  const work = joined(day?.activityDescriptions);
+  const workingSheet = [
+    `Recorded activity: ${classification}`,
+    `Working-sheet activity: ${workingSheetClassification}${day?.activity ? ` (${day.activity})` : ""}`,
+    `Equipment / site / work: ${equipment} / ${site} / ${work}`,
+    `Hours / trips: ${knownDisplay(day?.hours, " h")} / ${knownDisplay(day?.trips)}`,
+    `Opening / closing readings: ${joined(day?.openingReadings)} / ${joined(day?.closingReadings)}`,
+    `Actual HSD: ${Number(day?.actualDiesel) > 0 ? `${number(day.actualDiesel)} L` : "—"}`,
+    `Activity records: ${day?.activityCount == null ? "—" : `${day.activityCount}${day.billableActivityCount != null || day.openActivityCount != null ? ` (${day.billableActivityCount ?? "—"} billable, ${day.openActivityCount ?? "—"} open)` : ""}`}`,
+    `Breakdown: ${joined(day?.maintenanceDescriptions)} · ${knownDisplay(day?.downtimeHours, " h")}`,
+    `Payable quantity: ${knownDisplay(day?.payableQuantity ?? list(snapshot.payableDays).find(row => row?.date === date)?.fraction)}`,
+    `Consumption rate: ${formatConsumptionRate(Number(day?.actualDiesel || 0), Number(day?.hours || 0),
+      data.consumptionNorm, snapshot.dieselNormBasisOverride ?? data.consumptionRateUnit, data.meterType)}`,
+  ].join("\n");
+  const pricing = list(snapshot.diesel?.dailyPricing).find(row => row?.date === date);
+  const expected = day?.expectedDieselAvailable === false
+    ? "Tank Readings N/A"
+    : day?.expectedDiesel != null ? `${number(day.expectedDiesel)} L` : "—";
+  const variance = day?.expectedDieselAvailable === false
+    ? "Tank Readings N/A"
+    : day?.dieselVariance != null
+      ? `${Number(day.dieselVariance) >= 0 ? "+" : "−"}${number(Math.abs(Number(day.dieselVariance)), 2)} L`
+      : "—";
+  const dieselSummary = [
+    `Working-sheet expected HSD: ${expected}`,
+    `Signed HSD variance: ${variance}`,
+    `Applicable rate: ${pricing?.applicableRate == null ? "—" : `₹${number(pricing.applicableRate, 2)}/L`}`,
+  ].join("\n");
+  const decisionLines = [
+    ...activity.map(row => `Daily: ${row.decision || row.action || row.resolution || "Not established"}${row.reason ? ` — ${row.reason}` : ""}`),
+    ...trips.map(row => `Trip: ${row.selected === false ? "Excluded" : "Included"} ${row.acceptedTrips ?? "—"} / ${row.recordedTrips ?? "—"} trips${row.reason ? ` — ${row.reason}` : ""}`),
+    ...exceptions.map(row => `Exception: ${row.decision || row.action || row.resolution || "Not established"}${row.reason ? ` — ${row.reason}` : ""}`),
+  ];
+  const dayRemarks = Array.isArray(day?.remarks) ? day.remarks : typeof day?.remarks === "string" ? [day.remarks] : [];
+  const remarks = [
+    ...dayRemarks.map(String),
+    ...maintenance.map(row => row.remarks).filter(Boolean).map(String),
+    ...activity.map(row => row.remarks).filter(Boolean).map(String),
+    ...trips.map(row => row.remarks).filter(Boolean).map(String),
+    ...exceptions.map(row => row.remarks).filter(Boolean).map(String),
+  ];
+  const movementReferences = list(day?.movementReferences).filter(Boolean).map(String);
+  return {
+    displayStatus: isWorkingSheetFallback ? workingSheetClassification : undefined,
+    workingSheet,
+    dieselSummary,
+    decisions: decisionLines.join("\n") || "—",
+    remarksAndMovements: [
+      `Remarks: ${remarks.join(" · ") || "—"}`,
+      `Movement references: ${movementReferences.join(" · ") || "—"}`,
+    ].join("\n"),
+  };
+}
+
+function buildSavedHireDailyRows(
+  rows: BillingDailyRow[],
+  snapshot: any,
+  review: HireReview,
+  data: Pick<EquipmentHireExportData, "consumptionNorm" | "meterType" | "consumptionRateUnit">,
+): BillingDailyRow[] {
+  const dailyDecisions = [...list(snapshot.dailyDecisions), ...list(snapshot.decisions?.daily)];
+  const tripDecisions = [...list(snapshot.tripDecisions), ...list(snapshot.decisions?.trip)];
+  const exceptions = [...list(snapshot.exceptions), ...list(snapshot.exceptionDecisions)];
+  const savedDays = list(snapshot.workingSheet);
+  const dates = new Set<string>([
+    ...savedDays.map(row => row?.date),
+    ...dailyDecisions.map(row => row?.date || row?.businessDate || row?.key),
+    ...tripDecisions.map(row => row?.businessDate || row?.date || row?.key),
+    ...exceptions.map(row => row?.date || row?.exceptionDate || row?.businessDate),
+    ...list(snapshot.payableDays).map(row => row?.date),
+  ].filter((date): date is string => typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)));
+  const baseRows = rows.length ? rows : Array.from(dates).sort().map(date => ({
+    date, status: "No Work" as const, remarks: "No activity recorded", downtimeHours: 0,
+  }));
+  return baseRows.map(row => ({
+    ...row,
+    savedEvidence: savedHireEvidenceForDate(row.date, snapshot, review, data, rows.length === 0),
+  }));
+}
 
 export type EquipmentHirePeriodTotals = {
   hours: number | null;
@@ -155,13 +281,14 @@ export function buildBillingDailyRows(
   });
 }
 
-function dailyHeaders(dieselResponsibility?: string | null) {
+function dailyHeaders(dieselResponsibility?: string | null, includeSavedEvidence = false) {
   const fuelIsContractorScope = String(dieselResponsibility).toLowerCase() === "vendor";
   return [
     "Date", "Project / Site", "Opening Meter", "Closing Meter", "Working Hours", "Start", "End", "Clock Duration",
     ...(fuelIsContractorScope ? [] : ["Diesel Issued", "Opening Tank", "Closing Tank"]),
     ...(fuelIsContractorScope ? [] : ["Diesel Consumed", "Expected", "Norm"]),
     "Status / Remarks",
+    ...(includeSavedEvidence ? SAVED_EVIDENCE_HEADERS : []),
   ];
 }
 
@@ -179,7 +306,7 @@ function dailyValues(
   const norm = consumptionNorm == null
     ? "—"
     : `${number(consumptionNorm, 2)}${consumptionUnit ? ` ${consumptionUnit}` : ""}`;
-  return [
+  const values = [
     dateLabel(row.date),
     item?.projectSite || "—",
     number(item?.openingMeter), number(item?.closingMeter),
@@ -192,8 +319,11 @@ function dailyValues(
       expectedLitres(item?.expectedDiesel),
       norm,
     ]),
-    `${row.status === "No Work" ? "Activity Not Recorded" : row.status === "Breakdown" ? "Breakdown / Operator Unavailable" : row.status}${row.downtimeHours ? ` · ${number(row.downtimeHours, 2)}h downtime` : ""}${row.remarks ? ` — ${row.remarks}` : ""}`,
+    `${row.savedEvidence?.displayStatus || (row.status === "No Work" ? "Activity Not Recorded" : row.status === "Breakdown" ? "Breakdown / Operator Unavailable" : row.status)}${row.downtimeHours ? ` · ${number(row.downtimeHours, 2)}h downtime` : ""}${row.remarks ? ` — ${row.remarks}` : ""}`,
   ];
+  if (row.savedEvidence) values.push(row.savedEvidence.workingSheet, row.savedEvidence.dieselSummary,
+    row.savedEvidence.decisions, row.savedEvidence.remarksAndMovements);
+  return values;
 }
 
 /** Same columns, values and widths as exportEquipmentHireBill's hire sheet. */
@@ -201,7 +331,7 @@ export function equipmentHireActivitySheetRows(
   rows: BillingDailyRow[], dieselResponsibility?: string | null, consumptionNorm?: number | null,
   meterType?: string | null,
 ) {
-  const headers = dailyHeaders(dieselResponsibility);
+  const headers = dailyHeaders(dieselResponsibility, rows.some(row => !!row.savedEvidence));
   const unit = calendarConsumptionUnit(rows, meterType);
   return { headers, values: rows.map(row => dailyValues(row, dieselResponsibility, consumptionNorm, unit)),
     columns: headers.map((header, index) => ({ wch: index === headers.length - 1 ? 52 : Math.max(14, header.length + 2) })) };
@@ -308,13 +438,15 @@ export function EquipmentHireDailyTable({ rows, dieselResponsibility, consumptio
   meterType?: string | null;
   consumptionRateUnit?: EquipmentPerformanceDailyRow["consumptionRateUnit"];
 }) {
-  const headers = dailyHeaders(dieselResponsibility);
+  const includeSavedEvidence = rows.some(row => !!row.savedEvidence);
+  const headers = dailyHeaders(dieselResponsibility, includeSavedEvidence);
+  const savedEvidenceStart = headers.length - (includeSavedEvidence ? SAVED_EVIDENCE_HEADERS.length : 0);
   const consumptionUnit = calendarConsumptionUnit(rows, meterType, consumptionRateUnit);
   return <div className="overflow-x-auto">
     <table className="w-full min-w-[1780px] text-xs">
       <thead className="bg-muted text-[10px] uppercase tracking-wide"><tr>{headers.map(header => <th key={header} className="px-2 py-2 text-right first:text-left last:text-left">{header}</th>)}</tr></thead>
-      <tbody>{rows.map(row => <tr key={row.date} className="border-b align-top">
-        {dailyValues(row, dieselResponsibility, consumptionNorm, consumptionUnit).map((value, index) => <td key={index} className={`px-2 py-2 ${index === 0 || index === 1 || index === headers.length - 1 ? "text-left" : "text-right"}`}>{value}</td>)}
+      <tbody>{rows.map((row, rowIndex) => <tr key={`${row.date}-${rowIndex}`} className="border-b align-top">
+        {dailyValues(row, dieselResponsibility, consumptionNorm, consumptionUnit).map((value, index) => <td key={index} className={`px-2 py-2 ${index < savedEvidenceStart ? (index === 0 || index === 1 || index === savedEvidenceStart - 1 ? "text-left" : "text-right") : "whitespace-pre-wrap text-left"}`}>{value}</td>)}
       </tr>)}</tbody>
     </table>
   </div>;
@@ -373,7 +505,10 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
     activitySheet["!cols"] = activity.columns;
     XLSX.utils.book_append_sheet(workbook, summarySheet, "Bill Summary");
     if (data.hireReview) {
-      const sheet = XLSX.utils.aoa_to_sheet([MONTHLY_BILL_HEADERS, ...hireReviewTable(data.hireReview), [data.hireReview.note]]);
+      const sheet = XLSX.utils.aoa_to_sheet([
+        MONTHLY_BILL_HEADERS, ...hireReviewTable(data.hireReview),
+        ...hireReviewDisclosureLines(data.hireReview).map(line => [line]),
+      ]);
       sheet["!cols"] = [10, 50, 16, 16, 32, 38, 22].map(wch => ({ wch }));
       XLSX.utils.book_append_sheet(workbook, sheet, "Monthly Billing Summary");
     }
@@ -408,6 +543,16 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
     autoTable(doc, { startY: 22, head: [MONTHLY_BILL_HEADERS.map(pdfText)],
       body: hireReviewTable(data.hireReview).map(row => row.map(value => pdfText(String(value)))),
       styles: { fontSize: 8 }, headStyles: { fillColor: [180, 83, 9] } });
+    const disclosures = hireReviewDisclosureLines(data.hireReview);
+    if (disclosures.length) {
+      let y = ((doc as any).lastAutoTable?.finalY ?? 188) + 7;
+      doc.setFontSize(9);
+      for (const line of disclosures) {
+        if (y > 195) { doc.addPage("a4", "landscape"); y = 16; }
+        doc.text(pdfText(line), 14, y);
+        y += 5;
+      }
+    }
   }
   // The activity always begins on a new page, keeping the summary cleanly on page one.
   doc.addPage("a4", "landscape");
@@ -419,7 +564,7 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
   }
   autoTable(doc, {
     startY: String(data.dieselResponsibility).toLowerCase() === "vendor" ? 21 : 16,
-    head: [dailyHeaders(data.dieselResponsibility)],
+    head: [dailyHeaders(data.dieselResponsibility, rows.some(row => !!row.savedEvidence))],
     body: rows.map(row => dailyValues(row, data.dieselResponsibility, data.consumptionNorm, consumptionUnit).map(value => pdfText(String(value)))),
     theme: "grid",
     styles: { fontSize: 5.7, cellPadding: 1.2, overflow: "linebreak" },
@@ -454,7 +599,7 @@ function calendarTotalsRows(
 export function exportEquipmentHireCalendar(data: EquipmentHireExportData, rows: BillingDailyRow[], format: "pdf" | "xlsx") {
   const fuelIsContractorScope = String(data.dieselResponsibility).toLowerCase() === "vendor";
   const totals = buildEquipmentHirePeriodTotals(rows, data.dieselResponsibility);
-  const headers = dailyHeaders(data.dieselResponsibility);
+  const headers = dailyHeaders(data.dieselResponsibility, rows.some(row => !!row.savedEvidence));
   const consumptionUnit = calendarConsumptionUnit(rows, data.meterType, data.consumptionRateUnit);
   const safeName = (data.billNo || "equipment-hire-bill").replace(/[^\w-]+/g, "-");
   const metadata: Array<Array<string | number | null>> = [
@@ -584,7 +729,7 @@ export function buildSavedEquipmentHireBillOutput(bill: any): { data: EquipmentH
   const equipmentId = Number(statement?.equipmentId || snapshot?.equipmentId || 0);
   const periodFrom = statement?.periodFrom || bill.periodFrom || "";
   const periodTo = statement?.periodTo || bill.periodTo || "";
-  if (!statement || !equipmentId || !periodFrom || !periodTo) return null;
+  if (!statement) return null;
   const maintenance: BillingMaintenance[] = Array.isArray(snapshot.sourceEvidence?.maintenance)
     ? snapshot.sourceEvidence.maintenance.map((entry: any) => ({
       businessDate: entry.businessDate || entry.date,
@@ -603,7 +748,22 @@ export function buildSavedEquipmentHireBillOutput(bill: any): { data: EquipmentH
     );
   const frozenDailyRows = (snapshot.performanceDailyRows || snapshot.dailyRows || []) as EquipmentPerformanceDailyRow[];
   const hasFrozenDailyRows = Array.isArray(frozenDailyRows) && frozenDailyRows.length > 0;
-  const rows = hasFrozenDailyRows ? buildBillingDailyRows(frozenDailyRows, periodFrom, periodTo, maintenance) : [];
+  const savedDates = [
+    ...list(snapshot.workingSheet).map(row => row?.date),
+    ...list(snapshot.performanceDailyRows || snapshot.dailyRows).map(row => row?.date),
+    ...list(snapshot.dailyDecisions).map(row => row?.date || row?.businessDate || row?.key),
+    ...list(snapshot.decisions?.daily).map(row => row?.date || row?.businessDate || row?.key),
+    ...list(snapshot.tripDecisions).map(row => row?.businessDate || row?.date || row?.key),
+    ...list(snapshot.decisions?.trip).map(row => row?.businessDate || row?.date || row?.key),
+    ...list(snapshot.exceptions).map(row => row?.date || row?.exceptionDate || row?.businessDate),
+    ...list(snapshot.exceptionDecisions).map(row => row?.date || row?.exceptionDate || row?.businessDate),
+    ...list(snapshot.payableDays).map(row => row?.date),
+  ].filter((date): date is string => typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)).sort();
+  const rowFrom = periodFrom || savedDates[0] || "";
+  const rowTo = periodTo || savedDates.at(-1) || "";
+  if (!equipmentId && !statement.equipmentName && !snapshot.equipmentName && !savedDates.length) return null;
+  const rows = hasFrozenDailyRows && rowFrom && rowTo
+    ? buildBillingDailyRows(frozenDailyRows, rowFrom, rowTo, maintenance) : [];
   const adjustments = snapshot.adjustments || {};
   const grossHire = Number(statement.grossAmount ?? snapshot.grossAmount ?? 0);
   // Statement.deductionAmount is the final aggregate (breakdown + HSD +
@@ -630,7 +790,7 @@ export function buildSavedEquipmentHireBillOutput(bill: any): { data: EquipmentH
     ? Number(bill.amountPaid) : null;
   const data: EquipmentHireExportData = {
     hireReview: bill.hireReview || projectHireReview(statement, bill),
-    billNo: bill.billNo, vendorName: bill.vendorName, equipmentName: statement.equipmentName || snapshot.equipmentName || `Equipment #${equipmentId}`, projectSite: snapshot.projectSite,
+    billNo: bill.billNo, vendorName: bill.vendorName, equipmentName: statement.equipmentName || snapshot.equipmentName || (equipmentId ? `Equipment #${equipmentId}` : "Equipment"), projectSite: snapshot.projectSite,
     periodFrom, periodTo, hireBasis: String(statement.billingBasis || snapshot.terms?.billingBasis || "Hire").toUpperCase(),
     rate: Number(statement.rate ?? snapshot.terms?.rate ?? 0), grossHire, breakdownDeduction, hsdRecovery,
     otherDebit, otherDebitReason: adjustments.otherDebitReason, advanceAdjustment, advanceAdjustmentReason: adjustments.advanceAdjustmentReason,
@@ -643,7 +803,7 @@ export function buildSavedEquipmentHireBillOutput(bill: any): { data: EquipmentH
     meterType: snapshot.terms?.meterType,
     consumptionRateUnit: snapshot.terms?.consumptionRateUnit ?? snapshot.dieselNormBasisOverride,
   };
-  return { data, rows, hasFrozenDailyRows };
+  return { data, rows: buildSavedHireDailyRows(rows, snapshot, data.hireReview!, data), hasFrozenDailyRows };
 }
 
 /** Detail-page action set. Approved/saved bills always export the frozen daily
@@ -658,10 +818,11 @@ export function EquipmentHireBillDetailOutput({ bill, output: suppliedOutput }: 
   const output = suppliedOutput === undefined ? buildSavedEquipmentHireBillOutput(bill) : suppliedOutput;
   if (!output) return null;
   const { data, rows, hasFrozenDailyRows } = output;
+  const hasExportablePeriod = hasFrozenDailyRows && !!data.periodFrom && !!data.periodTo;
   return <div className="flex flex-wrap gap-2">
     {!hasFrozenDailyRows && <span className="self-center text-xs text-amber-700">Frozen daily activity is unavailable for this historical bill.</span>}
     <Button type="button" variant="outline" size="sm" disabled={!hasFrozenDailyRows} onClick={() => setShowDaily(true)} data-testid="button-detail-view-daily-activity">View Daily Activity</Button>
-    <EquipmentHireExportButtons data={data} rows={rows} />
+    <EquipmentHireExportButtons data={data} rows={rows} disabled={!hasExportablePeriod} />
     <EquipmentHireDailyActivity open={showDaily} onOpenChange={setShowDaily} rows={rows} dieselResponsibility={data.dieselResponsibility} consumptionNorm={data.consumptionNorm} meterType={data.meterType} consumptionRateUnit={data.consumptionRateUnit} />
   </div>;
 }

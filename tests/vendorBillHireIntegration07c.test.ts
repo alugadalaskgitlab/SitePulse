@@ -6,6 +6,9 @@ describe("07C vendor-bill hire transaction wiring", () => {
   const storage = readFileSync("server/storage.ts", "utf8");
   const routes = readFileSync("server/routes.ts", "utf8");
   const client = readFileSync("client/src/pages/VendorBills.tsx", "utf8");
+  const savedCalendars = readFileSync("client/src/components/vendor-bills/SavedBillCalendars.tsx", "utf8");
+  const hireOutput = readFileSync("client/src/components/vendor-bills/EquipmentHireBillOutput.tsx", "utf8");
+  const monthlyReview = readFileSync("client/src/components/vendor-bills/HireMonthlyReview.tsx", "utf8");
 
   it("has a unique nullable item-to-statement link", () => {
     expect(schema).toContain('hireStatementId: integer("hire_statement_id")');
@@ -58,7 +61,9 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(storage).toContain('if ((entryType || "").toLowerCase() === "monthly") return false');
     expect(storage).toContain('if (entryTypeFilter === "daily_hourly") return ["daily", "hourly", "time_meter"].includes(et)');
     expect(storage).toContain('if (entryTypeFilter === "trip_based") return et === "trip_based"');
-    expect(client).toContain("HistoricalHireWorkingSheet");
+    expect(client).toContain("SavedBillCalendars");
+    expect(savedCalendars).toContain("groupedReviews={reviews.slice(1)}");
+    expect(monthlyReview).toContain("Monthly Billing Summary");
   });
 
   it("keeps Pull Items additive and derives its count from final eligibility", () => {
@@ -80,7 +85,8 @@ describe("07C vendor-bill hire transaction wiring", () => {
   });
 
   it("keeps historical hire snapshots readable without restoring the removed composer", () => {
-    expect(client).toContain("HistoricalHireWorkingSheet");
+    expect(client).toContain("SavedBillCalendars");
+    expect(savedCalendars).toContain("Detailed recorded evidence");
     expect(client).toContain("EQUIPMENT HIRE CALCULATION SNAPSHOT");
     expect(client).toContain('isHistoricalHireEdit && billType === "equipment"');
     expect(client).not.toContain("false &&");
@@ -94,8 +100,11 @@ describe("07C vendor-bill hire transaction wiring", () => {
   });
 
   it("retains the historical working-sheet snapshot as read-only evidence", () => {
-    expect(client).toContain("HistoricalHireWorkingSheet");
-    expect(client).toContain("HSD ACTUAL / EXPECTED");
+    expect(client).toContain("SavedBillCalendars");
+    expect(savedCalendars).toContain("Current equipment activity is not substituted.");
+    expect(savedCalendars).toContain("buildSavedEquipmentHireBillOutput");
+    expect(hireOutput).toContain("Saved expected diesel / variance");
+    expect(hireOutput).toContain("Working-sheet expected HSD");
     expect(client).toContain("FINAL RECOVERY");
   });
 

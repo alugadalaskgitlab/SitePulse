@@ -31,6 +31,7 @@ import {
   exportEquipmentHireCalendar,
   type EquipmentHireExportData,
 } from "../client/src/components/vendor-bills/EquipmentHireBillOutput";
+import { projectHireReview } from "../shared/vendorBillLayout";
 
 const data: EquipmentHireExportData = {
   billNo: "VB/EH/001", vendorName: "Acme Hire", equipmentName: "Excavator · EX-01", projectSite: "North Site",
@@ -349,5 +350,58 @@ describe("equipment hire bill output", () => {
     });
     expect(output?.data.netPayable).toBe(8820);
     expect(output?.data.paid).toBeNull();
+  });
+  it("shows saved working-sheet facts in the daily table when legacy performance rows are absent", () => {
+    const output = buildSavedEquipmentHireBillOutput({
+      billNo: "VB-EH-LEGACY-DAILY", vendorName: "ACME HIRE", billType: "equipment",
+      periodFrom: "2026-10-01", periodTo: "2026-10-01", status: "approved",
+      hireStatements: [{
+        equipmentId: 9, equipmentName: "Legacy Roller", periodFrom: "2026-10-01", periodTo: "2026-10-01",
+        billingBasis: "daily", rate: 5000, grossAmount: 5000,
+        calculationSnapshot: {
+          terms: { billingBasis: "daily", dieselResponsibility: "hlc", meterType: "hour_meter" },
+          workingSheet: [{
+            date: "2026-10-01", activity: "worked", hours: 8, trips: 2, downtimeHours: 1,
+            equipmentNames: ["Roller R-4"], siteLocations: ["North Site"], activityDescriptions: ["Compaction"],
+            openingReadings: ["100"], closingReadings: ["108"], actualDiesel: 20, expectedDiesel: 18,
+            expectedDieselAvailable: true, dieselVariance: 2, maintenanceDescriptions: ["Hydraulic check"],
+            movementReferences: ["MOVE-17"], activityCount: 1, billableActivityCount: 1, openActivityCount: 0,
+          }],
+          dailyDecisions: [{ date: "2026-10-01", decision: "half_day", reason: "Manager approval", remarks: "Attendance confirmed" }],
+          tripDecisions: [{ businessDate: "2026-10-01", selected: false, acceptedTrips: 1, recordedTrips: 2, reason: "Duplicate trip removed" }],
+        },
+      }],
+    });
+    expect(output?.hasFrozenDailyRows).toBe(false);
+    expect(output?.rows).toHaveLength(1);
+    expect(output?.rows[0].savedEvidence?.workingSheet).toContain("Roller R-4");
+    expect(output?.rows[0].savedEvidence?.dieselSummary).toContain("Working-sheet expected HSD: 18 L");
+    expect(output?.rows[0].savedEvidence?.decisions).toContain("Daily: half_day — Manager approval");
+    expect(output?.rows[0].savedEvidence?.remarksAndMovements).toContain("Attendance confirmed");
+    expect(output?.rows[0].savedEvidence?.remarksAndMovements).toContain("MOVE-17");
+    excelSheets.length = 0;
+    exportEquipmentHireCalendar(output!.data, output!.rows, "xlsx");
+    expect(excelSheets[0].data).toEqual(expect.arrayContaining([
+      expect.arrayContaining(["Saved working-sheet activity", "Saved expected diesel / variance"]),
+      expect.arrayContaining([expect.stringContaining("Recorded activity:"), expect.stringContaining("Working-sheet expected HSD: 18 L")]),
+    ]));
+  });
+  it("carries the factual review notice into equipment bill exports without the removed explanatory copy", () => {
+    const hireReview = projectHireReview({
+      equipmentName: "Excavator", billingBasis: "monthly", rate: 1000, grossAmount: 2000, deductionAmount: 0,
+      periodFrom: "2026-09-01", periodTo: "2026-09-30",
+      calculationSnapshot: { terms: { monthlyDivisorType: "calendar" }, workingSheet: [{ date: "2026-09-01", activity: "worked" }] },
+    });
+    const notice = `September 2026: ${hireReview.months[0].unknown} dates require review.`;
+    const withReview = { ...data, hireReview };
+    excelSheets.length = 0;
+    exportEquipmentHireBill(withReview, rows, "xlsx");
+    const monthly = excelSheets.find(sheet => sheet.name === "Monthly Billing Summary")!;
+    expect(monthly.data.some(row => row[0] === notice)).toBe(true);
+    expect(monthly.data.flat().join(" ")).not.toContain("Days Billed follows the hire terms");
+    pdfEvents.length = 0;
+    exportEquipmentHireBill(withReview, rows, "pdf");
+    expect(pdfEvents.some(event => event.type === "text" && event.value === notice)).toBe(true);
+    expect(tables.flatMap(table => table.body.flat()).join(" ")).not.toContain("Days Billed follows the hire terms");
   });
 });

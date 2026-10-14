@@ -504,28 +504,6 @@ export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; 
   );
 }
 
-function HistoricalHireWorkingSheet({ snapshot }: { snapshot: any }) {
-  const [open, setOpen] = useState(false);
-  const rows = Array.isArray(snapshot?.workingSheet) ? snapshot.workingSheet : [];
-  const diesel = snapshot?.diesel || {};
-  const pricing = diesel.dailyPricing || [];
-  const dailyDecisions = snapshot?.decisions?.daily || [];
-  const tripDecisions = snapshot?.decisions?.trip || [];
-  const frozenExceptions = snapshot?.exceptions || [];
-  return <div className="col-span-2 sm:col-span-4 border-t pt-2">
-    <Button type="button" variant="ghost" size="sm" className="h-7 px-0 text-[10px] font-bold uppercase" onClick={() => setOpen(v => !v)}>
-      <ChevronLeft className={`mr-1 h-3 w-3 transition-transform ${open ? "-rotate-90" : "rotate-180"}`} /> {open ? "HIDE" : "VIEW"} HISTORICAL WORKING SHEET · {rows.length} DATES
-    </Button>
-    {open && <div className="mt-1 overflow-x-auto rounded border bg-muted/10"><table className="min-w-[1080px] w-full border-collapse text-[10px]">
-      <thead className="bg-muted/50 uppercase text-muted-foreground"><tr>{["Date","Equipment · site · movement","Activity","Hours / trips","Opening / closing","Actual HSD","Expected HSD","Signed variance","Breakdown / decision","Remarks"].map(h => <th key={h} className="border-b px-2 py-1 text-left">{h}</th>)}</tr></thead>
-      <tbody>{rows.map((day: any) => { const p = pricing.find((x: any) => x.date === day.date); return <tr key={day.date} className="border-b align-top">
-        <td className="whitespace-nowrap px-2 py-1 font-semibold">{formatDate(day.date)}</td><td className="px-2 py-1">{day.equipmentNames?.join(" · ") || "—"}<span className="block">{day.siteLocations?.join(" · ") || "—"}</span><span className="block text-muted-foreground">{day.movementReferences?.join(" · ") || "—"}</span></td>
-        <td className="px-2 py-1 uppercase">{day.activity === "breakdown" ? "BREAKDOWN" : day.activity === "no_activity" ? "NO WORK / NO ACTIVITY" : day.billableActivityCount === 0 && day.openActivityCount > 0 ? "OPEN — NOT BILLABLE" : "WORKED"}<span className="block text-muted-foreground">{day.activityDescriptions?.join(" · ") || "—"}</span><span className="block font-semibold">{dailyDecisions.find((d: any) => d.date === day.date)?.decision?.replace("_", " ").toUpperCase() || ""}</span></td><td className="whitespace-nowrap px-2 py-1">{day.hours || "—"} H / {day.trips || "—"} T<span className="block">{tripDecisions.filter((d: any) => d.businessDate === day.date).map((d: any) => `${d.selected === false ? "EXCLUDED" : "INCLUDED"} ${d.acceptedTrips} / ${d.recordedTrips} TRIPS`).join(" · ")}</span></td><td className="whitespace-nowrap px-2 py-1">{day.openingReadings?.join(" · ") || "—"} / {day.closingReadings?.join(" · ") || "—"}</td><td className="px-2 py-1">{day.actualDiesel ? `${day.actualDiesel} L` : "—"}</td><td className="px-2 py-1">{day.expectedDiesel ? `${day.expectedDiesel} L` : "—"}</td><td className="px-2 py-1">{day.dieselVariance > 0 ? "+" : ""}{Number(day.dieselVariance || 0).toFixed(2)} L<span className="block text-muted-foreground">{p?.applicableRate != null ? `₹${formatCurrency(p.applicableRate)}/L` : ""}</span></td><td className="px-2 py-1">{day.maintenanceDescriptions?.join(" · ") || "—"}<span className="block">{frozenExceptions.filter((d: any) => d.date === day.date).map((d: any) => String(d.decision || "").toUpperCase()).join(" · ")}</span></td><td className="px-2 py-1">{[...frozenExceptions.filter((d: any) => d.date === day.date), ...dailyDecisions.filter((d: any) => d.date === day.date), ...tripDecisions.filter((d: any) => d.businessDate === day.date)].map((d: any) => d.remarks).filter(Boolean).join(" · ") || "—"}</td>
-      </tr>; })}</tbody>
-    </table></div>}
-  </div>;
-}
-
 export default function VendorBills() {
   const [billScope, setBillScope] = useState<BillScope>("unpaid");
   const { toast } = useToast();
@@ -4568,7 +4546,6 @@ export default function VendorBills() {
                   <p>QTY {statement.quantity} · RATE ₹{formatCurrency(statement.rate)} · GROSS ₹{formatCurrency(statement.grossAmount)} · DEDUCTION ₹{formatCurrency(statement.deductionAmount)} · NET ₹{formatCurrency(statement.netAmount)}</p>
                   <p>HSD ACTUAL / EXPECTED {statement.calculationSnapshot?.diesel?.actualDiesel ?? "—"} / {statement.calculationSnapshot?.diesel?.expectedDiesel ?? "—"} L</p>
                   <p>NET EXCESS {statement.calculationSnapshot?.diesel?.suggestedExcess ?? "—"} L · FINAL RECOVERY {statement.calculationSnapshot?.diesel?.finalRecoveryAmount == null ? "—" : `₹${formatCurrency(statement.calculationSnapshot.diesel.finalRecoveryAmount)}`}</p>
-                  <HistoricalHireWorkingSheet snapshot={statement.calculationSnapshot || {}} />
                 </div>
               ))}
               <SavedBillCalendars bill={bill} canExport={canExport} />

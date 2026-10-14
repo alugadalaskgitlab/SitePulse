@@ -1,7 +1,7 @@
 import { GState, jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
-import { MONTHLY_BILL_HEADERS, hireReviewTable } from "@shared/vendorBillLayout";
+import { hireReviewDisclosureLines, MONTHLY_BILL_HEADERS, hireReviewTable } from "@shared/vendorBillLayout";
 import { equipmentHireActivitySheetRows } from "./EquipmentHireBillOutput";
 import {
   BILL_EXPORT_SHEET_NAMES, DRAFT_BILL_NOTICE, billExportIsDraft, billExportStatus,
@@ -23,7 +23,8 @@ export function buildWholeBillWorkbook(snapshot: WholeBillSnapshot): XLSX.WorkBo
     const rows = snapshot.hireReviews.flatMap(review => [
       [review.name, review.basis, review.rate ?? "—", review.from, review.to],
       ...(review.basis === "monthly" ? [["Monthly divisor", review.divisor]] : []),
-      MONTHLY_BILL_HEADERS, ...hireReviewTable(review), [review.note],
+      MONTHLY_BILL_HEADERS, ...hireReviewTable(review),
+      ...hireReviewDisclosureLines(review).map(line => [line, "", "", "", "", "", ""]),
       ["Recorded period Gross Hire", review.gross ?? "—"], [],
     ]);
     const sheet = XLSX.utils.aoa_to_sheet(rows);
@@ -49,7 +50,9 @@ export function buildWholeBillWorkbook(snapshot: WholeBillSnapshot): XLSX.WorkBo
           ...(calendar.unavailableReason ? [[calendar.unavailableReason]] : []),
           ...(String(calendar.dieselResponsibility).toLowerCase() === "vendor" ? [["Fuel / Diesel: Contractor Scope"]] : []),
           activity.headers, ...activity.values);
-        if (calendar.breakdown) values.push([], ["ACTIVITY / BREAKDOWN CALENDAR"], calendar.breakdown.headers, ...calendar.breakdown.rows);
+        if (calendar.breakdown && !calendar.rows.some(row => !!row.savedEvidence)) {
+          values.push([], ["ACTIVITY / BREAKDOWN CALENDAR"], calendar.breakdown.headers, ...calendar.breakdown.rows);
+        }
       }
     }
     const sheet = XLSX.utils.aoa_to_sheet(values);
@@ -108,7 +111,7 @@ export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
   for (const review of snapshot.hireReviews || []) {
     table(`Monthly Billing Summary: ${review.name} / ${review.basis} / Rate ${review.rate ?? "-"} / ${review.divisor}`,
       MONTHLY_BILL_HEADERS, [...hireReviewTable(review), ["Recorded period Gross Hire", "", "", "", "", "", review.gross ?? "—"],
-        [review.note, "", "", "", "", "", ""]]);
+        ...hireReviewDisclosureLines(review).map(line => [line, "", "", "", "", "", ""])]);
   }
   for (const section of populatedBillSections(snapshot)) {
     const content = billSectionTable(section);
@@ -118,7 +121,9 @@ export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
         const activity = equipmentHireActivitySheetRows(calendar.rows, calendar.dieselResponsibility, calendar.consumptionNorm, calendar.meterType);
         table(`DAILY ACTIVITY: ${calendar.equipmentName} / ${calendar.periodFrom} to ${calendar.periodTo}${calendar.unavailableReason ? ` / ${calendar.unavailableReason}` : ""}`,
           activity.headers, activity.values);
-        if (calendar.breakdown) table(`ACTIVITY / BREAKDOWN CALENDAR: ${calendar.equipmentName}`, calendar.breakdown.headers, calendar.breakdown.rows);
+        if (calendar.breakdown && !calendar.rows.some(row => !!row.savedEvidence)) {
+          table(`ACTIVITY / BREAKDOWN CALENDAR: ${calendar.equipmentName}`, calendar.breakdown.headers, calendar.breakdown.rows);
+        }
       }
     }
   }

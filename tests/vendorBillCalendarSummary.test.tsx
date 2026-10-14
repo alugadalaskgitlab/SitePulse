@@ -63,6 +63,74 @@ describe("saved calendars", () => {
     expect(screen.getByText(/Working hours, idle days, diesel and historical decisions: Not established/)).toBeTruthy();
     expect(screen.queryByTestId("equipment-hire-period-totals")).toBeNull();
   });
+  it("keeps legacy working-sheet facts in one daily table when frozen performance rows are missing", () => {
+    const input = {
+      ...bill(1, { periodFrom: "2026-10-01", periodTo: "2026-10-01" }),
+      hireStatements: [{
+        id: 4, equipmentId: 4, equipmentName: "Legacy Roller", billingBasis: "daily",
+        periodFrom: "2026-10-01", periodTo: "2026-10-01", rate: 5000, grossAmount: 5000,
+        calculationSnapshot: {
+          terms: { billingBasis: "daily", dieselResponsibility: "hlc", meterType: "hour_meter" },
+          workingSheet: [{
+            date: "2026-10-01", activity: "worked", hours: 8, trips: 2, downtimeHours: 1,
+            equipmentNames: ["Roller R-4"], siteLocations: ["North Site"], activityDescriptions: ["Compaction"],
+            openingReadings: ["100"], closingReadings: ["108"], actualDiesel: 20, expectedDiesel: 18,
+            expectedDieselAvailable: true, dieselVariance: 2, maintenanceDescriptions: ["Hydraulic check"],
+            movementReferences: ["MOVE-17"], activityCount: 1, billableActivityCount: 1, openActivityCount: 0,
+          }],
+          dailyDecisions: [{ date: "2026-10-01", decision: "half_day", reason: "Manager approval", remarks: "Operator attendance confirmed" }],
+          tripDecisions: [{ businessDate: "2026-10-01", selected: false, acceptedTrips: 1, recordedTrips: 2, reason: "Duplicate trip removed" }],
+          diesel: { dailyPricing: [{ date: "2026-10-01", applicableRate: 90 }] },
+        },
+      }],
+      items: [],
+    };
+    render(<SavedBillCalendars bill={input} />);
+    const details = screen.getByText(/Detailed recorded evidence/).closest("details")!;
+    details.open = true;
+    fireEvent(details, new Event("toggle"));
+    const dailyTables = screen.getAllByRole("table").filter(table =>
+      within(table).queryByText("Saved working-sheet activity") || within(table).queryByText("Date"));
+    expect(dailyTables).toHaveLength(1);
+    const dailyTable = dailyTables[0];
+    expect(dailyTable.textContent).toContain("Working-sheet expected HSD: 18 L");
+    expect(dailyTable.textContent).toContain("Daily: half_day — Manager approval");
+    expect(dailyTable.textContent).toContain("Operator attendance confirmed");
+    expect(dailyTable.textContent).toContain("MOVE-17");
+    expect(dailyTable.textContent).toContain("Duplicate trip removed");
+    expect(screen.queryByText(/Activity Calendar —/)).toBeNull();
+    expect(screen.getByText(/Complete frozen performance rows are unavailable/)).toBeTruthy();
+  });
+  it("combines separate monthly statements into one summary and one daily table per equipment", () => {
+    const savedStatement = (id: number, date: string, expectedDiesel: number) => ({
+      id, equipmentId: 8, equipmentName: "Monthly Roller", billingBasis: "daily",
+      periodFrom: date, periodTo: date, rate: 5000, grossAmount: 5000,
+      calculationSnapshot: {
+        terms: { billingBasis: "daily", dieselResponsibility: "hlc", meterType: "hour_meter" },
+        workingSheet: [{
+          date, activity: "worked", hours: 8, expectedDiesel, dieselVariance: 1,
+          equipmentNames: ["Roller R-8"], activityDescriptions: ["Compaction"],
+        }],
+      },
+    });
+    const input = {
+      ...bill(1, { periodFrom: "2026-10-01", periodTo: "2026-10-02" }),
+      hireStatements: [savedStatement(8, "2026-10-01", 18), savedStatement(9, "2026-10-02", 17)],
+      items: [],
+    };
+    render(<SavedBillCalendars bill={input} />);
+    expect(screen.getAllByText("Monthly Billing Summary")).toHaveLength(1);
+    const details = screen.getByText(/Detailed recorded evidence/).closest("details")!;
+    details.open = true;
+    fireEvent(details, new Event("toggle"));
+    const dailyTables = screen.getAllByRole("table").filter(table =>
+      within(table).queryByText("Saved working-sheet activity") || within(table).queryByText("Date"));
+    expect(dailyTables).toHaveLength(1);
+    expect(dailyTables[0].textContent).toContain("Working-sheet expected HSD: 18 L");
+    expect(dailyTables[0].textContent).toContain("Working-sheet expected HSD: 17 L");
+    expect(dailyTables[0].textContent).toContain("01 Oct 2026");
+    expect(dailyTables[0].textContent).toContain("02 Oct 2026");
+  });
   it("keeps legacy Bill export working while unavailable frozen Calendar export is disabled", async () => {
     const exportBill = vi.fn();
     const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
@@ -120,7 +188,28 @@ describe("financial overview and statement", () => {
     // The running statement shows each saved advance once, not once per
     // historical calendar plus another copy in the statement.
     await waitFor(() => expect(screen.getAllByText(/Previously verified advance/)).toHaveLength(1));
-    expect(screen.getByText(/Historical opening balance/).textContent).toContain("Not established");
+    expect(screen.getByText(/Balance carried up to this bill/)).toBeTruthy();
+    expect(screen.getByText(/Confirmed vendor · permitted sites · excludes this bill and later bills/)).toBeTruthy();
+    expect(screen.queryByText(/Last Payment/)).toBeNull();
     expect(JSON.stringify([current, earlier])).toBe(before);
+  });
+  it("shows one concise empty state instead of a blank previous-billing grid", async () => {
+    const current = bill(3);
+    const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => [current] });
+    vi.stubGlobal("fetch", fetcher);
+    renderQuery(<VendorRunningStatement bill={current} bills={[current]} totals={totals} />);
+    await waitFor(() => expect(screen.getByText("No previous bills for this vendor.")).toBeTruthy());
+    expect(screen.queryByText(/Total Gross Bills up to Previous/)).toBeNull();
+    expect(screen.queryByText(/Confirmed vendor · permitted sites/)).toBeNull();
+    expect(screen.queryByText(/View Previous Bills/)).toBeNull();
+  });
+  it("does not fetch or show empty previous-billing totals for an unlinked vendor", () => {
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    const current = bill(4, { vendorId: null });
+    renderQuery(<VendorRunningStatement bill={current} bills={[current]} totals={totals} />);
+    expect(screen.getByText(/Unlinked\/free-text vendor: previous balances are unavailable/)).toBeTruthy();
+    expect(screen.queryByText(/Total Gross Bills up to Previous/)).toBeNull();
+    expect(fetcher).not.toHaveBeenCalled();
   });
 });

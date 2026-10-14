@@ -1,6 +1,5 @@
 import { buildSavedEquipmentHireBillOutput, EquipmentHireDailyTable, exportEquipmentHireCalendar } from "./EquipmentHireBillOutput";
 import { EquipmentHirePeriodTotals } from "./DraftEquipmentHireCalendar";
-import HireActivityBreakdownCalendar from "./HireActivityBreakdownCalendar";
 import { Button } from "@/components/ui/button";
 import HireMonthlyReview from "./HireMonthlyReview";
 import { projectHireReview } from "@shared/vendorBillLayout";
@@ -10,6 +9,13 @@ const show = (v: unknown) => v == null ? "Not established" : String(v);
 /** Only persisted bill/statement evidence; deliberately has no live-data query. */
 export default function SavedBillCalendars({ bill, canExport = false }: { bill: any; canExport?: boolean }) {
   const statements: any[] = bill.hireStatements || [];
+  const statementGroups = new Map<string, any[]>();
+  for (const statement of statements) {
+    const key = Number(statement.equipmentId) > 0
+      ? `equipment-${statement.equipmentId}`
+      : `statement-${statement.id ?? statementGroups.size}`;
+    statementGroups.set(key, [...(statementGroups.get(key) || []), statement]);
+  }
   const covered = new Set(statements.map(s => Number(s.equipmentId)));
   const legacyItems = (bill.items || []).filter((item: any) => item.category?.toLowerCase() === "equipment" && !covered.has(Number(item.equipmentId)));
   const legacyGroups = new Map<string, any[]>();
@@ -19,59 +25,79 @@ export default function SavedBillCalendars({ bill, canExport = false }: { bill: 
   }
   if (!statements.length && !legacyGroups.size) return null;
   return <section className="space-y-3" aria-label="Saved equipment activity calendars">
-    {statements.map((statement, index) => {
-      const snapshot = statement.calculationSnapshot || {};
-      const output = buildSavedEquipmentHireBillOutput({ ...bill, netPayableAmount: undefined, hireStatements: [statement] });
-      const days: any[] = snapshot.workingSheet || [];
-      const completeWorkingSheet = days.length > 0 && days.every(d =>
-        typeof d.hours === "number" && typeof d.trips === "number" && typeof d.downtimeHours === "number" &&
-        ["openingReadings", "closingReadings", "siteLocations", "activityDescriptions", "maintenanceDescriptions", "movementReferences"].every(key => Array.isArray(d[key])));
-      const decisions = [
-        ...(snapshot.dailyDecisions || []), ...(snapshot.exceptionDecisions || []), ...(snapshot.tripDecisions || []),
-      ];
-      const name = statement.equipmentName || snapshot.equipmentName || `Equipment #${statement.equipmentId}`;
-      return <div className="space-y-3" key={statement.id || index}>
-        <HireMonthlyReview review={projectHireReview(statement, bill)} />
-        <p className="text-sm font-semibold">{name} · {statement.billingBasis} · Saved rate {show(statement.rate)}</p>
+    {Array.from(statementGroups, ([groupKey, equipmentStatements]) => {
+      const reviews = equipmentStatements.map(statement => projectHireReview(statement, bill));
+      const outputs = equipmentStatements.map((statement, index) =>
+        buildSavedEquipmentHireBillOutput({
+          ...bill, netPayableAmount: undefined, hireStatements: [statement], hireReview: reviews[index],
+        }));
+      const output = outputs.find(Boolean) || null;
+      const name = reviews[0]?.name || equipmentStatements[0].equipmentName || `Equipment #${equipmentStatements[0].equipmentId}`;
+      const rows = outputs.flatMap(result => result?.rows || [])
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const allFrozenRows = outputs.length > 0 && outputs.every(result => result?.hasFrozenDailyRows);
+      const someFrozenRows = outputs.some(result => result?.hasFrozenDailyRows);
+      const periods = equipmentStatements.map(statement => ({
+        from: statement.periodFrom || bill.periodFrom || "",
+        to: statement.periodTo || bill.periodTo || "",
+      })).filter(period => period.from && period.to);
+      const periodFrom = periods.map(period => period.from).sort()[0] || "";
+      const periodTo = periods.map(period => period.to).sort().at(-1) || "";
+      const displayData = output ? {
+        ...output.data,
+        equipmentName: name,
+        periodFrom,
+        periodTo,
+      } : null;
+      const periodDetails = equipmentStatements.map((statement, index) => {
+        const snapshot = statement.calculationSnapshot || {};
+        const decisions = [
+          ...(snapshot.dailyDecisions || []), ...(snapshot.exceptionDecisions || []), ...(snapshot.tripDecisions || []),
+          ...(snapshot.decisions?.daily || []), ...(snapshot.decisions?.trip || []),
+        ];
+        return {
+          statement, snapshot, review: reviews[index],
+          output: outputs[index],
+          periodDecisions: decisions.filter((decision: any) =>
+            !(decision.date || decision.businessDate || decision.exceptionDate || decision.key)),
+        };
+      });
+      return <div className="space-y-3" key={groupKey}>
+        {reviews.some(review => review.months.length > 0) &&
+          <HireMonthlyReview review={reviews[0]} groupedReviews={reviews.slice(1)} calendars={false} />}
+        <p className="text-sm font-semibold">{name} · {periodDetails.map(({ statement }) =>
+          `${statement.periodFrom || bill.periodFrom}–${statement.periodTo || bill.periodTo} · ${statement.billingBasis} · Saved rate ${show(statement.rate)}`).join(" · ")}</p>
         <details className="rounded-lg border p-3">
         <summary className="cursor-pointer font-semibold text-sm">Detailed recorded evidence · {name}</summary>
         <div className="space-y-3 pt-3">
-          <p className="text-xs">Saved evidence · {bill.status} · {statement.periodFrom || bill.periodFrom} to {statement.periodTo || bill.periodTo}. Current equipment activity is not substituted.</p>
-          {output?.hasFrozenDailyRows ? <>
-            <EquipmentHirePeriodTotals rows={output.rows} dieselResponsibility={output.data.dieselResponsibility} />
-            <EquipmentHireDailyTable rows={output.rows} dieselResponsibility={output.data.dieselResponsibility}
-              consumptionNorm={output.data.consumptionNorm} meterType={output.data.meterType} consumptionRateUnit={output.data.consumptionRateUnit} />
-            {canExport && <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => exportEquipmentHireCalendar(output.data, output.rows, "pdf")}>Export Calendar PDF</Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => exportEquipmentHireCalendar(output.data, output.rows, "xlsx")}>Export Calendar Excel</Button>
+          <p className="text-xs">Saved evidence · {bill.status} · {periodFrom || "Not established"} to {periodTo || "Not established"}. Current equipment activity is not substituted.</p>
+          {allFrozenRows && output && <EquipmentHirePeriodTotals rows={rows} dieselResponsibility={output.data.dieselResponsibility} />}
+          {!allFrozenRows && periodDetails.map(({ statement, output: statementOutput }) => statementOutput?.hasFrozenDailyRows &&
+            <div className="space-y-1" key={`period-totals-${statement.id}`}>
+              <p className="text-xs font-semibold">Saved performance totals · {statement.periodFrom || "Not established"} to {statement.periodTo || "Not established"}</p>
+              <EquipmentHirePeriodTotals rows={statementOutput.rows} dieselResponsibility={statementOutput.data.dieselResponsibility} />
+            </div>)}
+          {!allFrozenRows && <p className="text-sm text-amber-700">Complete frozen performance rows are unavailable for this legacy bill. Any saved working-sheet evidence appears in the unified daily table; missing details remain not established.</p>}
+          {rows.length ? <>
+            {output && <EquipmentHireDailyTable rows={rows} dieselResponsibility={output.data.dieselResponsibility}
+              consumptionNorm={output.data.consumptionNorm} meterType={output.data.meterType} consumptionRateUnit={output.data.consumptionRateUnit} />}
+            {canExport && allFrozenRows && displayData?.periodFrom && displayData?.periodTo && <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => exportEquipmentHireCalendar(displayData, rows, "pdf")}>Export Calendar PDF</Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => exportEquipmentHireCalendar(displayData, rows, "xlsx")}>Export Calendar Excel</Button>
             </div>}
-          </> : <p className="text-sm text-amber-700">Complete frozen daily activity is unavailable for this legacy bill. Missing hours, trips, diesel and idle/breakdown details are not established; available saved information is shown below.</p>}
-          {completeWorkingSheet ? <HireActivityBreakdownCalendar days={days} tripApplicable={days.some(d => d.trips > 0)}
-            showFuel={String(snapshot.terms?.dieselResponsibility || statement.dieselResponsibility).toLowerCase() !== "vendor"}
-            consumptionNorm={snapshot.terms?.consumptionNorm} meterType={snapshot.terms?.meterType} formatDate={date => date} />
-          : days.length > 0 && <div className="overflow-x-auto"><table className="w-full text-xs">
-            <thead><tr>{["Date", "Activity / hours", "Trips", "Breakdown hours", "Recorded details", "Payable quantity"].map(h => <th key={h} className="p-2 text-left">{h}</th>)}</tr></thead>
-            <tbody>{days.map((d: any, i: number) => <tr key={i} className="border-t">
-              <td className="p-2">{show(d.date)}</td><td className="p-2">{show(d.hours ?? d.runtimeHours ?? d.hoursWorked)}</td>
-              <td className="p-2">{show(d.trips ?? d.numberOfTrips)}</td><td className="p-2">{show(d.downtimeHours)}</td>
-              <td className="p-2">{(d.maintenanceDescriptions || []).join("; ") || show(d.activity ?? d.status ?? d.description)}</td>
-              <td className="p-2">{show(d.payableQuantity ?? d.quantity)}</td>
-            </tr>)}</tbody>
-          </table></div>}
-          <p className="text-xs">Saved period totals — Quantity: {show(statement.quantity ?? snapshot.quantity)} · Gross hire: {show(statement.grossAmount ?? snapshot.grossAmount)} · Deductions: {show(statement.deductionAmount ?? snapshot.deductionAmount)} · Net: {show(statement.netAmount ?? snapshot.netAmount)}</p>
-          <h4 className="text-xs font-semibold">Saved billing decisions</h4>
-          {decisions.length ? decisions.map((d: any, i: number) => <p className="text-xs" key={i}>{d.date || d.key || d.sourceId || "Period"} · {d.decision || d.action || d.resolution} · {d.reason || "Reason not recorded"}</p>)
-            : <p className="text-xs text-muted-foreground">No separate decisions recorded.</p>}
-          {Object.entries(snapshot.adjustments || {}).filter(([key]) => !key.toLowerCase().includes("reason")).map(([key, value]) =>
-            <p className="text-xs" key={key}>{key}: {show(value)}{snapshot.adjustments[`${key}Reason`] ? ` · ${snapshot.adjustments[`${key}Reason`]}` : ""}</p>)}
+          </> : !someFrozenRows && <p className="text-xs text-muted-foreground">No dated daily evidence was saved for this bill.</p>}
+          {periodDetails.map(({ statement, snapshot, periodDecisions }, index) => <div className="contents" key={`saved-period-${statement.id ?? index}`}>
+            <p className="text-xs" key={`totals-${statement.id ?? index}`}>Saved period totals ({statement.periodFrom || "Not established"} to {statement.periodTo || "Not established"}) — Quantity: {show(statement.quantity ?? snapshot.quantity)} · Gross hire: {show(statement.grossAmount ?? snapshot.grossAmount)} · Deductions: {show(statement.deductionAmount ?? snapshot.deductionAmount)} · Net: {show(statement.netAmount ?? snapshot.netAmount)}</p>
+            {periodDecisions.length > 0 && <div><h4 className="text-xs font-semibold">Period-level saved billing decisions · {statement.periodFrom || "Not established"} to {statement.periodTo || "Not established"}</h4>
+              {periodDecisions.map((d: any, i: number) => <p className="text-xs" key={i}>{d.sourceId || "Period"} · {d.decision || d.action || d.resolution} · {d.reason || "Reason not recorded"}</p>)}
+            </div>}
+            {Object.entries(snapshot.adjustments || {}).filter(([key]) => !key.toLowerCase().includes("reason")).map(([key, value]) =>
+              <p className="text-xs" key={`${statement.id ?? index}-${key}`}>{key}: {show(value)}{snapshot.adjustments[`${key}Reason`] ? ` · ${snapshot.adjustments[`${key}Reason`]}` : ""}</p>)}
+          </div>)}
         </div>
       </details></div>;
     })}
     {Array.from(legacyGroups, ([key, items]) => <div className="space-y-3" key={key}>
-      <HireMonthlyReview review={projectHireReview({
-        equipmentName: items[0].description || "Equipment", equipmentId: items[0].equipmentId,
-        periodFrom: bill.periodFrom, periodTo: bill.periodTo,
-      }, bill)} />
       <details className="rounded-lg border p-3">
       <summary className="cursor-pointer font-semibold text-sm">Available saved bill lines · {items[0].description || "Equipment"}</summary>
       <div className="space-y-2 pt-3">

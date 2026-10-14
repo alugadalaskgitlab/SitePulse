@@ -1,8 +1,5 @@
 import { billReviewAmounts, summarizeBillReview, vendorStatementBills, previousBillingSummary } from "@shared/vendorBillReview";
 import { billPaymentPosition } from "@shared/vendorBillFinancialReport";
-import HireMonthlyReview from "./HireMonthlyReview";
-import { projectHireReview } from "@shared/vendorBillLayout";
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 const money = (value: number | null) => value == null ? "Not established" : `₹${value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -39,10 +36,9 @@ export function VendorBillFinancialSummary({ bills, totals }: Props) {
 }
 
 export function VendorRunningStatement({ bill, bills, totals, loading, error }: Props & { bill: any; loading?: boolean; error?: boolean }) {
-  const [open, setOpen] = useState(false);
   const history = useQuery<any[]>({
     queryKey: ["/api/vendor-bills", bill.id, "statement"],
-    enabled: !loading && !error,
+    enabled: !loading && !error && bill.vendorId != null,
     queryFn: async () => {
       const response = await fetch(`/api/vendor-bills/${bill.id}/statement`, { credentials: "include", cache: "no-store" });
       if (!response.ok) throw new Error("Could not load permitted bill history");
@@ -58,29 +54,29 @@ export function VendorRunningStatement({ bill, bills, totals, loading, error }: 
   rows.sort((a, b) => String(a.billDate).localeCompare(String(b.billDate)) || a.id - b.id);
   let subtotal = 0;
   let paymentGap = false;
-  const display = (value: number | null | undefined) => value == null ? "—" : money(value);
+  const latest = rows.at(-1);
+  const hasProvisionalRows = rows.some(row => ["draft", "verified"].includes(String(row.status).toLowerCase()));
   return <section className="rounded-lg border p-3 space-y-3" data-testid="vendor-running-statement">
     <h2 className="text-sm font-semibold">Previous Billing Summary</h2>
-    {(bill.hireStatements || []).map((statement: any, index: number) =>
-      <HireMonthlyReview key={statement.id || index} review={projectHireReview(statement, bill)} calendars={false} />)}
-    <dl className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-      {[
-        ["Total Gross Bills up to Previous", display(previous?.gross)],
-        ["Paid up to Previous", display(previous?.paid)],
-        ["Balance up to Previous Bill", display(previous?.balance)],
-        ["Last Payment", "—"],
-      ].map(([label, value]) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="mt-1 font-semibold tabular-nums">{value}</dd></div>)}
-    </dl>
-    <p className="text-xs text-muted-foreground">Confirmed vendor · permitted sites · excludes this bill and later bills. Draft / Verified figures are provisional. A dash means payment evidence is unavailable; paid-status time is not a payment time.</p>
-    {(history.isPending || history.isFetching) && <p role="status" className="text-xs">Loading permitted bill history…</p>}
-    {history.isError && <p role="alert" className="text-xs">Financial history is unavailable or not permitted. <button type="button" className="underline" onClick={() => history.refetch()}>Retry</button></p>}
-    <details onToggle={e => setOpen(e.currentTarget.open)}>
+    {history.isFetching && <p role="status" className="text-xs">Loading permitted bill history…</p>}
+    {(error || history.isError) && <p role="alert" className="text-xs">Financial history is unavailable or not permitted. <button type="button" className="underline" onClick={() => history.refetch()}>Retry</button></p>}
+    {bill.vendorId == null && !loading && !error &&
+      <p className="text-xs text-muted-foreground">Unlinked/free-text vendor: previous balances are unavailable; other names are not assumed to represent the same party.</p>}
+    {bill.vendorId != null && history.isSuccess && !history.isFetching && previous && rows.length === 0 &&
+      <p className="text-xs text-muted-foreground">No previous bills for this vendor.</p>}
+    {history.isSuccess && !history.isFetching && previous && latest && <>
+      <p className="text-xs"><strong>Latest previous bill:</strong> {latest.billDate} · {latest.billNo} · {latest.status} · Net value {money(billReviewAmounts(latest, totals(latest)).net)}</p>
+      <dl className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+        {[
+          ["Total Gross Bills up to Previous", money(previous.gross)],
+          ["Paid up to Previous", money(previous.paid)],
+          ["Balance carried up to this bill", money(previous.balance)],
+        ].map(([label, value]) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="mt-1 font-semibold tabular-nums">{value}</dd></div>)}
+      </dl>
+      <p className="text-xs text-muted-foreground">Confirmed vendor · permitted sites · excludes this bill and later bills{hasProvisionalRows ? " · Draft / Verified values are provisional." : "."}</p>
+    <details>
     <summary className="cursor-pointer text-xs font-semibold">View Previous Bills</summary>
     <div className="space-y-3 pt-3">
-      <p className="text-xs">Read-only, permitted-site information — not an accounting ledger. Historical opening balance: <strong>Not established</strong>. No advances or credits are automatically carried forward or consumed.</p>
-       {bill.vendorId == null && <p className="text-xs text-muted-foreground">Unlinked/free-text vendor: previous balances are unavailable. Other names are not assumed to represent the same party.</p>}
-      {(loading || (open && history.isFetching)) && <p role="status">Loading permitted bill history…</p>}
-      {(error || history.isError) && <p role="alert">Financial history is unavailable or not permitted. <button type="button" className="underline" onClick={() => history.refetch()}>Retry</button></p>}
       <div className="overflow-x-auto"><table className="w-full text-xs">
         <thead><tr>{["Bill date / bill", "Status", "Net bill value", "Recorded payments", "This bill balance", "Credit", "Calculated cumulative movement*"].map(h => <th className="p-2 text-left" key={h}>{h}</th>)}</tr></thead>
         <tbody>{rows.map(row => {
@@ -99,7 +95,7 @@ export function VendorRunningStatement({ bill, bills, totals, loading, error }: 
           </tr>;
         })}</tbody>
       </table></div>
-       <p className="text-xs text-muted-foreground">*Calculated movement in previous-bill date order using cumulative recorded payments, including provisional amounts; not historical payment-date balances or the vendor's opening/closing account balance. Current and later bills are excluded. Credits are indicative, not confirmed available for settlement.</p>
+       <p className="text-xs text-muted-foreground">*Calculated movement uses cumulative recorded payments in previous-bill date order; it is not a historical payment-date balance or the vendor's opening/closing account balance. Credits are indicative, not confirmed available for settlement.</p>
       <h3 className="text-sm font-semibold">Recorded adjustments / advance deductions</h3>
       {rows.map(row => {
         const t = totals(row);
@@ -122,5 +118,6 @@ export function VendorRunningStatement({ bill, bills, totals, loading, error }: 
         </div>;
       })}
     </div>
-    </details></section>;
+    </details></>}
+    </section>;
 }
