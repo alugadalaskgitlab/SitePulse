@@ -103,8 +103,10 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(client).toContain("SavedBillCalendars");
     expect(savedCalendars).toContain("Current equipment activity is not substituted.");
     expect(savedCalendars).toContain("buildSavedEquipmentHireBillOutput");
-    expect(hireOutput).toContain("Saved expected diesel / variance");
-    expect(hireOutput).toContain("Working-sheet expected HSD");
+    expect(hireOutput).toContain("buildSavedHireDailyRows");
+    expect(hireOutput).toContain("consumptionRateText");
+    expect(hireOutput).toContain("varianceLitres");
+    expect(hireOutput).not.toContain("SAVED_EVIDENCE_HEADERS");
     expect(client).toContain("FINAL RECOVERY");
   });
 

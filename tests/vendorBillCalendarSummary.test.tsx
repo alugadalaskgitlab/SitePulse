@@ -90,16 +90,27 @@ describe("saved calendars", () => {
     details.open = true;
     fireEvent(details, new Event("toggle"));
     const dailyTables = screen.getAllByRole("table").filter(table =>
-      within(table).queryByText("Saved working-sheet activity") || within(table).queryByText("Date"));
+      within(table).queryByText("Date"));
     expect(dailyTables).toHaveLength(1);
     const dailyTable = dailyTables[0];
-    expect(dailyTable.textContent).toContain("Working-sheet expected HSD: 18 L");
-    expect(dailyTable.textContent).toContain("Daily: half_day — Manager approval");
+    expect(dailyTable.textContent).toContain("Opening Meter");
+    expect(dailyTable.textContent).toContain("Expected");
+    expect(dailyTable.textContent).toContain("Trips");
+    expect(dailyTable.textContent).toContain("Consumption Rate");
+    expect(dailyTable.textContent).toContain("100");
+    expect(dailyTable.textContent).toContain("108");
+    expect(dailyTable.textContent).toContain("18.00 L");
+    expect(dailyTable.textContent).toContain("+2.00 L");
+    expect(dailyTable.textContent).toContain("2.50 L/Hr");
+    expect(dailyTable.textContent).toContain("Decision: half_day — Manager approval");
     expect(dailyTable.textContent).toContain("Operator attendance confirmed");
-    expect(dailyTable.textContent).toContain("MOVE-17");
+    expect(dailyTable.textContent).toContain("Movement: MOVE-17");
+    expect(dailyTable.textContent).toContain("Trip decision: Excluded");
     expect(dailyTable.textContent).toContain("Duplicate trip removed");
+    expect(dailyTable.textContent).not.toContain("Saved working-sheet activity");
+    expect(dailyTable.querySelectorAll("td").length).toBe(dailyTable.querySelectorAll("th").length);
     expect(screen.queryByText(/Activity Calendar —/)).toBeNull();
-    expect(screen.getByText(/Complete frozen performance rows are unavailable/)).toBeTruthy();
+    expect(screen.getByText(/Complete frozen performance rows are unavailable for this legacy bill.*Not recorded: start\/end times, clock duration, opening\/closing tank readings, diesel-consumed figures/)).toBeTruthy();
   });
   it("combines separate monthly statements into one summary and one daily table per equipment", () => {
     const savedStatement = (id: number, date: string, expectedDiesel: number) => ({
@@ -124,10 +135,10 @@ describe("saved calendars", () => {
     details.open = true;
     fireEvent(details, new Event("toggle"));
     const dailyTables = screen.getAllByRole("table").filter(table =>
-      within(table).queryByText("Saved working-sheet activity") || within(table).queryByText("Date"));
+      within(table).queryByText("Date"));
     expect(dailyTables).toHaveLength(1);
-    expect(dailyTables[0].textContent).toContain("Working-sheet expected HSD: 18 L");
-    expect(dailyTables[0].textContent).toContain("Working-sheet expected HSD: 17 L");
+    expect(dailyTables[0].textContent).toContain("18.00 L");
+    expect(dailyTables[0].textContent).toContain("17.00 L");
     expect(dailyTables[0].textContent).toContain("01 Oct 2026");
     expect(dailyTables[0].textContent).toContain("02 Oct 2026");
   });

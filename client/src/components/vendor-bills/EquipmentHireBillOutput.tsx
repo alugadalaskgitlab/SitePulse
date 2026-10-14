@@ -7,7 +7,7 @@ import { Download, FileText } from "lucide-react";
 import type { EquipmentPerformanceDailyRow } from "@shared/equipmentPerformance";
 import { computeEquipmentUsage, formatEquipmentDuration, formatEquipmentTime } from "@shared/equipmentUsage";
 import { calculateEquipmentHireFinancials } from "@shared/hireBilling";
-import { projectHireReview, hireReviewDisclosureLines, hireReviewTable, MONTHLY_BILL_HEADERS } from "@shared/vendorBillLayout";
+import { projectHireReview, hireReviewDisclosureLines, hireReviewTable, MONTHLY_BILL_HEADERS, type HireReview } from "@shared/vendorBillLayout";
 import { formatConsumptionRate } from "./HireActivityBreakdownCalendar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -31,13 +31,15 @@ export type BillingDailyRow = {
   trips?: number | null;
   statusLabel?: string;
   consumptionRateText?: string | null;
+  workingSheetSource?: boolean;
 };
 
 const list = (value: unknown): any[] => Array.isArray(value) ? value : [];
 const savedNumber = (value: unknown): number | null =>
   value == null || value === "" || !Number.isFinite(Number(value)) ? null : Number(value);
-const savedListText = (value: unknown) =>
-  list(value).filter(item => item != null && item !== "").map(String).join(" · ");
+const savedList = (value: unknown) =>
+  list(value).filter(item => item != null && item !== "").map(String);
+const savedListText = (value: unknown) => savedList(value).join(" · ");
 const savedRemarks = (value: unknown) =>
   (Array.isArray(value) ? value : value == null ? [] : [value]).filter(Boolean).map(String);
 const savedReading = (value: unknown) => {
@@ -61,16 +63,19 @@ function buildSavedHireDailyRows(
     ...exceptions.map(row => row?.date || row?.exceptionDate || row?.businessDate),
     ...list(snapshot.payableDays).map(row => row?.date),
   ].filter((date): date is string => typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)));
-  const baseRows = rows.length ? rows : Array.from(dates).sort().map(date => ({
+  const baseRows: BillingDailyRow[] = rows.length ? rows : Array.from(dates).sort().map(date => ({
     date, status: "No Work" as const, remarks: "No activity recorded", downtimeHours: 0,
   }));
   const daysByDate = new Map(savedDays.map(day => [day?.date, day]));
   return baseRows.map(row => {
     const day = daysByDate.get(row.date);
-    if (!day) return row;
-    const noActivity = day.activity === "no_activity";
-    const noSavedActivity = day.activity == null;
-    const performance = row.performance || (noActivity || noSavedActivity ? undefined : {
+    const daily = dailyDecisions.some(decision => (decision?.date || decision?.businessDate || decision?.key) === row.date);
+    const trip = tripDecisions.some(decision => (decision?.businessDate || decision?.date || decision?.key) === row.date);
+    const exception = exceptions.some(decision => (decision?.date || decision?.exceptionDate || decision?.businessDate) === row.date);
+    if (!day && !daily && !trip && !exception) return row;
+    const noActivity = day?.activity === "no_activity";
+    const noSavedActivity = day?.activity == null;
+    const performance = !day || noActivity ? undefined : row.performance || (noSavedActivity ? undefined : {
       key: `saved-working-sheet-${row.date}`,
       date: row.date,
       projectSite: savedListText(day.siteLocations),
@@ -98,30 +103,31 @@ function buildSavedHireDailyRows(
     const decisions = dailyDecisions.filter(decision =>
       (decision?.date || decision?.businessDate || decision?.key) === row.date,
     ).map(decision =>
-      `Decision: ${decision.decision || decision.action || decision.resolution || "Not established"}${decision.reason ? ` — ${decision.reason}` : ""}`,
+      `Decision: ${decision.decision || decision.action || decision.resolution || "Not established"}${decision.reason ? ` — ${decision.reason}` : ""}${decision.remarks ? ` · ${decision.remarks}` : ""}`,
     );
     const trips = tripDecisions.filter(decision =>
       (decision?.businessDate || decision?.date || decision?.key) === row.date,
     ).map(decision =>
-      `Trip decision: ${decision.selected === false ? "Excluded" : "Included"} ${decision.acceptedTrips ?? "—"} / ${decision.recordedTrips ?? "—"} trips${decision.reason ? ` — ${decision.reason}` : ""}`,
+      `Trip decision: ${decision.selected === false ? "Excluded" : "Included"} ${decision.acceptedTrips ?? "—"} / ${decision.recordedTrips ?? "—"} trips${decision.reason ? ` — ${decision.reason}` : ""}${decision.remarks ? ` · ${decision.remarks}` : ""}`,
     );
     const exceptionNotes = exceptions.filter(decision =>
       (decision?.date || decision?.exceptionDate || decision?.businessDate) === row.date,
     ).map(decision =>
-      `Exception: ${decision.decision || decision.action || decision.resolution || "Not established"}${decision.reason ? ` — ${decision.reason}` : ""}`,
+      `Exception: ${decision.decision || decision.action || decision.resolution || "Not established"}${decision.reason ? ` — ${decision.reason}` : ""}${decision.remarks ? ` · ${decision.remarks}` : ""}`,
     );
     const savedDayRemarks = [
-      ...savedRemarks(day.remarks),
-      ...savedListText(day.activityDescriptions).split(" · ").filter(Boolean),
-      ...savedListText(day.maintenanceDescriptions).split(" · ").filter(Boolean),
-      ...savedListText(day.movementReferences).split(" · ").filter(Boolean).map(reference => `Movement: ${reference}`),
+      ...savedRemarks(day?.remarks),
+      ...savedList(day?.activityDescriptions),
+      ...savedList(day?.maintenanceDescriptions),
+      ...savedList(day?.movementReferences).map(reference => `Movement: ${reference}`),
       ...decisions, ...trips, ...exceptionNotes,
     ];
-    const remarks = [...new Set([...row.remarks.split(" · ").filter(Boolean), ...savedDayRemarks])].join(" · ");
-    const statusLabel = noActivity ? "No Activity — Still Billable"
+    const baseRemarks = row.remarks === "No activity recorded" && day?.activity != null ? [] : row.remarks.split(" · ").filter(Boolean);
+    const remarks = Array.from(new Set([...baseRemarks, ...savedDayRemarks])).join(" · ");
+    const statusLabel = !day ? row.statusLabel : noActivity ? "No Activity — Still Billable"
       : day.activity === "breakdown" ? "Breakdown / Operator Unavailable"
         : noSavedActivity ? "Activity Not Recorded" : "Worked";
-    const rateText = noActivity || noSavedActivity ? "—"
+    const rateText = !day ? row.consumptionRateText : noActivity || noSavedActivity ? "—"
       : formatConsumptionRate(
         Number(day.actualDiesel ?? 0),
         Number(day.hours ?? 0),
@@ -132,11 +138,12 @@ function buildSavedHireDailyRows(
     return {
       ...row,
       performance,
-      status: noActivity ? "No Work" : day.activity === "breakdown" ? "Breakdown" : noSavedActivity ? row.status : "Worked",
+      ...(day ? { workingSheetSource: true } : {}),
+      status: !day ? row.status : noActivity ? "No Work" : day.activity === "breakdown" ? "Breakdown" : noSavedActivity ? row.status : "Worked",
       statusLabel,
       remarks,
-      downtimeHours: savedNumber(day.downtimeHours) ?? row.downtimeHours,
-      trips: noActivity || noSavedActivity ? null : savedNumber(day.trips),
+      downtimeHours: savedNumber(day?.downtimeHours) ?? row.downtimeHours,
+      ...(day ? { trips: noActivity || noSavedActivity ? null : savedNumber(day.trips) } : {}),
       consumptionRateText: rateText,
     };
   });
@@ -188,6 +195,9 @@ export type EquipmentHireExportData = {
 
 const money = (value: number | null | undefined) => `₹${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const number = (value: number | null | undefined, decimals = 1) => value == null ? "—" : Number(value).toLocaleString("en-IN", { maximumFractionDigits: decimals });
+const numberFixed = (value: number, decimals = 2) => Number(value).toLocaleString("en-IN", {
+  minimumFractionDigits: decimals, maximumFractionDigits: decimals,
+});
 // jsPDF's built-in Helvetica fonts are WinAnsi, not Unicode. Keep the user
 // interface and XLSX values untouched, but make PDF table text reliably
 // printable in every supported PDF viewer.
@@ -202,9 +212,11 @@ const duration = (value: number | null | undefined, incomplete = false) =>
   value == null ? "—" : `${incomplete ? "Partial · " : ""}${formatEquipmentDuration(value)}`;
 // Billing users explicitly use this wording for unavailable measured fuel;
 // never substitute an inferred value or alternate wording.
-const litres = (value: number | null | undefined) => value == null ? "Tank Readings N/A" : `${number(value)} L`;
+const litres = (value: number | null | undefined) => value == null ? "Tank Readings N/A" : `${numberFixed(value)} L`;
 const tankReading = (value: number | null | undefined) => value == null ? "Tank Readings N/A" : `${number(value)} L`;
-const expectedLitres = (value: number | null | undefined) => value == null ? "—" : `${number(value)} L`;
+const expectedLitres = (value: number | null | undefined) => value == null ? "—" : `${numberFixed(value)} L`;
+const varianceLitres = (value: number | null | undefined) =>
+  value == null ? "—" : `${value >= 0 ? "+" : "−"}${numberFixed(Math.abs(value))} L`;
 const displayConsumptionUnit = (unit: EquipmentPerformanceDailyRow["consumptionRateUnit"] | undefined) =>
   unit === "L/hr" ? "L/Hr" : unit === "L/km" ? "L/Km" : "";
 const masterConsumptionUnit = (meterType?: string | null): EquipmentPerformanceDailyRow["consumptionRateUnit"] =>
@@ -268,14 +280,14 @@ export function buildBillingDailyRows(
   });
 }
 
-function dailyHeaders(dieselResponsibility?: string | null, includeSavedEvidence = false) {
+function dailyHeaders(dieselResponsibility?: string | null) {
   const fuelIsContractorScope = String(dieselResponsibility).toLowerCase() === "vendor";
   return [
-    "Date", "Project / Site", "Opening Meter", "Closing Meter", "Working Hours", "Start", "End", "Clock Duration",
+    "Date", "Project / Site", "Opening Meter", "Closing Meter", "Working Hours", "Trips", "Start", "End", "Clock Duration",
     ...(fuelIsContractorScope ? [] : ["Diesel Issued", "Opening Tank", "Closing Tank"]),
-    ...(fuelIsContractorScope ? [] : ["Diesel Consumed", "Expected", "Norm"]),
+    ...(fuelIsContractorScope ? [] : ["Diesel Consumed", "Expected", "Difference", "Norm"]),
+    "Consumption Rate",
     "Status / Remarks",
-    ...(includeSavedEvidence ? SAVED_EVIDENCE_HEADERS : []),
   ];
 }
 
@@ -287,6 +299,7 @@ function dailyValues(
 ) {
   const item = row.performance;
   const fuelIsContractorScope = String(dieselResponsibility).toLowerCase() === "vendor";
+  const noActivity = row.statusLabel === "No Activity — Still Billable";
   // Norm is a master value, so its explicit master/frozen unit wins over a
   // row's usage unit (for example, a trip-converted hour-meter activity).
   const consumptionUnit = displayConsumptionUnit(fallbackConsumptionUnit || item?.consumptionRateUnit);
@@ -297,19 +310,25 @@ function dailyValues(
     dateLabel(row.date),
     item?.projectSite || "—",
     number(item?.openingMeter), number(item?.closingMeter),
-    duration(item?.workingHours, item?.workingHoursIncomplete),
+    duration(item?.workingHours, item?.workingHoursIncomplete), number(rowTrips(row), 2),
     formatEquipmentTime(item?.startTime), formatEquipmentTime(item?.endTime),
     duration(item?.clockDuration, item?.clockDurationIncomplete),
-    ...(fuelIsContractorScope ? [] : [item?.dieselIssued == null ? "Tank Readings N/A" : litres(item.dieselIssued), tankReading(item?.openingTank), tankReading(item?.closingTank)]),
+     ...(fuelIsContractorScope ? [] : [
+       noActivity ? "—" : item?.dieselIssued == null ? "Tank Readings N/A" : litres(item.dieselIssued),
+       noActivity ? "—" : tankReading(item?.openingTank),
+       noActivity ? "—" : tankReading(item?.closingTank),
+     ]),
     ...(fuelIsContractorScope ? [] : [
-      item?.consumptionIncomplete ? "Tank Readings N/A" : litres(item?.dieselConsumed),
+       noActivity ? "—" : item?.consumptionIncomplete ? "Tank Readings N/A" : litres(item?.dieselConsumed),
       expectedLitres(item?.expectedDiesel),
+      varianceLitres(item?.difference),
       norm,
     ]),
-    `${row.savedEvidence?.displayStatus || (row.status === "No Work" ? "Activity Not Recorded" : row.status === "Breakdown" ? "Breakdown / Operator Unavailable" : row.status)}${row.downtimeHours ? ` · ${number(row.downtimeHours, 2)}h downtime` : ""}${row.remarks ? ` — ${row.remarks}` : ""}`,
+    row.consumptionRateText ?? (item?.consumptionRate == null
+      ? "—"
+      : `${number(item.consumptionRate, 2)}${displayConsumptionUnit(item.consumptionRateUnit) ? ` ${displayConsumptionUnit(item.consumptionRateUnit)}` : ""}`),
+    `${row.statusLabel || (row.status === "No Work" ? "Activity Not Recorded" : row.status === "Breakdown" ? "Breakdown / Operator Unavailable" : row.status)}${row.downtimeHours ? ` · ${number(row.downtimeHours, 2)}h downtime` : ""}${row.remarks ? ` — ${row.remarks}` : ""}`,
   ];
-  if (row.savedEvidence) values.push(row.savedEvidence.workingSheet, row.savedEvidence.dieselSummary,
-    row.savedEvidence.decisions, row.savedEvidence.remarksAndMovements);
   return values;
 }
 
@@ -318,10 +337,10 @@ export function equipmentHireActivitySheetRows(
   rows: BillingDailyRow[], dieselResponsibility?: string | null, consumptionNorm?: number | null,
   meterType?: string | null,
 ) {
-  const headers = dailyHeaders(dieselResponsibility, rows.some(row => !!row.savedEvidence));
+  const headers = dailyHeaders(dieselResponsibility);
   const unit = calendarConsumptionUnit(rows, meterType);
   return { headers, values: rows.map(row => dailyValues(row, dieselResponsibility, consumptionNorm, unit)),
-    columns: headers.map((header, index) => ({ wch: index === headers.length - 1 ? 52 : Math.max(14, header.length + 2) })) };
+    columns: headers.map(header => ({ wch: header === "Status / Remarks" ? 52 : header === "Trips" ? 9 : Math.max(14, header.length + 2) })) };
 }
 
 type DailyTotalsRow = BillingDailyRow & {
@@ -425,15 +444,13 @@ export function EquipmentHireDailyTable({ rows, dieselResponsibility, consumptio
   meterType?: string | null;
   consumptionRateUnit?: EquipmentPerformanceDailyRow["consumptionRateUnit"];
 }) {
-  const includeSavedEvidence = rows.some(row => !!row.savedEvidence);
-  const headers = dailyHeaders(dieselResponsibility, includeSavedEvidence);
-  const savedEvidenceStart = headers.length - (includeSavedEvidence ? SAVED_EVIDENCE_HEADERS.length : 0);
+  const headers = dailyHeaders(dieselResponsibility);
   const consumptionUnit = calendarConsumptionUnit(rows, meterType, consumptionRateUnit);
   return <div className="overflow-x-auto">
-    <table className="w-full min-w-[1780px] text-xs">
+    <table className="w-full min-w-[1920px] text-xs">
       <thead className="bg-muted text-[10px] uppercase tracking-wide"><tr>{headers.map(header => <th key={header} className="px-2 py-2 text-right first:text-left last:text-left">{header}</th>)}</tr></thead>
       <tbody>{rows.map((row, rowIndex) => <tr key={`${row.date}-${rowIndex}`} className="border-b align-top">
-        {dailyValues(row, dieselResponsibility, consumptionNorm, consumptionUnit).map((value, index) => <td key={index} className={`px-2 py-2 ${index < savedEvidenceStart ? (index === 0 || index === 1 || index === savedEvidenceStart - 1 ? "text-left" : "text-right") : "whitespace-pre-wrap text-left"}`}>{value}</td>)}
+        {dailyValues(row, dieselResponsibility, consumptionNorm, consumptionUnit).map((value, index) => <td key={index} className={`px-2 py-2 ${index === 0 || index === 1 || index === headers.length - 1 ? "text-left" : "text-right"}`}>{value}</td>)}
       </tr>)}</tbody>
     </table>
   </div>;
@@ -551,7 +568,7 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
   }
   autoTable(doc, {
     startY: String(data.dieselResponsibility).toLowerCase() === "vendor" ? 21 : 16,
-    head: [dailyHeaders(data.dieselResponsibility, rows.some(row => !!row.savedEvidence))],
+    head: [dailyHeaders(data.dieselResponsibility)],
     body: rows.map(row => dailyValues(row, data.dieselResponsibility, data.consumptionNorm, consumptionUnit).map(value => pdfText(String(value)))),
     theme: "grid",
     styles: { fontSize: 5.7, cellPadding: 1.2, overflow: "linebreak" },
@@ -586,7 +603,7 @@ function calendarTotalsRows(
 export function exportEquipmentHireCalendar(data: EquipmentHireExportData, rows: BillingDailyRow[], format: "pdf" | "xlsx") {
   const fuelIsContractorScope = String(data.dieselResponsibility).toLowerCase() === "vendor";
   const totals = buildEquipmentHirePeriodTotals(rows, data.dieselResponsibility);
-  const headers = dailyHeaders(data.dieselResponsibility, rows.some(row => !!row.savedEvidence));
+  const headers = dailyHeaders(data.dieselResponsibility);
   const consumptionUnit = calendarConsumptionUnit(rows, data.meterType, data.consumptionRateUnit);
   const safeName = (data.billNo || "equipment-hire-bill").replace(/[^\w-]+/g, "-");
   const metadata: Array<Array<string | number | null>> = [
@@ -790,7 +807,7 @@ export function buildSavedEquipmentHireBillOutput(bill: any): { data: EquipmentH
     meterType: snapshot.terms?.meterType,
     consumptionRateUnit: snapshot.terms?.consumptionRateUnit ?? snapshot.dieselNormBasisOverride,
   };
-  return { data, rows: buildSavedHireDailyRows(rows, snapshot, data.hireReview!, data), hasFrozenDailyRows };
+  return { data, rows: buildSavedHireDailyRows(rows, snapshot, data), hasFrozenDailyRows };
 }
 
 /** Detail-page action set. Approved/saved bills always export the frozen daily

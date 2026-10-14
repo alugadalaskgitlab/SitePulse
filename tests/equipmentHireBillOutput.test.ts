@@ -97,7 +97,8 @@ describe("equipment hire bill output", () => {
     exportEquipmentHireBill({ ...data, dieselResponsibility: "hlc", consumptionNorm: 3.5 }, rows, "xlsx");
     const hlcActivity = excelSheets.find(sheet => sheet.name === "Daily Activity")!.data;
     expect(hlcActivity[0]).toContain("Norm");
-    expect(hlcActivity[0]).not.toContain("Difference");
+    expect(hlcActivity[0]).toContain("Difference");
+    expect(hlcActivity[0]).toEqual(expect.arrayContaining(["Trips", "Consumption Rate"]));
     expect(hlcActivity[0]).not.toContain("Actual Consumption | Master Norm");
     expect(hlcActivity[1]).toContain("3.5 L/Hr");
     expect(hlcActivity[2]).toContain("Tank Readings N/A");
@@ -242,7 +243,7 @@ describe("equipment hire bill output", () => {
     expect(renderedRow).toBeDefined();
     expect(renderedRow).toContain("Tank Readings N/A");
     expect(renderedRow).not.toContain("99 L");
-    expect(renderedRow).toContain("88 L");
+    expect(renderedRow).toContain("88.00 L");
     expect(renderedRow).not.toContain("Actual: 49.50");
   });
 
@@ -274,10 +275,13 @@ describe("equipment hire bill output", () => {
     const headers = sheet.find(row => row.includes("Date"))!;
     const rendered = sheet.find(row => row[0] === "10 Jan 2026")!;
     expect(headers).toEqual(expect.arrayContaining(["Diesel Consumed", "Expected", "Norm", "Status / Remarks"]));
-    expect(headers).not.toEqual(expect.arrayContaining(["Difference", "Actual Consumption | Master Norm"]));
+    expect(headers).toContain("Difference");
+    expect(headers).toContain("Consumption Rate");
+    expect(headers).toContain("Trips");
+    expect(headers).not.toContain("Actual Consumption | Master Norm");
     expect(rendered).toEqual(expect.arrayContaining([
       "Tank Readings N/A",
-      "16 L",
+      "16.00 L",
       "2.25 L/Km",
       "Worked — Shoulder grading, Material shifting",
     ]));
@@ -359,7 +363,7 @@ describe("equipment hire bill output", () => {
         equipmentId: 9, equipmentName: "Legacy Roller", periodFrom: "2026-10-01", periodTo: "2026-10-01",
         billingBasis: "daily", rate: 5000, grossAmount: 5000,
         calculationSnapshot: {
-          terms: { billingBasis: "daily", dieselResponsibility: "hlc", meterType: "hour_meter" },
+      terms: { billingBasis: "daily", dieselResponsibility: "hlc", meterType: "hour_meter", consumptionNorm: 4 },
           workingSheet: [{
             date: "2026-10-01", activity: "worked", hours: 8, trips: 2, downtimeHours: 1,
             equipmentNames: ["Roller R-4"], siteLocations: ["North Site"], activityDescriptions: ["Compaction"],
@@ -374,17 +378,82 @@ describe("equipment hire bill output", () => {
     });
     expect(output?.hasFrozenDailyRows).toBe(false);
     expect(output?.rows).toHaveLength(1);
-    expect(output?.rows[0].savedEvidence?.workingSheet).toContain("Roller R-4");
-    expect(output?.rows[0].savedEvidence?.dieselSummary).toContain("Working-sheet expected HSD: 18 L");
-    expect(output?.rows[0].savedEvidence?.decisions).toContain("Daily: half_day — Manager approval");
-    expect(output?.rows[0].savedEvidence?.remarksAndMovements).toContain("Attendance confirmed");
-    expect(output?.rows[0].savedEvidence?.remarksAndMovements).toContain("MOVE-17");
+    expect(output?.rows[0].performance).toMatchObject({
+      projectSite: "North Site",
+      openingMeter: 100,
+      closingMeter: 108,
+      workingHours: 8,
+      dieselIssued: 20,
+      expectedDiesel: 18,
+      difference: 2,
+    });
+    expect(output?.rows[0]).toMatchObject({
+      trips: 2,
+      statusLabel: "Worked",
+      consumptionRateText: "2.50 L/Hr (Norm: 4.00)",
+    });
     excelSheets.length = 0;
     exportEquipmentHireCalendar(output!.data, output!.rows, "xlsx");
-    expect(excelSheets[0].data).toEqual(expect.arrayContaining([
-      expect.arrayContaining(["Saved working-sheet activity", "Saved expected diesel / variance"]),
-      expect.arrayContaining([expect.stringContaining("Recorded activity:"), expect.stringContaining("Working-sheet expected HSD: 18 L")]),
+    const sheet = excelSheets[0].data;
+    const headers = sheet.find(row => row.includes("Date"))!;
+    const rendered = sheet.find(row => row[0] === "01 Oct 2026")!;
+    expect(headers).toContain("Trips");
+    expect(headers).toContain("Consumption Rate");
+    expect(headers).toContain("Difference");
+    expect(headers).not.toEqual(expect.arrayContaining([
+      "Saved working-sheet activity", "Saved expected diesel / variance", "Recorded decisions",
+      "Saved remarks / movement references",
     ]));
+    expect(rendered[headers.indexOf("Project / Site")]).toBe("North Site");
+    expect(rendered[headers.indexOf("Opening Meter")]).toBe("100");
+    expect(rendered[headers.indexOf("Closing Meter")]).toBe("108");
+    expect(rendered[headers.indexOf("Trips")]).toBe("2");
+    expect(rendered[headers.indexOf("Diesel Issued")]).toBe("20.00 L");
+    expect(rendered[headers.indexOf("Expected")]).toBe("18.00 L");
+    expect(rendered[headers.indexOf("Difference")]).toBe("+2.00 L");
+    expect(rendered[headers.indexOf("Consumption Rate")]).toBe("2.50 L/Hr (Norm: 4.00)");
+    expect(rendered[headers.indexOf("Status / Remarks")]).toContain("Decision: half_day — Manager approval");
+    expect(rendered[headers.indexOf("Status / Remarks")]).toContain("Attendance confirmed");
+    expect(rendered[headers.indexOf("Status / Remarks")]).toContain("Movement: MOVE-17");
+    expect(rendered[headers.indexOf("Status / Remarks")]).toContain("Duplicate trip removed");
+  });
+
+  it("keeps no-activity billable dates empty while preserving their saved status", () => {
+    const output = buildSavedEquipmentHireBillOutput({
+      billNo: "VB-EH-LEGACY-NO-ACTIVITY", vendorName: "ACME HIRE", billType: "equipment",
+      periodFrom: "2026-10-01", periodTo: "2026-10-01", status: "approved",
+      hireStatements: [{
+        equipmentId: 9, equipmentName: "Legacy Roller", periodFrom: "2026-10-01", periodTo: "2026-10-01",
+        billingBasis: "monthly", rate: 30000, grossAmount: 30000,
+        calculationSnapshot: {
+          terms: { billingBasis: "monthly", dieselResponsibility: "hlc", meterType: "hour_meter" },
+          workingSheet: [{
+            date: "2026-10-01", activity: "no_activity", hours: 0, trips: 0, downtimeHours: 0,
+            openingReadings: [], closingReadings: [], actualDiesel: 0, expectedDiesel: 0,
+            expectedDieselAvailable: true, dieselVariance: 0,
+          }],
+        },
+      }],
+    });
+    const row = output!.rows[0];
+    expect(row).toMatchObject({ status: "No Work", statusLabel: "No Activity — Still Billable", trips: null });
+    expect(row.performance).toBeUndefined();
+    excelSheets.length = 0;
+    exportEquipmentHireCalendar(output!.data, output!.rows, "xlsx");
+    const headers = excelSheets[0].data.find(row => row.includes("Date"))!;
+    const rendered = excelSheets[0].data.find(row => row[0] === "01 Oct 2026")!;
+    const index = (header: string) => headers.indexOf(header);
+    expect(rendered[index("Opening Meter")]).toBe("—");
+    expect(rendered[index("Closing Meter")]).toBe("—");
+    expect(rendered[index("Working Hours")]).toBe("—");
+    expect(rendered[index("Trips")]).toBe("—");
+    expect(rendered[index("Diesel Issued")]).toBe("—");
+    expect(rendered[index("Opening Tank")]).toBe("—");
+    expect(rendered[index("Closing Tank")]).toBe("—");
+    expect(rendered[index("Diesel Consumed")]).toBe("—");
+    expect(rendered[index("Expected")]).toBe("—");
+    expect(rendered[index("Consumption Rate")]).toBe("—");
+    expect(rendered[index("Status / Remarks")]).toBe("No Activity — Still Billable");
   });
   it("carries the factual review notice into equipment bill exports without the removed explanatory copy", () => {
     const hireReview = projectHireReview({

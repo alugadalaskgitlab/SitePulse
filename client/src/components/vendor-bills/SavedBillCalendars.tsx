@@ -1,10 +1,24 @@
-import { buildSavedEquipmentHireBillOutput, EquipmentHireDailyTable, exportEquipmentHireCalendar } from "./EquipmentHireBillOutput";
+import { buildSavedEquipmentHireBillOutput, EquipmentHireDailyTable, exportEquipmentHireCalendar, type BillingDailyRow } from "./EquipmentHireBillOutput";
 import { EquipmentHirePeriodTotals } from "./DraftEquipmentHireCalendar";
 import { Button } from "@/components/ui/button";
 import HireMonthlyReview from "./HireMonthlyReview";
 import { projectHireReview } from "@shared/vendorBillLayout";
 
 const show = (v: unknown) => v == null ? "Not established" : String(v);
+
+function missingSavedPerformanceFields(rows: BillingDailyRow[]) {
+  const measuredRows = rows.filter(row => row.status !== "No Work");
+  if (!measuredRows.length) return rows.length ? "No performance measurements are present for the saved no-activity dates."
+    : "No dated daily evidence was saved, so daily values remain not recorded.";
+  const fields: Array<[string, (row: BillingDailyRow) => boolean]> = [
+    ["start/end times", row => !row.performance?.startTime || !row.performance?.endTime],
+    ["clock duration", row => row.performance?.clockDuration == null],
+    ["opening/closing tank readings", row => row.performance?.openingTank == null || row.performance?.closingTank == null],
+    ["diesel-consumed figures", row => row.performance?.dieselConsumed == null],
+  ];
+  const missingFields = fields.filter(([, missing]) => measuredRows.some(missing)).map(([field]) => field);
+  return missingFields.length ? `Not recorded: ${missingFields.join(", ")}.` : "No additional daily fields are unestablished.";
+}
 
 /** Only persisted bill/statement evidence; deliberately has no live-data query. */
 export default function SavedBillCalendars({ bill, canExport = false }: { bill: any; canExport?: boolean }) {
@@ -77,7 +91,7 @@ export default function SavedBillCalendars({ bill, canExport = false }: { bill: 
               <p className="text-xs font-semibold">Saved performance totals · {statement.periodFrom || "Not established"} to {statement.periodTo || "Not established"}</p>
               <EquipmentHirePeriodTotals rows={statementOutput.rows} dieselResponsibility={statementOutput.data.dieselResponsibility} />
             </div>)}
-          {!allFrozenRows && <p className="text-sm text-amber-700">Complete frozen performance rows are unavailable for this legacy bill. Any saved working-sheet evidence appears in the unified daily table; missing details remain not established.</p>}
+          {!allFrozenRows && <p className="text-sm text-amber-700">Complete frozen performance rows are unavailable for this legacy bill. Saved working-sheet values appear in the daily table. {missingSavedPerformanceFields(rows)}</p>}
           {rows.length ? <>
             {output && <EquipmentHireDailyTable rows={rows} dieselResponsibility={output.data.dieselResponsibility}
               consumptionNorm={output.data.consumptionNorm} meterType={output.data.meterType} consumptionRateUnit={output.data.consumptionRateUnit} />}

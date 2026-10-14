@@ -50,7 +50,7 @@ export function buildWholeBillWorkbook(snapshot: WholeBillSnapshot): XLSX.WorkBo
           ...(calendar.unavailableReason ? [[calendar.unavailableReason]] : []),
           ...(String(calendar.dieselResponsibility).toLowerCase() === "vendor" ? [["Fuel / Diesel: Contractor Scope"]] : []),
           activity.headers, ...activity.values);
-        if (calendar.breakdown && !calendar.rows.some(row => !!row.savedEvidence)) {
+        if (calendar.breakdown && !calendar.rows.some(row => row.workingSheetSource)) {
           values.push([], ["ACTIVITY / BREAKDOWN CALENDAR"], calendar.breakdown.headers, ...calendar.breakdown.rows);
         }
       }
@@ -121,7 +121,7 @@ export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
         const activity = equipmentHireActivitySheetRows(calendar.rows, calendar.dieselResponsibility, calendar.consumptionNorm, calendar.meterType);
         table(`DAILY ACTIVITY: ${calendar.equipmentName} / ${calendar.periodFrom} to ${calendar.periodTo}${calendar.unavailableReason ? ` / ${calendar.unavailableReason}` : ""}`,
           activity.headers, activity.values);
-        if (calendar.breakdown && !calendar.rows.some(row => !!row.savedEvidence)) {
+        if (calendar.breakdown && !calendar.rows.some(row => row.workingSheetSource)) {
           table(`ACTIVITY / BREAKDOWN CALENDAR: ${calendar.equipmentName}`, calendar.breakdown.headers, calendar.breakdown.rows);
         }
       }
