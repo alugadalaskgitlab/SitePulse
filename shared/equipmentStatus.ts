@@ -21,7 +21,7 @@ export interface EquipmentStatusRecord {
 
 type EquipmentStatusSourceRow = {
   recordId: number;
-  equipmentId: number;
+  equipmentId: number | null;
   date: string;
   status?: unknown;
   reason?: string | null;

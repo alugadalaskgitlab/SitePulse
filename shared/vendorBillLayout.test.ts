@@ -35,8 +35,24 @@ describe("VB-LAYOUT-01 display-only evidence", () => {
   });
   it("retains explicit idle, operator unavailability and outside deployment evidence", () => {
     expect(activityClassification({ activity: "idle" })).toBe("Idle — Work Not Available");
-    expect(activityClassification({ activity: "operator_unavailable" })).toBe("Breakdown / Operator Unavailable");
+    expect(activityClassification({ activity: "idle_no_work" })).toBe("Idle — Work Not Available");
+    expect(activityClassification({ activity: "idle_no_operator" })).toBe("Operator / Driver Unavailable");
+    expect(activityClassification({ activity: "operator_unavailable" })).toBe("Operator / Driver Unavailable");
+    expect(activityClassification({ activity: "breakdown" })).toBe("Breakdown");
     expect(activityClassification({ activity: "outside_deployment" })).toBe("Outside Hire/Deployment Period");
+  });
+  it("keeps the four explicit classifications separate and leaves missing evidence unclassified", () => {
+    const s = make("2026-08-01", "2026-08-05");
+    s.calculationSnapshot.workingSheet = [
+      { date: "2026-08-01", activity: "working" },
+      { date: "2026-08-02", activity: "idle_no_work" },
+      { date: "2026-08-03", activity: "idle_no_operator" },
+      { date: "2026-08-04", activity: "breakdown" },
+      { date: "2026-08-05", activity: "not_recorded" },
+    ];
+    const month = projectHireReview(s).months[0];
+    expect(month).toMatchObject({ worked: 1, idle: 1, breakdown: 1, operatorUnavailable: 1, unknown: 1 });
+    expect(month.worked + month.idle + month.breakdown + month.operatorUnavailable + month.unknown).toBe(5);
   });
   it("does not count entirely open activity as verified working", () => {
     expect(activityClassification({ activity: "worked", openActivityCount: 1, billableActivityCount: 0 })).toBe("Activity Not Recorded");

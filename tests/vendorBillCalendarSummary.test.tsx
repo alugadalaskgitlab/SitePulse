@@ -101,7 +101,7 @@ describe("saved calendars", () => {
     expect(dailyTable.textContent).toContain("108");
     expect(dailyTable.textContent).toContain("18.00 L");
     expect(dailyTable.textContent).toContain("+2.00 L");
-    expect(dailyTable.textContent).toContain("2.50 L/Hr");
+    expect(dailyTable.textContent).toContain("Tank Readings N/A");
     expect(dailyTable.textContent).toContain("Decision: half_day — Manager approval");
     expect(dailyTable.textContent).toContain("Operator attendance confirmed");
     expect(dailyTable.textContent).toContain("Movement: MOVE-17");

@@ -24,8 +24,9 @@ describe("approved month review presentation", () => {
     calendars[0].open = true;
     expect(calendars[1].open).toBe(false);
     expect(screen.getByText("Idle Days (Work Not Available)")).toBeTruthy();
-    expect(screen.getByText("Breakdown / Opr. Unavailable Days")).toBeTruthy();
-    expect(review.months.map(m => [m.worked, m.idle, m.breakdown])).toEqual([[1, 0, 0], [0, 1, 1]]);
+    expect(screen.getByText("Breakdown Days")).toBeTruthy();
+    expect(screen.getByText("Operator / Driver Unavailable Days")).toBeTruthy();
+    expect(review.months.map(m => [m.worked, m.idle, m.breakdown, m.operatorUnavailable])).toEqual([[1, 0, 0, 0], [0, 1, 0, 1]]);
     expect(container.textContent).not.toContain("Recorded evidence only. Missing activity is not Idle or Breakdown.");
   });
   it("keeps the factual review sentence prominent without the removed activity calendar or boilerplate", () => {
@@ -48,8 +49,8 @@ describe("approved month review presentation", () => {
     const before = JSON.stringify(snapshot);
     const workbook = buildWholeBillWorkbook(snapshot);
     const rows: any[][] = XLSX.utils.sheet_to_json(workbook.Sheets["Monthly Billing Summary"], { header: 1 });
-    expect(rows.some(row => String(row[1]).includes("August 2026") && row[6] === 1000)).toBe(true);
-    expect(rows.some(row => String(row[1]).includes("September 2026") && row[6] === 1000)).toBe(true);
+    expect(rows.some(row => String(row[1]).includes("August 2026") && row[7] === 1000)).toBe(true);
+    expect(rows.some(row => String(row[1]).includes("September 2026") && row[7] === 1000)).toBe(true);
     const pdf = buildWholeBillPdf(snapshot).output();
     expect(pdf).toContain("Monthly Billing Summary");
     expect(pdf).toContain("August 2026");

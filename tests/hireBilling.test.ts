@@ -522,7 +522,7 @@ describe("normalized vendor-bill hire groups", () => {
     expect(days).toEqual([
       expect.objectContaining({ date: "2025-07-19", activity: "worked", hours: 8.5, actualDiesel: 24, dieselVariance: 24 }),
       expect.objectContaining({ date: "2025-07-20", activity: "worked", hours: 7, trips: 3, actualDiesel: 21, movementReferences: ["TO YARD"] }),
-      expect.objectContaining({ date: "2025-07-21", activity: "no_activity", activityCount: 0 }),
+      expect.objectContaining({ date: "2025-07-21", activity: "not_recorded", activityCount: 0 }),
       expect.objectContaining({ date: "2025-07-22", activity: "breakdown", downtimeHours: 2.5, maintenanceDescriptions: ["HOSE FAILURE"] }),
     ]);
     const monthly = calculateHireBilling({ terms: { billingBasis: "monthly", rate: 30_000 }, periodFrom: "2025-07-19", periodTo: "2025-07-22", usage: [] });
@@ -545,7 +545,7 @@ describe("normalized vendor-bill hire groups", () => {
       date: "2025-07-19", equipmentNames: ["TRACTOR DOZER"], siteLocations: ["ROAD SITE"],
       activityDescriptions: ["EARTHWORK"], openingReadings: [100], closingReadings: [108], dieselVariance: 4,
     });
-    expect(result.workingSheet.slice(1).every(day => day.activity === "no_activity")).toBe(true);
+    expect(result.workingSheet.slice(1).every(day => day.activity === "not_recorded")).toBe(true);
     expect(result).toMatchObject({ grossAmount: 13_000, deductionAmount: 0 });
   });
 
@@ -567,7 +567,7 @@ describe("normalized vendor-bill hire groups", () => {
       activityDescriptions: ["NO WORK (SITE)"],
     });
     expect(result.workingSheet[1]).toMatchObject({
-      activity: "no_activity",
+      activity: "not_recorded",
       activityCount: 0,
       activityDescriptions: [],
     });

@@ -390,7 +390,7 @@ describe("equipment hire bill output", () => {
     expect(output?.rows[0]).toMatchObject({
       trips: 2,
       statusLabel: "Worked",
-      consumptionRateText: "2.50 L/Hr (Norm: 4.00)",
+      consumptionRateText: "Tank Readings N/A",
     });
     excelSheets.length = 0;
     exportEquipmentHireCalendar(output!.data, output!.rows, "xlsx");
@@ -411,14 +411,14 @@ describe("equipment hire bill output", () => {
     expect(rendered[headers.indexOf("Diesel Issued")]).toBe("20.00 L");
     expect(rendered[headers.indexOf("Expected")]).toBe("18.00 L");
     expect(rendered[headers.indexOf("Difference")]).toBe("+2.00 L");
-    expect(rendered[headers.indexOf("Consumption Rate")]).toBe("2.50 L/Hr (Norm: 4.00)");
+    expect(rendered[headers.indexOf("Consumption Rate")]).toBe("Tank Readings N/A");
     expect(rendered[headers.indexOf("Status / Remarks")]).toContain("Decision: half_day — Manager approval");
     expect(rendered[headers.indexOf("Status / Remarks")]).toContain("Attendance confirmed");
     expect(rendered[headers.indexOf("Status / Remarks")]).toContain("Movement: MOVE-17");
     expect(rendered[headers.indexOf("Status / Remarks")]).toContain("Duplicate trip removed");
   });
 
-  it("keeps no-activity billable dates empty while preserving their saved status", () => {
+  it("keeps missing-activity billable dates empty and labels them neutrally", () => {
     const output = buildSavedEquipmentHireBillOutput({
       billNo: "VB-EH-LEGACY-NO-ACTIVITY", vendorName: "ACME HIRE", billType: "equipment",
       periodFrom: "2026-10-01", periodTo: "2026-10-01", status: "approved",
@@ -436,7 +436,7 @@ describe("equipment hire bill output", () => {
       }],
     });
     const row = output!.rows[0];
-    expect(row).toMatchObject({ status: "No Work", statusLabel: "No Activity — Still Billable", trips: null });
+    expect(row).toMatchObject({ status: "No Work", statusLabel: "Activity Not Recorded", trips: null });
     expect(row.performance).toBeUndefined();
     excelSheets.length = 0;
     exportEquipmentHireCalendar(output!.data, output!.rows, "xlsx");
@@ -453,7 +453,7 @@ describe("equipment hire bill output", () => {
     expect(rendered[index("Diesel Consumed")]).toBe("—");
     expect(rendered[index("Expected")]).toBe("—");
     expect(rendered[index("Consumption Rate")]).toBe("—");
-    expect(rendered[index("Status / Remarks")]).toBe("No Activity — Still Billable");
+    expect(rendered[index("Status / Remarks")]).toBe("Activity Not Recorded");
   });
   it("carries the factual review notice into equipment bill exports without the removed explanatory copy", () => {
     const hireReview = projectHireReview({

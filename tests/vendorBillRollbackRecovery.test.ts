@@ -155,6 +155,87 @@ describe("selective pre-tipper billing recovery", () => {
     expect(mismatch.gross).toBe(54001);
   });
 
+  it("freezes both recorded status sources and tank-reconciled daily rates in a fresh hire snapshot", async () => {
+    const site = "SYNTHETIC SITE – Edited by Manager – 2026-10-14 10:00:00";
+    await db.insert(schema.boqProjects).values({
+      id: 30, name: "SYNTHETIC PROJECT", status: "active",
+    });
+    await db.insert(schema.equipmentMaster).values({
+      id: 3, name: "SYNTHETIC ROLLER", registrationNumber: "SYNTHETIC03",
+      vendorName: "SYNTHETIC HIRE OWNER", ownership: "hired",
+      hireBillingBasis: "monthly", hireRate: 62000, hireStartDate: "2026-10-10",
+      hireEndDate: "2026-10-15", hireMonthlyDivisorType: "calendar",
+      hireDieselResponsibility: "vendor", meterType: "hour_meter", consumptionNorm: 4,
+    });
+    await db.insert(schema.dprs).values([
+      { id: 30, date: "2026-10-10", site, boqProjectId: 30, dprStatus: "submitted", isDeleted: false, isCancelled: false, isSuperseded: false },
+      { id: 32, date: "2026-10-12", site, boqProjectId: 30, dprStatus: "submitted", isDeleted: false, isCancelled: false, isSuperseded: false },
+      { id: 33, date: "2026-10-14", site, boqProjectId: 30, dprStatus: "submitted", isDeleted: false, isCancelled: false, isSuperseded: false },
+      { id: 34, date: "2026-10-15", site, boqProjectId: 30, dprStatus: "submitted", isDeleted: false, isCancelled: false, isSuperseded: false },
+    ]);
+    await db.insert(schema.equipmentLogs).values([
+      { id: 30, dprId: 30, equipmentId: 3, machine: "SYNTHETIC ROLLER", entryType: "daily", usageStatus: "idle_no_work", usageStatusReason: "No workfront released" },
+      { id: 32, dprId: 32, equipmentId: 3, machine: "SYNTHETIC ROLLER", entryType: "daily", usageStatus: "breakdown", usageStatusReason: "Hydraulic fault" },
+      { id: 33, dprId: 33, equipmentId: 3, machine: "SYNTHETIC ROLLER", entryType: "daily", hoursWorked: 8,
+        openingReading: 100, closingReading: 108, diesel: 15, openingDiesel: 25, dieselBalanceInTank: 25,
+        usageStatus: "working", plantUsageId: 33, task: "Compaction" },
+      { id: 34, dprId: 34, equipmentId: 3, machine: "SYNTHETIC ROLLER", entryType: "daily", hoursWorked: 8,
+        openingReading: 108, closingReading: 116, diesel: 10, task: "Compaction" },
+    ]);
+    await db.insert(schema.equipmentUsage).values([
+      {
+        id: 31, date: "2026-10-11", equipmentId: 3, entryType: "daily",
+        usageStatus: "idle_no_operator", usageStatusReason: "Operator unavailable",
+        siteName: site, task: "Compaction", plantName: "Main Plant", status: "closed",
+      },
+      {
+        id: 33, date: "2026-10-14", equipmentId: 3, dprId: 33, entryType: "daily",
+        openingReading: 100, closingReading: 108, hoursOrKmRun: 8,
+        dieselIssued: 15, openingDiesel: 25, dieselBalanceInTank: 25, dieselBalanceConfirmed: true,
+        usageStatus: "working", siteName: site, task: "Compaction",
+        plantName: "Main Plant", status: "closed",
+      },
+    ]);
+
+    const bill = await storage.createVendorBill({
+      billDate: "2026-10-15", billType: "equipment", vendorName: "SYNTHETIC HIRE OWNER",
+      periodFrom: "2026-10-10", periodTo: "2026-10-15", status: "draft", items: [],
+      hireGroups: [{
+        equipmentId: 3, basis: "monthly", rate: 1,
+        periodFrom: "2026-10-10", periodTo: "2026-10-15",
+      }],
+    });
+    const saved = await storage.getVendorBill(bill.id);
+    const statement = saved.hireStatements[0];
+    const snapshot = statement.calculationSnapshot;
+    const byDate = new Map(snapshot.workingSheet.map((row: any) => [row.date, row]));
+    expect(byDate.get("2026-10-10")).toMatchObject({ activity: "idle_no_work", usageStatusReason: "No workfront released" });
+    expect(byDate.get("2026-10-11")).toMatchObject({ activity: "idle_no_operator", usageStatusReason: "Operator unavailable" });
+    expect(byDate.get("2026-10-12")).toMatchObject({ activity: "breakdown", usageStatusReason: "Hydraulic fault" });
+    expect(byDate.get("2026-10-13")).toMatchObject({ activity: "not_recorded" });
+    expect(byDate.get("2026-10-14")).toMatchObject({
+      activity: "working", siteLocations: ["SYNTHETIC SITE"],
+      openingDiesel: 25, closingDiesel: 25, consumptionRate: 1.875, consumptionRateUnit: "L/hr",
+    });
+    expect(snapshot.performanceDailyRows.find((row: any) => row.date === "2026-10-14")?.projectSite)
+      .toBe("SYNTHETIC PROJECT / SYNTHETIC SITE");
+    expect(snapshot.performanceDailyRows.find((row: any) => row.date === "2026-10-15")?.consumptionIncomplete).toBe(true);
+
+    const review = projectHireReview(statement, saved);
+    expect(review.months[0]).toMatchObject({
+      worked: 2, idle: 1, breakdown: 1, operatorUnavailable: 1, unknown: 1, daysBilled: 6,
+    });
+    expect(review.months[0].worked + review.months[0].idle + review.months[0].breakdown +
+      review.months[0].operatorUnavailable + review.months[0].unknown).toBe(review.months[0].daysBilled);
+    const output = buildSavedEquipmentHireBillOutput(saved)!;
+    expect(output.rows.find(row => row.date === "2026-10-14")?.consumptionRateText)
+      .toBe("1.88 L/Hr (Norm: 4.00)");
+    expect(output.rows.find(row => row.date === "2026-10-15")?.consumptionRateText)
+      .toBe("Tank Readings N/A");
+    expect(statement.grossAmount).toBe(snapshot.grossAmount);
+    expect(statement.netAmount).toBe(snapshot.financials.taxableAmount);
+  });
+
   it("keeps new groups on their Master basis", async () => {
     await expect(storage.createVendorBill({ ...dailyPayload(), periodFrom: "2027-01-01", periodTo: "2027-01-01",
       hireGroups: [{ equipmentId: 1, basis: "trip", rate: 300, periodFrom: "2027-01-01", periodTo: "2027-01-01" }] }))

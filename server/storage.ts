@@ -6697,7 +6697,7 @@ export class DatabaseStorage implements IStorage {
     options?: { permittedSiteNames?: string[] | null },
     executor?: any,
   ): Promise<EquipmentPerformanceReport> {
-    const queryDb = executor ?? db;
+    const queryDb = (executor ?? db) as typeof db;
     const activeProjects = await queryDb.select({
       id: boqProjects.id, name: boqProjects.name, status: boqProjects.status,
     }).from(boqProjects).where(eq(boqProjects.status, "active"));
@@ -6765,7 +6765,9 @@ export class DatabaseStorage implements IStorage {
       : isNull(equipmentUsage.dprId);
     const [loadedUsages, masters] = await Promise.all([
       queryDb.select().from(equipmentUsage).where(usageCondition),
-      executor ? queryDb.select().from(equipmentMaster) : this.getEquipmentMaster(true),
+      executor
+        ? queryDb.select().from(equipmentMaster).where(isNotNull(equipmentMaster.id))
+        : this.getEquipmentMaster(true),
     ]);
     // Site-restricted callers may see only usages explicitly attached to their
     // visible DPR/log set. Standalone plant rows have no site grant to verify.
@@ -17743,6 +17745,25 @@ export class DatabaseStorage implements IStorage {
         dieselNormOverride: equipment.consumptionNorm, dieselNormBasisOverride: masterConsumptionUnit,
         dieselPurchases, authoritativeDieselPeriod,
         dieselRecovery: { decision: group.dieselRecoveryDecision, finalAmount: group.dieselRecoveryFinalAmount, remarks: group.dieselRecoveryRemarks } });
+      const equipmentPerformance = await this.getEquipmentPerformanceReport(
+        { equipmentId: group.equipmentId, dateFrom: group.periodFrom, dateTo: group.periodTo },
+        { permittedSiteNames: null },
+        tx,
+      );
+      const performanceDailyRows = equipmentPerformance.fleet
+        .find(row => row.equipmentId === group.equipmentId)?.dailyRows ?? [];
+      const performanceByDate = new Map(performanceDailyRows.map(row => [row.date, row]));
+      const workingSheet = calc.workingSheet.map(day => {
+        const performance = performanceByDate.get(day.date);
+        return {
+          ...day,
+          openingDiesel: performance?.openingTank ?? null,
+          closingDiesel: performance?.closingTank ?? null,
+          consumptionRate: performance?.consumptionRate ?? null,
+          consumptionRateUnit: performance?.consumptionRateUnit ?? null,
+          consumptionIncomplete: performance?.consumptionIncomplete ?? true,
+        };
+      });
       const adjustments = group.adjustments ?? {};
       const otherDebit = Number(adjustments.otherDebit || 0);
       const advanceAdjustment = Number(adjustments.advanceAdjustment || 0);
@@ -17776,6 +17797,7 @@ export class DatabaseStorage implements IStorage {
             : "vb10_automatic",
           terms,
           ...calc,
+          workingSheet,
           dailyDecisions: group.dailyDecisions ?? [],
           tripDecisions: group.tripDecisions ?? [],
           exceptionDecisions: group.exceptionDecisions ?? [],
@@ -17787,7 +17809,7 @@ export class DatabaseStorage implements IStorage {
           dieselRecoveryFinalAmount: calc.diesel.finalRecoveryAmount,
           dieselRecoveryRemarks: group.dieselRecoveryRemarks,
            projectSite: typeof (group as any).projectSite === "string" ? (group as any).projectSite : null,
-            performanceDailyRows: authoritativeDieselPeriod.dailyRows,
+            performanceDailyRows,
             sourceEvidence: { activities, maintenance },
             breakdownHoursPerDay: group.breakdownHoursPerDay ?? null,
             breakdownGraceDays: (group as any).breakdownGraceDays ?? 0,

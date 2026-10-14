@@ -26,6 +26,11 @@ const baseDay: HireActivityDay = {
   activityDescriptions: ["Embankment"],
   openingReadings: [120],
   closingReadings: [128],
+  openingDiesel: 30,
+  closingDiesel: 18,
+  consumptionRate: 1.5,
+  consumptionRateUnit: "L/hr",
+  consumptionIncomplete: false,
   maintenanceDescriptions: [],
   movementReferences: [],
 };
@@ -65,7 +70,7 @@ describe("VB-21 activity / breakdown calendar", () => {
     expect(screen.queryByText(/Expected Diesel/)).toBeNull();
   });
 
-  it("B — explains that a no-activity monthly day remains billable", () => {
+  it("B — labels a day without recorded activity neutrally", () => {
     renderCalendar([{
       ...baseDay,
       date: "2026-09-16",
@@ -81,7 +86,7 @@ describe("VB-21 activity / breakdown calendar", () => {
       siteLocations: [],
       activityDescriptions: [],
     }]);
-    expect(screen.getByTestId("hire-activity-day-2026-09-16").textContent).toContain("No Activity — Still Billable");
+    expect(screen.getByTestId("hire-activity-day-2026-09-16").textContent).toContain("Activity Not Recorded");
   });
 
   it("C — marks trips N/A for runtime equipment and shows transport trip counts", () => {
@@ -103,18 +108,16 @@ describe("VB-21 activity / breakdown calendar", () => {
     expect(row.textContent).toContain("3.00");
   });
 
-  it("D — formats direct and inverse norm units and uses dashes for zero run or missing diesel", () => {
-    expect(formatConsumptionRate(12, 8, 1.25, "L/hr")).toBe("1.50 L/Hr (Norm: 1.25)");
-    expect(formatConsumptionRate(10, 50, 0.2, "L/km")).toBe("0.20 L/Km (Norm: 0.20)");
-    expect(formatConsumptionRate(10, 50, 5, "Km/L")).toBe("5.00 Km/L (Norm: 5.00)");
-    expect(formatConsumptionRate(10, 50, 0.2, undefined, "odometer")).toBe("0.20 L/Km (Norm: 0.20)");
-    expect(formatConsumptionRate(12, 8, 1.25, undefined, "hour_meter")).toBe("1.50 L/Hr (Norm: 1.25)");
-    expect(formatConsumptionRate(12, 8, 1.25, "unknown", "unknown")).toBe("—");
+  it("D — displays only canonical tank-reconciled rates", () => {
+    expect(formatConsumptionRate(1.5, "L/hr", 1.25, false)).toBe("1.50 L/Hr (Norm: 1.25)");
+    expect(formatConsumptionRate(0.2, "L/km", 0.2, false)).toBe("0.20 L/Km (Norm: 0.20)");
+    expect(formatConsumptionRate(5, "L/km", 5, false)).toBe("5.00 L/Km (Norm: 5.00)");
+    expect(formatConsumptionRate(null, null, 1.25, true)).toBe("Tank Readings N/A");
+    expect(formatConsumptionRate(1.5, "L/hr", 1.25, true)).toBe("Tank Readings N/A");
+    expect(formatConsumptionRate(null, null, 1.25, false)).toBe("—");
     expect(resolveConsumptionUnit("litres_per_hour")).toBe("L/Hr");
     expect(resolveConsumptionUnit("liters-per-kilometer")).toBe("L/Km");
     expect(resolveConsumptionUnit("kilometres_per_litre")).toBe("Km/L");
-    expect(formatConsumptionRate(0, 8, 1.25, "L/hr")).toBe("—");
-    expect(formatConsumptionRate(12, 0, 1.25, "L/hr")).toBe("—");
 
     renderCalendar([{ ...baseDay, expectedDieselAvailable: false }]);
     expect(screen.getByText("Tank Readings N/A")).toBeTruthy();

@@ -122,3 +122,4 @@
 - [Generated artifact scope](generated-artifact-scope.md) — do not regenerate mockup components or report binaries during unrelated work.
 - [LDO historical data gap](ldo-historical-data-gap.md) — unrecorded substitute diesel is for SitePulse Next; do not invent receipts or correct historical balances.
 - [Development browser verification](development-browser-verification.md) — ordinary login and a specifically approved dev device; no auth bypass or repository credentials.
+- [Hire snapshot read consistency](hire-snapshot-transaction-reads.md) — freeze canonical performance rows through the saving transaction; outer PGlite reads can stall during writes.

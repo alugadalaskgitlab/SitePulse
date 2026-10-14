@@ -160,7 +160,7 @@ const day2Cells = await evaluate("[...document.querySelector('[data-testid=\"hir
 assert(day2Cells[5] === "—", `D zero guard should be —, got ${JSON.stringify(day2Cells[5])}`);
 
 const day3 = await text("hire-activity-day-2026-11-03");
-assert(day3.includes("No Activity — Still Billable"), "B no-activity status is not explicit");
+assert(day3.includes("Activity Not Recorded"), "B missing activity should remain unclassified");
 const day4 = await text("hire-activity-day-2026-11-04");
 assert(day4.includes("Breakdown") && day4.includes("6.00 h"), "A breakdown downtime/status is missing");
 

@@ -74,8 +74,9 @@ function buildSavedHireDailyRows(
     const exception = exceptions.some(decision => (decision?.date || decision?.exceptionDate || decision?.businessDate) === row.date);
     if (!day && !daily && !trip && !exception) return row;
     const noActivity = day?.activity === "no_activity";
+    const noRecordedActivity = noActivity || day?.activity === "not_recorded";
     const noSavedActivity = day?.activity == null;
-    const performance = !day || noActivity ? undefined : row.performance || (noSavedActivity ? undefined : {
+    const performance = !day || noRecordedActivity ? undefined : row.performance || (noSavedActivity ? undefined : {
       key: `saved-working-sheet-${row.date}`,
       date: row.date,
       projectSite: savedListText(day.siteLocations),
@@ -89,15 +90,14 @@ function buildSavedHireDailyRows(
       clockDuration: null,
       clockDurationIncomplete: false,
       dieselIssued: savedNumber(day.actualDiesel),
-      openingTank: null,
-      closingTank: null,
+      openingTank: savedNumber(day.openingDiesel),
+      closingTank: savedNumber(day.closingDiesel),
       dieselConsumed: null,
       expectedDiesel: day.expectedDieselAvailable === false ? null : savedNumber(day.expectedDiesel),
       difference: day.expectedDieselAvailable === false ? null : savedNumber(day.dieselVariance),
-      consumptionRate: null,
-      consumptionRateUnit: (snapshot.dieselNormBasisOverride ?? data.consumptionRateUnit) === "L/km"
-        ? "L/km" as const : "L/hr" as const,
-      consumptionIncomplete: false,
+      consumptionRate: savedNumber(day.consumptionRate),
+      consumptionRateUnit: day.consumptionRateUnit ?? null,
+      consumptionIncomplete: day.consumptionIncomplete ?? true,
       events: [],
     } satisfies EquipmentPerformanceDailyRow);
     const decisions = dailyDecisions.filter(decision =>
@@ -119,21 +119,25 @@ function buildSavedHireDailyRows(
       ...savedRemarks(day?.remarks),
       ...savedList(day?.activityDescriptions),
       ...savedList(day?.maintenanceDescriptions),
+      ...(day?.usageStatusReason ? [String(day.usageStatusReason)] : []),
       ...savedList(day?.movementReferences).map(reference => `Movement: ${reference}`),
       ...decisions, ...trips, ...exceptionNotes,
     ];
     const baseRemarks = row.remarks === "No activity recorded" && day?.activity != null ? [] : row.remarks.split(" · ").filter(Boolean);
     const remarks = Array.from(new Set([...baseRemarks, ...savedDayRemarks])).join(" · ");
-    const statusLabel = !day ? row.statusLabel : noActivity ? "No Activity — Still Billable"
-      : day.activity === "breakdown" ? "Breakdown / Operator Unavailable"
-        : noSavedActivity ? "Activity Not Recorded" : "Worked";
-    const rateText = !day ? row.consumptionRateText : noActivity || noSavedActivity ? "—"
+    const statusLabel = !day ? row.statusLabel
+      : day.activity === "idle_no_work" ? "Idle — No Work Available"
+        : day.activity === "idle_no_operator" ? "Operator / Driver Unavailable"
+          : day.activity === "breakdown" ? "Breakdown"
+            : noActivity || day.activity === "not_recorded" ? "Activity Not Recorded"
+              : noSavedActivity ? "Activity Not Recorded" : "Worked";
+    const unavailableActivity = noActivity || noSavedActivity || day?.activity === "not_recorded";
+    const rateText = !day ? row.consumptionRateText : unavailableActivity ? "—"
       : formatConsumptionRate(
-        Number(day.actualDiesel ?? 0),
-        Number(day.hours ?? 0),
+        performance?.consumptionRate ?? day.consumptionRate,
+        performance?.consumptionRateUnit ?? day.consumptionRateUnit,
         data.consumptionNorm,
-        snapshot.dieselNormBasisOverride ?? data.consumptionRateUnit,
-        data.meterType,
+        performance?.consumptionIncomplete ?? day.consumptionIncomplete,
       );
     return {
       ...row,
@@ -299,7 +303,7 @@ function dailyValues(
 ) {
   const item = row.performance;
   const fuelIsContractorScope = String(dieselResponsibility).toLowerCase() === "vendor";
-  const noActivity = row.statusLabel === "No Activity — Still Billable";
+  const noActivity = row.statusLabel === "No Activity — Still Billable" || row.statusLabel === "Activity Not Recorded";
   // Norm is a master value, so its explicit master/frozen unit wins over a
   // row's usage unit (for example, a trip-converted hour-meter activity).
   const consumptionUnit = displayConsumptionUnit(fallbackConsumptionUnit || item?.consumptionRateUnit);
@@ -327,7 +331,7 @@ function dailyValues(
     row.consumptionRateText ?? (item?.consumptionRate == null
       ? "—"
       : `${number(item.consumptionRate, 2)}${displayConsumptionUnit(item.consumptionRateUnit) ? ` ${displayConsumptionUnit(item.consumptionRateUnit)}` : ""}`),
-    `${row.statusLabel || (row.status === "No Work" ? "Activity Not Recorded" : row.status === "Breakdown" ? "Breakdown / Operator Unavailable" : row.status)}${row.downtimeHours ? ` · ${number(row.downtimeHours, 2)}h downtime` : ""}${row.remarks ? ` — ${row.remarks}` : ""}`,
+    `${row.statusLabel || (row.status === "No Work" ? "Activity Not Recorded" : row.status === "Breakdown" ? "Breakdown" : row.status)}${row.downtimeHours ? ` · ${number(row.downtimeHours, 2)}h downtime` : ""}${row.remarks ? ` — ${row.remarks}` : ""}`,
   ];
   return values;
 }
@@ -513,7 +517,7 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
         MONTHLY_BILL_HEADERS, ...hireReviewTable(data.hireReview),
         ...hireReviewDisclosureLines(data.hireReview).map(line => [line]),
       ]);
-      sheet["!cols"] = [10, 50, 16, 16, 32, 38, 22].map(wch => ({ wch }));
+      sheet["!cols"] = [10, 50, 16, 16, 32, 20, 34, 22].map(wch => ({ wch }));
       XLSX.utils.book_append_sheet(workbook, sheet, "Monthly Billing Summary");
     }
     XLSX.utils.book_append_sheet(workbook, activitySheet, "Daily Activity");

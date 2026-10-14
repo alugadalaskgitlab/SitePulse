@@ -192,8 +192,8 @@ describe("VB-10 monthly availability hire calculation", () => {
     }]);
     expect(days.map(day => [day.date, day.activity])).toEqual([
       ["2026-05-01", "worked"],
-      ["2026-05-02", "no_activity"],
-      ["2026-05-03", "no_activity"],
+      ["2026-05-02", "not_recorded"],
+      ["2026-05-03", "not_recorded"],
     ]);
     expect(days.slice(1).every(day => day.dieselVariance === 0 && day.activityCount === 0)).toBe(true);
   });

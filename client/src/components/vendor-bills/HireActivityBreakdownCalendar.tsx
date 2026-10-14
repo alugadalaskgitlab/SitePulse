@@ -37,18 +37,16 @@ export function resolveConsumptionUnit(
 }
 
 export function formatConsumptionRate(
-  actualDiesel: number,
-  run: number,
+  rate: number | null | undefined,
+  rateUnit: "L/hr" | "L/km" | null | undefined,
   norm?: number | null,
-  normBasis?: string | null,
-  meterType?: string | null,
+  incomplete?: boolean,
 ): string {
-  if (!(Number(actualDiesel) > 0) || !(Number(run) > 0)) return "—";
-  const unit = resolveConsumptionUnit(normBasis, meterType);
-  if (!unit) return "—";
-  const actual = unit === "Km/L" ? Number(run) / Number(actualDiesel) : Number(actualDiesel) / Number(run);
+  if (incomplete) return "Tank Readings N/A";
+  if (rate == null || !Number.isFinite(Number(rate)) || !rateUnit) return "—";
+  const unit: ConsumptionUnit = rateUnit === "L/km" ? "L/Km" : "L/Hr";
   const normValue = norm == null || !Number.isFinite(Number(norm)) ? null : Number(norm);
-  return `${actual.toFixed(2)} ${unit}${normValue == null ? "" : ` (Norm: ${normValue.toFixed(2)})`}`;
+  return `${Number(rate).toFixed(2)} ${unit}${normValue == null ? "" : ` (Norm: ${normValue.toFixed(2)})`}`;
 }
 
 function formatReadings(day: HireActivityDay) {
@@ -66,8 +64,10 @@ function formatReadings(day: HireActivityDay) {
 }
 
 function statusLabel(activity: HireActivityDay["activity"]) {
+  if (activity === "idle_no_work") return "Idle — No Work Available";
+  if (activity === "idle_no_operator") return "Operator / Driver Unavailable";
   if (activity === "breakdown") return "Breakdown";
-  if (activity === "no_activity") return "No Activity — Still Billable";
+  if (activity === "no_activity" || activity === "not_recorded") return "Activity Not Recorded";
   return "Worked";
 }
 
@@ -102,7 +102,7 @@ export function hireActivityBreakdownSheetRows({
         tripApplicable ? day.trips.toFixed(2) : "N/A",
         ...(showFuel ? [
           day.actualDiesel > 0 ? `${day.actualDiesel.toFixed(2)} L` : "—",
-          formatConsumptionRate(day.actualDiesel, day.hours, consumptionNorm, normBasis, meterType),
+          formatConsumptionRate(day.consumptionRate, day.consumptionRateUnit, consumptionNorm, day.consumptionIncomplete),
           day.expectedDieselAvailable
             ? `${day.dieselVariance >= 0 ? "+" : "−"}${Math.abs(day.dieselVariance).toFixed(2)} L`
             : "Tank Readings N/A",
@@ -154,7 +154,7 @@ export default function HireActivityBreakdownCalendar({
                 <td className="p-2">{day.hours > 0 ? day.hours.toFixed(2) : "—"}</td>
                 <td className="p-2">{tripApplicable ? day.trips.toFixed(2) : <span title="Not applicable to this equipment">N/A</span>}</td>
                 {showFuel && <td className="p-2">{day.actualDiesel > 0 ? `${day.actualDiesel.toFixed(2)} L` : "—"}</td>}
-                {showFuel && <td className="whitespace-nowrap p-2">{formatConsumptionRate(day.actualDiesel, day.hours, consumptionNorm, normBasis, meterType)}</td>}
+                {showFuel && <td className="whitespace-nowrap p-2">{formatConsumptionRate(day.consumptionRate, day.consumptionRateUnit, consumptionNorm, day.consumptionIncomplete)}</td>}
                 {showFuel && <td className="whitespace-nowrap p-2">{day.expectedDieselAvailable ? `${day.dieselVariance >= 0 ? "+" : "−"}${Math.abs(day.dieselVariance).toFixed(2)} L` : "Tank Readings N/A"}</td>}
                 <td className="p-2">{day.activity === "breakdown" && day.downtimeHours > 0 ? `${day.downtimeHours.toFixed(2)} h` : "—"}</td>
                 <td className="p-2 font-medium">{statusLabel(day.activity)}</td>

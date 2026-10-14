@@ -96,7 +96,8 @@ export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
         0: { cellWidth: 30 }, 1: { cellWidth: 57 },
         2: { halign: "right" as const }, 3: { halign: "right" as const },
         4: { halign: "right" as const }, 5: { halign: "right" as const },
-        6: { halign: "right" as const, cellWidth: 35 },
+      6: { halign: "right" as const, cellWidth: 35 },
+      7: { halign: "right" as const, cellWidth: 30 },
       } } : {}),
       margin: { top: pageHeaderHeight, bottom: 14, left: 10, right: 10 },
       showHead: "everyPage",
@@ -110,8 +111,8 @@ export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
   // Remove the initial empty page after tables are generated.
   for (const review of snapshot.hireReviews || []) {
     table(`Monthly Billing Summary: ${review.name} / ${review.basis} / Rate ${review.rate ?? "-"} / ${review.divisor}`,
-      MONTHLY_BILL_HEADERS, [...hireReviewTable(review), ["Recorded period Gross Hire", "", "", "", "", "", review.gross ?? "—"],
-        ...hireReviewDisclosureLines(review).map(line => [line, "", "", "", "", "", ""])]);
+      MONTHLY_BILL_HEADERS, [...hireReviewTable(review), ["Recorded period Gross Hire", "", "", "", "", "", "", review.gross ?? "—"],
+        ...hireReviewDisclosureLines(review).map(line => [line, "", "", "", "", "", "", ""])]);
   }
   for (const section of populatedBillSections(snapshot)) {
     const content = billSectionTable(section);

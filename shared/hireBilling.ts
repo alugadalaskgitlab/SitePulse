@@ -902,6 +902,11 @@ export function buildHireActivityDays(
       activityDescriptions: Array.from(new Set(dayActivities.map(row => row.task).filter((value): value is string => !!value))),
       openingReadings: Array.from(new Set(dayActivities.map(row => row.openingReading).filter((value): value is number => Number.isFinite(value)))),
       closingReadings: Array.from(new Set(dayActivities.map(row => row.closingReading).filter((value): value is number => Number.isFinite(value)))),
+      openingDiesel: null,
+      closingDiesel: null,
+      consumptionRate: null,
+      consumptionRateUnit: null,
+      consumptionIncomplete: true,
       maintenanceDescriptions: breakdowns.map(row => row.description || "BREAKDOWN"),
       movementReferences: Array.from(new Set(dayActivities.map(row => row.movementReference).filter((value): value is string => !!value))),
     });
