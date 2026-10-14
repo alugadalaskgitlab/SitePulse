@@ -1,0 +1,244 @@
+# INSTRUCTION — VB-HIRE-06
+
+**Equipment hire bills: show what was actually recorded.**
+
+Three parts, all about making the bill read evidence that already exists instead of
+inferring it. Baseline commit: `c15cbf1`.
+
+**No deduction is created, proposed or changed by this batch.** Days become visible
+and correctly named. Whether money comes off stays a human decision through the
+existing adjustment and exception flow. The deduction proposal is a separate
+instruction (VB-HIRE-07) and must not be started here.
+
+---
+
+## Standing rules
+
+- No production data changes, migrations, automatic repairs or publishing without
+  our review.
+- No sequence resets. Do not call or re-expose `resetAllSequences`.
+- Preserve all existing users, credentials, site access, permissions and
+  administrator privileges.
+- **Approved, verified and paid bills must not change value.** Frozen snapshots
+  stay frozen and are never re-derived on read. New behaviour applies only to a
+  calculation run fresh.
+- **No backfill.** Days already recorded keep exactly what they have. Never infer a
+  past day's status, and never reconstruct a past day's tank readings.
+- Report against the benchmark **5,160 passed · 3 skipped · 0 failed**, naming
+  which opt-in flags were set.
+
+---
+
+## Part A — Carry the recorded DPR status through to the bill
+
+**What exists.** `equipment_logs.usage_status` and `equipment_usage.usage_status`
+already store one of four values, chosen from a dropdown in
+`client/src/components/DprEquipmentCompact.tsx`:
+
+- `working`
+- `idle_no_work` — Idle · No Work Available
+- `idle_no_operator` — Idle · Operator Unavailable
+- `breakdown`
+
+A companion `usage_status_reason` exists and `equipmentStatusRequiresReason`
+already governs when it is mandatory. **Leave that rule exactly as it is. Do not
+add a new field and do not ask the site to enter anything further — the status is
+the reason.**
+
+**What is broken.** The bill never reads it. In `shared/hireBilling.ts`,
+`buildHireActivityDays` decides each day as:
+
+```ts
+activity: breakdowns.length ? "breakdown" : dayActivities.length ? "worked" : "no_activity",
+```
+
+The state is inferred from whether a maintenance record and activity rows happen to
+exist. `usageStatus` is not on the `HireActivity` interface and never enters the
+pipeline. `HireActivityDay.activity` is a three-value union, so both kinds of idle
+collapse into `no_activity`, which `activityClassification` reports as
+"Activity Not Recorded".
+
+Consequence on real bills: the TRACTOR-RATNAM September bill reads **30 Days
+Billed, 19 Worked, Idle 0, Breakdown 0**, with 11 days unaccounted for.
+
+**Required.**
+
+1. Carry `usageStatus` (and `usageStatusReason` where present) from the DPR and
+   plant-usage rows into the hire activity pipeline. `EquipmentStatusRecord` in
+   `server/storage.ts` already assembles exactly this from both sources — **reuse
+   that assembly rather than writing a new query.**
+2. Widen `HireActivityDay.activity` to carry the four recorded states plus
+   "not recorded", and set it from the recorded status.
+3. **Where a day has a recorded status, that status decides.** The existing
+   maintenance-record and activity-row inference remains only as the fallback for
+   days with **no** recorded status, and such days must still report as
+   "Activity Not Recorded" — never as Idle or Breakdown.
+4. Align `activityClassification` in `shared/vendorBillLayout.ts` with the DPR's
+   actual values. It already accepts `idle`, `work_not_available` and
+   `operator_unavailable`, which nothing produces — keep those for compatibility
+   and add the values the DPR really sends.
+
+---
+
+## Part B — Split the combined column into two
+
+`MONTHLY_BILL_HEADERS` currently ends the operational columns with a single
+`"Breakdown / Opr. Unavailable Days"`.
+
+Split it into **Breakdown Days** (machine) and **Operator / Driver Unavailable
+Days**. Update `MONTHLY_BILL_HEADERS` and `hireReviewTable` together with the Excel
+and PDF exports that consume them — they share one definition.
+
+The two are commercially opposite: no-work-available is HLC's own cost and normally
+payable; operator-unavailable is the vendor's and normally deductible. The table
+must make that difference visible. **It must not act on it.**
+
+---
+
+## Part C — The Consumption Rate column is calculated from the wrong figure
+
+**This is a correctness fault, not cosmetic.**
+
+The per-day Consumption Rate shown on the detailed evidence table is produced by
+`formatConsumptionRate` in
+`client/src/components/vendor-bills/HireActivityBreakdownCalendar.tsx`, called from
+`EquipmentHireBillOutput.tsx` as:
+
+```ts
+formatConsumptionRate(Number(day.actualDiesel ?? 0), Number(day.hours ?? 0), …)
+```
+
+That is **diesel issued ÷ run**. It ignores the tank dips entirely. So the figure
+swings with when the machine was fuelled rather than with how it performed: fill the
+tank on a low-usage day and the bill reports heavy consumption; run on yesterday's
+fuel and it reports almost none.
+
+**The correct calculation already exists** in `shared/equipmentPerformance.ts`:
+
+```
+diesel consumed = opening tank + diesel issued − closing tank
+consumption rate = diesel consumed ÷ run (hours or km)
+```
+
+with `consumptionIncomplete` set when it cannot be established. It is deliberately
+strict — it requires a real measured opening dip, a real measured closing dip, every
+issue in the period known, no omitted intervening event and no ambiguous same-day
+ordering, and it returns null rather than a number when any of those fails.
+
+**Required.**
+
+1. The Consumption Rate column must use the **tank-reconciled** figure — the same
+   calculation and the same strictness as the Equipment Performance side. Do not
+   compute a second version of it; read the established one.
+2. Where it cannot be established, display **"Tank Readings N/A"** — the wording
+   this table already uses for incomplete diesel — and **never fall back to
+   issued-over-hours.** A labelled figure that is not a consumption rate is worse
+   than a blank.
+3. Keep the norm shown alongside, as now (`4.55 L/hr (Norm: 4.00)`), and keep the
+   L/hr, L/km and Km/L unit selection as it is.
+
+**A constraint you must respect, and state in your report.** `HireActivityDay` — the
+saved per-day working sheet — carries `actualDiesel`, `expectedDiesel` and
+`dieselVariance` but **no tank dips.** The underlying `HireActivity` does carry
+`openingDiesel` and `closingDiesel`. So:
+
+- For bills calculated **from now on**, carry the dips through onto the saved day so
+  the rate can be established per day.
+- For **already-saved** bills the dips are not in the snapshot. Those days must show
+  "Tank Readings N/A". **Do not reconstruct them from current equipment data** — a
+  saved bill's evidence is what was saved.
+
+**Expect some days that currently show a number to go blank.** That is the intended
+outcome, not a regression: those were days where consumption was never established
+and an issued-over-hours figure was being presented as though it were one.
+
+---
+
+## Part D — Strip the edit provenance from the Project / Site column
+
+**Problem.** When a DPR is edited or copied, its `site` string gets a provenance
+suffix appended, for example:
+
+```
+TAKKADPALLY-SIRUR – Edited by Manager – 2026-06-07 07:00:21
+ALLAGUR – Copy by Admin – …
+```
+
+That suffix is flowing straight onto the bill. The Project / Site column on the
+detailed evidence table shows the editor and timestamp alongside the site name.
+**A vendor bill should show where the machine worked. Who edited the DPR and when
+is audit information and does not belong on a bill.**
+
+**Two places take the site raw**, neither applying the existing cleaner:
+
+- `shared/hireBilling.ts` — `siteLocations` is built from `row.site` unfiltered.
+- `shared/equipmentPerformance.ts` — `projectSite` is built from `row.project` and
+  `row.site ?? row.plant` unfiltered.
+
+Both feed the Project / Site column, depending on whether the day comes from a
+frozen performance row or a saved working-sheet day.
+
+**Required.** Apply the existing canonical helper `getBaseSiteName` from
+`shared/siteName.ts` at both points, so the column displays the base site name only.
+Do not write a new stripper — that function is the single source of truth and is
+already used for site-access checks, dashboard filters and exports.
+
+**Constraints.**
+
+- **Display only.** Do not alter the stored DPR `site` string, and do not remove the
+  provenance from anywhere it is genuinely audit evidence — the DPR itself, version
+  history, or the edit-request trail.
+- **Do not change any site-access, filtering or permitted-site comparison.** Those
+  already compare base names via this helper; nothing there should move.
+- Where several sites appear on one day, keep them joined as now, each cleaned.
+
+---
+
+## What must not change
+
+- **Diesel recovery arithmetic.** The period recovery is already tank-based and
+  correct: opening dip + issues − closing dip, against runtime × norm, gated on
+  `reliable` and on HLC carrying diesel responsibility. **Do not touch
+  `authoritativeHireDieselPeriod`, `calculateHireDieselPricing` or
+  `applyAuthoritativeDieselPeriod`.** Part C changes a displayed per-day rate only.
+- Every figure on every saved bill. `HLC/VB/2026/0058` — bill total **₹1,20,000**,
+  net payable **₹1,07,600**. TRACTOR-RATNAM September — gross **₹30,000**, HSD
+  actual/expected **62 / 137.6 L**, net excess **0 L**, final recovery **₹0.00**.
+  State all of these before and after.
+- The blanking safeguard on the monthly table when months do not reconcile to the
+  stored total.
+- The read-only property: projecting a review must not alter the saved bill.
+
+---
+
+## Verification required
+
+Report in plain terms, no test-name inventories.
+
+1. **Part A** — four days shown landing in the correct column: one recorded
+   *Idle · No Work Available*, one *Idle · Operator Unavailable*, one *Breakdown*,
+   and one with **no** status recorded, which must read "Activity Not Recorded".
+2. **Part A, on real data** — the TRACTOR-RATNAM September bill's monthly row
+   before and after. Today it reads 30 / 19 / 0 / 0 with "11 dates require review".
+   Report what it reads afterwards. **The review count should fall.** If it does
+   not fall at all, the status is not reaching the bill — say so rather than
+   reporting success.
+3. **Part B** — the monthly table and both exports showing the two separate
+   columns, with the counts adding up against Days Billed.
+4. **Part C** — one day where tank dips exist, showing the tank-reconciled rate;
+   and one day where they do not, showing "Tank Readings N/A". Confirm no day
+   anywhere displays an issued-over-hours figure.
+5. **Part D** — a day whose DPR was edited, showing the Project / Site column with
+   the base site name and no editor or timestamp. Confirm separately that
+   site-access checks and permitted-site filtering are unchanged, and that the
+   stored DPR site string and its version history still carry the provenance.
+6. The before/after figures listed under **What must not change**, as numbers.
+7. Confirmation that no deduction was created, proposed or altered, that no
+   permission or site-scope check changed, and that no historical day was
+   backfilled.
+8. The full suite against **5,160 / 3 / 0**, naming the flags set and any new
+   failure individually.
+
+Stop and ask once if any part cannot be done without breaking a rule above.
+
+Nothing is to be published. We will review and publish.
