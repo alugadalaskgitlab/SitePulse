@@ -1,0 +1,133 @@
+# INSTRUCTION — VB-VIEW-02A (correction to VB-VIEW-02 item 3)
+
+**The merged daily evidence table lost its data. Fill the existing columns; delete
+the four added ones.**
+
+Baseline commit: `50c1c4d`. Display only. No calculation, no stored value, no
+permission and no site scope change.
+
+---
+
+## What is wrong
+
+VB-VIEW-02 item 3 asked for the surviving day-by-day table to carry four pieces of
+information that only the removed historical working sheet held. Instead, four new
+columns were added to `EquipmentHireBillOutput.tsx`:
+
+```
+SAVED_EVIDENCE_HEADERS = [
+  "Saved working-sheet activity",
+  "Saved expected diesel / variance",
+  "Recorded decisions",
+  "Saved remarks / movement references",
+]
+```
+
+Each cell is a multi-line text block. The readings, hours, trips, actual diesel and
+consumption rate were written **into the first of those text blocks** rather than
+into the columns that already exist for them.
+
+**And the existing columns can no longer fill at all.** Every per-day value in
+`dailyValues` is read from `BillingDailyRow.performance`. When a bill has no frozen
+performance rows, `buildSavedHireDailyRows` fabricates each day as:
+
+```ts
+{ date, status: "No Work" as const, remarks: "No activity recorded", downtimeHours: 0 }
+```
+
+`performance` is absent, so `Opening Meter`, `Closing Meter`, `Working Hours`,
+`Start`, `End`, `Clock Duration`, `Diesel Issued`, `Opening Tank`, `Closing Tank`,
+`Diesel Consumed`, `Expected` and `Norm` render empty. The headers appear; the
+cells cannot be populated. On a real bill the user sees a full set of column
+headings above blank data, with the actual figures buried in a text blob two
+columns to the right.
+
+The data itself is intact. It is in `snapshot.workingSheet`. It is simply not being
+mapped onto the row the table reads.
+
+---
+
+## Required
+
+### 1. Populate `performance` from the saved working-sheet day
+
+Where `buildSavedHireDailyRows` currently fabricates a bare row, build an
+`EquipmentPerformanceDailyRow` from the matching `snapshot.workingSheet` entry, so
+the existing columns fill from saved evidence exactly as they do from frozen
+performance rows.
+
+The mapping is direct — the working sheet already holds every field:
+
+| Column | Source on the working-sheet day |
+|---|---|
+| Project / Site | `siteLocations` |
+| Opening Meter | `openingReadings` |
+| Closing Meter | `closingReadings` |
+| Working Hours | `hours` |
+| Diesel Issued | `actualDiesel` |
+| Expected | `expectedDiesel` |
+| Difference / Excess-Under | `dieselVariance` |
+| Consumption rate | computed from `actualDiesel` and `hours`, with the existing norm and unit — the same call already being made inside the text blob |
+| Status / Remarks | the day's classification, plus `activityDescriptions`, `maintenanceDescriptions`, `downtimeHours` |
+
+Where a field is genuinely absent from the saved day, leave it null so the cell
+shows the established "not recorded" marker. **Do not invent, derive or default a
+value that was not saved**, and do not substitute current equipment activity for
+saved evidence.
+
+### 2. Delete the four added columns
+
+Remove `SAVED_EVIDENCE_HEADERS`, the `savedEvidence` field on `BillingDailyRow`,
+`savedHireEvidenceForDate`, and the branches in `dailyHeaders`, `dailyValues`,
+`EquipmentHireDailyTable` and the PDF and Excel exports that render them.
+
+Once item 1 is done they are redundant:
+
+- **Expected diesel** already appears as the `Expected` column and its variance.
+- **Remarks** append to `Status / Remarks`, as the table did before this change.
+- **Recorded decisions** and **movement references**, where saved, append to
+  `Status / Remarks` or `Project / Site` as short text. They do not warrant
+  columns of their own.
+
+Keep the trips figure visible. If the table has no trips column, add **one**
+narrow column for it rather than reinstating a text blob.
+
+### 3. Keep the legacy notice, make it accurate
+
+The line *"Complete frozen performance rows are unavailable for this legacy
+bill..."* stays, but it must no longer claim the evidence "appears in the unified
+daily table" unless it now genuinely does. After item 1 it will — so state plainly
+which fields remain unestablished for that bill, if any.
+
+---
+
+## Verification — against a bill the user already knows
+
+Do not report this as done against synthetic data alone. Use the saved
+**TRACTOR-RATNAM September 2026** hire bill, read-only, and show the
+`Detailed recorded evidence` table with these cells populated:
+
+- **25-Sep-2026** — Opening → Closing meter **51731 → 5180.5**, Working Hours
+  **3.45**, Consumption rate **2.84 L/hr**, Diesel Issued **10.00 L**
+- **26-Sep-2026** — **5180.5 → 5194.1**, **3.60**, **1.78 L/hr**, **5.00 L**
+- **28-Sep-2026** — **5187.8 → 5189.8**, **2.20**, **4.55 L/hr**, **10.00 L**
+- **29-Sep-2026** — **5189.8 → 5193.3**, **3.50**, **1.43 L/hr**, **5.00 L**
+- **24-Sep-2026** and **27-Sep-2026** — no activity: these stay as the recorded
+  "no activity / still billable" state with empty figures. Do not fill them.
+
+If those cells are not populated, the change is not complete. Report the table as
+rendered, not a description of it.
+
+Also confirm:
+
+- No column shows a multi-line text block.
+- The monthly summary still reads **30 Days Billed, 19 Worked Days, ₹30,000 gross**
+  and the amber **"September 2026: 11 dates require review"** banner is unchanged.
+- Bill `HLC/VB/2026/0058` — bill total **₹1,20,000**, net payable **₹1,07,600** —
+  both unchanged.
+- Nothing was written to any production record.
+
+Report the full suite against **5,160 passed · 3 skipped · 0 failed**, naming which
+opt-in flags were set and any new failure individually.
+
+Nothing is to be published. We will review and publish.
