@@ -7,4 +7,4 @@ description: User instruction against unnecessary mockup-component and report-bi
 
 **Why:** The user explicitly objected to unnecessary generated-file changes cluttering project history.
 
-**How to apply:** Do not invoke mockup generators or tracked report-binary writers as part of unrelated work. Do not delete existing artifacts or alter generator configuration without authorization.
+**How to apply:** Do not invoke mockup generators or tracked report-binary writers as part of unrelated work. The full `npm test` workflow can rewrite tracked PDFs under `reports/part-c`; if it is run, wait until it stops before restoring any test-generated PDF changes. Do not delete existing artifacts or alter generator configuration without authorization.

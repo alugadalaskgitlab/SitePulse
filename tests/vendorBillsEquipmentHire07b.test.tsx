@@ -225,10 +225,11 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     expect(screen.queryByTestId("button-clear-equipment-hire")).toBeNull();
   });
 
-  it("uses the shared generic PDF action for verified itemized equipment without hire statements", async () => {
+  it("uses the shared whole-bill PDF action for verified itemized equipment without hire statements", async () => {
     render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
     fireEvent.click(await screen.findByTestId("card-bill-82"));
-    expect(await screen.findByTestId("button-export-pdf")).toBeTruthy();
+    expect(await screen.findByTestId("button-export-whole-bill-pdf-footer")).toBeTruthy();
+    expect(screen.queryByTestId("button-export-pdf")).toBeNull();
     expect(screen.queryByTestId("button-export-equipment-hire-pdf")).toBeNull();
   });
 

@@ -8,6 +8,7 @@ import type { EquipmentPerformanceDailyRow } from "@shared/equipmentPerformance"
 import { computeEquipmentUsage, formatEquipmentDuration, formatEquipmentTime } from "@shared/equipmentUsage";
 import { calculateEquipmentHireFinancials } from "@shared/hireBilling";
 import { projectHireReview, hireReviewDisclosureLines, hireReviewTable, MONTHLY_BILL_HEADERS, type HireReview } from "@shared/vendorBillLayout";
+import { getBaseSiteName } from "@shared/siteName";
 import { formatConsumptionRate } from "./HireActivityBreakdownCalendar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -168,6 +169,7 @@ export type EquipmentHireExportData = {
   billNo: string;
   vendorName: string;
   equipmentName: string;
+  equipmentType?: string;
   projectSite?: string;
   periodFrom: string;
   periodTo: string;
@@ -343,8 +345,26 @@ export function equipmentHireActivitySheetRows(
 ) {
   const headers = dailyHeaders(dieselResponsibility);
   const unit = calendarConsumptionUnit(rows, meterType);
-  return { headers, values: rows.map(row => dailyValues(row, dieselResponsibility, consumptionNorm, unit)),
-    columns: headers.map(header => ({ wch: header === "Status / Remarks" ? 52 : header === "Trips" ? 9 : Math.max(14, header.length + 2) })) };
+  const siteIndex = headers.indexOf("Project / Site");
+  const values = rows.map(row => {
+    const cells = dailyValues(row, dieselResponsibility, consumptionNorm, unit);
+    if (siteIndex >= 0 && cells[siteIndex] && cells[siteIndex] !== "—") {
+      cells[siteIndex] = getBaseSiteName(String(cells[siteIndex]));
+    }
+    return cells;
+  });
+  const activeIndexes = headers.map((_, index) => index).filter(index =>
+    values.some(row => {
+      const value = row[index];
+      return value != null && String(value).trim() !== "" && !["—", "-"].includes(String(value).trim());
+    }),
+  );
+  const visibleHeaders = activeIndexes.map(index => headers[index]);
+  return {
+    headers: visibleHeaders,
+    values: values.map(row => activeIndexes.map(index => row[index])),
+    columns: visibleHeaders.map(header => ({ wch: header === "Status / Remarks" ? 52 : header === "Trips" ? 9 : Math.max(14, header.length + 2) })),
+  };
 }
 
 type DailyTotalsRow = BillingDailyRow & {
@@ -549,7 +569,10 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
     doc.setFontSize(12);
     doc.text("Monthly Billing Summary", 14, 16);
     autoTable(doc, { startY: 22, head: [MONTHLY_BILL_HEADERS.map(pdfText)],
-      body: hireReviewTable(data.hireReview).map(row => row.map(value => pdfText(String(value)))),
+      body: hireReviewTable(data.hireReview).map(row => row.map((value, index) =>
+        MONTHLY_BILL_HEADERS[index] === "Gross Amount (₹)" && typeof value === "number"
+          ? pdfText(money(value))
+          : pdfText(String(value)))),
       styles: { fontSize: 8 }, headStyles: { fillColor: [180, 83, 9] } });
     const disclosures = hireReviewDisclosureLines(data.hireReview);
     if (disclosures.length) {
@@ -798,7 +821,9 @@ export function buildSavedEquipmentHireBillOutput(bill: any): { data: EquipmentH
     ? Number(bill.amountPaid) : null;
   const data: EquipmentHireExportData = {
     hireReview: bill.hireReview || projectHireReview(statement, bill),
-    billNo: bill.billNo, vendorName: bill.vendorName, equipmentName: statement.equipmentName || snapshot.equipmentName || (equipmentId ? `Equipment #${equipmentId}` : "Equipment"), projectSite: snapshot.projectSite,
+    billNo: bill.billNo, vendorName: bill.vendorName,
+    equipmentName: statement.equipmentName || snapshot.equipmentName || (equipmentId ? `Equipment #${equipmentId}` : "Equipment"),
+    equipmentType: statement.equipmentType || undefined, projectSite: snapshot.projectSite,
     periodFrom, periodTo, hireBasis: String(statement.billingBasis || snapshot.terms?.billingBasis || "Hire").toUpperCase(),
     rate: Number(statement.rate ?? snapshot.terms?.rate ?? 0), grossHire, breakdownDeduction, hsdRecovery,
     otherDebit, otherDebitReason: adjustments.otherDebitReason, advanceAdjustment, advanceAdjustmentReason: adjustments.advanceAdjustmentReason,
@@ -817,10 +842,11 @@ export function buildSavedEquipmentHireBillOutput(bill: any): { data: EquipmentH
 /** Detail-page action set. Approved/saved bills always export the frozen daily
  * rows held in their calculation snapshot; current Equipment Performance data
  * must never rewrite a historical bill. */
-export function EquipmentHireBillDetailOutput({ bill, output: suppliedOutput }: {
+export function EquipmentHireBillDetailOutput({ bill, output: suppliedOutput, showExports = true }: {
   bill: any;
   /** Reuse the page's already prepared display output for whole-bill capture. */
   output?: ReturnType<typeof buildSavedEquipmentHireBillOutput>;
+  showExports?: boolean;
 }) {
   const [showDaily, setShowDaily] = useState(false);
   const output = suppliedOutput === undefined ? buildSavedEquipmentHireBillOutput(bill) : suppliedOutput;
@@ -830,7 +856,7 @@ export function EquipmentHireBillDetailOutput({ bill, output: suppliedOutput }: 
   return <div className="flex flex-wrap gap-2">
     {!hasFrozenDailyRows && <span className="self-center text-xs text-amber-700">Frozen daily activity is unavailable for this historical bill.</span>}
     <Button type="button" variant="outline" size="sm" disabled={!hasFrozenDailyRows} onClick={() => setShowDaily(true)} data-testid="button-detail-view-daily-activity">View Daily Activity</Button>
-    <EquipmentHireExportButtons data={data} rows={rows} disabled={!hasExportablePeriod} />
+    {showExports && <EquipmentHireExportButtons data={data} rows={rows} disabled={!hasExportablePeriod} />}
     <EquipmentHireDailyActivity open={showDaily} onOpenChange={setShowDaily} rows={rows} dieselResponsibility={data.dieselResponsibility} consumptionNorm={data.consumptionNorm} meterType={data.meterType} consumptionRateUnit={data.consumptionRateUnit} />
   </div>;
 }

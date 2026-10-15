@@ -113,7 +113,9 @@ describe("VB-EXPORT-02 Part B actual VendorBills page wiring", () => {
     expect(screen.getByTestId("equipment-log-facts-detail-0").textContent).toContain("Diesel: HLC");
     expect(screen.getByTestId("badge-site-0").textContent).toBe("SITE · RING ROAD");
     expect(screen.getByTestId("equipment-log-consumption-detail-0").textContent).toContain("18.2 L/hr (norm 9.0)");
-    const saved = await clickExport("header");
+    expect(screen.queryByTestId("whole-bill-export-header")).toBeNull();
+    expect(screen.getByTestId("whole-bill-export-footer")).toBeTruthy();
+    const saved = await clickExport("footer");
     const savedRow = saved.sections.find(section => section.category === "equipment")!.groups[0].rows[0];
     expect(savedRow).toMatchObject({ qty: 5, rate: 167.45, amount: 837.25 });
     expect(Object.keys(savedRow.details!)).toEqual(expect.arrayContaining([...EQUIPMENT_LOG_COLUMNS]));
@@ -203,10 +205,12 @@ describe("VB-EXPORT-02 Part A actual VendorBills page wiring", () => {
     expect((screen.getByTestId("input-item-rate-0") as HTMLInputElement).value).toBe("87.35");
     expect(screen.getByTestId("text-total-amount").textContent).toContain(snapshot.totals.netPayable.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   });
-  it.each(["draft", "verified", "approved", "paid"])("saved %s exports at both positions with authoritative detail totals", async status => {
+  it.each(["draft", "verified", "approved", "paid"])("saved %s exports from the footer with authoritative detail totals", async status => {
     bill.status = status;
     await openDetail();
-    const snapshot = await clickExport("header");
+    expect(screen.queryByTestId("whole-bill-export-header")).toBeNull();
+    expect(screen.getByTestId("whole-bill-export-footer")).toBeTruthy();
+    const snapshot = await clickExport("footer");
     expect(snapshot).toMatchObject({ saved: true, status, billNo: "VB-0731", companyName: "HLC" });
     expect(snapshot.totals).toMatchObject({
       subtotal: 837.25, totalGst: 150.705, tds: { amount: -16.745 },
@@ -253,7 +257,7 @@ describe("VB-EXPORT-02 Part A actual VendorBills page wiring", () => {
   it("retains an authoritative saved amount with missing rate and exposes the conflict", async () => {
     bill.items[0].rate = null;
     await openDetail();
-    const snapshot = await clickExport("header");
+    const snapshot = await clickExport("footer");
     expect(snapshot.totals.subtotal).toBe(837.25);
     expect(snapshot.sections.find(section => section.category === "material")?.groups[0].rows[0]).toMatchObject({ rate: null, amount: 837.25 });
     expect(wholeBillPricingNotes(snapshot).join(" ")).toContain("Screen totals retained unchanged");
@@ -272,7 +276,7 @@ describe("VB-EXPORT-02 Part A actual VendorBills page wiring", () => {
     fireEvent.click(screen.getByTestId("button-edit-bill"));
     fireEvent.click(screen.getByTestId("button-labour-filter-site"));
     fireEvent.click(screen.getByTestId("button-collapse-all-dates"));
-    const snapshot = await clickExport("header");
+    const snapshot = await clickExport("footer");
     const labour = snapshot.sections.find(section => section.category === "labour")!;
     expect(labour.groups.flatMap(group => group.rows.map(row => row.description))).toEqual(["EARLIER SITE TEAM", "SITE TEAM"]);
     expect(labour.subtotal).toBe(1211.5);
@@ -296,7 +300,7 @@ describe("VB-EXPORT-02 Part A actual VendorBills page wiring", () => {
       },
     }));
     await openDetail();
-    const snapshot = await clickExport("header");
+    const snapshot = await clickExport("footer");
     expect(snapshot.calendars).toHaveLength(2);
     expect(snapshot.calendars.map(calendar => calendar.equipmentName)).toEqual(["FROZEN ROLLER 81", "FROZEN ROLLER 82"]);
     expect(snapshot.calendars.every(calendar => calendar.rows.length === 1 && calendar.breakdown?.rows.length === 1)).toBe(true);

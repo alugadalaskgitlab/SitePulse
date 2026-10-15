@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { billReviewAmounts, summarizeBillReview, vendorStatementBills, previousBillingSummary } from "@shared/vendorBillReview";
 import { billPaymentPosition } from "@shared/vendorBillFinancialReport";
 import { useQuery } from "@tanstack/react-query";
@@ -78,45 +79,52 @@ export function VendorRunningStatement({ bill, bills, totals, loading, error }: 
     <summary className="cursor-pointer text-xs font-semibold">View Previous Bills</summary>
     <div className="space-y-3 pt-3">
       <div className="overflow-x-auto"><table className="w-full text-xs">
-        <thead><tr>{["Bill date / bill", "Status", "Net bill value", "Recorded payments", "This bill balance", "Credit", "Calculated cumulative movement*"].map(h => <th className="p-2 text-left" key={h}>{h}</th>)}</tr></thead>
+         <thead><tr>{["Bill date / bill", "Bill period", "Status", "Net bill value", "Recorded payments", "This bill balance", "Credit", "Running balance before this bill"].map(h => <th className="p-2 text-left" key={h}>{h}</th>)}</tr></thead>
         <tbody>{rows.map(row => {
           const a = billReviewAmounts(row, totals(row));
           paymentGap ||= a.paid == null;
           subtotal += a.net - (a.paid ?? 0);
-          return <tr key={row.id} className="border-t align-top">
-            <td className="p-2">{row.billDate}<br />{row.billNo}{row.id === bill.id ? " · Current bill" : ""}</td>
-            <td className="p-2">{row.status}{a.provisional && <span className="block">Provisional</span>}</td>
-            <td className="p-2">{money(a.net)}</td>
-            <td className="p-2">{money(a.paid)}<span className="block text-muted-foreground">Cumulative recorded amount; individual payment dates/history: Not established</span>
-              {row.paidAt && <span className="block">Paid status recorded: {row.paidAt}</span>}
-            </td>
-            <td className="p-2">{money(a.balance)}</td><td className="p-2">{money(a.credit)}{a.provisional && a.credit > 0 && " (provisional)"}</td>
-            <td className="p-2">{paymentGap ? "Not established" : money(subtotal)}</td>
-          </tr>;
+           const t = totals(row);
+           const adjustments = [
+             ...(Number(row.adjustmentAmount) ? [{ label: row.adjustmentLabel || "Bill adjustment", amount: Number(row.adjustmentAmount) }] : []),
+             ...(t.additional || []),
+             ...(row.hireStatements || []).flatMap((statement: any) => {
+               const saved = statement.calculationSnapshot?.adjustments;
+               if (!saved) return [];
+               return ["breakdownDeduction", "hsdRecovery", "otherDebit", "advanceAdjustment", "otherCredit"]
+                 .filter(key => Number(saved[key])).map(key => ({
+                   label: `${statement.equipmentName || `Equipment #${statement.equipmentId}`} · ${key}`,
+                   amount: Number(saved[key]) * (key === "otherCredit" ? 1 : -1), reason: saved[`${key}Reason`],
+                 }));
+             }),
+           ];
+           return <Fragment key={row.id}>
+             <tr className="border-t align-top">
+               <td className="p-2">{row.billDate}<br />{row.billNo}{row.id === bill.id ? " · Current bill" : ""}</td>
+               <td className="p-2">{row.periodFrom || "Not recorded"} – {row.periodTo || "Not recorded"}</td>
+               <td className="p-2">{row.status}{a.provisional && <span className="block">Provisional</span>}</td>
+               <td className="p-2">{money(a.net)}</td>
+               <td className="p-2">{money(a.paid)}<span className="block text-muted-foreground">Cumulative recorded amount; individual payment dates/history: Not established</span>
+                 {row.paidAt && <span className="block">Paid status recorded: {row.paidAt}</span>}
+               </td>
+               <td className="p-2">{money(a.balance)}</td>
+               <td className="p-2">{money(a.credit)}{a.provisional && a.credit > 0 && " (provisional)"}</td>
+               <td className="p-2">{paymentGap ? "Not established" : money(subtotal)}</td>
+             </tr>
+             <tr className="border-t bg-muted/10">
+               <td colSpan={8} className="px-3 py-2">
+                 <p className="font-semibold">Recorded adjustments / advance deductions</p>
+                 {adjustments.length
+                   ? adjustments.map((adjustment: any, index: number) =>
+                     <p key={index}>{adjustment.label || adjustment.description || "Adjustment"}: {money(Number(adjustment.amount))}{adjustment.reason ? ` · ${adjustment.reason}` : ""}</p>)
+                   : <p>No separate bill-level adjustment recorded.</p>}
+                 <p className="mt-1 text-muted-foreground">Advance payment history / unused advance balance: Not established. Recorded deductions are already included in bill value, not new payments.</p>
+               </td>
+             </tr>
+           </Fragment>;
         })}</tbody>
       </table></div>
        <p className="text-xs text-muted-foreground">*Calculated movement uses cumulative recorded payments in previous-bill date order; it is not a historical payment-date balance or the vendor's opening/closing account balance. Credits are indicative, not confirmed available for settlement.</p>
-      <h3 className="text-sm font-semibold">Recorded adjustments / advance deductions</h3>
-      {rows.map(row => {
-        const t = totals(row);
-        const adjustments = [
-          ...(Number(row.adjustmentAmount) ? [{ label: row.adjustmentLabel || "Bill adjustment", amount: Number(row.adjustmentAmount) }] : []),
-          ...(t.additional || []),
-          ...(row.hireStatements || []).flatMap((statement: any) => {
-            const saved = statement.calculationSnapshot?.adjustments;
-            if (!saved) return [];
-            return ["breakdownDeduction", "hsdRecovery", "otherDebit", "advanceAdjustment", "otherCredit"]
-              .filter(key => Number(saved[key])).map(key => ({
-                label: `${statement.equipmentName || `Equipment #${statement.equipmentId}`} · ${key}`,
-                amount: Number(saved[key]) * (key === "otherCredit" ? 1 : -1), reason: saved[`${key}Reason`],
-              }));
-          }),
-        ];
-        return <div key={row.id} className="text-xs"><strong>{row.billNo} · {row.status}</strong>
-          {adjustments.length ? adjustments.map((a: any, i: number) => <p key={i}>{a.label || a.description || "Adjustment"}: {money(Number(a.amount))}{a.reason ? ` · ${a.reason}` : ""}</p>) : <p>No separate bill-level adjustment recorded.</p>}
-          <p className="text-muted-foreground">Advance payment history / unused advance balance: Not established. Recorded deductions are already included in bill value, not new payments.</p>
-        </div>;
-      })}
     </div>
     </details></>}
     </section>;

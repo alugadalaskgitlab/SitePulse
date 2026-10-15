@@ -110,11 +110,10 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(client).toContain("FINAL RECOVERY");
   });
 
-  it("routes itemized equipment details through the shared PDF action", () => {
-    expect(client).toContain("const hasPersistedHireStatements = Array.isArray");
-    expect(client).toContain("!hasPersistedHireStatements");
-    expect(client).toContain('data-testid="button-export-pdf"');
-    expect(client).toContain('href = `/api/vendor-bills/${bill.id}/pdf`');
+  it("routes saved itemized equipment through the footer whole-bill PDF action", () => {
+    expect(client).toContain('position="footer" getSnapshot={getCurrentDetailSnapshot}');
+    expect(client).not.toContain('data-testid="button-export-pdf"');
+    expect(client).not.toContain('href = `/api/vendor-bills/${bill.id}/pdf`');
   });
 
   it("loads authoritative diesel purchase evidence and freezes calculated recovery", () => {

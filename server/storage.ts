@@ -17552,11 +17552,20 @@ export class DatabaseStorage implements IStorage {
   async getVendorBill(id: number): Promise<VendorBillWithItems | undefined> {
     const bill = await db.query.vendorBills.findFirst({
       where: eq(vendorBills.id, id),
-      with: { items: true, hireStatements: { with: { exceptions: true } } },
+      with: {
+        items: true,
+        hireStatements: {
+          with: { exceptions: true, equipment: { columns: { equipmentType: true } } },
+        },
+      },
     });
     return bill
       ? {
           ...bill,
+          hireStatements: bill.hireStatements.map((statement: any) => {
+            const { equipment, ...savedStatement } = statement;
+            return { ...savedStatement, equipmentType: equipment?.equipmentType || null };
+          }),
           additionalAdjustments: normalizeVendorBillAdditionalAdjustments((bill as any).additionalAdjustments),
         } as VendorBillWithItems
       : undefined;

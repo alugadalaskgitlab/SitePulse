@@ -20,6 +20,9 @@ import { importSdbXlsx, buildImportTemplate } from './snlImporter';
 import { importMorthSdbXlsx, isMorthFormat } from './snlMorthParser';
 import PDFDocument from 'pdfkit';
 import { projectBillHireReviews, hireReviewTable, MONTHLY_BILL_HEADERS } from "../shared/vendorBillLayout";
+import { getBillFinancialTotals } from "../shared/vendorBillFinancialReport";
+import { buildSavedBillPresentationRows } from "../shared/vendorBillPresentation";
+import { getBaseSiteName } from "../shared/siteName";
 import { pipeOperatorManualPdf } from './operator-manual-pdf';
 import { pipeAdminGuidePdf } from './admin-guide-pdf';
 import { pipeEstimatorGuidePdf } from './estimator-guide-pdf';
@@ -12503,6 +12506,9 @@ export async function registerRoutes(
       if (bill.periodFrom && bill.periodTo) {
         doc.text(`Period: ${fmtDate(bill.periodFrom)} to ${fmtDate(bill.periodTo)}`, 300, doc.y - 14);
       }
+      const equipmentTypes = Array.from(new Set(((bill as any).hireStatements || [])
+        .map((statement: any) => String(statement.equipmentType || "").trim()).filter(Boolean)));
+      if (equipmentTypes.length) doc.text(`Equipment Type: ${equipmentTypes.join(", ")}`, 40);
       doc.moveDown(0.8);
 
       for (const review of projectBillHireReviews(bill)) {
@@ -12511,7 +12517,7 @@ export async function registerRoutes(
         doc.font("Helvetica-Bold").fontSize(10).text(printable(`Monthly Billing Summary - ${review.name}`), 40);
         doc.font("Helvetica").fontSize(8).text(printable(`Hire Basis: ${review.basis} | Rate: ${review.rate ?? "-"} | Period: ${review.from} to ${review.to}`), { width: pageW });
         if (review.basis === "monthly") doc.text(`Monthly divisor: ${review.divisor}`);
-        const widths = [25, 135, 50, 50, 80, 95, 80];
+        const widths = [18, 95, 34, 34, 53, 42, 82, 60, 97];
         const drawMonthRow = (cells: unknown[], header = false) => {
           if (doc.y > 710) doc.addPage();
           const top = doc.y;
@@ -12519,7 +12525,9 @@ export async function registerRoutes(
           let bottom = top + 20;
           doc.font(header ? "Helvetica-Bold" : "Helvetica").fontSize(7);
           cells.forEach((cell, index) => {
-            doc.text(printable(cell), x + 2, top + 3, { width: widths[index] - 4, align: index > 1 ? "right" : "left" });
+            const isGross = MONTHLY_BILL_HEADERS[index] === "Gross Amount (₹)";
+            const value = isGross && typeof cell === "number" ? fmtCurrency(cell) : printable(cell);
+            doc.text(value, x + 2, top + 3, { width: widths[index] - 4, align: index > 1 ? "right" : "left" });
             bottom = Math.max(bottom, doc.y + 4);
             x += widths[index];
           });
@@ -12527,7 +12535,7 @@ export async function registerRoutes(
         };
         drawMonthRow(MONTHLY_BILL_HEADERS, true);
         hireReviewTable(review).forEach(row => drawMonthRow(row));
-        doc.fontSize(8).text(printable(`Recorded period Gross Hire: ${review.gross ?? "-"} | ${review.note}`), 40, doc.y, { width: pageW });
+        doc.fontSize(8).text(printable(`Recorded period Gross Hire: ${review.gross == null ? "Not recorded" : fmtCurrency(review.gross)} | ${review.note}`), 40, doc.y, { width: pageW });
         doc.moveDown();
       }
       const hasLeadDist = bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0);
@@ -12564,9 +12572,12 @@ export async function registerRoutes(
 
       const renderPdfItemRow = (item: any, idx: number) => {
         const desc = item.description || "";
-        const siteLabel = inferSiteName(desc, item.siteName || null);
-        const descHeight = doc.heightOfString(desc, { width: colWidths[descColIdx] - 8, fontSize: 9 });
-        const siteHeight = siteLabel ? doc.heightOfString(siteLabel, { width: colWidths[descColIdx] - 8, fontSize: 7 }) + 2 : 0;
+        const siteLabel = getBaseSiteName(inferSiteName(desc, item.siteName || null));
+        doc.font("Helvetica").fontSize(9);
+        const descHeight = doc.heightOfString(desc, { width: colWidths[descColIdx] - 8 });
+        doc.font("Helvetica").fontSize(7);
+        const siteHeight = siteLabel ? doc.heightOfString(siteLabel, { width: colWidths[descColIdx] - 8 }) + 2 : 0;
+        doc.font("Helvetica").fontSize(9);
         const rowH = Math.max(18, descHeight + siteHeight + 8);
 
         if (y + rowH > 720) {
@@ -12647,17 +12658,6 @@ export async function registerRoutes(
           doc.text(`Rs. ${fmtCurrency(catTotal)}`, tableX + pageW - amtW + 4, y + 5, { width: amtW - 8, align: "right" });
           y += 20;
 
-          const catGstRate = cat === "equipment" ? (bill as any).gstRateEquipment : cat === "material" ? (bill as any).gstRateMaterial : cat === "transport" ? (bill as any).gstRateTransport : cat === "labour" ? (bill as any).gstRateLabour : 0;
-          if (catGstRate > 0) {
-            const catGstAmt = catTotal * catGstRate / 100;
-            if (y + 20 > 720) { doc.addPage(); y = 40; }
-            doc.fillColor("#f0fff0").rect(tableX, y, pageW, 20).fill();
-            doc.fillColor("#15803d").fontSize(9).font("Helvetica-Bold");
-            doc.text(`GST ON ${pdfCatLabels[cat]} @ ${catGstRate}%`, tableX + 4, y + 5, { width: pageW - amtW - 8, align: "right" });
-            doc.text(`+ Rs. ${fmtCurrency(catGstAmt)}`, tableX + pageW - amtW + 4, y + 5, { width: amtW - 8, align: "right" });
-            y += 20;
-          }
-
           doc.font("Helvetica").fontSize(9);
         }
       } else {
@@ -12673,7 +12673,7 @@ export async function registerRoutes(
       const totalItems = bill.items.length;
 
       const summaryH = 22;
-      if (y + summaryH * 2 > 720) { doc.addPage(); y = 40; }
+      if (y + summaryH > 720) { doc.addPage(); y = 40; }
 
       doc.fillColor("#f5f5f5").rect(tableX, y, pageW, summaryH).fill();
       doc.fillColor("#000").fontSize(10).font("Helvetica-Bold");
@@ -12682,87 +12682,27 @@ export async function registerRoutes(
       y += summaryH;
 
       const amtColW = colWidths[colWidths.length - 1];
-      doc.fillColor(amber).rect(tableX, y, pageW, summaryH).fill();
-      doc.fillColor("#fff").fontSize(11).font("Helvetica-Bold");
-      doc.text("TOTAL AMOUNT", tableX + 4, y + 5, { width: pageW - amtColW - 8, align: "right" });
-      doc.text(`Rs. ${fmtCurrency(bill.totalAmount)}`, tableX + pageW - amtColW + 4, y + 5, { width: amtColW - 8, align: "right" });
-      y += summaryH;
-
-      {
-        const pdfCatAmts: Record<string, number> = {};
-        bill.items.forEach((it: any) => { const c = it.category || "other"; pdfCatAmts[c] = (pdfCatAmts[c] || 0) + (it.amount || 0); });
-        const pGstEq = (bill as any).gstRateEquipment ? (pdfCatAmts["equipment"] || 0) * (bill as any).gstRateEquipment / 100 : 0;
-        const pGstMat = (bill as any).gstRateMaterial ? (pdfCatAmts["material"] || 0) * (bill as any).gstRateMaterial / 100 : 0;
-        const pGstTr = (bill as any).gstRateTransport ? (pdfCatAmts["transport"] || 0) * (bill as any).gstRateTransport / 100 : 0;
-        const pGstLab = (bill as any).gstRateLabour ? (pdfCatAmts["labour"] || 0) * (bill as any).gstRateLabour / 100 : 0;
-        const pdfIsAllType = bill.billType?.toLowerCase() === "all";
-        const pdfUsePerGroupGst = pdfIsAllType || shouldGroupPdf;
-        const pSingleGstRate = !pdfUsePerGroupGst
-          ? (bill.billType?.toLowerCase() === "equipment" ? (bill as any).gstRateEquipment
-            : bill.billType?.toLowerCase() === "material" ? (bill as any).gstRateMaterial
-            : bill.billType?.toLowerCase() === "transport" ? (bill as any).gstRateTransport
-            : bill.billType?.toLowerCase() === "labour" ? (bill as any).gstRateLabour : 0) || 0
-          : 0;
-        const pSingleGstAmt = pSingleGstRate ? (bill.totalAmount || 0) * pSingleGstRate / 100 : 0;
-        const pTotalGst = pdfUsePerGroupGst ? pGstEq + pGstMat + pGstTr + pGstLab : pSingleGstAmt;
-        const adjustmentAmount = (bill as any).adjustmentAmount || 0;
-        const adjustmentLabel = (bill as any).adjustmentLabel || "ADVANCE DEDUCTION";
-        const additionalAdjustments = normalizeVendorBillAdditionalAdjustments((bill as any).additionalAdjustments);
-        const additionalAdjustmentAmount = additionalAdjustments.reduce((sum, adjustment) => sum + adjustment.amount, 0);
-        const pTdsRate = (bill as any).tdsRate || 0;
-        const pTdsAmt = pTdsRate ? (bill.totalAmount || 0) * pTdsRate / 100 : 0;
-        const pHasAny = pTotalGst !== 0 || adjustmentAmount !== 0 || additionalAdjustments.length > 0 || pTdsAmt !== 0;
-
-        if (pHasAny) {
-          if (!pdfUsePerGroupGst && pSingleGstRate > 0) {
-            if (y + summaryH > 720) { doc.addPage(); y = 40; }
-            doc.fillColor("#f0fff0").rect(tableX, y, pageW, summaryH).fill();
-            doc.fillColor("#15803d").fontSize(10).font("Helvetica");
-            doc.text(`GST @ ${pSingleGstRate}%`, tableX + 4, y + 6, { width: pageW - amtColW - 8, align: "right" });
-            doc.font("Helvetica-Bold").text(`+ Rs. ${fmtCurrency(pSingleGstAmt)}`, tableX + pageW - amtColW + 4, y + 6, { width: amtColW - 8, align: "right" });
-            y += summaryH;
-          }
-          if (pdfUsePerGroupGst && pTotalGst > 0) {
-            if (y + summaryH > 720) { doc.addPage(); y = 40; }
-            doc.fillColor("#f0fff0").rect(tableX, y, pageW, summaryH).fill();
-            doc.fillColor("#15803d").fontSize(10).font("Helvetica-Bold");
-            doc.text("TOTAL GST", tableX + 4, y + 6, { width: pageW - amtColW - 8, align: "right" });
-            doc.text(`+ Rs. ${fmtCurrency(pTotalGst)}`, tableX + pageW - amtColW + 4, y + 6, { width: amtColW - 8, align: "right" });
-            y += summaryH;
-          }
-          if (adjustmentAmount !== 0) {
-            if (y + summaryH > 720) { doc.addPage(); y = 40; }
-            doc.fillColor("#f0f0f0").rect(tableX, y, pageW, summaryH).fill();
-            doc.fillColor("#000").fontSize(10).font("Helvetica");
-            doc.text(adjustmentLabel, tableX + 4, y + 6, { width: pageW - amtColW - 8, align: "right" });
-            doc.font("Helvetica-Bold").text(`Rs. ${fmtCurrency(adjustmentAmount)}`, tableX + pageW - amtColW + 4, y + 6, { width: amtColW - 8, align: "right" });
-            y += summaryH;
-          }
-          for (const adjustment of additionalAdjustments) {
-            if (y + summaryH > 720) { doc.addPage(); y = 40; }
-            doc.fillColor("#f0f0f0").rect(tableX, y, pageW, summaryH).fill();
-            doc.fillColor("#000").fontSize(10).font("Helvetica");
-            doc.text(adjustment.label, tableX + 4, y + 6, { width: pageW - amtColW - 8, align: "right" });
-            doc.font("Helvetica-Bold").text(`Rs. ${fmtCurrency(adjustment.amount)}`, tableX + pageW - amtColW + 4, y + 6, { width: amtColW - 8, align: "right" });
-            y += summaryH;
-          }
-          if (pTdsAmt > 0) {
-            if (y + summaryH > 720) { doc.addPage(); y = 40; }
-            doc.fillColor("#fff5f5").rect(tableX, y, pageW, summaryH).fill();
-            doc.fillColor("#dc2626").fontSize(10).font("Helvetica");
-            doc.text(`IT TDS @ ${pTdsRate}%`, tableX + 4, y + 6, { width: pageW - amtColW - 8, align: "right" });
-            doc.font("Helvetica-Bold").text(`- Rs. ${fmtCurrency(pTdsAmt)}`, tableX + pageW - amtColW + 4, y + 6, { width: amtColW - 8, align: "right" });
-            y += summaryH;
-          }
-
-          const netTotal = (bill.totalAmount || 0) + pTotalGst + adjustmentAmount + additionalAdjustmentAmount - pTdsAmt;
-          if (y + summaryH > 720) { doc.addPage(); y = 40; }
-          doc.fillColor("#1a1a1a").rect(tableX, y, pageW, summaryH).fill();
-          doc.fillColor("#fff").fontSize(11).font("Helvetica-Bold");
-          doc.text("NET TOTAL", tableX + 4, y + 5, { width: pageW - amtColW - 8, align: "right" });
-          doc.text(`Rs. ${fmtCurrency(netTotal)}`, tableX + pageW - amtColW + 4, y + 5, { width: amtColW - 8, align: "right" });
-          y += summaryH;
+      const presentationRows = buildSavedBillPresentationRows(bill, getBillFinancialTotals(bill));
+      for (const row of presentationRows) {
+        doc.font("Helvetica").fontSize(7);
+        const reasonHeight = row.reason ? doc.heightOfString(row.reason, { width: pageW - amtColW - 16, lineGap: 1 }) : 0;
+        const rowH = Math.max(summaryH, reasonHeight + 18);
+        if (y + rowH > 720) { doc.addPage(); y = 40; }
+        const isNet = row.kind === "net";
+        const fill = isNet ? "#1a1a1a" : row.kind === "gross" ? amber : row.kind === "gst" || row.kind === "credit" ? "#f0fff0" : "#f4f4f4";
+        const color = isNet ? "#fff" : row.kind === "gst" || row.kind === "credit" ? "#15803d" : row.kind === "tds" || row.kind === "deduction" ? "#b91c1c" : "#000";
+        doc.fillColor(fill).rect(tableX, y, pageW, rowH).fill();
+        doc.fillColor(color).fontSize(isNet ? 11 : 10).font("Helvetica-Bold");
+        doc.text(row.label, tableX + 4, y + 5, { width: pageW - amtColW - 8, align: "right" });
+        const amount = row.kind === "gross" || row.kind === "net"
+          ? `Rs. ${fmtCurrency(row.amount)}`
+          : `${row.amount < 0 ? "-" : "+"} Rs. ${fmtCurrency(Math.abs(row.amount))}`;
+        doc.text(amount, tableX + pageW - amtColW + 4, y + 5, { width: amtColW - 8, align: "right" });
+        if (row.reason) {
+          doc.fillColor(color).fontSize(7).font("Helvetica");
+          doc.text(row.reason, tableX + 4, y + 13, { width: pageW - amtColW - 16, align: "left", lineGap: 1 });
         }
+        y += rowH;
       }
 
       if (bill.notes) {
@@ -12793,12 +12733,121 @@ export async function registerRoutes(
       doc.fontSize(9).font("Helvetica").fillColor("#000");
       doc.text(bill.vendorName, tableX, vendorSignY + 4, { width: 200, align: "center" });
 
+      const dailyFieldDefinitions = [
+        { label: "Date", keys: ["date", "businessDate", "workDate"], weight: 50, date: true },
+        { label: "Project / Site", keys: ["projectSite", "siteName"], weight: 78, site: true },
+        { label: "Activity", keys: ["activity", "statusLabel", "status"], weight: 68 },
+        { label: "Working Hours", keys: ["workingHours", "hours"], weight: 48 },
+        { label: "Trips", keys: ["trips", "tripCount"], weight: 30 },
+        { label: "Start", keys: ["startTime"], weight: 40 },
+        { label: "End", keys: ["endTime"], weight: 40 },
+        { label: "Clock Duration", keys: ["clockDuration"], weight: 52 },
+        { label: "Opening Meter", keys: ["openingMeter"], weight: 48 },
+        { label: "Closing Meter", keys: ["closingMeter"], weight: 48 },
+        { label: "Diesel Issued", keys: ["dieselIssued"], weight: 48 },
+        { label: "Opening Tank", keys: ["openingTank"], weight: 44 },
+        { label: "Closing Tank", keys: ["closingTank"], weight: 44 },
+        { label: "Diesel Consumed", keys: ["dieselConsumed"], weight: 50 },
+        { label: "Expected", keys: ["expectedDiesel"], weight: 45 },
+        { label: "Difference", keys: ["difference"], weight: 45 },
+        { label: "Consumption Rate", keys: ["consumptionRate"], weight: 54 },
+        { label: "Downtime Hours", keys: ["downtimeHours"], weight: 48 },
+        { label: "Remarks", keys: ["remarks", "comment", "notes"], weight: 100 },
+      ];
+      for (const statement of (bill as any).hireStatements || []) {
+        const snapshot = statement.calculationSnapshot || {};
+        const sourceRows = [
+          ...(Array.isArray(snapshot.workingSheet) ? snapshot.workingSheet : []),
+          ...(Array.isArray(snapshot.performanceDailyRows) ? snapshot.performanceDailyRows : []),
+          ...(Array.isArray(snapshot.dailyRows) ? snapshot.dailyRows : []),
+        ];
+        const byDate = new Map<string, any>();
+        sourceRows.forEach((row: any, index: number) => {
+          const key = String(row.date || row.businessDate || row.workDate || `row-${index}`);
+          byDate.set(key, { ...(byDate.get(key) || {}), ...row });
+        });
+        const rows = Array.from(byDate.values());
+        const valueFor = (row: any, keys: string[]) => {
+          for (const key of keys) if (row?.[key] != null && row[key] !== "") return row[key];
+          return null;
+        };
+        const columns = dailyFieldDefinitions.filter(field =>
+          rows.some(row => {
+            const value = valueFor(row, field.keys);
+            return value != null && String(value).trim() !== "" && !["—", "-"].includes(String(value).trim());
+          }),
+        );
+        const displayValue = (row: any, field: typeof dailyFieldDefinitions[number]) => {
+          const value = valueFor(row, field.keys);
+          if (value == null || value === "") return "—";
+          if (field.site) return getBaseSiteName(String(value));
+          if (field.date) return fmtDate(String(value));
+          return typeof value === "number" ? fmtQty(value) : String(value);
+        };
+
+        doc.addPage({ size: "A4", layout: "landscape", margins: { top: 30, bottom: 30, left: 32, right: 32 } });
+        const left = 32;
+        const width = (doc.page?.width ?? 841.89) - left * 2;
+        const pageHeight = doc.page?.height ?? 595.28;
+        const weights = columns.map(field => field.weight);
+        const weightTotal = weights.reduce((sum, weight) => sum + weight, 0) || 1;
+        const widths = weights.map(weight => width * weight / weightTotal);
+        const tableFont = 7;
+        const drawDailyHeader = (continued: boolean) => {
+          doc.fillColor("#000").font("Helvetica-Bold").fontSize(11);
+          doc.text(`DAILY ACTIVITY${continued ? " — CONTINUED" : ""}: ${statement.equipmentName || `Equipment #${statement.equipmentId}`}`, left, 28, { width });
+          doc.font("Helvetica").fontSize(8);
+          doc.text(
+            `Equipment type: ${statement.equipmentType || "Not recorded"} | Period: ${fmtDate(statement.periodFrom || bill.periodFrom)} to ${fmtDate(statement.periodTo || bill.periodTo)} | Bill: ${bill.billNo}`,
+            left, 44, { width },
+          );
+          let x = left;
+          let y = 62;
+          const headerHeight = 24;
+          doc.fillColor(amber).rect(left, y, width, headerHeight).fill();
+          doc.fillColor("#fff").font("Helvetica-Bold").fontSize(tableFont);
+          columns.forEach((field, index) => {
+            doc.text(field.label, x + 3, y + 4, { width: widths[index] - 6, height: headerHeight - 4, align: "left", ellipsis: true });
+            x += widths[index];
+          });
+          doc.y = y + headerHeight;
+        };
+        drawDailyHeader(false);
+        if (!columns.length || !rows.length) {
+          doc.fillColor("#000").font("Helvetica").fontSize(9);
+          doc.text("No frozen daily activity was saved for this bill.", left, doc.y + 8, { width });
+          continue;
+        }
+        rows.forEach((row: any, rowIndex: number) => {
+          const cells = columns.map(field => displayValue(row, field));
+          doc.font("Helvetica").fontSize(tableFont);
+          const heights = cells.map((value, index) =>
+            doc.heightOfString(value, { width: Math.max(20, widths[index] - 6), lineGap: 1 }));
+          const rowHeight = Math.max(18, ...heights.map(height => height + 7));
+          if (doc.y + rowHeight > pageHeight - 34) drawDailyHeader(true);
+          const top = doc.y;
+          doc.fillColor(rowIndex % 2 ? "#f5f5f5" : "#fff").rect(left, top, width, rowHeight).fill();
+          let x = left;
+          doc.fillColor("#222").font("Helvetica").fontSize(tableFont);
+          cells.forEach((value, index) => {
+            doc.text(value, x + 3, top + 4, { width: widths[index] - 6, height: rowHeight - 4, ellipsis: true });
+            x += widths[index];
+          });
+          doc.strokeColor("#ddd").lineWidth(0.35).moveTo(left, top + rowHeight).lineTo(left + width, top + rowHeight).stroke();
+          doc.y = top + rowHeight;
+        });
+      }
+
       const pages = doc.bufferedPageRange();
       for (let i = 0; i < pages.count; i++) {
-        doc.switchToPage(i);
+        doc.switchToPage(pages.start + i);
+        const pageWidth = doc.page?.width ?? 595.28;
+        const pageHeight = doc.page?.height ?? 841.89;
+        const footerY = pageHeight - 28;
+        const availableWidth = pageWidth - 80;
         doc.fillColor("#555").fontSize(8).font("Helvetica");
-        doc.text(`Generated: ${new Date().toLocaleString("en-IN")}`, 40, 800, { width: pageW / 2, align: "left" });
-        doc.text(`Page ${i + 1} of ${pages.count}`, 40 + pageW / 2, 800, { width: pageW / 2, align: "right" });
+        doc.text(`Generated: ${new Date().toLocaleString("en-IN")}`, 40, footerY, { width: availableWidth / 2, align: "left" });
+        doc.text(`Page ${i + 1} of ${pages.count}`, 40 + availableWidth / 2, footerY, { width: availableWidth / 2, align: "right" });
       }
 
       doc.end();

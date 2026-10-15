@@ -134,19 +134,19 @@ beforeEach(() => {
 });
 
 describe("VB18 real vendor-bill PDF route", () => {
-  it("renders primary, additional, and labeled-zero rows separately and computes net", async () => {
+  it("renders non-zero primary and additional rows, hides labeled-zero rows, and computes net", async () => {
     const response = await request(app).get("/api/vendor-bills/18/pdf");
 
     expect(response.status).toBe(200);
     expect(response.headers["content-type"]).toMatch(/application\/pdf/);
     expect(fx.pdfText).toContain("DIESEL RECOVERY");
     expect(fx.pdfText).toContain("CASH ADVANCE");
-    expect(fx.pdfText).toContain("ZERO-HOLD / CREDIT");
-    expect(fx.pdfText.filter((value) => value === "NET TOTAL")).toHaveLength(1);
+    expect(fx.pdfText).not.toContain("ZERO-HOLD / CREDIT");
+    expect(fx.pdfText.filter((value) => value === "NET PAYABLE")).toHaveLength(1);
     // 1,000 + 180 GST - 100 primary - 200 additional - 20 TDS.
     expect(fx.pdfText).toContain("Rs. 860.00");
-    expect(fx.pdfText).toContain("Rs. -100.00");
-    expect(fx.pdfText).toContain("Rs. -200.00");
-    expect(fx.pdfText).toContain("Rs. 0.00");
+    expect(fx.pdfText).toContain("- Rs. 100.00");
+    expect(fx.pdfText).toContain("- Rs. 200.00");
+    expect(fx.pdfText).toContain("- Rs. 20.00");
   });
 });

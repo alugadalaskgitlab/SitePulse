@@ -49,8 +49,8 @@ describe("approved month review presentation", () => {
     const before = JSON.stringify(snapshot);
     const workbook = buildWholeBillWorkbook(snapshot);
     const rows: any[][] = XLSX.utils.sheet_to_json(workbook.Sheets["Monthly Billing Summary"], { header: 1 });
-    expect(rows.some(row => String(row[1]).includes("August 2026") && row[7] === 1000)).toBe(true);
-    expect(rows.some(row => String(row[1]).includes("September 2026") && row[7] === 1000)).toBe(true);
+    expect(rows.some(row => String(row[1]).includes("August 2026") && row[8] === 1000)).toBe(true);
+    expect(rows.some(row => String(row[1]).includes("September 2026") && row[8] === 1000)).toBe(true);
     const pdf = buildWholeBillPdf(snapshot).output();
     expect(pdf).toContain("Monthly Billing Summary");
     expect(pdf).toContain("August 2026");

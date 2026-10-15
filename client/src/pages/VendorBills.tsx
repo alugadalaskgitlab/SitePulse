@@ -43,7 +43,8 @@ import {
 } from "@/components/vendor-bills/EquipmentHireBillOutput";
 import DraftEquipmentHireCalendar, { SavedEquipmentCalendarExport } from "@/components/vendor-bills/DraftEquipmentHireCalendar";
 import SavedBillCalendars from "@/components/vendor-bills/SavedBillCalendars";
-import { projectHireReview } from "@shared/vendorBillLayout";
+import { projectBillHireReviews, projectHireReview } from "@shared/vendorBillLayout";
+import { buildSavedBillPresentationRows } from "@shared/vendorBillPresentation";
 import { VendorBillFinancialSummary, VendorRunningStatement } from "@/components/vendor-bills/VendorBillReview";
 import HireActivityBreakdownCalendar, { hireActivityBreakdownSheetRows } from "@/components/vendor-bills/HireActivityBreakdownCalendar";
 import WholeBillExportButtons from "@/components/vendor-bills/WholeBillExportButtons";
@@ -615,6 +616,7 @@ export default function VendorBills() {
   const [dateGroupExpansionOverrides, setDateGroupExpansionOverrides] = useState<Record<string, boolean>>({});
   const [hireGroups, setHireGroups] = useState<HireGroup[]>([]);
   const monthlyHireSeedRef = useRef("");
+  const [monthlyHireSeedKey, setMonthlyHireSeedKey] = useState("");
   const contractorAdvanceSeedRef = useRef("");
   const generatedBillAdjustmentRef = useRef("");
   const suppressedAutoItemsRef = useRef(new Set<string>());
@@ -822,6 +824,30 @@ export default function VendorBills() {
     });
     return Array.from(byId.values());
   }, [billType, discoveredVendors, hireActivityRows, vendorName, isHistoricalHireEdit]);
+  const currentMonthlySeedKey = `${vendorName}|${periodFrom}|${periodTo}`;
+  const monthlyHireExclusions = useMemo(() => {
+    if (!vendorName || !validHireDate(periodFrom) || !validHireDate(periodTo) || periodFrom > periodTo ||
+      !["equipment", "all"].includes(billType) || monthlyHireSeedKey !== currentMonthlySeedKey) return [];
+    return hireEquipment.flatMap((equipment: any) => {
+      if (String(equipment.hireBillingBasis || "").toLowerCase() !== "monthly") return [];
+      const id = Number(equipment.id);
+      if (hireGroups.some(group => Number(group.equipmentId) === id && group.basis === "monthly")) return [];
+      let reason: string | null = null;
+      if (!validHireDate(equipment.hireStartDate)) reason = "Equipment Master has no valid hire start date.";
+      else if (equipment.hireStartDate > periodTo) reason = "The Master hire period starts after this bill period.";
+      else if (equipment.hireEndDate && equipment.hireEndDate < periodFrom) {
+        reason = "The Master hire period ends before this bill period.";
+      } else if (!(Number(equipment.hireRate) > 0)) reason = "Equipment Master has no positive hire rate.";
+      else if (String(equipment.hireMonthlyDivisorType || "30").toLowerCase() === "custom" &&
+        !(Number(equipment.hireMonthlyDivisor) > 0)) reason = "Equipment Master has a custom monthly divisor that is missing or not positive.";
+      else reason = "This bill already contains hire lines, so automatic seeding preserved the existing lines.";
+      return [{
+        id,
+        name: [equipment.equipmentType, equipment.equipmentSpec].filter(Boolean).join(" ") || equipment.name || `Equipment #${id}`,
+        reason,
+      }];
+    });
+  }, [billType, currentMonthlySeedKey, hireEquipment, hireGroups, monthlyHireSeedKey, periodFrom, periodTo, vendorName]);
   const selectedHireEquipmentId = hireGroups[0]?.equipmentId;
   const equipmentPerformanceQueries = useQueries({
     queries: hireGroups.map(group => {
@@ -864,6 +890,7 @@ export default function VendorBills() {
     if (monthlyHireSeedRef.current === seedKey) return;
     const previousVendor = monthlyHireSeedRef.current.split("|")[0];
     monthlyHireSeedRef.current = seedKey;
+    setMonthlyHireSeedKey(seedKey);
     if (hireGroups.length && (!previousVendor || previousVendor === vendorName)) return;
     setHireGroups(monthly.flatMap((equipment: any) => {
       // Calendar month boundaries; the calculator clips to Master hire dates.
@@ -887,6 +914,7 @@ export default function VendorBills() {
   useEffect(() => {
     if (billType === "equipment" || billType === "all") return;
     monthlyHireSeedRef.current = "";
+    setMonthlyHireSeedKey("");
     // The monthly adjustment bucket is gone; revisiting Equipment/All must
     // not suppress a contractor-diesel suggestion with a stale seed key.
     contractorAdvanceSeedRef.current = "";
@@ -1016,6 +1044,7 @@ export default function VendorBills() {
     setLineItems(isAdmin ? [defaultManualItem] : []);
     setHireGroups([]);
     monthlyHireSeedRef.current = "";
+    setMonthlyHireSeedKey("");
     contractorAdvanceSeedRef.current = "";
     generatedBillAdjustmentRef.current = "";
     suppressedAutoItemsRef.current.clear();
@@ -1041,6 +1070,7 @@ export default function VendorBills() {
     if (vendor.vendorName !== vendorName) {
       setHireGroups([]);
       monthlyHireSeedRef.current = "";
+      setMonthlyHireSeedKey("");
     }
     updateActivePullContext(billType, vendor.vendorName, periodFrom, periodTo);
     setVendorName(vendor.vendorName);
@@ -2703,6 +2733,7 @@ export default function VendorBills() {
                     setVendorName("");
                     setHireGroups([]);
                     monthlyHireSeedRef.current = "";
+                    setMonthlyHireSeedKey("");
                     setShowVendorDropdown(true);
                   }}
                   onFocus={() => setShowVendorDropdown(true)}
@@ -3145,13 +3176,22 @@ export default function VendorBills() {
           </Card>
         )}
 
-        {!isHistoricalHireEdit && hireGroups.some(g => g.basis === "monthly") && (
+        {!isHistoricalHireEdit && (hireGroups.some(g => g.basis === "monthly") || monthlyHireExclusions.length > 0) && (
           <Card className="border-orange-200 dark:border-orange-800" data-testid="monthly-hire-auto-summary">
             <CardHeader className="py-3">
               <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-wider"><Calculator className="h-4 w-4 text-orange-600" />Auto-generated monthly hire</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 pt-0">
               <p className="text-xs text-muted-foreground">Monthly equipment is billed for its active hire-date overlap even with no DPR/Plant log. Only recorded breakdowns reduce the line; the server recalculates and freezes this evidence on save.</p>
+              {monthlyHireExclusions.length > 0 && <div className="rounded border border-orange-200 bg-orange-50 p-3 text-xs dark:bg-orange-950/20" data-testid="monthly-hire-exclusions">
+                <p className="font-semibold">Monthly equipment not auto-added</p>
+                <ul className="mt-2 space-y-1">
+                  {monthlyHireExclusions.map(item => <li key={item.id} data-testid={`monthly-hire-excluded-item-${item.id}`}>
+                    <strong>{item.name}</strong>: {item.reason}
+                  </li>)}
+                </ul>
+                <p className="mt-2 text-muted-foreground">These notices explain the current bill-period filter; they do not change Equipment Master or bill-seeding rules.</p>
+              </div>}
               {hireGroups.filter(g => g.basis === "monthly").map((group) => {
                 const equipment = hireEquipmentFor(group.equipmentId);
                 const result = hireCalculated.find(c => c.group.id === group.id)?.result;
@@ -4460,8 +4500,12 @@ export default function VendorBills() {
         companyName: companyName || "HLC", vendorName: detailVendorName, billNo: bill.billNo, billDate: bill.billDate,
         periodFrom: bill.periodFrom || "", periodTo: bill.periodTo || "",
         site: b.siteName || (b.siteId == null ? "All sites" : sites?.find(site => site.id === b.siteId)?.name || ""),
+        equipmentType: Array.from(new Set((b.hireStatements || [])
+          .map((statement: any) => String(statement.equipmentType || "").trim()).filter(Boolean))).join(", ") || undefined,
         billType: type, billTypeLabel: getBillTypeLabel(type), saved: true, status: bill.status,
         generatedAt: new Date().toISOString(), notes: bill.notes || "",
+        financialRows: buildSavedBillPresentationRows(b, detailFinancials),
+        hireReviews: projectBillHireReviews(b),
         sections: projectVendorBillPageItems({
           items: bill.items, subtotals: detailSubtotals, shouldGroup, billType: type, total: detailFinancials.totalAmount,
           getLabourSource: item => getLabourSource({ siteName: item.siteName, description: item.description || "" }),
@@ -4472,12 +4516,14 @@ export default function VendorBills() {
           ? savedHireOutputs.flatMap((output: ReturnType<typeof buildSavedEquipmentHireBillOutput>, index: number) => {
             if (!output) return [{
               equipmentName: b.hireStatements[index]?.equipmentName || "Equipment",
+              equipmentType: b.hireStatements[index]?.equipmentType || undefined,
               periodFrom: b.hireStatements[index]?.periodFrom || bill.periodFrom || "",
               periodTo: b.hireStatements[index]?.periodTo || bill.periodTo || "", rows: [],
               unavailableReason: "Frozen daily activity is unavailable for this historical bill.",
             }];
             return [{
               equipmentName: output.data.equipmentName, periodFrom: output.data.periodFrom, periodTo: output.data.periodTo,
+              equipmentType: output.data.equipmentType,
               rows: output.rows, dieselResponsibility: output.data.dieselResponsibility,
               consumptionNorm: output.data.consumptionNorm, meterType: output.data.meterType,
               breakdown: String(b.hireStatements[index]?.status || "").toLowerCase() === "approved" || bill.status !== "draft"
@@ -4514,38 +4560,7 @@ export default function VendorBills() {
             <h1 className="text-xl font-bold" data-testid="text-detail-title">BILL DETAIL</h1>
           </div>
           <div className="flex gap-2 flex-wrap items-center">
-            <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
-              isAdmin={user?.isAdmin} isOwner={user?.isOwner}
-              position="header" getSnapshot={getCurrentDetailSnapshot} />
-            {canExport && String(bill.billType || "").toLowerCase() === "equipment" && (bill as any).hireStatements?.length === 1 && <EquipmentHireBillDetailOutput bill={bill} output={savedHireOutputs[0]} />}
-            {canExport && String(bill.billType || "").toLowerCase() !== "equipment" && ["verified", "approved", "paid"].includes(bill.status) && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const link = document.createElement("a");
-                  link.href = `/api/vendor-bills/${bill.id}/pdf`;
-                  link.download = `VendorBill-${bill.billNo}.pdf`;
-                  link.click();
-                }}
-                data-testid="button-export-pdf"
-              >
-                <Download className="w-4 h-4 mr-1" /> EXPORT PDF
-              </Button>
-            )}
-            {canExport && String(bill.billType || "").toLowerCase() === "equipment" && !hasPersistedHireStatements && ["verified", "approved", "paid"].includes(bill.status) && (
-              <SavedEquipmentCalendarExport
-                bill={bill}
-                onExportSnapshot={calendar => rememberCalendar(`detail|${bill.id}|${bill.periodFrom}|${bill.periodTo}`, calendar)}
-                onExportBill={(format) => {
-                  if (format !== "pdf") return;
-                  const link = document.createElement("a");
-                  link.href = `/api/vendor-bills/${bill.id}/pdf`;
-                  link.download = `VendorBill-${bill.billNo}.pdf`;
-                  link.click();
-                }}
-              />
-            )}
+            {canExport && String(bill.billType || "").toLowerCase() === "equipment" && (bill as any).hireStatements?.length === 1 && <EquipmentHireBillDetailOutput bill={bill} output={savedHireOutputs[0]} showExports={false} />}
             {canExport && <Button variant="outline" size="sm" onClick={() => handlePrint(bill)} data-testid="button-print">
               <Printer className="w-4 h-4 mr-1" /> PRINT
             </Button>}
@@ -4858,14 +4873,6 @@ export default function VendorBills() {
                                 </td>
                                 <td className="px-2 py-2 text-right text-sm font-semibold" colSpan={2}>Rs. {formatCurrency(catTotal)}</td>
                               </tr>
-                              {catGstRate > 0 && (
-                                <tr className="border-b bg-green-50 dark:bg-green-900/10">
-                                  <td colSpan={labelCols} className="px-2 py-1 text-right text-sm font-semibold text-green-700 dark:text-green-400 uppercase">
-                                    GST ON {catLabels[cat]} @ {catGstRate}%
-                                  </td>
-                                  <td className="px-2 py-1 text-right text-sm font-semibold text-green-700 dark:text-green-400" colSpan={2}>+ Rs. {formatCurrency(catGstAmount)}</td>
-                                </tr>
-                              )}
                             </Fragment>
                           );
                         })}
@@ -4886,69 +4893,28 @@ export default function VendorBills() {
                     )}
                   </tbody>
                   <tfoot>
-                    <tr className="border-t-2 border-amber-500 bg-amber-50 dark:bg-amber-900/20">
-                      <td colSpan={labelCols} className="px-2 py-3 text-right font-bold">TOTAL</td>
-                      <td className="px-2 py-3 text-right font-bold text-base" colSpan={2}>Rs. {formatCurrency(bill.totalAmount)}</td>
-                    </tr>
-                    {(() => {
-                      const b = bill as any;
-                      const isAllType = bill.billType?.toLowerCase() === "all";
-                      const usePerGroupGst = isAllType || shouldGroup;
-                      const singleGstRate = !usePerGroupGst
-                        ? (bill.billType?.toLowerCase() === "equipment" ? b.gstRateEquipment
-                          : bill.billType?.toLowerCase() === "material" ? b.gstRateMaterial
-                          : bill.billType?.toLowerCase() === "transport" ? b.gstRateTransport
-                          : bill.billType?.toLowerCase() === "labour" ? b.gstRateLabour : 0) || 0
-                        : 0;
-                      const singleGstAmt = !usePerGroupGst ? detailFinancials.totalGst : 0;
-                      const totalGst = detailFinancials.totalGst;
-                      const advAmt = detailFinancials.primaryAdjustment;
-                      const advLabel = b.adjustmentLabel || "ADVANCE DEDUCTION";
-                      const additional = detailFinancials.additional;
-                      const tdsR = b.tdsRate || 0;
-                      const tdsAmt = detailFinancials.tds;
-                      const hasAny = totalGst !== 0 || advAmt !== 0 || additional.length > 0 || tdsAmt !== 0;
-                      if (!hasAny) return null;
-                      const billNetTotal = detailFinancials.netTotal;
-                      return (
-                        <>
-                          {!usePerGroupGst && singleGstRate > 0 && (
-                            <tr className="bg-green-50 dark:bg-green-900/10">
-                              <td colSpan={labelCols} className="px-2 py-2 text-right text-sm font-semibold text-green-700 dark:text-green-400 uppercase">GST @ {singleGstRate}%</td>
-                              <td className="px-2 py-2 text-right text-sm font-semibold text-green-700 dark:text-green-400" colSpan={2}>+ Rs. {formatCurrency(singleGstAmt)}</td>
-                            </tr>
-                          )}
-                          {usePerGroupGst && totalGst > 0 && (
-                            <tr className="bg-green-50 dark:bg-green-900/10">
-                              <td colSpan={labelCols} className="px-2 py-2 text-right text-sm font-semibold text-green-700 dark:text-green-400 uppercase">TOTAL GST</td>
-                              <td className="px-2 py-2 text-right text-sm font-semibold text-green-700 dark:text-green-400" colSpan={2}>+ Rs. {formatCurrency(totalGst)}</td>
-                            </tr>
-                          )}
-                          {advAmt !== 0 && (
-                            <tr className="bg-muted/20">
-                              <td colSpan={labelCols} className="px-2 py-2 text-right text-sm font-semibold uppercase">{advLabel}</td>
-                              <td className="px-2 py-2 text-right text-sm font-semibold" colSpan={2}>Rs. {formatCurrency(advAmt)}</td>
-                            </tr>
-                          )}
-                          {additional.map((adjustment, index) => (
-                            <tr className="bg-muted/20" key={index} data-testid={`text-detail-additional-adjustment-${index}`}>
-                              <td colSpan={labelCols} className="px-2 py-2 text-right text-sm font-semibold uppercase">{adjustment.label || "ADDITIONAL DEDUCTION / CREDIT"}</td>
-                              <td className="px-2 py-2 text-right text-sm font-semibold" colSpan={2}>Rs. {formatCurrency(adjustment.amount)}</td>
-                            </tr>
-                          ))}
-                          {tdsAmt > 0 && (
-                            <tr className="bg-red-50 dark:bg-red-900/10">
-                              <td colSpan={labelCols} className="px-2 py-2 text-right text-sm font-semibold text-red-600 dark:text-red-400 uppercase">IT TDS @ {tdsR}%</td>
-                              <td className="px-2 py-2 text-right text-sm font-semibold text-red-600 dark:text-red-400" colSpan={2}>- Rs. {formatCurrency(tdsAmt)}</td>
-                            </tr>
-                          )}
-                          <tr className="border-t-2 border-amber-600 bg-amber-100 dark:bg-amber-900/30">
-                            <td colSpan={labelCols} className="px-2 py-3 text-right font-bold text-base">NET TOTAL</td>
-                            <td className="px-2 py-3 text-right font-bold text-base" colSpan={2}>Rs. {formatCurrency(billNetTotal)}</td>
-                          </tr>
-                        </>
-                      );
-                    })()}
+                    {buildSavedBillPresentationRows(bill, detailFinancials).map((row, index) => {
+                      const negative = row.amount < 0;
+                      const highlighted = row.kind === "gross" || row.kind === "net";
+                      const tone = row.kind === "gst" || row.kind === "credit"
+                        ? "text-green-700 dark:text-green-400"
+                        : row.kind === "deduction" || row.kind === "tds"
+                          ? "text-red-600 dark:text-red-400"
+                          : "text-foreground";
+                      return <tr key={`${row.kind}-${index}`}
+                        className={`${highlighted ? "border-t-2 border-amber-600 bg-amber-50 dark:bg-amber-900/20" : "border-t bg-muted/10"} ${row.kind === "net" ? "font-bold text-base" : ""}`}
+                        data-testid={`row-detail-financial-${row.kind}-${index}`}>
+                        <td colSpan={labelCols} className={`px-2 py-2 text-right font-semibold uppercase ${tone}`}>
+                          {row.label}
+                          {row.reason && <div className="mt-1 whitespace-pre-line text-left text-xs font-normal normal-case text-muted-foreground">{row.reason}</div>}
+                        </td>
+                        <td colSpan={2} className={`px-2 py-2 text-right font-semibold tabular-nums ${tone}`}>
+                          {highlighted
+                            ? `Rs. ${formatCurrency(row.amount)}`
+                            : `${negative ? "−" : "+"} Rs. ${formatCurrency(Math.abs(row.amount))}`}
+                        </td>
+                      </tr>;
+                    })}
                   </tfoot>
                 </table>
               );

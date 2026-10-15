@@ -4,7 +4,7 @@ import { monthlyGross, normalizeHireActivities, type HireTerms } from "./hireBil
 export const MONTHLY_BILL_HEADERS = [
   "Sl. No.", "Bill Period", "Days Billed", "Worked Days",
   "Idle Days (Work Not Available)", "Breakdown Days",
-  "Operator / Driver Unavailable Days", "Gross Amount (₹)",
+  "Operator / Driver Unavailable Days", "Not Recorded", "Gross Amount (₹)",
 ];
 const DAY = 86400000;
 const finite = (v: unknown): number | null => v == null || v === "" || !Number.isFinite(Number(v)) ? null : Number(v);
@@ -154,6 +154,6 @@ export function projectBillHireReviews(bill: any): HireReview[] {
 export function hireReviewTable(review: HireReview) {
   return review.months.map((m, i) => [
     i + 1, `${m.label} · ${m.from} to ${m.to}`, m.daysBilled ?? "—",
-    m.worked, m.idle, m.breakdown, m.operatorUnavailable, m.gross ?? "—",
+    m.worked, m.idle, m.breakdown, m.operatorUnavailable, m.unknown, m.gross ?? "—",
   ]);
 }

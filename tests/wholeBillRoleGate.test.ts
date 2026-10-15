@@ -20,10 +20,10 @@ describe("whole-bill role precedence", () => {
     expect(canExportWholeBill(false)).toBe(false);
     expect(canExportWholeBill(true, true)).toBe(false);
   });
-  it("threads both privileged flags into all five screen placements", () => {
+  it("threads both privileged flags into all remaining screen placements", () => {
     const source = readFileSync("client/src/pages/VendorBills.tsx", "utf8");
     const calls = source.match(/<WholeBillExportButtons\b[\s\S]*?\/>/g)!;
-    expect(calls).toHaveLength(5);
+    expect(calls).toHaveLength(4);
     for (const call of calls) {
       expect(call).toContain("isAdmin={user?.isAdmin}");
       expect(call).toContain("isOwner={user?.isOwner}");

@@ -1,5 +1,6 @@
 import type { BillingDailyRow } from "./EquipmentHireBillOutput";
 import type { HireReview } from "@shared/vendorBillLayout";
+import { getBaseSiteName } from "@shared/siteName";
 
 export type BillExportCell = string | number | null;
 export type BillExportRow = {
@@ -35,6 +36,7 @@ export type BillExportSection = {
 export type BillExportAdjustment = { label: string; amount: number; reason?: string };
 export type BillExportCalendar = {
   equipmentName: string;
+  equipmentType?: string;
   periodFrom: string;
   periodTo: string;
   rows: BillingDailyRow[];
@@ -53,6 +55,7 @@ export type WholeBillSnapshot = {
   periodFrom: string;
   periodTo: string;
   site: string;
+  equipmentType?: string;
   billType: string;
   billTypeLabel: string;
   saved: boolean;
@@ -62,6 +65,8 @@ export type WholeBillSnapshot = {
   calendars: BillExportCalendar[];
   hireReviews?: HireReview[];
   hireFinancialRows?: BillExportAdjustment[];
+  /** Complete saved-bill financial presentation from the existing detail path. */
+  financialRows?: BillExportAdjustment[];
   /** All values are supplied by the current screen financial path. */
   totals: {
     subtotal: number;
@@ -133,7 +138,8 @@ export function billSummaryRows(snapshot: WholeBillSnapshot): BillExportCell[][]
     ["Company", snapshot.companyName], ["Vendor", snapshot.vendorName],
     ["Bill number", snapshot.saved ? snapshot.billNo : "Not yet saved"],
     ["Bill date", snapshot.billDate], ["Period from", snapshot.periodFrom], ["Period to", snapshot.periodTo],
-    ["Site", snapshot.site], ["Bill type", snapshot.billTypeLabel],
+    ["Site", getBaseSiteName(snapshot.site || "")], ["Bill type", snapshot.billTypeLabel],
+    ...(snapshot.equipmentType ? [["Equipment type", snapshot.equipmentType]] : []),
     ["Status", snapshot.saved ? snapshot.status.toUpperCase() : "Unsaved"],
     ["Generated", snapshot.generatedAt],
     ...(billExportIsDraft(snapshot) ? [[DRAFT_BILL_NOTICE]] : []),
@@ -141,14 +147,18 @@ export function billSummaryRows(snapshot: WholeBillSnapshot): BillExportCell[][]
     ...(snapshot.billType === "all"
       ? populatedBillSections(snapshot).map(section => [BILL_EXPORT_SHEET_NAMES[section.category] || section.category, section.subtotal])
       : []),
-    ...(snapshot.hireFinancialRows?.length
-      ? snapshot.hireFinancialRows.map(row => [row.label, row.amount])
-      : [["SUB-TOTAL", snapshot.totals.subtotal]]),
-    ...snapshot.totals.gst.map(row => [row.label, row.amount, row.reason || ""]),
-    ["TOTAL GST", snapshot.totals.totalGst],
-    ...snapshot.totals.adjustments.map(row => [row.label, row.amount, row.reason || ""]),
-    [snapshot.totals.tds.label, snapshot.totals.tds.amount, snapshot.totals.tds.reason || ""],
-    ["NET PAYABLE", snapshot.totals.netPayable],
+    ...(snapshot.financialRows
+      ? snapshot.financialRows.map(row => [row.label, row.amount, row.reason || ""])
+      : [
+        ...(snapshot.hireFinancialRows?.length
+          ? snapshot.hireFinancialRows.map(row => [row.label, row.amount, row.reason || ""])
+          : [["Gross", snapshot.totals.subtotal]]),
+        ...snapshot.totals.gst.filter(row => Math.abs(Number(row.amount) || 0) >= 0.005).map(row => [row.label, row.amount, row.reason || ""]),
+        ...snapshot.totals.adjustments.filter(row => Math.abs(Number(row.amount) || 0) >= 0.005).map(row => [row.label, row.amount, row.reason || ""]),
+        ...(Math.abs(Number(snapshot.totals.tds.amount) || 0) >= 0.005
+          ? [[snapshot.totals.tds.label, snapshot.totals.tds.amount, snapshot.totals.tds.reason || ""]] : []),
+        ["NET PAYABLE", snapshot.totals.netPayable],
+      ]),
     ...wholeBillPricingNotes(snapshot).map(note => [note]),
     ...(snapshot.notes ? [["Notes / Remarks", snapshot.notes]] : []),
   ];
@@ -177,7 +187,7 @@ export function billSectionTable(section: BillExportSection) {
       const priced = isBillExportPriced(row);
       values.push([
         row.date, BILL_EXPORT_SHEET_NAMES[row.category] || row.category, row.description,
-        row.siteName || "", row.suppliedTo || "", row.transporter || "", row.vehicleNumber || "", row.receiptNumber || "",
+        getBaseSiteName(row.siteName || ""), row.suppliedTo || "", row.transporter || "", row.vehicleNumber || "", row.receiptNumber || "",
         row.leadDistance ?? null,
         ...details.map(key => row.details?.[key] ?? null),
         row.qty, row.unit, priced ? row.rate : null, priced ? row.amount : "Rate not set",

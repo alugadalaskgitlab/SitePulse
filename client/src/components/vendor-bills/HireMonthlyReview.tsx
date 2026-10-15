@@ -37,7 +37,12 @@ export default function HireMonthlyReview({ review, calendars = true, groupedRev
       <h3 className="font-semibold text-sm">Monthly Billing Summary</h3>
       <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-xs">
         <thead className="bg-muted/40"><tr>{MONTHLY_BILL_HEADERS.map(h => <th key={h} className="p-2 text-right first:text-left">{h}</th>)}</tr></thead>
-        <tbody>{rows.map((row, i) => <tr key={i} className="border-t">{row.map((cell, j) => <td key={j} className="p-2 text-right first:text-left tabular-nums">{j === 6 && typeof cell === "number" ? money(cell) : cell}</td>)}</tr>)}</tbody>
+        <tbody>{rows.map((row, i) => <tr key={i} className="border-t">{row.map((cell, j) => {
+          const isGrossAmount = MONTHLY_BILL_HEADERS[j] === "Gross Amount (₹)";
+          return <td key={j} className={`p-2 tabular-nums ${j === 0 || j === 1 ? "text-left" : "text-right"}`}>
+            {isGrossAmount && typeof cell === "number" ? money(cell) : cell}
+          </td>;
+        })}</tr>)}</tbody>
       </table></div>
       {disclosures.map((line, index) => <p key={index}
         className={line.includes("dates require review") ? "rounded border-l-4 border-amber-500 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900" : "text-xs text-muted-foreground"}

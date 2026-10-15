@@ -3,18 +3,19 @@ import fs from "node:fs";
 import ts from "typescript";
 import express from "express";
 import request from "supertest";
-import { siteMatchesPermitted, vendorBillVisibleToSites, vendorBillItemMatchesSite } from "../shared/siteName";
+import { getBaseSiteName, siteMatchesPermitted, vendorBillVisibleToSites, vendorBillItemMatchesSite } from "../shared/siteName";
 import { aggregateGstBreakdown, computeBillGstByCategory } from "../shared/vendor-bill-gst";
 import PDFDocument from "pdfkit";
 import { buildGstRegisterPdf } from "../server/gstRegisterPdf";
 import { financialSites, vendorFinancialGuard } from "../server/vendorFinancialAccess";
 import { recordedVendorTds } from "../shared/vendorFinancialAccess";
-import { filterFinancialBills } from "../shared/vendorBillFinancialReport";
+import { filterFinancialBills, getBillFinancialTotals } from "../shared/vendorBillFinancialReport";
 import { buildVendorFinancialWorkbook } from "../server/vendorFinancialWorkbook";
 import * as xlsx from "xlsx";
 import archiver from "archiver";
 import { normalizeVendorBillAdditionalAdjustments } from "../shared/schema";
 import { projectBillHireReviews, hireReviewTable, MONTHLY_BILL_HEADERS } from "../shared/vendorBillLayout";
+import { buildSavedBillPresentationRows } from "../shared/vendorBillPresentation";
 
 // Execute the actual checked-in route callbacks and their authorization helpers,
 // with isolated storage. Do not start the application's migrations or touch a DB.
@@ -74,6 +75,7 @@ app.use(express.json());
 app.use((req: any, _res, next) => { req.authUser = { id: 7 }; req.authPermissions = permissions; next(); });
 app.use(vendorFinancialGuard(storage));
 const dependencies = { storage, siteMatchesPermitted, vendorBillVisibleToSites, vendorBillItemMatchesSite,
+  getBaseSiteName, getBillFinancialTotals, buildSavedBillPresentationRows,
   projectBillHireReviews, hireReviewTable, MONTHLY_BILL_HEADERS,
   financialSites, recordedVendorTds, filterFinancialBills, buildVendorFinancialWorkbook,
   aggregateGstBreakdown, computeBillGstByCategory, normalizeVendorBillAdditionalAdjustments, PDFDocument, xlsx, archiver, buildGstRegisterPdf,

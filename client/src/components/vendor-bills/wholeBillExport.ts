@@ -3,6 +3,7 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { hireReviewDisclosureLines, MONTHLY_BILL_HEADERS, hireReviewTable } from "@shared/vendorBillLayout";
 import { equipmentHireActivitySheetRows } from "./EquipmentHireBillOutput";
+import { getBaseSiteName } from "@shared/siteName";
 import {
   BILL_EXPORT_SHEET_NAMES, DRAFT_BILL_NOTICE, billExportIsDraft, billExportStatus,
   billSectionTable, billSummaryRows, populatedBillSections, wholeBillFilename, wholeBillPricingNotes,
@@ -76,10 +77,10 @@ export function buildWholeBillWorkbook(snapshot: WholeBillSnapshot): XLSX.WorkBo
 export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const pageHeaderHeight = 52;
-  const table = (title: string, headers: string[], rows: BillExportCell[][]) => {
-    doc.addPage();
+  const renderTable = (title: string, headers: string[], rows: BillExportCell[][], startY: number, addPage: boolean) => {
+    if (addPage) doc.addPage();
     autoTable(doc, {
-      startY: pageHeaderHeight,
+      startY,
       head: [[{ content: printable(title), colSpan: headers.length }], headers.map(printable)],
       body: rows.map(row => row.length > 1 && row.slice(1).every(value => value === "") && String(row[0]).length > 80
         ? [{ content: printable(row[0]), colSpan: headers.length }]
@@ -93,11 +94,12 @@ export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
       theme: "grid", styles: { fontSize: 6.4, cellPadding: 1.5, overflow: "linebreak" },
       headStyles: { fillColor: [180, 83, 9] },
       ...(headers === MONTHLY_BILL_HEADERS ? { columnStyles: {
-        0: { cellWidth: 30 }, 1: { cellWidth: 57 },
-        2: { halign: "right" as const }, 3: { halign: "right" as const },
-        4: { halign: "right" as const }, 5: { halign: "right" as const },
-      6: { halign: "right" as const, cellWidth: 35 },
-      7: { halign: "right" as const, cellWidth: 30 },
+        0: { cellWidth: 19 }, 1: { cellWidth: 44 },
+        2: { halign: "right" as const, cellWidth: 26 }, 3: { halign: "right" as const, cellWidth: 27 },
+        4: { halign: "right" as const, cellWidth: 32 }, 5: { halign: "right" as const, cellWidth: 32 },
+        6: { halign: "right" as const, cellWidth: 42 },
+        7: { halign: "right" as const, cellWidth: 25 },
+        8: { halign: "right" as const, cellWidth: 30 },
       } } : {}),
       margin: { top: pageHeaderHeight, bottom: 14, left: 10, right: 10 },
       showHead: "everyPage",
@@ -108,29 +110,53 @@ export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
       },
     });
   };
-  // Remove the initial empty page after tables are generated.
+  const table = (title: string, headers: string[], rows: BillExportCell[][]) =>
+    renderTable(title, headers, rows, pageHeaderHeight, true);
+
+  const headerLabels = new Set(["Company", "Vendor", "Bill number", "Bill date", "Period from", "Period to", "Site", "Bill type", "Equipment type", "Status", "Generated"]);
+  renderTable("BILL SUMMARY / ADJUSTMENTS", ["Detail", "Value / Amount", "Reason / Reference"],
+    billSummaryRows(snapshot).filter(row => row.length && !headerLabels.has(String(row[0])))
+      .map(row => [row[0], row[1] ?? "", row[2] ?? ""]),
+    pageHeaderHeight, false);
   for (const review of snapshot.hireReviews || []) {
-    table(`Monthly Billing Summary: ${review.name} / ${review.basis} / Rate ${review.rate ?? "-"} / ${review.divisor}`,
-      MONTHLY_BILL_HEADERS, [...hireReviewTable(review), ["Recorded period Gross Hire", "", "", "", "", "", "", review.gross ?? "—"],
-        ...hireReviewDisclosureLines(review).map(line => [line, "", "", "", "", "", "", ""])]);
+    const grossRow: BillExportCell[] = Array(MONTHLY_BILL_HEADERS.length).fill("");
+    grossRow[0] = "Recorded period Gross Hire";
+    grossRow[MONTHLY_BILL_HEADERS.indexOf("Gross Amount (₹)")] = review.gross ?? "—";
+    const startY = Number((doc as any).lastAutoTable?.finalY || pageHeaderHeight) + 5;
+    renderTable(`Monthly Billing Summary: ${review.name} / ${review.basis} / Rate ${review.rate ?? "-"} / ${review.divisor}`,
+      MONTHLY_BILL_HEADERS, [...hireReviewTable(review), grossRow,
+        ...hireReviewDisclosureLines(review).map(line => [line, ...Array(MONTHLY_BILL_HEADERS.length - 1).fill("")])],
+      startY, false);
+  }
+  const abstractTableEnd = Number((doc as any).lastAutoTable?.finalY || pageHeaderHeight);
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const signatureY = Math.min(abstractTableEnd + 9, pageHeight - 27);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(70, 70, 70);
+  doc.line(16, signatureY + 12, pageWidth * 0.39, signatureY + 12);
+  doc.text("Vendor / Contractor Signature", 16, signatureY + 17);
+  doc.line(pageWidth * 0.61, signatureY + 12, pageWidth - 16, signatureY + 12);
+  doc.text("Authorized Signatory", pageWidth * 0.61, signatureY + 17);
+
+  // Daily activity is deliberately the first detail page, immediately after the signed abstract.
+  for (const calendar of snapshot.calendars || []) {
+    const activity = equipmentHireActivitySheetRows(calendar.rows, calendar.dieselResponsibility, calendar.consumptionNorm, calendar.meterType);
+    const activityHeaders = activity.headers.length ? activity.headers : ["Information"];
+    const activityRows = activity.headers.length && activity.values.length
+      ? activity.values
+      : [[calendar.unavailableReason || "No frozen daily activity was saved for this bill."]];
+    table(`DAILY ACTIVITY: ${calendar.equipmentName} / ${calendar.periodFrom} to ${calendar.periodTo}${calendar.unavailableReason ? ` / ${calendar.unavailableReason}` : ""}`,
+      activityHeaders, activityRows);
+    if (calendar.breakdown && !calendar.rows.some(row => row.workingSheetSource)) {
+      table(`ACTIVITY / BREAKDOWN CALENDAR: ${calendar.equipmentName}`, calendar.breakdown.headers, calendar.breakdown.rows);
+    }
   }
   for (const section of populatedBillSections(snapshot)) {
     const content = billSectionTable(section);
     table(BILL_EXPORT_SHEET_NAMES[section.category] || section.category, content.headers, content.values);
-    if (section.category === "equipment") {
-      for (const calendar of snapshot.calendars) {
-        const activity = equipmentHireActivitySheetRows(calendar.rows, calendar.dieselResponsibility, calendar.consumptionNorm, calendar.meterType);
-        table(`DAILY ACTIVITY: ${calendar.equipmentName} / ${calendar.periodFrom} to ${calendar.periodTo}${calendar.unavailableReason ? ` / ${calendar.unavailableReason}` : ""}`,
-          activity.headers, activity.values);
-        if (calendar.breakdown && !calendar.rows.some(row => row.workingSheetSource)) {
-          table(`ACTIVITY / BREAKDOWN CALENDAR: ${calendar.equipmentName}`, calendar.breakdown.headers, calendar.breakdown.rows);
-        }
-      }
-    }
   }
-  table("BILL SUMMARY / ADJUSTMENTS", ["Detail", "Value / Amount", "Reason / Reference"],
-    billSummaryRows(snapshot).filter(row => row.length).map(row => [row[0], row[1] ?? "", row[2] ?? ""]));
-  doc.deletePage(1);
   const pages = doc.getNumberOfPages();
   for (let page = 1; page <= pages; page++) {
     doc.setPage(page);
@@ -145,7 +171,8 @@ export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
     const lines = [
       `Vendor: ${snapshot.vendorName} | Bill: ${snapshot.saved ? snapshot.billNo : "Not yet saved"} | Status: ${billExportStatus(snapshot)}`,
       `Bill date: ${snapshot.billDate} | Period: ${snapshot.periodFrom} to ${snapshot.periodTo}`,
-      `Site: ${snapshot.site} | Bill type: ${snapshot.billTypeLabel} | Generated: ${snapshot.generatedAt}`,
+      `Site: ${getBaseSiteName(snapshot.site || "")} | Bill type: ${snapshot.billTypeLabel} | Generated: ${snapshot.generatedAt}`,
+      ...(snapshot.equipmentType ? [`Equipment type: ${snapshot.equipmentType}`] : []),
     ];
     let y = 16;
     for (const line of lines) {
