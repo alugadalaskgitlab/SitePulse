@@ -1,0 +1,254 @@
+# INSTRUCTION — VB-VIEW-03
+
+**Vendor bill presentation: show the money in named rows, make the previous-bill
+block readable, and make the exports fit a page.**
+
+Baseline: the commit published for VB-HIRE-07. State that commit in your report.
+
+**This batch is presentation only.** No calculation changes, no stored value
+changes, no permission or site-scope changes. Every figure on every bill — draft,
+verified, approved and paid — must be identical before and after. If any item
+appears to need a calculation change, stop and ask once rather than changing it.
+
+---
+
+## Standing rules
+
+- No production data changes, migrations, automatic repairs or publishing without
+  our review.
+- No sequence resets. Do not call or re-expose `resetAllSequences`.
+- Preserve all existing users, credentials, site access, permissions and
+  administrator privileges.
+- Frozen snapshots stay frozen and are never re-derived on read.
+- Report against the benchmark in force at the baseline commit, naming which
+  opt-in flags were set.
+
+---
+
+## Part A — A wrong column is formatted as money (fix this first, it is live)
+
+In `client/src/components/vendor-bills/HireMonthlyReview.tsx`, the Monthly Billing
+Summary body renders:
+
+```tsx
+{j === 6 && typeof cell === "number" ? money(cell) : cell}
+```
+
+When VB-HIRE-06 split the breakdown column into two, a column was inserted and this
+index was not moved. `MONTHLY_BILL_HEADERS` is now:
+
+```
+0 Sl. No. · 1 Bill Period · 2 Days Billed · 3 Worked Days ·
+4 Idle Days (Work Not Available) · 5 Breakdown Days ·
+6 Operator / Driver Unavailable Days · 7 Gross Amount (₹)
+```
+
+So index 6 is the **Operator / Driver Unavailable Days** count, which renders as
+`₹0.00`, and **Gross Amount** renders as a bare `130000` with no symbol and no
+decimals. Both are visible on bills `HLC/VB/2026/0054` and `HLC/VB/2026/0058` right
+now.
+
+**Required.** Format the Gross Amount column as money and the day-count columns as
+plain integers. Do not key the formatter on a hard-coded index again — derive it
+from the header list or from the column's meaning, so the next column added does
+not break it.
+
+---
+
+## Part B — The totals block names every deduction
+
+**Problem.** On the saved Bill Detail the totals block jumps from the item total
+straight to TDS. On `HLC/VB/2026/0054` the ₹2,000 breakdown deduction appears only
+inside the calculation snapshot in small grey text, and the ₹58,000 shown as TOTAL
+is already net of it, so the ₹60,000 gross never appears at all. A vendor reading
+this cannot see what came off or why.
+
+**Required.** On screen and in both exports, for draft, verified, approved and paid
+bills alike, present the money as a sequence of named rows:
+
+1. **Gross** — the amount before anything is deducted.
+2. **One row per kind of deduction or credit**, each carrying its reason beneath
+   the label in smaller text: the dates, the recorded reason, and the decision
+   (full day / half day / manual).
+   - breakdown deductions from the hire statement
+   - operator / driver unavailable deductions
+   - diesel recovery
+   - advance deduction
+   - each additional deduction / credit, with its free-text reason
+3. **GST rows**, where a bill carries GST — additions shown as additions.
+4. **IT TDS**.
+5. **Net payable**, last, with a rule above it and set larger than the rest.
+
+**Constraints.**
+
+- **Hide any row with no value.** No `₹0.00` rows and no row for a deduction that
+  did not happen. A bill with one deduction shows four lines: gross, that
+  deduction, TDS, net.
+- **The statement-level deduction must get its own row.** Today only
+  `additionalAdjustments` are rendered as rows; a hire-statement deduction is
+  folded into the item amount with no line. That is the specific omission being
+  fixed.
+- **Do not change the net.** The rows must sum to the net the bill already stores.
+  If they cannot be made to sum without a calculation change, stop and report it
+  rather than adjusting a figure.
+- Deductions in red, additions in green, as now.
+
+---
+
+## Part C — Previous bills carry their period, their own adjustments, and a name that means something
+
+**Three faults in the Previous Billing Summary.**
+
+1. The table has a bill date but **no bill period**. The user remembers the month
+   worked, not the day the bill was typed.
+2. The column header **"Calculated cumulative movement*"** in
+   `client/src/components/vendor-bills/VendorBillReview.tsx` does not say what the
+   figure is.
+3. The **"Recorded adjustments / advance deductions"** block in that same file
+   lists every past bill's adjustments together, separately from the bills, so
+   reading one bill's history means scrolling between two places.
+
+**Required.**
+
+- Add **Bill period** beside the bill date, as `from to` dates.
+- Rename the cumulative column to **"Running balance before this bill"**, keep its
+  arithmetic exactly as it is, and keep its footnote.
+- **Nest each bill's adjustments under that bill** and remove the separate block.
+  Where a bill has none, show one short line saying so rather than leaving it
+  blank.
+- Keep the scope caveat (confirmed vendor · permitted sites · excludes this and
+  later bills) as one line.
+
+Do not change `shared/vendorBillReview.ts` arithmetic. This is placement and
+labelling.
+
+---
+
+## Part D — One set of export buttons, and both export the whole bill
+
+**Problem.** Bill Detail shows export buttons at the top and again at the bottom.
+**The top buttons export only the payment block and several blank pages.** The
+bottom buttons export the whole bill. Two sets of controls that do different
+things, one of them broken.
+
+**Required.** Keep one set. Both Excel and PDF must export the complete bill —
+identification, summary, the named totals rows from Part B, and the daily detail.
+No blank pages. Remove the duplicate set rather than fixing both.
+
+---
+
+## Part E — The exported PDF opens with the bill, not with an empty grid
+
+**Problem.** Page 1 of the `NAFEEZ 2026-09-01 to 2026-09-30` export is a 22-column
+table of which **16 columns are empty on every row**, carrying three rows of
+content, followed by half a page of white space. The company name is set large on
+every page above four dense lines of small text. The equipment type — the thing
+being paid for — appears only inside a description string.
+
+**Required — page 1 is the abstract.**
+
+```
+High Lane Constructions Pvt Ltd
+
+Vendor · Equipment · Hire basis and rate · Bill no. · Bill date · Period
+
+Summary of hire charges for the period <from> to <to>
+  [ monthly summary table ]
+  [ the named totals rows from Part B ]
+```
+
+- **Name the equipment type** — Tractor Dozer, Soil Compactor, Excavator — as its
+  own field, from the equipment master, not parsed out of a description.
+- Include the **Not Recorded** count as its own column in the monthly summary, so
+  the unaccounted days appear on the bill and not only in an on-screen banner.
+- Page 1 must stand alone as the document a vendor signs. Daily detail starts on
+  page 2.
+
+**Required — the running header on later pages.** One line: bill number, vendor,
+equipment, period, page number. Not the full company block.
+
+**Required — the daily detail table.**
+
+- **Drop every column that is empty for all rows in the period** before rendering,
+  on page 1 and in the detail.
+- Size the remaining columns to their content and fit the table to the page width.
+  No date may wrap to two lines while a wide column sits half empty.
+- Readable type with real row padding — roughly 8pt, not the present ~6pt.
+- **Strip the edit provenance from Project / Site.** The column still prints
+  `TAKKADPALLY-SIRUR - Edited by Admin - 2026-10-10 05:59:34`. VB-HIRE-06 applied
+  `getBaseSiteName` for fresh calculations; the exports must apply the same helper
+  on render so saved bills print the base site name too. **Display only — do not
+  alter any stored DPR site string or any version history.**
+
+Apply all of this to both the server PDF (`server/routes.ts`) and the client PDF
+and Excel exports.
+
+---
+
+## Part F — Say why a monthly machine was left out
+
+**Problem.** A monthly hire machine seeds into the New Vendor Bill form only when
+its equipment-master hire dates cover the requested period. Nafeez's Soil Compactor
+had a hire end date of 30-Sep-2026, so for a 01–05 October period it was silently
+excluded and the form showed only
+`NO BILLABLE ACTIVITIES AVAILABLE`. The user spent an hour on a form that had
+correctly decided there was nothing to bill and never said so.
+
+**Required.** Where a vendor's monthly hire equipment is excluded by the seeding
+conditions in `client/src/pages/VendorBills.tsx`, name each machine and the reason:
+
+- `Soil Compactor — excluded: hire recorded as ended 30-Sep-2026`
+- `Tipper — excluded: no hire start date recorded`
+- `JCB — excluded: no hire rate recorded`
+- `Excavator — excluded: custom monthly divisor not set`
+
+**Constraints.** Do not relax or change any seeding condition. Do not auto-correct
+a hire date. This is a notice only — the user fixes the master record themselves.
+
+---
+
+## What must not change
+
+- **Every figure on every bill.** State before and after:
+  `HLC/VB/2026/0054` — gross ₹60,000, deduction ₹2,000, TDS ₹1,160, net ₹56,840.
+  `HLC/VB/2026/0058` — total ₹1,20,000, net payable ₹1,07,600.
+  `NAFEEZ HLC/VB/2026/0053` — ₹67,667.00.
+- The blanking safeguard on the monthly table when months do not reconcile to the
+  stored total.
+- The read-only property: projecting a review must not alter the saved bill.
+- Every permission and site-scope check.
+- The arithmetic in `shared/vendorBillReview.ts` and `billPaymentPosition`.
+
+---
+
+## Verification required
+
+Report in plain terms, no test-name inventories.
+
+1. **Part A** — the Monthly Billing Summary on `0058` before and after, showing the
+   Operator column as a whole number and Gross as a rupee amount.
+2. **Part B** — the totals block on `0054` showing gross ₹60,000, the ₹2,000
+   breakdown deduction with its date and reason, TDS ₹1,160 and net ₹56,840; and a
+   bill with no deductions showing no empty rows. Confirm the net is unchanged on
+   both.
+3. **Part C** — the Previous Billing Summary with the period column, the renamed
+   balance column, and adjustments nested under their bills, with the separate
+   block gone.
+4. **Part D** — which set of export buttons survived, and both formats exporting a
+   complete bill with no blank pages.
+5. **Part E** — the regenerated Nafeez PDF: page 1 as the abstract naming the
+   equipment type, the one-line running header on page 2, the detail table fitted
+   to the page with empty columns dropped, and no editor name or timestamp in
+   Project / Site. Confirm separately that the stored DPR site strings and their
+   version history still carry the provenance.
+6. **Part F** — the New Vendor Bill form for NAFEEZ over 01–05 Oct 2026 showing the
+   Soil Compactor named with its end-date reason. Confirm no seeding condition
+   changed and no hire date was written.
+7. The before/after figures listed under **What must not change**, as numbers.
+8. The full suite against the baseline benchmark, naming the flags set and any new
+   failure individually.
+
+Stop and ask once if any part cannot be done without breaking a rule above. Do not
+work around a rule and report it afterwards.
+
+Nothing is to be published. We will review and publish.
