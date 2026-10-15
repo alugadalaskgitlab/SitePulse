@@ -240,6 +240,66 @@ describe("selective pre-tipper billing recovery", () => {
     expect(statement.netAmount).toBe(snapshot.financials.taxableAmount);
   });
 
+  it("deducts one full operator-unavailable day and keeps the saved bill frozen", async () => {
+    await db.insert(schema.equipmentMaster).values({
+      id: 4, name: "DEDUCTION ROLLER", registrationNumber: "SYNTHETIC04",
+      vendorName: "SYNTHETIC DEDUCTION OWNER", ownership: "hired",
+      hireBillingBasis: "monthly", hireRate: 62000, hireStartDate: "2026-10-10",
+      hireEndDate: "2026-10-15", hireMonthlyDivisorType: "calendar",
+      hireDieselResponsibility: "vendor", meterType: "hour_meter", consumptionNorm: 4,
+    });
+    await db.insert(schema.equipmentUsage).values({
+      id: 41, date: "2026-10-11", equipmentId: 4, entryType: "daily",
+      usageStatus: "idle_no_operator", usageStatusReason: "Operator unavailable",
+      siteName: "SYNTHETIC DEDUCTION SITE", task: "Compaction",
+      plantName: "Main Plant", status: "closed",
+    });
+
+    const bill = await storage.createVendorBill({
+      billDate: "2026-10-15", billType: "equipment", vendorName: "SYNTHETIC DEDUCTION OWNER",
+      periodFrom: "2026-10-10", periodTo: "2026-10-15", status: "draft", items: [],
+      hireGroups: [{
+        equipmentId: 4, basis: "monthly", rate: 1,
+        periodFrom: "2026-10-10", periodTo: "2026-10-15",
+        exceptionDecisions: [{
+          sourceType: "usage", sourceId: 41, exceptionType: "operator_unavailable",
+          date: "2026-10-11", decision: "full_day",
+        }],
+      }],
+    });
+    const saved = await storage.getVendorBill(bill.id);
+    const statement = saved.hireStatements[0];
+    const snapshot = statement.calculationSnapshot;
+    const unavailable = snapshot.exceptions.find((exception: any) =>
+      exception.exceptionType === "operator_unavailable" && exception.date === "2026-10-11");
+
+    // Six October days earn 6/31 of the monthly rate; the reviewed full-day
+    // deduction is one October calendar day at the same rate.
+    expect(statement.grossAmount).toBe(12000);
+    expect(unavailable).toMatchObject({ decision: "full_day", deductionAmount: 2000 });
+    expect(statement.deductionAmount).toBe(2000);
+    expect(statement.netAmount).toBe(10000);
+    expect(Number(saved.totalAmount)).toBe(10000);
+    expect(Number(saved.totalAmount)).toBe(statement.grossAmount - statement.deductionAmount);
+
+    // Later operational/master edits do not reprice the saved bill snapshot.
+    await db.update(schema.equipmentMaster).set({ hireRate: 93000 })
+      .where(eq(schema.equipmentMaster.id, 4));
+    await db.update(schema.equipmentUsage).set({
+      usageStatus: "working", usageStatusReason: "Changed after bill save",
+    }).where(eq(schema.equipmentUsage.id, 41));
+
+    const reopened = await storage.getVendorBill(bill.id);
+    const reopenedStatement = reopened.hireStatements[0];
+    expect(Number(reopened.totalAmount)).toBe(10000);
+    expect(reopenedStatement.deductionAmount).toBe(2000);
+    expect(reopenedStatement.calculationSnapshot).toEqual(snapshot);
+    expect(reopenedStatement.calculationSnapshot.terms.rate).toBe(62000);
+    expect(reopenedStatement.calculationSnapshot.exceptions.find((exception: any) =>
+      exception.exceptionType === "operator_unavailable" && exception.date === "2026-10-11"))
+      .toMatchObject({ decision: "full_day", deductionAmount: 2000 });
+  });
+
   it("keeps new groups on their Master basis", async () => {
     await expect(storage.createVendorBill({ ...dailyPayload(), periodFrom: "2027-01-01", periodTo: "2027-01-01",
       hireGroups: [{ equipmentId: 1, basis: "trip", rate: 300, periodFrom: "2027-01-01", periodTo: "2027-01-01" }] }))
