@@ -1,0 +1,276 @@
+# INSTRUCTION — VB-HIRE-07
+
+**Propose a deduction for operator-unavailable days, close the breakdown gap, and
+give the recorded statuses a report of their own. Nothing is deducted
+automatically, ever.**
+
+Baseline: the commit published for VB-HIRE-06. State that commit in your report.
+
+**Read the whole instruction before changing anything.** Our earlier draft of this
+work assumed the breakdown deduction had to be built. It does not. It already
+exists and works. Building a second one would double-count. The correctness of
+this batch depends on you reusing the existing exception pipeline rather than
+writing a parallel one.
+
+---
+
+## Standing rules
+
+- No production data changes, migrations, automatic repairs or publishing without
+  our review.
+- No sequence resets. Do not call or re-expose `resetAllSequences`.
+- Preserve all existing users, credentials, site access, permissions and
+  administrator privileges.
+- **Approved, verified and paid bills must not change value.** Frozen snapshots
+  stay frozen and are never re-derived on read. New behaviour applies only to a
+  calculation run fresh.
+- **No backfill.** No historical bill acquires a new exception or a new
+  suggestion.
+- Report against the benchmark in force at the baseline commit, naming which
+  opt-in flags were set.
+
+---
+
+## What already exists — do not rebuild any of it
+
+In `shared/hireBilling.ts`, `calculateHireBilling` already runs a complete
+exception pipeline:
+
+- Breakdown exceptions are raised from maintenance rows:
+  `exceptions.push({ sourceType: "maintenance", exceptionType: "breakdown", … })`
+- A per-day rate is already derived from the agreed terms:
+  `terms.billingBasis === "monthly" ? monthlyDailyRate(item.date, terms) : terms.rate`
+- An hour-based suggestion already exists, gated on `terms.breakdownHoursPerDay`
+  being between 10 and 12.
+- Decisions already resolve as `full_day | half_day | hours | manual | none`, and
+  `deductionAmount` accumulates from them.
+- `terms.breakdownDeductionEnabled` already blocks a breakdown deduction entirely.
+- A monthly grace allowance and a duplicate-source guard
+  (`DUPLICATE BREAKDOWN SOURCE — DAY ALREADY RESOLVED`) already exist.
+- The total is already capped: `money(Math.min(grossAmount, deductionAmount))`.
+- The presence of exceptions already drives the review workflow:
+  `requiresReview: exceptions.length > 0`.
+
+`hire_statement_exceptions` already persists all of it: `sourceType`
+(`usage | maintenance | manual`), `exceptionType`, `exceptionDate`, `decision`,
+`manualDeductionAmount`, `remarks`, `resolvedBy`, `resolvedAt`.
+
+**So this batch adds two exception sources to that pipeline. It adds no new
+arithmetic, no new rate, no new table and no new deduction mechanism.**
+
+---
+
+## Part A — Operator / Driver Unavailable days
+
+**What is missing.** VB-HIRE-06 made `idle_no_operator` visible on the bill and
+counted in its own column. Nothing raises an exception for it, so there is
+nothing to decide and nothing to deduct. The user has been typing these in by
+hand as a bill-level adjustment — for example
+*"OPERATOR UNAVAILABLE FOR TWO DAYS (13TH&14TH): −10,000.00"* on
+`HLC/VB/2026/0058`.
+
+**Required.**
+
+1. Where a day in the statement period carries a recorded DPR status of
+   `idle_no_operator`, raise one exception into the existing pipeline with
+   `sourceType: "usage"`, `sourceId` set to the usage/log row, a new
+   `exceptionType: "operator_unavailable"`, the date, and a plain description.
+2. Its suggested amount uses the **existing** day rate — `monthlyDailyRate(date, terms)`
+   on a monthly basis, `terms.rate` otherwise. **Do not introduce a new rate, a new
+   divisor, or a per-day price not derived from the agreed terms.**
+3. **The default decision is `none`.** Nothing is deducted until a person chooses
+   `full_day`, `half_day` or `manual`. There is no automatic grace and no
+   automatic deduction for this type — unlike breakdown, which has both.
+4. **Do not add a schema column to enable or disable this.** No migration. The
+   `none` default is the control.
+5. One exception per day per statement. If a day already carries an exception of
+   this type, do not raise a second.
+
+---
+
+## Part B — A DPR breakdown with no maintenance log raises nothing
+
+**The gap.** Breakdown exceptions come from maintenance rows only. A day the site
+marked `breakdown` in the DPR dropdown, where nobody also wrote a maintenance
+log, produces no exception, no suggestion and no review flag. VB-HIRE-06 made
+that day visible in the Breakdown Days column — but it is counted and never
+decided.
+
+**Required.**
+
+1. Where a day carries a recorded DPR status of `breakdown` and **no**
+   maintenance-sourced breakdown exception exists for that same date, raise a
+   `breakdown` exception with `sourceType: "usage"`.
+2. It must then flow through the **existing** breakdown handling unchanged —
+   the same day rate, the same `breakdownDeductionEnabled` gate, the same grace
+   allowance, the same decisions.
+3. **Use the existing duplicate guard.** Where both a maintenance log and a DPR
+   breakdown status exist for one date, exactly one exception is decided and the
+   other is marked duplicate, as the code already does. **Double-counting a
+   breakdown day is the specific failure to guard against in this part.**
+4. No `downtimeHours` is invented. A DPR-sourced breakdown with no recorded
+   downtime simply has none, and the hour-based suggestion does not apply to it.
+
+---
+
+## Part C — Idle · No Work Available stays free of money
+
+**This is not negotiable and it is not a preference.**
+
+Where a day is recorded `idle_no_work`, **raise no exception and propose no
+amount.** The machine was present and available and HLC had no work for it. That
+is HLC's own cost. It is already counted and displayed in its own column by
+VB-HIRE-06, and that is the whole of what the application should do with it.
+
+Proposing a deduction against a day the vendor made his machine available would
+be proposing that HLC short its vendors, and it is an argument HLC would lose.
+
+A day with **no status recorded** likewise raises nothing. A blank day is not
+evidence.
+
+---
+
+## Part D — Show the workings, and warn about the manual lines
+
+1. **Show the workings** beside each suggestion: the date, the day rate, which
+   divisor produced it, and the resulting amount. The user must be able to check
+   the arithmetic without opening anything else.
+2. **Refuse to suggest where the basis is unavailable** — no rate, no divisor, or
+   a period whose terms cannot be established. Show the days and state that the
+   amount cannot be established. **Never substitute a default.** Follow the
+   existing diesel wording and shape, including its refusals:
+   - `"A suggested diesel recovery cannot be accepted because the applicable HSD rate is unavailable."`
+   - `"An explicit non-negative diesel recovery amount is required."`
+   Use the equivalent sentences for this type. Do not invent a different style of
+   refusal.
+3. **Warn about possible double-counting with hand-typed adjustments.** Bills
+   carry free-text `additionalAdjustments`, and the user has been entering
+   operator-unavailable deductions there. You cannot reliably match free text to
+   a date. **Do not try, and do not suppress either line.** Instead: where a
+   statement has one or more operator-unavailable suggestions and its bill also
+   carries any additional adjustment, show a plain warning naming the dates and
+   the adjustment, and leave both for the user to resolve.
+
+---
+
+## Part E — An Equipment Status report
+
+**This is why it belongs in this batch.** From the moment Part A is live, a day
+the site ticked can take money off a vendor. Today there is **no report anywhere**
+that lists those days. The status appears only on the DPR itself, as a machine
+count on the Site Report, and — after VB-HIRE-06 — on the bill. So when a vendor
+asks *"which two days was my operator absent?"*, the only evidence is the bill plus
+opening each DPR one at a time. A deduction you cannot produce evidence for is a
+deduction you will lose.
+
+**Almost all of this already exists. Build only the screen.**
+
+- `GET /api/reports/equipment-status?dateFrom=&dateTo=` already exists in
+  `server/routes.ts`. It validates both dates, applies
+  `getPermittedSiteNames(req)`, and returns `FleetStatusResponse`.
+- `storage.getFleetEquipmentStatus` already applies the full site-authorisation
+  boundary, including the rule that a DPR-linked usage row is authorised by its
+  DPR's site and that draft, deleted, cancelled and superseded DPRs are excluded.
+- `buildFleetEquipmentStatus` already returns, per machine: `name`, `ownership`,
+  `vendorName`, `meterType`, a `summary` of `working / idleNoWork /
+  idleNoOperator / breakdown / loggedUnspecified / notLogged`, and a `days` array
+  carrying each date's `status`, `reason`, `legacyLogged` and `conflict`.
+
+**No client page calls this endpoint.** That is the entire gap.
+
+**Required.**
+
+1. Add an **Equipment Status** report page and list it in `ReportsHub.tsx`
+   alongside Equipment Performance, following the same `returnTo` pattern as the
+   existing entries.
+2. Filters: a date range, and an optional single machine. Default to the current
+   month.
+3. Show a **summary row per machine** with all six counts as separate columns —
+   Working, Idle · No Work Available, Idle · Operator Unavailable, Breakdown,
+   Logged (status not specified), Not Logged. Use the same wording as the bill so
+   the two agree.
+4. Expanding a machine shows its **day-by-day list**: date, status, and the
+   recorded reason where one exists. Mark a day flagged `conflict` plainly, and
+   do not hide it.
+5. **Print and Excel export**, so a day list can be put in front of a vendor.
+6. **Read-only. This report writes nothing.** It creates no exception, changes no
+   bill, and does not alter any status.
+
+**Constraints.**
+
+- **Do not write a new query or a second authorisation path.** Call the existing
+  endpoint. Its site-scope rules are deliberate and must not be widened,
+  bypassed or reimplemented on the client.
+- **Not Logged means not logged.** Never render it as Idle, Breakdown or Working,
+  and never infer a status from activity rows, maintenance records or anything
+  else. That count is the application stating what it does not know, and it is the
+  most useful figure on the page.
+- Respect the existing permission gate on reports. A user who cannot see a site's
+  data must not see its machines here.
+- No money, rate or ₹ figure anywhere on this report. It reports facts, not
+  amounts.
+
+---
+
+## What must not change
+
+- **Diesel recovery arithmetic.** Do not touch `authoritativeHireDieselPeriod`,
+  `calculateHireDieselPricing` or `applyAuthoritativeDieselPeriod`.
+- **Existing breakdown arithmetic.** The day rate, the hour-based suggestion, the
+  grace allowance, the `breakdownDeductionEnabled` gate and the duplicate guard
+  all stay exactly as they are. You are adding a source, not changing a rule.
+- **The deduction cap** `money(Math.min(grossAmount, deductionAmount))`.
+- **Every figure on every saved bill.** `HLC/VB/2026/0058` — bill total
+  **₹1,20,000**, net payable **₹1,07,600**. TRACTOR-RATNAM September — gross
+  **₹30,000**, final recovery **₹0.00**. State all of these before and after.
+- The read-only property: projecting a review must not alter the saved bill.
+- No permission check and no site-scope check.
+
+**One behaviour change you must state explicitly in your report.** Raising
+exceptions sets `requiresReview: true`, which moves a statement from
+`draft → approved → billed` to `draft → reviewed → approved → billed`. So bills
+with operator-unavailable or DPR-breakdown days will now carry a review step they
+did not carry before. Confirm this affects **new** calculations only and that no
+saved statement's workflow changed.
+
+---
+
+## Verification required
+
+Report in plain terms, no test-name inventories.
+
+1. A statement with two operator-unavailable days: the suggestion, its workings,
+   and the three outcomes — accepted, edited, declined — each with the resulting
+   net stated as a number.
+2. The same statement saved with the suggestion **declined**: confirm the net is
+   identical to what it was before the suggestion existed.
+3. A day recorded `idle_no_work`: **no exception, no suggestion**, day still
+   counted and displayed.
+4. A day with **no recorded status**: no exception, no suggestion.
+5. A DPR breakdown day with no maintenance log: one exception raised, decidable,
+   with the existing breakdown rules applied.
+6. A date carrying **both** a maintenance log and a DPR breakdown status: exactly
+   one deduction, the other marked duplicate. State the deducted amount.
+7. A statement where the rate or divisor cannot be established: no amount
+   suggested, days listed, reason given.
+8. A statement with operator-unavailable days on a bill that also has a free-text
+   adjustment: the warning shown, both lines intact, nothing suppressed.
+9. **Part E** — the Equipment Status report as rendered, for one real machine
+   over one real month, showing the six counts and the expanded day list with
+   reasons. State plainly that it calls the existing endpoint and adds no new
+   query. Confirm a restricted user sees only their permitted sites' machines.
+10. **Part E cross-check** — for one equipment and one month, the report's counts
+    and the same month's row on that equipment's bill must agree. If they do not,
+    say so and stop rather than reporting success: two screens disagreeing about
+    the same days is worse than one screen missing.
+11. The before/after figures listed under **What must not change**, as numbers.
+12. Confirmation that no saved statement's workflow or value changed, that no
+    historical bill gained an exception, and that no permission or site-scope
+    check moved.
+13. The full suite against the baseline benchmark, naming the flags set and any
+    new failure individually.
+
+Stop and ask once if any part cannot be done without breaking a rule above. Do
+not work around a rule and report it afterwards.
+
+Nothing is to be published. We will review and publish.
