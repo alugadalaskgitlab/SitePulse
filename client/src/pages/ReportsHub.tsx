@@ -39,7 +39,7 @@ export default function ReportsHub() {
   const canBills      = sectionVisible("vendor_bills") || sectionVisible("vendor_bills_view") || sectionVisible("vendor_bills_raise") || sectionVisible("vendor_bills_verify") || sectionVisible("vendor_bills_approve");
   const canEquipment  = sectionVisible("equipment_performance_report") || sectionVisible("plant_equipment");
 
-  const hasSiteReports  = canSiteDprs || canSiteMat || canSiteProcure || canReports;
+  const hasSiteReports  = canSiteDprs || canSiteMat || canSiteProcure || canReports || canEquipment;
   const hasHmpReports   = canDailyRep || canHeating || canProd || canDieselProc || canShift;
   const hasRmcReports   = rmcEnabled && canProd;
   const hasStockReports = canMaterials || canStock || canVariance || canAudit;
@@ -111,6 +111,15 @@ export default function ReportsHub() {
                 description="Usage, working hours and diesel consumption by equipment"
                 accent="amber"
                 iconBg="bg-amber-100"
+                enabled={canEquipment}
+              />
+              <HubActionTile
+                href={`/equipment/status?returnTo=${HUB}`}
+                icon={Truck}
+                title="Equipment Status"
+                description="Daily recorded status, breakdown evidence and unlogged days"
+                accent="teal"
+                iconBg="bg-teal-100"
                 enabled={canEquipment}
               />
             </div>

@@ -185,6 +185,7 @@ import {
   assembleEquipmentStatusRecords,
   assertValidEquipmentStatus,
   buildFleetEquipmentStatus,
+  filterFleetMaintenanceLogsByVisibleSources,
   isEquipmentUsageStatus,
   normalizeEquipmentStatusFields,
   resolveFleetStatusDay,
@@ -6613,7 +6614,7 @@ export class DatabaseStorage implements IStorage {
   ): Promise<FleetStatusResponse> {
     const permitted = options.permittedSiteNames;
     const unrestricted = permitted === null;
-    const [masters, dprRows, usageRows] = await Promise.all([
+    const [masters, dprRows, usageRows, maintenanceRows] = await Promise.all([
       this.getEquipmentMaster(false),
       db.select({
         recordId: equipmentLogs.id,
@@ -6650,6 +6651,20 @@ export class DatabaseStorage implements IStorage {
         gte(equipmentUsage.date, dateFrom),
         lte(equipmentUsage.date, dateTo),
       )),
+      db.select({
+        id: equipmentMaintenanceLogs.id,
+        equipmentId: equipmentMaintenanceLogs.equipmentId,
+        date: equipmentMaintenanceLogs.date,
+        description: equipmentMaintenanceLogs.description,
+        sourceType: equipmentMaintenanceLogs.sourceType,
+        sourceRecordId: equipmentMaintenanceLogs.sourceRecordId,
+      }).from(equipmentMaintenanceLogs).where(and(
+        gte(equipmentMaintenanceLogs.date, dateFrom),
+        lte(equipmentMaintenanceLogs.date, dateTo),
+        eq(equipmentMaintenanceLogs.eventType, "breakdown"),
+        eq(equipmentMaintenanceLogs.isCancelled, false),
+        eq(equipmentMaintenanceLogs.isDeleted, false),
+      )),
     ]);
 
     const visibleDprRows = unrestricted
@@ -6674,6 +6689,18 @@ export class DatabaseStorage implements IStorage {
           const site = row.destinationSite ?? row.siteName;
           return !!site && siteMatchesPermitted(site, permitted);
         });
+    const visibleMaintenanceRows = filterFleetMaintenanceLogsByVisibleSources(
+      maintenanceRows.map(row => ({
+        ...row,
+        id: Number(row.id),
+        equipmentId: Number(row.equipmentId),
+        date: typeof row.date === "string" ? row.date.slice(0, 10) : format(row.date, "yyyy-MM-dd"),
+        sourceRecordId: row.sourceRecordId == null ? null : Number(row.sourceRecordId),
+      })),
+      permitted,
+      visibleDprRows,
+      visibleUsageRows,
+    );
     const visibleIds = new Set<number>([
       ...visibleDprRows.map((row) => Number(row.equipmentId)),
       ...visibleUsageRows.map((row) => Number(row.equipmentId)),
@@ -6688,7 +6715,18 @@ export class DatabaseStorage implements IStorage {
     return {
       dateFrom,
       dateTo,
-      equipment: buildFleetEquipmentStatus(visibleMasters, records, dateFrom, dateTo),
+      equipment: buildFleetEquipmentStatus(
+        visibleMasters,
+        records,
+        dateFrom,
+        dateTo,
+        visibleMaintenanceRows.map(row => ({
+          id: Number(row.id),
+          equipmentId: Number(row.equipmentId),
+          date: row.date.slice(0, 10),
+          description: row.description,
+        })),
+      ),
     };
   }
 
@@ -17696,6 +17734,7 @@ export class DatabaseStorage implements IStorage {
         // decision in this form.
         breakdownDeductionEnabled: !!equipment.hireBreakdownDeductionEnabled,
         automaticMonthlyBreakdownDeductions: !statement || (statement.calculationSnapshot as any)?.billingIntegration === "vb10_automatic",
+        includeNewOperationalStatusExceptions: !statement || (statement.calculationSnapshot as any)?.billingIntegration === "vb10_automatic",
         breakdownHoursPerDay: group.breakdownHoursPerDay ?? undefined,
         // Grace is a negotiated bill-period allowance.  It must never be read
         // from mutable Equipment Master data, so it is persisted below in this
@@ -17745,6 +17784,30 @@ export class DatabaseStorage implements IStorage {
         dieselNormOverride: equipment.consumptionNorm, dieselNormBasisOverride: masterConsumptionUnit,
         dieselPurchases, authoritativeDieselPeriod,
         dieselRecovery: { decision: group.dieselRecoveryDecision, finalAmount: group.dieselRecoveryFinalAmount, remarks: group.dieselRecoveryRemarks } });
+       if (terms.includeNewOperationalStatusExceptions) {
+         const submitted = group.exceptionDecisions ?? [];
+         for (const exception of calc.exceptions.filter(item => item.exceptionType === "operator_unavailable")) {
+           const decision = submitted.find(item =>
+             item.sourceType === exception.sourceType &&
+             item.sourceId === exception.sourceId &&
+             item.exceptionType === exception.exceptionType &&
+             item.date === exception.date);
+           if (!decision || !["none", "full_day", "half_day", "manual"].includes(String(decision.decision))) {
+             throw Object.assign(new Error(`Choose or confirm the operator-unavailable deduction for ${exception.date}.`), { code: "BAD_REQUEST" });
+           }
+           if ((decision.decision === "full_day" || decision.decision === "half_day") &&
+               exception.suggestedDeductionAmount == null) {
+             throw Object.assign(new Error(`A daily rate/divisor is unavailable for the operator-unavailable deduction on ${exception.date}; choose no deduction or enter a manual amount.`), { code: "BAD_REQUEST" });
+           }
+           if (decision.decision === "manual" &&
+               (!Number.isFinite(Number(decision.manualDeductionAmount)) || Number(decision.manualDeductionAmount) < 0)) {
+             throw Object.assign(new Error(`Enter a non-negative manual operator-unavailability deduction for ${exception.date}.`), { code: "BAD_REQUEST" });
+           }
+           if (decision.decision === "manual" && !decision.remarks?.trim()) {
+             throw Object.assign(new Error(`Enter a reason/reference for the manual operator-unavailability deduction on ${exception.date}.`), { code: "BAD_REQUEST" });
+           }
+         }
+       }
       const equipmentPerformance = await this.getEquipmentPerformanceReport(
         { equipmentId: group.equipmentId, dateFrom: group.periodFrom, dateTo: group.periodTo },
         { permittedSiteNames: null },
@@ -18727,6 +18790,10 @@ export class DatabaseStorage implements IStorage {
           businessDate: isoDate(row.date), occurredAt: row.startTime ? `${isoDate(row.date)}T${row.startTime}` : null, entryType: row.entryType, status: row.status, numberOfTrips: row.numberOfTrips,
           usageStatus: isEquipmentUsageStatus(resolvedStatus?.status) ? resolvedStatus.status : null,
           usageStatusReason: isEquipmentUsageStatus(resolvedStatus?.status) ? resolvedStatus.reason : null,
+           sourceUsageStatus: row.status !== "draft" && row.isDeleted !== true && row.isCancelled !== true && row.isSuperseded !== true && isEquipmentUsageStatus(row.usageStatus)
+             ? row.usageStatus : null,
+           sourceUsageStatusReason: row.status !== "draft" && row.isDeleted !== true && row.isCancelled !== true && row.isSuperseded !== true
+             ? row.usageStatusReason ?? null : null,
           hoursOrKmRun: (row.hoursOrKmRun ?? calculated.runtime) || null, openingReading: row.openingReading, closingReading: row.closingReading,
            plantUsageId: row.plantUsageId, actualDiesel: row.actualDiesel, dieselSource: row.dieselSource,
            openingDiesel: row.openingDiesel, closingDiesel: row.closingDiesel,
@@ -18746,6 +18813,8 @@ export class DatabaseStorage implements IStorage {
           businessDate: isoDate(row.date), occurredAt: row.createdAt ? new Date(row.createdAt).toISOString() : null, entryType: row.entryType, status: row.status, numberOfTrips: row.numberOfTrips,
           usageStatus: isEquipmentUsageStatus(resolvedStatus?.status) ? resolvedStatus.status : null,
           usageStatusReason: isEquipmentUsageStatus(resolvedStatus?.status) ? resolvedStatus.reason : null,
+           sourceUsageStatus: isEquipmentUsageStatus(row.usageStatus) ? row.usageStatus : null,
+           sourceUsageStatusReason: row.usageStatusReason ?? null,
           hoursOrKmRun: (row.hoursOrKmRun ?? calculated.runtime) || null, openingReading: row.openingReading, closingReading: row.closingReading,
            actualDiesel: row.dieselIssued, dieselSource: row.dieselSource,
            openingDiesel: row.openingDiesel, closingDiesel: row.dieselBalanceInTank,

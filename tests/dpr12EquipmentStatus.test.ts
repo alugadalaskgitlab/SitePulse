@@ -4,6 +4,7 @@ import {
   buildFleetEquipmentStatus,
   equipmentStatusInputError,
   equipmentStatusRequiresReason,
+  filterFleetMaintenanceLogsByVisibleSources,
   normalizeEquipmentStatusFields,
   resolveFleetStatusDay,
   type EquipmentStatusRecord,
@@ -188,6 +189,51 @@ describe("DPR-12 equipment status contract", () => {
     expect(equipment[0].days).toHaveLength(3);
   });
 
+  it("counts maintenance breakdowns once per machine-day and labels the evidence source", () => {
+    const equipment = buildFleetEquipmentStatus([{
+      id: 7, name: "EXCAVATOR 01", ownership: "hired", vendorName: "VENDOR", meterType: "hour_meter",
+    }], [
+      { ...record("dpr_log", 1, null), date: "2026-09-18" },
+      { ...record("plant_usage", 2, "working"), date: "2026-09-19" },
+    ], "2026-09-17", "2026-09-20", [
+      { id: 11, equipmentId: 7, date: "2026-09-17", description: "Hydraulic hose failure" },
+      { id: 12, equipmentId: 7, date: "2026-09-18", description: "Pump failure" },
+      { id: 13, equipmentId: 7, date: "2026-09-19", description: "Inspection note" },
+    ])[0];
+
+    expect(equipment.summary).toEqual({
+      working: 1,
+      idleNoWork: 0,
+      idleNoOperator: 0,
+      breakdown: 2,
+      loggedUnspecified: 0,
+      notLogged: 1,
+    });
+    expect(equipment.days).toEqual(expect.arrayContaining([
+      expect.objectContaining({ date: "2026-09-17", status: "breakdown", source: "maintenance_log" }),
+      expect.objectContaining({ date: "2026-09-18", status: "breakdown", source: "both" }),
+      expect.objectContaining({ date: "2026-09-19", status: "working", source: "both" }),
+      expect.objectContaining({ date: "2026-09-20", status: "not_logged", source: "none" }),
+    ]));
+  });
+
+  it("does not widen restricted report access through unlinked or mismatched maintenance logs", () => {
+    const logs = [
+      { id: 1, equipmentId: 7, date: "2026-09-01", sourceType: "dpr_log", sourceRecordId: 10 },
+      { id: 2, equipmentId: 7, date: "2026-09-02", sourceType: "plant_usage", sourceRecordId: 20 },
+      { id: 3, equipmentId: 8, date: "2026-09-01", sourceType: "dpr_log", sourceRecordId: 11 },
+      { id: 4, equipmentId: 7, date: "2026-09-03", sourceType: "dpr_log", sourceRecordId: 12 },
+      { id: 5, equipmentId: 7, date: "2026-09-01", sourceType: null, sourceRecordId: null },
+    ];
+    const visibleDprRows = [{ recordId: 10, equipmentId: 7, date: "2026-09-01" }];
+    const visibleUsageRows = [{ recordId: 20, equipmentId: 7, date: "2026-09-02" }];
+
+    expect(filterFleetMaintenanceLogsByVisibleSources(logs, ["SITE A"], visibleDprRows, visibleUsageRows)
+      .map(row => row.id)).toEqual([1, 2]);
+    expect(filterFleetMaintenanceLogsByVisibleSources(logs, [], [], [])).toEqual([]);
+    expect(filterFleetMaintenanceLogsByVisibleSources(logs, null, [], [])).toHaveLength(5);
+  });
+
   it("counts logged records without explicit status separately from truly unlogged dates", () => {
     const legacyDates = ["2026-08-26", "2026-08-28", "2026-08-29", "2026-08-30"];
     const records = legacyDates.map((date, index) => ({
@@ -217,6 +263,7 @@ describe("DPR-12 equipment status contract", () => {
       date: "2026-08-27",
       status: "not_logged",
       reason: null,
+      source: "none",
     });
   });
 

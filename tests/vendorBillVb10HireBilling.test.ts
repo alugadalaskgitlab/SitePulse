@@ -243,3 +243,156 @@ describe("VB-10 monthly availability hire calculation", () => {
     expect(snapshot.activityIds).toEqual([]);
   });
 });
+
+describe("VB-HIRE-07 recorded availability exceptions", () => {
+  const twoDayTerms = {
+    billingBasis: "monthly" as const,
+    rate: 120_000,
+    monthlyDivisorType: "custom" as const,
+    monthlyDivisor: 24,
+    breakdownDeductionEnabled: true,
+    automaticMonthlyBreakdownDeductions: false,
+    includeNewOperationalStatusExceptions: true,
+  };
+  const twoOperatorDays = [
+    { id: 501, date: "2026-09-10", source: "plant_usage" as const, usageStatus: "idle_no_operator" as const },
+    { id: 502, date: "2026-09-11", source: "dpr_log" as const, usageStatus: "idle_no_operator" as const },
+  ];
+
+  it("suggests, shows the divisor workings, and waits for an explicit operator-day choice", () => {
+    const result = calculateHireBilling({
+      terms: twoDayTerms,
+      periodFrom: "2026-09-01",
+      periodTo: "2026-09-30",
+      usage: twoOperatorDays,
+    });
+    expect(result.grossAmount).toBe(120_000);
+    expect(result.exceptions).toHaveLength(2);
+    expect(result.exceptions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        exceptionType: "operator_unavailable",
+        deductionAmount: 0,
+        suggestedDeductionAmount: 5_000,
+        suggestionWorkings: {
+          date: "2026-09-10",
+          dayRate: 5_000,
+          contractRate: 120_000,
+          divisor: 24,
+          divisorLabel: "24 custom days",
+          amount: 5_000,
+        },
+      }),
+    ]));
+    expect(getHireReviewGaps({ ...result, terms: twoDayTerms } as any))
+      .toContain("operator_unavailable on 2026-09-10");
+  });
+
+  it("computes accept, edited, and declined two-day outcomes without changing gross hire", () => {
+    const base = {
+      terms: twoDayTerms,
+      periodFrom: "2026-09-01",
+      periodTo: "2026-09-30",
+      usage: twoOperatorDays,
+    };
+    const decision = (sourceId: number, choice: "full_day" | "half_day" | "none" | "manual", manualDeductionAmount?: number) => ({
+      sourceType: "usage" as const,
+      sourceId,
+      exceptionType: "operator_unavailable",
+      date: sourceId === 501 ? "2026-09-10" : "2026-09-11",
+      decision: choice,
+      manualDeductionAmount,
+      remarks: choice === "manual" ? "REVIEWER ADJUSTMENT" : undefined,
+    });
+    const accepted = calculateHireBilling({
+      ...base,
+      exceptionDecisions: [decision(501, "full_day"), decision(502, "full_day")],
+    });
+    const edited = calculateHireBilling({
+      ...base,
+      exceptionDecisions: [decision(501, "manual", 2_500), decision(502, "half_day")],
+    });
+    const declined = calculateHireBilling({
+      ...base,
+      exceptionDecisions: [decision(501, "none"), decision(502, "none")],
+    });
+
+    expect(accepted).toMatchObject({ grossAmount: 120_000, deductionAmount: 10_000, netAmount: 110_000 });
+    expect(edited).toMatchObject({ grossAmount: 120_000, deductionAmount: 5_000, netAmount: 115_000 });
+    expect(declined).toMatchObject({ grossAmount: 120_000, deductionAmount: 0, netAmount: 120_000 });
+  });
+
+  it("deduplicates a mirrored DPR/Plant status pair and lets a same-day maintenance breakdown represent one day", () => {
+    const mirrored = calculateHireBilling({
+      terms: twoDayTerms,
+      periodFrom: "2026-09-01",
+      periodTo: "2026-09-30",
+      usage: [
+        { id: 10, date: "2026-09-10", source: "dpr_log", plantUsageId: 20, usageStatus: "idle_no_operator" },
+        { id: 20, date: "2026-09-10", source: "plant_usage", usageStatus: "idle_no_operator" },
+      ],
+    });
+    expect(mirrored.exceptions.filter(item => item.exceptionType === "operator_unavailable")).toHaveLength(1);
+    expect(mirrored.exceptions[0].sourceId).toBe(20);
+
+    const breakdown = calculateHireBilling({
+      terms: twoDayTerms,
+      periodFrom: "2026-09-01",
+      periodTo: "2026-09-30",
+      usage: [{ id: 30, date: "2026-09-12", source: "plant_usage", usageStatus: "breakdown" }],
+      maintenance: [{ id: 40, date: "2026-09-12", eventType: "breakdown", description: "Hydraulic pump" }],
+    });
+    expect(breakdown.exceptions.filter(item => item.exceptionType === "breakdown")).toHaveLength(1);
+    expect(breakdown.exceptions[0]).toMatchObject({ sourceType: "maintenance", date: "2026-09-12" });
+  });
+
+  it("does not infer exceptions for no-work or unrecorded days, and leaves legacy statements unchanged", () => {
+    const result = calculateHireBilling({
+      terms: twoDayTerms,
+      periodFrom: "2026-09-01",
+      periodTo: "2026-09-30",
+      usage: [
+        { id: 1, date: "2026-09-10", source: "plant_usage", usageStatus: "idle_no_work" },
+        { id: 2, date: "2026-09-11", source: "plant_usage", usageStatus: null },
+      ],
+    });
+    expect(result.exceptions).toEqual([]);
+
+    const historical = calculateHireBilling({
+      terms: { ...twoDayTerms, includeNewOperationalStatusExceptions: false },
+      periodFrom: "2026-09-01",
+      periodTo: "2026-09-30",
+      usage: [{ id: 3, date: "2026-09-10", source: "plant_usage", usageStatus: "idle_no_operator" }],
+    });
+    expect(historical.exceptions).toEqual([]);
+  });
+
+  it("never guesses a divisor for hourly/trip rates or an incomplete monthly agreement", () => {
+    const unavailable = calculateHireBilling({
+      terms: { ...twoDayTerms, monthlyDivisorType: "custom", monthlyDivisor: undefined },
+      periodFrom: "2026-09-01",
+      periodTo: "2026-09-30",
+      usage: [{ id: 70, date: "2026-09-10", source: "plant_usage", usageStatus: "idle_no_operator" }],
+      exceptionDecisions: [{
+        sourceType: "usage", sourceId: 70, exceptionType: "operator_unavailable",
+        date: "2026-09-10", decision: "full_day",
+      }],
+    });
+    expect(unavailable.exceptions[0]).toMatchObject({
+      deductionAmount: 0,
+      suggestionWorkings: { unavailableReason: "The applicable monthly divisor is unavailable." },
+    });
+    expect(getHireReviewGaps({ ...unavailable, terms: twoDayTerms } as any))
+      .toContain("operator-unavailable rate/divisor on 2026-09-10");
+
+    const hourly = calculateHireBilling({
+      terms: { ...twoDayTerms, billingBasis: "hourly", rate: 500, monthlyDivisorType: undefined, monthlyDivisor: undefined },
+      periodFrom: "2026-09-01",
+      periodTo: "2026-09-30",
+      usage: [{ id: 71, date: "2026-09-10", source: "plant_usage", usageStatus: "idle_no_operator" }],
+    });
+    const hourlyOperatorException = hourly.exceptions.find(item => item.exceptionType === "operator_unavailable");
+    expect(hourlyOperatorException?.suggestedDeductionAmount).toBeUndefined();
+    expect(hourlyOperatorException?.suggestionWorkings?.unavailableReason)
+      .toBe("A daily conversion is not defined for hourly or trip hire rates.");
+  });
+});

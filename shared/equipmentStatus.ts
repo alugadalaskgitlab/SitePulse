@@ -65,6 +65,8 @@ export interface FleetStatusDay {
   date: string;
   status: FleetDayStatus;
   reason: string | null;
+  source?: "recorded_status" | "maintenance_log" | "both" | "none";
+  maintenanceLogs?: Array<{ id: number; description: string | null }>;
   legacyLogged?: boolean;
   conflict?: boolean;
   records?: FleetStatusDayRecord[];
@@ -91,6 +93,40 @@ export interface FleetStatusResponse {
   dateFrom: string;
   dateTo: string;
   equipment: FleetEquipmentStatus[];
+}
+
+export type FleetMaintenanceSourceRow = {
+  id: number;
+  equipmentId: number;
+  date: string;
+  description?: string | null;
+  sourceType?: string | null;
+  sourceRecordId?: number | null;
+};
+
+/** Restrict maintenance-only report evidence to exact already-authorized source rows. */
+export function filterFleetMaintenanceLogsByVisibleSources<
+  TDpr extends { recordId: number; equipmentId: number | null; date: string },
+  TUsage extends { recordId: number; equipmentId: number | null; date: string },
+>(
+  logs: readonly FleetMaintenanceSourceRow[],
+  permittedSiteNames: readonly string[] | null,
+  visibleDprRows: readonly TDpr[],
+  visibleUsageRows: readonly TUsage[],
+): FleetMaintenanceSourceRow[] {
+  if (permittedSiteNames === null) return [...logs];
+  const dprById = new Map(visibleDprRows.map(row => [Number(row.recordId), row]));
+  const usageById = new Map(visibleUsageRows.map(row => [Number(row.recordId), row]));
+  return logs.filter(log => {
+    const sources = log.sourceType === "dpr_log" ? dprById
+      : log.sourceType === "plant_usage" ? usageById
+      : null;
+    if (!sources || log.sourceRecordId == null) return false;
+    const source = sources.get(Number(log.sourceRecordId));
+    return !!source
+      && Number(source.equipmentId) === Number(log.equipmentId)
+      && String(source.date).slice(0, 10) === String(log.date).slice(0, 10);
+  });
 }
 
 const STATUS_PRIORITY: Record<EquipmentUsageStatus, number> = {
@@ -220,6 +256,12 @@ export function buildFleetEquipmentStatus(
   records: EquipmentStatusRecord[],
   dateFrom: string,
   dateTo: string,
+  maintenanceLogs: Array<{
+    id: number;
+    equipmentId: number;
+    date: string;
+    description?: string | null;
+  }> = [],
 ): FleetEquipmentStatus[] {
   const dates = datesInclusive(dateFrom, dateTo);
   const grouped = new Map<string, EquipmentStatusRecord[]>();
@@ -229,9 +271,38 @@ export function buildFleetEquipmentStatus(
     rows.push(record);
     grouped.set(key, rows);
   }
+  const maintenanceByDay = new Map<string, typeof maintenanceLogs>();
+  for (const log of maintenanceLogs) {
+    const key = `${log.equipmentId}|${log.date.slice(0, 10)}`;
+    maintenanceByDay.set(key, [...(maintenanceByDay.get(key) ?? []), log]);
+  }
   return masters.map((master) => {
-    const days = dates.map((date) =>
-      resolveFleetStatusDay(date, grouped.get(`${master.id}|${date}`) ?? []));
+    const days = dates.map((date) => {
+      const statusRecords = grouped.get(`${master.id}|${date}`) ?? [];
+      const dayMaintenance = maintenanceByDay.get(`${master.id}|${date}`) ?? [];
+      const resolved = resolveFleetStatusDay(date, statusRecords);
+      const hasExplicitStatus = statusRecords.some((row) => isEquipmentUsageStatus(row.status));
+      // The existing bill working sheet uses a maintenance breakdown when no
+      // explicit usage status was ticked. Keep that same date-level precedence
+      // here without inferring anything on dates that have no evidence.
+      const status = dayMaintenance.length > 0 && !hasExplicitStatus
+        ? "breakdown" as const
+        : resolved.status;
+      const source = statusRecords.length > 0
+        ? dayMaintenance.length > 0 ? "both" as const : "recorded_status" as const
+        : dayMaintenance.length > 0 ? "maintenance_log" as const : "none" as const;
+      const descriptions = dayMaintenance.map((log) => ({
+        id: log.id,
+        description: log.description ?? null,
+      }));
+      return {
+        ...resolved,
+        status,
+        reason: resolved.reason ?? (status === "breakdown" ? descriptions.find((log) => log.description)?.description ?? null : null),
+        source,
+        ...(descriptions.length ? { maintenanceLogs: descriptions } : {}),
+      };
+    });
     const summary = {
       working: 0,
       idleNoWork: 0,

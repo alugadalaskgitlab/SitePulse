@@ -33,6 +33,8 @@ export interface HireTerms {
   breakdownGraceDays?: number | null;
   /** VB10 availability workflow only; legacy/register calculations retain review semantics. */
   automaticMonthlyBreakdownDeductions?: boolean | null;
+  /** New Vendor Bill flow only; legacy statements keep their frozen exception set. */
+  includeNewOperationalStatusExceptions?: boolean | null;
 }
 
 export interface HireUsage {
@@ -42,6 +44,10 @@ export interface HireUsage {
   hoursOrKmRun?: number | null;
   numberOfTrips?: number | null;
   status?: string | null;
+  source?: "dpr_log" | "plant_usage";
+  usageStatus?: EquipmentUsageStatus | null;
+  usageStatusReason?: string | null;
+  plantUsageId?: number | null;
 }
 
 export interface HireMaintenance {
@@ -72,13 +78,24 @@ export interface HireDailyDecision {
 export interface HireBillingException {
   sourceType: "usage" | "maintenance" | "manual";
   sourceId?: number;
-  exceptionType: "open_usage" | "missing_hours" | "invalid_trips" | "breakdown" | "manual";
+  exceptionType: "open_usage" | "missing_hours" | "invalid_trips" | "breakdown" | "operator_unavailable" | "manual";
   date?: string;
   description: string;
   downtimeHours?: number;
   decision?: HireExceptionDecision;
   manualDeductionAmount?: number;
   suggestedDeductionAmount?: number;
+  suggestionWorkings?: {
+    date: string;
+    dayRate?: number;
+    contractRate?: number;
+    divisor?: number;
+    divisorLabel?: string;
+    amount?: number;
+    hours?: number;
+    rateCalculation?: string;
+    unavailableReason?: string;
+  };
   deductionAmount: number;
 }
 
@@ -287,6 +304,52 @@ export function monthlyDailyRate(date: string | undefined, terms: HireTerms): nu
   return terms.rate / 30;
 }
 
+function operatorUnavailableDayRate(date: string, terms: HireTerms): {
+  dayRate?: number;
+  contractRate?: number;
+  divisor?: number;
+  divisorLabel?: string;
+  unavailableReason?: string;
+} {
+  if (!Number.isFinite(terms.rate) || terms.rate <= 0) {
+    return { unavailableReason: "The applicable hire rate is unavailable." };
+  }
+  if (terms.billingBasis !== "monthly") {
+    if (terms.billingBasis !== "daily") {
+      return { unavailableReason: "A daily conversion is not defined for hourly or trip hire rates." };
+    }
+    return {
+      dayRate: terms.rate,
+      contractRate: terms.rate,
+      divisor: 1,
+      divisorLabel: "1 agreed day",
+    };
+  }
+
+  let divisor: number | undefined;
+  let divisorLabel: string | undefined;
+  if (terms.monthlyDivisorType === "30") {
+    divisor = 30;
+    divisorLabel = "30 days";
+  } else if (terms.monthlyDivisorType === "calendar" && isValidDate(date)) {
+    const value = new Date(dateAtUtc(date));
+    divisor = new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + 1, 0)).getUTCDate();
+    divisorLabel = `${divisor} calendar days`;
+  } else if (terms.monthlyDivisorType === "custom" &&
+      Number.isFinite(terms.monthlyDivisor) && (terms.monthlyDivisor ?? 0) > 0) {
+    divisor = terms.monthlyDivisor!;
+    divisorLabel = `${divisor} custom days`;
+  }
+
+  if (!divisor) return { unavailableReason: "The applicable monthly divisor is unavailable." };
+  return {
+    dayRate: money(terms.rate / divisor),
+    contractRate: terms.rate,
+    divisor,
+    divisorLabel,
+  };
+}
+
 /** Calculates a constrained statement without mutating any supplied record. */
 export function calculateHireBilling(input: HireBillingInput): HireBillingResult {
   const { terms } = input;
@@ -296,6 +359,10 @@ export function calculateHireBilling(input: HireBillingInput): HireBillingResult
   for (const decision of input.exceptionDecisions ?? []) {
     if (decision.decision === "hours" && (decision.sourceType !== "maintenance" || !decision.sourceId)) {
       throw new Error("Actual downtime hours can be applied only to an identified maintenance breakdown.");
+    }
+    if (decision.exceptionType === "operator_unavailable" && decision.decision === "manual" &&
+        (!Number.isFinite(decision.manualDeductionAmount) || (decision.manualDeductionAmount ?? -1) < 0)) {
+      throw new Error("An explicit non-negative operator-unavailability deduction amount is required.");
     }
   }
 
@@ -356,6 +423,61 @@ export function calculateHireBilling(input: HireBillingInput): HireBillingResult
     }
   }
 
+  const usageStatusRowsByDate = new Map<string, HireUsage[]>();
+  if (terms.includeNewOperationalStatusExceptions === true) {
+    for (const row of periodUsage) {
+      if (row.status === "open" || !isEquipmentUsageStatus(row.usageStatus) || !row.id) continue;
+      const date = row.date.slice(0, 10);
+      usageStatusRowsByDate.set(date, [...(usageStatusRowsByDate.get(date) ?? []), row]);
+    }
+  }
+  const maintenanceBreakdownDates = new Set(exceptions
+    .filter(item => item.sourceType === "maintenance" && item.exceptionType === "breakdown" && item.date)
+    .map(item => item.date!));
+  usageStatusRowsByDate.forEach((rows, date) => {
+    const plantUsageIds = new Set(rows.filter(row => row.source === "plant_usage").map(row => Number(row.id)));
+    const canonicalRows = rows.filter(row =>
+      row.source !== "dpr_log" || row.plantUsageId == null || !plantUsageIds.has(Number(row.plantUsageId))
+    );
+    const statusRecords: EquipmentStatusRecord[] = canonicalRows.map(row => ({
+      source: row.source ?? "plant_usage",
+      recordId: Number(row.id),
+      equipmentId: 0,
+      date,
+      status: row.usageStatus ?? null,
+      reason: row.usageStatusReason ?? null,
+      plantUsageId: row.plantUsageId ?? null,
+    }));
+    const resolved = resolveFleetStatusDay(date, statusRecords);
+    if (!isEquipmentUsageStatus(resolved.status)) return;
+    const winner = canonicalRows
+      .filter(row => row.usageStatus === resolved.status)
+      .sort((a, b) => {
+        if (a.source !== b.source) return a.source === "dpr_log" ? -1 : 1;
+        return Number(b.id) - Number(a.id);
+      })[0];
+    if (!winner) return;
+    if (resolved.status === "idle_no_operator") {
+      exceptions.push({
+        sourceType: "usage",
+        sourceId: winner.id,
+        exceptionType: "operator_unavailable",
+        date,
+        description: resolved.reason || "Recorded DPR status: Operator / Driver Unavailable.",
+        deductionAmount: 0,
+      });
+    } else if (resolved.status === "breakdown" && !maintenanceBreakdownDates.has(date)) {
+      exceptions.push({
+        sourceType: "usage",
+        sourceId: winner.id,
+        exceptionType: "breakdown",
+        date,
+        description: resolved.reason || "Recorded DPR status: Breakdown.",
+        deductionAmount: 0,
+      });
+    }
+  });
+
   // A reviewer may add a non-derived exception (for example an agreed
   // contractual deduction).  Operational exceptions are never fabricated.
   for (const decision of input.exceptionDecisions ?? []) {
@@ -407,10 +529,45 @@ export function calculateHireBilling(input: HireBillingInput): HireBillingResult
       explicitBreakdownDecisionByDate.set(value.date, value);
     }
   }
+  const mixedBreakdownSourceDates = new Set<string>();
+  if (!automaticMonthlyBreakdown) {
+    const breakdownSourcesByDate = new Map<string, Set<string>>();
+    for (const item of exceptions) {
+      if (item.exceptionType !== "breakdown" || !item.date) continue;
+      const sources = breakdownSourcesByDate.get(item.date) ?? new Set<string>();
+      sources.add(item.sourceType);
+      breakdownSourcesByDate.set(item.date, sources);
+    }
+    breakdownSourcesByDate.forEach((sources, date) => {
+      if (sources.has("maintenance") && sources.has("usage")) mixedBreakdownSourceDates.add(date);
+    });
+  }
   const countedMonthlyBreakdownDates = new Set<string>();
   let deductionAmount = 0;
   for (const item of exceptions) {
     let decision = decisionByKey.get(exceptionKey(item));
+    if (!automaticMonthlyBreakdown && item.exceptionType === "breakdown" && item.date &&
+        mixedBreakdownSourceDates.has(item.date)) {
+      const chosen = explicitBreakdownDecisionByDate.get(item.date);
+      if (chosen) {
+        const chosenKey = exceptionKey({
+          sourceType: chosen.sourceType,
+          sourceId: chosen.sourceId ?? undefined,
+          exceptionType: (chosen.exceptionType ?? "manual") as HireBillingException["exceptionType"],
+          date: chosen.date,
+        });
+        if (exceptionKey(item) !== chosenKey) {
+          decision = {
+            sourceType: item.sourceType,
+            sourceId: item.sourceId,
+            exceptionType: item.exceptionType,
+            date: item.date,
+            decision: "none",
+            remarks: "DUPLICATE BREAKDOWN SOURCE — DAY DECISION RECORDED ON LINKED EVENT",
+          };
+        }
+      }
+    }
     if (automaticMonthlyBreakdown && item.exceptionType === "breakdown" && item.date) {
       const chosen = explicitBreakdownDecisionByDate.get(item.date);
       const isChosenSource = chosen && exceptionKey(item) === exceptionKey({
@@ -443,6 +600,27 @@ export function calculateHireBilling(input: HireBillingInput): HireBillingResult
       }
       countedMonthlyBreakdownDates.add(item.date);
     }
+    const operatorRate = item.exceptionType === "operator_unavailable" && item.date
+      ? operatorUnavailableDayRate(item.date, terms)
+      : undefined;
+    if (operatorRate) {
+      if (operatorRate.dayRate !== undefined) {
+        item.suggestedDeductionAmount = operatorRate.dayRate;
+        item.suggestionWorkings = {
+          date: item.date!,
+          dayRate: operatorRate.dayRate,
+          contractRate: operatorRate.contractRate,
+          divisor: operatorRate.divisor,
+          divisorLabel: operatorRate.divisorLabel,
+          amount: operatorRate.dayRate,
+        };
+      } else {
+        item.suggestionWorkings = {
+          date: item.date!,
+          unavailableReason: operatorRate.unavailableReason,
+        };
+      }
+    }
     if (!decision) continue;
     item.decision = decision.decision;
     item.manualDeductionAmount = decision.manualDeductionAmount ?? undefined;
@@ -456,9 +634,42 @@ export function calculateHireBilling(input: HireBillingInput): HireBillingResult
       ? money(dailyDeduction * item.downtimeHours / terms.breakdownHoursPerDay)
       : undefined;
     item.suggestedDeductionAmount = breakdownBlocked ? 0 : hourBasedDeduction;
+    if (item.exceptionType === "breakdown" && hourBasedDeduction !== undefined && item.date) {
+      let monthlyDivisor = 30;
+      let monthlyDivisorLabel = "30 days";
+      if (terms.billingBasis === "monthly" && terms.monthlyDivisorType === "calendar" && isValidDate(item.date)) {
+        const value = new Date(dateAtUtc(item.date));
+        monthlyDivisor = new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + 1, 0)).getUTCDate();
+        monthlyDivisorLabel = `${monthlyDivisor} calendar days`;
+      } else if (terms.billingBasis === "monthly" && terms.monthlyDivisorType === "custom" &&
+          Number.isFinite(terms.monthlyDivisor) && (terms.monthlyDivisor ?? 0) > 0) {
+        monthlyDivisor = terms.monthlyDivisor!;
+        monthlyDivisorLabel = `${monthlyDivisor} custom days`;
+      }
+      item.suggestionWorkings = {
+        date: item.date,
+        dayRate: dailyDeduction,
+        contractRate: terms.rate,
+        divisor: terms.billingBasis === "monthly" ? monthlyDivisor : terms.breakdownHoursPerDay ?? undefined,
+        divisorLabel: terms.billingBasis === "monthly"
+          ? `${monthlyDivisorLabel}; then ${terms.breakdownHoursPerDay} hours per day`
+          : `${terms.breakdownHoursPerDay} hours per day`,
+        amount: hourBasedDeduction,
+        hours: item.downtimeHours,
+        rateCalculation: terms.billingBasis === "monthly"
+          ? "monthly rate ÷ monthly divisor × actual downtime hours ÷ breakdown hours per day"
+          : "agreed rate × actual downtime hours ÷ breakdown hours per day",
+      };
+    }
+    if (item.exceptionType === "operator_unavailable") {
+      item.suggestedDeductionAmount = operatorRate?.dayRate;
+    }
+    const deductionRate = item.exceptionType === "operator_unavailable"
+      ? operatorRate?.dayRate ?? 0
+      : dailyDeduction;
     item.deductionAmount = breakdownBlocked
       ? 0
-      : money(decision.decision === "full_day" ? dailyDeduction : decision.decision === "half_day" ? dailyDeduction / 2 : decision.decision === "hours" ? (hourBasedDeduction ?? 0) : decision.decision === "manual" ? Math.max(0, decision.manualDeductionAmount ?? 0) : 0);
+      : money(decision.decision === "full_day" ? deductionRate : decision.decision === "half_day" ? deductionRate / 2 : decision.decision === "hours" ? (hourBasedDeduction ?? 0) : decision.decision === "manual" ? Math.max(0, decision.manualDeductionAmount ?? 0) : 0);
     deductionAmount += item.deductionAmount;
   }
   deductionAmount = money(Math.min(grossAmount, deductionAmount));
@@ -481,6 +692,9 @@ export interface HireActivity {
   status?: string | null;
   usageStatus?: EquipmentUsageStatus | null;
   usageStatusReason?: string | null;
+  /** Raw status stored on this exact source row; unlike usageStatus it is not date-resolved. */
+  sourceUsageStatus?: EquipmentUsageStatus | null;
+  sourceUsageStatusReason?: string | null;
   numberOfTrips?: number | null;
   hoursOrKmRun?: number | null;
   /** A DPR row is a mirror only when this explicit link is present. */
@@ -802,6 +1016,17 @@ export function getHireReviewGaps(snapshot: Partial<HireGroupCalculationResult> 
   const gaps = (snapshot.exceptions ?? [])
     .filter(exception => !exception.decision)
     .map(exception => `${exception.exceptionType} on ${exception.date || "unknown date"}`);
+  for (const exception of snapshot.exceptions ?? []) {
+    if (exception.exceptionType === "operator_unavailable" &&
+        (exception.decision === "full_day" || exception.decision === "half_day") &&
+        exception.suggestedDeductionAmount == null) {
+      gaps.push(`operator-unavailable rate/divisor on ${exception.date || "unknown date"}`);
+    }
+    if (exception.exceptionType === "operator_unavailable" && exception.decision === "manual" &&
+        (!Number.isFinite(exception.manualDeductionAmount) || (exception.manualDeductionAmount ?? -1) < 0)) {
+      gaps.push(`operator-unavailable manual amount on ${exception.date || "unknown date"}`);
+    }
+  }
   if ((snapshot.diesel?.suggestedExcess ?? 0) > 0 &&
       String((snapshot as any).terms?.dieselResponsibility || "").toLowerCase() !== "vendor" &&
       !snapshot.diesel?.recoveryDecision) {
@@ -1087,7 +1312,20 @@ export function calculateHireGroup(input: HireGroupCalculationInput): HireGroupC
       : activity.numberOfTrips;
     return [{
       id: activity.sourceId, date: activity.businessDate, entryType: activity.entryType,
-      status: activity.status, hoursOrKmRun: activity.hoursOrKmRun, numberOfTrips: trips,
+      status: activity.status,
+      source: activity.source === "dpr_log" || activity.source === "plant_usage" ? activity.source : undefined,
+      usageStatus: input.terms.includeNewOperationalStatusExceptions === true
+        ? Object.prototype.hasOwnProperty.call(activity, "sourceUsageStatus")
+          ? activity.sourceUsageStatus
+          : activity.usageStatus
+        : undefined,
+      usageStatusReason: input.terms.includeNewOperationalStatusExceptions === true
+        ? Object.prototype.hasOwnProperty.call(activity, "sourceUsageStatusReason")
+          ? activity.sourceUsageStatusReason
+          : activity.usageStatusReason
+        : undefined,
+      plantUsageId: activity.plantUsageId,
+      hoursOrKmRun: activity.hoursOrKmRun, numberOfTrips: trips,
     }];
   });
   const calculated = calculateHireBilling({ terms: input.terms, periodFrom: input.periodFrom, periodTo: input.periodTo,

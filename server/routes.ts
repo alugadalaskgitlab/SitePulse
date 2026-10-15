@@ -4505,8 +4505,33 @@ export async function registerRoutes(
       monthlyDivisor: equipment.hireMonthlyDivisor, breakdownDeductionEnabled: !!equipment.hireBreakdownDeductionEnabled };
   };
   const hireCalculation = async (statement: any, decisions: HireExceptionDecisionInput[] = []) => {
-    const usage = await storage.getEquipmentUsage({ equipmentId: statement.equipmentId, dateFrom: statement.periodFrom, dateTo: statement.periodTo });
-    const maintenance = await storage.getMaintenanceLogs({ equipmentId: statement.equipmentId, dateFrom: statement.periodFrom, dateTo: statement.periodTo });
+    const evidence = await storage.getVendorBillHireActivities(statement.vendorName, statement.periodFrom, statement.periodTo);
+    const equipmentEvidence = evidence.filter((row: any) => Number(row.equipmentId) === Number(statement.equipmentId));
+    const usage = equipmentEvidence
+      .filter((row: any) => row.source === "dpr_log" || row.source === "plant_usage")
+      .map((row: any) => ({
+        id: Number(row.sourceId),
+        date: row.businessDate,
+        entryType: row.entryType,
+        status: row.status,
+        hoursOrKmRun: row.hoursOrKmRun,
+        numberOfTrips: row.numberOfTrips,
+        source: row.source,
+        usageStatus: Object.prototype.hasOwnProperty.call(row, "sourceUsageStatus")
+          ? row.sourceUsageStatus : row.usageStatus,
+        usageStatusReason: Object.prototype.hasOwnProperty.call(row, "sourceUsageStatusReason")
+          ? row.sourceUsageStatusReason : row.usageStatusReason,
+        plantUsageId: row.plantUsageId,
+      }));
+    const maintenance = equipmentEvidence
+      .filter((row: any) => row.source === "maintenance")
+      .map((row: any) => ({
+        id: Number(row.sourceId),
+        date: row.businessDate,
+        eventType: row.eventType,
+        description: row.description,
+        downtimeHours: row.downtimeHours,
+      }));
     const terms = { billingBasis: statement.billingBasis, rate: statement.rate, hireStartDate: statement.hireStartDate,
       hireEndDate: statement.hireEndDate, monthlyDivisorType: statement.monthlyDivisorType as any, monthlyDivisor: statement.monthlyDivisor,
       breakdownDeductionEnabled: !!statement.calculationSnapshot?.terms?.breakdownDeductionEnabled };

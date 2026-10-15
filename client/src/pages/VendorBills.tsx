@@ -1427,6 +1427,7 @@ export default function VendorBills() {
       terms: {
         ...calculationTermsForBill(group, eq),
         automaticMonthlyBreakdownDeductions: !isHistoricalHireEdit,
+        includeNewOperationalStatusExceptions: !isHistoricalHireEdit,
         breakdownHoursPerDay: group.breakdownHoursPerDay,
         breakdownGraceDays: group.breakdownGraceDays ?? 0,
       },
@@ -2076,6 +2077,43 @@ export default function VendorBills() {
       }
       if (group.exceptionDecisions.some((decision: any) => decision.sourceType === "maintenance" && decision.decision === "manual" && !decision.remarks?.trim())) {
         toast({ title: "Enter a reason/reference for every manual breakdown deduction", variant: "destructive" });
+        return;
+      }
+      const operatorExceptions = (includedHireCalculated.find(item => item.group.id === group.id)?.result?.exceptions || [])
+        .filter((exception: any) => exception.exceptionType === "operator_unavailable");
+      const unreviewedOperatorException = operatorExceptions.find((exception: any) =>
+        !group.exceptionDecisions.some((decision: any) =>
+          decision.sourceType === exception.sourceType &&
+          decision.sourceId === exception.sourceId &&
+          decision.exceptionType === exception.exceptionType &&
+          decision.date === exception.date &&
+          ["none", "full_day", "half_day", "manual"].includes(decision.decision)));
+      if (unreviewedOperatorException) {
+        toast({ title: `Choose or confirm the operator-unavailable deduction for ${formatDate(unreviewedOperatorException.date)}`, variant: "destructive" });
+        return;
+      }
+      const unavailableSuggestedOperatorException = operatorExceptions.find((exception: any) => {
+        const decision = group.exceptionDecisions.find((item: any) =>
+          item.sourceType === exception.sourceType && item.sourceId === exception.sourceId &&
+          item.exceptionType === exception.exceptionType && item.date === exception.date);
+        return (decision?.decision === "full_day" || decision?.decision === "half_day") &&
+          exception.suggestedDeductionAmount == null;
+      });
+      if (unavailableSuggestedOperatorException) {
+        toast({ title: `No applicable daily rate/divisor is configured for ${formatDate(unavailableSuggestedOperatorException.date)}; choose no deduction or a manual amount`, variant: "destructive" });
+        return;
+      }
+      if (group.exceptionDecisions.some((decision: any) =>
+        decision.sourceType === "usage" && decision.exceptionType === "operator_unavailable" &&
+        decision.decision === "manual" &&
+        (!Number.isFinite(Number(decision.manualDeductionAmount)) || Number(decision.manualDeductionAmount) < 0))) {
+        toast({ title: "Enter a non-negative manual operator-unavailability deduction", variant: "destructive" });
+        return;
+      }
+      if (group.exceptionDecisions.some((decision: any) =>
+        decision.sourceType === "usage" && decision.exceptionType === "operator_unavailable" &&
+        decision.decision === "manual" && !decision.remarks?.trim())) {
+        toast({ title: "Enter a reason/reference for every manual operator-unavailability deduction", variant: "destructive" });
         return;
       }
       const adjustments = group.adjustments;
@@ -2883,6 +2921,14 @@ export default function VendorBills() {
                 const result = hireCalculated[index]?.result;
                 const equipmentPerformance = performanceForGroup(selection);
                 const maintenance = maintenanceForGroup(selection);
+                const hireExceptions = (result?.exceptions || []).filter((exception: any) =>
+                  exception.exceptionType === "breakdown" || exception.exceptionType === "operator_unavailable");
+                const operatorDates = Array.from(new Set(hireExceptions
+                  .filter((exception: any) => exception.exceptionType === "operator_unavailable" && exception.suggestedDeductionAmount != null)
+                  .map((exception: any) => exception.date).filter(Boolean)));
+                const possibleAdjustmentOverlap = operatorDates.length > 0
+                  ? additionalAdjustments.filter(adjustment => adjustment.label.trim() !== "" || Number(adjustment.amount) !== 0)
+                  : [];
                 const diesel = result?.diesel;
                 const recoveryAcceptUnavailable = diesel?.rateUnavailable || diesel?.expectedDieselAvailable === false;
                 const dailyRows = buildBillingDailyRows(
@@ -2983,15 +3029,83 @@ export default function VendorBills() {
                       </div>;
                     })}
                   </div>}
-                  {maintenance.length > 0 && <div className="space-y-2 border-t pt-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide">Breakdown Deduction Review</p>
-                    {equipment?.hireBreakdownDeductionEnabled && <div className="flex flex-wrap items-center gap-2 text-xs"><span>Actual downtime divisor</span><Select value={selection.breakdownHoursPerDay ? String(selection.breakdownHoursPerDay) : ""} onValueChange={value => patchHireGroup(selection.id, { breakdownHoursPerDay: Number(value) })}><SelectTrigger className="h-8 w-48"><SelectValue placeholder="Choose 10–12 hours / day" /></SelectTrigger><SelectContent><SelectItem value="10">10 hours / day</SelectItem><SelectItem value="11">11 hours / day</SelectItem><SelectItem value="12">12 hours / day</SelectItem></SelectContent></Select><span className="text-muted-foreground">Required before actual downtime deduction.</span></div>}
-                    {maintenance.map((item: any) => {
-                      const current = selection.exceptionDecisions.find((decision: any) => decision.sourceType === "maintenance" && decision.sourceId === item.sourceId);
-                      const without = selection.exceptionDecisions.filter((decision: any) => !(decision.sourceType === "maintenance" && decision.sourceId === item.sourceId));
-                      const setDecision = (decision: string, patch: Record<string, any> = {}) => patchHireGroup(selection.id, { exceptionDecisions: [...without, { sourceType: "maintenance", sourceId: item.sourceId, exceptionType: "breakdown", date: item.businessDate, ...current, ...patch, decision }] });
-                      const suggested = result?.exceptions.find((exception: any) => exception.sourceType === "maintenance" && exception.sourceId === item.sourceId)?.suggestedDeductionAmount;
-                      return <div key={item.sourceId} className="grid gap-2 rounded border p-2 text-xs sm:grid-cols-[1fr_180px_150px_minmax(160px,1fr)] sm:items-end"><div><strong>{formatDate(item.businessDate)} · {item.description || "Breakdown"}</strong><p className="text-muted-foreground">{Number(item.downtimeHours || 0)} actual downtime hours{item.fromTime || item.toTime ? ` · ${item.fromTime || "?"}–${item.toTime || "?"}` : ""}</p></div><Select value={current?.decision || "none"} onValueChange={value => setDecision(value)} disabled={!equipment?.hireBreakdownDeductionEnabled}><SelectTrigger className="h-8"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">No deduction</SelectItem><SelectItem value="hours" disabled={!selection.breakdownHoursPerDay}>Actual downtime</SelectItem><SelectItem value="half_day">Half day</SelectItem><SelectItem value="full_day">Full day</SelectItem><SelectItem value="manual">Manual amount</SelectItem></SelectContent></Select><div>{current?.decision === "manual" ? <Input type="number" min="0" placeholder="Deduction ₹" value={current.manualDeductionAmount ?? ""} onChange={event => setDecision("manual", { manualDeductionAmount: event.target.value === "" ? undefined : Number(event.target.value) })} /> : <span className="text-muted-foreground">{current?.decision === "hours" ? `Suggested ₹${formatCurrency(suggested)}` : ""}</span>}</div><div>{current?.decision === "manual" && <><Label className="text-[10px] uppercase">Manual deduction reason</Label><Input placeholder="Reason / reference" value={current.remarks || ""} onChange={event => setDecision("manual", { remarks: event.target.value.toUpperCase() })} /></>}</div></div>;
+                  {hireExceptions.length > 0 && <div className="space-y-3 border-t pt-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide">Availability / Breakdown Exception Review</p>
+                      <p className="text-xs text-muted-foreground">No amount is deducted unless a deduction decision is recorded. Idle · No Work Available and dates without recorded status remain deduction-free.</p>
+                    </div>
+                    {equipment?.hireBreakdownDeductionEnabled && hireExceptions.some((exception: any) => exception.exceptionType === "breakdown" && exception.downtimeHours != null) && <div className="flex flex-wrap items-center gap-2 text-xs"><span>Actual downtime divisor</span><Select value={selection.breakdownHoursPerDay ? String(selection.breakdownHoursPerDay) : ""} onValueChange={value => patchHireGroup(selection.id, { breakdownHoursPerDay: Number(value) })}><SelectTrigger className="h-8 w-48"><SelectValue placeholder="Choose 10–12 hours / day" /></SelectTrigger><SelectContent><SelectItem value="10">10 hours / day</SelectItem><SelectItem value="11">11 hours / day</SelectItem><SelectItem value="12">12 hours / day</SelectItem></SelectContent></Select><span className="text-muted-foreground">Required before actual downtime deduction.</span></div>}
+                    {possibleAdjustmentOverlap.length > 0 && <div className="rounded border border-amber-400 bg-amber-50 p-3 text-xs text-amber-950" role="alert" data-testid={`operator-adjustment-warning-${selection.id}`}>
+                      <strong>Possible double-counting:</strong> operator-unavailable suggestions for {operatorDates.map(formatDate).join(", ")} appear alongside these manual bill adjustments: {possibleAdjustmentOverlap.map(adjustment => `${adjustment.label || "Unlabelled adjustment"} (₹${formatCurrency(Number(adjustment.amount) || 0)})`).join("; ")}. Review both lines; neither has been suppressed.
+                    </div>}
+                    {hireExceptions.map((exception: any) => {
+                      const sourceType = exception.sourceType as "usage" | "maintenance";
+                      const exceptionType = exception.exceptionType as "breakdown" | "operator_unavailable";
+                      const current = selection.exceptionDecisions.find((decision: any) =>
+                        decision.sourceType === sourceType && decision.sourceId === exception.sourceId &&
+                        decision.exceptionType === exceptionType && decision.date === exception.date);
+                      const without = selection.exceptionDecisions.filter((decision: any) =>
+                        !(decision.sourceType === sourceType && decision.sourceId === exception.sourceId &&
+                          decision.exceptionType === exceptionType && decision.date === exception.date));
+                      const setDecision = (decision: string, patch: Record<string, any> = {}) => patchHireGroup(selection.id, {
+                        exceptionDecisions: [...without, {
+                          ...current, sourceType, sourceId: exception.sourceId, exceptionType, date: exception.date, ...patch, decision,
+                        }],
+                      });
+                      const isOperator = exceptionType === "operator_unavailable";
+                      const choiceRequired = isOperator && !current?.decision;
+                      const currentDecision = isOperator
+                        ? current?.decision ?? "__review__"
+                        : current?.decision ?? exception.decision ?? "none";
+                      const duplicate = String(exception.remarks || "").startsWith("DUPLICATE BREAKDOWN SOURCE");
+                      const relatedMaintenance = sourceType === "maintenance"
+                        ? maintenance.find((row: any) => Number(row.sourceId) === Number(exception.sourceId))
+                        : undefined;
+                      const workings = exception.suggestionWorkings;
+                      const unavailable = workings?.unavailableReason;
+                      const sourceName = sourceType === "maintenance" ? "Maintenance log" : "Recorded DPR / Plant status";
+                      return <div key={`${sourceType}:${exception.sourceId}:${exceptionType}:${exception.date}`} className="space-y-2 rounded border bg-white p-3 text-xs">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <strong>{formatDate(exception.date)} · {isOperator ? "Operator / Driver Unavailable" : "Breakdown"}</strong>
+                          <span className="rounded border px-2 py-0.5 text-[10px] text-slate-600">{sourceName}</span>
+                          {relatedMaintenance?.downtimeHours != null && <span className="text-muted-foreground">{Number(relatedMaintenance.downtimeHours)} actual downtime hours{relatedMaintenance.fromTime || relatedMaintenance.toTime ? ` · ${relatedMaintenance.fromTime || "?"}–${relatedMaintenance.toTime || "?"}` : ""}</span>}
+                        </div>
+                        <p className="text-muted-foreground">{exception.description}</p>
+                        {workings?.amount != null && <p className="rounded bg-slate-50 p-2" data-testid={`hire-exception-workings-${sourceType}-${exception.sourceId}`}>
+                          <strong>Suggestion workings — {workings.date}:</strong>{" "}
+                          {isOperator
+                            ? workings.divisorLabel?.includes("no conversion")
+                              ? `Agreed rate ₹${formatCurrency(workings.contractRate)} used directly; resulting amount ₹${formatCurrency(workings.amount)}.`
+                              : `Day rate ₹${formatCurrency(workings.dayRate)} = contract rate ₹${formatCurrency(workings.contractRate)} ÷ ${workings.divisor} (${workings.divisorLabel}); suggested amount ₹${formatCurrency(workings.amount)}.`
+                            : `${workings.rateCalculation}; day rate ₹${formatCurrency(workings.dayRate)} from contract rate ₹${formatCurrency(workings.contractRate)}; divisor ${workings.divisorLabel}; actual downtime ${workings.hours} hours; suggested amount ₹${formatCurrency(workings.amount)}.`}
+                        </p>}
+                        {unavailable && <p className="rounded bg-amber-50 p-2 text-amber-900">No amount suggested for {formatDate(exception.date)}. {unavailable} Choose no deduction or enter a manual amount; a half/full-day suggestion cannot be accepted.</p>}
+                        {duplicate ? <p className="font-semibold text-amber-800">{exception.remarks} · No second deduction is applied.</p> : (
+                          <div className="grid gap-2 sm:grid-cols-[minmax(170px,220px)_minmax(150px,1fr)_minmax(180px,1fr)] sm:items-end">
+                            <Select value={currentDecision} onValueChange={value => setDecision(value)} disabled={exceptionType === "breakdown" && !equipment?.hireBreakdownDeductionEnabled}>
+                              <SelectTrigger className="h-8"><SelectValue placeholder="Choose or confirm a decision" /></SelectTrigger>
+                              <SelectContent>
+                                {choiceRequired && <SelectItem value="__review__" disabled>Choose or confirm a decision</SelectItem>}
+                                <SelectItem value="none">No deduction</SelectItem>
+                                {isOperator ? <>
+                                  <SelectItem value="half_day">Half day</SelectItem>
+                                  <SelectItem value="full_day">Full day</SelectItem>
+                                  <SelectItem value="manual">Manual amount</SelectItem>
+                                </> : <>
+                                  <SelectItem value="hours" disabled={sourceType !== "maintenance" || !selection.breakdownHoursPerDay || relatedMaintenance?.downtimeHours == null}>Actual downtime</SelectItem>
+                                  <SelectItem value="half_day">Half day</SelectItem>
+                                  <SelectItem value="full_day">Full day</SelectItem>
+                                  <SelectItem value="manual">Manual amount</SelectItem>
+                                </>}
+                              </SelectContent>
+                            </Select>
+                            {choiceRequired && <p className="text-amber-800">No deduction is currently applied. Confirm “No deduction” or choose a deduction before saving.</p>}
+                            {currentDecision === "manual" && <Input type="number" min="0" step="0.01" placeholder="Manual deduction ₹" value={current?.manualDeductionAmount ?? ""} onChange={event => setDecision("manual", { manualDeductionAmount: event.target.value === "" ? undefined : Number(event.target.value) })} />}
+                            {currentDecision === "manual" && <Input placeholder="Reason / reference" value={current?.remarks || ""} onChange={event => setDecision("manual", { remarks: event.target.value.toUpperCase() })} />}
+                            {currentDecision !== "manual" && exception.deductionAmount > 0 && <p className="font-semibold text-slate-700">Applied deduction: ₹{formatCurrency(exception.deductionAmount)}</p>}
+                          </div>
+                        )}
+                      </div>;
                     })}
                   </div>}
                   <div className="space-y-3 border-t pt-3">

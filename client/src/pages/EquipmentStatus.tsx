@@ -1,15 +1,9 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { format, subDays } from "date-fns";
-import {
-  AlertTriangle,
-  ChevronDown,
-  ChevronRight,
-  ClipboardX,
-  RotateCcw,
-  Search,
-  Truck,
-} from "lucide-react";
+import { format, startOfMonth } from "date-fns";
+import * as XLSX from "xlsx";
+import { ArrowLeft, AlertTriangle, ChevronDown, ChevronRight, ClipboardX, Download, FileSpreadsheet, Printer, Truck } from "lucide-react";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -25,6 +19,8 @@ type EquipmentStatusDay = {
   date: string;
   status: EquipmentDayStatus;
   reason?: string | null;
+  source?: "recorded_status" | "maintenance_log" | "both" | "none";
+  maintenanceLogs?: Array<{ id: number; description: string | null }>;
   legacyLogged?: boolean;
   conflict?: boolean;
   records?: unknown[];
@@ -33,7 +29,7 @@ type EquipmentStatusDay = {
 type EquipmentStatusItem = {
   equipmentId: number | string;
   name: string;
-  ownership: string;
+  ownership: string | null;
   vendorName?: string | null;
   meterType?: string | null;
   summary: {
@@ -55,27 +51,38 @@ type EquipmentStatusReport = {
 
 const STATUS_META: Record<EquipmentDayStatus, { label: string; classes: string }> = {
   working: { label: "Working", classes: "border-emerald-200 bg-emerald-50 text-emerald-800" },
-  idle_no_work: { label: "Idle — No Work", classes: "border-amber-200 bg-amber-50 text-amber-800" },
-  idle_no_operator: { label: "Idle — No Operator", classes: "border-orange-200 bg-orange-50 text-orange-800" },
+  idle_no_work: { label: "Idle · No Work Available", classes: "border-amber-200 bg-amber-50 text-amber-800" },
+  idle_no_operator: { label: "Idle · Operator Unavailable", classes: "border-orange-200 bg-orange-50 text-orange-800" },
   breakdown: { label: "Breakdown", classes: "border-red-200 bg-red-50 text-red-800" },
-  logged_unspecified: { label: "Logged — No Status", classes: "border-violet-200 bg-violet-50 text-violet-800" },
+  logged_unspecified: { label: "Logged (status not specified)", classes: "border-violet-200 bg-violet-50 text-violet-800" },
   not_logged: { label: "Not Logged", classes: "border-slate-300 bg-slate-100 text-slate-700" },
 };
 
-const initialDateTo = format(new Date(), "yyyy-MM-dd");
-const initialDateFrom = format(subDays(new Date(), 29), "yyyy-MM-dd");
+const sourceLabel = (source: EquipmentStatusDay["source"]) => ({
+  recorded_status: "Recorded status",
+  maintenance_log: "Maintenance log",
+  both: "Recorded status and maintenance log",
+  none: "No record",
+}[source || "none"]);
+
+const today = new Date();
+const initialDateTo = format(today, "yyyy-MM-dd");
+const initialDateFrom = format(startOfMonth(today), "yyyy-MM-dd");
 
 function readableDate(value: string) {
   const parsed = new Date(`${value}T00:00:00`);
   return Number.isNaN(parsed.getTime()) ? value : format(parsed, "dd MMM yyyy");
 }
 
+function returnPath() {
+  const requested = new URLSearchParams(window.location.search).get("returnTo") || "/reports/hub";
+  return requested.startsWith("/") && !requested.startsWith("//") ? requested : "/reports/hub";
+}
+
 export default function EquipmentStatus() {
   const [dateFrom, setDateFrom] = useState(initialDateFrom);
   const [dateTo, setDateTo] = useState(initialDateTo);
-  const [search, setSearch] = useState("");
-  const [ownership, setOwnership] = useState("all");
-  const [status, setStatus] = useState<EquipmentDayStatus | "all">("all");
+  const [equipmentId, setEquipmentId] = useState("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const invalidRange = Boolean(dateFrom && dateTo && dateFrom > dateTo);
 
@@ -94,26 +101,21 @@ export default function EquipmentStatus() {
   });
 
   const equipment = report.data?.equipment ?? [];
-  const rows = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    return equipment.filter(item => {
-      if (ownership !== "all" && item.ownership.toLowerCase() !== ownership) return false;
-      if (status !== "all" && !item.days.some(day => day.status === status)) return false;
-      if (needle && !`${item.name} ${item.vendorName ?? ""}`.toLowerCase().includes(needle)) return false;
-      return true;
-    });
-  }, [equipment, ownership, search, status]);
-
-  const totals = useMemo(() => equipment.reduce(
+  const rows = useMemo(() => equipmentId === "all"
+    ? equipment
+    : equipment.filter(item => String(item.equipmentId) === equipmentId),
+  [equipment, equipmentId]);
+  const totals = useMemo(() => rows.reduce(
     (sum, item) => ({
       working: sum.working + item.summary.working,
-      idle: sum.idle + item.summary.idleNoWork + item.summary.idleNoOperator,
+      idleNoWork: sum.idleNoWork + item.summary.idleNoWork,
+      idleNoOperator: sum.idleNoOperator + item.summary.idleNoOperator,
       breakdown: sum.breakdown + item.summary.breakdown,
       loggedUnspecified: sum.loggedUnspecified + item.summary.loggedUnspecified,
       notLogged: sum.notLogged + item.summary.notLogged,
     }),
-    { working: 0, idle: 0, breakdown: 0, loggedUnspecified: 0, notLogged: 0 },
-  ), [equipment]);
+    { working: 0, idleNoWork: 0, idleNoOperator: 0, breakdown: 0, loggedUnspecified: 0, notLogged: 0 },
+  ), [rows]);
 
   const toggle = (id: string) => setExpanded(current => {
     const next = new Set(current);
@@ -125,96 +127,201 @@ export default function EquipmentStatus() {
   const reset = () => {
     setDateFrom(initialDateFrom);
     setDateTo(initialDateTo);
-    setSearch("");
-    setOwnership("all");
-    setStatus("all");
+    setEquipmentId("all");
+  };
+
+  const exportExcel = () => {
+    const summary = rows.map(item => ({
+      Machine: item.name,
+      Ownership: item.ownership || "",
+      Vendor: item.vendorName || "",
+      "Working": item.summary.working,
+      "Idle · No Work Available": item.summary.idleNoWork,
+      "Idle · Operator Unavailable": item.summary.idleNoOperator,
+      "Breakdown": item.summary.breakdown,
+      "Logged (status not specified)": item.summary.loggedUnspecified,
+      "Not Logged": item.summary.notLogged,
+    }));
+    const daily = rows.flatMap(item => item.days.map(day => ({
+      Machine: item.name,
+      Date: day.date,
+      Status: STATUS_META[day.status]?.label ?? day.status,
+      Source: sourceLabel(day.source),
+      Reason: day.reason || "",
+      "Maintenance log details": (day.maintenanceLogs || []).map(log => log.description || `Log ${log.id}`).join(" · "),
+      Conflict: day.conflict ? "Yes" : "No",
+    })));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summary), "Summary");
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(daily), "Daily Status");
+    XLSX.writeFile(workbook, `equipment-status-${dateFrom}-to-${dateTo}.xlsx`);
   };
 
   return (
     <div className="mx-auto max-w-7xl space-y-6" data-testid="page-equipment-status">
-      <header className="border-b-2 border-[#173f49] pb-5">
-        <p className="text-sm font-medium text-slate-500">Equipment &amp; Fleet</p>
-        <h1 className="text-3xl font-bold tracking-tight text-[#173f49] md:text-4xl">FLEET / EQUIPMENT STATUS</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Daily working, idle, breakdown and unlogged status for owned and hired machines.
-        </p>
-      </header>
-
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm" aria-label="Report filters">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <Filter label="From date">
-            <Input aria-label="From date" type="date" value={dateFrom} onChange={event => setDateFrom(event.target.value)} />
-          </Filter>
-          <Filter label="To date">
-            <Input aria-label="To date" type="date" value={dateTo} onChange={event => setDateTo(event.target.value)} />
-          </Filter>
-          <Filter label="Machine or vendor">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-              <Input aria-label="Machine or vendor" value={search} onChange={event => setSearch(event.target.value)} className="pl-8" placeholder="Search fleet" />
-            </div>
-          </Filter>
-          <Filter label="Ownership">
-            <select aria-label="Ownership" value={ownership} onChange={event => setOwnership(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
-              <option value="all">Owned &amp; hired</option>
-              <option value="owned">Owned</option>
-              <option value="hired">Hired</option>
-            </select>
-          </Filter>
-          <Filter label="Status">
-            <select aria-label="Status" value={status} onChange={event => setStatus(event.target.value as EquipmentDayStatus | "all")} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
-              <option value="all">All statuses</option>
-              {Object.entries(STATUS_META).map(([value, meta]) => <option key={value} value={value}>{meta.label}</option>)}
-            </select>
-          </Filter>
-        </div>
-        <div className="mt-3 flex items-center justify-between gap-3">
-          {invalidRange ? <p className="text-sm font-medium text-red-700" role="alert">From date must be on or before To date.</p> : <span />}
-          <Button variant="outline" size="sm" onClick={reset}><RotateCcw className="mr-1.5 h-3.5 w-3.5" />Reset</Button>
-        </div>
-      </section>
-
-      {!invalidRange && !report.isLoading && !report.isError && (
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-5" aria-label="Fleet status totals">
-          <TotalCard label="Working" value={totals.working} classes="border-emerald-200 text-emerald-800" />
-          <TotalCard label="Idle" value={totals.idle} classes="border-amber-200 text-amber-800" />
-          <TotalCard label="Breakdown" value={totals.breakdown} classes="border-red-200 text-red-800" />
-          <TotalCard label="Logged — No Status" value={totals.loggedUnspecified} classes="border-violet-200 text-violet-800" />
-          <TotalCard label="Not Logged" value={totals.notLogged} classes="border-slate-300 text-slate-700" />
-        </section>
-      )}
-
-      {report.isLoading ? <LoadingState /> : report.isError ? <ErrorState error={report.error} retry={() => report.refetch()} /> : !invalidRange && (
-        <section className="space-y-3" aria-live="polite">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-slate-800">Machines</h2>
-            <span className="text-sm text-slate-500">{rows.length} of {equipment.length}</span>
+      <style>{`
+        .equipment-status-print { display: none; }
+        @media print {
+          .equipment-status-no-print { display: none !important; }
+          .equipment-status-print { display: block !important; }
+          body { background: white !important; }
+          .equipment-status-print table { border-collapse: collapse; width: 100%; font-size: 9pt; }
+          .equipment-status-print th, .equipment-status-print td { border: 1px solid #64748b; padding: 4px; text-align: left; }
+          .equipment-status-print th { background: #e2e8f0 !important; }
+          .equipment-status-print article { break-inside: avoid; margin-bottom: 16px; }
+        }
+      `}</style>
+      <div className="equipment-status-no-print">
+        <header className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-[#173f49] pb-5">
+          <div>
+            <Link href={returnPath()} className="mb-3 inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900">
+              <ArrowLeft className="h-4 w-4" /> Back to reports
+            </Link>
+            <p className="text-sm font-medium text-slate-500">Equipment &amp; Fleet</p>
+            <h1 className="text-3xl font-bold tracking-tight text-[#173f49] md:text-4xl">EQUIPMENT STATUS</h1>
+            <p className="mt-1 text-sm text-slate-600">Recorded machine status and maintenance breakdown evidence. This report is read-only.</p>
           </div>
-          {rows.length === 0 ? <EmptyState /> : rows.map(item => {
-            const key = String(item.equipmentId);
-            const open = expanded.has(key);
-            return (
-              <article key={key} className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm" data-testid={`equipment-status-${key}`}>
-                <button type="button" aria-expanded={open} onClick={() => toggle(key)} className="flex w-full items-start gap-3 p-4 text-left hover:bg-slate-50">
-                  <div className="mt-1 rounded-md bg-slate-100 p-2"><Truck className="h-5 w-5 text-[#286475]" /></div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <h3 className="font-semibold text-slate-900">{item.name}</h3>
-                      <span className="rounded-full border border-slate-200 px-2 py-0.5 text-[11px] font-medium capitalize text-slate-600">{item.ownership}</span>
-                      {item.meterType && <span className="text-xs text-slate-400">{item.meterType}</span>}
-                    </div>
-                    {item.vendorName && <p className="mt-0.5 text-xs text-slate-500">{item.vendorName}</p>}
-                    <Summary summary={item.summary} />
-                  </div>
-                  {open ? <ChevronDown className="mt-1 h-5 w-5 text-slate-400" /> : <ChevronRight className="mt-1 h-5 w-5 text-slate-400" />}
-                </button>
-                {open && <DayDetails days={item.days} />}
-              </article>
-            );
-          })}
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => window.print()} disabled={report.isLoading || report.isError}>
+              <Printer className="mr-1.5 h-4 w-4" /> Print
+            </Button>
+            <Button variant="outline" size="sm" onClick={exportExcel} disabled={report.isLoading || report.isError || rows.length === 0}>
+              <FileSpreadsheet className="mr-1.5 h-4 w-4" /> Export Excel
+            </Button>
+          </div>
+        </header>
+
+        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm" aria-label="Report filters">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Filter label="From date">
+              <Input aria-label="From date" type="date" value={dateFrom} onChange={event => setDateFrom(event.target.value)} />
+            </Filter>
+            <Filter label="To date">
+              <Input aria-label="To date" type="date" value={dateTo} onChange={event => setDateTo(event.target.value)} />
+            </Filter>
+            <Filter label="Machine">
+              <select aria-label="Machine" value={equipmentId} onChange={event => setEquipmentId(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                <option value="all">All permitted machines</option>
+                {equipment.map(item => <option key={item.equipmentId} value={String(item.equipmentId)}>{item.name}{item.vendorName ? ` · ${item.vendorName}` : ""}</option>)}
+              </select>
+            </Filter>
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-3">
+            {invalidRange ? <p className="text-sm font-medium text-red-700" role="alert">From date must be on or before To date.</p> : <span />}
+            <Button variant="outline" size="sm" onClick={reset}><Download className="mr-1.5 h-3.5 w-3.5 rotate-180" />Reset</Button>
+          </div>
+        </section>
+
+        {report.isLoading ? <LoadingState /> : report.isError ? <ErrorState error={report.error} retry={() => report.refetch()} /> : !invalidRange && (
+          <>
+            <section className="grid grid-cols-2 gap-3 lg:grid-cols-6" aria-label="Status totals">
+              <TotalCard label="Working" value={totals.working} classes="border-emerald-200 text-emerald-800" />
+              <TotalCard label="Idle · No Work Available" value={totals.idleNoWork} classes="border-amber-200 text-amber-800" />
+              <TotalCard label="Idle · Operator Unavailable" value={totals.idleNoOperator} classes="border-orange-200 text-orange-800" />
+              <TotalCard label="Breakdown" value={totals.breakdown} classes="border-red-200 text-red-800" />
+              <TotalCard label="Logged (status not specified)" value={totals.loggedUnspecified} classes="border-violet-200 text-violet-800" />
+              <TotalCard label="Not Logged" value={totals.notLogged} classes="border-slate-300 text-slate-700" />
+            </section>
+
+            <section className="space-y-3" aria-live="polite">
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold text-slate-800">Machine status by day</h2>
+                <span className="text-sm text-slate-500">{rows.length} machine{rows.length === 1 ? "" : "s"}</span>
+              </div>
+              {rows.length === 0 ? <EmptyState /> : (
+                <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+                  <table className="w-full min-w-[1080px] text-sm">
+                    <thead className="bg-slate-100 text-xs text-slate-600">
+                      <tr>
+                        <th className="p-3 text-left">Machine</th>
+                        <th className="p-3 text-right">Working</th>
+                        <th className="p-3 text-right">Idle · No Work Available</th>
+                        <th className="p-3 text-right">Idle · Operator Unavailable</th>
+                        <th className="p-3 text-right">Breakdown</th>
+                        <th className="p-3 text-right">Logged (status not specified)</th>
+                        <th className="p-3 text-right">Not Logged</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map(item => {
+                        const key = String(item.equipmentId);
+                        const open = expanded.has(key);
+                        return (
+                          <FragmentRows
+                            key={key}
+                            item={item}
+                            open={open}
+                            onToggle={() => toggle(key)}
+                          />
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          </>
+        )}
+      </div>
+
+      {!report.isLoading && !report.isError && !invalidRange && (
+        <section className="equipment-status-print" aria-label="Printable equipment status report">
+          <h1>Equipment Status</h1>
+          <p>{dateFrom} to {dateTo}</p>
+          {rows.map(item => (
+            <article key={item.equipmentId}>
+              <h2>{item.name}{item.vendorName ? ` · ${item.vendorName}` : ""}</h2>
+              <table>
+                <thead><tr><th>Working</th><th>Idle · No Work Available</th><th>Idle · Operator Unavailable</th><th>Breakdown</th><th>Logged (status not specified)</th><th>Not Logged</th></tr></thead>
+                <tbody><tr><td>{item.summary.working}</td><td>{item.summary.idleNoWork}</td><td>{item.summary.idleNoOperator}</td><td>{item.summary.breakdown}</td><td>{item.summary.loggedUnspecified}</td><td>{item.summary.notLogged}</td></tr></tbody>
+              </table>
+              <table>
+                <thead><tr><th>Date</th><th>Status</th><th>Source</th><th>Reason / maintenance detail</th><th>Conflict</th></tr></thead>
+                <tbody>{item.days.map(day => (
+                  <tr key={day.date}>
+                    <td>{day.date}</td>
+                    <td>{STATUS_META[day.status]?.label ?? day.status}</td>
+                    <td>{sourceLabel(day.source)}</td>
+                    <td>{[day.reason, ...(day.maintenanceLogs || []).map(log => log.description).filter(Boolean)].filter(Boolean).join(" · ")}</td>
+                    <td>{day.conflict ? "Yes" : "No"}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </article>
+          ))}
         </section>
       )}
     </div>
+  );
+}
+
+function FragmentRows({ item, open, onToggle }: {
+  item: EquipmentStatusItem;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <>
+      <tr className="border-t hover:bg-slate-50">
+        <th scope="row" className="p-3 text-left">
+          <button type="button" aria-expanded={open} onClick={onToggle} className="flex items-center gap-2 text-left">
+            {open ? <ChevronDown className="h-4 w-4 text-slate-500" /> : <ChevronRight className="h-4 w-4 text-slate-500" />}
+            <Truck className="h-4 w-4 text-[#286475]" />
+            <span>
+              <strong>{item.name}</strong>
+              <span className="block text-xs font-normal text-slate-500">{item.ownership || "—"}{item.vendorName ? ` · ${item.vendorName}` : ""}</span>
+            </span>
+          </button>
+        </th>
+        <td className="p-3 text-right tabular-nums">{item.summary.working}</td>
+        <td className="p-3 text-right tabular-nums">{item.summary.idleNoWork}</td>
+        <td className="p-3 text-right tabular-nums">{item.summary.idleNoOperator}</td>
+        <td className="p-3 text-right tabular-nums">{item.summary.breakdown}</td>
+        <td className="p-3 text-right tabular-nums">{item.summary.loggedUnspecified}</td>
+        <td className="p-3 text-right tabular-nums">{item.summary.notLogged}</td>
+      </tr>
+      {open && <tr className="border-t bg-slate-50"><td colSpan={7} className="p-3"><DayDetails days={item.days} /></td></tr>}
+    </>
   );
 }
 
@@ -226,43 +333,33 @@ function TotalCard({ label, value, classes }: { label: string; value: number; cl
   return <div className={`rounded-lg border bg-white p-4 shadow-sm ${classes}`}><p className="text-xs font-semibold uppercase tracking-wide">{label}</p><p className="mt-1 text-3xl font-bold">{value}</p><p className="text-xs text-slate-500">machine-days</p></div>;
 }
 
-function Summary({ summary }: { summary: EquipmentStatusItem["summary"] }) {
-  const values = [
-    ["Working", summary.working, "text-emerald-700"],
-    ["Idle · No Work", summary.idleNoWork, "text-amber-700"],
-    ["Idle · No Operator", summary.idleNoOperator, "text-orange-700"],
-    ["Breakdown", summary.breakdown, "text-red-700"],
-    ["Logged · No Status", summary.loggedUnspecified, "text-violet-700"],
-    ["Not Logged", summary.notLogged, "text-slate-600"],
-  ] as const;
-  return <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3 lg:grid-cols-6">{values.map(([label, value, color]) => <div key={label} className="text-xs"><strong className={`mr-1 text-base ${color}`}>{value}</strong><span className="text-slate-500">{label}</span></div>)}</div>;
-}
-
 function DayDetails({ days }: { days: EquipmentStatusDay[] }) {
   return (
-    <div className="border-t border-slate-200 bg-slate-50 p-3 sm:p-4">
-      <div className="grid gap-2">
-        {days.map((day, index) => {
-          const meta = STATUS_META[day.status] ?? STATUS_META.not_logged;
-          return (
-            <div key={`${day.date}-${index}`} className="rounded-md border border-slate-200 bg-white p-3" data-testid={`equipment-day-${day.date}`}>
-              <div className="flex flex-wrap items-center gap-2">
-                <time className="min-w-24 text-sm font-semibold text-slate-800" dateTime={day.date}>{readableDate(day.date)}</time>
-                <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${meta.classes}`}>{meta.label}</span>
-                {day.legacyLogged && <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-800">Legacy log · status unspecified</span>}
-                {day.conflict && <span className="rounded-full border border-red-300 bg-red-100 px-2 py-0.5 text-xs font-bold text-red-800">Conflicting records</span>}
-              </div>
-              {day.reason && <p className="mt-2 text-sm text-slate-700"><span className="font-medium">Reason:</span> {day.reason}</p>}
-              {day.conflict && day.records && day.records.length > 0 && (
-                <div className="mt-2 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-900">
-                  <p className="mb-1 font-semibold">Source records ({day.records.length})</p>
-                  {day.records.map((record, recordIndex) => <p key={recordIndex} className="break-words">{describeRecord(record)}</p>)}
-                </div>
-              )}
+    <div className="grid gap-2">
+      {days.map(day => {
+        const meta = STATUS_META[day.status] ?? STATUS_META.not_logged;
+        return (
+          <div key={day.date} className="rounded-md border border-slate-200 bg-white p-3" data-testid={`equipment-day-${day.date}`}>
+            <div className="flex flex-wrap items-center gap-2">
+              <time className="min-w-24 text-sm font-semibold text-slate-800" dateTime={day.date}>{readableDate(day.date)}</time>
+              <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${meta.classes}`}>{meta.label}</span>
+              <span className="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-600">{sourceLabel(day.source)}</span>
+              {day.legacyLogged && <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-800">Legacy log · status unspecified</span>}
+              {day.conflict && <span className="rounded-full border border-red-300 bg-red-100 px-2 py-0.5 text-xs font-bold text-red-800">Conflicting records</span>}
             </div>
-          );
-        })}
-      </div>
+            {day.reason && <p className="mt-2 text-sm text-slate-700"><span className="font-medium">Reason:</span> {day.reason}</p>}
+            {(day.maintenanceLogs || []).map(log => log.description && (
+              <p key={log.id} className="mt-2 text-sm text-slate-700"><span className="font-medium">Maintenance log:</span> {log.description}</p>
+            ))}
+            {day.conflict && day.records && day.records.length > 0 && (
+              <div className="mt-2 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-900">
+                <p className="mb-1 font-semibold">Source records ({day.records.length})</p>
+                {day.records.map((record, recordIndex) => <p key={recordIndex} className="break-words">{describeRecord(record)}</p>)}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -285,5 +382,5 @@ function ErrorState({ error, retry }: { error: Error | null; retry: () => void }
 }
 
 function EmptyState() {
-  return <div className="rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center"><ClipboardX className="mx-auto h-8 w-8 text-slate-400" /><h2 className="mt-3 font-semibold text-slate-700">No equipment matches these filters</h2><p className="mt-1 text-sm text-slate-500">Adjust the date range or clear a fleet filter.</p></div>;
+  return <div className="rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center"><ClipboardX className="mx-auto h-8 w-8 text-slate-400" /><h2 className="mt-3 font-semibold text-slate-700">No machines match this filter</h2><p className="mt-1 text-sm text-slate-500">Choose another machine or date range.</p></div>;
 }
