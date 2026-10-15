@@ -203,6 +203,10 @@ describe("selective pre-tipper billing recovery", () => {
       hireGroups: [{
         equipmentId: 3, basis: "monthly", rate: 1,
         periodFrom: "2026-10-10", periodTo: "2026-10-15",
+        exceptionDecisions: [{
+          sourceType: "usage", sourceId: 31, exceptionType: "operator_unavailable",
+          date: "2026-10-11", decision: "none",
+        }],
       }],
     });
     const saved = await storage.getVendorBill(bill.id);

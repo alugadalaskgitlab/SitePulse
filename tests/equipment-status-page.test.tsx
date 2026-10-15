@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import "@testing-library/jest-dom";
 
 vi.mock("@tanstack/react-query", async (importOriginal) => {
@@ -50,25 +50,40 @@ describe("EquipmentStatus", () => {
     render(<EquipmentStatus />);
     expect(screen.getByText("Excavator EX-01")).toBeInTheDocument();
     expect(screen.getAllByText("Not Logged").length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Logged . No Status/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Idle").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Logged (status not specified)").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Idle · No Work Available").length).toBeGreaterThan(0);
   });
 
   it("expands dates, reasons, legacy unspecified status and conflict records", () => {
     render(<EquipmentStatus />);
     fireEvent.click(screen.getByRole("button", { name: /Excavator EX-01/i }));
-    expect(screen.getByText(/Front not released/)).toBeInTheDocument();
+    const day = screen.getByTestId("equipment-day-2025-05-02");
+    expect(within(day).getByText("Front not released")).toBeVisible();
     expect(screen.getByText("Legacy log · status unspecified")).toBeInTheDocument();
     expect(screen.getByText("Conflicting records")).toBeInTheDocument();
     expect(screen.getByText("Source records (2)")).toBeInTheDocument();
   });
 
-  it("filters by machine or vendor", () => {
+  it("filters by machine", () => {
+    const otherEquipment = {
+      equipmentId: 8,
+      name: "Loader LD-02",
+      ownership: "owned",
+      vendorName: "Other Plant Hire",
+      meterType: "hour_meter",
+      summary: { working: 0, idleNoWork: 0, idleNoOperator: 0, breakdown: 0, loggedUnspecified: 0, notLogged: 1 },
+      days: [{ date: "2025-05-01", status: "not_logged" as const }],
+    };
+    vi.mocked(useQuery).mockReturnValueOnce({
+      data: { ...report, equipment: [...report.equipment, otherEquipment] },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useQuery>);
     render(<EquipmentStatus />);
-    fireEvent.change(screen.getByLabelText("Machine or vendor"), { target: { value: "missing" } });
-    expect(screen.getByText("No equipment matches these filters")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Machine or vendor"), { target: { value: "Acme" } });
+    fireEvent.change(screen.getByLabelText("Machine"), { target: { value: "7" } });
     expect(screen.getByText("Excavator EX-01")).toBeInTheDocument();
+    expect(screen.queryByText("Loader LD-02")).not.toBeInTheDocument();
   });
 
   it("renders loading and error states", () => {
