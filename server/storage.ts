@@ -17562,7 +17562,7 @@ export class DatabaseStorage implements IStorage {
     return bill
       ? {
           ...bill,
-          hireStatements: bill.hireStatements.map((statement: any) => {
+          hireStatements: (Array.isArray(bill.hireStatements) ? bill.hireStatements : []).map((statement: any) => {
             const { equipment, ...savedStatement } = statement;
             return { ...savedStatement, equipmentType: equipment?.equipmentType || null };
           }),

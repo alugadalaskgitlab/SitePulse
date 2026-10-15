@@ -131,7 +131,7 @@ describe("whole-bill workbook and PDF", () => {
       dieselResponsibility: "vendor",
     };
     snapshot.calendars = [calendar];
-    const expected = equipmentHireActivitySheetRows(calendar.rows, calendar.dieselResponsibility);
+    const expected = equipmentHireActivitySheetRows(calendar.rows, calendar.dieselResponsibility, undefined, undefined, true);
     const book = buildWholeBillWorkbook(snapshot);
     expect(book.SheetNames).toEqual(["Summary", "Equipment"]);
     const values = readSheet(book, "Equipment");

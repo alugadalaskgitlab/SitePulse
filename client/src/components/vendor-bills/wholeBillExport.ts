@@ -44,7 +44,7 @@ export function buildWholeBillWorkbook(snapshot: WholeBillSnapshot): XLSX.WorkBo
     let calendarColumns: { wch: number }[] = [];
     if (section.category === "equipment" || (snapshot.billType !== "all" && populated.some(value => value.category === "equipment"))) {
       for (const calendar of snapshot.calendars) {
-        const activity = equipmentHireActivitySheetRows(calendar.rows, calendar.dieselResponsibility, calendar.consumptionNorm, calendar.meterType);
+        const activity = equipmentHireActivitySheetRows(calendar.rows, calendar.dieselResponsibility, calendar.consumptionNorm, calendar.meterType, true);
         calendarColumns = activity.columns;
         values.push([], ["DAILY ACTIVITY", calendar.equipmentName],
           ["Period", `${calendar.periodFrom} to ${calendar.periodTo}`],
@@ -142,7 +142,7 @@ export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
 
   // Daily activity is deliberately the first detail page, immediately after the signed abstract.
   for (const calendar of snapshot.calendars || []) {
-    const activity = equipmentHireActivitySheetRows(calendar.rows, calendar.dieselResponsibility, calendar.consumptionNorm, calendar.meterType);
+    const activity = equipmentHireActivitySheetRows(calendar.rows, calendar.dieselResponsibility, calendar.consumptionNorm, calendar.meterType, true);
     const activityHeaders = activity.headers.length ? activity.headers : ["Information"];
     const activityRows = activity.headers.length && activity.values.length
       ? activity.values

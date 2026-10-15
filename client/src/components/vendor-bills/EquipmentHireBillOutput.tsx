@@ -341,7 +341,7 @@ function dailyValues(
 /** Same columns, values and widths as exportEquipmentHireBill's hire sheet. */
 export function equipmentHireActivitySheetRows(
   rows: BillingDailyRow[], dieselResponsibility?: string | null, consumptionNorm?: number | null,
-  meterType?: string | null,
+  meterType?: string | null, compactEmptyColumns = false,
 ) {
   const headers = dailyHeaders(dieselResponsibility);
   const unit = calendarConsumptionUnit(rows, meterType);
@@ -353,12 +353,14 @@ export function equipmentHireActivitySheetRows(
     }
     return cells;
   });
-  const activeIndexes = headers.map((_, index) => index).filter(index =>
-    values.some(row => {
-      const value = row[index];
-      return value != null && String(value).trim() !== "" && !["—", "-"].includes(String(value).trim());
-    }),
-  );
+  const activeIndexes = compactEmptyColumns
+    ? headers.map((_, index) => index).filter(index =>
+        values.some(row => {
+          const value = row[index];
+          return value != null && String(value).trim() !== "" && !["—", "-"].includes(String(value).trim());
+        }),
+      )
+    : headers.map((_, index) => index);
   const visibleHeaders = activeIndexes.map(index => headers[index]);
   return {
     headers: visibleHeaders,

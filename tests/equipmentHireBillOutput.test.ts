@@ -98,7 +98,7 @@ describe("equipment hire bill output", () => {
     const hlcActivity = excelSheets.find(sheet => sheet.name === "Daily Activity")!.data;
     expect(hlcActivity[0]).toContain("Norm");
     expect(hlcActivity[0]).toContain("Difference");
-    expect(hlcActivity[0]).not.toContain("Trips");
+    expect(hlcActivity[0]).toContain("Trips");
     expect(hlcActivity[0]).toContain("Consumption Rate");
     expect(hlcActivity[0]).not.toContain("Actual Consumption | Master Norm");
     expect(hlcActivity[1]).toContain("3.5 L/Hr");
