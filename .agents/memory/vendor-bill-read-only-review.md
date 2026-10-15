@@ -15,6 +15,12 @@ Saved bill calendar review must use historical evidence, including for approved 
 
 **How to apply:** Show available saved information and explicit gaps, retain separate Bill and Calendar exports, and do not backfill or add schema without approval. Financial overviews follow the visible list filters; positive payable amounts and credits remain separate.
 
+For saved statements, preserve the category and reason actually stored. A manually entered `otherDebit` from before VB-HIRE-07 remains an Other debit even if its reason mentions driver unavailability; never convert it into an operational exception or infer dates/decisions absent from the snapshot.
+
+**Why:** The user explicitly confirmed that historical bills must show only the evidence saved at the time and preserve their figures.
+
+**How to apply:** Render the saved amount under its persisted adjustment kind, display its recorded reason, and label missing date/decision evidence as not recorded.
+
 The approved bill presentation uses one expandable calendar and billing row per calendar month, per equipment, with existing SitePulse navigation and styling. Mockup amounts are illustrative only. Use “Idle Days (Work Not Available)” and “Breakdown / Opr. Unavailable Days”.
 
 **Why:** The user explicitly approved the compact single-month and multi-month references and prohibited further redesign or changes to commercial calculations.
