@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Check, Circle, Info, Fuel, Settings, Copy, X, Download, Search, Edit, PlusCircle, BarChart2, Calculator } from "lucide-react";
 import { queryClient, apiRequest, isForbiddenError, NO_PERMISSION_DESCRIPTION } from "@/lib/queryClient";
@@ -506,6 +506,7 @@ export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; 
 }
 
 export default function VendorBills() {
+  const [, setLocation] = useLocation();
   const [billScope, setBillScope] = useState<BillScope>("unpaid");
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
@@ -542,6 +543,10 @@ export default function VendorBills() {
 
   const [view, setView] = useState<ViewMode>("list");
   const [selectedBillId, setSelectedBillId] = useState<number | null>(null);
+  const requestedReturnTo = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("returnTo") : null;
+  const payablesReturnTo = requestedReturnTo === "/reports/vendor-payables" || requestedReturnTo?.startsWith("/reports/vendor-payables/")
+    ? requestedReturnTo
+    : null;
   useEffect(() => {
     const id = Number(new URLSearchParams(window.location.search).get("billId"));
     if (Number.isSafeInteger(id) && id > 0) { setSelectedBillId(id); setView("detail"); }
@@ -986,12 +991,17 @@ export default function VendorBills() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) => apiRequest("PUT", `/api/vendor-bills/${id}`, data),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills"] });
       toast({ title: "Vendor bill updated successfully" });
       resetForm();
       setEditingBillId(null);
-      setView("list");
+      if (payablesReturnTo) {
+        setSelectedBillId(variables.id);
+        setView("detail");
+      } else {
+        setView("list");
+      }
     },
     onError: (err: Error) => {
       toast({ title: "Failed to update bill", description: err.message, variant: "destructive" });
@@ -4554,7 +4564,10 @@ export default function VendorBills() {
       <div className="max-w-5xl mx-auto space-y-4 p-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => { setSelectedBillId(null); setView("list"); }} data-testid="button-back-detail">
+            <Button variant="ghost" size="icon" onClick={() => {
+              if (payablesReturnTo) setLocation(payablesReturnTo);
+              else { setSelectedBillId(null); setView("list"); }
+            }} data-testid="button-back-detail">
               <ChevronLeft className="w-5 h-5" />
             </Button>
             <h1 className="text-xl font-bold" data-testid="text-detail-title">BILL DETAIL</h1>

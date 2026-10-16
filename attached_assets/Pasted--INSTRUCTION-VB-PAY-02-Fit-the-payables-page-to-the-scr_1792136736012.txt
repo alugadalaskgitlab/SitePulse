@@ -1,0 +1,176 @@
+# INSTRUCTION — VB-PAY-02
+
+**Fit the payables page to the screen, return the user to where they came from, and
+move unlinked bills onto their own tab without hiding their total.**
+
+Baseline: the published commit `0df1a3d`. State it in your report.
+
+**This batch is presentation and navigation only.** No calculation changes, no
+stored value changes, no permission or site-scope changes. Every figure on the
+payables page, the vendor ledger and every bill must be identical before and
+after. If any item appears to need a calculation change, stop and ask once rather
+than changing it.
+
+---
+
+## Standing rules
+
+- No production data changes, migrations, automatic repairs or publishing without
+  our review.
+- No sequence resets. Do not call or re-expose `resetAllSequences`.
+- Preserve all existing users, credentials, site access, permissions and
+  administrator privileges.
+- **This batch remains read-only.** The payables page creates, updates and deletes
+  nothing.
+- Frozen snapshots stay frozen and are never re-derived on read.
+- Every figure must continue to come from `billReviewAmounts`,
+  `summarizeBillReview`, `getBillFinancialTotals` and `filterFinancialBills`.
+- Report against the benchmark in force at the baseline commit, naming the flags
+  set.
+
+---
+
+## Part A — The summary table must fit the page
+
+**The fault.** In `client/src/pages/VendorPayables.tsx` the linked-vendor summary
+table is set to `min-w-[1190px]` inside an `overflow-x-auto` wrapper. On a normal
+laptop window the user must scroll right to reach **Total liability** — the single
+most important column on the page, and the one the page was built for. The vendor
+ledger table has the same fault at `min-w-[1160px]`.
+
+**Required.**
+
+1. Both tables must fit the available width at a 1280px window with **no
+   horizontal scrolling**, without shrinking the type below readable size.
+2. The **Vendor** column stays put and stays readable when the table is narrow.
+   Long names wrap or truncate with the full name on hover — they do not force the
+   table wider.
+3. Shorten the column headers where that buys width — "Payable now", "Coming up",
+   "Total liability" keep their words; "Oldest unpaid" may wrap to two lines.
+4. **Total liability must be visible without scrolling**, and must remain visually
+   the strongest column.
+5. Where the window is genuinely too narrow (a phone), horizontal scrolling is
+   acceptable, but the vendor name must remain visible while scrolling.
+
+**Constraints.**
+
+- Do not drop a column to make it fit. Every column stays.
+- Do not change any number, any rounding or any formatting of a money figure.
+- The Credit column already appears only where some vendor has a credit. Keep that
+  behaviour.
+
+---
+
+## Part B — Going back returns to payables
+
+**The fault.** Clicking a bill from the payables page or the vendor ledger opens
+the Bill Detail correctly, but after viewing, editing or changing a status the back
+navigation lands the user in the Vendor Bills list instead of where they came from.
+They then have to find payables again from the Reports Hub.
+
+The app already has this pattern: Reports Hub tiles pass `?returnTo=/reports/hub`
+and `client/src/pages/VendorBills.tsx` already builds a `returnTo` for material
+trips.
+
+**Required.**
+
+1. Every link from the payables page and the vendor ledger to a bill carries a
+   return marker naming the exact page it came from — the payables summary, a
+   vendor's ledger, or an unlinked bill's ledger — **including the date filter in
+   force**, so the user returns to the same view they left.
+2. The back control on Bill Detail honours that marker and returns there, **after
+   viewing, after an edit and after a status change alike**.
+3. Where no marker is present, behaviour is exactly as today. Nothing changes for
+   a bill reached from anywhere else.
+
+**Constraints.**
+
+- Reuse the existing `returnTo` convention. Do not invent a second mechanism.
+- Do not change what a status change does, who may make one, or the one-way
+  transition rules.
+
+---
+
+## Part C — Unlinked bills on their own tab, with their total shown
+
+**Why.** Many unlinked bills belong to one-time or short-term vendors who will
+never return. Creating a vendor master for each would clutter both SitePulse and
+Tally. They should stop crowding the payables page — but they must not disappear,
+because an unlinked bill counts towards nobody's liability today, so an unpaid one
+is invisible.
+
+**Required.**
+
+1. Two tabs on the payables page: **Linked vendors** (the existing summary, the
+   default) and **Unlinked bills**.
+2. The Unlinked bills tab carries its own totals, computed from the same functions:
+   bill count, billed, paid and balance across all unlinked bills, grouped by typed
+   name as now, each group still flagged unlinked.
+3. **On the Linked vendors tab, the unlinked position stays in view** as one short
+   line naming the count and the total balance, with a link to the tab — for
+   example *"45 unlinked bills · ₹2,34,000 balance — not included in the totals
+   above."* The user must never be able to read the payables page and believe
+   nothing is excluded.
+4. Both tabs export to Excel. Keep the existing two-sheet workbook; the unlinked
+   sheet must carry the same totals as the tab.
+5. Each unlinked group names the plain step to link it: Masters → Vendors → Link
+   Vendors → Pending Links. **A link is never offered or made from this page.**
+
+**Constraints.**
+
+- **Do not change any exclusion rule.** Unlinked bills stay out of linked-vendor
+  totals, exactly as now. Only their placement and their own total are being added.
+- Do not create, suggest or auto-create any vendor master record.
+- Do not write to any bill.
+
+---
+
+## What must not change
+
+- **Every figure on every bill and on both payables views.** State before and
+  after, as numbers:
+  - Mahipal Kalpaguri — Payable now ₹11,847.40, Coming up ₹25,161.29, Total
+    liability ₹37,008.69.
+  - Gangaram Narsimhulu — Billed ₹9,41,875.40, Coming up ₹3,89,888.41, and Payable
+    now ₹0.00. **₹0.00 is correct** — he has no bill at Approved status. Do not
+    "fix" it by widening what counts as payable now.
+  - `HLC/VB/2026/0054` — net ₹56,840.00, paid ₹50,000.00, balance ₹6,840.00.
+- The arithmetic in `billReviewAmounts`, `summarizeBillReview`,
+  `billPaymentPosition`, `getBillFinancialTotals` and `filterFinancialBills`.
+- The rule that only Approved bills count as payable now.
+- The payment-confidence marking — "Estimate · N payment unknown" and the banner
+  counting unknown payment records. These stay exactly as they are.
+- Every permission check and site-scope check, including the View Vendor
+  Financials requirement on the page and on the Reports Hub tile.
+- The read-only property of the page.
+
+---
+
+## Verification required
+
+Report in plain terms, no test-name inventories.
+
+1. **Part A** — the linked-vendor summary at a 1280px window, before and after,
+   showing Total liability visible with no horizontal scrolling. Same for the
+   vendor ledger.
+2. **Part A** — a long vendor name (GANGARAM NARSIMHULU) rendered without forcing
+   the table wider, and the figures on that row unchanged.
+3. **Part B** — a bill opened from Mahipal's ledger, its status left untouched,
+   returning to Mahipal's ledger with the same date filter. Then the same after an
+   edit, and after a status change.
+4. **Part B** — a bill opened from the Vendor Bills list behaving exactly as before.
+5. **Part C** — the two tabs, the unlinked totals, and the one-line notice on the
+   Linked vendors tab naming the excluded count and balance.
+6. **Part C** — confirmation that no exclusion rule changed, no vendor master was
+   created or suggested, and no bill was written.
+7. The before/after figures under **What must not change**, as numbers.
+8. The full suite run to completion against the baseline benchmark, with the counts
+   stated and every failure named individually. **Do not stop the run early.** For
+   any failure, state whether it also fails on the baseline commit. The baseline
+   carries one known failure in `tests/hireBillingLifecycle07b.test.ts`; it is a
+   static text assertion and is not in scope for this batch.
+
+Stop and ask once if any part cannot be done without breaking a rule above. Do not
+work around a rule and report it afterwards.
+
+Nothing is to be published. We will review and publish.
