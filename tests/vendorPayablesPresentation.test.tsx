@@ -53,37 +53,116 @@ const linkedBill = (bill: Record<string, unknown>) => ({
   ...bill,
 });
 
+type LinkedBillFixture = {
+  id: number;
+  billNo: string;
+  vendorId: number;
+  vendorName: string;
+  net: number;
+  status: string;
+  paid?: number | null;
+  billDate?: string;
+  periodFrom?: string;
+  periodTo?: string;
+};
+
+const linkedFixture = ({
+  id, billNo, vendorId, vendorName, net, status, paid = null,
+  billDate = "2026-03-09", periodFrom = "2026-02-04", periodTo = "2026-02-05",
+}: LinkedBillFixture) => linkedBill({
+  id, billNo, vendorId, vendorName, linkedVendorName: vendorName, status,
+  billDate, periodFrom, periodTo, totalAmount: net, netPayableAmount: net,
+  amountPaid: paid, items: [{ category: "equipment", amount: net }],
+});
+
+const gangaramBills = [
+  ...Array.from({ length: 10 }, (_, index) => linkedFixture({
+    id: 81 + index,
+    billNo: `HLC/VB/2026/${String(index + 1).padStart(4, "0")}`,
+    vendorId: 4,
+    vendorName: "GANGARAM NARSIMHULU",
+    net: 50000,
+    status: "paid",
+    billDate: `2026-03-${String(9 + index).padStart(2, "0")}`,
+  })),
+  linkedFixture({
+    id: 91, billNo: "HLC/VB/2026/0011", vendorId: 4, vendorName: "GANGARAM NARSIMHULU",
+    net: 51986.99, status: "paid", billDate: "2026-03-19",
+  }),
+  linkedFixture({
+    id: 92, billNo: "HLC/VB/2026/0012", vendorId: 4, vendorName: "GANGARAM NARSIMHULU",
+    net: 389888.41, status: "draft", billDate: "2026-03-20",
+  }),
+];
+
+const sangannaBills = [
+  linkedFixture({
+    id: 201, billNo: "HLC/VB/S-01", vendorId: 5, vendorName: "G SANGANNA",
+    net: 60000, status: "paid",
+  }),
+  linkedFixture({
+    id: 202, billNo: "HLC/VB/S-02", vendorId: 5, vendorName: "G SANGANNA",
+    net: 63420, status: "paid",
+  }),
+  linkedFixture({
+    id: 203, billNo: "HLC/VB/S-03", vendorId: 5, vendorName: "G SANGANNA",
+    net: 110544, status: "draft",
+  }),
+];
+
+const mahprovisional = [
+  { net: 13535, paid: 13535 },
+  { net: 13535, paid: 13535 },
+  { net: 1000, paid: 0 },
+  ...Array.from({ length: 19 }, () => ({ net: 14184.6, paid: null })),
+  { net: 14184.5, paid: null },
+];
+const unlinkedNames = [
+  "BAKKANNA", "BALARAJU", "BALARAJU SANGAPUR",
+  ...Array.from({ length: 13 }, (_, index) => `UNLINKED PARTY ${String(index + 4).padStart(2, "0")}`),
+];
+const unlinkedBills = mahprovisional.map((item, index) => linkedBill({
+  id: 99 + index,
+  billNo: `HLC/VB/2026/${String(99 + index).padStart(4, "0")}`,
+  billDate: `2026-04-${String(index + 1).padStart(2, "0")}`,
+  vendorId: null,
+  vendorName: unlinkedNames[index % unlinkedNames.length],
+  status: item.paid == null ? "draft" : "paid",
+  totalAmount: item.net,
+  netPayableAmount: item.net,
+  amountPaid: item.paid,
+  items: [{ category: "material", amount: item.net }],
+}));
+
 const bills = [
-  linkedBill({
+  ...gangaramBills,
+  ...sangannaBills,
+  linkedFixture({
+    id: 301, billNo: "HLC/VB/O-01", vendorId: 6, vendorName: "ORSU VENKANNA",
+    net: 107600, status: "draft", paid: 0,
+  }),
+  linkedFixture({
+    id: 401, billNo: "HLC/VB/N-01", vendorId: 7, vendorName: "NAFEEZ",
+    net: 75768.17, status: "approved", paid: 50000,
+  }),
+  linkedFixture({
+    id: 402, billNo: "HLC/VB/N-02", vendorId: 7, vendorName: "NAFEEZ",
+    net: 0, status: "paid", paid: 0,
+  }),
+  linkedFixture({
     id: 54, billNo: "HLC/VB/2026/0054", vendorId: 3, vendorName: "MAHIPAL KALPAGURI",
-    linkedVendorName: "MAHIPAL KALPAGURI", status: "approved", totalAmount: 58000,
-    netPayableAmount: 56840, amountPaid: 50000, items: [{ category: "equipment", amount: 58000 }],
+    net: 87008.69, status: "approved", paid: 75155, billDate: "2026-10-09",
+    periodFrom: "2026-10-01", periodTo: "2026-10-31",
   }),
-  linkedBill({
+  linkedFixture({
     id: 55, billNo: "HLC/VB/2026/0055", vendorId: 3, vendorName: "MAHIPAL KALPAGURI",
-    linkedVendorName: "MAHIPAL KALPAGURI", status: "approved", totalAmount: 56130,
-    netPayableAmount: 5007.4, amountPaid: 0, items: [{ category: "equipment", amount: 56130 }],
+    net: 0, status: "paid", paid: 0,
   }),
-  linkedBill({
+  linkedFixture({
     id: 80, billNo: "HLC/VB/2026/0062", vendorId: 3, vendorName: "MAHIPAL KALPAGURI",
-    linkedVendorName: "MAHIPAL KALPAGURI", status: "draft", totalAmount: 25161.29,
-    netPayableAmount: 25161.29, amountPaid: 0, items: [{ category: "equipment", amount: 25161.29 }],
+    net: 0, status: "paid", paid: 0,
   }),
-  linkedBill({
-    id: 81, billNo: "HLC/VB/G-01", vendorId: 4, vendorName: "GANGARAM NARSIMHULU",
-    linkedVendorName: "GANGARAM NARSIMHULU", status: "paid", totalAmount: 551986.99,
-    netPayableAmount: 551986.99, amountPaid: 551986.99,
-  }),
-  linkedBill({
-    id: 82, billNo: "HLC/VB/G-02", vendorId: 4, vendorName: "GANGARAM NARSIMHULU",
-    linkedVendorName: "GANGARAM NARSIMHULU", status: "draft", totalAmount: 389888.41,
-    netPayableAmount: 389888.41, amountPaid: 0,
-  }),
-  linkedBill({
-    id: 99, billNo: "HLC/VB/2026/0099", vendorId: null, vendorName: "RATNAM",
-    status: "draft", totalAmount: 1200, netPayableAmount: 1200, amountPaid: 200,
-    items: [{ category: "material", amount: 1200 }],
-  }),
+  ...unlinkedBills,
 ];
 
 let queryClient: QueryClient;
@@ -94,7 +173,18 @@ function setRoute(path: string) {
 }
 
 function mount() {
-  render(<QueryClientProvider client={queryClient}><VendorPayables /></QueryClientProvider>);
+  return render(<QueryClientProvider client={queryClient}><VendorPayables /></QueryClientProvider>);
+}
+
+function expectNoTruncatedCurrency(container: HTMLElement) {
+  expect(container.textContent).not.toMatch(/₹[^\n₹]*(?:…|\.{3})/);
+  const currencyNodes = Array.from(container.querySelectorAll<HTMLElement>("*"))
+    .filter((node) => node.children.length === 0 && /^₹/.test(node.textContent?.trim() ?? ""));
+  expect(currencyNodes.length).toBeGreaterThan(0);
+  for (const node of currencyNodes) {
+    expect(node.textContent).toMatch(/^₹[\d,]+\.\d{2}\*?$/);
+    expect(node.className).not.toMatch(/\btruncate\b/);
+  }
 }
 
 beforeEach(() => {
@@ -111,37 +201,88 @@ afterEach(() => {
 });
 
 describe("VB-PAY-02 payables presentation", () => {
-  it("keeps linked amounts unchanged and constrains the vendor column at desktop widths", async () => {
-    mount();
+  it("keeps the readable linked-vendor amounts unchanged and gives full amounts room", async () => {
+    const { container } = mount();
     const row = await screen.findByTitle("GANGARAM NARSIMHULU");
-    const gangaram = row.closest("tr")!;
-    expect(within(gangaram).getByText("₹9,41,875.40")).toBeTruthy();
-    expect(within(gangaram).getAllByText("₹3,89,888.41")).toHaveLength(2);
-    expect(within(gangaram).getByText("₹0.00")).toBeTruthy();
-    expect(row.className).toContain("truncate");
-    expect(row.getAttribute("title")).toBe("GANGARAM NARSIMHULU");
+    const expectedRows: [string, string[]][] = [
+      ["GANGARAM NARSIMHULU", ["₹9,41,875.40", "₹0.00", "₹0.00", "₹3,89,888.41", "₹3,89,888.41"]],
+      ["G SANGANNA", ["₹2,33,964.00", "₹0.00", "₹0.00", "₹1,10,544.00", "₹1,10,544.00"]],
+      ["ORSU VENKANNA", ["₹1,07,600.00", "₹0.00", "₹0.00", "₹1,07,600.00", "₹1,07,600.00"]],
+      ["NAFEEZ", ["₹75,768.17", "₹50,000.00", "₹25,768.17", "₹0.00", "₹25,768.17"]],
+      ["MAHIPAL KALPAGURI", ["₹87,008.69", "₹75,155.00", "₹11,853.69", "₹0.00", "₹11,853.69"]],
+    ];
+    for (const [name, expected] of expectedRows) {
+      const vendorLink = name === "GANGARAM NARSIMHULU" ? row : screen.getByTitle(name);
+      const cells = Array.from(vendorLink.closest("tr")!.querySelectorAll("td")).map(cell => cell.textContent?.trim() ?? "");
+      expect(cells.slice(2, 7)).toEqual(expected);
+      expect(vendorLink.getAttribute("title")).toBe(name);
+    }
 
     const table = screen.getByRole("table");
     expect(table.className).toContain("table-fixed");
-    expect(table.className).toContain("lg:min-w-0");
+    expect(table.className).toContain("min-w-[1120px]");
+    expect(table.className).not.toContain("lg:min-w-0");
     expect(table.querySelector("thead th")?.className).toContain("sticky");
-    expect(screen.getAllByText("₹37,008.69").length).toBeGreaterThan(0);
+    expect(table.querySelector("thead th:last-child")?.className).toContain("whitespace-nowrap");
+
+    const metricsGrid = screen.getByText("Linked vendors").parentElement!.parentElement!;
+    expect(metricsGrid.className).toContain("xl:grid-cols-4");
+    for (const label of ["Payable now", "Coming up", "Total liability"]) {
+      const labelNode = within(metricsGrid).getByText(label);
+      const metric = labelNode.parentElement!;
+      const value = metric.querySelector("p:nth-of-type(2)")!;
+      const detail = metric.querySelector("p:nth-of-type(3)")!;
+      expect(value.textContent).toMatch(/^₹[\d,]+\.\d{2}$/);
+      expect(value.className).toContain("whitespace-nowrap");
+      expect(value.className).not.toContain("truncate");
+      expect(detail.className).not.toContain("truncate");
+    }
+    expect(within(metricsGrid).getByText("Approved bills")).toBeTruthy();
+    expect(within(metricsGrid).getByText("Provisional bills")).toBeTruthy();
+    expect(within(metricsGrid).getByText("Excludes unlinked")).toBeTruthy();
+    expectNoTruncatedCurrency(container);
   });
 
   it("shows unlinked totals on their tab and keeps the excluded position visible on the linked tab", async () => {
-    mount();
-    const notice = await screen.findByText(/1 unlinked bill/);
-    expect(notice.parentElement?.textContent).toContain("₹1,000.00 balance");
+    const { container } = mount();
+    const notice = await screen.findByText(/23 unlinked bills/);
+    expect(notice.parentElement?.textContent).toContain("₹2,84,691.90 balance");
     expect(notice.parentElement?.textContent).toContain("not included in the totals above");
     expect(notice.parentElement?.querySelector("a")?.getAttribute("href")).toContain("tab=unlinked");
 
     fireEvent.click(screen.getByRole("tab", { name: "Unlinked bills" }));
     await screen.findByText(/Masters → Vendors → Link Vendors → Pending Links/);
-    expect(screen.getAllByText("₹1,200.00").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("₹200.00").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("₹1,000.00").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("₹3,11,761.90").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("₹27,070.00").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("₹2,84,691.90").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Unlinked").length).toBeGreaterThan(0);
     expect(screen.queryByText(/Link this bill/)).toBeNull();
+    expectNoTruncatedCurrency(container);
+  });
+
+  it("keeps bill number, bill period, status tags, and return links separate in both ledgers", async () => {
+    for (const route of [
+      { path: "/reports/vendor-payables/vendor/4?dateFrom=2026-01-01&dateTo=2026-12-31", billNo: "HLC/VB/2026/0001" },
+      { path: "/reports/vendor-payables/unlinked/99?dateFrom=2026-01-01&dateTo=2026-12-31", billNo: "HLC/VB/2026/0099" },
+    ]) {
+      cleanup();
+      queryClient.clear();
+      queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      setRoute(route.path);
+      const { container } = mount();
+      const billLink = await screen.findByRole("link", { name: route.billNo });
+      const table = screen.getByRole("table");
+      expect(table.className).toContain("min-w-[1240px]");
+      expect(table.className).not.toContain("lg:min-w-0");
+      expect(table.querySelector("colgroup col:nth-child(2)")?.getAttribute("style")).toContain("20%");
+      const cells = Array.from(billLink.closest("tr")!.querySelectorAll("td"));
+      expect(cells[1].className).toContain("whitespace-nowrap");
+      expect(cells[2].className).toContain("whitespace-normal");
+      expect(cells[2].textContent).toContain("04 Feb 2026");
+      expect(cells[2].textContent).toContain("05 Feb 2026");
+      expect(cells[3].querySelector("div")?.className).toContain("flex-col");
+      expectNoTruncatedCurrency(container);
+    }
   });
 
   it("exports both sheets and includes the same unlinked count and totals as the tab", async () => {
@@ -151,13 +292,14 @@ describe("VB-PAY-02 payables presentation", () => {
 
     await waitFor(() => expect(state.sheets).toHaveLength(2));
     expect(state.sheets.map(sheet => sheet.name)).toEqual(["Linked summary", "Unlinked bills"]);
-    expect(state.sheets[1].rows[0]).toMatchObject({
+    const exported = state.sheets[1].rows[0];
+    expect(exported).toMatchObject({
       "Typed vendor name": "TOTAL — UNLINKED BILLS",
-      "Bill count": 1,
-      Net: 1200,
-      Paid: 200,
-      Balance: 1000,
+      "Bill count": 23,
     });
+    expect(Number(exported.Net)).toBeCloseTo(311761.9, 2);
+    expect(Number(exported.Paid)).toBeCloseTo(27070, 2);
+    expect(Number(exported.Balance)).toBeCloseTo(284691.9, 2);
   });
 
   it("adds the exact date-filtered originating ledger as the bill return marker", async () => {
