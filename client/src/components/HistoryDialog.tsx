@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { format, isValid, parseISO } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, History } from "lucide-react";
@@ -36,6 +37,7 @@ const ACTION_LABEL: Record<string, string> = {
   reject: "Rejected",
   reopen: "Reopened",
   status_reset: "Status reset",
+  bill_date_changed: "Bill date changed",
 };
 
 const ACTION_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -48,6 +50,7 @@ const ACTION_VARIANT: Record<string, "default" | "secondary" | "destructive" | "
   reject: "destructive",
   reopen: "outline",
   status_reset: "outline",
+  bill_date_changed: "outline",
 };
 
 function valueFromAudit(values: unknown, field: string): unknown {
@@ -59,6 +62,12 @@ function displayAuditValue(value: unknown): string {
   if (value == null || value === "") return "Blank";
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
   return JSON.stringify(value);
+}
+
+function displayBillDate(value: unknown): string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return displayAuditValue(value);
+  const parsed = parseISO(value);
+  return isValid(parsed) ? format(parsed, "dd-MMM-yyyy") : displayAuditValue(value);
 }
 
 export default function HistoryDialog({ open, onOpenChange, module, transactionId, recordLabel }: HistoryDialogProps) {
@@ -105,6 +114,8 @@ export default function HistoryDialog({ open, onOpenChange, module, transactionI
             const hasMaterialSourceChange = oldMaterialSource !== undefined || newMaterialSource !== undefined;
             const oldStatus = valueFromAudit(entry.oldValues, "status");
             const newStatus = valueFromAudit(entry.newValues, "status");
+            const oldBillDate = valueFromAudit(entry.oldValues, "billDate");
+            const newBillDate = valueFromAudit(entry.newValues, "billDate");
             return (
               <div
                 key={entry.id}
@@ -143,6 +154,13 @@ export default function HistoryDialog({ open, onOpenChange, module, transactionI
                     Status: <span className="font-medium text-foreground">{displayAuditValue(oldStatus).toUpperCase()}</span>
                     {" → "}
                     <span className="font-medium text-foreground">{displayAuditValue(newStatus).toUpperCase()}</span>
+                  </p>
+                )}
+                {entry.action === "bill_date_changed" && oldBillDate !== undefined && newBillDate !== undefined && (
+                  <p className="text-muted-foreground" data-testid={`audit-bill-date-change-${entry.id}`}>
+                    Bill date: <span className="font-medium text-foreground">{displayBillDate(oldBillDate)}</span>
+                    {" → "}
+                    <span className="font-medium text-foreground">{displayBillDate(newBillDate)}</span>
                   </p>
                 )}
                 {entry.stockImpact && (

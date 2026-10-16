@@ -1574,6 +1574,7 @@ export interface IStorage {
   // Vendor Bills
   getVendorBills(filters?: { dateFrom?: string; dateTo?: string; vendor?: string; status?: string; includeVoided?: boolean }): Promise<VendorBillWithItems[]>;
   getVendorBill(id: number): Promise<VendorBillWithItems | undefined>;
+  updateVendorBillDate(id: number, billDate: string, expectedStatus: string): Promise<{ id: number; billDate: string } | undefined>;
   createVendorBill(data: CreateVendorBillRequest): Promise<VendorBillWithItems>;
   updateVendorBill(id: number, data: CreateVendorBillRequest): Promise<VendorBillWithItems | undefined>;
   updateVendorBillStatus(id: number, status: string, actor: string): Promise<VendorBillWithItems | undefined>;
@@ -17587,6 +17588,18 @@ export class DatabaseStorage implements IStorage {
           additionalAdjustments: normalizeVendorBillAdditionalAdjustments((bill as any).additionalAdjustments),
         } as VendorBillWithItems
       : undefined;
+  }
+
+  async updateVendorBillDate(id: number, billDate: string, expectedStatus: string): Promise<{ id: number; billDate: string } | undefined> {
+    const [updated] = await db.update(vendorBills)
+      .set({ billDate })
+      .where(and(
+        eq(vendorBills.id, id),
+        eq(vendorBills.status, expectedStatus),
+        or(eq(vendorBills.isCancelled, false), isNull(vendorBills.isCancelled)),
+      ))
+      .returning({ id: vendorBills.id, billDate: vendorBills.billDate });
+    return updated;
   }
 
   private async generateVendorBillNo(): Promise<string> {

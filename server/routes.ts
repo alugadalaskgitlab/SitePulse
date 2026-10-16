@@ -12246,6 +12246,56 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/vendor-bills/:id/bill-date", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const dateSchema = z.string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/, "Bill date must use YYYY-MM-DD.")
+        .refine(value => {
+          const parsed = new Date(`${value}T00:00:00.000Z`);
+          return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+        }, "Bill date must be a real date in YYYY-MM-DD.");
+      const requestSchema = z.object({
+        billDate: dateSchema,
+        reason: z.string().trim().max(500).nullable().optional(),
+      });
+      const { billDate, reason } = requestSchema.parse(req.body ?? {});
+      const existing = await storage.getVendorBill(id);
+      if (!existing) return res.status(404).json({ message: "Vendor bill not found" });
+      const existingVisible = await scopeVendorBillsToSiteAccess(req, [existing]);
+      if (existingVisible.length === 0) {
+        return res.status(403).json({ message: "Access denied for this bill's existing site scope" });
+      }
+      if (existing.isCancelled === true) {
+        return res.status(409).json({ message: "A voided vendor bill's date cannot be changed" });
+      }
+      if (existing.status === "draft") {
+        if (!assertEditEither(req, res, "vendor_bills", "vendor_bills_raise")) return;
+      } else if (!assertAdmin(req, res)) {
+        return;
+      }
+      const bill = await storage.updateVendorBillDate(id, billDate, existing.status);
+      if (!bill) {
+        return res.status(409).json({ message: "The bill changed or was voided before its date could be saved. Reload and try again." });
+      }
+      await recordChange(req, storage, {
+        module: "vendor_bills",
+        transactionId: id,
+        action: "bill_date_changed",
+        before: { billDate: existing.billDate },
+        after: { billDate: bill.billDate },
+        reason,
+      });
+      res.json(bill);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Error changing vendor bill date:", err);
+      res.status(500).json({ message: "Failed to change vendor bill date" });
+    }
+  });
+
   app.post("/api/vendor-bills", async (req, res) => {
     try {
       if (!assertCreateEither(req, res, "vendor_bills_raise", "vendor_bills")) return;

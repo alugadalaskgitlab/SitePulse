@@ -80,6 +80,12 @@ beforeEach(() => {
     if (url.includes("/api/vendor-bills/financial-review")) {
       return new Response(JSON.stringify([historicalBill, itemizedEquipmentBill]));
     }
+    if (url.endsWith("/bill-date") && init?.method === "PATCH") {
+      const body = init.body ? JSON.parse(String(init.body)) : {};
+      vendorBillWrites.push({ method: init.method, body });
+      billDetailOverrideForTest = { ...billDetailOverrideForTest, billDate: body.billDate };
+      return new Response(JSON.stringify({ id: billDetailOverrideForTest.id, billDate: body.billDate }), { status: 200 });
+    }
     if (url.endsWith("/api/vendor-bills")) {
       if (init?.method === "POST" || init?.method === "PUT") {
         vendorBillWrites.push({ method: init.method, body: init.body ? JSON.parse(String(init.body)) : null });
@@ -141,8 +147,15 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
     fireEvent.click(await screen.findByTestId("card-bill-81"));
     expect((await screen.findByTestId("text-bill-no")).textContent).toBe("HLC/VB/2026/EDIT-HIRE");
-    expect(screen.getByTestId("button-edit-bill")).toBeTruthy();
+    expect(screen.queryByTestId("button-edit-bill")).toBeNull();
     expect(screen.queryByTestId("button-void-bill")).toBeNull();
+
+    cleanup();
+    queryClient.clear();
+    billDetailOverrideForTest = historicalBill;
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("card-bill-81"));
+    expect(await screen.findByTestId("button-edit-bill")).toBeTruthy();
 
     cleanup();
     queryClient.clear();
@@ -174,6 +187,73 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
     fireEvent.click(await screen.findByTestId("card-bill-82"));
     expect(await screen.findByTestId("button-void-bill")).toBeTruthy();
+  });
+
+  it("offers the separate date action for an approved bill and sends only the new date plus an optional reason", async () => {
+    billDetailOverrideForTest = {
+      ...historicalBill,
+      billNo: "HLC/VB/2026/0055",
+      status: "approved",
+      billDate: "2026-10-09",
+      hireStatements: historicalBill.hireStatements.map(statement => ({ ...statement, status: "approved" })),
+    };
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("card-bill-81"));
+    fireEvent.click(await screen.findByTestId("button-change-bill-date"));
+    expect((await screen.findByTestId("input-bill-accounting-date") as HTMLInputElement).value).toBe("2026-10-09");
+    expect(screen.getByText("Changes the accounting date only. Amounts, line items and status are unchanged. This is the date Tally orders the vendor's ledger by.")).toBeTruthy();
+    fireEvent.change(screen.getByTestId("input-bill-accounting-date"), { target: { value: "2026-08-31" } });
+    fireEvent.change(screen.getByTestId("input-bill-date-reason"), { target: { value: "Correcting ledger order" } });
+    fireEvent.click(screen.getByTestId("button-save-bill-date"));
+    await waitFor(() => expect(vendorBillWrites.some(write => write.method === "PATCH")).toBe(true));
+    expect(vendorBillWrites.find(write => write.method === "PATCH")?.body).toEqual({
+      billDate: "2026-08-31",
+      reason: "Correcting ledger order",
+    });
+  });
+
+  it("shows every paid status event with its recorded actor and date/time, and labels missing evidence", async () => {
+    billDetailOverrideForTest = {
+      ...historicalBill,
+      status: "paid",
+      createdAt: "2026-08-01T06:30:00.000Z",
+      authorName: "Original Author",
+      verifiedAt: "2026-08-02 08:15:00",
+      verifiedBy: "Verifier",
+      approvedAt: "2026-08-03 09:45:00",
+      approvedBy: "Approver",
+      paidAt: "2026-08-04 10:20:00",
+      paymentRecordedBy: "Cashier",
+    };
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("card-bill-81"));
+    const statusSteps = await screen.findByTestId("status-steps");
+    for (const text of ["DRAFT", "VERIFIED", "APPROVED", "PAID", "Original Author", "Verifier", "Approver", "Cashier",
+      "01-Aug-26 06:30", "02-Aug-26 08:15", "03-Aug-26 09:45", "04-Aug-26 10:20"]) {
+      expect(statusSteps.textContent).toContain(text);
+    }
+
+    cleanup();
+    queryClient.clear();
+    billDetailOverrideForTest = {
+      ...historicalBill,
+      status: "paid",
+      createdAt: null,
+      authorName: null,
+      verifiedAt: "2026-08-02",
+      verifiedBy: null,
+      approvedAt: null,
+      approvedBy: null,
+      paidAt: "2026-08-04",
+      paymentRecordedBy: null,
+    };
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("card-bill-81"));
+    const missingEvidenceSteps = await screen.findByTestId("status-steps");
+    expect(missingEvidenceSteps.textContent).toContain("author not recorded");
+    expect(missingEvidenceSteps.textContent).toContain("not recorded");
+    expect(missingEvidenceSteps.textContent).toContain("date and time not recorded");
+    expect(missingEvidenceSteps.textContent).toContain("time not recorded");
   });
 
   it("confirms an approved edit before writes, keeps cancel inert, and saves drafts without confirmation", async () => {

@@ -56,6 +56,7 @@ vi.mock("../server/storage", () => {
   methods.logAudit = vi.fn(async (entry: any) => entry);
   methods.createVendorBill = vi.fn().mockResolvedValue(undefined);
   methods.updateVendorBill = vi.fn().mockResolvedValue(undefined);
+  methods.updateVendorBillDate = vi.fn().mockResolvedValue(undefined);
   methods.updateVendorBillPaymentDetails = vi.fn().mockResolvedValue(undefined);
   methods.updateVendorBillStatus = vi.fn().mockResolvedValue(undefined);
   methods.voidVendorBill = vi.fn().mockResolvedValue(undefined);
@@ -117,6 +118,7 @@ beforeEach(() => {
   storage.logAudit.mockImplementation(async (entry: any) => entry);
   storage.createVendorBill.mockResolvedValue(undefined);
   storage.updateVendorBill.mockResolvedValue(undefined);
+  storage.updateVendorBillDate.mockResolvedValue(undefined);
   storage.updateVendorBillPaymentDetails.mockResolvedValue(undefined);
   storage.updateVendorBillStatus.mockResolvedValue(undefined);
   storage.voidVendorBill.mockResolvedValue(undefined);
@@ -124,6 +126,100 @@ beforeEach(() => {
 });
 
 describe("AUDIT-01 vendor-bill history", () => {
+  it("changes only a valid bill date, preserves approved bill facts, and records one date audit", async () => {
+    const hireSnapshot = { calculationSnapshot: { grossAmount: 56840, frozen: true } };
+    const before = makeBill({
+      billNo: "HLC/VB/2026/0055",
+      billType: "equipment",
+      status: "approved",
+      billDate: "2026-10-09",
+      totalAmount: 56130,
+      netPayableAmount: 5007.4,
+      amountPaid: 0,
+      periodFrom: "2026-08-01",
+      periodTo: "2026-08-31",
+      verifiedBy: "VERIFIER",
+      verifiedAt: "2026-09-30 08:00:00",
+      approvedBy: "APPROVER",
+      approvedAt: "2026-10-01 09:30:00",
+      paidAt: null,
+      paymentRecordedBy: null,
+      paidBy: null,
+      hireStatements: [{ id: 11, status: "approved", ...hireSnapshot }],
+      items: [{ id: 70, billId: 7, amount: 56130, siteName: "Site A" }],
+    });
+    const after = { id: before.id, billDate: "2026-08-31" };
+    storage.getVendorBill.mockResolvedValue(before);
+    storage.updateVendorBillDate.mockResolvedValue(after);
+
+    const response = await request(app).patch("/api/vendor-bills/7/bill-date")
+      .send({ billDate: "2026-08-31", reason: "  Correcting the accounting date  " });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ id: 7, billDate: "2026-08-31" });
+    expect(storage.updateVendorBillDate).toHaveBeenCalledWith(7, "2026-08-31", "approved");
+    expect(storage.updateVendorBill).not.toHaveBeenCalled();
+    expect(storage.updateVendorBillStatus).not.toHaveBeenCalled();
+    expect(storage.logAudit).toHaveBeenCalledTimes(1);
+    expect(storage.logAudit).toHaveBeenCalledWith(expect.objectContaining({
+      module: "vendor_bills",
+      transactionId: 7,
+      action: "bill_date_changed",
+      oldValues: { billDate: "2026-10-09" },
+      newValues: { billDate: "2026-08-31" },
+      userId: 9,
+      userName: "Audit User",
+      reason: "Correcting the accounting date",
+    }));
+    expect(before).toMatchObject({
+      status: "approved",
+      totalAmount: 56130,
+      netPayableAmount: 5007.4,
+      amountPaid: 0,
+      periodFrom: "2026-08-01",
+      periodTo: "2026-08-31",
+      verifiedBy: "VERIFIER",
+      approvedBy: "APPROVER",
+      hireStatements: [{ id: 11, status: "approved", ...hireSnapshot }],
+      items: [{ id: 70, amount: 56130 }],
+    });
+  });
+
+  it("refuses voided bills, malformed dates, and non-admin date changes to approved bills", async () => {
+    storage.getVendorBill.mockResolvedValue(makeBill({ isCancelled: true }));
+    const voidResponse = await request(app).patch("/api/vendor-bills/7/bill-date").send({ billDate: "2026-10-02" });
+    expect(voidResponse.status).toBe(409);
+    expect(storage.updateVendorBillDate).not.toHaveBeenCalled();
+
+    storage.getVendorBill.mockResolvedValue(makeBill());
+    for (const billDate of ["", "2026-02-29", "2026-13-01", "not-a-date", "2026-1-01"]) {
+      const response = await request(app).patch("/api/vendor-bills/7/bill-date").send({ billDate });
+      expect(response.status).toBe(400);
+    }
+    expect(storage.updateVendorBillDate).not.toHaveBeenCalled();
+
+    fx.role = "manager";
+    fx.permissions = { vendor_bills: { edit: true } };
+    const forbidden = await request(app).patch("/api/vendor-bills/7/bill-date").send({ billDate: "2026-10-02" });
+    expect(forbidden.status).toBe(403);
+    expect(storage.updateVendorBillDate).not.toHaveBeenCalled();
+  });
+
+  it("lets ordinary bill editors change a draft date without changing status", async () => {
+    fx.role = "manager";
+    fx.permissions = { vendor_bills: { edit: true } };
+    const before = makeBill({ status: "draft", billDate: "2026-10-01" });
+    storage.getVendorBill.mockResolvedValue(before);
+    storage.updateVendorBillDate.mockResolvedValue({ id: 7, billDate: "2026-10-02" });
+    const response = await request(app).patch("/api/vendor-bills/7/bill-date").send({ billDate: "2026-10-02" });
+    expect(response.status).toBe(200);
+    expect(storage.updateVendorBillDate).toHaveBeenCalledWith(7, "2026-10-02", "draft");
+    expect(storage.logAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: "bill_date_changed", reason: null,
+      oldValues: { billDate: "2026-10-01" }, newValues: { billDate: "2026-10-02" },
+    }));
+  });
+
   it("stores full snapshots and the normalized actor/reason through the shared helper", async () => {
     const before = makeBill();
     const after = makeBill({ status: "paid" });
@@ -353,6 +449,19 @@ describe("AUDIT-01 vendor-bill history", () => {
     expect(editRoute).toContain('action: "status_reset"');
     const history = readFileSync("client/src/components/HistoryDialog.tsx", "utf8");
     expect(history).toContain('status_reset: "Status reset"');
+  });
+
+  it("keeps bill-date persistence restricted to the billDate column", () => {
+    const storageSource = readFileSync("server/storage.ts", "utf8");
+    const start = storageSource.indexOf("async updateVendorBillDate(");
+    const end = storageSource.indexOf("private async generateVendorBillNo()", start);
+    const method = storageSource.slice(start, end);
+    expect(method).toContain(".set({ billDate })");
+    expect(method).toContain("vendorBills.status");
+    expect(method).toContain("vendorBills.isCancelled");
+    expect(method).not.toContain("periodFrom");
+    expect(method).not.toContain("totalAmount");
+    expect(method).not.toContain("hireStatements");
   });
 
   it("resolves the bill author by user id on detail only and leaves the stored author id untouched", async () => {

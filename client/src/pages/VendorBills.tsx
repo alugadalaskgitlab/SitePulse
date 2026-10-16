@@ -74,18 +74,23 @@ const formatDate = (dateStr: string | null | undefined) => {
   } catch { return dateStr; }
 };
 
-const formatTimestamp = (ts: string | Date | null | undefined): string | null => {
-  if (!ts) return null;
+const formatTimestamp = (ts: string | Date | null | undefined): string => {
+  if (!ts) return "date and time not recorded";
   try {
     let d: Date;
+    if (typeof ts === "string" && /^\d{4}-\d{2}-\d{2}$/.test(ts)) {
+      d = new Date(`${ts}T00:00:00`);
+      if (Number.isNaN(d.getTime()) || format(d, "yyyy-MM-dd") !== ts) return "date and time not recorded";
+      return `${format(d, "dd-MMM-yy")} · time not recorded`;
+    }
     if (typeof ts === "string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(ts)) {
       d = new Date(ts.replace(" ", "T") + "Z");
     } else {
       d = new Date(ts as string);
     }
-    if (Number.isNaN(d.getTime())) return String(ts);
+    if (Number.isNaN(d.getTime())) return "date and time not recorded";
     return format(d, "dd-MMM-yy HH:mm");
-  } catch { return String(ts); }
+  } catch { return "date and time not recorded"; }
 };
 
 type ViewMode = "list" | "form" | "detail";
@@ -664,6 +669,9 @@ export default function VendorBills() {
   const [deleteReason, setDeleteReason] = useState("");
   const [voidBillAction, setVoidBillAction] = useState<{ billId: number; billNo: string } | null>(null);
   const [showBillHistory, setShowBillHistory] = useState(false);
+  const [showBillDateDialog, setShowBillDateDialog] = useState(false);
+  const [billDateDraft, setBillDateDraft] = useState("");
+  const [billDateReason, setBillDateReason] = useState("");
   const [showAliasDialog, setShowAliasDialog] = useState(false);
   const [aliasCanonical, setAliasCanonical] = useState("");
   const [aliasValue, setAliasValue] = useState("");
@@ -1046,6 +1054,24 @@ export default function VendorBills() {
     },
     onError: (err: Error) => {
       toast({ ...vendorBillStatusError(err), variant: "destructive" });
+    },
+  });
+
+  const billDateMutation = useMutation({
+    mutationFn: ({ id, billDate, reason }: { id: number; billDate: string; reason: string }) =>
+      apiRequest("PATCH", `/api/vendor-bills/${id}/bill-date`, {
+        billDate,
+        ...(reason.trim() ? { reason: reason.trim() } : {}),
+      }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/audit-logs", { module: "vendor_bills", transactionId: variables.id }] });
+      toast({ title: "Bill accounting date updated" });
+      setShowBillDateDialog(false);
+      setBillDateReason("");
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to change bill date", description: err.message, variant: "destructive" });
     },
   });
 
@@ -2647,13 +2673,13 @@ export default function VendorBills() {
     const currentIdx = STATUS_ORDER.indexOf(currentStatus as any);
     const stepMeta: Record<string, { timestamp?: string | null; actor?: string | null }> = {
       draft: {
-        timestamp: meta?.createdAt ? formatTimestamp(meta.createdAt) : null,
+        timestamp: formatTimestamp(meta?.createdAt),
         actor: meta?.authorName?.trim() || "author not recorded",
       },
-      verified: { timestamp: meta?.verifiedAt ? formatTimestamp(meta.verifiedAt) : null, actor: meta?.verifiedBy },
-      approved: { timestamp: meta?.approvedAt ? formatTimestamp(meta.approvedAt) : null, actor: meta?.approvedBy },
+      verified: { timestamp: formatTimestamp(meta?.verifiedAt), actor: meta?.verifiedBy?.trim() || "not recorded" },
+      approved: { timestamp: formatTimestamp(meta?.approvedAt), actor: meta?.approvedBy?.trim() || "not recorded" },
       // 06M-F §7A: show who marked it paid, same as verified/approved actors.
-      paid: { timestamp: meta?.paidAt ? formatTimestamp(meta.paidAt) : null, actor: meta?.paymentRecordedBy },
+      paid: { timestamp: formatTimestamp(meta?.paidAt), actor: meta?.paymentRecordedBy?.trim() || "not recorded" },
     };
     return (
       <div className="flex items-start gap-1 flex-wrap" data-testid="status-steps">
@@ -2674,10 +2700,10 @@ export default function VendorBills() {
                   {isActive && <Circle className="w-2 h-2 mr-1 fill-current" />}
                   {step}
                 </Badge>
-                {(isDone || isActive) && sm?.timestamp && (
+                {(isDone || isActive) && (
                   <span className="text-[12px] text-muted-foreground whitespace-nowrap leading-tight">{sm.timestamp}</span>
                 )}
-                {(isDone || isActive) && sm?.actor && (
+                {(isDone || isActive) && (
                   <span className="text-[12px] font-medium text-muted-foreground whitespace-nowrap leading-tight">{sm.actor}</span>
                 )}
                 {step === "paid" && (isDone || isActive) && <VendorBillPaidAccount paymentAccountKey={meta?.paymentAccountKey} />}
@@ -4629,7 +4655,8 @@ export default function VendorBills() {
             {canExport && <Button variant="outline" size="sm" onClick={() => handlePrint(bill)} data-testid="button-print">
               <Printer className="w-4 h-4 mr-1" /> PRINT
             </Button>}
-            {canEdit && !bill.isCancelled && (
+            {canEdit && !bill.isCancelled && (!bill.hireStatements?.length
+              || (bill.status === "draft" && bill.hireStatements.every(s => s.status === "draft"))) && (
               <Button
                 variant="default"
                 size="sm"
@@ -4660,7 +4687,24 @@ export default function VendorBills() {
                 <p className="text-sm font-semibold" data-testid="text-bill-no">{bill.billNo}</p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground uppercase">Bill Date</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm text-muted-foreground uppercase">Bill Date</p>
+                  {!bill.isCancelled && (bill.status === "draft" ? canEdit : (isAdmin || !!user?.isOwner)) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-1.5 text-xs"
+                      onClick={() => {
+                        setBillDateDraft(bill.billDate);
+                        setBillDateReason("");
+                        setShowBillDateDialog(true);
+                      }}
+                      data-testid="button-change-bill-date"
+                    >
+                      <Edit className="w-3 h-3 mr-1" /> CHANGE
+                    </Button>
+                  )}
+                </div>
                 <p className="text-sm font-semibold" data-testid="text-bill-date">{formatDate(bill.billDate)}</p>
               </div>
               <div>
@@ -4806,6 +4850,51 @@ export default function VendorBills() {
           transactionId={bill.id}
           recordLabel={`Bill ${bill.billNo}`}
         />
+
+        <Dialog open={showBillDateDialog} onOpenChange={(open) => {
+          setShowBillDateDialog(open);
+          if (!open) setBillDateReason("");
+        }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Change bill accounting date</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              Changes the accounting date only. Amounts, line items and status are unchanged. This is the date Tally orders the vendor&apos;s ledger by.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="bill-accounting-date">Bill date</Label>
+              <Input
+                id="bill-accounting-date"
+                type="date"
+                value={billDateDraft}
+                onChange={event => setBillDateDraft(event.target.value)}
+                data-testid="input-bill-accounting-date"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="bill-date-change-reason">Reason (optional)</Label>
+              <Textarea
+                id="bill-date-change-reason"
+                value={billDateReason}
+                onChange={event => setBillDateReason(event.target.value)}
+                rows={2}
+                maxLength={500}
+                data-testid="input-bill-date-reason"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowBillDateDialog(false)} data-testid="button-cancel-bill-date">CANCEL</Button>
+              <Button
+                onClick={() => billDateMutation.mutate({ id: bill.id, billDate: billDateDraft, reason: billDateReason })}
+                disabled={billDateMutation.isPending || !/^\d{4}-\d{2}-\d{2}$/.test(billDateDraft)}
+                data-testid="button-save-bill-date"
+              >
+                {billDateMutation.isPending && <Loader2 className="w-3 h-3 animate-spin mr-1" />} SAVE DATE
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {hasPersistedHireStatements && (
           <Card className="border-orange-200 dark:border-orange-800">

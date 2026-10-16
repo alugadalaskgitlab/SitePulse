@@ -136,6 +136,40 @@ describe("vendor payables report projection", () => {
     expect(summary.rows.map(bill => bill.billNo)).toEqual(["HLC/VB/2026/0062"]);
     expect(summary.excludedRows.map(bill => bill.billNo)).toEqual(["HLC/VB/2026/0055"]);
   });
+
+  it("keeps vendor payable amounts unchanged when a bill date is corrected and reorders only the ledger", () => {
+    const correctedBills = mahpalBills.map(bill => bill.billNo === "HLC/VB/2026/0055"
+      ? { ...bill, billDate: "2026-08-31" }
+      : bill);
+    const beforePayables = projectVendorPayables(mahpalBills);
+    const afterPayables = projectVendorPayables(correctedBills);
+    const beforeVendor = beforePayables.vendors[0];
+    const afterVendor = afterPayables.vendors[0];
+    expect(afterVendor).toMatchObject({
+      billed: beforeVendor.billed,
+      paid: beforeVendor.paid,
+      payableNow: beforeVendor.payableNow,
+      comingUp: beforeVendor.comingUp,
+      totalLiability: beforeVendor.totalLiability,
+    });
+    expect(afterVendor.payableNow).toBe(11847.4);
+    expect(afterVendor.totalLiability).toBe(37008.69);
+
+    const beforeLedger = projectVendorLedger(mahpalBills[0], mahpalBills);
+    const afterLedger = projectVendorLedger(correctedBills[0], correctedBills);
+    expect(beforeLedger.map(row => row.bill.billNo)).toEqual([
+      "HLC/VB/2026/0062", "HLC/VB/2026/0054", "HLC/VB/2026/0055",
+    ]);
+    expect(afterLedger.map(row => row.bill.billNo)).toEqual([
+      "HLC/VB/2026/0062", "HLC/VB/2026/0055", "HLC/VB/2026/0054",
+    ]);
+    expect(afterLedger.at(-1)?.runningBalance).toBe(beforeLedger.at(-1)?.runningBalance);
+    expect(correctedBills.find(bill => bill.billNo === "HLC/VB/2026/0055")).toMatchObject({
+      totalAmount: 56130,
+      netPayableAmount: 5007.4,
+      amountPaid: 0,
+    });
+  });
 });
 
 describe("vendor ledger projection", () => {
