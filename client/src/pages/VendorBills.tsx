@@ -4553,6 +4553,12 @@ export default function VendorBills() {
 
     const currentStatusIdx = STATUS_ORDER.indexOf(bill.status as any);
     const nextStatus = currentStatusIdx < STATUS_ORDER.length - 1 ? STATUS_ORDER[currentStatusIdx + 1] : null;
+    const canChangeBillDate = !bill.isCancelled && (
+      isAdmin || !!user?.isOwner ||
+      (bill.status === "draft" && (
+        sectionCan("vendor_bills", "edit") || sectionCan("vendor_bills_raise", "edit")
+      ))
+    );
     const auditEntries = billAuditHistory.data || [];
     const createdAudit = auditEntries.find(entry => entry.action === "create");
     const lastChangeAudit = auditEntries.find(entry => entry.action !== "create") || createdAudit;
@@ -4689,7 +4695,7 @@ export default function VendorBills() {
               <div>
                 <div className="flex items-center gap-2">
                   <p className="text-sm text-muted-foreground uppercase">Bill Date</p>
-                  {!bill.isCancelled && (bill.status === "draft" ? canEdit : (isAdmin || !!user?.isOwner)) && (
+                  {canChangeBillDate && (
                     <Button
                       variant="ghost"
                       size="sm"

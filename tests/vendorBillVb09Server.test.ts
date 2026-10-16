@@ -45,6 +45,7 @@ const tx: any = {
 
 const fakeDb: any = {
   select: vi.fn(() => query(fx.outerRows)),
+  update: vi.fn(() => query()),
   transaction: vi.fn(async (callback: (transaction: any) => Promise<unknown>) => callback(tx)),
   query: {
     vendorBills: {
@@ -97,6 +98,57 @@ const itemizedEquipmentBill = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe("VB-09 server itemized equipment hire", () => {
+  it("updates only billDate and preserves all other bill values", async () => {
+    fx.lastBill = {
+      id: 900,
+      billNo: "HLC/VB/2026/0055",
+      billDate: "2026-10-09",
+      billType: "equipment",
+      vendorName: "MAHIPAL KALPAGURI",
+      periodFrom: "2026-08-01",
+      periodTo: "2026-08-31",
+      status: "approved",
+      verifiedBy: "VERIFIER",
+      verifiedAt: "2026-09-30 08:00:00",
+      approvedBy: "APPROVER",
+      approvedAt: "2026-10-01 09:30:00",
+      paidAt: null,
+      paymentRecordedBy: null,
+      paidBy: null,
+      totalAmount: 56130,
+      netPayableAmount: 5013.69,
+      amountPaid: 0,
+      items: [{ id: 901, amount: 56130, description: "August hire", qty: 1, rate: 56130 }],
+      hireStatements: [{
+        id: 902, status: "approved",
+        calculationSnapshot: { grossAmount: 56130, netAmount: 5013.69, frozen: true },
+      }],
+    };
+    const storage = new DatabaseStorage();
+    const updated = await storage.updateVendorBillDate(900, "2026-08-31", "approved");
+
+    expect(fx.writes).toEqual([{ kind: "update", value: { billDate: "2026-08-31" } }]);
+    expect(updated).toMatchObject({
+      id: 900,
+      billDate: "2026-08-31",
+      status: "approved",
+      verifiedBy: "VERIFIER",
+      verifiedAt: "2026-09-30 08:00:00",
+      approvedBy: "APPROVER",
+      approvedAt: "2026-10-01 09:30:00",
+      paidAt: null,
+      paymentRecordedBy: null,
+      paidBy: null,
+      totalAmount: 56130,
+      netPayableAmount: 5013.69,
+      amountPaid: 0,
+      periodFrom: "2026-08-01",
+      periodTo: "2026-08-31",
+      items: fx.lastBill.items,
+      hireStatements: fx.lastBill.hireStatements,
+    });
+  });
+
   it("creates an itemized equipment bill without groups or complete hire-master terms", async () => {
     const storage = new DatabaseStorage();
 

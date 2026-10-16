@@ -163,12 +163,42 @@ describe("vendor payables report projection", () => {
     expect(afterLedger.map(row => row.bill.billNo)).toEqual([
       "HLC/VB/2026/0062", "HLC/VB/2026/0055", "HLC/VB/2026/0054",
     ]);
+    const amountsByBill = (rows: typeof beforeLedger) => rows
+      .map(row => ({ billNo: row.bill.billNo, amounts: row.amounts }))
+      .sort((a, b) => a.billNo.localeCompare(b.billNo));
+    expect(amountsByBill(afterLedger)).toEqual(amountsByBill(beforeLedger));
     expect(afterLedger.at(-1)?.runningBalance).toBe(beforeLedger.at(-1)?.runningBalance);
     expect(correctedBills.find(bill => bill.billNo === "HLC/VB/2026/0055")).toMatchObject({
       totalAmount: 56130,
       netPayableAmount: 5007.4,
       amountPaid: 0,
     });
+  });
+
+  it("preserves the baseline ₹11,853.69 payable-now benchmark while correcting bill 0055's ledger date", () => {
+    const baselineBills = mahpalBills.slice(0, 2).map(bill => bill.id === 55
+      ? { ...bill, netPayableAmount: 5013.69 }
+      : bill);
+    const beforePayables = projectVendorPayables(baselineBills);
+    const beforeLedger = projectVendorLedger(baselineBills[0], baselineBills);
+    const correctedBills = baselineBills.map(bill => bill.id === 55
+      ? { ...bill, billDate: "2026-08-31" }
+      : bill);
+    const afterPayables = projectVendorPayables(correctedBills);
+    const afterLedger = projectVendorLedger(correctedBills[0], correctedBills);
+
+    expect(beforePayables.vendors[0].payableNow).toBeCloseTo(11853.69, 2);
+    expect(afterPayables.vendors[0].payableNow).toBeCloseTo(11853.69, 2);
+    expect(afterPayables.vendors[0].billed).toBe(beforePayables.vendors[0].billed);
+    expect(afterPayables.vendors[0].paid).toBe(beforePayables.vendors[0].paid);
+    expect(afterPayables.vendors[0].totalLiability).toBe(beforePayables.vendors[0].totalLiability);
+    expect(beforeLedger.map(row => row.bill.billNo)).toEqual([
+      "HLC/VB/2026/0054", "HLC/VB/2026/0055",
+    ]);
+    expect(afterLedger.map(row => row.bill.billNo)).toEqual([
+      "HLC/VB/2026/0055", "HLC/VB/2026/0054",
+    ]);
+    expect(afterLedger.at(-1)?.runningBalance).toBe(beforeLedger.at(-1)?.runningBalance);
   });
 });
 

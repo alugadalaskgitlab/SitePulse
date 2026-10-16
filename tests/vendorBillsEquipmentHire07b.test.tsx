@@ -228,7 +228,7 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
     fireEvent.click(await screen.findByTestId("card-bill-81"));
     const statusSteps = await screen.findByTestId("status-steps");
-    for (const text of ["DRAFT", "VERIFIED", "APPROVED", "PAID", "Original Author", "Verifier", "Approver", "Cashier",
+    for (const text of ["draft", "verified", "approved", "paid", "Original Author", "Verifier", "Approver", "Cashier",
       "01-Aug-26 06:30", "02-Aug-26 08:15", "03-Aug-26 09:45", "04-Aug-26 10:20"]) {
       expect(statusSteps.textContent).toContain(text);
     }

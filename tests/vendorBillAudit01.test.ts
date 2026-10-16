@@ -127,14 +127,14 @@ beforeEach(() => {
 
 describe("AUDIT-01 vendor-bill history", () => {
   it("changes only a valid bill date, preserves approved bill facts, and records one date audit", async () => {
-    const hireSnapshot = { calculationSnapshot: { grossAmount: 56840, frozen: true } };
+    const hireSnapshot = { calculationSnapshot: { grossAmount: 56130, netAmount: 5013.69, frozen: true } };
     const before = makeBill({
       billNo: "HLC/VB/2026/0055",
       billType: "equipment",
       status: "approved",
       billDate: "2026-10-09",
       totalAmount: 56130,
-      netPayableAmount: 5007.4,
+      netPayableAmount: 5013.69,
       amountPaid: 0,
       periodFrom: "2026-08-01",
       periodTo: "2026-08-31",
@@ -174,7 +174,7 @@ describe("AUDIT-01 vendor-bill history", () => {
     expect(before).toMatchObject({
       status: "approved",
       totalAmount: 56130,
-      netPayableAmount: 5007.4,
+      netPayableAmount: 5013.69,
       amountPaid: 0,
       periodFrom: "2026-08-01",
       periodTo: "2026-08-31",
@@ -200,6 +200,8 @@ describe("AUDIT-01 vendor-bill history", () => {
 
     fx.role = "manager";
     fx.permissions = { vendor_bills: { edit: true } };
+    storage.getSites.mockResolvedValue([{ id: 1, name: "Site A" }]);
+    storage.getUserPermittedSiteIds.mockResolvedValue([1]);
     const forbidden = await request(app).patch("/api/vendor-bills/7/bill-date").send({ billDate: "2026-10-02" });
     expect(forbidden.status).toBe(403);
     expect(storage.updateVendorBillDate).not.toHaveBeenCalled();
@@ -208,6 +210,8 @@ describe("AUDIT-01 vendor-bill history", () => {
   it("lets ordinary bill editors change a draft date without changing status", async () => {
     fx.role = "manager";
     fx.permissions = { vendor_bills: { edit: true } };
+    storage.getSites.mockResolvedValue([{ id: 1, name: "Site A" }]);
+    storage.getUserPermittedSiteIds.mockResolvedValue([1]);
     const before = makeBill({ status: "draft", billDate: "2026-10-01" });
     storage.getVendorBill.mockResolvedValue(before);
     storage.updateVendorBillDate.mockResolvedValue({ id: 7, billDate: "2026-10-02" });
