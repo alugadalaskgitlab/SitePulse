@@ -11600,9 +11600,9 @@ export async function registerRoutes(
     if (!assertViewEither(req, res, "vendor_bills", "vendor_bills_view")) return;
     try {
       const bills = await scopeVendorBillsToSiteAccess(req, await storage.getVendorBills({}));
-      const vendorIds = [...new Set(bills
+      const vendorIds = Array.from(new Set(bills
         .map(bill => bill.vendorId == null ? null : Number(bill.vendorId))
-        .filter((id): id is number => id != null && Number.isSafeInteger(id)))];
+        .filter((id): id is number => id != null && Number.isSafeInteger(id))));
       const linkedNames = new Map((await storage.getVendorNamesByIds(vendorIds)).map(vendor => [vendor.id, vendor.name]));
       res.json(bills.map(bill => ({
         ...bill,

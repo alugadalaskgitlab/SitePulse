@@ -156,7 +156,7 @@ export function projectVendorLedger(current: any, permittedBills: any[]): Vendor
     return {
       bill,
       amounts,
-      runningBalance: runningNet - runningPaid,
+      runningBalance: Math.round((runningNet - runningPaid) * 100) / 100,
       runningBalanceEstimated,
     };
   });

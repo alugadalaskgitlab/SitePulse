@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Download, FileSpreadsheet, AlertTriangle, ArrowLeft, CalendarDays, ReceiptText, RotateCcw } from "lucide-react";
@@ -40,6 +40,14 @@ const periodLabel = (from?: string | null, to?: string | null) => {
   if (!from && !to) return "—";
   if (!from || !to || String(from).slice(0, 10) === String(to).slice(0, 10)) return dateLabel(from || to);
   return `${dateLabel(from)} – ${dateLabel(to)}`;
+};
+
+const withDateRange = (path: string, dateFrom: string, dateTo: string) => {
+  const params = new URLSearchParams();
+  if (dateFrom) params.set("dateFrom", dateFrom);
+  if (dateTo) params.set("dateTo", dateTo);
+  const query = params.toString();
+  return query ? `${path}?${query}` : path;
 };
 
 const humanStatus = (value?: string | null) => {
@@ -98,7 +106,26 @@ function DownloadButton({ onClick, label = "Export Excel" }: { onClick: () => vo
   </button>;
 }
 
+function DateRangeControls({ dateFrom, dateTo, setDateFrom, setDateTo }: {
+  dateFrom: string;
+  dateTo: string;
+  setDateFrom: (value: string) => void;
+  setDateTo: (value: string) => void;
+}) {
+  return <div className="flex flex-wrap items-end gap-3 rounded-xl border border-[#d5e0db] bg-[#f9fbf9] px-4 py-3">
+    <div className="flex items-center gap-2 self-center pr-1 text-xs font-bold uppercase tracking-wide text-[#627974]"><CalendarDays className="h-4 w-4" />Bill period</div>
+    <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wider text-[#748782]">
+      From <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="h-9 rounded-md border border-[#cbd9d3] bg-white px-2 text-xs font-medium text-[#29413d] outline-none focus:border-[#527c70]" />
+    </label>
+    <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wider text-[#748782]">
+      To <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="h-9 rounded-md border border-[#cbd9d3] bg-white px-2 text-xs font-medium text-[#29413d] outline-none focus:border-[#527c70]" />
+    </label>
+    {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="h-9 px-2 text-xs font-semibold text-[#537168] hover:text-[#213f38]">Clear</button>}
+  </div>;
+}
+
 function exportSummary(report: PayablesReport) {
+  const hasCreditColumn = report.vendors.some((vendor) => vendor.credits > 0);
   const linkedRows = report.vendors.map((vendor) => ({
     Vendor: vendor.vendorName,
     Bills: vendor.count,
@@ -107,9 +134,9 @@ function exportSummary(report: PayablesReport) {
     "Payable now": vendor.payableNow,
     "Coming up": vendor.comingUp,
     "Total liability": vendor.totalLiability,
-    ...(vendor.credits > 0 ? { Credit: vendor.credits } : {}),
-    "Oldest unpaid": vendor.oldestUnpaid ?? "",
-    "Payment unknown": vendor.unknownPayments > 0 ? "Estimate" : "",
+    ...(hasCreditColumn ? { Credit: vendor.credits > 0 ? vendor.credits : "—" } : {}),
+    "Oldest unpaid": dateLabel(vendor.oldestUnpaid),
+    "Payment unknown": vendor.unknownPayments > 0 ? `${vendor.unknownPayments} unknown; estimate` : "",
   }));
   linkedRows.push({
     Vendor: "TOTAL — LINKED VENDORS",
@@ -119,9 +146,9 @@ function exportSummary(report: PayablesReport) {
     "Payable now": report.totals.payableNow,
     "Coming up": report.totals.comingUp,
     "Total liability": report.totals.totalLiability,
-    ...(report.totals.credits > 0 ? { Credit: report.totals.credits } : {}),
-    "Oldest unpaid": report.totals.oldestUnpaid ?? "",
-    "Payment unknown": report.totals.unknownPayments > 0 ? "Estimate" : "",
+    ...(hasCreditColumn ? { Credit: report.totals.credits > 0 ? report.totals.credits : "—" } : {}),
+    "Oldest unpaid": dateLabel(report.totals.oldestUnpaid),
+    "Payment unknown": report.totals.unknownPayments > 0 ? `${report.totals.unknownPayments} unknown; estimate` : "",
   });
   const unlinkedRows = report.unlinkedGroups.flatMap((group) => group.bills.map((bill, index) => {
     const amount = group.amounts[index];
@@ -161,11 +188,25 @@ function exportLedger(lines: ReturnType<typeof projectVendorLedger>, name: strin
   XLSX.writeFile(workbook, `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "vendor"}-ledger.xlsx`);
 }
 
+function payablesTotalsMatch(a: PayablesReport["vendors"][number] | null | undefined, b: PayablesReport["vendors"][number] | null | undefined) {
+  if (!a || !b) return false;
+  const moneyFields: (keyof PayablesReport["vendors"][number])[] = ["billed", "paid", "payableNow", "comingUp", "totalLiability", "credits"];
+  return a.count === b.count &&
+    a.unknownPayments === b.unknownPayments &&
+    a.oldestUnpaid === b.oldestUnpaid &&
+    moneyFields.every(field => Math.abs(Number(a[field]) - Number(b[field])) < 0.005);
+}
+
 export default function VendorPayables() {
   const { user, sectionVisible, sectionCan } = useAuth();
   const [location] = useLocation();
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [dateFrom, setDateFrom] = useState(() => new URLSearchParams(window.location.search).get("dateFrom") || "");
+  const [dateTo, setDateTo] = useState(() => new URLSearchParams(window.location.search).get("dateTo") || "");
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setDateFrom(params.get("dateFrom") || "");
+    setDateTo(params.get("dateTo") || "");
+  }, [location]);
   const canViewBills = sectionVisible("vendor_bills") || sectionVisible("vendor_bills_view");
   const canViewFinancials = sectionCan("vendor_financials", "view");
   const authorized = canViewBills && canViewFinancials;
@@ -192,8 +233,12 @@ export default function VendorPayables() {
   const currentVendor = vendorId != null
     ? report.vendors.find((vendor) => Number(vendor.vendorId) === vendorId) ?? (financialReview.data ?? []).find((bill) => Number(bill.vendorId) === vendorId)
     : billId != null ? (financialReview.data ?? []).find((bill) => Number(bill.id) === billId && bill.vendorId == null) : null;
-  const ledgerLines = useMemo(() => currentVendor ? projectVendorLedger(currentVendor, financialReview.data ?? []) : [], [currentVendor, financialReview.data]);
+  const ledgerLines = useMemo(() => currentVendor ? projectVendorLedger(currentVendor, report.filteredBills) : [], [currentVendor, report.filteredBills]);
   const ledgerSummary = vendorId != null ? report.vendors.find((vendor) => Number(vendor.vendorId) === vendorId) : null;
+  const ledgerProjectionRow = useMemo(() => vendorId == null || ledgerLines.length === 0
+    ? null
+    : projectVendorPayables(ledgerLines.map(line => line.bill)).vendors.find(vendor => vendor.vendorId === vendorId) ?? null,
+  [ledgerLines, vendorId]);
   const ledgerName = vendorId != null
     ? (ledgerSummary?.vendorName ?? (currentVendor as VendorBill | undefined)?.linkedVendorName ?? `Vendor #${vendorId}`)
     : ((currentVendor as VendorBill | undefined)?.vendorName || "(blank vendor name)");
@@ -224,9 +269,13 @@ export default function VendorPayables() {
           current={currentVendor as VendorBill | undefined}
           lines={ledgerLines}
           vendorId={vendorId}
-          billId={billId}
           vendorName={ledgerName}
           summary={ledgerSummary ?? null}
+          consistencyError={ledgerSummary != null && !payablesTotalsMatch(ledgerSummary, ledgerProjectionRow)}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          setDateFrom={setDateFrom}
+          setDateTo={setDateTo}
           onExport={() => exportLedger(ledgerLines, ledgerName)}
         />
       ) : (
@@ -260,16 +309,7 @@ function SummaryView({ report, dateFrom, dateTo, setDateFrom, setDateTo }: {
         <Metric label="Coming up" value={money(report.totals.comingUp)} detail="Provisional bill balances" />
         <Metric label="Total liability" value={money(report.totals.totalLiability)} detail="Excludes unlinked bills" dark />
       </div>
-      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-[#d5e0db] bg-[#f9fbf9] px-4 py-3">
-        <div className="flex items-center gap-2 self-center pr-1 text-xs font-bold uppercase tracking-wide text-[#627974]"><CalendarDays className="h-4 w-4" />Bill period</div>
-        <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wider text-[#748782]">
-          From <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="h-9 rounded-md border border-[#cbd9d3] bg-white px-2 text-xs font-medium text-[#29413d] outline-none focus:border-[#527c70]" />
-        </label>
-        <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wider text-[#748782]">
-          To <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="h-9 rounded-md border border-[#cbd9d3] bg-white px-2 text-xs font-medium text-[#29413d] outline-none focus:border-[#527c70]" />
-        </label>
-        {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="h-9 px-2 text-xs font-semibold text-[#537168] hover:text-[#213f38]">Clear</button>}
-      </div>
+      <DateRangeControls dateFrom={dateFrom} dateTo={dateTo} setDateFrom={setDateFrom} setDateTo={setDateTo} />
     </div>
 
     {report.totals.unknownPayments > 0 && <div className="flex gap-3 rounded-lg border border-[#e6d8b5] bg-[#fffaf0] px-4 py-3 text-xs leading-5 text-[#725d30]">
@@ -282,15 +322,16 @@ function SummaryView({ report, dateFrom, dateTo, setDateFrom, setDateTo }: {
         <div><SectionEyebrow>Confirmed identities</SectionEyebrow><h2 className="mt-1 text-base font-bold text-[#213a36]">Linked-vendor summary</h2></div>
         <span className="rounded-md bg-[#edf3ef] px-2.5 py-1 text-xs font-semibold text-[#506b63]">{report.vendors.length} vendors</span>
       </div>
-      {report.vendors.length === 0 ? <EmptyNotice title="No linked bills in this date range" detail="Try widening the bill-period dates. Unlinked bills are reported separately below." /> : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1190px] border-collapse">
-            <thead><tr className="bg-[#f0f5f2] text-left text-[10px] font-bold uppercase tracking-[0.12em] text-[#6c817b]">
-              <th className="px-5 py-3">Vendor</th><th className="px-4 py-3 text-right">Bills</th><th className="px-4 py-3 text-right">Billed</th><th className="px-4 py-3 text-right">Paid</th><th className="px-4 py-3 text-right">Payable now</th><th className="px-4 py-3 text-right">Coming up</th><th className="px-4 py-3 text-right">Total liability</th>{report.vendors.some((vendor) => vendor.credits > 0) && <th className="px-4 py-3 text-right">Credit</th>}<th className="px-5 py-3">Oldest unpaid</th>
-            </tr></thead>
-            <tbody className="divide-y divide-[#e7ede9]">
-              {report.vendors.map((vendor) => <tr key={vendor.vendorId} className="group transition-colors hover:bg-[#f5f9f6]">
-                <td className="px-5 py-3.5"><Link href={`/reports/vendor-payables/vendor/${vendor.vendorId}`} className="font-semibold text-[#315d53] decoration-[#9db4a9] underline-offset-4 hover:underline">{vendor.vendorName}</Link>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[1190px] border-collapse">
+          <thead><tr className="bg-[#f0f5f2] text-left text-[10px] font-bold uppercase tracking-[0.12em] text-[#6c817b]">
+            <th className="px-5 py-3">Vendor</th><th className="px-4 py-3 text-right">Bills</th><th className="px-4 py-3 text-right">Billed</th><th className="px-4 py-3 text-right">Paid</th><th className="px-4 py-3 text-right">Payable now</th><th className="px-4 py-3 text-right">Coming up</th><th className="px-4 py-3 text-right">Total liability</th>{report.vendors.some((vendor) => vendor.credits > 0) && <th className="px-4 py-3 text-right">Credit</th>}<th className="px-5 py-3">Oldest unpaid</th>
+          </tr></thead>
+          <tbody className="divide-y divide-[#e7ede9]">
+            {report.vendors.length === 0
+              ? <tr><td colSpan={report.vendors.some((vendor) => vendor.credits > 0) ? 9 : 8}><EmptyNotice title="No linked bills in this date range" detail="Try widening the bill-period dates. Unlinked bills are reported separately below." /></td></tr>
+              : report.vendors.map((vendor) => <tr key={vendor.vendorId} className="group transition-colors hover:bg-[#f5f9f6]">
+                <td className="px-5 py-3.5"><Link href={withDateRange(`/reports/vendor-payables/vendor/${vendor.vendorId}`, dateFrom, dateTo)} className="font-semibold text-[#315d53] decoration-[#9db4a9] underline-offset-4 hover:underline">{vendor.vendorName}</Link>
                   {vendor.unknownPayments > 0 && <div className="mt-1 text-[10px] font-semibold text-[#967442]">Estimate · {vendor.unknownPayments} payment unknown</div>}
                 </td>
                 <td className="px-4 py-3 text-right font-mono text-xs tabular-nums text-[#526761]">{vendor.count}</td>
@@ -298,14 +339,13 @@ function SummaryView({ report, dateFrom, dateTo, setDateFrom, setDateTo }: {
                 {report.vendors.some((row) => row.credits > 0) && <AmountCell>{vendor.credits > 0 ? money(vendor.credits) : "—"}</AmountCell>}
                 <td className="whitespace-nowrap px-5 py-3 text-xs text-[#526761]">{dateLabel(vendor.oldestUnpaid)}</td>
               </tr>)}
-            </tbody>
-            <tfoot><tr className="border-t-2 border-[#bdcec5] bg-[#eef4f0] text-xs font-bold text-[#29443d]">
-              <td className="px-5 py-3.5">Linked totals</td><td className="px-4 py-3 text-right font-mono tabular-nums">{report.totals.count}</td><AmountCell emphasized>{money(report.totals.billed)}</AmountCell><AmountCell emphasized>{money(report.totals.paid)}</AmountCell><AmountCell emphasized>{money(report.totals.payableNow)}</AmountCell><AmountCell emphasized>{money(report.totals.comingUp)}</AmountCell><AmountCell emphasized>{money(report.totals.totalLiability)}</AmountCell>
-              {report.vendors.some((row) => row.credits > 0) && <AmountCell emphasized>{money(report.totals.credits)}</AmountCell>}<td className="px-5 py-3">—</td>
-            </tr></tfoot>
-          </table>
-        </div>
-      )}
+          </tbody>
+          <tfoot><tr className="border-t-2 border-[#bdcec5] bg-[#eef4f0] text-xs font-bold text-[#29443d]">
+            <td className="px-5 py-3.5">Linked totals</td><td className="px-4 py-3 text-right font-mono tabular-nums">{report.totals.count}</td><AmountCell emphasized>{money(report.totals.billed)}</AmountCell><AmountCell emphasized>{money(report.totals.paid)}</AmountCell><AmountCell emphasized>{money(report.totals.payableNow)}</AmountCell><AmountCell emphasized>{money(report.totals.comingUp)}</AmountCell><AmountCell emphasized>{money(report.totals.totalLiability)}</AmountCell>
+            {report.vendors.some((row) => row.credits > 0) && <AmountCell emphasized>{money(report.totals.credits)}</AmountCell>}<td className="px-5 py-3">{dateLabel(report.totals.oldestUnpaid)}</td>
+          </tr></tfoot>
+        </table>
+      </div>
       <div className="border-t border-[#e1e8e4] bg-[#f8faf8] px-5 py-3 text-[11px] leading-5 text-[#758680]">Payable now and Coming up are shown separately. Total liability is their combined exposure. Unlinked bills are never included in these totals.</div>
     </section>
 
@@ -323,7 +363,7 @@ function SummaryView({ report, dateFrom, dateTo, setDateFrom, setDateTo }: {
               <tbody className="divide-y divide-[#eee9de]">{group.bills.map((bill, billIndex) => {
                 const amounts = group.amounts[billIndex];
                 return <tr key={bill.id}>
-                  <td className="py-2.5 text-[#665e4e]">{dateLabel(bill.billDate)}</td><td className="py-2.5 font-semibold text-[#4b5149]">{bill.billNo || `Bill #${bill.id}`}</td><td className="py-2.5"><StatusTag status={bill.status} /></td><td className="py-2.5 text-right font-mono tabular-nums">{money(amounts.net)}</td><td className="py-2.5 text-right font-mono tabular-nums">{amounts.paid == null ? "Unknown" : money(amounts.paid)}</td><td className="py-2.5 text-right font-mono tabular-nums">{amounts.balance == null ? "Estimate" : money(amounts.balance)}</td><td className="py-2.5 text-right"><Link href={`/reports/vendor-payables/unlinked/${bill.id}`} className="font-semibold text-[#6e6043] hover:underline">Open ledger</Link></td>
+                  <td className="py-2.5 text-[#665e4e]">{dateLabel(bill.billDate)}</td><td className="py-2.5 font-semibold text-[#4b5149]">{bill.billNo || `Bill #${bill.id}`}</td><td className="py-2.5"><StatusTag status={bill.status} /></td><td className="py-2.5 text-right font-mono tabular-nums">{money(amounts.net)}</td><td className="py-2.5 text-right font-mono tabular-nums">{amounts.paid == null ? "Unknown" : money(amounts.paid)}</td><td className="py-2.5 text-right font-mono tabular-nums">{amounts.balance == null ? "Estimate" : money(amounts.balance)}</td><td className="py-2.5 text-right"><Link href={withDateRange(`/reports/vendor-payables/unlinked/${bill.id}`, dateFrom, dateTo)} className="font-semibold text-[#6e6043] hover:underline">Open ledger</Link></td>
                 </tr>;
               })}</tbody>
             </table>
@@ -342,13 +382,17 @@ function Metric({ label, value, detail, dark = false }: { label: string; value: 
   </div>;
 }
 
-function LedgerView({ current, lines, vendorId, billId, vendorName, summary, onExport }: {
+function LedgerView({ current, lines, vendorId, vendorName, summary, consistencyError, dateFrom, dateTo, setDateFrom, setDateTo, onExport }: {
   current?: VendorBill;
   lines: ReturnType<typeof projectVendorLedger>;
   vendorId: number | null;
-  billId: number | null;
   vendorName: string;
   summary: PayablesReport["vendors"][number] | null;
+  consistencyError: boolean;
+  dateFrom: string;
+  dateTo: string;
+  setDateFrom: (value: string) => void;
+  setDateTo: (value: string) => void;
   onExport: () => void;
 }) {
   const isUnlinked = vendorId == null;
@@ -361,13 +405,19 @@ function LedgerView({ current, lines, vendorId, billId, vendorName, summary, onE
   return <div className="space-y-6">
     <div className="flex flex-col justify-between gap-4 border-b border-[#d4dfda] pb-5 sm:flex-row sm:items-end">
       <div>
-        <Link href="/reports/vendor-payables" className="mb-4 inline-flex items-center gap-1.5 text-xs font-semibold text-[#67807a] hover:text-[#29443d]"><ArrowLeft className="h-3.5 w-3.5" />All vendor payables</Link>
+        <Link href={withDateRange("/reports/vendor-payables", dateFrom, dateTo)} className="mb-4 inline-flex items-center gap-1.5 text-xs font-semibold text-[#67807a] hover:text-[#29443d]"><ArrowLeft className="h-3.5 w-3.5" />All vendor payables</Link>
         <SectionEyebrow>{isUnlinked ? "Unlinked vendor ledger" : "Linked vendor ledger"}</SectionEyebrow>
         <h1 className="mt-1 text-[26px] font-bold tracking-[-0.035em] text-[#18312e] sm:text-[32px]">{vendorName}</h1>
         <p className="mt-1 text-sm text-[#677c77]">{isUnlinked ? "Exact typed bill name · separate from linked vendor identities" : "Complete bill-date-ordered record · all bill statuses"}</p>
       </div>
       <DownloadButton onClick={onExport} label="Export ledger" />
     </div>
+
+    <DateRangeControls dateFrom={dateFrom} dateTo={dateTo} setDateFrom={setDateFrom} setDateTo={setDateTo} />
+
+    {consistencyError && <div role="alert" className="rounded-lg border border-[#b75c4d] bg-[#fff4f1] px-4 py-3 text-xs leading-5 text-[#783b32]">
+      Ledger totals do not match the payables summary for this date range. Both sets of figures are shown without adjustment.
+    </div>}
 
     {isUnlinked && <div className="flex gap-3 rounded-lg border border-[#e3d7bd] bg-[#fffaf0] px-4 py-3 text-xs leading-5 text-[#766443]"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><p><strong>Unlinked bill — excluded from linked-vendor totals.</strong> This ledger includes bills with the exact typed name only and does not combine them with a linked vendor.</p></div>}
     {paymentUnknown > 0 && <div className="flex gap-3 rounded-lg border border-[#e6d8b5] bg-[#fffaf0] px-4 py-3 text-xs leading-5 text-[#725d30]"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><p><strong>{paymentUnknown} bill{paymentUnknown === 1 ? "" : "s"} have unknown payment amounts.</strong> Paid, balance, and running balance figures are estimates where payment information is not recorded.</p></div>}
@@ -402,7 +452,7 @@ function LedgerView({ current, lines, vendorId, billId, vendorName, summary, onE
         </table>
       </div>}
       <div className="border-t border-[#e1e8e4] bg-[#f8faf8] px-5 py-3 text-[11px] leading-5 text-[#758680]">
-        {summary ? <>Foot totals match the linked-vendor summary: payable now {money(summary.payableNow)} and coming up {money(summary.comingUp)}. Running balances follow bill date and recorded payments.</> : <>This exact-name unlinked ledger is excluded from linked-vendor totals. Running balances follow bill date and recorded payments.</>}
+        {summary ? <>Part A totals for this period: payable now {money(summary.payableNow)} · coming up {money(summary.comingUp)} · total liability {money(summary.totalLiability)}. These are the same linked-vendor totals as the summary row. Running balances follow bill date and recorded payments.</> : <>This exact-name unlinked ledger is excluded from linked-vendor totals. Running balances follow bill date and recorded payments.</>}
         {paymentUnknown > 0 && " An asterisk marks estimated amounts."}
       </div>
     </section>
