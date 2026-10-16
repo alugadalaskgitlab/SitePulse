@@ -53,6 +53,14 @@ export function VendorRunningStatement({ bill, bills, totals, loading, error }: 
   const previous = history.isSuccess && !history.isFetching ? previousBillingSummary(bill, history.data || [], totals) : null;
   const rows = previous?.rows || [];
   rows.sort((a, b) => String(a.billDate).localeCompare(String(b.billDate)) || a.id - b.id);
+  const excludedRows = previous?.excludedRows || [];
+  const sameDateExcluded = excludedRows.filter(row =>
+    String(row.billDate || "").slice(0, 10) === String(bill.billDate || "").slice(0, 10)
+  );
+  const laterDateExcluded = excludedRows.filter(row => !sameDateExcluded.includes(row));
+  const unlinkedExcluded = bill.vendorId == null ? [] : bills.filter(row =>
+    row.vendorId == null && String(row.vendorName ?? "") === String(bill.vendorName ?? "")
+  );
   let subtotal = 0;
   let paymentGap = false;
   const latest = rows.at(-1);
@@ -63,6 +71,18 @@ export function VendorRunningStatement({ bill, bills, totals, loading, error }: 
     {(error || history.isError) && <p role="alert" className="text-xs">Financial history is unavailable or not permitted. <button type="button" className="underline" onClick={() => history.refetch()}>Retry</button></p>}
     {bill.vendorId == null && !loading && !error &&
       <p className="text-xs text-muted-foreground">Unlinked/free-text vendor: previous balances are unavailable; other names are not assumed to represent the same party.</p>}
+    {unlinkedExcluded.length > 0 && !loading && !error &&
+      <p role="note" className="text-xs text-amber-800">
+        {unlinkedExcluded.length} {unlinkedExcluded.length === 1 ? "bill" : "bills"} excluded — not linked to this vendor: {unlinkedExcluded.map(row => row.billNo).join(", ")}.
+      </p>}
+    {history.isSuccess && !history.isFetching && sameDateExcluded.length > 0 &&
+      <p role="note" className="text-xs text-amber-800">
+        {sameDateExcluded.length} {sameDateExcluded.length === 1 ? "bill" : "bills"} excluded — {sameDateExcluded.map(row => row.billNo).join(", ")}, same bill date, counted as later.
+      </p>}
+    {history.isSuccess && !history.isFetching && laterDateExcluded.length > 0 &&
+      <p role="note" className="text-xs text-amber-800">
+        {laterDateExcluded.length} {laterDateExcluded.length === 1 ? "bill" : "bills"} excluded — {laterDateExcluded.map(row => row.billNo).join(", ")}, later bill date, counted as later.
+      </p>}
     {bill.vendorId != null && history.isSuccess && !history.isFetching && previous && rows.length === 0 &&
       <p className="text-xs text-muted-foreground">No previous bills for this vendor.</p>}
     {history.isSuccess && !history.isFetching && previous && latest && <>

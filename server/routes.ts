@@ -11599,7 +11599,15 @@ export async function registerRoutes(
   app.get("/api/vendor-bills/financial-review", async (req, res) => {
     if (!assertViewEither(req, res, "vendor_bills", "vendor_bills_view")) return;
     try {
-      res.json(await scopeVendorBillsToSiteAccess(req, await storage.getVendorBills({})));
+      const bills = await scopeVendorBillsToSiteAccess(req, await storage.getVendorBills({}));
+      const vendorIds = [...new Set(bills
+        .map(bill => bill.vendorId == null ? null : Number(bill.vendorId))
+        .filter((id): id is number => id != null && Number.isSafeInteger(id)))];
+      const linkedNames = new Map((await storage.getVendorNamesByIds(vendorIds)).map(vendor => [vendor.id, vendor.name]));
+      res.json(bills.map(bill => ({
+        ...bill,
+        linkedVendorName: bill.vendorId == null ? null : linkedNames.get(Number(bill.vendorId)) ?? null,
+      })));
     } catch { res.status(500).json({ message: "Unable to load financial review" }); }
   });
 

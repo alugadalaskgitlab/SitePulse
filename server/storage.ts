@@ -1614,6 +1614,7 @@ export interface IStorage {
   transitionHireStatement(id: number, expectedRevision: number, allowedStatuses: string[], data: Partial<InsertHireStatement>): Promise<HireStatement | undefined>;
   createHireStatementVendorBill(statementId: number, bill: Omit<CreateVendorBillRequest, "items" | "billNo"> & { items: Omit<InsertVendorBillItem, "billId">[] }): Promise<{ statement: HireStatement; bill: VendorBillWithItems }>;
   getVendorNames(): Promise<string[]>;
+  getVendorNamesByIds(ids: number[]): Promise<{ id: number; name: string }[]>;
   getVendorAliases(): Promise<VendorAlias[]>;
   addVendorAlias(canonicalName: string, alias: string): Promise<VendorAlias>;
   deleteVendorAlias(id: number): Promise<boolean>;
@@ -19532,6 +19533,14 @@ export class DatabaseStorage implements IStorage {
     }
 
     return [...deduped].sort();
+  }
+
+  async getVendorNamesByIds(ids: number[]): Promise<{ id: number; name: string }[]> {
+    const uniqueIds = [...new Set(ids.map(Number).filter(id => Number.isSafeInteger(id) && id > 0))];
+    if (uniqueIds.length === 0) return [];
+    return db.select({ id: identityVendors.id, name: identityVendors.name })
+      .from(identityVendors)
+      .where(inArray(identityVendors.id, uniqueIds));
   }
 
   async getDieselRequirements(filters?: { dateFrom?: string; dateTo?: string; status?: string }): Promise<DieselRequirementWithItems[]> {

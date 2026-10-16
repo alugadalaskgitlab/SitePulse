@@ -37,13 +37,14 @@ export default function ReportsHub() {
   const canAudit      = sectionVisible("plant_audit");
   const canDieselReq  = sectionVisible("site_diesel") || sectionVisible("diesel_req_view") || sectionVisible("diesel_req_raise") || sectionVisible("diesel_req_approve");
   const canBills      = sectionVisible("vendor_bills") || sectionVisible("vendor_bills_view") || sectionVisible("vendor_bills_raise") || sectionVisible("vendor_bills_verify") || sectionVisible("vendor_bills_approve");
+  const canPayables   = (sectionVisible("vendor_bills") || sectionVisible("vendor_bills_view")) && sectionVisible("vendor_financials");
   const canEquipment  = sectionVisible("equipment_performance_report") || sectionVisible("plant_equipment");
 
   const hasSiteReports  = canSiteDprs || canSiteMat || canSiteProcure || canReports || canEquipment;
   const hasHmpReports   = canDailyRep || canHeating || canProd || canDieselProc || canShift;
   const hasRmcReports   = rmcEnabled && canProd;
   const hasStockReports = canMaterials || canStock || canVariance || canAudit;
-  const hasProcReports  = canSiteProcure || canDieselReq || canBills;
+  const hasProcReports  = canSiteProcure || canDieselReq || canBills || canPayables;
 
   return (
     <HubShell
@@ -283,6 +284,15 @@ export default function ReportsHub() {
                 accent="rose"
                 iconBg="bg-rose-100"
                 enabled={canBills}
+              />
+              <HubActionTile
+                href="/reports/vendor-payables"
+                icon={Receipt}
+                title="Vendor Payables"
+                description="Review committed and provisional liability by vendor, with full bill ledgers"
+                accent="emerald"
+                iconBg="bg-emerald-100"
+                enabled={canPayables}
               />
             </div>
           </div>
