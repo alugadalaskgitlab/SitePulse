@@ -1,0 +1,173 @@
+# INSTRUCTION — VB-PAY-03
+
+**The payables figures are being cut off and the ledger columns overlap. Fix the
+display so every figure can be read in full.**
+
+Baseline: the published commit carrying VB-PAY-02 (`abb71bb` or the commit published
+from it). State it in your report.
+
+**Presentation only.** No calculation changes, no stored value changes, no
+permission or site-scope changes. Navigation from VB-PAY-02 is working and must not
+be disturbed.
+
+VB-PAY-02 fitted the tables to the page. It did so partly by truncating content,
+which has moved the problem rather than solved it: the headline figures now end in
+an ellipsis and, in the vendor ledger, the bill number prints on top of the bill
+period. **A figure that cannot be read is worse than a figure that needs
+scrolling.**
+
+---
+
+## Standing rules
+
+- No production data changes, migrations, automatic repairs or publishing without
+  our review.
+- No sequence resets. Do not call or re-expose `resetAllSequences`.
+- Preserve all existing users, credentials, site access, permissions and
+  administrator privileges.
+- The payables page stays read-only: it creates, updates and deletes nothing.
+- Every figure must continue to come from `billReviewAmounts`,
+  `summarizeBillReview`, `getBillFinancialTotals` and `filterFinancialBills`.
+- Report against the benchmark in force at the baseline commit.
+
+---
+
+## Part A — The headline figures are truncated (worst fault, fix first)
+
+**Observed on the live app.** The four tiles read:
+
+```
+PAYABLE NOW   ₹37,6…        COMING UP   ₹5,99…        TOTAL LIABILITY   ₹6,36…
+Approved · k…               Provisional bil…          Excludes unli…
+```
+
+The whole purpose of the page is these three numbers, and not one of them can be
+read.
+
+**Two causes, both in `client/src/pages/VendorPayables.tsx`.**
+
+1. `Metric` applies `truncate` to the value line and to the detail line.
+2. The tiles share a row with the date filter —
+   `grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]` — so four tiles are squeezed into
+   whatever width the filter leaves.
+
+**Required.**
+
+1. **Never truncate a money figure.** Remove `truncate` from the value line. A
+   rupee amount must always print in full, including lakhs with paise
+   (`₹37,621.86`, `₹3,89,888.41`).
+2. **Give the tiles the full width.** Put the bill-period filter on its own row
+   above or below the tiles rather than beside them.
+3. The detail line under each figure must read in full too. Shorten the wording
+   instead of clipping it — "Approved bills" , "Provisional bills", "Excludes
+   unlinked".
+4. Apply the same to the unlinked-bills tiles and the vendor-ledger tiles, which
+   use the same component.
+
+---
+
+## Part B — The vendor ledger overlaps its own columns
+
+**Observed on Gangaram Narsimhulu's ledger.** The bill number prints over the bill
+period:
+
+```
+09 Mar 2026   HLC/VB/2026/0001  04 Feb 2026 – 05 Feb
+                                2026
+```
+
+**Cause.** The fixed column widths added in VB-PAY-02 are narrower than the content
+they hold, and the bill-number cell is `whitespace-nowrap`, so it overflows its cell
+instead of being contained.
+
+**Required.**
+
+1. **No cell may print over another, at any window width.** Give the bill number and
+   the date columns the width their content actually needs.
+2. A bill period may print on two lines (`04 Feb 2026 –` / `05 Feb 2026`) but must
+   not collide with anything.
+3. Reduce the Status / review column instead — the three stacked tags
+   (PAID · PAYMENT UNKNOWN, DRAFT · PROVISIONAL · PAYMENT UNKNOWN) are taking width
+   out of proportion to what they say. Keep every tag; let them stack.
+4. Check the same column widths on the unlinked-bill ledger, which shares the layout.
+
+---
+
+## Part C — The vendor name is cut off where it matters
+
+`GANGARAM NARS…` and `MAHIPAL KALPAG…` in the summary. Truncation with the full name
+on hover was my instruction and is acceptable in principle, but the column is too
+narrow to be useful — the user cannot tell two similar names apart, which on this
+page is the whole point.
+
+**Required.**
+
+1. Widen the Vendor column so a name of roughly 24 characters prints in full.
+2. Where a name is still too long, truncate at the end with the full name on hover,
+   as now.
+3. The **Oldest unpaid** column must print its date on one line (`12 Oct 2026`), not
+   wrapped over two.
+
+Take the width from Bills and Credit, which hold short values.
+
+---
+
+## How to judge it
+
+The page is correct when, at the window width in the screenshots supplied with this
+instruction and at 1280px:
+
+- every rupee figure on the page prints in full, with no ellipsis anywhere;
+- no text prints over any other text;
+- Payable now, Coming up and Total liability are readable at a glance without
+  scrolling sideways.
+
+If fitting everything without scrolling would require clipping a figure, **allow the
+sideways scroll and keep the figure whole.** Readability wins. The sticky vendor
+column from VB-PAY-02 already makes scrolling tolerable.
+
+---
+
+## What must not change
+
+- **Every figure.** State before and after, as numbers, from the live page:
+  - Totals — Payable now ₹37,621.86, Coming up ₹5,99,xxx, Total liability ₹6,36,xxx
+    (report the exact figures, which are currently unreadable on screen).
+  - Gangaram Narsimhulu — Billed ₹9,41,875.40, Paid ₹0.00, Payable now ₹0.00, Coming
+    up ₹3,89,888.41, Total liability ₹3,89,888.41.
+  - Nafeez — Billed ₹75,768.17, Paid ₹50,000.00, Payable now ₹25,768.17.
+  - Mahipal Kalpaguri — Billed ₹87,008.69, Paid ₹75,155.00, Payable now ₹11,853.69.
+  - Unlinked — 23 bills, Billed ₹3,11,761.90, Paid ₹27,070.00, Balance ₹2,84,691.90.
+- The navigation and return behaviour delivered in VB-PAY-02.
+- The two tabs and the notice naming the excluded unlinked count and balance.
+- The payment-confidence marking — "Estimate · N payment unknown", the banners, and
+  the `*` on estimated running balances.
+- The arithmetic in `billReviewAmounts`, `summarizeBillReview`, `billPaymentPosition`,
+  `getBillFinancialTotals` and `filterFinancialBills`.
+- Every permission and site-scope check.
+
+---
+
+## Verification required
+
+Report in plain terms, no test-name inventories.
+
+1. **Part A** — the four tiles before and after, showing all three headline figures
+   printing in full. State the exact figures.
+2. **Part B** — Gangaram's ledger before and after, showing the bill number and bill
+   period no longer overlapping, on the widest and at 1280px.
+3. **Part C** — GANGARAM NARSIMHULU printing in full in the Vendor column, and
+   Oldest unpaid on one line.
+4. Confirmation that no figure changed, quoting the numbers under **What must not
+   change**.
+5. Confirmation that the VB-PAY-02 navigation still returns to the page it came
+   from, after a view, an edit and a status change.
+6. The full suite run to completion against the baseline benchmark, with the counts
+   stated and every failure named individually. **Do not stop the run early.** The
+   baseline carries one known failure in `tests/hireBillingLifecycle07b.test.ts` — a
+   static text assertion, not in scope for this batch.
+
+Stop and ask once if any part cannot be done without breaking a rule above. Do not
+work around a rule and report it afterwards.
+
+Nothing is to be published. We will review and publish.
