@@ -72,6 +72,7 @@ beforeAll(async () => {
   visit(ast);
   expect(routes).toHaveLength(4);
   const deps = { app, storage, db, z, tripHireEligibility, createVendorBillRequestSchema: schema.createVendorBillRequestSchema,
+    recordChange: async () => {},
     assertView: () => true, assertCreateEither: () => true, resolveVendorBillSite: async () => ({}),
     getPermittedSiteNames: async () => null, assertVendorBillAutoSources: async () => true, sendPushToSection: async () => {},
     scopeVendorBillsToSiteAccess: async (_req: any, rows: any[]) => rows,

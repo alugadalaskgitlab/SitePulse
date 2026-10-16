@@ -9,9 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import CancelDialog from "@/components/CancelDialog";
+import HistoryDialog from "@/components/HistoryDialog";
 import { Link, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Check, Circle, Info, Fuel, Settings, Copy, X, Download, Search, Edit, PlusCircle, BarChart2, Calculator } from "lucide-react";
+import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Check, Circle, Info, Fuel, Settings, Copy, X, Download, Search, Edit, PlusCircle, BarChart2, Calculator, History } from "lucide-react";
 import { queryClient, apiRequest, isForbiddenError, NO_PERMISSION_DESCRIPTION } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { vendorBillStatusError } from "@/lib/vendorBillStatusError";
@@ -22,7 +24,7 @@ export { hasCumulativeVendorPayment } from "@shared/vendorBillPayment";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
-import type { VendorBillWithItems, VendorAlias, Site } from "@shared/schema";
+import type { VendorBillWithItems, VendorAlias, Site, AuditLog } from "@shared/schema";
 import { siteMatchesPermitted } from "@shared/siteName";
 import { filterFinancialBills, billPaymentPosition, getBillFinancialTotals, type BillScope } from "@shared/vendorBillFinancialReport";
 import { VendorBillTaxesSummary } from "@/components/vendor-bills/VendorBillTaxesSummary";
@@ -317,6 +319,7 @@ const STATUS_ORDER = ["draft", "verified", "approved", "paid"] as const;
 
 function getStatusBadgeClass(status: string) {
   switch (status) {
+    case "voided": return "bg-red-600 text-white border-red-700";
     case "draft": return "bg-amber-500 text-white border-amber-600";
     case "verified": return "bg-emerald-600 text-white border-emerald-700";
     case "approved": return "bg-indigo-600 text-white border-indigo-700";
@@ -534,7 +537,8 @@ export default function VendorBills() {
   const canCreate = sectionCan("vendor_bills", "create") || sectionCan("vendor_bills_raise", "create");
   const canEdit = sectionCan("vendor_bills", "edit") || sectionCan("vendor_bills_verify", "edit") || sectionCan("vendor_bills_approve", "edit");
   const canViewBills = sectionVisible("vendor_bills") || sectionVisible("vendor_bills_view");
-  const canDelete = isAdmin;
+  const canDelete = !!user?.isOwner;
+  const canVoid = isAdmin || !!user?.isOwner;
   // 06M-A: payment details use the SAME capability the server enforces for
   // the payment-details PATCH and for marking a bill paid (approve on
   // vendor_bills_approve) — never show an edit control a 403 would reject.
@@ -656,6 +660,9 @@ export default function VendorBills() {
 
   const [pendingDeleteAction, setPendingDeleteAction] = useState<{ billId: number; billNo?: string; status?: string } | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("");
+  const [voidBillAction, setVoidBillAction] = useState<{ billId: number; billNo: string } | null>(null);
+  const [showBillHistory, setShowBillHistory] = useState(false);
   const [showAliasDialog, setShowAliasDialog] = useState(false);
   const [aliasCanonical, setAliasCanonical] = useState("");
   const [aliasValue, setAliasValue] = useState("");
@@ -696,13 +703,31 @@ export default function VendorBills() {
   };
 
   const { data: bills, isLoading, isError: billListError } = useQuery<VendorBillWithItems[]>({
-    queryKey: ["/api/vendor-bills"],
+    queryKey: filterStatus === "voided" ? ["/api/vendor-bills", "voided-list"] : ["/api/vendor-bills"],
+    queryFn: async () => {
+      const path = filterStatus === "voided" ? "/api/vendor-bills?status=voided" : "/api/vendor-bills";
+      const response = await fetch(path, { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch vendor bills.");
+      return response.json();
+    },
   });
 
 
   const { data: billDetail } = useQuery<VendorBillWithItems>({
     queryKey: ["/api/vendor-bills", selectedBillId],
     enabled: !!selectedBillId,
+  });
+  const billAuditHistory = useQuery<AuditLog[]>({
+    queryKey: ["/api/audit-logs", { module: "vendor_bills", transactionId: selectedBillId }],
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/audit-logs?module=vendor_bills&transactionId=${selectedBillId}`,
+        { credentials: "include" },
+      );
+      if (!response.ok) throw new Error("Failed to fetch vendor-bill audit history.");
+      return response.json();
+    },
+    enabled: view === "detail" && !!selectedBillId && canViewBills,
   });
 
   const { data: vendorNamesData } = useQuery<string[]>({
@@ -1024,13 +1049,15 @@ export default function VendorBills() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: ({ id }: { id: number }) => apiRequest("DELETE", `/api/vendor-bills/${id}`),
+    mutationFn: ({ id, reason }: { id: number; reason: string }) =>
+      apiRequest("DELETE", `/api/vendor-bills/${id}`, { reason }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills"] });
       toast({ title: "Bill deleted" });
       setSelectedBillId(null);
       setShowDeleteConfirm(false);
       setPendingDeleteAction(null);
+      setDeleteReason("");
       setView("list");
     },
     onError: (err: Error) => {
@@ -2291,11 +2318,16 @@ export default function VendorBills() {
   };
 
   const handleEditBill = (bill: VendorBillWithItems) => {
+    if (bill.isCancelled) {
+      toast({ title: "Voided bills cannot be edited", variant: "destructive" });
+      return;
+    }
     loadBillForEdit(bill);
   };
 
   const handleDeleteBill = (bill: VendorBillWithItems) => {
     setPendingDeleteAction({ billId: bill.id, billNo: bill.billNo, status: bill.status });
+    setDeleteReason("");
     setShowDeleteConfirm(true);
   };
 
@@ -4481,6 +4513,12 @@ export default function VendorBills() {
 
     const currentStatusIdx = STATUS_ORDER.indexOf(bill.status as any);
     const nextStatus = currentStatusIdx < STATUS_ORDER.length - 1 ? STATUS_ORDER[currentStatusIdx + 1] : null;
+    const auditEntries = billAuditHistory.data || [];
+    const createdAudit = auditEntries.find(entry => entry.action === "create");
+    const lastChangeAudit = auditEntries.find(entry => entry.action !== "create") || createdAudit;
+    const voidAudit = auditEntries.find(entry => entry.action === "void");
+    const auditDateLabel = (value: AuditLog["createdAt"]) =>
+      value ? new Date(value).toLocaleString() : "time unavailable";
     const hasPersistedHireStatements = Array.isArray((bill as any).hireStatements) && (bill as any).hireStatements.length > 0;
     const savedHireOutputs = ((bill as any).hireStatements || []).map((statement: any, index: number) =>
       buildSavedEquipmentHireBillOutput({
@@ -4597,8 +4635,8 @@ export default function VendorBills() {
                 <p className="text-sm text-muted-foreground uppercase">Vendor</p>
                 <p className="text-xl font-bold" data-testid="text-vendor-name">{detailVendorName}</p>
               </div>
-              <Badge variant="outline" className={`uppercase text-sm ${getStatusBadgeClass(bill.status)} no-default-hover-elevate no-default-active-elevate`} data-testid="badge-bill-status">
-                {bill.status}
+              <Badge variant="outline" className={`uppercase text-sm ${getStatusBadgeClass(bill.isCancelled ? "voided" : bill.status)} no-default-hover-elevate no-default-active-elevate`} data-testid="badge-bill-status">
+                {bill.isCancelled ? "VOID" : bill.status}
               </Badge>
             </div>
 
@@ -4630,11 +4668,11 @@ export default function VendorBills() {
               <VendorBillPaymentDetails
                 key={bill.id}
                 bill={bill}
-                canEditPayment={canMarkPaid && ["approved", "paid"].includes(bill.status)}
+                  canEditPayment={canMarkPaid && !bill.isCancelled && ["approved", "paid"].includes(bill.status)}
               />
             )}
 
-            <div className="border-t pt-4">
+            {!bill.isCancelled && <div className="border-t pt-4">
               <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 mb-2">Status Progress</p>
               {renderStatusSteps(bill.status, {
                 createdAt: bill.createdAt,
@@ -4646,10 +4684,10 @@ export default function VendorBills() {
                 paymentRecordedBy: (bill as any).paymentRecordedBy,
                 paymentAccountKey: (bill as any).paymentAccountKey,
               })}
-            </div>
+            </div>}
 
             <div className="flex gap-2 pt-2 flex-wrap">
-              {canEdit && nextStatus && (
+              {canEdit && !bill.isCancelled && nextStatus && (
                 <Button
                   size="sm"
                   onClick={() => handleStatusChange(bill.id, nextStatus)}
@@ -4660,6 +4698,24 @@ export default function VendorBills() {
                   MARK AS {nextStatus.toUpperCase()}
                 </Button>
               )}
+              {canVoid && !bill.isCancelled && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setVoidBillAction({ billId: bill.id, billNo: bill.billNo })}
+                  data-testid="button-void-bill"
+                >
+                  VOID BILL
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowBillHistory(true)}
+                data-testid="button-bill-history"
+              >
+                <History className="w-3 h-3 mr-1" /> HISTORY
+              </Button>
               {canDelete && (
                 <Button
                   variant="outline"
@@ -4676,6 +4732,65 @@ export default function VendorBills() {
             </div>
           </CardContent>
         </Card>
+
+        <Card data-testid="vendor-bill-audit-summary">
+          <CardHeader className="py-3">
+            <CardTitle className="text-sm uppercase tracking-wider">Audit details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {billAuditHistory.isLoading ? (
+              <p className="text-muted-foreground">Loading audit details…</p>
+            ) : billAuditHistory.isError ? (
+              <p className="text-destructive">Audit details could not be loaded.</p>
+            ) : auditEntries.length === 0 ? (
+              <p className="text-muted-foreground">Creator and change history were not recorded for this bill.</p>
+            ) : (
+              <>
+                <p>
+                  Created by <strong>{createdAudit?.userName || "Not recorded"}</strong>
+                  {createdAudit && ` · ${auditDateLabel(createdAudit.createdAt)}`}
+                </p>
+                <p>
+                  Last changed by <strong>{lastChangeAudit?.userName || "Not recorded"}</strong>
+                  {lastChangeAudit && ` · ${auditDateLabel(lastChangeAudit.createdAt)}`}
+                </p>
+              </>
+            )}
+            {bill.isCancelled && (
+              <div className="rounded border border-red-300 bg-red-50 p-3 text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-100" data-testid="bill-void-audit">
+                <p className="font-semibold">VOID</p>
+                <p>
+                  Voided by <strong>{voidAudit?.userName || "Audit actor unavailable"}</strong>
+                  {voidAudit && ` · ${auditDateLabel(voidAudit.createdAt)}`}
+                </p>
+                <p>Reason: {voidAudit?.reason || bill.cancellationReason || "Reason unavailable"}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {voidBillAction && (
+          <CancelDialog
+            open
+            onOpenChange={(open) => { if (!open) setVoidBillAction(null); }}
+            cancelUrl={`/api/vendor-bills/${voidBillAction.billId}/void`}
+            recordLabel={`Bill ${voidBillAction.billNo}`}
+            invalidateQueryKeys={["/api/vendor-bills", "/api/audit-logs"]}
+            onCancelled={() => setVoidBillAction(null)}
+            actionLabel="Void"
+            actionPastTense="voided"
+            dialogTitle="Void vendor bill"
+            reasonLabel="Reason for voiding *"
+          />
+        )}
+
+        <HistoryDialog
+          open={showBillHistory}
+          onOpenChange={setShowBillHistory}
+          module="vendor_bills"
+          transactionId={bill.id}
+          recordLabel={`Bill ${bill.billNo}`}
+        />
 
         {hasPersistedHireStatements && (
           <Card className="border-orange-200 dark:border-orange-800">
@@ -4951,7 +5066,7 @@ export default function VendorBills() {
         </div>
 
         {showDeleteConfirm && (
-          <Dialog open={showDeleteConfirm} onOpenChange={(open) => { if (!open) { setShowDeleteConfirm(false); setPendingDeleteAction(null); } }}>
+          <Dialog open={showDeleteConfirm} onOpenChange={(open) => { if (!open) { setShowDeleteConfirm(false); setPendingDeleteAction(null); setDeleteReason(""); } }}>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle className="text-red-600">DELETE VENDOR BILL</DialogTitle>
@@ -4965,16 +5080,27 @@ export default function VendorBills() {
                 </div>
               )}
               <p className="text-sm text-muted-foreground">THIS WILL PERMANENTLY DELETE THIS VENDOR BILL AND ALL ITS LINE ITEMS. THIS ACTION CANNOT BE UNDONE.</p>
+              <div className="space-y-2">
+                <Label htmlFor="delete-vendor-bill-reason">Reason for permanent deletion *</Label>
+                <Textarea
+                  id="delete-vendor-bill-reason"
+                  data-testid="input-delete-bill-reason"
+                  value={deleteReason}
+                  onChange={(event) => setDeleteReason(event.target.value)}
+                  placeholder="Explain why this bill must be permanently removed."
+                  rows={3}
+                />
+              </div>
               <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={() => { setShowDeleteConfirm(false); setPendingDeleteAction(null); }} data-testid="button-delete-dismiss">
+                <Button variant="outline" onClick={() => { setShowDeleteConfirm(false); setPendingDeleteAction(null); setDeleteReason(""); }} data-testid="button-delete-dismiss">
                   CANCEL
                 </Button>
                 <Button
                   variant="destructive"
-                  disabled={deleteMutation.isPending || !pendingDeleteAction}
+                  disabled={deleteMutation.isPending || !pendingDeleteAction || !deleteReason.trim()}
                   onClick={() => {
                     if (pendingDeleteAction) {
-                      deleteMutation.mutate({ id: pendingDeleteAction.billId });
+                      deleteMutation.mutate({ id: pendingDeleteAction.billId, reason: deleteReason.trim() });
                     }
                   }}
                   data-testid="button-confirm-delete"
@@ -5106,6 +5232,7 @@ export default function VendorBills() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">ALL STATUS</SelectItem>
+                    <SelectItem value="voided">VOIDED</SelectItem>
                     <SelectItem value="draft">DRAFT</SelectItem>
                     <SelectItem value="verified">VERIFIED</SelectItem>
                     <SelectItem value="approved">APPROVED</SelectItem>
@@ -5259,6 +5386,7 @@ export default function VendorBills() {
                       <p className={`font-bold text-base ${getStatusColor(bill.status)}`} data-testid={`text-bill-amount-${bill.id}`}>
                         {formatCurrency(bill.totalAmount)}
                       </p>
+                      {bill.isCancelled && <Badge variant="destructive" data-testid={`badge-void-bill-${bill.id}`}>VOID</Badge>}
                       {hasBillAdjustments && (
                         <div className="text-xs text-muted-foreground space-y-0.5" data-testid={`bill-adjustments-${bill.id}`}>
                           {primaryAdjustmentAmount !== 0 && (

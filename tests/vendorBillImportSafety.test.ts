@@ -222,6 +222,34 @@ describe("vendor bill JSON import safety", () => {
     expect(dbMock.state.committed.map((write) => write.table)).toEqual([vendorBills, vendorBillItems]);
   });
 
+  it("preserves nullable cancellation fields from vendor-bill snapshots", async () => {
+    const snapshot = realisticVendorBundle();
+    snapshot.vendor_bills.bills[0] = {
+      ...snapshot.vendor_bills.bills[0],
+      isDeleted: false,
+      deletedAt: null,
+      deletedBy: null,
+      isCancelled: true,
+      cancelledAt: timestamp,
+      cancelledBy: 9,
+      cancellationReason: "duplicate entry",
+    };
+    dbMock.state.selectQueue = [[], [], [], [], [{ id: 7 }]];
+
+    const result = await storage.importData(snapshot);
+
+    expect(result.errors).toEqual([]);
+    expect(dbMock.state.committed[0].values[0]).toMatchObject({
+      isDeleted: false,
+      deletedAt: null,
+      deletedBy: null,
+      isCancelled: true,
+      cancelledAt: new Date(timestamp),
+      cancelledBy: 9,
+      cancellationReason: "duplicate entry",
+    });
+  });
+
   it("rejects a mismatched existing ID before any vendor-bill write", async () => {
     const mismatched = realisticVendorBundle();
     dbMock.state.selectQueue = [

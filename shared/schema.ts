@@ -2405,6 +2405,11 @@ export const vendorBills = pgTable("vendor_bills", {
   unlockedByUserId: integer("unlocked_by_user_id"),
   unlockedAt: timestamp("unlocked_at"),
   unlockReason: text("unlock_reason"),
+  ...cancellationFields,
+  // Vendor-bill cancellation columns are nullable and intentionally have no
+  // defaults: old rows remain unbackfilled and are live unless explicitly voided.
+  isDeleted: boolean("is_deleted"),
+  isCancelled: boolean("is_cancelled"),
 });
 
 export const vendorBillAdditionalAdjustmentSchema = z.object({
@@ -2549,7 +2554,11 @@ export const hireStatementExceptionsRelations = relations(hireStatementException
   statement: one(hireStatements, { fields: [hireStatementExceptions.statementId], references: [hireStatements.id] }),
 }));
 
-export const insertVendorBillSchema = createInsertSchema(vendorBills).omit({ id: true, createdAt: true, vendorId: true });
+export const insertVendorBillSchema = createInsertSchema(vendorBills).omit({
+  id: true, createdAt: true, vendorId: true,
+  isDeleted: true, deletedAt: true, deletedBy: true,
+  isCancelled: true, cancelledAt: true, cancelledBy: true, cancellationReason: true,
+});
 export const insertVendorBillItemSchema = createInsertSchema(vendorBillItems, {
   transportPricing: transportPricingSchema.nullish(),
   arrangementPricing: arrangementPricingSchema.nullish(),

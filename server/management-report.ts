@@ -511,6 +511,8 @@ export function registerManagementReportRoutes(app: Express) {
       const billConds: any[] = [];
       if (dateFrom) billConds.push(gte(vendorBills.billDate, dateFrom));
       if (dateTo)   billConds.push(lte(vendorBills.billDate, dateTo));
+      billConds.push(sql`COALESCE(${vendorBills.isCancelled}, false) = false`);
+      billConds.push(sql`COALESCE(${vendorBills.isDeleted}, false) = false`);
 
       const billRows = await db.select({
         siteName: vendorBillItems.siteName,

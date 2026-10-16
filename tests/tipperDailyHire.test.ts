@@ -146,6 +146,7 @@ it("real routes preserve trip evidence but reject a second bill in an overlappin
   visit(ast);
   expect(routes).toHaveLength(2);
   const deps = { app, storage, z, createVendorBillRequestSchema: schema.createVendorBillRequestSchema,
+    recordChange: async () => {},
     assertCreateEither: () => true, resolveVendorBillSite: async () => ({}), getPermittedSiteNames: async () => null,
     assertVendorBillAutoSources: async () => true, sendPushToSection: async () => {},
     scopeVendorBillsToSiteAccess: async (_req: any, rows: any[]) => rows,

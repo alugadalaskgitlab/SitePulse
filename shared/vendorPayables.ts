@@ -140,9 +140,10 @@ export type VendorLedgerLine = {
 /** Full, read-only ledger order; unlinked rows group only on the exact typed name. */
 export function projectVendorLedger(current: any, permittedBills: any[]): VendorLedgerLine[] {
   const bills = current?.vendorId != null
-    ? vendorStatementBills(current, permittedBills)
+    ? vendorStatementBills(current, permittedBills, { includeVoided: true })
     : permittedBills.filter(bill =>
-      bill.vendorId == null && String(bill.vendorName ?? "") === String(current?.vendorName ?? "")
+      bill.vendorId == null &&
+      String(bill.vendorName ?? "") === String(current?.vendorName ?? "")
     ).sort(byBillDateAndId);
 
   let runningNet = 0;
@@ -150,9 +151,11 @@ export function projectVendorLedger(current: any, permittedBills: any[]): Vendor
   let runningBalanceEstimated = false;
   return bills.map(bill => {
     const amounts = billReviewAmounts(bill, getBillFinancialTotals(bill));
-    runningNet += amounts.net;
-    if (amounts.paid == null) runningBalanceEstimated = true;
-    else runningPaid += amounts.paid;
+    if (bill.isCancelled !== true) {
+      runningNet += amounts.net;
+      if (amounts.paid == null) runningBalanceEstimated = true;
+      else runningPaid += amounts.paid;
+    }
     return {
       bill,
       amounts,

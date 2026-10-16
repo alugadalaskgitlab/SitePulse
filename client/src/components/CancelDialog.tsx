@@ -20,6 +20,10 @@ interface CancelDialogProps {
   onCancelled?: () => void;
   /** Optional extra warning shown in the dialog (e.g. stock-reversal effect) */
   warningText?: string;
+  actionLabel?: string;
+  actionPastTense?: string;
+  dialogTitle?: string;
+  reasonLabel?: string;
 }
 
 export default function CancelDialog({
@@ -30,9 +34,14 @@ export default function CancelDialog({
   invalidateQueryKeys,
   onCancelled,
   warningText,
+  actionLabel = "Cancel",
+  actionPastTense = "cancelled",
+  dialogTitle,
+  reasonLabel,
 }: CancelDialogProps) {
   const { toast } = useToast();
   const [reason, setReason] = useState("");
+  const actionVerb = actionLabel.toLowerCase();
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -42,7 +51,7 @@ export default function CancelDialog({
       invalidateQueryKeys.forEach((key) => {
         queryClient.invalidateQueries({ queryKey: Array.isArray(key) ? key : [key] });
       });
-      toast({ title: "Cancelled", description: `${recordLabel} has been cancelled.` });
+      toast({ title: actionPastTense.charAt(0).toUpperCase() + actionPastTense.slice(1), description: `${recordLabel} has been ${actionPastTense}.` });
       setReason("");
       onOpenChange(false);
       onCancelled?.();
@@ -61,9 +70,9 @@ export default function CancelDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Cancel record</DialogTitle>
+          <DialogTitle>{dialogTitle ?? (actionLabel === "Cancel" ? "Cancel record" : `${actionLabel} record`)}</DialogTitle>
           <DialogDescription>
-            You're about to cancel <strong>{recordLabel}</strong>. This keeps the record for audit purposes
+            You're about to {actionVerb} <strong>{recordLabel}</strong>. This keeps the record for audit purposes
             but excludes it from reports and totals. This action is logged.
           </DialogDescription>
         </DialogHeader>
@@ -75,7 +84,7 @@ export default function CancelDialog({
         ) : null}
 
         <div className="space-y-2 py-2">
-          <Label htmlFor="cancel-reason">Reason for cancellation *</Label>
+          <Label htmlFor="cancel-reason">{reasonLabel ?? "Reason for cancellation *"}</Label>
           <Textarea
             id="cancel-reason"
             data-testid="input-cancel-reason"
@@ -102,7 +111,7 @@ export default function CancelDialog({
             data-testid="button-confirm-cancel"
           >
             {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Confirm cancel
+            Confirm {actionVerb}
           </Button>
         </DialogFooter>
       </DialogContent>

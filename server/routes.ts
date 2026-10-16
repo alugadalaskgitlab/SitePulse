@@ -65,7 +65,8 @@ import { syncArrangementBarAllocations } from "./arrangementAllocationSync";
 import { AUTO_SYNC_STATUSES } from "@shared/arrangementAutoAllocation";
 import { buildVendorPayablesPreview } from "./vendorPayablesPreview";
 import { buildGstRegisterPdf } from "./gstRegisterPdf";
-import { recordedVendorTds } from "@shared/vendorFinancialAccess";
+import { canViewVendorFinancials, recordedVendorTds, vendorFinancialSiteIds } from "@shared/vendorFinancialAccess";
+import { recordChange } from "../shared/recordChange";
 import { filterFinancialBills } from "@shared/vendorBillFinancialReport";
 import { buildVendorFinancialWorkbook } from "./vendorFinancialWorkbook";
 import { financialSites, vendorFinancialGuard } from "./vendorFinancialAccess";
@@ -101,7 +102,7 @@ import { canonicalizeMachineType } from "@shared/canonicalize";
 import { aggregateGstBreakdown, computeBillGstByCategory, type GstCategory } from "@shared/vendor-bill-gst";
 import { requireAuth, isPublicApiPath, isOptionalAuthPath, optionalAuth, lookupSessionFromCookie, loadUserPermissionsMatrix } from "./auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
-import { insertAttachmentSchema, attachmentModuleTypes, boqProjects as boqProjectsTable, dprs as dprsTable, progressEntries as progressEntriesTable } from "@shared/schema";
+import { insertAttachmentSchema, attachmentModuleTypes, boqProjects as boqProjectsTable, dprs as dprsTable, progressEntries as progressEntriesTable, sitePurchases as auditSitePurchases, materialReceipts as auditMaterialReceipts } from "@shared/schema";
 import { MAX_ACTIVITY_PHOTOS } from "@shared/dprPhotos";
 import { isBarSide, isDprSideCompatible, barSideLabel, parseChainageKm, areSidesDistinctCorridors } from "@shared/barSide";
 import { checkProgrammeLinkRow, deriveChainageReviewStatus, barSideCoverage, normalizeDprSideKey } from "@shared/dprProgrammeLink";
@@ -4725,6 +4726,14 @@ export async function registerRoutes(
       const result = await storage.createHireStatementVendorBill(id, { billDate: statement.periodTo, billType: "equipment", vendorName: statement.vendorName,
         periodFrom: statement.periodFrom, periodTo: statement.periodTo, status: "draft", totalAmount: statement.netAmount,
         notes: `Hire statement #${statement.id}`, items: [{ date: statement.periodTo, category: "equipment", description: `HIRE - EQUIPMENT #${statement.equipmentId}`, qty: statement.quantity, unit: statement.billingBasis, rate: statement.rate, amount: statement.netAmount, source: "hire_statement", equipmentId: statement.equipmentId }] });
+      if (result.created) {
+        await recordChange(req, storage, {
+          module: "vendor_bills",
+          transactionId: result.bill.id,
+          action: "create",
+          after: result.bill,
+        });
+      }
       res.json({ ...await hireResponse(result.statement), vendorBill: result.bill });
     } catch (err: any) { res.status(err?.code === "NOT_FOUND" ? 404 : err?.code === "CONFLICT" ? 409 : err instanceof z.ZodError ? 400 : 500).json({ message: err?.message || "Failed to create vendor bill" }); }
   });
@@ -11599,7 +11608,7 @@ export async function registerRoutes(
   app.get("/api/vendor-bills/financial-review", async (req, res) => {
     if (!assertViewEither(req, res, "vendor_bills", "vendor_bills_view")) return;
     try {
-      const bills = await scopeVendorBillsToSiteAccess(req, await storage.getVendorBills({}));
+      const bills = await scopeVendorBillsToSiteAccess(req, await storage.getVendorBills({ includeVoided: true }));
       const vendorIds = Array.from(new Set(bills
         .map(bill => bill.vendorId == null ? null : Number(bill.vendorId))
         .filter((id): id is number => id != null && Number.isSafeInteger(id))));
@@ -12262,6 +12271,12 @@ export async function registerRoutes(
         });
       }
       const bill = await storage.createVendorBill(input);
+      await recordChange(req, storage, {
+        module: "vendor_bills",
+        transactionId: bill.id,
+        action: "create",
+        after: bill,
+      });
       sendPushToSection("vendor_bills_approve", "New Vendor Bill", `${bill.billNo} - ${bill.vendorName}`, "/plant/vendor-bills").catch(() => {});
       res.status(201).json(bill);
     } catch (err) {
@@ -12278,7 +12293,8 @@ export async function registerRoutes(
   app.put("/api/vendor-bills/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
-      const { pin: _pin, ...billData } = req.body;
+      const { pin: _pin, reason: changeReasonRaw, ...billData } = req.body;
+      const changeReason = z.string().trim().max(500).nullable().optional().parse(changeReasonRaw);
       const input = createVendorBillRequestSchema.parse(billData);
       const existing = await storage.getVendorBill(id);
       if (!existing) {
@@ -12327,11 +12343,22 @@ export async function registerRoutes(
         if (!assertEditEither(req, res, "vendor_bills", "vendor_bills_raise")) return;
       }
 
+      if (existing.isCancelled === true) {
+        return res.status(409).json({ message: "A voided vendor bill cannot be edited" });
+      }
       const bill = await storage.updateVendorBill(id, input);
       if (!bill) {
         return res.status(404).json({ message: "Vendor bill not found" });
       }
 
+      await recordChange(req, storage, {
+        module: "vendor_bills",
+        transactionId: id,
+        action: "update",
+        before: existing,
+        after: bill,
+        reason: changeReason,
+      });
       res.json(bill);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -12350,15 +12377,28 @@ export async function registerRoutes(
     try {
       if (!assertApprove(req, res, "vendor_bills_approve")) return;
       const id = Number(req.params.id);
+      const { reason: changeReasonRaw, ...detailsBody } = req.body ?? {};
+      const changeReason = z.string().trim().max(500).nullable().optional().parse(changeReasonRaw);
       const detailsSchema = z.object({
         paymentMode: z.enum(["cash", "credit", "advance", "upi", "cheque", "rtgs"]).nullable().optional(),
         paidBy: z.string().max(120).nullable().optional(),
         amountPaid: z.number().finite().nonnegative().nullable().optional(),
         paymentAccountKey: z.string().max(120).nullable().optional(),
       });
-      const details = detailsSchema.parse(req.body);
+      const details = detailsSchema.parse(detailsBody);
+      const before = await storage.getVendorBill(id);
+      if (!before) return res.status(404).json({ message: "Vendor bill not found" });
+      if (before.isCancelled === true) return res.status(409).json({ message: "A voided vendor bill cannot be changed" });
       const bill = await storage.updateVendorBillPaymentDetails(id, details);
       if (!bill) return res.status(404).json({ message: "Vendor bill not found" });
+      await recordChange(req, storage, {
+        module: "vendor_bills",
+        transactionId: id,
+        action: "update",
+        before,
+        after: bill,
+        reason: changeReason,
+      });
       res.json(bill);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -12376,21 +12416,23 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const statusSchema = z.object({
         status: z.enum(["draft", "verified", "approved", "paid"]),
+        reason: z.string().trim().max(500).nullable().optional(),
       });
-      const { status } = statusSchema.parse(req.body);
+      const { status, reason } = statusSchema.parse(req.body);
+      let before: any;
 
       if (status === "approved") {
         if (!assertApprove(req, res, "vendor_bills_approve")) return;
         // Self-approval prevention for vendor bills.
-        const vbForApproval = await storage.getVendorBill(id);
-        if (!req.authUser?.isAdmin && vbForApproval && vbForApproval.authorUserId && vbForApproval.authorUserId === req.authUser?.id) {
+        before = await storage.getVendorBill(id);
+        if (!req.authUser?.isAdmin && before && before.authorUserId && before.authorUserId === req.authUser?.id) {
           return res.status(403).json({ message: "You cannot approve a bill you created." });
         }
       } else if (status === "verified") {
         if (!assertApprove(req, res, "vendor_bills_verify")) return;
         // Self-approval prevention for verification too.
-        const vbForVerify = await storage.getVendorBill(id);
-        if (!req.authUser?.isAdmin && vbForVerify && vbForVerify.authorUserId && vbForVerify.authorUserId === req.authUser?.id) {
+        before = await storage.getVendorBill(id);
+        if (!req.authUser?.isAdmin && before && before.authorUserId && before.authorUserId === req.authUser?.id) {
           return res.status(403).json({ message: "You cannot verify a bill you created." });
         }
       } else if (status === "paid") {
@@ -12398,12 +12440,23 @@ export async function registerRoutes(
       } else {
         if (!assertEdit(req, res, "vendor_bills")) return;
       }
+      if (!before) before = await storage.getVendorBill(id);
+      if (!before) return res.status(404).json({ message: "Vendor bill not found" });
+      if (before.isCancelled === true) return res.status(409).json({ message: "A voided vendor bill cannot change status" });
       const actor = currentUserName(req);
 
       const bill = await storage.updateVendorBillStatus(id, status, actor);
       if (!bill) {
         return res.status(404).json({ message: "Vendor bill not found" });
       }
+      await recordChange(req, storage, {
+        module: "vendor_bills",
+        transactionId: id,
+        action: "update",
+        before,
+        after: bill,
+        reason,
+      });
       if (status === "approved") {
         sendPushToSection("vendor_bills_raise", "Vendor Bill Approved", `${bill.billNo} approved by ${actor}`, "/plant/vendor-bills").catch(() => {});
         sendPushToRaiser(bill.authorUserId, bill.vendorName, "Your Bill Was Approved", `${bill.billNo} has been approved by ${actor}`, "/plant/vendor-bills").catch(() => {});
@@ -12423,6 +12476,36 @@ export async function registerRoutes(
       if ((err as any)?.code === "CONFLICT") return res.status(409).json({ message: (err as any).message });
       console.error("Error updating vendor bill status:", err);
       res.status(500).json({ message: "Failed to update vendor bill status" });
+    }
+  });
+
+  app.post("/api/vendor-bills/:id/void", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ message: "A valid bill id is required" });
+      const { reason } = z.object({ reason: z.string().trim().min(1).max(500) }).parse(req.body);
+      const bill = await storage.voidVendorBill(
+        id,
+        req.authUser!.id,
+        reason,
+        async (before, after, executor) => {
+          await recordChange(
+            req,
+            { logAudit: entry => storage.logAudit(entry, executor) },
+            { module: "vendor_bills", transactionId: id, action: "void", before, after, reason },
+          );
+        },
+      );
+      if (!bill) return res.status(404).json({ message: "Vendor bill not found" });
+      const actor = currentUserName(req);
+      sendPushToSection("vendor_bills_view", "Vendor Bill Voided", `${bill.billNo} voided by ${actor}`, "/plant/vendor-bills").catch(() => {});
+      res.json(bill);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      if ((err as any)?.code === "CONFLICT") return res.status(409).json({ message: (err as any).message });
+      console.error("Error voiding vendor bill:", err);
+      res.status(500).json({ message: "Failed to void vendor bill" });
     }
   });
 
@@ -12868,20 +12951,30 @@ export async function registerRoutes(
   app.delete("/api/vendor-bills/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
-
+      if (!req.authUser?.isOwner) {
+        return res.status(403).json({ error: "forbidden", message: "Only an Owner may permanently delete a vendor bill" });
+      }
+      if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ message: "A valid bill id is required" });
+      const { reason } = z.object({ reason: z.string().trim().min(1).max(500) }).parse(req.body);
       const bill = await storage.getVendorBill(id);
       if (!bill) {
         return res.status(404).json({ message: "Vendor bill not found" });
       }
-
-      if (!assertAdmin(req, res)) return;
-
-      const deleted = await storage.deleteVendorBill(id);
+      const deleted = await storage.deleteVendorBill(id, async (snapshot, executor) => {
+        await recordChange(
+          req,
+          { logAudit: entry => storage.logAudit(entry, executor) },
+          { module: "vendor_bills", transactionId: id, action: "delete", before: snapshot, reason },
+        );
+      });
       if (!deleted) {
         return res.status(400).json({ message: "Bill cannot be deleted" });
       }
+      const actor = currentUserName(req);
+      sendPushToSection("vendor_bills_view", "Vendor Bill Deleted", `${bill.billNo} deleted by ${actor}`, "/plant/vendor-bills").catch(() => {});
       res.json({ success: true });
     } catch (err: any) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       if (err?.code === "CONFLICT") return res.status(409).json({ message: err.message });
       console.error("Error deleting vendor bill:", err);
       res.status(500).json({ message: err?.message || "Failed to delete vendor bill" });
@@ -14353,12 +14446,82 @@ export async function registerRoutes(
 
   app.get("/api/audit-logs", async (req, res) => {
     try {
+      res.setHeader("Cache-Control", "private, no-store");
       if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
       const module = String(req.query.module || "");
       const transactionId = Number(req.query.transactionId);
-      if (!module || !transactionId || Number.isNaN(transactionId)) {
+      if (!module || !Number.isSafeInteger(transactionId) || transactionId <= 0) {
         return res.status(400).json({ error: "module and transactionId are required" });
       }
+      const permitted = await getPermittedSiteNames(req);
+
+      if (module === "dprs") {
+        if (!assertView(req, res, "site_dprs")) return;
+        const [record] = await db.select({ site: dprsTable.site }).from(dprsTable)
+          .where(eq(dprsTable.id, transactionId)).limit(1);
+        if (!record) return res.status(404).json({ error: "Record not found" });
+        if (permitted !== null && !siteMatchesPermitted(record.site, permitted)) {
+          return res.status(403).json({ error: "Access denied for this record's site" });
+        }
+      } else if (module === "site_material_trips") {
+        if (!assertView(req, res, "site_materials")) return;
+        const [record] = await db.select({ site: siteMaterialTrips.site }).from(siteMaterialTrips)
+          .where(eq(siteMaterialTrips.id, transactionId)).limit(1);
+        if (!record) return res.status(404).json({ error: "Record not found" });
+        if (permitted !== null && !siteMatchesPermitted(record.site, permitted)) {
+          return res.status(403).json({ error: "Access denied for this record's site" });
+        }
+      } else if (module === "site_purchases") {
+        if (!assertViewEither(req, res, "report_site_purchases", "site_procurement")) return;
+        const [record] = await db.select({ site: dprsTable.site })
+          .from(auditSitePurchases)
+          .leftJoin(dprsTable, eq(auditSitePurchases.dprId, dprsTable.id))
+          .where(eq(auditSitePurchases.id, transactionId)).limit(1);
+        if (!record) return res.status(404).json({ error: "Record not found" });
+        if (permitted !== null && (!record.site || !siteMatchesPermitted(record.site, permitted))) {
+          return res.status(403).json({ error: "Access denied for this record's site" });
+        }
+      } else if (module === "material_receipts") {
+        if (!assertView(req, res, "plant_materials")) return;
+        const [record] = await db.select({ plantName: auditMaterialReceipts.plantName })
+          .from(auditMaterialReceipts).where(eq(auditMaterialReceipts.id, transactionId)).limit(1);
+        if (!record) return res.status(404).json({ error: "Record not found" });
+        const permittedPlants = await permittedReportPlants(req);
+        if (permittedPlants !== null && !permittedPlants.has(record.plantName)) {
+          return res.status(403).json({ error: "Access denied for this plant's site" });
+        }
+      } else if (module === "equipment_maintenance_logs") {
+        if (!assertViewEither(req, res, "plant_equipment", "plant_maintenance")) return;
+        const record = await storage.getMaintenanceLog(transactionId);
+        if (!record) return res.status(404).json({ error: "Record not found" });
+        if (!(await assertMaintenanceSourceAccess(req, res, record))) return;
+      } else if (module === "vendor_bills") {
+        if (!assertViewEither(req, res, "vendor_bills", "vendor_bills_view")) return;
+        const logs = await storage.getAuditLogs(module, transactionId);
+        const bill = await storage.getVendorBill(transactionId);
+        const deletedSnapshot = logs.find(log => log.action === "delete" && log.oldValues)?.oldValues as any;
+        const scopedBill = bill ?? deletedSnapshot;
+        if (!scopedBill) return res.status(404).json({ error: "Record not found" });
+
+        const siteRows = req.authUser.isOwner ? [] : await storage.getUserSiteAccess(req.authUser.id);
+        const siteIds = vendorFinancialSiteIds(req.authUser, siteRows.map(row => row.siteId));
+        const sites = await storage.getSites();
+        const billSites = siteIds === null
+          ? null
+          : sites.filter(site => siteIds.includes(site.id)).map(site => site.name);
+        const siteNameById = new Map(sites.map(site => [site.id, site.name]));
+        if (billSites !== null && !vendorBillVisibleToSites(scopedBill, billSites, siteNameById)) {
+          return res.status(403).json({ error: "Access denied for this bill's site" });
+        }
+
+        const visibleLogs = canViewVendorFinancials(req.authUser, req.authPermissions)
+          ? logs
+          : logs.map(log => ({ ...log, oldValues: null, newValues: null }));
+        return res.json(visibleLogs);
+      } else {
+        return res.status(403).json({ error: "Audit history is not available for this module" });
+      }
+
       const logs = await storage.getAuditLogs(module, transactionId);
       res.json(logs);
     } catch (err) {

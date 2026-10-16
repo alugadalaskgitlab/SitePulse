@@ -25,10 +25,10 @@ export function summarizeBillReview(rows: ReturnType<typeof billReviewAmounts>[]
 }
 
 /** Input must already be site/permission scoped. No aliases or name matching. */
-export function vendorStatementBills(current: any, permitted: any[]) {
-  return permitted.filter(b => current.vendorId != null
+export function vendorStatementBills(current: any, permitted: any[], options: { includeVoided?: boolean } = {}) {
+  return permitted.filter(b => (options.includeVoided || b.isCancelled !== true) && (current.vendorId != null
     ? b.vendorId != null && Number(b.vendorId) === Number(current.vendorId)
-    : b.id === current.id).sort((a, b) =>
+    : b.id === current.id)).sort((a, b) =>
     String(a.billDate).localeCompare(String(b.billDate)) || Number(a.id) - Number(b.id));
 }
 

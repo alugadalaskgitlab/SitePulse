@@ -57,6 +57,8 @@ export function filterFinancialBills<T extends Record<string, any>>(bills: T[], 
   const selectedVendorId = matchingVendorIds.size === 1 ? Array.from(matchingVendorIds)[0] : null;
 
   return bills.filter(bill => {
+    const requestingVoided = filters.status === "voided";
+    if (requestingVoided ? bill.isCancelled !== true : bill.isCancelled === true) return false;
     const rawFrom = bill.periodFrom == null || bill.periodFrom === "" ? null : String(bill.periodFrom).slice(0, 10);
     const rawTo = bill.periodTo == null || bill.periodTo === "" ? null : String(bill.periodTo).slice(0, 10);
     const hasPeriod = rawFrom != null || rawTo != null;
@@ -70,13 +72,14 @@ export function filterFinancialBills<T extends Record<string, any>>(bills: T[], 
         if (bill.vendorId == null ? !exactName : Number(bill.vendorId) !== selectedVendorId) return false;
       } else if (!exactName) return false;
     }
-    if (filters.status && filters.status !== "all" && bill.status !== filters.status) return false;
+    if (filters.status && filters.status !== "all" && filters.status !== "voided" && bill.status !== filters.status) return false;
     if (filters.category && filters.category !== "all" && String(bill.billType || "").toLowerCase() !== (filters.category === "combined" ? "all" : filters.category)) return false;
     if (filters.party && filters.party !== "all" && !bill.items?.some((item: any) => item.suppliedTo === filters.party)) return false;
     if (filters.site) {
       const header = sites.find(s => s.id === bill.siteId)?.name;
       if (!(header && siteMatchesPermitted(header, [filters.site])) && !bill.items?.some((item: any) => vendorBillItemMatchesSite(item.siteName, filters.site!))) return false;
     }
+    if (requestingVoided) return true;
     if (filters.scope === "unpaid") {
       const position = billPaymentPosition(bill);
       if (position.net < 0 || position.credit > 0) return false;

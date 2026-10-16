@@ -7,6 +7,7 @@ import { HubShell } from "@/components/HubShell";
 import { useAuth } from "@/lib/auth-context";
 import { projectVendorLedger, projectVendorPayables } from "../../../shared/vendorPayables";
 import { summarizeBillReview } from "../../../shared/vendorBillReview";
+import { filterFinancialBills } from "../../../shared/vendorBillFinancialReport";
 
 type VendorBill = {
   id: number;
@@ -15,6 +16,8 @@ type VendorBill = {
   periodFrom?: string | null;
   periodTo?: string | null;
   status?: string | null;
+  isCancelled?: boolean | null;
+  cancellationReason?: string | null;
   vendorId?: number | null;
   vendorName?: string | null;
   linkedVendorName?: string | null;
@@ -76,6 +79,8 @@ function StatusTag({ status }: { status?: string | null }) {
   const key = String(status || "").toLowerCase();
   const tone = key === "paid"
     ? "bg-teal-50 text-teal-800 border-teal-200"
+    : key === "void"
+      ? "bg-red-50 text-red-800 border-red-200"
     : key === "approved"
       ? "bg-blue-50 text-blue-800 border-blue-200"
       : key === "verified"
@@ -206,7 +211,7 @@ function exportLedger(lines: ReturnType<typeof projectVendorLedger>, name: strin
     "Bill date": bill.billDate ?? "",
     "Bill number": bill.billNo || `Bill #${bill.id}`,
     "Bill period": periodLabel(bill.periodFrom, bill.periodTo),
-    Status: humanStatus(bill.status),
+    Status: bill.isCancelled ? "VOID" : humanStatus(bill.status),
     Net: amounts.net,
     Paid: amounts.paid ?? "Unknown",
     Balance: amounts.balance ?? "Estimate",
@@ -269,7 +274,15 @@ export default function VendorPayables() {
   const currentVendor = vendorId != null
     ? report.vendors.find((vendor) => Number(vendor.vendorId) === vendorId) ?? (financialReview.data ?? []).find((bill) => Number(bill.vendorId) === vendorId)
     : billId != null ? (financialReview.data ?? []).find((bill) => Number(bill.id) === billId && bill.vendorId == null) : null;
-  const ledgerLines = useMemo(() => currentVendor ? projectVendorLedger(currentVendor, report.filteredBills) : [], [currentVendor, report.filteredBills]);
+  const ledgerLines = useMemo(() => {
+    if (!currentVendor) return [];
+    const voidedBills = filterFinancialBills(financialReview.data ?? [], {
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+      status: "voided",
+    });
+    return projectVendorLedger(currentVendor, [...report.filteredBills, ...voidedBills]);
+  }, [currentVendor, report.filteredBills, financialReview.data, dateFrom, dateTo]);
   const ledgerSummary = vendorId != null ? report.vendors.find((vendor) => Number(vendor.vendorId) === vendorId) : null;
   const ledgerProjectionRow = useMemo(() => vendorId == null || ledgerLines.length === 0
     ? null
@@ -497,10 +510,11 @@ function LedgerView({ current, lines, vendorId, vendorName, summary, consistency
   onExport: () => void;
 }) {
   const isUnlinked = vendorId == null;
-  const ledgerNet = lines.reduce((sum, line) => sum + line.amounts.net, 0);
-  const ledgerPaid = lines.reduce((sum, line) => sum + (line.amounts.paid ?? 0), 0);
-  const ledgerBalance = lines.reduce((sum, line) => sum + (line.amounts.balance ?? 0), 0);
-  const paymentUnknown = lines.filter((line) => line.amounts.paid == null).length;
+  const liveLines = lines.filter(line => line.bill.isCancelled !== true);
+  const ledgerNet = liveLines.reduce((sum, line) => sum + line.amounts.net, 0);
+  const ledgerPaid = liveLines.reduce((sum, line) => sum + (line.amounts.paid ?? 0), 0);
+  const ledgerBalance = liveLines.reduce((sum, line) => sum + (line.amounts.balance ?? 0), 0);
+  const paymentUnknown = liveLines.filter((line) => line.amounts.paid == null).length;
   if (!current) return <div className="rounded-xl border border-[#d4dfda] bg-[#fbfcfb]"><EmptyNotice title={isUnlinked ? "Unlinked bill not found" : "Vendor ledger not found"} detail="This record is not present in the authorized financial review. Return to the payables summary to choose another record." /><div className="border-t border-[#e1e8e4] p-4 text-center"><Link href={withPayablesTab("/reports/vendor-payables", dateFrom, dateTo, isUnlinked ? "unlinked" : "linked")} className="inline-flex items-center gap-2 text-sm font-semibold text-[#315d53] hover:underline"><ArrowLeft className="h-4 w-4" />Back to payables</Link></div></div>;
 
   return <div className="space-y-6">
@@ -545,7 +559,7 @@ function LedgerView({ current, lines, vendorId, vendorName, summary, consistency
              <td className="whitespace-nowrap px-2 py-3.5 text-xs text-[#526761]">{dateLabel(bill.billDate)}</td>
             <td className="whitespace-nowrap px-2 py-3.5"><a href={billDetailHref(bill.id, returnTo)} className="font-semibold text-[#315d53] underline decoration-[#b5c8be] underline-offset-4 hover:text-[#173e35]">{bill.billNo || `Bill #${bill.id}`}</a></td>
              <td className="whitespace-normal break-words px-2 py-3.5 text-xs text-[#647771]">{periodLabel(bill.periodFrom, bill.periodTo)}</td>
-             <td className="px-2 py-2"><div className="flex flex-col items-start gap-1"><StatusTag status={bill.status} />{amounts.provisional && <span className="rounded border border-[#e8d9b5] bg-[#fff9eb] px-1.5 py-1 text-[9px] font-bold uppercase tracking-wide text-[#8a6d32]">Provisional</span>}{amounts.paid == null && <span className="rounded border border-[#e8d9b5] bg-[#fff9eb] px-1.5 py-1 text-[9px] font-bold uppercase tracking-wide text-[#8a6d32]">Payment unknown</span>}</div></td>
+            <td className="px-2 py-2"><div className="flex flex-col items-start gap-1"><StatusTag status={bill.isCancelled ? "void" : bill.status} />{!bill.isCancelled && amounts.provisional && <span className="rounded border border-[#e8d9b5] bg-[#fff9eb] px-1.5 py-1 text-[9px] font-bold uppercase tracking-wide text-[#8a6d32]">Provisional</span>}{!bill.isCancelled && amounts.paid == null && <span className="rounded border border-[#e8d9b5] bg-[#fff9eb] px-1.5 py-1 text-[9px] font-bold uppercase tracking-wide text-[#8a6d32]">Payment unknown</span>}</div></td>
             <AmountCell>{money(amounts.net)}</AmountCell><AmountCell>{amounts.paid == null ? "Estimate" : money(amounts.paid)}</AmountCell><AmountCell>{amounts.balance == null ? "Estimate" : money(amounts.balance)}</AmountCell><AmountCell emphasized>{runningBalanceEstimated ? `${money(runningBalance)}*` : money(runningBalance)}</AmountCell>
           </tr>)}</tbody>
           <tfoot><tr className="border-t-2 border-[#bdcec5] bg-[#eef4f0] text-xs font-bold text-[#29443d]">

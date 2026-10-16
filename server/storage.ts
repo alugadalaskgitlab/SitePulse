@@ -662,7 +662,7 @@ export class InitialScopeCorrectionBlockedError extends Error {
 
 export interface IStorage {
   // Owner/Admin transaction controls & audit trail
-  logAudit(entry: InsertAuditLog): Promise<AuditLog>;
+  logAudit(entry: InsertAuditLog, executor?: any): Promise<AuditLog>;
   getAuditLogs(module: string, transactionId: number): Promise<AuditLog[]>;
   cancelDpr(id: number, userId: number, reason: string): Promise<Dpr | undefined>;
   cancelMaterialReceipt(id: number, userId: number, reason: string): Promise<MaterialReceipt | undefined>;
@@ -1572,7 +1572,7 @@ export interface IStorage {
   getRecentDieselItemIds(limit?: number): Promise<number[]>;
 
   // Vendor Bills
-  getVendorBills(filters?: { dateFrom?: string; dateTo?: string; vendor?: string; status?: string }): Promise<VendorBillWithItems[]>;
+  getVendorBills(filters?: { dateFrom?: string; dateTo?: string; vendor?: string; status?: string; includeVoided?: boolean }): Promise<VendorBillWithItems[]>;
   getVendorBill(id: number): Promise<VendorBillWithItems | undefined>;
   createVendorBill(data: CreateVendorBillRequest): Promise<VendorBillWithItems>;
   updateVendorBill(id: number, data: CreateVendorBillRequest): Promise<VendorBillWithItems | undefined>;
@@ -1588,7 +1588,16 @@ export interface IStorage {
   ensureTransportPricingColumn(): Promise<void>;
   ensureMaterialReceiptDieselLinkColumn(): Promise<void>;
   getDieselRequirementReceipts(requirementIds: number[]): Promise<MaterialReceipt[]>;
-  deleteVendorBill(id: number): Promise<boolean>;
+  voidVendorBill(
+    id: number,
+    userId: number,
+    reason: string,
+    onChange?: (before: VendorBillWithItems, after: VendorBillWithItems, executor: any) => Promise<void>,
+  ): Promise<VendorBillWithItems | undefined>;
+  deleteVendorBill(
+    id: number,
+    onBeforeDelete?: (bill: VendorBillWithItems, executor: any) => Promise<void>,
+  ): Promise<boolean>;
   getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null, siteName?: string | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null })[]>;
   getEquipmentHireVendors(periodFrom: string, periodTo: string): Promise<{
     vendorName: string;
@@ -1612,7 +1621,7 @@ export interface IStorage {
   updateHireStatement(id: number, data: Partial<InsertHireStatement>): Promise<HireStatement | undefined>;
   replaceHireStatementExceptions(statementId: number, expectedRevision: number, rows: Omit<InsertHireStatementException, "statementId">[], statementPatch: Partial<InsertHireStatement>): Promise<{ statement: HireStatement; exceptions: HireStatementException[] }>;
   transitionHireStatement(id: number, expectedRevision: number, allowedStatuses: string[], data: Partial<InsertHireStatement>): Promise<HireStatement | undefined>;
-  createHireStatementVendorBill(statementId: number, bill: Omit<CreateVendorBillRequest, "items" | "billNo"> & { items: Omit<InsertVendorBillItem, "billId">[] }): Promise<{ statement: HireStatement; bill: VendorBillWithItems }>;
+  createHireStatementVendorBill(statementId: number, bill: Omit<CreateVendorBillRequest, "items" | "billNo"> & { items: Omit<InsertVendorBillItem, "billId">[] }): Promise<{ statement: HireStatement; bill: VendorBillWithItems; created: boolean }>;
   getVendorNames(): Promise<string[]>;
   getVendorNamesByIds(ids: number[]): Promise<{ id: number; name: string }[]>;
   getVendorAliases(): Promise<VendorAlias[]>;
@@ -2718,8 +2727,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   // === Owner/Admin transaction controls & audit trail ===
-  async logAudit(entry: InsertAuditLog): Promise<AuditLog> {
-    const [row] = await db.insert(auditLogs).values(entry).returning();
+  async logAudit(entry: InsertAuditLog, executor: any = db): Promise<AuditLog> {
+    const [row] = await executor.insert(auditLogs).values(entry).returning();
     return row;
   }
 
@@ -17484,9 +17493,17 @@ export class DatabaseStorage implements IStorage {
   // VENDOR BILLS CRUD
   // ============================================
 
-  async getVendorBills(filters?: { dateFrom?: string; dateTo?: string; vendor?: string; status?: string }): Promise<VendorBillWithItems[]> {
+  async getVendorBills(filters?: { dateFrom?: string; dateTo?: string; vendor?: string; status?: string; includeVoided?: boolean }): Promise<VendorBillWithItems[]> {
     const conditions: any[] = [];
-    if (filters?.status) conditions.push(eq(vendorBills.status, filters.status));
+    if (filters?.status === "voided") {
+      conditions.push(eq(vendorBills.isCancelled, true));
+    } else if (filters?.status && filters.status !== "all") {
+      conditions.push(eq(vendorBills.status, filters.status));
+    }
+    if (filters?.status !== "voided" && !filters?.includeVoided) {
+      conditions.push(sql`COALESCE(${vendorBills.isCancelled}, false) = false`);
+    }
+    conditions.push(sql`COALESCE(${vendorBills.isDeleted}, false) = false`);
 
     const bills = await db.query.vendorBills.findMany({
       where: conditions.length > 0 ? and(...conditions) : undefined,
@@ -17991,6 +18008,8 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         sql`LOWER(${vendorBillItems.source}) IN (${sql.join(sources.map(source => sql`${source}`), sql`, `)})`,
         or(...vendorConditions),
+        sql`COALESCE(${vendorBills.isCancelled}, false) = false`,
+        sql`COALESCE(${vendorBills.isDeleted}, false) = false`,
         ...(excludeBillId ? [ne(vendorBills.id, excludeBillId)] : []),
       ))
       .limit(1);
@@ -18181,7 +18200,7 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async createHireStatementVendorBill(statementId: number, data: Omit<CreateVendorBillRequest, "items" | "billNo"> & { items: Omit<InsertVendorBillItem, "billId">[] }): Promise<{ statement: HireStatement; bill: VendorBillWithItems }> {
+  async createHireStatementVendorBill(statementId: number, data: Omit<CreateVendorBillRequest, "items" | "billNo"> & { items: Omit<InsertVendorBillItem, "billId">[] }): Promise<{ statement: HireStatement; bill: VendorBillWithItems; created: boolean }> {
     return db.transaction(async (tx) => {
       // Lock makes the linked-bill check and creation indivisible even when two
       // reviewers submit the action concurrently.
@@ -18196,6 +18215,7 @@ export class DatabaseStorage implements IStorage {
         if (!bill) throw new Error("Linked vendor bill not found");
         return {
           statement,
+          created: false,
           bill: {
             ...bill,
             additionalAdjustments: normalizeVendorBillAdditionalAdjustments((bill as any).additionalAdjustments),
@@ -18229,6 +18249,7 @@ export class DatabaseStorage implements IStorage {
         .where(eq(hireStatements.id, statementId)).returning();
       return {
         statement: updated,
+        created: true,
         bill: {
           ...bill,
           additionalAdjustments: normalizeVendorBillAdditionalAdjustments((bill as any).additionalAdjustments),
@@ -18243,6 +18264,9 @@ export class DatabaseStorage implements IStorage {
       await guardTripHireOrdinaryItems(tx, data.items ?? [], data.hireGroups, id);
       const [existing] = await tx.select().from(vendorBills).where(eq(vendorBills.id, id)).limit(1).for("update");
       if (!existing) return undefined;
+      if (existing.isCancelled === true) {
+        throw Object.assign(new Error("A voided vendor bill cannot be edited"), { code: "CONFLICT" });
+      }
       const linkedStatements: HireStatement[] = await tx.select().from(hireStatements)
         .where(eq(hireStatements.vendorBillId, id)).for("update");
       if (hasFrozenTripDailyHire({ hireStatements: linkedStatements })) {
@@ -18445,6 +18469,9 @@ export class DatabaseStorage implements IStorage {
     const changed = await db.transaction(async (tx) => {
       const [existing] = await tx.select().from(vendorBills).where(eq(vendorBills.id, id)).limit(1).for("update");
       if (!existing) return false;
+      if (existing.isCancelled === true) {
+        throw Object.assign(new Error("A voided vendor bill cannot be changed"), { code: "CONFLICT" });
+      }
       const setData: any = {};
       if (details.paymentMode !== undefined) setData.paymentMode = details.paymentMode;
       if (details.paidBy !== undefined) setData.paidBy = details.paidBy;
@@ -18492,6 +18519,9 @@ export class DatabaseStorage implements IStorage {
     const changed = await db.transaction(async (tx) => {
       const [existing] = await tx.select().from(vendorBills).where(eq(vendorBills.id, id)).limit(1).for("update");
       if (!existing) return false;
+      if (existing.isCancelled === true) {
+        throw Object.assign(new Error("A voided vendor bill cannot change status"), { code: "CONFLICT" });
+      }
       const linkedStatements: HireStatement[] = await tx.select().from(hireStatements)
         .where(eq(hireStatements.vendorBillId, id)).for("update");
       const validTransitions: Record<string, string[]> = {
@@ -18622,7 +18652,10 @@ export class DatabaseStorage implements IStorage {
     return await this.getVendorBill(id);
   }
 
-  async deleteVendorBill(id: number): Promise<boolean> {
+  async deleteVendorBill(
+    id: number,
+    onBeforeDelete?: (bill: VendorBillWithItems, executor: any) => Promise<void>,
+  ): Promise<boolean> {
     return await db.transaction(async (tx) => {
       const [existing] = await tx.select().from(vendorBills).where(eq(vendorBills.id, id)).limit(1).for("update");
       if (!existing) return false;
@@ -18632,12 +18665,58 @@ export class DatabaseStorage implements IStorage {
         throw Object.assign(new Error("A verified, approved, or paid hire bill cannot be deleted"), { code: "CONFLICT" });
       }
       if (statements.some(s => s.status !== "draft")) throw Object.assign(new Error("A bill with reviewed, approved, or billed hire statements cannot be deleted"), { code: "CONFLICT" });
+      if (onBeforeDelete) {
+        const bill = await tx.query.vendorBills.findFirst({
+          where: eq(vendorBills.id, id),
+          with: { items: true, hireStatements: { with: { exceptions: true } } },
+        });
+        if (!bill) return false;
+        await onBeforeDelete(bill as VendorBillWithItems, tx);
+      }
       if (statements.length) await tx.delete(hireStatementExceptions).where(inArray(hireStatementExceptions.statementId, statements.map(s => s.id)));
       await tx.delete(vendorBillItems).where(eq(vendorBillItems.billId, id));
       if (statements.length) await tx.delete(hireStatements).where(eq(hireStatements.vendorBillId, id));
       await tx.delete(vendorBills).where(eq(vendorBills.id, id));
       return true;
     });
+  }
+
+  async voidVendorBill(
+    id: number,
+    userId: number,
+    reason: string,
+    onChange?: (before: VendorBillWithItems, after: VendorBillWithItems, executor: any) => Promise<void>,
+  ): Promise<VendorBillWithItems | undefined> {
+    const changed = await db.transaction(async (tx) => {
+      const [existing] = await tx.select().from(vendorBills).where(eq(vendorBills.id, id)).limit(1).for("update");
+      if (!existing) return false;
+      if (existing.isCancelled === true) {
+        throw Object.assign(new Error("This bill has already been voided"), { code: "CONFLICT" });
+      }
+      const before = await tx.query.vendorBills.findFirst({
+        where: eq(vendorBills.id, id),
+        with: { items: true, hireStatements: { with: { exceptions: true } } },
+      });
+      if (!before) return false;
+      const cancelledAt = new Date();
+      const cleanReason = reason.trim();
+      await tx.update(vendorBills).set({
+        isCancelled: true,
+        cancelledAt,
+        cancelledBy: userId,
+        cancellationReason: cleanReason,
+      }).where(eq(vendorBills.id, id));
+      const after = {
+        ...before,
+        isCancelled: true,
+        cancelledAt,
+        cancelledBy: userId,
+        cancellationReason: cleanReason,
+      };
+      if (onChange) await onChange(before as VendorBillWithItems, after as VendorBillWithItems, tx);
+      return true;
+    });
+    return changed ? this.getVendorBill(id) : undefined;
   }
 
   async getVendorBillHireActivities(vendorName: string, periodFrom: string, periodTo: string, executor: any = db): Promise<any[]> {
@@ -22329,7 +22408,8 @@ export class DatabaseStorage implements IStorage {
       periodFrom: vendorBills.periodFrom,
       periodTo: vendorBills.periodTo,
     })
-    .from(vendorBills);
+    .from(vendorBills)
+    .where(sql`COALESCE(${vendorBills.isCancelled}, false) = false AND COALESCE(${vendorBills.isDeleted}, false) = false`);
 
     const results: {
       vendorName: string;
@@ -22548,6 +22628,7 @@ export class DatabaseStorage implements IStorage {
         "adjustmentAmount", "additionalAdjustments", "gstRateEquipment", "gstRateMaterial", "gstRateTransport", "gstRateLabour",
         "tdsRate", "netPayableAmount", "amountPaid", "paymentAccountKey", "createdAt", "authorUserId",
         "lockStatus", "unlockedByUserId", "unlockedAt", "unlockReason",
+        "isDeleted", "deletedAt", "deletedBy", "isCancelled", "cancelledAt", "cancelledBy", "cancellationReason",
       ]);
       // Validate VB18 entries on import while keeping old exports, which do
       // not have the field at all, fully compatible.
@@ -23196,10 +23277,13 @@ export class DatabaseStorage implements IStorage {
   async checkDuplicateBilledItems(vendorName: string, items: { date: string; source?: string | null; equipmentId?: number | null; description?: string; category?: string | null; siteName?: string | null }[], excludeBillId?: number): Promise<{ index: number; billNo: string; billStatus: string }[]> {
     const variants = await this.resolveVendorAliases(vendorName);
     const vendorConds = variants.map(v => sql`UPPER(TRIM(${vendorBills.vendorName})) = ${v}`);
-    const whereConditions = excludeBillId
-      ? and(or(...vendorConds), sql`${vendorBills.id} != ${excludeBillId}`)
-      : or(...vendorConds);
-    const existingBills = await db.select().from(vendorBills).where(whereConditions);
+    const whereConditions: any[] = [
+      or(...vendorConds),
+      sql`COALESCE(${vendorBills.isCancelled}, false) = false`,
+      sql`COALESCE(${vendorBills.isDeleted}, false) = false`,
+    ];
+    if (excludeBillId) whereConditions.push(sql`${vendorBills.id} != ${excludeBillId}`);
+    const existingBills = await db.select().from(vendorBills).where(and(...whereConditions));
     if (existingBills.length === 0) return [];
 
     const billIds = existingBills.map(b => b.id);
