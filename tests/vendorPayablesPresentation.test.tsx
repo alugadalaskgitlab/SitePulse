@@ -12,7 +12,14 @@ const state = vi.hoisted(() => ({
 vi.mock("wouter", async () => {
   const React = await import("react");
   return {
-    Link: ({ href, children, ...props }: any) => React.createElement("a", { href, ...props }, children),
+    Link: ({ href, children, onClick, ...props }: any) => React.createElement("a", {
+      href,
+      ...props,
+      onClick: (event: React.MouseEvent<HTMLAnchorElement>) => {
+        event.preventDefault();
+        onClick?.(event);
+      },
+    }, children),
     useLocation: () => [state.location, vi.fn()],
   };
 });
@@ -131,7 +138,7 @@ describe("VB-PAY-02 payables presentation", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Unlinked bills" }));
     await screen.findByText(/Masters → Vendors → Link Vendors → Pending Links/);
     expect(screen.getAllByText("₹1,200.00").length).toBeGreaterThan(0);
-    expect(screen.getByText("₹200.00")).toBeTruthy();
+    expect(screen.getAllByText("₹200.00").length).toBeGreaterThan(0);
     expect(screen.getAllByText("₹1,000.00").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Unlinked").length).toBeGreaterThan(0);
     expect(screen.queryByText(/Link this bill/)).toBeNull();

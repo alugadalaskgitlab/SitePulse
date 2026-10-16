@@ -165,6 +165,54 @@ describe("VB-EXPORT-02 Part B actual VendorBills page wiring", () => {
   });
 });
 
+describe("VB-PAY-02 return navigation from VendorBills", () => {
+  const payablesLedger = "/reports/vendor-payables/vendor/3?dateFrom=2026-10-01&dateTo=2026-10-31";
+
+  async function openPayablesBill() {
+    window.history.replaceState(
+      null,
+      "",
+      `/finance/vendor-bills?billId=731&returnTo=${encodeURIComponent(payablesLedger)}`,
+    );
+    mount();
+    await screen.findByTestId("text-detail-title");
+  }
+
+  function expectReturnedToPayables() {
+    expect(`${window.location.pathname}${window.location.search}`).toBe(payablesLedger);
+  }
+
+  it("returns to the originating dated ledger after viewing a bill", async () => {
+    await openPayablesBill();
+    fireEvent.click(screen.getByTestId("button-back-detail"));
+    expectReturnedToPayables();
+  });
+
+  it("keeps the bill detail open after editing, then returns to the originating dated ledger", async () => {
+    await openPayablesBill();
+    fireEvent.click(screen.getByTestId("button-edit-bill"));
+    await screen.findByTestId("input-notes");
+    fireEvent.click(screen.getByTestId("button-save-bill"));
+    await waitFor(() => expect(requests.some(request =>
+      request.method === "PUT" && /vendor-bills\/731$/.test(request.url),
+    )).toBe(true));
+    await screen.findByTestId("button-back-detail");
+    fireEvent.click(screen.getByTestId("button-back-detail"));
+    expectReturnedToPayables();
+  });
+
+  it("keeps bill detail open after a status change, then returns to the originating dated ledger", async () => {
+    await openPayablesBill();
+    fireEvent.click(screen.getByTestId("button-advance-status"));
+    await waitFor(() => expect(requests.some(request =>
+      request.method === "PATCH" && /vendor-bills\/731\/status$/.test(request.url),
+    )).toBe(true));
+    expect(screen.getByTestId("text-detail-title")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("button-back-detail"));
+    expectReturnedToPayables();
+  });
+});
+
 describe("VB-EXPORT-02 Part A actual VendorBills page wiring", () => {
   it("exports the untouched new form without exporting the blank seed or saving", async () => {
     mount();
