@@ -1,0 +1,203 @@
+# INSTRUCTION — VB-PAY-01
+
+**A payables page: what HLC owes every vendor, on one screen, with a drill-down to
+each vendor's full bill ledger.**
+
+Baseline: the published commit `21fbd1b`. State it in your report.
+
+**Read this section before anything else.** Almost all of this calculation already
+exists and is already tested. This batch groups it by vendor and puts a screen in
+front of it. **Do not write a second payables calculation.** Five times in recent
+batches we have found finished work sitting unreachable — the Monthly Billing
+Summary, the hire activity review, the equipment-status endpoint, the Hire Billing
+register, the payables preview. Reuse is the point of this instruction.
+
+What exists, in `shared/vendorBillReview.ts` and
+`shared/vendorBillFinancialReport.ts`:
+
+- `billReviewAmounts(bill, totals)` already returns per bill: `gross`, `gst`,
+  `adjustments`, `net`, `paid`, `balance`, `outstanding`, `credit`, and —
+  **already exactly what this page needs** — `eligible` (approved bills only, the
+  balance that can actually be paid) and `provisional` (true when a bill is not yet
+  approved or paid).
+- `summarizeBillReview(rows)` already totals `count`, `gross`, `gst`,
+  `adjustments`, `net`, `paid`, `outstanding`, `credits`, `eligible` and
+  `unknownPayments`.
+- `getBillFinancialTotals(bill)` already produces the totals those take.
+- `filterFinancialBills(bills, filters, sites)` already applies period overlap,
+  linked-vendor matching and site scope to an already-authorised set.
+
+So **"payable now" is the existing `eligible`** and **"coming up" is the sum over
+rows where `provisional` is true**. Neither needs inventing.
+
+---
+
+## Standing rules
+
+- No production data changes, migrations, automatic repairs or publishing without
+  our review.
+- No sequence resets. Do not call or re-expose `resetAllSequences`.
+- Preserve all existing users, credentials, site access, permissions and
+  administrator privileges.
+- **This batch is read-only.** It creates, updates and deletes nothing. It changes
+  no bill, no status, no payment and no vendor record.
+- Frozen snapshots stay frozen and are never re-derived on read.
+- Every figure must come from the existing functions above. If a number this page
+  needs cannot be produced from them, stop and ask rather than writing a new
+  calculation.
+- Report against the benchmark in force at the baseline commit, naming the flags
+  set.
+
+---
+
+## Part A — The payables page
+
+A new page, listed in the Reports Hub and reachable from Procurement & Billing.
+**One row per vendor, every vendor with any bill**, with a totals row at the foot.
+
+| Column | Source |
+|---|---|
+| Vendor | the linked vendor record's name |
+| Bills | `count` |
+| Billed | `net` |
+| Paid | `paid` |
+| **Payable now** | `eligible` — approved bills, balance outstanding |
+| **Coming up** | sum of `net − paid` across rows where `provisional` is true |
+| **Total liability** | Payable now + Coming up |
+| Credit | `credits`, shown only where non-zero |
+| Oldest unpaid | the earliest bill date among bills with an outstanding balance |
+
+**Requirements.**
+
+1. **Everything on one screen.** Payable now and Coming up are columns side by
+   side on the same row — not separate tabs, not a second page, not a filter the
+   user has to switch. The user must be able to read a vendor's committed and
+   uncommitted liability in one glance, and the company's in the totals row.
+2. Default sort by **Total liability**, highest first.
+3. A date range filter, defaulting to all dates, applied through
+   `filterFinancialBills`.
+4. **Payment confidence must be visible.** Where `unknownPayments` is above zero
+   for a vendor, mark that row — its paid figure is not established, so its
+   balance is an estimate. Do not silently present an estimate as a fact.
+5. Excel export of the same rows.
+6. Respect the existing site-scope and permission checks exactly. A user who
+   cannot see a site's bills must not see them totalled here.
+
+**Constraints.**
+
+- **No money is paid, recorded or proposed from this page.** It reports; it does
+  not act. No "mark as paid" control.
+- No ₹ figure that is not derived from the functions named above.
+
+---
+
+## Part B — The vendor ledger
+
+Clicking a vendor opens that vendor's full bill ledger. **Every bill, in bill-date
+order.**
+
+| Column |
+|---|
+| Bill date |
+| Bill number |
+| Bill period (from – to) |
+| Status |
+| Net |
+| Paid |
+| Balance |
+| **Running balance** |
+
+**Requirements.**
+
+1. **Every bill appears** — draft, verified, approved and paid alike. Provisional
+   bills are marked as such, not hidden.
+2. The running balance accumulates down the page in bill-date order, the way a
+   party ledger reads.
+3. Each bill links back to its own Bill Detail page.
+4. Show the vendor's totals at the foot, matching that vendor's row on Part A
+   exactly. **If the two disagree, that is a defect — report it rather than
+   adjusting either.**
+
+**Constraints.**
+
+- Bill-date order, not period order. The bill date is the accounting date and is
+  what Tally orders a party ledger by; the two systems must not disagree about the
+  sequence of the same account.
+- This is not the previous-bill block. It does not exclude the latest bill and it
+  has no concept of "current".
+
+---
+
+## Part C — Stop dropping bills in silence
+
+**The fault.** A vendor's bill can be left out of a view with no indication at all.
+Two causes, both live:
+
+- A bill with **no linked vendor** — saved before that vendor's master link
+  existed. `vendorStatementBills` requires `b.vendorId != null`, so it is skipped.
+- A bill the rule classes as **later** — on `HLC/VB/2026/0054` (bill date
+  09-Oct-2026), bill `HLC/VB/2026/0055` shares the same bill date with a higher
+  number, so it counts as later and vanishes from the previous-bill block with no
+  notice. The user went looking for a missing bill as a result.
+
+This is the same defect as the Unpaid view silently hiding `HLC/VB/2026/0056`,
+which had the user create a bill twice.
+
+**Required.**
+
+1. **On the payables page and the vendor ledger:** a bill carrying a vendor's name
+   but no linked vendor record must still appear, grouped under that typed name,
+   and be **plainly flagged as unlinked** with a note that it is excluded from the
+   vendor's totals until linked. Never drop it.
+2. **On the existing Previous Billing Summary** in
+   `client/src/components/vendor-bills/VendorBillReview.tsx`: where a bill is
+   excluded, say so and why — for example
+   *"1 bill excluded — HLC/VB/2026/0055, same bill date, counted as later."*
+   and *"1 bill excluded — not linked to this vendor."*
+3. **Do not change any exclusion rule.** The rules are correct. Only the silence is
+   being fixed.
+
+---
+
+## What must not change
+
+- **Every figure on every bill.** State before and after:
+  `HLC/VB/2026/0054` — net ₹56,840.00, paid ₹50,000.00, balance ₹6,840.00.
+  `HLC/VB/2026/0058` — total ₹1,20,000.00, net payable ₹1,07,600.00.
+- The arithmetic in `billReviewAmounts`, `summarizeBillReview`,
+  `billPaymentPosition`, `getBillFinancialTotals` and `filterFinancialBills`.
+- Every permission check and site-scope check.
+- The read-only property of every existing review projection.
+
+---
+
+## Verification required
+
+Report in plain terms, no test-name inventories.
+
+1. **Part A, on real data** — the payables page showing Mahipal Kalpaguri with
+   Payable now **₹6,840.00** (bill 0054), Coming up including bill `0062`'s
+   **₹25,161.29** (draft, nothing paid), and a Total liability that is the sum of
+   the two. Show the row as rendered.
+2. **Part A** — the company totals row, and confirmation that Payable now plus
+   Coming up equals Total liability for every row and for the totals.
+3. **Part A** — a vendor with an unestablished paid figure, showing the row marked
+   so the estimate is not read as a fact.
+4. **Part B** — Mahipal's ledger showing all three bills — `0062`, `0055`, `0054`
+   — in bill-date order with the running balance, and his foot totals matching his
+   Part A row to the paisa.
+5. **Part C** — bill `0054`'s Previous Billing Summary now naming the excluded
+   `0055` and why. Confirm no exclusion rule changed.
+6. **Part C** — an unlinked bill appearing on the payables page under its typed
+   name, flagged, and excluded from that vendor's totals.
+7. Confirmation that the page creates, updates and deletes nothing, and that no
+   permission or site-scope check moved.
+8. The before/after figures under **What must not change**, as numbers.
+9. The full suite run to completion against the baseline benchmark, with the
+   counts stated and every failure named individually. **Do not stop the run
+   early.** For any failure, state whether it also fails on the baseline commit.
+
+Stop and ask once if any part cannot be done without breaking a rule above. Do not
+work around a rule and report it afterwards.
+
+Nothing is to be published. We will review and publish.
