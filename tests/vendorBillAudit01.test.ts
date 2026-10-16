@@ -214,7 +214,12 @@ describe("AUDIT-01 vendor-bill history", () => {
       ...billPayload, billDate: "2026-10-05",
     });
     expect(approvedEditResponse.status).toBe(200);
+    expect(approvedEditResponse.body.billDate).toBe("2026-10-05");
+    expect(approvedEditResponse.body.status).toBe("draft");
     expect(storage.updateVendorBill).toHaveBeenLastCalledWith(7, expect.objectContaining({ status: "draft" }));
+    for (const field of ["totalAmount", "netPayableAmount", "amountPaid"]) {
+      expect(approvedAfter[field]).toBe(approvedBefore[field]);
+    }
     expect(storage.logAudit).toHaveBeenNthCalledWith(3, expect.objectContaining({
       module: "vendor_bills", transactionId: 7, action: "update",
       oldValues: approvedBefore, newValues: approvedAfter,
@@ -348,5 +353,28 @@ describe("AUDIT-01 vendor-bill history", () => {
     expect(editRoute).toContain('action: "status_reset"');
     const history = readFileSync("client/src/components/HistoryDialog.tsx", "utf8");
     expect(history).toContain('status_reset: "Status reset"');
+  });
+
+  it("resolves the bill author by user id on detail only and leaves the stored author id untouched", async () => {
+    const { db } = await import("../server/db");
+    const where = vi.fn().mockResolvedValue([{ fullName: "Original Author", username: "author" }]);
+    const select = vi.spyOn(db, "select").mockReturnValue({
+      from: vi.fn().mockReturnValue({ where }),
+    } as any);
+    const bill = makeBill({ authorUserId: 44 });
+    storage.getVendorBill.mockResolvedValue(bill);
+
+    const detail = await request(app).get("/api/vendor-bills/7");
+    expect(detail.status).toBe(200);
+    expect(detail.body.authorName).toBe("Original Author");
+    expect(where).toHaveBeenCalledTimes(1);
+    expect(bill.authorUserId).toBe(44);
+
+    const selectCountAfterDetail = select.mock.calls.length;
+    storage.getVendorBills.mockResolvedValue([bill]);
+    const list = await request(app).get("/api/vendor-bills");
+    expect(list.status).toBe(200);
+    expect(select).toHaveBeenCalledTimes(selectCountAfterDetail);
+    select.mockRestore();
   });
 });

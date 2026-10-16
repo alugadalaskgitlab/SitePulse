@@ -12229,10 +12229,10 @@ export async function registerRoutes(
       if (visible.length === 0) return res.status(403).json({ message: "Access denied for this bill's site" });
       const [author] = bill.authorUserId == null
         ? []
-        : await db.select({ fullName: users.fullName, username: users.username })
+        : await db.select({ fullName: users.fullName })
           .from(users)
           .where(eq(users.id, bill.authorUserId));
-      const authorName = author?.fullName?.trim() || author?.username?.trim() || null;
+      const authorName = author?.fullName?.trim() || null;
       const needsLegacyEvidence = bill.items.some(item =>
         item.category?.toLowerCase() === "equipment" && item.source === "auto" && item.equipmentId && !item.hireStatementId);
       const candidates = needsLegacyEvidence && bill.periodFrom && bill.periodTo
