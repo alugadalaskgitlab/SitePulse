@@ -208,6 +208,16 @@ function gatedEither(Component: ComponentType<any>, ...sections: SectionKey[]) {
   };
 }
 
+const GatedVendorPayables = gatedEither(VendorPayables, "vendor_bills_view", "vendor_bills");
+
+function AuthenticatedVendorPayablesRoute() {
+  return (
+    <RequireAuth>
+      <GatedVendorPayables />
+    </RequireAuth>
+  );
+}
+
 // ── Router ───────────────────────────────────────────────────────────────────
 function Router() {
   return (
@@ -255,6 +265,11 @@ function Router() {
             <RmcHub />
           </RequireAuth>
         </Route>
+
+        {/* Standalone report shell; do not nest it inside AuthedShell's HubShell/container. */}
+        <Route path="/reports/vendor-payables/vendor/:vendorId" component={AuthenticatedVendorPayablesRoute} />
+        <Route path="/reports/vendor-payables/unlinked/:billId" component={AuthenticatedVendorPayablesRoute} />
+        <Route path="/reports/vendor-payables" component={AuthenticatedVendorPayablesRoute} />
 
         {/* All other authenticated routes */}
         <Route>
@@ -347,9 +362,6 @@ function AuthedShell() {
           <Route path="/plant/diesel-requirements" component={gatedEither(DieselRequirements, "diesel_req_view", "site_diesel", "diesel_req_raise")} />
           <Route path="/plant/vendor-bills" component={gatedEither(VendorBills, "vendor_bills_view", "vendor_bills")} />
           <Route path="/finance/vendor-bills" component={gatedEither(VendorBills, "vendor_bills_view", "vendor_bills")} />
-          <Route path="/reports/vendor-payables/vendor/:vendorId" component={gatedEither(VendorPayables, "vendor_bills_view", "vendor_bills")} />
-          <Route path="/reports/vendor-payables/unlinked/:billId" component={gatedEither(VendorPayables, "vendor_bills_view", "vendor_bills")} />
-          <Route path="/reports/vendor-payables" component={gatedEither(VendorPayables, "vendor_bills_view", "vendor_bills")} />
           <Route path="/plant/rate-cards" component={gatedEither(RateCards, "rate_cards", "vendor_masters_manage", "admin_settings")} />
           <Route path="/equipment/hire-billing" component={gated(EquipmentHireBilling, "plant_equipment")} />
           <Route path="/plant/data-sync" component={gatedEither(DataSync, "data_sync", "admin_settings")} />

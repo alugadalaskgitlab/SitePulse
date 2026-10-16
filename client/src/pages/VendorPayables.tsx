@@ -86,7 +86,7 @@ function StatusTag({ status }: { status?: string | null }) {
 
 function PageFrame({ children }: { children: React.ReactNode }) {
   return <div className="min-h-[calc(100dvh-3.5rem)] bg-[#f2f5f3] text-[#192c2d]">
-    <div className="mx-auto max-w-[1480px] px-4 py-6 sm:px-6 lg:px-9 lg:py-8">{children}</div>
+    <div className="w-full min-w-0 px-4 py-6 sm:px-6 lg:px-9 lg:py-8">{children}</div>
   </div>;
 }
 
