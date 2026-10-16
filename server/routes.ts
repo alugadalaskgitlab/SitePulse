@@ -12227,13 +12227,19 @@ export async function registerRoutes(
       }
       const visible = await scopeVendorBillsToSiteAccess(req, [bill]);
       if (visible.length === 0) return res.status(403).json({ message: "Access denied for this bill's site" });
+      const [author] = bill.authorUserId == null
+        ? []
+        : await db.select({ fullName: users.fullName, username: users.username })
+          .from(users)
+          .where(eq(users.id, bill.authorUserId));
+      const authorName = author?.fullName?.trim() || author?.username?.trim() || null;
       const needsLegacyEvidence = bill.items.some(item =>
         item.category?.toLowerCase() === "equipment" && item.source === "auto" && item.equipmentId && !item.hireStatementId);
       const candidates = needsLegacyEvidence && bill.periodFrom && bill.periodTo
         ? await storage.getVendorBillAutoItems(bill.vendorName, "equipment", bill.periodFrom, bill.periodTo)
         : [];
       const evidenceItems = resolveSavedEquipmentEvidenceSources(bill.items, candidates);
-      res.json({ ...bill, items: await attachVendorBillEquipmentEvidence(evidenceItems, await getPermittedSiteNames(req)) });
+      res.json({ ...bill, authorName, items: await attachVendorBillEquipmentEvidence(evidenceItems, await getPermittedSiteNames(req)) });
     } catch (err) {
       console.error("Error fetching vendor bill:", err);
       res.status(500).json({ message: "Failed to fetch vendor bill" });
@@ -12359,6 +12365,15 @@ export async function registerRoutes(
         after: bill,
         reason: changeReason,
       });
+      if (existing.status !== bill.status) {
+        await recordChange(req, storage, {
+          module: "vendor_bills",
+          transactionId: id,
+          action: "status_reset",
+          before: { status: existing.status },
+          after: { status: bill.status },
+        });
+      }
       res.json(bill);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -12481,7 +12496,9 @@ export async function registerRoutes(
 
   app.post("/api/vendor-bills/:id/void", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!req.authUser?.isOwner) {
+        return res.status(403).json({ message: "Only the Owner can void vendor bills" });
+      }
       const id = Number(req.params.id);
       if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ message: "A valid bill id is required" });
       const { reason } = z.object({ reason: z.string().trim().min(1).max(500) }).parse(req.body);

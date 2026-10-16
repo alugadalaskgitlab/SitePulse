@@ -206,6 +206,25 @@ describe("AUDIT-01 vendor-bill history", () => {
       transactionId: 7, action: "update", oldValues: before, newValues: edited, reason: "corrected quantity",
     }));
 
+    const approvedBefore = makeBill({ status: "approved" });
+    const approvedAfter = makeBill({ billDate: "2026-10-05", status: "draft" });
+    storage.getVendorBill.mockResolvedValue(approvedBefore);
+    storage.updateVendorBill.mockResolvedValue(approvedAfter);
+    const approvedEditResponse = await request(app).put("/api/vendor-bills/7").send({
+      ...billPayload, billDate: "2026-10-05",
+    });
+    expect(approvedEditResponse.status).toBe(200);
+    expect(storage.updateVendorBill).toHaveBeenLastCalledWith(7, expect.objectContaining({ status: "draft" }));
+    expect(storage.logAudit).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      module: "vendor_bills", transactionId: 7, action: "update",
+      oldValues: approvedBefore, newValues: approvedAfter,
+    }));
+    expect(storage.logAudit).toHaveBeenNthCalledWith(4, expect.objectContaining({
+      module: "vendor_bills", transactionId: 7, action: "status_reset",
+      oldValues: { status: "approved" }, newValues: { status: "draft" }, userId: 9,
+    }));
+
+    storage.getVendorBill.mockResolvedValue(before);
     const paidDetails = makeBill({ ...before, paymentMode: "upi", paidBy: "company" });
     storage.updateVendorBillPaymentDetails.mockResolvedValue(paidDetails);
     const paymentResponse = await request(app).patch("/api/vendor-bills/7/payment-details")
@@ -237,6 +256,11 @@ describe("AUDIT-01 vendor-bill history", () => {
       events.push(`audit:${entry.action}`);
       return entry;
     });
+    const adminVoidResponse = await request(app).post("/api/vendor-bills/7/void").send({ reason: "duplicate" });
+    expect(adminVoidResponse.status).toBe(403);
+    expect(storage.voidVendorBill).not.toHaveBeenCalled();
+
+    fx.role = "owner";
     const voidResponse = await request(app).post("/api/vendor-bills/7/void").send({ reason: "duplicate" });
     expect(voidResponse.status).toBe(200);
     expect(events).toEqual(["audit:void", "void-complete"]);
@@ -312,5 +336,17 @@ describe("AUDIT-01 vendor-bill history", () => {
     const end = source.indexOf('app.get("/api/plant-module/equipment"', start);
     expect(start).toBeGreaterThanOrEqual(0);
     expect(source.slice(start, end)).toContain("recordChange(req, storage");
+  });
+
+  it("keeps the approved-bill edit permission check and records status reset as a separate history action", () => {
+    const routes = readFileSync("server/routes.ts", "utf8");
+    const editStart = routes.indexOf('app.put("/api/vendor-bills/:id"');
+    const editEnd = routes.indexOf('app.patch("/api/vendor-bills/:id/payment-details"', editStart);
+    const editRoute = routes.slice(editStart, editEnd);
+    expect(editRoute).toContain('if (existing.status === "verified" || existing.status === "approved" || existing.status === "paid")');
+    expect(editRoute).toContain("if (!assertAdmin(req, res)) return;");
+    expect(editRoute).toContain('action: "status_reset"');
+    const history = readFileSync("client/src/components/HistoryDialog.tsx", "utf8");
+    expect(history).toContain('status_reset: "Status reset"');
   });
 });

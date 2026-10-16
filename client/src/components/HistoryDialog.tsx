@@ -35,6 +35,7 @@ const ACTION_LABEL: Record<string, string> = {
   approve: "Approved",
   reject: "Rejected",
   reopen: "Reopened",
+  status_reset: "Status reset",
 };
 
 const ACTION_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -46,6 +47,7 @@ const ACTION_VARIANT: Record<string, "default" | "secondary" | "destructive" | "
   approve: "default",
   reject: "destructive",
   reopen: "outline",
+  status_reset: "outline",
 };
 
 function valueFromAudit(values: unknown, field: string): unknown {
@@ -101,6 +103,8 @@ export default function HistoryDialog({ open, onOpenChange, module, transactionI
             const oldMaterialSource = valueFromAudit(entry.oldValues, "materialSourceSupplier");
             const newMaterialSource = valueFromAudit(entry.newValues, "materialSourceSupplier");
             const hasMaterialSourceChange = oldMaterialSource !== undefined || newMaterialSource !== undefined;
+            const oldStatus = valueFromAudit(entry.oldValues, "status");
+            const newStatus = valueFromAudit(entry.newValues, "status");
             return (
               <div
                 key={entry.id}
@@ -133,6 +137,13 @@ export default function HistoryDialog({ open, onOpenChange, module, transactionI
                       New: <span className="text-foreground">{displayAuditValue(newMaterialSource)}</span>
                     </p>
                   </div>
+                )}
+                {entry.action === "status_reset" && oldStatus !== undefined && newStatus !== undefined && (
+                  <p className="text-muted-foreground" data-testid={`audit-status-reset-${entry.id}`}>
+                    Status: <span className="font-medium text-foreground">{displayAuditValue(oldStatus).toUpperCase()}</span>
+                    {" → "}
+                    <span className="font-medium text-foreground">{displayAuditValue(newStatus).toUpperCase()}</span>
+                  </p>
                 )}
                 {entry.stockImpact && (
                   <p className="text-amber-600 dark:text-amber-500">

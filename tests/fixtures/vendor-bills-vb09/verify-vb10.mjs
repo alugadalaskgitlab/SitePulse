@@ -364,7 +364,7 @@ await clickTestId("button-advance-status");
 await waitFor("document.querySelector('[data-testid=\"badge-bill-status\"]')?.textContent?.trim() === 'verified'", "VB-10 verified status");
 await clickTestId("button-advance-status");
 await waitFor("document.querySelector('[data-testid=\"badge-bill-status\"]')?.textContent?.trim() === 'approved'", "VB-10 approved status");
-assert(!(await hasTestId("button-edit-bill")), "approved hire bill incorrectly remains editable");
+assert(await hasTestId("button-edit-bill"), "approved hire bill should remain editable");
 const approvedImage = await capture("vb10-approved-frozen-snapshot");
 const approvedState = await fixtureState();
 assert(approvedState.statusPayloads.map((entry) => entry.payload.status).join(",") === "verified,approved", "create/verify/approve status payloads were not captured");

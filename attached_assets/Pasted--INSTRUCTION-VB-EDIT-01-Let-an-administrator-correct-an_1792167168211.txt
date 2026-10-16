@@ -1,0 +1,192 @@
+# INSTRUCTION — VB-EDIT-01
+
+**Let an administrator correct an approved bill, say plainly what that costs, record
+it, and keep VOID to the Owner.**
+
+Baseline: the published commit carrying AUDIT-01 (`1185910` or the commit published
+from it). State it in your report.
+
+**Small batch. No calculation changes, no migrations, no new columns, no new
+endpoints.** Every figure on every bill identical before and after.
+
+---
+
+## Standing rules
+
+- No production data changes, automatic repairs or publishing without our review.
+- No sequence resets. Do not call or re-expose `resetAllSequences`.
+- Preserve all existing users, credentials, site access, permissions and
+  administrator privileges. Do not grant, revoke or reset anything.
+- Frozen snapshots stay frozen and are never re-derived on read.
+- Report against the benchmark in force at the baseline commit.
+
+---
+
+## Part A — One Edit rule for every bill type
+
+**The fault.** In `client/src/pages/VendorBills.tsx` the Edit control is rendered
+when:
+
+```
+canEdit && (!bill.hireStatements?.length
+  || (bill.status === "draft" && bill.hireStatements.every(s => s.status === "draft")))
+```
+
+So a bill **with** hire statements can only be edited while it is a draft, while a
+bill **without** them — material, transport, labour — can be edited at any status
+including paid. An approved equipment-hire bill therefore cannot be corrected at all
+from the screen, even though `PUT /api/vendor-bills/:id` would allow it. The user
+needs to correct a bill date on an approved hire bill and has no way to ask.
+
+**Required.**
+
+1. One rule for every bill type: where the user may edit at all, the Edit control
+   appears **regardless of status and regardless of whether the bill carries hire
+   statements**. A voided bill stays uneditable, as AUDIT-01 established.
+2. **Do not change the server's permission check.** `PUT /api/vendor-bills/:id`
+   already requires an administrator for a verified, approved or paid bill, and the
+   ordinary edit permission otherwise. Leave both exactly as they are.
+3. Do not relax the hire-statement rules themselves. If a hire statement cannot
+   accept a change, the save refuses as it does today — the button appearing is not
+   a promise that every field is editable.
+
+---
+
+## Part B — Say what the edit costs, before it happens
+
+**The fault.** `PUT /api/vendor-bills/:id` sets the status back to `draft` when an
+administrator edits a verified, approved or paid bill. Nothing warns the user. A
+bill the user had approved silently leaves the approved list and drops out of
+Payable now, and they discover it later.
+
+**Required.**
+
+1. Before an edit to a bill that is verified, approved or paid is submitted, show a
+   confirmation naming, in plain words:
+   - that the bill will return to **draft**;
+   - that it will need verifying and approving again;
+   - that it will leave **Payable now** until it is approved again;
+   - the bill number and its current status.
+2. The edit proceeds only on an explicit confirmation. Cancelling changes nothing.
+3. A draft bill shows no confirmation — nothing is lost by editing a draft.
+
+**Constraints.** Do not change the reset itself. It is the correct behaviour: a
+corrected bill should be looked at again.
+
+---
+
+## Part C — Record the reset as its own entry
+
+AUDIT-01 records an edit through `recordChange`. The **status reset that the edit
+causes** must be legible on its own, not buried inside the before-and-after of a
+whole bill.
+
+**Required.** When an edit resets the status, write one further audit entry through
+the existing `recordChange` helper: module `vendor_bills`, the bill id, action
+`status_reset`, the old status and the new status, and the actor. No reason is
+required — the edit entry beside it carries the detail.
+
+Add `status_reset` to the action label map in
+`client/src/components/HistoryDialog.tsx` so it renders as words rather than a raw
+string.
+
+---
+
+## Part D — VOID belongs to the Owner
+
+**The fault.** AUDIT-01 gated the void action on `assertAdmin` on the server and
+`isAdmin || isOwner` in the client. Voiding removes money from the company's
+liability, and every administrator can currently do it.
+
+**Required.**
+
+1. `POST /api/vendor-bills/:id/void` requires **`isOwner`**, matching the delete
+   route. An administrator who is not the Owner is refused.
+2. The VOID control is shown only to the Owner.
+3. Everything else about voiding stays exactly as AUDIT-01 built it — the reason,
+   the audit entry, the bill's own figures untouched, the VOID marking, the
+   exclusion from totals.
+
+**Constraints.** Do not remove the void action or its endpoint. Do not change who
+may delete. Do not add any new permission key.
+
+---
+
+## Part E — A draft bill does not say who raised it
+
+**The fault.** On Bill Detail, the verified, approved and paid states each name the
+person who did it — the bills table stores `verifiedBy`, `approvedBy` and
+`paymentRecordedBy` as text. The draft state shows only `createdAt` — a date and
+time with no name — because no name was ever stored for it. The table does hold
+`authorUserId`, so the person is known; it is simply not resolved for display.
+
+**Required.**
+
+1. Show **who raised the bill** beside the created date, in the same shape as the
+   other three states, resolved from `authorUserId` against the users table.
+2. Where `authorUserId` is empty — older bills saved before it was recorded — say so
+   plainly ("author not recorded") rather than leaving a bare timestamp or inventing
+   a name.
+3. Where a bill is **back in draft because it was edited**, the draft line must not
+   read as though the original author did that. Name the original author as the one
+   who raised it, and leave the edit itself to the history, where Part C records it.
+
+**Constraints.**
+
+- **Display only.** No migration, no new column, no backfill, and
+  `authorUserId` is never written or changed by this batch.
+- Do not alter `verifiedBy`, `approvedBy`, `paymentRecordedBy` or any timestamp.
+- Do not resolve the name on every row of the bills list — this is the Bill Detail
+  page only, so the list does not gain a query per row.
+
+---
+
+## What must not change
+
+- **Every figure on every bill.** State before and after, as numbers:
+  - `HLC/VB/2026/0054` — net ₹56,840.00, paid ₹50,000.00, balance ₹6,840.00.
+  - Gangaram Narsimhulu — billed ₹9,41,875.40, coming up ₹3,89,888.41.
+  - Nafeez — payable now ₹25,768.17. Mahipal Kalpaguri — payable now ₹11,853.69.
+- The arithmetic in `billReviewAmounts`, `summarizeBillReview`,
+  `billPaymentPosition`, `getBillFinancialTotals`, `filterFinancialBills` and
+  `projectVendorPayables`.
+- The one-way status rule (`draft → verified → approved → paid`).
+- The existing self-approval checks, including the administrator exemption. **Do not
+  change who may approve.**
+- Every permission and site-scope check, except the void gate in Part D, which only
+  tightens.
+- Everything AUDIT-01 delivered: the audit helper, the audit-log permissions, the
+  history view, the void behaviour.
+
+---
+
+## Verification required
+
+Report in plain terms, no test-name inventories.
+
+1. **Part A** — the Edit control present on an approved equipment-hire bill and on an
+   approved material bill, and absent on a voided bill. Name the bills used.
+2. **Part A** — confirmation that the server's permission check is unchanged, quoted.
+3. **Part B** — the confirmation shown before editing an approved bill, with its exact
+   wording; the edit proceeding on confirm; and nothing changing on cancel. Then the
+   same edit on a draft bill, showing no confirmation.
+4. **Part B, on test data** — a bill date changed on an approved bill: the new date
+   saved, the status now draft, and every money figure on that bill identical.
+5. **Part C** — the history on that bill showing both the edit entry and the
+   `status_reset` entry, rendered as words.
+6. **Part D** — an administrator who is not the Owner attempting to void, refused by
+   the server and not offered the control; and the Owner voiding successfully.
+7. **Part E** — a draft bill naming who raised it beside the created date, in the
+   same shape as the verified/approved/paid lines; and an older bill with no
+   recorded author showing the plain notice instead. Confirm `authorUserId` was not
+   written to and that the bills list gained no per-row lookup.
+8. The before/after figures under **What must not change**, as numbers.
+9. The full suite run to completion against the baseline benchmark, with the counts
+   stated and every failure named individually. **Do not stop the run early.** The
+   baseline carries one known failure in `tests/hireBillingLifecycle07b.test.ts` — a
+   static text assertion, not in scope.
+
+Stop and ask once if any part cannot be done without breaking a rule above. Do not
+work around a rule and report it afterwards.
+
+Nothing is to be published. We will review and publish.

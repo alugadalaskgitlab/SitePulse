@@ -2581,6 +2581,8 @@ export type VendorBillWithItems = VendorBill & {
   })[];
   /** Additive detail payload; absent on legacy serialized records. */
   hireStatements?: (HireStatement & { exceptions: HireStatementException[] })[];
+  /** Bill Detail-only resolved author display name; never persisted. */
+  authorName?: string | null;
 };
 
 const hireGroupDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD");

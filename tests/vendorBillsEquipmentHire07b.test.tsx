@@ -5,8 +5,9 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import VendorBills from "@/pages/VendorBills";
 
+const authTestState = vi.hoisted(() => ({ isOwner: false }));
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({
-  isAdmin: true, sectionCan: () => true, sectionVisible: () => true,
+  isAdmin: true, user: { id: 9, isOwner: authTestState.isOwner }, sectionCan: () => true, sectionVisible: () => true,
 }) }));
 vi.mock("@/lib/featureFlags", () => ({ useFeatureFlags: () => ({ companyName: "Demo", logoFile: null }) }));
 vi.mock("@/hooks/use-origin", () => ({ useOrigin: () => ({ getPlantBackLink: () => "/plant" }) }));
@@ -58,6 +59,7 @@ let deferredDuplicateChecks: Promise<Response>[] = [];
 let deferredRateCards: Promise<Response> | null = null;
 let hireActivityRowsForTest: any[] = [];
 let deferredHireActivities: Promise<Response> | null = null;
+let billDetailOverrideForTest: any = null;
 
 beforeEach(() => {
   queryClient.clear();
@@ -69,6 +71,8 @@ beforeEach(() => {
   deferredRateCards = null;
   hireActivityRowsForTest = [];
   deferredHireActivities = null;
+  billDetailOverrideForTest = null;
+  authTestState.isOwner = false;
   Object.defineProperty(window, "matchMedia", { configurable: true, value: vi.fn().mockReturnValue({ matches: false, addListener: vi.fn(), removeListener: vi.fn() }) });
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -91,9 +95,15 @@ beforeEach(() => {
       if (init?.method === "PUT") {
         vendorBillWrites.push({ method: init.method, body: init.body ? JSON.parse(String(init.body)) : null });
       }
-      return new Response(JSON.stringify(historicalBill), { status: 200 });
+      return new Response(JSON.stringify(billDetailOverrideForTest?.id === 81 ? billDetailOverrideForTest : historicalBill), { status: 200 });
     }
-    if (url.includes("/api/vendor-bills/82")) return new Response(JSON.stringify(itemizedEquipmentBill), { status: 200 });
+    if (url.includes("/api/vendor-bills/82")) {
+      if (init?.method === "PUT") {
+        vendorBillWrites.push({ method: init.method, body: init.body ? JSON.parse(String(init.body)) : null });
+      }
+      return new Response(JSON.stringify(billDetailOverrideForTest?.id === 82 ? billDetailOverrideForTest : itemizedEquipmentBill), { status: 200 });
+    }
+    if (url.includes("/api/audit-logs")) return new Response(JSON.stringify([]));
     if (url.includes("/api/vendor-bills/hire-activities")) return deferredHireActivities || new Response(JSON.stringify(hireActivityRowsForTest));
     if (url.includes("/api/vendor-bills/auto-items")) return new Response(JSON.stringify(autoItemsForTest));
     if (url.includes("/api/vendor-rate-cards")) return deferredRateCards || new Response(JSON.stringify(rateCardsForTest));
@@ -120,6 +130,116 @@ async function openFreshPullBill(items: any[]) {
 }
 
 describe("VB-07B equipment uses the shared itemized bill flow", () => {
+  it("shows Edit on approved hire and material bills, hides it on void, and offers VOID only to the Owner", async () => {
+    const approvedHire = {
+      ...historicalBill,
+      billNo: "HLC/VB/2026/EDIT-HIRE",
+      status: "approved",
+      hireStatements: historicalBill.hireStatements.map(statement => ({ ...statement, status: "approved" })),
+    };
+    billDetailOverrideForTest = approvedHire;
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("card-bill-81"));
+    expect((await screen.findByTestId("text-bill-no")).textContent).toBe("HLC/VB/2026/EDIT-HIRE");
+    expect(screen.getByTestId("button-edit-bill")).toBeTruthy();
+    expect(screen.queryByTestId("button-void-bill")).toBeNull();
+
+    cleanup();
+    queryClient.clear();
+    const approvedMaterial = {
+      ...itemizedEquipmentBill,
+      billNo: "HLC/VB/2026/EDIT-MATERIAL",
+      billType: "material",
+      status: "approved",
+    };
+    billDetailOverrideForTest = approvedMaterial;
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("card-bill-82"));
+    expect((await screen.findByTestId("text-bill-no")).textContent).toBe("HLC/VB/2026/EDIT-MATERIAL");
+    expect(screen.getByTestId("button-edit-bill")).toBeTruthy();
+
+    cleanup();
+    queryClient.clear();
+    billDetailOverrideForTest = { ...approvedMaterial, isCancelled: true };
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("card-bill-82"));
+    await screen.findByTestId("badge-bill-status");
+    expect(screen.queryByTestId("button-edit-bill")).toBeNull();
+    expect(screen.queryByTestId("button-void-bill")).toBeNull();
+
+    cleanup();
+    queryClient.clear();
+    authTestState.isOwner = true;
+    billDetailOverrideForTest = approvedMaterial;
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("card-bill-82"));
+    expect(await screen.findByTestId("button-void-bill")).toBeTruthy();
+  });
+
+  it("confirms an approved edit before writes, keeps cancel inert, and saves drafts without confirmation", async () => {
+    billDetailOverrideForTest = {
+      ...itemizedEquipmentBill,
+      billNo: "HLC/VB/2026/CONFIRM01",
+      billType: "material",
+      status: "approved",
+    };
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("card-bill-82"));
+    fireEvent.click(await screen.findByTestId("button-edit-bill"));
+    fireEvent.change(await screen.findByTestId("input-bill-date"), { target: { value: "2026-10-02" } });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    fireEvent.click(screen.getByTestId("button-save-bill"));
+    const wording = "Bill HLC/VB/2026/CONFIRM01 is currently approved. Saving this edit will return it to draft, require it to be verified and approved again, and remove it from Payable now until it is approved again. Continue?";
+    expect(confirm).toHaveBeenCalledWith(wording);
+    expect(vendorBillWrites).toHaveLength(0);
+    expect(fetch).not.toHaveBeenCalledWith("/api/vendor-rate-cards/bulk-upsert", expect.anything());
+
+    confirm.mockReturnValue(true);
+    fireEvent.click(screen.getByTestId("button-save-bill"));
+    await waitFor(() => expect(vendorBillWrites.some(write => write.method === "PUT")).toBe(true));
+    expect(vendorBillWrites.find(write => write.method === "PUT")?.body.billDate).toBe("2026-10-02");
+    confirm.mockRestore();
+
+    cleanup();
+    queryClient.clear();
+    billDetailOverrideForTest = {
+      ...itemizedEquipmentBill,
+      billNo: "HLC/VB/2026/DRAFT01",
+      billType: "material",
+      status: "draft",
+    };
+    vendorBillWrites = [];
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("card-bill-82"));
+    fireEvent.click(await screen.findByTestId("button-edit-bill"));
+    fireEvent.change(await screen.findByTestId("input-bill-date"), { target: { value: "2026-10-03" } });
+    const draftConfirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    fireEvent.click(screen.getByTestId("button-save-bill"));
+    await waitFor(() => expect(vendorBillWrites.some(write => write.method === "PUT")).toBe(true));
+    expect(draftConfirm).not.toHaveBeenCalled();
+    draftConfirm.mockRestore();
+  });
+
+  it("shows the original author beside the draft creation date or the explicit missing-author notice", async () => {
+    billDetailOverrideForTest = {
+      ...historicalBill,
+      createdAt: "2026-09-01T08:30:00.000Z",
+      authorName: "Original Raiser",
+    };
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("card-bill-81"));
+    const statusSteps = await screen.findByTestId("status-steps");
+    expect(statusSteps.textContent).toContain("Original Raiser");
+    expect(statusSteps.textContent).toMatch(/01-Sep-26/);
+
+    cleanup();
+    queryClient.clear();
+    billDetailOverrideForTest = { ...historicalBill, authorName: null };
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("card-bill-81"));
+    expect((await screen.findByTestId("status-steps")).textContent).toContain("author not recorded");
+  });
+
   it("Test A: discovers a vendor through the generic activity endpoint and pulls equipment items", async () => {
     render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
     fireEvent.click(await screen.findByTestId("button-new-bill"));

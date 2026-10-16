@@ -538,7 +538,7 @@ export default function VendorBills() {
   const canEdit = sectionCan("vendor_bills", "edit") || sectionCan("vendor_bills_verify", "edit") || sectionCan("vendor_bills_approve", "edit");
   const canViewBills = sectionVisible("vendor_bills") || sectionVisible("vendor_bills_view");
   const canDelete = !!user?.isOwner;
-  const canVoid = isAdmin || !!user?.isOwner;
+  const canVoid = !!user?.isOwner;
   // 06M-A: payment details use the SAME capability the server enforces for
   // the payment-details PATCH and for marking a bill paid (approve on
   // vendor_bills_approve) — never show an edit control a 403 would reject.
@@ -557,6 +557,7 @@ export default function VendorBills() {
   }, []);
   const [editingBillId, setEditingBillId] = useState<number | null>(null);
   const [editingBillStatus, setEditingBillStatus] = useState("draft");
+  const [editingBillOriginalNo, setEditingBillOriginalNo] = useState("");
   const { rememberCalendar, readCalendars } = useWholeBillCalendarSnapshots();
   const renderedHireOutputs = useRef(new Map<string, EquipmentHireExportData>());
   const [historicalHireBillId, setHistoricalHireBillId] = useState<number | null>(null);
@@ -1095,6 +1096,7 @@ export default function VendorBills() {
     setGstRateLabour(0);
     setTdsRate(0);
     setEditingBillId(null);
+    setEditingBillOriginalNo("");
     setHistoricalHireBillId(null);
     setVendorSearch("");
     setShowVendorDropdown(false);
@@ -1224,6 +1226,7 @@ export default function VendorBills() {
     setTdsRate((bill as any).tdsRate || 0);
     setEditingBillId(bill.id);
     setEditingBillStatus(bill.status);
+    setEditingBillOriginalNo(bill.billNo);
     setView("form");
   };
 
@@ -2259,6 +2262,13 @@ export default function VendorBills() {
       })),
     };
 
+    if (editingBillId !== null && ["verified", "approved", "paid"].includes(editingBillStatus)) {
+      const confirmed = window.confirm(
+        `Bill ${editingBillOriginalNo} is currently ${editingBillStatus}. Saving this edit will return it to draft, require it to be verified and approved again, and remove it from Payable now until it is approved again. Continue?`,
+      );
+      if (!confirmed) return;
+    }
+
     const rateCardItems: any[] = [];
     lineItems.filter(i => i.description && i.rate > 0 && !i.transportPricing && !i.arrangementPricing && !["hire_group", "hire_statement"].includes(i.source)).forEach(item => {
       let itemKey = "";
@@ -2625,6 +2635,7 @@ export default function VendorBills() {
 
   const renderStatusSteps = (currentStatus: string, meta?: {
     createdAt?: string | Date | null;
+    authorName?: string | null;
     verifiedAt?: string | null;
     verifiedBy?: string | null;
     approvedAt?: string | null;
@@ -2635,7 +2646,10 @@ export default function VendorBills() {
   }) => {
     const currentIdx = STATUS_ORDER.indexOf(currentStatus as any);
     const stepMeta: Record<string, { timestamp?: string | null; actor?: string | null }> = {
-      draft: { timestamp: meta?.createdAt ? formatTimestamp(meta.createdAt) : null },
+      draft: {
+        timestamp: meta?.createdAt ? formatTimestamp(meta.createdAt) : null,
+        actor: meta?.authorName?.trim() || "author not recorded",
+      },
       verified: { timestamp: meta?.verifiedAt ? formatTimestamp(meta.verifiedAt) : null, actor: meta?.verifiedBy },
       approved: { timestamp: meta?.approvedAt ? formatTimestamp(meta.approvedAt) : null, actor: meta?.approvedBy },
       // 06M-F §7A: show who marked it paid, same as verified/approved actors.
@@ -4615,7 +4629,7 @@ export default function VendorBills() {
             {canExport && <Button variant="outline" size="sm" onClick={() => handlePrint(bill)} data-testid="button-print">
               <Printer className="w-4 h-4 mr-1" /> PRINT
             </Button>}
-            {canEdit && (!bill.hireStatements?.length || (bill.status === "draft" && bill.hireStatements.every((statement: any) => statement.status === "draft"))) && (
+            {canEdit && !bill.isCancelled && (
               <Button
                 variant="default"
                 size="sm"
@@ -4676,6 +4690,7 @@ export default function VendorBills() {
               <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 mb-2">Status Progress</p>
               {renderStatusSteps(bill.status, {
                 createdAt: bill.createdAt,
+                authorName: bill.authorName,
                 verifiedAt: bill.verifiedAt,
                 verifiedBy: bill.verifiedBy,
                 approvedAt: bill.approvedAt,
