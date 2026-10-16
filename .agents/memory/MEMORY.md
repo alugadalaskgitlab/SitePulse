@@ -124,3 +124,4 @@
 - [LDO historical data gap](ldo-historical-data-gap.md) — unrecorded substitute diesel is for SitePulse Next; do not invent receipts or correct historical balances.
 - [Development browser verification](development-browser-verification.md) — ordinary login and a specifically approved dev device; no auth bypass or repository credentials.
 - [Hire snapshot read consistency](hire-snapshot-transaction-reads.md) — freeze canonical performance rows through the saving transaction; outer PGlite reads can stall during writes.
+- [Instruction text handling](instruction-text-handling.md) — Never commit pasted instruction text into this repository.
