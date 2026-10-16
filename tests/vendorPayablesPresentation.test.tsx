@@ -124,7 +124,7 @@ const unlinkedNames = [
 const unlinkedBills = mahprovisional.map((item, index) => linkedBill({
   id: 99 + index,
   billNo: `HLC/VB/2026/${String(99 + index).padStart(4, "0")}`,
-  billDate: `2026-04-${String(index + 1).padStart(2, "0")}`,
+  billDate: index === 0 ? "2026-10-09" : `2026-04-${String(index + 1).padStart(2, "0")}`,
   vendorId: null,
   vendorName: unlinkedNames[index % unlinkedNames.length],
   status: item.paid == null ? "draft" : "paid",
@@ -225,7 +225,7 @@ describe("VB-PAY-02 payables presentation", () => {
     expect(table.querySelector("thead th")?.className).toContain("sticky");
     expect(table.querySelector("thead th:last-child")?.className).toContain("whitespace-nowrap");
 
-    const metricsGrid = screen.getByText("Linked vendors").parentElement!.parentElement!;
+    const metricsGrid = screen.getByText("Linked vendors", { selector: "p" }).parentElement!.parentElement!;
     expect(metricsGrid.className).toContain("xl:grid-cols-4");
     for (const label of ["Payable now", "Coming up", "Total liability"]) {
       const labelNode = within(metricsGrid).getByText(label);
@@ -262,8 +262,8 @@ describe("VB-PAY-02 payables presentation", () => {
 
   it("keeps bill number, bill period, status tags, and return links separate in both ledgers", async () => {
     for (const route of [
-      { path: "/reports/vendor-payables/vendor/4?dateFrom=2026-01-01&dateTo=2026-12-31", billNo: "HLC/VB/2026/0001" },
-      { path: "/reports/vendor-payables/unlinked/99?dateFrom=2026-01-01&dateTo=2026-12-31", billNo: "HLC/VB/2026/0099" },
+      { path: "/reports/vendor-payables/vendor/4?dateFrom=2026-01-01&dateTo=2026-12-31", billNo: "HLC/VB/2026/0001", periodFrom: "04 Feb 2026", periodTo: "05 Feb 2026" },
+      { path: "/reports/vendor-payables/unlinked/99?dateFrom=2026-01-01&dateTo=2026-12-31", billNo: "HLC/VB/2026/0099", periodFrom: "01 Oct 2026", periodTo: "31 Oct 2026" },
     ]) {
       cleanup();
       queryClient.clear();
@@ -278,8 +278,8 @@ describe("VB-PAY-02 payables presentation", () => {
       const cells = Array.from(billLink.closest("tr")!.querySelectorAll("td"));
       expect(cells[1].className).toContain("whitespace-nowrap");
       expect(cells[2].className).toContain("whitespace-normal");
-      expect(cells[2].textContent).toContain("04 Feb 2026");
-      expect(cells[2].textContent).toContain("05 Feb 2026");
+      expect(cells[2].textContent).toContain(route.periodFrom);
+      expect(cells[2].textContent).toContain(route.periodTo);
       expect(cells[3].querySelector("div")?.className).toContain("flex-col");
       expectNoTruncatedCurrency(container);
     }
