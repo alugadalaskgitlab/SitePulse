@@ -1,0 +1,215 @@
+# INSTRUCTION — AUDIT-01
+
+**One audit helper every write path must use, void-instead-of-delete for vendor
+bills, and a visible history on the bill.**
+
+Baseline: the published commit carrying VB-PAY-03 (`b0355cd` or the commit published
+from it). State it in your report.
+
+This is the first of three batches that will bring every edit and delete in the app
+under audit. This batch builds the spine and closes the money side. **Do not extend
+it to other modules** — batches two and three will do that, and a change this wide
+must be reviewable.
+
+**Read before starting.** The machinery already exists and must be reused, not
+rebuilt:
+
+- `auditLogs` in `shared/schema.ts` already records module, transactionId, action,
+  userId, userName, userRole, oldValues, newValues, reason, stockImpact, createdAt.
+- `storage.logAudit(...)` already writes it.
+- `cancellationFields` at `shared/schema.ts:15` already defines `isDeleted`,
+  `deletedAt`, `deletedBy`, `isCancelled`, `cancelledAt`, `cancelledBy`,
+  `cancellationReason`, and is already applied to five tables — `dprs`,
+  `sitePurchases`, `materialReceipts`, `siteMaterialTrips`,
+  `equipmentMaintenanceLogs`.
+- `assertDeleteOrCancel` already exists and is used at six call sites.
+- `client/src/components/HistoryDialog.tsx` already renders a record's history from
+  `GET /api/audit-logs?module=&transactionId=`. It is already mounted on five pages.
+- The DPR cancel route at `routes.ts:4031` is the pattern to follow: a reason is
+  required, the old and new values are both recorded, and a notification is raised.
+
+**Do not create a second audit table, a second cancel mechanism, or a second history
+component.**
+
+---
+
+## Standing rules
+
+- No production data changes, automatic repairs or publishing without our review.
+- Migrations in this batch must be **additive only** — new nullable columns. No
+  column is dropped, renamed or retyped. No data is backfilled.
+- No sequence resets. Do not call or re-expose `resetAllSequences`.
+- Preserve all existing users, credentials, site access, permissions and
+  administrator privileges. Do not grant, revoke or reset anything.
+- Frozen snapshots stay frozen and are never re-derived on read.
+- **No existing figure on any bill may change.** Voiding changes which bills are
+  counted, never what a bill says.
+- Report against the benchmark in force at the baseline commit.
+
+---
+
+## Part A — One audit helper, used by everything
+
+**The fault.** Of 165 update and delete routes, 20 write an audit entry. Those 20 do
+it in several different shapes, each assembling the entry by hand, so a new route
+simply forgets.
+
+**Required.** A single helper in `shared/` — a name such as `recordChange` — that
+takes the module, the record id, the action, the actor from the request, the before
+and after values, and the reason, and writes one `auditLogs` row through
+`storage.logAudit`. It must:
+
+1. Capture the actor's role at the time, as the existing writes do
+   (`owner` / `admin` / `manager` / the user's role).
+2. Store the **whole record** before and after, not a field list.
+3. Require a reason for `delete`, `void` and `cancel`, and reject the call without
+   one.
+4. Be the only way any path changed in this batch writes an audit entry.
+
+**Constraints.**
+
+- Do not change the shape of `auditLogs`, or any existing audit row.
+- Do not rewrite the 20 existing writers in this batch. The helper is adopted by the
+  paths named below; the rest follow in batches two and three.
+- `HistoryDialog` renders a fixed set of action labels — create, update, delete,
+  cancel, approve, reject, reopen. Add `void` to that map so it renders properly.
+
+---
+
+## Part B — Vendor bills: void is the normal action
+
+**The fault.** `DELETE /api/vendor-bills/:id` (`routes.ts:12868`) checks the caller
+is an admin, deletes the bill, and returns success. **Nothing is recorded** — not
+who, not when, not what the bill contained. `PUT /api/vendor-bills/:id`
+(`routes.ts:12278`), `PATCH .../payment-details` (`routes.ts:12349`) and
+`PATCH .../status` (`routes.ts:12374`) are also unrecorded. Vendor bills carry no
+cancellation fields at all.
+
+**Required.**
+
+1. **Add `cancellationFields` to the vendor bills table**, using the existing spread.
+   Additive migration, all columns nullable, no backfill.
+2. **A new void action.** `POST /api/vendor-bills/:id/void`:
+   - requires a typed reason, rejecting the call without one;
+   - requires the same permission as a delete does today —
+     use `assertDeleteOrCancel` with the vendor-bills section, as the other cancel
+     routes do;
+   - sets `isCancelled`, `cancelledAt`, `cancelledBy`, `cancellationReason`;
+   - **changes no figure on the bill**;
+   - writes one audit entry through the Part A helper, action `void`, carrying the
+     whole bill before and after and the reason;
+   - raises a notification, as the DPR cancel route does.
+3. **A voided bill drops out of the live views and stays visible in history.** It
+   must not appear in the Vendor Bills list by default, must not count towards any
+   payables figure, and must not appear in any vendor's liability. It must still be
+   findable — a "voided" filter on the Vendor Bills list — and must still appear in
+   the vendor ledger, marked **VOID**, contributing nothing to the running balance.
+4. **Delete becomes the last resort, and is recorded.** `DELETE /api/vendor-bills/:id`:
+   - is restricted to the **Owner** — not an administrator;
+   - requires a typed reason;
+   - writes the audit entry **before** the row is removed, carrying the complete bill
+     and its line items in `oldValues`, so the record survives its own deletion;
+   - raises a notification naming the bill number and the actor.
+5. **Record the edits too.** `PUT /api/vendor-bills/:id`, `PATCH .../payment-details`
+   and `PATCH .../status` each write an audit entry through the helper, before and
+   after, with the reason where one was given. A status change records the old and
+   new status. **Do not add a mandatory reason to these three** — they are everyday
+   actions and must not become slower.
+
+**Constraints.**
+
+- Do not change the one-way status rule
+  (`draft → verified → approved → paid`).
+- Do not change any calculation, any frozen snapshot, or any payment record.
+- A voided bill's own figures stay exactly as saved. Voiding is not an edit.
+- Do not weaken any existing permission check to make this work. If a check stands
+  in the way, stop and ask.
+
+---
+
+## Part C — The history must be visible on the bill
+
+**The fault.** Everything recorded today is invisible unless a page happens to mount
+`HistoryDialog` — only five do. Vendor bills have no history view, so even the audit
+entries this batch adds would be unreadable.
+
+**Required.**
+
+1. Mount the existing `HistoryDialog` on the **Bill Detail** page, module
+   `vendor_bills`, keyed on the bill id, labelled with the bill number. Reuse the
+   component; do not write a second one.
+2. Show who created the bill and when, and who last changed it, on the bill itself —
+   drawn from the audit entries, not from a new column.
+3. A voided bill shows its void reason and who voided it, plainly, at the top.
+
+---
+
+## Part D — The audit log itself is readable by anyone signed in
+
+**The fault.** `GET /api/audit-logs` (`routes.ts:14354`) checks only that the caller
+is signed in. There is no section permission check and no site scoping, so any user
+can read the before-and-after values of any record in any module — including every
+figure on every vendor bill, which the Vendor Bills pages themselves restrict.
+
+**Required.**
+
+1. The endpoint applies the **same permission and site scope as the module whose
+   history is requested**. A user who cannot see a site's vendor bills cannot read
+   their audit entries. A user without View Vendor Financials does not receive money
+   values.
+2. A request for a module the caller cannot see returns the same refusal shape the
+   rest of the app uses — not an empty list, which would read as "nothing happened".
+3. **Do not reduce what is recorded** to solve this. The fix is who may read it.
+
+---
+
+## What must not change
+
+- **Every figure on every bill.** State before and after, as numbers:
+  - `HLC/VB/2026/0054` — net ₹56,840.00, paid ₹50,000.00, balance ₹6,840.00.
+  - Gangaram Narsimhulu — billed ₹9,41,875.40, coming up ₹3,89,888.41.
+  - Nafeez — payable now ₹25,768.17. Mahipal Kalpaguri — payable now ₹11,853.69.
+  - Unlinked — 23 bills, billed ₹3,11,761.90, balance ₹2,84,691.90.
+- The arithmetic in `billReviewAmounts`, `summarizeBillReview`,
+  `billPaymentPosition`, `getBillFinancialTotals`, `filterFinancialBills` and
+  `projectVendorPayables`.
+- The one-way bill status rule.
+- Every existing audit row, and the shape of `auditLogs`.
+- Every permission and site-scope check, except Part D, which only tightens one.
+- The payables page staying read-only.
+
+---
+
+## Verification required
+
+Report in plain terms, no test-name inventories.
+
+1. **Part A** — the helper, and the list of paths now using it. Confirm no second
+   audit table or cancel mechanism was created.
+2. **Part B** — a bill voided on test data: the reason recorded, the bill's own
+   figures unchanged to the paisa, the bill absent from the Vendor Bills list and
+   from every payables figure, and present in the vendor ledger marked VOID
+   contributing nothing to the running balance.
+3. **Part B** — an attempted void with no reason, refused.
+4. **Part B** — a delete attempted by an administrator who is not the Owner, refused;
+   and a delete by the Owner, showing the audit entry written first and carrying the
+   complete bill and its line items.
+5. **Part B** — an edit, a payment-details change and a status change, each showing
+   its audit entry with before and after.
+6. **Part C** — the history on Bill Detail showing those entries in order, with who
+   and when.
+7. **Part D** — a user without vendor-bill access, and one without View Vendor
+   Financials, each attempting to read a vendor-bill audit entry, and what they
+   receive. Confirm nothing recorded was reduced.
+8. The migration, stated as the exact columns added, confirmed additive and
+   unbackfilled.
+9. The before/after figures under **What must not change**, as numbers.
+10. The full suite run to completion against the baseline benchmark, with the counts
+    stated and every failure named individually. **Do not stop the run early.** The
+    baseline carries one known failure in `tests/hireBillingLifecycle07b.test.ts` — a
+    static text assertion, not in scope.
+
+Stop and ask once if any part cannot be done without breaking a rule above. Do not
+work around a rule and report it afterwards.
+
+Nothing is to be published. We will review and publish.
