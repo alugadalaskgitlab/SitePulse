@@ -1,0 +1,162 @@
+# INSTRUCTION — VB-VIEW-04
+
+**The Previous Billing Summary belongs to whoever finalises the bill, not only to
+whoever may see the company's financial position.**
+
+Baseline: the published commit carrying AUDIT-02 (`05f9f34` or the commit published
+from it). State it in your report.
+
+**No calculation changes, no migrations, no new columns.** Every figure on every bill
+identical before and after.
+
+---
+
+## Why
+
+On 11-Oct the owner asked for Vendor Financials to be Owner-only by default, covering
+"aggregate summaries, vendor statements, Taxes Register and reporting/export APIs" —
+recorded in `.agents/memory/vendor-financial-visibility.md`. The Previous Billing
+Summary is built from `VendorRunningStatement`, so it went behind that grant.
+
+The owner has now revised that decision, for one specific reason: **whoever finalises
+a bill must see what was already deducted on earlier bills**, or an advance or a
+diesel recovery gets deducted twice. That is operational information needed to do the
+job, not a view of the company's position.
+
+**The revision is limited to this block.** The payables page, the financial summary on
+the Vendor Bills list, the Taxes Register and the reporting and export APIs stay
+behind View Vendor Financials exactly as they are.
+
+---
+
+## Standing rules
+
+- No production data changes, automatic repairs or publishing without our review.
+- No sequence resets. Do not call or re-expose `resetAllSequences`.
+- **Preserve all existing users, credentials, site access, permissions and
+  administrator privileges. Do not grant, revoke or reset anything, and do not add,
+  rename or remove any permission key.**
+- Frozen snapshots stay frozen and are never re-derived on read.
+- Report against the benchmark in force at the baseline commit.
+
+---
+
+## Part A — Give the block its own data source
+
+**The problem.** In `client/src/pages/VendorBills.tsx` the block renders as
+`{canViewFinancials && <VendorRunningStatement bill={bill} bills={financialReview.data || []} … />}`.
+Removing the gate alone is not enough: `financialReview` is itself
+`enabled: canViewFinancials` and is served by a financial-report endpoint that is
+permission-gated on the server. The block would render empty.
+
+**Required.** A narrow endpoint that serves **this one bill's previous-bill context**
+and nothing more — for example `GET /api/vendor-bills/:id/previous-bills`:
+
+1. Permission: the same as viewing the bill itself (`vendor_bills` or
+   `vendor_bills_view`). **Not** View Vendor Financials.
+2. It returns only bills for the **same linked vendor** as the bill in question,
+   **earlier** than it by the existing rule in `vendorStatementBills` — unchanged —
+   and only within the caller's permitted sites, using the same site scoping the bill
+   list already applies.
+3. It returns per bill only what the block renders: bill number, bill date, bill
+   period, status, net, paid, balance, the running balance the block already computes,
+   and that bill's own recorded adjustments and advance deductions.
+4. **Voided bills stay excluded**, exactly as now.
+5. It is read-only and creates, updates and deletes nothing.
+
+**Constraints.**
+
+- **Do not relax the existing financial-report endpoints.** Do not widen
+  `/api/vendor-bills/financial-review`, the taxes register, or any export. This is a
+  new, narrower path.
+- Do not return aggregate totals across vendors, and do not return any bill belonging
+  to a vendor other than this bill's vendor.
+- Do not change `vendorStatementBills`, `billReviewAmounts`, `summarizeBillReview`,
+  `getBillFinancialTotals` or `billPaymentPosition`.
+
+---
+
+## Part B — Show the block to whoever can see the bill
+
+**Required.**
+
+1. The Previous Billing Summary renders for any user who can view the bill, fed by
+   the Part A endpoint.
+2. Everything the block already does stays: the bill period column, the "Running
+   balance before this bill" column with its footnote, each bill's adjustments nested
+   under it, the scope caveat line, and the exclusion notices naming any bill left out
+   and why.
+3. A user **with** View Vendor Financials sees exactly what they see today — the same
+   figures, from whichever source. Do not produce two different answers for the same
+   bill.
+
+**Constraints.**
+
+- The payables page, the Vendor Bills list financial summary, the Taxes Register and
+  every report or export stay behind View Vendor Financials. **Confirm each one is
+  untouched.**
+- Audit history stays Owner and Administrator only, as AUDIT-02 established.
+
+---
+
+## Part C — Correct the stored rule
+
+`.agents/memory/vendor-financial-visibility.md` currently instructs that vendor
+statements stay behind the explicit grant. Left as it is, a future batch will put this
+block back behind the permission.
+
+**Required.** Amend that note to record the revision: the Previous Billing Summary on
+a bill is available to anyone who may view the bill, because it is needed to finalise
+that bill's debits and credits; aggregate summaries, the payables page, the Taxes
+Register and the reporting and export APIs remain behind the explicit grant. Keep the
+rest of the note as it stands, including the Owner-only default and the
+recorded-only TDS boundaries.
+
+---
+
+## What must not change
+
+- **Every figure on every bill**, and every figure in the Previous Billing Summary
+  itself. State before and after, as numbers, for `HLC/VB/2026/0054`: its previous-bill
+  rows and running balance as a user with View Vendor Financials sees them, and the
+  same rows as a user without it now sees them. **They must be identical.**
+- The arithmetic in `billReviewAmounts`, `summarizeBillReview`, `billPaymentPosition`,
+  `getBillFinancialTotals`, `filterFinancialBills`, `vendorStatementBills` and
+  `projectVendorPayables`.
+- Every permission key, every user's permissions, every site access grant.
+- The gating of the payables page, the list financial summary, the Taxes Register and
+  all reports and exports.
+- The Owner-and-Administrator-only audit history.
+- The one-way status rule and the self-approval checks.
+
+---
+
+## Verification required
+
+Report in plain terms, no test-name inventories.
+
+1. **Part A** — the new endpoint, and confirmation of exactly what it returns. State
+   its permission check and its site scoping, quoted.
+2. **Part A** — a user without View Vendor Financials requesting previous bills for a
+   bill whose vendor has bills on sites that user cannot see: confirm those are absent.
+3. **Part B** — bill `HLC/VB/2026/0054` as seen by a user **with** the financials
+   permission and by a user **without** it: the two must show identical previous-bill
+   rows, adjustments, running balance and exclusion notices. Show both.
+4. **Part B** — confirmation, one by one, that the payables page, the Vendor Bills
+   list financial summary, the Taxes Register and every report and export are still
+   refused to a user without View Vendor Financials.
+5. **Part B** — confirmation that the audit history is still Owner and Administrator
+   only.
+6. **Part C** — the amended memory note, quoted in full.
+7. Confirmation that no permission key was added, renamed or removed, and no user's
+   permissions changed.
+8. The before/after figures under **What must not change**, as numbers.
+9. The full suite run to completion against the baseline benchmark, with the counts
+   stated and every failure named individually. **Do not stop the run early.** The
+   baseline carries one known failure in `tests/hireBillingLifecycle07b.test.ts` — a
+   static text assertion, not in scope.
+
+Stop and ask once if any part cannot be done without breaking a rule above. Do not
+work around a rule and report it afterwards.
+
+Nothing is to be published. We will review and publish.

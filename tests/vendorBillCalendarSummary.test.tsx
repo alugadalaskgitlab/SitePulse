@@ -223,7 +223,7 @@ describe("financial overview and statement", () => {
   it("shows one concise empty state instead of a blank previous-billing grid", async () => {
     const current = bill(3);
     const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => ({
-      rows: [], excludedRows: [], gross: 0, paid: 0, balance: 0,
+      rows: [], gross: 0, paid: 0, balance: 0,
     }) });
     vi.stubGlobal("fetch", fetcher);
     renderQuery(<VendorRunningStatement bill={current} bills={[current]} />);
