@@ -72,6 +72,8 @@ import { buildVendorFinancialWorkbook } from "./vendorFinancialWorkbook";
 import { financialSites, vendorFinancialGuard } from "./vendorFinancialAccess";
 import { vendorStatementBills } from "@shared/vendorBillReview";
 import { buildPreviousBillingContext } from "@shared/vendorBillPreviousContext";
+import { buildVendorBillExport } from "@shared/vendorBillExport";
+import { buildVendorBillCompleteWorkbook } from "./vendorBillCompleteWorkbook";
 import {
   classifyBarExecutionState,
   deriveItemStatus,
@@ -11705,6 +11707,62 @@ export async function registerRoutes(
       const categoryFilter = ((req.query.category as string) || "all").toLowerCase();
       const requestedFormat = String(req.query.format || "xlsx").toLowerCase();
       const format = requestedFormat === "csv" || requestedFormat === "pdf" ? requestedFormat : "xlsx";
+
+      // Complete, lossless export. The legacy report=financial-summary route
+      // below remains unchanged for the existing GST/TDS workbook action.
+      if (requestedFormat === "json" ||
+          (requestedFormat === "xlsx" && req.query.report !== "financial-summary")) {
+        if (!req.authUser?.isAdmin && !req.authUser?.isOwner) {
+          return res.status(403).json({ error: "forbidden", role: "administrator_or_owner" });
+        }
+        const selectedSite = await resolveVendorBillSite(req, res, req.query.siteId);
+        if (!selectedSite) return;
+        const sites = await storage.getSites();
+        const permittedSites = await getPermittedSiteNames(req);
+        const siteScope = permittedSites === null
+          ? "All sites"
+          : permittedSites.length ? `Permitted sites: ${permittedSites.join(", ")}` : "No sites permitted";
+        const available = await scopeVendorBillsToSiteAccess(
+          req,
+          await storage.getVendorBills({ includeVoided: true }),
+        );
+        const vendorIds = Array.from(new Set(available
+          .map(bill => bill.vendorId == null ? null : Number(bill.vendorId))
+          .filter((id): id is number => id != null && Number.isSafeInteger(id))));
+        const linkedNames = new Map((await storage.getVendorNamesByIds(vendorIds))
+          .map(vendor => [vendor.id, vendor.name]));
+        const bills = available.map(bill => ({
+          ...bill,
+          linkedVendorName: bill.vendorId == null ? null : linkedNames.get(Number(bill.vendorId)) ?? null,
+        }));
+        const filterVendor = (req.query.vendor as string) || undefined;
+        const filterBillType = ((req.query.billType as string) || categoryFilter || undefined)?.toLowerCase();
+        const filterStatus = (req.query.status as string) || undefined;
+        const filterDateFrom = (req.query.dateFrom as string) || undefined;
+        const filterDateTo = (req.query.dateTo as string) || undefined;
+        const scopeDescription = selectedSite.siteName
+          ? `${siteScope}; selected site: ${selectedSite.siteName}`
+          : siteScope;
+        const assembly = buildVendorBillExport(bills, {
+          generatedAt: new Date().toISOString(),
+          generatedBy: String(req.authUser.fullName || req.authUser.username || req.authUser.id || "Not recorded"),
+          filters: {
+            vendor: filterVendor,
+            billType: filterBillType === "all" ? undefined : filterBillType,
+            status: filterStatus === "all" ? undefined : filterStatus,
+            dateFrom: filterDateFrom,
+            dateTo: filterDateTo,
+            site: selectedSite.siteName || undefined,
+          },
+          sites,
+          siteScope: scopeDescription,
+        });
+        if (requestedFormat === "json") return res.json(assembly);
+        const workbook = buildVendorBillCompleteWorkbook(assembly);
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        res.setHeader("Content-Disposition", 'attachment; filename="vendor-bills-complete.xlsx"');
+        return res.send(xlsx.write(workbook, { type: "buffer", bookType: "xlsx" }));
+      }
 
       const selectedSite = await resolveVendorBillSite(req, res, req.query.siteId);
       if (!selectedSite) return;
