@@ -149,7 +149,7 @@ describe("GST Register PDF parity and authorization", () => {
       { id: 2, siteId: 1, billNo: "TDS-MISSING", billDate: "2026-10-01", vendorName: "VENDOR",
         billType: "material", totalAmount: 1000, tdsRate: 2, items: [] },
     ] as any);
-    const response = await request(app).get("/api/vendor-bills/export?format=xlsx&report=financial-summary&scope=all&billIds=1")
+    const response = await request(app).get("/api/vendor-bills/export?format=xlsx&report=financial-summary&scope=all&billIds=1,2")
       .buffer(true).parse((res, callback) => {
         const chunks: Buffer[] = [];
         res.on("data", chunk => chunks.push(chunk));
@@ -157,10 +157,10 @@ describe("GST Register PDF parity and authorization", () => {
       });
     expect(response.status).toBe(200);
     const workbook = xlsx.read(response.body, { type: "buffer" });
-    expect(workbook.SheetNames).toEqual(["Summary", "Detail", "TDS"]);
-    const rows = xlsx.utils.sheet_to_json(workbook.Sheets.TDS, { header: 1 }) as any[][];
-    expect(rows.find(row => row[0] === "TDS-SAVED")?.[5]).toBe(17);
-    expect(rows.find(row => row[0] === "TDS-MISSING")?.[5]).toBe("Not established");
+    expect(workbook.SheetNames).toEqual(["Vendor Bills", "GST Register", "TDS (IT) Register"]);
+    const rows = xlsx.utils.sheet_to_json(workbook.Sheets["TDS (IT) Register"], { header: 1 }) as any[][];
+    expect(rows.find(row => row[1] === "TDS-SAVED")?.[9]).toBe(17);
+    expect(rows.find(row => row[1] === "TDS-MISSING")?.[9]).toBe("Not established");
   });
   it("requires the same report permission as Excel", async () => {
     const response = await request(app).get("/api/vendor-bills/export?format=pdf");
@@ -199,6 +199,7 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
   });
   it("requires Administrator or Owner even when financial viewing is granted", async () => {
     authUser = { id: 7 };
+    permissions.vendor_bills = { export: true };
     expect((await request(app).get("/api/vendor-bills/export?format=json")).status).toBe(403);
     expect(storage.getVendorBills).not.toHaveBeenCalled();
   });
@@ -208,6 +209,7 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
       {
         id: 1, siteId: 1, billNo: "BILL-LIVE", billDate: "2026-10-01", vendorName: "Recorded Vendor",
         vendorId: 11, billType: "material", status: "approved", totalAmount: 100, netPayableAmount: 90,
+        adjustmentLabel: "Advance", adjustmentAmount: -10,
         amountPaid: 25, paymentMode: "Bank", paidBy: "Finance", paymentRecordedBy: "Approver",
         paymentRemarks: "UTR 123", paymentAccountKey: "bank-main", items: [
           { id: 21, description: "Stone", qty: 2, unit: "MT", rate: 50, amount: 100, suppliedTo: "Site A", boqReference: "BOQ-4" },
@@ -244,6 +246,15 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
       recordType: "Bill-level cumulative total; no per-payment transaction record is stored",
       paymentDate: "Not recorded", amount: 25, mode: "Bank", reference: "UTR 123",
     });
+    expect(live.money).toMatchObject({
+      advanceAdjustment: -10,
+      amountPaid: 25,
+    });
+    expect(jsonResponse.body.totals).toMatchObject({
+      advanceAdjustments: -10,
+      advanceAdjustmentNotIncludedInPaid: true,
+      paidKnownSubtotal: 25,
+    });
     expect(live.lineItems[0]).toMatchObject({ description: "Stone", quantity: 2, unit: "MT", rate: 50, amount: 100, boqReference: "BOQ-4" });
     expect(live.hireStatements[0].calculationSnapshot.financials.grossHire).toBe(100);
     const voided = jsonResponse.body.bills.find((bill: any) => bill.identity.billNumber === "BILL-VOID");
@@ -259,12 +270,18 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
       {
         id: 1, siteId: 1, billNo: "BILL-LIVE", billDate: "2026-10-01", vendorName: "Recorded Vendor",
         vendorId: 11, billType: "material", status: "approved", totalAmount: 100, netPayableAmount: 90,
+        adjustmentLabel: "Advance", adjustmentAmount: -10,
         amountPaid: 25, paymentMode: "Bank", paidBy: "Finance", paymentRecordedBy: "Approver",
         paymentRemarks: "UTR 123", paymentAccountKey: "bank-main", items: [
           { id: 21, description: "Stone", qty: 2, unit: "MT", rate: 50, amount: 100, suppliedTo: "Site A", boqReference: "BOQ-4" },
         ], hireStatements: [],
       },
       { id: 2, siteId: 2, billNo: "BILL-OTHER-SITE", billDate: "2026-10-01", vendorName: "Other Vendor", billType: "material", status: "approved", totalAmount: 500, items: [] },
+      {
+        id: 3, siteId: 1, billNo: "BILL-VOID", billDate: "2026-09-30", vendorName: "Legacy Name",
+        billType: "material", status: "cancelled", totalAmount: 30, items: [], isCancelled: true,
+        cancellationReason: "Duplicate", cancelledBy: "Owner", cancelledAt: "2026-10-02T00:00:00Z",
+      },
     ] as any);
     const xlsxResponse = await request(app).get("/api/vendor-bills/export?format=xlsx").buffer(true).parse((res, done) => {
       const chunks: Buffer[] = [];
@@ -279,8 +296,13 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
     const columns = billRows[headerIndex];
     const exportedLive = billRows.find(row => row[columns.indexOf("Bill Number")] === "BILL-LIVE")!;
     expect(exportedLive[columns.indexOf("Net")]).toBe(live.money.net);
+    expect(exportedLive[columns.indexOf("Gross")]).toBe(live.money.gross);
+    expect(exportedLive[columns.indexOf("Payables Basis Gross")]).toBe(live.money.payablesBasisGross);
     expect(exportedLive[columns.indexOf("Amount Paid")]).toBe(live.money.amountPaid);
     expect(exportedLive[columns.indexOf("Balance")]).toBe(live.money.balance);
+    const exportedVoid = billRows.find(row => row[columns.indexOf("Bill Number")] === "BILL-VOID")!;
+    expect(exportedVoid[columns.indexOf("Amount Paid")]).toBe("Unknown");
+    expect(exportedVoid[columns.indexOf("Balance")]).toBe("Unknown");
     const paymentRows = xlsx.utils.sheet_to_json(workbook.Sheets.Payments, { header: 1 }) as any[][];
     expect(paymentRows.some(row => row.includes("BILL-LIVE") && row.includes("UTR 123"))).toBe(true);
   });

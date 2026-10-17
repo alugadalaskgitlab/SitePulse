@@ -11745,7 +11745,7 @@ export async function registerRoutes(
           : siteScope;
         const assembly = buildVendorBillExport(bills, {
           generatedAt: new Date().toISOString(),
-          generatedBy: String(req.authUser.fullName || req.authUser.username || req.authUser.id || "Not recorded"),
+          generatedBy: String(req.authUser.fullName || req.authUser.email || req.authUser.id || "Not recorded"),
           filters: {
             vendor: filterVendor,
             billType: filterBillType === "all" ? undefined : filterBillType,

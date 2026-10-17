@@ -32,3 +32,15 @@ The user bills month by month. Multi-month hire billing is an occasional excepti
 **Why:** The user explicitly requires synthetic multi-month checks without creating, altering, or publishing Production bills to manufacture an example.
 
 **How to apply:** Persist synthetic spanning hire bills only in a disposable development/test database, verify monthly rows and Activity Calendars against stored totals, and check real single-month bills read-only.
+
+Unknown cumulative payments are never zero. If a bill has no recorded paid amount, the export must show paid and balance as “Unknown”; aggregate paid and balance show only a known subtotal beside the count of bills with unknown payment evidence.
+
+**Why:** The user explicitly confirmed unknown paid amounts must never be treated as zero in the export or its verification.
+
+**How to apply:** Keep unknown bill-level values explicit, report known-only subtotals and unknown counts, and do not infer a payment or balance from the bill’s net amount.
+
+For payables reconciliation, use the existing shared bill-review helpers. A frozen hire statement’s presentation gross may differ from the saved bill total used as payables-basis gross; expose both rather than replacing either or recalculating the snapshot.
+
+**Why:** The saved bill total and frozen hire gross can intentionally differ after deductions, and raw database aggregation can produce a different currency display from the shared calculation path.
+
+**How to apply:** Compare export totals with the payables page through the shared helpers, label presentation and payables-basis gross separately, and preserve frozen snapshots unchanged.

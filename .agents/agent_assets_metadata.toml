@@ -6051,3 +6051,17 @@ mtime_ms = 1791951926390
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d419441a-6553-42e1-9482-6f6a61f4687d/c11fdfa2-60d9-49e9-be4d-5d65cfffde21"
 storage_version_token = "1791952378609381"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "ZKediUJI93sSVMdfziPdN"
+uri = "file://generated-artifacts/vb-export-verification.html"
+type = "html"
+title = "VB-EXPORT-01 Verification Report"
+description = "Read-only vendor-bill export verification, payment-unknown reconciliation, and the complete HLC/VB/2026/0054 JSON shape with frozen snapshot."
+logical_id = "05298c2f-a7f4-4797-870d-c4ba16e31451"
+content_hash = "sha256:a6e57d41b53f771093c4f5d98b7583c69c9ea34dd79f666df4df8afb4b00af23"
+size = 126472
+mtime_ms = 1792249098825
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/05298c2f-a7f4-4797-870d-c4ba16e31451/96324e86-192b-4683-b439-cacdb061f21a"
+storage_version_token = "1792249102108053"
+content_type = "text/html"
