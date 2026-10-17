@@ -248,6 +248,12 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
     expect(live.hireStatements[0].calculationSnapshot.financials.grossHire).toBe(100);
     const voided = jsonResponse.body.bills.find((bill: any) => bill.identity.billNumber === "BILL-VOID");
     expect(voided.status).toMatchObject({ voided: true, voidReason: "Duplicate", voidedBy: "Owner" });
+    expect(voided.money.amountPaid).toBe("Unknown");
+    expect(voided.money.balance).toBe("Unknown");
+    expect(jsonResponse.body.totals).toMatchObject({
+      paid: "Unknown", paidKnownSubtotal: 25, knownPaidBillCount: 1, unknownPaidBillCount: 1,
+      balance: "Unknown", balanceKnownSubtotal: 65, knownBalanceBillCount: 1, unknownBalanceBillCount: 1,
+    });
 
     storage.getVendorBills.mockResolvedValueOnce([
       {

@@ -9,6 +9,7 @@ import { buildSavedBillPresentationRows } from "./vendorBillPresentation";
 import { recordedVendorTds } from "./vendorFinancialAccess";
 
 const NOT_RECORDED = "Not recorded";
+const UNKNOWN = "Unknown";
 
 type VendorBillExportFilters = {
   vendor?: string;
@@ -273,13 +274,13 @@ export function buildVendorBillExport(
           : "Stored bill amount",
         tds: recordedTds ?? NOT_RECORDED,
         tdsEvidenceIncomplete: tdsEvidence.incomplete,
-        amountPaid: amounts.paid ?? NOT_RECORDED,
-        balance: hasNet ? position.balance ?? NOT_RECORDED : NOT_RECORDED,
+        amountPaid: amounts.paid ?? UNKNOWN,
+        balance: !hasNet ? NOT_RECORDED : position.balance ?? UNKNOWN,
       },
       payments: [{
         recordType: "Bill-level cumulative total; no per-payment transaction record is stored",
         paymentDate: NOT_RECORDED,
-        amount: amounts.paid ?? NOT_RECORDED,
+        amount: amounts.paid ?? UNKNOWN,
         mode: recorded(bill.paymentMode),
         account: recorded(bill.paymentAccountKey),
         paidBy: recorded(bill.paidBy),
@@ -321,8 +322,25 @@ export function buildVendorBillExport(
 
   const selectedAmounts = bills.map(bill => billReviewAmounts(bill, getBillFinancialTotals(bill)));
   const summarized = summarizeBillReview(selectedAmounts);
-  const knownBalances = selectedAmounts.map(row => row.balance).filter((value): value is number => value != null);
-  const missingBalanceCount = selectedAmounts.length - knownBalances.length;
+  const knownGross = bills.flatMap((bill, index) =>
+    finiteNumber(bill.totalAmount) == null ? [] : [selectedAmounts[index].gross]);
+  const knownNet = bills.flatMap((bill, index) =>
+    finiteNumber(bill.netPayableAmount) == null && finiteNumber(bill.totalAmount) == null
+      ? []
+      : [selectedAmounts[index].net]);
+  const knownPaid = selectedAmounts.flatMap(row => row.paid == null ? [] : [row.paid]);
+  const knownBalances = bills.flatMap((bill, index) => {
+    const hasRecordedNetBasis = finiteNumber(bill.netPayableAmount) != null || finiteNumber(bill.totalAmount) != null;
+    const balance = selectedAmounts[index].balance;
+    return hasRecordedNetBasis && balance != null ? [balance] : [];
+  });
+  const unknownGrossCount = bills.length - knownGross.length;
+  const unknownNetCount = bills.length - knownNet.length;
+  const unknownPaidCount = bills.length - knownPaid.length;
+  const unknownBalanceCount = bills.length - knownBalances.length;
+  const advanceAdjustmentRows = exportedBills.filter(bill => typeof bill.money.advanceAdjustment === "number");
+  const advanceAdjustmentTotal = advanceAdjustmentRows.reduce((sum, bill) =>
+    sum + bill.money.advanceAdjustment, 0);
 
   return {
     header: {
@@ -340,15 +358,24 @@ export function buildVendorBillExport(
       siteScope: options.siteScope,
     },
     totals: {
-      gross: summarized.gross,
-      net: summarized.net,
-      paid: summarized.paid,
-      balance: missingBalanceCount === 0
+      gross: unknownGrossCount === 0 ? summarized.gross : UNKNOWN,
+      grossKnownSubtotal: knownGross.reduce((sum, value) => sum + value, 0),
+      unknownGrossBillCount: unknownGrossCount,
+      net: unknownNetCount === 0 ? summarized.net : UNKNOWN,
+      netKnownSubtotal: knownNet.reduce((sum, value) => sum + value, 0),
+      unknownNetBillCount: unknownNetCount,
+      paid: unknownPaidCount === 0 ? knownPaid.reduce((sum, value) => sum + value, 0) : UNKNOWN,
+      paidKnownSubtotal: knownPaid.reduce((sum, value) => sum + value, 0),
+      knownPaidBillCount: knownPaid.length,
+      unknownPaidBillCount: unknownPaidCount,
+      balance: unknownBalanceCount === 0
         ? knownBalances.reduce((sum, value) => sum + value, 0)
-        : NOT_RECORDED,
-      missingBalanceCount,
-      advanceAdjustments: exportedBills.reduce((sum, bill) =>
-        sum + (typeof bill.money.advanceAdjustment === "number" ? bill.money.advanceAdjustment : 0), 0),
+        : UNKNOWN,
+      balanceKnownSubtotal: knownBalances.reduce((sum, value) => sum + value, 0),
+      knownBalanceBillCount: knownBalances.length,
+      unknownBalanceBillCount: unknownBalanceCount,
+      advanceAdjustments: advanceAdjustmentRows.length ? advanceAdjustmentTotal : NOT_RECORDED,
+      advanceAdjustmentBillCount: advanceAdjustmentRows.length,
       advanceAdjustmentNotIncludedInPaid: true,
       voidedBillCount: exportedBills.filter(bill => bill.status.voided).length,
       unlinkedBillCount: exportedBills.filter(bill => bill.vendor.linkStatus === "unlinked").length,
