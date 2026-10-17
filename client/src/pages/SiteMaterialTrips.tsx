@@ -11,6 +11,7 @@ import { format } from "date-fns";
 import { Plus, Trash2, Loader2, ArrowLeft, Truck, Package, Camera, ImagePlus, X, History, Ban } from "lucide-react";
 import CancelDialog from "@/components/CancelDialog";
 import HistoryDialog from "@/components/HistoryDialog";
+import AuditHistoryButton from "@/components/AuditHistoryButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1033,7 +1034,7 @@ export default function SiteMaterialTrips() {
                         <td className="p-2 text-center">
                           <div className="flex items-center justify-center gap-1">
                             <Button variant="outline" size="sm" onClick={() => setEditingRoleTrip(trip)} data-testid={`button-edit-trip-roles-${trip.id}`}>{canEdit ? "Edit" : "Details"}</Button>
-                            <Button
+                            <AuditHistoryButton
                               variant="ghost"
                               size="icon"
                               onClick={() => setHistoryTripId(trip.id)}
@@ -1041,7 +1042,7 @@ export default function SiteMaterialTrips() {
                               title="History"
                             >
                               <History className="w-4 h-4 text-muted-foreground" />
-                            </Button>
+                            </AuditHistoryButton>
                             {sectionCan("site_materials", "delete") && <Button
                               variant="ghost"
                               size="icon"

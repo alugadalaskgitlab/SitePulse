@@ -5,6 +5,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { ChevronLeft, ShoppingCart, Filter, Pencil, Loader2, X, History, Ban, CheckCircle2, FileWarning, Lock } from "lucide-react";
 import CancelDialog from "@/components/CancelDialog";
 import HistoryDialog from "@/components/HistoryDialog";
+import AuditHistoryButton from "@/components/AuditHistoryButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -347,7 +348,7 @@ export default function SitePurchasesReport() {
                         </td>
                         <td className="p-2 text-center">
                           <div className="flex items-center justify-center gap-1">
-                            <Button
+                            <AuditHistoryButton
                               variant="ghost"
                               size="icon"
                               onClick={() => setHistoryItem(p)}
@@ -355,7 +356,7 @@ export default function SitePurchasesReport() {
                               title="History"
                             >
                               <History className="w-4 h-4 text-muted-foreground" />
-                            </Button>
+                            </AuditHistoryButton>
                             {p.source !== 'diesel' ? (
                               <>
                                 {p.documentStatus !== "submitted" && (

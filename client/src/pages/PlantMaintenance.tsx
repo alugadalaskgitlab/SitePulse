@@ -23,6 +23,7 @@ import type { EquipmentMasterType, StoreItem, StoreStockBalance } from "@shared/
 import { ChevronLeft, Plus, Wrench, AlertTriangle, CheckCircle2, Clock, Package, Trash2, ChevronDown, ChevronUp, Activity, X, Pencil, Camera, ImagePlus, History, Ban } from "lucide-react";
 import CancelDialog from "@/components/CancelDialog";
 import HistoryDialog from "@/components/HistoryDialog";
+import AuditHistoryButton from "@/components/AuditHistoryButton";
 import { format } from "date-fns";
 
 type Part = { storeItemId: number; qty: number; uom: string };
@@ -743,9 +744,9 @@ function LogCard({
                     <Plus className="w-3 h-3" /> Add Part
                   </Button>
                 )}
-                <Button type="button" variant="outline" size="sm" className="gap-1 h-7" onClick={() => setHistoryOpen(true)} data-testid={`button-history-log-${log.id}`}>
+                <AuditHistoryButton type="button" variant="outline" size="sm" className="gap-1 h-7" onClick={() => setHistoryOpen(true)} data-testid={`button-history-log-${log.id}`}>
                   <History className="w-3 h-3" /> History
-                </Button>
+                </AuditHistoryButton>
                 <DeleteGate sections={["plant_equipment"]}>
                   <Button type="button" variant="outline" size="sm" className="gap-1 h-7 text-amber-600 hover:text-amber-700" onClick={() => setCancelOpen(true)} data-testid={`button-cancel-log-${log.id}`}>
                     <Ban className="w-3 h-3" /> Cancel

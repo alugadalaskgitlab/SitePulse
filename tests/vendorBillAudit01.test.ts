@@ -435,6 +435,27 @@ describe("AUDIT-01 vendor-bill history", () => {
     expect(response.status).toBe(403);
   });
 
+  it("refuses audit history for non-admins across all six supported modules", async () => {
+    fx.role = "viewer";
+    fx.permissions = {};
+    const modules = [
+      "dprs",
+      "site_material_trips",
+      "site_purchases",
+      "material_receipts",
+      "equipment_maintenance_logs",
+      "vendor_bills",
+    ];
+
+    for (const module of modules) {
+      const response = await request(app)
+        .get(`/api/audit-logs?module=${module}&transactionId=7`);
+      expect(response.status).toBe(403);
+      expect(response.body).toEqual({ error: "admin_required" });
+    }
+    expect(storage.getAuditLogs).not.toHaveBeenCalled();
+  });
+
   it("audits the integrated hire-statement bill creation path too", () => {
     const source = readFileSync("server/routes.ts", "utf8");
     const start = source.indexOf('app.post("/api/equipment-hire/statements/:id/create-vendor-bill"');

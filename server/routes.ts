@@ -14515,6 +14515,7 @@ export async function registerRoutes(
     try {
       res.setHeader("Cache-Control", "private, no-store");
       if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
+      if (!assertAdmin(req, res)) return;
       const module = String(req.query.module || "");
       const transactionId = Number(req.query.transactionId);
       if (!module || !Number.isSafeInteger(transactionId) || transactionId <= 0) {

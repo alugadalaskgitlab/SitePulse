@@ -5,9 +5,11 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import VendorBills from "@/pages/VendorBills";
 
-const authTestState = vi.hoisted(() => ({ isOwner: false }));
+const authTestState = vi.hoisted(() => ({ isOwner: false, isAdmin: true }));
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({
-  isAdmin: true, user: { id: 9, isOwner: authTestState.isOwner }, sectionCan: () => true, sectionVisible: () => true,
+  isAdmin: authTestState.isAdmin, isOwner: authTestState.isOwner,
+  user: { id: 9, isAdmin: authTestState.isAdmin, isOwner: authTestState.isOwner },
+  sectionCan: () => true, sectionVisible: () => true,
 }) }));
 vi.mock("@/lib/featureFlags", () => ({ useFeatureFlags: () => ({ companyName: "Demo", logoFile: null }) }));
 vi.mock("@/hooks/use-origin", () => ({ useOrigin: () => ({ getPlantBackLink: () => "/plant" }) }));
@@ -73,6 +75,7 @@ beforeEach(() => {
   deferredHireActivities = null;
   billDetailOverrideForTest = null;
   authTestState.isOwner = false;
+  authTestState.isAdmin = true;
   Object.defineProperty(window, "matchMedia", { configurable: true, value: vi.fn().mockReturnValue({ matches: false, addListener: vi.fn(), removeListener: vi.fn() }) });
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -182,11 +185,54 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
 
     cleanup();
     queryClient.clear();
+    authTestState.isAdmin = false;
     authTestState.isOwner = true;
     billDetailOverrideForTest = approvedMaterial;
     render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
     fireEvent.click(await screen.findByTestId("card-bill-82"));
     expect(await screen.findByTestId("button-void-bill")).toBeTruthy();
+    expect(screen.getByTestId("button-edit-bill")).toBeTruthy();
+    expect(screen.getByTestId("button-bill-history")).toBeTruthy();
+  });
+
+  it("shows ordinary bill editors Edit only on drafts and keeps audit content out of their view", async () => {
+    authTestState.isAdmin = false;
+    authTestState.isOwner = false;
+    const draftMaterial = {
+      ...itemizedEquipmentBill,
+      billType: "material",
+      status: "draft",
+      isCancelled: false,
+      hireStatements: [],
+    };
+    billDetailOverrideForTest = draftMaterial;
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("card-bill-82"));
+    expect(await screen.findByTestId("button-edit-bill")).toBeTruthy();
+    expect(screen.queryByTestId("button-bill-history")).toBeNull();
+    expect(screen.queryByTestId("vendor-bill-audit-summary")).toBeNull();
+    expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes("/api/audit-logs"))).toBe(false);
+
+    cleanup();
+    queryClient.clear();
+    billDetailOverrideForTest = {
+      ...draftMaterial,
+      status: "approved",
+      verifiedBy: "Site Verifier",
+      verifiedAt: "2026-10-01 08:00:00",
+      approvedBy: "Site Approver",
+      approvedAt: "2026-10-01 09:00:00",
+    };
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("card-bill-82"));
+    expect(await screen.findByTestId("badge-bill-status")).toBeTruthy();
+    expect(screen.queryByTestId("button-edit-bill")).toBeNull();
+    expect(screen.queryByTestId("button-bill-history")).toBeNull();
+    expect(screen.queryByTestId("vendor-bill-audit-summary")).toBeNull();
+    const statusSteps = screen.getByTestId("status-steps").textContent || "";
+    expect(statusSteps).toContain("Site Verifier");
+    expect(statusSteps).toContain("Site Approver");
+    expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes("/api/audit-logs"))).toBe(false);
   });
 
   it("offers the separate date action for an approved bill and sends only the new date plus an optional reason", async () => {

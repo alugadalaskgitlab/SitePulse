@@ -6,6 +6,7 @@ import { ChevronLeft, Printer } from "lucide-react";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
 import CancelDialog from "@/components/CancelDialog";
 import HistoryDialog from "@/components/HistoryDialog";
+import AuditHistoryButton from "@/components/AuditHistoryButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -232,7 +233,7 @@ export default function SiteReport() {
     </div>
     <section><h2>Remarks / hold-ups</h2><p className="whitespace-pre-wrap break-words" data-testid="dpr-remarks">{(dpr as any).remarks?.trim() || "— none recorded —"}</p></section>
     <nav className="flex flex-wrap gap-2 mt-4 print:hidden" aria-label="Report administration">
-      <Button size="sm" variant="ghost" onClick={() => setShowHistory(true)} data-testid="button-history">History</Button>
+      <AuditHistoryButton size="sm" variant="ghost" onClick={() => setShowHistory(true)} data-testid="button-history">History</AuditHistoryButton>
       {sectionCan("site_dprs", "delete") && <Button size="sm" variant="ghost" onClick={() => setShowCancel(true)} data-testid="button-cancel-dpr">Cancel report</Button>}
       {canDelete && <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setShowDeleteConfirm(true)} disabled={deleteMutation.isPending} data-testid="button-admin-delete">Delete</Button>}
       <Link href="/" className="text-xs text-muted-foreground self-center" data-testid="button-home">Home</Link>

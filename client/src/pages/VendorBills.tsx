@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import CancelDialog from "@/components/CancelDialog";
 import HistoryDialog from "@/components/HistoryDialog";
+import AuditHistoryButton from "@/components/AuditHistoryButton";
 import { Link, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Check, Circle, Info, Fuel, Settings, Copy, X, Download, Search, Edit, PlusCircle, BarChart2, Calculator, History } from "lucide-react";
@@ -520,6 +521,7 @@ export default function VendorBills() {
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "stock" });
   const { sectionCan, sectionVisible, isAdmin, user } = useAuth();
+  const canReadAuditHistory = isAdmin || !!user?.isOwner;
   const canViewFinancials = sectionCan("vendor_financials", "view");
   useEffect(() => {
     if (!canViewFinancials) queryClient.removeQueries({ predicate: query =>
@@ -736,7 +738,7 @@ export default function VendorBills() {
       if (!response.ok) throw new Error("Failed to fetch vendor-bill audit history.");
       return response.json();
     },
-    enabled: view === "detail" && !!selectedBillId && canViewBills,
+    enabled: view === "detail" && !!selectedBillId && canViewBills && canReadAuditHistory,
   });
 
   const { data: vendorNamesData } = useQuery<string[]>({
@@ -4553,6 +4555,12 @@ export default function VendorBills() {
 
     const currentStatusIdx = STATUS_ORDER.indexOf(bill.status as any);
     const nextStatus = currentStatusIdx < STATUS_ORDER.length - 1 ? STATUS_ORDER[currentStatusIdx + 1] : null;
+    const canEditBill = !bill.isCancelled &&
+      (isAdmin || !!user?.isOwner ||
+        (bill.status === "draft" &&
+          (sectionCan("vendor_bills", "edit") || sectionCan("vendor_bills_raise", "edit")))) &&
+      (!bill.hireStatements?.length ||
+        (bill.status === "draft" && bill.hireStatements.every(s => s.status === "draft")));
     const canChangeBillDate = !bill.isCancelled && (
       isAdmin || !!user?.isOwner ||
       (bill.status === "draft" && (
@@ -4661,8 +4669,7 @@ export default function VendorBills() {
             {canExport && <Button variant="outline" size="sm" onClick={() => handlePrint(bill)} data-testid="button-print">
               <Printer className="w-4 h-4 mr-1" /> PRINT
             </Button>}
-            {canEdit && !bill.isCancelled && (!bill.hireStatements?.length
-              || (bill.status === "draft" && bill.hireStatements.every(s => s.status === "draft"))) && (
+            {canEditBill && (
               <Button
                 variant="default"
                 size="sm"
@@ -4773,14 +4780,14 @@ export default function VendorBills() {
                   VOID BILL
                 </Button>
               )}
-              <Button
+              <AuditHistoryButton
                 variant="outline"
                 size="sm"
                 onClick={() => setShowBillHistory(true)}
                 data-testid="button-bill-history"
               >
                 <History className="w-3 h-3 mr-1" /> HISTORY
-              </Button>
+              </AuditHistoryButton>
               {canDelete && (
                 <Button
                   variant="outline"
@@ -4798,7 +4805,7 @@ export default function VendorBills() {
           </CardContent>
         </Card>
 
-        <Card data-testid="vendor-bill-audit-summary">
+        {canReadAuditHistory && <Card data-testid="vendor-bill-audit-summary">
           <CardHeader className="py-3">
             <CardTitle className="text-sm uppercase tracking-wider">Audit details</CardTitle>
           </CardHeader>
@@ -4832,7 +4839,7 @@ export default function VendorBills() {
               </div>
             )}
           </CardContent>
-        </Card>
+        </Card>}
 
         {voidBillAction && (
           <CancelDialog

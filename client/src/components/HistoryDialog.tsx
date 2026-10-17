@@ -3,6 +3,7 @@ import { format, isValid, parseISO } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, History } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
 
 type AuditLog = {
   id: number;
@@ -71,6 +72,8 @@ function displayBillDate(value: unknown): string {
 }
 
 export default function HistoryDialog({ open, onOpenChange, module, transactionId, recordLabel }: HistoryDialogProps) {
+  const { isAdmin, isOwner } = useAuth();
+  const canViewHistory = isAdmin || isOwner;
   const query = useQuery<AuditLog[]>({
     queryKey: ["/api/audit-logs", { module, transactionId }],
     queryFn: async () => {
@@ -80,11 +83,11 @@ export default function HistoryDialog({ open, onOpenChange, module, transactionI
       if (!res.ok) throw new Error("Failed to fetch history");
       return res.json();
     },
-    enabled: open && !!transactionId,
+    enabled: open && canViewHistory && !!transactionId,
   });
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open && canViewHistory} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

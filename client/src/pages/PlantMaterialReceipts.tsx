@@ -19,6 +19,7 @@ import { ChevronLeft, ChevronRight, Plus, Package, Loader2, Edit, Trash2, Downlo
 import { EditPermissionButton } from "@/components/EditPermissionButton";
 import CancelDialog from "@/components/CancelDialog";
 import HistoryDialog from "@/components/HistoryDialog";
+import AuditHistoryButton from "@/components/AuditHistoryButton";
 import { AttachmentUploader } from "@/components/AttachmentUploader";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
 import { useUpload } from "@/hooks/use-upload";
@@ -1866,9 +1867,9 @@ export default function PlantMaterialReceipts() {
                                 })()}
                               </div>
                               <div className="flex gap-1 shrink-0 ml-2" onClick={e => e.stopPropagation()}>
-                                <Button size="icon" variant="ghost" onClick={() => setHistoryReceiptId(receipt.id)} data-testid={`button-history-receipt-${receipt.id}`} title="History">
+                                <AuditHistoryButton size="icon" variant="ghost" onClick={() => setHistoryReceiptId(receipt.id)} data-testid={`button-history-receipt-${receipt.id}`} title="History">
                                   <History className="w-4 h-4 text-muted-foreground" />
-                                </Button>
+                                </AuditHistoryButton>
                                 {canEdit && (receipt as any).documentStatus !== "submitted" && (
                                   <Button
                                     size="icon"

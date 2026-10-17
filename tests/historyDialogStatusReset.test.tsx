@@ -1,8 +1,33 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { readFileSync } from "node:fs";
+import AuditHistoryButton from "@/components/AuditHistoryButton";
 import HistoryDialog from "@/components/HistoryDialog";
+
+const authTestState = vi.hoisted(() => ({ isAdmin: true, isOwner: false }));
+vi.mock("@/lib/auth-context", () => ({
+  useAuth: () => ({
+    isAdmin: authTestState.isAdmin,
+    isOwner: authTestState.isOwner,
+    user: { isAdmin: authTestState.isAdmin, isOwner: authTestState.isOwner },
+  }),
+}));
+
+const historyPages = [
+  "client/src/pages/VendorBills.tsx",
+  "client/src/pages/SiteMaterialTrips.tsx",
+  "client/src/pages/SitePurchasesReport.tsx",
+  "client/src/pages/PlantMaterialReceipts.tsx",
+  "client/src/pages/PlantMaintenance.tsx",
+  "client/src/pages/SiteReport.tsx",
+];
+
+beforeEach(() => {
+  authTestState.isAdmin = true;
+  authTestState.isOwner = false;
+});
 
 afterEach(() => {
   cleanup();
@@ -10,6 +35,46 @@ afterEach(() => {
 });
 
 describe("vendor-bill history actions", () => {
+  it("uses one Owner/Administrator-only history button on all six pages", () => {
+    authTestState.isAdmin = false;
+    authTestState.isOwner = false;
+    const { rerender } = render(<AuditHistoryButton data-testid="gated-history-button">History</AuditHistoryButton>);
+    expect(screen.queryByTestId("gated-history-button")).toBeNull();
+
+    authTestState.isAdmin = true;
+    rerender(<AuditHistoryButton data-testid="gated-history-button">History</AuditHistoryButton>);
+    expect(screen.getByTestId("gated-history-button")).toBeTruthy();
+
+    authTestState.isAdmin = false;
+    authTestState.isOwner = true;
+    rerender(<AuditHistoryButton data-testid="gated-history-button">History</AuditHistoryButton>);
+    expect(screen.getByTestId("gated-history-button")).toBeTruthy();
+
+    for (const page of historyPages) {
+      const source = readFileSync(page, "utf8");
+      expect(source).toContain("AuditHistoryButton");
+      expect(source).toContain("<HistoryDialog");
+    }
+  });
+
+  it("does not request or open audit history for a user who is neither Owner nor Administrator", async () => {
+    authTestState.isAdmin = false;
+    authTestState.isOwner = false;
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    render(
+      <QueryClientProvider client={client}>
+        <HistoryDialog open onOpenChange={() => {}} module="vendor_bills" transactionId={7} recordLabel="Bill VB-007" />
+      </QueryClientProvider>,
+    );
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("list-audit-history")).toBeNull();
+  });
+
   it("renders the edit and the standalone status reset with old and new states", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([
       {
