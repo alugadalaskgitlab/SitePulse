@@ -16,6 +16,8 @@ import archiver from "archiver";
 import { normalizeVendorBillAdditionalAdjustments } from "../shared/schema";
 import { projectBillHireReviews, hireReviewTable, MONTHLY_BILL_HEADERS } from "../shared/vendorBillLayout";
 import { buildSavedBillPresentationRows } from "../shared/vendorBillPresentation";
+import { buildVendorBillExport } from "../shared/vendorBillExport";
+import { buildVendorBillCompleteWorkbook } from "../server/vendorBillCompleteWorkbook";
 
 // Execute the actual checked-in route callbacks and their authorization helpers,
 // with isolated storage. Do not start the application's migrations or touch a DB.
@@ -50,6 +52,7 @@ const endpoints = [
 ] as const;
 let permissions: Record<string, any>;
 let permittedIds: number[];
+let authUser: Record<string, any>;
 const storage = {
   getUserSiteAccess: vi.fn(async () => permittedIds.map(siteId => ({ siteId }))),
   getUserPermittedSiteIds: vi.fn(async () => permittedIds),
@@ -61,6 +64,7 @@ const storage = {
     id, siteId: id, billNo: `BILL-${id}`, vendorName: `VENDOR-${id}`, billDate: "2026-10-01",
     billType: "material", totalAmount: id * 100, gstPercent: 0, items: [], status: "approved",
   }))),
+  getVendorNamesByIds: vi.fn(async (ids: number[]) => ids.map(id => ({ id, name: `MASTER-${id}` }))),
   getVendorNames: vi.fn(async () => ["VENDOR-1", "VENDOR-2", "SECRET VENDOR"]),
   getDailyPlantReportIndex: vi.fn(async () => ["A", "B"].map(letter => ({
     date: "2026-10-01", plantName: `Plant ${letter}`, totalLoads: 1, totalProductionMt: 10,
@@ -72,12 +76,13 @@ const storage = {
 };
 const app = express();
 app.use(express.json());
-app.use((req: any, _res, next) => { req.authUser = { id: 7 }; req.authPermissions = permissions; next(); });
+app.use((req: any, _res, next) => { req.authUser = authUser; req.authPermissions = permissions; next(); });
 app.use(vendorFinancialGuard(storage));
 const dependencies = { storage, siteMatchesPermitted, vendorBillVisibleToSites, vendorBillItemMatchesSite,
   getBaseSiteName, getBillFinancialTotals, buildSavedBillPresentationRows,
   projectBillHireReviews, hireReviewTable, MONTHLY_BILL_HEADERS,
   financialSites, recordedVendorTds, filterFinancialBills, buildVendorFinancialWorkbook,
+  buildVendorBillExport, buildVendorBillCompleteWorkbook,
   aggregateGstBreakdown, computeBillGstByCategory, normalizeVendorBillAdditionalAdjustments, PDFDocument, xlsx, archiver, buildGstRegisterPdf,
   getCompanyLogoPath: () => null,
   // Report layout is not under test here; preserve actual PDF/ZIP streaming.
@@ -93,7 +98,12 @@ for (const [method, path] of endpoints) {
   const compiled = ts.transpile(body, { target: ts.ScriptTarget.ES2022 });
   app[method](path, new Function(...Object.keys(dependencies), compiled)(...Object.values(dependencies)));
 }
-beforeEach(() => { permissions = { vendor_financials: { view: true } }; permittedIds = [1]; vi.clearAllMocks(); });
+beforeEach(() => {
+  permissions = { vendor_financials: { view: true } };
+  permittedIds = [1];
+  authUser = { id: 7 };
+  vi.clearAllMocks();
+});
 
 describe("GST Register PDF parity and authorization", () => {
   it("exports the exact financially scoped selection to three sheets", async () => {
@@ -139,7 +149,7 @@ describe("GST Register PDF parity and authorization", () => {
       { id: 2, siteId: 1, billNo: "TDS-MISSING", billDate: "2026-10-01", vendorName: "VENDOR",
         billType: "material", totalAmount: 1000, tdsRate: 2, items: [] },
     ] as any);
-    const response = await request(app).get("/api/vendor-bills/export?format=xlsx")
+    const response = await request(app).get("/api/vendor-bills/export?format=xlsx&report=financial-summary&scope=all&billIds=1")
       .buffer(true).parse((res, callback) => {
         const chunks: Buffer[] = [];
         res.on("data", chunk => chunks.push(chunk));
@@ -181,6 +191,94 @@ describe("GST Register PDF parity and authorization", () => {
 });
 const url = (path: string) => path.replace(":id", "2").replace(":date", "2026-10-01");
 describe("VB-EXPORT-01 actual export route callbacks", () => {
+  it("requires View Vendor Financials before reading bills", async () => {
+    permissions.vendor_financials = { view: false };
+    authUser = { id: 7, isAdmin: true };
+    expect((await request(app).get("/api/vendor-bills/export?format=json")).status).toBe(403);
+    expect(storage.getVendorBills).not.toHaveBeenCalled();
+  });
+  it("requires Administrator or Owner even when financial viewing is granted", async () => {
+    authUser = { id: 7 };
+    expect((await request(app).get("/api/vendor-bills/export?format=json")).status).toBe(403);
+    expect(storage.getVendorBills).not.toHaveBeenCalled();
+  });
+  it("returns complete JSON and XLSX from the same assembly contract, within admin site scope", async () => {
+    authUser = { id: 7, isAdmin: true, fullName: "Site Administrator" };
+    storage.getVendorBills.mockResolvedValueOnce([
+      {
+        id: 1, siteId: 1, billNo: "BILL-LIVE", billDate: "2026-10-01", vendorName: "Recorded Vendor",
+        vendorId: 11, billType: "material", status: "approved", totalAmount: 100, netPayableAmount: 90,
+        amountPaid: 25, paymentMode: "Bank", paidBy: "Finance", paymentRecordedBy: "Approver",
+        paymentRemarks: "UTR 123", paymentAccountKey: "bank-main", items: [
+          { id: 21, description: "Stone", qty: 2, unit: "MT", rate: 50, amount: 100, suppliedTo: "Site A", boqReference: "BOQ-4" },
+        ],
+        hireStatements: [{
+          id: 31, periodFrom: "2026-09-01", periodTo: "2026-09-30", status: "approved",
+          grossAmount: 100, deductionAmount: 10, netAmount: 90,
+          calculationSnapshot: { financials: { grossHire: 100 }, adjustments: { breakdownDeduction: 10, breakdownDeductionReason: "Fuel" } },
+        }],
+      },
+      {
+        id: 2, siteId: 2, billNo: "BILL-OTHER-SITE", billDate: "2026-10-01", vendorName: "Other Vendor",
+        billType: "material", status: "approved", totalAmount: 500, items: [],
+      },
+      {
+        id: 3, siteId: 1, billNo: "BILL-VOID", billDate: "2026-09-30", vendorName: "Legacy Name",
+        billType: "material", status: "cancelled", totalAmount: 30, items: [], isCancelled: true,
+        cancellationReason: "Duplicate", cancelledBy: "Owner", cancelledAt: "2026-10-02T00:00:00Z",
+      },
+    ] as any);
+
+    const jsonResponse = await request(app).get("/api/vendor-bills/export?format=json");
+    expect(jsonResponse.status).toBe(200);
+    expect(jsonResponse.body.header).toMatchObject({
+      billCount: 2,
+      generatedBy: "Site Administrator",
+      siteScope: "Permitted sites: SITE A",
+      filters: { vendor: "none", billType: "none", status: "none", dateFrom: "none", dateTo: "none", site: "none" },
+    });
+    expect(jsonResponse.body.bills.map((bill: any) => bill.identity.billNumber)).toEqual(["BILL-LIVE", "BILL-VOID"]);
+    const live = jsonResponse.body.bills.find((bill: any) => bill.identity.billNumber === "BILL-LIVE");
+    expect(live.vendor).toMatchObject({ recordedName: "Recorded Vendor", linkedVendorMasterId: 11, linkedVendorMasterName: "MASTER-11" });
+    expect(live.payments[0]).toMatchObject({
+      recordType: "Bill-level cumulative total; no per-payment transaction record is stored",
+      paymentDate: "Not recorded", amount: 25, mode: "Bank", reference: "UTR 123",
+    });
+    expect(live.lineItems[0]).toMatchObject({ description: "Stone", quantity: 2, unit: "MT", rate: 50, amount: 100, boqReference: "BOQ-4" });
+    expect(live.hireStatements[0].calculationSnapshot.financials.grossHire).toBe(100);
+    const voided = jsonResponse.body.bills.find((bill: any) => bill.identity.billNumber === "BILL-VOID");
+    expect(voided.status).toMatchObject({ voided: true, voidReason: "Duplicate", voidedBy: "Owner" });
+
+    storage.getVendorBills.mockResolvedValueOnce([
+      {
+        id: 1, siteId: 1, billNo: "BILL-LIVE", billDate: "2026-10-01", vendorName: "Recorded Vendor",
+        vendorId: 11, billType: "material", status: "approved", totalAmount: 100, netPayableAmount: 90,
+        amountPaid: 25, paymentMode: "Bank", paidBy: "Finance", paymentRecordedBy: "Approver",
+        paymentRemarks: "UTR 123", paymentAccountKey: "bank-main", items: [
+          { id: 21, description: "Stone", qty: 2, unit: "MT", rate: 50, amount: 100, suppliedTo: "Site A", boqReference: "BOQ-4" },
+        ], hireStatements: [],
+      },
+      { id: 2, siteId: 2, billNo: "BILL-OTHER-SITE", billDate: "2026-10-01", vendorName: "Other Vendor", billType: "material", status: "approved", totalAmount: 500, items: [] },
+    ] as any);
+    const xlsxResponse = await request(app).get("/api/vendor-bills/export?format=xlsx").buffer(true).parse((res, done) => {
+      const chunks: Buffer[] = [];
+      res.on("data", chunk => chunks.push(chunk));
+      res.on("end", () => done(null, Buffer.concat(chunks)));
+    });
+    expect(xlsxResponse.status).toBe(200);
+    const workbook = xlsx.read(xlsxResponse.body, { type: "buffer" });
+    expect(workbook.SheetNames).toEqual(["Vendor Bills", "Line Items", "Payments"]);
+    const billRows = xlsx.utils.sheet_to_json(workbook.Sheets["Vendor Bills"], { header: 1 }) as any[][];
+    const headerIndex = billRows.findIndex(row => row[0] === "Bill ID");
+    const columns = billRows[headerIndex];
+    const exportedLive = billRows.find(row => row[columns.indexOf("Bill Number")] === "BILL-LIVE")!;
+    expect(exportedLive[columns.indexOf("Net")]).toBe(live.money.net);
+    expect(exportedLive[columns.indexOf("Amount Paid")]).toBe(live.money.amountPaid);
+    expect(exportedLive[columns.indexOf("Balance")]).toBe(live.money.balance);
+    const paymentRows = xlsx.utils.sheet_to_json(workbook.Sheets.Payments, { header: 1 }) as any[][];
+    expect(paymentRows.some(row => row.includes("BILL-LIVE") && row.includes("UTR 123"))).toBe(true);
+  });
+
   for (const [method, path, key] of endpoints) {
     it(`${method.toUpperCase()} ${path}: Reports without Export returns 403`, async () => {
       permissions[key] = { view: true, export: false, view_reports: true };
