@@ -106,6 +106,8 @@ describe("VB-20 monthly hire segment selection", () => {
     expect(within(september).getByTestId(`monthly-hire-net-${equipmentId}-2026-09-01`).textContent).toContain("₹38,000.00");
 
     fireEvent.click(screen.getByTestId(`checkbox-include-monthly-hire-${equipmentId}-2026-09-01`));
+    fireEvent.click(screen.getByTestId("select-bill-site"));
+    fireEvent.click(await screen.findByText("ALL SITES"));
     fireEvent.click(screen.getByTestId("button-save-bill"));
     await waitFor(() => expect(writes).toHaveLength(1));
 
@@ -160,6 +162,8 @@ describe("VB-20 monthly hire segment selection", () => {
     expect(august.textContent).toContain("15-AUG-2026 – 31-AUG-2026");
     expect(september.textContent).toContain("01-SEP-2026 – 10-SEP-2026");
 
+    fireEvent.click(screen.getByTestId("select-bill-site"));
+    fireEvent.click(await screen.findByText("ALL SITES"));
     fireEvent.click(screen.getByTestId("button-save-bill"));
     await waitFor(() => expect(writes).toHaveLength(1));
     expect(writes[0].hireGroups).toEqual(expect.arrayContaining([

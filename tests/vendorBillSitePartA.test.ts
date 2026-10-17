@@ -22,6 +22,25 @@ describe("vendor bill site persistence and filtering", () => {
     expect(createVendorBillRequestSchema.parse({ ...baseBill, siteId: 17 }).siteId).toBe(17);
     expect(createVendorBillRequestSchema.parse({ ...baseBill, siteId: null }).siteId).toBeNull();
     expect(createVendorBillRequestSchema.parse(baseBill).siteId).toBeUndefined();
+    expect(createVendorBillRequestSchema.parse({ ...baseBill, siteId: null, siteScopeConfirmed: true }).siteScopeConfirmed).toBe(true);
+  });
+
+  it("starts the new-bill site choice unanswered and records deliberate All Sites separately", () => {
+    const page = fs.readFileSync("client/src/pages/VendorBills.tsx", "utf8");
+    const routes = fs.readFileSync("server/routes.ts", "utf8");
+    expect(page).toContain('useState<string>("")');
+    expect(page).toContain('bill.siteScopeConfirmed === true ? "all" : ""');
+    expect(page).toContain("selectedSiteId !== siteAnswerAtEdit");
+    expect(routes).toContain("input.siteScopeConfirmed = true;");
+    expect(routes).toContain("Choose a site or deliberately select ALL SITES before saving.");
+  });
+
+  it("adds only the nullable site-answer column without backfilling existing rows", () => {
+    const schema = fs.readFileSync("shared/schema.ts", "utf8");
+    const migration = fs.readFileSync("migrations/0048_vendor_bill_site_scope_confirmation.sql", "utf8");
+    expect(schema).toContain('siteScopeConfirmed: boolean("site_scope_confirmed")');
+    expect(migration).toContain("ADD COLUMN IF NOT EXISTS site_scope_confirmed boolean");
+    expect(migration.replace(/^--.*$/gm, "")).not.toMatch(/\bDEFAULT\b|\bUPDATE\s+vendor_bills\b/i);
   });
 
   it("matches selected-site pull rows without leaking another site", () => {
@@ -109,7 +128,9 @@ describe("vendor bill site persistence and filtering", () => {
   it("does not relabel retained manual source provenance when Site changes", () => {
     const page = fs.readFileSync("client/src/pages/VendorBills.tsx", "utf8");
     const selector = page.slice(page.indexOf('data-testid="select-bill-site"') - 700, page.indexOf('data-testid="select-bill-site"'));
-    expect(selector).toContain(".filter(item => !isGeneratedEvidenceLine(item.source))");
+    expect(selector).toContain(".filter(item => !scopeChanged || !isGeneratedEvidenceLine(item.source))");
+    expect(selector).toContain("previousScopeIsUnfiltered");
+    expect(selector).toContain("nextScopeIsUnfiltered");
     expect(selector).toContain("item.initialBlank && !item.siteName");
     expect(selector).not.toContain("map(item => ({ ...item, siteName: selectedName }))");
   });

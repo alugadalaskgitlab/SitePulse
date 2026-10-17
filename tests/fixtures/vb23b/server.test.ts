@@ -125,7 +125,7 @@ beforeAll(async () => {
     try {
       const { status } = z.object({ status: z.enum(["draft", "verified", "approved", "paid"]) }).parse(req.body);
       fixture.storageCalls.push({ method: "updateVendorBillStatus", id: Number(req.params.id), status, actor: "VB23B ACCOUNTS USER" });
-      const bill = await storage.updateVendorBillStatus(Number(req.params.id), status, "VB23B ACCOUNTS USER");
+      const bill = await storage.updateVendorBillStatus(Number(req.params.id), status, "VB23B ACCOUNTS USER", req.body?.amountPaid);
       res.json(bill);
     } catch (error: any) {
       res.status(error?.code === "CONFLICT" ? 409 : 400).json({ message: error.message });

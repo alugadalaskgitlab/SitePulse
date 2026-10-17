@@ -434,6 +434,8 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     expect(screen.getByText("On Rs. 300.00")).toBeTruthy();
     expect(screen.getByTestId("text-gst-equipment-amount").textContent).toContain("Rs. 36.00");
     expect(screen.getByTestId("text-gst-material-amount").textContent).toContain("Rs. 15.00");
+    fireEvent.click(screen.getByTestId("select-bill-site"));
+    fireEvent.click(await screen.findByText("ALL SITES"));
     fireEvent.click(screen.getByTestId("button-save-bill"));
     await waitFor(() => expect(vendorBillWrites.some(write => write.method === "POST")).toBe(true));
     const payload = vendorBillWrites.find(write => write.method === "POST")!.body;
@@ -814,6 +816,8 @@ describe("VB-FIND-01 bill cards and vendor picker", () => {
     fireEvent.change(screen.getByTestId("input-item-desc-0"), { target: { value: "MANUAL BILL ITEM" } });
     fireEvent.change(screen.getByTestId("input-item-qty-0"), { target: { value: "2" } });
     fireEvent.change(screen.getByTestId("input-item-rate-0"), { target: { value: "50" } });
+    fireEvent.click(screen.getByTestId("select-bill-site"));
+    fireEvent.click(await screen.findByText("ALL SITES"));
     fireEvent.click(screen.getByTestId("button-save-bill"));
     await waitFor(() => expect(vendorBillWrites.some(write => write.method === "POST")).toBe(true));
     expect(vendorBillWrites.find(write => write.method === "POST")?.body.vendorName).toBe("UNLISTED SUPPLIER");

@@ -19,6 +19,7 @@ vi.mock("../server/push", () => ({
   sendPushToSection: vi.fn().mockResolvedValue(undefined),
   sendTestPush: vi.fn().mockResolvedValue(undefined),
   sendPushToAudience: vi.fn().mockResolvedValue(undefined),
+  sendPushToRaiser: vi.fn().mockResolvedValue(undefined),
   initPush: vi.fn(),
 }));
 
@@ -51,6 +52,8 @@ vi.mock("../server/storage", () => {
     },
   });
   methods.getVendorBill = vi.fn().mockResolvedValue(undefined);
+  methods.getVendorBills = vi.fn().mockResolvedValue([]);
+  methods.getVendorBillHireSiteActivity = vi.fn().mockResolvedValue([]);
   methods.getAuditLogs = vi.fn().mockResolvedValue([]);
   methods.getSites = vi.fn().mockResolvedValue([]);
   methods.getUserSiteAccess = vi.fn().mockResolvedValue([]);
@@ -61,6 +64,9 @@ vi.mock("../server/storage", () => {
   methods.updateVendorBillDate = vi.fn().mockResolvedValue(undefined);
   methods.updateVendorBillPaymentDetails = vi.fn().mockResolvedValue(undefined);
   methods.updateVendorBillStatus = vi.fn().mockResolvedValue(undefined);
+  methods.correctVendorBillSiteScope = vi.fn().mockResolvedValue(undefined);
+  methods.correctVendorBillPeriod = vi.fn().mockResolvedValue(undefined);
+  methods.recordMissingVendorBillPaidAmount = vi.fn().mockResolvedValue(undefined);
   methods.voidVendorBill = vi.fn().mockResolvedValue(undefined);
   methods.deleteVendorBill = vi.fn().mockResolvedValue(false);
   return { storage: storageProxy };
@@ -113,6 +119,8 @@ beforeEach(() => {
   fx.permissions = {};
   fx.allSitesAccess = true;
   storage.getVendorBill.mockResolvedValue(undefined);
+  storage.getVendorBills.mockResolvedValue([]);
+  storage.getVendorBillHireSiteActivity.mockResolvedValue([]);
   storage.getAuditLogs.mockResolvedValue([]);
   storage.getSites.mockResolvedValue([]);
   storage.getUserSiteAccess.mockResolvedValue([]);
@@ -123,6 +131,9 @@ beforeEach(() => {
   storage.updateVendorBillDate.mockResolvedValue(undefined);
   storage.updateVendorBillPaymentDetails.mockResolvedValue(undefined);
   storage.updateVendorBillStatus.mockResolvedValue(undefined);
+  storage.correctVendorBillSiteScope.mockResolvedValue(undefined);
+  storage.correctVendorBillPeriod.mockResolvedValue(undefined);
+  storage.recordMissingVendorBillPaidAmount.mockResolvedValue(undefined);
   storage.voidVendorBill.mockResolvedValue(undefined);
   storage.deleteVendorBill.mockResolvedValue(false);
 });
@@ -418,7 +429,7 @@ describe("AUDIT-01 vendor-bill history", () => {
   it("audits ordinary bill creation, edits, payment-detail changes, and status transitions", async () => {
     const created = makeBill({ id: 21, status: "draft", items: [] });
     storage.createVendorBill.mockResolvedValue(created);
-    const createResponse = await request(app).post("/api/vendor-bills").send(billPayload);
+    const createResponse = await request(app).post("/api/vendor-bills").send({ ...billPayload, siteId: null });
     expect(createResponse.status).toBe(201);
     expect(storage.logAudit).toHaveBeenLastCalledWith(expect.objectContaining({
       module: "vendor_bills", transactionId: 21, action: "create", oldValues: null, newValues: created,
@@ -592,7 +603,21 @@ describe("AUDIT-01 vendor-bill history", () => {
     const start = source.indexOf('app.post("/api/equipment-hire/statements/:id/create-vendor-bill"');
     const end = source.indexOf('app.get("/api/plant-module/equipment"', start);
     expect(start).toBeGreaterThanOrEqual(0);
-    expect(source.slice(start, end)).toContain("recordChange(req, storage");
+    const route = source.slice(start, end);
+    expect(route).toContain("recordChange(req, storage");
+    expect(route).toContain("siteId: z.union([z.number().int().positive(), z.null()])");
+    expect(route).toContain("siteScopeConfirmed: true");
+    expect(route).toContain("assertTripSiteAccess");
+
+    const storageSource = readFileSync("server/storage.ts", "utf8");
+    const storageStart = storageSource.indexOf("async createHireStatementVendorBill(");
+    const storageEnd = storageSource.indexOf("\n  async ", storageStart + 10);
+    const storageMethod = storageSource.slice(storageStart, storageEnd);
+    expect(storageMethod).toContain("siteId: data.siteId ?? null");
+    expect(storageMethod).toContain("siteScopeConfirmed: data.siteScopeConfirmed ?? null");
+
+    const attentionPage = readFileSync("client/src/pages/VendorBillsAttention.tsx", "utf8");
+    expect(attentionPage).toContain('row.kinds.includes("paid_amount") && !row.kinds.includes("negative_net")');
   });
 
   it("keeps the approved-bill edit permission check and records status reset as a separate history action", () => {
@@ -641,5 +666,105 @@ describe("AUDIT-01 vendor-bill history", () => {
     expect(list.status).toBe(200);
     expect(select).toHaveBeenCalledTimes(selectCountAfterDetail);
     select.mockRestore();
+  });
+
+  it("requires an explicit site answer on new bills and preserves an unknown answer on unchanged edits", async () => {
+    storage.createVendorBill.mockResolvedValue(makeBill({ id: 21, status: "draft", siteId: 1 }));
+    let response = await request(app).post("/api/vendor-bills").send(billPayload);
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("Choose a site or deliberately select ALL SITES before saving.");
+    expect(storage.createVendorBill).not.toHaveBeenCalled();
+
+    storage.getSites.mockResolvedValue([{ id: 1, name: "Site A" }]);
+    response = await request(app).post("/api/vendor-bills").send({ ...billPayload, siteId: 1 });
+    expect(response.status).toBe(201);
+    expect(storage.createVendorBill.mock.calls.at(-1)?.[0]).toMatchObject({
+      siteId: 1, siteScopeConfirmed: true,
+    });
+
+    response = await request(app).post("/api/vendor-bills").send({ ...billPayload, siteId: null });
+    expect(response.status).toBe(201);
+    expect(storage.createVendorBill.mock.calls.at(-1)?.[0]).toMatchObject({
+      siteId: null, siteScopeConfirmed: true,
+    });
+
+    const legacy = makeBill({ siteId: null, siteScopeConfirmed: null, status: "draft" });
+    storage.getVendorBill.mockResolvedValue(legacy);
+    storage.updateVendorBill.mockResolvedValue(legacy);
+    response = await request(app).put("/api/vendor-bills/7").send({
+      ...billPayload, totalAmount: 125,
+    });
+    expect(response.status).toBe(200);
+    const updateInput = storage.updateVendorBill.mock.calls.at(-1)?.[1];
+    expect(updateInput.siteId).toBeNull();
+    expect(updateInput.siteScopeConfirmed).toBeUndefined();
+  });
+
+  it("refuses a paid transition without an amount and forwards a deliberately typed zero", async () => {
+    storage.getVendorBill.mockResolvedValue(makeBill({ status: "approved", billType: "material" }));
+    let response = await request(app).patch("/api/vendor-bills/7/status").send({ status: "paid" });
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("Enter the paid amount before marking the bill paid. Enter 0 only if that is the recorded amount.");
+    expect(storage.updateVendorBillStatus).not.toHaveBeenCalled();
+
+    const paid = makeBill({ status: "paid", billType: "material", amountPaid: 0 });
+    storage.updateVendorBillStatus.mockResolvedValue(paid);
+    response = await request(app).patch("/api/vendor-bills/7/status").send({ status: "paid", amountPaid: 0 });
+    expect(response.status).toBe(200);
+    expect(storage.updateVendorBillStatus).toHaveBeenCalledWith(7, "paid", "Audit User", 0);
+    expect(storage.logAudit).toHaveBeenLastCalledWith(expect.objectContaining({
+      action: "update",
+      oldValues: expect.objectContaining({ status: "approved" }),
+      newValues: expect.objectContaining({ status: "paid", amountPaid: 0 }),
+    }));
+  });
+
+  it("limits the attention list to admins/owners and audits each isolated correction", async () => {
+    fx.role = "manager";
+    let response = await request(app).get("/api/vendor-bills/attention");
+    expect(response.status).toBe(403);
+    expect(storage.getVendorBills).not.toHaveBeenCalled();
+
+    fx.role = "admin";
+    const siteBefore = makeBill({ siteId: null, siteScopeConfirmed: null });
+    const siteAfter = makeBill({ siteId: null, siteScopeConfirmed: true });
+    storage.getVendorBill.mockResolvedValue(siteBefore);
+    storage.correctVendorBillSiteScope.mockResolvedValue({ before: siteBefore, after: siteAfter });
+    response = await request(app).patch("/api/vendor-bills/7/attention/site").send({ siteId: null });
+    expect(response.status).toBe(200);
+    expect(storage.correctVendorBillSiteScope).toHaveBeenCalledWith(7, null);
+    expect(storage.logAudit).toHaveBeenLastCalledWith(expect.objectContaining({
+      module: "vendor_bills", transactionId: 7, action: "site_scope_corrected",
+      oldValues: { siteId: null, siteScopeConfirmed: null },
+      newValues: { siteId: null, siteScopeConfirmed: true }, userId: 9,
+    }));
+
+    const periodBefore = makeBill({ periodFrom: null, periodTo: null });
+    const periodAfter = makeBill({ periodFrom: "2026-09-01", periodTo: "2026-09-30" });
+    storage.correctVendorBillPeriod.mockResolvedValue({ before: periodBefore, after: periodAfter });
+    response = await request(app).patch("/api/vendor-bills/7/attention/period")
+      .send({ periodFrom: "2026-09-01", periodTo: "2026-09-30" });
+    expect(response.status).toBe(200);
+    expect(storage.correctVendorBillPeriod).toHaveBeenCalledWith(7, "2026-09-01", "2026-09-30");
+    expect(storage.logAudit).toHaveBeenLastCalledWith(expect.objectContaining({
+      action: "billing_period_corrected",
+      oldValues: { periodFrom: null, periodTo: null },
+      newValues: { periodFrom: "2026-09-01", periodTo: "2026-09-30" },
+    }));
+
+    const paidBefore = makeBill({ status: "paid", amountPaid: null, totalAmount: 100, netPayableAmount: 90 });
+    const paidAfter = makeBill({ status: "paid", amountPaid: 0, totalAmount: 100, netPayableAmount: 90 });
+    storage.recordMissingVendorBillPaidAmount.mockResolvedValue({ before: paidBefore, after: paidAfter });
+    response = await request(app).patch("/api/vendor-bills/7/attention/paid-amount").send({ amountPaid: 0 });
+    expect(response.status).toBe(200);
+    expect(storage.recordMissingVendorBillPaidAmount).toHaveBeenCalledWith(7, 0);
+    expect(response.body.status).toBe("paid");
+    expect(response.body.totalAmount).toBe(100);
+    expect(response.body.netPayableAmount).toBe(90);
+    expect(storage.logAudit).toHaveBeenLastCalledWith(expect.objectContaining({
+      action: "paid_amount_recorded",
+      oldValues: { amountPaid: null },
+      newValues: { amountPaid: 0 },
+    }));
   });
 });

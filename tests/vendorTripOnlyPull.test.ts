@@ -113,7 +113,7 @@ it("requires operational activity for discovery and bills only reviewed DPR trip
     const activities = feed.body.filter((r: any) => r.equipmentId === equipmentId && r.source === "dpr_log");
     const payload = {
       billDate: to, billNo: "AUTO", billType: "equipment", vendorName: name, billingVendorId: 91,
-      status: "draft", totalAmount: 0, periodFrom: from, periodTo: to, items: [], hireBillingMode: "vb10_automatic",
+      siteId: null, status: "draft", totalAmount: 0, periodFrom: from, periodTo: to, items: [], hireBillingMode: "vb10_automatic",
       hireGroups: [{ equipmentId, basis: "trip", rate: 17, periodFrom: from, periodTo: to,
         dailyDecisions: [],
         tripDecisions: activities.map((r: any) => ({ source: r.source, sourceId: r.sourceId, selected: true, remarks: "Individual trip checked" })),

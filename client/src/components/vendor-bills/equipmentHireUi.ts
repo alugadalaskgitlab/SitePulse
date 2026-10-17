@@ -12,11 +12,9 @@ export function authoritativeDieselPeriodFromFleet(fleet: any[] | undefined, equ
   } : { actualDiesel: null, expectedDiesel: null, difference: null, reliable: false, dailyRows: [] };
 }
 
-/** Historic paid vendor bills predate amountPaid. Editing payment metadata
- * must retain their final bill amount instead of submitting an erroneous 0. */
+/** A paid status is not evidence of a payment amount. Unknown stays blank. */
 export function initialVendorBillPaidAmount(bill: any): string {
   if (bill.amountPaid != null) return String(bill.amountPaid);
-  if (bill.status === "paid" && bill.netPayableAmount == null) return String(bill.totalAmount ?? 0);
   return "";
 }
 

@@ -132,6 +132,7 @@ import {
 import { resolveConversion, convertToBase, computeAdjustment, isNoChange, computeVarianceWarnings, toFiniteNumber, type VarianceWarning } from "@shared/stockReconciliation";
 import { resolvePermittedSiteIds } from "@shared/siteAccess";
 import { getBaseSiteName, siteMatchesPermitted, vendorBillItemMatchesSite } from "@shared/siteName";
+import { getBillFinancialTotals } from "@shared/vendorBillFinancialReport";
 import {
   buildSiteTripSuggestions,
   normalizeSiteTripHistorySite,
@@ -18305,12 +18306,14 @@ export class DatabaseStorage implements IStorage {
       if (statement.status !== "approved") throw Object.assign(new Error("Only approved statements can create a vendor bill"), { code: "CONFLICT" });
       const billNo = await this.generateVendorBillNo();
       const [bill] = await tx.insert(vendorBills).values({
+        siteId: data.siteId ?? null,
+        siteScopeConfirmed: data.siteScopeConfirmed ?? null,
         billDate: data.billDate, billNo, billType: data.billType.toUpperCase(), vendorName: uppercaseBusinessText(data.vendorName),
         periodFrom: statement.periodFrom, periodTo: statement.periodTo, status: "draft", notes: data.notes, totalAmount: statement.netAmount,
         adjustmentLabel: (data as any).adjustmentLabel?.toUpperCase() || null,
         adjustmentAmount: (data as any).adjustmentAmount || 0,
         additionalAdjustments: normalizeVendorBillAdditionalAdjustments((data as any).additionalAdjustments),
-        amountPaid: 0,
+        amountPaid: null,
       }).returning();
       // The standalone statement was approved before this route was reached.
       // Freeze that exact approved snapshot/amount into the linked bill rather
@@ -18568,6 +18571,9 @@ export class DatabaseStorage implements IStorage {
         if (details.amountPaid == null && existing.netPayableAmount != null) {
           throw Object.assign(new Error("A frozen equipment-hire bill requires a cumulative paid amount; use zero for no payment."), { code: "BAD_REQUEST" });
         }
+        if (existing.status === "paid" && existing.amountPaid == null && details.amountPaid != null) {
+          throw Object.assign(new Error("Record a missing paid amount from the Bills Needing Attention page."), { code: "CONFLICT" });
+        }
         if (details.amountPaid != null && (details.amountPaid < 0 || details.amountPaid > ceiling)) {
           throw Object.assign(new Error("Paid amount must be between zero and this bill's net payable amount."), { code: "BAD_REQUEST" });
         }
@@ -18788,6 +18794,10 @@ export class DatabaseStorage implements IStorage {
       }
       if (before.status !== "paid" || before.amountPaid != null) {
         throw Object.assign(new Error("Only a paid bill with no recorded amount can be corrected here."), { code: "CONFLICT" });
+      }
+      const items = await tx.select().from(vendorBillItems).where(eq(vendorBillItems.billId, id));
+      if (getBillFinancialTotals({ ...before, items }).netTotal < 0) {
+        throw Object.assign(new Error("Negative-net bills are review-only on this page."), { code: "CONFLICT" });
       }
       if (!Number.isFinite(amountPaid) || amountPaid < 0) {
         throw Object.assign(new Error("Paid amount must be zero or greater."), { code: "BAD_REQUEST" });

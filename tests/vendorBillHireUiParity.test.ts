@@ -19,8 +19,8 @@ describe("Vendor Bill Equipment Hire UI parity", () => {
     });
   });
 
-  it("preserves the full paid amount when editing a legacy paid bill with no amountPaid", () => {
-    expect(initialVendorBillPaidAmount({ status: "paid", totalAmount: 7850, netPayableAmount: null, amountPaid: null })).toBe("7850");
+  it("does not infer a payment amount from a paid status", () => {
+    expect(initialVendorBillPaidAmount({ status: "paid", totalAmount: 7850, netPayableAmount: null, amountPaid: null })).toBe("");
     expect(initialVendorBillPaidAmount({ status: "paid", totalAmount: 7850, netPayableAmount: 7000, amountPaid: 0 })).toBe("0");
     expect(initialVendorBillPaidAmount({ status: "approved", totalAmount: 7850, amountPaid: null })).toBe("");
   });

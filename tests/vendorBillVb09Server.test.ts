@@ -300,7 +300,7 @@ describe("VB-09 server itemized equipment hire", () => {
     expect(approval).toMatchObject({
       status: "approved",
       approvedBy: "REVIEWER",
-      amountPaid: 0,
+      amountPaid: null,
       netPayableAmount: expect.any(Number),
     });
     expect(fx.txRows).toHaveLength(0);
@@ -324,7 +324,7 @@ describe("VB-09 server itemized equipment hire", () => {
       [{ id: 504, vendorBillId: 104, status: "billed", calculationSnapshot: null }],
       [{ category: "equipment", amount: 10000 }],
     );
-    fx.lastBill = { ...historical, status: "approved", netPayableAmount: 11364, amountPaid: 0 };
+    fx.lastBill = { ...historical, status: "approved", netPayableAmount: 11364, amountPaid: null };
     const storage = new DatabaseStorage();
 
     await storage.updateVendorBillStatus(104, "approved", "reviewer");
@@ -332,7 +332,7 @@ describe("VB-09 server itemized equipment hire", () => {
     const approval = fx.writes.find(write => write.kind === "update")?.value;
     // Existing TDS basis remains subtotal + GST; VB18 is additive after TDS:
     // 11,800 × .98 - 200 = 11,364.
-    expect(approval).toMatchObject({ netPayableAmount: 11364, amountPaid: 0 });
+    expect(approval).toMatchObject({ netPayableAmount: 11364, amountPaid: null });
   });
 
   it("approves a new itemized equipment bill with TDS on the pre-GST subtotal", async () => {
@@ -355,7 +355,7 @@ describe("VB-09 server itemized equipment hire", () => {
       [],
       [{ category: "equipment", amount: 10000 }],
     );
-    fx.lastBill = { ...itemized, status: "approved", netPayableAmount: 11600, amountPaid: 0 };
+    fx.lastBill = { ...itemized, status: "approved", netPayableAmount: 11600, amountPaid: null };
     const storage = new DatabaseStorage();
 
     const approved = await storage.updateVendorBillStatus(102, "approved", "reviewer");
@@ -365,7 +365,7 @@ describe("VB-09 server itemized equipment hire", () => {
     expect(approval).toMatchObject({
       status: "approved",
       netPayableAmount: 11600,
-      amountPaid: 0,
+      amountPaid: null,
     });
   });
 
@@ -391,14 +391,14 @@ describe("VB-09 server itemized equipment hire", () => {
       [],
       [{ category: "equipment", amount: 10000 }],
     );
-    fx.lastBill = { ...itemized, status: "approved", netPayableAmount: 11400, amountPaid: 0 };
+    fx.lastBill = { ...itemized, status: "approved", netPayableAmount: 11400, amountPaid: null };
     const storage = new DatabaseStorage();
 
     await storage.updateVendorBillStatus(105, "approved", "reviewer");
 
     const approval = fx.writes.find(write => write.kind === "update")?.value;
     // 10,000 + 1,800 GST - 200 VB18 entry - 200 TDS.
-    expect(approval).toMatchObject({ netPayableAmount: 11400, amountPaid: 0 });
+    expect(approval).toMatchObject({ netPayableAmount: 11400, amountPaid: null });
   });
 
   it("matches shared UI GST category totals and subtotal TDS for mixed itemized equipment", async () => {
@@ -424,7 +424,7 @@ describe("VB-09 server itemized equipment hire", () => {
         { category: "material", amount: 5000 },
       ],
     );
-    fx.lastBill = { ...itemized, status: "approved", netPayableAmount: 16850, amountPaid: 0 };
+    fx.lastBill = { ...itemized, status: "approved", netPayableAmount: 16850, amountPaid: null };
     const storage = new DatabaseStorage();
 
     await storage.updateVendorBillStatus(103, "approved", "reviewer");
@@ -433,7 +433,7 @@ describe("VB-09 server itemized equipment hire", () => {
     expect(approval).toMatchObject({
       status: "approved",
       netPayableAmount: 16850,
-      amountPaid: 0,
+      amountPaid: null,
     });
   });
 
@@ -478,7 +478,7 @@ describe("VB-09 server itemized equipment hire", () => {
     await storage.updateVendorBillStatus(101, "approved", "reviewer");
     const approval = fx.writes.filter(write => write.kind === "update").at(-1)?.value;
     // (10,000 × 18%) + (5,400 × 5%) + 100 adjustment − (15,400 × 2%)
-    expect(approval).toMatchObject({ status: "approved", netPayableAmount: 17_262, amountPaid: 0 });
+    expect(approval).toMatchObject({ status: "approved", netPayableAmount: 17_262, amountPaid: null });
   });
 
   it("rejects a mixed All bill that omits an eligible monthly hire group", async () => {

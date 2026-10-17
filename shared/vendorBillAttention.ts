@@ -38,7 +38,7 @@ function hasRecordedAmount(value: unknown): boolean {
 function siteKey(value: unknown): string {
   return String(value ?? "")
     .trim()
-    .replace(/^SITE(?:\*|:)?\s*/i, "")
+    .replace(/^SITE(?:\*|:)?\s*:?\s*/i, "")
     .replace(/\s+/g, " ")
     .toLocaleUpperCase();
 }
@@ -93,7 +93,7 @@ export function buildHireSiteSuggestion(
       if (date < periodFrom || date > periodTo) continue;
       const name = String(row.siteName ?? "").trim();
       const key = siteKey(name);
-      if (key) activitySites.set(key, name.replace(/^SITE(?:\*|:)?\s*/i, "").trim());
+      if (key) activitySites.set(key, name.replace(/^SITE(?:\*|:)?\s*:?\s*/i, "").trim());
     }
     if (activitySites.size !== 1) return null;
 

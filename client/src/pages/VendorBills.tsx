@@ -408,7 +408,7 @@ export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; 
     mutationFn: () => apiRequest("PATCH", `/api/vendor-bills/${bill.id}/payment-details`, {
       paymentMode: mode || null,
       paidBy: paidByKind === "" ? null : paidByKind === "company" ? "company" : (payerName.trim() ? payerName.trim().toUpperCase() : "PERSONAL"),
-      ...(isEquipmentHire ? { amountPaid: amountPaid === "" ? 0 : Number(amountPaid) } : {}),
+      ...(isEquipmentHire && amountPaid !== "" ? { amountPaid: Number(amountPaid) } : {}),
        ...(isEquipmentHire ? { paymentAccountKey: paidByKind === "company" ? paymentAccountKey || null : null } : {}),
     }),
     onSuccess: () => {
@@ -498,8 +498,19 @@ export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; 
           {isEquipmentHire && (
             <div>
               <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Paid This Bill (cumulative ₹)</p>
-              <Input type="number" min="0" max={netPayable} step="0.01" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} data-testid="input-vb-amount-paid" />
-              <p className="mt-1 text-[10px] text-muted-foreground">Net payable ₹{formatCurrency(netPayable)} · balance ₹{formatCurrency(Math.max(0, netPayable - Number(amountPaid || 0)))}</p>
+              <Input
+                type="number" min="0" max={netPayable} step="0.01" value={amountPaid}
+                onChange={e => setAmountPaid(e.target.value)}
+                disabled={bill.status === "paid" && bill.amountPaid == null}
+                data-testid="input-vb-amount-paid"
+              />
+              {bill.status === "paid" && bill.amountPaid == null
+                ? <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">
+                    No amount is recorded. <Link href="/finance/vendor-bills/attention" className="underline">Correct it from Bills Needing Attention.</Link>
+                  </p>
+                : <p className="mt-1 text-[10px] text-muted-foreground">
+                    Net payable ₹{formatCurrency(netPayable)} · balance {amountPaid === "" ? "—" : `₹${formatCurrency(Math.max(0, netPayable - Number(amountPaid)))}`}
+                  </p>}
             </div>
           )}
           <div className="sm:col-span-3 flex gap-2 justify-end">
@@ -613,7 +624,8 @@ export default function VendorBills() {
   const [billDate, setBillDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [billNo, setBillNo] = useState("");
   const [billType, setBillType] = useState(FRESH_BILL_TYPE);
-  const [selectedSiteId, setSelectedSiteId] = useState<string>("all");
+  const [selectedSiteId, setSelectedSiteId] = useState<string>("");
+  const [siteAnswerAtEdit, setSiteAnswerAtEdit] = useState<string | null>(null);
   const [vendorName, setVendorName] = useState("");
   const [periodFrom, setPeriodFrom] = useState("");
   const [periodTo, setPeriodTo] = useState("");
@@ -667,6 +679,8 @@ export default function VendorBills() {
   };
 
   const [pendingDeleteAction, setPendingDeleteAction] = useState<{ billId: number; billNo?: string; status?: string } | null>(null);
+  const [pendingPaidStatus, setPendingPaidStatus] = useState<{ billId: number; billNo: string } | null>(null);
+  const [paidStatusAmount, setPaidStatusAmount] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteReason, setDeleteReason] = useState("");
   const [voidBillAction, setVoidBillAction] = useState<{ billId: number; billNo: string } | null>(null);
@@ -855,7 +869,7 @@ export default function VendorBills() {
   });
 
   const autoItemsUrl = vendorName && periodFrom && periodTo && billType !== "other"
-    ? `/api/vendor-bills/auto-items?vendorName=${encodeURIComponent(vendorName)}&billType=${encodeURIComponent(billType)}&periodFrom=${encodeURIComponent(periodFrom)}&periodTo=${encodeURIComponent(periodTo)}${selectedSiteId === "all" ? "" : `&siteId=${encodeURIComponent(selectedSiteId)}`}`
+    ? `/api/vendor-bills/auto-items?vendorName=${encodeURIComponent(vendorName)}&billType=${encodeURIComponent(billType)}&periodFrom=${encodeURIComponent(periodFrom)}&periodTo=${encodeURIComponent(periodTo)}${!selectedSiteId || selectedSiteId === "all" ? "" : `&siteId=${encodeURIComponent(selectedSiteId)}`}`
     : null;
 
   const { data: autoItems, isFetching: autoItemsLoading, refetch: refreshAutoItems } = useQuery<any[]>({
@@ -1074,13 +1088,15 @@ export default function VendorBills() {
   });
 
   const statusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: number; status: string }) =>
-      apiRequest("PATCH", `/api/vendor-bills/${id}/status`, { status }),
+    mutationFn: ({ id, status, amountPaid }: { id: number; status: string; amountPaid?: number }) =>
+      apiRequest("PATCH", `/api/vendor-bills/${id}/status`, { status, ...(amountPaid === undefined ? {} : { amountPaid }) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills"] });
       if (selectedBillId) {
         queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills", selectedBillId] });
       }
+      setPendingPaidStatus(null);
+      setPaidStatusAmount("");
       toast({ title: "Bill status updated" });
     },
     onError: (err: Error) => {
@@ -1131,7 +1147,8 @@ export default function VendorBills() {
     setBillDate(format(new Date(), "yyyy-MM-dd"));
     setBillNo("");
     setBillType(FRESH_BILL_TYPE);
-    setSelectedSiteId("all");
+    setSelectedSiteId("");
+    setSiteAnswerAtEdit(null);
     setVendorName("");
     setPeriodFrom("");
     setPeriodTo("");
@@ -1207,7 +1224,11 @@ export default function VendorBills() {
     setBillDate(bill.billDate);
     setBillNo(bill.billNo);
     setBillType(bill.billType.toLowerCase());
-    setSelectedSiteId((bill as any).siteId == null ? "all" : String((bill as any).siteId));
+    const siteAnswer = bill.siteId == null
+      ? (bill.siteScopeConfirmed === true ? "all" : "")
+      : String(bill.siteId);
+    setSelectedSiteId(siteAnswer);
+    setSiteAnswerAtEdit(siteAnswer);
     setVendorName(bill.vendorName);
     setVendorSearch(bill.vendorName);
     setVendorFilterSearch(bill.vendorName);
@@ -1900,7 +1921,9 @@ export default function VendorBills() {
       : "";
     return {
       companyName: companyName || "HLC", vendorName, billNo, billDate, periodFrom, periodTo,
-      site: selectedSiteId === "all" ? "All sites" : sites?.find(site => String(site.id) === selectedSiteId)?.name || "",
+      site: selectedSiteId === "all"
+        ? "All sites"
+        : sites?.find(site => String(site.id) === selectedSiteId)?.name || "Site answer not recorded",
       billType, billTypeLabel: getBillTypeLabel(billType), saved: editingBillId !== null,
       status: editingBillId !== null ? editingBillStatus : "unsaved", generatedAt: new Date().toISOString(),
       sections,
@@ -2124,6 +2147,13 @@ export default function VendorBills() {
       toast({ title: "Please fill vendor name and bill date", variant: "destructive" });
       return;
     }
+    if (editingBillId === null && !selectedSiteId) {
+      toast({
+        title: "Choose a site or deliberately select ALL SITES before saving.",
+        variant: "destructive",
+      });
+      return;
+    }
     const missingAdditionalReasonIndex = additionalAdjustments.findIndex(adjustment =>
       Number(adjustment.amount) !== 0 && !adjustment.label.trim(),
     );
@@ -2271,7 +2301,9 @@ export default function VendorBills() {
       billDate,
       billNo: billNo || `AUTO-${Date.now()}`,
       billType,
-      siteId: selectedSiteId === "all" ? null : Number(selectedSiteId),
+      ...(editingBillId === null || selectedSiteId !== siteAnswerAtEdit
+        ? { siteId: selectedSiteId === "all" ? null : Number(selectedSiteId) }
+        : {}),
       vendorName: vendorName.toUpperCase(),
       ...(matchingBillingIdentities.length === 1 ? { billingVendorId: matchingBillingIdentities[0].id } : {}),
       periodFrom: periodFrom || null,
@@ -2391,6 +2423,12 @@ export default function VendorBills() {
   };
 
   const handleStatusChange = (billId: number, newStatus: string) => {
+    if (newStatus === "paid") {
+      const bill = bills?.find(row => row.id === billId);
+      setPaidStatusAmount("");
+      setPendingPaidStatus({ billId, billNo: bill?.billNo || `#${billId}` });
+      return;
+    }
     statusMutation.mutate({ id: billId, status: newStatus });
   };
 
@@ -2828,21 +2866,30 @@ export default function VendorBills() {
                 <Select value={selectedSiteId} onValueChange={(value) => {
                   cancelActivePull();
                   const selectedName = sites.find(site => String(site.id) === value)?.name ?? null;
+                  const previousScopeIsUnfiltered = !selectedSiteId || selectedSiteId === "all";
+                  const nextScopeIsUnfiltered = value === "all";
+                  const scopeChanged = selectedSiteId !== value &&
+                    !(previousScopeIsUnfiltered && nextScopeIsUnfiltered);
                   setSelectedSiteId(value);
                   setLineItems(items => items
-                    .filter(item => !isGeneratedEvidenceLine(item.source))
+                    .filter(item => !scopeChanged || !isGeneratedEvidenceLine(item.source))
                     .map(item => item.initialBlank && !item.siteName
                       ? { ...item, siteName: selectedName }
                       : item));
                 }}>
                   <SelectTrigger data-testid="select-bill-site">
-                    <SelectValue placeholder="ALL SITES" />
+                  <SelectValue placeholder="SELECT SITE OR ALL SITES" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">ALL SITES</SelectItem>
                     {sites.map(site => <SelectItem key={site.id} value={String(site.id)}>{site.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
+              {editingBillId !== null && !selectedSiteId && (
+                <p className="mt-1 text-xs text-amber-700 dark:text-amber-300" data-testid="text-site-answer-missing">
+                  No site answer is recorded for this bill. Choose a site or ALL SITES to correct it; leaving this blank preserves the existing record.
+                </p>
+              )}
               </div>
               <div className="relative">
                 <Label htmlFor="input-vendor-name" className="text-sm uppercase">Vendor / Supplier Name</Label>
@@ -4958,6 +5005,49 @@ export default function VendorBills() {
           recordLabel={`Bill ${bill.billNo}`}
         />
 
+        <Dialog open={!!pendingPaidStatus} onOpenChange={(open) => {
+          if (!open) {
+            setPendingPaidStatus(null);
+            setPaidStatusAmount("");
+          }
+        }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Record the paid amount</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              Enter the amount actually paid for bill {pendingPaidStatus?.billNo}. The bill cannot be marked PAID without an amount; enter 0 only if zero is the recorded amount.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="vendor-bill-paid-status-amount">Amount paid (₹)</Label>
+              <Input
+                id="vendor-bill-paid-status-amount"
+                type="number"
+                min="0"
+                step="0.01"
+                value={paidStatusAmount}
+                onChange={event => setPaidStatusAmount(event.target.value)}
+                data-testid="input-vendor-bill-paid-status-amount"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setPendingPaidStatus(null)}>CANCEL</Button>
+              <Button
+                onClick={() => pendingPaidStatus && statusMutation.mutate({
+                  id: pendingPaidStatus.billId,
+                  status: "paid",
+                  amountPaid: Number(paidStatusAmount),
+                })}
+                disabled={statusMutation.isPending || paidStatusAmount === "" ||
+                  !Number.isFinite(Number(paidStatusAmount)) || Number(paidStatusAmount) < 0}
+                data-testid="button-confirm-vendor-bill-paid"
+              >
+                {statusMutation.isPending && <Loader2 className="w-3 h-3 animate-spin mr-1" />} MARK PAID
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         <Dialog open={showBillDateDialog} onOpenChange={(open) => {
           setShowBillDateDialog(open);
           if (!open) setBillDateReason("");
@@ -5345,6 +5435,13 @@ export default function VendorBills() {
           </div>
         </div>
         <div className="flex gap-2">
+          {(isAdmin || !!user?.isOwner) && (
+            <Link href="/finance/vendor-bills/attention">
+              <Button variant="outline" data-testid="button-vendor-bill-attention">
+                <Info className="w-4 h-4 mr-1" /> ATTENTION
+              </Button>
+            </Link>
+          )}
           {canEdit && (
             <Button variant="outline" size="icon" onClick={() => setShowAliasDialog(true)} title="Vendor Aliases" data-testid="button-vendor-aliases">
               <Settings className="w-4 h-4" />

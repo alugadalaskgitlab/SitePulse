@@ -85,7 +85,7 @@ describe("VB-23B vendor bill payment save", () => {
       paymentAccountKey: "hdfc-current",
       amountPaid: 10_000,
     });
-    const paid = await storage.updateVendorBillStatus(231, "paid", "accounts user");
+    const paid = await storage.updateVendorBillStatus(231, "paid", "accounts user", 10_000);
 
     expect(saved).toMatchObject({
       paymentMode: "bank_transfer",
@@ -133,7 +133,7 @@ describe("VB-23B vendor bill payment save", () => {
     const storage = new DatabaseStorage();
 
     await storage.updateVendorBillPaymentDetails(231, { amountPaid: 10_000 });
-    const paid = await storage.updateVendorBillStatus(231, "paid", "accounts user");
+    const paid = await storage.updateVendorBillStatus(231, "paid", "accounts user", 10_000);
 
     expect(fx.writes[0]).toEqual({ amountPaid: 10_000 });
     expect(paid).toMatchObject({ status: "paid", amountPaid: 10_000 });

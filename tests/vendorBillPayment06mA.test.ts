@@ -130,6 +130,7 @@ describe("06M-A vendor bill payment details", () => {
       billDate: "2026-01-10",
       billNo: "VB-EH-011",
       billType: "equipment",
+      siteId: null,
       vendorName: "ACME HIRE",
       periodFrom: "2026-01-10",
       periodTo: "2026-01-11",
@@ -148,7 +149,7 @@ describe("06M-A vendor bill payment details", () => {
 
   it("accepts a shared itemized equipment bill without hire groups or hire terms", async () => {
     const base = {
-      billDate: "2026-01-10", billNo: "VB-EH-012", billType: "equipment", vendorName: "ACME HIRE",
+      billDate: "2026-01-10", billNo: "VB-EH-012", billType: "equipment", siteId: null, vendorName: "ACME HIRE",
       periodFrom: "2026-01-10", periodTo: "2026-01-11", totalAmount: 10000,
       gstRateEquipment: 18, tdsRate: 2,
       items: [{

@@ -4729,11 +4729,24 @@ export async function registerRoutes(
       // Both current granular raisers and legacy vendor_bills editors may create.
        if (!assertView(req, res, "plant_equipment")) return;
        if (!assertCreateEither(req, res, "vendor_bills_raise", "vendor_bills")) return;
+       const createInput = z.object({
+         expectedRevision: z.number().int().positive(),
+         siteId: z.union([z.number().int().positive(), z.null()]),
+       }).parse(req.body);
       const id = z.coerce.number().int().positive().parse(req.params.id), statement = await storage.getHireStatement(id);
       if (!statement) return res.status(404).json({ message: "Hire statement not found" });
+       if (createInput.expectedRevision !== statement.revision) {
+         return res.status(409).json({ message: "Statement changed; refresh it before creating the vendor bill" });
+       }
+       const selectedSite = createInput.siteId == null
+         ? null
+         : (await storage.getSites()).find(site => site.id === createInput.siteId);
+       if (createInput.siteId != null && !selectedSite) return res.status(400).json({ message: "Selected site does not exist" });
+       if (selectedSite && !await assertTripSiteAccess(req, res, selectedSite.name)) return;
       const result = await storage.createHireStatementVendorBill(id, { billDate: statement.periodTo, billType: "equipment", vendorName: statement.vendorName,
+         siteId: createInput.siteId, siteScopeConfirmed: true,
         periodFrom: statement.periodFrom, periodTo: statement.periodTo, status: "draft", totalAmount: statement.netAmount,
-        notes: `Hire statement #${statement.id}`, items: [{ date: statement.periodTo, category: "equipment", description: `HIRE - EQUIPMENT #${statement.equipmentId}`, qty: statement.quantity, unit: statement.billingBasis, rate: statement.rate, amount: statement.netAmount, source: "hire_statement", equipmentId: statement.equipmentId }] });
+         notes: `Hire statement #${statement.id}`, items: [{ date: statement.periodTo, category: "equipment", description: `HIRE - EQUIPMENT #${statement.equipmentId}`, qty: statement.quantity, unit: statement.billingBasis, rate: statement.rate, amount: statement.netAmount, source: "hire_statement", equipmentId: statement.equipmentId, siteName: selectedSite?.name ?? null }] });
       if (result.created) {
         await recordChange(req, storage, {
           module: "vendor_bills",
@@ -12361,7 +12374,8 @@ export async function registerRoutes(
 
       const site = siteId == null ? null : (await storage.getSites()).find(candidate => candidate.id === siteId);
       if (siteId != null && !site) return res.status(400).json({ message: "Selected site does not exist" });
-      if (site && before.items.some(item => !vendorBillItemMatchesSite(item.siteName, site.name))) {
+      if (site && !await assertTripSiteAccess(req, res, site.name)) return;
+      if (site && before.items.some(item => item.siteName && !vendorBillItemMatchesSite(item.siteName, site.name))) {
         return res.status(400).json({ message: "The bill contains items outside the selected site. Choose ALL SITES or correct the bill items separately." });
       }
       const correction = await storage.correctVendorBillSiteScope(id, siteId);
@@ -12731,11 +12745,6 @@ export async function registerRoutes(
         reason: z.string().trim().max(500).nullable().optional(),
       });
       const { status, reason, amountPaid } = statusSchema.parse(req.body);
-      if (status === "paid" && !Object.prototype.hasOwnProperty.call(req.body ?? {}, "amountPaid")) {
-        return res.status(400).json({
-          message: "Enter the paid amount before marking the bill paid. Enter 0 only if that is the recorded amount.",
-        });
-      }
       let before: any;
 
       if (status === "approved") {
@@ -12760,6 +12769,11 @@ export async function registerRoutes(
       if (!before) before = await storage.getVendorBill(id);
       if (!before) return res.status(404).json({ message: "Vendor bill not found" });
       if (before.isCancelled === true) return res.status(409).json({ message: "A voided vendor bill cannot change status" });
+      if (status === "paid" && !Object.prototype.hasOwnProperty.call(req.body ?? {}, "amountPaid")) {
+        return res.status(400).json({
+          message: "Enter the paid amount before marking the bill paid. Enter 0 only if that is the recorded amount.",
+        });
+      }
       const actor = currentUserName(req);
 
       const bill = await storage.updateVendorBillStatus(id, status, actor, amountPaid);

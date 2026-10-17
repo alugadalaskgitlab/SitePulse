@@ -7,6 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type Exception = { id?: number; source?: string; sourceId?: number | string | null; exceptionType?: string; date: string; reason?: string; downtimeHours?: number; decision?: "full_day" | "half_day" | "none" | "manual"; finalDeduction?: number; remarks?: string };
 type Statement = {
@@ -16,6 +19,7 @@ type Statement = {
   activityDays?: number; divisor?: number; usageSummary?: Record<string, unknown>; exceptions?: Exception[];
   linkedVendorBillId?: number | null;
 };
+type SiteOption = { id: number; name: string; isActive?: number };
 const money = (n?: number) => `₹${Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const dateNow = new Date();
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -41,12 +45,27 @@ export default function EquipmentHireBilling() {
   const [to, setTo] = useState(iso(dateNow));
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [exceptionDraft, setExceptionDraft] = useState<Exception | null>(null);
+  const [createBillDialogOpen, setCreateBillDialogOpen] = useState(false);
+  const [createBillSiteAnswer, setCreateBillSiteAnswer] = useState("");
   const listKey = ["/api/equipment-hire/statements", from, to];
   const list = useQuery<Statement[]>({ queryKey: listKey, queryFn: () => request(`/api/equipment-hire/statements?billingFrom=${from}&billingTo=${to}`), retry: 1 });
   const detail = useQuery<Statement>({ queryKey: ["/api/equipment-hire/statements", selectedId], queryFn: () => request(`/api/equipment-hire/statements/${selectedId}`), enabled: !!selectedId });
+  const sites = useQuery<SiteOption[]>({ queryKey: ["/api/sites"], queryFn: () => request("/api/sites"), retry: 1 });
   const invalidate = () => { queryClient.invalidateQueries({ queryKey: ["/api/equipment-hire/statements"] }); };
   const create = useMutation({ mutationFn: (row: Statement) => request("/api/equipment-hire/statements", "POST", { equipmentId: row.equipmentId, billingFrom: from, billingTo: to }), onSuccess: async (data: Statement) => { await invalidate(); await queryClient.invalidateQueries({ queryKey: ["/api/equipment-hire/statements", data.id] }); setSelectedId(data.id); } });
   const action = useMutation({ mutationFn: ({ id, path, expectedRevision }: { id: number; path: string; expectedRevision: number }) => request(`/api/equipment-hire/statements/${id}/${path}`, "POST", { expectedRevision }), onSuccess: () => { invalidate(); detail.refetch(); }, onError: () => detail.refetch() });
+  const createVendorBill = useMutation({
+    mutationFn: ({ id, expectedRevision, siteId }: { id: number; expectedRevision: number; siteId: number | null }) =>
+      request(`/api/equipment-hire/statements/${id}/create-vendor-bill`, "POST", { expectedRevision, siteId }),
+    onSuccess: async (data: any) => {
+      await invalidate();
+      if (data.statement?.id) await queryClient.invalidateQueries({ queryKey: ["/api/equipment-hire/statements", data.statement.id] });
+      await detail.refetch();
+      setCreateBillDialogOpen(false);
+      setCreateBillSiteAnswer("");
+    },
+    onError: () => detail.refetch(),
+  });
   const saveExceptions = useMutation({ mutationFn: ({ exceptions, expectedRevision }: { exceptions: Exception[]; expectedRevision: number }) => request(`/api/equipment-hire/statements/${selectedId}/exceptions`, "PATCH", { exceptions, expectedRevision }), onSuccess: () => { invalidate(); detail.refetch(); setExceptionDraft(null); }, onError: () => detail.refetch() });
   const rows = useMemo(() => Array.isArray(list.data) ? list.data : [], [list.data]);
   const current = detail.data;
@@ -79,14 +98,55 @@ export default function EquipmentHireBilling() {
               !rows.length ? <div className="p-12 text-center"><ClipboardCheck className="mx-auto mb-3 h-9 w-9 text-slate-300" /><p className="font-semibold text-slate-700">No configured hired equipment for this period</p><p className="mt-1 text-sm text-slate-500">Add hire terms in Equipment Master to prepare statements from recorded activity.</p></div> :
               <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-3">Equipment / vendor</th><th className="px-3 py-3">Basis & rate</th><th className="px-3 py-3">Period</th><th className="px-3 py-3 text-right">Approved</th><th className="px-5 py-3">Status</th><th className="px-5 py-3 text-right">Action</th></tr></thead><tbody className="divide-y divide-slate-100">{rows.map(row => <tr key={row.id} onClick={() => openRow(row)} className={`cursor-pointer transition-colors hover:bg-amber-50/50 ${selectedId === row.id ? "bg-amber-50" : ""}`}><td className="px-5 py-4"><p className="font-semibold text-slate-800">{row.equipmentName || row.equipment || `Equipment #${row.equipmentId}`}</p><p className="text-xs text-slate-500">{row.vendorName || row.vendor || "Vendor not linked"}</p></td><td className="px-3 py-4 text-slate-700">{row.basis || "—"}<p className="text-xs text-slate-500">{money(row.rate)}</p></td><td className="whitespace-nowrap px-3 py-4 text-xs text-slate-600">{row.billingFrom || (typeof row.period === "object" ? row.period?.from : "")}<br />{row.billingTo || (typeof row.period === "object" ? row.period?.to : "")}</td><td className="px-3 py-4 text-right font-semibold text-slate-800">{money(row.approvedAmount)}</td><td className="px-5 py-4"><Badge variant="outline" className={statusTone(row.status)}>{row.id < 0 ? "Ready to draft" : row.status}</Badge></td><td className="px-5 py-4 text-right">{row.id < 0 ? <Button size="sm" variant="outline" disabled={create.isPending} onClick={e => { e.stopPropagation(); create.mutate(row); }}><FilePlus2 className="mr-1 h-4 w-4" />Create draft</Button> : <span className="text-xs font-semibold text-blue-700">Open</span>}</td></tr>)}</tbody></table></div>}
           </section>
-          <DetailPanel current={current} loading={detail.isLoading} error={detail.error} exceptions={exceptions} exceptionDraft={exceptionDraft} setExceptionDraft={setExceptionDraft} saveExceptions={saveExceptions} action={action} onBack={() => setSelectedId(null)} navigate={navigate} />
+          <DetailPanel current={current} loading={detail.isLoading} error={detail.error} exceptions={exceptions} exceptionDraft={exceptionDraft} setExceptionDraft={setExceptionDraft} saveExceptions={saveExceptions} action={action} onCreateVendorBill={() => { setCreateBillSiteAnswer(""); setCreateBillDialogOpen(true); }} onBack={() => setSelectedId(null)} navigate={navigate} />
         </div>
       </div>
     </div>
+    <Dialog open={createBillDialogOpen} onOpenChange={open => { if (!createVendorBill.isPending) setCreateBillDialogOpen(open); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Choose a site for this vendor bill</DialogTitle>
+          <DialogDescription>
+            Select one site or explicitly confirm ALL SITES before creating the draft bill.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Label htmlFor="hire-bill-site-answer">Site answer</Label>
+          <Select value={createBillSiteAnswer} onValueChange={setCreateBillSiteAnswer}>
+            <SelectTrigger id="hire-bill-site-answer" data-testid="select-hire-bill-site-answer">
+              <SelectValue placeholder="SELECT SITE OR ALL SITES" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">ALL SITES</SelectItem>
+              {(sites.data || []).map(site => (
+                <SelectItem key={site.id} value={String(site.id)}>{site.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {sites.isError && <p className="text-sm text-red-700">Could not load sites. You can still explicitly choose ALL SITES.</p>}
+          {createVendorBill.isError && <p className="text-sm text-red-700" role="alert">{errorMessage(createVendorBill.error)}</p>}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setCreateBillDialogOpen(false)} disabled={createVendorBill.isPending}>Cancel</Button>
+          <Button
+            onClick={() => {
+              const siteId = createBillSiteAnswer === "all" ? null : Number(createBillSiteAnswer);
+              if (!current || !createBillSiteAnswer || (siteId !== null && (!Number.isInteger(siteId) || siteId < 1))) return;
+              createVendorBill.mutate({ id: current.id, expectedRevision: current.revision, siteId });
+            }}
+            disabled={!createBillSiteAnswer || createVendorBill.isPending || !current}
+            data-testid="button-create-hire-vendor-bill"
+          >
+            {createVendorBill.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Create draft bill
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </HubShell>;
 }
 
-function DetailPanel({ current, loading, error, exceptions, exceptionDraft, setExceptionDraft, saveExceptions, action, onBack, navigate }: { current?: Statement; loading: boolean; error: unknown; exceptions: Exception[]; exceptionDraft: Exception | null; setExceptionDraft: (v: Exception | null) => void; saveExceptions: any; action: any; onBack: () => void; navigate: (to: string) => void }) {
+function DetailPanel({ current, loading, error, exceptions, exceptionDraft, setExceptionDraft, saveExceptions, action, onCreateVendorBill, onBack, navigate }: { current?: Statement; loading: boolean; error: unknown; exceptions: Exception[]; exceptionDraft: Exception | null; setExceptionDraft: (v: Exception | null) => void; saveExceptions: any; action: any; onCreateVendorBill: () => void; onBack: () => void; navigate: (to: string) => void }) {
   if (!current && !loading) return <aside className="hidden rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center xl:block"><ShieldCheck className="mx-auto mb-3 h-8 w-8 text-slate-300" /><p className="font-semibold text-slate-700">Select a statement</p><p className="mt-1 text-sm text-slate-500">The full calculation trail and review controls will appear here.</p></aside>;
   if (loading) return <aside className="rounded-xl border border-slate-200 bg-white p-6"><div className="h-5 w-40 animate-pulse rounded bg-slate-100" /><div className="mt-5 h-36 animate-pulse rounded bg-slate-100" /></aside>;
   if (error || !current) return <aside className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">Unable to load statement details.</aside>;
@@ -112,7 +172,7 @@ function DetailPanel({ current, loading, error, exceptions, exceptionDraft, setE
     <div className="p-5"><div className="mb-3 flex items-center justify-between"><div><h3 className="font-semibold text-slate-800">Exceptions & deductions</h3><p className="text-xs text-slate-500">{exceptions.length} recorded adjustment{exceptions.length === 1 ? "" : "s"}</p></div>{editable && <Button size="sm" variant="outline" onClick={addException}>Add exception</Button>}</div>
       {exceptionDraft && <div className="mb-4 space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3"><div className="grid grid-cols-2 gap-2"><Input type="date" value={exceptionDraft.date} onChange={e => updateDraft({ date: e.target.value })} /><Input type="number" placeholder="Downtime hours" value={exceptionDraft.downtimeHours || ""} onChange={e => updateDraft({ downtimeHours: Number(e.target.value) })} /></div><select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={exceptionDraft.decision || ""} onChange={e => updateDraft({ decision: e.target.value as Exception["decision"] })}><option value="" disabled>Select a decision</option><option value="none">No deduction</option><option value="full_day">Full day</option><option value="half_day">Half day</option><option value="manual">Manual amount</option></select>{exceptionDraft.decision === "manual" && <Input type="number" min="0" step="0.01" placeholder="Final deduction amount" value={exceptionDraft.finalDeduction ?? ""} onChange={e => updateDraft({ finalDeduction: e.target.value === "" ? undefined : Number(e.target.value) })} />}<Input placeholder="Reason" value={exceptionDraft.reason || ""} onChange={e => updateDraft({ reason: e.target.value })} /><Textarea placeholder="Remarks" value={exceptionDraft.remarks || ""} onChange={e => updateDraft({ remarks: e.target.value })} /><div className="flex justify-end gap-2"><Button variant="ghost" size="sm" onClick={() => setExceptionDraft(null)}>Cancel</Button><Button size="sm" disabled={!exceptionDraft.date || !exceptionDraft.decision || (exceptionDraft.decision === "manual" && exceptionDraft.finalDeduction == null) || saveExceptions.isPending} onClick={save}>Save exception</Button></div></div>}
       {exceptions.length ? <div className="space-y-2">{exceptions.map((e, i) => <div key={e.id || `${e.sourceId}-${e.date}-${i}`} className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm"><div className="flex items-center justify-between gap-2"><span className="font-semibold text-slate-800">{e.date}</span><div className="flex items-center gap-2"><span className={e.decision ? "text-red-700" : "font-semibold text-amber-700"}>{!e.decision ? "Decision required" : e.decision === "full_day" ? "Full day deduction" : e.decision === "half_day" ? "Half day deduction" : `${money(e.finalDeduction)} deduction`}</span>{editable && <button type="button" className="text-xs font-semibold text-blue-700 hover:underline" onClick={() => setExceptionDraft({ ...e })}>Review / Edit</button>}</div></div><p className="mt-1 text-xs text-slate-600">{e.reason || "No reason supplied"} · {e.downtimeHours ?? 0}h downtime · {e.exceptionType || "Exception"}{e.source ? ` · ${e.source}` : ""}</p></div>)}</div> : <p className="rounded-lg border border-dashed border-slate-200 p-4 text-center text-xs text-slate-500">No exceptions recorded.</p>}</div>
-    <div className="flex flex-wrap gap-2 border-t border-slate-100 p-5">{isDraft && exceptions.length > 0 && <Button disabled={action.isPending} onClick={() => action.mutate({ id: current.id, path: "review", expectedRevision: current.revision })}><ClipboardCheck className="mr-1.5 h-4 w-4" />Submit for review</Button>}{canApprove && <Button variant="outline" disabled={action.isPending} onClick={() => action.mutate({ id: current.id, path: "approve", expectedRevision: current.revision })}><Check className="mr-1.5 h-4 w-4" />Approve statement</Button>}{current.status.toLowerCase().includes("approved") && !current.linkedVendorBillId && <Button variant="outline" disabled={action.isPending} onClick={() => action.mutate({ id: current.id, path: "create-vendor-bill", expectedRevision: current.revision })}>Create vendor bill</Button>}{current.linkedVendorBillId && <Button variant="outline" onClick={() => navigate(`/plant/vendor-bills?selectedId=${current.linkedVendorBillId}`)}>Open vendor bill <ChevronRight className="ml-1 h-4 w-4" /></Button>}</div>
+    <div className="flex flex-wrap gap-2 border-t border-slate-100 p-5">{isDraft && exceptions.length > 0 && <Button disabled={action.isPending} onClick={() => action.mutate({ id: current.id, path: "review", expectedRevision: current.revision })}><ClipboardCheck className="mr-1.5 h-4 w-4" />Submit for review</Button>}{canApprove && <Button variant="outline" disabled={action.isPending} onClick={() => action.mutate({ id: current.id, path: "approve", expectedRevision: current.revision })}><Check className="mr-1.5 h-4 w-4" />Approve statement</Button>}{current.status.toLowerCase().includes("approved") && !current.linkedVendorBillId && <Button variant="outline" disabled={action.isPending} onClick={onCreateVendorBill}>Create vendor bill</Button>}{current.linkedVendorBillId && <Button variant="outline" onClick={() => navigate(`/plant/vendor-bills?selectedId=${current.linkedVendorBillId}`)}>Open vendor bill <ChevronRight className="ml-1 h-4 w-4" /></Button>}</div>
     {action.isError && <p className="px-5 pb-5 text-sm text-red-700">{action.error instanceof Error ? action.error.message : "Action could not be completed."}</p>}
   </aside>;
 }

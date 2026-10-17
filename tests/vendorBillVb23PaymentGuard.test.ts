@@ -61,10 +61,10 @@ function approvedBill(billType: string, amountPaid: number | null, overrides: Re
   };
 }
 
-async function markPaid(existing: ReturnType<typeof approvedBill>) {
+async function markPaid(existing: ReturnType<typeof approvedBill>, paidAmount = Number(existing.amountPaid)) {
   fixtures.selectedRows.push([existing], []); // locked bill, then linked hire statements
   fixtures.returnedBill = { ...existing, status: "paid" };
-  return new DatabaseStorage().updateVendorBillStatus(existing.id, "paid", "accounts user");
+  return new DatabaseStorage().updateVendorBillStatus(existing.id, "paid", "accounts user", paidAmount);
 }
 
 describe("VB-23 vendor bill paid-transition storage guard", () => {
@@ -100,7 +100,7 @@ describe("VB-23 vendor bill paid-transition storage guard", () => {
   it.each(["ALL", "EQUIPMENT"])(
     "preserves legacy %s handling when no frozen net payable or paid amount exists",
     async (billType) => {
-      await markPaid(approvedBill(billType, null, { netPayableAmount: null }));
+      await markPaid(approvedBill(billType, null, { netPayableAmount: null }), 12_000);
 
       expect(fixtures.writes[0]).toMatchObject({
         status: "paid",
@@ -115,8 +115,21 @@ describe("VB-23 vendor bill paid-transition storage guard", () => {
     expect(fixtures.writes).toHaveLength(1);
     expect(fixtures.writes[0]).toMatchObject({
       status: "paid",
+      amountPaid: 1,
       paymentRecordedBy: "ACCOUNTS USER",
     });
-    expect(fixtures.writes[0]).not.toHaveProperty("amountPaid");
+  });
+
+  it("keeps missing-amount corrections read-only for negative-net paid bills", async () => {
+    const { DatabaseStorage } = await import("../server/storage");
+    fixtures.selectedRows.push([
+      approvedBill("ALL", null, { status: "paid", netPayableAmount: -200 }),
+    ], []);
+
+    await expect(new DatabaseStorage().recordMissingVendorBillPaidAmount(23, 0)).rejects.toMatchObject({
+      code: "CONFLICT",
+      message: "Negative-net bills are review-only on this page.",
+    });
+    expect(fixtures.writes).toEqual([]);
   });
 });

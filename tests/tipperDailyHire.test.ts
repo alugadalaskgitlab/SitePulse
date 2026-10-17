@@ -154,7 +154,7 @@ it("real routes preserve trip evidence but reject a second bill in an overlappin
     attachVendorBillEquipmentEvidence: async (rows: any[]) => rows };
   new Function(...Object.keys(deps), ts.transpileModule(routes.join(";\n"), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText)(...Object.values(deps));
   const payload = (first: string, second: string) => ({
-    billDate: "2026-11-02", billNo: "AUTO", billType: "equipment", vendorName: machine.vendorName, status: "draft", totalAmount: 0,
+    billDate: "2026-11-02", billNo: "AUTO", billType: "equipment", siteId: null, vendorName: machine.vendorName, status: "draft", totalAmount: 0,
     periodFrom: "2026-11-01", periodTo: "2026-11-02", items: [], hireBillingMode: "vb10_automatic",
     hireGroups: [{ equipmentId: 20, basis: "daily", rate: 2000, periodFrom: "2026-11-01", periodTo: "2026-11-02",
       dailyDecisions: [{ date: "2026-11-01", decision: first, reason: "DPR and two trips checked" },

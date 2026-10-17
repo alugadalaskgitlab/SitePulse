@@ -118,6 +118,7 @@ const StoresDieselRegister    = lazy(() => import("@/pages/StoresDieselRegister"
 const PurchaseIndents    = lazy(() => import("@/pages/PurchaseIndents"));
 const DieselRequirements = lazy(() => import("@/pages/DieselRequirements"));
 const VendorBills        = lazy(() => import("@/pages/VendorBills"));
+const VendorBillsAttention = lazy(() => import("@/pages/VendorBillsAttention"));
 const VendorPayables     = lazy(() => import("@/pages/VendorPayables"));
 const RateCards          = lazy(() => import("@/pages/RateCards"));
 const EquipmentHireBilling = lazy(() => import("@/pages/EquipmentHireBilling"));
@@ -361,6 +362,7 @@ function AuthedShell() {
           <Route path="/plant/purchase-indents" component={gatedEither(PurchaseIndents, "purchase_indents_view", "site_procurement", "purchase_indents_raise")} />
           <Route path="/plant/diesel-requirements" component={gatedEither(DieselRequirements, "diesel_req_view", "site_diesel", "diesel_req_raise")} />
           <Route path="/plant/vendor-bills" component={gatedEither(VendorBills, "vendor_bills_view", "vendor_bills")} />
+          <Route path="/finance/vendor-bills/attention" component={VendorBillsAttention} />
           <Route path="/finance/vendor-bills" component={gatedEither(VendorBills, "vendor_bills_view", "vendor_bills")} />
           <Route path="/plant/rate-cards" component={gatedEither(RateCards, "rate_cards", "vendor_masters_manage", "admin_settings")} />
           <Route path="/equipment/hire-billing" component={gated(EquipmentHireBilling, "plant_equipment")} />
