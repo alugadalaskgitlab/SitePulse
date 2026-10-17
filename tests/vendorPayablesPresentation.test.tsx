@@ -18,9 +18,15 @@ vi.mock("wouter", async () => {
       onClick: (event: React.MouseEvent<HTMLAnchorElement>) => {
         event.preventDefault();
         onClick?.(event);
+        state.location = String(href);
+        window.history.pushState(null, "", String(href));
       },
     }, children),
-    useLocation: () => [state.location, vi.fn()],
+    useLocation: () => [state.location, (path: string, options?: { replace?: boolean }) => {
+      state.location = path;
+      if (options?.replace) window.history.replaceState(null, "", path);
+      else window.history.pushState(null, "", path);
+    }],
   };
 });
 vi.mock("@/components/HubShell", async () => {
@@ -319,6 +325,76 @@ describe("VB-PAY-02 payables presentation", () => {
     const link = await screen.findByRole("link", { name: "HLC/VB/2026/0099" });
     const detail = new URL(link.getAttribute("href")!, window.location.origin);
     const params = new URLSearchParams(detail.search);
-    expect(params.get("returnTo")).toBe("/reports/vendor-payables/unlinked/99?dateFrom=2026-10-01&dateTo=2026-10-31");
+    expect(params.get("returnTo")).toBe("/reports/vendor-payables/unlinked/99?dateFrom=2026-10-01&dateTo=2026-10-31&tab=unlinked");
+  });
+
+  it("keeps linked and unlinked searches independent, persists their URL state, and totals only displayed rows", async () => {
+    setRoute("/reports/vendor-payables?dateFrom=2026-01-01&dateTo=2026-12-31&tab=linked");
+    mount();
+
+    const linkedSearch = await screen.findByRole("searchbox", { name: "Search linked vendors" });
+    fireEvent.change(linkedSearch, { target: { value: "mahipal" } });
+    const vendorLink = await screen.findByTitle("MAHIPAL KALPAGURI");
+    expect(screen.queryByTitle("GANGARAM NARSIMHULU")).toBeNull();
+    const vendorCells = Array.from(vendorLink.closest("tr")!.querySelectorAll("td")).map(cell => cell.textContent?.trim() ?? "");
+    expect(vendorCells.slice(2, 7)).toEqual(["₹87,008.69", "₹75,155.00", "₹11,853.69", "₹0.00", "₹11,853.69"]);
+    expect(screen.getByText("Showing 1 of 5 vendors. Linked totals below match the displayed vendors.")).toBeTruthy();
+    expect(new URLSearchParams(state.location.split("?")[1]).get("dateFrom")).toBe("2026-01-01");
+    expect(new URLSearchParams(state.location.split("?")[1]).get("dateTo")).toBe("2026-12-31");
+    expect(new URLSearchParams(state.location.split("?")[1]).get("linkedSearch")).toBe("mahipal");
+    expect(new URLSearchParams(state.location.split("?")[1]).get("tab")).toBe("linked");
+
+    const linkedLedger = new URL(vendorLink.getAttribute("href")!, window.location.origin);
+    const linkedLedgerParams = new URLSearchParams(linkedLedger.search);
+    expect(linkedLedgerParams.get("linkedSearch")).toBe("mahipal");
+    expect(linkedLedgerParams.get("dateFrom")).toBe("2026-01-01");
+    cleanup();
+    queryClient.clear();
+    setRoute(`${linkedLedger.pathname}${linkedLedger.search}`);
+    mount();
+    const linkedBillDetail = new URL((await screen.findByRole("link", { name: "HLC/VB/2026/0054" })).getAttribute("href")!, window.location.origin);
+    expect(new URLSearchParams(linkedBillDetail.search).get("returnTo")).toBe(`${linkedLedger.pathname}${linkedLedger.search}`);
+
+    cleanup();
+    queryClient.clear();
+    setRoute("/reports/vendor-payables?dateFrom=2026-01-01&dateTo=2026-12-31&tab=linked&linkedSearch=mahipal");
+    mount();
+    fireEvent.click(await screen.findByRole("tab", { name: "Unlinked bills" }));
+    const unlinkedSearch = await screen.findByRole("searchbox", { name: "Search unlinked bills" });
+    expect((unlinkedSearch as HTMLInputElement).value).toBe("");
+    fireEvent.change(unlinkedSearch, { target: { value: "0099" } });
+    expect(screen.getByText("HLC/VB/2026/0099")).toBeTruthy();
+    expect(screen.queryByText("HLC/VB/2026/0100")).toBeNull();
+    expect(screen.getByText("Showing 1 of 23 bills across 1 of 16 typed names. Totals below match displayed bills.")).toBeTruthy();
+    const unlinkedMetrics = screen.getByText("Billed").parentElement!.parentElement!;
+    const metricValue = (label: string) => within(unlinkedMetrics).getByText(label).parentElement?.querySelector("p:nth-of-type(2)")?.textContent;
+    expect(metricValue("Billed")).toBe("₹13,535.00");
+    expect(metricValue("Paid")).toBe("₹13,535.00");
+    expect(metricValue("Balance")).toBe("₹0.00");
+
+    fireEvent.change(unlinkedSearch, { target: { value: "bakkanna" } });
+    expect(screen.getByText("HLC/VB/2026/0099")).toBeTruthy();
+    expect(screen.getByText("HLC/VB/2026/0115")).toBeTruthy();
+    expect(screen.queryByText("HLC/VB/2026/0100")).toBeNull();
+    expect(screen.getByText("Showing 2 of 23 bills across 1 of 16 typed names. Totals below match displayed bills.")).toBeTruthy();
+    const params = new URLSearchParams(state.location.split("?")[1]);
+    expect(params.get("dateFrom")).toBe("2026-01-01");
+    expect(params.get("dateTo")).toBe("2026-12-31");
+    expect(params.get("tab")).toBe("unlinked");
+    expect(params.get("linkedSearch")).toBe("mahipal");
+    expect(params.get("unlinkedSearch")).toBe("bakkanna");
+    const billRow = screen.getByText("HLC/VB/2026/0099").closest("tr")!;
+    const ledger = new URL(billRow.querySelector("a")!.getAttribute("href")!, window.location.origin);
+    const ledgerParams = new URLSearchParams(ledger.search);
+    expect(ledgerParams.get("linkedSearch")).toBe("mahipal");
+    expect(ledgerParams.get("unlinkedSearch")).toBe("bakkanna");
+    expect(ledgerParams.get("tab")).toBe("unlinked");
+
+    cleanup();
+    queryClient.clear();
+    setRoute(`${ledger.pathname}${ledger.search}`);
+    mount();
+    const unlinkedBillDetail = new URL((await screen.findByRole("link", { name: "HLC/VB/2026/0099" })).getAttribute("href")!, window.location.origin);
+    expect(new URLSearchParams(unlinkedBillDetail.search).get("returnTo")).toBe(`${ledger.pathname}${ledger.search}`);
   });
 });

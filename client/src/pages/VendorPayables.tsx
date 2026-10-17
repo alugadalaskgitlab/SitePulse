@@ -46,19 +46,23 @@ const periodLabel = (from?: string | null, to?: string | null) => {
   return `${dateLabel(from)} – ${dateLabel(to)}`;
 };
 
-const withDateRange = (path: string, dateFrom: string, dateTo: string) => {
-  const params = new URLSearchParams();
-  if (dateFrom) params.set("dateFrom", dateFrom);
-  if (dateTo) params.set("dateTo", dateTo);
-  const query = params.toString();
-  return query ? `${path}?${query}` : path;
+type PayablesUrlState = {
+  dateFrom: string;
+  dateTo: string;
+  tab: "linked" | "unlinked";
+  linkedSearch: string;
+  unlinkedSearch: string;
 };
 
-const withPayablesTab = (path: string, dateFrom: string, dateTo: string, tab: "linked" | "unlinked") => {
+const withPayablesState = (path: string, state: PayablesUrlState) => {
   const params = new URLSearchParams();
-  if (dateFrom) params.set("dateFrom", dateFrom);
-  if (dateTo) params.set("dateTo", dateTo);
-  if (tab === "unlinked") params.set("tab", tab);
+  if (state.dateFrom) params.set("dateFrom", state.dateFrom);
+  if (state.dateTo) params.set("dateTo", state.dateTo);
+  if (state.tab === "unlinked" || state.linkedSearch.trim() || state.unlinkedSearch.trim()) {
+    params.set("tab", state.tab);
+  }
+  if (state.linkedSearch.trim()) params.set("linkedSearch", state.linkedSearch);
+  if (state.unlinkedSearch.trim()) params.set("unlinkedSearch", state.unlinkedSearch);
   const query = params.toString();
   return query ? `${path}?${query}` : path;
 };
@@ -68,6 +72,34 @@ const billDetailHref = (billId: number, returnTo: string) =>
 
 function summarizeUnlinked(report: PayablesReport) {
   return summarizeBillReview(report.unlinkedGroups.flatMap(group => group.amounts));
+}
+
+function summarizeVisibleVendors(vendors: PayablesReport["vendors"]) {
+  const oldestDates = vendors
+    .map(vendor => vendor.oldestUnpaid)
+    .filter((date): date is string => !!date)
+    .sort((a, b) => a.localeCompare(b));
+  return vendors.reduce((totals, vendor) => ({
+    count: totals.count + vendor.count,
+    billed: totals.billed + vendor.billed,
+    paid: totals.paid + vendor.paid,
+    payableNow: totals.payableNow + vendor.payableNow,
+    comingUp: totals.comingUp + vendor.comingUp,
+    totalLiability: totals.totalLiability + vendor.totalLiability,
+    credits: totals.credits + vendor.credits,
+    unknownPayments: totals.unknownPayments + vendor.unknownPayments,
+    oldestUnpaid: oldestDates[0] ?? null,
+  }), {
+    count: 0,
+    billed: 0,
+    paid: 0,
+    payableNow: 0,
+    comingUp: 0,
+    totalLiability: 0,
+    credits: 0,
+    unknownPayments: 0,
+    oldestUnpaid: null as string | null,
+  });
 }
 
 const humanStatus = (value?: string | null) => {
@@ -128,11 +160,12 @@ function DownloadButton({ onClick, label = "Export Excel" }: { onClick: () => vo
   </button>;
 }
 
-function DateRangeControls({ dateFrom, dateTo, setDateFrom, setDateTo }: {
+function DateRangeControls({ dateFrom, dateTo, setDateFrom, setDateTo, clearDateRange }: {
   dateFrom: string;
   dateTo: string;
   setDateFrom: (value: string) => void;
   setDateTo: (value: string) => void;
+  clearDateRange: () => void;
 }) {
   return <div className="flex flex-wrap items-end gap-3 rounded-xl border border-[#d5e0db] bg-[#f9fbf9] px-4 py-3">
     <div className="flex items-center gap-2 self-center pr-1 text-xs font-bold uppercase tracking-wide text-[#627974]"><CalendarDays className="h-4 w-4" />Bill period</div>
@@ -142,7 +175,7 @@ function DateRangeControls({ dateFrom, dateTo, setDateFrom, setDateTo }: {
     <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wider text-[#748782]">
       To <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="h-9 rounded-md border border-[#cbd9d3] bg-white px-2 text-xs font-medium text-[#29413d] outline-none focus:border-[#527c70]" />
     </label>
-    {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="h-9 px-2 text-xs font-semibold text-[#537168] hover:text-[#213f38]">Clear</button>}
+    {(dateFrom || dateTo) && <button onClick={clearDateRange} className="h-9 px-2 text-xs font-semibold text-[#537168] hover:text-[#213f38]">Clear</button>}
   </div>;
 }
 
@@ -236,18 +269,59 @@ function payablesTotalsMatch(a: PayablesReport["vendors"][number] | null | undef
 
 export default function VendorPayables() {
   const { user, sectionVisible, sectionCan } = useAuth();
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const [dateFrom, setDateFrom] = useState(() => new URLSearchParams(window.location.search).get("dateFrom") || "");
   const [dateTo, setDateTo] = useState(() => new URLSearchParams(window.location.search).get("dateTo") || "");
   const [activeTab, setActiveTab] = useState<"linked" | "unlinked">(() =>
-    new URLSearchParams(window.location.search).get("tab") === "unlinked" ? "unlinked" : "linked"
+    new URLSearchParams(window.location.search).get("tab") === "unlinked" ||
+      window.location.pathname.startsWith("/reports/vendor-payables/unlinked/")
+      ? "unlinked"
+      : "linked"
   );
+  const [linkedSearch, setLinkedSearch] = useState(() => new URLSearchParams(window.location.search).get("linkedSearch") || "");
+  const [unlinkedSearch, setUnlinkedSearch] = useState(() => new URLSearchParams(window.location.search).get("unlinkedSearch") || "");
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(location.split("?")[1] || "");
     setDateFrom(params.get("dateFrom") || "");
     setDateTo(params.get("dateTo") || "");
-    setActiveTab(params.get("tab") === "unlinked" ? "unlinked" : "linked");
+    setActiveTab(params.get("tab") === "unlinked" || location.startsWith("/reports/vendor-payables/unlinked/")
+      ? "unlinked"
+      : "linked");
+    setLinkedSearch(params.get("linkedSearch") || "");
+    setUnlinkedSearch(params.get("unlinkedSearch") || "");
   }, [location]);
+  const currentPath = location.split("?")[0] || "/reports/vendor-payables";
+  const updateUrl = (patch: Partial<PayablesUrlState>) => {
+    navigate(withPayablesState(currentPath, {
+      dateFrom,
+      dateTo,
+      tab: activeTab,
+      linkedSearch,
+      unlinkedSearch,
+      ...patch,
+    }), { replace: true });
+  };
+  const changeDateFrom = (value: string) => {
+    setDateFrom(value);
+    updateUrl({ dateFrom: value });
+  };
+  const changeDateTo = (value: string) => {
+    setDateTo(value);
+    updateUrl({ dateTo: value });
+  };
+  const clearDateRange = () => {
+    setDateFrom("");
+    setDateTo("");
+    updateUrl({ dateFrom: "", dateTo: "" });
+  };
+  const changeLinkedSearch = (value: string) => {
+    setLinkedSearch(value);
+    updateUrl({ linkedSearch: value });
+  };
+  const changeUnlinkedSearch = (value: string) => {
+    setUnlinkedSearch(value);
+    updateUrl({ unlinkedSearch: value });
+  };
   const canViewBills = sectionVisible("vendor_bills") || sectionVisible("vendor_bills_view");
   const canViewFinancials = sectionCan("vendor_financials", "view");
   const authorized = canViewBills && canViewFinancials;
@@ -323,11 +397,17 @@ export default function VendorPayables() {
           consistencyError={ledgerSummary != null && !payablesTotalsMatch(ledgerSummary, ledgerProjectionRow)}
           dateFrom={dateFrom}
           dateTo={dateTo}
-          setDateFrom={setDateFrom}
-          setDateTo={setDateTo}
-          returnTo={withDateRange(vendorId != null
+          setDateFrom={changeDateFrom}
+          setDateTo={changeDateTo}
+          clearDateRange={clearDateRange}
+          returnTo={withPayablesState(vendorId != null
             ? `/reports/vendor-payables/vendor/${vendorId}`
-            : `/reports/vendor-payables/unlinked/${billId}`, dateFrom, dateTo)}
+            : `/reports/vendor-payables/unlinked/${billId}`, {
+              dateFrom, dateTo, tab: activeTab, linkedSearch, unlinkedSearch,
+            })}
+          activeTab={activeTab}
+          linkedSearch={linkedSearch}
+          unlinkedSearch={unlinkedSearch}
           onExport={() => exportLedger(ledgerLines, ledgerName)}
         />
       ) : (
@@ -335,29 +415,64 @@ export default function VendorPayables() {
           report={report}
           dateFrom={dateFrom}
           dateTo={dateTo}
-          setDateFrom={setDateFrom}
-          setDateTo={setDateTo}
+          setDateFrom={changeDateFrom}
+          setDateTo={changeDateTo}
+          clearDateRange={clearDateRange}
           activeTab={activeTab}
           setActiveTab={setActiveTab}
+          linkedSearch={linkedSearch}
+          unlinkedSearch={unlinkedSearch}
+          setLinkedSearch={changeLinkedSearch}
+          setUnlinkedSearch={changeUnlinkedSearch}
         />
       )}
     </PageFrame>
   </HubShell>;
 }
 
-function SummaryView({ report, dateFrom, dateTo, setDateFrom, setDateTo, activeTab, setActiveTab }: {
+function SummaryView({ report, dateFrom, dateTo, setDateFrom, setDateTo, clearDateRange, activeTab, setActiveTab,
+  linkedSearch, unlinkedSearch, setLinkedSearch, setUnlinkedSearch }: {
   report: PayablesReport;
   dateFrom: string;
   dateTo: string;
   setDateFrom: (value: string) => void;
   setDateTo: (value: string) => void;
+  clearDateRange: () => void;
   activeTab: "linked" | "unlinked";
   setActiveTab: (tab: "linked" | "unlinked") => void;
+  linkedSearch: string;
+  unlinkedSearch: string;
+  setLinkedSearch: (value: string) => void;
+  setUnlinkedSearch: (value: string) => void;
 }) {
-  const unlinkedTotals = summarizeUnlinked(report);
-  const hasCreditColumn = report.vendors.some((vendor) => vendor.credits > 0);
-  const linkedTabHref = withPayablesTab("/reports/vendor-payables", dateFrom, dateTo, "linked");
-  const unlinkedTabHref = withPayablesTab("/reports/vendor-payables", dateFrom, dateTo, "unlinked");
+  const linkedQuery = linkedSearch.trim().toLowerCase();
+  const visibleLinkedVendors = linkedQuery
+    ? report.vendors.filter(vendor => vendor.vendorName.toLowerCase().includes(linkedQuery))
+    : report.vendors;
+  const linkedTotals = linkedQuery ? summarizeVisibleVendors(visibleLinkedVendors) : report.totals;
+  const allUnlinkedTotals = summarizeUnlinked(report);
+  const unlinkedQuery = unlinkedSearch.trim().toLowerCase();
+  const visibleUnlinkedGroups = useMemo(() => {
+    if (!unlinkedQuery) return report.unlinkedGroups;
+    return report.unlinkedGroups.flatMap(group => {
+      const groupMatches = group.typedName.toLowerCase().includes(unlinkedQuery);
+      const matches = group.bills
+        .map((bill, index) => ({ bill, amount: group.amounts[index] }))
+        .filter(({ bill }) => groupMatches || String(bill.billNo || `Bill #${bill.id}`).toLowerCase().includes(unlinkedQuery));
+      return matches.length ? [{
+        ...group,
+        bills: matches.map(match => match.bill),
+        amounts: matches.map(match => match.amount),
+      }] : [];
+    });
+  }, [report.unlinkedGroups, unlinkedQuery]);
+  const unlinkedTotals = unlinkedQuery
+    ? summarizeBillReview(visibleUnlinkedGroups.flatMap(group => group.amounts))
+    : allUnlinkedTotals;
+  const hasCreditColumn = visibleLinkedVendors.some((vendor) => vendor.credits > 0);
+  const urlState: PayablesUrlState = { dateFrom, dateTo, tab: activeTab, linkedSearch, unlinkedSearch };
+  const linkedTabHref = withPayablesState("/reports/vendor-payables", { ...urlState, tab: "linked" });
+  const unlinkedTabHref = withPayablesState("/reports/vendor-payables", { ...urlState, tab: "unlinked" });
   return <div className="space-y-6">
     <div className="flex flex-col justify-between gap-4 border-b border-[#d4dfda] pb-5 sm:flex-row sm:items-end">
       <div>
@@ -387,31 +502,49 @@ function SummaryView({ report, dateFrom, dateTo, setDateFrom, setDateTo, activeT
 
     {activeTab === "linked" ? <>
     <div className="space-y-3">
-      <DateRangeControls dateFrom={dateFrom} dateTo={dateTo} setDateFrom={setDateFrom} setDateTo={setDateTo} />
+      <DateRangeControls dateFrom={dateFrom} dateTo={dateTo} setDateFrom={setDateFrom} setDateTo={setDateTo} clearDateRange={clearDateRange} />
+      <label className="grid gap-1 text-xs font-semibold text-[#627974]">
+        Search linked vendors
+        <input
+          type="search"
+          aria-label="Search linked vendors"
+          data-testid="search-linked-vendors"
+          value={linkedSearch}
+          onChange={event => setLinkedSearch(event.target.value)}
+          placeholder="Vendor name"
+          className="h-10 w-full rounded-md border border-[#cbd9d3] bg-white px-3 text-sm font-medium text-[#29413d] outline-none focus:border-[#527c70]"
+        />
+      </label>
+      <p role="status" className="text-xs text-[#687d76]">
+        {linkedQuery
+          ? `Showing ${visibleLinkedVendors.length} of ${report.vendors.length} vendors. Linked totals below match the displayed vendors.`
+          : `Showing all ${visibleLinkedVendors.length} linked vendors in this date range.`}
+      </p>
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-[#d5e0db] bg-[#d5e0db] xl:grid-cols-4">
-        <Metric label="Linked vendors" value={String(report.vendors.length)} detail={`${report.totals.count} bills`} />
-        <Metric label="Payable now" value={money(report.totals.payableNow)} detail="Approved bills" />
-        <Metric label="Coming up" value={money(report.totals.comingUp)} detail="Provisional bills" />
-        <Metric label="Total liability" value={money(report.totals.totalLiability)} detail="Excludes unlinked" dark />
+        <Metric label="Linked vendors" value={String(visibleLinkedVendors.length)} detail={`${linkedTotals.count} displayed bills`} />
+        <Metric label="Payable now" value={money(linkedTotals.payableNow)} detail={linkedQuery ? "Approved bills in displayed rows" : "Approved bills"} />
+        <Metric label="Coming up" value={money(linkedTotals.comingUp)} detail={linkedQuery ? "Provisional bills in displayed rows" : "Provisional bills"} />
+        <Metric label="Total liability" value={money(linkedTotals.totalLiability)} detail="Excludes unlinked" dark />
       </div>
     </div>
 
-    {report.totals.unknownPayments > 0 && <div className="flex gap-3 rounded-lg border border-[#e6d8b5] bg-[#fffaf0] px-4 py-3 text-xs leading-5 text-[#725d30]">
+    {linkedTotals.unknownPayments > 0 && <div className="flex gap-3 rounded-lg border border-[#e6d8b5] bg-[#fffaf0] px-4 py-3 text-xs leading-5 text-[#725d30]">
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-      <p><strong>{report.totals.unknownPayments} payment record{report.totals.unknownPayments === 1 ? "" : "s"} unknown.</strong> Paid figures and affected balances are estimates where payment information has not been recorded.</p>
+      <p><strong>{linkedTotals.unknownPayments} payment record{linkedTotals.unknownPayments === 1 ? "" : "s"} unknown in the displayed vendor rows.</strong> Paid figures and affected balances are estimates where payment information has not been recorded.</p>
     </div>}
 
-    {unlinkedTotals.count > 0 && <div className="rounded-lg border border-[#e3d7bd] bg-[#fffaf0] px-4 py-3 text-xs leading-5 text-[#766443]">
-      <span className="font-semibold">{unlinkedTotals.count} unlinked bill{unlinkedTotals.count === 1 ? "" : "s"} · {unlinkedTotals.unknownPayments > 0 ? "estimated " : ""}{money(unlinkedTotals.net - unlinkedTotals.paid)} balance</span>
+    {allUnlinkedTotals.count > 0 && <div className="rounded-lg border border-[#e3d7bd] bg-[#fffaf0] px-4 py-3 text-xs leading-5 text-[#766443]">
+      <span className="font-semibold">{allUnlinkedTotals.count} unlinked bill{allUnlinkedTotals.count === 1 ? "" : "s"} · {allUnlinkedTotals.unknownPayments > 0 ? "estimated " : ""}{money(allUnlinkedTotals.net - allUnlinkedTotals.paid)} balance</span>
       <span> — not included in the totals above. </span>
       <Link href={unlinkedTabHref} onClick={() => setActiveTab("unlinked")} className="font-semibold text-[#6e6043] underline underline-offset-2 hover:text-[#483d2a]">Review unlinked bills</Link>
-      {unlinkedTotals.unknownPayments > 0 && <span className="ml-1">Estimate · {unlinkedTotals.unknownPayments} payment unknown</span>}
+      <span className="ml-1">Unfiltered by linked-vendor search.</span>
+      {allUnlinkedTotals.unknownPayments > 0 && <span className="ml-1">Estimate · {allUnlinkedTotals.unknownPayments} payment unknown</span>}
     </div>}
 
     <section className="overflow-hidden rounded-xl border border-[#d2ded8] bg-[#fbfcfb] shadow-[0_8px_24px_rgba(29,58,50,0.04)]">
       <div className="flex items-center justify-between gap-3 border-b border-[#dbe4df] px-5 py-4">
         <div><SectionEyebrow>Confirmed identities</SectionEyebrow><h2 className="mt-1 text-base font-bold text-[#213a36]">Linked-vendor summary</h2></div>
-        <span className="rounded-md bg-[#edf3ef] px-2.5 py-1 text-xs font-semibold text-[#506b63]">{report.vendors.length} vendors</span>
+        <span className="rounded-md bg-[#edf3ef] px-2.5 py-1 text-xs font-semibold text-[#506b63]">{visibleLinkedVendors.length} vendors</span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1120px] table-fixed border-collapse">
@@ -430,10 +563,13 @@ function SummaryView({ report, dateFrom, dateTo, setDateFrom, setDateTo, activeT
             <th className="sticky left-0 z-20 bg-[#f0f5f2] px-3 py-3">Vendor</th><th className="px-2 py-3 text-right">Bills</th><th className="px-2 py-3 text-right">Billed</th><th className="px-2 py-3 text-right">Paid</th><th className="px-2 py-3 text-right">Payable now</th><th className="px-2 py-3 text-right">Coming up</th><th className="bg-[#e4eee8] px-2 py-3 text-right text-[#294b40]">Total liability</th>{hasCreditColumn && <th className="px-2 py-3 text-right">Credit</th>}<th className="whitespace-nowrap px-3 py-3">Oldest unpaid</th>
           </tr></thead>
           <tbody className="divide-y divide-[#e7ede9]">
-            {report.vendors.length === 0
-              ? <tr><td colSpan={hasCreditColumn ? 9 : 8}><EmptyNotice title="No linked bills in this date range" detail="Try widening the bill-period dates. Unlinked bills are in their own tab." /></td></tr>
-              : report.vendors.map((vendor) => <tr key={vendor.vendorId} className="group transition-colors hover:bg-[#f5f9f6]">
-                 <td className="sticky left-0 z-10 min-w-0 bg-[#fbfcfb] px-3 py-3.5 group-hover:bg-[#f5f9f6]"><Link title={vendor.vendorName} href={withDateRange(`/reports/vendor-payables/vendor/${vendor.vendorId}`, dateFrom, dateTo)} className="block truncate font-semibold text-[#315d53] decoration-[#9db4a9] underline-offset-4 hover:underline">{vendor.vendorName}</Link>
+            {visibleLinkedVendors.length === 0
+              ? <tr><td colSpan={hasCreditColumn ? 9 : 8}><EmptyNotice
+                title={linkedQuery ? "No linked vendors match this search" : "No linked bills in this date range"}
+                detail={linkedQuery ? "Try another vendor name. Linked totals above reflect the empty result." : "Try widening the bill-period dates. Unlinked bills are in their own tab."}
+              /></td></tr>
+              : visibleLinkedVendors.map((vendor) => <tr key={vendor.vendorId} className="group transition-colors hover:bg-[#f5f9f6]">
+                 <td className="sticky left-0 z-10 min-w-0 bg-[#fbfcfb] px-3 py-3.5 group-hover:bg-[#f5f9f6]"><Link title={vendor.vendorName} href={withPayablesState(`/reports/vendor-payables/vendor/${vendor.vendorId}`, urlState)} className="block truncate font-semibold text-[#315d53] decoration-[#9db4a9] underline-offset-4 hover:underline">{vendor.vendorName}</Link>
                   {vendor.unknownPayments > 0 && <div className="mt-1 text-[10px] font-semibold text-[#967442]">Estimate · {vendor.unknownPayments} payment unknown</div>}
                 </td>
                 <td className="px-2 py-3 text-right font-mono text-xs tabular-nums text-[#526761]">{vendor.count}</td>
@@ -443,21 +579,38 @@ function SummaryView({ report, dateFrom, dateTo, setDateFrom, setDateTo, activeT
               </tr>)}
           </tbody>
           <tfoot><tr className="border-t-2 border-[#bdcec5] bg-[#eef4f0] text-xs font-bold text-[#29443d]">
-            <td className="sticky left-0 z-10 bg-[#eef4f0] px-3 py-3.5">Linked totals</td><td className="px-2 py-3 text-right font-mono tabular-nums">{report.totals.count}</td><AmountCell emphasized>{money(report.totals.billed)}</AmountCell><AmountCell emphasized>{money(report.totals.paid)}</AmountCell><AmountCell emphasized>{money(report.totals.payableNow)}</AmountCell><AmountCell emphasized>{money(report.totals.comingUp)}</AmountCell><AmountCell emphasized className="bg-[#dfece5]">{money(report.totals.totalLiability)}</AmountCell>
-             {hasCreditColumn && <AmountCell emphasized>{money(report.totals.credits)}</AmountCell>}<td className="whitespace-nowrap px-3 py-3">{dateLabel(report.totals.oldestUnpaid)}</td>
+            <td className="sticky left-0 z-10 bg-[#eef4f0] px-3 py-3.5">{linkedQuery ? "Search totals" : "Linked totals"}</td><td className="px-2 py-3 text-right font-mono tabular-nums">{linkedTotals.count}</td><AmountCell emphasized>{money(linkedTotals.billed)}</AmountCell><AmountCell emphasized>{money(linkedTotals.paid)}</AmountCell><AmountCell emphasized>{money(linkedTotals.payableNow)}</AmountCell><AmountCell emphasized>{money(linkedTotals.comingUp)}</AmountCell><AmountCell emphasized className="bg-[#dfece5]">{money(linkedTotals.totalLiability)}</AmountCell>
+              {hasCreditColumn && <AmountCell emphasized>{money(linkedTotals.credits)}</AmountCell>}<td className="whitespace-nowrap px-3 py-3">{dateLabel(linkedTotals.oldestUnpaid)}</td>
           </tr></tfoot>
         </table>
       </div>
-      <div className="border-t border-[#e1e8e4] bg-[#f8faf8] px-5 py-3 text-[11px] leading-5 text-[#758680]">Payable now and Coming up are shown separately. Total liability is their combined exposure. Unlinked bills are never included in these totals.</div>
+       <div className="border-t border-[#e1e8e4] bg-[#f8faf8] px-5 py-3 text-[11px] leading-5 text-[#758680]">Payable now and Coming up are shown separately. Total liability is their combined exposure. Unlinked bills are never included in these totals. Search totals match the rows currently displayed.</div>
     </section>
     </> : <>
+    <label className="grid gap-1 text-xs font-semibold text-[#627974]">
+      Search unlinked bills
+      <input
+        type="search"
+        aria-label="Search unlinked bills"
+        data-testid="search-unlinked-bills"
+        value={unlinkedSearch}
+        onChange={event => setUnlinkedSearch(event.target.value)}
+        placeholder="Typed vendor name or bill number"
+        className="h-10 w-full rounded-md border border-[#cbd9d3] bg-white px-3 text-sm font-medium text-[#29413d] outline-none focus:border-[#527c70]"
+      />
+    </label>
+    <p role="status" className="text-xs text-[#687d76]">
+      {unlinkedQuery
+        ? `Showing ${unlinkedTotals.count} of ${allUnlinkedTotals.count} bills across ${visibleUnlinkedGroups.length} of ${report.unlinkedGroups.length} typed names. Totals below match displayed bills.`
+        : `Showing all ${unlinkedTotals.count} unlinked bills across ${visibleUnlinkedGroups.length} typed names.`}
+    </p>
     {unlinkedTotals.unknownPayments > 0 && <div className="flex gap-3 rounded-lg border border-[#e6d8b5] bg-[#fffaf0] px-4 py-3 text-xs leading-5 text-[#725d30]">
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
       <p><strong>{unlinkedTotals.unknownPayments} payment record{unlinkedTotals.unknownPayments === 1 ? "" : "s"} unknown.</strong> Paid figures and the estimated balance use only recorded payment amounts.</p>
     </div>}
     <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-[#d5e0db] bg-[#d5e0db] xl:grid-cols-4">
-      <Metric label="Unlinked bills" value={String(unlinkedTotals.count)} detail={`${report.unlinkedGroups.length} typed names`} />
-      <Metric label="Billed" value={money(unlinkedTotals.net)} detail="All unlinked bills" />
+      <Metric label="Unlinked bills" value={String(unlinkedTotals.count)} detail={`${visibleUnlinkedGroups.length} displayed typed names`} />
+      <Metric label="Billed" value={money(unlinkedTotals.net)} detail={unlinkedQuery ? "Matching bills only" : "All unlinked bills"} />
       <Metric label="Paid" value={money(unlinkedTotals.paid)} detail={unlinkedTotals.unknownPayments ? `Estimate · ${unlinkedTotals.unknownPayments} payment unknown` : "Recorded payments"} />
       <Metric label="Balance" value={money(unlinkedTotals.net - unlinkedTotals.paid)} detail={unlinkedTotals.unknownPayments ? "Estimated from recorded payments" : "Billed less paid"} dark />
     </div>
@@ -466,8 +619,8 @@ function SummaryView({ report, dateFrom, dateTo, setDateFrom, setDateTo, activeT
         <div><SectionEyebrow>Identity not confirmed</SectionEyebrow><h2 className="mt-1 text-base font-bold text-[#453e30]">Unlinked bills</h2><p className="mt-1 text-xs text-[#7e725c]">Excluded from linked-vendor totals. To link: Masters → Vendors → Link Vendors → Pending Links.</p></div>
         <span className="rounded-md bg-[#f4efdf] px-2.5 py-1 text-xs font-semibold text-[#79694b]">{unlinkedTotals.count} bills</span>
       </div>
-      {report.unlinkedGroups.length === 0 ? <div className="px-5 py-7 text-sm text-[#7c8176]">No unlinked bills for this bill period.</div> : <div className="divide-y divide-[#ebe5d7]">
-        {report.unlinkedGroups.map((group, index) => <div key={`${group.typedName}-${index}`} className="px-5 py-4">
+      {visibleUnlinkedGroups.length === 0 ? <div className="px-5 py-7 text-sm text-[#7c8176]">{unlinkedQuery ? "No unlinked bills match this search." : "No unlinked bills for this bill period."}</div> : <div className="divide-y divide-[#ebe5d7]">
+        {visibleUnlinkedGroups.map((group, index) => <div key={`${group.typedName}-${index}`} className="px-5 py-4">
           <div className="mb-3 flex flex-wrap items-center gap-2"><h3 className="font-semibold text-[#403c32]">{group.typedName || "(blank vendor name)"}</h3><span className="rounded border border-[#e2d4b4] bg-[#fbf4e5] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#846c3e]">Unlinked</span><span className="text-xs text-[#8c8069]">{group.bills.length} bill{group.bills.length === 1 ? "" : "s"}</span></div>
           <div className="overflow-x-auto">
              <table className="w-full min-w-[800px] text-left text-xs">
@@ -475,7 +628,7 @@ function SummaryView({ report, dateFrom, dateTo, setDateFrom, setDateTo, activeT
               <tbody className="divide-y divide-[#eee9de]">{group.bills.map((bill, billIndex) => {
                 const amounts = group.amounts[billIndex];
                 return <tr key={bill.id}>
-                   <td className="whitespace-nowrap py-2.5 text-[#665e4e]">{dateLabel(bill.billDate)}</td><td className="whitespace-nowrap py-2.5 font-semibold text-[#4b5149]">{bill.billNo || `Bill #${bill.id}`}</td><td className="py-2.5"><StatusTag status={bill.status} /></td><td className="whitespace-nowrap py-2.5 text-right font-mono tabular-nums">{money(amounts.net)}</td><td className="whitespace-nowrap py-2.5 text-right font-mono tabular-nums">{amounts.paid == null ? "Unknown" : money(amounts.paid)}</td><td className="whitespace-nowrap py-2.5 text-right font-mono tabular-nums">{amounts.balance == null ? "Estimate" : money(amounts.balance)}</td><td className="whitespace-nowrap py-2.5 text-right"><Link href={withDateRange(`/reports/vendor-payables/unlinked/${bill.id}`, dateFrom, dateTo)} className="font-semibold text-[#6e6043] hover:underline">Open ledger</Link></td>
+                    <td className="whitespace-nowrap py-2.5 text-[#665e4e]">{dateLabel(bill.billDate)}</td><td className="whitespace-nowrap py-2.5 font-semibold text-[#4b5149]">{bill.billNo || `Bill #${bill.id}`}</td><td className="py-2.5"><StatusTag status={bill.status} /></td><td className="whitespace-nowrap py-2.5 text-right font-mono tabular-nums">{money(amounts.net)}</td><td className="whitespace-nowrap py-2.5 text-right font-mono tabular-nums">{amounts.paid == null ? "Unknown" : money(amounts.paid)}</td><td className="whitespace-nowrap py-2.5 text-right font-mono tabular-nums">{amounts.balance == null ? "Estimate" : money(amounts.balance)}</td><td className="whitespace-nowrap py-2.5 text-right"><Link href={withPayablesState(`/reports/vendor-payables/unlinked/${bill.id}`, { ...urlState, tab: "unlinked" })} className="font-semibold text-[#6e6043] hover:underline">Open ledger</Link></td>
                 </tr>;
               })}</tbody>
             </table>
@@ -495,7 +648,8 @@ function Metric({ label, value, detail, dark = false }: { label: string; value: 
   </div>;
 }
 
-function LedgerView({ current, lines, vendorId, vendorName, summary, consistencyError, dateFrom, dateTo, setDateFrom, setDateTo, returnTo, onExport }: {
+function LedgerView({ current, lines, vendorId, vendorName, summary, consistencyError, dateFrom, dateTo, setDateFrom, setDateTo,
+  clearDateRange, returnTo, activeTab, linkedSearch, unlinkedSearch, onExport }: {
   current?: VendorBill;
   lines: ReturnType<typeof projectVendorLedger>;
   vendorId: number | null;
@@ -506,21 +660,27 @@ function LedgerView({ current, lines, vendorId, vendorName, summary, consistency
   dateTo: string;
   setDateFrom: (value: string) => void;
   setDateTo: (value: string) => void;
+  clearDateRange: () => void;
   returnTo: string;
+  activeTab: "linked" | "unlinked";
+  linkedSearch: string;
+  unlinkedSearch: string;
   onExport: () => void;
 }) {
   const isUnlinked = vendorId == null;
+  const urlState: PayablesUrlState = { dateFrom, dateTo, tab: activeTab, linkedSearch, unlinkedSearch };
+  const summaryHref = withPayablesState("/reports/vendor-payables", { ...urlState, tab: isUnlinked ? "unlinked" : "linked" });
   const liveLines = lines.filter(line => line.bill.isCancelled !== true);
   const ledgerNet = liveLines.reduce((sum, line) => sum + line.amounts.net, 0);
   const ledgerPaid = liveLines.reduce((sum, line) => sum + (line.amounts.paid ?? 0), 0);
   const ledgerBalance = liveLines.reduce((sum, line) => sum + (line.amounts.balance ?? 0), 0);
   const paymentUnknown = liveLines.filter((line) => line.amounts.paid == null).length;
-  if (!current) return <div className="rounded-xl border border-[#d4dfda] bg-[#fbfcfb]"><EmptyNotice title={isUnlinked ? "Unlinked bill not found" : "Vendor ledger not found"} detail="This record is not present in the authorized financial review. Return to the payables summary to choose another record." /><div className="border-t border-[#e1e8e4] p-4 text-center"><Link href={withPayablesTab("/reports/vendor-payables", dateFrom, dateTo, isUnlinked ? "unlinked" : "linked")} className="inline-flex items-center gap-2 text-sm font-semibold text-[#315d53] hover:underline"><ArrowLeft className="h-4 w-4" />Back to payables</Link></div></div>;
+  if (!current) return <div className="rounded-xl border border-[#d4dfda] bg-[#fbfcfb]"><EmptyNotice title={isUnlinked ? "Unlinked bill not found" : "Vendor ledger not found"} detail="This record is not present in the authorized financial review. Return to the payables summary to choose another record." /><div className="border-t border-[#e1e8e4] p-4 text-center"><Link href={summaryHref} className="inline-flex items-center gap-2 text-sm font-semibold text-[#315d53] hover:underline"><ArrowLeft className="h-4 w-4" />Back to payables</Link></div></div>;
 
   return <div className="space-y-6">
     <div className="flex flex-col justify-between gap-4 border-b border-[#d4dfda] pb-5 sm:flex-row sm:items-end">
       <div>
-        <Link href={withPayablesTab("/reports/vendor-payables", dateFrom, dateTo, isUnlinked ? "unlinked" : "linked")} className="mb-4 inline-flex items-center gap-1.5 text-xs font-semibold text-[#67807a] hover:text-[#29443d]"><ArrowLeft className="h-3.5 w-3.5" />All vendor payables</Link>
+        <Link href={summaryHref} className="mb-4 inline-flex items-center gap-1.5 text-xs font-semibold text-[#67807a] hover:text-[#29443d]"><ArrowLeft className="h-3.5 w-3.5" />All vendor payables</Link>
         <SectionEyebrow>{isUnlinked ? "Unlinked vendor ledger" : "Linked vendor ledger"}</SectionEyebrow>
         <h1 className="mt-1 text-[26px] font-bold tracking-[-0.035em] text-[#18312e] sm:text-[32px]">{vendorName}</h1>
         <p className="mt-1 text-sm text-[#677c77]">{isUnlinked ? "Exact typed bill name · separate from linked vendor identities" : "Complete bill-date-ordered record · all bill statuses"}</p>
@@ -528,7 +688,7 @@ function LedgerView({ current, lines, vendorId, vendorName, summary, consistency
       <DownloadButton onClick={onExport} label="Export ledger" />
     </div>
 
-    <DateRangeControls dateFrom={dateFrom} dateTo={dateTo} setDateFrom={setDateFrom} setDateTo={setDateTo} />
+    <DateRangeControls dateFrom={dateFrom} dateTo={dateTo} setDateFrom={setDateFrom} setDateTo={setDateTo} clearDateRange={clearDateRange} />
 
     {consistencyError && <div role="alert" className="rounded-lg border border-[#b75c4d] bg-[#fff4f1] px-4 py-3 text-xs leading-5 text-[#783b32]">
       Ledger totals do not match the payables summary for this date range. Both sets of figures are shown without adjustment.

@@ -62,6 +62,8 @@ let deferredRateCards: Promise<Response> | null = null;
 let hireActivityRowsForTest: any[] = [];
 let deferredHireActivities: Promise<Response> | null = null;
 let billDetailOverrideForTest: any = null;
+let billListOverrideForTest: any[] | null = null;
+let vendorNamesForTest: string[] = [];
 
 beforeEach(() => {
   queryClient.clear();
@@ -74,6 +76,8 @@ beforeEach(() => {
   hireActivityRowsForTest = [];
   deferredHireActivities = null;
   billDetailOverrideForTest = null;
+  billListOverrideForTest = null;
+  vendorNamesForTest = [];
   authTestState.isOwner = false;
   authTestState.isAdmin = true;
   Object.defineProperty(window, "matchMedia", { configurable: true, value: vi.fn().mockReturnValue({ matches: false, addListener: vi.fn(), removeListener: vi.fn() }) });
@@ -81,7 +85,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.includes("/api/vendor-bills/financial-review")) {
-      return new Response(JSON.stringify([historicalBill, itemizedEquipmentBill]));
+      return new Response(JSON.stringify(billListOverrideForTest || [historicalBill, itemizedEquipmentBill]));
     }
     if (url.endsWith("/bill-date") && init?.method === "PATCH") {
       const body = init.body ? JSON.parse(String(init.body)) : {};
@@ -94,10 +98,11 @@ beforeEach(() => {
         vendorBillWrites.push({ method: init.method, body: init.body ? JSON.parse(String(init.body)) : null });
         return new Response(JSON.stringify(historicalBill), { status: 200 });
       }
-      return new Response(JSON.stringify([historicalBill, itemizedEquipmentBill]));
+      return new Response(JSON.stringify(billListOverrideForTest || [historicalBill, itemizedEquipmentBill]));
     }
     if (url.includes("/api/vendor-bills/summary")) return new Response(JSON.stringify({ total: 0, totalAmount: 0, draft: 0, draftAmount: 0, verified: 0, verifiedAmount: 0, approved: 0, approvedAmount: 0, paid: 0, paidAmount: 0, gstByCategory: {}, totalGst: 0 }));
-    if (url.includes("/api/vendor-bills/vendor-names") || url.includes("/api/vendor-aliases")) return new Response(JSON.stringify([]));
+    if (url.includes("/api/vendor-bills/vendor-names")) return new Response(JSON.stringify(vendorNamesForTest));
+    if (url.includes("/api/vendor-aliases")) return new Response(JSON.stringify([]));
     if (url.includes("/api/vendor-bills/discover-vendors")) return new Response(JSON.stringify([discoveredVendor]));
     if (url.includes("/api/vendor-bills/equipment-hire-discovery")) return new Response(JSON.stringify([{ vendorName: "HISTORICAL HIRE", equipmentCount: 1, equipment: [historicalEquipment] }]));
     if (url.includes("/api/vendor-bills/81")) {
@@ -746,5 +751,71 @@ describe("VB-11 grouped ordinary activity pull", () => {
 
     releaseB(new Response(JSON.stringify([])));
     await waitFor(() => expect(screen.queryAllByTestId(/text-item-desc-/)).toHaveLength(1));
+  });
+});
+
+describe("VB-FIND-01 bill cards and vendor picker", () => {
+  it("shows the bill date and period separately and labels missing dates without a substitute", async () => {
+    billListOverrideForTest = [
+      { ...historicalBill, id: 91, billNo: "HLC/VB/DATE-01" },
+      { ...historicalBill, id: 92, billNo: "HLC/VB/DATE-02", periodFrom: null, periodTo: null },
+      { ...historicalBill, id: 93, billNo: "HLC/VB/DATE-03", billDate: null, periodFrom: null, periodTo: null },
+    ];
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+
+    const fullMeta = await screen.findByTestId("text-bill-meta-91");
+    expect(fullMeta.textContent).toContain("HLC/VB/DATE-01");
+    expect(fullMeta.textContent).toContain("Bill date 30-SEP-2026");
+    expect(fullMeta.textContent).toContain("Period 01-SEP-2026 to 30-SEP-2026");
+
+    const noPeriodMeta = screen.getByTestId("text-bill-meta-92");
+    expect(noPeriodMeta.textContent).toContain("Bill date 30-SEP-2026");
+    expect(noPeriodMeta.textContent).not.toContain("Period");
+
+    const noDateMeta = screen.getByTestId("text-bill-meta-93");
+    expect(noDateMeta.textContent).toContain("Bill date not recorded");
+    expect(noDateMeta.textContent).not.toContain("Period");
+  });
+
+  it("reopens suggestions, supports Escape and keyboard selection, prevents Enter submission, and accepts free text on blur", async () => {
+    vendorNamesForTest = ["OLD SUPPLIER", "NEW SUPPLIER"];
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("button-new-bill"));
+
+    const input = await screen.findByTestId("input-vendor-name") as HTMLInputElement;
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "OLD" } });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(fireEvent.keyDown(input, { key: "Enter" })).toBe(false);
+    await waitFor(() => expect(input.value).toBe("OLD SUPPLIER"));
+    expect(vendorBillWrites).toHaveLength(0);
+
+    fireEvent.focus(input);
+    expect(await screen.findByTestId("vendor-option-OLD SUPPLIER")).toBeTruthy();
+    expect(screen.getByTestId("vendor-option-NEW SUPPLIER")).toBeTruthy();
+    fireEvent.change(input, { target: { value: "NEW SUPPLIER" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(input.value).toBe("OLD SUPPLIER");
+    expect(screen.queryByTestId("vendor-dropdown")).toBeNull();
+
+    fireEvent.focus(input);
+    await screen.findByTestId("vendor-dropdown");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(fireEvent.keyDown(input, { key: "Enter" })).toBe(false);
+    await waitFor(() => expect(input.value).toBe("NEW SUPPLIER"));
+    expect(vendorBillWrites).toHaveLength(0);
+
+    fireEvent.change(input, { target: { value: "UNLISTED SUPPLIER" } });
+    expect(screen.getByText(/Current selection: NEW SUPPLIER/)).toBeTruthy();
+    fireEvent.blur(input);
+    await waitFor(() => expect(input.value).toBe("UNLISTED SUPPLIER"));
+
+    fireEvent.change(screen.getByTestId("input-item-desc-0"), { target: { value: "MANUAL BILL ITEM" } });
+    fireEvent.change(screen.getByTestId("input-item-qty-0"), { target: { value: "2" } });
+    fireEvent.change(screen.getByTestId("input-item-rate-0"), { target: { value: "50" } });
+    fireEvent.click(screen.getByTestId("button-save-bill"));
+    await waitFor(() => expect(vendorBillWrites.some(write => write.method === "POST")).toBe(true));
+    expect(vendorBillWrites.find(write => write.method === "POST")?.body.vendorName).toBe("UNLISTED SUPPLIER");
   });
 });

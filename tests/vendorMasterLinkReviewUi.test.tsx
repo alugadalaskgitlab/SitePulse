@@ -9,7 +9,11 @@ const holder = vi.hoisted(() => ({ admin: true, request: vi.fn() }));
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({ isAdmin: holder.admin, isOwner: false }) }));
 vi.mock("@/lib/queryClient", () => ({ apiRequest: holder.request }));
 
-const vendors = [{ id: 12, name: "GANGARAM NARSIMHULU", isActive: true }];
+const vendors = [
+  { id: 12, name: "GANGARAM NARSIMHULU", businessName: "Ganga Civil Supplies", gstNumber: "29GANGA0012", contactPhone: "9876543210", isActive: true },
+  { id: 15, name: "ALPHA BUILDERS", businessName: "Alpha Aggregates", gstNumber: "29ALPHA0015", contactPhone: "9876543215", isActive: true },
+  { id: 20, name: "BETA TRANSPORT", businessName: "Beta Haulage", gstNumber: "29BETA0020", contactPhone: "9876543220", isActive: true },
+];
 const firstVehicle = {
   role: "equipment", name: "NARSIMULU", ids: [41], count: 1, registration: "TS15UE4470",
   linkedVendorId: 12, linkedVendorName: "GANGARAM NARSIMHULU", version: 91,
@@ -39,6 +43,34 @@ beforeEach(() => {
 afterEach(() => { cleanup(); client.clear(); });
 
 describe("Vendor Master persisted link views", () => {
+  it("searches master records by name, business, GST, and phone while sorting and counting results", async () => {
+    render(<QueryClientProvider client={client}><VendorMaster /></QueryClientProvider>);
+    const alpha = await screen.findByText("ALPHA BUILDERS");
+    const beta = screen.getByText("BETA TRANSPORT");
+    const gangaram = screen.getByText("GANGARAM NARSIMHULU");
+    expect(alpha.compareDocumentPosition(beta) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(beta.compareDocumentPosition(gangaram) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText("Showing 3 vendors")).toBeInTheDocument();
+
+    const search = screen.getByLabelText("Search vendors");
+    fireEvent.change(search, { target: { value: "haulage" } });
+    expect(screen.getByText("BETA TRANSPORT")).toBeInTheDocument();
+    expect(screen.queryByText("ALPHA BUILDERS")).not.toBeInTheDocument();
+    expect(screen.getByText("Showing 1 of 3 vendors")).toBeInTheDocument();
+
+    fireEvent.change(search, { target: { value: "29ALPHA0015" } });
+    expect(screen.getByText("ALPHA BUILDERS")).toBeInTheDocument();
+    expect(screen.queryByText("BETA TRANSPORT")).not.toBeInTheDocument();
+    fireEvent.change(search, { target: { value: "beta transport" } });
+    expect(screen.getByText("BETA TRANSPORT")).toBeInTheDocument();
+    expect(screen.queryByText("ALPHA BUILDERS")).not.toBeInTheDocument();
+    fireEvent.change(search, { target: { value: "9876543210" } });
+    expect(screen.getByText("GANGARAM NARSIMHULU")).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: "missing vendor" } });
+    expect(screen.getByText("Showing 0 of 3 vendors")).toBeInTheDocument();
+    expect(screen.getByText("No vendors match “missing vendor”.")).toBeInTheDocument();
+  });
+
   it("defaults to Pending Links and moves a successful confirmation out of pending after refreshing", async () => {
     holder.request.mockImplementation(async () => { pending = []; return { json: async () => ({}) }; });
     open();
