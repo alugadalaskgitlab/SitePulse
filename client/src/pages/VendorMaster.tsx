@@ -51,6 +51,7 @@ export default function VendorMaster() {
   const [tab, setTab] = useState<"master" | "review">("master");
   const [reviewStatus, setReviewStatus] = useState<"pending" | "confirmed">("pending");
   const [reviewSearch, setReviewSearch] = useState("");
+  const [masterSearch, setMasterSearch] = useState("");
   const [editing, setEditing] = useState<Partial<Vendor> | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [chosen, setChosen] = useState<Record<string, string>>({});
@@ -72,6 +73,16 @@ export default function VendorMaster() {
     setMessage(`Confirmed ${p.count} ${roleLabels[p.role]} link(s) for ${p.name}. Free-text names remain unchanged.`);
   });
   const available = vendors.data || [];
+  const masterQuery = masterSearch.trim().toLowerCase();
+  const masterVendors = [...available].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.id - b.id,
+  );
+  const filteredMasterVendors = masterQuery
+    ? masterVendors.filter(vendor =>
+      [vendor.name, vendor.businessName, vendor.gstNumber, vendor.contactPhone]
+        .some(value => String(value ?? "").toLowerCase().includes(masterQuery)),
+    )
+    : masterVendors;
   const proposals = (review.data || []).filter(p => [p.name, p.registration, p.linkedVendorName].filter(Boolean).join(" ").toUpperCase().includes(reviewSearch.trim().toUpperCase()));
   return <main className="max-w-6xl mx-auto p-5 space-y-5">
     <Link href="/masters/hub" className="text-sm text-blue-700 hover:underline">← Master Data</Link>
@@ -86,11 +97,26 @@ export default function VendorMaster() {
         setMessage("Vendor saved.");
       })} />}
       {vendors.isError && <p role="alert">Unable to load vendors: {String(vendors.error)}</p>}
-      <div className="grid md:grid-cols-2 gap-3">{available.map(v => <div key={v.id} className="rounded-lg border bg-white p-4">
+      <label className="block text-sm">Search vendors
+        <input
+          className="mt-1 w-full rounded-md border bg-background p-2"
+          placeholder="Vendor name, business name, GST or phone"
+          value={masterSearch}
+          onChange={event => setMasterSearch(event.target.value)}
+        />
+      </label>
+      {!vendors.isLoading && !vendors.isError && <p role="status" className="text-sm text-slate-600">
+        {masterQuery
+          ? `Showing ${filteredMasterVendors.length} of ${available.length} vendors`
+          : `Showing ${available.length} vendors`}
+      </p>}
+      {masterQuery && filteredMasterVendors.length === 0
+        ? <p role="status" className="rounded-lg border bg-muted/20 p-6 text-sm">No vendors match “{masterSearch.trim()}”.</p>
+        : <div className="grid md:grid-cols-2 gap-3">{filteredMasterVendors.map(v => <div key={v.id} className="rounded-lg border bg-white p-4">
         <div className="flex justify-between gap-2"><button className="font-semibold text-blue-700 text-left" onClick={() => setDetailId(v.id)}>{v.name}</button><span className="text-xs">{v.isActive ? "Active" : "Inactive"}</span></div>
         <p className="text-sm text-slate-600">{[v.businessName, v.gstNumber && `GST ${v.gstNumber}`, v.contactPhone].filter(Boolean).join(" · ")}</p>
         {isAdmin && <button className="text-sm underline mt-2" onClick={() => { setEditing(v); setDetailId(v.id); }}>Edit</button>}
-      </div>)}</div>
+      </div>)}</div>}
       {detailId && <section className="rounded-xl border bg-white p-5 space-y-3">
         <div className="flex justify-between"><h2 className="text-lg font-semibold">{activity.data?.vendor.name || "Vendor activity"}</h2><button className="underline text-sm" onClick={() => setDetailId(null)}>Close</button></div>
         {activity.isError && <p role="alert">Unable to load activity: {String(activity.error)}</p>}

@@ -790,14 +790,43 @@ export default function VendorBills() {
   const [showVendorDiscovery, setShowVendorDiscovery] = useState(false);
 
   const [vendorSearch, setVendorSearch] = useState("");
+  const [vendorFilterSearch, setVendorFilterSearch] = useState("");
+  const [vendorEditing, setVendorEditing] = useState(false);
   const [showVendorDropdown, setShowVendorDropdown] = useState(false);
+  const [vendorActiveIndex, setVendorActiveIndex] = useState(-1);
   const vendorInputRef = useRef<HTMLInputElement>(null);
+  const vendorDropdownRef = useRef<HTMLDivElement>(null);
+  const vendorInputDirtyRef = useRef(false);
 
   const filteredVendorNames = useMemo(() => {
-    if (!vendorSearch) return vendorNames;
-    return vendorNames.filter(n => n.includes(vendorSearch.toUpperCase()) ||
-      (isHireVendorDisplay && vendorBillingIdentityLabel(n, billingIdentities.data).toUpperCase().includes(vendorSearch.toUpperCase())));
-  }, [vendorNames, vendorSearch, isHireVendorDisplay, billingIdentities.data]);
+    if (!vendorFilterSearch) return vendorNames;
+    return vendorNames.filter(n => n.includes(vendorFilterSearch.toUpperCase()) ||
+      (isHireVendorDisplay && vendorBillingIdentityLabel(n, billingIdentities.data).toUpperCase().includes(vendorFilterSearch.toUpperCase())));
+  }, [vendorNames, vendorFilterSearch, isHireVendorDisplay, billingIdentities.data]);
+
+  useEffect(() => {
+    if (!showVendorDropdown || vendorActiveIndex < 0) return;
+    vendorDropdownRef.current
+      ?.querySelector<HTMLElement>(`[data-index="${vendorActiveIndex}"]`)
+      ?.scrollIntoView?.({ block: "nearest" });
+  }, [showVendorDropdown, vendorActiveIndex]);
+
+  const selectVendorOption = (name: string) => {
+    const selectedVendor = name.trim().toUpperCase();
+    if (selectedVendor !== vendorName) {
+      setHireGroups([]);
+      monthlyHireSeedRef.current = "";
+      setMonthlyHireSeedKey("");
+    }
+    updateActivePullContext(billType, selectedVendor, periodFrom, periodTo);
+    setVendorName(selectedVendor);
+    setVendorSearch(selectedVendor);
+    setVendorFilterSearch(selectedVendor);
+    setVendorEditing(false);
+    vendorInputDirtyRef.current = false;
+    setShowVendorDropdown(false);
+    setVendorActiveIndex(-1);
+  };
 
   interface DiscoveredVendor {
     vendorName: string;
@@ -1127,6 +1156,10 @@ export default function VendorBills() {
     setEditingBillOriginalNo("");
     setHistoricalHireBillId(null);
     setVendorSearch("");
+    setVendorFilterSearch("");
+    setVendorEditing(false);
+    setVendorActiveIndex(-1);
+    vendorInputDirtyRef.current = false;
     setShowVendorDropdown(false);
     setShowVendorDiscovery(false);
     setShowSetRatesDialog(false);
@@ -1142,6 +1175,9 @@ export default function VendorBills() {
     updateActivePullContext(billType, vendor.vendorName, periodFrom, periodTo);
     setVendorName(vendor.vendorName);
     setVendorSearch(vendor.vendorName);
+    setVendorFilterSearch(vendor.vendorName);
+    setVendorEditing(false);
+    vendorInputDirtyRef.current = false;
     setShowVendorDiscovery(false);
   };
 
@@ -1174,6 +1210,9 @@ export default function VendorBills() {
     setSelectedSiteId((bill as any).siteId == null ? "all" : String((bill as any).siteId));
     setVendorName(bill.vendorName);
     setVendorSearch(bill.vendorName);
+    setVendorFilterSearch(bill.vendorName);
+    setVendorEditing(false);
+    vendorInputDirtyRef.current = false;
     setPeriodFrom(bill.periodFrom || "");
     setPeriodTo(bill.periodTo || "");
     setNotes(bill.notes || "");
@@ -2806,53 +2845,108 @@ export default function VendorBills() {
                 </Select>
               </div>
               <div className="relative">
-                <Label className="text-sm uppercase">Vendor / Supplier Name</Label>
+                <Label htmlFor="input-vendor-name" className="text-sm uppercase">Vendor / Supplier Name</Label>
                 <Input
-                  value={(vendorName && isHireVendorDisplay ? selectedHireVendorLabel : vendorName) || vendorSearch}
+                  id="input-vendor-name"
+                  ref={vendorInputRef}
+                  role="combobox"
+                  autoComplete="off"
+                  aria-autocomplete="list"
+                  aria-expanded={showVendorDropdown}
+                  aria-controls={showVendorDropdown ? "vendor-name-options" : undefined}
+                  aria-activedescendant={showVendorDropdown && vendorActiveIndex >= 0 ? `vendor-name-option-${vendorActiveIndex}` : undefined}
+                  value={vendorEditing ? vendorSearch : (vendorName && isHireVendorDisplay ? selectedHireVendorLabel : vendorName) || vendorSearch}
                   disabled={isHistoricalHireEdit}
                   onChange={e => {
                     const v = e.target.value.toUpperCase();
-                    updateActivePullContext(billType, "", periodFrom, periodTo);
                     setVendorSearch(v);
-                    setVendorName("");
-                    setHireGroups([]);
-                    monthlyHireSeedRef.current = "";
-                    setMonthlyHireSeedKey("");
+                    setVendorFilterSearch(v);
+                    setVendorEditing(true);
+                    vendorInputDirtyRef.current = true;
                     setShowVendorDropdown(true);
+                    setVendorActiveIndex(-1);
                   }}
-                  onFocus={() => setShowVendorDropdown(true)}
+                  onFocus={() => {
+                    const selectedText = vendorName && isHireVendorDisplay ? selectedHireVendorLabel : vendorName;
+                    setVendorEditing(true);
+                    setVendorSearch(selectedText || vendorSearch);
+                    setVendorFilterSearch(vendorName ? "" : vendorSearch);
+                    vendorInputDirtyRef.current = false;
+                    setShowVendorDropdown(true);
+                    setVendorActiveIndex(-1);
+                  }}
                   onBlur={() => {
-                    setTimeout(() => setShowVendorDropdown(false), 200);
-                    if (!vendorName && vendorSearch.trim()) {
-                      const selectedVendor = vendorSearch.trim().toUpperCase();
-                      updateActivePullContext(billType, selectedVendor, periodFrom, periodTo);
-                      setVendorName(selectedVendor);
+                    setTimeout(() => {
+                      setShowVendorDropdown(false);
+                      setVendorActiveIndex(-1);
+                      setVendorEditing(false);
+                    }, 200);
+                    if (vendorInputDirtyRef.current) {
+                      selectVendorOption(vendorSearch.trim());
+                    } else {
+                      setVendorSearch(vendorName);
+                      setVendorFilterSearch(vendorName);
                     }
                   }}
                   onKeyDown={e => {
-                    if (e.key === "Enter" && !vendorName && vendorSearch.trim()) {
-                      const selectedVendor = vendorSearch.trim().toUpperCase();
-                      updateActivePullContext(billType, selectedVendor, periodFrom, periodTo);
-                      setVendorName(selectedVendor);
+                    if (e.key === "Escape" && showVendorDropdown) {
+                      e.preventDefault();
+                      e.stopPropagation();
                       setShowVendorDropdown(false);
+                      setVendorActiveIndex(-1);
+                      if (vendorName) {
+                        setVendorSearch(vendorName);
+                        setVendorFilterSearch(vendorName);
+                        setVendorEditing(false);
+                        vendorInputDirtyRef.current = false;
+                      }
+                    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                      e.preventDefault();
+                      setShowVendorDropdown(true);
+                      setVendorActiveIndex(current => {
+                        if (!filteredVendorNames.length) return -1;
+                        if (e.key === "ArrowDown") return current < 0 ? 0 : (current + 1) % filteredVendorNames.length;
+                        return current < 0 ? filteredVendorNames.length - 1 : (current - 1 + filteredVendorNames.length) % filteredVendorNames.length;
+                      });
+                    } else if (e.key === "Enter") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const highlighted = filteredVendorNames[vendorActiveIndex];
+                      if (showVendorDropdown && highlighted) {
+                        selectVendorOption(highlighted);
+                      } else if (vendorInputDirtyRef.current) {
+                        selectVendorOption(vendorSearch.trim());
+                      } else {
+                        setShowVendorDropdown(false);
+                        setVendorActiveIndex(-1);
+                      }
                     }
                   }}
                   placeholder="SEARCH VENDOR..."
                   className="uppercase"
                   data-testid="input-vendor-name"
                 />
-                {showVendorDropdown && filteredVendorNames.length > 0 && !vendorName && (
-                  <div className="absolute z-50 top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-white dark:bg-zinc-900 border rounded-md shadow-lg" data-testid="vendor-dropdown">
-                    {filteredVendorNames.map(name => (
+                {vendorEditing && vendorInputDirtyRef.current && (
+                  <p role="status" className="mt-1 text-xs text-muted-foreground">
+                    {vendorName
+                      ? `Current selection: ${vendorName}. It stays selected until you choose a suggestion or accept this typed name.`
+                      : "No vendor selected. Choose a suggestion or keep this typed name."}
+                  </p>
+                )}
+                {showVendorDropdown && filteredVendorNames.length > 0 && (
+                  <div ref={vendorDropdownRef} id="vendor-name-options" role="listbox" aria-labelledby="input-vendor-name" className="absolute z-50 top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-white dark:bg-zinc-900 border rounded-md shadow-lg" data-testid="vendor-dropdown">
+                    {filteredVendorNames.map((name, index) => (
                       <button
                         key={name}
+                        id={`vendor-name-option-${index}`}
                         type="button"
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-amber-50 dark:hover:bg-amber-900/20 truncate"
-                        onMouseDown={() => {
-                          updateActivePullContext(billType, name, periodFrom, periodTo);
-                          setVendorName(name);
-                          setVendorSearch(name);
-                          setShowVendorDropdown(false);
+                        role="option"
+                        aria-selected={vendorName === name}
+                        data-index={index}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-amber-50 dark:hover:bg-amber-900/20 truncate ${vendorActiveIndex === index ? "bg-amber-50 dark:bg-amber-900/20" : ""}`}
+                        onMouseDown={event => {
+                          event.preventDefault();
+                          selectVendorOption(name);
                         }}
                         data-testid={`vendor-option-${name}`}
                       >
@@ -5490,7 +5584,8 @@ export default function VendorBills() {
                     <p className="font-bold text-sm uppercase truncate" data-testid={`text-bill-vendor-${bill.id}`}>{bill.vendorName}</p>
                     <p className="text-sm text-muted-foreground" data-testid={`text-bill-meta-${bill.id}`}>
                       {bill.billNo} &bull; {getBillTypeLabel(bill.billType)}
-                      {bill.periodFrom && bill.periodTo && ` \u2022 ${formatDate(bill.periodFrom)} to ${formatDate(bill.periodTo)}`}
+                      {` \u2022 Bill date ${bill.billDate ? formatDate(bill.billDate) : "not recorded"}`}
+                      {bill.periodFrom && bill.periodTo && ` \u2022 Period ${formatDate(bill.periodFrom)} to ${formatDate(bill.periodTo)}`}
                     </p>
                     {showLabourSplit && (
                       <p className="text-xs text-muted-foreground italic mt-0.5" data-testid={`text-bill-labour-split-${bill.id}`}>
