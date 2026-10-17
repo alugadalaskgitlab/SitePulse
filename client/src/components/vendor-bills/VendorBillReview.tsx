@@ -1,6 +1,7 @@
 import { Fragment } from "react";
-import { billReviewAmounts, summarizeBillReview, vendorStatementBills, previousBillingSummary } from "@shared/vendorBillReview";
-import { billPaymentPosition } from "@shared/vendorBillFinancialReport";
+import { billReviewAmounts, previousBillingSummary, summarizeBillReview } from "@shared/vendorBillReview";
+import { billPaymentPosition, getBillFinancialTotals } from "@shared/vendorBillFinancialReport";
+import type { PreviousBillingContext } from "@shared/vendorBillPreviousContext";
 import { useQuery } from "@tanstack/react-query";
 
 const money = (value: number | null) => value == null ? "Not established" : `₹${value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -36,12 +37,12 @@ export function VendorBillFinancialSummary({ bills, totals }: Props) {
   </section>;
 }
 
-export function VendorRunningStatement({ bill, bills, totals, loading, error }: Props & { bill: any; loading?: boolean; error?: boolean }) {
-  const history = useQuery<any[]>({
-    queryKey: ["/api/vendor-bills", bill.id, "statement"],
+export function VendorRunningStatement({ bill, bills, loading, error }: { bill: any; bills: any[]; loading?: boolean; error?: boolean }) {
+  const history = useQuery<PreviousBillingContext>({
+    queryKey: ["/api/vendor-bills", bill.id, "previous-bills"],
     enabled: !loading && !error && bill.vendorId != null,
     queryFn: async () => {
-      const response = await fetch(`/api/vendor-bills/${bill.id}/statement`, { credentials: "include", cache: "no-store" });
+      const response = await fetch(`/api/vendor-bills/${bill.id}/previous-bills`, { credentials: "include", cache: "no-store" });
       if (!response.ok) throw new Error("Could not load permitted bill history");
       return response.json();
     },
@@ -49,11 +50,11 @@ export function VendorRunningStatement({ bill, bills, totals, loading, error }: 
     staleTime: 0,
     retry: false,
   });
-  // Never fall back to the ordinary bill list: financial scope can be narrower.
-  const previous = history.isSuccess && !history.isFetching ? previousBillingSummary(bill, history.data || [], totals) : null;
+  const previous = history.isSuccess && !history.isFetching ? history.data : null;
   const rows = previous?.rows || [];
-  rows.sort((a, b) => String(a.billDate).localeCompare(String(b.billDate)) || a.id - b.id);
-  const excludedRows = previous?.excludedRows || [];
+  const excludedRows = previous
+    ? previousBillingSummary(bill, bills, getBillFinancialTotals).excludedRows
+    : [];
   const sameDateExcluded = excludedRows.filter(row =>
     String(row.billDate || "").slice(0, 10) === String(bill.billDate || "").slice(0, 10)
   );
@@ -61,8 +62,6 @@ export function VendorRunningStatement({ bill, bills, totals, loading, error }: 
   const unlinkedExcluded = bill.vendorId == null ? [] : bills.filter(row =>
     row.vendorId == null && String(row.vendorName ?? "") === String(bill.vendorName ?? "")
   );
-  let subtotal = 0;
-  let paymentGap = false;
   const latest = rows.at(-1);
   const hasProvisionalRows = rows.some(row => ["draft", "verified"].includes(String(row.status).toLowerCase()));
   return <section className="rounded-lg border p-3 space-y-3" data-testid="vendor-running-statement">
@@ -86,7 +85,7 @@ export function VendorRunningStatement({ bill, bills, totals, loading, error }: 
     {bill.vendorId != null && history.isSuccess && !history.isFetching && previous && rows.length === 0 &&
       <p className="text-xs text-muted-foreground">No previous bills for this vendor.</p>}
     {history.isSuccess && !history.isFetching && previous && latest && <>
-      <p className="text-xs"><strong>Latest previous bill:</strong> {latest.billDate} · {latest.billNo} · {latest.status} · Net value {money(billReviewAmounts(latest, totals(latest)).net)}</p>
+      <p className="text-xs"><strong>Latest previous bill:</strong> {latest.billDate} · {latest.billNo} · {latest.status} · Net value {money(latest.net)}</p>
       <dl className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
         {[
           ["Total Gross Bills up to Previous", money(previous.gross)],
@@ -101,42 +100,25 @@ export function VendorRunningStatement({ bill, bills, totals, loading, error }: 
       <div className="overflow-x-auto"><table className="w-full text-xs">
          <thead><tr>{["Bill date / bill", "Bill period", "Status", "Net bill value", "Recorded payments", "This bill balance", "Credit", "Running balance before this bill"].map(h => <th className="p-2 text-left" key={h}>{h}</th>)}</tr></thead>
         <tbody>{rows.map(row => {
-          const a = billReviewAmounts(row, totals(row));
-          paymentGap ||= a.paid == null;
-          subtotal += a.net - (a.paid ?? 0);
-           const t = totals(row);
-           const adjustments = [
-             ...(Number(row.adjustmentAmount) ? [{ label: row.adjustmentLabel || "Bill adjustment", amount: Number(row.adjustmentAmount) }] : []),
-             ...(t.additional || []),
-             ...(row.hireStatements || []).flatMap((statement: any) => {
-               const saved = statement.calculationSnapshot?.adjustments;
-               if (!saved) return [];
-               return ["breakdownDeduction", "hsdRecovery", "otherDebit", "advanceAdjustment", "otherCredit"]
-                 .filter(key => Number(saved[key])).map(key => ({
-                   label: `${statement.equipmentName || `Equipment #${statement.equipmentId}`} · ${key}`,
-                   amount: Number(saved[key]) * (key === "otherCredit" ? 1 : -1), reason: saved[`${key}Reason`],
-                 }));
-             }),
-           ];
            return <Fragment key={row.id}>
              <tr className="border-t align-top">
                <td className="p-2">{row.billDate}<br />{row.billNo}{row.id === bill.id ? " · Current bill" : ""}</td>
                <td className="p-2">{row.periodFrom || "Not recorded"} – {row.periodTo || "Not recorded"}</td>
-               <td className="p-2">{row.status}{a.provisional && <span className="block">Provisional</span>}</td>
-               <td className="p-2">{money(a.net)}</td>
-               <td className="p-2">{money(a.paid)}<span className="block text-muted-foreground">Cumulative recorded amount; individual payment dates/history: Not established</span>
+                <td className="p-2">{row.status}{row.provisional && <span className="block">Provisional</span>}</td>
+                <td className="p-2">{money(row.net)}</td>
+                <td className="p-2">{money(row.paid)}<span className="block text-muted-foreground">Cumulative recorded amount; individual payment dates/history: Not established</span>
                  {row.paidAt && <span className="block">Paid status recorded: {row.paidAt}</span>}
                </td>
-               <td className="p-2">{money(a.balance)}</td>
-               <td className="p-2">{money(a.credit)}{a.provisional && a.credit > 0 && " (provisional)"}</td>
-               <td className="p-2">{paymentGap ? "Not established" : money(subtotal)}</td>
+                <td className="p-2">{money(row.balance)}</td>
+                <td className="p-2">{money(row.credit)}{row.provisional && row.credit > 0 && " (provisional)"}</td>
+                <td className="p-2">{money(row.runningBalance)}</td>
              </tr>
              <tr className="border-t bg-muted/10">
                <td colSpan={8} className="px-3 py-2">
                  <p className="font-semibold">Recorded adjustments / advance deductions</p>
-                 {adjustments.length
-                   ? adjustments.map((adjustment: any, index: number) =>
-                     <p key={index}>{adjustment.label || adjustment.description || "Adjustment"}: {money(Number(adjustment.amount))}{adjustment.reason ? ` · ${adjustment.reason}` : ""}</p>)
+                  {row.adjustments.length
+                    ? row.adjustments.map((adjustment, index) =>
+                      <p key={index}>{adjustment.label || "Adjustment"}: {money(Number(adjustment.amount))}{adjustment.reason ? ` · ${adjustment.reason}` : ""}</p>)
                    : <p>No separate bill-level adjustment recorded.</p>}
                  <p className="mt-1 text-muted-foreground">Advance payment history / unused advance balance: Not established. Recorded deductions are already included in bill value, not new payments.</p>
                </td>

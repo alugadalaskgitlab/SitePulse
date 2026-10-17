@@ -5,6 +5,8 @@ import request from "supertest";
 import { readFileSync } from "node:fs";
 import { recordChange } from "../shared/recordChange";
 import { projectVendorLedger, projectVendorPayables } from "../shared/vendorPayables";
+import { getBillFinancialTotals } from "../shared/vendorBillFinancialReport";
+import { billReviewAmounts } from "../shared/vendorBillReview";
 
 const fx: { role: string; permissions: any; allSitesAccess: boolean } = {
   role: "admin",
@@ -126,6 +128,135 @@ beforeEach(() => {
 });
 
 describe("AUDIT-01 vendor-bill history", () => {
+  it("serves a narrow previous-bill projection to bill viewers using only their permitted sites", async () => {
+    const current = makeBill({
+      id: 10, billNo: "VB-010", billDate: "2026-10-10", siteId: 1, vendorId: 4,
+      totalAmount: 1200, netPayableAmount: 1200, amountPaid: 0,
+    });
+    const earlier = makeBill({
+      id: 8, billNo: "VB-008", billDate: "2026-10-09", siteId: 1, vendorId: 4,
+      totalAmount: 1000, netPayableAmount: 800, amountPaid: 300,
+      adjustmentLabel: "Advance", adjustmentAmount: -200,
+      periodFrom: "2026-09-01", periodTo: "2026-09-30",
+    });
+    const hiddenSiteBill = makeBill({
+      id: 7, billNo: "HIDDEN-SITE-BILL", billDate: "2026-10-08", siteId: 2, vendorId: 4,
+      totalAmount: 5000, netPayableAmount: 5000, amountPaid: 0,
+    });
+    const sameDate = makeBill({
+      id: 11, billNo: "VB-SAME-DATE", billDate: current.billDate, siteId: 1, vendorId: 4,
+      totalAmount: 9000, netPayableAmount: 9000, amountPaid: 0,
+    });
+    const later = makeBill({
+      id: 12, billNo: "VB-LATER", billDate: "2026-10-11", siteId: 1, vendorId: 4,
+      totalAmount: 9000, netPayableAmount: 9000, amountPaid: 0,
+    });
+    const otherVendor = makeBill({
+      id: 13, billNo: "OTHER-VENDOR-BILL", billDate: "2026-10-08", siteId: 1, vendorId: 99,
+      totalAmount: 4000, netPayableAmount: 4000, amountPaid: 0,
+    });
+    const voided = makeBill({
+      id: 14, billNo: "VOIDED-BILL", billDate: "2026-10-07", siteId: 1, vendorId: 4,
+      totalAmount: 3000, netPayableAmount: 3000, amountPaid: 0, isCancelled: true,
+    });
+
+    fx.role = "manager";
+    fx.allSitesAccess = false;
+    fx.permissions = { vendor_bills: { view: true }, vendor_financials: { view: false } };
+    storage.getSites.mockResolvedValue([{ id: 1, name: "Site A" }, { id: 2, name: "Site B" }]);
+    storage.getUserPermittedSiteIds.mockResolvedValue([1]);
+    storage.getVendorBills.mockResolvedValue([current, earlier, hiddenSiteBill, sameDate, later, otherVendor, voided]);
+
+    const withoutFinancialGrant = await request(app).get("/api/vendor-bills/10/previous-bills");
+    expect(withoutFinancialGrant.status).toBe(200);
+    expect(withoutFinancialGrant.headers["cache-control"]).toContain("no-store");
+    expect(withoutFinancialGrant.body).toMatchObject({
+      rows: [{
+        id: 8, billNo: "VB-008", billDate: "2026-10-09", periodFrom: "2026-09-01",
+        periodTo: "2026-09-30", gross: 1000, net: 800, paid: 300, balance: 500,
+        runningBalance: 500, adjustments: [{ label: "Advance", amount: -200 }],
+      }],
+      gross: 1000, paid: 300, balance: 500,
+    });
+    expect(withoutFinancialGrant.body).not.toHaveProperty("excludedRows");
+    expect(JSON.stringify(withoutFinancialGrant.body)).not.toContain("HIDDEN-SITE-BILL");
+    expect(JSON.stringify(withoutFinancialGrant.body)).not.toContain("OTHER-VENDOR-BILL");
+    expect(JSON.stringify(withoutFinancialGrant.body)).not.toContain("VOIDED-BILL");
+    expect(JSON.stringify(withoutFinancialGrant.body)).not.toContain("VB-SAME-DATE");
+    expect(JSON.stringify(withoutFinancialGrant.body)).not.toContain("VB-LATER");
+    expect(withoutFinancialGrant.body.rows[0]).not.toHaveProperty("items");
+    expect(withoutFinancialGrant.body.rows[0]).not.toHaveProperty("vendorName");
+
+    fx.permissions.vendor_financials.view = true;
+    const withFinancialGrant = await request(app).get("/api/vendor-bills/10/previous-bills");
+    expect(withFinancialGrant.status).toBe(200);
+    expect(withFinancialGrant.body).toEqual(withoutFinancialGrant.body);
+    expect(storage.updateVendorBill).not.toHaveBeenCalled();
+    expect(storage.createVendorBill).not.toHaveBeenCalled();
+  });
+
+  it("preserves the published Previous Billing Summary figures for HLC/VB/2026/0054 with or without the financial grant", async () => {
+    const current = makeBill({
+      id: 54, billNo: "HLC/VB/2026/0054", billDate: "2026-10-09", siteId: 18, vendorId: 3,
+      billType: "equipment", status: "approved", totalAmount: 58000, netPayableAmount: 56840,
+      amountPaid: 50000, tdsRate: 2, items: [{ id: 782, billId: 54, amount: 58000, category: "equipment" }],
+    });
+    const previous = makeBill({
+      id: 80, billNo: "HLC/VB/2026/0062", billDate: "2026-08-08", siteId: null, vendorId: 3,
+      billType: "equipment", status: "approved", totalAmount: 25161.29, netPayableAmount: 25161.29,
+      amountPaid: 25155, periodFrom: "2026-07-01", periodTo: "2026-07-31", tdsRate: 0,
+      items: [{ id: 870, billId: 80, amount: 25161.29, category: "equipment", siteName: "" }],
+      hireStatements: [{
+        id: 10, equipmentId: 46, equipmentName: "TRACTOR DOZER",
+        calculationSnapshot: { adjustments: {
+          breakdownDeduction: 0, hsdRecovery: 0, otherDebit: 0, advanceAdjustment: 0, otherCredit: 0,
+        } },
+      }],
+    });
+    const sameDateLater = makeBill({
+      id: 55, billNo: "HLC/VB/2026/0055", billDate: "2026-10-09", siteId: null, vendorId: 3,
+      billType: "equipment", status: "approved", totalAmount: 56130, netPayableAmount: 5007.4,
+      amountPaid: 0, adjustmentAmount: -50000, items: [{ id: 781, billId: 55, amount: 56130, category: "equipment" }],
+    });
+    const currentFiguresBefore = billReviewAmounts(current, getBillFinancialTotals(current));
+    fx.role = "admin";
+    fx.allSitesAccess = true;
+    fx.permissions = { vendor_financials: { view: false } };
+    storage.getVendorBills.mockResolvedValue([current, previous, sameDateLater]);
+
+    const withoutGrant = await request(app).get("/api/vendor-bills/54/previous-bills");
+    expect(withoutGrant.status).toBe(200);
+    expect(withoutGrant.body.rows).toHaveLength(1);
+    expect(withoutGrant.body.rows[0]).toMatchObject({
+      id: 80, billNo: "HLC/VB/2026/0062", billDate: "2026-08-08",
+      periodFrom: "2026-07-01", periodTo: "2026-07-31", status: "approved",
+      gross: 25161.29, net: 25161.29, paid: 25155, credit: 0, provisional: false,
+      adjustments: [],
+    });
+    expect(withoutGrant.body.rows[0].balance).toBeCloseTo(6.29, 2);
+    expect(withoutGrant.body.rows[0].runningBalance).toBeCloseTo(6.29, 2);
+    expect(withoutGrant.body).toMatchObject({ gross: 25161.29, paid: 25155 });
+    expect(withoutGrant.body.balance).toBeCloseTo(6.29, 2);
+
+    fx.permissions.vendor_financials.view = true;
+    const withGrant = await request(app).get("/api/vendor-bills/54/previous-bills");
+    const currentFiguresAfter = billReviewAmounts(current, getBillFinancialTotals(current));
+    expect(withGrant.status).toBe(200);
+    expect(withGrant.body).toEqual(withoutGrant.body);
+    expect(currentFiguresAfter).toEqual(currentFiguresBefore);
+    expect(currentFiguresAfter).toMatchObject({ gross: 58000, net: 56840, paid: 50000 });
+    expect(currentFiguresAfter.balance).toBeCloseTo(6840, 2);
+    expect(JSON.stringify(withoutGrant.body)).not.toContain("HLC/VB/2026/0055");
+  });
+
+  it("requires ordinary bill-view permission for previous-bill context, even when financial reporting is granted", async () => {
+    fx.role = "viewer";
+    fx.permissions = { vendor_financials: { view: true } };
+    const response = await request(app).get("/api/vendor-bills/10/previous-bills");
+    expect(response.status).toBe(403);
+    expect(storage.getVendorBills).not.toHaveBeenCalled();
+  });
+
   it("changes only a valid bill date, preserves approved bill facts, and records one date audit", async () => {
     const hireSnapshot = { calculationSnapshot: { grossAmount: 56130, netAmount: 5013.69, frozen: true } };
     const before = makeBill({

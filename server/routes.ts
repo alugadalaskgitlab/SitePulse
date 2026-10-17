@@ -71,6 +71,7 @@ import { filterFinancialBills } from "@shared/vendorBillFinancialReport";
 import { buildVendorFinancialWorkbook } from "./vendorFinancialWorkbook";
 import { financialSites, vendorFinancialGuard } from "./vendorFinancialAccess";
 import { vendorStatementBills } from "@shared/vendorBillReview";
+import { buildPreviousBillingContext } from "@shared/vendorBillPreviousContext";
 import {
   classifyBarExecutionState,
   deriveItemStatus,
@@ -11600,6 +11601,24 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Error fetching vendor bills:", err);
       res.status(500).json({ message: "Failed to fetch vendor bills" });
+    }
+  });
+
+  // This single-bill context is operational bill-view data, not an aggregate
+  // financial report. Keep it outside vendorFinancialGuard and site-scope it
+  // exactly like the ordinary bill list.
+  app.get("/api/vendor-bills/:id/previous-bills", async (req, res) => {
+    res.setHeader("Cache-Control", "private, no-store");
+    if (!assertViewEither(req, res, "vendor_bills", "vendor_bills_view")) return;
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid vendor bill id" });
+      const rows = await scopeVendorBillsToSiteAccess(req, await storage.getVendorBills({}));
+      const current = rows.find(row => row.id === id);
+      if (!current) return res.status(404).json({ message: "Bill not available within bill site scope" });
+      res.json(buildPreviousBillingContext(current, rows));
+    } catch {
+      res.status(500).json({ message: "Unable to load previous bills" });
     }
   });
 

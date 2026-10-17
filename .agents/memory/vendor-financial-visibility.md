@@ -7,7 +7,11 @@ Owner always has Vendor Financials access; every other user, including Administr
 
 **Why:** The user explicitly requested Owner-only default access while preserving all ordinary bill-viewing, entry and approval permissions.
 
-**How to apply:** Keep aggregate summaries, vendor statements, Taxes Register and reporting/export APIs behind the explicit grant. Honour selected financial site scope even for Administrators. Use the existing user permission matrix and save flow, not a parallel system or production backfill.
+The Previous Billing Summary on an individual bill is available to anyone who may view that bill. It is needed to finalise that bill's debits and credits; this does not widen access to aggregate summaries, the payables page, the Vendor Bills list financial summary, Taxes Register, or reporting/export APIs.
+
+**Why:** The owner revised the earlier decision because whoever finalises a bill needs to see prior deductions and credits to avoid deducting an advance or recovery twice.
+
+**How to apply:** Keep this exception limited to the single-bill Previous Billing Summary and its narrow previous-bill data path. Keep aggregate summaries, all-vendor statements, the payables page, the Vendor Bills list financial summary, Taxes Register and reporting/export APIs behind the explicit grant. Honour selected financial site scope even for Administrators. Use the existing user permission matrix and save flow, not a parallel system or production backfill.
 
 Taxes reporting must use recorded deduction amounts, not infer TDS deductions from a saved percentage.
 

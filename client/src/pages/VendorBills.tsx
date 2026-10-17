@@ -4732,7 +4732,7 @@ export default function VendorBills() {
               </div>
             </div>
 
-            {canViewFinancials && <VendorRunningStatement bill={bill} bills={financialReview.data || []} totals={getBillFinancialTotals} />}
+            <VendorRunningStatement bill={bill} bills={canViewFinancials ? financialReview.data || [] : bills || []} />
             {/* 06M-A: Payment Mode / Paid By — entry preferred once PAID, shown
                 whenever values exist. No payment evidence/QR upload here. */}
             {(hasCumulativeVendorPayment(bill.billType) || bill.status === "paid" || (bill as any).paymentMode || (bill as any).paidBy) && (

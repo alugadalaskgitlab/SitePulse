@@ -189,16 +189,32 @@ describe("financial overview and statement", () => {
     const current = bill(2, { hireStatements: [statement(1)] });
     const earlier = bill(1, { amountPaid: 200, hireStatements: [statement(2)] });
     const before = JSON.stringify([current, earlier]);
-    const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => [earlier, current] });
+    const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+      rows: [{
+        id: earlier.id, billNo: earlier.billNo, billDate: earlier.billDate, periodFrom: "2026-10-01",
+        periodTo: "2026-10-03", status: "approved", paidAt: null, gross: 1000, net: 1000,
+        paid: 200, balance: 800, credit: 0, provisional: false, runningBalance: 800,
+        adjustments: [{ label: "Machine 2 · advanceAdjustment", amount: -100, reason: "Previously verified advance" }],
+      }],
+      gross: 1000, paid: 200, balance: 800,
+    }) });
     vi.stubGlobal("fetch", fetcher);
-    renderQuery(<VendorRunningStatement bill={current} bills={[current, earlier, bill(3, { vendorId: 99 })]} totals={totals} />);
+    renderQuery(<VendorRunningStatement bill={current} bills={[
+      current, earlier, bill(3, { vendorId: 99 }),
+      bill(5, { billNo: "VB-SAME-DATE", billDate: current.billDate }),
+      bill(4, { vendorId: null, vendorName: "PARTY", billNo: "VB-UNLINKED" }),
+    ]} />);
     const details = screen.getByTestId("vendor-running-statement") as HTMLDetailsElement;
     details.open = true; fireEvent(details, new Event("toggle"));
-    await waitFor(() => expect(fetcher).toHaveBeenCalledWith("/api/vendor-bills/2/statement", { credentials: "include", cache: "no-store" }));
+    await waitFor(() => expect(fetcher).toHaveBeenCalledWith("/api/vendor-bills/2/previous-bills", { credentials: "include", cache: "no-store" }));
     expect(fetcher).toHaveBeenCalledTimes(1);
     // The running statement shows each saved advance once, not once per
     // historical calendar plus another copy in the statement.
     await waitFor(() => expect(screen.getAllByText(/Previously verified advance/)).toHaveLength(1));
+    expect(screen.getByText(/VB-SAME-DATE, same bill date, counted as later/)).toBeTruthy();
+    expect(screen.getByText(/VB-UNLINKED/)).toBeTruthy();
+    expect(screen.getByText("Bill period")).toBeTruthy();
+    expect(screen.getAllByText("₹800.00").length).toBeGreaterThan(1);
     expect(screen.getByText(/Balance carried up to this bill/)).toBeTruthy();
     expect(screen.getByText(/Confirmed vendor · permitted sites · excludes this bill and later bills/)).toBeTruthy();
     expect(screen.queryByText(/Last Payment/)).toBeNull();
@@ -206,9 +222,11 @@ describe("financial overview and statement", () => {
   });
   it("shows one concise empty state instead of a blank previous-billing grid", async () => {
     const current = bill(3);
-    const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => [current] });
+    const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+      rows: [], excludedRows: [], gross: 0, paid: 0, balance: 0,
+    }) });
     vi.stubGlobal("fetch", fetcher);
-    renderQuery(<VendorRunningStatement bill={current} bills={[current]} totals={totals} />);
+    renderQuery(<VendorRunningStatement bill={current} bills={[current]} />);
     await waitFor(() => expect(screen.getByText("No previous bills for this vendor.")).toBeTruthy());
     expect(screen.queryByText(/Total Gross Bills up to Previous/)).toBeNull();
     expect(screen.queryByText(/Confirmed vendor · permitted sites/)).toBeNull();
@@ -218,7 +236,7 @@ describe("financial overview and statement", () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
     const current = bill(4, { vendorId: null });
-    renderQuery(<VendorRunningStatement bill={current} bills={[current]} totals={totals} />);
+    renderQuery(<VendorRunningStatement bill={current} bills={[current]} />);
     expect(screen.getByText(/Unlinked\/free-text vendor: previous balances are unavailable/)).toBeTruthy();
     expect(screen.queryByText(/Total Gross Bills up to Previous/)).toBeNull();
     expect(fetcher).not.toHaveBeenCalled();
