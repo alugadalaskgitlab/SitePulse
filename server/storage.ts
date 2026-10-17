@@ -1575,9 +1575,15 @@ export interface IStorage {
   getVendorBills(filters?: { dateFrom?: string; dateTo?: string; vendor?: string; status?: string; includeVoided?: boolean }): Promise<VendorBillWithItems[]>;
   getVendorBill(id: number): Promise<VendorBillWithItems | undefined>;
   updateVendorBillDate(id: number, billDate: string, expectedStatus: string): Promise<{ id: number; billDate: string } | undefined>;
+  getVendorBillHireSiteActivity(periods: { equipmentId: number; periodFrom: string; periodTo: string }[]): Promise<{
+    equipmentId: number; equipmentName: string | null; date: string; siteName: string | null;
+  }[]>;
   createVendorBill(data: CreateVendorBillRequest): Promise<VendorBillWithItems>;
   updateVendorBill(id: number, data: CreateVendorBillRequest): Promise<VendorBillWithItems | undefined>;
-  updateVendorBillStatus(id: number, status: string, actor: string): Promise<VendorBillWithItems | undefined>;
+  updateVendorBillStatus(id: number, status: string, actor: string, paidAmount?: number): Promise<VendorBillWithItems | undefined>;
+  correctVendorBillSiteScope(id: number, siteId: number | null): Promise<{ before: VendorBill; after: VendorBill } | undefined>;
+  correctVendorBillPeriod(id: number, periodFrom: string, periodTo: string): Promise<{ before: VendorBill; after: VendorBill } | undefined>;
+  recordMissingVendorBillPaidAmount(id: number, amountPaid: number): Promise<{ before: VendorBill; after: VendorBill } | undefined>;
   updateVendorBillPaymentDetails(id: number, details: { paymentMode?: string | null; paidBy?: string | null; amountPaid?: number | null; paymentAccountKey?: string | null }): Promise<VendorBillWithItems | undefined>;
   getVendorBillCompanyAccounts(): Promise<{ id: string; name: string; type: string }[]>;
   // 06M-A: ensures nullable payment_mode/paid_by columns on vendor_bills.
@@ -17590,6 +17596,65 @@ export class DatabaseStorage implements IStorage {
       : undefined;
   }
 
+  async getVendorBillHireSiteActivity(
+    periods: { equipmentId: number; periodFrom: string; periodTo: string }[],
+  ): Promise<{ equipmentId: number; equipmentName: string | null; date: string; siteName: string | null }[]> {
+    const validPeriods = periods.filter(period =>
+      Number.isSafeInteger(period.equipmentId) && period.equipmentId > 0 &&
+      /^\d{4}-\d{2}-\d{2}$/.test(period.periodFrom) &&
+      /^\d{4}-\d{2}-\d{2}$/.test(period.periodTo) &&
+      period.periodFrom <= period.periodTo,
+    );
+    if (!validPeriods.length) return [];
+
+    const usagePeriod = or(...validPeriods.map(period => and(
+      eq(equipmentUsage.equipmentId, period.equipmentId),
+      gte(equipmentUsage.date, period.periodFrom),
+      lte(equipmentUsage.date, period.periodTo),
+    )));
+    const dprPeriod = or(...validPeriods.map(period => and(
+      eq(equipmentLogs.equipmentId, period.equipmentId),
+      gte(dprs.date, period.periodFrom),
+      lte(dprs.date, period.periodTo),
+    )));
+    const [usageRows, dprRows] = await Promise.all([
+      db.select({
+        equipmentId: equipmentUsage.equipmentId,
+        equipmentName: equipmentMaster.name,
+        date: equipmentUsage.date,
+        siteName: equipmentUsage.siteName,
+      })
+        .from(equipmentUsage)
+        .leftJoin(equipmentMaster, eq(equipmentMaster.id, equipmentUsage.equipmentId))
+        .where(and(usagePeriod, eq(equipmentUsage.status, "closed"))),
+      db.select({
+        equipmentId: equipmentLogs.equipmentId,
+        equipmentName: equipmentMaster.name,
+        date: dprs.date,
+        siteName: dprs.site,
+      })
+        .from(equipmentLogs)
+        .innerJoin(dprs, eq(dprs.id, equipmentLogs.dprId))
+        .leftJoin(equipmentMaster, eq(equipmentMaster.id, equipmentLogs.equipmentId))
+        .where(and(
+          dprPeriod,
+          eq(dprs.isSuperseded, false),
+          eq(dprs.isDeleted, false),
+          eq(dprs.isCancelled, false),
+          ne(dprs.dprStatus, "draft"),
+        )),
+    ]);
+
+    return [...usageRows, ...dprRows]
+      .filter(row => row.siteName != null && String(row.siteName).trim() !== "")
+      .map(row => ({
+        equipmentId: Number(row.equipmentId),
+        equipmentName: row.equipmentName ?? null,
+        date: String(row.date).slice(0, 10),
+        siteName: String(row.siteName),
+      }));
+  }
+
   async updateVendorBillDate(id: number, billDate: string, expectedStatus: string): Promise<{ id: number; billDate: string } | undefined> {
     const [updated] = await db.update(vendorBills)
       .set({ billDate })
@@ -18056,6 +18121,7 @@ export class DatabaseStorage implements IStorage {
       }
       const [bill] = await tx.insert(vendorBills).values({
         siteId: data.siteId ?? null,
+        siteScopeConfirmed: data.siteScopeConfirmed ?? null,
         billDate: data.billDate,
         billNo,
         billType: data.billType.toUpperCase(),
@@ -18079,7 +18145,7 @@ export class DatabaseStorage implements IStorage {
         approvedBy: data.approvedBy?.toUpperCase() || data.approvedBy,
         approvedAt: data.approvedAt,
         paidAt: data.paidAt,
-        amountPaid: ["equipment", "all"].includes(data.billType.toLowerCase()) ? 0 : null,
+        amountPaid: null,
         paymentAccountKey: (data as any).paymentAccountKey ?? null,
         paymentRemarks: data.paymentRemarks?.toUpperCase() || data.paymentRemarks,
       }).returning();
@@ -18325,6 +18391,9 @@ export class DatabaseStorage implements IStorage {
           paymentMode: (data as any).paymentMode,
           paidBy: (data as any).paidBy,
         };
+      if (Object.prototype.hasOwnProperty.call(data, "siteScopeConfirmed")) {
+        setData.siteScopeConfirmed = data.siteScopeConfirmed;
+      }
       // Preserve VB18 entries for legacy update callers that omit the field.
       // An explicit [] or null is an intentional clear.
       if (Object.prototype.hasOwnProperty.call(data, "additionalAdjustments")) {
@@ -18528,7 +18597,7 @@ export class DatabaseStorage implements IStorage {
     return this.getVendorBill(id);
   }
 
-  async updateVendorBillStatus(id: number, status: string, actor: string): Promise<VendorBillWithItems | undefined> {
+  async updateVendorBillStatus(id: number, status: string, actor: string, paidAmount?: number): Promise<VendorBillWithItems | undefined> {
     const changed = await db.transaction(async (tx) => {
       const [existing] = await tx.select().from(vendorBills).where(eq(vendorBills.id, id)).limit(1).for("update");
       if (!existing) return false;
@@ -18545,6 +18614,9 @@ export class DatabaseStorage implements IStorage {
       const allowed = validTransitions[existing.status];
       if (!allowed || !allowed.includes(status)) {
         throw Object.assign(new Error(`Invalid status transition from "${existing.status}" to "${status}"`), { code: "CONFLICT" });
+      }
+      if (status === "paid" && (paidAmount == null || !Number.isFinite(paidAmount) || paidAmount < 0)) {
+        throw Object.assign(new Error("Enter the paid amount before marking the bill paid. Enter 0 only if that is the recorded amount."), { code: "BAD_REQUEST" });
       }
       if (status === "verified" && linkedStatements.length) {
         // Preserve terminal legacy statements created before the integrated
@@ -18618,9 +18690,8 @@ export class DatabaseStorage implements IStorage {
             const tdsAmount = subtotal * Number(existing.tdsRate || 0) / 100;
             updates.netPayableAmount = Math.round((subtotal + gst + Number(existing.adjustmentAmount || 0) + additionalAdjustmentAmount - tdsAmount + Number.EPSILON) * 100) / 100;
           }
-          // A new hire bill starts with no payment. Historical paid records
-          // remain nullable and are interpreted as fully paid in the UI.
-          updates.amountPaid = existing.amountPaid ?? 0;
+          // Unknown remains NULL until a person records an amount.
+          updates.amountPaid = existing.amountPaid;
         }
       } else if (status === "paid") {
         updates.paidAt = now;
@@ -18629,17 +18700,11 @@ export class DatabaseStorage implements IStorage {
         updates.paymentRecordedBy = actorUpper;
         if (["equipment", "all"].includes(existing.billType.toLowerCase())) {
           const netPayable = Number(existing.netPayableAmount ?? existing.totalAmount ?? 0);
-          // Legacy paid records have a NULL paid amount and remain interpreted
-          // as fully paid; newly approved hires must settle the recorded
-          // balance before the terminal paid transition.
-          if (existing.netPayableAmount != null && existing.amountPaid == null) {
-            throw Object.assign(new Error("Record the cumulative equipment hire payment before marking this bill paid."), { code: "CONFLICT" });
-          }
-          if (existing.amountPaid != null && Number(existing.amountPaid) < netPayable) {
+          if (paidAmount! < netPayable) {
             throw Object.assign(new Error("Record the remaining equipment hire balance before marking this bill paid."), { code: "CONFLICT" });
           }
-          updates.amountPaid = existing.amountPaid ?? netPayable;
         }
+        updates.amountPaid = paidAmount;
       }
       await tx.update(vendorBills).set(updates).where(eq(vendorBills.id, id));
       // An independently approved statement is already a frozen commercial
@@ -18663,6 +18728,76 @@ export class DatabaseStorage implements IStorage {
     });
     if (!changed) return undefined;
     return await this.getVendorBill(id);
+  }
+
+  async correctVendorBillSiteScope(
+    id: number,
+    siteId: number | null,
+  ): Promise<{ before: VendorBill; after: VendorBill } | undefined> {
+    return db.transaction(async tx => {
+      const [before] = await tx.select().from(vendorBills).where(eq(vendorBills.id, id)).limit(1).for("update");
+      if (!before || before.isDeleted === true) return undefined;
+      if (before.isCancelled === true) {
+        throw Object.assign(new Error("A voided vendor bill cannot be corrected"), { code: "CONFLICT" });
+      }
+      if (before.siteId != null || before.siteScopeConfirmed === true) {
+        throw Object.assign(new Error("This bill already has a recorded site answer."), { code: "CONFLICT" });
+      }
+      const [after] = await tx.update(vendorBills)
+        .set({ siteId, siteScopeConfirmed: true })
+        .where(eq(vendorBills.id, id))
+        .returning();
+      return { before, after };
+    });
+  }
+
+  async correctVendorBillPeriod(
+    id: number,
+    periodFrom: string,
+    periodTo: string,
+  ): Promise<{ before: VendorBill; after: VendorBill } | undefined> {
+    return db.transaction(async tx => {
+      const [before] = await tx.select().from(vendorBills).where(eq(vendorBills.id, id)).limit(1).for("update");
+      if (!before || before.isDeleted === true) return undefined;
+      if (before.isCancelled === true) {
+        throw Object.assign(new Error("A voided vendor bill cannot be corrected"), { code: "CONFLICT" });
+      }
+      const incomplete = !before.periodFrom || !before.periodTo;
+      const extendsPastBillDate = !!before.billDate && !!before.periodTo &&
+        String(before.billDate).slice(0, 10) < String(before.periodTo).slice(0, 10);
+      if (!incomplete && !extendsPastBillDate) {
+        throw Object.assign(new Error("This bill has no period attention item to correct."), { code: "CONFLICT" });
+      }
+      const [after] = await tx.update(vendorBills)
+        .set({ periodFrom, periodTo })
+        .where(eq(vendorBills.id, id))
+        .returning();
+      return { before, after };
+    });
+  }
+
+  async recordMissingVendorBillPaidAmount(
+    id: number,
+    amountPaid: number,
+  ): Promise<{ before: VendorBill; after: VendorBill } | undefined> {
+    return db.transaction(async tx => {
+      const [before] = await tx.select().from(vendorBills).where(eq(vendorBills.id, id)).limit(1).for("update");
+      if (!before || before.isDeleted === true) return undefined;
+      if (before.isCancelled === true) {
+        throw Object.assign(new Error("A voided vendor bill cannot be corrected"), { code: "CONFLICT" });
+      }
+      if (before.status !== "paid" || before.amountPaid != null) {
+        throw Object.assign(new Error("Only a paid bill with no recorded amount can be corrected here."), { code: "CONFLICT" });
+      }
+      if (!Number.isFinite(amountPaid) || amountPaid < 0) {
+        throw Object.assign(new Error("Paid amount must be zero or greater."), { code: "BAD_REQUEST" });
+      }
+      const [after] = await tx.update(vendorBills)
+        .set({ amountPaid })
+        .where(eq(vendorBills.id, id))
+        .returning();
+      return { before, after };
+    });
   }
 
   async deleteVendorBill(

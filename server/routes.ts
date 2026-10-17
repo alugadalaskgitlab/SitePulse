@@ -75,6 +75,11 @@ import { buildPreviousBillingContext } from "@shared/vendorBillPreviousContext";
 import { buildVendorBillExport } from "@shared/vendorBillExport";
 import { buildVendorBillCompleteWorkbook } from "./vendorBillCompleteWorkbook";
 import {
+  buildHireSiteSuggestion,
+  getVendorBillAttentionKinds,
+  summarizeVendorBillAttention,
+} from "../shared/vendorBillAttention";
+import {
   classifyBarExecutionState,
   deriveItemStatus,
   isAutoSequenceManagedBar,
@@ -12295,6 +12300,160 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/vendor-bills/attention", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const [bills, sites] = await Promise.all([storage.getVendorBills(), storage.getSites()]);
+      const periods = bills.flatMap(bill =>
+        (bill.hireStatements || []).map(statement => ({
+          equipmentId: Number(statement.equipmentId),
+          periodFrom: String(statement.periodFrom || "").slice(0, 10),
+          periodTo: String(statement.periodTo || "").slice(0, 10),
+        })),
+      );
+      const activity = await storage.getVendorBillHireSiteActivity(periods);
+      const rows = bills.flatMap(bill => {
+        const net = getBillFinancialTotals(bill).netTotal;
+        const kinds = getVendorBillAttentionKinds(bill, net);
+        if (!kinds.length) return [];
+        const suggestion = kinds.includes("site")
+          ? buildHireSiteSuggestion(bill, activity, sites)
+          : null;
+        return [{
+          billId: bill.id,
+          billNo: bill.billNo,
+          billDate: bill.billDate,
+          vendorName: bill.vendorName,
+          net,
+          status: bill.status,
+          amountPaid: bill.amountPaid,
+          siteId: bill.siteId,
+          siteName: sites.find(site => site.id === bill.siteId)?.name ?? null,
+          siteScopeConfirmed: bill.siteScopeConfirmed,
+          periodFrom: bill.periodFrom,
+          periodTo: bill.periodTo,
+          kinds,
+          siteSuggestion: suggestion,
+        }];
+      });
+      res.json({
+        rows,
+        summary: summarizeVendorBillAttention(rows),
+        sites: sites.map(site => ({ id: site.id, name: site.name })),
+      });
+    } catch (err) {
+      console.error("Error fetching vendor bill attention list:", err);
+      res.status(500).json({ message: "Failed to fetch vendor bill attention list" });
+    }
+  });
+
+  app.patch("/api/vendor-bills/:id/attention/site", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid bill id" });
+      const { siteId } = z.object({
+        siteId: z.number().int().positive().nullable(),
+      }).parse(req.body ?? {});
+      const before = await storage.getVendorBill(id);
+      if (!before) return res.status(404).json({ message: "Vendor bill not found" });
+      if (before.isCancelled === true) return res.status(409).json({ message: "A voided vendor bill cannot be corrected" });
+
+      const site = siteId == null ? null : (await storage.getSites()).find(candidate => candidate.id === siteId);
+      if (siteId != null && !site) return res.status(400).json({ message: "Selected site does not exist" });
+      if (site && before.items.some(item => !vendorBillItemMatchesSite(item.siteName, site.name))) {
+        return res.status(400).json({ message: "The bill contains items outside the selected site. Choose ALL SITES or correct the bill items separately." });
+      }
+      const correction = await storage.correctVendorBillSiteScope(id, siteId);
+      if (!correction) return res.status(404).json({ message: "Vendor bill not found" });
+      await recordChange(req, storage, {
+        module: "vendor_bills",
+        transactionId: id,
+        action: "site_scope_corrected",
+        before: {
+          siteId: correction.before.siteId,
+          siteScopeConfirmed: correction.before.siteScopeConfirmed,
+        },
+        after: {
+          siteId: correction.after.siteId,
+          siteScopeConfirmed: correction.after.siteScopeConfirmed,
+        },
+      });
+      res.json(correction.after);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      if ((err as any)?.code === "CONFLICT") return res.status(409).json({ message: (err as any).message });
+      console.error("Error correcting vendor bill site scope:", err);
+      res.status(500).json({ message: "Failed to correct vendor bill site scope" });
+    }
+  });
+
+  app.patch("/api/vendor-bills/:id/attention/period", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid bill id" });
+      const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
+        const parsed = new Date(`${value}T00:00:00.000Z`);
+        return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+      }, "Enter a real date in YYYY-MM-DD format.");
+      const { periodFrom, periodTo } = z.object({
+        periodFrom: dateSchema,
+        periodTo: dateSchema,
+      }).refine(value => value.periodFrom <= value.periodTo, {
+        message: "Period start must be on or before period end.",
+      }).parse(req.body ?? {});
+      const correction = await storage.correctVendorBillPeriod(id, periodFrom, periodTo);
+      if (!correction) return res.status(404).json({ message: "Vendor bill not found" });
+      await recordChange(req, storage, {
+        module: "vendor_bills",
+        transactionId: id,
+        action: "billing_period_corrected",
+        before: {
+          periodFrom: correction.before.periodFrom,
+          periodTo: correction.before.periodTo,
+        },
+        after: {
+          periodFrom: correction.after.periodFrom,
+          periodTo: correction.after.periodTo,
+        },
+      });
+      res.json(correction.after);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      if ((err as any)?.code === "CONFLICT") return res.status(409).json({ message: (err as any).message });
+      console.error("Error correcting vendor bill period:", err);
+      res.status(500).json({ message: "Failed to correct vendor bill period" });
+    }
+  });
+
+  app.patch("/api/vendor-bills/:id/attention/paid-amount", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid bill id" });
+      const { amountPaid } = z.object({
+        amountPaid: z.number().finite().nonnegative(),
+      }).parse(req.body ?? {});
+      const correction = await storage.recordMissingVendorBillPaidAmount(id, amountPaid);
+      if (!correction) return res.status(404).json({ message: "Vendor bill not found" });
+      await recordChange(req, storage, {
+        module: "vendor_bills",
+        transactionId: id,
+        action: "paid_amount_recorded",
+        before: { amountPaid: correction.before.amountPaid },
+        after: { amountPaid: correction.after.amountPaid },
+      });
+      res.json(correction.after);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      if ((err as any)?.code === "CONFLICT") return res.status(409).json({ message: (err as any).message });
+      if ((err as any)?.code === "BAD_REQUEST") return res.status(400).json({ message: (err as any).message });
+      console.error("Error recording missing vendor bill paid amount:", err);
+      res.status(500).json({ message: "Failed to record paid amount" });
+    }
+  });
+
   app.get("/api/vendor-bills/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
@@ -12377,6 +12536,10 @@ export async function registerRoutes(
     try {
       if (!assertCreateEither(req, res, "vendor_bills_raise", "vendor_bills")) return;
       const input = createVendorBillRequestSchema.parse(req.body);
+      if (!Object.prototype.hasOwnProperty.call(req.body ?? {}, "siteId")) {
+        return res.status(400).json({ message: "Choose a site or deliberately select ALL SITES before saving." });
+      }
+      input.siteScopeConfirmed = true;
       const selectedSite = await resolveVendorBillSite(req, res, input.siteId);
       if (!selectedSite) return;
       if (selectedSite.siteName && input.items.some(item => !vendorBillItemMatchesSite(item.siteName, selectedSite.siteName!))) {
@@ -12439,11 +12602,17 @@ export async function registerRoutes(
       }
       // Legacy/partial PUT callers predate siteId. Omission preserves the
       // persisted scope; only an explicit null changes the bill to All Sites.
+      const hasExplicitSiteAnswer = Object.prototype.hasOwnProperty.call(billData, "siteId");
       (input as any).siteId = vendorBillUpdateSiteId(
-        Object.prototype.hasOwnProperty.call(billData, "siteId"),
+        hasExplicitSiteAnswer,
         input.siteId,
         existing.siteId,
       );
+      if (hasExplicitSiteAnswer) {
+        input.siteScopeConfirmed = true;
+      } else {
+        delete (input as any).siteScopeConfirmed;
+      }
       const selectedSite = await resolveVendorBillSite(req, res, input.siteId);
       if (!selectedSite) return;
       if (selectedSite.siteName && input.items.some(item => !vendorBillItemMatchesSite(item.siteName, selectedSite.siteName!))) {
@@ -12558,9 +12727,15 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const statusSchema = z.object({
         status: z.enum(["draft", "verified", "approved", "paid"]),
+        amountPaid: z.number().finite().nonnegative().optional(),
         reason: z.string().trim().max(500).nullable().optional(),
       });
-      const { status, reason } = statusSchema.parse(req.body);
+      const { status, reason, amountPaid } = statusSchema.parse(req.body);
+      if (status === "paid" && !Object.prototype.hasOwnProperty.call(req.body ?? {}, "amountPaid")) {
+        return res.status(400).json({
+          message: "Enter the paid amount before marking the bill paid. Enter 0 only if that is the recorded amount.",
+        });
+      }
       let before: any;
 
       if (status === "approved") {
@@ -12587,7 +12762,7 @@ export async function registerRoutes(
       if (before.isCancelled === true) return res.status(409).json({ message: "A voided vendor bill cannot change status" });
       const actor = currentUserName(req);
 
-      const bill = await storage.updateVendorBillStatus(id, status, actor);
+      const bill = await storage.updateVendorBillStatus(id, status, actor, amountPaid);
       if (!bill) {
         return res.status(404).json({ message: "Vendor bill not found" });
       }

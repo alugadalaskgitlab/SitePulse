@@ -2359,8 +2359,10 @@ export type CreateDieselRequirementRequest = z.infer<typeof createDieselRequirem
 
 export const vendorBills = pgTable("vendor_bills", {
   id: serial("id").primaryKey(),
-  // Null means the bill deliberately spans all sites (and preserves legacy rows).
+  // Null means ALL SITES; the confirmation flag distinguishes an explicit
+  // choice from legacy rows whose original site answer is unknown.
   siteId: integer("site_id").references(() => sites.id, { onDelete: "set null" }),
+  siteScopeConfirmed: boolean("site_scope_confirmed"),
   billDate: date("bill_date").notNull(),
   billNo: text("bill_no").notNull(),
   billType: text("bill_type").notNull(),
