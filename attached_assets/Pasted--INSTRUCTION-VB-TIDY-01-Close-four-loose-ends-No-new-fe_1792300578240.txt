@@ -1,0 +1,207 @@
+# INSTRUCTION — VB-TIDY-01
+
+**Close four loose ends. No new features, no behaviour changes, no new pages beyond
+one button.**
+
+Baseline: the published commit carrying VB-LINK-01. State it in your report.
+
+**No calculation changes, no migrations, no new columns, no new permission keys, no
+data changes.** Every figure on every bill identical before and after.
+
+---
+
+## Why this batch exists
+
+Four things have been left behind by earlier batches. Each is small. Together they are
+the difference between an app that is finished and one that merely works.
+
+---
+
+## Standing rules
+
+- No production data changes, migrations, automatic repairs or publishing without our
+  review.
+- No sequence resets. Do not call or re-expose `resetAllSequences`.
+- **Preserve all existing users, credentials, site access, permissions and
+  administrator privileges. Do not grant, revoke or reset anything, and do not add,
+  rename or remove any permission key.**
+- Frozen snapshots stay frozen and are never re-derived on read.
+- Report against the benchmark in force at the baseline commit.
+
+---
+
+## Part A — Give the complete export a way in
+
+**The fault.** `GET /api/vendor-bills/export?format=json|xlsx` exists and works, but
+**nothing in the app reaches it.** The only way to run it is to type the address by
+hand. Finished work that cannot be reached is the pattern this batch is closing.
+
+**Required.**
+
+1. A control on the Vendor Bills page — beside the existing export action — that
+   downloads the complete export. Offer both the workbook and the JSON.
+2. It is shown **only** to a user who would pass the endpoint's own checks:
+   Administrator or Owner **and** holding View Vendor Financials. A user who would be
+   refused does not see the control.
+3. It passes the filters currently in force on the page, and labels plainly that it is
+   the complete bill export, distinct from the existing Taxes Register export.
+
+**Constraints.** Do not change the endpoint, its permission checks, its site scoping,
+or the assembly in `shared/vendorBillExport.ts`. Do not change the existing
+`report=financial-summary` export in any way.
+
+---
+
+## Part B — Remove the orphaned statement endpoint
+
+**The fault.** `GET /api/vendor-bills/:id/statement` (`server/routes.ts:11662`) has had
+no caller since VB-VIEW-04 replaced its client use with
+`/api/vendor-bills/:id/previous-bills`. It is unreferenced surface that still answers
+requests.
+
+**Required.**
+
+1. **First prove it is unused.** Search the whole repository — client, server, tests,
+   fixtures, scripts, documentation. Report every reference found, or state plainly
+   that there are none.
+2. **If and only if there are none**, remove the route and any helper that becomes
+   unreachable with it.
+3. If **any** reference exists, **do not remove it.** Report what calls it and stop;
+   we will decide.
+
+**Constraints.** Do not remove `/api/vendor-bills/:id/previous-bills`. Do not touch
+`buildPreviousBillingContext` or `vendorStatementBills` — both are in use.
+
+---
+
+## Part C — Correct the stale test, not the code
+
+**The fault.** `tests/hireBillingLifecycle07b.test.ts` asserts that the text of
+`server/routes.ts` contains the literal string
+`storage.getEquipmentUsage({ equipmentId: statement.equipmentId`. That string is no
+longer there, so the test has failed on every run for weeks. It is a static
+source-text assertion, which breaks whenever code moves even though behaviour is
+unchanged.
+
+**Required.**
+
+1. Find where equipment-hire statements now read **usage** and **maintenance**.
+   State, in plain words, what the current code actually does and confirm the
+   behaviour is still correct — that a hire statement draws on recorded operational
+   usage and maintenance, and that no duplicate attendance table exists.
+2. **Rewrite the assertion to test that behaviour**, not the presence of a string in
+   a source file. Assert the outcome — the statement's figures — rather than the
+   spelling of a call.
+3. Keep the third assertion, that no `hire_attendance` table exists, if it still
+   expresses something real. Say so either way.
+
+**Constraints — this is the important one.**
+
+- **Do not change `server/routes.ts`, `server/storage.ts`, or any hire calculation to
+  make the test pass.** The code is right and the test is stale. If you conclude the
+  code is actually wrong, **stop and report it** rather than changing it.
+- Do not delete the test. Do not mark it skipped.
+
+---
+
+## Part D — Stop the repository being written to
+
+**Two faults.**
+
+1. Pasted instruction text keeps being committed under `attached_assets/` as
+   `Pasted--INSTRUCTION-*.txt`. Several hundred lines across four files so far. These
+   are working notes, not source.
+2. The test run **modifies five tracked PDFs** under `reports/part-c/`
+   (`bulk-linked.pdf`, `integration-material.pdf`, `integration-stores.pdf`,
+   `long-fields.pdf`, `store-unlinked.pdf`), so a clean checkout becomes dirty merely
+   by running the suite.
+
+**Required.**
+
+1. Add an ignore rule for the pasted-instruction files specifically — match the
+   `Pasted--*` naming, **not** the whole `attached_assets/` folder, which holds files
+   that are genuinely needed. Remove the four already committed from tracking, leaving
+   them on disk.
+2. Make the tests that produce those PDFs write to a temporary directory instead of
+   `reports/part-c/`. The tests must still assert whatever they assert today.
+3. After a full test run, `git status` must be clean.
+
+**Constraints.** Do not delete any file from disk. Do not add a broad ignore rule that
+could hide real source. Do not change what the PDF tests verify.
+
+---
+
+## Part E — Make the small text readable
+
+**The fault.** Secondary and helper text across the app is set small enough that the
+owner has to zoom the browser to read it. Examples he has hit: the per-vendor note on
+the payables table ("Estimate · 12 payment unknown"), the metric captions under the
+headline figures, and the meta line under each bill card. This is not a complaint
+about style — these lines carry meaning about money, and a figure whose caveat cannot
+be read is worse than no caveat.
+
+**Required.**
+
+1. Raise the smallest text sizes used for **meaningful secondary text** to a readable
+   minimum. In practice that means the `text-[10px]` and `text-xs` usages that carry
+   information — captions, notes, meta lines, table sub-labels, badge text — move up
+   one step.
+2. Check the contrast of those same lines. Grey-on-white at a small size is the
+   combination that fails; where a line is both small and faint, fix both.
+3. Apply it **consistently**, through the shared styles or components rather than page
+   by page, so new pages inherit it.
+
+**Constraints.**
+
+- **Do not redesign anything.** No new colours, no new fonts, no spacing overhaul, no
+  layout changes. This is size and contrast on existing text.
+- Headline figures, table numbers and headings stay exactly as they are.
+- Nothing may reflow so that a table scrolls horizontally where it did not before, or
+  a figure wraps mid-number. Check the payables table and the bill cards specifically
+  at the laptop width the owner uses.
+- No text is removed or shortened to make room.
+
+---
+
+## What must not change
+
+- **Every figure on every bill.** State before and after, as numbers:
+  - `HLC/VB/2026/0054` — net ₹56,840.00, paid ₹50,000.00, balance ₹6,840.00.
+  - Whole-file totals: gross ₹22,84,909.24 (payables basis), net ₹18,57,636.17.
+- The arithmetic in `billReviewAmounts`, `summarizeBillReview`, `billPaymentPosition`,
+  `getBillFinancialTotals`, `filterFinancialBills`, `vendorStatementBills` and
+  `projectVendorPayables`.
+- Every permission key, every user's permissions, every site access grant.
+- Every endpoint other than the one removed in Part B.
+- The bills-needing-attention page, its counts and its corrections.
+- The one-way status rule and the self-approval checks.
+- Everything AUDIT-01, AUDIT-02, VB-EDIT-01, VB-EDIT-02, VB-VIEW-04, VB-FIND-01,
+  VB-EXPORT-01, VB-SITE-01 and VB-LINK-01 delivered.
+
+---
+
+## Verification required
+
+Report in plain terms, no test-name inventories.
+
+1. **Part A** — the control shown to the Owner and downloading both formats; the same
+   control absent for an Administrator without View Vendor Financials. Confirm the
+   existing Taxes Register export is unchanged.
+2. **Part B** — the search result, listing every reference found or stating there are
+   none; and whether the route was removed or left in place, with the reason.
+3. **Part C** — what the hire statement code actually does today, in plain words; the
+   rewritten assertion; and confirmation that **no production file was changed** to
+   make it pass. List the files you touched.
+4. **Part D** — `git status` clean after a full test run, quoted.
+5. **Part E** — the payables table and a bill card before and after, naming the sizes
+   used. Confirm no layout changed, no table gained a horizontal scroll, and no
+   headline figure or heading was altered.
+6. **The full suite run to completion, with the counts stated.** After Part C there
+   should be **no failures at all**. If any remain, name each one individually. **Do
+   not stop the run early.**
+7. The before/after figures under **What must not change**, as numbers.
+
+Stop and ask once if any part cannot be done without breaking a rule above. Do not
+work around a rule and report it afterwards.
+
+Nothing is to be published. We will review and publish.
