@@ -1586,7 +1586,7 @@ export interface IStorage {
   correctVendorBillPeriod(id: number, periodFrom: string, periodTo: string): Promise<{ before: VendorBill; after: VendorBill } | undefined>;
   recordMissingVendorBillPaidAmount(id: number, amountPaid: number): Promise<{ before: VendorBill; after: VendorBill } | undefined>;
   updateVendorBillPaymentDetails(id: number, details: { paymentMode?: string | null; paidBy?: string | null; amountPaid?: number | null; paymentAccountKey?: string | null }): Promise<VendorBillWithItems | undefined>;
-  getVendorBillCompanyAccounts(): Promise<{ id: string; name: string; type: string }[]>;
+  getVendorBillCompanyAccounts(): Promise<{ id: string; name: string; type: string; source: string }[]>;
   // 06M-A: ensures nullable payment_mode/paid_by columns on vendor_bills.
   // Safe to run multiple times (ALTER TABLE … ADD COLUMN IF NOT EXISTS).
   ensureVendorBillPaymentColumns(): Promise<void>;

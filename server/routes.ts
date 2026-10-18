@@ -12434,9 +12434,13 @@ export async function registerRoutes(
         return;
       }
       const accounts = await storage.getVendorBillCompanyAccounts();
-      res.json(req.query.includeThirdParty === "true"
-        ? accounts
-        : accounts.filter(account => account.source === "own"));
+      if (req.query.includeThirdParty === "true") {
+        res.json(accounts.map(account => ({ ...account, source: account.source ?? "own" })));
+        return;
+      }
+      res.json(accounts
+        .filter(account => (account.source ?? "own") === "own")
+        .map(({ id, name, type }) => ({ id, name, type })));
     } catch (err: any) {
       res.status(500).json({ message: err?.message || "Failed to fetch company accounts" });
     }

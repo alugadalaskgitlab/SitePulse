@@ -366,7 +366,7 @@ const VB_MODE_LABELS: Record<string, string> = { cash: "CASH", credit: "CREDIT",
 
 function useVendorBillCompanyAccounts(enabled: boolean, paymentAccountKey?: string | null) {
   const query = useQuery<{ id: string; name: string; type: string; source?: string }[]>({
-    queryKey: ["/api/vendor-bills/company-accounts"],
+    queryKey: ["/api/vendor-bills/company-accounts", "vendor-bill-payment"],
     queryFn: () => fetch("/api/vendor-bills/company-accounts?includeThirdParty=true", { credentials: "include" }).then(async response => {
       if (!response.ok) throw new Error((await response.text()) || "Could not load company accounts");
       return response.json();
@@ -465,7 +465,10 @@ export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; 
           </div>
           <div>
             <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Paid By</p>
-            <Select value={paidByKind} onValueChange={(v) => setPaidByKind(v as any)}>
+            <Select value={paidByKind} onValueChange={(v) => {
+              setPaidByKind(v as any);
+              setPaymentAccountKey("");
+            }}>
               <SelectTrigger data-testid="select-vb-paid-by"><SelectValue placeholder="SELECT PAYER" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="company">COMPANY ACCOUNT</SelectItem>

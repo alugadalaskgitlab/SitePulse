@@ -229,7 +229,11 @@ export function buildVendorBillExport(
     const statements = Array.isArray(bill.hireStatements) ? bill.hireStatements : [];
     const paymentAccount = options.paymentAccounts?.find(account => account.id === bill.paymentAccountKey);
     const paymentAccountSource = paymentAccount
-      ? paymentAccount.source ?? "own"
+      ? paymentAccount.source === "third_party"
+        ? "third_party"
+        : paymentAccount.source == null || paymentAccount.source === "own"
+          ? "own"
+          : NOT_RECORDED
       : NOT_RECORDED;
 
     return {

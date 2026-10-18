@@ -4,6 +4,7 @@ const fixtures = vi.hoisted(() => ({
   selectedRows: [] as any[][],
   writes: [] as any[],
   returnedBill: undefined as any,
+  paymentAccounts: [] as any[],
 }));
 
 function query(rows: any[] = []) {
@@ -27,6 +28,7 @@ const transaction = {
 };
 
 const database = {
+  select: vi.fn(() => query([{ value: JSON.stringify(fixtures.paymentAccounts) }])),
   transaction: vi.fn(async (callback: (tx: typeof transaction) => Promise<unknown>) =>
     callback(transaction)),
   query: {
@@ -45,6 +47,10 @@ beforeEach(async () => {
   fixtures.selectedRows = [];
   fixtures.writes = [];
   fixtures.returnedBill = undefined;
+  fixtures.paymentAccounts = [
+    { id: "hdfc_ca", name: "HDFC - CA", type: "CA", source: "own" },
+    { id: "alps_infra_works", name: "ALPS Infra - Union Bank (works)", type: "CC", source: "third_party" },
+  ];
   vi.clearAllMocks();
 });
 
@@ -60,6 +66,38 @@ function approvedBill(billType: string, amountPaid: number | null, overrides: Re
     ...overrides,
   };
 }
+
+describe("VB-PAID-01 funding-source storage guard", () => {
+  const savePayer = (existing: any, details: any) => {
+    fixtures.selectedRows.push([existing]);
+    fixtures.returnedBill = { ...existing, ...details, items: [] };
+    return new DatabaseStorage().updateVendorBillPaymentDetails(existing.id, details);
+  };
+
+  it("rejects an ALPS payment paired with an HLC-owned account", async () => {
+    const existing = approvedBill("material", null, { paidBy: "alps", paymentAccountKey: null });
+    await expect(savePayer(existing, {
+      paidBy: "alps",
+      paymentAccountKey: "hdfc_ca",
+    })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "The selected bank/account is not configured for ALPS-funded payments.",
+    });
+    expect(fixtures.writes).toEqual([]);
+  });
+
+  it("accepts an ALPS payment paired with the third-party ALPS account", async () => {
+    const existing = approvedBill("material", null, { paidBy: null, paymentAccountKey: null });
+    await savePayer(existing, {
+      paidBy: "alps",
+      paymentAccountKey: "alps_infra_works",
+    });
+    expect(fixtures.writes).toEqual([{
+      paidBy: "alps",
+      paymentAccountKey: "alps_infra_works",
+    }]);
+  });
+});
 
 async function markPaid(existing: ReturnType<typeof approvedBill>, paidAmount = Number(existing.amountPaid)) {
   fixtures.selectedRows.push([existing], []); // locked bill, then linked hire statements

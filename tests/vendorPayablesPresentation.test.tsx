@@ -67,18 +67,19 @@ type LinkedBillFixture = {
   net: number;
   status: string;
   paid?: number | null;
+  paidBy?: string;
   billDate?: string;
   periodFrom?: string;
   periodTo?: string;
 };
 
 const linkedFixture = ({
-  id, billNo, vendorId, vendorName, net, status, paid = null,
+  id, billNo, vendorId, vendorName, net, status, paid = null, paidBy,
   billDate = "2026-03-09", periodFrom = "2026-02-04", periodTo = "2026-02-05",
 }: LinkedBillFixture) => linkedBill({
   id, billNo, vendorId, vendorName, linkedVendorName: vendorName, status,
   billDate, periodFrom, periodTo, totalAmount: net, netPayableAmount: net,
-  amountPaid: paid, items: [{ category: "equipment", amount: net }],
+  amountPaid: paid, ...(paidBy !== undefined ? { paidBy } : {}), items: [{ category: "equipment", amount: net }],
 });
 
 const gangaramBills = [
@@ -159,6 +160,7 @@ const bills = [
     id: 54, billNo: "HLC/VB/2026/0054", vendorId: 3, vendorName: "MAHIPAL KALPAGURI",
     net: 87008.69, status: "approved", paid: 75155, billDate: "2026-10-09",
     periodFrom: "2026-10-01", periodTo: "2026-10-31",
+    paidBy: "alps",
   }),
   linkedFixture({
     id: 55, billNo: "HLC/VB/2026/0055", vendorId: 3, vendorName: "MAHIPAL KALPAGURI",
@@ -210,6 +212,8 @@ describe("VB-PAY-02 payables presentation", () => {
   it("keeps the readable linked-vendor amounts unchanged and gives full amounts room", async () => {
     const { container } = mount();
     const row = await screen.findByTitle("GANGARAM NARSIMHULU");
+    expect((await screen.findByTestId("alps-funded-total")).textContent)
+      .toContain("Of the recorded payments, ₹75,155.00 was funded by ALPS Infra.");
     const expectedRows: [string, string[]][] = [
       ["GANGARAM NARSIMHULU", ["₹9,41,875.40", "₹0.00", "₹0.00", "₹3,89,888.41", "₹3,89,888.41"]],
       ["G SANGANNA", ["₹2,33,964.00", "₹0.00", "₹0.00", "₹1,10,544.00", "₹1,10,544.00"]],

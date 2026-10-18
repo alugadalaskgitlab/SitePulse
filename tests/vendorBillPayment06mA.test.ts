@@ -79,6 +79,34 @@ describe("06M-A vendor bill payment details", () => {
     expect("paidAt" in details).toBe(false);
   });
 
+  it("accepts ALPS as a vendor-bill payer without changing the diesel route", async () => {
+    const res = await request(app)
+      .patch("/api/vendor-bills/7/payment-details")
+      .send({ paymentMode: "rtgs", paidBy: "alps", paymentAccountKey: "alps_infra_works" });
+    expect(res.status).toBe(200);
+    expect(storage.updateVendorBillPaymentDetails.mock.calls.at(-1)[1]).toEqual({
+      paymentMode: "rtgs", paidBy: "alps", paymentAccountKey: "alps_infra_works",
+    });
+  });
+
+  it("keeps the diesel response shape own-only unless vendor bills opt in", async () => {
+    storage.getVendorBillCompanyAccounts.mockResolvedValue([
+      { id: "hdfc_ca", name: "HDFC - CA", type: "CA", source: "own" },
+      { id: "alps_infra_works", name: "ALPS Infra - Union Bank (works)", type: "CC", source: "third_party" },
+    ]);
+    const dieselResponse = await request(app).get("/api/vendor-bills/company-accounts");
+    expect(dieselResponse.status).toBe(200);
+    expect(dieselResponse.body).toEqual([
+      { id: "hdfc_ca", name: "HDFC - CA", type: "CA" },
+    ]);
+    const billResponse = await request(app).get("/api/vendor-bills/company-accounts?includeThirdParty=true");
+    expect(billResponse.status).toBe(200);
+    expect(billResponse.body).toEqual([
+      { id: "hdfc_ca", name: "HDFC - CA", type: "CA", source: "own" },
+      { id: "alps_infra_works", name: "ALPS Infra - Union Bank (works)", type: "CC", source: "third_party" },
+    ]);
+  });
+
   it("I: personal payer name forwarded as paidBy", async () => {
     const res = await request(app)
       .patch("/api/vendor-bills/7/payment-details")

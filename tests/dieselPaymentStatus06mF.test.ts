@@ -64,6 +64,7 @@ vi.mock("../server/storage", () => {
   methods.getVendorBillCompanyAccounts = vi.fn(async () => [
     { id: "bank_of_baroda_od", name: "Bank of Baroda - OD", type: "OD" },
     { id: "hdfc_ca", name: "HDFC - CA", type: "CA" },
+    { id: "alps_infra_works", name: "ALPS Infra - Union Bank (works)", type: "CC", source: "third_party" },
   ]);
   methods.updateDieselPaymentStatus = vi.fn(async (id: number, data: any, actor: string) =>
     reqs[id] ? { ...reqs[id], ...data, paidAt: "SERVER", paymentRecordedBy: actor.toUpperCase() } : undefined,
@@ -282,6 +283,16 @@ describe("06M-F Tests I/J — schema surface + no OCR", () => {
     expect(res.body).toEqual([
       { id: "bank_of_baroda_od", name: "Bank of Baroda - OD", type: "OD" },
       { id: "hdfc_ca", name: "HDFC - CA", type: "CA" },
+    ]);
+  });
+  it("vendor bills explicitly request source-tagged third-party accounts", async () => {
+    fx.role = "admin";
+    const res = await request(app).get("/api/vendor-bills/company-accounts?includeThirdParty=true");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([
+      { id: "bank_of_baroda_od", name: "Bank of Baroda - OD", type: "OD", source: "own" },
+      { id: "hdfc_ca", name: "HDFC - CA", type: "CA", source: "own" },
+      { id: "alps_infra_works", name: "ALPS Infra - Union Bank (works)", type: "CC", source: "third_party" },
     ]);
   });
   it("I: no OCR / Smart Bill Read / duplicate-detection code in the touched files", () => {

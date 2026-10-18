@@ -9,7 +9,15 @@ import { hasCumulativeVendorPayment, VendorBillPaymentDetails, VendorBillPaidAcc
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 beforeEach(() => {
   queryClient.clear();
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify([{ id: "bank", name: "HDFC CURRENT A/C", type: "bank" }]))));
+  if (!HTMLElement.prototype.hasPointerCapture) {
+    Object.defineProperty(HTMLElement.prototype, "hasPointerCapture", { configurable: true, value: () => false });
+    Object.defineProperty(HTMLElement.prototype, "setPointerCapture", { configurable: true, value: () => {} });
+    Object.defineProperty(HTMLElement.prototype, "releasePointerCapture", { configurable: true, value: () => {} });
+  }
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify([
+    { id: "bank", name: "HDFC CURRENT A/C", type: "CA", source: "own" },
+    { id: "alps_infra_works", name: "ALPS Infra - Union Bank (works)", type: "CC", source: "third_party" },
+  ]))));
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const mount = (ui: React.ReactNode) => render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
@@ -23,19 +31,36 @@ it.each(["all", "ALL", "equipment"])("includes amount/account in %s save payload
   await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/vendor-bills/1/payment-details", expect.objectContaining({
     method: "PATCH", body: JSON.stringify({ paymentMode: null, paidBy: "company", amountPaid: 1000, paymentAccountKey: "bank" }),
   })));
-  expect(fetch).toHaveBeenCalledWith("/api/vendor-bills/company-accounts", { credentials: "include" });
+  expect(fetch).toHaveBeenCalledWith("/api/vendor-bills/company-accounts?includeThirdParty=true", { credentials: "include" });
 });
 
-it("does not widen material fields, account query, or payload", async () => {
+it("renders the account selector for a material bill without showing cumulative payment", async () => {
   mount(<VendorBillPaymentDetails canEditPayment bill={{ id: 2, billType: "material", paidBy: "company" }} />);
   fireEvent.click(screen.getByTestId("button-edit-payment-details"));
   expect(screen.queryByTestId("input-vb-amount-paid")).toBeNull();
-  expect(screen.queryByTestId("select-vb-payment-account")).toBeNull();
+  expect(screen.getByTestId("select-vb-payment-account")).toBeTruthy();
   fireEvent.click(screen.getByTestId("button-save-payment-details"));
-  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/vendor-bills/2/payment-details", expect.anything()));
   expect(fetch).toHaveBeenCalledWith("/api/vendor-bills/2/payment-details", expect.objectContaining({
-    body: JSON.stringify({ paymentMode: null, paidBy: "company" }),
+    body: JSON.stringify({ paymentMode: null, paidBy: "company", paymentAccountKey: null }),
   }));
+});
+
+it("uses only the third-party account for an ALPS-funded material bill", async () => {
+  mount(<VendorBillPaymentDetails canEditPayment bill={{
+    id: 3, billType: "material", paidBy: "alps", paymentAccountKey: "alps_infra_works",
+  }} />);
+  fireEvent.click(screen.getByTestId("button-edit-payment-details"));
+  expect(screen.queryByTestId("input-vb-amount-paid")).toBeNull();
+  expect(screen.getByTestId("select-vb-payment-account")).toBeTruthy();
+  fireEvent.pointerDown(screen.getByTestId("select-vb-payment-account"), { button: 0 });
+  expect(await screen.findByText("ALPS Infra - Union Bank (works) · CC")).toBeTruthy();
+  expect(screen.queryByText("HDFC CURRENT A/C · CA")).toBeNull();
+  fireEvent.click(screen.getByTestId("button-save-payment-details"));
+  await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/vendor-bills/3/payment-details", expect.objectContaining({
+    method: "PATCH",
+    body: JSON.stringify({ paymentMode: null, paidBy: "alps", paymentAccountKey: "alps_infra_works" }),
+  })));
 });
 
 it.each(["draft", "verified"])("keeps %s payment panel read-only when permission is false", status => {

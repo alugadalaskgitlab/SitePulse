@@ -66,6 +66,9 @@ const storage = {
     billType: "material", totalAmount: id * 100, gstPercent: 0, items: [], status: "approved",
   }))),
   getVendorNamesByIds: vi.fn(async (ids: number[]) => ids.map(id => ({ id, name: `MASTER-${id}` }))),
+  getVendorBillCompanyAccounts: vi.fn(async () => [
+    { id: "bank-main", name: "Bank of Baroda - OD", type: "OD", source: "own" },
+  ]),
   getVendorNames: vi.fn(async () => ["VENDOR-1", "VENDOR-2", "SECRET VENDOR"]),
   getDailyPlantReportIndex: vi.fn(async () => ["A", "B"].map(letter => ({
     date: "2026-10-01", plantName: `Plant ${letter}`, totalLoads: 1, totalProductionMt: 10,
@@ -245,7 +248,8 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
     expect(live.vendor).toMatchObject({ recordedName: "Recorded Vendor", linkedVendorMasterId: 11, linkedVendorMasterName: "MASTER-11" });
     expect(live.payments[0]).toMatchObject({
       recordType: "Bill-level cumulative total; no per-payment transaction record is stored",
-      paymentDate: "Not recorded", amount: 25, mode: "Bank", reference: "UTR 123",
+      paymentDate: "Not recorded", amount: 25, mode: "Bank", account: "Bank of Baroda - OD",
+      accountKey: "bank-main", accountSource: "own", reference: "UTR 123",
     });
     expect(live.money).toMatchObject({
       advanceAdjustment: -10,
@@ -306,9 +310,10 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
     expect(exportedVoid[columns.indexOf("Balance")]).toBe("Unknown");
     const paymentRows = xlsx.utils.sheet_to_json(workbook.Sheets.Payments, { header: 1 }) as any[][];
     expect(paymentRows.some(row => row.includes("BILL-LIVE") && row.includes("UTR 123"))).toBe(true);
+    expect(paymentRows.some(row => row.includes("Bank of Baroda - OD") && row.includes("bank-main") && row.includes("own"))).toBe(true);
   });
 
-  it("downloads all 57 bills without oversized cells and leaves complete JSON bytes unchanged", async () => {
+  it("downloads all 57 bills without oversized cells and keeps funding-source JSON stable", async () => {
     permissions.vendor_bills = { export: true };
     authUser = { id: 7, isAdmin: true, fullName: "Site Administrator" };
     const originalGetVendorBills = storage.getVendorBills.getMockImplementation();
@@ -365,8 +370,13 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
       expect(jsonBeforeBody.header.billCount).toBe(57);
       expect(jsonBeforeBody.bills[0].hireStatements[0].calculationSnapshot.sourceEvidence.snapshotPayload)
         .toHaveLength(40_013);
+      expect(jsonBeforeBody.bills[0].payments[0]).toMatchObject({
+        account: "Not recorded",
+        accountKey: "Not recorded",
+        accountSource: "Not recorded",
+      });
       expect(createHash("sha256").update(jsonBeforeBytes).digest("hex"))
-        .toBe("f7000d27153e52b0d9410a1f3f9529aadd79e946a52dfbfa606abc2a420ae484");
+        .toBe("64c77b57f1b188fac65d4b8d8e52fc57ce916faca7a1273c4b232d25be7af8dc");
 
       const xlsxResponse = await request(app)
         .get("/api/vendor-bills/export?format=xlsx")
@@ -416,7 +426,7 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
       const jsonAfterBytes = jsonAfter.body as Buffer;
       expect(jsonAfterBytes.equals(jsonBeforeBytes)).toBe(true);
       expect(createHash("sha256").update(jsonAfterBytes).digest("hex"))
-        .toBe("f7000d27153e52b0d9410a1f3f9529aadd79e946a52dfbfa606abc2a420ae484");
+        .toBe("64c77b57f1b188fac65d4b8d8e52fc57ce916faca7a1273c4b232d25be7af8dc");
     } finally {
       vi.useRealTimers();
       storage.getVendorBills.mockReset();

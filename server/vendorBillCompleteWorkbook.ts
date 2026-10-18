@@ -137,12 +137,13 @@ export function buildVendorBillCompleteWorkbook(assembly: any) {
 
   const paymentColumns = [
     "Bill ID", "Bill Number", "Record Type", "Payment Date", "Amount", "Mode", "Account",
-    "Paid By", "Recorded By", "Status Recorded At", "Reference",
+    "Account Key", "Account Source", "Paid By", "Recorded By", "Status Recorded At", "Reference",
   ];
   const paymentRows = assembly.bills.flatMap((bill: any) => bill.payments.map((payment: any) => [
     cellValue(bill.identity.billId), cellValue(bill.identity.billNumber), cellValue(payment.recordType),
     cellValue(payment.paymentDate), cellValue(payment.amount), cellValue(payment.mode), cellValue(payment.account),
-    cellValue(payment.paidBy), cellValue(payment.recordedBy), cellValue(payment.statusRecordedAt),
+    cellValue(payment.accountKey), cellValue(payment.accountSource), cellValue(payment.paidBy),
+    cellValue(payment.recordedBy), cellValue(payment.statusRecordedAt),
     cellValue(payment.reference),
   ]));
   appendSheet(workbook, "Payments", assembly.header, paymentColumns, paymentRows);
