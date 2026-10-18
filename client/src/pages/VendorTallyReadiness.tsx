@@ -26,6 +26,14 @@ function BillLink({ bill }: { bill: TallyReadinessBill }) {
   );
 }
 
+function WorkPeriod({ bill }: { bill: TallyReadinessBill }) {
+  return (
+    <p className="mt-1 text-xs text-muted-foreground">
+      Work period: {bill.periodFrom || "not recorded"} to {bill.periodTo || "not recorded"}
+    </p>
+  );
+}
+
 function CoverageCard({ title, coverage }: { title: string; coverage: TallyMappingCoverage }) {
   return (
     <Card>
@@ -112,9 +120,12 @@ export default function VendorTallyReadiness() {
               <h2 id="tally-bill-readiness-heading" className="text-lg font-semibold">Bill readiness</h2>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <CountCard label="Candidates" count={readiness.data.candidates.total} detail="Approved or paid, excluding cancelled and deleted bills" />
+                <CountCard label="Post-cutover" count={readiness.data.candidates.postCutover} detail="Work period starts on or after cutover" />
+                <CountCard label="Pre-cutover" count={readiness.data.candidates.preCutover} detail="Work period ended before cutover; already belongs to Tally" />
+                <CountCard label="Straddles cutover" count={readiness.data.candidates.straddlesCutover} detail="Part of the work period falls before cutover" />
+                <CountCard label="Period not recorded" count={readiness.data.candidates.periodNotRecorded} detail="Bill date is not used as a fallback" />
                 <CountCard label="Ready" count={readiness.data.candidates.ready} detail="Post-cutover candidates with no blockers" />
                 <CountCard label="Blocked" count={readiness.data.candidates.blocked} detail="Post-cutover candidates with one or more blockers" />
-                <CountCard label="Pre-cutover" count={readiness.data.candidates.preCutover} detail="Already belong to Tally; not treated as errors" />
               </div>
             </section>
 
@@ -139,6 +150,7 @@ export default function VendorTallyReadiness() {
                     {readiness.data.blockedBills.map(bill => (
                       <li key={bill.id} className="rounded-md border p-3">
                         <BillLink bill={bill} />
+                          <WorkPeriod bill={bill} />
                         <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-destructive">
                           {bill.reasons.map((reason, index) => <li key={`${bill.id}-${index}`}>{reason}</li>)}
                         </ul>
@@ -159,7 +171,58 @@ export default function VendorTallyReadiness() {
                 ) : (
                   <ul className="space-y-2">
                     {readiness.data.preCutoverBills.map(bill => (
-                      <li key={bill.id}><BillLink bill={bill} /></li>
+                      <li key={bill.id}>
+                        <BillLink bill={bill} />
+                        <WorkPeriod bill={bill} />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Straddles the cutover — owner decision needed</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="mb-3 text-sm text-muted-foreground">
+                  Part of this work falls before the cutover. The owner must decide whether each bill goes to Tally.
+                  These bills are not counted as ready or blocked.
+                </p>
+                {readiness.data.straddlingBills.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No candidate bills straddle the cutover.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {readiness.data.straddlingBills.map(bill => (
+                      <li key={bill.id}>
+                        <BillLink bill={bill} />
+                        <WorkPeriod bill={bill} />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Period not recorded</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="mb-3 text-sm text-muted-foreground">
+                  These bills cannot be placed until their billing periods are recorded. The bill date is not used as a fallback.
+                  These candidates are not counted as ready or blocked.
+                </p>
+                {readiness.data.periodNotRecordedBills.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No candidate bills have a missing or invalid billing period.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {readiness.data.periodNotRecordedBills.map(bill => (
+                      <li key={bill.id}>
+                        <BillLink bill={bill} />
+                        <WorkPeriod bill={bill} />
+                      </li>
                     ))}
                   </ul>
                 )}

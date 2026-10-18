@@ -57,6 +57,8 @@ export type TallyReadinessBillInput = {
   id: number;
   billNo?: string | null;
   billDate?: string | null;
+  periodFrom?: string | null;
+  periodTo?: string | null;
   status?: string | null;
   vendorId?: number | null;
   vendorName?: string | null;
@@ -76,6 +78,8 @@ export type TallyReadinessBill = {
   id: number;
   billNo: string;
   billDate: string;
+  periodFrom: string | null;
+  periodTo: string | null;
   vendorName: string;
   href: string;
 };
@@ -98,10 +102,15 @@ export type TallyExportReadinessReport = {
   candidates: {
     total: number;
     preCutover: number;
+    postCutover: number;
+    straddlesCutover: number;
+    periodNotRecorded: number;
     ready: number;
     blocked: number;
   };
   preCutoverBills: TallyReadinessBill[];
+  straddlingBills: TallyReadinessBill[];
+  periodNotRecordedBills: TallyReadinessBill[];
   blockedBills: TallyBlockedBill[];
 };
 
@@ -120,11 +129,26 @@ function mappingCoverage(records: TallyMappingRecord[], mapping: (record: TallyM
   return { total: records.length, mapped: records.length - unmapped.length, unmapped };
 }
 
+function rawPeriodDate(value: string | null | undefined): string | null {
+  const normalized = value?.trim();
+  return normalized || null;
+}
+
+function validDateOnly(value: string | null | undefined): string | null {
+  const normalized = rawPeriodDate(value);
+  if (!normalized || !/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return null;
+  const parsed = new Date(`${normalized}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== normalized) return null;
+  return normalized;
+}
+
 function billSummary(bill: TallyReadinessBillInput, vendorName: string): TallyReadinessBill {
   return {
     id: bill.id,
     billNo: bill.billNo?.trim() || `Bill #${bill.id}`,
     billDate: String(bill.billDate ?? ""),
+    periodFrom: rawPeriodDate(bill.periodFrom),
+    periodTo: rawPeriodDate(bill.periodTo),
     vendorName,
     href: `/finance/vendor-bills?billId=${encodeURIComponent(String(bill.id))}`,
   };
@@ -143,6 +167,8 @@ export function buildTallyExportReadiness(input: {
   bills: TallyReadinessBillInput[];
 }): TallyExportReadinessReport {
   const { config, vendors, sites, hiredMachines } = input;
+  const cutoverDate = validDateOnly(config.cutoverDate);
+  if (!cutoverDate) throw new Error("Tally export cutover date must be a valid YYYY-MM-DD date.");
   const vendorById = new Map(vendors.map(vendor => [vendor.id, vendor]));
   const siteById = new Map(sites.map(site => [site.id, site]));
   const sitesByName = new Map<string, TallyMappingRecord[]>();
@@ -157,20 +183,34 @@ export function buildTallyExportReadiness(input: {
     bill.isDeleted !== true,
   );
   const preCutoverBills: TallyReadinessBill[] = [];
+  const straddlingBills: TallyReadinessBill[] = [];
+  const periodNotRecordedBills: TallyReadinessBill[] = [];
   const blockedBills: TallyBlockedBill[] = [];
+  let postCutover = 0;
   let ready = 0;
 
   for (const bill of candidates) {
     const vendor = bill.vendorId == null ? undefined : vendorById.get(Number(bill.vendorId));
     const summary = billSummary(bill, vendor?.name || bill.vendorName || "(unlinked vendor)");
     const billDate = String(bill.billDate ?? "");
-    if (/^\d{4}-\d{2}-\d{2}$/.test(billDate) && billDate < config.cutoverDate) {
+    const periodFrom = validDateOnly(bill.periodFrom);
+    const periodTo = validDateOnly(bill.periodTo);
+    if (!periodFrom || !periodTo || periodFrom > periodTo) {
+      periodNotRecordedBills.push(summary);
+      continue;
+    }
+    if (periodTo < cutoverDate) {
       preCutoverBills.push(summary);
       continue;
     }
+    if (periodFrom < cutoverDate) {
+      straddlingBills.push(summary);
+      continue;
+    }
+    postCutover++;
 
     const reasons: string[] = [];
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(billDate)) {
+    if (!validDateOnly(billDate)) {
       reasons.push("Bill date is missing or invalid.");
     }
 
@@ -259,10 +299,15 @@ export function buildTallyExportReadiness(input: {
     candidates: {
       total: candidates.length,
       preCutover: preCutoverBills.length,
+      postCutover,
+      straddlesCutover: straddlingBills.length,
+      periodNotRecorded: periodNotRecordedBills.length,
       ready,
       blocked: blockedBills.length,
     },
     preCutoverBills,
+    straddlingBills,
+    periodNotRecordedBills,
     blockedBills,
   };
 }

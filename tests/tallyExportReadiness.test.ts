@@ -20,28 +20,75 @@ describe("Tally export readiness", () => {
     expect(trimTallyMappingName(null)).toBeNull();
   });
 
-  it("lists every blocker for post-cutover bills and reports pre-cutover bills separately", () => {
+  it("places candidates by billing period, including an exact-cutover start, without falling back to bill date", () => {
+    const report = buildTallyExportReadiness({
+      config,
+      vendors: [{ id: 4, name: "Example Vendor", tallyLedgerName: "Example Vendor" }],
+      sites: [{ id: 8, name: "North Site", tallyCostCentreName: "North Site" }],
+      hiredMachines: [],
+      bills: [
+        { id: 10, billNo: "PRE-10", billDate: "2026-03-11", periodFrom: "2026-01-25", periodTo: "2026-01-30", status: "approved", vendorId: 4, siteId: 8 },
+        { id: 11, billNo: "POST-11", billDate: "2026-01-15", periodFrom: "2026-01-31", periodTo: "2026-02-01", status: "approved", vendorId: 4, siteId: 8 },
+        { id: 12, billNo: "STRADDLE-12", billDate: "2026-03-11", periodFrom: "2026-01-30", periodTo: "2026-01-31", status: "paid", vendorId: 4, siteId: 8 },
+        { id: 13, billNo: "NO-PERIOD-13", billDate: "2025-12-30", periodFrom: null, periodTo: null, status: "paid", vendorId: 4, siteId: 8 },
+        { id: 14, billNo: "INVALID-PERIOD-14", billDate: "2026-02-01", periodFrom: "2026-02-31", periodTo: "2026-03-01", status: "approved", vendorId: 4, siteId: 8 },
+        { id: 15, billNo: "REVERSED-PERIOD-15", billDate: "2026-02-01", periodFrom: "2026-02-02", periodTo: "2026-02-01", status: "approved", vendorId: 4, siteId: 8 },
+        { id: 16, billNo: "DRAFT-16", billDate: "2026-02-01", periodFrom: "2026-02-01", periodTo: "2026-02-02", status: "draft", vendorId: 4, siteId: 8 },
+        { id: 17, billNo: "CANCELLED-17", billDate: "2026-02-01", periodFrom: "2026-02-01", periodTo: "2026-02-02", status: "approved", isCancelled: true, vendorId: 4, siteId: 8 },
+        { id: 18, billNo: "DELETED-18", billDate: "2026-02-01", periodFrom: "2026-02-01", periodTo: "2026-02-02", status: "paid", isDeleted: true, vendorId: 4, siteId: 8 },
+        { id: 19, billNo: "VERIFIED-19", billDate: "2026-02-01", periodFrom: "2026-02-01", periodTo: "2026-02-02", status: "verified", vendorId: 4, siteId: 8 },
+      ],
+    });
+
+    expect(report.candidates).toEqual({
+      total: 6,
+      preCutover: 1,
+      postCutover: 1,
+      straddlesCutover: 1,
+      periodNotRecorded: 3,
+      ready: 1,
+      blocked: 0,
+    });
+    expect(report.preCutoverBills.map(bill => bill.billNo)).toEqual(["PRE-10"]);
+    expect(report.straddlingBills.map(bill => bill.billNo)).toEqual(["STRADDLE-12"]);
+    expect(report.periodNotRecordedBills.map(bill => bill.billNo)).toEqual([
+      "NO-PERIOD-13",
+      "INVALID-PERIOD-14",
+      "REVERSED-PERIOD-15",
+    ]);
+  });
+
+  it("lists every blocker for post-cutover bills", () => {
     const report = buildTallyExportReadiness({
       config,
       vendors: [{ id: 4, name: "Example Vendor", tallyLedgerName: null }],
       sites: [{ id: 8, name: "North Site", tallyCostCentreName: null }],
       hiredMachines: [],
-      bills: [
-        { id: 10, billNo: "POST-10", billDate: "2026-02-01", status: "approved", vendorId: 4, siteId: 8 },
-        { id: 11, billNo: "PRE-11", billDate: "2026-01-30", status: "paid", vendorId: 4, siteId: 8 },
-        { id: 12, billNo: "DRAFT-12", billDate: "2026-02-01", status: "draft", vendorId: 4, siteId: 8 },
-        { id: 13, billNo: "CANCELLED-13", billDate: "2026-02-01", status: "approved", isCancelled: true, vendorId: 4, siteId: 8 },
-        { id: 14, billNo: "DELETED-14", billDate: "2026-02-01", status: "paid", isDeleted: true, vendorId: 4, siteId: 8 },
-        { id: 15, billNo: "VERIFIED-15", billDate: "2026-02-01", status: "verified", vendorId: 4, siteId: 8 },
-      ],
+      bills: [{
+        id: 20,
+        billNo: "BLOCKED-20",
+        billDate: "2026-03-11",
+        periodFrom: "2026-02-01",
+        periodTo: "2026-02-28",
+        status: "approved",
+        vendorId: 4,
+        siteId: 8,
+      }],
     });
 
-    expect(report.candidates).toEqual({ total: 2, preCutover: 1, ready: 0, blocked: 1 });
+    expect(report.candidates).toEqual({
+      total: 1,
+      preCutover: 0,
+      postCutover: 1,
+      straddlesCutover: 0,
+      periodNotRecorded: 0,
+      ready: 0,
+      blocked: 1,
+    });
     expect(report.blockedBills[0].reasons).toEqual([
       'Vendor "Example Vendor" has no Name in Tally.',
       'Site "North Site" has no Name in Tally.',
     ]);
-    expect(report.preCutoverBills.map(bill => bill.billNo)).toEqual(["PRE-11"]);
   });
 
   it("rejects missing or invalid Tally configuration rather than silently falling back", () => {
