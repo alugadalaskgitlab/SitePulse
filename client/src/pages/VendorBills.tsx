@@ -5454,6 +5454,9 @@ export default function VendorBills() {
           </div>
         </div>
         <div className="flex gap-2">
+          <Link href="/finance/vendor-bills/tally-readiness">
+            <Button variant="outline" data-testid="button-tally-readiness">TALLY READINESS</Button>
+          </Link>
           {(isAdmin || !!user?.isOwner) && (
             <Link href="/finance/vendor-bills/attention">
               <Button variant="outline" data-testid="button-vendor-bill-attention">

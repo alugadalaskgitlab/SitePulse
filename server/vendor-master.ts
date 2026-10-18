@@ -6,6 +6,7 @@ import { assertAdmin, assertView } from "./auth-routes";
 import { vendors, vendorBills, vendorBillItems, vendorRateCards, vendorAliases, purchaseIndentItems, purchaseIndents, plantMaterials, siteMaterialTrips, sites, equipmentMaster, auditLogs } from "@shared/schema";
 import { equipmentVendorIdentities, EQUIPMENT_VENDOR_LINK, ownerNameKey } from "./equipmentVendorIdentity";
 import { siteMatchesPermitted } from "@shared/siteName";
+import { trimTallyMappingName } from "@shared/tallyExportReadiness";
 import { isBulkPiDeliveryItem } from "@shared/purchaseIndentDelivery";
 
 export const vendorMasterFields = z.object({
@@ -18,6 +19,7 @@ export const vendorMasterFields = z.object({
   bankAccountNumber: z.string().trim().max(100).nullish(),
   bankIfsc: z.string().trim().max(50).nullish(),
   bankName: z.string().trim().max(250).nullish(),
+  tallyLedgerName: z.string().nullish().transform(trimTallyMappingName),
   contactPersonName: z.string().trim().max(250).nullish(),
   contactPhone: z.string().trim().max(100).nullish(),
   contactEmail: z.string().trim().email().max(250).or(z.literal("")).nullish(),

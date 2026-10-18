@@ -546,6 +546,7 @@ export const equipmentMaster = pgTable("equipment_master", {
   equipmentType: text("equipment_type").default("Equipment"), // Deprecated - kept for backward compatibility
   ownership: text("ownership").default("owned"), // "owned" or "hired"
   vendorName: text("vendor_name"), // Vendor/contractor name for hired equipment
+  tallyCostCentreName: text("tally_cost_centre_name"),
   // Hire commercial terms.  These deliberately remain nullable so owned and
   // historical equipment records continue to be valid without a migration.
   hireBillingBasis: text("hire_billing_basis"), // monthly | daily | hourly | trip
@@ -1831,6 +1832,7 @@ export const CONSUMPTION_TOLERANCE_PERCENT = 10;
 export const sites = pgTable("sites", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  tallyCostCentreName: text("tally_cost_centre_name"),
   partyId: integer("party_id"),
   isActive: integer("is_active").default(1),
   createdAt: timestamp("created_at").defaultNow(),
@@ -2696,6 +2698,7 @@ export const vendorAliases = pgTable("vendor_aliases", {
 export const vendors = pgTable("vendors", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  tallyLedgerName: text("tally_ledger_name"),
   businessName: text("business_name"),
   gstNumber: text("gst_number"),
   panNumber: text("pan_number"),

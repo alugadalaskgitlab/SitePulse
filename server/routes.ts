@@ -30,7 +30,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, vendors, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, vendors, sites as sitesTable, appSettings, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
 import {
   insertPartySchema,
   insertPlantMaterialSchema,
@@ -84,6 +84,7 @@ import { financialSites, vendorFinancialGuard } from "./vendorFinancialAccess";
 import { buildPreviousBillingContext } from "@shared/vendorBillPreviousContext";
 import { buildVendorBillExport } from "@shared/vendorBillExport";
 import { buildVendorBillCompleteWorkbook } from "./vendorBillCompleteWorkbook";
+import { buildTallyExportReadiness, parseTallyExportConfig, trimTallyMappingName } from "@shared/tallyExportReadiness";
 import {
   buildHireSiteSuggestion,
   getVendorBillAttentionKinds,
@@ -269,6 +270,7 @@ const equipmentMasterCreateBodySchema = insertEquipmentMasterSchema
     hireBreakdownDeductionEnabled: true,
     hireMonthlyDivisorType: true,
     hireMonthlyDivisor: true,
+    tallyCostCentreName: true,
     meterType: true,
     consumptionNorm: true,
     plantName: true,
@@ -1467,7 +1469,10 @@ export async function registerRoutes(
     try {
       if (!assertCreateEither(req, res, "sites_plants_manage", "admin_settings")) return;
       const input = insertSiteSchema.parse(req.body);
-      const site = await storage.createSite(input);
+      const site = await storage.createSite({
+        ...input,
+        tallyCostCentreName: trimTallyMappingName(input.tallyCostCentreName),
+      });
       res.status(201).json(site);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1481,7 +1486,15 @@ export async function registerRoutes(
     try {
       if (!assertEditEither(req, res, "sites_plants_manage", "admin_settings")) return;
       const id = parseInt(req.params.id);
-      const site = await storage.updateSite(id, req.body);
+      const updates = { ...req.body };
+      if (Object.prototype.hasOwnProperty.call(updates, "tallyCostCentreName")) {
+        const value = updates.tallyCostCentreName;
+        if (value != null && typeof value !== "string") {
+          return res.status(400).json({ message: "Name in Tally must be text or blank." });
+        }
+        updates.tallyCostCentreName = trimTallyMappingName(value);
+      }
+      const site = await storage.updateSite(id, updates);
       if (!site) return res.status(404).json({ message: "Site not found" });
       res.json(site);
     } catch (err) {
@@ -4904,7 +4917,10 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "master_equipment")) return;
       const input = parseCreateBody(equipmentMasterCreateBodySchema, req.body, res);
       if (input === null) return;
-      const equipment = await storage.createEquipment(input);
+      const equipment = await storage.createEquipment({
+        ...input,
+        tallyCostCentreName: trimTallyMappingName(input.tallyCostCentreName),
+      });
       res.status(201).json(equipment);
     } catch (err) {
       res.status(500).json({ message: "Failed to create equipment" });
@@ -4914,7 +4930,15 @@ export async function registerRoutes(
   app.patch("/api/plant-module/equipment/:id", async (req, res) => {
     try {
       if (!assertEdit(req, res, "master_equipment")) return;
-      const equipment = await storage.updateEquipment(Number(req.params.id), req.body);
+      const updates = { ...req.body };
+      if (Object.prototype.hasOwnProperty.call(updates, "tallyCostCentreName")) {
+        const value = updates.tallyCostCentreName;
+        if (value != null && typeof value !== "string") {
+          return res.status(400).json({ message: "Name in Tally must be text or blank." });
+        }
+        updates.tallyCostCentreName = trimTallyMappingName(value);
+      }
+      const equipment = await storage.updateEquipment(Number(req.params.id), updates);
       if (!equipment) return res.status(404).json({ message: "Equipment not found" });
       res.json(equipment);
     } catch (err) {
@@ -11779,6 +11803,64 @@ export async function registerRoutes(
   });
 
   app.use(vendorFinancialGuard(storage));
+
+  // Read-only readiness is available to vendor-bill viewers, not restricted to
+  // the separate vendor-financial permission used by financial reports.
+  app.get("/api/vendor-bills/tally-readiness", async (req, res) => {
+    if (!assertViewEither(req, res, "vendor_bills_view", "vendor_bills")) return;
+    res.setHeader("Cache-Control", "private, no-store");
+    try {
+      const [settingRows, allSites, allEquipment, allVendors, allBills] = await Promise.all([
+        db.select({ value: appSettings.value })
+          .from(appSettings)
+          .where(eq(appSettings.key, "tally_export_config"))
+          .limit(1),
+        storage.getSites(),
+        storage.getEquipmentMaster(true),
+        db.select({
+          id: billingIdentityVendors.id,
+          name: billingIdentityVendors.name,
+          tallyLedgerName: billingIdentityVendors.tallyLedgerName,
+        }).from(billingIdentityVendors).orderBy(asc(billingIdentityVendors.name)),
+        storage.getVendorBills({ includeVoided: true }),
+      ]);
+      const config = parseTallyExportConfig(settingRows[0]?.value);
+      const permittedSites = await getPermittedSiteNames(req);
+      const visibleBills = await scopeVendorBillsToSiteAccess(req, allBills);
+      const visibleSiteRows = allSites.filter(site =>
+        permittedSites === null || siteMatchesPermitted(site.name, permittedSites),
+      );
+      const visibleVendorIds = new Set(
+        visibleBills.map(bill => bill.vendorId).filter((id): id is number => id != null),
+      );
+      const visibleVendorRows = allVendors.filter(vendor =>
+        permittedSites === null || visibleVendorIds.has(vendor.id),
+      );
+      const equipmentIdsOnBills = new Set<number>();
+      for (const bill of visibleBills) {
+        for (const item of bill.items ?? []) {
+          if (item.equipmentId != null) equipmentIdsOnBills.add(Number(item.equipmentId));
+        }
+        for (const statement of bill.hireStatements ?? []) {
+          if (statement.equipmentId != null) equipmentIdsOnBills.add(Number(statement.equipmentId));
+        }
+      }
+      const hiredMachines = allEquipment.filter(equipment =>
+        equipment.ownership === "hired" &&
+        (permittedSites === null || equipmentIdsOnBills.has(equipment.id)),
+      );
+      res.json(buildTallyExportReadiness({
+        config,
+        vendors: visibleVendorRows,
+        sites: visibleSiteRows,
+        hiredMachines,
+        bills: visibleBills,
+      }));
+    } catch (error) {
+      console.error("Tally Export Readiness failed:", error);
+      res.status(503).json({ message: "Tally Export Readiness is unavailable. Check the configuration and retry." });
+    }
+  });
 
   app.get("/api/vendor-bills/financial-review", async (req, res) => {
     if (!assertViewEither(req, res, "vendor_bills", "vendor_bills_view")) return;

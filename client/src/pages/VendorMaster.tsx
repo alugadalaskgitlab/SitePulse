@@ -10,18 +10,19 @@ type Vendor = {
   id: number; name: string; businessName: string | null; gstNumber: string | null; panNumber: string | null;
   address: string | null; bankAccountName?: string | null; bankAccountNumber?: string | null;
   bankIfsc?: string | null; bankName?: string | null; contactPersonName: string | null;
-  contactPhone: string | null; contactEmail: string | null; isActive: boolean;
+  contactPhone: string | null; contactEmail: string | null; tallyLedgerName?: string | null; isActive: boolean;
 };
 type Proposal = { role: string; name: string; ids: number[]; count: number; hint: string | null; suggestionId: number | null;
   registration?: string; version?: number | null; linkedVendorId?: number | null; conflict?: string | null;
   linkedVendorName?: string | null; confirmedBy?: string; confirmedAt?: string; confirmationReason?: string };
 type Activity = { vendor: Vendor; sites: { site: string; equipment: number; material: number; transport: number; labour: number }[] };
 type FinancialBill = Record<string, any> & { id: number };
-const keys = ["name", "businessName", "gstNumber", "panNumber", "address", "contactPersonName", "contactPhone", "contactEmail", "bankAccountName", "bankAccountNumber", "bankIfsc", "bankName"] as const;
+const keys = ["name", "businessName", "gstNumber", "panNumber", "address", "contactPersonName", "contactPhone", "contactEmail", "bankAccountName", "bankAccountNumber", "bankIfsc", "bankName", "tallyLedgerName"] as const;
 const labels: Record<string, string> = {
   name: "Display name", businessName: "Business name", gstNumber: "GST number", panNumber: "PAN number",
   address: "Address", contactPersonName: "Contact person", contactPhone: "Phone", contactEmail: "Email",
   bankAccountName: "Account holder", bankAccountNumber: "Account number", bankIfsc: "IFSC", bankName: "Bank name",
+  tallyLedgerName: "Name in Tally",
 };
 const roleLabels: Record<string, string> = {
   equipment: "Hired equipment owner", bills: "Vendor bills", rates: "Rate cards", indents: "Bulk material purchase indents", transport: "Trip transporter", materialSource: "Trip material source",
@@ -66,10 +67,11 @@ function Editor({ initial, onSave, onCancel, busy }: {
   return <form onSubmit={e => { e.preventDefault(); onSave(form); }} className="rounded-xl border bg-white p-5 space-y-4">
     <div className="flex justify-between items-center"><h2 className="text-lg font-semibold">{initial?.id ? "Edit vendor" : "New vendor"}</h2><button type="button" className="text-sm underline" onClick={onCancel}>Cancel</button></div>
     <div className="grid sm:grid-cols-2 gap-4">
-      {keys.map(k => <label key={k} className={k === "address" ? "sm:col-span-2 text-sm" : "text-sm"}>
+      {keys.map(k => <label key={k} className={k === "address" || k === "tallyLedgerName" ? "sm:col-span-2 text-sm" : "text-sm"}>
         <span className="block font-medium mb-1">{labels[k]}{k === "name" ? " *" : ""}</span>
         <input className={`w-full border rounded-md px-3 py-2${k === "name" || k === "businessName" ? " vendor-master-name-input" : ""}`} required={k === "name"} value={String(form[k] ?? "")} onChange={e => setForm({ ...form, [k]: e.target.value })}
           type={k === "contactEmail" ? "email" : "text"} autoComplete="off" />
+        {k === "tallyLedgerName" && <span className="mt-1 block text-xs text-muted-foreground">The exact ledger or cost centre name as Tally holds it — leave blank if not yet set up in Tally.</span>}
       </label>)}
     </div>
     <label className="flex gap-2 items-center text-sm"><input type="checkbox" checked={Boolean(form.isActive)} onChange={e => setForm({ ...form, isActive: e.target.checked })} />Active</label>

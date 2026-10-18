@@ -2157,6 +2157,7 @@ export function SitesMasterSection() {
   const [editingSiteId, setEditingSiteId] = useState<number | null>(null);
   const [editingSiteName, setEditingSiteName] = useState("");
   const [editingSitePartyId, setEditingSitePartyId] = useState<string>("all");
+  const [editingSiteTallyCostCentreName, setEditingSiteTallyCostCentreName] = useState("");
 
   const { data: sitesList = [], isLoading: sitesLoading } = useQuery<Site[]>({
     queryKey: ["/api/sites"],
@@ -2196,8 +2197,8 @@ export function SitesMasterSection() {
   });
 
   const updateSiteMutation = useMutation({
-    mutationFn: async ({ id, name, partyId }: { id: number; name: string; partyId: number | null }) => {
-      const response = await apiRequest("PATCH", `/api/sites/${id}`, { name, partyId });
+    mutationFn: async ({ id, name, partyId, tallyCostCentreName }: { id: number; name: string; partyId: number | null; tallyCostCentreName: string }) => {
+      const response = await apiRequest("PATCH", `/api/sites/${id}`, { name, partyId, tallyCostCentreName });
       if (!response.ok) throw new Error("Failed to update site");
       return response.json();
     },
@@ -2206,6 +2207,7 @@ export function SitesMasterSection() {
       setEditingSiteId(null);
       setEditingSiteName("");
       setEditingSitePartyId("all");
+      setEditingSiteTallyCostCentreName("");
       toast({ title: "Site Updated", description: "Site has been updated." });
     },
     onError: (error: any) => {
@@ -2328,7 +2330,7 @@ export function SitesMasterSection() {
         ) : (
           <div className="space-y-2">
             {sitesList.map((site) => (
-              <div key={site.id} className={`flex items-center gap-2 p-2 rounded border transition-opacity ${site.isActive === 0 ? "opacity-50 bg-slate-50 dark:bg-slate-900/30" : ""}`} data-testid={`site-row-${site.id}`}>
+              <div key={site.id} className={`flex flex-wrap items-center gap-2 p-2 rounded border transition-opacity ${site.isActive === 0 ? "opacity-50 bg-slate-50 dark:bg-slate-900/30" : ""}`} data-testid={`site-row-${site.id}`}>
                 {editingSiteId === site.id ? (
                   <>
                     <Input
@@ -2349,6 +2351,16 @@ export function SitesMasterSection() {
                         ))}
                       </SelectContent>
                     </Select>
+                    <div className="min-w-[220px] flex-1">
+                      <Label htmlFor={`site-tally-name-${site.id}`}>Name in Tally</Label>
+                      <Input
+                        id={`site-tally-name-${site.id}`}
+                        value={editingSiteTallyCostCentreName}
+                        onChange={(e) => setEditingSiteTallyCostCentreName(e.target.value)}
+                        data-testid={`input-tally-cost-centre-site-${site.id}`}
+                      />
+                      <p className="text-xs text-muted-foreground">The exact ledger or cost centre name as Tally holds it — leave blank if not yet set up in Tally.</p>
+                    </div>
                     <Button
                       size="icon"
                       variant="ghost"
@@ -2358,6 +2370,7 @@ export function SitesMasterSection() {
                             id: site.id,
                             name: editingSiteName.trim(),
                             partyId: editingSitePartyId !== "all" ? parseInt(editingSitePartyId) : null,
+                            tallyCostCentreName: editingSiteTallyCostCentreName,
                           });
                         }
                       }}
@@ -2369,7 +2382,7 @@ export function SitesMasterSection() {
                     <Button
                       size="icon"
                       variant="ghost"
-                      onClick={() => { setEditingSiteId(null); setEditingSiteName(""); setEditingSitePartyId("all"); }}
+                      onClick={() => { setEditingSiteId(null); setEditingSiteName(""); setEditingSitePartyId("all"); setEditingSiteTallyCostCentreName(""); }}
                       data-testid={`button-cancel-edit-site-${site.id}`}
                     >
                       <X className="w-4 h-4" />
@@ -2410,6 +2423,7 @@ export function SitesMasterSection() {
                           setEditingSiteId(site.id);
                           setEditingSiteName(site.name);
                           setEditingSitePartyId(site.partyId ? String(site.partyId) : "all");
+                          setEditingSiteTallyCostCentreName(site.tallyCostCentreName || "");
                         }}
                         data-testid={`button-edit-site-${site.id}`}
                       >
@@ -4293,6 +4307,7 @@ export function EquipmentMasterSection() {
   const [registrationNumber, setRegistrationNumber] = useState("");
   const [ownership, setOwnership] = useState("owned");
   const [vendorName, setVendorName] = useState("");
+  const [tallyCostCentreName, setTallyCostCentreName] = useState("");
   const [hireBasis, setHireBasis] = useState("");
   const [hireRate, setHireRate] = useState("");
   const [hireStartDate, setHireStartDate] = useState("");
@@ -4335,7 +4350,7 @@ export function EquipmentMasterSection() {
   }, [equipment, filterPlantName]);
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<{ name: string; registrationNumber?: string; ownership?: string; vendorName?: string; meterType: string; consumptionNorm?: number }> }) =>
+    mutationFn: ({ id, data }: { id: number; data: Partial<{ name: string; registrationNumber?: string; ownership?: string; vendorName?: string; meterType: string; consumptionNorm?: number; tallyCostCentreName?: string | null }> }) =>
       apiRequest("PATCH", `/api/plant-module/equipment/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment"] });
@@ -4404,6 +4419,7 @@ export function EquipmentMasterSection() {
     setRegistrationNumber("");
     setOwnership("owned");
     setVendorName("");
+    setTallyCostCentreName("");
     setHireBasis("");
     setHireRate("");
     setHireStartDate("");
@@ -4428,6 +4444,7 @@ export function EquipmentMasterSection() {
     setRegistrationNumber((equip as any).registrationNumber || "");
     setOwnership((equip as any).ownership || "owned");
     setVendorName((equip as any).vendorName || "");
+    setTallyCostCentreName(equip.tallyCostCentreName || "");
     setHireBasis((equip as any).hireBillingBasis || "");
     setHireRate((equip as any).hireRate != null ? String((equip as any).hireRate) : "");
     setHireStartDate((equip as any).hireStartDate || "");
@@ -4482,6 +4499,7 @@ export function EquipmentMasterSection() {
       registrationNumber: registrationNumber || undefined,
       ownership,
       vendorName: ownership === "hired" ? vendorName || undefined : undefined,
+      tallyCostCentreName: ownership === "hired" ? tallyCostCentreName : undefined,
       hireBillingBasis: ownership === "hired" ? hireBasis : null,
       hireRate: ownership === "hired" ? parseFloat(hireRate) : null,
       hireStartDate: ownership === "hired" ? hireStartDate : null,
@@ -4578,6 +4596,11 @@ export function EquipmentMasterSection() {
               {ownership === "hired" && (
                 <div className="rounded-md border border-amber-200 bg-amber-50/50 p-3 space-y-3">
                   <p className="text-sm font-medium text-amber-800">Hire Terms</p>
+                  <div>
+                    <Label htmlFor="equipment-tally-cost-centre">Name in Tally</Label>
+                    <Input id="equipment-tally-cost-centre" value={tallyCostCentreName} onChange={(e) => setTallyCostCentreName(e.target.value)} data-testid="input-tally-cost-centre-equipment" />
+                    <p className="text-xs text-muted-foreground">The exact ledger or cost centre name as Tally holds it — leave blank if not yet set up in Tally.</p>
+                  </div>
                   <div>
                     <Label htmlFor="vendor-name">Vendor / Contractor Name</Label>
                     <Input id="vendor-name" value={vendorName} onChange={(e) => setVendorName(e.target.value.toUpperCase())} placeholder="e.g., ABC CONTRACTORS" data-testid="input-vendor-name" />
