@@ -20,10 +20,8 @@ async function loadReadiness(): Promise<TallyExportReadinessReport> {
 
 function BillLink({ bill }: { bill: TallyReadinessBill }) {
   return (
-    <Link href={bill.href}>
-      <a className="font-medium text-primary underline-offset-4 hover:underline">
-        {bill.billNo} · {bill.billDate || "Date unavailable"} · {bill.vendorName}
-      </a>
+    <Link href={bill.href} className="font-medium text-primary underline-offset-4 hover:underline">
+      {bill.billNo} · {bill.billDate || "Date unavailable"} · {bill.vendorName}
     </Link>
   );
 }

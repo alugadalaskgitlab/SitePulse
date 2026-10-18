@@ -215,7 +215,7 @@ export function buildTallyExportReadiness(input: {
         ? "All Sites is selected, but no site-specific bill lines identify cost centres."
         : "No Site Master record is linked to this bill.");
     }
-    for (const siteId of referencedSiteIds) {
+    for (const siteId of Array.from(referencedSiteIds)) {
       const site = siteById.get(siteId);
       if (site && !isMapped(site.tallyCostCentreName)) {
         reasons.push(`Site "${site.name}" has no Name in Tally.`);
@@ -236,7 +236,7 @@ export function buildTallyExportReadiness(input: {
         reasons.push(`Hired machine #${equipmentId} is missing from Equipment Master.`);
       }
     }
-    for (const equipmentId of requiredMachines) {
+    for (const equipmentId of Array.from(requiredMachines)) {
       const machine = equipmentById.get(equipmentId);
       if (machine && !isMapped(machine.tallyCostCentreName)) {
         const label = machine.registrationNumber ? `${machine.name} (${machine.registrationNumber})` : machine.name;
@@ -244,7 +244,7 @@ export function buildTallyExportReadiness(input: {
       }
     }
 
-    const uniqueReasons = [...new Set(reasons)];
+    const uniqueReasons = Array.from(new Set(reasons));
     if (uniqueReasons.length) blockedBills.push({ ...summary, reasons: uniqueReasons });
     else ready++;
   }
