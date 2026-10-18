@@ -31,6 +31,17 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, vendors, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
+import {
+  insertPartySchema,
+  insertPlantMaterialSchema,
+  insertMixTypeSchema,
+  insertEquipmentMasterSchema,
+  insertTruckDispatchSchema,
+  insertGeneratorLogSchema,
+  insertStoreItemSchema,
+  insertPlanningEquipmentTypeSchema,
+  insertPlanningLabourTypeSchema,
+} from "@shared/schema";
 import { db, pool } from "./db";
 import { dprCorrectionService } from "./dprCorrections";
 import { readPermissionAccessAudit } from "./permissionAccessMigration";
@@ -220,6 +231,120 @@ function verifyRoleCookie(val: string | undefined): 'admin' | 'manager' | null {
   const expected = crypto.createHmac('sha256', secret).update(role).digest('hex');
   if (hmac !== expected) return null;
   return role as 'admin' | 'manager';
+}
+
+const partyCreateBodySchema = insertPartySchema
+  .pick({ name: true, notes: true })
+  .strict();
+
+const plantMaterialCreateBodySchema = insertPlantMaterialSchema
+  .pick({
+    name: true,
+    category: true,
+    defaultUom: true,
+    conversionFromUom: true,
+    bulkDensity: true,
+    procurementRoute: true,
+  })
+  .strict();
+
+const mixTypeCreateBodySchema = insertMixTypeSchema
+  .pick({ name: true })
+  .strict();
+
+const equipmentMasterCreateBodySchema = insertEquipmentMasterSchema
+  .pick({
+    name: true,
+    registrationNumber: true,
+    equipmentType: true,
+    ownership: true,
+    vendorName: true,
+    hireBillingBasis: true,
+    hireRate: true,
+    hireStartDate: true,
+    hireEndDate: true,
+    hireDieselResponsibility: true,
+    hireOperatorResponsibility: true,
+    hireAgreementRemarks: true,
+    hireBreakdownDeductionEnabled: true,
+    hireMonthlyDivisorType: true,
+    hireMonthlyDivisor: true,
+    meterType: true,
+    consumptionNorm: true,
+    plantName: true,
+    standardOutputs: true,
+    outputEfficiency: true,
+  })
+  .strict();
+
+const truckDispatchCreateBodySchema = insertTruckDispatchSchema
+  .pick({
+    date: true,
+    time: true,
+    partyId: true,
+    mixTemplateId: true,
+    truckNumber: true,
+    loadWeight: true,
+    deliveryLocation: true,
+    actualBitumenPercent: true,
+    actualLdoQty: true,
+    bitumenTankNumber: true,
+    ldoTankNumber: true,
+    ownerName: true,
+    driverName: true,
+    transportEquipmentId: true,
+  })
+  .extend({
+    allowHlcFallback: z.boolean().optional(),
+    overrideTolerance: z.boolean().optional(),
+  })
+  .strict();
+
+const generatorLogCreateBodySchema = insertGeneratorLogSchema
+  .pick({
+    date: true,
+    generatorName: true,
+    startTime: true,
+    endTime: true,
+    hoursRun: true,
+    openingDiesel: true,
+    dieselIssued: true,
+    closingDiesel: true,
+  })
+  .strict();
+
+const storeItemCreateBodySchema = insertStoreItemSchema
+  .pick({ name: true, category: true, uom: true, minStockQty: true, isActive: true })
+  .extend({ uom: insertStoreItemSchema.shape.uom.optional(), defaultUom: z.string().optional() })
+  .strict()
+  .superRefine((body, ctx) => {
+    if (body.uom == null && body.defaultUom == null) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["uom"], message: "Required" });
+    }
+  })
+  .transform(({ defaultUom, ...body }) =>
+    insertStoreItemSchema.parse({ ...body, uom: body.uom ?? defaultUom }),
+  );
+
+const planningEquipmentTypeCreateBodySchema = insertPlanningEquipmentTypeSchema
+  .pick({ name: true, category: true, standardOutputs: true, consumptionNorm: true, fuelType: true, isActive: true })
+  .strict();
+
+const planningLabourTypeCreateBodySchema = insertPlanningLabourTypeSchema
+  .pick({ designation: true, skillTier: true, standardOutputs: true, isActive: true })
+  .strict();
+
+function parseCreateBody<T extends z.ZodTypeAny>(
+  schema: T,
+  body: unknown,
+  res: Response,
+): z.infer<T> | null {
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) {
+    res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
+    return null;
+  }
+  return parsed.data;
 }
 
 // Feature flag: set ENABLE_RMC=true in the environment to enable the RMC plant module.
@@ -4193,7 +4318,9 @@ export async function registerRoutes(
   app.post("/api/plant-module/parties", async (req, res) => {
     try {
       if (!assertCreate(req, res, "master_parties")) return;
-      const party = await storage.createParty(req.body);
+      const input = parseCreateBody(partyCreateBodySchema, req.body, res);
+      if (input === null) return;
+      const party = await storage.createParty(input);
       res.status(201).json(party);
     } catch (err) {
       res.status(500).json({ message: "Failed to create party" });
@@ -4235,7 +4362,9 @@ export async function registerRoutes(
   app.post("/api/plant-module/materials", async (req, res) => {
     try {
       if (!assertCreate(req, res, "master_materials")) return;
-      const material = await storage.createPlantMaterial(req.body);
+      const input = parseCreateBody(plantMaterialCreateBodySchema, req.body, res);
+      if (input === null) return;
+      const material = await storage.createPlantMaterial(input);
       res.status(201).json(material);
     } catch (err) {
       res.status(500).json({ message: "Failed to create material" });
@@ -4343,7 +4472,9 @@ export async function registerRoutes(
   app.post("/api/plant-module/mix-types", async (req, res) => {
     try {
       if (!assertCreate(req, res, "master_materials")) return;
-      const result = await storage.createMixType(req.body);
+      const input = parseCreateBody(mixTypeCreateBodySchema, req.body, res);
+      if (input === null) return;
+      const result = await storage.createMixType(input);
       res.status(201).json(result);
     } catch (err) {
       res.status(500).json({ message: "Failed to create mix type" });
@@ -4771,7 +4902,9 @@ export async function registerRoutes(
   app.post("/api/plant-module/equipment", async (req, res) => {
     try {
       if (!assertCreate(req, res, "master_equipment")) return;
-      const equipment = await storage.createEquipment(req.body);
+      const input = parseCreateBody(equipmentMasterCreateBodySchema, req.body, res);
+      if (input === null) return;
+      const equipment = await storage.createEquipment(input);
       res.status(201).json(equipment);
     } catch (err) {
       res.status(500).json({ message: "Failed to create equipment" });
@@ -5556,7 +5689,9 @@ export async function registerRoutes(
   app.post("/api/plant-module/dispatches", async (req, res) => {
     try {
       if (!assertCreate(req, res, "plant_production")) return;
-      const result = await storage.createTruckDispatchWithStockDeduction(req.body);
+      const input = parseCreateBody(truckDispatchCreateBodySchema, req.body, res);
+      if (input === null) return;
+      const result = await storage.createTruckDispatchWithStockDeduction(input);
       const dispatch = result.dispatch;
       await storage.createNotification({
         type: "success",
@@ -6411,7 +6546,9 @@ export async function registerRoutes(
   app.post("/api/plant-module/generator-logs", async (req, res) => {
     try {
       if (!assertCreate(req, res, "plant_equipment")) return;
-      const log = await storage.createGeneratorLog(req.body);
+      const input = parseCreateBody(generatorLogCreateBodySchema, req.body, res);
+      if (input === null) return;
+      const log = await storage.createGeneratorLog(input);
       sendPushToSection("plant_generator_logs", "Generator Log Added", `Generator log for ${req.body.date || 'today'}`, "/plant").catch(() => {});
       res.status(201).json(log);
     } catch (err) {
@@ -13943,7 +14080,9 @@ export async function registerRoutes(
   app.post("/api/stores/items", async (req, res) => {
     try {
       if (!assertCreate(req, res, "stores_inventory")) return;
-      const item = await storage.createStoreItem(req.body);
+      const input = parseCreateBody(storeItemCreateBodySchema, req.body, res);
+      if (input === null) return;
+      const item = await storage.createStoreItem(input);
       res.status(201).json(item);
     } catch (err) {
       console.error("POST /api/stores/items:", err);
@@ -23196,7 +23335,9 @@ export async function registerRoutes(
   app.post("/api/planning/equipment-types", async (req, res) => {
     try {
       if (!assertEdit(req, res, "planning_masters")) return;
-      const row = await storage.createPlanningEquipmentType(req.body);
+      const input = parseCreateBody(planningEquipmentTypeCreateBodySchema, req.body, res);
+      if (input === null) return;
+      const row = await storage.createPlanningEquipmentType(input);
       res.status(201).json(row);
     } catch (err) {
       res.status(500).json({ error: "Failed to create planning equipment type" });
@@ -23238,7 +23379,9 @@ export async function registerRoutes(
   app.post("/api/planning/labour-types", async (req, res) => {
     try {
       if (!assertEdit(req, res, "planning_masters")) return;
-      const row = await storage.createPlanningLabourType(req.body);
+      const input = parseCreateBody(planningLabourTypeCreateBodySchema, req.body, res);
+      if (input === null) return;
+      const row = await storage.createPlanningLabourType(input);
       res.status(201).json(row);
     } catch (err) {
       res.status(500).json({ error: "Failed to create planning labour type" });

@@ -110,7 +110,8 @@ describe("category tax evidence and three-sheet workbook", () => {
       expect(rows.filter(r => typeof r[0] === "number").map(r => r[0])).toEqual(selected.map(b => b.id));
     }
     const main = xlsx.utils.sheet_to_json(reloaded.Sheets["Vendor Bills"], { header: 1 }) as any[][];
-    expect(main.find(r => r[0] === 6)?.[11]).toBe("Not established");
+    const mainHeaders = main[0] as string[];
+    expect(main.find(r => r[0] === 6)?.[mainHeaders.indexOf("Recorded paid amount")]).toBe("Not established");
     const tax = xlsx.utils.sheet_to_json(reloaded.Sheets["TDS (IT) Register"], { header: 1 }) as any[][];
     expect(tax.find(r => r[0] === 1)?.[9]).toBe("Not established");
   });

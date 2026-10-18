@@ -935,10 +935,16 @@ describe("Task #1433 formerly unguarded deduction routes", () => {
       material: "DIESEL", source: "truck_dispatch", materialId: 12,
       requestedQty: 20, availableQty: 10, shortageQty: 10,
     }));
-    const fuel = await request(app).post("/api/plant-module/dispatches").send({});
+    const dispatch = {
+      date: "2026-08-31", time: "08:00", partyId: 1, mixTemplateId: 1,
+      truckNumber: "TEST-TRUCK", loadWeight: 1, deliveryLocation: "TEST SITE",
+      actualBitumenPercent: null, actualLdoQty: null, bitumenTankNumber: 1,
+      ldoTankNumber: 1, ownerName: null, driverName: null, transportEquipmentId: null,
+    };
+    const fuel = await request(app).post("/api/plant-module/dispatches").send(dispatch);
     expect(fuel.status).toBe(409);
     expect(fuel.body).toMatchObject({ code: "INSUFFICIENT_PLANT_STOCK", requestedQty: 20, availableQty: 10 });
-    const aggregate = await request(app).post("/api/plant-module/dispatches").send({});
+    const aggregate = await request(app).post("/api/plant-module/dispatches").send(dispatch);
     expect(aggregate.status).toBe(409);
     expect(aggregate.body).toMatchObject({ needsConfirmation: true });
     expect(aggregate.body.code).toBeUndefined();

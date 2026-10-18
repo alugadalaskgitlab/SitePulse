@@ -24,13 +24,14 @@ export function buildVendorFinancialWorkbook(bills: any[], sites: { id: number; 
     sheet["!autofilter"] = { ref: xlsx.utils.encode_range({ r: 0, c: 0 }, { r: rows.length, c: headers.length - 1 }) };
     xlsx.utils.book_append_sheet(workbook, sheet, name);
   };
-  append("Vendor Bills", [...identityHeaders, "Gross amount", "GST", "Adjustments/deductions", "Net bill value", "Recorded paid amount", "Positive outstanding", "Negative credit", "Payment evidence"],
+  append("Vendor Bills", [...identityHeaders, "Gross amount", "GST", "TDS deducted", "Adjustments/deductions", "Net bill value", "Recorded paid amount", "Positive outstanding", "Negative credit", "Payment evidence"],
     bills.map(b => {
       const a = billPaymentPosition(b);
-      return [...identity(b), a.gross, a.gst, a.net - a.gross - a.gst, a.net, a.paid ?? missing,
+      const tds = recordedReportTds(b).amount;
+      return [...identity(b), a.gross, a.gst, tds ?? missing, a.net - a.gross - a.gst, a.net, a.paid ?? missing,
         a.balance == null ? missing : a.outstanding, a.balance == null && a.credit === 0 ? missing : -a.credit,
         a.unconfirmed ? (a.contradictory ? "Unconfirmed — Paid status contradicts payments" : "Unconfirmed — missing payment evidence") : "Recorded"];
-    }), [7, 8, 9, 10, 11, 12, 13]);
+    }), [7, 8, 9, 10, 11, 12, 13, 14]);
   append("GST Register", [...identityHeaders, "Taxable/subtotal", ...taxCategories.flatMap(c => [`${c} GST rate (%)`, `${c} GST amount`]), "Total GST"],
     bills.map(b => {
       const gst = computeBillGstByCategory(b);
@@ -38,7 +39,7 @@ export function buildVendorFinancialWorkbook(bills: any[], sites: { id: number; 
         ...taxCategories.flatMap(c => [b[`gstRate${c[0].toUpperCase()}${c.slice(1)}`] ?? "Not recorded", gst[c]]),
         taxCategories.reduce((total, c) => total + gst[c], 0)];
     }), [7, 9, 11, 13, 15, 16]);
-  append("TDS (IT) Register", [...identityHeaders, "Recorded TDS rate (%)", "Recorded taxable/base amount", "Actual recorded deduction", "Evidence"],
+  append("TDS (IT) Register", [...identityHeaders, "Recorded TDS rate (%)", "Recorded taxable/base amount", "TDS deducted", "Evidence"],
     bills.map(b => {
       const snapshots = (b.hireStatements || []).map((s: any) => s.calculationSnapshot?.financials);
       const bases = snapshots.map((s: any) => recordedNumber(s?.taxableAmount));
@@ -46,7 +47,7 @@ export function buildVendorFinancialWorkbook(bills: any[], sites: { id: number; 
       const amount = recordedReportTds(b).amount;
       return [...identity(b), rates.length ? rates.join("; ") : b.tdsRate ?? "Not recorded",
         recordedNumber(b.tdsBaseAmount) ?? (bases.length && bases.every((v: any) => v != null) ? sum(bases) : missing),
-        amount ?? missing, amount == null ? missing : snapshots.length && b.tdsAmount == null ? "Linked hire snapshots only" : "Recorded bill deduction"];
+        amount ?? missing, amount == null ? "No recorded TDS amount" : snapshots.length && b.tdsAmount == null ? "From linked hire statement" : "Recorded on vendor bill"];
     }), [8, 9]);
   const tax = summarizeFinancialTaxes(bills);
   if (tax.unallocated !== 0) xlsx.utils.sheet_add_aoa(workbook.Sheets["TDS (IT) Register"], [["Recorded deduction category split is not established; no proportional allocation has been inferred."]], { origin: -1 });
