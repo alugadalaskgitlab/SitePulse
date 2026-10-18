@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getBillFinancialTotals } from "../shared/vendorBillFinancialReport";
-import { previousBillingSummary } from "../shared/vendorBillReview";
+import { billReviewAmounts, previousBillingSummary, summarizeBillReview } from "../shared/vendorBillReview";
 import { projectVendorLedger, projectVendorPayables } from "../shared/vendorPayables";
 
 const mahpalBills = [
@@ -199,6 +199,49 @@ describe("vendor payables report projection", () => {
       "HLC/VB/2026/0055", "HLC/VB/2026/0054",
     ]);
     expect(afterLedger.at(-1)?.runningBalance).toBe(beforeLedger.at(-1)?.runningBalance);
+  });
+
+  it("keeps linked and unlinked billed/balance totals identical when three bills move to a new vendor", () => {
+    const baselineBills = mahpalBills.slice(0, 2).map(bill => bill.id === 55
+      ? { ...bill, netPayableAmount: 5013.69 }
+      : bill);
+    const movedBills = [
+      { id: 201, billNo: "SYNTHETIC-201", billDate: "2026-10-10", vendorId: null, vendorName: "Bulk One", status: "approved", totalAmount: 10000, netPayableAmount: 10000, amountPaid: 1000, items: [{ category: "material", amount: 10000 }] },
+      { id: 202, billNo: "SYNTHETIC-202", billDate: "2026-10-11", vendorId: null, vendorName: "Bulk Two", status: "approved", totalAmount: 20000, netPayableAmount: 20000, amountPaid: 2000, items: [{ category: "material", amount: 20000 }] },
+      { id: 203, billNo: "SYNTHETIC-203", billDate: "2026-10-12", vendorId: null, vendorName: "Bulk Three", status: "draft", totalAmount: 5000, netPayableAmount: 5000, amountPaid: 500, items: [{ category: "material", amount: 5000 }] },
+    ];
+    const before = projectVendorPayables([...baselineBills, ...movedBills]);
+    const unlinkedBefore = summarizeBillReview(before.unlinkedGroups.flatMap(group => group.amounts));
+    const linkedBefore = before.totals;
+    const after = projectVendorPayables([
+      ...baselineBills,
+      ...movedBills.map(bill => ({ ...bill, vendorId: 99, linkedVendorName: "NEW BULK PARTY" })),
+    ]);
+    const unlinkedAfter = summarizeBillReview(after.unlinkedGroups.flatMap(group => group.amounts));
+    const linkedAfter = after.totals;
+    const roundMoney = (amount: number) => Math.round((amount + Number.EPSILON) * 100) / 100;
+    const beforeBilled = unlinkedBefore.net + linkedBefore.billed;
+    const afterBilled = unlinkedAfter.net + linkedAfter.billed;
+    const beforeBalance = unlinkedBefore.net - unlinkedBefore.paid + linkedBefore.totalLiability;
+    const afterBalance = unlinkedAfter.net - unlinkedAfter.paid + linkedAfter.totalLiability;
+
+    expect({ billed: unlinkedBefore.net, balance: unlinkedBefore.net - unlinkedBefore.paid }).toEqual({ billed: 35000, balance: 31500 });
+    expect({ billed: roundMoney(linkedBefore.billed), balance: roundMoney(linkedBefore.totalLiability) }).toEqual({ billed: 61853.69, balance: 11853.69 });
+    expect({ billed: roundMoney(unlinkedAfter.net), balance: roundMoney(unlinkedAfter.net - unlinkedAfter.paid) }).toEqual({ billed: 0, balance: 0 });
+    expect({ billed: roundMoney(linkedAfter.billed), balance: roundMoney(linkedAfter.totalLiability) }).toEqual({ billed: 96853.69, balance: 43353.69 });
+    expect(roundMoney(beforeBilled)).toBe(roundMoney(afterBilled));
+    expect(roundMoney(beforeBalance)).toBe(roundMoney(afterBalance));
+    expect({ billed: roundMoney(afterBilled), balance: roundMoney(afterBalance) }).toEqual({ billed: 96853.69, balance: 43353.69 });
+
+    const newVendor = after.vendors.find(vendor => vendor.vendorId === 99)!;
+    expect(newVendor).toMatchObject({ count: 3, billed: 35000, paid: 3500, payableNow: 27000, comingUp: 4500 });
+    expect(newVendor.billed).toBe(movedBills.reduce((sum, bill) => sum + bill.netPayableAmount, 0));
+    expect(newVendor.paid).toBe(movedBills.reduce((sum, bill) => sum + bill.amountPaid, 0));
+    expect(movedBills.map(bill => bill.vendorName)).toEqual(["Bulk One", "Bulk Two", "Bulk Three"]);
+
+    const sampleBill = baselineBills.find(bill => bill.billNo === "HLC/VB/2026/0054")!;
+    expect(billReviewAmounts(sampleBill, getBillFinancialTotals(sampleBill))).toMatchObject({ net: 56840, paid: 50000, balance: 6840 });
+    expect(projectVendorPayables(baselineBills).vendors[0].payableNow).toBe(11853.69);
   });
 });
 

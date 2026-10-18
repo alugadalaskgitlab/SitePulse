@@ -1,0 +1,197 @@
+# INSTRUCTION — VB-LINK-01
+
+**Make the existing Link Vendors tab usable in bulk, so the unlinked bills can be
+given vendor masters in one reviewed pass.**
+
+Baseline: the published commit carrying VB-SITE-01. State it in your report.
+
+**Do not build a new linking screen, a new review endpoint, or a new bulk confirm
+route.** Everything needed already exists in `server/vendor-master.ts` and
+`client/src/pages/VendorMaster.tsx`, and it is carefully built — row locking, stale
+review detection, create-and-link in one transaction, an audit entry per linked row.
+This batch makes it usable, nothing more.
+
+**No calculation changes, no migrations, no new columns, no new permission keys.**
+
+---
+
+## Why
+
+The owner has 20–45 unlinked vendor bills carrying typed names that have no Vendor
+Master record. He has agreed to create masters for all of them, with **display name
+and business name the same** and every other field left empty, to be filled if and
+when needed.
+
+The existing tab can do this already — one name at a time, through a twelve-field
+dialog, with the bills proposals mixed in among equipment, trips, rate cards and
+indents. Doing forty of those by hand is the thing he is trying to avoid.
+
+---
+
+## Standing rules
+
+- No production data changes, migrations, automatic repairs or publishing without our
+  review.
+- **Nothing in this batch may run by itself.** No automatic linking, no backfill, no
+  "repair" pass. Every creation and every link happens only on an explicit click by
+  an Administrator or the Owner.
+- No sequence resets. Do not call or re-expose `resetAllSequences`.
+- **Preserve all existing users, credentials, site access, permissions and
+  administrator privileges. Do not grant, revoke or reset anything, and do not add,
+  rename or remove any permission key.** Link Vendors stays Administrator/Owner only.
+- **Never add HLC, High Lane Constructions, or any "self" / "own" / "OWN" placeholder
+  to the vendor master.** If such a name appears among the proposals, it must be
+  refused with a plain message, not created.
+- Frozen snapshots stay frozen and are never re-derived on read.
+- Report against the benchmark in force at the baseline commit.
+
+---
+
+## Part A — Prefill the business name
+
+**The fault.** In `VendorMaster.tsx`, "Create new" opens
+`<Editor initial={{ name: creating.name }} …>`. `businessName` is left empty, so the
+owner must type the same name a second time for every vendor.
+
+**Required.** The create-and-link dialog opens with **both** `name` and
+`businessName` prefilled with the proposal's typed name. Both stay editable. Every
+other field stays empty.
+
+**Constraints.** Do not change `vendorMasterFields` in `server/vendor-master.ts`, and
+do not change the uppercase transform it applies. Do not make any field required that
+is not required today.
+
+---
+
+## Part B — Work one role at a time
+
+**The fault.** The pending list mixes all six roles — equipment, bills, rates,
+indents, transport, materialSource — in one undifferentiated list.
+
+**Required.**
+
+1. A role filter on the Link Vendors tab, with an "All" option, using the existing
+   `roleLabels` for the names. It filters the list the client already holds; **do not
+   add a query parameter to `/api/vendor-master/review`.**
+2. A count per role, so it is plain how many of each are waiting.
+3. The existing search box continues to work alongside the filter.
+
+---
+
+## Part C — Create and link several at once
+
+**Required.** On the pending list, with a role selected:
+
+1. A tick box per proposal, plus select-all over the **currently filtered and
+   searched** proposals only — never over proposals the user cannot see.
+2. For each ticked proposal, show before confirming: the typed name, how many records
+   it covers, and — for the `bills` role — **the total value of those bills**, so the
+   owner sees what he is about to move.
+3. One action, **"Create master and link"**, which for each ticked proposal creates a
+   vendor with name and business name both set to the typed name and links that
+   proposal's records.
+4. **It must do this by calling the existing
+   `POST /api/vendor-master/review/confirm` once per proposal**, with `newVendor`,
+   exactly as the single-item dialog does today. Do not add a bulk endpoint and do not
+   bypass the per-name transaction. Every existing guard — the row lock, the
+   `sameReviewIds` staleness check, the audit entry per row — must apply to every
+   proposal.
+5. **Proposals are processed one at a time, in order, and a failure stops the run.**
+   The report to the user then names, in plain words: which proposals were created and
+   linked, which one failed and why, and which were not attempted. Nothing is retried
+   automatically.
+6. A proposal that already carries a `suggestionId` or `linkedVendorId` — meaning an
+   existing master may be the right answer — is **excluded from select-all** and must
+   be ticked deliberately, with the suggested master named beside it. Creating a
+   duplicate master for a party that already exists is the main risk in this batch.
+7. Proposals whose typed names differ only by case, spacing or punctuation are shown
+   **grouped together with a warning**, not silently merged. The owner decides whether
+   they are one party. Do not alter any typed name.
+
+**Constraints.**
+
+- The free-text name recorded on the bill is **never changed**. Linking adds a vendor
+  id; the recorded name stays exactly as typed. The existing confirmation message
+  already says so — keep it.
+- Do not change `proposeVendorMatch`, `sameReviewIds`, the review query, or the
+  confirm transaction.
+- Do not link anything for the `equipment` role in bulk. It requires a typed
+  verification reason per machine and must stay one at a time.
+
+---
+
+## Part D — The totals must not move
+
+**The risk.** Linking a bill moves it from the payables page's **unlinked** tab into
+a **linked vendor's** row. The money has not changed, but it is now counted in a
+different place, and a figure that was right before must still be right after.
+
+**Required.** Before and after a bulk link, state as numbers:
+
+1. The unlinked tab's total billed and total balance.
+2. The linked tab's total billed and total balance.
+3. **The sum of the two, which must be identical before and after.**
+4. The newly created vendor's own row — bills, billed, paid, payable now, coming up —
+   and confirmation that each figure equals the sum of the bills that moved.
+
+If any of those four does not hold, **stop and report it**. Do not adjust a figure to
+make it balance.
+
+---
+
+## What must not change
+
+- **Every figure on every bill.** State before and after, as numbers:
+  - `HLC/VB/2026/0054` — net ₹56,840.00, paid ₹50,000.00, balance ₹6,840.00.
+  - Mahipal Kalpaguri — payable now ₹11,853.69.
+- The arithmetic in `billReviewAmounts`, `summarizeBillReview`, `billPaymentPosition`,
+  `getBillFinancialTotals`, `filterFinancialBills`, `vendorStatementBills` and
+  `projectVendorPayables`.
+- Every recorded vendor name on every bill, trip, rate card and indent.
+- The confirm transaction in `server/vendor-master.ts`, including the advisory lock,
+  the `for("update")` row locks, the `sameReviewIds` checks and the per-row audit
+  entry.
+- Every permission key, every user's permissions, every site access grant. Link
+  Vendors stays Administrator/Owner only.
+- The one-way bill status rule and the self-approval checks.
+- Everything AUDIT-01, AUDIT-02, VB-EDIT-01, VB-EDIT-02, VB-VIEW-04 and VB-FIND-01
+  delivered.
+
+---
+
+## Verification required
+
+Report in plain terms, no test-name inventories.
+
+1. **Part A** — the create-and-link dialog opening with name and business name both
+   filled, and both still editable. Show what a saved vendor record holds.
+2. **Part B** — the role filter with its counts, and the search working alongside it.
+3. **Part C, on test data** — three bills proposals ticked and linked in one action:
+   the three vendors created, the bills linked, and the audit entry written for each
+   linked row. Show the entries as words.
+4. **Part C** — select-all with a role and a search term applied, confirming it ticks
+   only what is visible.
+5. **Part C** — a proposal carrying a suggested existing master, confirming it is
+   excluded from select-all and names the suggestion.
+6. **Part C** — two typed names differing only by case, shown grouped with the
+   warning and **not** merged.
+7. **Part C** — a deliberately stale run: confirm the second proposal fails with the
+   existing 409, the run stops, and the report names what was done, what failed and
+   what was not attempted.
+8. **Part C** — a proposal named "HLC" or similar, refused.
+9. **Part D** — the four figures, before and after, as numbers, with the sum
+   identical.
+10. Confirmation that no recorded vendor name changed, and that
+    `/api/vendor-master/review` and the confirm route are unchanged, quoted.
+11. Confirmation that no permission key was added, renamed or removed, and that no
+    user's permissions changed.
+12. The before/after figures under **What must not change**, as numbers.
+13. The full suite run to completion against the baseline benchmark, with the counts
+    stated and every failure named individually. **Do not stop the run early.** The
+    baseline carries one known failure in `tests/hireBillingLifecycle07b.test.ts` — a
+    static text assertion, not in scope.
+
+Stop and ask once if any part cannot be done without breaking a rule above. Do not
+work around a rule and report it afterwards.
+
+Nothing is to be published. We will review and publish.

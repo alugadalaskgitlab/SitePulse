@@ -13,6 +13,7 @@ const memory = vi.hoisted(() => ({
   aliases: [] as any[],
   updates: [] as any[],
   updateConditions: [] as string[],
+  audits: [] as any[],
   injectPhantomOnLock: false,
 }));
 vi.mock("../server/db", async () => {
@@ -49,14 +50,20 @@ vi.mock("../server/db", async () => {
       },
     }),
     insert: (table: any) => ({
-      values: (payload: any) => ({
-        returning: async (selection?: any) => {
-          if (table !== s.vendors) throw new Error("Unexpected insert table");
-          const row = { ...payload, id: Math.max(0, ...memory.vendors.map(v => v.id)) + 1, createdAt: new Date(), updatedAt: new Date() };
-          memory.vendors.push(row);
-          return [project(selection, row)];
-        },
-      }),
+      values: (payload: any) => {
+        if (table === s.auditLogs) {
+          memory.audits.push(payload);
+          return Promise.resolve([]);
+        }
+        return {
+          returning: async (selection?: any) => {
+            if (table !== s.vendors) throw new Error("Unexpected insert table");
+            const row = { ...payload, id: Math.max(0, ...memory.vendors.map(v => v.id)) + 1, createdAt: new Date(), updatedAt: new Date() };
+            memory.vendors.push(row);
+            return [project(selection, row)];
+          },
+        };
+      },
     }),
     update: (table: any) => ({
       set: (patch: any) => ({
@@ -79,6 +86,7 @@ vi.mock("../server/db", async () => {
       // Dedicated transaction SELECT needs to return the still-unlinked bill/rate rows.
       const tx = {
         ...db,
+        execute: async () => undefined,
         select: (selection?: any) => ({
           from: (table: any) => {
             let condition: any;
@@ -135,6 +143,7 @@ beforeEach(() => {
   memory.aliases = [{ alias: "SYNTHETIC Alias Ltd", canonicalName: "SYNTHETIC Canonical" }];
   memory.updates = [];
   memory.updateConditions = [];
+  memory.audits = [];
   memory.injectPhantomOnLock = false;
 });
 
@@ -282,6 +291,36 @@ describe("Vendor Master Part A real Express handlers, synthetic transaction DB b
     expect(result.status).toBe(200);
     expect(memory.vendors[1]).toMatchObject({ id: 2, gstNumber: "SYN-GST-NEW" });
     expect(memory.rates[0]).toMatchObject({ name: "SYNTHETIC New Supplier", vendorId: 2 });
+  });
+  it("links three bill proposals through separate existing confirmations and audits each moved bill row", async () => {
+    memory.bills = [
+      { id: 71, name: "Synthetic Bulk One", vendorName: "Synthetic Bulk One", vendorId: null },
+      { id: 72, name: "Synthetic Bulk Two", vendorName: "Synthetic Bulk Two", vendorId: null },
+      { id: 73, name: "Synthetic Bulk Three", vendorName: "Synthetic Bulk Three", vendorId: null },
+    ];
+    const app = api();
+    for (const [id, name] of [[71, "Synthetic Bulk One"], [72, "Synthetic Bulk Two"], [73, "Synthetic Bulk Three"]] as const) {
+      const response = await request(app).post("/api/vendor-master/review/confirm").send({
+        role: "bills", name, ids: [id], newVendor: { name, businessName: name },
+      });
+      expect(response.status).toBe(200);
+    }
+    expect(memory.vendors.slice(1)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "SYNTHETIC BULK ONE", businessName: "SYNTHETIC BULK ONE" }),
+      expect.objectContaining({ name: "SYNTHETIC BULK TWO", businessName: "SYNTHETIC BULK TWO" }),
+      expect.objectContaining({ name: "SYNTHETIC BULK THREE", businessName: "SYNTHETIC BULK THREE" }),
+    ]));
+    expect(memory.bills).toEqual([
+      expect.objectContaining({ id: 71, name: "Synthetic Bulk One", vendorName: "Synthetic Bulk One", vendorId: 2 }),
+      expect.objectContaining({ id: 72, name: "Synthetic Bulk Two", vendorName: "Synthetic Bulk Two", vendorId: 3 }),
+      expect.objectContaining({ id: 73, name: "Synthetic Bulk Three", vendorName: "Synthetic Bulk Three", vendorId: 4 }),
+    ]);
+    expect(memory.audits).toHaveLength(3);
+    expect(memory.audits.map(audit => [audit.transactionId, audit.action, audit.oldValues, audit.newValues])).toEqual([
+      [71, "confirm_vendor_identity", { role: "bills", recordedName: "Synthetic Bulk One", vendorId: null }, { role: "bills", recordedName: "Synthetic Bulk One", vendorId: 2 }],
+      [72, "confirm_vendor_identity", { role: "bills", recordedName: "Synthetic Bulk Two", vendorId: null }, { role: "bills", recordedName: "Synthetic Bulk Two", vendorId: 3 }],
+      [73, "confirm_vendor_identity", { role: "bills", recordedName: "Synthetic Bulk Three", vendorId: null }, { role: "bills", recordedName: "Synthetic Bulk Three", vendorId: 4 }],
+    ]);
   });
   it("confirms only locked submitted IDs even when a new same-name bill arrives after snapshot", async () => {
     memory.injectPhantomOnLock = true;
