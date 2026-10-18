@@ -68,8 +68,9 @@ describe("Vendor Tally Readiness page", () => {
     expect(screen.getByText(/PRE-11/)).toBeTruthy();
     expect(screen.getByText(/STRADDLE-12/)).toBeTruthy();
     expect(screen.getByText(/NO-PERIOD-13/)).toBeTruthy();
-    expect(screen.getByText("Part of this work falls before the cutover. The owner must decide whether each bill goes to Tally. These bills are not counted as ready or blocked.")).toBeTruthy();
-    expect(screen.getByText("These bills cannot be placed until their billing periods are recorded. The bill date is not used as a fallback. These candidates are not counted as ready or blocked.")).toBeTruthy();
+    expect(screen.getByText(/This is a review item, not a bill error/)).toBeTruthy();
+    expect(screen.getByText(/These are review items, not bill errors/)).toBeTruthy();
+    expect(screen.getByText(/The bill date is not used as a fallback/)).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });

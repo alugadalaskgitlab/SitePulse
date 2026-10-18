@@ -187,8 +187,8 @@ export default function VendorTallyReadiness() {
               </CardHeader>
               <CardContent>
                 <p className="mb-3 text-sm text-muted-foreground">
-                  Part of this work falls before the cutover. The owner must decide whether each bill goes to Tally.
-                  These bills are not counted as ready or blocked.
+                  Part of this work falls before the cutover. This is a review item, not a bill error.
+                  The owner must decide whether each bill goes to Tally. These bills are not counted as ready or blocked.
                 </p>
                 {readiness.data.straddlingBills.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No candidate bills straddle the cutover.</p>
@@ -211,8 +211,8 @@ export default function VendorTallyReadiness() {
               </CardHeader>
               <CardContent>
                 <p className="mb-3 text-sm text-muted-foreground">
-                  These bills cannot be placed until their billing periods are recorded. The bill date is not used as a fallback.
-                  These candidates are not counted as ready or blocked.
+                  These are review items, not bill errors. The bills cannot be placed until their billing periods are recorded.
+                  The bill date is not used as a fallback. These candidates are not counted as ready or blocked.
                 </p>
                 {readiness.data.periodNotRecordedBills.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No candidate bills have a missing or invalid billing period.</p>
