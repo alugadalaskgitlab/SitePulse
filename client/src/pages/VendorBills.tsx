@@ -365,9 +365,9 @@ function getBillTypeLabel(type: string) {
 const VB_MODE_LABELS: Record<string, string> = { cash: "CASH", credit: "CREDIT", advance: "ADVANCE", upi: "UPI", cheque: "CHEQUE", rtgs: "RTGS / NEFT" };
 
 function useVendorBillCompanyAccounts(enabled: boolean, paymentAccountKey?: string | null) {
-  const query = useQuery<{ id: string; name: string; type: string }[]>({
+  const query = useQuery<{ id: string; name: string; type: string; source?: string }[]>({
     queryKey: ["/api/vendor-bills/company-accounts"],
-    queryFn: () => fetch("/api/vendor-bills/company-accounts", { credentials: "include" }).then(async response => {
+    queryFn: () => fetch("/api/vendor-bills/company-accounts?includeThirdParty=true", { credentials: "include" }).then(async response => {
       if (!response.ok) throw new Error((await response.text()) || "Could not load company accounts");
       return response.json();
     }),
@@ -387,15 +387,15 @@ export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; 
   const { toast } = useToast();
   const [editing, setEditing] = useState(false);
   const [mode, setMode] = useState<string>(bill.paymentMode || "");
-  const [paidByKind, setPaidByKind] = useState<"" | "company" | "personal">(
-    !bill.paidBy ? "" : bill.paidBy === "company" ? "company" : "personal");
+  const [paidByKind, setPaidByKind] = useState<"" | "company" | "alps" | "personal">(
+    !bill.paidBy ? "" : bill.paidBy === "company" || bill.paidBy === "alps" ? bill.paidBy : "personal");
   const [payerName, setPayerName] = useState<string>(
-    bill.paidBy && bill.paidBy !== "company" && bill.paidBy !== "PERSONAL" ? bill.paidBy : "");
+    bill.paidBy && bill.paidBy !== "company" && bill.paidBy !== "alps" && bill.paidBy !== "PERSONAL" ? bill.paidBy : "");
   const [amountPaid, setAmountPaid] = useState<string>(() => initialVendorBillPaidAmount(bill));
   const [paymentAccountKey, setPaymentAccountKey] = useState<string>(bill.paymentAccountKey || "");
   const isEquipmentHire = hasCumulativeVendorPayment(bill.billType);
   const accountsQuery = useVendorBillCompanyAccounts(
-    isEquipmentHire && ((editing && paidByKind === "company") || !!bill.paymentAccountKey),
+    (editing && (paidByKind === "company" || paidByKind === "alps")) || !!bill.paymentAccountKey,
     bill.paymentAccountKey,
   );
   const netPayable = bill.netPayableAmount != null ? Number(bill.netPayableAmount) : Number(bill.totalAmount || 0);
@@ -408,9 +408,10 @@ export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; 
   const saveMutation = useMutation({
     mutationFn: () => apiRequest("PATCH", `/api/vendor-bills/${bill.id}/payment-details`, {
       paymentMode: mode || null,
-      paidBy: paidByKind === "" ? null : paidByKind === "company" ? "company" : (payerName.trim() ? payerName.trim().toUpperCase() : "PERSONAL"),
+      paidBy: paidByKind === "" ? null : paidByKind === "company" || paidByKind === "alps"
+        ? paidByKind : (payerName.trim() ? payerName.trim().toUpperCase() : "PERSONAL"),
       ...(isEquipmentHire && amountPaid !== "" ? { amountPaid: Number(amountPaid) } : {}),
-       ...(isEquipmentHire ? { paymentAccountKey: paidByKind === "company" ? paymentAccountKey || null : null } : {}),
+      paymentAccountKey: paidByKind === "company" || paidByKind === "alps" ? paymentAccountKey || null : null,
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills"] });
@@ -443,7 +444,7 @@ export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; 
             MODE: {bill.paymentMode ? (VB_MODE_LABELS[bill.paymentMode] || String(bill.paymentMode).toUpperCase()) : "\u2014"}
           </Badge>
           <Badge variant="outline" data-testid="badge-vb-paid-by">
-            PAID BY: {!bill.paidBy ? "\u2014" : bill.paidBy === "company" ? "COMPANY ACCOUNT" : `PERSONAL${bill.paidBy !== "PERSONAL" ? ` \u2014 ${bill.paidBy}` : ""}`}
+            PAID BY: {!bill.paidBy ? "\u2014" : bill.paidBy === "company" ? "COMPANY ACCOUNT" : bill.paidBy === "alps" ? "ALPS INFRA (ON HLC'S BEHALF)" : `PERSONAL${bill.paidBy !== "PERSONAL" ? ` \u2014 ${bill.paidBy}` : ""}`}
           </Badge>
           {isEquipmentHire && <>
             <Badge variant="outline">PAID: {effectivePaid == null ? "—" : `₹${formatCurrency(effectivePaid)}`}</Badge>
@@ -468,6 +469,7 @@ export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; 
               <SelectTrigger data-testid="select-vb-paid-by"><SelectValue placeholder="SELECT PAYER" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="company">COMPANY ACCOUNT</SelectItem>
+                <SelectItem value="alps">ALPS INFRA (ON HLC'S BEHALF)</SelectItem>
                 <SelectItem value="personal">PERSONAL</SelectItem>
               </SelectContent>
             </Select>
@@ -485,13 +487,15 @@ export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; 
               />
             </div>
           )}
-          {paidByKind === "company" && isEquipmentHire && (
+          {(paidByKind === "company" || paidByKind === "alps") && (
             <div>
               <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Bank / Account</p>
               <Select value={paymentAccountKey} onValueChange={setPaymentAccountKey}>
                 <SelectTrigger data-testid="select-vb-payment-account"><SelectValue placeholder="SELECT ACCOUNT" /></SelectTrigger>
                 <SelectContent>
-                  {(accountsQuery.data || []).map(account => <SelectItem key={account.id} value={account.id}>{account.name} · {account.type}</SelectItem>)}
+                  {(accountsQuery.data || [])
+                    .filter(account => (account.source ?? "own") === (paidByKind === "alps" ? "third_party" : "own"))
+                    .map(account => <SelectItem key={account.id} value={account.id}>{account.name} · {account.type}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

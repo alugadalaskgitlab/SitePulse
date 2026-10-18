@@ -23,6 +23,7 @@ type VendorBillExportFilters = {
 type VendorBillExportOptions = {
   generatedAt: string;
   generatedBy: string;
+  paymentAccounts?: { id: string; name: string; type: string; source?: string }[];
   filters?: VendorBillExportFilters;
   sites?: { id: number; name: string }[];
   siteScope: string;
@@ -226,6 +227,10 @@ export function buildVendorBillExport(
     const tdsEvidence = recordedReportTds(bill);
     const items = Array.isArray(bill.items) ? bill.items : [];
     const statements = Array.isArray(bill.hireStatements) ? bill.hireStatements : [];
+    const paymentAccount = options.paymentAccounts?.find(account => account.id === bill.paymentAccountKey);
+    const paymentAccountSource = paymentAccount
+      ? paymentAccount.source ?? "own"
+      : NOT_RECORDED;
 
     return {
       identity: {
@@ -282,7 +287,9 @@ export function buildVendorBillExport(
         paymentDate: NOT_RECORDED,
         amount: amounts.paid ?? UNKNOWN,
         mode: recorded(bill.paymentMode),
-        account: recorded(bill.paymentAccountKey),
+        account: paymentAccount?.name ?? NOT_RECORDED,
+        accountKey: recorded(bill.paymentAccountKey),
+        accountSource: paymentAccountSource,
         paidBy: recorded(bill.paidBy),
         recordedBy: recorded(bill.paymentRecordedBy),
         statusRecordedAt: recorded(bill.paidAt),

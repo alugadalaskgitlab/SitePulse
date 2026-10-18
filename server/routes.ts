@@ -11889,6 +11889,7 @@ export async function registerRoutes(
         const assembly = buildVendorBillExport(bills, {
           generatedAt: new Date().toISOString(),
           generatedBy: String(req.authUser.fullName || req.authUser.email || req.authUser.id || "Not recorded"),
+          paymentAccounts: await storage.getVendorBillCompanyAccounts(),
           filters: {
             vendor: filterVendor,
             billType: filterBillType === "all" ? undefined : filterBillType,
@@ -12432,7 +12433,10 @@ export async function registerRoutes(
         res.status(403).json({ error: "forbidden", sections: ["vendor_bills", "site_diesel"], action: "view" });
         return;
       }
-      res.json(await storage.getVendorBillCompanyAccounts());
+      const accounts = await storage.getVendorBillCompanyAccounts();
+      res.json(req.query.includeThirdParty === "true"
+        ? accounts
+        : accounts.filter(account => account.source === "own"));
     } catch (err: any) {
       res.status(500).json({ message: err?.message || "Failed to fetch company accounts" });
     }

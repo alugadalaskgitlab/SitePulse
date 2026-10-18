@@ -18538,13 +18538,19 @@ export class DatabaseStorage implements IStorage {
 
   // Payment detail corrections never alter a lifecycle status or timestamp.
   // Equipment-hire bills additionally retain their bounded paid-total/account.
-  async getVendorBillCompanyAccounts(): Promise<{ id: string; name: string; type: string }[]> {
+  async getVendorBillCompanyAccounts(): Promise<{ id: string; name: string; type: string; source: string }[]> {
     const [setting] = await db.select().from(appSettings).where(eq(appSettings.key, "vendor_bill_company_accounts")).limit(1);
     if (!setting) return [];
     try {
       const parsed = JSON.parse(setting.value);
-      return Array.isArray(parsed) && parsed.every(row => typeof row?.id === "string" && typeof row?.name === "string" && typeof row?.type === "string")
-        ? parsed : [];
+      return Array.isArray(parsed) && parsed.every(row =>
+        typeof row?.id === "string" &&
+        typeof row?.name === "string" &&
+        typeof row?.type === "string" &&
+        (row.source == null || row.source === "own" || row.source === "third_party")
+      )
+        ? parsed.map(row => ({ ...row, source: row.source ?? "own" }))
+        : [];
     } catch {
       throw new Error("Vendor bill company account setting is invalid JSON.");
     }
@@ -18582,16 +18588,27 @@ export class DatabaseStorage implements IStorage {
         }
         setData.amountPaid = details.amountPaid;
       }
+      const effectivePaidBy = details.paidBy !== undefined ? details.paidBy : existing.paidBy;
+      const effectiveAccountKey = details.paymentAccountKey !== undefined
+        ? details.paymentAccountKey
+        : existing.paymentAccountKey;
+      if (effectiveAccountKey != null) {
+        if (effectivePaidBy !== "company" && effectivePaidBy !== "alps") {
+          throw Object.assign(new Error("A bank/account can only be selected for company or ALPS-funded payments."), { code: "BAD_REQUEST" });
+        }
+        const accounts = await this.getVendorBillCompanyAccounts();
+        const account = accounts.find(candidate => candidate.id === effectiveAccountKey);
+        if (!account) {
+          throw Object.assign(new Error("Select a configured bank/account."), { code: "BAD_REQUEST" });
+        }
+        const expectedSource = effectivePaidBy === "alps" ? "third_party" : "own";
+        if (account.source !== expectedSource) {
+          throw Object.assign(new Error(
+            `The selected bank/account is not configured for ${effectivePaidBy === "alps" ? "ALPS-funded" : "company"} payments.`,
+          ), { code: "BAD_REQUEST" });
+        }
+      }
       if (details.paymentAccountKey !== undefined) {
-        if (details.paymentAccountKey != null && (details.paidBy ?? existing.paidBy) !== "company") {
-          throw Object.assign(new Error("A company account can be selected only when paid by company."), { code: "BAD_REQUEST" });
-        }
-        if (details.paymentAccountKey != null) {
-          const accounts = await this.getVendorBillCompanyAccounts();
-          if (!accounts.some(account => account.id === details.paymentAccountKey)) {
-            throw Object.assign(new Error("Select a configured company bank account."), { code: "BAD_REQUEST" });
-          }
-        }
         setData.paymentAccountKey = details.paymentAccountKey;
       }
       if (Object.keys(setData).length > 0) {

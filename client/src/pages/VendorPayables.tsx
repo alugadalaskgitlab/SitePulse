@@ -469,6 +469,13 @@ function SummaryView({ report, dateFrom, dateTo, setDateFrom, setDateTo, clearDa
   const unlinkedTotals = unlinkedQuery
     ? summarizeBillReview(visibleUnlinkedGroups.flatMap(group => group.amounts))
     : allUnlinkedTotals;
+  const alpsFundedTotal = report.filteredBills.reduce((sum, bill) =>
+    bill.paidBy === "alps" && Number.isFinite(Number(bill.amountPaid))
+      ? sum + Number(bill.amountPaid)
+      : sum, 0);
+  const alpsFundedLine = <p data-testid="alps-funded-total" className="mt-2 text-xs leading-5 text-[#526761]">
+    Of the recorded payments, {money(alpsFundedTotal)} was funded by ALPS Infra.
+  </p>;
   const hasCreditColumn = visibleLinkedVendors.some((vendor) => vendor.credits > 0);
   const urlState: PayablesUrlState = { dateFrom, dateTo, tab: activeTab, linkedSearch, unlinkedSearch };
   const linkedTabHref = withPayablesState("/reports/vendor-payables", { ...urlState, tab: "linked" });
@@ -526,6 +533,7 @@ function SummaryView({ report, dateFrom, dateTo, setDateFrom, setDateTo, clearDa
         <Metric label="Coming up" value={money(linkedTotals.comingUp)} detail={linkedQuery ? "Provisional bills in displayed rows" : "Provisional bills"} />
         <Metric label="Total liability" value={money(linkedTotals.totalLiability)} detail="Excludes unlinked" dark />
       </div>
+      {alpsFundedLine}
     </div>
 
     {linkedTotals.unknownPayments > 0 && <div className="flex gap-3 rounded-lg border border-[#e6d8b5] bg-[#fffaf0] px-4 py-3 text-xs leading-5 text-[#725d30]">
@@ -614,6 +622,7 @@ function SummaryView({ report, dateFrom, dateTo, setDateFrom, setDateTo, clearDa
       <Metric label="Paid" value={money(unlinkedTotals.paid)} detail={unlinkedTotals.unknownPayments ? `Estimate · ${unlinkedTotals.unknownPayments} payment unknown` : "Recorded payments"} />
       <Metric label="Balance" value={money(unlinkedTotals.net - unlinkedTotals.paid)} detail={unlinkedTotals.unknownPayments ? "Estimated from recorded payments" : "Billed less paid"} dark />
     </div>
+    {alpsFundedLine}
     <section className="overflow-hidden rounded-xl border border-[#ded9c9] bg-[#fcfbf7]">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e8e1cf] px-5 py-4">
         <div><SectionEyebrow>Identity not confirmed</SectionEyebrow><h2 className="mt-1 text-base font-bold text-[#453e30]">Unlinked bills</h2><p className="mt-1 text-xs text-[#665e4e]">Excluded from linked-vendor totals. To link: Masters → Vendors → Link Vendors → Pending Links.</p></div>
