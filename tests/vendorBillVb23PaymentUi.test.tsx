@@ -63,6 +63,15 @@ it("uses only the third-party account for an ALPS-funded material bill", async (
   })));
 });
 
+it("shows flagged ALPS free text on the bill without labeling it PERSONAL", () => {
+  mount(<VendorBillPaymentDetails canEditPayment={false} bill={{
+    id: 4, billType: "material", status: "paid", paidBy: "ALPS INFRA WORKS",
+  }} />);
+  const paidBy = screen.getByTestId("badge-vb-paid-by").textContent || "";
+  expect(paidBy).toContain("PAID BY: ALPS INFRA WORKS (recorded as text \u2014 needs confirming)");
+  expect(paidBy).not.toContain("PERSONAL");
+});
+
 it.each(["draft", "verified"])("keeps %s payment panel read-only when permission is false", status => {
   mount(<VendorBillPaymentDetails canEditPayment={false} bill={{ id: 3, billType: "all", status, totalAmount: 1000 }} />);
   expect(screen.getByTestId("section-payment-details")).toBeTruthy();

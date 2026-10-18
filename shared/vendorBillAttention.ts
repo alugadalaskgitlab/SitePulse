@@ -4,6 +4,7 @@ export const vendorBillAttentionKinds = [
   "period",
   "bill_date_before_period_end",
   "negative_net",
+  "payer_text_needs_confirming",
 ] as const;
 
 export type VendorBillAttentionKind = typeof vendorBillAttentionKinds[number];
@@ -14,6 +15,7 @@ export const vendorBillAttentionLabels: Record<VendorBillAttentionKind, string> 
   period: "Billed period incomplete",
   bill_date_before_period_end: "Bill date before period end",
   negative_net: "Negative net (review only)",
+  payer_text_needs_confirming: "Payer recorded as free text",
 };
 
 export type HireSiteActivity = {
@@ -35,6 +37,16 @@ function hasRecordedAmount(value: unknown): boolean {
   return value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
 }
 
+export function isAlpsLikeFreeTextPayer(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const normalized = value.trim().toUpperCase();
+  return normalized.length > 0
+    && normalized !== "COMPANY"
+    && normalized !== "ALPS"
+    && normalized !== "PERSONAL"
+    && normalized.includes("ALPS");
+}
+
 function siteKey(value: unknown): string {
   return String(value ?? "")
     .trim()
@@ -52,6 +64,7 @@ export function getVendorBillAttentionKinds(bill: any, net: number): VendorBillA
     kinds.push("bill_date_before_period_end");
   }
   if (net < 0) kinds.push("negative_net");
+  if (isAlpsLikeFreeTextPayer(bill.paidBy)) kinds.push("payer_text_needs_confirming");
   return kinds;
 }
 

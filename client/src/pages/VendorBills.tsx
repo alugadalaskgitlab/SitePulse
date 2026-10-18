@@ -21,6 +21,7 @@ import { vendorBillStatusError } from "@/lib/vendorBillStatusError";
 import { vendorBillingIdentityLabel, type VendorBillingIdentity } from "@/components/vendor-bills/vendorBillingIdentityLabel";
 import { hasCumulativeVendorPayment } from "@shared/vendorBillPayment";
 import { hasFrozenTripDailyHire, FROZEN_TRIP_DAILY_MESSAGE } from "@shared/vendorBillRecovery";
+import { isAlpsLikeFreeTextPayer } from "@shared/vendorBillAttention";
 export { hasCumulativeVendorPayment } from "@shared/vendorBillPayment";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
@@ -383,6 +384,16 @@ export function VendorBillPaidAccount({ paymentAccountKey }: { paymentAccountKey
   ) : null;
 }
 
+function vendorBillPaidByLabel(paidBy: unknown): string {
+  if (typeof paidBy !== "string" || paidBy.length === 0) return "\u2014";
+  const normalized = paidBy.trim().toUpperCase();
+  if (normalized === "COMPANY") return "COMPANY ACCOUNT";
+  if (normalized === "ALPS") return "ALPS INFRA (ON HLC'S BEHALF)";
+  if (isAlpsLikeFreeTextPayer(paidBy)) return `${paidBy} (recorded as text \u2014 needs confirming)`;
+  if (normalized === "PERSONAL") return "PERSONAL";
+  return `PERSONAL \u2014 ${paidBy}`;
+}
+
 export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; canEditPayment: boolean }) {
   const { toast } = useToast();
   const [editing, setEditing] = useState(false);
@@ -444,7 +455,7 @@ export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; 
             MODE: {bill.paymentMode ? (VB_MODE_LABELS[bill.paymentMode] || String(bill.paymentMode).toUpperCase()) : "\u2014"}
           </Badge>
           <Badge variant="outline" data-testid="badge-vb-paid-by">
-            PAID BY: {!bill.paidBy ? "\u2014" : bill.paidBy === "company" ? "COMPANY ACCOUNT" : bill.paidBy === "alps" ? "ALPS INFRA (ON HLC'S BEHALF)" : `PERSONAL${bill.paidBy !== "PERSONAL" ? ` \u2014 ${bill.paidBy}` : ""}`}
+            PAID BY: {vendorBillPaidByLabel(bill.paidBy)}
           </Badge>
           {isEquipmentHire && <>
             <Badge variant="outline">PAID: {effectivePaid == null ? "—" : `₹${formatCurrency(effectivePaid)}`}</Badge>

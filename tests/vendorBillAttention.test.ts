@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildHireSiteSuggestion,
   getVendorBillAttentionKinds,
+  isAlpsLikeFreeTextPayer,
   summarizeVendorBillAttention,
 } from "../shared/vendorBillAttention";
 
@@ -12,10 +13,11 @@ describe("vendor bill attention list rules", () => {
       siteScopeConfirmed: null,
       status: "paid",
       amountPaid: null,
+      paidBy: "ALPS INFRA WORKS",
       periodFrom: null,
       periodTo: null,
       billDate: "2026-10-01",
-    }, -1)).toEqual(["site", "paid_amount", "period", "negative_net"]);
+    }, -1)).toEqual(["site", "paid_amount", "period", "negative_net", "payer_text_needs_confirming"]);
 
     expect(getVendorBillAttentionKinds({
       siteId: null,
@@ -52,8 +54,29 @@ describe("vendor bill attention list rules", () => {
         period: 0,
         bill_date_before_period_end: 0,
         negative_net: 1,
+        payer_text_needs_confirming: 0,
       },
     });
+  });
+
+  it("flags ALPS-containing free text but not structured payer values or personal names", () => {
+    expect(isAlpsLikeFreeTextPayer("  Alps Infra Works  ")).toBe(true);
+    for (const value of [null, undefined, "", "  ", "company", "ALPS", "PERSONAL", "SURESH"]) {
+      expect(isAlpsLikeFreeTextPayer(value)).toBe(false);
+    }
+
+    const completeBill = {
+      siteId: 1,
+      siteScopeConfirmed: true,
+      status: "approved",
+      amountPaid: 0,
+      periodFrom: "2026-09-01",
+      periodTo: "2026-09-30",
+      billDate: "2026-09-30",
+    };
+    expect(getVendorBillAttentionKinds({ ...completeBill, paidBy: "SURESH" }, 0)).toEqual([]);
+    expect(getVendorBillAttentionKinds({ ...completeBill, paidBy: "ALPS INFRA" }, 0))
+      .toEqual(["payer_text_needs_confirming"]);
   });
 
   it("suggests a hire site only when all statement activity identifies the same single site", () => {

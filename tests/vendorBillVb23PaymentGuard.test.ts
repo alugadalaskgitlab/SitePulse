@@ -17,6 +17,7 @@ function query(rows: any[] = []) {
       fixtures.writes.push(value);
       return query();
     },
+    returning: () => Promise.resolve(fixtures.returnedBill ? [fixtures.returnedBill] : []),
     then: (resolve: any, reject: any) => Promise.resolve(rows).then(resolve, reject),
   };
   return chain;
@@ -96,6 +97,61 @@ describe("VB-PAID-01 funding-source storage guard", () => {
       paidBy: "alps",
       paymentAccountKey: "alps_infra_works",
     }]);
+  });
+
+  it("confirms a flagged payer by updating only payer and account, preserving financial facts", async () => {
+    const frozenSnapshot = { netPayableAmount: 900, calculatedAt: "2026-10-01T12:00:00.000Z" };
+    const existing = approvedBill("all", 40, {
+      status: "paid",
+      paidBy: " ALPS INFRA WORKS ",
+      paymentAccountKey: null,
+      totalAmount: 1_000,
+      netPayableAmount: 900,
+      hireStatements: [{ id: 10, calculationSnapshot: frozenSnapshot }],
+    });
+    const expectedAfter = {
+      ...existing,
+      paidBy: "alps",
+      paymentAccountKey: "alps_infra_works",
+    };
+    fixtures.selectedRows.push([existing]);
+    fixtures.returnedBill = expectedAfter;
+
+    const result = await new DatabaseStorage().confirmVendorBillAlpsPayer(23, "alps_infra_works");
+
+    expect(result?.before.paidBy).toBe(" ALPS INFRA WORKS ");
+    expect(result?.after).toMatchObject({
+      paidBy: "alps",
+      paymentAccountKey: "alps_infra_works",
+      status: "paid",
+      amountPaid: 40,
+      totalAmount: 1_000,
+      netPayableAmount: 900,
+      hireStatements: [{ calculationSnapshot: frozenSnapshot }],
+    });
+    expect(fixtures.writes).toEqual([{
+      paidBy: "alps",
+      paymentAccountKey: "alps_infra_works",
+    }]);
+    expect(result?.after.hireStatements).toEqual(result?.before.hireStatements);
+  });
+
+  it("rejects stale or structured payer values before any write", async () => {
+    const existing = approvedBill("material", null, { paidBy: "company" });
+    fixtures.selectedRows.push([existing]);
+
+    await expect(new DatabaseStorage().confirmVendorBillAlpsPayer(23, "alps_infra_works"))
+      .rejects.toMatchObject({ code: "CONFLICT" });
+    expect(fixtures.writes).toEqual([]);
+  });
+
+  it("requires the selected account to be configured as third-party", async () => {
+    const existing = approvedBill("material", null, { paidBy: "ALPS INFRA" });
+    fixtures.selectedRows.push([existing]);
+
+    await expect(new DatabaseStorage().confirmVendorBillAlpsPayer(23, "hdfc_ca"))
+      .rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(fixtures.writes).toEqual([]);
   });
 });
 

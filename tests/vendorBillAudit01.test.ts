@@ -67,6 +67,7 @@ vi.mock("../server/storage", () => {
   methods.correctVendorBillSiteScope = vi.fn().mockResolvedValue(undefined);
   methods.correctVendorBillPeriod = vi.fn().mockResolvedValue(undefined);
   methods.recordMissingVendorBillPaidAmount = vi.fn().mockResolvedValue(undefined);
+  methods.confirmVendorBillAlpsPayer = vi.fn().mockResolvedValue(undefined);
   methods.voidVendorBill = vi.fn().mockResolvedValue(undefined);
   methods.deleteVendorBill = vi.fn().mockResolvedValue(false);
   return { storage: storageProxy };
@@ -765,6 +766,58 @@ describe("AUDIT-01 vendor-bill history", () => {
       action: "paid_amount_recorded",
       oldValues: { amountPaid: null },
       newValues: { amountPaid: 0 },
+    }));
+  });
+
+  it("returns flagged payer text and audits the per-bill ALPS confirmation", async () => {
+    fx.role = "manager";
+    let response = await request(app).patch("/api/vendor-bills/7/attention/payer-confirmation")
+      .send({ paymentAccountKey: "alps_infra_works" });
+    expect(response.status).toBe(403);
+    expect(storage.confirmVendorBillAlpsPayer).not.toHaveBeenCalled();
+
+    fx.role = "admin";
+    const before = makeBill({
+      paidBy: " ALPS INFRA WORKS ",
+      paymentAccountKey: null,
+      status: "paid",
+      amountPaid: 40,
+      netPayableAmount: 90,
+      siteScopeConfirmed: true,
+      periodFrom: "2026-09-01",
+      periodTo: "2026-09-30",
+      calculationSnapshot: { frozenTotal: 90 },
+    });
+    const after = {
+      ...before,
+      paidBy: "alps",
+      paymentAccountKey: "alps_infra_works",
+    };
+    storage.getVendorBills.mockResolvedValueOnce([before]);
+    response = await request(app).get("/api/vendor-bills/attention");
+    expect(response.status).toBe(200);
+    expect(response.body.rows[0]).toMatchObject({
+      paidBy: " ALPS INFRA WORKS ",
+      kinds: ["payer_text_needs_confirming"],
+    });
+
+    response = await request(app).patch("/api/vendor-bills/7/attention/payer-confirmation")
+      .send({ paymentAccountKey: "alps_infra_works", amountPaid: 0 });
+    expect(response.status).toBe(400);
+    expect(storage.confirmVendorBillAlpsPayer).not.toHaveBeenCalled();
+
+    storage.confirmVendorBillAlpsPayer.mockResolvedValueOnce({ before, after });
+    response = await request(app).patch("/api/vendor-bills/7/attention/payer-confirmation")
+      .send({ paymentAccountKey: "alps_infra_works" });
+    expect(response.status).toBe(200);
+    expect(storage.confirmVendorBillAlpsPayer).toHaveBeenLastCalledWith(7, "alps_infra_works");
+    expect(storage.logAudit).toHaveBeenLastCalledWith(expect.objectContaining({
+      module: "vendor_bills",
+      transactionId: 7,
+      action: "alps_payer_confirmed",
+      oldValues: { paidBy: " ALPS INFRA WORKS ", paymentAccountKey: null },
+      newValues: { paidBy: "alps", paymentAccountKey: "alps_infra_works" },
+      userId: 9,
     }));
   });
 });

@@ -17,9 +17,11 @@ type AttentionKind =
   | "paid_amount"
   | "period"
   | "bill_date_before_period_end"
-  | "negative_net";
+  | "negative_net"
+  | "payer_text_needs_confirming";
 
 type SiteOption = { id: number; name: string };
+type PaymentAccountOption = { id: string; name: string; type: string; source: string };
 type BillAttentionRow = {
   billId: number;
   billNo: string;
@@ -28,6 +30,7 @@ type BillAttentionRow = {
   net: number;
   status: string;
   amountPaid: number | string | null;
+  paidBy: string | null;
   siteId: number | null;
   siteName: string | null;
   siteScopeConfirmed: boolean | null;
@@ -49,6 +52,7 @@ const KIND_LABELS: Record<AttentionKind, string> = {
   period: "Billed period incomplete",
   bill_date_before_period_end: "Bill date before period end",
   negative_net: "Negative net · review only",
+  payer_text_needs_confirming: "Payer recorded as free text",
 };
 
 const money = (value: number) => new Intl.NumberFormat("en-IN", {
@@ -77,12 +81,29 @@ function readableEvidence(value: string): string {
   );
 }
 
-function BillAttentionCard({ row, sites }: { row: BillAttentionRow; sites: SiteOption[] }) {
+export function BillAttentionCard({ row, sites }: { row: BillAttentionRow; sites: SiteOption[] }) {
   const { toast } = useToast();
   const [siteChoice, setSiteChoice] = useState("");
   const [periodFrom, setPeriodFrom] = useState(row.periodFrom || "");
   const [periodTo, setPeriodTo] = useState(row.periodTo || "");
   const [paidAmount, setPaidAmount] = useState("");
+  const [paymentAccountKey, setPaymentAccountKey] = useState("");
+  const needsPayerConfirmation = row.kinds.includes("payer_text_needs_confirming");
+  const accountsQuery = useQuery<PaymentAccountOption[]>({
+    queryKey: ["/api/vendor-bills/company-accounts", "attention-third-party"],
+    queryFn: async () => {
+      const response = await fetch("/api/vendor-bills/company-accounts?includeThirdParty=true", { credentials: "include" });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.message || "Could not load configured third-party accounts.");
+      }
+      const accounts: PaymentAccountOption[] = await response.json();
+      return accounts.filter(account => account.source === "third_party");
+    },
+    enabled: needsPayerConfirmation,
+    retry: false,
+  });
+  const thirdPartyAccounts = accountsQuery.data || [];
 
   const onCorrected = (title: string) => {
     queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills/attention"] });
@@ -109,6 +130,13 @@ function BillAttentionCard({ row, sites }: { row: BillAttentionRow; sites: SiteO
       amountPaid: Number(paidAmount),
     }),
     onSuccess: () => onCorrected("Paid amount recorded; bill status unchanged"),
+    onError,
+  });
+  const payerConfirmationMutation = useMutation({
+    mutationFn: () => apiRequest("PATCH", `/api/vendor-bills/${row.billId}/attention/payer-confirmation`, {
+      paymentAccountKey,
+    }),
+    onSuccess: () => onCorrected("Payer confirmed as ALPS; bill amounts and status unchanged"),
     onError,
   });
 
@@ -144,6 +172,55 @@ function BillAttentionCard({ row, sites }: { row: BillAttentionRow; sites: SiteO
             </Badge>
           ))}
         </div>
+
+        {needsPayerConfirmation && (
+          <section className="space-y-3 rounded-md border p-3" aria-label="Confirm ALPS payer">
+            <div>
+              <h3 className="text-sm font-semibold">Confirm payer attribution</h3>
+              <p className="text-xs text-muted-foreground">
+                Stored payer text: <span className="font-medium text-foreground">{row.paidBy}</span>.
+                Nothing changes until you confirm this bill and select its configured third-party ALPS account.
+                The original text is retained in audit history.
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                This changes only the payer attribution and payment account. Amounts, status and frozen snapshots remain unchanged.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+              <div className="min-w-56 flex-1">
+                <Label htmlFor={`attention-payer-account-${row.billId}`}>Third-party ALPS account</Label>
+                <Select value={paymentAccountKey} onValueChange={setPaymentAccountKey}>
+                  <SelectTrigger
+                    id={`attention-payer-account-${row.billId}`}
+                    data-testid={`select-attention-payer-account-${row.billId}`}
+                  >
+                    <SelectValue placeholder="SELECT CONFIGURED ALPS ACCOUNT" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {thirdPartyAccounts.map(account => (
+                      <SelectItem key={account.id} value={account.id}>
+                        {account.name} · {account.type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                onClick={() => payerConfirmationMutation.mutate()}
+                disabled={!paymentAccountKey || !thirdPartyAccounts.some(account => account.id === paymentAccountKey) || accountsQuery.isLoading || payerConfirmationMutation.isPending}
+                data-testid={`button-confirm-alps-payer-${row.billId}`}
+              >
+                {payerConfirmationMutation.isPending && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+                CONFIRM AS ALPS
+              </Button>
+            </div>
+            {accountsQuery.isLoading && <p className="text-xs text-muted-foreground" role="status">Loading configured third-party accounts…</p>}
+            {accountsQuery.isError && <p className="text-xs text-destructive" role="alert">{(accountsQuery.error as Error).message}</p>}
+            {!accountsQuery.isLoading && !accountsQuery.isError && thirdPartyAccounts.length === 0 && (
+              <p className="text-xs text-muted-foreground" role="status">No configured third-party ALPS account is available. No change has been made.</p>
+            )}
+          </section>
+        )}
 
         {row.kinds.includes("site") && (
           <section className="space-y-3 rounded-md border p-3" aria-label="Correct site answer">

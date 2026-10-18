@@ -133,6 +133,7 @@ import { resolveConversion, convertToBase, computeAdjustment, isNoChange, comput
 import { resolvePermittedSiteIds } from "@shared/siteAccess";
 import { getBaseSiteName, siteMatchesPermitted, vendorBillItemMatchesSite } from "@shared/siteName";
 import { getBillFinancialTotals } from "@shared/vendorBillFinancialReport";
+import { isAlpsLikeFreeTextPayer } from "@shared/vendorBillAttention";
 import {
   buildSiteTripSuggestions,
   normalizeSiteTripHistorySite,
@@ -1586,6 +1587,7 @@ export interface IStorage {
   correctVendorBillPeriod(id: number, periodFrom: string, periodTo: string): Promise<{ before: VendorBill; after: VendorBill } | undefined>;
   recordMissingVendorBillPaidAmount(id: number, amountPaid: number): Promise<{ before: VendorBill; after: VendorBill } | undefined>;
   updateVendorBillPaymentDetails(id: number, details: { paymentMode?: string | null; paidBy?: string | null; amountPaid?: number | null; paymentAccountKey?: string | null }): Promise<VendorBillWithItems | undefined>;
+  confirmVendorBillAlpsPayer(id: number, paymentAccountKey: string): Promise<{ before: VendorBill; after: VendorBill } | undefined>;
   getVendorBillCompanyAccounts(): Promise<{ id: string; name: string; type: string; source: string }[]>;
   // 06M-A: ensures nullable payment_mode/paid_by columns on vendor_bills.
   // Safe to run multiple times (ALTER TABLE … ADD COLUMN IF NOT EXISTS).
@@ -2560,6 +2562,33 @@ function hireOverlapConflict(statement: any, parentBill: any, requestedFrom: str
     new Error(`This equipment already has an overlapping hire statement: ${blocker}; review the existing bill and choose an unbilled period.`),
     { code: "CONFLICT" },
   );
+}
+
+function assertVendorBillPaymentAccountSource(
+  paidBy: string | null | undefined,
+  accountKey: string | null | undefined,
+  accounts: { id: string; name: string; type: string; source: string }[],
+  required = false,
+): void {
+  if (accountKey == null) {
+    if (required) {
+      throw Object.assign(new Error("Select a configured third-party ALPS account."), { code: "BAD_REQUEST" });
+    }
+    return;
+  }
+  if (paidBy !== "company" && paidBy !== "alps") {
+    throw Object.assign(new Error("A bank/account can only be selected for company or ALPS-funded payments."), { code: "BAD_REQUEST" });
+  }
+  const account = accounts.find(candidate => candidate.id === accountKey);
+  if (!account) {
+    throw Object.assign(new Error("Select a configured bank/account."), { code: "BAD_REQUEST" });
+  }
+  const expectedSource = paidBy === "alps" ? "third_party" : "own";
+  if (account.source !== expectedSource) {
+    throw Object.assign(new Error(
+      `The selected bank/account is not configured for ${paidBy === "alps" ? "ALPS-funded" : "company"} payments.`,
+    ), { code: "BAD_REQUEST" });
+  }
 }
 
 export class DatabaseStorage implements IStorage {
@@ -18593,20 +18622,8 @@ export class DatabaseStorage implements IStorage {
         ? details.paymentAccountKey
         : existing.paymentAccountKey;
       if (effectiveAccountKey != null) {
-        if (effectivePaidBy !== "company" && effectivePaidBy !== "alps") {
-          throw Object.assign(new Error("A bank/account can only be selected for company or ALPS-funded payments."), { code: "BAD_REQUEST" });
-        }
         const accounts = await this.getVendorBillCompanyAccounts();
-        const account = accounts.find(candidate => candidate.id === effectiveAccountKey);
-        if (!account) {
-          throw Object.assign(new Error("Select a configured bank/account."), { code: "BAD_REQUEST" });
-        }
-        const expectedSource = effectivePaidBy === "alps" ? "third_party" : "own";
-        if (account.source !== expectedSource) {
-          throw Object.assign(new Error(
-            `The selected bank/account is not configured for ${effectivePaidBy === "alps" ? "ALPS-funded" : "company"} payments.`,
-          ), { code: "BAD_REQUEST" });
-        }
+        assertVendorBillPaymentAccountSource(effectivePaidBy, effectiveAccountKey, accounts);
       }
       if (details.paymentAccountKey !== undefined) {
         setData.paymentAccountKey = details.paymentAccountKey;
@@ -18618,6 +18635,31 @@ export class DatabaseStorage implements IStorage {
     });
     if (!changed) return undefined;
     return this.getVendorBill(id);
+  }
+
+  async confirmVendorBillAlpsPayer(
+    id: number,
+    paymentAccountKey: string,
+  ): Promise<{ before: VendorBill; after: VendorBill } | undefined> {
+    return db.transaction(async tx => {
+      const [before] = await tx.select().from(vendorBills).where(eq(vendorBills.id, id)).limit(1).for("update");
+      if (!before || before.isDeleted === true) return undefined;
+      if (before.isCancelled === true) {
+        throw Object.assign(new Error("A voided vendor bill cannot be corrected"), { code: "CONFLICT" });
+      }
+      if (!isAlpsLikeFreeTextPayer(before.paidBy)) {
+        throw Object.assign(new Error("This bill no longer has an ALPS-like free-text payer to confirm."), { code: "CONFLICT" });
+      }
+
+      const accounts = await this.getVendorBillCompanyAccounts();
+      assertVendorBillPaymentAccountSource("alps", paymentAccountKey, accounts, true);
+
+      const [after] = await tx.update(vendorBills)
+        .set({ paidBy: "alps", paymentAccountKey })
+        .where(eq(vendorBills.id, id))
+        .returning();
+      return after ? { before, after } : undefined;
+    });
   }
 
   async updateVendorBillStatus(id: number, status: string, actor: string, paidAmount?: number): Promise<VendorBillWithItems | undefined> {

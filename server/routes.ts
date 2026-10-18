@@ -12555,6 +12555,7 @@ export async function registerRoutes(
           net,
           status: bill.status,
           amountPaid: bill.amountPaid,
+          paidBy: bill.paidBy,
           siteId: bill.siteId,
           siteName: sites.find(site => site.id === bill.siteId)?.name ?? null,
           siteScopeConfirmed: bill.siteScopeConfirmed,
@@ -12653,6 +12654,39 @@ export async function registerRoutes(
       if ((err as any)?.code === "CONFLICT") return res.status(409).json({ message: (err as any).message });
       console.error("Error correcting vendor bill period:", err);
       res.status(500).json({ message: "Failed to correct vendor bill period" });
+    }
+  });
+
+  app.patch("/api/vendor-bills/:id/attention/payer-confirmation", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid bill id" });
+      const { paymentAccountKey } = z.object({
+        paymentAccountKey: z.string().trim().min(1).max(120),
+      }).strict().parse(req.body ?? {});
+      const correction = await storage.confirmVendorBillAlpsPayer(id, paymentAccountKey);
+      if (!correction) return res.status(404).json({ message: "Vendor bill not found" });
+      await recordChange(req, storage, {
+        module: "vendor_bills",
+        transactionId: id,
+        action: "alps_payer_confirmed",
+        before: {
+          paidBy: correction.before.paidBy,
+          paymentAccountKey: correction.before.paymentAccountKey,
+        },
+        after: {
+          paidBy: correction.after.paidBy,
+          paymentAccountKey: correction.after.paymentAccountKey,
+        },
+      });
+      res.json(correction.after);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      if ((err as any)?.code === "BAD_REQUEST") return res.status(400).json({ message: (err as any).message });
+      if ((err as any)?.code === "CONFLICT") return res.status(409).json({ message: (err as any).message });
+      console.error("Error confirming vendor bill ALPS payer:", err);
+      res.status(500).json({ message: "Failed to confirm vendor bill payer" });
     }
   });
 
