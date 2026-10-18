@@ -13,6 +13,12 @@ The Previous Billing Summary on an individual bill is available to anyone who ma
 
 **How to apply:** Keep this exception limited to the single-bill Previous Billing Summary and its narrow previous-bill data path. Keep aggregate summaries, all-vendor statements, the payables page, the Vendor Bills list financial summary, Taxes Register and reporting/export APIs behind the explicit grant. Honour selected financial site scope even for Administrators. Use the existing user permission matrix and save flow, not a parallel system or production backfill.
 
+Bulk bill linking in Vendor Master must use the existing financially guarded review endpoint for bill totals. If an Administrator lacks the existing financial grant, keep bulk bill linking unavailable to that user; do not bypass the guard, omit totals, add a permission key, or treat Administrator status as financial authorization. Bulk linking for trips, rate cards, and indents remains available.
+
+**Why:** On 2026-10-11, the owner made View Vendor Financials an explicit grant that the Administrator shortcut deliberately does not satisfy; exposing bill totals without it would leak protected aggregate financial information.
+
+**How to apply:** Require authorized bill totals before enabling the bulk bill action. Do not change the endpoint or permission matrix to make the action available; keep non-financial role workflows independent.
+
 Taxes reporting must use recorded deduction amounts, not infer TDS deductions from a saved percentage.
 
 **Why:** The user said not to invent deductions or correct historical financial data.

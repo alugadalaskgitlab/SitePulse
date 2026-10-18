@@ -177,6 +177,10 @@ describe("Vendor Master persisted link views", () => {
         newVendor: expect.objectContaining({ name: proposal.name, businessName: proposal.name }),
       }));
     }
+    expect(holder.request.mock.calls[0][2].newVendor).toMatchObject({
+      gstNumber: "", panNumber: "", address: "", contactPersonName: "", contactPhone: "", contactEmail: "",
+      bankAccountName: "", bankAccountNumber: "", bankIfsc: "", bankName: "", isActive: true,
+    });
     expect(holder.request.mock.calls.map(call => call[1])).toEqual(Array(3).fill("/api/vendor-master/review/confirm"));
   });
 

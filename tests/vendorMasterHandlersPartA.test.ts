@@ -301,15 +301,19 @@ describe("Vendor Master Part A real Express handlers, synthetic transaction DB b
     const app = api();
     for (const [id, name] of [[71, "Synthetic Bulk One"], [72, "Synthetic Bulk Two"], [73, "Synthetic Bulk Three"]] as const) {
       const response = await request(app).post("/api/vendor-master/review/confirm").send({
-        role: "bills", name, ids: [id], newVendor: { name, businessName: name },
+        role: "bills", name, ids: [id], newVendor: {
+          name, businessName: name, gstNumber: "", panNumber: "", address: "", contactPersonName: "",
+          contactPhone: "", contactEmail: "", bankAccountName: "", bankAccountNumber: "", bankIfsc: "",
+          bankName: "", isActive: true,
+        },
       });
       expect(response.status).toBe(200);
     }
-    expect(memory.vendors.slice(1)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ name: "SYNTHETIC BULK ONE", businessName: "SYNTHETIC BULK ONE" }),
-      expect.objectContaining({ name: "SYNTHETIC BULK TWO", businessName: "SYNTHETIC BULK TWO" }),
-      expect.objectContaining({ name: "SYNTHETIC BULK THREE", businessName: "SYNTHETIC BULK THREE" }),
-    ]));
+    expect(memory.vendors.slice(1)).toEqual([
+      expect.objectContaining({ name: "SYNTHETIC BULK ONE", businessName: "SYNTHETIC BULK ONE", gstNumber: "", panNumber: "", address: "", contactPersonName: "", contactPhone: "", contactEmail: "", bankAccountName: "", bankAccountNumber: "", bankIfsc: "", bankName: "", isActive: true }),
+      expect.objectContaining({ name: "SYNTHETIC BULK TWO", businessName: "SYNTHETIC BULK TWO", gstNumber: "", panNumber: "", address: "", contactPersonName: "", contactPhone: "", contactEmail: "", bankAccountName: "", bankAccountNumber: "", bankIfsc: "", bankName: "", isActive: true }),
+      expect.objectContaining({ name: "SYNTHETIC BULK THREE", businessName: "SYNTHETIC BULK THREE", gstNumber: "", panNumber: "", address: "", contactPersonName: "", contactPhone: "", contactEmail: "", bankAccountName: "", bankAccountNumber: "", bankIfsc: "", bankName: "", isActive: true }),
+    ]);
     expect(memory.bills).toEqual([
       expect.objectContaining({ id: 71, name: "Synthetic Bulk One", vendorName: "Synthetic Bulk One", vendorId: 2 }),
       expect.objectContaining({ id: 72, name: "Synthetic Bulk Two", vendorName: "Synthetic Bulk Two", vendorId: 3 }),

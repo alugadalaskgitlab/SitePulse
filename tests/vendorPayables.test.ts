@@ -241,7 +241,7 @@ describe("vendor payables report projection", () => {
 
     const sampleBill = baselineBills.find(bill => bill.billNo === "HLC/VB/2026/0054")!;
     expect(billReviewAmounts(sampleBill, getBillFinancialTotals(sampleBill))).toMatchObject({ net: 56840, paid: 50000, balance: 6840 });
-    expect(projectVendorPayables(baselineBills).vendors[0].payableNow).toBe(11853.69);
+    expect(roundMoney(projectVendorPayables(baselineBills).vendors[0].payableNow)).toBe(11853.69);
   });
 });
 
