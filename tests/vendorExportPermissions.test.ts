@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import ts from "typescript";
 import express from "express";
@@ -305,6 +306,122 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
     expect(exportedVoid[columns.indexOf("Balance")]).toBe("Unknown");
     const paymentRows = xlsx.utils.sheet_to_json(workbook.Sheets.Payments, { header: 1 }) as any[][];
     expect(paymentRows.some(row => row.includes("BILL-LIVE") && row.includes("UTR 123"))).toBe(true);
+  });
+
+  it("downloads all 57 bills without oversized cells and leaves complete JSON bytes unchanged", async () => {
+    permissions.vendor_bills = { export: true };
+    authUser = { id: 7, isAdmin: true, fullName: "Site Administrator" };
+    const originalGetVendorBills = storage.getVendorBills.getMockImplementation();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-18T00:00:00.000Z"));
+
+    const bills = Array.from({ length: 57 }, (_, index) => ({
+      id: index + 1,
+      siteId: 1,
+      billNo: `BILL-${String(index + 1).padStart(2, "0")}`,
+      billDate: "2026-10-01",
+      vendorName: "Recorded Vendor",
+      billType: "equipment",
+      status: "approved",
+      totalAmount: 100,
+      netPayableAmount: 90,
+      amountPaid: 25,
+      items: [],
+      hireStatements: [{
+        id: 1000 + index,
+        periodFrom: "2026-09-01",
+        periodTo: "2026-09-30",
+        status: "approved",
+        grossAmount: 100,
+        deductionAmount: 10,
+        netAmount: 90,
+        calculationSnapshot: {
+          financials: { grossHire: 100 },
+          sourceEvidence: { snapshotPayload: index === 0 ? `RAW-SNAPSHOT-${"x".repeat(40_000)}` : "small" },
+        },
+      }],
+      ...(index === 0
+        ? { additionalAdjustments: [{ label: "Long adjustment ".repeat(2_500), amount: 42 }] }
+        : {}),
+    })) as any[];
+    storage.getVendorBills.mockResolvedValue(bills);
+
+    const rawParser = (response: any, done: (error: any, body?: Buffer) => void) => {
+      const chunks: Buffer[] = [];
+      response.on("data", (chunk: Buffer | string) =>
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)),
+      );
+      response.on("end", () => done(null, Buffer.concat(chunks)));
+    };
+
+    try {
+      const jsonBefore = await request(app)
+        .get("/api/vendor-bills/export?format=json")
+        .buffer(true)
+        .parse(rawParser);
+      expect(jsonBefore.status).toBe(200);
+      const jsonBeforeBytes = jsonBefore.body as Buffer;
+      const jsonBeforeBody = JSON.parse(jsonBeforeBytes.toString("utf8"));
+      expect(jsonBeforeBody.header.billCount).toBe(57);
+      expect(jsonBeforeBody.bills[0].hireStatements[0].calculationSnapshot.sourceEvidence.snapshotPayload)
+        .toHaveLength(40_013);
+      expect(createHash("sha256").update(jsonBeforeBytes).digest("hex"))
+        .toBe("f7000d27153e52b0d9410a1f3f9529aadd79e946a52dfbfa606abc2a420ae484");
+
+      const xlsxResponse = await request(app)
+        .get("/api/vendor-bills/export?format=xlsx")
+        .buffer(true)
+        .parse(rawParser);
+      expect(xlsxResponse.status).toBe(200);
+      expect(xlsxResponse.headers["content-type"]).toContain("spreadsheetml");
+      expect(xlsxResponse.headers["content-disposition"]).toContain("vendor-bills-complete.xlsx");
+
+      const workbook = xlsx.read(xlsxResponse.body as Buffer, { type: "buffer" });
+      const vendorBillsSheet = workbook.Sheets["Vendor Bills"];
+      const billRows = xlsx.utils.sheet_to_json(vendorBillsSheet, { header: 1 }) as any[][];
+      const headerIndex = billRows.findIndex(row => row[0] === "Bill ID");
+      const columns = billRows[headerIndex];
+      const dataRows = billRows.slice(headerIndex + 1).filter(row => row?.[0] != null);
+      expect(dataRows).toHaveLength(57);
+      expect(new Set(dataRows.map(row => row[columns.indexOf("Bill Number")])).size).toBe(57);
+
+      const firstBill = dataRows[0];
+      const hireSummary = firstBill[columns.indexOf("Hire Statements (Summary)")];
+      expect(hireSummary).toContain("1 statement");
+      expect(hireSummary).toContain("2026-09-01 to 2026-09-30");
+      expect(hireSummary).toContain("gross 100");
+      expect(hireSummary).toContain("net 90");
+      expect(hireSummary).not.toContain("RAW-SNAPSHOT-");
+
+      const adjustmentSummary = firstBill[columns.indexOf("Adjustment Details (Summary)")];
+      expect(adjustmentSummary).toHaveLength(32_767);
+      expect(adjustmentSummary).toMatch(/…\[truncated\]$/);
+
+      for (const sheetName of workbook.SheetNames) {
+        for (const [address, cell] of Object.entries(workbook.Sheets[sheetName])) {
+          if (address.startsWith("!")) continue;
+          const value = (cell as any)?.v;
+          if (typeof value === "string") {
+            expect(value.length, `${sheetName}!${address}`).toBeLessThanOrEqual(32_767);
+            expect(value).not.toContain("RAW-SNAPSHOT-");
+          }
+        }
+      }
+
+      const jsonAfter = await request(app)
+        .get("/api/vendor-bills/export?format=json")
+        .buffer(true)
+        .parse(rawParser);
+      expect(jsonAfter.status).toBe(200);
+      const jsonAfterBytes = jsonAfter.body as Buffer;
+      expect(jsonAfterBytes.equals(jsonBeforeBytes)).toBe(true);
+      expect(createHash("sha256").update(jsonAfterBytes).digest("hex"))
+        .toBe("f7000d27153e52b0d9410a1f3f9529aadd79e946a52dfbfa606abc2a420ae484");
+    } finally {
+      vi.useRealTimers();
+      storage.getVendorBills.mockReset();
+      if (originalGetVendorBills) storage.getVendorBills.mockImplementation(originalGetVendorBills);
+    }
   });
 
   for (const [method, path, key] of endpoints) {

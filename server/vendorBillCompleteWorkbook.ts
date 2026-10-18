@@ -1,10 +1,43 @@
 import * as xlsx from "xlsx";
 
+const EXCEL_MAX_CELL_LENGTH = 32_767;
+const EXCEL_TRUNCATION_MARKER = "…[truncated]";
+
 const cellValue = (value: any) => {
   if (value == null) return "Not recorded";
   if (typeof value === "object") return JSON.stringify(value);
   return value;
 };
+
+function truncateExcelCellText(value: string): string {
+  if (value.length <= EXCEL_MAX_CELL_LENGTH) return value;
+  let prefix = value.slice(0, EXCEL_MAX_CELL_LENGTH - EXCEL_TRUNCATION_MARKER.length);
+  const lastCodeUnit = prefix.charCodeAt(prefix.length - 1);
+  if (lastCodeUnit >= 0xd800 && lastCodeUnit <= 0xdbff) prefix = prefix.slice(0, -1);
+  return `${prefix}${EXCEL_TRUNCATION_MARKER}`;
+}
+
+function adjustmentDetailsSummary(details: any): string {
+  if (!details || typeof details !== "object" || Array.isArray(details)) return "No adjustments recorded";
+  const rows = Object.entries(details).flatMap(([category, entries]) =>
+    Array.isArray(entries)
+      ? entries.map((entry: any) =>
+          `${category}: ${cellValue(entry?.reason)}; source ${cellValue(entry?.source)}; amount ${cellValue(entry?.amount)}; stored ${cellValue(entry?.storedAmount)}`,
+        )
+      : [],
+  );
+  if (!rows.length) return "No adjustments recorded";
+  return `${rows.length} adjustment${rows.length === 1 ? "" : "s"} | ${rows.join("; ")}`;
+}
+
+function hireStatementsSummary(statements: any): string {
+  if (!Array.isArray(statements) || !statements.length) return "0 statements";
+  const periods = statements.map((statement: any) => {
+    const totals = statement?.storedTotals || {};
+    return `${cellValue(statement?.periodFrom)} to ${cellValue(statement?.periodTo)}: gross ${cellValue(totals.grossAmount)}, net ${cellValue(totals.netAmount)}`;
+  });
+  return `${statements.length} statement${statements.length === 1 ? "" : "s"} | ${periods.join("; ")}`;
+}
 
 const headerRows = (header: any) => [
   ["Generated at", header.generatedAt],
@@ -22,11 +55,14 @@ function appendSheet(
   columns: string[],
   rows: any[][],
 ) {
-  const sheet = xlsx.utils.aoa_to_sheet([
+  const values = [
     ...headerRows(header),
     columns,
     ...rows,
-  ]);
+  ].map(row => row.map(value =>
+    typeof value === "string" ? truncateExcelCellText(value) : value,
+  ));
+  const sheet = xlsx.utils.aoa_to_sheet(values);
   sheet["!cols"] = columns.map(column => ({ wch: Math.max(14, Math.min(column.length + 4, 42)) }));
   const tableRow = headerRows(header).length;
   if (rows.length) {
@@ -51,7 +87,7 @@ export function buildVendorBillCompleteWorkbook(assembly: any) {
      "Gross", "Payables Basis Gross", "Breakdown Deduction", "Breakdown Reason(s)", "HSD Recovery", "HSD Reason(s)",
     "Other Debit", "Other Debit Reason(s)", "Advance Adjustment", "Advance Reason(s)",
     "Other Credit", "Other Credit Reason(s)", "Net", "TDS As Recorded", "Amount Paid", "Balance",
-    "Net Source", "TDS Evidence Incomplete", "Adjustment Details (JSON)", "Hire Statements (JSON)",
+    "Net Source", "TDS Evidence Incomplete", "Adjustment Details (Summary)", "Hire Statements (Summary)",
     "Created By", "Created At", "Frozen Calculation Snapshot Exists",
   ];
   const billRows = assembly.bills.map((bill: any) => {
@@ -84,8 +120,8 @@ export function buildVendorBillCompleteWorkbook(assembly: any) {
        cellValue(bill.money.gross), cellValue(bill.money.payablesBasisGross), b.amount, b.reasons, h.amount, h.reasons, od.amount, od.reasons,
       a.amount, a.reasons, c.amount, c.reasons, cellValue(bill.money.net), cellValue(bill.money.tds),
       cellValue(bill.money.amountPaid), cellValue(bill.money.balance), cellValue(bill.money.netSource),
-      bill.money.tdsEvidenceIncomplete, JSON.stringify(bill.money.adjustmentDetails),
-      JSON.stringify(bill.hireStatements), cellValue(bill.provenance.createdBy),
+      bill.money.tdsEvidenceIncomplete, adjustmentDetailsSummary(bill.money.adjustmentDetails),
+      hireStatementsSummary(bill.hireStatements), cellValue(bill.provenance.createdBy),
       cellValue(bill.provenance.createdAt), bill.provenance.hasFrozenCalculationSnapshot,
     ];
   });
