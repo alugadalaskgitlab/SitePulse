@@ -70,7 +70,6 @@ import { recordChange } from "../shared/recordChange";
 import { filterFinancialBills } from "@shared/vendorBillFinancialReport";
 import { buildVendorFinancialWorkbook } from "./vendorFinancialWorkbook";
 import { financialSites, vendorFinancialGuard } from "./vendorFinancialAccess";
-import { vendorStatementBills } from "@shared/vendorBillReview";
 import { buildPreviousBillingContext } from "@shared/vendorBillPreviousContext";
 import { buildVendorBillExport } from "@shared/vendorBillExport";
 import { buildVendorBillCompleteWorkbook } from "./vendorBillCompleteWorkbook";
@@ -11657,17 +11656,6 @@ export async function registerRoutes(
         linkedVendorName: bill.vendorId == null ? null : linkedNames.get(Number(bill.vendorId)) ?? null,
       })));
     } catch { res.status(500).json({ message: "Unable to load financial review" }); }
-  });
-
-  app.get("/api/vendor-bills/:id/statement", async (req, res) => {
-    if (!assertViewEither(req, res, "vendor_bills", "vendor_bills_view")) return;
-    try {
-      const rows = await scopeVendorBillsToSiteAccess(req, await storage.getVendorBills({}));
-      const current = rows.find(row => row.id === Number(req.params.id));
-      if (!current) return res.status(404).json({ message: "Bill not available within financial site scope" });
-      const linked = vendorStatementBills(current, rows);
-      res.json(await Promise.all(linked.map(row => storage.getVendorBill(row.id))));
-    } catch { res.status(500).json({ message: "Unable to load vendor statement" }); }
   });
 
   app.get("/api/vendor-bills/summary", async (req, res) => {

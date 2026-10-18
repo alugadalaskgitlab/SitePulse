@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { assertCreateEither } from "../server/auth-routes";
+import { calculateHireBilling } from "../shared/hireBilling";
 
 describe("07B hired equipment billing lifecycle wiring", () => {
   const schema = readFileSync("shared/schema.ts", "utf8");
@@ -59,9 +60,32 @@ describe("07B hired equipment billing lifecycle wiring", () => {
     expect(denied.statusCode).toBe(403);
   });
 
-  it("uses operational usage and maintenance without a duplicate attendance table", () => {
-    expect(routes).toContain("storage.getEquipmentUsage({ equipmentId: statement.equipmentId");
-    expect(routes).toContain("storage.getMaintenanceLogs({ equipmentId: statement.equipmentId");
+  it("calculates statement figures from operational usage and records maintenance for review without duplicate attendance", () => {
+    const input = {
+      terms: { billingBasis: "hourly" as const, rate: 250, breakdownDeductionEnabled: true },
+      periodFrom: "2025-04-11",
+      periodTo: "2025-04-12",
+      usage: [
+        { id: 101, date: "2025-04-11", status: "closed", hoursOrKmRun: 2.5 },
+        { id: 102, date: "2025-04-12", status: "closed", hoursOrKmRun: 1.5 },
+      ],
+      maintenance: [{
+        id: 7, date: "2025-04-11", eventType: "breakdown",
+        description: "Hydraulic hose repair", downtimeHours: 2,
+      }],
+    };
+    const statement = calculateHireBilling(input);
+    expect(statement).toMatchObject({
+      quantity: 4,
+      grossAmount: 1000,
+      deductionAmount: 0,
+      netAmount: 1000,
+      requiresReview: true,
+    });
+    expect(statement.exceptions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sourceType: "maintenance", sourceId: 7, exceptionType: "breakdown", downtimeHours: 2 }),
+    ]));
+    expect(calculateHireBilling({ ...input, usage: [] }).grossAmount).toBe(0);
     expect(schema).not.toContain('pgTable("hire_attendance"');
   });
 

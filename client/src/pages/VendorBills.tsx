@@ -51,6 +51,7 @@ import { buildSavedBillPresentationRows } from "@shared/vendorBillPresentation";
 import { VendorBillFinancialSummary, VendorRunningStatement } from "@/components/vendor-bills/VendorBillReview";
 import HireActivityBreakdownCalendar, { hireActivityBreakdownSheetRows } from "@/components/vendor-bills/HireActivityBreakdownCalendar";
 import WholeBillExportButtons from "@/components/vendor-bills/WholeBillExportButtons";
+import CompleteVendorBillExportMenu, { downloadCompleteVendorBillExport, type CompleteVendorBillExportFormat } from "@/components/vendor-bills/CompleteVendorBillExportMenu";
 import EquipmentLogFacts from "@/components/vendor-bills/EquipmentLogFacts";
 import { mapAutoBillItemWithEvidence, type EquipmentLogEvidence } from "@/components/vendor-bills/equipmentLogEvidence";
 import { useWholeBillCalendarSnapshots } from "@/components/vendor-bills/useWholeBillCalendarSnapshots";
@@ -536,8 +537,7 @@ export default function VendorBills() {
   const canViewFinancials = sectionCan("vendor_financials", "view");
   useEffect(() => {
     if (!canViewFinancials) queryClient.removeQueries({ predicate: query =>
-      (query.queryKey[0] === "/api/vendor-bills" && query.queryKey[1] === "financial-review") ||
-      (query.queryKey[0] === "/api/vendor-bills" && query.queryKey[2] === "statement") });
+      (query.queryKey[0] === "/api/vendor-bills" && query.queryKey[1] === "financial-review") });
   }, [canViewFinancials]);
   const financialReview = useQuery<VendorBillWithItems[]>({
     queryKey: ["/api/vendor-bills", "financial-review", user?.id],
@@ -2523,6 +2523,18 @@ export default function VendorBills() {
       toast({
         title: `Exported ${fmt.toUpperCase()}`,
         description: `${filteredBills.length} bill${filteredBills.length === 1 ? "" : "s"} included with summary cover.`,
+      });
+    } catch (err: any) {
+      toast({ title: "Export failed", description: err?.message || "Unknown error", variant: "destructive" });
+    }
+  };
+
+  const handleCompleteVendorBillExport = async (format: CompleteVendorBillExportFormat) => {
+    try {
+      await downloadCompleteVendorBillExport(format);
+      toast({
+        title: `Complete ${format.toUpperCase()} export downloaded`,
+        description: "All bills in your permitted scope were included; page filters were ignored.",
       });
     } catch (err: any) {
       toast({ title: "Export failed", description: err?.message || "Unknown error", variant: "destructive" });
@@ -5472,6 +5484,13 @@ export default function VendorBills() {
           disabled={!filteredBills.length || !financialReview.isSuccess || financialReview.isFetching} data-testid="button-export-financial-summary">
           <Download className="w-3 h-3 mr-1" />Export Financial Summary
         </Button>}
+        <CompleteVendorBillExportMenu
+          canViewFinancials={canViewFinancials}
+          canExport={canExport}
+          isAdmin={isAdmin}
+          isOwner={!!user?.isOwner}
+          onExport={handleCompleteVendorBillExport}
+        />
         {billsHiddenByUnpaid > 0 && <p role="status" className="text-xs text-muted-foreground">
           {billsHiddenByUnpaid} bill{billsHiddenByUnpaid === 1 ? "" : "s"} hidden by the Unpaid view (credit, negative net, or no remaining balance).
           {" "}<Button type="button" variant="link" size="sm" className="h-auto p-0" onClick={() => setBillScope("all")}>Show hidden bills</Button>

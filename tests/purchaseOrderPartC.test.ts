@@ -4,8 +4,13 @@ import { drizzle } from "drizzle-orm/pglite";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { createServer } from "http";
 import request from "supertest";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const reportDir = mkdtempSync(join(tmpdir(), "purchase-order-part-c-"));
+afterAll(() => rmSync(reportDir, { recursive: true, force: true }));
 
 const fx = vi.hoisted(() => ({
   db: null as any, user: { id: 7, isAdmin: false, isOwner: false } as any,
@@ -159,8 +164,7 @@ describe("optional PO lifecycle with isolated PostgreSQL fixture", () => {
       expect(response.headers["content-type"]).toMatch(/application\/pdf/);
       expect((response.body as Buffer).subarray(0, 4).toString()).toBe("%PDF");
       if (role === 8) {
-        mkdirSync("reports/part-c", { recursive: true });
-        const file = `reports/part-c/integration-${type}.pdf`;
+        const file = join(reportDir, `integration-${type}.pdf`);
         writeFileSync(file, response.body as Buffer);
         expect(execFileSync("pdfinfo", [file], { encoding: "utf8" })).toMatch(/Pages:\s+1\b/);
         const text = execFileSync("pdftotext", [file, "-"], { encoding: "utf8" });

@@ -1,9 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { buildPurchaseOrderPdf, type PurchaseOrderDetails } from "../server/purchase-order-pdf";
 
-const root = "reports/part-c";
+const root = mkdtempSync(join(tmpdir(), "purchase-order-pdf-part-c-"));
+afterAll(() => rmSync(root, { recursive: true, force: true }));
 const base: PurchaseOrderDetails = {
   companyName: "SYNTHETIC High Lane Constructions",
   indentNo: "PI-SYN-BULK", orderNo: "PO-SYN-01",
@@ -20,8 +23,7 @@ describe("approved PO PDFKit document", () => {
     ["bulk-linked", base, ["PI-SYN-BULK", "PO-SYN-01", "SYN-GST", "SYN-PAN", "735"]],
     ["store-unlinked", { ...base, indentNo: "PI-SYN-STORE", orderNo: "PO-SYN-STORE", description: "SYNTHETIC bearing", qty: 4, unit: "Nos", vendorBusinessName: null, vendorGst: null, vendorPan: null, vendorAddress: null }, ["PI-SYN-STORE", "SYNTHETIC bearing", "Nos"]],
   ] as const)("renders one-page %s with genuine actors and no totals/signature", async (name, details, expected) => {
-    mkdirSync(root, { recursive: true });
-    const path = `${root}/${name}.pdf`;
+    const path = join(root, `${name}.pdf`);
     const pdf = await buildPurchaseOrderPdf(details);
     writeFileSync(path, pdf);
     expect(pdf.subarray(0, 4).toString()).toBe("%PDF");
@@ -34,7 +36,7 @@ describe("approved PO PDFKit document", () => {
   });
   it("bounds long arbitrary snapshot fields to a single page", async () => {
     const long = "SYNTHETIC value ".repeat(160);
-    const path = `${root}/long-fields.pdf`;
+    const path = join(root, "long-fields.pdf");
     writeFileSync(path, await buildPurchaseOrderPdf({
       ...base, companyName: long, indentNo: long, orderNo: long, vendor: long,
       vendorBusinessName: long, vendorGst: long, vendorPan: long, vendorAddress: long,

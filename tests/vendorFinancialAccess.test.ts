@@ -24,7 +24,7 @@ describe("explicit financial visibility", () => {
     expect(vendorFinancialSiteIds({ isOwner: true }, [2])).toBeNull();
     expect(vendorFinancialSiteIds({}, [])).toEqual([]);
   });
-  const paths = ["/summary", "/export?format=csv", "/export?format=xlsx", "/export?format=pdf", "/financial-review", "/23/statement", "/payables-preview?export=1", "/EXPORT?format=csv", "/2.3e1/statement"];
+  const paths = ["/summary", "/export?format=csv", "/export?format=xlsx", "/export?format=json", "/export?format=pdf", "/financial-review", "/payables-preview?export=1", "/EXPORT?format=csv"];
   function appFor(user: any, grant: boolean) {
     const app = express();
     app.use((req: any, _res, next) => {

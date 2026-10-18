@@ -128,7 +128,7 @@ function PageFrame({ children }: { children: React.ReactNode }) {
 }
 
 function SectionEyebrow({ children }: { children: React.ReactNode }) {
-  return <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#67807d]">{children}</p>;
+  return <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#526761]">{children}</p>;
 }
 
 function AmountCell({ children, emphasized = false, className = "" }: { children: React.ReactNode; emphasized?: boolean; className?: string }) {
@@ -150,7 +150,7 @@ function EmptyNotice({ title, detail }: { title: string; detail: string }) {
   return <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
     <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-[#d6e3de] bg-[#eef4f0] text-[#55716a]"><ReceiptText className="h-5 w-5" /></div>
     <h3 className="text-sm font-bold text-[#29413d]">{title}</h3>
-    <p className="mt-1 max-w-md text-sm leading-6 text-[#72837f]">{detail}</p>
+    <p className="mt-1 max-w-md text-sm leading-6 text-[#526761]">{detail}</p>
   </div>;
 }
 
@@ -168,11 +168,11 @@ function DateRangeControls({ dateFrom, dateTo, setDateFrom, setDateTo, clearDate
   clearDateRange: () => void;
 }) {
   return <div className="flex flex-wrap items-end gap-3 rounded-xl border border-[#d5e0db] bg-[#f9fbf9] px-4 py-3">
-    <div className="flex items-center gap-2 self-center pr-1 text-xs font-bold uppercase tracking-wide text-[#627974]"><CalendarDays className="h-4 w-4" />Bill period</div>
-    <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wider text-[#748782]">
+    <div className="flex items-center gap-2 self-center pr-1 text-xs font-bold uppercase tracking-wide text-[#526761]"><CalendarDays className="h-4 w-4" />Bill period</div>
+    <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wider text-[#526761]">
       From <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="h-9 rounded-md border border-[#cbd9d3] bg-white px-2 text-xs font-medium text-[#29413d] outline-none focus:border-[#527c70]" />
     </label>
-    <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wider text-[#748782]">
+    <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wider text-[#526761]">
       To <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="h-9 rounded-md border border-[#cbd9d3] bg-white px-2 text-xs font-medium text-[#29413d] outline-none focus:border-[#527c70]" />
     </label>
     {(dateFrom || dateTo) && <button onClick={clearDateRange} className="h-9 px-2 text-xs font-semibold text-[#537168] hover:text-[#213f38]">Clear</button>}
@@ -478,7 +478,7 @@ function SummaryView({ report, dateFrom, dateTo, setDateFrom, setDateTo, clearDa
       <div>
         <SectionEyebrow>Finance / exposure review</SectionEyebrow>
         <h1 className="mt-1 text-[26px] font-bold tracking-[-0.035em] text-[#18312e] sm:text-[32px]">Vendor payables</h1>
-        <p className="mt-1 max-w-2xl text-sm text-[#677c77]">Linked vendor liabilities, grouped by confirmed identity. All figures are read-only.</p>
+        <p className="mt-1 max-w-2xl text-sm text-[#526761]">Linked vendor liabilities, grouped by confirmed identity. All figures are read-only.</p>
       </div>
       <DownloadButton onClick={() => exportSummary(report)} />
     </div>
@@ -503,7 +503,7 @@ function SummaryView({ report, dateFrom, dateTo, setDateFrom, setDateTo, clearDa
     {activeTab === "linked" ? <>
     <div className="space-y-3">
       <DateRangeControls dateFrom={dateFrom} dateTo={dateTo} setDateFrom={setDateFrom} setDateTo={setDateTo} clearDateRange={clearDateRange} />
-      <label className="grid gap-1 text-xs font-semibold text-[#627974]">
+      <label className="grid gap-1 text-xs font-semibold text-[#526761]">
         Search linked vendors
         <input
           type="search"
@@ -515,7 +515,7 @@ function SummaryView({ report, dateFrom, dateTo, setDateFrom, setDateTo, clearDa
           className="h-10 w-full rounded-md border border-[#cbd9d3] bg-white px-3 text-sm font-medium text-[#29413d] outline-none focus:border-[#527c70]"
         />
       </label>
-      <p role="status" className="text-xs text-[#687d76]">
+      <p role="status" className="text-xs text-[#526761]">
         {linkedQuery
           ? `Showing ${visibleLinkedVendors.length} of ${report.vendors.length} vendors. Linked totals below match the displayed vendors.`
           : `Showing all ${visibleLinkedVendors.length} linked vendors in this date range.`}
@@ -559,7 +559,7 @@ function SummaryView({ report, dateFrom, dateTo, setDateFrom, setDateTo, clearDa
             {hasCreditColumn && <col style={{ width: "5%" }} />}
             <col style={{ width: hasCreditColumn ? "11.5%" : "11.5%" }} />
           </colgroup>
-          <thead><tr className="bg-[#f0f5f2] text-left text-[10px] font-bold uppercase tracking-[0.12em] text-[#6c817b]">
+          <thead><tr className="bg-[#f0f5f2] text-left text-[10px] font-bold uppercase tracking-[0.12em] text-[#526761]">
             <th className="sticky left-0 z-20 bg-[#f0f5f2] px-3 py-3">Vendor</th><th className="px-2 py-3 text-right">Bills</th><th className="px-2 py-3 text-right">Billed</th><th className="px-2 py-3 text-right">Paid</th><th className="px-2 py-3 text-right">Payable now</th><th className="px-2 py-3 text-right">Coming up</th><th className="bg-[#e4eee8] px-2 py-3 text-right text-[#294b40]">Total liability</th>{hasCreditColumn && <th className="px-2 py-3 text-right">Credit</th>}<th className="whitespace-nowrap px-3 py-3">Oldest unpaid</th>
           </tr></thead>
           <tbody className="divide-y divide-[#e7ede9]">
@@ -570,7 +570,7 @@ function SummaryView({ report, dateFrom, dateTo, setDateFrom, setDateTo, clearDa
               /></td></tr>
               : visibleLinkedVendors.map((vendor) => <tr key={vendor.vendorId} className="group transition-colors hover:bg-[#f5f9f6]">
                  <td className="sticky left-0 z-10 min-w-0 bg-[#fbfcfb] px-3 py-3.5 group-hover:bg-[#f5f9f6]"><Link title={vendor.vendorName} href={withPayablesState(`/reports/vendor-payables/vendor/${vendor.vendorId}`, urlState)} className="block truncate font-semibold text-[#315d53] decoration-[#9db4a9] underline-offset-4 hover:underline">{vendor.vendorName}</Link>
-                  {vendor.unknownPayments > 0 && <div className="mt-1 text-[10px] font-semibold text-[#967442]">Estimate · {vendor.unknownPayments} payment unknown</div>}
+                  {vendor.unknownPayments > 0 && <div className="mt-1 text-[10px] font-semibold text-[#725d30]">Estimate · {vendor.unknownPayments} payment unknown</div>}
                 </td>
                 <td className="px-2 py-3 text-right font-mono text-xs tabular-nums text-[#526761]">{vendor.count}</td>
                 <AmountCell>{money(vendor.billed)}</AmountCell><AmountCell>{money(vendor.paid)}</AmountCell><AmountCell emphasized>{money(vendor.payableNow)}</AmountCell><AmountCell>{money(vendor.comingUp)}</AmountCell><AmountCell emphasized className="bg-[#f0f6f2]">{money(vendor.totalLiability)}</AmountCell>
@@ -584,10 +584,10 @@ function SummaryView({ report, dateFrom, dateTo, setDateFrom, setDateTo, clearDa
           </tr></tfoot>
         </table>
       </div>
-       <div className="border-t border-[#e1e8e4] bg-[#f8faf8] px-5 py-3 text-[11px] leading-5 text-[#758680]">Payable now and Coming up are shown separately. Total liability is their combined exposure. Unlinked bills are never included in these totals. Search totals match the rows currently displayed.</div>
+      <div className="border-t border-[#e1e8e4] bg-[#f8faf8] px-5 py-3 text-[11px] leading-5 text-[#526761]">Payable now and Coming up are shown separately. Total liability is their combined exposure. Unlinked bills are never included in these totals. Search totals match the rows currently displayed.</div>
     </section>
     </> : <>
-    <label className="grid gap-1 text-xs font-semibold text-[#627974]">
+    <label className="grid gap-1 text-xs font-semibold text-[#526761]">
       Search unlinked bills
       <input
         type="search"
@@ -599,7 +599,7 @@ function SummaryView({ report, dateFrom, dateTo, setDateFrom, setDateTo, clearDa
         className="h-10 w-full rounded-md border border-[#cbd9d3] bg-white px-3 text-sm font-medium text-[#29413d] outline-none focus:border-[#527c70]"
       />
     </label>
-    <p role="status" className="text-xs text-[#687d76]">
+    <p role="status" className="text-xs text-[#526761]">
       {unlinkedQuery
         ? `Showing ${unlinkedTotals.count} of ${allUnlinkedTotals.count} bills across ${visibleUnlinkedGroups.length} of ${report.unlinkedGroups.length} typed names. Totals below match displayed bills.`
         : `Showing all ${unlinkedTotals.count} unlinked bills across ${visibleUnlinkedGroups.length} typed names.`}
@@ -616,15 +616,15 @@ function SummaryView({ report, dateFrom, dateTo, setDateFrom, setDateTo, clearDa
     </div>
     <section className="overflow-hidden rounded-xl border border-[#ded9c9] bg-[#fcfbf7]">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e8e1cf] px-5 py-4">
-        <div><SectionEyebrow>Identity not confirmed</SectionEyebrow><h2 className="mt-1 text-base font-bold text-[#453e30]">Unlinked bills</h2><p className="mt-1 text-xs text-[#7e725c]">Excluded from linked-vendor totals. To link: Masters → Vendors → Link Vendors → Pending Links.</p></div>
+        <div><SectionEyebrow>Identity not confirmed</SectionEyebrow><h2 className="mt-1 text-base font-bold text-[#453e30]">Unlinked bills</h2><p className="mt-1 text-xs text-[#665e4e]">Excluded from linked-vendor totals. To link: Masters → Vendors → Link Vendors → Pending Links.</p></div>
         <span className="rounded-md bg-[#f4efdf] px-2.5 py-1 text-xs font-semibold text-[#79694b]">{unlinkedTotals.count} bills</span>
       </div>
       {visibleUnlinkedGroups.length === 0 ? <div className="px-5 py-7 text-sm text-[#7c8176]">{unlinkedQuery ? "No unlinked bills match this search." : "No unlinked bills for this bill period."}</div> : <div className="divide-y divide-[#ebe5d7]">
         {visibleUnlinkedGroups.map((group, index) => <div key={`${group.typedName}-${index}`} className="px-5 py-4">
-          <div className="mb-3 flex flex-wrap items-center gap-2"><h3 className="font-semibold text-[#403c32]">{group.typedName || "(blank vendor name)"}</h3><span className="rounded border border-[#e2d4b4] bg-[#fbf4e5] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#846c3e]">Unlinked</span><span className="text-xs text-[#8c8069]">{group.bills.length} bill{group.bills.length === 1 ? "" : "s"}</span></div>
+          <div className="mb-3 flex flex-wrap items-center gap-2"><h3 className="font-semibold text-[#403c32]">{group.typedName || "(blank vendor name)"}</h3><span className="rounded border border-[#e2d4b4] bg-[#fbf4e5] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#725d30]">Unlinked</span><span className="text-xs text-[#665e4e]">{group.bills.length} bill{group.bills.length === 1 ? "" : "s"}</span></div>
           <div className="overflow-x-auto">
              <table className="w-full min-w-[800px] text-left text-xs">
-              <thead className="text-[10px] uppercase tracking-wider text-[#8b8069]"><tr><th className="pb-2">Bill date</th><th className="pb-2">Bill number</th><th className="pb-2">Status</th><th className="pb-2 text-right">Net</th><th className="pb-2 text-right">Paid</th><th className="pb-2 text-right">Balance</th><th className="pb-2"></th></tr></thead>
+              <thead className="text-[10px] uppercase tracking-wider text-[#665e4e]"><tr><th className="pb-2">Bill date</th><th className="pb-2">Bill number</th><th className="pb-2">Status</th><th className="pb-2 text-right">Net</th><th className="pb-2 text-right">Paid</th><th className="pb-2 text-right">Balance</th><th className="pb-2"></th></tr></thead>
               <tbody className="divide-y divide-[#eee9de]">{group.bills.map((bill, billIndex) => {
                 const amounts = group.amounts[billIndex];
                 return <tr key={bill.id}>
@@ -642,9 +642,9 @@ function SummaryView({ report, dateFrom, dateTo, setDateFrom, setDateTo, clearDa
 
 function Metric({ label, value, detail, dark = false }: { label: string; value: string; detail: string; dark?: boolean }) {
   return <div className={`min-w-0 px-3 py-4 sm:px-5 ${dark ? "bg-[#254a42] text-[#f3f7f3]" : "bg-[#fbfcfb] text-[#213a36]"}`}>
-    <p className={`text-[10px] font-bold uppercase tracking-[0.13em] ${dark ? "text-[#b7d1c5]" : "text-[#768a83]"}`}>{label}</p>
+    <p className={`text-[10px] font-bold uppercase tracking-[0.13em] ${dark ? "text-[#b7d1c5]" : "text-[#526761]"}`}>{label}</p>
     <p className={`mt-2 whitespace-nowrap font-mono text-[14px] font-bold tracking-tight tabular-nums sm:text-[16px] xl:text-[18px] ${dark ? "text-white" : "text-[#24463e]"}`}>{value}</p>
-    <p className={`mt-1 break-words text-[10px] leading-4 ${dark ? "text-[#cadbd2]" : "text-[#8a9993]"}`}>{detail}</p>
+    <p className={`mt-1 break-words text-[10px] leading-4 ${dark ? "text-[#cadbd2]" : "text-[#526761]"}`}>{detail}</p>
   </div>;
 }
 
@@ -680,10 +680,10 @@ function LedgerView({ current, lines, vendorId, vendorName, summary, consistency
   return <div className="space-y-6">
     <div className="flex flex-col justify-between gap-4 border-b border-[#d4dfda] pb-5 sm:flex-row sm:items-end">
       <div>
-        <Link href={summaryHref} className="mb-4 inline-flex items-center gap-1.5 text-xs font-semibold text-[#67807a] hover:text-[#29443d]"><ArrowLeft className="h-3.5 w-3.5" />All vendor payables</Link>
+        <Link href={summaryHref} className="mb-4 inline-flex items-center gap-1.5 text-xs font-semibold text-[#526761] hover:text-[#29443d]"><ArrowLeft className="h-3.5 w-3.5" />All vendor payables</Link>
         <SectionEyebrow>{isUnlinked ? "Unlinked vendor ledger" : "Linked vendor ledger"}</SectionEyebrow>
         <h1 className="mt-1 text-[26px] font-bold tracking-[-0.035em] text-[#18312e] sm:text-[32px]">{vendorName}</h1>
-        <p className="mt-1 text-sm text-[#677c77]">{isUnlinked ? "Exact typed bill name · separate from linked vendor identities" : "Complete bill-date-ordered record · all bill statuses"}</p>
+        <p className="mt-1 text-sm text-[#526761]">{isUnlinked ? "Exact typed bill name · separate from linked vendor identities" : "Complete bill-date-ordered record · all bill statuses"}</p>
       </div>
       <DownloadButton onClick={onExport} label="Export ledger" />
     </div>
@@ -712,14 +712,14 @@ function LedgerView({ current, lines, vendorId, vendorName, summary, consistency
       {lines.length === 0 ? <EmptyNotice title="No bills in this ledger" detail="There are no bills for this vendor in the authorized review." /> : <div className="overflow-x-auto">
         <table className="w-full min-w-[1240px] table-fixed border-collapse">
           <colgroup><col style={{ width: "10%" }} /><col style={{ width: "20%" }} /><col style={{ width: "18%" }} /><col style={{ width: "12%" }} /><col style={{ width: "9%" }} /><col style={{ width: "9%" }} /><col style={{ width: "9%" }} /><col style={{ width: "13%" }} /></colgroup>
-          <thead><tr className="bg-[#f0f5f2] text-left text-[10px] font-bold uppercase tracking-[0.12em] text-[#6c817b]">
+          <thead><tr className="bg-[#f0f5f2] text-left text-[10px] font-bold uppercase tracking-[0.12em] text-[#526761]">
             <th className="px-2 py-3">Date</th><th className="px-2 py-3">Bill no.</th><th className="px-2 py-3">Bill period</th><th className="px-2 py-3">Status / review</th><th className="px-2 py-3 text-right">Net</th><th className="px-2 py-3 text-right">Paid</th><th className="px-2 py-3 text-right">Balance</th><th className="px-2 py-3 text-right">Running balance</th>
           </tr></thead>
           <tbody className="divide-y divide-[#e7ede9]">{lines.map(({ bill, amounts, runningBalance, runningBalanceEstimated }) => <tr key={bill.id} className="hover:bg-[#f7faf8]">
              <td className="whitespace-nowrap px-2 py-3.5 text-xs text-[#526761]">{dateLabel(bill.billDate)}</td>
             <td className="whitespace-nowrap px-2 py-3.5"><a href={billDetailHref(bill.id, returnTo)} className="font-semibold text-[#315d53] underline decoration-[#b5c8be] underline-offset-4 hover:text-[#173e35]">{bill.billNo || `Bill #${bill.id}`}</a></td>
-             <td className="whitespace-normal break-words px-2 py-3.5 text-xs text-[#647771]">{periodLabel(bill.periodFrom, bill.periodTo)}</td>
-            <td className="px-2 py-2"><div className="flex flex-col items-start gap-1"><StatusTag status={bill.isCancelled ? "void" : bill.status} />{!bill.isCancelled && amounts.provisional && <span className="rounded border border-[#e8d9b5] bg-[#fff9eb] px-1.5 py-1 text-[9px] font-bold uppercase tracking-wide text-[#8a6d32]">Provisional</span>}{!bill.isCancelled && amounts.paid == null && <span className="rounded border border-[#e8d9b5] bg-[#fff9eb] px-1.5 py-1 text-[9px] font-bold uppercase tracking-wide text-[#8a6d32]">Payment unknown</span>}</div></td>
+             <td className="whitespace-normal break-words px-2 py-3.5 text-xs text-[#526761]">{periodLabel(bill.periodFrom, bill.periodTo)}</td>
+            <td className="px-2 py-2"><div className="flex flex-col items-start gap-1"><StatusTag status={bill.isCancelled ? "void" : bill.status} />{!bill.isCancelled && amounts.provisional && <span className="rounded border border-[#e8d9b5] bg-[#fff9eb] px-1.5 py-1 text-[9px] font-bold uppercase tracking-wide text-[#725d30]">Provisional</span>}{!bill.isCancelled && amounts.paid == null && <span className="rounded border border-[#e8d9b5] bg-[#fff9eb] px-1.5 py-1 text-[9px] font-bold uppercase tracking-wide text-[#725d30]">Payment unknown</span>}</div></td>
             <AmountCell>{money(amounts.net)}</AmountCell><AmountCell>{amounts.paid == null ? "Estimate" : money(amounts.paid)}</AmountCell><AmountCell>{amounts.balance == null ? "Estimate" : money(amounts.balance)}</AmountCell><AmountCell emphasized>{runningBalanceEstimated ? `${money(runningBalance)}*` : money(runningBalance)}</AmountCell>
           </tr>)}</tbody>
           <tfoot><tr className="border-t-2 border-[#bdcec5] bg-[#eef4f0] text-xs font-bold text-[#29443d]">
@@ -727,7 +727,7 @@ function LedgerView({ current, lines, vendorId, vendorName, summary, consistency
           </tr></tfoot>
         </table>
       </div>}
-      <div className="border-t border-[#e1e8e4] bg-[#f8faf8] px-5 py-3 text-[11px] leading-5 text-[#758680]">
+      <div className="border-t border-[#e1e8e4] bg-[#f8faf8] px-5 py-3 text-[11px] leading-5 text-[#526761]">
         {summary ? <>Part A totals for this period: payable now {money(summary.payableNow)} · coming up {money(summary.comingUp)} · total liability {money(summary.totalLiability)}. These are the same linked-vendor totals as the summary row. Running balances follow bill date and recorded payments.</> : <>This exact-name unlinked ledger is excluded from linked-vendor totals. Running balances follow bill date and recorded payments.</>}
         {paymentUnknown > 0 && " An asterisk marks estimated amounts."}
       </div>

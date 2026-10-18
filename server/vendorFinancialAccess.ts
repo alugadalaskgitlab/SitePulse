@@ -11,7 +11,7 @@ export function vendorFinancialGuard(storage: {
   return async (req: Request, res: Response, next: NextFunction) => {
     // Match Express's case-insensitive paths and every :id spelling accepted
     // by the route, not only decimal digits.
-    if (!/^\/api\/vendor-bills\/(?:summary|export|financial-review|payables-preview|[^/]+\/statement)\/?$/i.test(req.path)) return next();
+    if (!/^\/api\/vendor-bills\/(?:summary|export|financial-review|payables-preview)\/?$/i.test(req.path)) return next();
     res.setHeader("Cache-Control", "private, no-store");
     if (!req.authUser) return void res.status(401).json({ error: "not_authenticated" });
     if (!canViewVendorFinancials(req.authUser, req.authPermissions)) {

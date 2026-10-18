@@ -281,3 +281,27 @@ input[type="number"] {
 :root:not(.dark) .text-slate-500 { color: rgb(51 65 85); }    /* → slate-700 */
 :root:not(.dark) .text-gray-400  { color: rgb(75 85 99); }    /* → gray-600 */
 :root:not(.dark) .text-gray-500  { color: rgb(55 65 81); }    /* → gray-700 */
+
+/* Shared readable floor for secondary copy: 9px becomes 10px, 10/11px become 12px, and xs becomes 14px. */
+[class*="text-[9px]"] { font-size: 0.625rem; }
+[class*="text-[10px]"] { font-size: 0.75rem; }
+[class*="text-[11px]"] { font-size: 0.75rem; }
+[class*="text-xs"] { font-size: 0.875rem; }
+
+/* Keep semantic headings and table headings/totals at their existing sizes. */
+h1[class*="text-[10px]"], h2[class*="text-[10px]"], h3[class*="text-[10px]"],
+h4[class*="text-[10px]"], h5[class*="text-[10px]"], h6[class*="text-[10px]"],
+table thead [class*="text-[10px]"], table tfoot [class*="text-[10px]"] {
+  font-size: 0.625rem;
+}
+h1[class*="text-xs"], h2[class*="text-xs"], h3[class*="text-xs"],
+h4[class*="text-xs"], h5[class*="text-xs"], h6[class*="text-xs"],
+table thead [class*="text-xs"], table tfoot [class*="text-xs"],
+table tbody [class*="text-xs"][class*="tabular-nums"],
+table tbody [class*="text-xs"][class*="font-mono"] {
+  font-size: 0.75rem;
+}
+table tbody [class*="text-[10px]"][class*="tabular-nums"],
+table tbody [class*="text-[10px]"][class*="font-mono"] {
+  font-size: 0.625rem;
+}
