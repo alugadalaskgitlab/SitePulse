@@ -16,9 +16,9 @@ const mockReport = buildTallyExportReadiness({
   sites: [{ id: 8, name: "North Site", tallyCostCentreName: null }],
   hiredMachines: [],
   bills: [
-    { id: 10, billNo: "POST-10", billDate: "2026-01-15", periodFrom: "2026-01-31", periodTo: "2026-02-01", status: "approved", vendorId: 4, siteId: 8 },
+    { id: 10, billNo: "POST-10", billDate: "2026-01-15", periodFrom: "2026-02-01", periodTo: "2026-02-01", status: "approved", vendorId: 4, siteId: 8 },
     { id: 11, billNo: "PRE-11", billDate: "2026-03-11", periodFrom: "2026-01-25", periodTo: "2026-01-30", status: "paid", vendorId: 4, siteId: 8 },
-    { id: 12, billNo: "STRADDLE-12", billDate: "2026-03-11", periodFrom: "2026-01-25", periodTo: "2026-01-31", status: "approved", vendorId: 4, siteId: 8 },
+    { id: 12, billNo: "STRADDLE-12", billDate: "2026-03-11", periodFrom: "2026-01-25", periodTo: "2026-02-01", status: "approved", vendorId: 4, siteId: 8 },
     { id: 13, billNo: "NO-PERIOD-13", billDate: "2025-12-30", periodFrom: null, periodTo: null, status: "approved", vendorId: 4, siteId: 8 },
   ],
 });

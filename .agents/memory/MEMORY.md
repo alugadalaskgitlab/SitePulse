@@ -129,3 +129,4 @@
 - [Hire snapshot read consistency](hire-snapshot-transaction-reads.md) — freeze canonical performance rows through the saving transaction; outer PGlite reads can stall during writes.
 - [Instruction and attachment handling](instruction-text-handling.md) — Never commit pasted instructions or supplied attachment contents.
 - [Administrator per-item permissions](admin-per-item-permissions.md) — design per-item admin overrides for audit history, editing, and other privileges in a later permissions review; add no key now.
+- [Tally cutover ownership](tally-cutover-ownership.md) — Tally owns periods ending through 2026-01-31; periods starting 2026-02-01 onward are post-cutover.

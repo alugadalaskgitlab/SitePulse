@@ -199,15 +199,16 @@ export function buildTallyExportReadiness(input: {
       periodNotRecordedBills.push(summary);
       continue;
     }
-    if (periodTo < cutoverDate) {
+    if (periodTo <= cutoverDate) {
       preCutoverBills.push(summary);
       continue;
     }
-    if (periodFrom < cutoverDate) {
+    if (periodFrom > cutoverDate) {
+      postCutover++;
+    } else {
       straddlingBills.push(summary);
       continue;
     }
-    postCutover++;
 
     const reasons: string[] = [];
     if (!validDateOnly(billDate)) {
