@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import CancelDialog from "@/components/CancelDialog";
 import HistoryDialog from "@/components/HistoryDialog";
 import AuditHistoryButton from "@/components/AuditHistoryButton";
+import { VendorBillOwnerCorrections } from "@/components/VendorBillOwnerCorrections";
 import { Link, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Check, Circle, Info, Fuel, Settings, Copy, X, Download, Search, Edit, PlusCircle, BarChart2, Calculator, History } from "lucide-react";
@@ -387,8 +388,8 @@ export function VendorBillPaidAccount({ paymentAccountKey }: { paymentAccountKey
 function vendorBillPaidByLabel(paidBy: unknown): string {
   if (typeof paidBy !== "string" || paidBy.length === 0) return "\u2014";
   const normalized = paidBy.trim().toUpperCase();
-  if (normalized === "COMPANY") return "COMPANY ACCOUNT";
-  if (normalized === "ALPS") return "ALPS INFRA (ON HLC'S BEHALF)";
+  if (normalized === "COMPANY") return "Company";
+  if (normalized === "ALPS") return "ALPS";
   if (isAlpsLikeFreeTextPayer(paidBy)) return `${paidBy} (recorded as text \u2014 needs confirming)`;
   if (normalized === "PERSONAL") return "PERSONAL";
   return `PERSONAL \u2014 ${paidBy}`;
@@ -482,8 +483,8 @@ export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; 
             }}>
               <SelectTrigger data-testid="select-vb-paid-by"><SelectValue placeholder="SELECT PAYER" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="company">COMPANY ACCOUNT</SelectItem>
-                <SelectItem value="alps">ALPS INFRA (ON HLC'S BEHALF)</SelectItem>
+                <SelectItem value="company">Company</SelectItem>
+                <SelectItem value="alps">ALPS</SelectItem>
                 <SelectItem value="personal">PERSONAL</SelectItem>
               </SelectContent>
             </Select>
@@ -4913,6 +4914,7 @@ export default function VendorBills() {
                   canEditPayment={canMarkPaid && !bill.isCancelled && ["approved", "paid"].includes(bill.status)}
               />
             )}
+            <VendorBillOwnerCorrections bill={bill} sites={sites} isOwner={!!user?.isOwner} />
 
             {!bill.isCancelled && <div className="border-t pt-4">
               <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 mb-2">Status Progress</p>

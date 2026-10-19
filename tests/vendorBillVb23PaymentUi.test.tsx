@@ -72,6 +72,16 @@ it("shows flagged ALPS free text on the bill without labeling it PERSONAL", () =
   expect(paidBy).not.toContain("PERSONAL");
 });
 
+it.each([
+  ["company", "PAID BY: Company"],
+  ["alps", "PAID BY: ALPS"],
+])("uses the short payer label for stored value %s", (paidBy, expectedLabel) => {
+  mount(<VendorBillPaymentDetails canEditPayment={false} bill={{
+    id: 5, billType: "material", status: "paid", paidBy,
+  }} />);
+  expect(screen.getByTestId("badge-vb-paid-by").textContent).toContain(expectedLabel);
+});
+
 it.each(["draft", "verified"])("keeps %s payment panel read-only when permission is false", status => {
   mount(<VendorBillPaymentDetails canEditPayment={false} bill={{ id: 3, billType: "all", status, totalAmount: 1000 }} />);
   expect(screen.getByTestId("section-payment-details")).toBeTruthy();

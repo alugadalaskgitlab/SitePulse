@@ -1584,8 +1584,10 @@ export interface IStorage {
   updateVendorBill(id: number, data: CreateVendorBillRequest): Promise<VendorBillWithItems | undefined>;
   updateVendorBillStatus(id: number, status: string, actor: string, paidAmount?: number): Promise<VendorBillWithItems | undefined>;
   correctVendorBillSiteScope(id: number, siteId: number | null): Promise<{ before: VendorBill; after: VendorBill } | undefined>;
+  correctRecordedVendorBillSiteScope(id: number, siteId: number | null): Promise<{ before: VendorBill; after: VendorBill } | undefined>;
   correctVendorBillPeriod(id: number, periodFrom: string, periodTo: string): Promise<{ before: VendorBill; after: VendorBill } | undefined>;
   recordMissingVendorBillPaidAmount(id: number, amountPaid: number): Promise<{ before: VendorBill; after: VendorBill } | undefined>;
+  correctRecordedVendorBillPaidAmount(id: number, amountPaid: number): Promise<{ before: VendorBill; after: VendorBill } | undefined>;
   updateVendorBillPaymentDetails(id: number, details: { paymentMode?: string | null; paidBy?: string | null; amountPaid?: number | null; paymentAccountKey?: string | null }): Promise<VendorBillWithItems | undefined>;
   confirmVendorBillAlpsPayer(id: number, paymentAccountKey: string): Promise<{ before: VendorBill; after: VendorBill } | undefined>;
   getVendorBillCompanyAccounts(): Promise<{ id: string; name: string; type: string; source: string }[]>;
@@ -18816,6 +18818,24 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
+  async correctRecordedVendorBillSiteScope(
+    id: number,
+    siteId: number | null,
+  ): Promise<{ before: VendorBill; after: VendorBill } | undefined> {
+    return db.transaction(async tx => {
+      const [before] = await tx.select().from(vendorBills).where(eq(vendorBills.id, id)).limit(1).for("update");
+      if (!before || before.isDeleted === true) return undefined;
+      if (before.isCancelled === true) {
+        throw Object.assign(new Error("A voided vendor bill cannot be corrected"), { code: "CONFLICT" });
+      }
+      const [after] = await tx.update(vendorBills)
+        .set({ siteId, siteScopeConfirmed: true })
+        .where(eq(vendorBills.id, id))
+        .returning();
+      return { before, after };
+    });
+  }
+
   async correctVendorBillPeriod(
     id: number,
     periodFrom: string,
@@ -18860,6 +18880,38 @@ export class DatabaseStorage implements IStorage {
       }
       if (!Number.isFinite(amountPaid) || amountPaid < 0) {
         throw Object.assign(new Error("Paid amount must be zero or greater."), { code: "BAD_REQUEST" });
+      }
+      const [after] = await tx.update(vendorBills)
+        .set({ amountPaid })
+        .where(eq(vendorBills.id, id))
+        .returning();
+      return { before, after };
+    });
+  }
+
+  async correctRecordedVendorBillPaidAmount(
+    id: number,
+    amountPaid: number,
+  ): Promise<{ before: VendorBill; after: VendorBill } | undefined> {
+    return db.transaction(async tx => {
+      const [before] = await tx.select().from(vendorBills).where(eq(vendorBills.id, id)).limit(1).for("update");
+      if (!before || before.isDeleted === true) return undefined;
+      if (before.isCancelled === true) {
+        throw Object.assign(new Error("A voided vendor bill cannot be corrected"), { code: "CONFLICT" });
+      }
+      if (before.status !== "paid") {
+        throw Object.assign(new Error("Only a paid vendor bill can have its recorded paid amount corrected."), { code: "CONFLICT" });
+      }
+      const previousAmount = Number(before.amountPaid);
+      if (before.amountPaid == null || !Number.isFinite(previousAmount)) {
+        throw Object.assign(new Error("A recorded paid amount is required before it can be corrected."), { code: "CONFLICT" });
+      }
+      if (!Number.isFinite(amountPaid) || amountPaid < 0) {
+        throw Object.assign(new Error("Paid amount must be zero or greater."), { code: "BAD_REQUEST" });
+      }
+      const ceiling = Number(before.netPayableAmount ?? before.totalAmount ?? 0);
+      if (!Number.isFinite(ceiling) || amountPaid > ceiling) {
+        throw Object.assign(new Error("Paid amount must not exceed this bill's net payable amount."), { code: "BAD_REQUEST" });
       }
       const [after] = await tx.update(vendorBills)
         .set({ amountPaid })

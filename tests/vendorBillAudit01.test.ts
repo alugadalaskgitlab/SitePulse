@@ -65,8 +65,10 @@ vi.mock("../server/storage", () => {
   methods.updateVendorBillPaymentDetails = vi.fn().mockResolvedValue(undefined);
   methods.updateVendorBillStatus = vi.fn().mockResolvedValue(undefined);
   methods.correctVendorBillSiteScope = vi.fn().mockResolvedValue(undefined);
+  methods.correctRecordedVendorBillSiteScope = vi.fn().mockResolvedValue(undefined);
   methods.correctVendorBillPeriod = vi.fn().mockResolvedValue(undefined);
   methods.recordMissingVendorBillPaidAmount = vi.fn().mockResolvedValue(undefined);
+  methods.correctRecordedVendorBillPaidAmount = vi.fn().mockResolvedValue(undefined);
   methods.confirmVendorBillAlpsPayer = vi.fn().mockResolvedValue(undefined);
   methods.voidVendorBill = vi.fn().mockResolvedValue(undefined);
   methods.deleteVendorBill = vi.fn().mockResolvedValue(false);
@@ -133,8 +135,10 @@ beforeEach(() => {
   storage.updateVendorBillPaymentDetails.mockResolvedValue(undefined);
   storage.updateVendorBillStatus.mockResolvedValue(undefined);
   storage.correctVendorBillSiteScope.mockResolvedValue(undefined);
+  storage.correctRecordedVendorBillSiteScope.mockResolvedValue(undefined);
   storage.correctVendorBillPeriod.mockResolvedValue(undefined);
   storage.recordMissingVendorBillPaidAmount.mockResolvedValue(undefined);
+  storage.correctRecordedVendorBillPaidAmount.mockResolvedValue(undefined);
   storage.voidVendorBill.mockResolvedValue(undefined);
   storage.deleteVendorBill.mockResolvedValue(false);
 });
@@ -818,6 +822,81 @@ describe("AUDIT-01 vendor-bill history", () => {
       oldValues: { paidBy: " ALPS INFRA WORKS ", paymentAccountKey: null },
       newValues: { paidBy: "alps", paymentAccountKey: "alps_infra_works" },
       userId: 9,
+    }));
+  });
+
+  it("reserves recorded amount and site corrections for Owners, requires reasons, and audits the narrow changes", async () => {
+    fx.role = "admin";
+    let response = await request(app).patch("/api/vendor-bills/7/owner-correction/paid-amount")
+      .send({ amountPaid: 60, reason: "Corrected from bank advice." });
+    expect(response.status).toBe(403);
+    response = await request(app).patch("/api/vendor-bills/7/owner-correction/site")
+      .send({ siteId: 2, reason: "Corrected site." });
+    expect(response.status).toBe(403);
+    expect(storage.correctRecordedVendorBillPaidAmount).not.toHaveBeenCalled();
+    expect(storage.correctRecordedVendorBillSiteScope).not.toHaveBeenCalled();
+
+    fx.role = "owner";
+    response = await request(app).patch("/api/vendor-bills/7/owner-correction/paid-amount")
+      .send({ amountPaid: 60 });
+    expect(response.status).toBe(400);
+    response = await request(app).patch("/api/vendor-bills/7/owner-correction/site")
+      .send({ siteId: 2, reason: "   " });
+    expect(response.status).toBe(400);
+    expect(storage.correctRecordedVendorBillPaidAmount).not.toHaveBeenCalled();
+    expect(storage.correctRecordedVendorBillSiteScope).not.toHaveBeenCalled();
+
+    const paidAt = "2026-10-03T08:00:00.000Z";
+    const verifiedAt = "2026-10-02T08:00:00.000Z";
+    const approvedAt = "2026-10-02T09:00:00.000Z";
+    const amountBefore = makeBill({
+      status: "paid", amountPaid: 40, netPayableAmount: 90,
+      paidAt, verifiedAt, approvedAt, calculationSnapshot: { frozenTotal: 90 },
+    });
+    const amountAfter = { ...amountBefore, amountPaid: 60 };
+    storage.correctRecordedVendorBillPaidAmount.mockResolvedValue({ before: amountBefore, after: amountAfter });
+    response = await request(app).patch("/api/vendor-bills/7/owner-correction/paid-amount")
+      .send({ amountPaid: 60, reason: "Matched the signed bank advice." });
+    expect(response.status).toBe(200);
+    expect(storage.correctRecordedVendorBillPaidAmount).toHaveBeenCalledWith(7, 60);
+    expect(storage.updateVendorBill).not.toHaveBeenCalled();
+    expect(response.body).toMatchObject({ amountPaid: 60, status: "paid", paidAt, verifiedAt, approvedAt });
+    expect(storage.logAudit).toHaveBeenLastCalledWith(expect.objectContaining({
+      module: "vendor_bills",
+      transactionId: 7,
+      action: "recorded_paid_amount_corrected",
+      oldValues: { amountPaid: 40 },
+      newValues: { amountPaid: 60 },
+      reason: "Matched the signed bank advice.",
+      userId: 9,
+      userRole: "owner",
+    }));
+
+    const siteBefore = makeBill({
+      status: "paid", amountPaid: 60, siteId: 1, siteScopeConfirmed: true,
+      paidAt, verifiedAt, approvedAt, calculationSnapshot: { frozenTotal: 90 },
+      items: [{ id: 70, billId: 7, amount: 100, siteName: "Site A" }],
+    });
+    const siteAfter = { ...siteBefore, siteId: 2, siteScopeConfirmed: true };
+    storage.getSites.mockResolvedValue([{ id: 2, name: "Site B" }]);
+    storage.correctRecordedVendorBillSiteScope.mockResolvedValue({ before: siteBefore, after: siteAfter });
+    response = await request(app).patch("/api/vendor-bills/7/owner-correction/site")
+      .send({ siteId: 2, reason: "The invoice belongs to Site B." });
+    expect(response.status).toBe(200);
+    expect(storage.correctRecordedVendorBillSiteScope).toHaveBeenCalledWith(7, 2);
+    expect(storage.updateVendorBill).not.toHaveBeenCalled();
+    expect(response.body).toMatchObject({
+      siteId: 2, siteScopeConfirmed: true, status: "paid", amountPaid: 60, paidAt, verifiedAt, approvedAt,
+    });
+    expect(storage.logAudit).toHaveBeenLastCalledWith(expect.objectContaining({
+      module: "vendor_bills",
+      transactionId: 7,
+      action: "recorded_site_scope_corrected",
+      oldValues: { siteId: 1, siteScopeConfirmed: true },
+      newValues: { siteId: 2, siteScopeConfirmed: true },
+      reason: "The invoice belongs to Site B.",
+      userId: 9,
+      userRole: "owner",
     }));
   });
 });

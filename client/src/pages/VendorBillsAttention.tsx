@@ -365,6 +365,7 @@ export function BillAttentionCard({ row, sites }: { row: BillAttentionRow; sites
 export default function VendorBillsAttention() {
   const { isAdmin, user } = useAuth();
   const [filter, setFilter] = useState<AttentionKind | "all">("all");
+  const [vendorSearch, setVendorSearch] = useState("");
   const authorized = isAdmin || !!user?.isOwner;
   const attentionQuery = useQuery<AttentionResponse>({
     queryKey: ["/api/vendor-bills/attention"],
@@ -389,7 +390,11 @@ export default function VendorBillsAttention() {
   }
 
   const data = attentionQuery.data;
-  const visibleRows = (data?.rows || []).filter(row => filter === "all" || row.kinds.includes(filter));
+  const normalizedVendorSearch = vendorSearch.trim().toLowerCase();
+  const visibleRows = (data?.rows || []).filter(row =>
+    (filter === "all" || row.kinds.includes(filter)) &&
+    (!normalizedVendorSearch || row.vendorName.toLowerCase().includes(normalizedVendorSearch)),
+  );
 
   return (
     <main className="mx-auto max-w-6xl space-y-4 p-4">
@@ -436,7 +441,7 @@ export default function VendorBillsAttention() {
             ))}
           </section>
 
-          <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="flex flex-wrap items-end gap-3">
             <div className="w-full sm:max-w-sm">
               <Label htmlFor="vendor-bill-attention-filter">Filter by attention item</Label>
               <Select value={filter} onValueChange={value => setFilter(value as AttentionKind | "all")}>
@@ -453,8 +458,17 @@ export default function VendorBillsAttention() {
                 </SelectContent>
               </Select>
             </div>
-            <p className="text-sm text-muted-foreground" role="status">
-              Showing {visibleRows.length} of {data.summary.bills} bills
+            <div className="w-full sm:max-w-sm">
+              <Label htmlFor="vendor-bill-attention-vendor-search">Filter by vendor</Label>
+              <Input
+                id="vendor-bill-attention-vendor-search"
+                value={vendorSearch}
+                onChange={event => setVendorSearch(event.target.value)}
+                data-testid="input-vendor-bill-attention-vendor-search"
+              />
+            </div>
+            <p className="ml-auto text-sm text-muted-foreground" role="status">
+              Total bills needing attention: {data.summary.bills}
             </p>
           </div>
 

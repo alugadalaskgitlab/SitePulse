@@ -107,10 +107,12 @@ describe("vendor bill site persistence and filtering", () => {
     const routes = fs.readFileSync("server/routes.ts", "utf8");
     const storage = fs.readFileSync("server/storage.ts", "utf8");
     expect(routes).toContain("resolveVendorBillSite(req, res, req.query.siteId)");
-    expect(routes).toContain("Every pulled item must belong to the selected bill site");
     expect(routes).toContain("One or more bill items are outside your permitted sites");
     expect(routes).toContain("One or more auto-pulled items no longer match the selected site and period");
     const putRoute = routes.slice(routes.indexOf('app.put("/api/vendor-bills/:id"'));
+    expect(putRoute).toContain('but the selected bill site is "${selectedSite.siteName}"');
+    expect(putRoute).not.toContain("Every pulled item must belong to the selected bill site");
+    expect(putRoute).toContain("input.items.some(item => !vendorBillItemMatchesSite(item.siteName, selectedSite.siteName!))");
     expect(putRoute.indexOf("Access denied for this bill's existing site scope"))
       .toBeLessThan(putRoute.indexOf("vendorBillUpdateSiteId("));
     expect(routes).toContain("scopeVendorBillsToSiteAccess");

@@ -213,7 +213,7 @@ describe("VB-PAY-02 payables presentation", () => {
     const { container } = mount();
     const row = await screen.findByTitle("GANGARAM NARSIMHULU");
     expect((await screen.findByTestId("alps-funded-total-linked")).textContent)
-      .toContain("Of all recorded payments in displayed rows, ₹75,155.00 was funded by ALPS Infra.");
+      .toContain("Of all recorded payments in displayed rows, ₹75,155.00 was paid by ALPS.");
     const expectedRows: [string, string[]][] = [
       ["GANGARAM NARSIMHULU", ["₹9,41,875.40", "₹0.00", "₹0.00", "₹3,89,888.41", "₹3,89,888.41"]],
       ["G SANGANNA", ["₹2,33,964.00", "₹0.00", "₹0.00", "₹1,10,544.00", "₹1,10,544.00"]],
@@ -263,7 +263,7 @@ describe("VB-PAY-02 payables presentation", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Unlinked bills" }));
     await screen.findByText(/Masters → Vendors → Link Vendors → Pending Links/);
     expect(screen.getByTestId("alps-funded-total-unlinked").textContent)
-      .toContain("Of all recorded payments in displayed rows, ₹0.00 was funded by ALPS Infra.");
+      .toContain("Of all recorded payments in displayed rows, ₹0.00 was paid by ALPS.");
     expect(screen.getAllByText("₹3,11,761.90").length).toBeGreaterThan(0);
     expect(screen.getAllByText("₹27,070.00").length).toBeGreaterThan(0);
     expect(screen.getAllByText("₹2,84,691.90").length).toBeGreaterThan(0);
@@ -329,19 +329,19 @@ describe("VB-PAY-02 payables presentation", () => {
     mount();
 
     expect((await screen.findByTestId("alps-funded-total-linked")).textContent)
-      .toContain("₹115.00 was funded by ALPS Infra.");
+      .toContain("₹115.00 was paid by ALPS.");
     fireEvent.change(screen.getByRole("searchbox", { name: "Search linked vendors" }), { target: { value: "alpha" } });
     expect(screen.getByTestId("alps-funded-total-linked").textContent)
-      .toContain("₹75.00 was funded by ALPS Infra.");
+      .toContain("₹75.00 was paid by ALPS.");
     fireEvent.change(screen.getByRole("searchbox", { name: "Search linked vendors" }), { target: { value: "no matching vendor" } });
     expect(screen.getByTestId("alps-funded-total-linked").textContent)
-      .toContain("₹0.00 was funded by ALPS Infra.");
+      .toContain("₹0.00 was paid by ALPS.");
     fireEvent.click(screen.getByRole("tab", { name: "Unlinked bills" }));
     expect((await screen.findByTestId("alps-funded-total-unlinked")).textContent)
-      .toContain("₹150.00 was funded by ALPS Infra.");
+      .toContain("₹150.00 was paid by ALPS.");
     fireEvent.change(screen.getByRole("searchbox", { name: "Search unlinked bills" }), { target: { value: "alpha" } });
     expect(screen.getByTestId("alps-funded-total-unlinked").textContent)
-      .toContain("₹125.00 was funded by ALPS Infra.");
+      .toContain("₹125.00 was paid by ALPS.");
   });
 
   it("names the active bill-period date range in the ALPS funding sentence", async () => {

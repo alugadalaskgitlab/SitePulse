@@ -118,7 +118,7 @@ function alpsFundingDescription(total: number, dateFrom: string, dateTo: string)
   const prefix = dateFrom || dateTo
     ? `Of the recorded payments ${dateScope},`
     : "Of all recorded payments in displayed rows,";
-  return `${prefix} ${money(total)} was funded by ALPS Infra.`;
+  return `${prefix} ${money(total)} was paid by ALPS.`;
 }
 
 const humanStatus = (value?: string | null) => {

@@ -12717,6 +12717,84 @@ export async function registerRoutes(
     }
   });
 
+  const assertVendorBillOwnerCorrection = (req: any, res: any): boolean => {
+    if (!req.authUser) {
+      res.status(401).json({ message: "Authentication is required for vendor bill corrections." });
+      return false;
+    }
+    if (req.authUser.isOwner !== true) {
+      res.status(403).json({ message: "Only the Owner can correct recorded vendor bill details." });
+      return false;
+    }
+    return true;
+  };
+
+  app.patch("/api/vendor-bills/:id/owner-correction/paid-amount", async (req, res) => {
+    try {
+      if (!assertVendorBillOwnerCorrection(req, res)) return;
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid bill id" });
+      const { amountPaid, reason } = z.object({
+        amountPaid: z.number().finite().nonnegative(),
+        reason: z.string().trim().min(1, "A reason is required.").max(500, "Reason must be 500 characters or fewer."),
+      }).strict().parse(req.body ?? {});
+      const correction = await storage.correctRecordedVendorBillPaidAmount(id, amountPaid);
+      if (!correction) return res.status(404).json({ message: "Vendor bill not found or no longer available for correction." });
+      await recordChange(req, storage, {
+        module: "vendor_bills",
+        transactionId: id,
+        action: "recorded_paid_amount_corrected",
+        before: { amountPaid: correction.before.amountPaid },
+        after: { amountPaid: correction.after.amountPaid },
+        reason,
+      });
+      res.json(correction.after);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      if ((err as any)?.code === "CONFLICT") return res.status(409).json({ message: (err as any).message });
+      if ((err as any)?.code === "BAD_REQUEST") return res.status(400).json({ message: (err as any).message });
+      console.error("Error correcting recorded vendor bill paid amount:", err);
+      res.status(500).json({ message: "Failed to correct recorded paid amount" });
+    }
+  });
+
+  app.patch("/api/vendor-bills/:id/owner-correction/site", async (req, res) => {
+    try {
+      if (!assertVendorBillOwnerCorrection(req, res)) return;
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid bill id" });
+      const { siteId, reason } = z.object({
+        siteId: z.number().int().positive().nullable(),
+        reason: z.string().trim().min(1, "A reason is required.").max(500, "Reason must be 500 characters or fewer."),
+      }).strict().parse(req.body ?? {});
+      const site = siteId == null ? null : (await storage.getSites()).find(candidate => candidate.id === siteId);
+      if (siteId != null && !site) return res.status(400).json({ message: "Selected site does not exist" });
+      if (site && !await assertTripSiteAccess(req, res, site.name)) return;
+      const correction = await storage.correctRecordedVendorBillSiteScope(id, siteId);
+      if (!correction) return res.status(404).json({ message: "Vendor bill not found or no longer available for correction." });
+      await recordChange(req, storage, {
+        module: "vendor_bills",
+        transactionId: id,
+        action: "recorded_site_scope_corrected",
+        before: {
+          siteId: correction.before.siteId,
+          siteScopeConfirmed: correction.before.siteScopeConfirmed,
+        },
+        after: {
+          siteId: correction.after.siteId,
+          siteScopeConfirmed: correction.after.siteScopeConfirmed,
+        },
+        reason,
+      });
+      res.json(correction.after);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      if ((err as any)?.code === "CONFLICT") return res.status(409).json({ message: (err as any).message });
+      console.error("Error correcting recorded vendor bill site:", err);
+      res.status(500).json({ message: "Failed to correct recorded vendor bill site" });
+    }
+  });
+
   app.get("/api/vendor-bills/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
@@ -12879,7 +12957,14 @@ export async function registerRoutes(
       const selectedSite = await resolveVendorBillSite(req, res, input.siteId);
       if (!selectedSite) return;
       if (selectedSite.siteName && input.items.some(item => !vendorBillItemMatchesSite(item.siteName, selectedSite.siteName!))) {
-        return res.status(400).json({ message: "Every pulled item must belong to the selected bill site" });
+        const mismatchedItem = input.items.find(item =>
+          !vendorBillItemMatchesSite(item.siteName, selectedSite.siteName!),
+        )!;
+        const itemLabel = String(mismatchedItem.description || "").trim() || "Unnamed item";
+        const itemSite = String(mismatchedItem.siteName || "").replace(/^SITE\*?\s*:\s*/i, "").trim() || "not recorded";
+        return res.status(400).json({
+          message: `Item "${itemLabel}" is assigned to site "${itemSite}", but the selected bill site is "${selectedSite.siteName}".`,
+        });
       }
       const permittedSites = await getPermittedSiteNames(req);
       if (permittedSites !== null && input.items.some(item =>

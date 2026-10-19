@@ -155,6 +155,114 @@ describe("VB-PAID-01 funding-source storage guard", () => {
   });
 });
 
+describe("VB-FIX-01 owner correction storage boundaries", () => {
+  it("writes only the recorded amount and preserves payment lifecycle and frozen snapshot fields", async () => {
+    const before = approvedBill("equipment", 40, {
+      status: "paid",
+      paidAt: "2026-10-03T08:00:00.000Z",
+      verifiedAt: "2026-10-02T08:00:00.000Z",
+      approvedAt: "2026-10-02T09:00:00.000Z",
+      paymentRecordedBy: "ACCOUNTS USER",
+      calculationSnapshot: { frozenTotal: 10_000, hireDays: 5 },
+    });
+    const after = { ...before, amountPaid: 55 };
+    fixtures.selectedRows.push([before]);
+    fixtures.returnedBill = after;
+
+    const result = await new DatabaseStorage().correctRecordedVendorBillPaidAmount(23, 55);
+
+    expect(fixtures.writes).toEqual([{ amountPaid: 55 }]);
+    expect(result?.before).toEqual(before);
+    expect(result?.after).toEqual(after);
+    expect(result?.after).toMatchObject({
+      status: "paid",
+      paidAt: before.paidAt,
+      verifiedAt: before.verifiedAt,
+      approvedAt: before.approvedAt,
+      paymentRecordedBy: before.paymentRecordedBy,
+      calculationSnapshot: before.calculationSnapshot,
+    });
+  });
+
+  it("writes only the site answer and permits correcting an already-confirmed site", async () => {
+    const before = approvedBill("material", 40, {
+      status: "paid",
+      siteId: 1,
+      siteScopeConfirmed: true,
+      paidAt: "2026-10-03T08:00:00.000Z",
+      verifiedAt: "2026-10-02T08:00:00.000Z",
+      approvedAt: "2026-10-02T09:00:00.000Z",
+      calculationSnapshot: { frozenTotal: 10_000 },
+    });
+    const after = { ...before, siteId: 2, siteScopeConfirmed: true };
+    fixtures.selectedRows.push([before]);
+    fixtures.returnedBill = after;
+
+    const result = await new DatabaseStorage().correctRecordedVendorBillSiteScope(23, 2);
+
+    expect(fixtures.writes).toEqual([{ siteId: 2, siteScopeConfirmed: true }]);
+    expect(result?.before).toEqual(before);
+    expect(result?.after).toEqual(after);
+    expect(result?.after).toMatchObject({
+      status: "paid",
+      amountPaid: 40,
+      paidAt: before.paidAt,
+      verifiedAt: before.verifiedAt,
+      approvedAt: before.approvedAt,
+      calculationSnapshot: before.calculationSnapshot,
+    });
+  });
+
+  it("stores ALL SITES as a confirmed null site without touching other columns", async () => {
+    const before = approvedBill("material", 40, { status: "paid", siteId: 1, siteScopeConfirmed: true });
+    const after = { ...before, siteId: null, siteScopeConfirmed: true };
+    fixtures.selectedRows.push([before]);
+    fixtures.returnedBill = after;
+
+    await new DatabaseStorage().correctRecordedVendorBillSiteScope(23, null);
+
+    expect(fixtures.writes).toEqual([{ siteId: null, siteScopeConfirmed: true }]);
+  });
+
+  it("rejects missing or invalid recorded amounts and unavailable bills without writing", async () => {
+    const storage = new DatabaseStorage();
+    fixtures.selectedRows.push([approvedBill("material", null, { status: "paid" })]);
+    await expect(storage.correctRecordedVendorBillPaidAmount(23, 0))
+      .rejects.toMatchObject({ code: "CONFLICT" });
+
+    fixtures.selectedRows.push([approvedBill("material", 40, { status: "approved" })]);
+    await expect(storage.correctRecordedVendorBillPaidAmount(23, 50))
+      .rejects.toMatchObject({ code: "CONFLICT" });
+
+    fixtures.selectedRows.push([approvedBill("material", 40, { status: "paid", isCancelled: true })]);
+    await expect(storage.correctRecordedVendorBillPaidAmount(23, 50))
+      .rejects.toMatchObject({ code: "CONFLICT" });
+
+    fixtures.selectedRows.push([approvedBill("material", 40, { status: "paid", isDeleted: true })]);
+    await expect(storage.correctRecordedVendorBillPaidAmount(23, 50)).resolves.toBeUndefined();
+
+    fixtures.selectedRows.push([approvedBill("material", 40, { status: "paid" })]);
+    await expect(storage.correctRecordedVendorBillPaidAmount(23, 10_001))
+      .rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+    fixtures.selectedRows.push([approvedBill("material", 40, { status: "paid" })]);
+    await expect(storage.correctRecordedVendorBillPaidAmount(23, -1))
+      .rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(fixtures.writes).toEqual([]);
+  });
+
+  it("does not site-correct voided or deleted bills", async () => {
+    const storage = new DatabaseStorage();
+    fixtures.selectedRows.push([approvedBill("material", 40, { status: "paid", isCancelled: true })]);
+    await expect(storage.correctRecordedVendorBillSiteScope(23, 2))
+      .rejects.toMatchObject({ code: "CONFLICT" });
+
+    fixtures.selectedRows.push([approvedBill("material", 40, { status: "paid", isDeleted: true })]);
+    await expect(storage.correctRecordedVendorBillSiteScope(23, 2)).resolves.toBeUndefined();
+    expect(fixtures.writes).toEqual([]);
+  });
+});
+
 async function markPaid(existing: ReturnType<typeof approvedBill>, paidAmount = Number(existing.amountPaid)) {
   fixtures.selectedRows.push([existing], []); // locked bill, then linked hire statements
   fixtures.returnedBill = { ...existing, status: "paid" };

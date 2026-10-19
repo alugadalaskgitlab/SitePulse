@@ -4,9 +4,13 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
-import { BillAttentionCard } from "@/pages/VendorBillsAttention";
+import VendorBillsAttention, { BillAttentionCard } from "@/pages/VendorBillsAttention";
 
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
+vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({ isAdmin: true, user: { isOwner: true } }) }));
+vi.mock("wouter", () => ({
+  Link: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
+}));
 
 const makeRow = () => ({
   billId: 7,
@@ -28,9 +32,7 @@ const makeRow = () => ({
 
 beforeEach(() => {
   queryClient.clear();
-  if (!HTMLElement.prototype.scrollIntoView) {
-    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: () => {} });
-  }
+  Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: () => {} });
   if (!HTMLElement.prototype.hasPointerCapture) {
     Object.defineProperty(HTMLElement.prototype, "hasPointerCapture", { configurable: true, value: () => false });
     Object.defineProperty(HTMLElement.prototype, "setPointerCapture", { configurable: true, value: () => {} });
@@ -46,6 +48,12 @@ afterEach(() => {
 const mount = () => render(
   <QueryClientProvider client={queryClient}>
     <BillAttentionCard row={makeRow()} sites={[]} />
+  </QueryClientProvider>,
+);
+
+const mountPage = () => render(
+  <QueryClientProvider client={queryClient}>
+    <VendorBillsAttention />
   </QueryClientProvider>,
 );
 
@@ -99,4 +107,60 @@ it("keeps confirmation unavailable when no third-party account is configured", a
   mount();
   expect(await screen.findByText("No configured third-party ALPS account is available. No change has been made.")).toBeTruthy();
   expect((screen.getByTestId("button-confirm-alps-payer-7") as HTMLButtonElement).disabled).toBe(true);
+});
+
+it("filters attention rows by vendor without changing summary counts", async () => {
+  const row = (billId: number, vendorName: string, kinds: string[]) => ({
+    billId,
+    billNo: `VB-${billId}`,
+    billDate: "2026-10-01",
+    vendorName,
+    net: 100,
+    status: "paid",
+    amountPaid: null,
+    paidBy: null,
+    siteId: null,
+    siteName: null,
+    siteScopeConfirmed: false,
+    periodFrom: null,
+    periodTo: null,
+    kinds,
+    siteSuggestion: null,
+  });
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+    rows: [
+      row(101, "Alpha Materials", ["site"]),
+      row(102, "Alpha Hire", ["paid_amount"]),
+      row(103, "Beta Supplies", ["paid_amount"]),
+    ],
+    summary: {
+      bills: 3,
+      counts: {
+        site: 1,
+        paid_amount: 2,
+        period: 0,
+        bill_date_before_period_end: 0,
+        negative_net: 0,
+        payer_text_needs_confirming: 0,
+      },
+    },
+    sites: [],
+  }), { status: 200 })));
+
+  mountPage();
+  expect(await screen.findByText("Bill VB-101")).toBeTruthy();
+  expect(screen.getByText("Bill VB-102")).toBeTruthy();
+  expect(screen.getByText("Bill VB-103")).toBeTruthy();
+
+  fireEvent.change(screen.getByTestId("input-vendor-bill-attention-vendor-search"), {
+    target: { value: "alpha" },
+  });
+
+  expect(screen.getByText("Bill VB-101")).toBeTruthy();
+  expect(screen.getByText("Bill VB-102")).toBeTruthy();
+  expect(screen.queryByText("Bill VB-103")).toBeNull();
+  const summary = screen.getByLabelText("Attention summary").textContent || "";
+  expect(summary).toContain("3");
+  expect(summary).toContain("2");
+  expect(screen.getByRole("status").textContent).toContain("Total bills needing attention: 3");
 });
