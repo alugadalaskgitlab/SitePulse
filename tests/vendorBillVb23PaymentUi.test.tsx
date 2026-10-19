@@ -46,6 +46,39 @@ it("renders the account selector for a material bill without showing cumulative 
   }));
 });
 
+it("calculates a non-frozen balance from the shared net payable, not the gross", () => {
+  mount(<VendorBillPaymentDetails canEditPayment={false} bill={{
+    id: 22, billType: "material", totalAmount: 193050, netPayableAmount: null,
+    adjustmentAmount: -70000, amountPaid: 123050,
+  }} />);
+  expect(screen.getByText("BALANCE THIS BILL: ₹0.00")).toBeTruthy();
+});
+
+it("uses a frozen net payable unchanged instead of recalculating it", () => {
+  mount(<VendorBillPaymentDetails canEditPayment={false} bill={{
+    id: 23, billType: "material", totalAmount: 193050, netPayableAmount: 150000,
+    adjustmentAmount: -70000, amountPaid: 123050,
+  }} />);
+  expect(screen.getByText("BALANCE THIS BILL: ₹26,950.00")).toBeTruthy();
+});
+
+it("shows recorded paid and balance amounts for a material bill", () => {
+  mount(<VendorBillPaymentDetails canEditPayment={false} bill={{
+    id: 24, billType: "material", totalAmount: 193050, netPayableAmount: null,
+    adjustmentAmount: -70000, amountPaid: 123050,
+  }} />);
+  expect(screen.getByText("PAID: ₹1,23,050.00")).toBeTruthy();
+  expect(screen.getByText("BALANCE THIS BILL: ₹0.00")).toBeTruthy();
+});
+
+it("keeps unknown paid and balance amounts as dashes on a material bill", () => {
+  mount(<VendorBillPaymentDetails canEditPayment={false} bill={{
+    id: 25, billType: "material", totalAmount: 1000, netPayableAmount: null, amountPaid: null,
+  }} />);
+  expect(screen.getByText("PAID: —")).toBeTruthy();
+  expect(screen.getByText("BALANCE THIS BILL: —")).toBeTruthy();
+});
+
 it("uses only the third-party account for an ALPS-funded material bill", async () => {
   mount(<VendorBillPaymentDetails canEditPayment bill={{
     id: 3, billType: "material", paidBy: "alps", paymentAccountKey: "alps_infra_works",

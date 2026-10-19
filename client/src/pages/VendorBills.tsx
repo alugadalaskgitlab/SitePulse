@@ -410,7 +410,9 @@ export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; 
     (editing && (paidByKind === "company" || paidByKind === "alps")) || !!bill.paymentAccountKey,
     bill.paymentAccountKey,
   );
-  const netPayable = bill.netPayableAmount != null ? Number(bill.netPayableAmount) : Number(bill.totalAmount || 0);
+  const netPayable = bill.netPayableAmount != null
+    ? Number(bill.netPayableAmount)
+    : getBillFinancialTotals(bill).netTotal;
   // A Paid status is not evidence of the cash/bank amount. Display only the
   // recorded cumulative figure; keep the existing payment-entry workflow.
   const effectivePaid = bill.amountPaid != null && bill.amountPaid !== "" && Number.isFinite(Number(bill.amountPaid))
@@ -458,10 +460,8 @@ export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; 
           <Badge variant="outline" data-testid="badge-vb-paid-by">
             PAID BY: {vendorBillPaidByLabel(bill.paidBy)}
           </Badge>
-          {isEquipmentHire && <>
-            <Badge variant="outline">PAID: {effectivePaid == null ? "—" : `₹${formatCurrency(effectivePaid)}`}</Badge>
-            <Badge variant="outline">BALANCE THIS BILL: {effectivePaid == null ? "—" : `₹${formatCurrency(netPayable - effectivePaid)}`}</Badge>
-          </>}
+          <Badge variant="outline">PAID: {effectivePaid == null ? "—" : `₹${formatCurrency(effectivePaid)}`}</Badge>
+          <Badge variant="outline">BALANCE THIS BILL: {effectivePaid == null ? "—" : `₹${formatCurrency(netPayable - effectivePaid)}`}</Badge>
           {selectedAccount && <Badge variant="outline">ACCOUNT: {selectedAccount.name}</Badge>}
         </div>
       ) : (
@@ -4906,8 +4906,8 @@ export default function VendorBills() {
 
             <VendorRunningStatement bill={bill} bills={bills || []} />
             {/* 06M-A: Payment Mode / Paid By — entry preferred once PAID, shown
-                whenever values exist. No payment evidence/QR upload here. */}
-            {(hasCumulativeVendorPayment(bill.billType) || bill.status === "paid" || (bill as any).paymentMode || (bill as any).paidBy) && (
+                whenever recorded payment details exist. No payment evidence/QR upload here. */}
+            {(hasCumulativeVendorPayment(bill.billType) || bill.status === "paid" || bill.amountPaid != null || (bill as any).paymentMode || (bill as any).paidBy) && (
               <VendorBillPaymentDetails
                 key={bill.id}
                 bill={bill}

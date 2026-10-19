@@ -85,6 +85,16 @@ describe("VB-LAYOUT-01 recorded payment display", () => {
     expect(payment).toContain("BALANCE THIS BILL: —");
     expect(payment).not.toContain("PAID: ₹0.00");
   });
+
+  it("shows a material bill's recorded amount when it has no other payment details", async () => {
+    bill.status = "approved";
+    bill.amountPaid = 100;
+    bill.netPayableAmount = 500;
+    await openDetail();
+    const payment = screen.getByTestId("section-payment-details").textContent;
+    expect(payment).toContain("PAID: ₹100.00");
+    expect(payment).toContain("BALANCE THIS BILL: ₹400.00");
+  });
 });
 async function clickExport(position: "header" | "footer", kind: "excel" | "pdf" = "excel") {
   await waitFor(() => expect(queryClient.isFetching()).toBe(0));
