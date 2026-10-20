@@ -79,6 +79,54 @@ it("keeps unknown paid and balance amounts as dashes on a material bill", () => 
   expect(screen.getByText("BALANCE THIS BILL: —")).toBeTruthy();
 });
 
+it("records a missing transport paid amount through the shared attention action using net payable", async () => {
+  const bill = {
+    id: 31, billType: "transport", status: "paid", totalAmount: 170040, netPayableAmount: null,
+    adjustmentAmount: -40000, amountPaid: null, paymentMode: "rtgs", paidBy: "company",
+    paymentAccountKey: "bank", items: [{ category: "transport", amount: 170040 }],
+  };
+  mount(<VendorBillPaymentDetails
+    bill={bill}
+    canEditPayment
+    canRecordMissingPaidAmount
+  />);
+
+  expect(screen.getByTestId("text-vb-paid-amount-net-reference").textContent).toContain("Net payable: ₹1,30,040.00");
+  fireEvent.change(screen.getByTestId("input-vb-missing-paid-amount"), { target: { value: "130040" } });
+  fireEvent.click(screen.getByTestId("button-record-vb-missing-paid-amount"));
+
+  await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+    "/api/vendor-bills/31/attention/paid-amount",
+    expect.objectContaining({
+      method: "PATCH",
+      body: JSON.stringify({ amountPaid: 130040 }),
+    }),
+  ));
+  expect(fetch).not.toHaveBeenCalledWith("/api/vendor-bills/31/payment-details", expect.anything());
+  expect(screen.getByTestId("badge-vb-paid-by").textContent).toContain("PAID BY: Company");
+});
+
+it("does not show the missing-amount entry when a paid amount is already recorded", () => {
+  mount(<VendorBillPaymentDetails
+    bill={{ id: 32, billType: "material", status: "paid", netPayableAmount: 100, amountPaid: 75 }}
+    canEditPayment={false}
+    canRecordMissingPaidAmount
+  />);
+  expect(screen.queryByTestId("section-vb-missing-paid-amount")).toBeNull();
+  expect(screen.queryByTestId("input-vb-missing-paid-amount")).toBeNull();
+});
+
+it("keeps negative-net paid bills review-only", () => {
+  mount(<VendorBillPaymentDetails
+    bill={{ id: 33, billType: "material", status: "paid", totalAmount: 100, adjustmentAmount: -150, amountPaid: null }}
+    canEditPayment={false}
+    canRecordMissingPaidAmount
+  />);
+  expect(screen.queryByTestId("section-vb-missing-paid-amount")).toBeNull();
+  expect(screen.getByTestId("text-vb-negative-net-paid-review-only").textContent)
+    .toContain("Negative-net bills are review-only");
+});
+
 it("uses only the third-party account for an ALPS-funded material bill", async () => {
   mount(<VendorBillPaymentDetails canEditPayment bill={{
     id: 3, billType: "material", paidBy: "alps", paymentAccountKey: "alps_infra_works",

@@ -55,6 +55,10 @@ beforeEach(() => {
     const json = (value: unknown) => new Response(JSON.stringify(value), { status: 200 });
     if (/\/api\/vendor-bills\/731(?:\?|$)/.test(url)) return json(bill);
     if (url === "/api/vendor-bills/financial-review") return json([bill]);
+    if (url.endsWith("/attention/paid-amount") && typeof init?.body === "string") {
+      bill.amountPaid = JSON.parse(init.body).amountPaid;
+      return json(bill);
+    }
     if (/\/api\/vendor-bills(?:\?|$)/.test(url)) return json([bill]);
     if (url.includes("/summary")) return json({
       total: 1, totalAmount: bill.totalAmount, draft: 1, verified: 0, approved: 0, paid: 0, gstByCategory: {},
@@ -86,6 +90,17 @@ describe("VB-LAYOUT-01 recorded payment display", () => {
     expect(payment).not.toContain("PAID: ₹0.00");
   });
 
+  it("shows the recorded amount and net balance on the Vendor Bills list card", async () => {
+    bill.status = "paid";
+    bill.netPayableAmount = 170040;
+    bill.amountPaid = 130040;
+    mount();
+
+    const card = await screen.findByTestId("card-bill-731");
+    expect(card.textContent).toContain("Paid: ₹1,30,040.00 · Balance: ₹40,000.00");
+    expect(card.textContent).toContain("Unconfirmed");
+  });
+
   it("shows a material bill's recorded amount when it has no other payment details", async () => {
     bill.status = "approved";
     bill.amountPaid = 100;
@@ -94,6 +109,27 @@ describe("VB-LAYOUT-01 recorded payment display", () => {
     const payment = screen.getByTestId("section-payment-details").textContent;
     expect(payment).toContain("PAID: ₹100.00");
     expect(payment).toContain("BALANCE THIS BILL: ₹400.00");
+  });
+
+  it("refreshes Bill Detail after recording a paid amount and leaves a real partial balance", async () => {
+    bill.status = "paid";
+    bill.netPayableAmount = 170040;
+    bill.amountPaid = null;
+    bill.paymentMode = "rtgs";
+    bill.paidBy = "company";
+    await openDetail();
+
+    expect(screen.getByTestId("text-vb-paid-amount-net-reference").textContent)
+      .toContain("Net payable: ₹1,70,040.00");
+    fireEvent.change(screen.getByTestId("input-vb-missing-paid-amount"), { target: { value: "130040" } });
+    fireEvent.click(screen.getByTestId("button-record-vb-missing-paid-amount"));
+
+    await waitFor(() => expect(requests.some(request =>
+      request.method === "PATCH" && request.url === "/api/vendor-bills/731/attention/paid-amount" &&
+      request.body?.amountPaid === 130040)).toBe(true));
+    expect(await screen.findByText("PAID: ₹1,30,040.00")).toBeTruthy();
+    expect(screen.getByText("BALANCE THIS BILL: ₹40,000.00")).toBeTruthy();
+    expect(screen.getByTestId("badge-vb-paid-by").textContent).toContain("PAID BY: Company");
   });
 });
 async function clickExport(position: "header" | "footer", kind: "excel" | "pdf" = "excel") {

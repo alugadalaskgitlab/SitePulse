@@ -155,6 +155,44 @@ describe("VB-PAID-01 funding-source storage guard", () => {
   });
 });
 
+describe("VB-FIX-03 shared missing paid amount action", () => {
+  it("records a transport amount by changing only amountPaid and preserving payment evidence", async () => {
+    const calculationSnapshot = { gross: 170040, adjustment: -40000 };
+    const before = approvedBill("TRANSPORT", null, {
+      status: "paid",
+      totalAmount: 170040,
+      netPayableAmount: null,
+      adjustmentAmount: -40000,
+      gstRateTransport: 0,
+      tdsRate: 0,
+      paymentMode: "rtgs",
+      paidBy: "company",
+      paymentAccountKey: "hdfc_ca",
+      paidAt: "2026-10-01T09:00:00.000Z",
+      calculationSnapshot,
+    });
+    const after = { ...before, amountPaid: 130040 };
+    fixtures.selectedRows.push([before], []);
+    fixtures.returnedBill = after;
+
+    const result = await new DatabaseStorage().recordMissingVendorBillPaidAmount(23, 130040);
+
+    expect(fixtures.writes).toEqual([{ amountPaid: 130040 }]);
+    expect(result?.after).toMatchObject({
+      status: "paid",
+      amountPaid: 130040,
+      netPayableAmount: null,
+      totalAmount: 170040,
+      adjustmentAmount: -40000,
+      paymentMode: "rtgs",
+      paidBy: "company",
+      paymentAccountKey: "hdfc_ca",
+      paidAt: "2026-10-01T09:00:00.000Z",
+      calculationSnapshot,
+    });
+  });
+});
+
 describe("VB-FIX-01 owner correction storage boundaries", () => {
   it("writes only the recorded amount and preserves payment lifecycle and frozen snapshot fields", async () => {
     const before = approvedBill("equipment", 40, {

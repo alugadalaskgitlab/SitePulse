@@ -3,6 +3,7 @@ import * as xlsx from "xlsx";
 import { billPaymentPosition, filterFinancialBills, getBillFinancialTotals, summarizeFinancialTaxes, taxCategories } from "../shared/vendorBillFinancialReport";
 import { summarizeBillReview } from "../shared/vendorBillReview";
 import { buildVendorFinancialWorkbook } from "../server/vendorFinancialWorkbook";
+import { projectVendorPayables } from "../shared/vendorPayables";
 
 const bill = (id: number, patch: Record<string, any> = {}) => ({
   id, billNo: `VB-${id}`, billDate: "2026-10-01", vendorName: "ACME", siteId: 1, billType: "EQUIPMENT",
@@ -28,6 +29,38 @@ describe("one saved-bill financial selection", () => {
     expect(billPaymentPosition(fixture[4])).toMatchObject({ paid: 300, outstanding: 700, unconfirmed: true, contradictory: true });
     expect(billPaymentPosition(fixture[5])).toMatchObject({ paid: null, balance: null, unconfirmed: true });
     expect(billPaymentPosition(bill(1))).toMatchObject({ paid: 0, outstanding: 1000, unconfirmed: false });
+  });
+  it("clears Unconfirmed only when the recorded paid amount settles the net", () => {
+    const partial = bill(41, { status: "paid", netPayableAmount: 170040, amountPaid: 130040 });
+    const settled = { ...partial, amountPaid: 170040 };
+    expect(billPaymentPosition(partial)).toMatchObject({
+      paid: 130040, balance: 40000, contradictory: true, unconfirmed: true,
+    });
+    expect(billPaymentPosition(settled)).toMatchObject({
+      paid: 170040, balance: 0, contradictory: false, unconfirmed: false,
+    });
+  });
+  it("propagates one recorded amount into payables and the financial workbook", () => {
+    const saved = bill(42, {
+      billNo: "VB-0042",
+      billType: "material",
+      status: "paid",
+      vendorId: 8,
+      linkedVendorName: "ACME",
+      netPayableAmount: 170040,
+      amountPaid: 130040,
+      items: [{ category: "material", amount: 200000 }],
+    });
+    const payables = projectVendorPayables([saved]);
+    expect(payables.vendors[0].bills[0].amountPaid).toBe(130040);
+    expect(payables.vendors[0].paid).toBe(130040);
+
+    const worksheet = buildVendorFinancialWorkbook([saved]).Sheets["Vendor Bills"];
+    const rows = xlsx.utils.sheet_to_json<any[]>(worksheet, { header: 1, raw: true });
+    const headers = rows[0] as string[];
+    const billRow = rows.find(row => row[1] === "VB-0042") as any[];
+    expect(billRow[headers.indexOf("Recorded paid amount")]).toBe(130040);
+    expect(billRow[headers.indexOf("Positive outstanding")]).toBe(40000);
   });
   it.each([undefined, null, "", "not-a-number"])("does not treat missing/invalid amount %s as zero", amountPaid => {
     expect(billPaymentPosition(bill(1, { amountPaid })).paid).toBeNull();

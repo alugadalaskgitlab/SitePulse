@@ -395,7 +395,15 @@ function vendorBillPaidByLabel(paidBy: unknown): string {
   return `PERSONAL \u2014 ${paidBy}`;
 }
 
-export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; canEditPayment: boolean }) {
+export function VendorBillPaymentDetails({
+  bill,
+  canEditPayment,
+  canRecordMissingPaidAmount = false,
+}: {
+  bill: any;
+  canEditPayment: boolean;
+  canRecordMissingPaidAmount?: boolean;
+}) {
   const { toast } = useToast();
   const [editing, setEditing] = useState(false);
   const [mode, setMode] = useState<string>(bill.paymentMode || "");
@@ -404,6 +412,7 @@ export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; 
   const [payerName, setPayerName] = useState<string>(
     bill.paidBy && bill.paidBy !== "company" && bill.paidBy !== "alps" && bill.paidBy !== "PERSONAL" ? bill.paidBy : "");
   const [amountPaid, setAmountPaid] = useState<string>(() => initialVendorBillPaidAmount(bill));
+  const [missingPaidAmount, setMissingPaidAmount] = useState("");
   const [paymentAccountKey, setPaymentAccountKey] = useState<string>(bill.paymentAccountKey || "");
   const isEquipmentHire = hasCumulativeVendorPayment(bill.billType);
   const accountsQuery = useVendorBillCompanyAccounts(
@@ -417,7 +426,15 @@ export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; 
   // recorded cumulative figure; keep the existing payment-entry workflow.
   const effectivePaid = bill.amountPaid != null && bill.amountPaid !== "" && Number.isFinite(Number(bill.amountPaid))
     ? Number(bill.amountPaid) : null;
+  const isMissingPaidAmount = bill.status === "paid" && effectivePaid == null;
+  const needsMissingPaidAmount = isMissingPaidAmount && Number.isFinite(netPayable) && netPayable >= 0;
+  const missingPaidAmountValue = Number(missingPaidAmount);
   const selectedAccount = accountsQuery.selectedAccount;
+  const invalidatePaidAmountViews = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills"] });
+    queryClient.invalidateQueries({ queryKey: [`/api/vendor-bills/${bill.id}`] });
+    queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills/attention"] });
+  };
 
   const saveMutation = useMutation({
     mutationFn: () => apiRequest("PATCH", `/api/vendor-bills/${bill.id}/payment-details`, {
@@ -440,6 +457,22 @@ export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; 
         variant: "destructive",
       });
     },
+  });
+  const missingPaidAmountMutation = useMutation({
+    mutationFn: () => apiRequest("PATCH", `/api/vendor-bills/${bill.id}/attention/paid-amount`, {
+      amountPaid: missingPaidAmountValue,
+    }),
+    onSuccess: () => {
+      invalidatePaidAmountViews();
+      if (isEquipmentHire) setAmountPaid(missingPaidAmount);
+      setMissingPaidAmount("");
+      toast({ title: "Paid amount recorded" });
+    },
+    onError: (err: any) => toast({
+      title: "Failed to record paid amount",
+      description: isForbiddenError(err) ? NO_PERMISSION_DESCRIPTION : err.message,
+      variant: "destructive",
+    }),
   });
 
   return (
@@ -515,22 +548,17 @@ export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; 
               </Select>
             </div>
           )}
-          {isEquipmentHire && (
+          {isEquipmentHire && !isMissingPaidAmount && (
             <div>
               <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Paid This Bill (cumulative ₹)</p>
               <Input
                 type="number" min="0" max={netPayable} step="0.01" value={amountPaid}
                 onChange={e => setAmountPaid(e.target.value)}
-                disabled={bill.status === "paid" && bill.amountPaid == null}
                 data-testid="input-vb-amount-paid"
               />
-              {bill.status === "paid" && bill.amountPaid == null
-                ? <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">
-                    No amount is recorded. <Link href="/finance/vendor-bills/attention" className="underline">Correct it from Bills Needing Attention.</Link>
-                  </p>
-                : <p className="mt-1 text-[10px] text-muted-foreground">
-                    Net payable ₹{formatCurrency(netPayable)} · balance {amountPaid === "" ? "—" : `₹${formatCurrency(Math.max(0, netPayable - Number(amountPaid)))}`}
-                  </p>}
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                Net payable ₹{formatCurrency(netPayable)} · balance {amountPaid === "" ? "—" : `₹${formatCurrency(Math.max(0, netPayable - Number(amountPaid)))}`}
+              </p>
             </div>
           )}
           <div className="sm:col-span-3 flex gap-2 justify-end">
@@ -540,6 +568,44 @@ export function VendorBillPaymentDetails({ bill, canEditPayment }: { bill: any; 
             </Button>
           </div>
         </div>
+      )}
+      {canRecordMissingPaidAmount && needsMissingPaidAmount && !missingPaidAmountMutation.isSuccess && (
+        <div className="mt-3 rounded-md border p-3" data-testid="section-vb-missing-paid-amount">
+          <div className="space-y-1">
+            <Label htmlFor={`vb-missing-paid-amount-${bill.id}`}>Paid amount (₹)</Label>
+            <p className="text-xs text-muted-foreground" data-testid="text-vb-paid-amount-net-reference">
+              Net payable: ₹{formatCurrency(netPayable)}
+              {missingPaidAmount !== "" && Number.isFinite(missingPaidAmountValue) &&
+                ` · Balance after entry: ₹${formatCurrency(netPayable - missingPaidAmountValue)}`}
+            </p>
+          </div>
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
+            <Input
+              id={`vb-missing-paid-amount-${bill.id}`}
+              type="number"
+              min="0"
+              step="0.01"
+              value={missingPaidAmount}
+              onChange={event => setMissingPaidAmount(event.target.value)}
+              data-testid="input-vb-missing-paid-amount"
+            />
+            <Button
+              type="button"
+              onClick={() => missingPaidAmountMutation.mutate()}
+              disabled={missingPaidAmount === "" || !Number.isFinite(missingPaidAmountValue) ||
+                missingPaidAmountValue < 0 || missingPaidAmountMutation.isPending}
+              data-testid="button-record-vb-missing-paid-amount"
+            >
+              {missingPaidAmountMutation.isPending && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+              RECORD AMOUNT
+            </Button>
+          </div>
+        </div>
+      )}
+      {canRecordMissingPaidAmount && isMissingPaidAmount && Number.isFinite(netPayable) && netPayable < 0 && (
+        <p className="mt-3 text-xs text-amber-700 dark:text-amber-300" data-testid="text-vb-negative-net-paid-review-only">
+          Negative-net bills are review-only; an amount cannot be recorded here.
+        </p>
       )}
     </div>
   );
@@ -4911,7 +4977,8 @@ export default function VendorBills() {
               <VendorBillPaymentDetails
                 key={bill.id}
                 bill={bill}
-                  canEditPayment={canMarkPaid && !bill.isCancelled && ["approved", "paid"].includes(bill.status)}
+                canEditPayment={canMarkPaid && !bill.isCancelled && ["approved", "paid"].includes(bill.status)}
+                canRecordMissingPaidAmount={(isAdmin || !!user?.isOwner) && !bill.isCancelled}
               />
             )}
             <VendorBillOwnerCorrections bill={bill} sites={sites} isOwner={!!user?.isOwner} />
@@ -5707,6 +5774,7 @@ export default function VendorBills() {
             }
             const showLabourSplit = labourSiteAmt > 0 && labourPlantAmt > 0;
             const billFinancialTotals = getBillFinancialTotals(bill);
+            const billPayment = billPaymentPosition(bill);
             const primaryAdjustmentAmount = billFinancialTotals.primaryAdjustment;
             const additionalBillAdjustments = billFinancialTotals.additional;
             const hasBillAdjustments = primaryAdjustmentAmount !== 0 || additionalBillAdjustments.length > 0;
@@ -5756,11 +5824,16 @@ export default function VendorBills() {
                         </div>
                       )}
                       <p className="text-sm text-muted-foreground">{bill.items?.length || 0} line items</p>
+                      {billPayment.paid != null && billPayment.balance != null && (
+                        <p className="text-xs text-muted-foreground" data-testid={`text-bill-paid-balance-${bill.id}`}>
+                          Paid: ₹{formatCurrency(billPayment.paid)} · Balance: ₹{formatCurrency(billPayment.balance)}
+                        </p>
+                      )}
                     </div>
                     <Badge variant="outline" className={`uppercase ${getStatusBadgeClass(bill.status)} no-default-hover-elevate no-default-active-elevate`} data-testid={`badge-bill-status-${bill.id}`}>
                       {bill.status}
                     </Badge>
-                    {billPaymentPosition(bill).unconfirmed && <Badge variant="outline" className="text-amber-700" title={billPaymentPosition(bill).contradictory ? "Recorded payments contradict Paid status" : "Payment evidence is missing"}>Unconfirmed</Badge>}
+                    {billPayment.unconfirmed && <Badge variant="outline" className="text-amber-700" title={billPayment.contradictory ? "Recorded payments contradict Paid status" : "Payment evidence is missing"}>Unconfirmed</Badge>}
                   </div>
                 </div>
               </CardContent>
