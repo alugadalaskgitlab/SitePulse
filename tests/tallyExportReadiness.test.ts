@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   buildTallyExportReadiness,
+  defaultTallyVoucherMappings,
+  emptyTallyComponentLedgerMappings,
   parseTallyExportConfig,
   trimTallyMappingName,
   type TallyExportConfig,
@@ -11,6 +13,8 @@ const config: TallyExportConfig = {
   cutoverDate: "2026-01-31",
   projectCategory: "Projects",
   resourceCategory: "Resources",
+  voucherMappings: defaultTallyVoucherMappings,
+  componentLedgerMappings: emptyTallyComponentLedgerMappings,
 };
 
 describe("Tally export readiness", () => {

@@ -5,7 +5,108 @@ export type TallyExportConfig = {
   cutoverDate: string;
   projectCategory: string;
   resourceCategory: string;
+  voucherMappings: TallyVoucherMappings;
+  componentLedgerMappings: TallyComponentLedgerMappings;
 };
+
+export const tallyBillCategories = ["material", "equipment", "transport", "labour"] as const;
+export type TallyBillCategory = typeof tallyBillCategories[number];
+
+export const tallyComponentKeys = [
+  "gst",
+  "tds",
+  "advanceAdjustment",
+  "dieselRecovery",
+  "breakdownDeduction",
+  "operatorUnavailable",
+  "otherDebit",
+  "otherCredit",
+] as const;
+export type TallyComponentKey = typeof tallyComponentKeys[number];
+
+export type TallyVoucherMapping = {
+  voucherType: string;
+  expenseLedger: string | null;
+  confirmed: boolean;
+};
+
+export type TallyCombinedVoucherMapping = {
+  voucherType: string;
+  confirmed: boolean;
+};
+
+export type TallyComponentLedgerMapping = {
+  ledgerName: string | null;
+  confirmed: boolean;
+};
+
+export type TallyVoucherMappings = Record<TallyBillCategory, TallyVoucherMapping> & {
+  all: TallyCombinedVoucherMapping;
+};
+
+export type TallyComponentLedgerMappings = Record<TallyComponentKey, TallyComponentLedgerMapping>;
+
+export const defaultTallyVoucherMappings: TallyVoucherMappings = {
+  material: { voucherType: "Purchase", expenseLedger: "Purchase of Material", confirmed: false },
+  equipment: { voucherType: "Journal", expenseLedger: "Machinery Hire Charges", confirmed: false },
+  transport: { voucherType: "Journal", expenseLedger: null, confirmed: false },
+  labour: { voucherType: "Journal", expenseLedger: null, confirmed: false },
+  all: { voucherType: "Journal", confirmed: false },
+};
+
+export const emptyTallyComponentLedgerMappings: TallyComponentLedgerMappings = {
+  gst: { ledgerName: null, confirmed: false },
+  tds: { ledgerName: null, confirmed: false },
+  advanceAdjustment: { ledgerName: null, confirmed: false },
+  dieselRecovery: { ledgerName: null, confirmed: false },
+  breakdownDeduction: { ledgerName: null, confirmed: false },
+  operatorUnavailable: { ledgerName: null, confirmed: false },
+  otherDebit: { ledgerName: null, confirmed: false },
+  otherCredit: { ledgerName: null, confirmed: false },
+};
+
+function parseVoucherMappings(value: unknown): TallyVoucherMappings {
+  const source = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const result = structuredClone(defaultTallyVoucherMappings);
+  for (const category of tallyBillCategories) {
+    const row = source[category];
+    if (!row || typeof row !== "object") continue;
+    const record = row as Record<string, unknown>;
+    result[category] = {
+      voucherType: typeof record.voucherType === "string" ? record.voucherType.trim() : result[category].voucherType,
+      expenseLedger: typeof record.expenseLedger === "string" && record.expenseLedger.trim()
+        ? record.expenseLedger.trim()
+        : null,
+      confirmed: record.confirmed === true,
+    };
+  }
+  const all = source.all;
+  if (all && typeof all === "object") {
+    const record = all as Record<string, unknown>;
+    result.all = {
+      voucherType: typeof record.voucherType === "string" ? record.voucherType.trim() : result.all.voucherType,
+      confirmed: record.confirmed === true,
+    };
+  }
+  return result;
+}
+
+function parseComponentLedgerMappings(value: unknown): TallyComponentLedgerMappings {
+  const source = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const result = structuredClone(emptyTallyComponentLedgerMappings);
+  for (const component of tallyComponentKeys) {
+    const row = source[component];
+    if (!row || typeof row !== "object") continue;
+    const record = row as Record<string, unknown>;
+    result[component] = {
+      ledgerName: typeof record.ledgerName === "string" && record.ledgerName.trim()
+        ? record.ledgerName.trim()
+        : null,
+      confirmed: record.confirmed === true,
+    };
+  }
+  return result;
+}
 
 export function parseTallyExportConfig(value: string | null | undefined): TallyExportConfig {
   if (!value) throw new Error("Tally export configuration is missing.");
@@ -37,6 +138,8 @@ export function parseTallyExportConfig(value: string | null | undefined): TallyE
     cutoverDate,
     projectCategory: config.projectCategory as string,
     resourceCategory: config.resourceCategory as string,
+    voucherMappings: parseVoucherMappings(config.voucherMappings),
+    componentLedgerMappings: parseComponentLedgerMappings(config.componentLedgerMappings),
   };
 }
 
@@ -108,6 +211,7 @@ export type TallyExportReadinessReport = {
     ready: number;
     blocked: number;
   };
+  readyBills: TallyReadinessBill[];
   preCutoverBills: TallyReadinessBill[];
   straddlingBills: TallyReadinessBill[];
   periodNotRecordedBills: TallyReadinessBill[];
@@ -186,6 +290,7 @@ export function buildTallyExportReadiness(input: {
   const straddlingBills: TallyReadinessBill[] = [];
   const periodNotRecordedBills: TallyReadinessBill[] = [];
   const blockedBills: TallyBlockedBill[] = [];
+  const readyBills: TallyReadinessBill[] = [];
   let postCutover = 0;
   let ready = 0;
 
@@ -287,7 +392,10 @@ export function buildTallyExportReadiness(input: {
 
     const uniqueReasons = Array.from(new Set(reasons));
     if (uniqueReasons.length) blockedBills.push({ ...summary, reasons: uniqueReasons });
-    else ready++;
+    else {
+      ready++;
+      readyBills.push(summary);
+    }
   }
 
   return {
@@ -306,6 +414,7 @@ export function buildTallyExportReadiness(input: {
       ready,
       blocked: blockedBills.length,
     },
+    readyBills,
     preCutoverBills,
     straddlingBills,
     periodNotRecordedBills,

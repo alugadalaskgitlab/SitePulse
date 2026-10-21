@@ -85,6 +85,7 @@ import { buildPreviousBillingContext } from "@shared/vendorBillPreviousContext";
 import { buildVendorBillExport } from "@shared/vendorBillExport";
 import { buildVendorBillCompleteWorkbook } from "./vendorBillCompleteWorkbook";
 import { buildTallyExportReadiness, parseTallyExportConfig, trimTallyMappingName } from "@shared/tallyExportReadiness";
+import { buildTallyImportXml, buildTallyVoucherPreview } from "@shared/tallyVoucher";
 import {
   buildHireSiteSuggestion,
   getVendorBillAttentionKinds,
@@ -11804,61 +11805,268 @@ export async function registerRoutes(
 
   app.use(vendorFinancialGuard(storage));
 
+  const loadTallyExportState = async (req: any) => {
+    const [settingRows, allSites, allEquipment, allVendors, allBills] = await Promise.all([
+      db.select({ value: appSettings.value })
+        .from(appSettings)
+        .where(eq(appSettings.key, "tally_export_config"))
+        .limit(1),
+      storage.getSites(),
+      storage.getEquipmentMaster(true),
+      db.select({
+        id: billingIdentityVendors.id,
+        name: billingIdentityVendors.name,
+        tallyLedgerName: billingIdentityVendors.tallyLedgerName,
+      }).from(billingIdentityVendors).orderBy(asc(billingIdentityVendors.name)),
+      storage.getVendorBills({ includeVoided: true }),
+    ]);
+    const config = parseTallyExportConfig(settingRows[0]?.value);
+    const permittedSites = await getPermittedSiteNames(req);
+    const visibleBills = await scopeVendorBillsToSiteAccess(req, allBills);
+    const visibleSiteRows = allSites.filter(site =>
+      permittedSites === null || siteMatchesPermitted(site.name, permittedSites),
+    );
+    const visibleVendorIds = new Set(
+      visibleBills.map(bill => bill.vendorId).filter((id): id is number => id != null),
+    );
+    const visibleVendorRows = allVendors.filter(vendor =>
+      permittedSites === null || visibleVendorIds.has(vendor.id),
+    );
+    const equipmentIdsOnBills = new Set<number>();
+    for (const bill of visibleBills) {
+      for (const item of bill.items ?? []) {
+        if (item.equipmentId != null) equipmentIdsOnBills.add(Number(item.equipmentId));
+      }
+      for (const statement of bill.hireStatements ?? []) {
+        if (statement.equipmentId != null) equipmentIdsOnBills.add(Number(statement.equipmentId));
+      }
+    }
+    const hiredMachines = allEquipment.filter(equipment =>
+      equipment.ownership === "hired" &&
+      (permittedSites === null || equipmentIdsOnBills.has(equipment.id)),
+    );
+    const report = buildTallyExportReadiness({
+      config,
+      vendors: visibleVendorRows,
+      sites: visibleSiteRows,
+      hiredMachines,
+      bills: visibleBills,
+    });
+    return { config, report, visibleBills, visibleSiteRows, visibleVendorRows, allEquipment };
+  };
+
+  const tallyBillIdsSchema = z.object({
+    billIds: z.array(z.number().int().positive()).min(1).max(100)
+      .refine(ids => new Set(ids).size === ids.length, "Duplicate bill IDs are not allowed"),
+  }).strict();
+
+  const evaluateTallyBillIds = async (req: any, billIds: number[]) => {
+    const state = await loadTallyExportState(req);
+    const readinessById = new Map<number,
+      | { kind: "ready"; bill: typeof state.report.readyBills[number] }
+      | { kind: "blocked"; bill: typeof state.report.blockedBills[number] }
+    >();
+    for (const bill of state.report.readyBills) readinessById.set(bill.id, { kind: "ready", bill });
+    for (const bill of state.report.blockedBills) readinessById.set(bill.id, { kind: "blocked", bill });
+    const vendorById = new Map(state.visibleVendorRows.map(vendor => [vendor.id, vendor]));
+    const vouchers: NonNullable<ReturnType<typeof buildTallyVoucherPreview>["preview"]>[] = [];
+    const blocked: Array<{ billId: number; billNo: string; reasons: string[] }> = [];
+
+    if (state.config.companyName !== "High Lane Constructions Pvt Ltd - SK 2025-26") {
+      return {
+        state,
+        vouchers: [],
+        blocked: billIds.map(billId => ({
+          billId,
+          billNo: `Bill #${billId}`,
+          reasons: ["Only the configured HLC Tally company may be exported in this feature."],
+        })),
+      };
+    }
+
+    for (const billId of billIds) {
+      const bill = state.visibleBills.find(row => row.id === billId);
+      const readiness = readinessById.get(billId);
+      if (!bill) {
+        blocked.push({ billId, billNo: `Bill #${billId}`, reasons: ["Bill is unavailable within your permitted site scope."] });
+        continue;
+      }
+      if (!readiness || readiness.kind !== "ready") {
+        const reasons = readiness?.kind === "blocked"
+          ? readiness.bill.reasons
+          : ["Bill is not an approved or paid post-cutover candidate and cannot be exported."];
+        blocked.push({
+          billId,
+          billNo: String(bill.billNo || `Bill #${billId}`),
+          reasons,
+        });
+        continue;
+      }
+      const result = buildTallyVoucherPreview(bill, {
+        config: state.config,
+        vendor: bill.vendorId == null ? undefined : vendorById.get(Number(bill.vendorId)),
+        sites: state.visibleSiteRows,
+        equipment: state.allEquipment,
+      });
+      if (!result.preview) {
+        blocked.push({
+          billId,
+          billNo: String(bill.billNo || `Bill #${billId}`),
+          reasons: result.reasons,
+        });
+      } else {
+        vouchers.push(result.preview);
+      }
+    }
+    return { state, vouchers, blocked };
+  };
+
   // Read-only readiness is available to vendor-bill viewers, not restricted to
   // the separate vendor-financial permission used by financial reports.
   app.get("/api/vendor-bills/tally-readiness", async (req, res) => {
     if (!assertViewEither(req, res, "vendor_bills_view", "vendor_bills")) return;
     res.setHeader("Cache-Control", "private, no-store");
     try {
-      const [settingRows, allSites, allEquipment, allVendors, allBills] = await Promise.all([
-        db.select({ value: appSettings.value })
-          .from(appSettings)
-          .where(eq(appSettings.key, "tally_export_config"))
-          .limit(1),
-        storage.getSites(),
-        storage.getEquipmentMaster(true),
-        db.select({
-          id: billingIdentityVendors.id,
-          name: billingIdentityVendors.name,
-          tallyLedgerName: billingIdentityVendors.tallyLedgerName,
-        }).from(billingIdentityVendors).orderBy(asc(billingIdentityVendors.name)),
-        storage.getVendorBills({ includeVoided: true }),
-      ]);
-      const config = parseTallyExportConfig(settingRows[0]?.value);
-      const permittedSites = await getPermittedSiteNames(req);
-      const visibleBills = await scopeVendorBillsToSiteAccess(req, allBills);
-      const visibleSiteRows = allSites.filter(site =>
-        permittedSites === null || siteMatchesPermitted(site.name, permittedSites),
-      );
-      const visibleVendorIds = new Set(
-        visibleBills.map(bill => bill.vendorId).filter((id): id is number => id != null),
-      );
-      const visibleVendorRows = allVendors.filter(vendor =>
-        permittedSites === null || visibleVendorIds.has(vendor.id),
-      );
-      const equipmentIdsOnBills = new Set<number>();
-      for (const bill of visibleBills) {
-        for (const item of bill.items ?? []) {
-          if (item.equipmentId != null) equipmentIdsOnBills.add(Number(item.equipmentId));
-        }
-        for (const statement of bill.hireStatements ?? []) {
-          if (statement.equipmentId != null) equipmentIdsOnBills.add(Number(statement.equipmentId));
-        }
-      }
-      const hiredMachines = allEquipment.filter(equipment =>
-        equipment.ownership === "hired" &&
-        (permittedSites === null || equipmentIdsOnBills.has(equipment.id)),
-      );
-      res.json(buildTallyExportReadiness({
-        config,
-        vendors: visibleVendorRows,
-        sites: visibleSiteRows,
-        hiredMachines,
-        bills: visibleBills,
-      }));
+      const state = await loadTallyExportState(req);
+      res.json({
+        ...state.report,
+        canConfirmMappings: !!req.authUser?.isOwner,
+        canExportXml: !!(req.authUser?.isAdmin || req.authUser?.isOwner),
+      });
     } catch (error) {
       console.error("Tally Export Readiness failed:", error);
       res.status(503).json({ message: "Tally Export Readiness is unavailable. Check the configuration and retry." });
+    }
+  });
+
+  // Posting maps live in the existing app_settings config, not in a parallel
+  // screen/table. Only the Owner can attest the ledger and voucher-type names.
+  app.patch("/api/vendor-bills/tally-posting-mappings", async (req, res) => {
+    if (!assertAdmin(req, res)) return;
+    if (!req.authUser?.isOwner) return res.status(403).json({ message: "Only the Owner can confirm HLC Tally posting mappings." });
+    res.setHeader("Cache-Control", "private, no-store");
+    const safeTallyName = z.string().trim().max(120)
+      .refine(value => !/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(value), "Tally names cannot contain XML control characters")
+      .nullable();
+    const safeVoucherType = z.string().trim().min(1).max(120)
+      .refine(value => !/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(value), "Voucher types cannot contain XML control characters");
+    const voucherMappingSchema = z.object({
+      voucherType: safeVoucherType,
+      expenseLedger: safeTallyName,
+      confirmed: z.boolean(),
+    }).strict();
+    const bodySchema = z.object({
+      voucherMappings: z.object({
+        material: voucherMappingSchema,
+        equipment: voucherMappingSchema,
+        transport: voucherMappingSchema,
+        labour: voucherMappingSchema,
+        all: z.object({ voucherType: safeVoucherType, confirmed: z.boolean() }).strict(),
+      }).strict(),
+      componentLedgerMappings: z.object({
+        gst: z.object({ ledgerName: safeTallyName, confirmed: z.boolean() }).strict(),
+        tds: z.object({ ledgerName: safeTallyName, confirmed: z.boolean() }).strict(),
+        advanceAdjustment: z.object({ ledgerName: safeTallyName, confirmed: z.boolean() }).strict(),
+        dieselRecovery: z.object({ ledgerName: safeTallyName, confirmed: z.boolean() }).strict(),
+        breakdownDeduction: z.object({ ledgerName: safeTallyName, confirmed: z.boolean() }).strict(),
+        operatorUnavailable: z.object({ ledgerName: safeTallyName, confirmed: z.boolean() }).strict(),
+        otherDebit: z.object({ ledgerName: safeTallyName, confirmed: z.boolean() }).strict(),
+        otherCredit: z.object({ ledgerName: safeTallyName, confirmed: z.boolean() }).strict(),
+      }).strict(),
+    }).strict();
+    try {
+      const body = bodySchema.parse(req.body);
+      const [setting] = await db.select({ value: appSettings.value })
+        .from(appSettings)
+        .where(eq(appSettings.key, "tally_export_config"))
+        .limit(1);
+      const current = parseTallyExportConfig(setting?.value);
+      const updated = {
+        ...current,
+        voucherMappings: body.voucherMappings,
+        componentLedgerMappings: body.componentLedgerMappings,
+      };
+      const serialized = JSON.stringify(updated);
+      await db.insert(appSettings)
+        .values({ key: "tally_export_config", value: serialized })
+        .onConflictDoUpdate({ target: appSettings.key, set: { value: serialized } });
+      res.json({ config: updated });
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid Tally posting mappings.", issues: error.issues });
+      console.error("Tally posting mapping save failed:", error);
+      res.status(503).json({ message: "Tally posting mappings could not be saved." });
+    }
+  });
+
+  app.post("/api/vendor-bills/tally-export-preview", async (req, res) => {
+    if (!assertAdmin(req, res)) return;
+    res.setHeader("Cache-Control", "private, no-store");
+    try {
+      const { billIds } = tallyBillIdsSchema.parse(req.body);
+      const result = await evaluateTallyBillIds(req, billIds);
+      res.json({
+        vouchers: result.vouchers,
+        blocked: result.blocked,
+        fileOnly: true,
+        companyName: result.state.config.companyName,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: "Select one or more valid bills.", issues: error.issues });
+      console.error("Tally XML preview failed:", error);
+      res.status(503).json({ message: "Tally XML preview is unavailable." });
+    }
+  });
+
+  app.post("/api/vendor-bills/tally-export", async (req, res) => {
+    if (!assertAdmin(req, res)) return;
+    res.setHeader("Cache-Control", "private, no-store");
+    const exportBodySchema = tallyBillIdsSchema.extend({
+      confirmedNotAlreadyInTallyBillIds: z.array(z.number().int().positive()).min(1).max(100)
+        .refine(ids => new Set(ids).size === ids.length, "Duplicate confirmations are not allowed"),
+    }).strict();
+    try {
+      const body = exportBodySchema.parse(req.body);
+      const selected = new Set(body.billIds);
+      const confirmed = new Set(body.confirmedNotAlreadyInTallyBillIds);
+      if (selected.size !== confirmed.size || Array.from(selected).some(id => !confirmed.has(id))) {
+        return res.status(400).json({ message: "Confirm that every selected bill is not already in Tally before downloading." });
+      }
+      const result = await evaluateTallyBillIds(req, body.billIds);
+      if (result.blocked.length || result.vouchers.length !== body.billIds.length) {
+        return res.status(409).json({
+          message: "One or more selected bills are no longer exportable. Review the blockers before retrying.",
+          blocked: result.blocked,
+        });
+      }
+      const xml = buildTallyImportXml(result.state.config.companyName, result.vouchers);
+      await db.transaction(async tx => {
+        for (const voucher of result.vouchers) {
+          await storage.logAudit({
+            module: "tally_export",
+            transactionId: voucher.billId,
+            action: "file_export",
+            userId: req.authUser?.id ?? null,
+            userName: currentUserName(req),
+            userRole: req.authUser?.isOwner ? "owner" : "admin",
+            newValues: {
+              billNo: voucher.billNo,
+              companyName: result.state.config.companyName,
+              voucherType: voucher.voucherType,
+              netPayable: voucher.netPayable,
+              confirmedNotAlreadyInTally: true,
+              fileOnly: true,
+            },
+          }, tx);
+        }
+      });
+      const filenameDate = new Date().toISOString().slice(0, 10);
+      res.setHeader("Content-Type", "application/xml; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="HLC-Tally-vouchers-${filenameDate}.xml"`);
+      res.status(200).send(xml);
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: "Select and confirm one or more valid bills.", issues: error.issues });
+      console.error("Tally XML export failed:", error);
+      res.status(503).json({ message: "The Tally XML file could not be generated." });
     }
   });
 

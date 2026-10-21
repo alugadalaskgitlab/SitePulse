@@ -1,8 +1,12 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildTallyExportReadiness } from "@shared/tallyExportReadiness";
+import {
+  buildTallyExportReadiness,
+  defaultTallyVoucherMappings,
+  emptyTallyComponentLedgerMappings,
+} from "@shared/tallyExportReadiness";
 import VendorTallyReadiness from "./VendorTallyReadiness";
 
 const mockReport = buildTallyExportReadiness({
@@ -11,6 +15,8 @@ const mockReport = buildTallyExportReadiness({
     cutoverDate: "2026-01-31",
     projectCategory: "Projects",
     resourceCategory: "Resources",
+    voucherMappings: defaultTallyVoucherMappings,
+    componentLedgerMappings: emptyTallyComponentLedgerMappings,
   },
   vendors: [{ id: 4, name: "Example Vendor", tallyLedgerName: null }],
   sites: [{ id: 8, name: "North Site", tallyCostCentreName: null }],
@@ -22,6 +28,33 @@ const mockReport = buildTallyExportReadiness({
     { id: 13, billNo: "NO-PERIOD-13", billDate: "2025-12-30", periodFrom: null, periodTo: null, status: "approved", vendorId: 4, siteId: 8 },
   ],
 });
+const readyMockReport = {
+  ...buildTallyExportReadiness({
+    config: {
+      companyName: "High Lane Constructions Pvt Ltd - SK 2025-26",
+      cutoverDate: "2026-01-31",
+      projectCategory: "Projects",
+      resourceCategory: "Resources",
+      voucherMappings: defaultTallyVoucherMappings,
+      componentLedgerMappings: emptyTallyComponentLedgerMappings,
+    },
+    vendors: [{ id: 4, name: "Example Vendor", tallyLedgerName: "VENDOR-TALLY" }],
+    sites: [{ id: 8, name: "North Site", tallyCostCentreName: "NORTH-CC" }],
+    hiredMachines: [],
+    bills: [{
+      id: 20,
+      billNo: "POST-20",
+      billDate: "2026-02-05",
+      periodFrom: "2026-02-01",
+      periodTo: "2026-02-04",
+      status: "approved",
+      vendorId: 4,
+      siteId: 8,
+    }],
+  }),
+  canConfirmMappings: false,
+  canExportXml: true,
+};
 
 vi.mock("@/components/HubShell", () => ({
   HubShell: ({ children }: { children: any }) => <div>{children}</div>,
@@ -72,5 +105,47 @@ describe("Vendor Tally Readiness page", () => {
     expect(screen.getByText(/These are review items, not bill errors/)).toBeTruthy();
     expect(screen.getByText(/The bill date is not used as a fallback/)).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("requires a per-bill not-already-in-Tally confirmation before enabling XML download", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => ({
+      ok: true,
+      json: async () => String(url).includes("tally-export-preview")
+        ? {
+          vouchers: [{
+            billId: 20,
+            billNo: "POST-20",
+            billDate: "2026-02-05",
+            vendorName: "Example Vendor",
+            voucherType: "Purchase",
+            netPayable: 100,
+            debits: 100,
+            credits: 100,
+            entries: [],
+          }],
+          blocked: [],
+          fileOnly: true,
+          companyName: "High Lane Constructions Pvt Ltd - SK 2025-26",
+        }
+        : readyMockReport,
+    })));
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VendorTallyReadiness />
+      </QueryClientProvider>,
+    );
+
+    const billSelector = await screen.findByRole("checkbox", { name: /POST-20/ });
+    fireEvent.click(billSelector);
+    fireEvent.click(screen.getByRole("button", { name: "Preview selected bills" }));
+
+    const confirmation = await screen.findByRole("checkbox", {
+      name: /I verified bill POST-20 is not already in Tally/,
+    });
+    const downloadButton = screen.getByRole("button", { name: "Download confirmed XML" });
+    expect((downloadButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(confirmation);
+    expect((downloadButton as HTMLButtonElement).disabled).toBe(false);
   });
 });
