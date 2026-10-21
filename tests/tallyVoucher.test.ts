@@ -5,6 +5,15 @@ import {
   type TallyExportConfig,
 } from "@shared/tallyExportReadiness";
 import { buildTallyImportXml, buildTallyVoucherPreview } from "@shared/tallyVoucher";
+import {
+  buildTallyVerificationSamples,
+  gangaramPartyLedger,
+  tallyVerificationCompany,
+  tallyVerificationConfig,
+  tallyVerificationEquipment,
+  tallyVerificationSite,
+  tallyVerificationVendor,
+} from "./fixtures/tallyVerificationFixtures";
 
 const config: TallyExportConfig = {
   companyName: "High Lane Constructions Pvt Ltd - SK 2025-26",
@@ -192,6 +201,175 @@ describe("HLC Tally voucher preview and XML", () => {
 
     expect(result.preview).toBeNull();
     expect(result.reasons).toContain('Tally voucher type "Purchase" has not been confirmed against HLC Tally.');
+    expect(result.reasons).toContain('material expense ledger "Purchase of Material" has not been confirmed against HLC Tally.');
     expect(result.reasons).toContain('Adjustment "Unmapped adjustment" has no confirmed accounting treatment.');
+  });
+
+  it("builds three isolated trial vouchers with one Gangaram party ledger and balanced postings", () => {
+    const samples = buildTallyVerificationSamples();
+    expect(samples.map(sample => sample.bill.billNo)).toEqual([
+      "HLC/VB/2026/0001",
+      "HLC/VB/2026/0018",
+      "HLC/VB/2026/TEST-EQ-01",
+    ]);
+    expect(samples.map(sample => sample.preview.voucherType)).toEqual(["Purchase", "Journal", "Journal"]);
+
+    for (const sample of samples) {
+      expect(sample.preview.debits).toBe(sample.preview.credits);
+      expect(sample.preview.entries.filter(entry => entry.isPartyLedger)).toEqual([
+        expect.objectContaining({
+          ledgerName: gangaramPartyLedger,
+          side: "credit",
+          amount: sample.preview.netPayable,
+        }),
+      ]);
+      expect(sample.xml).toContain(`<SVCURRENTCOMPANY>${tallyVerificationCompany}</SVCURRENTCOMPANY>`);
+      expect(sample.xml).toContain(`<REFERENCE>${sample.bill.billNo}</REFERENCE>`);
+      expect(sample.xml).toContain(`<LEDGERNAME>${gangaramPartyLedger}</LEDGERNAME>`);
+      const allocationsByCategory = new Map<string, number>();
+      for (const entry of sample.preview.entries) {
+        expect(entry.isPartyLedger || entry.ledgerName.startsWith("TEST ONLY -")).toBe(true);
+        for (const allocation of entry.categoryAllocations) {
+          allocationsByCategory.set(
+            allocation.category,
+            (allocationsByCategory.get(allocation.category) ?? 0) + allocation.amount,
+          );
+        }
+      }
+      expect(allocationsByCategory.get("Projects")).toBe(Number(sample.bill.totalAmount));
+      expect(allocationsByCategory.get("Resources") ?? 0).toBe(
+        sample.bill.billType === "EQUIPMENT" ? Number(sample.bill.totalAmount) : 0,
+      );
+    }
+
+    const [material, transport, equipment] = samples;
+    expect(material.preview.entries.map(entry => entry.ledgerName)).toEqual(expect.arrayContaining([
+      "TEST ONLY - Purchase of Material",
+      "TEST ONLY - Input GST",
+      "TEST ONLY - TDS Payable",
+      gangaramPartyLedger,
+    ]));
+    expect(material.preview.entries).toContainEqual(expect.objectContaining({
+      ledgerName: "TEST ONLY - Input GST",
+      side: "debit",
+      amount: 50,
+    }));
+    expect(material.preview.entries).toContainEqual(expect.objectContaining({
+      ledgerName: "TEST ONLY - TDS Payable",
+      side: "credit",
+      amount: 10,
+    }));
+    expect(material.xml).toContain("<VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME>");
+
+    expect(transport.preview.entries).toContainEqual(expect.objectContaining({
+      ledgerName: "TEST ONLY - Advance Recovery",
+      side: "credit",
+      amount: 500,
+    }));
+    expect(transport.xml).toContain("<VOUCHERTYPENAME>Journal</VOUCHERTYPENAME>");
+    expect(transport.xml).toContain("<LEDGERNAME>TEST ONLY - Advance Recovery</LEDGERNAME>");
+    expect(transport.xml).toContain("<AMOUNT>500.00</AMOUNT>");
+
+    expect(equipment.preview.entries).toContainEqual(expect.objectContaining({
+      ledgerName: "TEST ONLY - Machinery Hire Charges",
+      categoryAllocations: [
+        { category: "Projects", costCentre: "TEST ONLY - PROJECTS - NORTH SITE", amount: 3000 },
+        { category: "Resources", costCentre: "TEST ONLY - RESOURCES - TIPPER 2086", amount: 3000 },
+      ],
+    }));
+    expect(equipment.xml).toContain("<CATEGORY>Projects</CATEGORY>");
+    expect(equipment.xml).toContain("<CATEGORY>Resources</CATEGORY>");
+  });
+
+  it("blocks missing party, expense, voucher-type, site, and machine mappings", () => {
+    const fixtureSamples = buildTallyVerificationSamples();
+    const material = fixtureSamples[0].bill;
+    const equipmentBill = fixtureSamples[2].bill;
+    const cases = [
+      {
+        bill: material,
+        context: {
+          config: tallyVerificationConfig,
+          vendor: { ...tallyVerificationVendor, tallyLedgerName: null },
+          sites: [tallyVerificationSite],
+          equipment: [],
+        },
+        reason: "Vendor has no mapped Tally ledger.",
+      },
+      {
+        bill: material,
+        context: {
+          config: {
+            ...tallyVerificationConfig,
+            voucherMappings: {
+              ...tallyVerificationConfig.voucherMappings,
+              material: { ...tallyVerificationConfig.voucherMappings.material, expenseLedger: null },
+            },
+          },
+          vendor: tallyVerificationVendor,
+          sites: [tallyVerificationSite],
+          equipment: [],
+        },
+        reason: "material expense has no mapped Tally ledger.",
+      },
+      {
+        bill: fixtureSamples[1].bill,
+        context: {
+          config: {
+            ...tallyVerificationConfig,
+            componentLedgerMappings: {
+              ...tallyVerificationConfig.componentLedgerMappings,
+              advanceAdjustment: { ledgerName: null, confirmed: false },
+            },
+          },
+          vendor: tallyVerificationVendor,
+          sites: [tallyVerificationSite],
+          equipment: [],
+        },
+        reason: "advanceAdjustment has no mapped Tally ledger.",
+      },
+      {
+        bill: material,
+        context: {
+          config: {
+            ...tallyVerificationConfig,
+            voucherMappings: {
+              ...tallyVerificationConfig.voucherMappings,
+              material: { ...tallyVerificationConfig.voucherMappings.material, voucherType: "", confirmed: true },
+            },
+          },
+          vendor: tallyVerificationVendor,
+          sites: [tallyVerificationSite],
+          equipment: [],
+        },
+        reason: "Tally voucher type is missing.",
+      },
+      {
+        bill: material,
+        context: {
+          config: tallyVerificationConfig,
+          vendor: tallyVerificationVendor,
+          sites: [{ ...tallyVerificationSite, tallyCostCentreName: null }],
+          equipment: [],
+        },
+        reason: `Site "${tallyVerificationSite.name}" has no Name in Tally.`,
+      },
+      {
+        bill: equipmentBill,
+        context: {
+          config: tallyVerificationConfig,
+          vendor: tallyVerificationVendor,
+          sites: [tallyVerificationSite],
+          equipment: [{ ...tallyVerificationEquipment, tallyCostCentreName: null }],
+        },
+        reason: `Machine "${tallyVerificationEquipment.name}" has no Name in Tally.`,
+      },
+    ];
+
+    for (const item of cases) {
+      const result = buildTallyVoucherPreview(item.bill, item.context);
+      expect(result.preview).toBeNull();
+      expect(result.reasons).toContain(item.reason);
+    }
   });
 });

@@ -55,6 +55,8 @@ describe("Tally export readiness", () => {
       blocked: 0,
     });
     expect(report.preCutoverBills.map(bill => bill.billNo)).toEqual(["PRE-10", "PRE-EXACT-20"]);
+    expect(report.readyBills.map(bill => bill.billNo)).not.toContain("PRE-10");
+    expect(report.readyBills.map(bill => bill.billNo)).not.toContain("PRE-EXACT-20");
     expect(report.preCutoverBills.find(bill => bill.billNo === "PRE-EXACT-20")?.periodTo).toBe("2026-01-31");
     expect(report.straddlingBills.map(bill => bill.billNo)).toEqual(["STRADDLE-12"]);
     expect(report.periodNotRecordedBills.map(bill => bill.billNo)).toEqual([
@@ -129,6 +131,27 @@ describe("Tally export readiness", () => {
       'Vendor "Example Vendor" has no Name in Tally.',
       'Site "North Site" has no Name in Tally.',
     ]);
+  });
+
+  it("excludes draft, verified, and voided bills from live candidates", () => {
+    const report = buildTallyExportReadiness({
+      config,
+      vendors: [],
+      sites: [],
+      hiredMachines: [],
+      bills: ["draft", "verified", "voided"].map((status, index) => ({
+        id: 70 + index,
+        billNo: `INELIGIBLE-${status.toUpperCase()}`,
+        billDate: "2026-02-10",
+        periodFrom: "2026-02-10",
+        periodTo: "2026-02-10",
+        status,
+      })),
+    });
+
+    expect(report.candidates.total).toBe(0);
+    expect(report.readyBills).toEqual([]);
+    expect(report.blockedBills).toEqual([]);
   });
 
   it("rejects missing or invalid Tally configuration rather than silently falling back", () => {

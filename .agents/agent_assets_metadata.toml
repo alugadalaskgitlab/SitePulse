@@ -6065,3 +6065,45 @@ mtime_ms = 1792249098825
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/05298c2f-a7f4-4797-870d-c4ba16e31451/96324e86-192b-4683-b439-cacdb061f21a"
 storage_version_token = "1792249102108053"
 content_type = "text/html"
+
+[[outputs]]
+id = "Tyu19vh3aRe8K93VLz-7O"
+uri = "file://generated-artifacts/tally-verification/TRIAL-HLC-VB-2026-0001-material.xml"
+type = "unspecified"
+title = "Trial Tally XML — Material bill 0001"
+description = "Isolated fixture; Purchase voucher, separate GST/TDS lines, test-only company and ledger names."
+logical_id = "032d62ee-9082-41ad-a4b6-7c84c7b56848"
+content_hash = "sha256:9aee2b8c66f2a2f5f649cc4d6783358edeb209f0412a752c09a7612a744d5541"
+size = 2619
+mtime_ms = 1792586194666
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/032d62ee-9082-41ad-a4b6-7c84c7b56848/85c4b9f5-0de6-4d70-ad33-4e38ce4cdbda"
+storage_version_token = "1792586399354674"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "uXS3D1IFZM1x8zLefrg-o"
+uri = "file://generated-artifacts/tally-verification/TRIAL-HLC-VB-2026-0018-transport-advance.xml"
+type = "unspecified"
+title = "Trial Tally XML — Transport bill 0018"
+description = "Isolated fixture; Journal voucher with a separate advance recovery line; test-only company and ledger names."
+logical_id = "d6ab78e1-1060-48fb-b9e0-de6c50d995ec"
+content_hash = "sha256:329aca0e8a183a1dbc372b8cfdf94868d22e23258faffb7ba2a8d86043d05241"
+size = 2357
+mtime_ms = 1792586194670
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/d6ab78e1-1060-48fb-b9e0-de6c50d995ec/1c9b499c-27f4-4e85-8035-be6d583f4f66"
+storage_version_token = "1792586400943899"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "Ta04LNim4DVPMAh7MJVvJ"
+uri = "file://generated-artifacts/tally-verification/TRIAL-HLC-VB-2026-TEST-EQ-01-equipment.xml"
+type = "unspecified"
+title = "Trial Tally XML — Equipment hire"
+description = "Isolated fixture; Journal voucher allocated to both Projects and Resources cost centres."
+logical_id = "8236c722-20b3-4c1a-a773-039c174ca839"
+content_hash = "sha256:4fb2cb2f3692b0359e3541ec9bbaa62886cb4f6b5e9327d3d86c900e9a9e5eb1"
+size = 2429
+mtime_ms = 1792586194670
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8236c722-20b3-4c1a-a773-039c174ca839/0e0ca8cd-6d4d-424a-85cd-b03ccb74a0ab"
+storage_version_token = "1792586402423499"
+content_type = "application/octet-stream"
