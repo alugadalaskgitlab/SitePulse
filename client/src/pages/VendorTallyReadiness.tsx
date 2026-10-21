@@ -54,8 +54,14 @@ function PostingMappingsCard({
   onSave: (config: TallyExportReadinessReport["config"]) => void;
   saving: boolean;
 }) {
-  const [draft, setDraft] = useState(config);
-  useEffect(() => setDraft(config), [config]);
+  const [draft, setDraft] = useState<TallyExportReadinessReport["config"]>(() => ({
+    ...config,
+    homeStateCode: config.homeStateCode ?? "36",
+  }));
+  useEffect(() => setDraft({
+    ...config,
+    homeStateCode: config.homeStateCode ?? "36",
+  }), [config]);
 
   const updateCategoryMapping = (
     category: TallyBillCategory,
@@ -89,7 +95,9 @@ function PostingMappingsCard({
     labour: "Labour",
   };
   const componentLabels: Record<TallyComponentKey, string> = {
-    gst: "GST",
+    gstCgst: "Input GST — CGST",
+    gstSgst: "Input GST — SGST",
+    gstIgst: "Input GST — IGST",
     tds: "TDS",
     advanceAdjustment: "Advance adjustment",
     dieselRecovery: "HSD / diesel recovery",
@@ -192,11 +200,38 @@ function PostingMappingsCard({
           </div>
         </div>
 
+        <div className="max-w-sm space-y-2 rounded-md border p-3">
+          <label className="block text-sm">
+            HLC home-state GST code
+            <input
+              aria-label="HLC home-state GST code"
+              inputMode="numeric"
+              maxLength={2}
+              className={textInputClass()}
+              value={draft.homeStateCode ?? ""}
+              disabled={!canConfirm}
+              onChange={event => setDraft(current => ({
+                ...current,
+                homeStateCode: event.target.value.trim() || null,
+              }))}
+            />
+          </label>
+          <p className="text-xs text-muted-foreground">
+            Suggested code: 36 (Telangana). Save to confirm the home state used for GSTIN comparison.
+            GST-bearing bills stay blocked until a valid code is saved.
+          </p>
+        </div>
+
         <div>
           <h3 className="mb-3 font-medium">Separate component ledgers</h3>
+          <p className="mb-3 text-sm text-muted-foreground">
+            GST is split once per bill by comparing the first two digits of the vendor GSTIN with the confirmed HLC home-state code.
+          </p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {([
-              "gst",
+              "gstCgst",
+              "gstSgst",
+              "gstIgst",
               "tds",
               "advanceAdjustment",
               "dieselRecovery",
@@ -327,6 +362,7 @@ export default function VendorTallyReadiness() {
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          homeStateCode: config.homeStateCode,
           voucherMappings: config.voucherMappings,
           componentLedgerMappings: config.componentLedgerMappings,
         }),

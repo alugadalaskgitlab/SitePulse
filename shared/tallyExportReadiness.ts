@@ -5,6 +5,7 @@ export type TallyExportConfig = {
   cutoverDate: string;
   projectCategory: string;
   resourceCategory: string;
+  homeStateCode: string | null;
   voucherMappings: TallyVoucherMappings;
   componentLedgerMappings: TallyComponentLedgerMappings;
 };
@@ -13,7 +14,9 @@ export const tallyBillCategories = ["material", "equipment", "transport", "labou
 export type TallyBillCategory = typeof tallyBillCategories[number];
 
 export const tallyComponentKeys = [
-  "gst",
+  "gstCgst",
+  "gstSgst",
+  "gstIgst",
   "tds",
   "advanceAdjustment",
   "dieselRecovery",
@@ -55,7 +58,9 @@ export const defaultTallyVoucherMappings: TallyVoucherMappings = {
 };
 
 export const emptyTallyComponentLedgerMappings: TallyComponentLedgerMappings = {
-  gst: { ledgerName: null, confirmed: false },
+  gstCgst: { ledgerName: "ITC CGST", confirmed: false },
+  gstSgst: { ledgerName: "ITC SGST", confirmed: false },
+  gstIgst: { ledgerName: "ITC IGST", confirmed: false },
   tds: { ledgerName: null, confirmed: false },
   advanceAdjustment: { ledgerName: null, confirmed: false },
   dieselRecovery: { ledgerName: null, confirmed: false },
@@ -138,6 +143,7 @@ export function parseTallyExportConfig(value: string | null | undefined): TallyE
     cutoverDate,
     projectCategory: config.projectCategory as string,
     resourceCategory: config.resourceCategory as string,
+    homeStateCode: typeof config.homeStateCode === "string" ? config.homeStateCode.trim() || null : null,
     voucherMappings: parseVoucherMappings(config.voucherMappings),
     componentLedgerMappings: parseComponentLedgerMappings(config.componentLedgerMappings),
   };
@@ -152,6 +158,7 @@ export type TallyMappingRecord = {
   name: string;
   tallyLedgerName?: string | null;
   tallyCostCentreName?: string | null;
+  gstNumber?: string | null;
   registrationNumber?: string | null;
   ownership?: string | null;
 };

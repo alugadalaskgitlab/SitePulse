@@ -17,15 +17,19 @@ export const tallyVerificationConfig: TallyExportConfig = {
   cutoverDate: "2026-01-31",
   projectCategory: "Projects",
   resourceCategory: "Resources",
+  homeStateCode: "36",
   voucherMappings: {
     ...defaultTallyVoucherMappings,
     material: { voucherType: "Purchase", expenseLedger: "TEST ONLY - Purchase of Material", confirmed: true },
     transport: { voucherType: "Journal", expenseLedger: "TEST ONLY - Transport Charges", confirmed: true },
     equipment: { voucherType: "Journal", expenseLedger: "TEST ONLY - Machinery Hire Charges", confirmed: true },
+    all: { voucherType: "Journal", confirmed: true },
   },
   componentLedgerMappings: {
     ...emptyTallyComponentLedgerMappings,
-    gst: { ledgerName: "TEST ONLY - Input GST", confirmed: true },
+    gstCgst: { ledgerName: "ITC CGST", confirmed: true },
+    gstSgst: { ledgerName: "ITC SGST", confirmed: true },
+    gstIgst: { ledgerName: "ITC IGST", confirmed: true },
     tds: { ledgerName: "TEST ONLY - TDS Payable", confirmed: true },
     advanceAdjustment: { ledgerName: "TEST ONLY - Advance Recovery", confirmed: true },
   },
@@ -35,6 +39,14 @@ export const tallyVerificationVendor = {
   id: 4,
   name: "NARASIMHULU",
   tallyLedgerName: gangaramPartyLedger,
+  gstNumber: "36ABCDE1234F1Z5",
+};
+
+export const tallyVerificationInterstateVendor = {
+  ...tallyVerificationVendor,
+  id: 5,
+  name: "TEST ONLY - INTERSTATE VENDOR",
+  gstNumber: "29ABCDE1234F1Z5",
 };
 
 export const tallyVerificationSite = {
@@ -79,19 +91,40 @@ export const tallyVerificationBills = [
     periodTo: "2026-02-18",
     billType: "TRANSPORT",
     status: "approved",
-    vendorName: tallyVerificationVendor.name,
-    vendorId: tallyVerificationVendor.id,
+    vendorName: tallyVerificationInterstateVendor.name,
+    vendorId: tallyVerificationInterstateVendor.id,
     siteId: tallyVerificationSite.id,
     totalAmount: 2000,
+    gstRateTransport: 18,
     adjustmentLabel: "Advance adjustment",
     adjustmentAmount: -500,
-    netPayableAmount: 1500,
+    netPayableAmount: 1860,
     items: [{
       category: "transport",
       description: "TEST ONLY - tipper transport",
       amount: 2000,
       siteName: tallyVerificationSite.name,
     }],
+  },
+  {
+    id: 80033,
+    billNo: "HLC/VB/2026/TEST-ALL-01",
+    billDate: "2026-02-19",
+    periodFrom: "2026-02-19",
+    periodTo: "2026-02-19",
+    billType: "ALL",
+    status: "approved",
+    vendorName: tallyVerificationVendor.name,
+    vendorId: tallyVerificationVendor.id,
+    siteId: tallyVerificationSite.id,
+    totalAmount: 1500,
+    gstRateMaterial: 5,
+    gstRateTransport: 18,
+    netPayableAmount: 1640,
+    items: [
+      { category: "material", description: "TEST ONLY - combined aggregate", amount: 1000, siteName: tallyVerificationSite.name },
+      { category: "transport", description: "TEST ONLY - combined haulage", amount: 500, siteName: tallyVerificationSite.name },
+    ],
   },
   {
     id: 80055,
@@ -134,7 +167,9 @@ export function buildTallyVerificationSamples(): TallyVerificationSample[] {
   return tallyVerificationBills.map(bill => {
     const result = buildTallyVoucherPreview(bill, {
       config: tallyVerificationConfig,
-      vendor: tallyVerificationVendor,
+      vendor: bill.vendorId === tallyVerificationInterstateVendor.id
+        ? tallyVerificationInterstateVendor
+        : tallyVerificationVendor,
       sites: [tallyVerificationSite],
       equipment: [tallyVerificationEquipment],
     });

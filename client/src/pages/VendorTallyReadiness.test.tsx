@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -15,6 +15,7 @@ const mockReport = buildTallyExportReadiness({
     cutoverDate: "2026-01-31",
     projectCategory: "Projects",
     resourceCategory: "Resources",
+    homeStateCode: null,
     voucherMappings: defaultTallyVoucherMappings,
     componentLedgerMappings: emptyTallyComponentLedgerMappings,
   },
@@ -35,6 +36,7 @@ const readyMockReport = {
       cutoverDate: "2026-01-31",
       projectCategory: "Projects",
       resourceCategory: "Resources",
+      homeStateCode: "36",
       voucherMappings: defaultTallyVoucherMappings,
       componentLedgerMappings: emptyTallyComponentLedgerMappings,
     },
@@ -89,6 +91,8 @@ describe("Vendor Tally Readiness page", () => {
     );
 
     const readiness = await screen.findByRole("region", { name: "Bill readiness" });
+    expect((screen.getByRole("textbox", { name: "HLC home-state GST code" }) as HTMLInputElement).value).toBe("36");
+    expect((screen.getByRole("textbox", { name: "Input GST — CGST ledger" }) as HTMLInputElement).value).toBe("ITC CGST");
     const readyLabel = within(readiness).getByText("Ready");
     expect(readyLabel.parentElement?.querySelector(".text-2xl")?.textContent).toBe("0");
     expect(within(readiness).getByText("Post-cutover").parentElement?.querySelector(".text-2xl")?.textContent).toBe("1");
@@ -147,5 +151,29 @@ describe("Vendor Tally Readiness page", () => {
     expect((downloadButton as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(confirmation);
     expect((downloadButton as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("saves the suggested home-state code when the Owner confirms mappings", async () => {
+    const ownerReport = { ...mockReport, canConfirmMappings: true };
+    const fetchMock = vi.fn().mockImplementation(async (url: string) =>
+      url.includes("tally-posting-mappings")
+        ? { ok: true }
+        : { ok: true, json: async () => ownerReport },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VendorTallyReadiness />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByRole("button", { name: "Save confirmed mappings" });
+    fireEvent.click(screen.getByRole("button", { name: "Save confirmed mappings" }));
+    await waitFor(() => {
+      const saveCall = fetchMock.mock.calls.find(([url]) => String(url).includes("tally-posting-mappings"));
+      expect(saveCall).toBeDefined();
+      expect(JSON.parse(String(saveCall?.[1]?.body)).homeStateCode).toBe("36");
+    });
   });
 });

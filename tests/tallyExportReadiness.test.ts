@@ -13,6 +13,7 @@ const config: TallyExportConfig = {
   cutoverDate: "2026-01-31",
   projectCategory: "Projects",
   resourceCategory: "Resources",
+  homeStateCode: null,
   voucherMappings: defaultTallyVoucherMappings,
   componentLedgerMappings: emptyTallyComponentLedgerMappings,
 };
@@ -157,5 +158,23 @@ describe("Tally export readiness", () => {
   it("rejects missing or invalid Tally configuration rather than silently falling back", () => {
     expect(() => parseTallyExportConfig(null)).toThrow("configuration is missing");
     expect(() => parseTallyExportConfig(JSON.stringify({ ...config, cutoverDate: "2026-02-31" }))).toThrow("valid YYYY-MM-DD");
+  });
+
+  it("leaves the home state unconfigured until saved and pre-fills separate ITC ledgers unconfirmed", () => {
+    const parsed = parseTallyExportConfig(JSON.stringify({
+      companyName: config.companyName,
+      cutoverDate: config.cutoverDate,
+      projectCategory: config.projectCategory,
+      resourceCategory: config.resourceCategory,
+      componentLedgerMappings: {
+        gst: { ledgerName: "Legacy Input GST", confirmed: true },
+      },
+    }));
+
+    expect(parsed.homeStateCode).toBeNull();
+    expect(parsed.componentLedgerMappings.gstCgst).toEqual({ ledgerName: "ITC CGST", confirmed: false });
+    expect(parsed.componentLedgerMappings.gstSgst).toEqual({ ledgerName: "ITC SGST", confirmed: false });
+    expect(parsed.componentLedgerMappings.gstIgst).toEqual({ ledgerName: "ITC IGST", confirmed: false });
+    expect(parsed.componentLedgerMappings.tds).toEqual({ ledgerName: null, confirmed: false });
   });
 });

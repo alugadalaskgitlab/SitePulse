@@ -6107,3 +6107,59 @@ mtime_ms = 1792586194670
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/8236c722-20b3-4c1a-a773-039c174ca839/0e0ca8cd-6d4d-424a-85cd-b03ccb74a0ab"
 storage_version_token = "1792586402423499"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "SQ8iM0f9TnAV2RNYLgCQy"
+uri = "file://generated-artifacts/tally-verification-gst-split/TRIAL-0001-intra-state-cgst-sgst.xml"
+type = "unspecified"
+title = "Trial Tally XML — Intra-state GST, bill 0001"
+description = "Purchase voucher with 25.00 each to ITC CGST and ITC SGST, plus TDS. TEST ONLY company."
+logical_id = "3f209df9-67e3-4bf5-9a8a-df16b075bd71"
+content_hash = "sha256:bf6e7180ccd755413fa8002c7f2dd9ccd1c1d97f12c4d340b27c16dde9843f9e"
+size = 2856
+mtime_ms = 1792595019594
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/3f209df9-67e3-4bf5-9a8a-df16b075bd71/a29b6c05-3224-4390-abd9-605aa5a45640"
+storage_version_token = "1792595056617230"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "scoMQfe5an_wr3-oVuDgh"
+uri = "file://generated-artifacts/tally-verification-gst-split/TRIAL-0018-inter-state-igst-advance.xml"
+type = "unspecified"
+title = "Trial Tally XML — Inter-state GST, bill 0018"
+description = "Journal voucher with 360.00 to ITC IGST and a separate 500.00 advance recovery. TEST ONLY company."
+logical_id = "f14d5829-38f0-4328-a814-a1af217f8cfa"
+content_hash = "sha256:572d00a6ddff2efac4afe76bebd6b98cb44ba0bd05fc176afca3f85580912a94"
+size = 2608
+mtime_ms = 1792595019598
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/f14d5829-38f0-4328-a814-a1af217f8cfa/c678a7c7-2dcc-4637-9404-ed6392760da3"
+storage_version_token = "1792595058119799"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "o9wHSDmDq8Y0VjGOAf7mx"
+uri = "file://generated-artifacts/tally-verification-gst-split/TRIAL-TEST-ALL-01-combined-gst.xml"
+type = "unspecified"
+title = "Trial Tally XML — Combined bill GST split"
+description = "Journal voucher with material and transport at different rates; total GST split once as 70.00 CGST and 70.00 SGST. TEST ONLY company."
+logical_id = "98c8cfac-babb-40db-8cf2-c8c165a0b2a1"
+content_hash = "sha256:3d5185134a2464934749c1993c5f24e4eaeb01a88bb0dbf21a9d87f73788bd9b"
+size = 3198
+mtime_ms = 1792595019598
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/98c8cfac-babb-40db-8cf2-c8c165a0b2a1/bc600182-84d8-431e-9072-550c83ce445d"
+storage_version_token = "1792595059469297"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "86g14EwDd9Wlj2oeBKbM6"
+uri = "file://generated-artifacts/tally-verification-gst-split/TRIAL-TEST-EQ-01-no-gst-equipment.xml"
+type = "unspecified"
+title = "Trial Tally XML — No-GST equipment hire"
+description = "Two-ledger voucher; expense line allocated to both Projects and Resources. TEST ONLY company."
+logical_id = "0af47e41-6f17-43a6-89e4-bbb7e50abcca"
+content_hash = "sha256:4fb2cb2f3692b0359e3541ec9bbaa62886cb4f6b5e9327d3d86c900e9a9e5eb1"
+size = 2429
+mtime_ms = 1792595019598
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/0af47e41-6f17-43a6-89e4-bbb7e50abcca/62528443-ec95-43ae-aa44-b9e2da289c40"
+storage_version_token = "1792595060834607"
+content_type = "application/octet-stream"

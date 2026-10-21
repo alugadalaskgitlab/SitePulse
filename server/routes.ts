@@ -11817,6 +11817,7 @@ export async function registerRoutes(
         id: billingIdentityVendors.id,
         name: billingIdentityVendors.name,
         tallyLedgerName: billingIdentityVendors.tallyLedgerName,
+        gstNumber: billingIdentityVendors.gstNumber,
       }).from(billingIdentityVendors).orderBy(asc(billingIdentityVendors.name)),
       storage.getVendorBills({ includeVoided: true }),
     ]);
@@ -11956,6 +11957,7 @@ export async function registerRoutes(
       confirmed: z.boolean(),
     }).strict();
     const bodySchema = z.object({
+      homeStateCode: z.string().trim().regex(/^\d{2}$/, "HLC home state code must be a two-digit state code.").nullable().optional(),
       voucherMappings: z.object({
         material: voucherMappingSchema,
         equipment: voucherMappingSchema,
@@ -11964,7 +11966,9 @@ export async function registerRoutes(
         all: z.object({ voucherType: safeVoucherType, confirmed: z.boolean() }).strict(),
       }).strict(),
       componentLedgerMappings: z.object({
-        gst: z.object({ ledgerName: safeTallyName, confirmed: z.boolean() }).strict(),
+        gstCgst: z.object({ ledgerName: safeTallyName, confirmed: z.boolean() }).strict(),
+        gstSgst: z.object({ ledgerName: safeTallyName, confirmed: z.boolean() }).strict(),
+        gstIgst: z.object({ ledgerName: safeTallyName, confirmed: z.boolean() }).strict(),
         tds: z.object({ ledgerName: safeTallyName, confirmed: z.boolean() }).strict(),
         advanceAdjustment: z.object({ ledgerName: safeTallyName, confirmed: z.boolean() }).strict(),
         dieselRecovery: z.object({ ledgerName: safeTallyName, confirmed: z.boolean() }).strict(),
@@ -11983,6 +11987,7 @@ export async function registerRoutes(
       const current = parseTallyExportConfig(setting?.value);
       const updated = {
         ...current,
+        homeStateCode: body.homeStateCode === undefined ? current.homeStateCode : body.homeStateCode,
         voucherMappings: body.voucherMappings,
         componentLedgerMappings: body.componentLedgerMappings,
       };

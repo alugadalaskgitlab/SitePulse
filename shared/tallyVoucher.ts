@@ -82,6 +82,12 @@ function categoryForAdjustment(label: string): TallyComponentKey | null {
   return null;
 }
 
+function gstinStateCode(value: unknown): string | null {
+  const gstin = String(value ?? "").trim().toUpperCase();
+  const match = /^(\d{2})[A-Z]{5}\d{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/.exec(gstin);
+  return match?.[1] ?? null;
+}
+
 function mappingReason(kind: string, ledgerName: string | null, confirmed: boolean): string | null {
   if (!ledgerName?.trim()) return `${kind} has no mapped Tally ledger.`;
   if (!confirmed) return `${kind} ledger "${ledgerName}" has not been confirmed against HLC Tally.`;
@@ -194,8 +200,47 @@ export function buildTallyVoucherPreview(bill: any, context: TallyVoucherContext
     entries.set(key, existing);
   };
 
+  const addGstEntries = (amount: number) => {
+    if (amount < EPSILON) return;
+    const homeStateCode = config.homeStateCode?.trim() ?? "";
+    if (!/^\d{2}$/.test(homeStateCode)) {
+      reasons.push("HLC home state code is missing or invalid.");
+      return;
+    }
+    const rawGstin = vendor?.gstNumber?.trim() ?? "";
+    const vendorStateCode = gstinStateCode(rawGstin);
+    if (!vendorStateCode) {
+      const vendorName = vendor?.name || bill.vendorName || "Unknown";
+      reasons.push(rawGstin
+        ? `Vendor "${vendorName}" GSTIN is malformed; GST state cannot be determined.`
+        : `Vendor "${vendorName}" GSTIN is missing; GST state cannot be determined.`);
+      return;
+    }
+
+    const cgstAmount = roundMoney(amount / 2);
+    const sgstAmount = roundMoney(amount - cgstAmount);
+    const split = vendorStateCode === homeStateCode
+      ? [
+          { key: "gstCgst" as const, label: "ITC CGST", amount: cgstAmount },
+          { key: "gstSgst" as const, label: "ITC SGST", amount: sgstAmount },
+        ]
+      : [{ key: "gstIgst" as const, label: "ITC IGST", amount }];
+    for (const part of split) {
+      const mapping = config.componentLedgerMappings[part.key];
+      const error = mappingReason(part.label, mapping.ledgerName, mapping.confirmed);
+      if (error) {
+        reasons.push(error);
+        continue;
+      }
+      addEntry(mapping.ledgerName, "debit", part.amount);
+    }
+  };
+
   const totals = getBillFinancialTotals(bill);
   const rows = buildSavedBillPresentationRows(bill, totals);
+  // Aggregate category GST rows before classifying the vendor state, so the
+  // CGST/SGST halves are calculated from one bill-wide total.
+  const totalGst = roundMoney(Math.abs(Number(totals.totalGst) || 0));
   const grossRow = rows.find(row => row.kind === "gross");
   const netRow = [...rows].reverse().find(row => row.kind === "net");
   const grossExpected = finiteAmount(grossRow?.amount, "Gross amount", reasons);
@@ -298,14 +343,11 @@ export function buildTallyVoucherPreview(bill: any, context: TallyVoucherContext
   }
 
   for (const row of rows) {
-    if (row.kind === "gross" || row.kind === "net" || Math.abs(row.amount) < EPSILON) continue;
+    if (row.kind === "gross" || row.kind === "net" || row.kind === "gst" || Math.abs(row.amount) < EPSILON) continue;
     let component: TallyComponentKey | null = null;
     let side: "debit" | "credit";
     let amount = Math.abs(roundMoney(row.amount));
-    if (row.kind === "gst") {
-      component = "gst";
-      side = "debit";
-    } else if (row.kind === "tds") {
+    if (row.kind === "tds") {
       component = "tds";
       side = "credit";
     } else {
@@ -319,6 +361,7 @@ export function buildTallyVoucherPreview(bill: any, context: TallyVoucherContext
     if (componentError) reasons.push(componentError);
     addEntry(componentMapping.ledgerName, side, amount);
   }
+  addGstEntries(totalGst);
 
   if (netPayable != null && netPayable > 0 && vendorLedger) {
     addEntry(vendorLedger, "credit", roundMoney(netPayable), true);
@@ -340,8 +383,8 @@ export function buildTallyVoucherPreview(bill: any, context: TallyVoucherContext
     reasons.push(`Voucher does not balance: debits ${debits.toFixed(2)} and credits ${credits.toFixed(2)}.`);
   }
   const savedRowsTotal = roundMoney(rows
-    .filter(row => row.kind !== "net")
-    .reduce((sum, row) => sum + Number(row.amount || 0), 0));
+    .filter(row => row.kind !== "net" && row.kind !== "gst")
+    .reduce((sum, row) => sum + Number(row.amount || 0), 0) + totalGst);
   if (netPayable != null && Math.abs(savedRowsTotal - roundMoney(netPayable)) >= EPSILON) {
     reasons.push(`Saved components ${savedRowsTotal.toFixed(2)} do not reconcile to net payable ${roundMoney(netPayable).toFixed(2)}.`);
   }

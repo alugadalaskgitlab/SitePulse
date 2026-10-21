@@ -12,6 +12,7 @@ import {
   tallyVerificationConfig,
   tallyVerificationEquipment,
   tallyVerificationSite,
+  tallyVerificationInterstateVendor,
   tallyVerificationVendor,
 } from "./fixtures/tallyVerificationFixtures";
 
@@ -20,6 +21,7 @@ const config: TallyExportConfig = {
   cutoverDate: "2026-01-31",
   projectCategory: "Projects",
   resourceCategory: "Resources",
+  homeStateCode: "36",
   voucherMappings: {
     ...defaultTallyVoucherMappings,
     material: { voucherType: "Purchase", expenseLedger: "Purchase of Material", confirmed: true },
@@ -27,12 +29,19 @@ const config: TallyExportConfig = {
   },
   componentLedgerMappings: {
     ...emptyTallyComponentLedgerMappings,
-    gst: { ledgerName: "Input GST", confirmed: true },
+    gstCgst: { ledgerName: "ITC CGST", confirmed: true },
+    gstSgst: { ledgerName: "ITC SGST", confirmed: true },
+    gstIgst: { ledgerName: "ITC IGST", confirmed: true },
     tds: { ledgerName: "TDS Payable", confirmed: true },
   },
 };
 
-const vendor = { id: 4, name: "Vendor & Sons", tallyLedgerName: "Vendor & Sons" };
+const vendor = {
+  id: 4,
+  name: "Vendor & Sons",
+  tallyLedgerName: "Vendor & Sons",
+  gstNumber: "36ABCDE1234F1Z5",
+};
 const sites = [{ id: 8, name: "North Site", tallyCostCentreName: "NORTH-CC" }];
 
 describe("HLC Tally voucher preview and XML", () => {
@@ -160,9 +169,14 @@ describe("HLC Tally voucher preview and XML", () => {
       credits: 165,
     });
     expect(result.preview?.entries).toContainEqual(expect.objectContaining({
-      ledgerName: "Input GST",
+      ledgerName: "ITC CGST",
       side: "debit",
-      amount: 15,
+      amount: 7.5,
+    }));
+    expect(result.preview?.entries).toContainEqual(expect.objectContaining({
+      ledgerName: "ITC SGST",
+      side: "debit",
+      amount: 7.5,
     }));
     expect(result.preview?.entries).toContainEqual(expect.objectContaining({
       ledgerName: "TDS Payable",
@@ -205,14 +219,15 @@ describe("HLC Tally voucher preview and XML", () => {
     expect(result.reasons).toContain('Adjustment "Unmapped adjustment" has no confirmed accounting treatment.');
   });
 
-  it("builds three isolated trial vouchers with one Gangaram party ledger and balanced postings", () => {
+  it("builds four isolated trial vouchers with state-based GST and balanced postings", () => {
     const samples = buildTallyVerificationSamples();
     expect(samples.map(sample => sample.bill.billNo)).toEqual([
       "HLC/VB/2026/0001",
       "HLC/VB/2026/0018",
+      "HLC/VB/2026/TEST-ALL-01",
       "HLC/VB/2026/TEST-EQ-01",
     ]);
-    expect(samples.map(sample => sample.preview.voucherType)).toEqual(["Purchase", "Journal", "Journal"]);
+    expect(samples.map(sample => sample.preview.voucherType)).toEqual(["Purchase", "Journal", "Journal", "Journal"]);
 
     for (const sample of samples) {
       expect(sample.preview.debits).toBe(sample.preview.credits);
@@ -228,7 +243,11 @@ describe("HLC Tally voucher preview and XML", () => {
       expect(sample.xml).toContain(`<LEDGERNAME>${gangaramPartyLedger}</LEDGERNAME>`);
       const allocationsByCategory = new Map<string, number>();
       for (const entry of sample.preview.entries) {
-        expect(entry.isPartyLedger || entry.ledgerName.startsWith("TEST ONLY -")).toBe(true);
+        expect(
+          entry.isPartyLedger ||
+          entry.ledgerName.startsWith("TEST ONLY -") ||
+          ["ITC CGST", "ITC SGST", "ITC IGST"].includes(entry.ledgerName),
+        ).toBe(true);
         for (const allocation of entry.categoryAllocations) {
           allocationsByCategory.set(
             allocation.category,
@@ -242,17 +261,23 @@ describe("HLC Tally voucher preview and XML", () => {
       );
     }
 
-    const [material, transport, equipment] = samples;
+    const [material, transport, combined, equipment] = samples;
     expect(material.preview.entries.map(entry => entry.ledgerName)).toEqual(expect.arrayContaining([
       "TEST ONLY - Purchase of Material",
-      "TEST ONLY - Input GST",
+      "ITC CGST",
+      "ITC SGST",
       "TEST ONLY - TDS Payable",
       gangaramPartyLedger,
     ]));
     expect(material.preview.entries).toContainEqual(expect.objectContaining({
-      ledgerName: "TEST ONLY - Input GST",
+      ledgerName: "ITC CGST",
       side: "debit",
-      amount: 50,
+      amount: 25,
+    }));
+    expect(material.preview.entries).toContainEqual(expect.objectContaining({
+      ledgerName: "ITC SGST",
+      side: "debit",
+      amount: 25,
     }));
     expect(material.preview.entries).toContainEqual(expect.objectContaining({
       ledgerName: "TEST ONLY - TDS Payable",
@@ -260,15 +285,43 @@ describe("HLC Tally voucher preview and XML", () => {
       amount: 10,
     }));
     expect(material.xml).toContain("<VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME>");
+    expect(material.preview.debits).toBe(1050);
+    expect(material.preview.credits).toBe(1050);
 
     expect(transport.preview.entries).toContainEqual(expect.objectContaining({
       ledgerName: "TEST ONLY - Advance Recovery",
       side: "credit",
       amount: 500,
     }));
+    expect(transport.preview.entries).toContainEqual(expect.objectContaining({
+      ledgerName: "ITC IGST",
+      side: "debit",
+      amount: 360,
+    }));
+    expect(transport.preview.entries.some(entry =>
+      entry.ledgerName === "ITC CGST" || entry.ledgerName === "ITC SGST",
+    )).toBe(false);
+    expect(transport.preview.debits).toBe(2360);
+    expect(transport.preview.credits).toBe(2360);
     expect(transport.xml).toContain("<VOUCHERTYPENAME>Journal</VOUCHERTYPENAME>");
     expect(transport.xml).toContain("<LEDGERNAME>TEST ONLY - Advance Recovery</LEDGERNAME>");
     expect(transport.xml).toContain("<AMOUNT>500.00</AMOUNT>");
+
+    expect(combined.preview.entries).toContainEqual(expect.objectContaining({
+      ledgerName: "ITC CGST",
+      side: "debit",
+      amount: 70,
+    }));
+    expect(combined.preview.entries).toContainEqual(expect.objectContaining({
+      ledgerName: "ITC SGST",
+      side: "debit",
+      amount: 70,
+    }));
+    expect(combined.preview.entries.filter(entry => ["ITC CGST", "ITC SGST", "ITC IGST"].includes(entry.ledgerName)))
+      .toHaveLength(2);
+    expect(combined.preview.debits).toBe(1640);
+    expect(combined.preview.credits).toBe(1640);
+    expect(combined.xml).toContain("<VOUCHERTYPENAME>Journal</VOUCHERTYPENAME>");
 
     expect(equipment.preview.entries).toContainEqual(expect.objectContaining({
       ledgerName: "TEST ONLY - Machinery Hire Charges",
@@ -279,12 +332,14 @@ describe("HLC Tally voucher preview and XML", () => {
     }));
     expect(equipment.xml).toContain("<CATEGORY>Projects</CATEGORY>");
     expect(equipment.xml).toContain("<CATEGORY>Resources</CATEGORY>");
+    expect(equipment.preview.entries).toHaveLength(2);
+    expect(equipment.preview.entries.some(entry => ["ITC CGST", "ITC SGST", "ITC IGST"].includes(entry.ledgerName))).toBe(false);
   });
 
   it("blocks missing party, expense, voucher-type, site, and machine mappings", () => {
     const fixtureSamples = buildTallyVerificationSamples();
     const material = fixtureSamples[0].bill;
-    const equipmentBill = fixtureSamples[2].bill;
+    const equipmentBill = fixtureSamples[3].bill;
     const cases = [
       {
         bill: material,
@@ -371,5 +426,117 @@ describe("HLC Tally voucher preview and XML", () => {
       expect(result.preview).toBeNull();
       expect(result.reasons).toContain(item.reason);
     }
+  });
+
+  it("blocks GST when state or split mappings are missing, but leaves no-GST bills unchanged", () => {
+    const materialBill = buildTallyVerificationSamples()[0].bill;
+    const baseContext = {
+      config: tallyVerificationConfig,
+      vendor: tallyVerificationVendor,
+      sites: [tallyVerificationSite],
+      equipment: [tallyVerificationEquipment],
+    };
+    const missingGstin = buildTallyVoucherPreview(materialBill, {
+      ...baseContext,
+      vendor: { ...tallyVerificationVendor, gstNumber: null },
+    });
+    expect(missingGstin.preview).toBeNull();
+    expect(missingGstin.reasons).toContain('Vendor "NARASIMHULU" GSTIN is missing; GST state cannot be determined.');
+
+    const malformedGstin = buildTallyVoucherPreview(materialBill, {
+      ...baseContext,
+      vendor: { ...tallyVerificationVendor, gstNumber: "not-a-gstin" },
+    });
+    expect(malformedGstin.preview).toBeNull();
+    expect(malformedGstin.reasons).toContain('Vendor "NARASIMHULU" GSTIN is malformed; GST state cannot be determined.');
+
+    const missingHomeState = buildTallyVoucherPreview(materialBill, {
+      ...baseContext,
+      config: { ...tallyVerificationConfig, homeStateCode: null },
+    });
+    expect(missingHomeState.preview).toBeNull();
+    expect(missingHomeState.reasons).toContain("HLC home state code is missing or invalid.");
+
+    const missingSplitLedger = buildTallyVoucherPreview(materialBill, {
+      ...baseContext,
+      config: {
+        ...tallyVerificationConfig,
+        componentLedgerMappings: {
+          ...tallyVerificationConfig.componentLedgerMappings,
+          gstSgst: { ledgerName: null, confirmed: false },
+        },
+      },
+    });
+    expect(missingSplitLedger.preview).toBeNull();
+    expect(missingSplitLedger.reasons).toContain("ITC SGST has no mapped Tally ledger.");
+
+    const unconfirmedIgst = buildTallyVoucherPreview(buildTallyVerificationSamples()[1].bill, {
+      ...baseContext,
+      vendor: { ...tallyVerificationInterstateVendor, tallyLedgerName: gangaramPartyLedger },
+      config: {
+        ...tallyVerificationConfig,
+        componentLedgerMappings: {
+          ...tallyVerificationConfig.componentLedgerMappings,
+          gstIgst: { ledgerName: "ITC IGST", confirmed: false },
+        },
+      },
+    });
+    expect(unconfirmedIgst.preview).toBeNull();
+    expect(unconfirmedIgst.reasons).toContain(
+      'ITC IGST ledger "ITC IGST" has not been confirmed against HLC Tally.',
+    );
+
+    const noGstBill = buildTallyVerificationSamples()[3].bill;
+    const noGst = buildTallyVoucherPreview(noGstBill, {
+      ...baseContext,
+      vendor: { ...tallyVerificationVendor, gstNumber: null },
+      config: {
+        ...tallyVerificationConfig,
+        homeStateCode: null,
+        componentLedgerMappings: {
+          ...tallyVerificationConfig.componentLedgerMappings,
+          gstCgst: { ledgerName: null, confirmed: false },
+          gstSgst: { ledgerName: null, confirmed: false },
+          gstIgst: { ledgerName: null, confirmed: false },
+        },
+      },
+    });
+    expect(noGst.reasons).toEqual([]);
+    expect(noGst.preview?.entries).toHaveLength(2);
+  });
+
+  it("splits odd-paise intra-state GST without losing a cent", () => {
+    const result = buildTallyVoucherPreview({
+      id: 80,
+      billNo: "HLC/VB/2026/TEST-PAISE-01",
+      billDate: "2026-02-21",
+      billType: "MATERIAL",
+      vendorName: tallyVerificationVendor.name,
+      vendorId: tallyVerificationVendor.id,
+      siteId: tallyVerificationSite.id,
+      totalAmount: 100.1,
+      gstRateMaterial: 10,
+      items: [{
+        category: "material",
+        description: "TEST ONLY - odd paise GST",
+        amount: 100.1,
+        siteName: tallyVerificationSite.name,
+      }],
+    }, {
+      config: tallyVerificationConfig,
+      vendor: tallyVerificationVendor,
+      sites: [tallyVerificationSite],
+      equipment: [],
+    });
+
+    expect(result.preview?.entries).toContainEqual(expect.objectContaining({
+      ledgerName: "ITC CGST",
+      amount: 5.01,
+    }));
+    expect(result.preview?.entries).toContainEqual(expect.objectContaining({
+      ledgerName: "ITC SGST",
+      amount: 5,
+    }));
+    expect(result.preview?.debits).toBe(result.preview?.credits);
   });
 });
