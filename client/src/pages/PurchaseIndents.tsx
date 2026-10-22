@@ -29,6 +29,7 @@ import { PersonnelCombobox } from "@/components/PersonnelCombobox";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
 import { AttachmentUploader } from "@/components/AttachmentUploader";
 import { PurchaseOrderWorkflow } from "@/components/purchase-order-workflow";
+import { vendorIdentityDisplayName } from "@shared/vendorIdentityDisplay";
 
 type StoreItem = { id: number; name: string; uom: string; category: string };
 
@@ -782,6 +783,7 @@ export default function PurchaseIndents() {
     orderNo: string;
     orderedByName: string;
     vendor: string;
+    vendorId?: number | null;
     rate: string;
     paymentMode: string;
     paidBy: string;
@@ -794,6 +796,30 @@ export default function PurchaseIndents() {
     remarks: string;
   };
   const [purchaserActionData, setPurchaserActionData] = useState<Record<number, PurchaserActionItemData>>({});
+  type PurchaseVendorOption = { id: number; name: string; isActive: boolean };
+  type PurchaseVendorOptions = { vendors: PurchaseVendorOption[]; aliases: { canonicalName: string; alias: string }[] };
+  const purchaseVendorOptions = useQuery<PurchaseVendorOptions>({
+    queryKey: ["/api/purchase-indents/vendor-options"],
+    enabled: canCreate,
+  });
+  const resolvePurchaseVendorId = (name: string) => {
+    const key = name.trim().replace(/\s+/g, " ").toUpperCase();
+    if (!key) return null;
+    const aliases = purchaseVendorOptions.data?.aliases || [];
+    const canonicalKeys = new Set<string>();
+    for (const alias of aliases) {
+      if (alias.alias.trim().replace(/\s+/g, " ").toUpperCase() === key ||
+          alias.canonicalName.trim().replace(/\s+/g, " ").toUpperCase() === key) {
+        canonicalKeys.add(alias.canonicalName.trim().replace(/\s+/g, " ").toUpperCase());
+      }
+    }
+    const matches = (purchaseVendorOptions.data?.vendors || []).filter(vendor => {
+      const vendorKey = vendor.name.trim().replace(/\s+/g, " ").toUpperCase();
+      return vendorKey === key || canonicalKeys.has(vendorKey);
+    });
+    const ids = [...new Set(matches.map(vendor => vendor.id))];
+    return ids.length === 1 ? ids[0] : null;
+  };
   // Record-delivery form state — per ORDERED item
   type DeliveryFormData = { deliveredQty: string; deliveryDate: string; challanNo: string; paymentMode: string; remarks: string };
   const [deliveryForms, setDeliveryForms] = useState<Record<number, DeliveryFormData>>({});
@@ -4004,8 +4030,8 @@ export default function PurchaseIndents() {
                               const approvedQty = item.approvedQty ?? item.qty;
                               const isMat = (selectedIndent as any).piType === "material";
                               const defaultActionType = (isMat || route === "bulk_plant") ? "ordered" : "already_purchased";
-                              const pd = purchaserActionData[item.id] ?? { purchaseActionType: defaultActionType, qty: String(approvedQty), orderNo: "", orderedByName: "", vendor: "", rate: "", paymentMode: isMat ? "credit" : "cash", paidBy: "company", payerName: "", purchaseDate: format(new Date(), "yyyy-MM-dd"), expectedDeliveryDate: "", billNo: "", remarks: "" };
-                              const updField = (field: string, val: string) => {
+                              const pd = purchaserActionData[item.id] ?? { purchaseActionType: defaultActionType, qty: String(approvedQty), orderNo: "", orderedByName: "", vendor: "", vendorId: null, rate: "", paymentMode: isMat ? "credit" : "cash", paidBy: "company", payerName: "", purchaseDate: format(new Date(), "yyyy-MM-dd"), expectedDeliveryDate: "", billNo: "", remarks: "" };
+                              const updField = (field: keyof PurchaserActionItemData, val: any) => {
                                 setPurchaserActionData(prev => ({ ...prev, [item.id]: { ...pd, [field]: val } }));
                               };
                               const at = pd.purchaseActionType;
@@ -4013,6 +4039,48 @@ export default function PurchaseIndents() {
                               const isNotAvailable = at === "not_available";
                               const isRecommendCancel = at === "recommend_cancellation";
                               const isPurchased = !isOrdered && !isNotAvailable && !isRecommendCancel;
+                              const requiresVendorMaster = isMat && ["material", "bulk_plant"].includes(route);
+                              const updateVendorName = (value: string) => setPurchaserActionData(prev => ({
+                                ...prev,
+                                [item.id]: {
+                                  ...pd,
+                                  vendor: value.toUpperCase(),
+                                  vendorId: requiresVendorMaster ? resolvePurchaseVendorId(value) : null,
+                                },
+                              }));
+                              const selectVendorMaster = (value: string) => {
+                                const vendor = purchaseVendorOptions.data?.vendors.find(candidate => String(candidate.id) === value);
+                                if (vendor) setPurchaserActionData(prev => ({
+                                  ...prev, [item.id]: { ...pd, vendor: vendor.name, vendorId: vendor.id },
+                                }));
+                              };
+                              const vendorField = (
+                                <div className="space-y-2">
+                                  <Label className="text-sm">VENDOR / SUPPLIER {requiresVendorMaster ? <span className="text-red-500">*</span> : isPurchased ? <span className="text-red-500">*</span> : null}</Label>
+                                  {requiresVendorMaster && (
+                                    <Select value={pd.vendorId ? String(pd.vendorId) : "manual"} onValueChange={selectVendorMaster}
+                                      disabled={purchaseVendorOptions.isLoading || purchaseVendorOptions.isError}>
+                                      <SelectTrigger data-testid={`select-pa-vendor-master-${item.id}`}><SelectValue placeholder="Choose Vendor Master" /></SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="manual">Type a name or known alias below</SelectItem>
+                                        {(purchaseVendorOptions.data?.vendors || []).map(vendor => (
+                                          <SelectItem key={vendor.id} value={String(vendor.id)}>{vendor.name}</SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  )}
+                                  <Input value={pd.vendor} onChange={e => updateVendorName(e.target.value)} onBlur={e => updateVendorName(e.target.value.trim())}
+                                    placeholder={requiresVendorMaster ? "Vendor name or alias" : isPurchased ? "Supplier name" : "Optional"}
+                                    className="uppercase" data-testid={`input-pa-vendor-${item.id}`} />
+                                  {requiresVendorMaster && pd.vendor.trim() && !pd.vendorId && (
+                                    <div role="status" className="rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+                                      {purchaseVendorOptions.isError ? "Vendor Master options could not be loaded. Retry before submitting." :
+                                        `“${pd.vendor}” is not a known Vendor Master name or alias.`}
+                                      {!purchaseVendorOptions.isError && <span> Add it as an alias in Vendor Bills, or create it in <a className="underline" href="/masters/vendors" target="_blank" rel="noreferrer">Vendor Master</a>.</span>}
+                                    </div>
+                                  )}
+                                </div>
+                              );
                               const badgeStyle = isOrdered ? "bg-sky-50 text-sky-700 border-sky-200" : isNotAvailable ? "bg-red-50 text-red-700 border-red-200" : isRecommendCancel ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-green-50 text-green-700 border-green-200";
                               const badgeLabel = isOrdered ? "Ordering" : isNotAvailable ? "Not Available" : isRecommendCancel ? "Recommend Cancel" : "Purchasing";
                               return (
@@ -4063,7 +4131,7 @@ export default function PurchaseIndents() {
                                         />}
                                         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                                           <div><Label className="text-sm">QTY ORDERED ({item.uom})</Label><Input type="number" min={0} max={approvedQty} value={pd.qty} onChange={e => updField("qty", e.target.value)} data-testid={`input-pa-qty-${item.id}`} /></div>
-                                          <div><Label className="text-sm">VENDOR / SUPPLIER</Label><Input value={pd.vendor} onChange={e => updField("vendor", e.target.value)} onBlur={e => updField("vendor", e.target.value.toUpperCase())} placeholder="Optional" className="uppercase" data-testid={`input-pa-vendor-${item.id}`} /></div>
+                                          {vendorField}
                                           <div><Label className="text-sm">ORDER / PO NO.</Label><Input value={pd.orderNo} onChange={e => updField("orderNo", e.target.value)} placeholder="Optional" data-testid={`input-pa-order-no-${item.id}`} /></div>
                                           <div>
                                             <Label className="text-sm">RATE (₹/{item.uom}) <span className="text-red-500">*</span></Label>
@@ -4092,7 +4160,7 @@ export default function PurchaseIndents() {
                                             <Input type="number" min={0} max={approvedQty} value={pd.qty} onChange={e => updField("qty", e.target.value)} data-testid={`input-pa-qty-${item.id}`} />
                                             {parseFloat(pd.qty) < approvedQty && parseFloat(pd.qty) > 0 && <p className="text-xs text-amber-600 mt-0.5">Shortfall: {approvedQty - parseFloat(pd.qty)} {item.uom}</p>}
                                           </div>
-                                          <div><Label className="text-sm">VENDOR / SUPPLIER <span className="text-red-500">*</span></Label><Input value={pd.vendor} onChange={e => updField("vendor", e.target.value)} onBlur={e => updField("vendor", e.target.value.toUpperCase())} placeholder="Supplier name" className="uppercase" data-testid={`input-pa-vendor-${item.id}`} /></div>
+                                          {vendorField}
                                           <div>
                                             <Label className="text-sm">RATE (₹/{item.uom}) <span className="text-red-500">*</span></Label>
                                             <Input type="number" value={pd.rate} onChange={e => updField("rate", e.target.value)} data-testid={`input-pa-rate-${item.id}`} />
@@ -4176,11 +4244,16 @@ export default function PurchaseIndents() {
                               const isMat = (selectedIndent as any).piType === "material";
                               for (const aItem of activeItems) {
                                 const defaultAt = (isMat || (aItem as any).procurementRoute === "bulk_plant") ? "ordered" : "already_purchased";
-                                const pd = purchaserActionData[aItem.id] ?? { purchaseActionType: defaultAt, qty: String(aItem.approvedQty ?? aItem.qty), orderNo: "", orderedByName: "", vendor: "", rate: "", paymentMode: "cash", paidBy: "company", payerName: "", purchaseDate: format(new Date(), "yyyy-MM-dd"), expectedDeliveryDate: "", billNo: "", remarks: "" };
+                                const pd = purchaserActionData[aItem.id] ?? { purchaseActionType: defaultAt, qty: String(aItem.approvedQty ?? aItem.qty), orderNo: "", orderedByName: "", vendor: "", vendorId: null, rate: "", paymentMode: "cash", paidBy: "company", payerName: "", purchaseDate: format(new Date(), "yyyy-MM-dd"), expectedDeliveryDate: "", billNo: "", remarks: "" };
                                 const at = pd.purchaseActionType;
+                                const requiresVendorMaster = isMat && ["material", "bulk_plant"].includes((aItem as any).procurementRoute);
                                 if (at === "not_available") continue;
                                 if ((isMat || ["material", "bulk_plant"].includes((aItem as any).procurementRoute)) && at === "ordered" && (!purchaserActionData[aItem.id]?.receivingLocation || (purchaserActionData[aItem.id]?.receivingLocation === "site" && !purchaserActionData[aItem.id]?.receivingSiteId))) {
                                   toast({ title: "Destination required", description: `Select Plant or Site (and receiving site) for ${aItem.description}`, variant: "destructive" }); return;
+                                }
+                                if (requiresVendorMaster && ["ordered", "already_purchased"].includes(at) &&
+                                    (!pd.vendor.trim() || !pd.vendorId || purchaseVendorOptions.isLoading || purchaseVendorOptions.isError)) {
+                                  toast({ title: "Vendor Master match required", description: `Select a known vendor or alias for ${aItem.description}.`, variant: "destructive" }); return;
                                 }
                                 if (at === "recommend_cancellation") { if (!pd.remarks.trim()) { toast({ title: "Reason required", description: `Enter reason for recommending cancellation: ${aItem.description}`, variant: "destructive" }); return; } continue; }
                                 if (!parseFloat(pd.qty) || parseFloat(pd.qty) <= 0) { toast({ title: "Invalid quantity", description: `Enter a valid quantity for: ${aItem.description}`, variant: "destructive" }); return; }
@@ -4191,7 +4264,7 @@ export default function PurchaseIndents() {
                               }
                               const items = activeItems.map(item => {
                                 const defaultAt = (isMat || (item as any).procurementRoute === "bulk_plant") ? "ordered" : "already_purchased";
-                                const pd = purchaserActionData[item.id] ?? { purchaseActionType: defaultAt, qty: String(item.approvedQty ?? item.qty), orderNo: "", orderedByName: "", vendor: "", rate: "", paymentMode: "cash", paidBy: "company", payerName: "", purchaseDate: format(new Date(), "yyyy-MM-dd"), expectedDeliveryDate: "", billNo: "", remarks: "" };
+                                const pd = purchaserActionData[item.id] ?? { purchaseActionType: defaultAt, qty: String(item.approvedQty ?? item.qty), orderNo: "", orderedByName: "", vendor: "", vendorId: null, rate: "", paymentMode: "cash", paidBy: "company", payerName: "", purchaseDate: format(new Date(), "yyyy-MM-dd"), expectedDeliveryDate: "", billNo: "", remarks: "" };
                                 const at = pd.purchaseActionType;
                                 const paidByEncoded = pd.paidBy === "personal" ? (pd.payerName.trim() || "PERSONAL") : "company";
                                 return {
@@ -4203,6 +4276,9 @@ export default function PurchaseIndents() {
                                   orderNo: pd.orderNo || null,
                                   orderedByName: pd.orderedByName || currentUser?.fullName || null,
                                   vendor: pd.vendor || null,
+                                  ...(isMat && ["material", "bulk_plant"].includes((item as any).procurementRoute)
+                                    ? { vendorId: Number(pd.vendorId) || null }
+                                    : {}),
                                   rate: parseFloat(pd.rate) || null,
                                   paymentMode: pd.paymentMode,
                                   paidBy: at === "already_purchased" ? paidByEncoded : null,
@@ -4451,7 +4527,9 @@ export default function PurchaseIndents() {
                                   Received{(item as any).linkedReceiptNo ? ` · ${(item as any).linkedReceiptNo}` : item.billNo ? ` · Bill: ${item.billNo}` : ""}
                                 </p>
                                 <p className="text-sm text-emerald-600 dark:text-emerald-400">
-                                  {item.vendor ? item.vendor : ""}{item.rate != null ? ` · ₹${item.rate}/${item.uom}` : ""}{item.amount != null ? ` · ₹${item.amount.toLocaleString("en-IN")} total` : ""}
+                                  {vendorIdentityDisplayName({ recordedName: item.vendor, vendorId: (item as any).vendorId, linkedVendorName: (item as any).linkedVendorName })}
+                                  {(item as any).linkedVendorName && item.vendor && item.vendor !== (item as any).linkedVendorName ? ` (recorded: ${item.vendor})` : ""}
+                                  {item.rate != null ? ` · ₹${item.rate}/${item.uom}` : ""}{item.amount != null ? ` · ₹${item.amount.toLocaleString("en-IN")} total` : ""}
                                   {(item as any).purchasedBy ? ` · Purchased by ${(item as any).purchasedBy}` : ""}
                                 </p>
                                 {((item as any).expectedDelivery || (item as any).paymentMode) && (
@@ -4517,10 +4595,13 @@ export default function PurchaseIndents() {
                                 <span className={`font-semibold text-sm ${isPartialDelivery ? "text-amber-800 dark:text-amber-200" : "text-blue-800 dark:text-blue-200"}`}>{isPartialDelivery ? "Partial Delivery — Balance Due" : "Order Placed"}</span>
                               </div>
                               <div className="px-3 py-2.5 space-y-1.5 text-sm">
-                                {item.vendor && (
+                                {(item.vendor || (item as any).linkedVendorName) && (
                                   <div className="flex justify-between">
                                     <span className="text-gray-500">Vendor</span>
-                                    <span className="font-semibold">{item.vendor}</span>
+                                    <span className="font-semibold">
+                                      {vendorIdentityDisplayName({ recordedName: item.vendor, vendorId: (item as any).vendorId, linkedVendorName: (item as any).linkedVendorName })}
+                                      {(item as any).linkedVendorName && item.vendor && item.vendor !== (item as any).linkedVendorName ? <span className="ml-1 text-xs font-normal text-muted-foreground">(recorded: {item.vendor})</span> : null}
+                                    </span>
                                   </div>
                                 )}
                                 {item.rate != null && (
@@ -5247,7 +5328,7 @@ export default function PurchaseIndents() {
                               <td className="p-3 text-right">{item.approvedQty != null ? `${item.approvedQty} ${item.uom}` : "-"}</td>
                               <td className="p-3 text-right">{item.qtyPurchased != null ? `${item.qtyPurchased} ${item.uom}` : "-"}</td>
                               <td className="p-3 text-center">{getItemStatusBadge(item.purchaseStatus)}</td>
-                              <td className="p-3">{item.vendor || "-"}</td>
+                              <td className="p-3">{vendorIdentityDisplayName({ recordedName: item.vendor, vendorId: (item as any).vendorId, linkedVendorName: (item as any).linkedVendorName }) || "-"}</td>
                               <td className="p-3 text-right">{item.amount != null ? `${"\u20B9"}${item.amount.toLocaleString("en-IN")}` : "-"}</td>
                               <td className="p-3 whitespace-nowrap" data-testid={`report-delivery-${item.itemId}`}>
                                 {item.expectedDelivery ? format(new Date(item.expectedDelivery + "T00:00:00"), "dd-MMM-yy").toUpperCase() : "-"}

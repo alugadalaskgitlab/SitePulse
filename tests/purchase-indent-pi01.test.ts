@@ -17,7 +17,7 @@ describe("PI-01 executable PostgreSQL and storage integration", () => {
   beforeAll(async () => {
     // Isolated WASM PostgreSQL only: never reads DATABASE_URL or touches the app DB.
     pg = new PGlite();
-    for (const table of [schema.appSettings, schema.sites, schema.purchaseIndents, schema.purchaseIndentItems,
+    for (const table of [schema.appSettings, schema.sites, schema.vendors, schema.vendorAliases, schema.purchaseIndents, schema.purchaseIndentItems,
       schema.piItemTransactions, schema.pendingPlantReceipts, schema.materialReceipts, schema.siteMaterialTrips,
       schema.plantMaterials, schema.stockBalances, schema.stockLedger, schema.ldoFlowReadings]) {
       const config = getTableConfig(table);
@@ -39,6 +39,7 @@ describe("PI-01 executable PostgreSQL and storage integration", () => {
   beforeEach(async () => {
     await pg.exec(`TRUNCATE app_settings,sites,purchase_indents,purchase_indent_items,pi_item_transactions,pending_plant_receipts,material_receipts,site_material_trips,plant_materials,stock_balances,stock_ledger,ldo_flow_readings RESTART IDENTITY;
       INSERT INTO plant_materials(id,name,default_uom,conversion_factor,conversion_from_uom,conversion_to_uom) VALUES(1,'WMM','MT',.001,'kg','MT');
+      INSERT INTO vendors(id,name,is_active) VALUES(1,'WMM SUPPLIER',true) ON CONFLICT (id) DO NOTHING;
       INSERT INTO sites(id,name) VALUES(1,'Site A'),(2,'Site B');
       INSERT INTO purchase_indents(id,indent_no,site_id,pi_type,status,created_at) VALUES(1,'OLD/UNCHANGED',1,'material','ordered',now());
       SELECT setval('purchase_indents_id_seq',1);
@@ -194,7 +195,7 @@ describe("PI-01 executable PostgreSQL and storage integration", () => {
       expect((await pg.query<any>("SELECT status FROM purchase_indents WHERE id=1")).rows[0].status).toBe("approved");
       await expect(storage.submitPurchaserAction(1, [{ itemId: 1, purchaseActionType: "ordered", qty: 1500 }], "Purchaser", 8)).rejects.toThrow(/destination/);
       expect((await pg.query<any>("SELECT count(*) AS n FROM pi_item_transactions")).rows[0].n).toBe(0);
-      await storage.submitPurchaserAction(1, [{ itemId: 1, purchaseActionType: "ordered", qty: 1500, receivingLocation: "site", receivingSiteId: 2 }], "Purchaser", 8);
+       await storage.submitPurchaserAction(1, [{ itemId: 1, purchaseActionType: "ordered", qty: 1500, vendor: "WMM SUPPLIER", vendorId: 1, receivingLocation: "site", receivingSiteId: 2 }], "Purchaser", 8);
       expect((await pg.query<any>("SELECT receiving_location FROM pending_plant_receipts")).rows[0].receiving_location).toBe("site");
     } finally { detail.mockRestore(); }
   });

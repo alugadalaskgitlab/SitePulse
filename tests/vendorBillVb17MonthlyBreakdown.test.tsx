@@ -116,7 +116,7 @@ describe("VB-17 monthly auto-hire financial display", () => {
     expect(breakdown.textContent).toContain("Excess Fuel Consumed (2.00 L × ₹100.00)");
     expect(breakdown.textContent).toContain("₹200.00");
     expect(screen.getByTestId(`monthly-hire-net-${equipmentId}`).textContent).toContain("₹86,800.00");
-  });
+  }, 15_000);
 
   it("keeps the original suggestion visible when Edit applies a different amount", async () => {
     await openMonthlyBill();

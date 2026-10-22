@@ -50,6 +50,7 @@ import DraftEquipmentHireCalendar, { SavedEquipmentCalendarExport } from "@/comp
 import SavedBillCalendars from "@/components/vendor-bills/SavedBillCalendars";
 import { projectBillHireReviews, projectHireReview } from "@shared/vendorBillLayout";
 import { buildSavedBillPresentationRows } from "@shared/vendorBillPresentation";
+import { vendorIdentityDisplayName } from "@shared/vendorIdentityDisplay";
 import { VendorBillFinancialSummary, VendorRunningStatement } from "@/components/vendor-bills/VendorBillReview";
 import HireActivityBreakdownCalendar, { hireActivityBreakdownSheetRows } from "@/components/vendor-bills/HireActivityBreakdownCalendar";
 import WholeBillExportButtons from "@/components/vendor-bills/WholeBillExportButtons";
@@ -846,14 +847,25 @@ export default function VendorBills() {
 
   const vendorNames = vendorNamesData || [];
   const billingIdentities = useQuery<VendorBillingIdentity[]>({ queryKey: ["/api/vendor-bills/vendor-identities"] });
-  const matchingBillingIdentities = (billingIdentities.data || []).filter(v => v.name.trim().toUpperCase() === vendorName.trim().toUpperCase());
-  const isHireVendorDisplay = ["equipment", "all"].includes(billType);
-  const selectedHireVendorLabel = vendorBillingIdentityLabel(vendorName, billingIdentities.data);
-  const { data: sites = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
-
   const { data: vendorAliasesData } = useQuery<VendorAlias[]>({
     queryKey: ["/api/vendor-aliases"],
   });
+  const normalizedVendorName = (value: unknown) => String(value ?? "").trim().replace(/\s+/g, " ").toUpperCase();
+  const selectedVendorKey = normalizedVendorName(vendorName);
+  const aliasCanonicalKeys = new Set((vendorAliasesData || [])
+    .filter(alias => normalizedVendorName(alias.alias) === selectedVendorKey || normalizedVendorName(alias.canonicalName) === selectedVendorKey)
+    .map(alias => normalizedVendorName(alias.canonicalName)));
+  const matchingBillingIdentities = (billingIdentities.data || []).filter(identity =>
+    normalizedVendorName(identity.name) === selectedVendorKey || aliasCanonicalKeys.has(normalizedVendorName(identity.name)));
+  const vendorDisplayName = (bill: any) => vendorIdentityDisplayName({
+    recordedName: bill.vendorName,
+    vendorId: bill.vendorId,
+    linkedVendorName: bill.linkedVendorName ??
+      billingIdentities.data?.find(identity => identity.id === Number(bill.vendorId))?.name,
+  });
+  const isHireVendorDisplay = ["equipment", "all"].includes(billType);
+  const selectedHireVendorLabel = vendorBillingIdentityLabel(vendorName, billingIdentities.data);
+  const { data: sites = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
 
   const addAliasMutation = useMutation({
     mutationFn: (data: { canonicalName: string; alias: string }) =>
@@ -2232,6 +2244,14 @@ export default function VendorBills() {
       toast({ title: "Please fill vendor name and bill date", variant: "destructive" });
       return;
     }
+    if (editingBillId === null && matchingBillingIdentities.length !== 1) {
+      toast({
+        title: "Choose a Vendor Master record before saving",
+        description: "If this is a new spelling, add it as an alias or create the vendor first.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (editingBillId === null && !selectedSiteId) {
       toast({
         title: "Choose a site or deliberately select ALL SITES before saving.",
@@ -2990,6 +3010,29 @@ export default function VendorBills() {
               </div>
               <div className="relative">
                 <Label htmlFor="input-vendor-name" className="text-sm uppercase">Vendor / Supplier Name</Label>
+                {editingBillId === null && (
+                  <div className="mb-2">
+                    <Label htmlFor="select-bill-vendor-master" className="text-xs text-muted-foreground">Vendor Master (preferred)</Label>
+                    <Select
+                      value={matchingBillingIdentities.length === 1 ? String(matchingBillingIdentities[0].id) : "manual"}
+                      onValueChange={value => {
+                        const identity = billingIdentities.data?.find(item => String(item.id) === value);
+                        if (identity) selectVendorOption(identity.name);
+                      }}
+                      disabled={billingIdentities.isLoading || billingIdentities.isError}
+                    >
+                      <SelectTrigger id="select-bill-vendor-master" data-testid="select-bill-vendor-master">
+                        <SelectValue placeholder="Select a Vendor Master record" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="manual">Type a name or choose a saved suggestion</SelectItem>
+                        {(billingIdentities.data || []).map(identity => (
+                          <SelectItem key={identity.id} value={String(identity.id)}>{identity.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <Input
                   id="input-vendor-name"
                   ref={vendorInputRef}
@@ -3070,6 +3113,21 @@ export default function VendorBills() {
                   className="uppercase"
                   data-testid="input-vendor-name"
                 />
+                {editingBillId === null && vendorName && matchingBillingIdentities.length !== 1 && (
+                  <div role="alert" className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                    <p className="font-medium">“{vendorName}” is not uniquely linked to the Vendor Master.</p>
+                    <p className="mt-1 text-xs">Add it as an alias of an existing vendor or create a new vendor before saving.</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button type="button" size="sm" variant="outline" onClick={() => {
+                        setAliasValue(vendorName);
+                        setShowAliasDialog(true);
+                      }}>Add as alias</Button>
+                      <a className="inline-flex items-center rounded-md border px-3 py-1.5 text-xs font-medium" href="/masters/vendors" target="_blank" rel="noreferrer">
+                        Create vendor
+                      </a>
+                    </div>
+                  </div>
+                )}
                 {vendorEditing && vendorInputDirtyRef.current && (
                   <p role="status" className="mt-1 text-xs text-muted-foreground">
                     {vendorName
@@ -4820,9 +4878,7 @@ export default function VendorBills() {
         ...(index > 0 ? { netPayableAmount: undefined } : {}),
       }));
     const detailFinancials = getBillFinancialTotals(bill);
-    const confirmedVendor = (bill as any).vendorId == null ? undefined :
-      billingIdentities.data?.find(identity => identity.id === Number((bill as any).vendorId));
-    const detailVendorName = confirmedVendor?.businessName?.trim() || confirmedVendor?.name || bill.vendorName;
+    const detailVendorName = vendorDisplayName(bill);
     const detailSubtotals: Record<string, number> = {};
     bill.items.forEach((item: any) => {
       const category = item.category || "other";
@@ -5788,7 +5844,7 @@ export default function VendorBills() {
               <CardContent className="py-3">
                 <div className="flex justify-between items-center flex-wrap gap-2">
                   <div className="min-w-0">
-                    <p className="font-bold text-sm uppercase truncate" data-testid={`text-bill-vendor-${bill.id}`}>{bill.vendorName}</p>
+                    <p className="font-bold text-sm uppercase truncate" title={bill.vendorName !== vendorDisplayName(bill) ? `As recorded: ${bill.vendorName}` : undefined} data-testid={`text-bill-vendor-${bill.id}`}>{vendorDisplayName(bill)}</p>
                     <p className="text-sm text-muted-foreground" data-testid={`text-bill-meta-${bill.id}`}>
                       {bill.billNo} &bull; {getBillTypeLabel(bill.billType)}
                       {` \u2022 Bill date ${bill.billDate ? formatDate(bill.billDate) : "not recorded"}`}

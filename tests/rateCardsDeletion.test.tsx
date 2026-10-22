@@ -11,6 +11,19 @@ vi.mock("wouter", () => ({
   useSearch: () => "?vendorName=RATE-CARD-TEST",
 }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
+vi.mock("@/components/ui/select", async () => {
+  const React = await import("react");
+  return {
+    Select: ({ value, onValueChange, children }: any) => {
+      const parts = React.Children.toArray(children) as any[];
+      return <select data-testid={parts[0]?.props["data-testid"]} value={value} onChange={event => onValueChange(event.target.value)}>{parts[1]}</select>;
+    },
+    SelectTrigger: () => null,
+    SelectValue: () => null,
+    SelectContent: ({ children }: any) => <>{children}</>,
+    SelectItem: ({ value, children }: any) => <option value={value}>{children}</option>,
+  };
+});
 
 const vendorName = "RATE-CARD-TEST";
 const persistedManualRows = [
@@ -39,6 +52,8 @@ beforeEach(() => {
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    if (url.includes("/api/vendor-master")) return new Response(JSON.stringify([{ id: 99, name: vendorName, isActive: true }]));
+    if (url.includes("/api/vendor-aliases")) return new Response(JSON.stringify([]));
     if (url.includes("/api/vendor-bills/vendor-names")) return new Response(JSON.stringify([vendorName]));
     if (url.includes("/api/vendor-rate-cards/discover")) {
       return new Response(JSON.stringify([
@@ -163,7 +178,13 @@ describe("Rate Cards manual row deletion", () => {
     const client = makeClient();
     vi.stubGlobal("confirm", vi.fn(() => true));
     deferDelete = true;
-    render(<QueryClientProvider client={client}><RateCards /></QueryClientProvider>);
+    client.setQueryData(["/api/vendor-master"], [{ id: 99, name: vendorName, isActive: true }]);
+    client.setQueryData(["/api/vendor-aliases"], []);
+    client.setQueryData(["/api/vendor-bills/vendor-names"], [vendorName]);
+    render(<QueryClientProvider client={client}><RateCards draftVendor={vendorName} /></QueryClientProvider>);
+    const masterSelect = await screen.findByTestId("select-vendor-master") as HTMLSelectElement;
+    await waitFor(() => expect(masterSelect.options.length).toBeGreaterThan(1));
+    await waitFor(() => expect(masterSelect.value).toBe("99"));
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Remove SAND" })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Remove SAND" }));

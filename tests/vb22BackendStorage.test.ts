@@ -212,6 +212,8 @@ describe("VB22 backend storage", () => {
 
   it("historical duplicate checks preserve bill status, including cancelled", async () => {
     fx.selectRows.push(
+      [{ id: 3, name: "BORROW OWNER", businessName: null, isActive: true }],
+      [{ canonicalName: "BORROW OWNER", alias: "OWNER ALIAS" }],
       [{ canonicalName: "BORROW OWNER", alias: "OWNER ALIAS" }],
       [{ id: 3, vendorName: "BORROW OWNER", billNo: "VB-C", status: "cancelled" }],
       [{ billId: 3, date: "2026-01-01", source: "auto:site_material_trip_material:42", description: "SOIL" }],

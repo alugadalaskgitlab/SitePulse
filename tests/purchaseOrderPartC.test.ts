@@ -69,18 +69,18 @@ const draft = {
   description: "SYNTHETIC GSB", spec: "", quantity: 12, unit: "MT", rate: 320,
   expectedDelivery: "2026-10-01", paymentTerms: "credit", destination: "SYNTHETIC Site A",
 };
-const item = { id: 10, indentId: 1, description: "SYNTHETIC GSB", spec: null, purchaseStatus: "ORDERED", vendor: "SYNTHETIC Supplier", vendorId: 3, orderNo: "SYN-PO-1", orderedQty: 12, qty: 15, uom: "MT", rate: 320, expectedDelivery: "2026-10-01", paymentMode: "credit", receivingLocation: "site", receivingSiteId: 1 };
+const item = { id: 10, indentId: 1, description: "SYNTHETIC GSB", spec: null, purchaseStatus: "ORDERED", vendor: "SYNTHETIC Supplier", vendorId: 3, procurementRoute: "bulk_plant", orderNo: "SYN-PO-1", orderedQty: 12, qty: 15, uom: "MT", rate: 320, expectedDelivery: "2026-10-01", paymentMode: "credit", receivingLocation: "site", receivingSiteId: 1 };
 beforeAll(async () => {
   pg = new PGlite();
   await pg.exec(`
     CREATE TABLE users (id integer PRIMARY KEY, full_name text NOT NULL);
     CREATE TABLE vendors (id integer PRIMARY KEY, name text NOT NULL, business_name text, gst_number text, pan_number text, address text);
-    CREATE TABLE purchase_indents (id integer PRIMARY KEY, status text);
-    CREATE TABLE purchase_indent_items (id integer PRIMARY KEY, indent_id integer, qty real, approved_qty real, uom text, material_id integer, vendor_id integer);
+    CREATE TABLE purchase_indents (id integer PRIMARY KEY, status text, pi_type text);
+    CREATE TABLE purchase_indent_items (id integer PRIMARY KEY, indent_id integer, qty real, approved_qty real, uom text, material_id integer, vendor_id integer, procurement_route text);
     INSERT INTO users VALUES (7,'Ramesh Kumar'), (8,'Suresh Reddy'), (9,'Store User'), (10,'Project Manager');
     INSERT INTO vendors VALUES (3,'SYNTHETIC Supplier','Supplier Works','GST-SYN','PAN-SYN','Supplier Road');
-    INSERT INTO purchase_indents VALUES (1,'ordered');
-    INSERT INTO purchase_indent_items VALUES (10,1,15,null,'MT',null,3);
+    INSERT INTO purchase_indents VALUES (1,'ordered','material');
+    INSERT INTO purchase_indent_items VALUES (10,1,15,null,'MT',null,3,'bulk_plant');
   `);
   await pg.exec(readFileSync("migrations/0037_purchase_orders.sql", "utf8"));
   fx.db = drizzle(pg);
@@ -91,7 +91,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await pg?.close(); });
 beforeEach(async () => {
-  await pg.exec("DELETE FROM purchase_orders; ALTER SEQUENCE purchase_orders_id_seq RESTART WITH 1");
+  await pg.exec("DELETE FROM purchase_orders; ALTER SEQUENCE purchase_orders_id_seq RESTART WITH 1; UPDATE purchase_indents SET status='ordered',pi_type='material' WHERE id=1; UPDATE purchase_indent_items SET qty=15,approved_qty=NULL,uom='MT',material_id=NULL,vendor_id=3,procurement_route='bulk_plant' WHERE id=10");
   fx.indent = { id: 1, indentNo: "PI-SYN", siteId: 1, raisedFrom: "SYNTHETIC Site A", piType: "material", status: "ordered", authorUserId: 9, items: [{ ...item }] };
   fx.user = { id: 7, isAdmin: false, isOwner: false };
   fx.permissions = { view: true, create: true, export: true, approve: false };
@@ -135,13 +135,19 @@ describe("optional PO lifecycle with isolated PostgreSQL fixture", () => {
   });
   it.each(["material", "stores"])("B-G: %s snapshot, lock, approver, approved PDF and role access", async type => {
     fx.indent.piType = type;
+    const trackedVendorLink = type === "material";
+    const route = trackedVendorLink ? "bulk_plant" : "stores";
+    const createBody = trackedVendorLink ? draft : { ...draft, vendorId: null };
+    fx.indent.items[0] = { ...item, procurementRoute: route, vendorId: trackedVendorLink ? 3 : null };
+    await pg.exec(`UPDATE purchase_indents SET pi_type='${type}' WHERE id=1; UPDATE purchase_indent_items SET procurement_route='${route}',vendor_id=${trackedVendorLink ? 3 : "NULL"} WHERE id=10`);
     expect((await request(app).get(`${base}.pdf`)).status).toBe(409);
-    const created = await request(app).post(base).send(draft);
+    const created = await request(app).post(base).send(createBody);
     expect(created.status).toBe(201);
+    if (!trackedVendorLink) expect(created.body.vendorId).toBeNull();
     expect(created.body.raisedByName).toBe("Ramesh Kumar");
-    expect((await request(app).post(base).send(draft)).status).toBe(409);
+    expect((await request(app).post(base).send(createBody)).status).toBe(409);
     expect((await request(app).get(`${base}.pdf`)).status).toBe(409);
-    const edited = await request(app).patch(base).send({ ...draft, description: "SYNTHETIC edited independent snapshot", rate: 355 });
+    const edited = await request(app).patch(base).send({ ...createBody, description: "SYNTHETIC edited independent snapshot", rate: 355 });
     expect(edited.status).toBe(200);
     expect(fx.indent.items[0].description).toBe("SYNTHETIC GSB");
     expect((await request(app).post(`${base}/submit`).send({})).body.status).toBe("submitted");
@@ -245,11 +251,12 @@ describe("optional PO lifecycle with isolated PostgreSQL fixture", () => {
     expect((await pg.query("SELECT count(*)::int AS count FROM purchase_orders")).rows[0]).toEqual({ count: 0 });
     const created = await request(app).post(base).send({ ...draft, vendorName: "synthetic supplier" });
     expect(created.status).toBe(201);
-    expect(created.body.vendorName).toBe("SYNTHETIC Supplier");
+    expect(created.body.vendorName).toBe("synthetic supplier");
+    expect(created.body.vendorId).toBe(3);
     expect(created.body.vendorGst).toBe("GST-SYN");
     expect((await request(app).patch(base).send({ ...draft, vendorName: "FAKE SUPPLIER", vendorId: 3 })).status).toBe(400);
     expect((await pg.query("SELECT vendor_name, vendor_gst FROM purchase_orders")).rows[0])
-      .toEqual({ vendor_name: "SYNTHETIC Supplier", vendor_gst: "GST-SYN" });
+      .toEqual({ vendor_name: "synthetic supplier", vendor_gst: "GST-SYN" });
     const unlinked = await request(app).patch(base).send({ ...draft, vendorName: "Independent Source", vendorId: null });
     expect(unlinked.status).toBe(200);
     expect(unlinked.body).toMatchObject({ vendorName: "Independent Source", vendorId: null, vendorGst: null, vendorBusinessName: null, vendorPan: null, vendorAddress: null });

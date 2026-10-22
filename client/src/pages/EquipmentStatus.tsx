@@ -6,6 +6,7 @@ import { ArrowLeft, AlertTriangle, ChevronDown, ChevronRight, ClipboardX, Downlo
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { vendorIdentityDisplayName } from "@shared/vendorIdentityDisplay";
 
 type EquipmentDayStatus =
   | "working"
@@ -31,6 +32,8 @@ type EquipmentStatusItem = {
   name: string;
   ownership: string | null;
   vendorName?: string | null;
+  linkedVendorId?: number | null;
+  linkedVendorName?: string | null;
   meterType?: string | null;
   summary: {
     working: number;
@@ -64,6 +67,14 @@ const sourceLabel = (source: EquipmentStatusDay["source"]) => ({
   both: "Recorded status and maintenance log",
   none: "No record",
 }[source || "none"]);
+
+function equipmentVendorLabel(item: EquipmentStatusItem) {
+  return vendorIdentityDisplayName({
+    recordedName: item.vendorName,
+    vendorId: item.linkedVendorId,
+    linkedVendorName: item.linkedVendorName,
+  });
+}
 
 const today = new Date();
 const initialDateTo = format(today, "yyyy-MM-dd");
@@ -134,7 +145,10 @@ export default function EquipmentStatus() {
     const summary = rows.map(item => ({
       Machine: item.name,
       Ownership: item.ownership || "",
-      Vendor: item.vendorName || "",
+      Vendor: equipmentVendorLabel(item),
+      ...(item.linkedVendorName && item.vendorName && item.linkedVendorName !== item.vendorName
+        ? { "Vendor as recorded": item.vendorName }
+        : {}),
       "Working": item.summary.working,
       "Idle · No Work Available": item.summary.idleNoWork,
       "Idle · Operator Unavailable": item.summary.idleNoOperator,
@@ -202,7 +216,10 @@ export default function EquipmentStatus() {
             <Filter label="Machine">
               <select aria-label="Machine" value={equipmentId} onChange={event => setEquipmentId(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
                 <option value="all">All permitted machines</option>
-                {equipment.map(item => <option key={item.equipmentId} value={String(item.equipmentId)}>{item.name}{item.vendorName ? ` · ${item.vendorName}` : ""}</option>)}
+                {equipment.map(item => {
+                  const vendor = equipmentVendorLabel(item);
+                  return <option key={item.equipmentId} value={String(item.equipmentId)}>{item.name}{vendor ? ` · ${vendor}` : ""}</option>;
+                })}
               </select>
             </Filter>
           </div>
@@ -270,7 +287,7 @@ export default function EquipmentStatus() {
           <p>{dateFrom} to {dateTo}</p>
           {rows.map(item => (
             <article key={item.equipmentId}>
-              <h2>{item.name}{item.vendorName ? ` · ${item.vendorName}` : ""}</h2>
+              <h2>{item.name}{equipmentVendorLabel(item) ? ` · ${equipmentVendorLabel(item)}` : ""}{item.linkedVendorName && item.vendorName && item.linkedVendorName !== item.vendorName ? ` (recorded: ${item.vendorName})` : ""}</h2>
               <table>
                 <thead><tr><th>Working</th><th>Idle · No Work Available</th><th>Idle · Operator Unavailable</th><th>Breakdown</th><th>Logged (status not specified)</th><th>Not Logged</th></tr></thead>
                 <tbody><tr><td>{item.summary.working}</td><td>{item.summary.idleNoWork}</td><td>{item.summary.idleNoOperator}</td><td>{item.summary.breakdown}</td><td>{item.summary.loggedUnspecified}</td><td>{item.summary.notLogged}</td></tr></tbody>
@@ -309,7 +326,7 @@ function FragmentRows({ item, open, onToggle }: {
             <Truck className="h-4 w-4 text-[#286475]" />
             <span>
               <strong>{item.name}</strong>
-              <span className="block text-xs font-normal text-slate-500">{item.ownership || "—"}{item.vendorName ? ` · ${item.vendorName}` : ""}</span>
+              <span className="block text-xs font-normal text-slate-500">{item.ownership || "—"}{equipmentVendorLabel(item) ? ` · ${equipmentVendorLabel(item)}` : ""}{item.linkedVendorName && item.vendorName && item.linkedVendorName !== item.vendorName ? ` · recorded: ${item.vendorName}` : ""}</span>
             </span>
           </button>
         </th>

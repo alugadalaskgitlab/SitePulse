@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 
 type Fields = {
@@ -29,6 +30,7 @@ type Order = Fields & {
   submittedAt: string | null;
   approvedAt: string | null;
   rejectionReason: string | null;
+  linkedVendorName?: string | null;
 };
 
 export function PurchaseOrderWorkflow({ indentId, itemId, canRaise, allowNew, canApprove, onPreview }: {
@@ -37,7 +39,11 @@ export function PurchaseOrderWorkflow({ indentId, itemId, canRaise, allowNew, ca
   const { toast } = useToast();
   const cache = useQueryClient();
   const url = `/api/purchase-indents/${indentId}/items/${itemId}/purchase-order`;
-  const { data, isLoading } = useQuery<{ order: Order | null; defaults: Fields }>({
+  const { data, isLoading } = useQuery<{
+    order: Order | null;
+    defaults: Fields;
+    vendorContext: { vendorId: number | null; linkedVendorName: string | null; aliases: string[] };
+  }>({
     queryKey: [url],
     queryFn: async () => {
       const res = await fetch(url, { credentials: "include" });
@@ -71,6 +77,19 @@ export function PurchaseOrderWorkflow({ indentId, itemId, canRaise, allowNew, ca
       toast({ title: "Purchase Order not saved", description: (err as Error).message, variant: "destructive" });
     } finally { setBusy(false); }
   };
+  const normaliseVendor = (value: string) => value.trim().replace(/\s+/g, " ").toUpperCase();
+  const vendorNameMatchesLinkedMaster = (value: string) => {
+    const name = normaliseVendor(value);
+    return !!name && [data?.vendorContext.linkedVendorName, ...(data?.vendorContext.aliases || [])]
+      .filter((candidate): candidate is string => !!candidate)
+      .some(candidate => normaliseVendor(candidate) === name);
+  };
+  const vendorNameWasEdited = !!order && form?.vendorName !== order.vendorName;
+  const vendorSnapshotInvalid = !!form?.vendorName.trim() && (
+    order
+      ? !!order.vendorId && vendorNameWasEdited && !vendorNameMatchesLinkedMaster(form.vendorName)
+      : !!data?.vendorContext.vendorId && !vendorNameMatchesLinkedMaster(form.vendorName)
+  );
   const input = (label: string, key: keyof Fields, type = "text") => (
     <div className="space-y-1">
       <Label>{label}</Label>
@@ -78,7 +97,13 @@ export function PurchaseOrderWorkflow({ indentId, itemId, canRaise, allowNew, ca
         onChange={e => setForm(prev => prev ? {
           ...prev,
           [key]: type === "number" ? (e.target.value === "" ? null : Number(e.target.value)) : e.target.value,
-          ...(key === "vendorName" ? { vendorId: null } : {}),
+          ...(key === "vendorName" ? {
+            vendorId: !order && vendorNameMatchesLinkedMaster(e.target.value)
+              ? data?.vendorContext.vendorId ?? null
+              : order && prev.vendorId != null && vendorNameMatchesLinkedMaster(e.target.value)
+                ? prev.vendorId
+                : null,
+          } : {}),
         } : prev)} data-testid={`po-field-${key}`} />
     </div>
   );
@@ -92,10 +117,36 @@ export function PurchaseOrderWorkflow({ indentId, itemId, canRaise, allowNew, ca
           <DialogHeader><DialogTitle>Purchase Order {order ? `#${order.id} · ${order.status.toUpperCase()}` : "· New Draft"}</DialogTitle></DialogHeader>
           {form && <div className="space-y-4">
             <p className="text-sm text-muted-foreground">Optional PO snapshot — recording an order against the indent does not require a PO.</p>
+            {data?.vendorContext.linkedVendorName && (
+              <div className="rounded border bg-muted/40 p-3 text-sm space-y-1" data-testid="po-vendor-master-context">
+                <p className="font-medium">{order && !order.vendorId ? "Indent Vendor Master:" : "Vendor Master:"} {order?.linkedVendorName || data.vendorContext.linkedVendorName}</p>
+                {order && !order.vendorId && <p className="text-muted-foreground">This saved PO has no Vendor Master link; it will remain unchanged.</p>}
+                {!order && <p className="text-muted-foreground">New PO entries use the Vendor Master link reviewed on this indent item.</p>}
+              </div>
+            )}
+            {data?.vendorContext.vendorId != null && !order && (
+              <div className="space-y-1">
+                <Label>Vendor Master selection</Label>
+                <Select value={String(form.vendorId ?? "")} onValueChange={value => {
+                  if (Number(value) === data.vendorContext.vendorId) setForm(prev => prev ? {
+                    ...prev, vendorId: data.vendorContext.vendorId,
+                    vendorName: prev.vendorName || data.vendorContext.linkedVendorName || "",
+                  } : prev);
+                }} disabled={!editable || busy}>
+                  <SelectTrigger data-testid="po-vendor-master-select"><SelectValue placeholder="Select the reviewed Vendor Master link" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={String(data.vendorContext.vendorId)}>{data.vendorContext.linkedVendorName}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               {input("PO / Order No.", "orderNo")}
-              {input("Vendor", "vendorName")}
+              {input(data?.vendorContext.vendorId ? "Recorded vendor name (snapshot)" : "Vendor", "vendorName")}
             </div>
+            {vendorSnapshotInvalid && <div role="status" className="rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+              This name is not a known Vendor Master name or alias. Add an alias through <a className="underline" href="/plant/vendor-bills" target="_blank" rel="noreferrer">Vendor Bills</a> or review it in <a className="underline" href="/masters/vendors" target="_blank" rel="noreferrer">Vendor Master</a>.
+            </div>}
             {input("Description", "description")}
             {input("Specification", "spec")}
             <div className="grid grid-cols-3 gap-3">
@@ -115,7 +166,7 @@ export function PurchaseOrderWorkflow({ indentId, itemId, canRaise, allowNew, ca
               {order.rejectionReason && <p>Rejection reason: {order.rejectionReason}</p>}
             </div>}
             <div className="flex flex-wrap gap-2">
-              {editable && <Button disabled={busy} onClick={() => action("", order ? "PATCH" : "POST", {
+              {editable && <Button disabled={busy || (!order && !!data?.vendorContext.vendorId && (!form.vendorName.trim() || (form.vendorId != null && (form.vendorId !== data.vendorContext.vendorId || vendorSnapshotInvalid)))) || (!!order?.vendorId && vendorSnapshotInvalid)} onClick={() => action("", order ? "PATCH" : "POST", {
                 ...form, quantity: Number(form.quantity), rate: form.rate === null ? null : Number(form.rate),
               })} data-testid="button-po-save">Save Draft</Button>}
               {order?.status === "draft" && canRaise && <Button disabled={busy} variant="outline" onClick={() => action("/submit", "POST", {})} data-testid="button-po-submit">Submit for Approval</Button>}

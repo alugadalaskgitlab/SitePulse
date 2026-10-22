@@ -54,6 +54,11 @@ beforeEach(() => {
       return json({});
     }
     if (url.pathname === "/api/vendor-bills/vendor-names") return json(["RAVI HAULAGE", "SHANKAR LOGISTICS"]);
+    if (url.pathname === "/api/vendor-master") return json([
+      { id: 41, name: "RAVI HAULAGE", isActive: true },
+      { id: 42, name: "SHANKAR LOGISTICS", isActive: true },
+    ]);
+    if (url.pathname === "/api/vendor-aliases") return json([]);
     if (url.pathname === "/api/vendor-rate-cards/discover") return json(url.searchParams.get("vendorName") === "SHANKAR LOGISTICS" ? [] : discovered);
     if (url.pathname === "/api/vendor-rate-cards") return json(url.searchParams.get("vendorName") === "SHANKAR LOGISTICS" ? [] : cards);
     if (url.pathname === "/api/equipment-master/canonical-types") return json(["TIPPER"]);
@@ -265,7 +270,7 @@ describe("transport-only rate setup", () => {
     await open();
     fill();
     await save();
-    fireEvent.change(screen.getByTestId("select-vendor"), { target: { value: "SHANKAR LOGISTICS" } });
+    fireEvent.change(screen.getByTestId("select-saved-vendor-suggestion"), { target: { value: "SHANKAR LOGISTICS" } });
     await screen.findByText("No transport items discovered. Use ADD ROW to add manually.");
     expect(screen.queryByTestId("transport-rate-basis")).toBeNull();
     fireEvent.click(screen.getByTestId("button-save-all-rates"));

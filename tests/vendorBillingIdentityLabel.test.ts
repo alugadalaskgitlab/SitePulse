@@ -33,7 +33,7 @@ describe("VB-TRIP-PULL-01 hire vendor display identity", () => {
     expect(source).toContain("vendorName=${encodeURIComponent(vendorName)}");
     expect(source).toContain("billingVendorId: matchingBillingIdentities[0].id");
     expect(source).toContain('data-testid="text-vendor-name">{detailVendorName}');
-    expect(source).toContain('data-testid={`text-bill-vendor-${bill.id}`}>{bill.vendorName}');
+    expect(source).toContain('data-testid={`text-bill-vendor-${bill.id}`}>{vendorDisplayName(bill)}</p>');
     expect(source).not.toMatch(/setVendorName\((?:selectedHireVendorLabel|vendorBillingIdentityLabel)/);
   });
 });

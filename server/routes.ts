@@ -23,6 +23,8 @@ import { projectBillHireReviews, hireReviewTable, MONTHLY_BILL_HEADERS } from ".
 import { getBillFinancialTotals } from "../shared/vendorBillFinancialReport";
 import { buildSavedBillPresentationRows } from "../shared/vendorBillPresentation";
 import { getBaseSiteName } from "../shared/siteName";
+import { vendorIdentityDisplayName } from "../shared/vendorIdentityDisplay";
+import { resolveVendorNameMatch } from "./vendorNameResolution";
 import { pipeOperatorManualPdf } from './operator-manual-pdf';
 import { pipeAdminGuidePdf } from './admin-guide-pdf';
 import { pipeEstimatorGuidePdf } from './estimator-guide-pdf';
@@ -30,7 +32,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, vendors, sites as sitesTable, appSettings, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, vendors, vendorAliases, sites as sitesTable, appSettings, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
 import {
   insertPartySchema,
   insertPlantMaterialSchema,
@@ -4907,7 +4909,12 @@ export async function registerRoutes(
       const includeInactive = req.query.includeInactive === "true";
       const plantNameFilter = req.query.plantName as string | undefined;
       const equipmentList = await storage.getEquipmentMaster(includeInactive, plantNameFilter);
-      res.json(equipmentList);
+      const identities = await equipmentVendorIdentities(db, equipmentList);
+      res.json(equipmentList.map(equipment => ({
+        ...equipment,
+        linkedVendorId: identities.get(equipment.id)?.vendor?.id ?? null,
+        linkedVendorName: identities.get(equipment.id)?.vendor?.name ?? null,
+      })));
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch equipment" });
     }
@@ -5998,7 +6005,22 @@ export async function registerRoutes(
         return res.status(400).json({ message: "dateFrom must be on or before dateTo" });
       }
       const permittedSiteNames = await getPermittedSiteNames(req);
-      res.json(await storage.getFleetEquipmentStatus(dateFrom, dateTo, { permittedSiteNames }));
+      const report = await storage.getFleetEquipmentStatus(dateFrom, dateTo, { permittedSiteNames });
+      const reportEquipmentIds = new Set(report.equipment.map(item => Number(item.equipmentId)));
+      const equipmentMasters = (await storage.getEquipmentMaster(true))
+        .filter(item => reportEquipmentIds.has(Number(item.id)));
+      const identities = await equipmentVendorIdentities(db, equipmentMasters);
+      res.json({
+        ...report,
+        equipment: report.equipment.map(item => {
+          const identity = identities.get(Number(item.equipmentId));
+          return {
+            ...item,
+            linkedVendorId: identity?.vendor?.id ?? null,
+            linkedVendorName: identity?.vendor?.name ?? null,
+          };
+        }),
+      });
     } catch (err) {
       console.error("GET /api/reports/equipment-status:", err);
       res.status(500).json({ message: "Failed to fetch equipment status report" });
@@ -9648,6 +9670,22 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/purchase-indents/vendor-options", async (req, res) => {
+    try {
+      if (!assertEditEither(req, res, "site_procurement", "purchase_indents_raise")) return;
+      const [vendorOptions, aliases] = await Promise.all([
+        db.select({ id: vendors.id, name: vendors.name, isActive: vendors.isActive })
+          .from(vendors).where(eq(vendors.isActive, true)),
+        db.select({ canonicalName: vendorAliases.canonicalName, alias: vendorAliases.alias })
+          .from(vendorAliases),
+      ]);
+      res.json({ vendors: vendorOptions, aliases });
+    } catch (err) {
+      console.error("GET /api/purchase-indents/vendor-options:", err);
+      res.status(500).json({ message: "Failed to load Vendor Master options" });
+    }
+  });
+
   app.get("/api/purchase-indents/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
@@ -9694,7 +9732,11 @@ export async function registerRoutes(
     const [approver] = order.approvedByUserId
       ? await db.select({ fullName: users.fullName }).from(users).where(eq(users.id, order.approvedByUserId))
       : [];
-    return { ...order, raisedByName: raiser?.fullName ?? null, approvedByName: approver?.fullName ?? null };
+    const [linkedVendor] = order.vendorId
+      ? await db.select({ name: vendors.name }).from(vendors).where(eq(vendors.id, order.vendorId)).limit(1)
+      : [];
+    return { ...order, linkedVendorName: linkedVendor?.name ?? null,
+      raisedByName: raiser?.fullName ?? null, approvedByName: approver?.fullName ?? null };
   }
   async function poPdf(order: typeof purchaseOrders.$inferSelect, indentNo: string) {
     const details = await poDetails(order);
@@ -9703,7 +9745,9 @@ export async function registerRoutes(
     return buildPurchaseOrderPdf({
       companyName: company.companyName, logoPath: getCompanyLogoPath(company.logoFile),
       indentNo, orderNo: order.orderNo?.trim() || `PO-${order.id}`,
-      orderDate: order.approvedAt, vendor: order.vendorName,
+      orderDate: order.approvedAt, vendor: vendorIdentityDisplayName({
+        recordedName: order.vendorName, vendorId: order.vendorId, linkedVendorName: details.linkedVendorName,
+      }),
       vendorBusinessName: order.vendorBusinessName, vendorGst: order.vendorGst,
       vendorPan: order.vendorPan, vendorAddress: order.vendorAddress,
       description: order.description, spec: order.spec, qty: order.quantity,
@@ -9723,8 +9767,13 @@ export async function registerRoutes(
   };
   const activePo = async (itemId: number) => db.select().from(purchaseOrders)
     .where(and(eq(purchaseOrders.purchaseIndentItemId, itemId), sql`${purchaseOrders.status} <> 'rejected'`)).limit(1);
-  const linkedPoNameMatches = (submitted: string, canonical: string) =>
-    submitted.trim().replace(/\s+/g, " ").toLocaleLowerCase() === canonical.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  const linkedPoNameMatches = async (submitted: string, canonical: string) => {
+    const normalise = (value: string) => value.trim().replace(/\s+/g, " ").toUpperCase();
+    const variants = await storage.resolveVendorAliases(canonical);
+    return [canonical, ...variants].some(value => normalise(value) === normalise(submitted));
+  };
+  const requiresPiVendorMaster = (indent: any, item: any) =>
+    indent?.piType === "material" && ["material", "bulk_plant"].includes(item?.procurementRoute || "");
 
   // A scoped pending list: unlike a global counter, this never leaks inaccessible sites.
   app.get("/api/purchase-orders/pending", async (req, res) => {
@@ -9751,7 +9800,11 @@ export async function registerRoutes(
       if (!scoped) return;
       const [order] = await activePo(scoped.item.id);
       const item = scoped.item;
-      const [vendor] = item.vendorId ? await db.select({ name: vendors.name }).from(vendors).where(eq(vendors.id, item.vendorId)).limit(1) : [];
+      const vendorId = order
+        ? order.vendorId ?? null
+        : requiresPiVendorMaster(scoped.indent, item) ? item.vendorId ?? null : null;
+      const [vendor] = vendorId ? await db.select({ id: vendors.id, name: vendors.name }).from(vendors).where(eq(vendors.id, vendorId)).limit(1) : [];
+      const vendorAliasesForContext = vendor ? await storage.resolveVendorAliases(vendor.name) : [];
       const sites = await storage.getSites();
       const location = (item as any).receivingLocation;
       const destination = location === "site" ? sites.find(s => s.id === (item as any).receivingSiteId)?.name
@@ -9759,11 +9812,17 @@ export async function registerRoutes(
       res.json({
         order: order ? await poDetails(order) : null,
         defaults: {
-          orderNo: item.orderNo || "", vendorId: item.vendorId ?? null, vendorName: vendor?.name || item.vendor || "",
+          orderNo: item.orderNo || "", vendorId,
+          vendorName: order ? order.vendorName : vendor?.name || item.vendor || "",
           description: item.description, spec: item.spec || "", quantity: Number(item.orderedQty ?? item.qtyPurchased ?? item.approvedQty ?? item.qty),
           unit: item.uom, rate: item.rate == null ? null : Number(item.rate),
           expectedDelivery: item.expectedDelivery || "", paymentTerms: item.paymentMode || "",
           destination: destination || "",
+        },
+        vendorContext: {
+          vendorId,
+          linkedVendorName: vendor?.name ?? null,
+          aliases: vendorAliasesForContext,
         },
       });
     } catch (err) { poError(err, res); }
@@ -9778,32 +9837,34 @@ export async function registerRoutes(
       if (["pending", "stores_check", "rejected"].includes(scoped.indent.status) || Number(scoped.item.approvedQty ?? scoped.item.qty) <= 0)
         return res.status(409).json({ message: "Purchase Order requires an approved Purchase Indent item" });
       const fields = poFields.parse(req.body);
-      if (fields.vendorId && fields.vendorId !== scoped.item.vendorId)
+      const requiredVendorId = requiresPiVendorMaster(scoped.indent, scoped.item) ? scoped.item.vendorId ?? null : null;
+      if (fields.vendorId != null && fields.vendorId !== requiredVendorId)
         return res.status(400).json({ message: "Only the PI item's reviewed Vendor Master link may be used" });
       const [linkedVendor] = fields.vendorId
         ? await db.select({ id: vendors.id, name: vendors.name, businessName: vendors.businessName, gstNumber: vendors.gstNumber, panNumber: vendors.panNumber, address: vendors.address }).from(vendors).where(eq(vendors.id, fields.vendorId)).limit(1) : [];
       if (fields.vendorId && !linkedVendor) return res.status(400).json({ message: "Linked vendor not found" });
-      if (linkedVendor && !linkedPoNameMatches(fields.vendorName, linkedVendor.name))
+      if (linkedVendor && !await linkedPoNameMatches(fields.vendorName, linkedVendor.name))
         return res.status(400).json({ message: "Vendor name does not match the linked Vendor Master record; clear the link to use a different name" });
       const order = await db.transaction(async tx => {
-        const [indent] = await tx.select({ status: purchaseIndentsTable.status }).from(purchaseIndentsTable)
+        const [indent] = await tx.select({ status: purchaseIndentsTable.status, piType: purchaseIndentsTable.piType }).from(purchaseIndentsTable)
           .where(eq(purchaseIndentsTable.id, scoped.indent.id)).for("update");
         const [item] = await tx.select({
           qty: purchaseIndentItems.qty, approvedQty: purchaseIndentItems.approvedQty,
           uom: purchaseIndentItems.uom, materialId: purchaseIndentItems.materialId,
-          vendorId: purchaseIndentItems.vendorId,
+          vendorId: purchaseIndentItems.vendorId, procurementRoute: purchaseIndentItems.procurementRoute,
         }).from(purchaseIndentItems)
           .where(and(eq(purchaseIndentItems.id, scoped.item.id), eq(purchaseIndentItems.indentId, scoped.indent.id))).for("update");
         if (!indent || !item) throw new Error("Purchase indent item no longer exists. Refresh and try again.");
         if (["pending", "stores_check", "rejected"].includes(indent.status) || Number(item.approvedQty ?? item.qty) <= 0)
           throw new Error("Purchase Order requires an approved Purchase Indent item");
-        if (fields.vendorId && fields.vendorId !== item.vendorId)
+        const requiredVendorId = requiresPiVendorMaster(indent, item) ? item.vendorId ?? null : null;
+        if (fields.vendorId != null && fields.vendorId !== requiredVendorId)
           throw new Error("Only the PI item's reviewed Vendor Master link may be used");
         // Reject a stale form rather than ordering a snapshot of changed material.
         if (item.qty !== scoped.item.qty || item.uom !== scoped.item.uom || item.materialId !== (scoped.item.materialId ?? null))
           throw new Error("Purchase indent item changed. Refresh and try again.");
         const [order] = await tx.insert(purchaseOrders).values({
-        ...fields, vendorName: linkedVendor?.name ?? fields.vendorName,
+        ...fields,
         purchaseIndentId: scoped.indent.id, purchaseIndentItemId: scoped.item.id,
         raisedByUserId: req.authUser!.id,
         vendorBusinessName: linkedVendor?.businessName ?? null, vendorGst: linkedVendor?.gstNumber ?? null,
@@ -9821,15 +9882,20 @@ export async function registerRoutes(
       const scoped = await scopedPoItem(req, res);
       if (!scoped) return;
       const fields = poFields.parse(req.body);
-      if (fields.vendorId && fields.vendorId !== scoped.item.vendorId)
-        return res.status(400).json({ message: "Only the PI item's reviewed Vendor Master link may be used" });
-      const [linkedVendor] = fields.vendorId
-        ? await db.select({ id: vendors.id, name: vendors.name, businessName: vendors.businessName, gstNumber: vendors.gstNumber, panNumber: vendors.panNumber, address: vendors.address }).from(vendors).where(eq(vendors.id, fields.vendorId)).limit(1) : [];
-      if (fields.vendorId && !linkedVendor) return res.status(400).json({ message: "Linked vendor not found" });
-      if (linkedVendor && !linkedPoNameMatches(fields.vendorName, linkedVendor.name))
+      const [existingDraft] = await db.select({ vendorId: purchaseOrders.vendorId, vendorName: purchaseOrders.vendorName }).from(purchaseOrders)
+        .where(and(eq(purchaseOrders.purchaseIndentItemId, scoped.item.id), eq(purchaseOrders.status, "draft"))).limit(1);
+      if (!existingDraft) return res.status(409).json({ message: "Only an active draft can be edited" });
+      const requestedVendorId = fields.vendorId === undefined ? existingDraft.vendorId ?? null : fields.vendorId;
+      if (requestedVendorId != null && requestedVendorId !== (existingDraft.vendorId ?? null))
+        return res.status(400).json({ message: "The Vendor Master link on an existing PO draft cannot be changed" });
+      const [linkedVendor] = requestedVendorId
+        ? await db.select({ id: vendors.id, name: vendors.name, businessName: vendors.businessName, gstNumber: vendors.gstNumber, panNumber: vendors.panNumber, address: vendors.address }).from(vendors).where(eq(vendors.id, requestedVendorId)).limit(1) : [];
+      if (requestedVendorId && !linkedVendor) return res.status(400).json({ message: "Linked vendor not found" });
+      if (linkedVendor && fields.vendorName !== existingDraft.vendorName && !await linkedPoNameMatches(fields.vendorName, linkedVendor.name))
         return res.status(400).json({ message: "Vendor name does not match the linked Vendor Master record; clear the link to use a different name" });
       const [order] = await db.update(purchaseOrders).set({
-        ...fields, vendorName: linkedVendor?.name ?? fields.vendorName,
+        ...fields,
+        vendorId: requestedVendorId,
         vendorBusinessName: linkedVendor?.businessName ?? null,
         vendorGst: linkedVendor?.gstNumber ?? null, vendorPan: linkedVendor?.panNumber ?? null,
         vendorAddress: linkedVendor?.address ?? null, updatedAt: new Date(),
@@ -11036,7 +11102,7 @@ export async function registerRoutes(
       res.json({ indent, txnIdsByItemId: paResult.txnIdsByItemId, grnIdsByItemId: paResult.grnIdsByItemId, routeWarnings: paResult.routeWarnings ?? [] });
     } catch (err) {
       console.error("POST /api/purchase-indents/:id/purchaser-action:", err);
-      res.status(500).json({ message: String((err as Error).message) });
+      res.status((err as any)?.code === "BAD_REQUEST" ? 400 : 500).json({ message: String((err as Error).message) });
     }
   });
 
@@ -12684,8 +12750,15 @@ export async function registerRoutes(
         return res.status(400).json({ message: "vendorName is required" });
       }
       const bills = await storage.getVendorBills();
+      const vendorMatch = await resolveVendorNameMatch(vendorName);
       const vendorBills = bills
-        .filter(b => b.vendorName.toUpperCase().trim() === vendorName.toUpperCase().trim() && b.items && b.items.length > 0)
+        .filter(b => {
+          const recorded = String(b.vendorName ?? "").trim().replace(/\s+/g, " ").toUpperCase();
+          const matches = vendorMatch
+            ? Number(b.vendorId) === vendorMatch.vendorId || vendorMatch.variants.includes(recorded)
+            : recorded === vendorName.trim().replace(/\s+/g, " ").toUpperCase();
+          return matches && b.items && b.items.length > 0;
+        })
         .sort((a, b) => new Date(b.billDate).getTime() - new Date(a.billDate).getTime());
       
       const rateMap: Record<string, { rate: number; leadDistance?: number }> = {};

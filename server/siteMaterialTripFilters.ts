@@ -5,6 +5,7 @@ import { normalizeVehicleSupplierName, normalizeVehicleSupplierVehicle } from ".
 export type BulkTripFilters = {
   dateFrom?: string; dateTo?: string; site?: string; material?: string;
   vehicleNumber?: string; supplier?: string; onlyUnassigned?: boolean;
+  supplierVendorId?: number | null; supplierVariants?: string[];
   permittedSiteNames?: string[];
 };
 
@@ -19,7 +20,17 @@ export function bulkTripConditions(input: BulkTripFilters, includeOwnSource = fa
   if (input.site) conditions.push(sql`UPPER(TRIM(${trips.site})) = ${input.site.trim().toUpperCase()}`);
   if (input.material) conditions.push(sql`UPPER(TRIM(${trips.material})) = ${input.material.trim().toUpperCase()}`);
   if (input.vehicleNumber) conditions.push(sql`upper(regexp_replace(trim(${trips.vehicleNumber}), '[[:space:]-]+', '', 'g')) = ${normalizeVehicleSupplierVehicle(input.vehicleNumber)}`);
-  if (input.supplier) conditions.push(sql`UPPER(TRIM(${trips.supplier})) = ${normalizeVehicleSupplierName(input.supplier)}`);
+  if (input.supplier) {
+    if (input.supplierVendorId != null && input.supplierVariants?.length) {
+      const variants = input.supplierVariants.map(value => normalizeVehicleSupplierName(value)).filter(Boolean);
+      conditions.push(or(
+        eq(trips.supplierVendorId, input.supplierVendorId),
+        sql`UPPER(regexp_replace(TRIM(${trips.supplier}), '[[:space:]]+', ' ', 'g')) IN (${sql.join(variants.map(value => sql`${value}`), sql`, `)})`,
+      )!);
+    } else {
+      conditions.push(sql`UPPER(TRIM(${trips.supplier})) = ${normalizeVehicleSupplierName(input.supplier)}`);
+    }
+  }
   if (input.onlyUnassigned) conditions.push(or(isNull(trips.materialSourceSupplier), sql`TRIM(${trips.materialSourceSupplier}) = ''`)!);
   if (input.permittedSiteNames !== undefined) conditions.push(input.permittedSiteNames.length ? inArray(trips.site, input.permittedSiteNames) : sql`false`);
   return conditions;

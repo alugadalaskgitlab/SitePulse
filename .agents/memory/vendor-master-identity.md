@@ -8,6 +8,7 @@ Vendor identity is an explicitly reviewed association. Reviewed Vendor Master ID
 **Why:** The user explicitly expanded the scope to reconcile equipment owners, material sellers, transporters and bills to one party identity, without rewriting recorded names or existing financial references.
 
 **How to apply:** Keep free-text names functional and visibly unlinked. A subsequent recorded-name change must invalidate its reviewed association, independently for each role. Do not treat alias or spelling suggestions as confirmed identity.
+Keep the Vendor Master review and alias-management flows unchanged unless separately requested.
 
 Historical trip linking must preserve recorded names and registration; use the
 explicit role-correction flow only when the operational facts are genuinely wrong.

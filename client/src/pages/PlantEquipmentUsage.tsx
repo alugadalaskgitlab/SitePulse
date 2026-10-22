@@ -32,6 +32,7 @@ import { plantDestinationType } from "@/lib/equipmentLifecycle";
 import { BreakdownStoppageEditor, type StagedBreakdown } from "@/components/BreakdownStoppageEditor";
 import { useUpload } from "@/hooks/use-upload";
 import { formatEquipmentOptionLabel } from "@shared/equipmentLabel";
+import { vendorIdentityDisplayName } from "@shared/vendorIdentityDisplay";
 import { computeEquipmentFuelSummary } from "@shared/equipmentUsage";
 import { EquipmentMasterCreateDialog } from "@/components/EquipmentMasterCreateDialog";
 import { validateDieselTankBalance } from "@shared/dieselEntryValidation";
@@ -930,10 +931,15 @@ export default function PlantEquipmentUsage() {
       const equip = equipment?.find(e => e.id === entry.equipmentId);
       const equipName = equip?.name || "Unknown";
       const regNo = (equip as any)?.registrationNumber || "-";
+      const equipmentVendorName = vendorIdentityDisplayName({
+        recordedName: (equip as any)?.vendorName,
+        vendorId: (equip as any)?.linkedVendorId,
+        linkedVendorName: (equip as any)?.linkedVendorName,
+      });
       const ownership = !equip
         ? "-"
         : (equip as any).ownership === "hired"
-          ? `HIRED${(equip as any)?.vendorName ? `: ${(equip as any).vendorName}` : ""}`
+          ? `HIRED${equipmentVendorName ? `: ${equipmentVendorName}` : ""}`
           : "HLC OWN";
       const meterType = equip?.meterType || "hour_meter";
       const norm = equip?.consumptionNorm;

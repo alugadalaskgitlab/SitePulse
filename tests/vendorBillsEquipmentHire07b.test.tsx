@@ -64,9 +64,13 @@ let deferredHireActivities: Promise<Response> | null = null;
 let billDetailOverrideForTest: any = null;
 let billListOverrideForTest: any[] | null = null;
 let vendorNamesForTest: string[] = [];
+let billingIdentitiesForTest: Array<{ id: number; name: string; businessName?: string | null }> = [];
 
 beforeEach(() => {
   queryClient.clear();
+  Object.defineProperty(Element.prototype, "hasPointerCapture", { configurable: true, value: () => false });
+  Object.defineProperty(Element.prototype, "setPointerCapture", { configurable: true, value: () => {} });
+  Object.defineProperty(Element.prototype, "releasePointerCapture", { configurable: true, value: () => {} });
   vendorBillWrites = [];
   autoItemsForTest = [autoEquipmentItem];
   rateCardsForTest = [];
@@ -78,6 +82,11 @@ beforeEach(() => {
   billDetailOverrideForTest = null;
   billListOverrideForTest = null;
   vendorNamesForTest = [];
+  billingIdentitiesForTest = [
+    { id: 81, name: "ABC EQUIPMENT" },
+    { id: 82, name: "HISTORICAL HIRE" },
+    { id: 83, name: "ITEMIZED EQUIPMENT" },
+  ];
   authTestState.isOwner = false;
   authTestState.isAdmin = true;
   Object.defineProperty(window, "matchMedia", { configurable: true, value: vi.fn().mockReturnValue({ matches: false, addListener: vi.fn(), removeListener: vi.fn() }) });
@@ -102,6 +111,7 @@ beforeEach(() => {
     }
     if (url.includes("/api/vendor-bills/summary")) return new Response(JSON.stringify({ total: 0, totalAmount: 0, draft: 0, draftAmount: 0, verified: 0, verifiedAmount: 0, approved: 0, approvedAmount: 0, paid: 0, paidAmount: 0, gstByCategory: {}, totalGst: 0 }));
     if (url.includes("/api/vendor-bills/vendor-names")) return new Response(JSON.stringify(vendorNamesForTest));
+    if (url.includes("/api/vendor-bills/vendor-identities")) return new Response(JSON.stringify(billingIdentitiesForTest));
     if (url.includes("/api/vendor-aliases")) return new Response(JSON.stringify([]));
     if (url.includes("/api/vendor-bills/discover-vendors")) return new Response(JSON.stringify([discoveredVendor]));
     if (url.includes("/api/vendor-bills/equipment-hire-discovery")) return new Response(JSON.stringify([{ vendorName: "HISTORICAL HIRE", equipmentCount: 1, equipment: [historicalEquipment] }]));
@@ -779,8 +789,13 @@ describe("VB-FIND-01 bill cards and vendor picker", () => {
     expect(noDateMeta.textContent).not.toContain("Period");
   });
 
-  it("reopens suggestions, supports Escape and keyboard selection, prevents Enter submission, and accepts free text on blur", async () => {
+  it("reopens suggestions, supports keyboard selection, and blocks unresolved new vendor names", async () => {
     vendorNamesForTest = ["OLD SUPPLIER", "NEW SUPPLIER"];
+    billingIdentitiesForTest = [
+      { id: 101, name: "OLD SUPPLIER" },
+      { id: 102, name: "NEW SUPPLIER" },
+    ];
+    queryClient.setQueryData(["/api/vendor-bills/vendor-identities"], billingIdentitiesForTest);
     render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
     fireEvent.click(await screen.findByTestId("button-new-bill"));
 
@@ -819,7 +834,16 @@ describe("VB-FIND-01 bill cards and vendor picker", () => {
     fireEvent.click(screen.getByTestId("select-bill-site"));
     fireEvent.click(await screen.findByText("ALL SITES"));
     fireEvent.click(screen.getByTestId("button-save-bill"));
+    expect(screen.getByText(/not uniquely linked to the Vendor Master/)).toBeTruthy();
+    expect(vendorBillWrites).toHaveLength(0);
+
+    fireEvent.change(input, { target: { value: "NEW SUPPLIER" } });
+    fireEvent.mouseDown(await screen.findByTestId("vendor-option-NEW SUPPLIER"), { button: 0 });
+    const masterSelect = screen.getByTestId("select-bill-vendor-master");
+    await waitFor(() => expect((masterSelect as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() => expect(masterSelect.textContent).toContain("NEW SUPPLIER"));
+    fireEvent.click(screen.getByTestId("button-save-bill"));
     await waitFor(() => expect(vendorBillWrites.some(write => write.method === "POST")).toBe(true));
-    expect(vendorBillWrites.find(write => write.method === "POST")?.body.vendorName).toBe("UNLISTED SUPPLIER");
+    expect(vendorBillWrites.find(write => write.method === "POST")?.body.vendorName).toBe("NEW SUPPLIER");
   });
 });

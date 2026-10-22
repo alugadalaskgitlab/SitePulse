@@ -5,6 +5,7 @@ import { siteMaterialTrips, earthworkArrangements, boqProjects, sites, auditLogs
 import { bulkTripConditions } from "./siteMaterialTripFilters";
 import type { BulkTripArrangementInput } from "../shared/tripArrangementLink";
 import { canLinkTripArrangement } from "../shared/tripArrangementLink";
+import { resolveVendorNameMatch } from "./vendorNameResolution";
 
 const siteMatch = (name: string) => sql`UPPER(TRIM(${sites.name})) = ${name.trim().toUpperCase()}`;
 export async function tripArrangementOptions(site: string) {
@@ -38,9 +39,15 @@ export async function bulkLinkTripArrangement(
       .where(and(eq(earthworkArrangements.id, input.earthworkArrangementId), siteMatch(input.site)))
       .for("share", { of: earthworkArrangements });
     if (!arrangement) throw Object.assign(new Error("Choose an arrangement from this site's BOQ project."), {status:400});
+    const supplierMatch = input.supplier ? await resolveVendorNameMatch(input.supplier, tx) : null;
+    const selectionInput = {
+      ...input,
+      supplierVendorId: supplierMatch?.vendorId,
+      supplierVariants: supplierMatch?.variants,
+    };
     const matched = await tx.select({
       id: siteMaterialTrips.id, previous: siteMaterialTrips.earthworkArrangementId, date: siteMaterialTrips.date,
-    }).from(siteMaterialTrips).where(and(...bulkTripConditions(input, true)))
+    }).from(siteMaterialTrips).where(and(...bulkTripConditions(selectionInput, true)))
       .orderBy(siteMaterialTrips.id).for("update");
     const candidates = matched.filter(row =>
       row.previous !== input.earthworkArrangementId &&

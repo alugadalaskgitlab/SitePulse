@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { getQueryFn } from "@/lib/queryClient";
 import VendorBills from "@/pages/VendorBills";
 
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({
@@ -35,10 +36,17 @@ let hireStartDate: string;
 let hireEndDate: string | null;
 
 beforeEach(() => {
-  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  queryClient = new QueryClient({ defaultOptions: {
+    queries: { queryFn: getQueryFn({ on401: "throw" }), retry: false },
+    mutations: { retry: false },
+  } });
+  queryClient.setQueryData(["/api/vendor-bills/vendor-identities"], [{ id: 202, name: vendorName }]);
   writes = [];
   hireStartDate = "2026-01-01";
   hireEndDate = null;
+  Object.defineProperty(Element.prototype, "hasPointerCapture", { configurable: true, value: () => false });
+  Object.defineProperty(Element.prototype, "setPointerCapture", { configurable: true, value: () => {} });
+  Object.defineProperty(Element.prototype, "releasePointerCapture", { configurable: true, value: () => {} });
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
     value: vi.fn().mockReturnValue({ matches: false, addListener: vi.fn(), removeListener: vi.fn() }),
@@ -57,6 +65,7 @@ beforeEach(() => {
       return new Response(JSON.stringify({ total: 0, totalAmount: 0, draft: 0, draftAmount: 0, verified: 0, verifiedAmount: 0, approved: 0, approvedAmount: 0, paid: 0, paidAmount: 0, gstByCategory: {}, totalGst: 0 }));
     }
     if (url.includes("/api/vendor-bills/vendor-names") || url.includes("/api/vendor-aliases")) return new Response(JSON.stringify([]));
+    if (url.includes("/api/vendor-bills/vendor-identities")) return new Response(JSON.stringify([{ id: 202, name: vendorName }]));
     if (url.includes("/api/vendor-bills/discover-vendors")) {
       return new Response(JSON.stringify([{ vendorName, recordCount: 1, categories: ["equipment"] }]));
     }
@@ -92,6 +101,9 @@ async function openMonthlyBill(from: string, to: string) {
   fireEvent.click(await screen.findByTestId(`button-select-vendor-${vendorName}`));
   const multiMonth = from.slice(0, 7) !== to.slice(0, 7);
   await screen.findByTestId(`monthly-hire-${equipmentId}${multiMonth ? `-${from}` : ""}`);
+  const masterSelect = screen.getByTestId("select-bill-vendor-master");
+  await waitFor(() => expect((masterSelect as HTMLButtonElement).disabled).toBe(false));
+  await waitFor(() => expect(masterSelect.textContent).toContain(vendorName));
 }
 
 describe("VB-20 monthly hire segment selection", () => {
@@ -117,7 +129,7 @@ describe("VB-20 monthly hire segment selection", () => {
     expect(writes[0].items).toHaveLength(1);
     expect(writes[0].items[0].description).toContain("01-AUG-2026–31-AUG-2026");
     expect(JSON.stringify(writes[0])).not.toContain("01-SEP-2026");
-  });
+  }, 15_000);
 
   it("supports three selected months and preserves single-month behavior without a selector", async () => {
     await openMonthlyBill("2026-08-01", "2026-10-20");

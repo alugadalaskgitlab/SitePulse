@@ -14,6 +14,8 @@ beforeAll(async () => {
     unit text NOT NULL, rate real NOT NULL, notes text, updated_at timestamp,
     lead_distance_km real, payload_mt real, rate_per_km real
   );
+  CREATE TABLE vendors (id integer PRIMARY KEY, name text NOT NULL, business_name text, is_active boolean);
+  CREATE TABLE vendor_aliases (id serial PRIMARY KEY, canonical_name text NOT NULL, alias text NOT NULL);
   INSERT INTO vendor_rate_cards VALUES
     (1,'Mixed Vendor',NULL,'transport',' Exact  Key ','Mixed Label','TRIP',95,'Keep',NULL,NULL,NULL,NULL);`);
 });

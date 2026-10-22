@@ -24,6 +24,9 @@ beforeEach(() => {
       return json(saveStatus === 200 ? {} : { message: "Synthetic save failure" }, saveStatus);
     }
     if (url.pathname === "/api/vendor-bills/vendor-names") return json(["DRAFT VENDOR"]);
+    if (url.pathname === "/api/vendor-bills/vendor-identities") return json([{ id: 70, name: "DRAFT VENDOR" }]);
+    if (url.pathname === "/api/vendor-master") return json([{ id: 70, name: "DRAFT VENDOR", isActive: true }]);
+    if (url.pathname === "/api/vendor-aliases") return json([]);
     if (url.pathname === "/api/vendor-rate-cards/discover") return json([{
       itemKey: "MAT_SOIL_CFT", itemLabel: "SOIL", category: "material", unit: "CFT", rate: 12, rateCardId: 1,
     }]);

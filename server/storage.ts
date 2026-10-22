@@ -9,6 +9,7 @@ import { hasFrozenTripDailyHire, FROZEN_TRIP_DAILY_MESSAGE } from "../shared/ven
 import { purchaseOrders } from "../shared/schema";
 import { linkedPiStoreStock } from "../shared/piStoreStock";
 import { bulkTripConditions } from "./siteMaterialTripFilters";
+import { currentVendorNamesByIds, resolveVendorNameMatch, resolveVendorNameMatchById, vendorNameIdentityCondition } from "./vendorNameResolution";
 import { validatedTransportRateFields } from "../shared/transportRate";
 import { db } from "./db";
 import { insertLabourWithWorkers, readWorkerNames } from "./labourWorkers";
@@ -1502,7 +1503,7 @@ export interface IStorage {
 
   // PI Item Transactions (dual-route)
   getPiItemTransactions(indentId: number): Promise<PiItemTransaction[]>;
-  submitPurchaserAction(indentId: number, items: { itemId: number; purchaseActionType?: string; qty: number; orderedQty?: number; orderNo?: string; orderedByName?: string; vendor?: string; rate?: number; amount?: number; paymentMode?: string; paidBy?: string; expectedDeliveryDate?: string; reasonCode?: string; billNo?: string; remarks?: string }[], actionBy: string, userId?: number): Promise<{ txnIdsByItemId: Record<number, number>; grnIdsByItemId: Record<number, number>; routeWarnings: { itemId: number; message: string }[] }>;
+  submitPurchaserAction(indentId: number, items: { itemId: number; purchaseActionType?: string; qty: number; orderedQty?: number; orderNo?: string; orderedByName?: string; vendor?: string; vendorId?: number | null; rate?: number; amount?: number; paymentMode?: string; paidBy?: string; expectedDeliveryDate?: string; reasonCode?: string; billNo?: string; remarks?: string }[], actionBy: string, userId?: number): Promise<{ txnIdsByItemId: Record<number, number>; grnIdsByItemId: Record<number, number>; routeWarnings: { itemId: number; message: string }[] }>;
   getApplicablePiForBoqItem(boqProjectId: number, boqItemId: number): Promise<{ indentId: number; indentNo: string; indentItemId: number; vendor: string | null; orderedQty: number; receivedQty: number; balanceQty: number } | { ambiguous: true; count: number } | null>;
   recordDelivery(itemId: number, data: { deliveredQty: number; deliveryDate?: string; challanNo?: string; paymentMode?: string; paidBy?: string; remarks?: string }, actionBy: string, userId?: number): Promise<{ item: PurchaseIndentItem; grnId?: number }>;
   ensureOrderColumns(): Promise<void>;
@@ -1643,7 +1644,7 @@ export interface IStorage {
 
   getVendorRateCards(vendorName?: string): Promise<VendorRateCard[]>;
   discoverVendorItems(vendorName: string): Promise<{ itemKey: string; itemLabel: string; category: string; unit: string; rate: number | null; rateCardId: number | null; isManual?: boolean }[]>;
-  upsertVendorRateCard(data: InsertVendorRateCard): Promise<VendorRateCard>;
+  upsertVendorRateCard(data: InsertVendorRateCard & { vendorId?: number | null }): Promise<VendorRateCard>;
   updateTransportRateSetup(id: number, itemKey: string, fields: { leadDistanceKm: number | null; payloadMt: number | null; ratePerKm: number | null }): Promise<VendorRateCard | undefined>;
   deleteVendorRateCard(id: number): Promise<boolean>;
   checkDuplicateBilledItems(vendorName: string, items: { date: string; source?: string | null; equipmentId?: number | null; description?: string; category?: string | null; siteName?: string | null }[], excludeBillId?: number): Promise<{ index: number; billNo: string; billStatus: string }[]>;
@@ -12626,6 +12627,7 @@ export class DatabaseStorage implements IStorage {
 
   async getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; vehicleNumber?: string; supplier?: string; onlyUnassigned?: boolean; onlyWithoutArrangement?: boolean; indentItemId?: number; indentId?: number; boqProjectId?: number; boqItemId?: number; programmeBarId?: number; earthworkArrangementId?: number; permittedSiteNames?: string[]; includeCancelled?: boolean }): Promise<SiteMaterialTrip[]> {
     let conditions = [];
+    const supplierMatch = filters?.supplier?.trim() ? await resolveVendorNameMatch(filters.supplier) : null;
     if (filters?.onlyWithoutArrangement) conditions.push(isNull(siteMaterialTrips.earthworkArrangementId));
     // Match bulkAssignSiteMaterialTripMaterialSource, including own-source
     // exclusion only for the unassigned view (normal lists retain own source).
@@ -12634,7 +12636,9 @@ export class DatabaseStorage implements IStorage {
       conditions.push(sql`upper(regexp_replace(trim(${siteMaterialTrips.vehicleNumber}), '[[:space:]-]+', '', 'g')) = ${vehicleKey}`);
     }
     if (filters?.supplier?.trim()) {
-      conditions.push(sql`UPPER(TRIM(${siteMaterialTrips.supplier})) = ${normalizeVehicleSupplierName(filters.supplier)}`);
+      conditions.push(supplierMatch
+        ? vendorNameIdentityCondition(siteMaterialTrips.supplier, siteMaterialTrips.supplierVendorId, supplierMatch)
+        : sql`UPPER(TRIM(${siteMaterialTrips.supplier})) = ${normalizeVehicleSupplierName(filters.supplier)}`);
     }
     if (filters?.onlyUnassigned) {
       conditions.push(sql`${siteMaterialTrips.materialSourceType} IS DISTINCT FROM 'own_source'`);
@@ -12671,14 +12675,20 @@ export class DatabaseStorage implements IStorage {
 
   /** Enrich only already-authorized trip rows, never expose recipe/master lists. */
   private async withTripBoqQuantities<T extends SiteMaterialTrip>(trips: T[]) {
+    const linkedNames = await currentVendorNamesByIds(trips.flatMap(t => [t.supplierVendorId, t.materialSourceVendorId]));
+    const withVendorNames = trips.map(t => ({
+      ...t,
+      linkedTransporterName: t.supplierVendorId == null ? null : linkedNames.get(Number(t.supplierVendorId)) ?? null,
+      linkedMaterialSupplierName: t.materialSourceVendorId == null ? null : linkedNames.get(Number(t.materialSourceVendorId)) ?? null,
+    }));
     const ids = Array.from(new Set(trips.flatMap(t => t.boqItemId == null ? [] : [t.boqItemId])));
-    if (!ids.length) return trips.map(t => ({ ...t, boqQuantity: null }));
+    if (!ids.length) return withVendorNames.map(t => ({ ...t, boqQuantity: null }));
     const names = Array.from(new Set(trips.map(t => t.material)));
     const [recipes, materials] = await Promise.all([
       db.select().from(boqItemMaterials).where(inArray(boqItemMaterials.boqItemId, ids)),
       db.select({ name: plantMaterials.name, bulkDensity: plantMaterials.bulkDensity }).from(plantMaterials).where(inArray(plantMaterials.name, names)),
     ]);
-    return trips.map(t => ({ ...t, boqQuantity: lookupTripBoqQuantity(t, recipes, materials) }));
+    return withVendorNames.map(t => ({ ...t, boqQuantity: lookupTripBoqQuantity(t, recipes, materials) }));
   }
 
   /**
@@ -12888,7 +12898,12 @@ export class DatabaseStorage implements IStorage {
 
     return db.transaction(async (tx) => {
       if (input.permittedSiteNames?.length === 0) return { updatedCount: 0 };
-      const conditions = bulkTripConditions(input);
+      const supplierMatch = input.supplier ? await resolveVendorNameMatch(input.supplier, tx) : null;
+      const conditions = bulkTripConditions({
+        ...input,
+        supplierVendorId: supplierMatch?.vendorId,
+        supplierVariants: supplierMatch?.variants,
+      });
 
       const matched = await tx.select({
         id: siteMaterialTrips.id,
@@ -14865,10 +14880,16 @@ export class DatabaseStorage implements IStorage {
     const storeLinks = await this.piStoreLinks(indents.flatMap(i => i.items));
     const linkedStoreIds = Array.from(new Set(Array.from(storeLinks.values()).filter((id): id is number => id != null && id > 0)));
     const liveStores = linkedStoreIds.length ? await this.getStoreItemsWithBalance(linkedStoreIds) : [];
+    const linkedVendorNames = await currentVendorNamesByIds(indents.flatMap(indent => indent.items.map(item => item.vendorId)));
     const enrichedIndents = await Promise.all(indents.map(async indent => ({
       ...indent,
       items: await Promise.all(indent.items.map(async item => {
-        const withCatalog = { ...item, ...linkedPiStoreStock({ ...item, storeItemId: storeLinks.get(item.id) }, liveStores), catalogProcurementRoute: item.materialId ? catalogRoutes.get(item.materialId) ?? null : null };
+        const withCatalog = {
+          ...item,
+          linkedVendorName: item.vendorId == null ? null : linkedVendorNames.get(Number(item.vendorId)) ?? null,
+          ...linkedPiStoreStock({ ...item, storeItemId: storeLinks.get(item.id) }, liveStores),
+          catalogProcurementRoute: item.materialId ? catalogRoutes.get(item.materialId) ?? null : null,
+        };
         if (!isBulkPiDeliveryItem(withCatalog)) return withCatalog;
         return { ...withCatalog, ...reconcileDeliveryEvidence(await this._getPiDeliveryEvidence(db, item.id), item.uom) };
       })),
@@ -15141,7 +15162,12 @@ export class DatabaseStorage implements IStorage {
       if (order.status === "rejected") receiptEvents.push({ id: `po-${order.id}-rejected`, label: "Purchase Order Rejected", itemId: order.purchaseIndentItemId, at: null, actor: null, note: order.rejectionReason });
     }
     const timeline = buildPiTimeline({ ...indent, unlockedByName, items: deliveryItems }, transactions, audits, receiptEvents);
-    return { ...indent, items: deliveryItems.map(item => ({ ...item, timeline: timeline.filter(e => e.itemId === item.id) })), timeline, unlockedByName } as PurchaseIndentWithItems | undefined;
+    const linkedVendorNames = await currentVendorNamesByIds(deliveryItems.map((item: any) => item.vendorId));
+    return { ...indent, items: deliveryItems.map((item: any) => ({
+      ...item,
+      linkedVendorName: item.vendorId == null ? null : linkedVendorNames.get(Number(item.vendorId)) ?? null,
+      timeline: timeline.filter(e => e.itemId === item.id),
+    })), timeline, unlockedByName } as PurchaseIndentWithItems | undefined;
   }
 
   private async purchaseIndentRouteCorrectionRows(tx: any, itemIds?: number[]): Promise<PurchaseIndentRouteCorrection[]> {
@@ -15661,7 +15687,7 @@ export class DatabaseStorage implements IStorage {
 
   async submitPurchaserAction(
     indentId: number,
-    items: { itemId: number; receivingLocation?: string; receivingSiteId?: number; purchaseActionType?: string; qty: number; orderedQty?: number; orderNo?: string; orderedByName?: string; vendor?: string; rate?: number; amount?: number; paymentMode?: string; paidBy?: string; expectedDeliveryDate?: string; reasonCode?: string; billNo?: string; remarks?: string; procurementRoute?: string }[],
+    items: { itemId: number; receivingLocation?: string; receivingSiteId?: number; purchaseActionType?: string; qty: number; orderedQty?: number; orderNo?: string; orderedByName?: string; vendor?: string; vendorId?: number | null; rate?: number; amount?: number; paymentMode?: string; paidBy?: string; expectedDeliveryDate?: string; reasonCode?: string; billNo?: string; remarks?: string; procurementRoute?: string }[],
     actionBy: string,
     userId?: number
   ): Promise<{ txnIdsByItemId: Record<number, number>; grnIdsByItemId: Record<number, number>; routeWarnings: { itemId: number; message: string }[] }> {
@@ -15704,6 +15730,29 @@ export class DatabaseStorage implements IStorage {
           ?? (item.reasonCode === "ordered" ? "ordered"
             : item.reasonCode === "not_available" ? "not_available"
             : "already_purchased");
+        if (actionType === "ordered"
+            && (parentIndent?.piType === "material" || dbRoute === "material" || dbRoute === "bulk_plant")) {
+          await this.writePurchaseIndentDestination(tx, indentId, item.itemId, item.receivingLocation, item.receivingSiteId, userId ?? 0, actionBy, item.qty);
+        }
+        let linkedVendorId: number | null = null;
+        if (parentIndent?.piType === "material" && ["material", "bulk_plant"].includes(dbRoute || "")
+            && ["ordered", "already_purchased"].includes(actionType)) {
+          const vendorName = String(item.vendor ?? "").trim();
+          const vendorMatch = await resolveVendorNameMatch(vendorName, tx);
+          const activeVendor = vendorMatch
+            ? await resolveVendorNameMatchById(vendorMatch.vendorId, tx)
+            : null;
+          if (!vendorMatch || !activeVendor) {
+            throw Object.assign(new Error("Bulk-material purchases need an active Vendor Master match. Select a vendor or add this spelling as an alias first."), { code: "BAD_REQUEST" });
+          }
+          if (item.vendorId != null && Number(item.vendorId) !== vendorMatch.vendorId) {
+            throw Object.assign(new Error("The typed vendor name does not match the selected Vendor Master record."), { code: "BAD_REQUEST" });
+          }
+          if (existing.vendorId != null && Number(existing.vendorId) !== vendorMatch.vendorId) {
+            throw Object.assign(new Error("This bulk-material item already has a different Vendor Master link. Review it before changing the supplier."), { code: "BAD_REQUEST" });
+          }
+          linkedVendorId = vendorMatch.vendorId;
+        }
         if (actionType === "already_purchased" && dbRoute === "stores"
           && isBulkPiDeliveryItem({ procurementRoute: dbRoute,
             catalogProcurementRoute: existing.materialId ? catalogRouteById.get(existing.materialId) : null })) {
@@ -15711,9 +15760,6 @@ export class DatabaseStorage implements IStorage {
         }
 
         if (actionType === "ordered") {
-          if (parentIndent?.piType === "material" || dbRoute === "material" || dbRoute === "bulk_plant") {
-            await this.writePurchaseIndentDestination(tx, indentId, item.itemId, item.receivingLocation, item.receivingSiteId, userId ?? 0, actionBy, item.qty);
-          }
           // ── ORDERED PATH: record order, do NOT create GRN, do NOT bump totalPurchasedQty ──
           const [txRow] = await tx.insert(piItemTransactions).values({
             indentId,
@@ -15735,6 +15781,7 @@ export class DatabaseStorage implements IStorage {
               purchaseStatus: "ORDERED",
               orderedQty: item.qty,
               vendor: item.vendor?.toUpperCase() ?? null,
+              ...(linkedVendorId != null ? { vendorId: linkedVendorId } : {}),
               rate: item.rate ?? null,
               paymentMode: item.paymentMode ?? null,
               expectedDelivery: item.expectedDeliveryDate ?? null,
@@ -15809,6 +15856,7 @@ export class DatabaseStorage implements IStorage {
               totalPurchasedQty: prevTotal + item.qty,
               orderedQty: item.orderedQty ?? item.qty,
               vendor: item.vendor?.toUpperCase() ?? null,
+              ...(linkedVendorId != null ? { vendorId: linkedVendorId } : {}),
               rate: item.rate ?? null,
               paymentMode: item.paymentMode ?? null,
               paidBy: item.paidBy ?? null,
@@ -17471,7 +17519,12 @@ export class DatabaseStorage implements IStorage {
     if (filters?.dateFrom) conditions.push(gte(purchaseIndents.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(purchaseIndents.date, filters.dateTo));
     if (filters?.purpose) conditions.push(eq(purchaseIndentItems.purpose, filters.purpose.toUpperCase()));
-    if (filters?.vendor) conditions.push(ilike(purchaseIndentItems.vendor, `%${filters.vendor}%`));
+    if (filters?.vendor) {
+      const match = await resolveVendorNameMatch(filters.vendor);
+      conditions.push(match
+        ? vendorNameIdentityCondition(purchaseIndentItems.vendor, purchaseIndentItems.vendorId, match)
+        : ilike(purchaseIndentItems.vendor, `%${filters.vendor}%`));
+    }
     if (filters?.paymentMode) conditions.push(eq(purchaseIndentItems.paymentMode, filters.paymentMode));
 
     const rows = await db.select({
@@ -17489,6 +17542,7 @@ export class DatabaseStorage implements IStorage {
       purchaseStatus: purchaseIndentItems.purchaseStatus,
       qtyPurchased: purchaseIndentItems.qtyPurchased,
       vendor: purchaseIndentItems.vendor,
+      vendorId: purchaseIndentItems.vendorId,
       billNo: purchaseIndentItems.billNo,
       rate: purchaseIndentItems.rate,
       amount: purchaseIndentItems.amount,
@@ -17522,8 +17576,12 @@ export class DatabaseStorage implements IStorage {
     const fulfilled = purchased + partial;
     const fulfillmentRate = totalItems > 0 ? Math.round((fulfilled / totalItems) * 100) : 0;
 
+    const linkedVendorNames = await currentVendorNamesByIds(filteredRows.map(row => row.vendorId));
     return {
-      items: filteredRows,
+      items: filteredRows.map(row => ({
+        ...row,
+        linkedVendorName: row.vendorId == null ? null : linkedVendorNames.get(Number(row.vendorId)) ?? null,
+      })),
       summary: { totalItems, purchased, partial, cancelled, notPurchased, pending, totalSpend, fulfillmentRate },
     };
   }
@@ -17565,8 +17623,10 @@ export class DatabaseStorage implements IStorage {
       }
       return [...names];
     };
+    const linkedNames = await currentVendorNamesByIds(bills.map(bill => bill.vendorId));
     let result = bills.map((bill) => ({
       ...bill,
+      linkedVendorName: bill.vendorId == null ? null : linkedNames.get(Number(bill.vendorId)) ?? null,
       // Alias data is exposed only for linked bills; free-text vendor names
       // continue to match exactly and are never merged by spelling.
       vendorAliasNames: bill.vendorId == null ? [] : resolveAliases(bill.vendorName),
@@ -17616,9 +17676,13 @@ export class DatabaseStorage implements IStorage {
         },
       },
     });
+    const linkedVendorName = bill?.vendorId == null
+      ? null
+      : (await currentVendorNamesByIds([bill.vendorId])).get(Number(bill.vendorId)) ?? null;
     return bill
       ? {
           ...bill,
+           linkedVendorName,
           hireStatements: (Array.isArray(bill.hireStatements) ? bill.hireStatements : []).map((statement: any) => {
             const { equipment, ...savedStatement } = statement;
             return { ...savedStatement, equipmentType: equipment?.equipmentType || null };
@@ -23113,22 +23177,47 @@ export class DatabaseStorage implements IStorage {
   }
   async getVendorRateCards(vendorName?: string): Promise<VendorRateCard[]> {
     if (vendorName) {
+      const match = await resolveVendorNameMatch(vendorName);
+      if (match) {
+        const cards = await db.select().from(vendorRateCards)
+          .where(vendorNameIdentityCondition(vendorRateCards.vendorName, vendorRateCards.vendorId, match))
+          .orderBy(vendorRateCards.vendorName, vendorRateCards.category, vendorRateCards.itemKey);
+        const linkedNames = await currentVendorNamesByIds(cards.map(card => card.vendorId));
+        return cards.map(card => ({
+          ...card,
+          linkedVendorName: card.vendorId == null ? null : linkedNames.get(Number(card.vendorId)) ?? null,
+        })) as VendorRateCard[];
+      }
       const variants = await this.resolveVendorAliases(vendorName);
       const conditions = variants.map(v => sql`UPPER(TRIM(${vendorRateCards.vendorName})) = ${v}`);
-      return db.select().from(vendorRateCards).where(or(...conditions)).orderBy(vendorRateCards.vendorName, vendorRateCards.category, vendorRateCards.itemKey);
+      const cards = await db.select().from(vendorRateCards).where(or(...conditions)).orderBy(vendorRateCards.vendorName, vendorRateCards.category, vendorRateCards.itemKey);
+      const linkedNames = await currentVendorNamesByIds(cards.map(card => card.vendorId));
+      return cards.map(card => ({
+        ...card,
+        linkedVendorName: card.vendorId == null ? null : linkedNames.get(Number(card.vendorId)) ?? null,
+      })) as VendorRateCard[];
     }
-    return db.select().from(vendorRateCards).orderBy(vendorRateCards.vendorName, vendorRateCards.category, vendorRateCards.itemKey);
+    const cards = await db.select().from(vendorRateCards).orderBy(vendorRateCards.vendorName, vendorRateCards.category, vendorRateCards.itemKey);
+    const linkedNames = await currentVendorNamesByIds(cards.map(card => card.vendorId));
+    return cards.map(card => ({
+      ...card,
+      linkedVendorName: card.vendorId == null ? null : linkedNames.get(Number(card.vendorId)) ?? null,
+    })) as VendorRateCard[];
   }
 
-  async upsertVendorRateCard(data: InsertVendorRateCard): Promise<VendorRateCard> {
+  async upsertVendorRateCard(data: InsertVendorRateCard & { vendorId?: number | null }): Promise<VendorRateCard> {
     // Legacy/bill write-back is NEVER allowed to set or clear transport basis.
     // Keep an explicit legacy-column allowlist below, even if callers send it.
     const upperVendor = data.vendorName.toUpperCase().trim();
     const upperKey = data.itemKey.toUpperCase().trim();
     const upperUnit = data.unit.toUpperCase().trim();
+    const nameMatch = await resolveVendorNameMatch(data.vendorName);
+    const existingIdentityCondition = nameMatch
+      ? vendorNameIdentityCondition(vendorRateCards.vendorName, vendorRateCards.vendorId, nameMatch)
+      : sql`UPPER(TRIM(${vendorRateCards.vendorName})) = ${upperVendor}`;
     const existing = await db.select().from(vendorRateCards)
       .where(and(
-        sql`UPPER(TRIM(${vendorRateCards.vendorName})) = ${upperVendor}`,
+        existingIdentityCondition,
         sql`UPPER(TRIM(${vendorRateCards.itemKey})) = ${upperKey}`,
         eq(vendorRateCards.category, data.category),
         sql`UPPER(TRIM(${vendorRateCards.unit})) = ${upperUnit}`,
@@ -23155,6 +23244,7 @@ export class DatabaseStorage implements IStorage {
       rate: data.rate,
       notes: data.notes,
       vendorName: upperVendor,
+      vendorId: data.vendorId ?? nameMatch?.vendorId ?? null,
       itemKey: upperKey,
     }).returning();
     return created;
@@ -23544,8 +23634,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async checkDuplicateBilledItems(vendorName: string, items: { date: string; source?: string | null; equipmentId?: number | null; description?: string; category?: string | null; siteName?: string | null }[], excludeBillId?: number): Promise<{ index: number; billNo: string; billStatus: string }[]> {
+    const match = await resolveVendorNameMatch(vendorName);
     const variants = await this.resolveVendorAliases(vendorName);
-    const vendorConds = variants.map(v => sql`UPPER(TRIM(${vendorBills.vendorName})) = ${v}`);
+    const vendorConds = match
+      ? [vendorNameIdentityCondition(vendorBills.vendorName, vendorBills.vendorId, match)]
+      : variants.map(v => sql`UPPER(TRIM(${vendorBills.vendorName})) = ${v}`);
     const whereConditions: any[] = [
       or(...vendorConds),
       sql`COALESCE(${vendorBills.isCancelled}, false) = false`,

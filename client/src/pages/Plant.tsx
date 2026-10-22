@@ -28,6 +28,7 @@ import { EQUIPMENT_TYPES, METER_TYPES, PERSONNEL_ROLES } from "@shared/schema";
 import { computeTankStock } from "@/lib/ldoStock";
 import { format } from "date-fns";
 import { formatEquipmentOptionLabel } from "@shared/equipmentLabel";
+import { vendorIdentityDisplayName } from "@shared/vendorIdentityDisplay";
 import { EquipmentMasterCreateDialog } from "@/components/EquipmentMasterCreateDialog";
 import {
   EQUIPMENT_IDENTIFICATION_QUERY_KEY,
@@ -4750,6 +4751,12 @@ export function EquipmentMasterSection() {
             {filteredEquipment.map((equip) => {
               const isInactive = equip.isActive === 0;
               const equippedPlantName = (equip as any).plantName as string | null;
+              const linkedVendorName = (equip as any).linkedVendorName as string | null;
+              const equipmentVendorName = vendorIdentityDisplayName({
+                recordedName: (equip as any).vendorName,
+                vendorId: (equip as any).linkedVendorId,
+                linkedVendorName,
+              });
               return (
               <div key={equip.id} className={`flex items-center justify-between p-3 rounded-md ${isInactive ? "bg-muted/30 opacity-60" : "bg-muted/50"}`} data-testid={`row-equipment-${equip.id}`}>
                 <div>
@@ -4765,6 +4772,12 @@ export function EquipmentMasterSection() {
                   <p className="text-sm text-muted-foreground">
                     Norm: {equip.consumptionNorm} {equip.meterType === "hour_meter" ? "L/hr" : "L/km"}
                   </p>
+                  {equipmentVendorName && <p className="text-sm text-muted-foreground" data-testid={`equipment-vendor-${equip.id}`}>
+                    Vendor: {equipmentVendorName}
+                    {linkedVendorName && (equip as any).vendorName && (equip as any).vendorName !== linkedVendorName
+                      ? <span className="ml-1 text-xs">(recorded: {(equip as any).vendorName})</span>
+                      : null}
+                  </p>}
                 </div>
                 {(canEdit || canDelete) && (
                   <div className="flex gap-1">

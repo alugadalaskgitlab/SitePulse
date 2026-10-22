@@ -11,6 +11,7 @@ import { ChevronLeft, Loader2, Save, Lock, Search, Plus, ChevronDown, ChevronUp,
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { isManualVendorRateCard, MANUAL_VENDOR_RATE_CARD_NOTE, vendorRateCardIdentity } from "@shared/vendorRateCardIdentity";
+import type { VendorAlias } from "@shared/schema";
 import { TransportRateBasis, TransportRateSetup, hasTransportSetup } from "@/components/TransportRateSetup";
 import type { TransportRateFields } from "@/components/TransportRateSetup";
 
@@ -33,6 +34,7 @@ type ManualRow = {
   rate: number | string;
   rateCardId?: number;
 };
+type VendorMasterOption = { id: number; name: string; isActive?: boolean };
 
 const UNIT_OPTIONS = ["HRS", "DAYS", "TRIPS", "MONTHS", "TRIP", "MT", "KL", "NOS", "KGS", "LITERS", "CFT", "CUM", "KM", "HEAD-DAY"];
 
@@ -73,6 +75,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
 
   // Page-level access enforced by the rate-card/vendor-master/legacy route gate.
   const [selectedVendor, setSelectedVendor] = useState(preselectedVendor);
+  const [vendorNameInput, setVendorNameInput] = useState(preselectedVendor);
   const [rates, setRates] = useState<Record<string, number | string>>({});
   const [unitOverrides, setUnitOverrides] = useState<Record<string, string>>({});
   const [searchFilter, setSearchFilter] = useState("");
@@ -103,6 +106,30 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
   const { data: vendorNames = [] } = useQuery<string[]>({
     queryKey: ["/api/vendor-bills/vendor-names"],
   });
+  const { data: vendorMasters = [] } = useQuery<VendorMasterOption[]>({
+    queryKey: ["/api/vendor-master"],
+  });
+  const { data: vendorAliases = [] } = useQuery<VendorAlias[]>({
+    queryKey: ["/api/vendor-aliases"],
+  });
+  const vendorKey = (value: unknown) => String(value ?? "").trim().replace(/\s+/g, " ").toUpperCase();
+  const selectedVendorKey = vendorKey(selectedVendor);
+  const selectedAliasCanonicals = new Set(vendorAliases
+    .filter(alias => vendorKey(alias.alias) === selectedVendorKey || vendorKey(alias.canonicalName) === selectedVendorKey)
+    .map(alias => vendorKey(alias.canonicalName)));
+  const matchingVendorMasters = vendorMasters.filter(vendor =>
+    vendor.isActive !== false && (vendorKey(vendor.name) === selectedVendorKey || selectedAliasCanonicals.has(vendorKey(vendor.name))));
+  const selectedVendorMaster = matchingVendorMasters.length === 1 ? matchingVendorMasters[0] : null;
+  const resetSelectedVendorData = (name: string) => {
+    setSelectedVendor(name);
+    setVendorNameInput(name);
+    setSetupRow(null);
+    setRates({});
+    setUnitOverrides({});
+    setSearchFilter("");
+    setManualRows([]);
+    deletedManualRowsRef.current.clear();
+  };
 
   const { data: discoveredItems = [], isLoading: isDiscovering } = useQuery<DiscoveredItem[]>({
     queryKey: ["/api/vendor-rate-cards/discover", selectedVendor],
@@ -468,12 +495,17 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
   };
 
   const handleSaveAll = () => {
+    if (!selectedVendorMaster) {
+      toast({ title: "Choose a Vendor Master record before saving", description: "Add an unknown spelling as an alias or create the vendor first.", variant: "destructive" });
+      return;
+    }
     const discoveredToSave = visibleDiscoveredItems.map(item => {
       const setupCard = item.category === "transport" ? findTransportCard(item) : undefined;
       const effectiveUnit = hasTransportSetup(setupCard) ? setupCard.unit : getEffectiveUnit(item);
       const effectiveKey = hasTransportSetup(setupCard) ? setupCard.itemKey : getEffectiveKey(item);
       return {
         vendorName: selectedVendor,
+        vendorId: selectedVendorMaster.id,
         category: item.category,
         itemKey: effectiveKey,
         itemLabel: item.itemLabel,
@@ -485,6 +517,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
 
     const manualToSave = manualRows.map(row => ({
       vendorName: selectedVendor,
+      vendorId: selectedVendorMaster.id,
       category: row.category,
       itemKey: row.itemKey,
       itemLabel: row.itemLabel,
@@ -695,17 +728,50 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
       <Card>
         <CardContent className="pt-4 space-y-3">
           <div>
-            <Label className="text-sm uppercase font-semibold">Select Vendor</Label>
-            <Select value={selectedVendor} onValueChange={(v) => { setSelectedVendor(v); setSetupRow(null); setRates({}); setUnitOverrides({}); setSearchFilter(""); setManualRows([]); deletedManualRowsRef.current.clear(); }}>
-              <SelectTrigger data-testid="select-vendor">
-                <SelectValue placeholder="Choose a vendor..." />
+            <Label className="text-sm uppercase font-semibold">Vendor Master (preferred)</Label>
+            <Select value={selectedVendorMaster ? String(selectedVendorMaster.id) : "unmatched"} onValueChange={value => {
+              const vendor = vendorMasters.find(candidate => String(candidate.id) === value);
+              if (vendor) resetSelectedVendorData(vendor.name);
+            }}>
+              <SelectTrigger data-testid="select-vendor-master">
+                <SelectValue placeholder="Choose a Vendor Master record..." />
               </SelectTrigger>
               <SelectContent>
-                {vendorNames.map(v => (
-                  <SelectItem key={v} value={v}>{v}</SelectItem>
+                <SelectItem value="unmatched">Select a Vendor Master record</SelectItem>
+                {vendorMasters.filter(vendor => vendor.isActive !== false).map(vendor => (
+                  <SelectItem key={vendor.id} value={String(vendor.id)}>{vendor.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            <Label htmlFor="input-rate-card-vendor-name" className="mt-3 block text-xs text-muted-foreground">Name or known alias</Label>
+            <Input id="input-rate-card-vendor-name" value={vendorNameInput} onChange={event => {
+              const value = event.target.value.toUpperCase();
+              setVendorNameInput(value);
+            }} onBlur={() => {
+              const value = vendorNameInput.trim();
+              if (value && value !== selectedVendor) resetSelectedVendorData(value);
+            }} placeholder="Type a vendor name or alias" data-testid="input-rate-card-vendor-name" />
+            <Label className="mt-3 block text-xs text-muted-foreground">Saved vendor-name suggestions</Label>
+            <Select value="" onValueChange={resetSelectedVendorData}>
+              <SelectTrigger data-testid="select-saved-vendor-suggestion">
+                <SelectValue placeholder="Choose a saved name..." />
+              </SelectTrigger>
+              <SelectContent>
+                {vendorNames.map(vendorName => (
+                  <SelectItem key={vendorName} value={vendorName}>{vendorName}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedVendor && !selectedVendorMaster && (
+              <div role="alert" className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                <p className="font-medium">“{selectedVendor}” is not uniquely linked to the Vendor Master.</p>
+                <p className="mt-1 text-xs">Add it as an alias of an existing vendor or create a new vendor before saving.</p>
+                <div className="mt-2 flex gap-2">
+                  <a className="inline-flex items-center rounded-md border px-3 py-1.5 text-xs font-medium" href="/plant/vendor-bills" target="_blank" rel="noreferrer">Manage aliases</a>
+                  <a className="inline-flex items-center rounded-md border px-3 py-1.5 text-xs font-medium" href="/masters/vendors" target="_blank" rel="noreferrer">Create vendor</a>
+                </div>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
