@@ -664,6 +664,8 @@ export const WORK_TYPE_RECIPES: Record<WorkType, WorkTypeRecipe> = {
       { name: "Hydraulic Excavator (0.9 CUM)", preferredUnit: "CUM", fallbackHrsPerUnit: 0.0167, count: 1 },
       // Grader for bench cleanup and subgrade trimming
       { name: "Motor Grader (180 HP)",         preferredUnit: "CUM", fallbackHrsPerUnit: 0.0067, count: 1 },
+      // Nominal short-lead haul default; refine per stretch for longer hauls.
+      { name: "Tipper",                        preferredUnit: "CUM", fallbackHrsPerUnit: 0.0167, count: 1 },
     ],
     labour: [
       // Operators: excavator + grader
@@ -687,6 +689,8 @@ export const WORK_TYPE_RECIPES: Record<WorkType, WorkTypeRecipe> = {
       { name: "Vibratory Roller (10T)",         preferredUnit: "CUM", fallbackHrsPerUnit: 0.0071, count: 1 },
       // Water tanker for compaction moisture
       { name: "Water Tanker (6000 L)",          preferredUnit: "CUM", fallbackHrsPerUnit: 0.0333, count: 1 },
+      // Nominal short-lead haul default; refine per stretch for longer hauls.
+      { name: "Tipper",                         preferredUnit: "CUM", fallbackHrsPerUnit: 0.0167, count: 1 },
     ],
     labour: [
       // Operators for excavator + dozer + grader + roller
@@ -704,6 +708,8 @@ export const WORK_TYPE_RECIPES: Record<WorkType, WorkTypeRecipe> = {
       { name: "Motor Grader (180 HP)",         preferredUnit: "CUM", fallbackHrsPerUnit: 0.0067, count: 1 },
       { name: "Vibratory Roller (10T)",         preferredUnit: "CUM", fallbackHrsPerUnit: 0.0071, count: 1 },
       { name: "Water Tanker (6000 L)",          preferredUnit: "CUM", fallbackHrsPerUnit: 0.0333, count: 1 },
+      // Nominal short-lead haul default; refine per stretch for longer hauls.
+      { name: "Tipper",                         preferredUnit: "CUM", fallbackHrsPerUnit: 0.0167, count: 1 },
     ],
     labour: [
       { designation: "Equipment Operator",       fallbackDaysPerUnit: 0.00208, count: 3 },

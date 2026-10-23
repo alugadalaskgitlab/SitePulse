@@ -4,6 +4,8 @@ import {
   classifyWorkType,
   WORK_CAT_FALLBACK_WORK_TYPE,
   WORK_CAT_PLAN_CATEGORY,
+  buildEquipmentRows,
+  WORK_TYPE_RECIPES,
 } from "../shared/workTypeRecipes";
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -262,6 +264,30 @@ describe("resolveWorkType — Path 2: workCategory fallback", () => {
     });
     expect(r.workType).toBe("earthwork");
     expect(r.resolvedBy).toBe("workCategory");
+  });
+});
+
+describe("RECIPE-EQUIPMENT-FIX-02 equipment defaults", () => {
+  it.each(["roadway_excavation", "earthwork", "gsb"] as const)(
+    "adds one short-lead Tipper at 0.0167 hours/CUM to %s",
+    (workType) => {
+      const rows = buildEquipmentRows(workType, "CUM", new Map([
+        ["tipper", { id: 41, outputs: [{ unit: "CUM", outputPerHr: 60 }] }],
+      ]));
+      const tipperRows = rows.filter((row) => row.equipmentName === "Tipper");
+
+      expect(tipperRows).toHaveLength(1);
+      expect(tipperRows[0].count).toBe(1);
+      expect(tipperRows[0].planningEquipmentTypeId).toBe(41);
+      expect(tipperRows[0].qtyPerBoqUnit).toBeCloseTo(0.0167, 4);
+      expect(WORK_TYPE_RECIPES[workType].equipment.find((row) => row.name === "Tipper")?.fallbackHrsPerUnit).toBe(0.0167);
+    },
+  );
+
+  it("keeps WMM's default Grader recipe without adding a Paver", () => {
+    const names = WORK_TYPE_RECIPES.wmm.equipment.map((row) => row.name);
+    expect(names).toContain("Motor Grader (180 HP)");
+    expect(names).not.toContain("Paver");
   });
 });
 

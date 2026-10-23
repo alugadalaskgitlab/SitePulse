@@ -3467,6 +3467,9 @@ export const boqItems = pgTable("boq_items", {
   workCategory: text("work_category"),
   itemName: text("item_name"),
   mappingStatus: text("mapping_status").notNull().default("unmapped"),
+  // True after an explicit recipe-editor save. Automatic recipe rebuilds must
+  // leave this item's equipment, labour, and material rows untouched.
+  recipeManualOverride: boolean("recipe_manual_override"),
   // Explicit SDB/SNL norm code supplied in the BOQ import (e.g. "5.05").
   // Used for deterministic SNL mapping — bypasses fuzzy description matching.
   snlCode: text("snl_code"),
@@ -3742,7 +3745,11 @@ export const insertPlanningLabourTypeSchema = createInsertSchema(planningLabourT
 // Insert schemas
 export const insertBoqProjectSchema = createInsertSchema(boqProjects).omit({ id: true, createdAt: true });
 export const insertBoqCategorySchema = createInsertSchema(boqCategories).omit({ id: true });
-export const insertBoqItemSchema = createInsertSchema(boqItems).omit({ id: true, createdAt: true });
+export const insertBoqItemSchema = createInsertSchema(boqItems).omit({
+  id: true,
+  createdAt: true,
+  recipeManualOverride: true,
+});
 export const insertBoqRevisionSchema = createInsertSchema(boqRevisions).omit({ id: true, createdAt: true, approvedAt: true });
 export const insertBoqRevisionItemSchema = createInsertSchema(boqRevisionItems).omit({ id: true });
 export const insertWorkProgramBarSchema = createInsertSchema(workProgramBars).omit({ id: true, createdAt: true });

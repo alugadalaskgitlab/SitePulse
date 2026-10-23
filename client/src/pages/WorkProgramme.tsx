@@ -3542,10 +3542,13 @@ export default function WorkProgramme() {
       const res = await apiRequest("POST", `/api/boq/projects/${projectId}/auto-build-recipes`, {});
       return res.json();
     },
-    onSuccess: async (data: { recipied?: number; snlRecipied?: number; totalItems?: number; unrecipiedCount?: number; unrecipied?: Array<{ id: number; description: string; workCategory: string | null; reason: string; suggestion: string }> }) => {
+    onSuccess: async (data: { recipied?: number; snlRecipied?: number; totalItems?: number; skippedManualCount?: number; skippedManual?: Array<{ id: number; itemCode: string | null; description: string; reason: string }>; unrecipiedCount?: number; unrecipied?: Array<{ id: number; description: string; workCategory: string | null; reason: string; suggestion: string }> }) => {
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "item-equipment"] });
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
       const snlNote = data?.snlRecipied ? ` (${data.snlRecipied} from SDB norms)` : "";
+      const manualSkipNote = data?.skippedManualCount
+        ? ` · ${data.skippedManualCount} skipped — recipe set manually.`
+        : "";
       let skipNote = "";
       if (data?.unrecipiedCount && data.unrecipiedCount > 0) {
         const items = data.unrecipied ?? [];
@@ -3557,7 +3560,7 @@ export default function WorkProgramme() {
       }
       toast({
         title: "Recipes built",
-        description: `${data?.recipied ?? 0} of ${data?.totalItems ?? 0} items got equipment & labour${snlNote}.${skipNote}`,
+        description: `${data?.recipied ?? 0} of ${data?.totalItems ?? 0} items got equipment & labour${snlNote}.${manualSkipNote}${skipNote}`,
       });
     },
     onError: (err: any) =>

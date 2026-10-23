@@ -180,11 +180,13 @@ function LayerConfigTab({
   projectId,
   onLayerConfigChange,
   onPendingSave,
+  onManualSave,
 }: {
   item: BoqItemWithCategory;
   projectId: number;
   onLayerConfigChange: (lc: LayerConfig | null) => void;
   onPendingSave?: (fn: (() => Promise<void>) | null) => void;
+  onManualSave?: () => void;
 }) {
   const { toast } = useToast();
 
@@ -324,6 +326,7 @@ function LayerConfigTab({
       lastSavedLcRef.current = JSON.stringify(layerConfig);
       setDirty(false);
       onLayerConfigChange(layerConfig);
+      if (layerType !== "none") onManualSave?.();
       // Invalidate the parent items list so the updated layerConfig is reflected
       // when the dialog is closed and reopened (prevents stale-cache reversion).
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "items"] });
@@ -533,7 +536,7 @@ interface ProgramSettingsMinimal {
 }
 
 function EquipmentTab({
-  boqItemId, boqUnit, masterList, layerConfig, projectId, onPendingSave,
+  boqItemId, boqUnit, masterList, layerConfig, projectId, onPendingSave, onManualSave,
 }: {
   boqItemId: number;
   boqUnit: string;
@@ -541,6 +544,7 @@ function EquipmentTab({
   layerConfig: LayerConfig | null;
   projectId?: number;
   onPendingSave?: (fn: (() => Promise<void>) | null) => void;
+  onManualSave?: () => void;
 }) {
   const { toast } = useToast();
   const [showPanel, setShowPanel] = useState(false);
@@ -626,6 +630,7 @@ function EquipmentTab({
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/items", boqItemId, "equipment"] });
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects"] });
+      onManualSave?.();
       toast({ title: "Equipment recipe saved" });
       setDirty(false);
     },
@@ -1001,7 +1006,7 @@ function makeLabRow(r?: BoqItemLabourRow): LabRow {
   return { key: Math.random().toString(36).slice(2), planningLabourTypeId, designation: r?.designation ?? "", qtyPerBoqUnit: r?.qtyPerBoqUnit != null ? String(r.qtyPerBoqUnit) : "", notes: r?.notes ?? "" };
 }
 
-function LabourTab({ boqItemId, boqUnit, labourTypeList, onPendingSave }: { boqItemId: number; boqUnit: string; labourTypeList: PlanningLabourTypeMinimal[]; onPendingSave?: (fn: (() => Promise<void>) | null) => void }) {
+function LabourTab({ boqItemId, boqUnit, labourTypeList, onPendingSave, onManualSave }: { boqItemId: number; boqUnit: string; labourTypeList: PlanningLabourTypeMinimal[]; onPendingSave?: (fn: (() => Promise<void>) | null) => void; onManualSave?: () => void }) {
   const { toast } = useToast();
   const [showPanel, setShowPanel] = useState(false);
   const { data: existing = [], isLoading } = useQuery<BoqItemLabourRow[]>({
@@ -1024,7 +1029,7 @@ function LabourTab({ boqItemId, boqUnit, labourTypeList, onPendingSave }: { boqI
       }));
       await apiRequest("PUT", `/api/boq/items/${boqItemId}/labour`, { rows: payload });
     },
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ["/api/boq/items", boqItemId, "labour"] }); toast({ title: "Labour recipe saved" }); setDirty(false); },
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ["/api/boq/items", boqItemId, "labour"] }); onManualSave?.(); toast({ title: "Labour recipe saved" }); setDirty(false); },
     onError: () => toast({ title: "Save failed", variant: "destructive" }),
   });
 
@@ -1107,7 +1112,7 @@ function makeMatRow(r?: BoqItemMaterialsRow): MatRow {
   return { key: Math.random().toString(36).slice(2), materialName: r?.materialName ?? "", uom: r?.uom ?? "", qtyPerBoqUnit: r?.qtyPerBoqUnit != null ? String(r.qtyPerBoqUnit) : "", notes: r?.notes ?? "", applicationNote: r?.applicationNote ?? "", isAuto: r?.isAuto ?? false };
 }
 
-function MaterialsTab({ boqItemId, boqUnit, projectId, onPendingSave }: { boqItemId: number; boqUnit: string; projectId: number; onPendingSave?: (fn: (() => Promise<void>) | null) => void }) {
+function MaterialsTab({ boqItemId, boqUnit, projectId, onPendingSave, onManualSave }: { boqItemId: number; boqUnit: string; projectId: number; onPendingSave?: (fn: (() => Promise<void>) | null) => void; onManualSave?: () => void }) {
   const { toast } = useToast();
   const { data: existing = [], isLoading } = useQuery<BoqItemMaterialsRow[]>({
     queryKey: ["/api/boq/items", boqItemId, "materials"],
@@ -1133,6 +1138,7 @@ function MaterialsTab({ boqItemId, boqUnit, projectId, onPendingSave }: { boqIte
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/items", boqItemId, "materials"] });
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "recipe-materials-used"] });
+      onManualSave?.();
       toast({ title: "Materials recipe saved" });
       setDirty(false);
     },
@@ -1447,6 +1453,11 @@ function MapToNormModal({ item, onClose }: { item: BoqItemWithCategory; onClose:
                   Applying will <strong>replace</strong> all current equipment, labour and materials on this item with norms from {selectedItem.sourceCode}.
                 </p>
               </div>
+              {item.recipeManualOverride === true && (
+                <p className="text-[12px] text-amber-800">
+                  This item has a protected manual recipe. Close this dialog and use “Allow rebuild” in the recipe editor before applying norms.
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -1455,7 +1466,7 @@ function MapToNormModal({ item, onClose }: { item: BoqItemWithCategory; onClose:
           <Button variant="outline" onClick={onClose} size="sm">Cancel</Button>
           <Button
             size="sm"
-            disabled={!selectedSnlId || applyMutation.isPending}
+            disabled={!selectedSnlId || applyMutation.isPending || item.recipeManualOverride === true}
             onClick={() => applyMutation.mutate()}
             className="bg-teal-600 hover:bg-teal-700 text-white"
             data-testid="button-apply-norm"
@@ -1495,6 +1506,10 @@ export function BoqItemRecipeDialog({
   const handlePendingSave = useCallback((fn: (() => Promise<void>) | null) => {
     pendingSaveRef.current = fn;
   }, []);
+  const handleManualRecipeSave = useCallback(() => {
+    setCurrentItem((current) => ({ ...current, recipeManualOverride: true }));
+    void queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", currentItem.boqProjectId, "items"] });
+  }, [currentItem.boqProjectId]);
 
   // Navigate to another item — auto-saves unsaved changes in the active tab first.
   // If the save fails, navigation is aborted so the user does not lose edits.
@@ -1533,6 +1548,19 @@ export function BoqItemRecipeDialog({
       const res = await fetch(`/api/snl/mappings/${currentItem.id}`, { credentials: "include" });
       return res.ok ? res.json() : null;
     },
+  });
+
+  const resetRecipeOverrideMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/boq/items/${currentItem.id}/recipe-override/reset`, {}),
+    onSuccess: async () => {
+      setCurrentItem((current) => ({ ...current, recipeManualOverride: null }));
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", currentItem.boqProjectId, "items"] });
+      toast({
+        title: "Automatic recipe rebuild enabled",
+        description: "Current rows stay in place until the next Auto-build or SNL recipe application.",
+      });
+    },
+    onError: () => toast({ title: "Could not reset recipe override", variant: "destructive" }),
   });
 
   const itemLabel = boqItemDisplayName(currentItem);
@@ -1585,6 +1613,29 @@ export function BoqItemRecipeDialog({
               <p className="text-[12px] font-mono text-muted-foreground mt-0.5 ml-1">{currentItem.itemCode}</p>
             )}
           </DialogHeader>
+          {currentItem.recipeManualOverride === true && (
+            <div className="flex items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-amber-900">Manual recipe protected</p>
+                <p className="text-[11px] text-amber-800">Auto-build and bulk SNL reapplication will skip this item.</p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0 border-amber-400 text-amber-900 hover:bg-amber-100"
+                disabled={resetRecipeOverrideMutation.isPending}
+                onClick={() => {
+                  if (window.confirm("Clear manual recipe protection? Current rows will stay, but the next Auto-build or SNL recipe application can replace them.")) {
+                    resetRecipeOverrideMutation.mutate();
+                  }
+                }}
+                data-testid="button-reset-recipe-override"
+              >
+                {resetRecipeOverrideMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                Allow rebuild
+              </Button>
+            </div>
+          )}
           {/* Key on currentItem.id so all tab state resets when navigating */}
           <div className="flex-1 overflow-y-auto" key={currentItem.id}>
             <Tabs value={tab} onValueChange={setTab}>
@@ -1594,10 +1645,10 @@ export function BoqItemRecipeDialog({
                 <TabsTrigger value="labour" className="flex items-center gap-1.5 text-sm"><Users className="w-3.5 h-3.5" />Labour</TabsTrigger>
                 <TabsTrigger value="materials" className="flex items-center gap-1.5 text-sm"><Package className="w-3.5 h-3.5" />Materials</TabsTrigger>
               </TabsList>
-              <TabsContent value="layer-config"><LayerConfigTab item={currentItem} projectId={currentItem.boqProjectId} onLayerConfigChange={setLocalLayerConfig} onPendingSave={handlePendingSave} /></TabsContent>
-              <TabsContent value="equipment"><EquipmentTab boqItemId={currentItem.id} boqUnit={(currentItem as any).canonicalUnit ?? currentItem.unit} masterList={masterList} layerConfig={localLayerConfig} projectId={currentItem.boqProjectId} onPendingSave={handlePendingSave} /></TabsContent>
-              <TabsContent value="labour"><LabourTab boqItemId={currentItem.id} boqUnit={(currentItem as any).canonicalUnit ?? currentItem.unit} labourTypeList={labourTypeList} onPendingSave={handlePendingSave} /></TabsContent>
-              <TabsContent value="materials"><MaterialsTab boqItemId={currentItem.id} boqUnit={(currentItem as any).canonicalUnit ?? currentItem.unit} projectId={currentItem.boqProjectId} onPendingSave={handlePendingSave} /></TabsContent>
+              <TabsContent value="layer-config"><LayerConfigTab item={currentItem} projectId={currentItem.boqProjectId} onLayerConfigChange={setLocalLayerConfig} onPendingSave={handlePendingSave} onManualSave={handleManualRecipeSave} /></TabsContent>
+              <TabsContent value="equipment"><EquipmentTab boqItemId={currentItem.id} boqUnit={(currentItem as any).canonicalUnit ?? currentItem.unit} masterList={masterList} layerConfig={localLayerConfig} projectId={currentItem.boqProjectId} onPendingSave={handlePendingSave} onManualSave={handleManualRecipeSave} /></TabsContent>
+              <TabsContent value="labour"><LabourTab boqItemId={currentItem.id} boqUnit={(currentItem as any).canonicalUnit ?? currentItem.unit} labourTypeList={labourTypeList} onPendingSave={handlePendingSave} onManualSave={handleManualRecipeSave} /></TabsContent>
+              <TabsContent value="materials"><MaterialsTab boqItemId={currentItem.id} boqUnit={(currentItem as any).canonicalUnit ?? currentItem.unit} projectId={currentItem.boqProjectId} onPendingSave={handlePendingSave} onManualSave={handleManualRecipeSave} /></TabsContent>
             </Tabs>
           </div>
           <DialogFooter className="pt-2 border-t flex items-center justify-between">

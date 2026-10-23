@@ -780,6 +780,7 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       description: boqItems.description,
       unit: boqItems.unit,
       workCategory: boqItems.workCategory,
+      recipeManualOverride: boqItems.recipeManualOverride,
       categoryName: boqCategories.name,
     })
     .from(boqItems)
@@ -826,6 +827,9 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
   const manualSet = new Set(manualRows.map((r) => r.boqItemId));
 
   for (const boqRow of boqRows) {
+    // A recipe-editor save protects the whole recipe from subsequent automatic
+    // mapping and recipe application, so leave this BOQ item unchanged.
+    if (boqRow.recipeManualOverride === true) continue;
     if (manualSet.has(boqRow.id)) {
       await db
         .update(boqItems)
@@ -1114,28 +1118,31 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
  * Called at startup after SNL seeding so existing items benefit from updated
  * SNL data and scorer logic without requiring a manual re-import.
  */
-export async function autoMapAllUnmappedItems(): Promise<{ remapped: number }> {
+export async function autoMapAllUnmappedItems(): Promise<{ remapped: number; skippedManual: number }> {
   const rows = await db
-    .select({ id: boqItems.id })
+    .select({ id: boqItems.id, recipeManualOverride: boqItems.recipeManualOverride })
     .from(boqItems)
     .where(inArray(boqItems.mappingStatus, ["unmapped", "needs_review"]));
-  if (rows.length === 0) return { remapped: 0 };
-  const ids = rows.map(r => r.id);
+  if (rows.length === 0) return { remapped: 0, skippedManual: 0 };
+  const ids = rows.filter((r) => r.recipeManualOverride !== true).map((r) => r.id);
+  const skippedManual = rows.length - ids.length;
+  if (ids.length === 0) return { remapped: 0, skippedManual };
   await autoMapBoqItems(ids);
-  return { remapped: ids.length };
+  return { remapped: ids.length, skippedManual };
 }
 
 /**
  * Re-map all items in a BOQ project (reset status first, then auto-map).
  */
-export async function remapBoqProject(boqProjectId: number): Promise<{ remapped: number }> {
+export async function remapBoqProject(boqProjectId: number): Promise<{ remapped: number; skippedManual: number }> {
   const rows = await db
-    .select({ id: boqItems.id })
+    .select({ id: boqItems.id, recipeManualOverride: boqItems.recipeManualOverride })
     .from(boqItems)
     .where(eq(boqItems.boqProjectId, boqProjectId));
 
-  const ids = rows.map(r => r.id);
-  if (ids.length === 0) return { remapped: 0 };
+  const ids = rows.filter((r) => r.recipeManualOverride !== true).map((r) => r.id);
+  const skippedManual = rows.length - ids.length;
+  if (ids.length === 0) return { remapped: 0, skippedManual };
 
   // Full cleanup before re-mapping: wipes stale recipes + auto snlBoqMappings rows +
   // resets mapping status to "unmapped" for every non-manually-mapped item.
@@ -1143,7 +1150,7 @@ export async function remapBoqProject(boqProjectId: number): Promise<{ remapped:
   await storage.clearAllBoqProjectRecipes(boqProjectId);
 
   await autoMapBoqItems(ids);
-  return { remapped: ids.length };
+  return { remapped: ids.length, skippedManual };
 }
 
 // ─── Duplicate-key propagation ────────────────────────────────────────────────
@@ -1161,6 +1168,7 @@ async function propagateDuplicateMappings(boqProjectId: number): Promise<{ propa
       description: boqItems.description,
       unit: boqItems.unit,
       mappingStatus: boqItems.mappingStatus,
+      recipeManualOverride: boqItems.recipeManualOverride,
     })
     .from(boqItems)
     .where(eq(boqItems.boqProjectId, boqProjectId));
@@ -1210,6 +1218,7 @@ async function propagateDuplicateMappings(boqProjectId: number): Promise<{ propa
 
     for (const item of group) {
       if (item.id === source.id) continue;
+      if (item.recipeManualOverride === true) continue;
       if (item.mappingStatus === "mapped") continue;
       if (!canPropagateDuplicateMapping({
         description: source.description,
@@ -1278,10 +1287,11 @@ export async function autoMapProjectWithSummary(boqProjectId: number): Promise<{
   unmapped: number;
   avgConfidence: number;
   ruleMatched: number;
+  skippedManual: number;
 }> {
   // Snapshot the pending set BEFORE running so the summary reflects only what changed.
   const pending = await db
-    .select({ id: boqItems.id })
+    .select({ id: boqItems.id, recipeManualOverride: boqItems.recipeManualOverride })
     .from(boqItems)
     .where(
       and(
@@ -1290,7 +1300,8 @@ export async function autoMapProjectWithSummary(boqProjectId: number): Promise<{
       ),
     );
 
-  const pendingIds = pending.map(r => r.id);
+  const pendingIds = pending.filter((r) => r.recipeManualOverride !== true).map((r) => r.id);
+  const skippedManual = pending.length - pendingIds.length;
   const totalItems = await db
     .select({ id: boqItems.id })
     .from(boqItems)
@@ -1298,7 +1309,7 @@ export async function autoMapProjectWithSummary(boqProjectId: number): Promise<{
     .then(r => r.length);
 
   if (pendingIds.length === 0) {
-    return { totalItems, autoMapped: 0, needsReview: 0, unmapped: 0, avgConfidence: 0, ruleMatched: 0 };
+    return { totalItems, autoMapped: 0, needsReview: 0, unmapped: 0, avgConfidence: 0, ruleMatched: 0, skippedManual };
   }
 
   // autoMapBoqItems already calls propagateDuplicateMappings internally.
@@ -1340,6 +1351,7 @@ export async function autoMapProjectWithSummary(boqProjectId: number): Promise<{
     unmapped,
     avgConfidence: confCount > 0 ? confSum / confCount : 0,
     ruleMatched,
+    skippedManual,
   };
 }
 
@@ -1357,12 +1369,13 @@ export async function autoMapProjectWithSummary(boqProjectId: number): Promise<{
 export async function backfillCompositeDetection(): Promise<{ promoted: number }> {
   // All mapped + non-composite candidates
   const candidates = await db
-    .select({ id: boqItems.id, description: boqItems.description })
+    .select({ id: boqItems.id, description: boqItems.description, recipeManualOverride: boqItems.recipeManualOverride })
     .from(boqItems)
     .where(and(eq(boqItems.mappingStatus, "mapped"), eq(boqItems.isComposite, false)));
 
-  if (candidates.length === 0) return { promoted: 0 };
-  const allIds = candidates.map(r => r.id);
+  const eligibleCandidates = candidates.filter((c) => c.recipeManualOverride !== true);
+  if (eligibleCandidates.length === 0) return { promoted: 0 };
+  const allIds = eligibleCandidates.map(r => r.id);
 
   // Exclude items the user confirmed manually — never touch those.
   const manualRows = await db
@@ -1371,7 +1384,7 @@ export async function backfillCompositeDetection(): Promise<{ promoted: number }
     .where(and(inArray(snlBoqMappings.boqItemId, allIds), eq(snlBoqMappings.isAutoMapped, false)));
   const manualIds = new Set(manualRows.map(r => r.boqItemId));
 
-  const eligible = candidates.filter(c => !manualIds.has(c.id));
+  const eligible = eligibleCandidates.filter(c => !manualIds.has(c.id));
   if (eligible.length === 0) return { promoted: 0 };
 
   // Load SNL items once for rule-matching

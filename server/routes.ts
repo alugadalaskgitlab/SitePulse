@@ -5,7 +5,7 @@ import { assertSectionTokens, DprSectionConflict, findSectionDrafts, readSection
 import type { Express, Request, Response } from "express";
 import type { Server } from "http";
 import { updatePurchaseIndentRequestSchema } from "@shared/schema";
-import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, InvalidDieselPhysicalStockError, InvalidStockTransferQuantityError, InvalidDieselSourceError, DieselReceiptExceedsRemainingError, InvalidLinkedDieselRequirementError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError, InitialScopeCorrectionBlockedError, ScopeChangedDuringPlanningError, DprProjectMismatchError, PushSubscriptionOwnershipError, PurchaseIndentRouteCorrectionConflictError, assertValidDieselPhysicalStock } from "./storage";
+import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, InvalidDieselPhysicalStockError, InvalidStockTransferQuantityError, InvalidDieselSourceError, DieselReceiptExceedsRemainingError, InvalidLinkedDieselRequirementError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError, InitialScopeCorrectionBlockedError, ScopeChangedDuringPlanningError, DprProjectMismatchError, PushSubscriptionOwnershipError, PurchaseIndentRouteCorrectionConflictError, assertValidDieselPhysicalStock, isRecipeManualOverrideError } from "./storage";
 import { buildEquipmentComparison, buildDailyDieselEquipmentReport } from "./dieselComparisonEquipment";
 import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection, classifyBoqItem, getSectorMultiplier } from "./snlAutoMapper";
 import { isConfirmedSnlMapping } from "@shared/snlMappingPolicy";
@@ -17113,7 +17113,9 @@ export async function registerRoutes(
           req.body = { ...req.body, dprConversionFactor: Number(req.body.dprConversionFactor) };
         }
       }
-      const updated = await storage.updateBoqItem(id, req.body);
+      const updateData = { ...(req.body ?? {}) };
+      delete updateData.recipeManualOverride;
+      const updated = await storage.updateBoqItem(id, updateData);
       if (!updated) return res.status(404).json({ error: "BOQ item not found" });
       res.json(updated);
     } catch (err) {
@@ -18646,10 +18648,11 @@ export async function registerRoutes(
     try {
       if (!assertEdit(req, res, "work_programme_review")) return;
       const rows = req.body.rows ?? [];
-      const saved = await storage.upsertBoqItemEquipment(parseInt(req.params.itemId), rows);
+      const saved = await storage.upsertBoqItemEquipment(parseInt(req.params.itemId), rows, true);
       res.json(saved);
     } catch (err) {
       console.error("PUT /api/boq/items/:itemId/equipment:", err);
+      if (isRecipeManualOverrideError(err)) return res.status(409).json({ error: err.message });
       res.status(500).json({ error: "Failed to save item equipment" });
     }
   });
@@ -18667,10 +18670,11 @@ export async function registerRoutes(
     try {
       if (!assertEdit(req, res, "work_programme_review")) return;
       const rows = req.body.rows ?? [];
-      const saved = await storage.upsertBoqItemLabour(parseInt(req.params.itemId), rows);
+      const saved = await storage.upsertBoqItemLabour(parseInt(req.params.itemId), rows, true);
       res.json(saved);
     } catch (err) {
       console.error("PUT /api/boq/items/:itemId/labour:", err);
+      if (isRecipeManualOverrideError(err)) return res.status(409).json({ error: err.message });
       res.status(500).json({ error: "Failed to save item labour" });
     }
   });
@@ -18688,11 +18692,26 @@ export async function registerRoutes(
     try {
       if (!assertEdit(req, res, "work_programme_review")) return;
       const rows = req.body.rows ?? [];
-      const saved = await storage.upsertBoqItemMaterials(parseInt(req.params.itemId), rows);
+      const saved = await storage.upsertBoqItemMaterials(parseInt(req.params.itemId), rows, true);
       res.json(saved);
     } catch (err) {
       console.error("PUT /api/boq/items/:itemId/materials:", err);
+      if (isRecipeManualOverrideError(err)) return res.status(409).json({ error: err.message });
       res.status(500).json({ error: "Failed to save item materials" });
+    }
+  });
+
+  app.post("/api/boq/items/:itemId/recipe-override/reset", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "work_programme_review")) return;
+      const itemId = Number.parseInt(req.params.itemId, 10);
+      if (!Number.isInteger(itemId) || itemId <= 0) return res.status(400).json({ error: "Invalid BOQ item id" });
+      const reset = await storage.resetBoqItemRecipeManualOverride(itemId);
+      if (!reset) return res.status(404).json({ error: "BOQ item not found" });
+      res.json({ recipeManualOverride: null });
+    } catch (err) {
+      console.error("POST /api/boq/items/:itemId/recipe-override/reset:", err);
+      res.status(500).json({ error: "Failed to reset recipe override" });
     }
   });
 
@@ -23755,6 +23774,12 @@ export async function registerRoutes(
 
       let recipied = 0;
       let snlRecipied = 0;
+      const skippedManual: Array<{
+        id: number;
+        itemCode: string | null;
+        description: string;
+        reason: string;
+      }> = [];
       const unrecipied: Array<{
         id: number;
         itemCode: string | null;
@@ -23769,6 +23794,15 @@ export async function registerRoutes(
       for (const item of items) {
         // Skip items excluded from planning
         if ((item as any).includedInPlanning === false) continue;
+        if ((item as any).recipeManualOverride === true) {
+          skippedManual.push({
+            id: item.id,
+            itemCode: item.itemCode ?? null,
+            description: item.description ?? "",
+            reason: "skipped — recipe set manually",
+          });
+          continue;
+        }
 
         const snlItemId = (item as any).snlItemId as number | null | undefined;
         const workCategory = (item as any).workCategory as string | null | undefined;
@@ -23799,6 +23833,15 @@ export async function registerRoutes(
             snlRecipied++;
             recipied++;
           } catch (snlErr: any) {
+            if (isRecipeManualOverrideError(snlErr)) {
+              skippedManual.push({
+                id: item.id,
+                itemCode: item.itemCode ?? null,
+                description: item.description ?? "",
+                reason: "skipped — recipe set manually",
+              });
+              continue;
+            }
             // SNL apply failed (e.g. SNL item deleted) — fall through to regex path
             console.warn(`auto-build-recipes: SNL apply failed for item ${item.id}:`, snlErr?.message ?? snlErr);
           }
@@ -23816,6 +23859,7 @@ export async function registerRoutes(
           const wt = resolution.workType;
           const effectiveUnit = canonicalUnit ?? item.unit ?? "";
           const eqRows = buildEquipmentRows(wt, effectiveUnit, equipIndex).map((r) => ({
+            boqItemId: item.id,
             equipmentName: r.equipmentName,
             planningEquipmentTypeId: r.planningEquipmentTypeId,
             qtyPerBoqUnit: r.qtyPerBoqUnit,
@@ -23823,14 +23867,28 @@ export async function registerRoutes(
             sortOrder: r.sortOrder,
           }));
           const labRows = buildLabourRows(wt, effectiveUnit, labourIndex).map((r) => ({
+            boqItemId: item.id,
             designation: r.designation,
             planningLabourTypeId: r.planningLabourTypeId,
             qtyPerBoqUnit: r.qtyPerBoqUnit,
             count: r.count,
             sortOrder: r.sortOrder,
           }));
-          await storage.upsertBoqItemEquipment(item.id, eqRows);
-          await storage.upsertBoqItemLabour(item.id, labRows);
+          try {
+            await storage.upsertBoqItemEquipment(item.id, eqRows);
+            await storage.upsertBoqItemLabour(item.id, labRows);
+          } catch (recipeErr) {
+            if (isRecipeManualOverrideError(recipeErr)) {
+              skippedManual.push({
+                id: item.id,
+                itemCode: item.itemCode ?? null,
+                description: item.description ?? "",
+                reason: "skipped — recipe set manually",
+              });
+              continue;
+            }
+            throw recipeErr;
+          }
           const planning = classifyPlanningItem({
             description: item.description,
             unit: effectiveUnit,
@@ -23868,6 +23926,8 @@ export async function registerRoutes(
         totalItems: items.length,
         recipied,
         snlRecipied,
+        skippedManualCount: skippedManual.length,
+        skippedManual,
         unrecipiedCount: unrecipied.length,
         unrecipied,
       });
@@ -24122,6 +24182,13 @@ export async function registerRoutes(
       const boqItemId = parseInt(req.params.boqItemId);
       const { snlItemId, projectCategory, gradingVariant } = req.body;
       if (!snlItemId) return res.status(400).json({ error: "snlItemId required" });
+      const item = await storage.getBoqItem(boqItemId);
+      if (!item) return res.status(404).json({ error: "BOQ item not found" });
+      if (item.recipeManualOverride === true) {
+        return res.status(409).json({
+          error: "This recipe is protected by a manual edit. Reset the recipe override before applying SNL norms.",
+        });
+      }
       const user = (req as any).user?.username ?? "unknown";
       await storage.setSnlMapping(boqItemId, {
         boqItemId, snlItemId,
@@ -24138,6 +24205,7 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (err) {
       console.error("POST /api/snl/mappings/:boqItemId/apply:", err);
+      if (isRecipeManualOverrideError(err)) return res.status(409).json({ error: err.message });
       res.status(500).json({ error: "Failed to apply mapping" });
     }
   });
@@ -24187,11 +24255,15 @@ export async function registerRoutes(
 
       // Fetch all needs_review items for this project (with description for category classification)
       const reviewItems = await db
-        .select({ id: boqItems.id, description: boqItems.description })
+        .select({
+          id: boqItems.id,
+          description: boqItems.description,
+          recipeManualOverride: boqItems.recipeManualOverride,
+        })
         .from(boqItems)
         .where(and(eq(boqItems.boqProjectId, boqProjectId), eq(boqItems.mappingStatus, "needs_review")));
 
-      if (reviewItems.length === 0) return res.json({ confirmed: 0, skipped: 0 });
+      if (reviewItems.length === 0) return res.json({ confirmed: 0, skipped: 0, skippedManual: 0 });
 
       const ids = reviewItems.map(i => i.id);
       // Join snlItems to get the sector so we can skip cross-sector suggestions
@@ -24211,9 +24283,14 @@ export async function registerRoutes(
       const mappingMap = new Map(mappings.map(m => [m.boqItemId, m]));
       const user = (req as any).user?.username ?? "auto";
 
-      let confirmed = 0, skipped = 0;
+      let confirmed = 0, skipped = 0, skippedManual = 0;
 
       for (const item of reviewItems) {
+        if (item.recipeManualOverride === true) {
+          skipped++;
+          skippedManual++;
+          continue;
+        }
         const mapping = mappingMap.get(item.id);
         if (!mapping || mapping.confidenceScore == null || mapping.confidenceScore < CONFIRM_THRESHOLD) {
           skipped++;
@@ -24243,10 +24320,11 @@ export async function registerRoutes(
         } catch (err) {
           console.error(`[confirm-review] failed for boqItemId=${item.id}:`, err);
           skipped++;
+          if (isRecipeManualOverrideError(err)) skippedManual++;
         }
       }
 
-      res.json({ confirmed, skipped });
+      res.json({ confirmed, skipped, skippedManual });
     } catch (err) {
       console.error("POST /api/boq/projects/:id/snl/confirm-review:", err);
       res.status(500).json({ error: "Confirm review failed" });
@@ -24274,12 +24352,20 @@ export async function registerRoutes(
       if (isNaN(boqItemId) || isNaN(componentId)) return res.status(400).json({ error: "Invalid ids" });
       const { snlItemId } = req.body;
       if (!snlItemId || typeof snlItemId !== "number") return res.status(400).json({ error: "snlItemId required" });
+      const item = await storage.getBoqItem(boqItemId);
+      if (!item) return res.status(404).json({ error: "BOQ item not found" });
+      if (item.recipeManualOverride === true) {
+        return res.status(409).json({
+          error: "This recipe is protected by a manual edit. Reset the recipe override before applying SNL norms.",
+        });
+      }
       const user = (req as any).user?.username ?? "user";
       await storage.applyCompositeComponentMap(componentId, snlItemId, user);
       const allDone = await storage.applyCompositeRecipesIfComplete(boqItemId, user);
       res.json({ allDone });
     } catch (err) {
       console.error("POST /api/boq/items/:id/components/:compId/map:", err);
+      if (isRecipeManualOverrideError(err)) return res.status(409).json({ error: err.message });
       res.status(500).json({ error: "Failed to map component" });
     }
   });

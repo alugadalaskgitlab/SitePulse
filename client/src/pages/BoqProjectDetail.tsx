@@ -1093,9 +1093,15 @@ function SnlMappingPanel({
   const [searchQ, setSearchQ] = useState("");
 
   const remapMutation = useMutation({
-    mutationFn: () => apiRequest("POST", `/api/boq/projects/${projectId}/remap`, {}),
-    onSuccess: () => {
-      toast({ title: "Auto-mapping re-run — refreshing items…" });
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/boq/projects/${projectId}/remap`, {});
+      return res.json() as Promise<{ remapped: number; skippedManual?: number }>;
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Auto-mapping re-run — refreshing items…",
+        description: data.skippedManual ? `${data.skippedManual} skipped — recipe set manually.` : undefined,
+      });
       setTimeout(onMapped, 1500);
     },
     onError: () => toast({ title: "Remap failed", variant: "destructive" }),
@@ -1104,10 +1110,13 @@ function SnlMappingPanel({
   const autoMapAllMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/boq/projects/${projectId}/snl/auto-map-all`, {});
-      return res.json() as Promise<{ autoMapped: number; needsReview: number; unmapped: number }>;
+      return res.json() as Promise<{ autoMapped: number; needsReview: number; unmapped: number; skippedManual?: number }>;
     },
     onSuccess: (d) => {
-      toast({ title: `Auto-mapped ${d.autoMapped} items. ${d.needsReview} need review. ${d.unmapped} unmapped.` });
+      toast({
+        title: `Auto-mapped ${d.autoMapped} items. ${d.needsReview} need review. ${d.unmapped} unmapped.`,
+        description: d.skippedManual ? `${d.skippedManual} skipped — recipe set manually.` : undefined,
+      });
       onMapped();
     },
     onError: () => toast({ title: "Auto-map failed", variant: "destructive" }),
@@ -1116,10 +1125,15 @@ function SnlMappingPanel({
   const confirmReviewMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/boq/projects/${projectId}/snl/confirm-review`, {});
-      return res.json() as Promise<{ confirmed: number; skipped: number }>;
+      return res.json() as Promise<{ confirmed: number; skipped: number; skippedManual?: number }>;
     },
     onSuccess: (d) => {
-      toast({ title: `Confirmed ${d.confirmed} suggestion${d.confirmed === 1 ? "" : "s"}.${d.skipped > 0 ? ` ${d.skipped} skipped (low confidence).` : ""}` });
+      const nonManualSkips = Math.max(0, d.skipped - (d.skippedManual ?? 0));
+      const skipNotes = [
+        d.skippedManual ? `${d.skippedManual} skipped — recipe set manually.` : "",
+        nonManualSkips ? `${nonManualSkips} skipped (low confidence or cross-sector).` : "",
+      ].filter(Boolean).join(" ");
+      toast({ title: `Confirmed ${d.confirmed} suggestion${d.confirmed === 1 ? "" : "s"}.`, description: skipNotes || undefined });
       onMapped();
     },
     onError: () => toast({ title: "Confirm review failed", variant: "destructive" }),

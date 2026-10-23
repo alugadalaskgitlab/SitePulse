@@ -2594,6 +2594,34 @@ function assertVendorBillPaymentAccountSource(
   }
 }
 
+export class RecipeManualOverrideError extends Error {
+  readonly code = "RECIPE_MANUAL_OVERRIDE";
+
+  constructor() {
+    super("Recipe is protected by a manual edit. Clear the manual override before rebuilding it.");
+    this.name = "RecipeManualOverrideError";
+  }
+}
+
+export function isRecipeManualOverrideError(error: unknown): error is RecipeManualOverrideError {
+  return error instanceof RecipeManualOverrideError ||
+    (typeof error === "object" && error !== null && (error as any).code === "RECIPE_MANUAL_OVERRIDE");
+}
+
+async function lockBoqItemForRecipeWrite(tx: any, boqItemId: number, manualEdit: boolean): Promise<void> {
+  const [item] = await tx
+    .select({ recipeManualOverride: boqItems.recipeManualOverride })
+    .from(boqItems)
+    .where(eq(boqItems.id, boqItemId))
+    .for("update");
+
+  if (!item) throw new Error("BOQ item not found");
+  if (!manualEdit && item.recipeManualOverride === true) throw new RecipeManualOverrideError();
+  if (manualEdit && item.recipeManualOverride !== true) {
+    await tx.update(boqItems).set({ recipeManualOverride: true }).where(eq(boqItems.id, boqItemId));
+  }
+}
+
 export class DatabaseStorage implements IStorage {
   /** Acquire sorted item locks before creating an application-owned reference. */
   async _lockPiItemsWithinTx(tx: any, ids: number[], indentId?: number): Promise<PurchaseIndentItem[]> {
@@ -31049,6 +31077,7 @@ export class DatabaseStorage implements IStorage {
         workCategory: boqItems.workCategory,
         itemName: boqItems.itemName,
         mappingStatus: boqItems.mappingStatus,
+        recipeManualOverride: boqItems.recipeManualOverride,
         layerConfig: boqItems.layerConfig,
         dprConversionFactor: boqItems.dprConversionFactor,
         includedInPlanning: boqItems.includedInPlanning,
@@ -33243,8 +33272,10 @@ export class DatabaseStorage implements IStorage {
   async upsertBoqItemEquipment(
     boqItemId: number,
     rows: InsertBoqItemEquipment[],
+    manualEdit = false,
   ): Promise<BoqItemEquipmentRow[]> {
     return await db.transaction(async (tx) => {
+      await lockBoqItemForRecipeWrite(tx, boqItemId, manualEdit);
       await tx.delete(boqItemEquipment).where(eq(boqItemEquipment.boqItemId, boqItemId));
       if (!rows.length) return [];
       const inserted = await tx
@@ -33256,7 +33287,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteBoqItemEquipmentRow(id: number): Promise<void> {
-    await db.delete(boqItemEquipment).where(eq(boqItemEquipment.id, id));
+    await db.transaction(async (tx) => {
+      const [row] = await tx
+        .select({ boqItemId: boqItemEquipment.boqItemId })
+        .from(boqItemEquipment)
+        .where(eq(boqItemEquipment.id, id))
+        .limit(1);
+      if (!row) return;
+      await lockBoqItemForRecipeWrite(tx, row.boqItemId, true);
+      await tx.delete(boqItemEquipment).where(eq(boqItemEquipment.id, id));
+    });
   }
 
   async getBoqItemLabour(boqItemId: number): Promise<BoqItemLabourRow[]> {
@@ -33270,8 +33310,10 @@ export class DatabaseStorage implements IStorage {
   async upsertBoqItemLabour(
     boqItemId: number,
     rows: InsertBoqItemLabour[],
+    manualEdit = false,
   ): Promise<BoqItemLabourRow[]> {
     return await db.transaction(async (tx) => {
+      await lockBoqItemForRecipeWrite(tx, boqItemId, manualEdit);
       await tx.delete(boqItemLabour).where(eq(boqItemLabour.boqItemId, boqItemId));
       if (!rows.length) return [];
       return tx
@@ -33292,14 +33334,32 @@ export class DatabaseStorage implements IStorage {
   async upsertBoqItemMaterials(
     boqItemId: number,
     rows: InsertBoqItemMaterials[],
+    manualEdit = false,
   ): Promise<BoqItemMaterialsRow[]> {
     return await db.transaction(async (tx) => {
+      await lockBoqItemForRecipeWrite(tx, boqItemId, manualEdit);
       await tx.delete(boqItemMaterials).where(eq(boqItemMaterials.boqItemId, boqItemId));
       if (!rows.length) return [];
       return tx
         .insert(boqItemMaterials)
         .values(rows.map((r, i) => ({ ...r, boqItemId, sortOrder: r.sortOrder ?? i })))
         .returning();
+    });
+  }
+
+  async resetBoqItemRecipeManualOverride(boqItemId: number): Promise<boolean> {
+    return db.transaction(async (tx) => {
+      const [item] = await tx
+        .select({ id: boqItems.id })
+        .from(boqItems)
+        .where(eq(boqItems.id, boqItemId))
+        .for("update");
+      if (!item) return false;
+      await tx
+        .update(boqItems)
+        .set({ recipeManualOverride: null })
+        .where(eq(boqItems.id, boqItemId));
+      return true;
     });
   }
 
@@ -33685,6 +33745,7 @@ export class DatabaseStorage implements IStorage {
     };
 
     await db.transaction(async (tx) => {
+      await lockBoqItemForRecipeWrite(tx, boqItemId, false);
       // Populate boqItemEquipment
       await tx.delete(boqItemEquipment).where(eq(boqItemEquipment.boqItemId, boqItemId));
       if (equipment.length) {
@@ -33736,6 +33797,7 @@ export class DatabaseStorage implements IStorage {
   // confidently map it, so stale/wrong recipes don't keep polluting the BOM).
   async clearBoqItemRecipes(boqItemId: number): Promise<void> {
     await db.transaction(async (tx) => {
+      await lockBoqItemForRecipeWrite(tx, boqItemId, false);
       await tx.delete(boqItemEquipment).where(eq(boqItemEquipment.boqItemId, boqItemId));
       await tx.delete(boqItemLabour).where(eq(boqItemLabour.boqItemId, boqItemId));
       await tx.delete(boqItemMaterials).where(eq(boqItemMaterials.boqItemId, boqItemId));
@@ -33746,24 +33808,28 @@ export class DatabaseStorage implements IStorage {
   // non-manually-mapped BOQ item in a project.  Manual mappings are untouched.
   // Called at the start of every Re-map All so stale recipes never pollute the BOM.
   async clearAllBoqProjectRecipes(projectId: number): Promise<void> {
-    const allItems = await db
-      .select({ id: boqItems.id })
-      .from(boqItems)
-      .where(eq(boqItems.boqProjectId, projectId));
-    const allIds = allItems.map(r => r.id);
-    if (allIds.length === 0) return;
-
-    // Find items the user manually mapped — preserve those completely.
-    const manualRows = await db
-      .select({ boqItemId: snlBoqMappings.boqItemId })
-      .from(snlBoqMappings)
-      .where(and(inArray(snlBoqMappings.boqItemId, allIds), eq(snlBoqMappings.isAutoMapped, false)));
-    const manualIds = new Set(manualRows.map(r => r.boqItemId));
-
-    const clearIds = allIds.filter(id => !manualIds.has(id));
-    if (clearIds.length === 0) return;
-
     await db.transaction(async (tx) => {
+      // Lock parent rows first so a concurrent manual save cannot be cleared
+      // before its override flag commits.
+      const allItems = await tx
+        .select({ id: boqItems.id, recipeManualOverride: boqItems.recipeManualOverride })
+        .from(boqItems)
+        .where(eq(boqItems.boqProjectId, projectId))
+        .for("update");
+      const allIds = allItems.map((r) => r.id);
+      if (allIds.length === 0) return;
+
+      // Preserve explicit recipe edits and user-confirmed SNL mappings entirely.
+      const manualRows = await tx
+        .select({ boqItemId: snlBoqMappings.boqItemId })
+        .from(snlBoqMappings)
+        .where(and(inArray(snlBoqMappings.boqItemId, allIds), eq(snlBoqMappings.isAutoMapped, false)));
+      const manualIds = new Set(manualRows.map((r) => r.boqItemId));
+      const clearIds = allItems
+        .filter((item) => item.recipeManualOverride !== true && !manualIds.has(item.id))
+        .map((item) => item.id);
+      if (clearIds.length === 0) return;
+
       // Wipe recipe rows for these items.
       await tx.delete(boqItemEquipment).where(inArray(boqItemEquipment.boqItemId, clearIds));
       await tx.delete(boqItemLabour).where(inArray(boqItemLabour.boqItemId, clearIds));
@@ -33890,6 +33956,7 @@ export class DatabaseStorage implements IStorage {
     };
 
     await db.transaction(async (tx) => {
+      await lockBoqItemForRecipeWrite(tx, boqItemId, false);
       await tx.delete(boqItemEquipment).where(eq(boqItemEquipment.boqItemId, boqItemId));
       if (allEquip.length) {
         await tx.insert(boqItemEquipment).values(
