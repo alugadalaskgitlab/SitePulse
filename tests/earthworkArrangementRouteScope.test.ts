@@ -156,6 +156,27 @@ describe("POST earthwork arrangement scope handoff", () => {
       expect(patch).not.toHaveProperty("agreedRate");
     }
   });
+  it("saves billing terms and trip rates on a completed arrangement without changing its status or requiring an effective date", async () => {
+    const completed = {
+      id: 1201, boqProjectId: 77, status: "completed", allocatedQty: 10, boqItemId: 900,
+      billingTerms: null, tripRates: null,
+    };
+    fx.getEarthworkArrangementById.mockResolvedValue(completed);
+    fx.updateEarthworkArrangement.mockImplementation(async (_id, patch) => ({ ...completed, ...patch }));
+    const billingTerms = { scope: "full_service", basis: "trip" } as const;
+
+    const response = await request(app).patch("/api/earthwork-arrangements/1201").send({
+      saveIntent: "draft",
+      billingTerms,
+      tripRates,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ status: "completed", billingTerms, tripRates });
+    expect(fx.updateEarthworkArrangement).toHaveBeenCalledOnce();
+    expect(fx.updateEarthworkArrangement.mock.lastCall![1]).not.toHaveProperty("status");
+    expect(fx.updateEarthworkArrangement.mock.lastCall![1]).not.toHaveProperty("effectiveFrom");
+  });
   it.each([
     [tripRates[0],{...tripRates[0],uom:" cft "}],
     [{quantity:0,uom:"CFT",rate:1}],

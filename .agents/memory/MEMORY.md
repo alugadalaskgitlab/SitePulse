@@ -75,7 +75,7 @@
 - [Work-type source phrases](work-type-source-phrases.md) — classify the principal work, not material-source phrases; preserve genuine road excavation that mentions embankment context.
 - [Arrangement approval UI](arrangement-approval-ui.md) — ordinary arrangement approval uses qto_boq.edit; register detail actions must mirror the canonical PATCH lifecycle.
 - [Arrangement execution evidence](arrangement-execution-evidence.md) — derive live DPR/trip evidence per bar; status overrides are append-only evidence, never payable quantity.
-- [Arrangement effective status history](arrangement-effective-status-history.md) — status changes use explicit business dates in append-only revision history; never infer from updatedAt.
+- [Arrangement effective status history](arrangement-effective-status-history.md) — lifecycle events need explicit dates; completed commercial edits preserve status and only affect unbilled trip pricing.
 - [Startup ledger backfill race](startup-ledger-backfill-race.md) — rapid workflow restarts can collide in a legacy stock-ledger backfill even while the app serves; verify a settled restart before diagnosing new work.
 - [Read-only startup readiness](startup-readiness-only.md) — no automatic repairs; fail closed on prerequisites; preserve reminder delivery without subscription cleanup.
 - [Hired Equipment Billing](hired-equipment-billing.md) — billing derives from operational records; exception decisions, immutable snapshots, overlap locks, and idempotent bill creation preserve auditability.

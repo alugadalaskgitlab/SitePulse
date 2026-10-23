@@ -157,5 +157,19 @@ describe("execution arrangement status history foundation", () => {
     );
     expect(inProgressControls).toContain('requestStatusChange("cancelled")');
     expect(onHoldControls).toContain('requestStatusChange("cancelled")');
+
+    const preserveStatus = lifecycleForm.slice(
+      lifecycleForm.indexOf("const OPERATIONAL_STATUSES"),
+      lifecycleForm.indexOf("// Pending server challenge"),
+    );
+    expect(preserveStatus).toContain('const isOperationalEdit = isEdit && OPERATIONAL_STATUSES.includes(editArrangement!.status);');
+    expect(preserveStatus).toContain('const isCompletedEdit = isEdit && editArrangement!.status === "completed";');
+    expect(preserveStatus).toContain("const preservesStatusOnEdit = isOperationalEdit || isCompletedEdit;");
+    const bodyBuilder = lifecycleForm.slice(
+      lifecycleForm.indexOf("const buildBody"),
+      lifecycleForm.indexOf("if (isMultiSource", lifecycleForm.indexOf("const buildBody")),
+    );
+    expect(bodyBuilder).toContain("...(preservesStatusOnEdit ? {}");
+    expect(lifecycleForm).toContain("{isOperationalEdit || isCompletedEdit ? (");
   });
 });

@@ -20,6 +20,15 @@ describe("arrangement billing", () => {
     expect(result.qty).toBe(1); expect(result.rate).toBe(arrangement.tripRates.find(r=>r.quantity===size)!.rate);
     expect(result.amount).toBe(result.rate); expect(result.sourceType).toBe("site_material_trip_arrangement");
   });
+  it("prices a completed arrangement's linked trips once its declared terms are present", () => {
+    const completedArrangement = { ...arrangement, status: "completed" };
+    const result = vendorBillTripCandidate(trip, false, true, "all", completedArrangement, true)!;
+    expect(result.category).toBe("other");
+    expect(result.sourceType).toBe("site_material_trip_arrangement");
+    expect(result.rate).toBe(1250);
+    expect(result.amount).toBe(1250);
+    expect(result.arrangementPricing?.reason).toBeNull();
+  });
   it("groups 114 identical trips without losing their individual source identities", () => {
     const rows = Array.from({length:114},(_,i)=>mapAutoBillItem(vendorBillTripCandidate({...trip,id:i+1},false,true,"all",arrangement,true)));
     expect(groupRateItems(rows)).toHaveLength(1);expect(groupRateItems(rows)[0].count).toBe(114);

@@ -650,6 +650,10 @@ export function EarthworkArrangementDialog({
   // controlled-edit rules (operational edits immediate, material via revision).
   const OPERATIONAL_STATUSES = ["approved", "mobilisation_pending", "in_progress", "on_hold"];
   const isOperationalEdit = isEdit && OPERATIONAL_STATUSES.includes(editArrangement!.status);
+  // Completed arrangements may receive commercial-term corrections without
+  // reopening or demoting their lifecycle status.
+  const isCompletedEdit = isEdit && editArrangement!.status === "completed";
+  const preservesStatusOnEdit = isOperationalEdit || isCompletedEdit;
   // Pending server challenge: material change needs revision, or a reason is required.
   const [editChallenge, setEditChallenge] = useState<{ code: string; fields?: string[]; body: Record<string, unknown> } | null>(null);
   const [editReason, setEditReason] = useState("");
@@ -919,9 +923,9 @@ export function EarthworkArrangementDialog({
       components,
       sourceExcavationBoqItemId: sourceRequired ? sourceExcavationBoqItemId : null,
       // PATCH (edit) uses `status` directly; POST uses `saveIntent`.
-      // Instruction 027 §17: never send status when editing an operational
-      // arrangement — that would silently demote approved/in-progress records.
-      ...(isOperationalEdit ? {} : (saveIntent === "submit" ? { status: "submitted" } : { status: "draft" })),
+      // Never demote operational arrangements, or completed arrangements
+      // being edited without a lifecycle transition.
+      ...(preservesStatusOnEdit ? {} : (saveIntent === "submit" ? { status: "submitted" } : { status: "draft" })),
     };
 
     if (isMultiSource && sourceBoqItems && sourceBoqItems.length > 1) {
@@ -976,7 +980,7 @@ export function EarthworkArrangementDialog({
       } else if (data?.appliedNow) {
         toast({ title: "Changes applied immediately", description: "Recorded as an approved revision (Edit and Apply Now)." });
       } else {
-        toast({ title: isOperationalEdit ? "Changes saved" : "Draft saved", description: `Arrangement saved for ${materialLabel}` });
+        toast({ title: isOperationalEdit || isCompletedEdit ? "Changes saved" : "Draft saved", description: `Arrangement saved for ${materialLabel}` });
       }
       invalidateArrangementQueries(queryClient, projectId);
       onSaved();
@@ -1481,7 +1485,7 @@ export function EarthworkArrangementDialog({
 
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={onClose} disabled={isPending}>Cancel</Button>
-          {isOperationalEdit ? (
+          {isOperationalEdit || isCompletedEdit ? (
             <Button
               disabled={isPending || !canDraft || sourceDetailsLoading || !!editChallenge}
               onClick={() => saveDraftMutation.mutate()}
