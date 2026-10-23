@@ -74,7 +74,9 @@ export function TripRoleEditDialog({ trip: originalTrip, vendors, equipment, ven
       const party = (name: string, id: number | null | undefined, manual: boolean | undefined, oldName: string | null, oldId: number | null) => {
         // Untouched historical text is not guessed into an ID.
         if (name === (oldName || "") && (id ?? null) === oldId) return { name, id: oldId };
-        return manual ? { name: name.trim(), id: null } : resolveSelectedTripVendor(name, id, vendors);
+        if (manual) return { name, id: null };
+        const selected = resolveSelectedTripVendor(name, id, vendors);
+        return { name, id: selected.id };
       };
       const source = ownSource ? { name: "", id: null } : party(draft.materialSourceSupplier, draft.materialSourceVendorId, draft.materialSourceManual, trip.materialSourceSupplier, trip.materialSourceVendorId);
       const transporter = choice === "different_parties" ? party(draft.supplier, draft.supplierVendorId, draft.supplierManual, trip.supplier, trip.supplierVendorId) : source;
@@ -132,7 +134,7 @@ export function TripRoleEditDialog({ trip: originalTrip, vendors, equipment, ven
           <TripTransportRoleFields choice={choice} onChoice={setChoice} value={draft} onChange={next => {
             if (next.equipmentId !== draft.equipmentId || next.vehicleNumber !== draft.vehicleNumber || next.vehicleManual !== draft.vehicleManual) equipmentTouched.current = true;
             setDraft(next);
-          }} vendors={vendors} equipment={equipment} vendorsLoading={vendorsLoading} vendorsError={vendorsError} onRetryVendors={onRetryVendors} allowManualParties testIdPrefix="edit-trip" />
+          }} vendors={vendors} equipment={equipment} vendorsLoading={vendorsLoading} vendorsError={vendorsError} onRetryVendors={onRetryVendors} allowManualParties preserveRecordedVendorNames testIdPrefix="edit-trip" />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {(["location", "receiptNumber", "enteredBy", "notes", "workType", "unloadedAt", "yardLabel"] as const).map(key => <div key={key}><Label htmlFor={`edit-trip-${key}`}>{({ location: "Location / Chainage", receiptNumber: "Receipt Number", enteredBy: "Entered By", notes: "Notes", workType: "Work Type", unloadedAt: "Unloaded At", yardLabel: "Yard Label" })[key]}</Label>
               {key === "workType" || key === "unloadedAt" ? <select id={`edit-trip-${key}`} className="w-full rounded-md border bg-background p-2 text-sm" value={fields[key]} onChange={e => setFields(prev => ({ ...prev, [key]: e.target.value }))}>

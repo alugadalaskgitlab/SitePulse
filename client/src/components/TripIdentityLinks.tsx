@@ -61,9 +61,9 @@ export function TripIdentityLinks({ trip, vendors, canConfirm, blocked, vendorsL
     {canConfirm && completed && !changing && <Button type="button" variant="outline" disabled={blocked} onClick={() => setChanging(true)}>Change vendor links</Button>}
     {canConfirm && (!completed || changing) && <fieldset disabled={blocked || save.isPending || vendorsLoading || vendorsError} className="space-y-3">
       {needsSource && trip.materialSourceVendorId == null && suggestedSource && <p className="text-xs text-muted-foreground">Suggested material supplier: {suggestedSource.name} · #{suggestedSource.id}. Select it below only after reviewing.</p>}
-      {needsSource && <TripVendorPicker label="Material supplier match" name={source.name} vendorId={source.id} vendors={vendors} onChange={(name, id) => setSource({ name, id })} />}
+      {needsSource && <TripVendorPicker label="Material supplier match" name={source.name} vendorId={source.id} vendors={vendors} onChange={(name, id) => setSource({ name, id })} preserveRecordedName />}
       {needsTransport && trip.supplierVendorId == null && suggestedTransporter && <p className="text-xs text-muted-foreground">Suggested transporter: {suggestedTransporter.name} · #{suggestedTransporter.id}. Select it below only after reviewing.</p>}
-      {needsTransport && <TripVendorPicker label="Transporter match" name={transporter.name} vendorId={transporter.id} vendors={vendors} onChange={(name, id) => setTransporter({ name, id })} />}
+      {needsTransport && <TripVendorPicker label="Transporter match" name={transporter.name} vendorId={transporter.id} vendors={vendors} onChange={(name, id) => setTransporter({ name, id })} preserveRecordedName />}
       <Input aria-label="Vendor identity verification reason" placeholder="Verification reason / reference" value={reason} onChange={e => setReason(e.target.value)} />
       {save.isError && <div role="alert" className="text-sm text-destructive">
         <p>{save.error.message} Refresh the review if another user changed the links.</p>

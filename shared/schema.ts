@@ -4553,6 +4553,7 @@ export const earthworkArrangements = pgTable("earthwork_arrangements", {
 
   // Agency / vendor
   agencyName: text("agency_name"),
+  agencyVendorId: integer("agency_vendor_id").references(() => vendors.id, { onDelete: "set null" }),
   workDescription: text("work_description"),
 
   // Location / scope

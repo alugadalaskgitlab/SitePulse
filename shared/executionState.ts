@@ -240,6 +240,7 @@ export const OPERATIONAL_EDIT_FIELDS = [
 /** Changes to these fields on an approved arrangement require a controlled revision. */
 export const MATERIAL_REVISION_FIELDS = [
   "agencyName",
+  "agencyVendorId",
   "allocatedQty",
   "agreedRate",
   "tripRates",

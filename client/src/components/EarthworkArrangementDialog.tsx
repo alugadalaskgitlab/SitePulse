@@ -45,6 +45,8 @@ import {
 } from "@shared/executionArrangementCategories";
 import { boqItemDisplayName } from "@shared/boqItemName";
 import { ArrangementTripRatesEditor, ArrangementTripRatesView, parseTripRateDrafts, type TripRateDraft } from "./ArrangementTripRates";
+import { TripVendorPicker } from "./TripVendorPicker";
+import type { ExistingTripVendor } from "./trip-role-utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -666,7 +668,20 @@ export function EarthworkArrangementDialog({
     (editArrangement as any)?.sourceExcavationBoqItemId != null ? Number((editArrangement as any).sourceExcavationBoqItemId) : null
   );
   const [agencyName, setAgencyName] = useState(editArrangement?.agencyName ?? "");
+  const [agencyVendorId, setAgencyVendorId] = useState<number | null>(editArrangement?.agencyVendorId ?? null);
+  const [agencyManual, setAgencyManual] = useState(false);
   const [reachLabel, setReachLabel] = useState(editArrangement?.reachLabel ?? "");
+  const vendorOptionsQuery = useQuery<ExistingTripVendor[]>({
+    queryKey: ["/api/earthwork-arrangements/vendor-options"],
+    queryFn: async () => {
+      const response = await fetch("/api/earthwork-arrangements/vendor-options", { credentials: "include" });
+      if (!response.ok) throw new Error("Vendor Master options could not be loaded.");
+      return response.json();
+    },
+    enabled: open,
+    staleTime: 30_000,
+  });
+  const vendorOptions = vendorOptionsQuery.data ?? [];
 
   // ── Instruction 031 B2/B3: Applicable Scope ────────────────────────────────
   // whole  = whole eligible BOQ scope (default; scopeSegmentIds = null)
@@ -893,7 +908,8 @@ export function EarthworkArrangementDialog({
       ...(isEdit ? {} : { workCategory: category, bituminousItemType: isBituminous ? bitItemType : null }),
       allocatedQty: allocQtyNum,
       uom: displayUom,
-      agencyName: agencyName.trim() || null,
+      agencyName: agencyName || null,
+      agencyVendorId,
       // Instruction 031 B2/B3 — Applicable Scope: authoritative segment link
       // (reaches mode) plus resolved chainage copies; custom mode keeps the
       // legacy free-text behaviour (B7); whole scope clears the fields.
@@ -1076,16 +1092,28 @@ export function EarthworkArrangementDialog({
           {/* Agency / Vendor (shown unless not_decided / client_supplied / hlc_in_house / reused_excavated) */}
           {!["hlc_in_house", "reused_excavated", "not_decided"].includes(arrangementType) && (
             <div className="space-y-1">
-              <Label className="text-xs font-semibold">
-                Agency / Vendor Name
-                {needsAgencyName && <span className="text-red-500 ml-1">*</span>}
-              </Label>
-              <Input
-                className="h-8 text-[12px]"
-                placeholder="e.g. M/s Earthcon Contractors"
-                value={agencyName}
-                onChange={e => setAgencyName(e.target.value)}
+              <TripVendorPicker
+                label="Agency / Vendor Name"
+                required={needsAgencyName}
+                name={agencyName}
+                vendorId={agencyVendorId}
+                vendors={vendorOptions}
+                manual={agencyManual}
+                preserveRecordedName={isEdit}
+                onManualChange={(manual, name) => {
+                  setAgencyManual(manual);
+                  setAgencyName(name);
+                  setAgencyVendorId(null);
+                }}
+                onChange={(name, id) => {
+                  setAgencyName(name);
+                  setAgencyVendorId(id);
+                  if (id != null) setAgencyManual(false);
+                }}
+                testId="input-arrangement-agency-vendor"
               />
+              {vendorOptionsQuery.isLoading && <p className="text-[11px] text-muted-foreground" role="status">Loading Vendor Master options…</p>}
+              {vendorOptionsQuery.isError && <p className="text-[11px] text-destructive" role="alert">Vendor Master suggestions are unavailable. You can still save an agency name as Other / Not in Master.</p>}
               {needsAgencyName && !agencyName.trim() && (
                 <p className="text-[11px] text-red-500">Agency name required for outsourced arrangements</p>
               )}

@@ -41,12 +41,13 @@ type Props = {
   vehicleNotice?: ReactNode;
   vehiclePicker?: ReactNode;
   allowManualParties?: boolean;
+  preserveRecordedVendorNames?: boolean;
   testIdPrefix?: string;
 };
 
 export function TripTransportRoleFields({
   choice, onChoice, value, onChange, vendors, vendorsLoading, vendorsDisabled,
-  vendorsError, onRetryVendors, allowManualParties = false, testIdPrefix = "trip",
+  vendorsError, onRetryVendors, allowManualParties = false, preserveRecordedVendorNames = false, testIdPrefix = "trip",
 }: Props) {
   const radioName = useId();
   const sourceRadioName = useId();
@@ -81,10 +82,17 @@ export function TripTransportRoleFields({
           name={value.materialSourceSupplier}
           vendorId={value.materialSourceVendorId}
           manual={value.materialSourceManual}
-          onManualChange={allowManualParties ? manual => onChange({ ...value, materialSourceManual: manual, materialSourceVendorId: null }) : undefined}
+          onManualChange={allowManualParties ? (manual, name) => onChange({
+            ...value, materialSourceSupplier: name, materialSourceManual: manual, materialSourceVendorId: null,
+          }) : undefined}
+          preserveRecordedName={preserveRecordedVendorNames}
+          requireRecordedNameMatch={preserveRecordedVendorNames}
           vendors={vendors}
-          onChange={(name, id) => onChange({ ...value, materialSourceSupplier: name.toUpperCase(), materialSourceVendorId: id })}
-          disabled={vendorsDisabled || vendorsLoading || vendorsError}
+          onChange={(name, id) => onChange({
+            ...value, materialSourceSupplier: name, materialSourceVendorId: id,
+            materialSourceManual: id == null ? value.materialSourceManual : false,
+          })}
+          disabled={vendorsDisabled || (!allowManualParties && (vendorsLoading || vendorsError))}
           testId={`input-${testIdPrefix}-material-source-supplier`}
         />
         </>}
@@ -108,8 +116,18 @@ export function TripTransportRoleFields({
       </fieldset>
       {choice === "different_parties" && (
         <div className="max-w-xl">
-          <TripVendorPicker label="Transporter *" name={value.supplier} vendorId={value.supplierVendorId} vendors={vendors} onChange={(supplier, id) => onChange({ ...value, supplier: supplier.toUpperCase(), supplierVendorId: id })} disabled={vendorsDisabled || vendorsLoading || vendorsError} testId={`input-${testIdPrefix}-supplier`}
-            manual={value.supplierManual} onManualChange={allowManualParties ? manual => onChange({ ...value, supplierManual: manual, supplierVendorId: null }) : undefined} />
+          <TripVendorPicker label="Transporter *" name={value.supplier} vendorId={value.supplierVendorId} vendors={vendors}
+            onChange={(supplier, id) => onChange({
+              ...value, supplier, supplierVendorId: id,
+              supplierManual: id == null ? value.supplierManual : false,
+            })}
+            disabled={vendorsDisabled || (!allowManualParties && (vendorsLoading || vendorsError))} testId={`input-${testIdPrefix}-supplier`}
+            manual={value.supplierManual}
+            preserveRecordedName={preserveRecordedVendorNames}
+            requireRecordedNameMatch={preserveRecordedVendorNames}
+            onManualChange={allowManualParties ? (manual, name) => onChange({
+              ...value, supplier: name, supplierManual: manual, supplierVendorId: null,
+            }) : undefined} />
         </div>
       )}
       <div className="max-w-xl"><TripMasterVehicleField value={value} onChange={onChange} onChoice={onChoice} choice={choice} vendors={vendors} allowOutside={allowManualParties} testIdPrefix={testIdPrefix} /></div>

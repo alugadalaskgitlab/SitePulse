@@ -133,6 +133,12 @@ describe("§17–18: classifyArrangementEdit", () => {
     expect(c.operational).toEqual([]);
   });
 
+  it("linking an arrangement to Vendor Master is a material change", () => {
+    const c = classifyArrangementEdit(current, { agencyVendorId: 13 });
+    expect(c.material).toEqual(["agencyVendorId"]);
+    expect(c.operational).toEqual([]);
+  });
+
   it("mixed edit reports both buckets", () => {
     const c = classifyArrangementEdit(current, { notes: "x", agreedRate: 95 });
     expect(c.operational).toEqual(["notes"]);

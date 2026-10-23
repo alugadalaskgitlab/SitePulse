@@ -259,8 +259,14 @@ export default function SiteMaterialTrips() {
     if (!roleChoice || roleChoice === "unresolved") throw new Error("Choose Who brought it.");
     const ownSource = data.materialSourceType === "own_source";
     if (((!ownSource && !data.materialSourceManual) || (roleChoice === "different_parties" && !data.supplierManual)) && (vendorQuery.isLoading || vendorQuery.isError)) throw new Error("Load the existing vendors before saving.");
-    const source = ownSource ? { name: "", id: null } : data.materialSourceManual ? { name: data.materialSourceSupplier.trim(), id: null } : resolveSelectedTripVendor(data.materialSourceSupplier, data.materialSourceVendorId, vendors);
-    const transporter = roleChoice === "different_parties" ? data.supplierManual ? { name: data.supplier.trim(), id: null } : resolveSelectedTripVendor(data.supplier, data.supplierVendorId, vendors) : source;
+    const source = ownSource ? { name: "", id: null } : data.materialSourceManual
+      ? { name: data.materialSourceSupplier, id: null }
+      : { name: data.materialSourceSupplier || resolveSelectedTripVendor(data.materialSourceSupplier, data.materialSourceVendorId, vendors).name,
+          id: resolveSelectedTripVendor(data.materialSourceSupplier, data.materialSourceVendorId, vendors).id };
+    const transporter = roleChoice === "different_parties" ? data.supplierManual
+      ? { name: data.supplier, id: null }
+      : { name: data.supplier || resolveSelectedTripVendor(data.supplier, data.supplierVendorId, vendors).name,
+          id: resolveSelectedTripVendor(data.supplier, data.supplierVendorId, vendors).id } : source;
     const equipment = activeInternalEquipment.find((item) => item.id === data.internalEquipmentId) ?? null;
     const roles = tripRolePayload(roleChoice, source, transporter, equipment, data.vehicleNumber, {
       materialSourceType: data.materialSourceType,

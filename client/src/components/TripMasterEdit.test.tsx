@@ -39,7 +39,7 @@ beforeEach(() => { vi.clearAllMocks(); vi.mocked(apiRequest).mockResolvedValue({
 afterEach(() => { cleanup(); queryClient.clear(); });
 describe("ordinary historical trip Edit → Save", () => {
   it("dismisses suggestions with Escape without closing the real Edit dialog", () => {
-    open();
+    open({ ...original, materialSourceSupplier: "Saravana" });
     const input = screen.getByRole("combobox", { name: /Material Supplier/ });
     input.focus();
     fireEvent.change(input, { target: { value: "SARA" } });
@@ -65,7 +65,8 @@ describe("ordinary historical trip Edit → Save", () => {
     expect(payload.masterSelection).toBeUndefined();
   });
   it("saves selected supplier, transporter and hired equipment together", async () => {
-    const view = open();
+    const matchedNamesTrip = { ...original, materialSourceSupplier: "Saravana", supplier: "Gangaram Narsimulu" } as SiteMaterialTrip;
+    const view = open(matchedNamesTrip);
     fireEvent.change(screen.getByTestId("input-edit-trip-material-source-supplier"), { target: { value: "SARA" } });
     const supplierOption = screen.getByRole("option", { name: "SARAVANA METAL INDUSTRIES" });
     expect(screen.getByRole("dialog").contains(supplierOption)).toBe(true);
@@ -85,9 +86,9 @@ describe("ordinary historical trip Edit → Save", () => {
     expect(payload.reason).toBeUndefined();
     expect(payload.fingerprint).toBeUndefined();
     view.unmount();
-    open({ ...original, ...payload }, { equipmentId: payload.masterSelection.equipmentId, valid: true });
-    expect((screen.getByRole("combobox", { name: /Material Supplier/ }) as HTMLInputElement).value).toBe("SARAVANA METAL INDUSTRIES");
-    expect((screen.getByRole("combobox", { name: /Transporter/ }) as HTMLInputElement).value).toBe("G N Transport");
+    open({ ...matchedNamesTrip, ...payload }, { equipmentId: payload.masterSelection.equipmentId, valid: true });
+    expect((screen.getByRole("combobox", { name: /Material Supplier/ }) as HTMLInputElement).value).toBe("Saravana");
+    expect((screen.getByRole("combobox", { name: /Transporter/ }) as HTMLInputElement).value).toBe("Gangaram Narsimulu");
     await waitFor(() => expect((screen.getByRole("combobox", { name: /Vehicle \/ Tipper/ }) as HTMLInputElement).value).toContain("TS15UF 4308"));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledTimes(2));
@@ -101,14 +102,20 @@ describe("ordinary historical trip Edit → Save", () => {
     await waitFor(() => expect(apiRequest).toHaveBeenCalledTimes(1));
     expect((vi.mocked(apiRequest).mock.calls[0][2] as any).masterSelection).toBeUndefined();
   });
-  it("typing an exact Master name or an unknown name never saves a guessed ID", async () => {
-    open();
-    for (const name of ["Saravana", "UNKNOWN PARTY"]) {
-      fireEvent.change(screen.getByRole("combobox", { name: /Material Supplier/ }), { target: { value: name } });
-      fireEvent.blur(screen.getByRole("combobox", { name: /Material Supplier/ }));
+  it("discards unselected search text and preserves the exact recorded name without guessing an ID", async () => {
+    const searches = ["Saravana", "UNKNOWN PARTY"];
+    for (let index = 0; index < searches.length; index++) {
+      const search = searches[index];
+      const view = open();
+      const input = screen.getByRole("combobox", { name: /Material Supplier/ });
+      fireEvent.change(input, { target: { value: search } });
+      fireEvent.blur(input);
+      expect((input as HTMLInputElement).value).toBe("Legacy source");
       fireEvent.click(screen.getByRole("button", { name: "Save" }));
-      await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Select an active Vendor Master"));
-      expect(apiRequest).not.toHaveBeenCalled();
+      await waitFor(() => expect(apiRequest).toHaveBeenCalledTimes(index + 1));
+      const payload = vi.mocked(apiRequest).mock.calls[index][2] as any;
+      expect(payload).toMatchObject({ materialSourceSupplier: "Legacy source", materialSourceVendorId: null });
+      view.unmount();
     }
   });
   it("retains exceptional authorised corrections separately", () => {

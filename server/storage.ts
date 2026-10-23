@@ -13015,7 +13015,9 @@ export class DatabaseStorage implements IStorage {
       data = { ...data, materialSourceSupplier: null, materialSourceLabel: data.materialSourceLabel.trim() };
     }
     const [trip] = await db.transaction(async (tx) => {
-        if (masterSelection) await prepareTripMasterSelection(tx, data, masterSelection);
+        if (masterSelection) await prepareTripMasterSelection(
+          tx, data, masterSelection, undefined, (name, executor) => this.resolveVendorAliases(name, executor ?? tx),
+        );
         const vehicleKey = normalizeVehicleSupplierVehicle(data.vehicleNumber);
         const inputSupplier = normalizeVehicleSupplierName(data.supplier);
         let state: { associations: VehicleSupplierAssociations; settingExists: boolean } | null = null;
@@ -13038,9 +13040,7 @@ export class DatabaseStorage implements IStorage {
           }
         }
 
-        const materialSourceSupplier = data.materialSourceSupplier == null
-          ? null
-          : normalizeVehicleSupplierName(data.materialSourceSupplier) || null;
+        const materialSourceSupplier = data.materialSourceSupplier || null;
         const [inserted] = await this._mutatePiDeliverySourceWithinTx(tx, "trip", null, async () => tx.insert(siteMaterialTrips).values({
           ...data,
           materialSourceSupplier,
@@ -13119,27 +13119,21 @@ export class DatabaseStorage implements IStorage {
 
   async updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>, actor?: { userId: number; userName: string; userRole?: string | null }, masterSelection?: TripMasterSelection): Promise<SiteMaterialTrip> {
     const [trip] = await db.transaction(async (tx) => {
-        if (data.materialSourceSupplier !== undefined) {
-          data = {
-            ...data,
-            materialSourceSupplier: data.materialSourceSupplier == null
-              ? null
-              : normalizeVehicleSupplierName(data.materialSourceSupplier) || null,
-          };
-        }
         const [existing] = await tx.select().from(siteMaterialTrips)
           .where(eq(siteMaterialTrips.id, id))
           .limit(1)
           .for("update");
         if (!existing) return [undefined] as const;
-        if (masterSelection) await prepareTripMasterSelection(tx, { ...existing, ...data }, masterSelection, existing);
+        if (masterSelection) await prepareTripMasterSelection(
+          tx, { ...existing, ...data }, masterSelection, existing, (name, executor) => this.resolveVendorAliases(name, executor ?? tx),
+        );
         else if (actor) {
           const priorLink = (await readTripHireLinks(tx, [existing.id])).get(existing.id);
           await prepareTripMasterSelection(tx, { ...existing, ...data }, {
             equipmentId: priorLink?.newValues?.equipmentId ?? existing.internalEquipmentId ?? null,
             actor: { id: actor.userId, fullName: actor.userName,
               isAdmin: actor.userRole === "admin", isOwner: actor.userRole === "owner" },
-          }, existing);
+          }, existing, (name, executor) => this.resolveVendorAliases(name, executor ?? tx));
         }
 
         const oldKey = normalizeVehicleSupplierVehicle(existing.vehicleNumber);
@@ -18157,6 +18151,11 @@ export class DatabaseStorage implements IStorage {
     for (const alias of aliases) {
       if (variants.has(alias.canonicalName.toUpperCase().trim())) variants.add(alias.alias.toUpperCase().trim());
     }
+    const variantKeys = new Set(Array.from(variants, ownerNameKey));
+    const selectedIdentities = (await tx.select().from(identityVendors)).filter((v: any) =>
+      variantKeys.has(ownerNameKey(v.name)) ||
+      (!!v.businessName && variantKeys.has(ownerNameKey(v.businessName))));
+    const selectedIdentity = selectedIdentities.length === 1 ? selectedIdentities[0].id : null;
     const newPriced = items.filter(item => item.arrangementPricing && !savedItems.some(saved => saved.source?.toLowerCase() === item.source?.toLowerCase()));
     // Lock the rate source until the snapshot and bill item commit together.
     const arrangementIds = Array.from(new Set(newPriced.map(item => item.arrangementPricing!.arrangementId))).sort((a,b) => a-b);
@@ -18166,8 +18165,20 @@ export class DatabaseStorage implements IStorage {
       for (const item of newPriced.filter(i => i.arrangementPricing!.arrangementId === id)) {
         const [trip] = await tx.select().from(siteMaterialTrips).where(eq(siteMaterialTrips.id, item.arrangementPricing!.tripId)).for("share");
         const matches = (name?: string | null) => variants.has((name || "").toUpperCase().trim());
+        const matchesParty = (name?: string | null, linkedId?: number | null) =>
+          linkedId != null ? selectedIdentity === linkedId : matches(name);
+        const matchesAgency = arrangement.agencyVendorId != null
+          ? selectedIdentity === arrangement.agencyVendorId
+          : matches(arrangement.agencyName);
         const candidate = trip && trip.earthworkArrangementId === id
-          ? vendorBillTripCandidate(trip, matches(trip.materialSourceSupplier), matches(trip.supplier), "all", arrangement, matches(arrangement.agencyName)) : null;
+          ? vendorBillTripCandidate(
+              trip,
+              matchesParty(trip.materialSourceSupplier, trip.materialSourceVendorId),
+              matchesParty(trip.supplier, trip.supplierVendorId),
+              "all",
+              arrangement,
+              matchesAgency,
+            ) : null;
         const error = arrangementBillValidationError([item], candidate ? [candidate] : []);
         if (error) throw Object.assign(new Error(error), { code: "CONFLICT" });
       }
@@ -19291,7 +19302,10 @@ export class DatabaseStorage implements IStorage {
 
   async getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null, siteName?: string | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null; actualMt?: number | null; physicalQuantity?: number; physicalUnit?: string | null })[]> {
     const vendorVariants = await this.resolveVendorAliases(vendorName);
-    const selectedIdentities = (await db.select().from(identityVendors)).filter(v => ownerNameKey(v.name) === ownerNameKey(vendorName));
+    const vendorVariantKeys = new Set(vendorVariants.map(ownerNameKey));
+    const selectedIdentities = (await db.select().from(identityVendors)).filter(v =>
+      vendorVariantKeys.has(ownerNameKey(v.name)) ||
+      (!!v.businessName && vendorVariantKeys.has(ownerNameKey(v.businessName))));
     const selectedIdentity = selectedIdentities.length === 1 ? selectedIdentities[0].id : null;
     const ownerEquipment = await db.select().from(equipmentMaster);
     const ownerIdentities = await equipmentVendorIdentities(db, ownerEquipment);
@@ -19381,7 +19395,8 @@ export class DatabaseStorage implements IStorage {
       const legacy = vendorVariants.length === 1 ? sql`UPPER(TRIM(${col})) = ${vendorVariants[0]}`
         : sql`UPPER(TRIM(${col})) IN (${sql.join(vendorVariants.map(v => sql`${v}`), sql`, `)})`;
       const fk = col === siteMaterialTrips.supplier ? siteMaterialTrips.supplierVendorId
-        : col === siteMaterialTrips.materialSourceSupplier ? siteMaterialTrips.materialSourceVendorId : null;
+        : col === siteMaterialTrips.materialSourceSupplier ? siteMaterialTrips.materialSourceVendorId
+        : col === earthworkArrangements.agencyName ? earthworkArrangements.agencyVendorId : null;
       if (fk) return sql`CASE WHEN ${fk} IS NOT NULL THEN ${selectedIdentity == null ? sql`false` : sql`${fk} = ${selectedIdentity}`} ELSE ${legacy} END`;
       if (col === equipmentMaster.vendorName && reviewedIds.length) return sql`(
         ${matchingIds.length ? inArray(equipmentMaster.id, matchingIds) : sql`false`} OR
@@ -22587,9 +22602,12 @@ export class DatabaseStorage implements IStorage {
       for (const { trip, arrangement } of trips) {
         const seller = partyName(trip.materialSourceVendorId, trip.materialSourceSupplier);
         const carrier = partyName(trip.supplierVendorId, trip.supplier);
-        const names = new Set([seller, carrier, arrangement?.agencyName].filter((name): name is string => !!name));
+        const agency = arrangement?.agencyVendorId != null
+          ? partyName(arrangement.agencyVendorId, arrangement.agencyName)
+          : arrangement?.agencyName;
+        const names = new Set([seller, carrier, agency].filter((name): name is string => !!name));
         for (const name of names) {
-          const candidate = vendorBillTripCandidate(trip, name === seller, name === carrier, bt, arrangement, name === arrangement?.agencyName);
+          const candidate = vendorBillTripCandidate(trip, name === seller, name === carrier, bt, arrangement, name === agency);
           if (candidate) addRecord(name, candidate.category);
         }
       }
@@ -32383,7 +32401,7 @@ export class DatabaseStorage implements IStorage {
         eq(siteMaterialTrips.isCancelled, false), eq(siteMaterialTrips.isDeleted, false))),
     ]);
     return calculateArrangementExecutionEvidence(
-      { id: arrangement.id, boqProjectId: arrangement.boqProjectId, agencyName: arrangement.agencyName, uom: (arrangement as any).uom ?? null },
+      { id: arrangement.id, boqProjectId: arrangement.boqProjectId, agencyName: arrangement.agencyName, agencyVendorId: arrangement.agencyVendorId ?? null, uom: (arrangement as any).uom ?? null },
       bars,
       progress.map(row => {
         const quantity = row.quantity == null ? null : Number(row.quantity);

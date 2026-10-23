@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EquipmentMasterType } from "@shared/schema";
-import { resolveSelectedTripVendor, searchTripVendors } from "./trip-role-utils";
+import { resolveSelectedTripVendor, searchTripVendors, tripVendorNameMatches } from "./trip-role-utils";
 import { equipmentOwnershipLabel, isVendorPayableEquipment, selectTripEquipment, tripMasterSelection, vendorHireEquipmentLabel } from "./trip-master-selection";
 import type { TripRoleDraft } from "./TripTransportRoleFields";
 
@@ -17,6 +17,11 @@ describe("Master-only trip selection", () => {
   it("matches SARA anywhere in business or Master name", () => expect(searchTripVendors(vendors, "sArA").map(v => v.id)).toEqual([13]));
   it("matches NARSI in Master name and excludes inactive records", () => expect(searchTripVendors(vendors, "NARSI").map(v => v.id)).toEqual([27]));
   it("requires two characters", () => expect(searchTripVendors(vendors, "s")).toEqual([]));
+  it("searches alias names and recognizes an exact selected alias", () => {
+    const aliases = [{ canonicalName: "Saravana", alias: "Earthcon Construction" }];
+    expect(searchTripVendors(vendors, "EARTHCON", aliases).map(v => v.id)).toEqual([13]);
+    expect(tripVendorNameMatches(vendors[0], "Earthcon Construction", aliases)).toBe(true);
+  });
   it("never guesses a legacy name into an ID", () => expect(() => resolveSelectedTripVendor("Saravana", null, vendors)).toThrow("Select an active"));
   it("resolves the saved ID rather than displayed text", () => expect(resolveSelectedTripVendor("old recorded name", 13, vendors).id).toBe(13));
   it("rejects an inactive selected ID", () => expect(() => resolveSelectedTripVendor("NARSI inactive", 29, vendors)).toThrow());

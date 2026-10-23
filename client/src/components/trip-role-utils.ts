@@ -3,11 +3,23 @@ import { formatTripQuantity } from "@shared/tripQuantityDisplay";
 import type { SiteMaterialTrip } from "@shared/schema";
 
 export type ExistingTripVendor = { id: number; name: string; businessName?: string | null; isActive?: boolean | number };
+export type ExistingVendorAlias = { canonicalName: string; alias: string };
 export const tripVendorLabel = (vendor: ExistingTripVendor) => vendor.businessName?.trim() || vendor.name;
-export function searchTripVendors(vendors: ExistingTripVendor[], search: string) {
-  const needle = search.trim().toLocaleUpperCase();
+const vendorNameKey = (value: string) => value.trim().replace(/\s+/g, " ").toLocaleUpperCase();
+export function tripVendorNameMatches(vendor: ExistingTripVendor, name: string, aliases: ExistingVendorAlias[] = []) {
+  const key = vendorNameKey(name);
+  if (!key) return false;
+  if ([vendor.name, vendor.businessName || ""].some(value => vendorNameKey(value) === key)) return true;
+  return aliases.some(alias =>
+    vendorNameKey(alias.canonicalName) === vendorNameKey(vendor.name) &&
+    vendorNameKey(alias.alias) === key
+  );
+}
+export function searchTripVendors(vendors: ExistingTripVendor[], search: string, aliases: ExistingVendorAlias[] = []) {
+  const needle = vendorNameKey(search);
   return needle.length < 2 ? [] : vendors.filter(v => !!v.isActive &&
-    [v.name, v.businessName || ""].some(name => name.toLocaleUpperCase().includes(needle)));
+    ([v.name, v.businessName || ""].some(name => vendorNameKey(name).includes(needle)) ||
+      aliases.some(alias => vendorNameKey(alias.canonicalName) === vendorNameKey(v.name) && vendorNameKey(alias.alias).includes(needle))));
 }
 export type TripRoleFilter = "all" | TripTransportRole | "own_source_agency" | "own_source_in_house";
 export const TRIP_ROLE_OPTIONS = [

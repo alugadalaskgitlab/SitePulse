@@ -19782,6 +19782,7 @@ export async function registerRoutes(
               arrangementType: a.arrangementType,
               status: a.status,
               agencyName: a.agencyName ?? null,
+              agencyVendorId: (a as any).agencyVendorId ?? null,
               allocatedQty: allocQty,
               uom: a.uom,
               agreedRate: rate,
@@ -20354,6 +20355,19 @@ export async function registerRoutes(
       if (needsAgency && !body.agencyName?.trim()) {
         return res.status(400).json({ error: "AGENCY_REQUIRED", message: "Agency / Vendor name is required for outsourced arrangements." });
       }
+      let agencyVendorIdValue: number | null = null;
+      if (body.agencyVendorId != null && body.agencyVendorId !== "") {
+        const selectedId = Number(body.agencyVendorId);
+        if (!Number.isInteger(selectedId) || selectedId <= 0) {
+          return res.status(400).json({ error: "INVALID_AGENCY_VENDOR", message: "Choose a valid Vendor Master party." });
+        }
+        const [selectedVendor] = await db.select({ id: vendors.id, isActive: vendors.isActive })
+          .from(vendors).where(eq(vendors.id, selectedId));
+        if (!selectedVendor?.isActive) {
+          return res.status(400).json({ error: "INVALID_AGENCY_VENDOR", message: "Choose an active Vendor Master party." });
+        }
+        agencyVendorIdValue = selectedId;
+      }
 
       // ── Instruction 028 §35 — category eligibility vs linked BOQ item(s) ──
       // A bituminous arrangement may only be raised against items that resolve
@@ -20488,7 +20502,8 @@ export async function registerRoutes(
         submittedAt: submittedAtValue,
         allocatedQty: allocatedQtyNum,
         uom: body.uom ?? "CUM",
-        agencyName: body.agencyName?.trim() || null,
+        agencyName: typeof body.agencyName === "string" ? body.agencyName : null,
+        agencyVendorId: agencyVendorIdValue,
         workDescription: body.workDescription?.trim() || null,
         reachLabel: body.reachLabel?.trim() || null,
         chainageFrom: body.chainageFrom != null ? Number(body.chainageFrom) : null,
@@ -20560,6 +20575,22 @@ export async function registerRoutes(
   });
 
   /** Get a single earthwork arrangement with progress data. */
+  app.get("/api/earthwork-arrangements/vendor-options", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "work_programme")) return;
+      const options = await db.select({
+        id: vendors.id,
+        name: vendors.name,
+        businessName: vendors.businessName,
+        isActive: vendors.isActive,
+      }).from(vendors).orderBy(vendors.name);
+      res.json(options);
+    } catch (err) {
+      console.error("GET /api/earthwork-arrangements/vendor-options:", err);
+      res.status(500).json({ message: "Could not load Vendor Master options." });
+    }
+  });
+
   app.get("/api/earthwork-arrangements/:id", async (req, res) => {
     try {
       if (!assertAuthed(req, res)) return;
@@ -20721,7 +20752,7 @@ export async function registerRoutes(
       const now = new Date().toISOString();
 
       const allowedFields = [
-        "arrangementType", "agencyName", "workDescription", "reachLabel",
+        "arrangementType", "agencyName", "agencyVendorId", "workDescription", "reachLabel",
         "chainageFrom", "chainageTo", "allocatedQty", "uom", "agreedRate",
         "tripRates",
         "billingTerms",
@@ -20760,6 +20791,21 @@ export async function registerRoutes(
 
       const current = await storage.getEarthworkArrangementById(id);
       if (!current) return res.status(404).json({ error: "Arrangement not found" });
+      if ("agencyVendorId" in patch) {
+        const rawVendorId = patch.agencyVendorId;
+        const selectedId = rawVendorId == null || rawVendorId === "" ? null : Number(rawVendorId);
+        if (selectedId != null && (!Number.isInteger(selectedId) || selectedId <= 0)) {
+          return res.status(400).json({ error: "INVALID_AGENCY_VENDOR", message: "Choose a valid Vendor Master party." });
+        }
+        if (selectedId != null && selectedId !== current.agencyVendorId) {
+          const [selectedVendor] = await db.select({ id: vendors.id, isActive: vendors.isActive })
+            .from(vendors).where(eq(vendors.id, selectedId));
+          if (!selectedVendor?.isActive) {
+            return res.status(400).json({ error: "INVALID_AGENCY_VENDOR", message: "Choose an active Vendor Master party." });
+          }
+        }
+        patch.agencyVendorId = selectedId;
+      }
       const requestedStatus = typeof patch.status === "string" ? patch.status : null;
       const statusChanged = requestedStatus != null && requestedStatus !== current.status;
       const currentStatusDateRecorded = hasRecordedArrangementStatusChange(

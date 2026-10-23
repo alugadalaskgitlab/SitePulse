@@ -193,8 +193,8 @@ describe("VB-SPLIT Parts A/B entry behavior", () => {
     queryClient.setQueryData(["/api/site-material-trips/101/hire-link"], { trip: saved, confirmation: { equipmentId: 43, valid: true } });
     render(<QueryClientProvider client={queryClient}><TripRoleEditDialog trip={saved} vendors={fixtureVendors} equipment={equipment}
       vendorsLoading={false} vendorsError={false} onRetryVendors={vi.fn()} onClose={vi.fn()} /></QueryClientProvider>);
-    expect(screen.getByRole("combobox", { name: /Material Supplier/ })).toHaveValue("SARAVANA METAL INDUSTRIES");
-    expect(screen.getByRole("combobox", { name: /Transporter/ })).toHaveValue("G N Transport");
+    expect(screen.getByRole("combobox", { name: /Material Supplier/ })).toHaveValue("Saravana");
+    expect(screen.getByRole("combobox", { name: /Transporter/ })).toHaveValue("Gangaram Narsimulu");
     await waitFor(() => expect((screen.getByRole("combobox", { name: /Vehicle \/ Tipper/ }) as HTMLInputElement).value).toContain("TS15UF4308"));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(harness.request).toHaveBeenCalledTimes(2));
@@ -245,21 +245,32 @@ describe("VB-SPLIT Parts A/B entry behavior", () => {
     expect(payload.masterSelection).toEqual({ equipmentId: 42 });
   });
 
-  it("blocks unregistered/ambiguous names, blank source, and same vendor under Another transporter", async () => {
+  it("requires explicit Other for manual names, preserves them unlinked, and rejects a blank manual source", async () => {
     renderPage(); await ready(); fillBasic();
-    for (const name of ["", "UNREGISTERED NAME"]) {
-      setInput("input-trip-material-source-supplier", name);
-      fireEvent.click(screen.getByTestId("button-submit-trip"));
-      expect(harness.request).not.toHaveBeenCalled();
-    }
+    const source = screen.getByRole("combobox", { name: /Material Supplier/ });
+    fireEvent.change(source, { target: { value: "UNREGISTERED NAME" } });
+    fireEvent.click(screen.getByRole("option", { name: /Other \/ Not in Master/ }));
+    fireEvent.change(source, { target: { value: "" } });
+    fireEvent.click(screen.getByTestId("button-submit-trip"));
+    await waitFor(() => expect(harness.toast).toHaveBeenCalled());
+    expect(harness.request).not.toHaveBeenCalled();
+    fireEvent.change(source, { target: { value: "UNREGISTERED NAME" } });
+    const payload = await submit();
+    expect(payload).toMatchObject({
+      materialSourceSupplier: "UNREGISTERED NAME", materialSourceVendorId: null,
+      supplier: "UNREGISTERED NAME", supplierVendorId: null,
+    });
+  });
+
+  it("blocks the same Vendor Master under Another transporter", async () => {
+    renderPage(); await ready(); fillBasic();
     setInput("input-trip-material-source-supplier", "SANGANNA");
     selectVendor("Material Supplier", "7");
     fireEvent.click(screen.getByTestId("trip-role-different_parties"));
-    setInput("input-trip-supplier", "SANGANNA");
     selectVendor("Transporter", "7");
     fireEvent.click(screen.getByTestId("button-submit-trip"));
     expect(harness.request).not.toHaveBeenCalled();
-    expect(harness.toast).toHaveBeenLastCalledWith(expect.objectContaining({ description: "Choose a different transporter, or select Same party." }));
+    await waitFor(() => expect(harness.toast).toHaveBeenLastCalledWith(expect.objectContaining({ description: "Choose a different transporter, or select Same party." })));
     expect(() => resolveTripVendor("SANGANNA", [...vendors, { id: 19, name: " sanganna " }])).toThrow(/multiple/);
   });
 
@@ -433,15 +444,15 @@ describe("focused role fields loading/error/empty states", () => {
       onChange: vi.fn(), vendors: [], equipment: [], sourceSuggestions: [], supplierSuggestions: [], vehicleSuggestions: [],
       onRetryVendors: retry,
     };
-    const view = render(<TripTransportRoleFields {...props} vendorsLoading />);
+    const view = render(<QueryClientProvider client={queryClient}><TripTransportRoleFields {...props} vendorsLoading /></QueryClientProvider>);
     expect(screen.getByRole("status", { name: "Loading existing vendors" })).toBeInTheDocument();
     for (const choice of ["same_party", "different_parties", "in_house"]) expect(screen.getByTestId(`trip-role-${choice}`)).not.toBeChecked();
     expect(screen.getByTestId("input-trip-material-source-supplier")).toBeDisabled();
-    view.rerender(<TripTransportRoleFields {...props} vendorsError />);
+    view.rerender(<QueryClientProvider client={queryClient}><TripTransportRoleFields {...props} vendorsError /></QueryClientProvider>);
     fireEvent.click(screen.getByText("Retry"));
     expect(retry).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("alert")).toHaveTextContent("Existing vendors could not be loaded");
-    view.rerender(<TripTransportRoleFields {...props} />);
+    view.rerender(<QueryClientProvider client={queryClient}><TripTransportRoleFields {...props} /></QueryClientProvider>);
     expect(screen.getByText(/No existing vendors are available/)).toBeInTheDocument();
   });
 });

@@ -2756,6 +2756,7 @@ export interface EarthworkArrangementSummary {
   /** Full status set: draft|submitted|approved|mobilisation_pending|in_progress|on_hold|completed|returned|rejected|cancelled */
   status: string;
   agencyName: string | null;
+  agencyVendorId?: number | null;
   allocatedQty: number;
   uom: string;
   agreedRate: number | null;

@@ -16,7 +16,13 @@ export type TripMasterSelection = z.infer<typeof tripMasterSelectionSchema> & {
 const fail = (message: string, status = 409): never => { throw Object.assign(new Error(message), { status }); };
 
 /** Runs under the existing trip transaction and row lock, never as a second save. */
-export async function prepareTripMasterSelection(tx: any, next: any, selection: TripMasterSelection, previous?: any) {
+export async function prepareTripMasterSelection(
+  tx: any,
+  next: any,
+  selection: TripMasterSelection,
+  previous?: any,
+  resolveVendorAliases?: (name: string, executor?: any) => Promise<string[]>,
+) {
   if (next.isCancelled || next.isDeleted || previous?.isCancelled || previous?.isDeleted) fail("Cancelled or deleted trips cannot be edited.");
   for (const key of ["supplierVendorId", "materialSourceVendorId"]) {
     if (previous?.[key] != null && previous[key] !== next[key] &&
@@ -27,9 +33,15 @@ export async function prepareTripMasterSelection(tx: any, next: any, selection: 
     if (!vendor?.isActive) fail("Select an active Vendor Master.", 400);
     const nameKey = key === "supplierVendorId" ? "supplier" : "materialSourceSupplier";
     const normal = (v: unknown) => String(v ?? "").trim().toUpperCase().replace(/\s+/g, " ");
+    const nameMatchesMaster = [vendor.name, vendor.businessName].filter(Boolean)
+      .some(n => normal(n) === normal(next[nameKey]));
+    const nameMatchesAlias = resolveVendorAliases
+      ? (await resolveVendorAliases(normal(next[nameKey]), tx))
+          .some(alias => normal(alias) === normal(vendor.name))
+      : false;
     if (!(previous?.[key] === next[key] && previous?.[nameKey] === next[nameKey]) &&
-        ![vendor.name, vendor.businessName].filter(Boolean).some(n => normal(n) === normal(next[nameKey])))
-      fail("The recorded party does not match the selected Vendor Master.", 400);
+        !nameMatchesMaster && !nameMatchesAlias)
+      fail("The recorded party does not match the selected Vendor Master or its alias.", 400);
   }
   if (next.materialSourceType === "own_source" && next.materialSourceVendorId != null)
     fail("Own Source cannot have a material supplier.", 400);
