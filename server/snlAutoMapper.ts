@@ -23,6 +23,7 @@ import { db } from "./db";
 import { boqCategories, boqItems, snlItems, snlSources, snlBoqMappings, snlCompositeComponents } from "@shared/schema";
 import { eq, and, inArray, notInArray } from "drizzle-orm";
 import { storage } from "./storage";
+import { isSnlWorkFamilyCompatible } from "@shared/snlMappingPolicy";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -286,6 +287,23 @@ export function isPrimaryRuleCandidate(
 }
 
 /**
+ * Use the curated MoRTH work category as the broad road-sector fallback when
+ * an SNL norm has no explicit sector. `workCategory` is more specific than
+ * sector, so family compatibility is still checked separately before scoring.
+ */
+export function getEffectiveSectorMultiplier(
+  boqCategory: BoqWorkCategory,
+  snl: { sector?: string | null; sourceCode?: string | null; workCategory?: string | null },
+): number {
+  if (String(snl.sector ?? "").trim()) {
+    return getSectorMultiplier(boqCategory, snl.sector);
+  }
+  return isPrimaryRuleCandidate(boqCategory, snl)
+    ? 1.0
+    : getSectorMultiplier(boqCategory, snl.sector);
+}
+
+/**
  * For composite-item rule matching (spans multiple categories): true when sector
  * is any road/structure/drainage type that is relevant to road-construction projects.
  */
@@ -381,7 +399,7 @@ const RULE_TAG_KEYWORDS: Record<string, string[]> = {
   SDBC:                 ["semi dense bituminous", "sdbc"],
   BC:                   ["bituminous concrete"],
   BM:                   ["bituminous macadam"],
-  PRIME_COAT:           ["prime coat", "priming"],
+  PRIME_COAT:           ["prime coat", "priming", "primer"],
   TACK_COAT:            ["tack coat"],
   EMBANKMENT:           ["embankment", "borrow fill", "borrow material"],
   SUBGRADE:             ["subgrade", "sub-grade", "sub grade preparation"],
@@ -980,12 +998,20 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       // they never beat road/structure items in scoring and can't reach the 50% review floor.
       const boqText = richTokens(`${boqRow.description ?? ""} ${boqRow.workCategory ?? ""}`);
       // Pre-filter candidates by sector compatibility; fall back to full corpus when too few pass
-      const candidatePool = snlRows.filter(s => getSectorMultiplier(boqCategory, s.sector) > 0);
-      const scoringPool = candidatePool.length >= 5 ? candidatePool : snlRows;
+      const matchWorkCategory = boqRow.workCategory ?? inferWorkCategory(boqRow.description);
+      const familyCompatibleRows = snlRows.filter(s =>
+        isSnlWorkFamilyCompatible(matchWorkCategory, ruleTag, s.workCategory),
+      );
+      const candidatePool = familyCompatibleRows.filter(
+        s => getEffectiveSectorMultiplier(boqCategory, s) > 0,
+      );
+      // Preserve the existing review fallback within the compatible work family;
+      // never reintroduce a mismatched earthwork/granular/bituminous norm.
+      const scoringPool = candidatePool.length >= 5 ? candidatePool : familyCompatibleRows;
       const scored: ScoredCandidate[] = scoringPool
         .map(snl => {
           const sim = weightedCosine(boqText, snlTokenMap.get(snl.id) ?? [], idf);
-          const sectMul = getSectorMultiplier(boqCategory, snl.sector);
+          const sectMul = getEffectiveSectorMultiplier(boqCategory, snl);
           const adj = unitsCompatible(boqRow.unit, snl.unit)
             ? sim * sectMul
             : sim * UNIT_MISMATCH_PENALTY * sectMul;
@@ -1009,10 +1035,16 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
 
       const topSnl = snlRows.find(s => s.id === top.snlItemId)!;
       const unitOk = unitsCompatible(boqRow.unit, topSnl.unit);
-      const sectorOk = getSectorMultiplier(boqCategory, topSnl.sector) === 1.0;
+      const sectorOk = getEffectiveSectorMultiplier(boqCategory, topSnl) === 1.0;
+      const workFamilyOk = isSnlWorkFamilyCompatible(
+        matchWorkCategory,
+        ruleTag,
+        topSnl.workCategory,
+      );
       const clearlyAhead = !second || second.score <= 0 || top.score >= second.score * CONFIDENT_MARGIN;
       // Cross-sector + below-floor matches are never auto-applied.
-      const isConfident = unitOk && sectorOk && top.score >= CONFIDENT_FLOOR && clearlyAhead;
+      const isConfident = unitOk && sectorOk && workFamilyOk &&
+        top.score >= CONFIDENT_FLOOR && clearlyAhead;
 
       const noteTxt = isConfident
         ? `Auto-mapped (sim ${top.score.toFixed(3)})`

@@ -8,6 +8,7 @@ import { updatePurchaseIndentRequestSchema } from "@shared/schema";
 import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, InvalidDieselPhysicalStockError, InvalidStockTransferQuantityError, InvalidDieselSourceError, DieselReceiptExceedsRemainingError, InvalidLinkedDieselRequirementError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError, InitialScopeCorrectionBlockedError, ScopeChangedDuringPlanningError, DprProjectMismatchError, PushSubscriptionOwnershipError, PurchaseIndentRouteCorrectionConflictError, assertValidDieselPhysicalStock } from "./storage";
 import { buildEquipmentComparison, buildDailyDieselEquipmentReport } from "./dieselComparisonEquipment";
 import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection, classifyBoqItem, getSectorMultiplier } from "./snlAutoMapper";
+import { isConfirmedSnlMapping } from "@shared/snlMappingPolicy";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { tripMasterSelectionSchema, tripMasterPartyFields } from "./tripMasterSelection";
@@ -23773,11 +23774,14 @@ export async function registerRoutes(
         const workCategory = (item as any).workCategory as string | null | undefined;
         const canonicalUnit = (item as any).canonicalUnit as string | null | undefined;
         const snlMappingStatus = (item as any).snlMappingStatus as string ?? "unmapped";
+        const snlMappingIsAuto = (item as any).snlMappingIsAuto as boolean | null | undefined;
 
         // ── Path 1: SNL mapping exists ──────────────────────────────────────────
         // applySnlMappingToRecipes uses the full SDB norm data (equipment, labour,
-        // materials, productivity) — this is the most authoritative recipe source.
-        if (snlItemId) {
+        // materials, productivity) — only a confirmed mapping is authoritative.
+        // Low-confidence auto-suggestions retain an ID for review, not application.
+        if (snlItemId != null &&
+          isConfirmedSnlMapping({ snlItemId, snlMappingStatus, snlMappingIsAuto })) {
           try {
             await storage.applySnlMappingToRecipes(item.id, snlItemId, "MEDIUM", null, user);
             const planning = classifyPlanningItem({

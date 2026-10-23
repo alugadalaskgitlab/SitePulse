@@ -4,9 +4,11 @@ import {
   canPropagateDuplicateMapping,
   classifyBoqItem,
   classifyBoqItemForSnl,
+  getEffectiveSectorMultiplier,
   isPrimaryRuleCandidate,
   ruleMatchSnl,
 } from "../server/snlAutoMapper";
+import { isSnlWorkFamilyCompatible } from "../shared/snlMappingPolicy";
 
 type Candidate = { id: number; description: string; shortLabel: string | null; unit: string };
 
@@ -88,6 +90,43 @@ describe("identity-first deterministic SNL rule matching", () => {
       sourceCode: "MORTH_SDB_2019",
       workCategory: "SUBBASE_BASE",
     })).toBe(false);
+  });
+
+  it("uses a compatible work-category family to fill missing MoRTH sector data", () => {
+    expect(getEffectiveSectorMultiplier("road_pavement", {
+      sector: null,
+      sourceCode: "MORTH_SDB_2019",
+      workCategory: "BITUMINOUS",
+    })).toBe(1);
+    expect(getEffectiveSectorMultiplier("earthwork", {
+      sector: null,
+      sourceCode: "MORTH_SDB_2019",
+      workCategory: "EARTHWORK",
+    })).toBe(1);
+    expect(getEffectiveSectorMultiplier("road_pavement", {
+      sector: null,
+      sourceCode: "SDB_MISCELLANEOUS",
+      workCategory: "BITUMINOUS",
+    })).toBe(0.7);
+  });
+
+  it("does not let fuzzy matching cross earthwork, granular, and bituminous families", () => {
+    expect(isSnlWorkFamilyCompatible("BITUMINOUS", "BC", "BITUMINOUS")).toBe(true);
+    expect(isSnlWorkFamilyCompatible("BITUMINOUS", "BC", "EARTHWORK")).toBe(false);
+    expect(isSnlWorkFamilyCompatible("SUBBASE_BASE", "WMM", "BITUMINOUS")).toBe(false);
+    expect(isSnlWorkFamilyCompatible("EARTHWORK", "EMBANKMENT", "SUBBASE_BASE")).toBe(false);
+    expect(isSnlWorkFamilyCompatible("ROAD_FURNITURE", null, "EARTHWORK")).toBe(true);
+  });
+
+  it("matches the seeded primer-coat wording through an explicit synonym", () => {
+    expect(ruleMatchSnl("PRIME_COAT", [{
+      ...row(5, "Providing and applying primer coat with low-viscosity bituminous material", "SQM"),
+      shortLabel: "Primer coat (Emulsion SS-1)",
+      sourceCode: "MORTH_SDB_2019",
+    }], "Providing and applying primer coat")).toEqual({
+      snlItemId: 5,
+      confidence: 0.82,
+    });
   });
 
   it("prefers curated WMM/DBM recipe codes over duplicate standard-book identities", () => {
