@@ -13040,7 +13040,9 @@ export class DatabaseStorage implements IStorage {
           }
         }
 
-        const materialSourceSupplier = data.materialSourceSupplier || null;
+        const materialSourceSupplier = typeof data.materialSourceSupplier === "string" && data.materialSourceSupplier.trim()
+          ? data.materialSourceSupplier
+          : null;
         const [inserted] = await this._mutatePiDeliverySourceWithinTx(tx, "trip", null, async () => tx.insert(siteMaterialTrips).values({
           ...data,
           materialSourceSupplier,
@@ -13160,6 +13162,11 @@ export class DatabaseStorage implements IStorage {
         const [updated] = await this._mutatePiDeliverySourceWithinTx(tx, "trip", id, async () => tx.update(siteMaterialTrips)
           .set({
             ...data,
+            ...(data.materialSourceSupplier !== undefined
+              ? { materialSourceSupplier: typeof data.materialSourceSupplier === "string" && data.materialSourceSupplier.trim()
+                  ? data.materialSourceSupplier
+                  : null }
+              : {}),
             ...(("materialSourceType" in data ? data.materialSourceType : existing.materialSourceType) === "own_source"
               ? { materialSourceSupplier: null, materialSourceVendorId: null }
               : ("materialSourceType" in data ? { materialSourceLabel: null } : {})),

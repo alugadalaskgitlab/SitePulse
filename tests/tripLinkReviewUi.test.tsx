@@ -68,7 +68,7 @@ describe("one operational trip review", () => {
     await waitFor(() => expect((screen.getByRole("combobox", { name: /Vehicle \/ Tipper/ }) as HTMLInputElement).value).toContain("TS15UE4470"));
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
     expect(screen.getByTestId("input-edit-trip-material-source-supplier")).toHaveValue("SARAVANA METAL INDUSTRIES");
-    expect(screen.getByTestId("input-edit-trip-supplier")).toHaveValue("GANGARAM NARSIMHULU");
+    expect(screen.getByTestId("input-edit-trip-supplier")).toHaveValue("NARSIMULU");
     expect(screen.getByRole("combobox", { name: /Vehicle \/ Tipper/ })).toBeDisabled();
     expect(screen.queryByText("Confirm vehicle link")).not.toBeInTheDocument();
     expect(screen.queryByText("Correct roles / work context")).not.toBeInTheDocument();
@@ -180,14 +180,15 @@ describe("new-entry selectors", () => {
         <output data-testid="draft">{JSON.stringify(value)}</output></>;
     }
     renderQuery(<Draft />);
-    fireEvent.click(screen.getAllByLabelText("Other / Not in Master")[0]);
-    fireEvent.change(screen.getByTestId("input-trip-supplier"), { target: { value: "Outside transporter" } });
-    fireEvent.click(screen.getAllByLabelText("Other / Not in Master")[1]);
+    const transporter = screen.getByRole("combobox", { name: /Transporter/ });
+    fireEvent.change(transporter, { target: { value: "Outside transporter" } });
+    fireEvent.click(screen.getByRole("option", { name: /Other \/ Not in Master/ }));
+    fireEvent.click(screen.getByLabelText("Other / Not in Master"));
     fireEvent.change(screen.getByTestId("input-trip-vehicle"), { target: { value: "TS99AB1234" } });
     const draft = JSON.parse(screen.getByTestId("draft").textContent || "{}");
-    expect(draft).toMatchObject({ supplierManual: true, supplierVendorId: null, supplier: "OUTSIDE TRANSPORTER",
+    expect(draft).toMatchObject({ supplierManual: true, supplierVendorId: null, supplier: "Outside transporter",
       vehicleNumber: "TS99AB1234", materialSourceType: "own_source", materialSourceSupplier: "" });
-    expect(screen.queryByRole("combobox", { name: /Transporter/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /Transporter/ })).toHaveValue("Outside transporter");
     expect(holder.request).not.toHaveBeenCalled();
   });
 });

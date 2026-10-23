@@ -98,6 +98,7 @@ describe("Materials Received → View → shared Edit", () => {
     expect(reads.mock.calls.some(([key]) => String(key).includes("vendor-options"))).toBe(false);
   });
   it("selects supplier, transporter and vehicle in the real modal, saves once, and reopens their IDs", async () => {
+    canonical = { ...full, materialSourceSupplier: "Saravana", supplier: "Gangaram Narsimulu" };
     mount(); await edit();
     fireEvent.change(screen.getByRole("combobox", { name: /Material Supplier/ }), { target: { value: "SARA" } });
     const supplier = screen.getByRole("option", { name: "SARAVANA METAL INDUSTRIES" });
@@ -110,6 +111,7 @@ describe("Materials Received → View → shared Edit", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledTimes(1));
     expect(apiRequest).toHaveBeenCalledWith("PATCH", "/api/site-material-trips/71", expect.objectContaining({
+      materialSourceSupplier: "Saravana", supplier: "Gangaram Narsimulu",
       materialSourceVendorId: 13, supplierVendorId: 27, masterSelection: { equipmentId: 30 },
       location: full.location, enteredBy: full.enteredBy, receiptNumber: full.receiptNumber,
     }));
@@ -118,8 +120,8 @@ describe("Materials Received → View → shared Edit", () => {
     expect(screen.getByTestId("detail-material-source-supplier").textContent).toBe("Saravana");
     fireEvent.click(screen.getByTestId("btn-admin-edit"));
     await screen.findByTestId("dialog-trip-roles");
-    await waitFor(() => expect((screen.getByRole("combobox", { name: /Material Supplier/ }) as HTMLInputElement).value).toBe("SARAVANA METAL INDUSTRIES"));
-    expect((screen.getByRole("combobox", { name: /Transporter/ }) as HTMLInputElement).value).toBe("G N Transport");
+    await waitFor(() => expect((screen.getByRole("combobox", { name: /Material Supplier/ }) as HTMLInputElement).value).toBe("Saravana"));
+    expect((screen.getByRole("combobox", { name: /Transporter/ }) as HTMLInputElement).value).toBe("Gangaram Narsimulu");
     await waitFor(() => expect((screen.getByRole("combobox", { name: /Vehicle \/ Tipper/ }) as HTMLInputElement).value).toContain("TS15UF 4308"));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledTimes(2));

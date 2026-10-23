@@ -93,7 +93,7 @@ describe("VB22 backend storage", () => {
       site: "SITE A",
       material: "SOIL",
       supplier: "TRANSPORTER",
-      materialSourceSupplier: "BORROW OWNER",
+      materialSourceSupplier: " borrow   owner ",
     }]);
     const storage = new DatabaseStorage();
     const created = await storage.createSiteMaterialTrip({
@@ -105,10 +105,10 @@ describe("VB22 backend storage", () => {
       quantity: 600,
       uom: "CFT",
     });
-    expect(created.materialSourceSupplier).toBe("BORROW OWNER");
+    expect(created.materialSourceSupplier).toBe(" borrow   owner ");
     expect(fx.inserts[0]).toMatchObject({
       supplier: "TRANSPORTER",
-      materialSourceSupplier: "BORROW OWNER",
+      materialSourceSupplier: " borrow   owner ",
       quantity: 600,
     });
 
@@ -119,16 +119,16 @@ describe("VB22 backend storage", () => {
     fx.updateRows.push([{
       id: 1,
       supplier: "TRANSPORTER",
-      materialSourceSupplier: "QUARRY B",
+      materialSourceSupplier: " quarry b ",
       quantity: 600,
     }]);
     const edited = await storage.updateSiteMaterialTrip(1, { materialSourceSupplier: " quarry b " });
     expect(edited).toMatchObject({
       supplier: "TRANSPORTER",
-      materialSourceSupplier: "QUARRY B",
+      materialSourceSupplier: " quarry b ",
       quantity: 600,
     });
-    expect(fx.updates.at(-1)).toEqual({ materialSourceSupplier: "QUARRY B" });
+    expect(fx.updates.at(-1)).toEqual({ materialSourceSupplier: " quarry b " });
   });
 
   it("bulk assigns only the selected locked rows and writes its audit atomically", async () => {
@@ -178,7 +178,11 @@ describe("VB22 backend storage", () => {
     const aliases = [{ canonicalName: "BORROW OWNER", alias: "OWNER ALIAS" }];
 
     // Existing material-role source under the canonical vendor blocks an alias.
-    fx.selectRows.push(aliases, [{ billNo: "VB-9", source: "auto:site_material_trip_material:42" }]);
+    fx.selectRows.push(
+      aliases,
+      [{ id: 9, name: "BORROW OWNER", businessName: null }],
+      [{ billNo: "VB-9", source: "auto:site_material_trip_material:42" }],
+    );
     await expect((storage as any).assertSiteMaterialTripItemsAvailable(
       {
         execute: vi.fn().mockResolvedValue({ rows: [] }),
@@ -189,7 +193,7 @@ describe("VB22 backend storage", () => {
     )).rejects.toMatchObject({ code: "CONFLICT" });
 
     // The same physical trip's transport role is a different persisted source.
-    fx.selectRows.push(aliases, []);
+    fx.selectRows.push(aliases, [{ id: 9, name: "BORROW OWNER", businessName: null }], []);
     await expect((storage as any).assertSiteMaterialTripItemsAvailable(
       {
         execute: vi.fn().mockResolvedValue({ rows: [] }),
@@ -199,7 +203,11 @@ describe("VB22 backend storage", () => {
       [{ source: "auto:site_material_trip:42" }],
     )).resolves.toBeUndefined();
 
-    fx.selectRows.push(aliases, [{ billNo: "VB-T", source: "auto:site_material_trip:42" }]);
+    fx.selectRows.push(
+      aliases,
+      [{ id: 9, name: "BORROW OWNER", businessName: null }],
+      [{ billNo: "VB-T", source: "auto:site_material_trip:42" }],
+    );
     await expect((storage as any).assertSiteMaterialTripItemsAvailable(
       {
         execute: vi.fn().mockResolvedValue({ rows: [] }),

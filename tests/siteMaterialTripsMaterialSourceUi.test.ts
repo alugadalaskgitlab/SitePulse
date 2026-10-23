@@ -15,7 +15,7 @@ const editDialog = read("client/src/components/TripRoleEditDialog.tsx");
 describe("VB-22 site material trip source supplier UI", () => {
   it("keeps the source supplier independent from vehicle/transporter autofill", () => {
     expect(roleFields).toContain('testId={`input-${testIdPrefix}-material-source-supplier`}');
-    expect(roleFields).toContain("materialSourceSupplier: name.toUpperCase()");
+    expect(roleFields).toContain("materialSourceSupplier: name,");
     expect(page).toContain("<TripTransportRoleFields");
     expect(roleFields).toContain("<TripMasterVehicleField");
     expect(page).toContain("trip.materialSourceSupplier?.trim() || '-'");

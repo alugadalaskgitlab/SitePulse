@@ -302,7 +302,7 @@ describePostgres("vehicle supplier association PostgreSQL transactions", () => {
     expect(bulk.body.updatedCount).toBe(1);
     expect((await testPool!.query(`SELECT material_source_supplier FROM site_material_trips ORDER BY id`)).rows)
       .toEqual([{ material_source_supplier: "NEW" }, { material_source_supplier: "OLD" }]);
-    for (const value of ["EDITED", ""]) {
+    for (const value of ["MiXeD source", ""]) {
       const edit = await request(app).patch("/api/site-material-trips/1").send({ materialSourceSupplier: value });
       expect(edit.status).toBe(200);
       expect(edit.body.materialSourceSupplier).toBe(value || null);
@@ -312,8 +312,8 @@ describePostgres("vehicle supplier association PostgreSQL transactions", () => {
     expect(history).toHaveLength(3);
     expect(history).toEqual(expect.arrayContaining([
       expect.objectContaining({ oldValues: { materialSourceSupplier: null }, newValues: { materialSourceSupplier: "NEW" }, reason: "Bulk assigned material source supplier" }),
-      expect.objectContaining({ oldValues: { materialSourceSupplier: "NEW" }, newValues: { materialSourceSupplier: "EDITED" } }),
-      expect.objectContaining({ oldValues: { materialSourceSupplier: "EDITED" }, newValues: { materialSourceSupplier: null } }),
+      expect.objectContaining({ oldValues: { materialSourceSupplier: "NEW" }, newValues: { materialSourceSupplier: "MiXeD source" } }),
+      expect.objectContaining({ oldValues: { materialSourceSupplier: "MiXeD source" }, newValues: { materialSourceSupplier: null } }),
     ]));
     await query(`ALTER TABLE "${schemaName}".audit_logs ADD CONSTRAINT fail_association_audit CHECK (false) NOT VALID`);
     expect((await request(app).patch("/api/site-material-trips/1").send({ materialSourceSupplier: "FAIL" })).status).toBe(500);
