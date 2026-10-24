@@ -31,7 +31,7 @@ export function getBillFinancialTotals(bill: any) {
   const tds = totalAmount * (Number(bill.tdsRate) || 0) / 100;
   const hireCashAdjustments = (bill.hireStatements || []).reduce((sum: number, statement: any) => {
     const snapshot = statement.calculationSnapshot || {};
-    if (snapshot.taxRuleVersion !== "hire_advance_tax_01") return sum;
+    if (!["hire_advance_tax_01", "hire_advance_bill_carry_02"].includes(snapshot.taxRuleVersion)) return sum;
     const adjustments = snapshot.adjustments || {};
     const financials = snapshot.financials || {};
     const amount = (key: string) => Number(adjustments[key] ?? financials[key] ?? 0) || 0;

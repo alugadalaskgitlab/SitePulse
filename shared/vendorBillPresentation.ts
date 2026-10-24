@@ -75,7 +75,7 @@ function storedStatementRows(bill: any) {
     const saved = (field: string) => numberOrNull(adjustments[field] ?? financials[field]) ?? 0;
     const grossAmount = numberOrNull(statement.grossAmount ?? financials.grossHire ?? snapshot.grossAmount)!;
     const netAmount = numberOrNull(statement.netAmount)!;
-    if (snapshot.taxRuleVersion === "hire_advance_tax_01") {
+    if (["hire_advance_tax_01", "hire_advance_bill_carry_02"].includes(snapshot.taxRuleVersion)) {
       const breakdown = saved("breakdownDeduction");
       push("Breakdown deduction", -breakdown,
         exceptionEvidence(snapshot, ["breakdown"], adjustments.breakdownDeductionReason) + ` · ${statement.equipmentName || `Equipment #${statement.equipmentId}`}`,
@@ -87,9 +87,12 @@ function storedStatementRows(bill: any) {
         `${String(adjustments.otherDebitReason || "Reason: Not recorded")} · ${statement.equipmentName || `Equipment #${statement.equipmentId}`}`,
         "deduction");
       const advanceRecovery = saved("advanceRecovery");
-      const proposal = snapshot.advanceLedgerProposal || {};
-      push("Vendor advance recovered", -advanceRecovery,
-        `Opening balance: ${Number(proposal.openingBalance || 0).toFixed(2)} · Closing balance: ${Number(proposal.closingBalance || 0).toFixed(2)} · ${statement.equipmentName || `Equipment #${statement.equipmentId}`}`,
+      const advanceCarry = snapshot.advanceCarry || {};
+      const advanceReason = snapshot.taxRuleVersion === "hire_advance_bill_carry_02"
+        ? `Entered this segment: ${Number(advanceCarry.advanceThisMonth ?? adjustments.advanceAdjustment ?? 0).toFixed(2)} · Carried in: ${Number(advanceCarry.carriedIn || 0).toFixed(2)} · Carried forward: ${Number(advanceCarry.carriedForward || 0).toFixed(2)}`
+        : `Opening balance: ${Number((snapshot.advanceLedgerProposal || {}).openingBalance || 0).toFixed(2)} · Closing balance: ${Number((snapshot.advanceLedgerProposal || {}).closingBalance || 0).toFixed(2)}`;
+      push(snapshot.taxRuleVersion === "hire_advance_bill_carry_02" ? "Advance recovered" : "Vendor advance recovered", -advanceRecovery,
+        `${advanceReason} · ${statement.equipmentName || `Equipment #${statement.equipmentId}`}`,
         "deduction");
       push("Other credit", saved("otherCredit"),
         `${String(adjustments.otherCreditReason || "Reason: Not recorded")} · ${statement.equipmentName || `Equipment #${statement.equipmentId}`}`,

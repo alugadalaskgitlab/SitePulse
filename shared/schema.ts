@@ -2510,8 +2510,8 @@ export const hireStatements = pgTable("hire_statements", {
   }),
 }));
 
-// Append-only vendor advances used by equipment-hire bills. Nullable data
-// fields keep this purely additive; API validation requires complete events.
+// Dormant legacy table retained for historical compatibility; the active hire
+// advance flow is bill-local and does not read or write this table.
 export const vendorHireAdvanceLedger = pgTable("vendor_hire_advance_ledger", {
   id: serial("id").primaryKey(),
   vendorId: integer("vendor_id").references(() => vendors.id, { onDelete: "restrict" }),
@@ -2535,8 +2535,6 @@ export const vendorHireAdvanceLedger = pgTable("vendor_hire_advance_ledger", {
   clientRequestUq: uniqueIndex("vendor_hire_advance_ledger_client_request_uq")
     .on(table.clientRequestId).where(sql`${table.clientRequestId} IS NOT NULL`),
 }));
-
-export type VendorHireAdvanceLedgerEntry = typeof vendorHireAdvanceLedger.$inferSelect;
 
 // A compact, persisted review decision for an operational fact.  sourceId is
 // intentionally polymorphic (equipment usage, maintenance log, or manual).
@@ -2705,17 +2703,6 @@ export const hireGroupRequestSchema = z.object({
     });
   });
 export type HireGroupRequest = z.infer<typeof hireGroupRequestSchema>;
-
-export const createVendorHireAdvanceLedgerEntrySchema = z.object({
-  vendorId: z.number().int().positive(),
-  siteId: z.number().int().positive().nullable(),
-  kind: z.enum(["opening_balance", "advance_paid"]),
-  amount: z.number().finite().positive().max(1_000_000_000),
-  effectiveDate: hireGroupDate,
-  reference: z.string().trim().min(1).max(500),
-  clientRequestId: z.string().uuid(),
-});
-export type CreateVendorHireAdvanceLedgerEntry = z.infer<typeof createVendorHireAdvanceLedgerEntrySchema>;
 
 export const createVendorBillRequestSchema = insertVendorBillSchema.extend({
   billingVendorId: z.number().int().positive().optional(),

@@ -197,9 +197,9 @@ export interface EquipmentHireFinancialInput {
   breakdownDeduction?: number | null;
   hsdRecovery?: number | null;
   otherDebit?: number | null;
-  /** Recovery allocated from the vendor's advance ledger after tax is computed. */
+  /** Amount recovered from this bill's current-month advance plus prior segments. */
   advanceRecovery?: number | null;
-  /** Historical per-bill field. Retained only to reproduce legacy snapshots. */
+  /** Advance entered for this segment; it is applied after tax and may carry within this bill. */
   advanceAdjustment?: number | null;
   otherCredit?: number | null;
   gstRate?: number | null;
@@ -213,7 +213,7 @@ export interface EquipmentHireFinancials {
   hsdRecovery: number;
   otherDebit: number;
   advanceRecovery: number;
-  /** Historical per-bill field; new bills always store zero here. */
+  /** Advance entered for this segment. */
   advanceAdjustment: number;
   otherCredit: number;
   taxableAmount: number;
@@ -237,8 +237,8 @@ export function calculateEquipmentHireFinancials(input: EquipmentHireFinancialIn
   const breakdownDeduction = money(nonNegative(input.breakdownDeduction));
   const hsdRecovery = money(nonNegative(input.hsdRecovery));
   const otherDebit = money(nonNegative(input.otherDebit));
-  const requestedAdvanceRecovery = money(nonNegative(input.advanceRecovery));
-  const advanceAdjustment = 0;
+  const advanceAdjustment = money(nonNegative(input.advanceAdjustment));
+  const requestedAdvanceRecovery = money(nonNegative(input.advanceRecovery ?? input.advanceAdjustment));
   const otherCredit = money(nonNegative(input.otherCredit));
   const gstRate = money(nonNegative(input.gstRate));
   const tdsRate = money(nonNegative(input.tdsRate));
@@ -281,65 +281,49 @@ export function calculateLegacyEquipmentHireFinancials(input: EquipmentHireFinan
   };
 }
 
-export interface HireAdvancePeriodCapacity {
+export interface HireAdvanceBillSegment {
   key: string;
   periodTo: string;
   periodFrom?: string;
   equipmentId?: number;
-  /** Post-tax amount remaining before vendor-advance recovery. */
+  /** Amount entered in this segment's Advance Adjustment field. */
+  advanceThisMonth: number;
+  /** Post-tax amount remaining before this bill's advance recovery. */
   payableBeforeAdvance: number;
 }
 
-export interface HireAdvanceLedgerBalanceEvent {
-  kind: "opening_balance" | "advance_paid" | "recovery" | string | null;
-  amount: number | string | null;
-  effectiveDate: string | null;
-}
-
-export function hireAdvanceBalancesByDate(
-  events: HireAdvanceLedgerBalanceEvent[],
-  dates: string[],
-): Record<string, number> {
-  const uniqueDates = Array.from(new Set(dates)).sort();
-  const result: Record<string, number> = {};
-  for (const date of uniqueDates) {
-    const balance = events.reduce((sum, event) => {
-      if (!event.effectiveDate || event.effectiveDate > date) return sum;
-      const amount = Number(event.amount);
-      if (!Number.isFinite(amount) || amount <= 0) return sum;
-      if (event.kind === "opening_balance" || event.kind === "advance_paid") return sum + amount;
-      if (event.kind === "recovery") return sum - amount;
-      return sum;
-    }, 0);
-    result[date] = money(Math.max(0, balance));
-  }
-  return result;
+export interface HireAdvanceBillSegmentResult {
+  advanceThisMonth: number;
+  carriedIn: number;
+  available: number;
+  recovered: number;
+  carriedForward: number;
 }
 
 /**
- * Draft-only planning helper. `balanceByPeriodTo` is an as-of ledger balance
- * from the server; this function never writes or reserves any balance.
+ * Carries advances through this bill's hire segments only. It is a pure
+ * calculation: it reads no vendor balance and has no cross-bill side effects.
  */
-export function proposeHireAdvanceRecoveries(
-  periods: HireAdvancePeriodCapacity[],
-  balanceByPeriodTo: Record<string, number>,
-): Record<string, { openingBalance: number; recovery: number; closingBalance: number }> {
+export function carryHireAdvancesWithinBill(
+  periods: HireAdvanceBillSegment[],
+): Record<string, HireAdvanceBillSegmentResult> {
   const ordered = [...periods].sort((a, b) =>
     a.periodTo.localeCompare(b.periodTo) ||
     (a.periodFrom || "").localeCompare(b.periodFrom || "") ||
     Number(a.equipmentId || 0) - Number(b.equipmentId || 0) ||
     a.key.localeCompare(b.key));
-  const proposals: Record<string, { openingBalance: number; recovery: number; closingBalance: number }> = {};
-  let proposedRecoveryThroughDate = 0;
+  const proposals: Record<string, HireAdvanceBillSegmentResult> = {};
+  let carriedForward = 0;
   for (const period of ordered) {
-    const balanceAtPeriodEnd = Number.isFinite(Number(balanceByPeriodTo[period.periodTo]))
-      ? Math.max(0, Number(balanceByPeriodTo[period.periodTo]))
-      : 0;
-    const openingBalance = money(Math.max(0, balanceAtPeriodEnd - proposedRecoveryThroughDate));
-    const recovery = money(Math.min(openingBalance, Math.max(0, Number(period.payableBeforeAdvance) || 0)));
-    const closingBalance = money(openingBalance - recovery);
-    proposedRecoveryThroughDate += recovery;
-    proposals[period.key] = { openingBalance, recovery, closingBalance };
+    const advanceThisMonth = money(Number.isFinite(Number(period.advanceThisMonth))
+      ? Math.max(0, Number(period.advanceThisMonth)) : 0);
+    const carriedIn = carriedForward;
+    const available = money(carriedIn + advanceThisMonth);
+    const payableBeforeAdvance = Number.isFinite(Number(period.payableBeforeAdvance))
+      ? Number(period.payableBeforeAdvance) : 0;
+    const recovered = money(Math.min(available, Math.max(0, payableBeforeAdvance)));
+    carriedForward = money(Math.max(0, available - recovered));
+    proposals[period.key] = { advanceThisMonth, carriedIn, available, recovered, carriedForward };
   }
   return proposals;
 }

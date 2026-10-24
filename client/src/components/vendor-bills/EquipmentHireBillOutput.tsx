@@ -184,6 +184,13 @@ export type EquipmentHireExportData = {
   advanceRecoveryReason?: string;
   advanceAdjustment: number;
   advanceAdjustmentReason?: string;
+  advanceCarry?: {
+    advanceThisMonth: number;
+    carriedIn: number;
+    available: number;
+    recovered: number;
+    carriedForward: number;
+  };
   taxRuleVersion?: string;
   otherCredit: number;
   otherCreditReason?: string;
@@ -516,9 +523,16 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
     ["Breakdown Deduction", `− ${money(data.breakdownDeduction)}`],
     ...(String(data.dieselResponsibility).toLowerCase() === "vendor" ? [] : [["HSD Recovery", `− ${money(data.hsdRecovery)}`]]),
     ["Other Debit / Recovery", `− ${money(data.otherDebit)}${data.otherDebitReason ? ` (${data.otherDebitReason})` : ""}`],
-    ...(data.taxRuleVersion === "hire_advance_tax_01"
-      ? [["Vendor Advance Recovered", `− ${money(data.advanceRecovery)}${data.advanceRecoveryReason ? ` (${data.advanceRecoveryReason})` : ""}`]]
-      : [["Advance Adjustment", `− ${money(data.advanceAdjustment)}${data.advanceAdjustmentReason ? ` (${data.advanceAdjustmentReason})` : ""}`]]),
+    ...(data.taxRuleVersion === "hire_advance_bill_carry_02"
+      ? [
+          ["Advance Adjustment this month", `${money(data.advanceAdjustment)}${data.advanceAdjustmentReason ? ` (${data.advanceAdjustmentReason})` : ""}`],
+          ["Advance carried in", money(data.advanceCarry?.carriedIn || 0)],
+          ["Advance recovered", `− ${money(data.advanceRecovery)}`],
+          ["Advance carried forward", money(data.advanceCarry?.carriedForward || 0)],
+        ]
+      : data.taxRuleVersion === "hire_advance_tax_01"
+        ? [["Vendor Advance Recovered", `− ${money(data.advanceRecovery)}${data.advanceRecoveryReason ? ` (${data.advanceRecoveryReason})` : ""}`]]
+        : [["Advance Adjustment", `− ${money(data.advanceAdjustment)}${data.advanceAdjustmentReason ? ` (${data.advanceAdjustmentReason})` : ""}`]]),
     ["Other Credit", `+ ${money(data.otherCredit)}${data.otherCreditReason ? ` (${data.otherCreditReason})` : ""}`],
     ...(String(data.dieselResponsibility).toLowerCase() === "vendor" ? [["Fuel / Diesel", "Contractor Scope"]] : []),
     ["Taxable / Bill Amount", money(data.taxableAmount)],
@@ -812,6 +826,8 @@ export function buildSavedEquipmentHireBillOutput(bill: any): { data: EquipmentH
   const otherDebit = Number(adjustments.otherDebit || 0);
   const advanceRecovery = Number(adjustments.advanceRecovery ?? snapshot.financials?.advanceRecovery ?? 0);
   const advanceAdjustment = Number(adjustments.advanceAdjustment || 0);
+  const advanceCarry = snapshot.advanceCarry && typeof snapshot.advanceCarry === "object"
+    ? snapshot.advanceCarry as EquipmentHireExportData["advanceCarry"] : undefined;
   const otherCredit = Number(adjustments.otherCredit || 0);
   const frozenFinancials = snapshot.financials || {};
   const hasFrozenFinancials = Number.isFinite(Number(frozenFinancials.grossHire)) &&
@@ -841,12 +857,12 @@ export function buildSavedEquipmentHireBillOutput(bill: any): { data: EquipmentH
     advanceRecoveryReason: snapshot.advanceLedgerProposal
       ? `Opening ${money(Number(snapshot.advanceLedgerProposal.openingBalance || 0))}; closing ${money(Number(snapshot.advanceLedgerProposal.closingBalance || 0))}`
       : undefined,
-    advanceAdjustment, advanceAdjustmentReason: adjustments.advanceAdjustmentReason,
+    advanceAdjustment, advanceAdjustmentReason: adjustments.advanceAdjustmentReason, advanceCarry,
     taxRuleVersion: snapshot.taxRuleVersion,
     otherCredit, otherCreditReason: adjustments.otherCreditReason,
     gstRate: financials.gstRate, gstAmount: financials.gstAmount, taxableAmount: financials.taxableAmount,
     invoiceTotal: financials.invoiceTotal, tdsRate: financials.tdsRate, tdsAmount: financials.tdsAmount,
-    netPayable: snapshot.taxRuleVersion === "hire_advance_tax_01"
+    netPayable: ["hire_advance_tax_01", "hire_advance_bill_carry_02"].includes(snapshot.taxRuleVersion)
       ? Number(financials.netPayable)
       : Number(bill.netPayableAmount ?? financials.netPayable),
     paid,
