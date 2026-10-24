@@ -94,8 +94,10 @@ describe("07B hired equipment billing lifecycle wiring", () => {
     expect(routes).toContain('storage.getEquipmentHireVendors(query.periodFrom, query.periodTo)');
     expect(storage).toContain("async getEquipmentHireVendors(periodFrom: string, periodTo: string)");
     expect(storage).toContain("isEquipmentHireBillEligible(equipment, periodFrom, periodTo)");
-    expect(storage).toContain("financials,");
-    expect(storage).toContain("calculateEquipmentHireFinancials({");
+    expect(storage).toContain("financials: snapshotFinancials,");
+    expect(storage).toContain("const usesGrossBreakdownTaxBase = !statement");
+    expect(storage).toContain("calculateEquipmentHireFinancialsLegacy");
+    expect(storage).toContain("const financials = calculateFinancials({");
     expect(storage).toContain("meterType: equipment.meterType");
     expect(storage).toContain("consumptionNorm: equipment.consumptionNorm");
     expect(storage).toContain("dieselNormOverride: equipment.consumptionNorm");

@@ -32,7 +32,7 @@ import { siteMatchesPermitted } from "@shared/siteName";
 import { filterFinancialBills, billPaymentPosition, getBillFinancialTotals, type BillScope } from "@shared/vendorBillFinancialReport";
 import { VendorBillTaxesSummary } from "@/components/vendor-bills/VendorBillTaxesSummary";
 import { defaultConvertedQuantity, isDifferentBillingUnit, matchingRateCardsForGroup, normalizeRateCardPart, selectAutoMaterialRateConversion, type RateCardUnitOption, type VendorRateCardRecord } from "@/lib/vendorBillRateSelection";
-import { autoBillItemIdentity, availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateEquipmentHireFinancialsLegacy, calculateHireGroup, calculateHireTaxBase, duplicateBillItemPayload, mergeOtherBillItems, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, sumHireTaxBases, uniqueDuplicateBillMatches, type DuplicateBillItemMatch, type HireActivity, type HireBillingBasis } from "@shared/hireBilling";
+import { autoBillItemIdentity, availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateEquipmentHireFinancialsLegacy, calculateHireGroup, duplicateBillItemPayload, mergeOtherBillItems, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, sumHireTaxBases, uniqueDuplicateBillMatches, type DuplicateBillItemMatch, type HireActivity, type HireBillingBasis } from "@shared/hireBilling";
 import { calculationTermsForBill as savedCalculationTermsForBill, type BillHireTerms } from "@/components/vendor-bills/hireBillTerms";
 import type { EquipmentPerformanceReport } from "@shared/equipmentPerformance";
 import { vendorHireEquipmentLabel as formatEquipmentOptionLabel } from "@/components/trip-master-selection";
@@ -1982,7 +1982,7 @@ export default function VendorBills() {
     [taxBaseLineItems, monthlyHireTaxBase],
   );
   const equipmentTaxBase = useMemo(
-    () => taxBaseLineItems.filter(item => (item.category || "other") === "equipment")
+    () => taxBaseLineItems.filter(item => String(item.category || "other").toLowerCase() === "equipment")
       .reduce((sum, item) => sum + (item.amount || 0), 0) + monthlyHireTaxBase,
     [taxBaseLineItems, monthlyHireTaxBase],
   );
@@ -3629,7 +3629,11 @@ export default function VendorBills() {
                  const otherDebit = Number(adjustments.otherDebit || 0);
                  const advanceAdjustment = Number(adjustments.advanceAdjustment || 0);
                  const otherCredit = Number(adjustments.otherCredit || 0);
-                 const financials = calculateEquipmentHireFinancials({
+                  const usesGrossBreakdownTaxBase = !group.hireStatementId || group.hasFrozenTaxBase === true;
+                  const calculateFinancials = usesGrossBreakdownTaxBase
+                    ? calculateEquipmentHireFinancials
+                    : calculateEquipmentHireFinancialsLegacy;
+                  const financials = calculateFinancials({
                    grossHire: Number(result?.grossAmount || 0),
                    breakdownDeduction: Number(result?.deductionAmount || 0),
                    hsdRecovery, otherDebit, advanceAdjustment, otherCredit,
@@ -3668,7 +3672,9 @@ export default function VendorBills() {
                    advanceAdjustment, advanceAdjustmentReason: adjustments.advanceAdjustmentReason,
                    otherCredit, otherCreditReason: adjustments.otherCreditReason,
                    gstRate: financials.gstRate, gstAmount: financials.gstAmount,
-                   taxableAmount: financials.taxableAmount, taxBase: financials.taxBase, invoiceTotal: financials.invoiceTotal,
+                   taxableAmount: financials.taxableAmount,
+                   ...(usesGrossBreakdownTaxBase ? { taxBase: financials.taxBase } : {}),
+                   invoiceTotal: financials.invoiceTotal,
                    tdsRate: financials.tdsRate, tdsAmount: financials.tdsAmount,
                    netPayable: financials.netPayable, paid: financials.paid,
                    dieselResponsibility: equipment?.hireDieselResponsibility,
@@ -3756,8 +3762,8 @@ export default function VendorBills() {
                         {financials.otherDebit > 0 && <div className="flex justify-between gap-3"><span>− Other Debit / Recovery</span><strong>₹{formatCurrency(financials.otherDebit)}</strong></div>}
                         {financials.advanceAdjustment > 0 && <div className="flex justify-between gap-3"><span>− Advance Adjustment</span><strong>₹{formatCurrency(financials.advanceAdjustment)}</strong></div>}
                         {financials.otherCredit > 0 && <div className="flex justify-between gap-3"><span>+ Other Credit</span><strong>₹{formatCurrency(financials.otherCredit)}</strong></div>}
-                        <div className="grid grid-cols-[minmax(0,1fr)_8rem] gap-3 border-t pt-1 font-semibold"><span>= Net amount - this bill (before GST/TDS)</span><strong className="text-right tabular-nums" data-testid={`monthly-hire-taxable-${monthlyTestSuffix}`}>₹{formatCurrency(financials.taxableAmount)}</strong></div>
-                        <div className="grid grid-cols-[minmax(0,1fr)_8rem] gap-3 font-semibold"><span>= GST/TDS tax base</span><strong className="text-right tabular-nums">₹{formatCurrency(financials.taxBase)}</strong></div>
+                        <div className="grid grid-cols-[minmax(0,1fr)_8rem] gap-3 border-t pt-1 font-semibold"><span>{usesGrossBreakdownTaxBase ? "= Net amount - this bill (before GST/TDS)" : "= Taxable / Bill Amount"}</span><strong className="text-right tabular-nums" data-testid={`monthly-hire-taxable-${monthlyTestSuffix}`}>₹{formatCurrency(financials.taxableAmount)}</strong></div>
+                        {usesGrossBreakdownTaxBase && <div className="grid grid-cols-[minmax(0,1fr)_8rem] gap-3 font-semibold"><span>= GST/TDS tax base</span><strong className="text-right tabular-nums">₹{formatCurrency(financials.taxBase)}</strong></div>}
                       </div>
                     </div>
                     {hireGroups.find(g => g.basis === "monthly")?.id === group.id && contractorAdvanceSuggestion && (
