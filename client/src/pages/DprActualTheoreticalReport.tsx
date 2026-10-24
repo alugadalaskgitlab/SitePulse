@@ -33,7 +33,7 @@ type Gap = {
   unlinkedDieselLogCount?: number;
 };
 type ReportData = {
-  project: { id: number; name: string; startDate: string | null; site: string };
+  project: { id: number; name: string; startDate: string | null; site: string | null };
   period: { from: string; to: string };
   equipmentRows: ReportRow[];
   dieselComparison: {
@@ -92,7 +92,7 @@ export default function DprActualTheoreticalReport() {
     if (!data) return;
     const equipmentRows = [
       ["Project", data.project.name],
-      ["Site", data.project.site],
+      ["Site", data.project.site ?? "Unassigned site"],
       ["Period", `${data.period.from} to ${data.period.to}`],
       ["BOQ item", "Item name", "Equipment type", "Planned hours", "Used hours", "Balance hours", "Status", "Actual records", "Stretch / bar detail"],
       ...data.equipmentRows.map(row => [
@@ -155,7 +155,7 @@ export default function DprActualTheoreticalReport() {
         </div>
         {data && (
           <ReportExportGate sections={["site_dprs"]}>
-            <ReportExportGate sections={["site_diesel"]}>
+            <ReportExportGate sections={["site_diesel", "stores_inventory", "diesel_req_view", "diesel_req_raise"]}>
               <Button variant="outline" onClick={exportExcel} className="gap-2">
                 <Download className="h-4 w-4" /> Export Excel
               </Button>
@@ -233,7 +233,7 @@ export default function DprActualTheoreticalReport() {
             <CardHeader>
               <CardTitle>Equipment hours by BOQ item</CardTitle>
               <p className="text-sm text-muted-foreground">
-                {data.project.name} · {data.project.site} · {data.period.from} to {data.period.to}
+                {data.project.name} · {data.project.site ?? "Unassigned site"} · {data.period.from} to {data.period.to}
               </p>
             </CardHeader>
             <CardContent>

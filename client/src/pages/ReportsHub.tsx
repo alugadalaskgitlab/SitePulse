@@ -85,7 +85,7 @@ export default function ReportsHub() {
                 description="Compare BOQ equipment hours with linked DPR actuals and review incomplete attribution counts"
                 accent="violet"
                 iconBg="bg-violet-100"
-                enabled={canSiteDprs && canDieselReq}
+                enabled={canSiteDprs && (canDieselReq || sectionVisible("stores_inventory"))}
               />
               <HubActionTile
                 href={`/site/materials-received?returnTo=${HUB}`}
