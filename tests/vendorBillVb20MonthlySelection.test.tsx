@@ -114,8 +114,8 @@ describe("VB-20 monthly hire segment selection", () => {
     const september = screen.getByTestId(`monthly-hire-${equipmentId}-2026-09-01`);
     expect(august.textContent).toContain("01-AUG-2026 – 31-AUG-2026");
     expect(september.textContent).toContain("01-SEP-2026 – 20-SEP-2026");
-    expect(within(august).getByTestId(`monthly-hire-net-${equipmentId}-2026-08-01`).textContent).toContain("₹60,000.00");
-    expect(within(september).getByTestId(`monthly-hire-net-${equipmentId}-2026-09-01`).textContent).toContain("₹38,000.00");
+    expect(within(august).getByTestId(`monthly-hire-gross-${equipmentId}-2026-08-01`).textContent).toContain("₹60,000.00");
+    expect(within(september).getByTestId(`monthly-hire-gross-${equipmentId}-2026-09-01`).textContent).toContain("₹40,000.00");
 
     fireEvent.click(screen.getByTestId(`checkbox-include-monthly-hire-${equipmentId}-2026-09-01`));
     fireEvent.click(screen.getByTestId("select-bill-site"));

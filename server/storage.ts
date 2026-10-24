@@ -16,7 +16,7 @@ import { insertLabourWithWorkers, readWorkerNames } from "./labourWorkers";
 import { assertSectionTokens, DprSectionConflict, findSectionDrafts, lockDprIdentity, readSectionAggregate, readDraftStoppages, stageDraftStoppages, reconcileRows, reconcileDraftEquipmentAssignments, sameContext, sectionSnapshot } from "./dprSections";
 import { normalizeDprSectionContext } from "../shared/dprSections";
 import { formatPurchaseIndentNumber, reconcileDeliveryEvidence, validateDeliveryDestination, isBulkPiDeliveryItem, type DeliveryEvidence } from "../shared/purchaseIndentDelivery";
-import { authoritativeHireDieselPeriod, calculateEquipmentHireFinancials, calculateHireGroup, getHireReviewGaps, isEquipmentHireBillEligible, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
+import { authoritativeHireDieselPeriod, calculateEquipmentHireFinancials, calculateEquipmentHireFinancialsLegacy, calculateHireGroup, getHireReviewGaps, isEquipmentHireBillEligible, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, replaceHireNetAmountsWithTaxBases, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
 import { hasCumulativeVendorPayment } from "../shared/vendorBillPayment";
 import { normalizeDprSiteName } from "../shared/dprBoqSelection";
 import { hasDprBoqReferences } from "../shared/dprBoqReferences";
@@ -18065,7 +18065,13 @@ export class DatabaseStorage implements IStorage {
       // saved in the immutable statement JSON.  Client totals/items are never
       // an authority for the straight equipment-hire form.
       const breakdownDeduction = calc.deductionAmount;
-      const financials = calculateEquipmentHireFinancials({
+      const frozenTaxBase = (statement?.calculationSnapshot as any)?.financials?.taxBase;
+      const usesGrossBreakdownTaxBase = !statement ||
+        (frozenTaxBase != null && Number.isFinite(Number(frozenTaxBase)));
+      const calculateFinancials = usesGrossBreakdownTaxBase
+        ? calculateEquipmentHireFinancials
+        : calculateEquipmentHireFinancialsLegacy;
+      const financials = calculateFinancials({
         grossHire: calc.grossAmount,
         breakdownDeduction,
         hsdRecovery: calc.diesel.finalRecoveryAmount,
@@ -18075,6 +18081,8 @@ export class DatabaseStorage implements IStorage {
         gstRate: bill.gstRateEquipment,
         tdsRate: bill.tdsRate,
       });
+      const snapshotFinancials: Record<string, any> = { ...financials };
+      if (!usesGrossBreakdownTaxBase) delete snapshotFinancials.taxBase;
       const netAfterBillAdjustments = financials.taxableAmount;
       const patch: any = { equipmentId: group.equipmentId, vendorName: bill.vendorName, billingBasis: terms.billingBasis, rate: terms.rate,
         monthlyDivisorType: terms.monthlyDivisorType, monthlyDivisor: terms.monthlyDivisor, hireStartDate: terms.hireStartDate,
@@ -18117,7 +18125,7 @@ export class DatabaseStorage implements IStorage {
              otherCredit,
              otherCreditReason: adjustments.otherCreditReason ?? null,
            },
-            financials,
+             financials: snapshotFinancials,
         } };
       if (statement) {
         await tx.delete(hireStatementExceptions).where(eq(hireStatementExceptions.statementId, statement.id));
@@ -18829,7 +18837,11 @@ export class DatabaseStorage implements IStorage {
           // omitted ordinary/mixed lines and applied GST/TDS per statement.
           const hasVb10AutomaticStatement = linkedStatements.some(statement =>
             (statement.calculationSnapshot as any)?.billingIntegration === "vb10_automatic");
-          const itemRows = await tx.select({ category: vendorBillItems.category, amount: vendorBillItems.amount })
+          const itemRows = await tx.select({
+            category: vendorBillItems.category,
+            amount: vendorBillItems.amount,
+            hireStatementId: vendorBillItems.hireStatementId,
+          })
             .from(vendorBillItems).where(eq(vendorBillItems.billId, id));
           const categorySubtotals = itemRows.reduce((totals: Record<string, number>, item) => {
             const category = String(item.category || "other").toLowerCase();
@@ -18837,8 +18849,21 @@ export class DatabaseStorage implements IStorage {
             return totals;
           }, {});
           const subtotal = itemRows.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+          const vb10TaxBaseReplacements = hasVb10AutomaticStatement
+            ? linkedStatements.flatMap(statement => {
+                if ((statement.calculationSnapshot as any)?.billingIntegration !== "vb10_automatic") return [];
+                const taxBase = (statement.calculationSnapshot as any)?.financials?.taxBase;
+                if (taxBase == null || !Number.isFinite(Number(taxBase))) return [];
+                const linkedItems = itemRows.filter(item => Number(item.hireStatementId) === Number(statement.id));
+                if (linkedItems.length === 0) return [];
+                const savedNetAmount = linkedItems.reduce((lineSum, item) => lineSum + Number(item.amount || 0), 0);
+                return [{ netAmount: savedNetAmount, taxBase: Number(taxBase) }];
+              })
+            : [];
+          const totalTaxBase = replaceHireNetAmountsWithTaxBases(subtotal, vb10TaxBaseReplacements);
+          const equipmentTaxBase = replaceHireNetAmountsWithTaxBases(categorySubtotals.equipment || 0, vb10TaxBaseReplacements);
           const gst = (
-            (categorySubtotals.equipment || 0) * Number(existing.gstRateEquipment || 0) / 100 +
+            equipmentTaxBase * Number(existing.gstRateEquipment || 0) / 100 +
             (categorySubtotals.material || 0) * Number(existing.gstRateMaterial || 0) / 100 +
             (categorySubtotals.transport || 0) * Number(existing.gstRateTransport || 0) / 100 +
             (categorySubtotals.labour || 0) * Number(existing.gstRateLabour || 0) / 100
@@ -18852,7 +18877,7 @@ export class DatabaseStorage implements IStorage {
               .filter((financials: any) => financials && Number.isFinite(Number(financials.grossHire)));
             if (savedFinancials.length) {
               const legacyNet = savedFinancials.reduce((sum: number, financials: any) => sum +
-                calculateEquipmentHireFinancials(financials).netPayable, 0);
+                calculateEquipmentHireFinancialsLegacy(financials).netPayable, 0);
               // Legacy statement snapshots retain their historical financial
               // path. VB18 additions are bill-level and additive without
               // changing how the existing primary adjustment was treated.
@@ -18864,8 +18889,8 @@ export class DatabaseStorage implements IStorage {
                 (1 - Number(existing.tdsRate || 0) / 100) + additionalAdjustmentAmount + Number.EPSILON) * 100) / 100;
             }
           } else {
-            const tdsAmount = subtotal * Number(existing.tdsRate || 0) / 100;
-            updates.netPayableAmount = Math.round((subtotal + gst + Number(existing.adjustmentAmount || 0) + additionalAdjustmentAmount - tdsAmount + Number.EPSILON) * 100) / 100;
+            const tdsAmount = totalTaxBase * Number(existing.tdsRate || 0) / 100;
+            updates.netPayableAmount = Math.round((totalTaxBase + gst + Number(existing.adjustmentAmount || 0) + additionalAdjustmentAmount - tdsAmount + Number.EPSILON) * 100) / 100;
           }
           // Unknown remains NULL until a person records an amount.
           updates.amountPaid = existing.amountPaid;

@@ -115,7 +115,7 @@ describe("VB-17 monthly auto-hire financial display", () => {
     const breakdown = screen.getByTestId(`monthly-hire-financial-breakdown-${equipmentId}`);
     expect(breakdown.textContent).toContain("Excess Fuel Consumed (2.00 L × ₹100.00)");
     expect(breakdown.textContent).toContain("₹200.00");
-    expect(screen.getByTestId(`monthly-hire-net-${equipmentId}`).textContent).toContain("₹86,800.00");
+    expect(screen.getByTestId(`monthly-hire-gross-${equipmentId}`).textContent).toContain("₹90,000.00");
   }, 15_000);
 
   it("keeps the original suggestion visible when Edit applies a different amount", async () => {
@@ -153,7 +153,7 @@ describe("VB-17 monthly auto-hire financial display", () => {
 
     await waitFor(() => {
       expect(screen.queryByTestId(`monthly-hire-excess-fuel-${equipmentId}`)).toBeNull();
-      expect(screen.getByTestId(`monthly-hire-net-${equipmentId}`).textContent).toContain("₹87,000.00");
+      expect(screen.getByTestId(`monthly-hire-gross-${equipmentId}`).textContent).toContain("₹90,000.00");
     });
   });
 

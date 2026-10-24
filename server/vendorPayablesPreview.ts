@@ -1,4 +1,4 @@
-import { authoritativeHireDieselPeriod, calculateEquipmentHireFinancials, calculateHireGroup, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireActivity } from "../shared/hireBilling";
+import { authoritativeHireDieselPeriod, calculateEquipmentHireFinancialsLegacy, calculateHireGroup, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireActivity } from "../shared/hireBilling";
 import { calcCandidateAmount, groupRateItems, mapAutoBillItem } from "../shared/vendorBillCandidates";
 import { matchingRateCardsForGroup, selectAutoMaterialRateConversion } from "../client/src/lib/vendorBillRateSelection";
 import { computeBillGstByCategory, type GstCategory } from "../shared/vendor-bill-gst";
@@ -137,7 +137,7 @@ export async function buildVendorPayablesPreview(
       hireGroups.push({ id: `monthly-${master.equipmentId}-${from}`, equipmentId: Number(master.equipmentId), equipmentName: eq.name,
         periodFrom: from, periodTo: to, basis: "monthly", rate: Number(eq.hireRate), siteName: null, unallocatedReason: reason,
         dieselResponsibility: eq.hireDieselResponsibility || null, consumptionNorm: eq.consumptionNorm ?? null, meterType: eq.meterType ?? null, result });
-      const financials = calculateEquipmentHireFinancials({ grossHire: result.grossAmount, breakdownDeduction: result.deductionAmount, hsdRecovery: result.diesel.finalRecoveryAmount });
+      const financials = calculateEquipmentHireFinancialsLegacy({ grossHire: result.grossAmount, breakdownDeduction: result.deductionAmount, hsdRecovery: result.diesel.finalRecoveryAmount });
       hireGroups[hireGroups.length - 1].financials = financials;
       items.push({ date: from, category: "equipment", description: `${eq.name} · ${from}–${to} · MONTHLY HIRE`,
         qty: result.quantity, unit: "MONTHS", rate: financials.taxableAmount / (result.quantity || 1), amount: financials.taxableAmount,
@@ -175,7 +175,7 @@ export async function buildVendorPayablesPreview(
     const acceptedDates = new Set(rows.map(row => row.businessDate));
     maintenance.forEach(row => acceptedDates.add(row.date));
     result.workingSheet = result.workingSheet.filter(day => acceptedDates.has(day.date));
-    const financials = calculateEquipmentHireFinancials({ grossHire: result.grossAmount, breakdownDeduction: result.deductionAmount, hsdRecovery: result.diesel.finalRecoveryAmount });
+    const financials = calculateEquipmentHireFinancialsLegacy({ grossHire: result.grossAmount, breakdownDeduction: result.deductionAmount, hsdRecovery: result.diesel.finalRecoveryAmount });
     const locations = Array.from(new Set(groupItems.map(item => item.siteName).filter(Boolean)));
     const unallocatedReason = maintenance.length || locations.length !== 1 ? "Hire spans multiple/unlinked sites or has site-unlinked maintenance; calculated once without site proration." : undefined;
     // Replace raw operational lines, rather than charging both raw and grouped hire.

@@ -32,7 +32,7 @@ import { siteMatchesPermitted } from "@shared/siteName";
 import { filterFinancialBills, billPaymentPosition, getBillFinancialTotals, type BillScope } from "@shared/vendorBillFinancialReport";
 import { VendorBillTaxesSummary } from "@/components/vendor-bills/VendorBillTaxesSummary";
 import { defaultConvertedQuantity, isDifferentBillingUnit, matchingRateCardsForGroup, normalizeRateCardPart, selectAutoMaterialRateConversion, type RateCardUnitOption, type VendorRateCardRecord } from "@/lib/vendorBillRateSelection";
-import { autoBillItemIdentity, availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateHireGroup, duplicateBillItemPayload, mergeOtherBillItems, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, uniqueDuplicateBillMatches, type DuplicateBillItemMatch, type HireActivity, type HireBillingBasis } from "@shared/hireBilling";
+import { autoBillItemIdentity, availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateEquipmentHireFinancialsLegacy, calculateHireGroup, calculateHireTaxBase, duplicateBillItemPayload, mergeOtherBillItems, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, sumHireTaxBases, uniqueDuplicateBillMatches, type DuplicateBillItemMatch, type HireActivity, type HireBillingBasis } from "@shared/hireBilling";
 import { calculationTermsForBill as savedCalculationTermsForBill, type BillHireTerms } from "@/components/vendor-bills/hireBillTerms";
 import type { EquipmentPerformanceReport } from "@shared/equipmentPerformance";
 import { vendorHireEquipmentLabel as formatEquipmentOptionLabel } from "@/components/trip-master-selection";
@@ -175,7 +175,7 @@ function sourceQualifiedDuplicateBillItemPayload(item: LineItem) {
 
 type HireDecision = { date: string; decision: "full_day" | "half_day" | "exclude"; reason?: string };
 type HireGroup = BillHireTerms & {
-  id: string; hireStatementId?: number; equipmentId: number; periodFrom: string; periodTo: string;
+  id: string; hireStatementId?: number; hasFrozenTaxBase?: boolean; equipmentId: number; periodFrom: string; periodTo: string;
   basis: HireBillingBasis; rate: number; quantityOverride?: number;
   includeInBill?: boolean;
   grossAmountOverride?: number; dailyDecisions: HireDecision[];
@@ -1359,7 +1359,7 @@ export default function VendorBills() {
     );
     const persisted = ((bill as any).hireStatements || []).map((s: any, index: number): HireGroup => {
       const snap = s.calculationSnapshot || {};
-      return { id: `loaded-${s.id || index}`, hireStatementId: s.id ? Number(s.id) : undefined, equipmentId: Number(s.equipmentId), periodFrom: s.periodFrom || bill.periodFrom || "", periodTo: s.periodTo || bill.periodTo || "",
+      return { id: `loaded-${s.id || index}`, hireStatementId: s.id ? Number(s.id) : undefined, hasFrozenTaxBase: snap.financials?.taxBase != null && Number.isFinite(Number(snap.financials.taxBase)), equipmentId: Number(s.equipmentId), periodFrom: s.periodFrom || bill.periodFrom || "", periodTo: s.periodTo || bill.periodTo || "",
         basis: (s.billingBasis || snap.terms?.billingBasis || "daily") as HireGroup["basis"], rate: Number(s.rate ?? snap.terms?.rate ?? 0),
         savedTerms: snap.terms,
         monthlyDivisorType: snap.terms?.monthlyDivisorType || "30",
@@ -1704,8 +1704,18 @@ export default function VendorBills() {
     try {
       const calculated = hireResult(group);
       const adjustments = group.adjustments;
-      const netAdjustment = Number(adjustments?.otherCredit || 0) - Number(adjustments?.otherDebit || 0) - Number(adjustments?.advanceAdjustment || 0);
-      return { group, result: { ...calculated, netAmount: Math.max(0, calculated.netAmount + netAdjustment) } };
+      const calculateFinancials = group.hireStatementId && !group.hasFrozenTaxBase
+        ? calculateEquipmentHireFinancialsLegacy
+        : calculateEquipmentHireFinancials;
+      const financials = calculateFinancials({
+        grossHire: calculated.grossAmount,
+        breakdownDeduction: calculated.deductionAmount,
+        hsdRecovery: calculated.diesel.finalRecoveryAmount,
+        otherDebit: Number(adjustments?.otherDebit || 0),
+        advanceAdjustment: Number(adjustments?.advanceAdjustment || 0),
+        otherCredit: Number(adjustments?.otherCredit || 0),
+      });
+      return { group, result: { ...calculated, netAmount: financials.taxableAmount } };
     } catch { return { group, result: null }; }
   }), [hireGroups, hireActivityRows, hireEquipment, equipmentPerformanceRevision]);
   const includedHireGroups = useMemo(
@@ -1949,7 +1959,35 @@ export default function VendorBills() {
     return cats;
   }, [lineItems]);
 
-  const gstAmountEquipment = useMemo(() => gstRateEquipment ? (categorySubtotals["equipment"] || 0) * gstRateEquipment / 100 : 0, [categorySubtotals, gstRateEquipment]);
+  const taxBaseLineItems = useMemo(
+    () => lineItems.filter(item => isHistoricalHireEdit || !["hire_group", "hire_statement"].includes(item.source)),
+    [lineItems, isHistoricalHireEdit],
+  );
+  const monthlyHireTaxBase = useMemo(
+    () => {
+      if (isHistoricalHireEdit) return 0;
+      const newTaxBase = sumHireTaxBases(includedHireCalculated.flatMap(({ group, result }) =>
+        result && (!group.hireStatementId || group.hasFrozenTaxBase)
+          ? [{ grossHire: result.grossAmount, breakdownDeduction: result.deductionAmount }]
+          : [],
+      ));
+      const legacyTaxBase = includedHireCalculated.reduce((sum, { group, result }) =>
+        result && group.hireStatementId && !group.hasFrozenTaxBase ? sum + result.netAmount : sum, 0);
+      return newTaxBase + legacyTaxBase;
+    },
+    [includedHireCalculated, isHistoricalHireEdit],
+  );
+  const totalTaxBase = useMemo(
+    () => taxBaseLineItems.reduce((sum, item) => sum + (item.amount || 0), 0) + monthlyHireTaxBase,
+    [taxBaseLineItems, monthlyHireTaxBase],
+  );
+  const equipmentTaxBase = useMemo(
+    () => taxBaseLineItems.filter(item => (item.category || "other") === "equipment")
+      .reduce((sum, item) => sum + (item.amount || 0), 0) + monthlyHireTaxBase,
+    [taxBaseLineItems, monthlyHireTaxBase],
+  );
+
+  const gstAmountEquipment = useMemo(() => gstRateEquipment ? equipmentTaxBase * gstRateEquipment / 100 : 0, [equipmentTaxBase, gstRateEquipment]);
   const gstAmountMaterial = useMemo(() => gstRateMaterial ? (categorySubtotals["material"] || 0) * gstRateMaterial / 100 : 0, [categorySubtotals, gstRateMaterial]);
   const gstAmountTransport = useMemo(() => gstRateTransport ? (categorySubtotals["transport"] || 0) * gstRateTransport / 100 : 0, [categorySubtotals, gstRateTransport]);
   const gstAmountLabour = useMemo(() => gstRateLabour ? (categorySubtotals["labour"] || 0) * gstRateLabour / 100 : 0, [categorySubtotals, gstRateLabour]);
@@ -1957,7 +1995,7 @@ export default function VendorBills() {
   // The shared itemized flow applies TDS to the same subtotal basis for every
   // new bill type, including Equipment Hire. Historical hire statements keep
   // their frozen calculation snapshot separately.
-  const tdsAmount = useMemo(() => tdsRate ? totalAmount * tdsRate / 100 : 0, [totalAmount, tdsRate]);
+  const tdsAmount = useMemo(() => tdsRate ? totalTaxBase * tdsRate / 100 : 0, [totalTaxBase, tdsRate]);
   const additionalAdjustmentTotal = useMemo(
     () => additionalAdjustments.reduce((sum, adjustment) => sum + (Number(adjustment.amount) || 0), 0),
     [additionalAdjustments],
@@ -3354,7 +3392,7 @@ export default function VendorBills() {
                 const otherDebit = Number(adjustments.otherDebit || 0);
                 const advanceAdjustment = Number(adjustments.advanceAdjustment || 0);
                 const otherCredit = Number(adjustments.otherCredit || 0);
-                 const financials = calculateEquipmentHireFinancials({
+                 const financials = calculateEquipmentHireFinancialsLegacy({
                    grossHire: Number(result?.grossAmount || 0),
                    breakdownDeduction: Number(result?.deductionAmount || 0),
                    hsdRecovery, otherDebit, advanceAdjustment, otherCredit,
@@ -3366,7 +3404,7 @@ export default function VendorBills() {
                   rate: selection.rate, grossHire: Number(result?.grossAmount || 0), breakdownDeduction: Number(result?.deductionAmount || 0),
                   hsdRecovery, otherDebit, otherDebitReason: adjustments.otherDebitReason, advanceAdjustment,
                   advanceAdjustmentReason: adjustments.advanceAdjustmentReason, otherCredit, otherCreditReason: adjustments.otherCreditReason,
-                   gstRate: financials.gstRate, gstAmount: financials.gstAmount, taxableAmount: financials.taxableAmount,
+                    gstRate: financials.gstRate, gstAmount: financials.gstAmount, taxableAmount: financials.taxableAmount,
                    invoiceTotal: financials.invoiceTotal, tdsRate: financials.tdsRate, tdsAmount: financials.tdsAmount,
                    netPayable: financials.netPayable, paid: financials.paid,
                    dieselResponsibility: equipment?.hireDieselResponsibility, consumptionNorm: equipment?.consumptionNorm,
@@ -3543,7 +3581,7 @@ export default function VendorBills() {
                   </div>
                   <div className="grid gap-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/20 sm:grid-cols-2">
                     <div className="space-y-1">
-                      {[["Gross Hire", financials.grossHire], ["− Breakdown Deduction", financials.breakdownDeduction], ...(String(equipment?.hireDieselResponsibility || "").toLowerCase() === "vendor" ? [] : [["− HSD Recovery", financials.hsdRecovery]]), ["− Other Debit / Recovery", financials.otherDebit], ["− Advance Adjustment", financials.advanceAdjustment], ["+ Other Credit", financials.otherCredit], ["= Taxable / Bill Amount", financials.taxableAmount], [`+ GST @ ${financials.gstRate}%`, financials.gstAmount], ["= Invoice Total", financials.invoiceTotal], [`− TDS @ ${financials.tdsRate}%`, financials.tdsAmount], ["= NET PAYABLE", financials.netPayable], ["Paid", financials.paid], ["= BALANCE THIS BILL", financials.balanceThisBill]].map(([label, amount]) => <div key={String(label)} className="flex justify-between"><span>{label}</span><strong>₹{formatCurrency(Number(amount))}</strong></div>)}
+                      {[["Gross Hire", financials.grossHire], ["− Breakdown Deduction", financials.breakdownDeduction], ...(String(equipment?.hireDieselResponsibility || "").toLowerCase() === "vendor" ? [] : [["− HSD Recovery", financials.hsdRecovery]]), ["− Other Debit / Recovery", financials.otherDebit], ["− Advance Adjustment", financials.advanceAdjustment], ["+ Other Credit", financials.otherCredit], ["= Taxable / Bill Amount", financials.taxableAmount], [`+ GST @ ${financials.gstRate}%`, financials.gstAmount], ["= Invoice Total", financials.invoiceTotal], [`− TDS @ ${financials.tdsRate}%`, financials.tdsAmount], ["= NET PAYABLE", financials.netPayable], ["Paid", financials.paid], ["= BALANCE THIS BILL", financials.balanceThisBill]].map(([label, amount]) => <div key={String(label)} className="grid grid-cols-[minmax(0,1fr)_8rem] gap-3"><span>{label}</span><strong className="text-right tabular-nums">₹{formatCurrency(Number(amount))}</strong></div>)}
                     </div>
                     <div className="space-y-3">
                       <div><Label className="text-[10px] uppercase">GST Rate %</Label><Input type="number" min="0" step="0.01" value={gstRateEquipment || ""} placeholder="0" onChange={event => setGstRateEquipment(Number(event.target.value) || 0)} data-testid="input-gst-equipment-rate" /></div>
@@ -3630,7 +3668,7 @@ export default function VendorBills() {
                    advanceAdjustment, advanceAdjustmentReason: adjustments.advanceAdjustmentReason,
                    otherCredit, otherCreditReason: adjustments.otherCreditReason,
                    gstRate: financials.gstRate, gstAmount: financials.gstAmount,
-                   taxableAmount: financials.taxableAmount, invoiceTotal: financials.invoiceTotal,
+                   taxableAmount: financials.taxableAmount, taxBase: financials.taxBase, invoiceTotal: financials.invoiceTotal,
                    tdsRate: financials.tdsRate, tdsAmount: financials.tdsAmount,
                    netPayable: financials.netPayable, paid: financials.paid,
                    dieselResponsibility: equipment?.hireDieselResponsibility,
@@ -3670,7 +3708,7 @@ export default function VendorBills() {
                       <div><span className="block text-[10px] uppercase text-muted-foreground">Machine</span><strong>{formatEquipmentOptionLabel(equipment || {})}</strong></div>
                       <div><span className="block text-[10px] uppercase text-muted-foreground">Active billable range</span><strong>{formatDate(activeFrom)} – {formatDate(activeTo)}</strong></div>
                       <div><span className="block text-[10px] uppercase text-muted-foreground">Monthly rate</span><strong>₹{formatCurrency(group.rate)}</strong></div>
-                       <div><span className="block text-[10px] uppercase text-muted-foreground">Generated taxable / bill amount</span><strong className="text-orange-700" data-testid={`monthly-hire-net-${monthlyTestSuffix}`}>₹{formatCurrency(financials.taxableAmount)}</strong></div>
+                       <div><span className="block text-[10px] uppercase text-muted-foreground">Gross — active period</span><strong className="text-orange-700 tabular-nums" data-testid={`monthly-hire-gross-${monthlyTestSuffix}`}>₹{formatCurrency(financials.grossHire)}</strong></div>
                     </div>
                     <div className="max-w-xs">
                       <Label className="text-[10px] uppercase">Breakdown grace days for this bill period</Label>
@@ -3718,7 +3756,8 @@ export default function VendorBills() {
                         {financials.otherDebit > 0 && <div className="flex justify-between gap-3"><span>− Other Debit / Recovery</span><strong>₹{formatCurrency(financials.otherDebit)}</strong></div>}
                         {financials.advanceAdjustment > 0 && <div className="flex justify-between gap-3"><span>− Advance Adjustment</span><strong>₹{formatCurrency(financials.advanceAdjustment)}</strong></div>}
                         {financials.otherCredit > 0 && <div className="flex justify-between gap-3"><span>+ Other Credit</span><strong>₹{formatCurrency(financials.otherCredit)}</strong></div>}
-                        <div className="flex justify-between gap-3 border-t pt-1 font-semibold"><span>= Net line (pre-GST / TDS)</span><strong data-testid={`monthly-hire-taxable-${monthlyTestSuffix}`}>₹{formatCurrency(financials.taxableAmount)}</strong></div>
+                        <div className="grid grid-cols-[minmax(0,1fr)_8rem] gap-3 border-t pt-1 font-semibold"><span>= Net amount - this bill (before GST/TDS)</span><strong className="text-right tabular-nums" data-testid={`monthly-hire-taxable-${monthlyTestSuffix}`}>₹{formatCurrency(financials.taxableAmount)}</strong></div>
+                        <div className="grid grid-cols-[minmax(0,1fr)_8rem] gap-3 font-semibold"><span>= GST/TDS tax base</span><strong className="text-right tabular-nums">₹{formatCurrency(financials.taxBase)}</strong></div>
                       </div>
                     </div>
                     {hireGroups.find(g => g.basis === "monthly")?.id === group.id && contractorAdvanceSuggestion && (
@@ -4218,8 +4257,8 @@ export default function VendorBills() {
                       )}
                     </div>
                   </td>
-                  <td className="px-2 py-1.5 text-right font-semibold bg-amber-50 dark:bg-amber-900/20">
-                    <span className="text-sm" data-testid={`text-item-amount-${idx}`}>{formatCurrency(item.amount)}</span>
+                  <td className="px-2 py-1.5 text-right font-semibold tabular-nums bg-amber-50 dark:bg-amber-900/20">
+                    <span className="text-sm tabular-nums" data-testid={`text-item-amount-${idx}`}>{formatCurrency(item.amount)}</span>
                   </td>
                   <td className="px-2 py-1.5">
                     <Button variant="ghost" size="icon" className="h-7 w-7" disabled={["hire_group", "hire_statement"].includes(item.source)} onClick={() => removeLineItem(idx)} data-testid={`button-remove-item-${idx}`}>
@@ -4338,6 +4377,7 @@ export default function VendorBills() {
                                       <BillDateGroupRows
                                         items={grp.items}
                                         scope={`edit-${cat}-labour-${grp.key}`}
+                                        hideSubtotalForGroup={group => !isHistoricalHireEdit && billType === "equipment" && group.items.some(({ item }) => item.source === "hire_group")}
                                         onRemoveGroup={removeItemGroup}
                                         totalColumns={totalColSpan}
                                         totalBillItems={lineItems.length}
@@ -4355,6 +4395,7 @@ export default function VendorBills() {
                                 <BillDateGroupRows
                                   items={catItems}
                                   scope={`edit-${cat}`}
+                                  hideSubtotalForGroup={group => !isHistoricalHireEdit && billType === "equipment" && group.items.some(({ item }) => item.source === "hire_group")}
                                   onRemoveGroup={removeItemGroup}
                                   totalColumns={totalColSpan}
                                   totalBillItems={lineItems.length}
@@ -4386,6 +4427,7 @@ export default function VendorBills() {
                           return getLabourSource(item) === labourFilter;
                           })}
                         scope="edit-all"
+                        hideSubtotalForGroup={group => !isHistoricalHireEdit && billType === "equipment" && group.items.some(({ item }) => item.source === "hire_group")}
                         onRemoveGroup={removeItemGroup}
                         totalColumns={totalColSpan}
                         totalBillItems={lineItems.length}
@@ -4423,13 +4465,13 @@ export default function VendorBills() {
                 // must follow the categories actually present rather than
                 // applying the equipment rate to the whole bill.
                 const isGrouped = billType === "all" || billType === "equipment";
-                const hasEquipmentItems = (categorySubtotals["equipment"] || 0) !== 0;
+                const hasEquipmentItems = equipmentTaxBase !== 0;
                 const hasMaterialItems = (categorySubtotals["material"] || 0) !== 0;
                 const hasTransportItems = (categorySubtotals["transport"] || 0) !== 0;
                 const hasLabourItems = (categorySubtotals["labour"] || 0) !== 0;
                 const gstRows = isGrouped
                   ? [
-                      ...(hasEquipmentItems ? [{ label: "GST ON EQUIPMENT", rate: gstRateEquipment, setRate: setGstRateEquipment, subtotal: categorySubtotals["equipment"] || 0, amount: gstAmountEquipment, testId: "gst-equipment" }] : []),
+                      ...(hasEquipmentItems ? [{ label: "GST ON EQUIPMENT", rate: gstRateEquipment, setRate: setGstRateEquipment, subtotal: equipmentTaxBase, amount: gstAmountEquipment, testId: "gst-equipment" }] : []),
                       ...(hasMaterialItems ? [{ label: "GST ON MATERIAL", rate: gstRateMaterial, setRate: setGstRateMaterial, subtotal: categorySubtotals["material"] || 0, amount: gstAmountMaterial, testId: "gst-material" }] : []),
                       ...(hasTransportItems ? [{ label: "GST ON TRANSPORT", rate: gstRateTransport, setRate: setGstRateTransport, subtotal: categorySubtotals["transport"] || 0, amount: gstAmountTransport, testId: "gst-transport" }] : []),
                       ...(hasLabourItems ? [{ label: "GST ON LABOUR", rate: gstRateLabour, setRate: setGstRateLabour, subtotal: categorySubtotals["labour"] || 0, amount: gstAmountLabour, testId: "gst-labour" }] : []),
@@ -4563,7 +4605,7 @@ export default function VendorBills() {
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                       <div className="md:col-span-2">
                         <Label className="text-sm uppercase">IT TDS</Label>
-                          <p className="text-sm text-muted-foreground">On Rs. {formatCurrency(totalAmount)}</p>
+                          <p className="text-sm text-muted-foreground">On Rs. {formatCurrency(totalTaxBase)}</p>
                       </div>
                       <div>
                         <Label className="text-sm uppercase">Rate %</Label>

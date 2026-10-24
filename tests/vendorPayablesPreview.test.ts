@@ -6,7 +6,7 @@ import request from "supertest";
 import { z } from "zod";
 import * as XLSX from "xlsx";
 import { buildVendorPayablesPreview, type PayablesPreviewReader } from "../server/vendorPayablesPreview";
-import { authoritativeHireDieselPeriod, calculateEquipmentHireFinancials, calculateHireGroup } from "../shared/hireBilling";
+import { authoritativeHireDieselPeriod, calculateEquipmentHireFinancialsLegacy, calculateHireGroup } from "../shared/hireBilling";
 import { buildPayablesPreviewWorkbook, buildPayablesPreviewPdf } from "../client/src/components/vendor-bills/payablesPreviewExport";
 import { vendorBillItemMatchesSite, siteMatchesPermitted } from "../shared/siteName";
 import { financialSites } from "../server/vendorFinancialAccess";
@@ -59,7 +59,7 @@ describe("VB-EXPORT-01 Part B canonical read-only service", () => {
     });
     expect(preview.hireGroups).toHaveLength(1);
     expect(preview.hireGroups[0].result).toEqual(expected);
-    const financials = calculateEquipmentHireFinancials({ grossHire: expected.grossAmount, breakdownDeduction: expected.deductionAmount, hsdRecovery: expected.diesel.finalRecoveryAmount });
+    const financials = calculateEquipmentHireFinancialsLegacy({ grossHire: expected.grossAmount, breakdownDeduction: expected.deductionAmount, hsdRecovery: expected.diesel.finalRecoveryAmount });
     expect(preview.unallocatedTotal.preTax).toBe(financials.taxableAmount);
     expect(preview.hireGroups[0].result.workingSheet).toHaveLength(30);
     expect(preview.siteTotal.preTax).toBe(23703.6);
@@ -166,7 +166,7 @@ describe("VB-EXPORT-01 Part B canonical read-only service", () => {
     });
     expected.workingSheet = expected.workingSheet.filter(day => ["2026-06-04", "2026-06-07"].includes(day.date));
     expect(preview.hireGroups).toHaveLength(1); expect(preview.hireGroups[0].result).toEqual(expected);
-    expect(preview.hireGroups[0].financials).toEqual(calculateEquipmentHireFinancials({ grossHire: expected.grossAmount, breakdownDeduction: expected.deductionAmount, hsdRecovery: expected.diesel.finalRecoveryAmount }));
+    expect(preview.hireGroups[0].financials).toEqual(calculateEquipmentHireFinancialsLegacy({ grossHire: expected.grossAmount, breakdownDeduction: expected.deductionAmount, hsdRecovery: expected.diesel.finalRecoveryAmount }));
     expect(preview.categories[0].items).toHaveLength(1);
     expect(preview.categories[0].items[0].amount).toBe(expected.netAmount);
     expect(preview.hireGroups[0].result.workingSheet.map(day => day.date)).not.toContain("2026-06-05");

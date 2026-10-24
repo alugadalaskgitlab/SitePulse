@@ -50,6 +50,7 @@ type BillDateGroupRowsProps<T extends { date?: string | null; amount?: number | 
   expansionOverrides: Record<string, boolean>;
   onToggle: (key: string, expanded: boolean) => void;
   onRemoveGroup?: (items: Array<IndexedBillItem<T>>, label: string) => void;
+  hideSubtotalForGroup?: (group: BillDateGroup<T>) => boolean;
   renderRow: (item: T, idx: number) => ReactNode;
   formatDate: (date: string | null | undefined) => string;
   formatAmount: (amount: number) => string;
@@ -64,6 +65,7 @@ export function BillDateGroupRows<T extends { date?: string | null; amount?: num
   expansionOverrides,
   onToggle,
   onRemoveGroup,
+  hideSubtotalForGroup,
   renderRow,
   formatDate,
   formatAmount,
@@ -95,9 +97,11 @@ export function BillDateGroupRows<T extends { date?: string | null; amount?: num
                   <span className="ml-2 text-muted-foreground normal-case">
                     {group.items.length} item{group.items.length === 1 ? "" : "s"}
                   </span>
-                  <span className="ml-auto pl-3 font-semibold">
-                    Rs. {formatAmount(group.subtotal)}
-                  </span>
+                  {!hideSubtotalForGroup?.(group) && (
+                    <span className="ml-auto pl-3 font-semibold tabular-nums">
+                      Rs. {formatAmount(group.subtotal)}
+                    </span>
+                  )}
                 </Button>
                 {onRemoveGroup && (
                   <div className="mt-3 flex justify-end border-t pt-3">

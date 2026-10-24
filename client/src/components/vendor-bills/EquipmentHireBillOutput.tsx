@@ -6,7 +6,7 @@ import { format } from "date-fns";
 import { Download, FileText } from "lucide-react";
 import type { EquipmentPerformanceDailyRow } from "@shared/equipmentPerformance";
 import { computeEquipmentUsage, formatEquipmentDuration, formatEquipmentTime } from "@shared/equipmentUsage";
-import { calculateEquipmentHireFinancials } from "@shared/hireBilling";
+import { calculateEquipmentHireFinancials, calculateEquipmentHireFinancialsLegacy } from "@shared/hireBilling";
 import { projectHireReview, hireReviewDisclosureLines, hireReviewTable, MONTHLY_BILL_HEADERS, type HireReview } from "@shared/vendorBillLayout";
 import { getBaseSiteName } from "@shared/siteName";
 import { formatConsumptionRate } from "./HireActivityBreakdownCalendar";
@@ -187,6 +187,7 @@ export type EquipmentHireExportData = {
   gstRate: number;
   gstAmount: number;
   taxableAmount: number;
+  taxBase?: number;
   invoiceTotal: number;
   tdsRate: number;
   tdsAmount: number;
@@ -511,12 +512,13 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
     ["Vendor", data.vendorName], ["Equipment", data.equipmentName], ...(data.projectSite ? [["Project / Site", data.projectSite]] : []), ["Bill period", `${dateLabel(data.periodFrom)} to ${dateLabel(data.periodTo)}`],
     ["Hire basis", data.hireBasis], ["Rate", money(data.rate)], ["Gross Hire", money(data.grossHire)],
     ["Breakdown Deduction", `− ${money(data.breakdownDeduction)}`],
+    ...(data.taxBase == null ? [] : [["GST/TDS tax base", money(data.taxBase)]]),
     ...(String(data.dieselResponsibility).toLowerCase() === "vendor" ? [] : [["HSD Recovery", `− ${money(data.hsdRecovery)}`]]),
     ["Other Debit / Recovery", `− ${money(data.otherDebit)}${data.otherDebitReason ? ` (${data.otherDebitReason})` : ""}`],
     ["Advance Adjustment", `− ${money(data.advanceAdjustment)}${data.advanceAdjustmentReason ? ` (${data.advanceAdjustmentReason})` : ""}`],
     ["Other Credit", `+ ${money(data.otherCredit)}${data.otherCreditReason ? ` (${data.otherCreditReason})` : ""}`],
     ...(String(data.dieselResponsibility).toLowerCase() === "vendor" ? [["Fuel / Diesel", "Contractor Scope"]] : []),
-    ["Taxable / Bill Amount", money(data.taxableAmount)],
+    [data.taxBase == null ? "Taxable / Bill Amount" : "Net amount - this bill (before GST/TDS)", money(data.taxableAmount)],
     [`GST @ ${data.gstRate}%`, `+ ${money(data.gstAmount)}`], ["Invoice Total", money(data.invoiceTotal)],
     [`TDS @ ${data.tdsRate}%`, `− ${money(data.tdsAmount)}`], ["NET PAYABLE", money(data.netPayable)], ["Paid", data.paid == null ? "—" : money(data.paid)], ["Balance This Bill", balance == null ? "—" : money(balance)],
   ];
@@ -561,7 +563,7 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
     columnStyles: { 0: { fontStyle: "bold", cellWidth: 65 }, 1: { cellWidth: 110 } },
     didParseCell: cell => {
       const label = String((cell.row.raw as string[] | undefined)?.[0] || "");
-      if (cell.section === "body" && ["Taxable / Bill Amount", "Invoice Total", "NET PAYABLE", "Balance This Bill"].includes(label)) {
+      if (cell.section === "body" && ["Taxable / Bill Amount", "GST/TDS tax base", "Net amount - this bill (before GST/TDS)", "Invoice Total", "NET PAYABLE", "Balance This Bill"].includes(label)) {
         cell.cell.styles.fontStyle = "bold";
       }
     },
@@ -808,7 +810,11 @@ export function buildSavedEquipmentHireBillOutput(bill: any): { data: EquipmentH
   const advanceAdjustment = Number(adjustments.advanceAdjustment || 0);
   const otherCredit = Number(adjustments.otherCredit || 0);
   const frozenFinancials = snapshot.financials || {};
-  const financials = calculateEquipmentHireFinancials({
+  const hasFrozenNewTaxBase = frozenFinancials.taxBase != null && Number.isFinite(Number(frozenFinancials.taxBase));
+  const calculateSavedFinancials = hasFrozenNewTaxBase
+    ? calculateEquipmentHireFinancials
+    : calculateEquipmentHireFinancialsLegacy;
+  const financials = calculateSavedFinancials({
     grossHire: frozenFinancials.grossHire ?? grossHire,
     breakdownDeduction: frozenFinancials.breakdownDeduction ?? breakdownDeduction,
     hsdRecovery: frozenFinancials.hsdRecovery ?? hsdRecovery,
@@ -831,6 +837,7 @@ export function buildSavedEquipmentHireBillOutput(bill: any): { data: EquipmentH
     otherDebit, otherDebitReason: adjustments.otherDebitReason, advanceAdjustment, advanceAdjustmentReason: adjustments.advanceAdjustmentReason,
     otherCredit, otherCreditReason: adjustments.otherCreditReason,
     gstRate: financials.gstRate, gstAmount: financials.gstAmount, taxableAmount: financials.taxableAmount,
+    ...(hasFrozenNewTaxBase ? { taxBase: financials.taxBase } : {}),
     invoiceTotal: financials.invoiceTotal, tdsRate: financials.tdsRate, tdsAmount: financials.tdsAmount,
     netPayable: Number(bill.netPayableAmount ?? financials.netPayable), paid,
     dieselResponsibility: snapshot.terms?.dieselResponsibility ?? statement.dieselResponsibility,

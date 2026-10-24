@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateHireBilling, calculateHireDieselPricing, calculateHireGroup, duplicateBillItemPayload, getHireReviewGaps, isEquipmentHireBillEligible, mergeOtherBillItems, normalizeHireActivities, planHireRegisterRows, rawAutoItemCoveredByHireGroup, uniqueDuplicateBillMatches } from "../shared/hireBilling";
+import { availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateEquipmentHireFinancialsLegacy, calculateHireBilling, calculateHireDieselPricing, calculateHireGroup, duplicateBillItemPayload, getHireReviewGaps, isEquipmentHireBillEligible, mergeOtherBillItems, normalizeHireActivities, planHireRegisterRows, rawAutoItemCoveredByHireGroup, uniqueDuplicateBillMatches } from "../shared/hireBilling";
 import { computeEquipmentUsage } from "../shared/equipmentUsage";
 
 describe("hire billing calculator", () => {
@@ -853,33 +853,32 @@ describe("07B equipment-hire discovery and commercial parity", () => {
     }).grossAmount).toBe(90_000);
   });
 
-  it("uses one rounded taxable/GST/TDS sequence and preserves the pre-GST TDS rule", () => {
+  it("uses gross less breakdown for GST/TDS and keeps recoveries in the net amount", () => {
     const withoutGst = calculateEquipmentHireFinancials({
       grossHire: 100_000, breakdownDeduction: 5_000, hsdRecovery: 2_000,
       otherDebit: 1_000, advanceAdjustment: 3_000, otherCredit: 500, tdsRate: 2,
     });
     expect(withoutGst).toMatchObject({
-      taxableAmount: 89_500, gstAmount: 0, invoiceTotal: 89_500,
-      tdsAmount: 1_790, netPayable: 87_710,
+      taxBase: 95_000, taxableAmount: 89_500, gstAmount: 0, invoiceTotal: 89_500,
+      tdsAmount: 1_900, netPayable: 87_600,
     });
     const withGst = calculateEquipmentHireFinancials({
       grossHire: 100_000, breakdownDeduction: 5_000, hsdRecovery: 2_000,
       otherDebit: 1_000, advanceAdjustment: 3_000, otherCredit: 500, gstRate: 18, tdsRate: 2,
     });
     expect(withGst).toMatchObject({
-      taxableAmount: 89_500, gstAmount: 16_110, invoiceTotal: 105_610,
-      // TDS remains on taxable amount, as in the established itemized flow.
-      tdsAmount: 1_790, netPayable: 103_820,
+      taxBase: 95_000, taxableAmount: 89_500, gstAmount: 17_100, invoiceTotal: 106_600,
+      tdsAmount: 1_900, netPayable: 104_700,
     });
   });
 
   it("reproduces the exact saved commercial snapshot at approval, including GST", () => {
-    const saved = calculateEquipmentHireFinancials({
+    const saved = calculateEquipmentHireFinancialsLegacy({
       grossHire: 31_000, breakdownDeduction: 1_000, hsdRecovery: 600,
       otherDebit: 200, advanceAdjustment: 1_500, otherCredit: 50,
       gstRate: 18, tdsRate: 1,
     });
-    const approved = calculateEquipmentHireFinancials({
+    const approved = calculateEquipmentHireFinancialsLegacy({
       grossHire: saved.grossHire, breakdownDeduction: saved.breakdownDeduction,
       hsdRecovery: saved.hsdRecovery, otherDebit: saved.otherDebit,
       advanceAdjustment: saved.advanceAdjustment, otherCredit: saved.otherCredit,
