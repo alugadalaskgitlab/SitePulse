@@ -197,6 +197,9 @@ export interface EquipmentHireFinancialInput {
   breakdownDeduction?: number | null;
   hsdRecovery?: number | null;
   otherDebit?: number | null;
+  /** Recovery allocated from the vendor's advance ledger after tax is computed. */
+  advanceRecovery?: number | null;
+  /** Historical per-bill field. Retained only to reproduce legacy snapshots. */
   advanceAdjustment?: number | null;
   otherCredit?: number | null;
   gstRate?: number | null;
@@ -209,6 +212,8 @@ export interface EquipmentHireFinancials {
   breakdownDeduction: number;
   hsdRecovery: number;
   otherDebit: number;
+  advanceRecovery: number;
+  /** Historical per-bill field; new bills always store zero here. */
   advanceAdjustment: number;
   otherCredit: number;
   taxableAmount: number;
@@ -222,7 +227,38 @@ export interface EquipmentHireFinancials {
   balanceThisBill: number;
 }
 
+/**
+ * New hire bills tax gross hire less breakdown only. Operational and vendor
+ * cash recoveries are then applied to the post-tax payable, exactly once.
+ */
 export function calculateEquipmentHireFinancials(input: EquipmentHireFinancialInput): EquipmentHireFinancials {
+  const nonNegative = (value: number | null | undefined) => Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0;
+  const grossHire = money(nonNegative(input.grossHire));
+  const breakdownDeduction = money(nonNegative(input.breakdownDeduction));
+  const hsdRecovery = money(nonNegative(input.hsdRecovery));
+  const otherDebit = money(nonNegative(input.otherDebit));
+  const requestedAdvanceRecovery = money(nonNegative(input.advanceRecovery));
+  const advanceAdjustment = 0;
+  const otherCredit = money(nonNegative(input.otherCredit));
+  const gstRate = money(nonNegative(input.gstRate));
+  const tdsRate = money(nonNegative(input.tdsRate));
+  const taxableAmount = money(Math.max(0, grossHire - breakdownDeduction));
+  const gstAmount = money(taxableAmount * gstRate / 100);
+  const invoiceTotal = money(taxableAmount + gstAmount);
+  const tdsAmount = money(taxableAmount * tdsRate / 100);
+  const payableBeforeAdvance = money(invoiceTotal - tdsAmount - hsdRecovery - otherDebit + otherCredit);
+  const advanceRecovery = money(Math.min(requestedAdvanceRecovery, Math.max(0, payableBeforeAdvance)));
+  const netPayable = money(payableBeforeAdvance - advanceRecovery);
+  const paid = money(nonNegative(input.paid));
+  return {
+    grossHire, breakdownDeduction, hsdRecovery, otherDebit, advanceRecovery, advanceAdjustment, otherCredit,
+    taxableAmount, gstRate, gstAmount, invoiceTotal, tdsRate, tdsAmount, netPayable, paid,
+    balanceThisBill: money(Math.max(0, netPayable - paid)),
+  };
+}
+
+/** Reproduces the calculation used by saved pre-HIRE-ADVANCE-TAX-01 records. */
+export function calculateLegacyEquipmentHireFinancials(input: EquipmentHireFinancialInput): EquipmentHireFinancials {
   const nonNegative = (value: number | null | undefined) => Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0;
   const grossHire = money(nonNegative(input.grossHire));
   const breakdownDeduction = money(nonNegative(input.breakdownDeduction));
@@ -239,10 +275,68 @@ export function calculateEquipmentHireFinancials(input: EquipmentHireFinancialIn
   const netPayable = money(invoiceTotal - tdsAmount);
   const paid = money(nonNegative(input.paid));
   return {
-    grossHire, breakdownDeduction, hsdRecovery, otherDebit, advanceAdjustment, otherCredit,
+    grossHire, breakdownDeduction, hsdRecovery, otherDebit, advanceRecovery: 0, advanceAdjustment, otherCredit,
     taxableAmount, gstRate, gstAmount, invoiceTotal, tdsRate, tdsAmount, netPayable, paid,
     balanceThisBill: money(Math.max(0, netPayable - paid)),
   };
+}
+
+export interface HireAdvancePeriodCapacity {
+  key: string;
+  periodTo: string;
+  /** Post-tax amount remaining before vendor-advance recovery. */
+  payableBeforeAdvance: number;
+}
+
+export interface HireAdvanceLedgerBalanceEvent {
+  kind: "opening_balance" | "advance_paid" | "recovery" | string | null;
+  amount: number | string | null;
+  effectiveDate: string | null;
+}
+
+export function hireAdvanceBalancesByDate(
+  events: HireAdvanceLedgerBalanceEvent[],
+  dates: string[],
+): Record<string, number> {
+  const uniqueDates = [...new Set(dates)].sort();
+  const result: Record<string, number> = {};
+  for (const date of uniqueDates) {
+    const balance = events.reduce((sum, event) => {
+      if (!event.effectiveDate || event.effectiveDate > date) return sum;
+      const amount = Number(event.amount);
+      if (!Number.isFinite(amount) || amount <= 0) return sum;
+      if (event.kind === "opening_balance" || event.kind === "advance_paid") return sum + amount;
+      if (event.kind === "recovery") return sum - amount;
+      return sum;
+    }, 0);
+    result[date] = money(Math.max(0, balance));
+  }
+  return result;
+}
+
+/**
+ * Draft-only planning helper. `balanceByPeriodTo` is an as-of ledger balance
+ * from the server; this function never writes or reserves any balance.
+ */
+export function proposeHireAdvanceRecoveries(
+  periods: HireAdvancePeriodCapacity[],
+  balanceByPeriodTo: Record<string, number>,
+): Record<string, { openingBalance: number; recovery: number; closingBalance: number }> {
+  const ordered = [...periods].sort((a, b) =>
+    a.periodTo.localeCompare(b.periodTo) || a.key.localeCompare(b.key));
+  const proposals: Record<string, { openingBalance: number; recovery: number; closingBalance: number }> = {};
+  let proposedRecoveryThroughDate = 0;
+  for (const period of ordered) {
+    const balanceAtPeriodEnd = Number.isFinite(Number(balanceByPeriodTo[period.periodTo]))
+      ? Math.max(0, Number(balanceByPeriodTo[period.periodTo]))
+      : 0;
+    const openingBalance = money(Math.max(0, balanceAtPeriodEnd - proposedRecoveryThroughDate));
+    const recovery = money(Math.min(openingBalance, Math.max(0, Number(period.payableBeforeAdvance) || 0)));
+    const closingBalance = money(openingBalance - recovery);
+    proposedRecoveryThroughDate += recovery;
+    proposals[period.key] = { openingBalance, recovery, closingBalance };
+  }
+  return proposals;
 }
 const dateAtUtc = (value: string) => Date.parse(`${value.slice(0, 10)}T00:00:00.000Z`);
 const iso = (value: number) => new Date(value).toISOString().slice(0, 10);

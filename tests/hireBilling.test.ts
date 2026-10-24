@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateHireBilling, calculateHireDieselPricing, calculateHireGroup, duplicateBillItemPayload, getHireReviewGaps, isEquipmentHireBillEligible, mergeOtherBillItems, normalizeHireActivities, planHireRegisterRows, rawAutoItemCoveredByHireGroup, uniqueDuplicateBillMatches } from "../shared/hireBilling";
+import { availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateLegacyEquipmentHireFinancials, calculateHireBilling, calculateHireDieselPricing, calculateHireGroup, duplicateBillItemPayload, getHireReviewGaps, hireAdvanceBalancesByDate, isEquipmentHireBillEligible, mergeOtherBillItems, normalizeHireActivities, planHireRegisterRows, proposeHireAdvanceRecoveries, rawAutoItemCoveredByHireGroup, uniqueDuplicateBillMatches } from "../shared/hireBilling";
 import { computeEquipmentUsage } from "../shared/equipmentUsage";
 
 describe("hire billing calculator", () => {
@@ -853,33 +853,32 @@ describe("07B equipment-hire discovery and commercial parity", () => {
     }).grossAmount).toBe(90_000);
   });
 
-  it("uses one rounded taxable/GST/TDS sequence and preserves the pre-GST TDS rule", () => {
+  it("taxes gross hire less breakdown only, then applies cash recoveries once", () => {
     const withoutGst = calculateEquipmentHireFinancials({
       grossHire: 100_000, breakdownDeduction: 5_000, hsdRecovery: 2_000,
       otherDebit: 1_000, advanceAdjustment: 3_000, otherCredit: 500, tdsRate: 2,
     });
     expect(withoutGst).toMatchObject({
-      taxableAmount: 89_500, gstAmount: 0, invoiceTotal: 89_500,
-      tdsAmount: 1_790, netPayable: 87_710,
+      taxableAmount: 95_000, gstAmount: 0, invoiceTotal: 95_000,
+      tdsAmount: 1_900, netPayable: 87_600,
     });
     const withGst = calculateEquipmentHireFinancials({
       grossHire: 100_000, breakdownDeduction: 5_000, hsdRecovery: 2_000,
       otherDebit: 1_000, advanceAdjustment: 3_000, otherCredit: 500, gstRate: 18, tdsRate: 2,
     });
     expect(withGst).toMatchObject({
-      taxableAmount: 89_500, gstAmount: 16_110, invoiceTotal: 105_610,
-      // TDS remains on taxable amount, as in the established itemized flow.
-      tdsAmount: 1_790, netPayable: 103_820,
+      taxableAmount: 95_000, gstAmount: 17_100, invoiceTotal: 112_100,
+      tdsAmount: 1_900, netPayable: 104_700,
     });
   });
 
-  it("reproduces the exact saved commercial snapshot at approval, including GST", () => {
-    const saved = calculateEquipmentHireFinancials({
+  it("keeps historical snapshots on their original tax calculation", () => {
+    const saved = calculateLegacyEquipmentHireFinancials({
       grossHire: 31_000, breakdownDeduction: 1_000, hsdRecovery: 600,
       otherDebit: 200, advanceAdjustment: 1_500, otherCredit: 50,
       gstRate: 18, tdsRate: 1,
     });
-    const approved = calculateEquipmentHireFinancials({
+    const approved = calculateLegacyEquipmentHireFinancials({
       grossHire: saved.grossHire, breakdownDeduction: saved.breakdownDeduction,
       hsdRecovery: saved.hsdRecovery, otherDebit: saved.otherDebit,
       advanceAdjustment: saved.advanceAdjustment, otherCredit: saved.otherCredit,
@@ -891,6 +890,50 @@ describe("07B equipment-hire discovery and commercial parity", () => {
       invoiceTotal: saved.invoiceTotal,
       tdsAmount: saved.tdsAmount,
       netPayable: saved.netPayable,
+    });
+  });
+
+  it("allocates the Orsu Venkanna advance across August and September without changing either tax base", () => {
+    const ledger = [
+      { kind: "advance_paid", amount: 50_000, effectiveDate: "2026-08-01" },
+      { kind: "advance_paid", amount: 60_000, effectiveDate: "2026-09-01" },
+    ];
+    const balances = hireAdvanceBalancesByDate(ledger, ["2026-08-31", "2026-09-30"]);
+    const august = calculateEquipmentHireFinancials({
+      grossHire: 29_032.26,
+      advanceRecovery: 29_032.26,
+    });
+    const septemberPlan = proposeHireAdvanceRecoveries([
+      { key: "aug", periodTo: "2026-08-31", payableBeforeAdvance: 29_032.26 },
+      { key: "sep", periodTo: "2026-09-30", payableBeforeAdvance: 125_000 },
+    ], balances);
+    const september = calculateEquipmentHireFinancials({
+      grossHire: 130_000,
+      breakdownDeduction: 5_000,
+      advanceRecovery: septemberPlan.sep.recovery,
+    });
+
+    expect(august).toMatchObject({ taxableAmount: 29_032.26, netPayable: 0 });
+    expect(septemberPlan).toEqual({
+      aug: { openingBalance: 50_000, recovery: 29_032.26, closingBalance: 20_967.74 },
+      sep: { openingBalance: 80_967.74, recovery: 80_967.74, closingBalance: 0 },
+    });
+    expect(september).toMatchObject({ taxableAmount: 125_000, netPayable: 44_032.26 });
+  });
+
+  it("uses only the remaining payable for advance recovery and keeps the bill balance nonnegative", () => {
+    expect(calculateEquipmentHireFinancials({
+      grossHire: 100,
+      hsdRecovery: 80,
+      otherDebit: 40,
+      advanceRecovery: 5_000,
+      gstRate: 18,
+      tdsRate: 2,
+    })).toMatchObject({
+      taxableAmount: 100,
+      advanceRecovery: 0,
+      netPayable: -4,
+      balanceThisBill: 0,
     });
   });
 

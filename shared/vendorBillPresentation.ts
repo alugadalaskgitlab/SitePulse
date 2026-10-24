@@ -73,6 +73,30 @@ function storedStatementRows(bill: any) {
     const adjustments = snapshot.adjustments || {};
     const financials = snapshot.financials || {};
     const saved = (field: string) => numberOrNull(adjustments[field] ?? financials[field]) ?? 0;
+    const grossAmount = numberOrNull(statement.grossAmount ?? financials.grossHire ?? snapshot.grossAmount)!;
+    const netAmount = numberOrNull(statement.netAmount)!;
+    if (snapshot.taxRuleVersion === "hire_advance_tax_01") {
+      const breakdown = saved("breakdownDeduction");
+      push("Breakdown deduction", -breakdown,
+        exceptionEvidence(snapshot, ["breakdown"], adjustments.breakdownDeductionReason) + ` · ${statement.equipmentName || `Equipment #${statement.equipmentId}`}`,
+        "deduction");
+      push("HSD recovery", -saved("hsdRecovery"),
+        `${String(adjustments.hsdRecoveryReason || "Reason: Not recorded")} · ${statement.equipmentName || `Equipment #${statement.equipmentId}`}`,
+        "deduction");
+      push("Other debit / recovery", -saved("otherDebit"),
+        `${String(adjustments.otherDebitReason || "Reason: Not recorded")} · ${statement.equipmentName || `Equipment #${statement.equipmentId}`}`,
+        "deduction");
+      const advanceRecovery = saved("advanceRecovery");
+      const proposal = snapshot.advanceLedgerProposal || {};
+      push("Vendor advance recovered", -advanceRecovery,
+        `Opening balance: ${Number(proposal.openingBalance || 0).toFixed(2)} · Closing balance: ${Number(proposal.closingBalance || 0).toFixed(2)} · ${statement.equipmentName || `Equipment #${statement.equipmentId}`}`,
+        "deduction");
+      push("Other credit", saved("otherCredit"),
+        `${String(adjustments.otherCreditReason || "Reason: Not recorded")} · ${statement.equipmentName || `Equipment #${statement.equipmentId}`}`,
+        "credit");
+      if (!closeTo(grossAmount - netAmount, breakdown)) statementComponentsReconcile = false;
+      continue;
+    }
     const exceptionRows: any[] = Array.isArray(snapshot.exceptions) ? snapshot.exceptions : [];
     const operatorExceptions = exceptionRows.filter((entry: any) =>
       ["operator_unavailable", "driver_unavailable"].includes(String(entry?.exceptionType || "").toLowerCase().replace(/-/g, "_")) &&
@@ -83,8 +107,6 @@ function storedStatementRows(bill: any) {
     const otherDebit = saved("otherDebit");
     const advance = saved("advanceAdjustment");
     const credit = saved("otherCredit");
-    const grossAmount = numberOrNull(statement.grossAmount ?? financials.grossHire ?? snapshot.grossAmount)!;
-    const netAmount = numberOrNull(statement.netAmount)!;
     const storedDelta = grossAmount - netAmount;
     const standardDelta = breakdown + hsd + otherDebit + advance - credit;
     const operatorIsIncluded = operatorAmount > 0 && operatorAmount <= otherDebit + 0.005 &&
