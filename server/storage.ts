@@ -17818,12 +17818,6 @@ export class DatabaseStorage implements IStorage {
     if (data.hireGroups === undefined) return [];
     if (bill.status !== "draft") throw Object.assign(new Error("Hire groups can only be recalculated on a draft bill"), { code: "CONFLICT" });
     const groups = data.hireGroups;
-    const orderedGroups = [...groups].sort((a, b) =>
-      a.periodTo.localeCompare(b.periodTo) || a.periodFrom.localeCompare(b.periodFrom) ||
-      a.equipmentId - b.equipmentId);
-    // This reconciler only runs for drafts. The tax rules are server-selected;
-    // a client cannot opt a new/revised draft back into legacy treatment.
-    const useAdvanceTaxRules = true;
     if (!bill.periodFrom || !bill.periodTo) throw Object.assign(new Error("Hire groups require a bill period"), { code: "BAD_REQUEST" });
     for (const group of groups) {
       if (group.periodFrom < bill.periodFrom || group.periodTo > bill.periodTo) {
@@ -17861,8 +17855,7 @@ export class DatabaseStorage implements IStorage {
     }
     const desiredStatementIds = new Set<number>();
     const generated: VendorBillItem[] = [];
-    let carriedAdvanceBalance = 0;
-    for (const group of orderedGroups) {
+    for (const group of groups) {
       if (group.quantityOverride !== undefined || group.grossAmountOverride !== undefined) {
         throw Object.assign(new Error("Quantity and gross-amount overrides are not allowed for new equipment-hire bills."), { code: "BAD_REQUEST" });
       }
@@ -18088,47 +18081,19 @@ export class DatabaseStorage implements IStorage {
         gstRate: bill.gstRateEquipment,
         tdsRate: bill.tdsRate,
       };
-      let financials;
-      let advanceCarry: {
-        advanceThisMonth: number;
-        carriedIn: number;
-        available: number;
-        recovered: number;
-        carriedForward: number;
-      } | null = null;
-      if (useAdvanceTaxRules) {
-        const beforeAdvance = calculateEquipmentHireFinancials({ ...commonFinancialInput, advanceRecovery: 0 });
-        const carriedIn = carriedAdvanceBalance;
-        const available = Math.round((carriedIn + advanceAdjustment + Number.EPSILON) * 100) / 100;
-        const recovery = Math.round((Math.min(available, Math.max(0, beforeAdvance.netPayable)) + Number.EPSILON) * 100) / 100;
-        carriedAdvanceBalance = Math.round((Math.max(0, available - recovery) + Number.EPSILON) * 100) / 100;
-        advanceCarry = {
-          advanceThisMonth: advanceAdjustment,
-          carriedIn,
-          available,
-          recovered: recovery,
-          carriedForward: carriedAdvanceBalance,
-        };
-        financials = calculateEquipmentHireFinancials({
-          ...commonFinancialInput,
-          advanceRecovery: recovery,
-        });
-      } else {
-        financials = calculateLegacyEquipmentHireFinancials({
-          ...commonFinancialInput,
-        });
-      }
+      const financials = calculateEquipmentHireFinancials(commonFinancialInput);
       const netAfterBillAdjustments = financials.taxableAmount;
       const patch: any = { equipmentId: group.equipmentId, vendorName: bill.vendorName, billingBasis: terms.billingBasis, rate: terms.rate,
         monthlyDivisorType: terms.monthlyDivisorType, monthlyDivisor: terms.monthlyDivisor, hireStartDate: terms.hireStartDate,
         hireEndDate: terms.hireEndDate, dieselResponsibility: equipment.hireDieselResponsibility, operatorResponsibility: equipment.hireOperatorResponsibility,
         agreementRemarks: equipment.hireAgreementRemarks, periodFrom: group.periodFrom, periodTo: group.periodTo, quantity: calc.quantity,
-        grossAmount: calc.grossAmount, deductionAmount: calc.deductionAmount + calc.diesel.finalRecoveryAmount + otherDebit +
-          financials.advanceRecovery - otherCredit, netAmount: netAfterBillAdjustments,
+        grossAmount: calc.grossAmount, deductionAmount: calc.deductionAmount + calc.diesel.finalRecoveryAmount +
+          otherDebit + advanceAdjustment - otherCredit, netAmount: netAfterBillAdjustments,
         status: "draft", vendorBillId: bill.id, calculationSnapshot: {
-          billingIntegration: useAdvanceTaxRules ? "vb10_automatic" :
-            statement ? ((statement.calculationSnapshot as any)?.billingIntegration || "historical") : "historical",
-          ...(useAdvanceTaxRules ? { taxRuleVersion: "hire_advance_bill_carry_02" } : {}),
+          billingIntegration: statement
+            ? ((statement.calculationSnapshot as any)?.billingIntegration || "historical")
+            : "vb10_automatic",
+          hireCalculationVersion: "hire_bill_restore_03",
           terms,
           ...calc,
           workingSheet,
@@ -18155,13 +18120,9 @@ export class DatabaseStorage implements IStorage {
              otherDebitReason: adjustments.otherDebitReason ?? null,
               advanceAdjustment,
               advanceAdjustmentReason: adjustments.advanceAdjustmentReason ?? null,
-              advanceRecovery: financials.advanceRecovery,
              otherCredit,
              otherCreditReason: adjustments.otherCreditReason ?? null,
            },
-            ...(useAdvanceTaxRules ? {
-              advanceCarry,
-            } : {}),
             financials,
         } };
       if (statement) {
@@ -18879,8 +18840,11 @@ export class DatabaseStorage implements IStorage {
           // category participate once. Statement financials are evidence for
           // their line only; summing their invoice totals here previously
           // omitted ordinary/mixed lines and applied GST/TDS per statement.
-          const hasVb10AutomaticStatement = linkedStatements.some(statement =>
-            (statement.calculationSnapshot as any)?.billingIntegration === "vb10_automatic");
+          const hasVb10AutomaticStatement = linkedStatements.some(statement => {
+            const snapshot: any = statement.calculationSnapshot || {};
+            return snapshot.billingIntegration === "vb10_automatic" ||
+              snapshot.hireCalculationVersion === "hire_bill_restore_03";
+          });
           const itemRows = await tx.select({ category: vendorBillItems.category, amount: vendorBillItems.amount })
             .from(vendorBillItems).where(eq(vendorBillItems.billId, id));
           const categorySubtotals = itemRows.reduce((totals: Record<string, number>, item) => {
@@ -18896,9 +18860,14 @@ export class DatabaseStorage implements IStorage {
             (categorySubtotals.labour || 0) * Number(existing.gstRateLabour || 0) / 100
           );
           const automaticHireCashAdjustments = linkedStatements
-            .filter(statement => (statement.calculationSnapshot as any)?.billingIntegration === "vb10_automatic")
+            .filter(statement => {
+              const snapshot: any = statement.calculationSnapshot || {};
+              return snapshot.billingIntegration === "vb10_automatic" ||
+                snapshot.hireCalculationVersion === "hire_bill_restore_03";
+            })
             .reduce((sum, statement) => {
               const snapshot: any = statement.calculationSnapshot || {};
+              if (snapshot.hireCalculationVersion === "hire_bill_restore_03") return sum;
               const financials = snapshot.financials || {};
               const adjustments = snapshot.adjustments || {};
               return sum +

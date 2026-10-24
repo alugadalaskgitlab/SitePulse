@@ -131,3 +131,4 @@
 - [Administrator per-item permissions](admin-per-item-permissions.md) — design per-item admin overrides for audit history, editing, and other privileges in a later permissions review; add no key now.
 - [Tally cutover ownership](tally-cutover-ownership.md) — Tally owns periods ending through 2026-01-31; periods starting 2026-02-01 onward are post-cutover.
 - [PostgreSQL identifier limits](postgres-identifier-limits.md) — Drizzle-generated names over 63 bytes may be stored truncated; verify actual PostgreSQL catalog names.
+- [Patch selector behavior](patch-selector-behavior.md) — apply_patch selectors anchor a hunk; do not repeat the selector line in the edit, and keep multiple hunks in file order.

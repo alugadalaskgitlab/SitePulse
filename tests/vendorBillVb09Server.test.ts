@@ -375,6 +375,64 @@ describe("VB-09 server itemized equipment hire", () => {
       .toMatchObject({ netPayableAmount: 8_032.26, amountPaid: null });
   });
 
+  it("approves restored negative monthly hire without recovering its advance twice", async () => {
+    const restoredBill = {
+      id: 109,
+      billType: "EQUIPMENT",
+      vendorName: "ORSU VENKANNA",
+      vendorId: 7,
+      siteId: 3,
+      billNo: "VB-EH-109",
+      status: "verified",
+      totalAmount: -20_967.74,
+      amountPaid: null,
+      adjustmentAmount: 0,
+      additionalAdjustments: [],
+      gstRateEquipment: 0,
+      tdsRate: 0,
+    };
+    const statement = {
+      id: 509,
+      vendorBillId: 109,
+      equipmentId: 9,
+      periodFrom: "2026-08-01",
+      periodTo: "2026-08-31",
+      status: "billed",
+      grossAmount: 29_032.26,
+      deductionAmount: 50_000,
+      netAmount: -20_967.74,
+      calculationSnapshot: {
+        billingIntegration: "historical",
+        hireCalculationVersion: "hire_bill_restore_03",
+        financials: {
+          grossHire: 29_032.26,
+          breakdownDeduction: 0,
+          hsdRecovery: 0,
+          otherDebit: 0,
+          advanceAdjustment: 50_000,
+          otherCredit: 0,
+          taxableAmount: -20_967.74,
+          netPayable: -20_967.74,
+          gstRate: 0,
+          tdsRate: 0,
+        },
+        adjustments: { advanceAdjustment: 50_000, advanceAdjustmentReason: "ADVANCE REF" },
+      },
+    };
+    fx.txRows.push(
+      [restoredBill],
+      [statement],
+      [{ category: "equipment", amount: -20_967.74 }],
+    );
+    fx.lastBill = { ...restoredBill, status: "approved", netPayableAmount: 0 };
+    const storage = new DatabaseStorage();
+
+    await storage.updateVendorBillStatus(109, "approved", "reviewer");
+
+    expect(fx.writes.find(write => write.kind === "update" && write.value.status === "approved")?.value)
+      .toMatchObject({ netPayableAmount: -20_967.74, amountPaid: null });
+  });
+
   it("keeps linked legacy equipment item approval on its established tax path", async () => {
     const historical = {
       id: 104,

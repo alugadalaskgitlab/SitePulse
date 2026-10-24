@@ -460,6 +460,46 @@ describe("equipment hire bill output", () => {
     expect(summary).toContainEqual(["Advance carried forward", "₹3,000.00"]);
   });
 
+  it("exports the restored monthly advance as a separate deduction with its reference", () => {
+    const output = buildSavedEquipmentHireBillOutput({
+      billNo: "VB-EH-RESTORE", vendorName: "ACME HIRE", billType: "equipment",
+      periodFrom: "2026-01-01", periodTo: "2026-01-31", netPayableAmount: 4_000, amountPaid: null,
+      hireStatements: [{
+        id: 511, equipmentId: 9, equipmentName: "Excavator · EX-01",
+        periodFrom: "2026-01-01", periodTo: "2026-01-31",
+        billingBasis: "monthly", rate: 10_000, grossAmount: 10_000, deductionAmount: 6_000, netAmount: 4_000,
+        calculationSnapshot: {
+          billingIntegration: "historical",
+          hireCalculationVersion: "hire_bill_restore_03",
+          adjustments: {
+            breakdownDeduction: 1_000,
+            advanceAdjustment: 5_000,
+            advanceAdjustmentReason: "ADVANCE REF",
+          },
+          financials: {
+            grossHire: 10_000, breakdownDeduction: 1_000,
+            hsdRecovery: 0, otherDebit: 0, advanceAdjustment: 5_000,
+            otherCredit: 0, taxableAmount: 4_000, gstRate: 0, gstAmount: 0, invoiceTotal: 4_000,
+            tdsRate: 0, tdsAmount: 0, netPayable: 4_000,
+          },
+        },
+      }],
+    });
+    expect(output?.data).toMatchObject({
+      hireCalculationVersion: "hire_bill_restore_03",
+      advanceAdjustment: 5_000,
+      advanceAdjustmentReason: "ADVANCE REF",
+      taxableAmount: 4_000,
+      netPayable: 4_000,
+    });
+    excelSheets.length = 0;
+    exportEquipmentHireBill(output!.data, output!.rows, "xlsx");
+    const summary = excelSheets.find(sheet => sheet.name === "Bill Summary")!.data;
+    expect(summary).toContainEqual(["− Advance", "₹5,000.00 (ADVANCE REF)"]);
+    expect(summary).not.toContainEqual(["Advance Adjustment this month", "₹5,000.00 (ADVANCE REF)"]);
+    expect(summary).not.toContainEqual(["Advance carried forward", expect.any(String)]);
+  });
+
   it("retains legacy paid bill net without inventing a payment when amountPaid is absent", () => {
     const output = buildSavedEquipmentHireBillOutput({
       billNo: "VB-EH-LEGACY", vendorName: "ACME HIRE", billType: "equipment",

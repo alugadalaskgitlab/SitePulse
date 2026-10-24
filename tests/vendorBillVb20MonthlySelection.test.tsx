@@ -131,7 +131,7 @@ describe("VB-20 monthly hire segment selection", () => {
     expect(JSON.stringify(writes[0])).not.toContain("01-SEP-2026");
   }, 15_000);
 
-  it("shows a required inline advance reference and carries unused value to the next month on this bill", async () => {
+  it("shows the monthly advance deduction and keeps each month independent", async () => {
     await openMonthlyBill("2026-08-01", "2026-09-20");
     const augustInput = screen.getByTestId(`monthly-hire-adjustment-advanceAdjustment-${equipmentId}-2026-08-01`);
     const augustReference = screen.getByTestId(`monthly-hire-adjustment-reason-advanceAdjustment-${equipmentId}-2026-08-01`);
@@ -139,8 +139,14 @@ describe("VB-20 monthly hire segment selection", () => {
     fireEvent.change(augustReference, { target: { value: "ADVANCE REF 27" } });
 
     await waitFor(() => {
-      expect(screen.getByTestId(`monthly-hire-financial-breakdown-${equipmentId}-2026-08-01`).textContent).toContain("Advance carried forward");
-      expect(screen.getByTestId(`monthly-hire-financial-breakdown-${equipmentId}-2026-09-01`).textContent).toContain("Advance carried in");
+      const augustBreakdown = screen.getByTestId(`monthly-hire-financial-breakdown-${equipmentId}-2026-08-01`);
+      const septemberBreakdown = screen.getByTestId(`monthly-hire-financial-breakdown-${equipmentId}-2026-09-01`);
+      expect(augustBreakdown.textContent).toContain("− Advance");
+      expect(augustBreakdown.textContent).toContain("ADVANCE REF 27");
+      expect(augustBreakdown.textContent).not.toContain("carried");
+      expect(septemberBreakdown.textContent).toContain("− Advance");
+      expect(septemberBreakdown.textContent).not.toContain("carried in");
+      expect(screen.getByTestId(`monthly-hire-net-${equipmentId}-2026-08-01`).textContent).toContain("₹-40,000.00");
     });
 
     fireEvent.click(screen.getByTestId("select-bill-site"));

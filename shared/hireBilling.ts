@@ -197,7 +197,7 @@ export interface EquipmentHireFinancialInput {
   breakdownDeduction?: number | null;
   hsdRecovery?: number | null;
   otherDebit?: number | null;
-  /** Amount recovered from this bill's current-month advance plus prior segments. */
+  /** Retained for compatibility with frozen pre-restore snapshots. */
   advanceRecovery?: number | null;
   /** Advance entered for this segment; it is applied after tax and may carry within this bill. */
   advanceAdjustment?: number | null;
@@ -227,10 +227,7 @@ export interface EquipmentHireFinancials {
   balanceThisBill: number;
 }
 
-/**
- * New hire bills tax gross hire less breakdown only. Operational and vendor
- * cash recoveries are then applied to the post-tax payable, exactly once.
- */
+/** Restored hire calculation: recoveries reduce the taxable monthly line, without a zero floor. */
 export function calculateEquipmentHireFinancials(input: EquipmentHireFinancialInput): EquipmentHireFinancials {
   const nonNegative = (value: number | null | undefined) => Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0;
   const grossHire = money(nonNegative(input.grossHire));
@@ -238,22 +235,19 @@ export function calculateEquipmentHireFinancials(input: EquipmentHireFinancialIn
   const hsdRecovery = money(nonNegative(input.hsdRecovery));
   const otherDebit = money(nonNegative(input.otherDebit));
   const advanceAdjustment = money(nonNegative(input.advanceAdjustment));
-  const requestedAdvanceRecovery = money(nonNegative(input.advanceRecovery));
   const otherCredit = money(nonNegative(input.otherCredit));
   const gstRate = money(nonNegative(input.gstRate));
   const tdsRate = money(nonNegative(input.tdsRate));
-  const taxableAmount = money(Math.max(0, grossHire - breakdownDeduction));
+  const taxableAmount = money(grossHire - breakdownDeduction - hsdRecovery - otherDebit - advanceAdjustment + otherCredit);
   const gstAmount = money(taxableAmount * gstRate / 100);
   const invoiceTotal = money(taxableAmount + gstAmount);
   const tdsAmount = money(taxableAmount * tdsRate / 100);
-  const payableBeforeAdvance = money(invoiceTotal - tdsAmount - hsdRecovery - otherDebit + otherCredit);
-  const advanceRecovery = money(Math.min(requestedAdvanceRecovery, Math.max(0, payableBeforeAdvance)));
-  const netPayable = money(payableBeforeAdvance - advanceRecovery);
+  const netPayable = money(invoiceTotal - tdsAmount);
   const paid = money(nonNegative(input.paid));
   return {
-    grossHire, breakdownDeduction, hsdRecovery, otherDebit, advanceRecovery, advanceAdjustment, otherCredit,
+    grossHire, breakdownDeduction, hsdRecovery, otherDebit, advanceRecovery: 0, advanceAdjustment, otherCredit,
     taxableAmount, gstRate, gstAmount, invoiceTotal, tdsRate, tdsAmount, netPayable, paid,
-    balanceThisBill: money(Math.max(0, netPayable - paid)),
+    balanceThisBill: money(netPayable - paid),
   };
 }
 
@@ -279,53 +273,6 @@ export function calculateLegacyEquipmentHireFinancials(input: EquipmentHireFinan
     taxableAmount, gstRate, gstAmount, invoiceTotal, tdsRate, tdsAmount, netPayable, paid,
     balanceThisBill: money(Math.max(0, netPayable - paid)),
   };
-}
-
-export interface HireAdvanceBillSegment {
-  key: string;
-  periodTo: string;
-  periodFrom?: string;
-  equipmentId?: number;
-  /** Amount entered in this segment's Advance Adjustment field. */
-  advanceThisMonth: number;
-  /** Post-tax amount remaining before this bill's advance recovery. */
-  payableBeforeAdvance: number;
-}
-
-export interface HireAdvanceBillSegmentResult {
-  advanceThisMonth: number;
-  carriedIn: number;
-  available: number;
-  recovered: number;
-  carriedForward: number;
-}
-
-/**
- * Carries advances through this bill's hire segments only. It is a pure
- * calculation: it reads no vendor balance and has no cross-bill side effects.
- */
-export function carryHireAdvancesWithinBill(
-  periods: HireAdvanceBillSegment[],
-): Record<string, HireAdvanceBillSegmentResult> {
-  const ordered = [...periods].sort((a, b) =>
-    a.periodTo.localeCompare(b.periodTo) ||
-    (a.periodFrom || "").localeCompare(b.periodFrom || "") ||
-    Number(a.equipmentId || 0) - Number(b.equipmentId || 0) ||
-    a.key.localeCompare(b.key));
-  const proposals: Record<string, HireAdvanceBillSegmentResult> = {};
-  let carriedForward = 0;
-  for (const period of ordered) {
-    const advanceThisMonth = money(Number.isFinite(Number(period.advanceThisMonth))
-      ? Math.max(0, Number(period.advanceThisMonth)) : 0);
-    const carriedIn = carriedForward;
-    const available = money(carriedIn + advanceThisMonth);
-    const payableBeforeAdvance = Number.isFinite(Number(period.payableBeforeAdvance))
-      ? Number(period.payableBeforeAdvance) : 0;
-    const recovered = money(Math.min(available, Math.max(0, payableBeforeAdvance)));
-    carriedForward = money(Math.max(0, available - recovered));
-    proposals[period.key] = { advanceThisMonth, carriedIn, available, recovered, carriedForward };
-  }
-  return proposals;
 }
 const dateAtUtc = (value: string) => Date.parse(`${value.slice(0, 10)}T00:00:00.000Z`);
 const iso = (value: number) => new Date(value).toISOString().slice(0, 10);
