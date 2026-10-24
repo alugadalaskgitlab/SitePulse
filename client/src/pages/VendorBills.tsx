@@ -32,7 +32,7 @@ import { siteMatchesPermitted } from "@shared/siteName";
 import { filterFinancialBills, billPaymentPosition, getBillFinancialTotals, type BillScope } from "@shared/vendorBillFinancialReport";
 import { VendorBillTaxesSummary } from "@/components/vendor-bills/VendorBillTaxesSummary";
 import { defaultConvertedQuantity, isDifferentBillingUnit, matchingRateCardsForGroup, normalizeRateCardPart, selectAutoMaterialRateConversion, type RateCardUnitOption, type VendorRateCardRecord } from "@/lib/vendorBillRateSelection";
-import { autoBillItemIdentity, availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateHireGroup, calculateLegacyEquipmentHireFinancials, duplicateBillItemPayload, mergeOtherBillItems, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, uniqueDuplicateBillMatches, type DuplicateBillItemMatch, type HireActivity, type HireBillingBasis } from "@shared/hireBilling";
+import { autoBillItemIdentity, availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateHireGroup, duplicateBillItemPayload, mergeOtherBillItems, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, uniqueDuplicateBillMatches, type DuplicateBillItemMatch, type HireActivity, type HireBillingBasis } from "@shared/hireBilling";
 import { calculationTermsForBill as savedCalculationTermsForBill, type BillHireTerms } from "@/components/vendor-bills/hireBillTerms";
 import type { EquipmentPerformanceReport } from "@shared/equipmentPerformance";
 import { vendorHireEquipmentLabel as formatEquipmentOptionLabel } from "@/components/trip-master-selection";
@@ -660,7 +660,6 @@ export default function VendorBills() {
     if (Number.isSafeInteger(id) && id > 0) { setSelectedBillId(id); setView("detail"); }
   }, []);
   const [editingBillId, setEditingBillId] = useState<number | null>(null);
-  const [editingBillingVendorId, setEditingBillingVendorId] = useState<number | null>(null);
   const [editingBillStatus, setEditingBillStatus] = useState("draft");
   const [editingBillOriginalNo, setEditingBillOriginalNo] = useState("");
   const { rememberCalendar, readCalendars } = useWholeBillCalendarSnapshots();
@@ -746,7 +745,6 @@ export default function VendorBills() {
   // reloading a group's details must never switch the editor into the new
   // itemized flow mid-edit.
   const isHistoricalHireEdit = editingBillId !== null && historicalHireBillId === editingBillId;
-  const useRestoredHireCalculation = !isHistoricalHireEdit || editingBillStatus === "draft";
 
 
   useEffect(() => {
@@ -928,7 +926,6 @@ export default function VendorBills() {
     const selectedVendor = name.trim().toUpperCase();
     if (selectedVendor !== vendorName) {
       setHireGroups([]);
-      setEditingBillingVendorId(null);
       monthlyHireSeedRef.current = "";
       setMonthlyHireSeedKey("");
     }
@@ -1175,7 +1172,6 @@ export default function VendorBills() {
       toast({ title: "Vendor bill updated successfully" });
       resetForm();
       setEditingBillId(null);
-      setEditingBillingVendorId(null);
       if (payablesReturnTo) {
         setSelectedBillId(variables.id);
         setView("detail");
@@ -1271,7 +1267,6 @@ export default function VendorBills() {
     setGstRateLabour(0);
     setTdsRate(0);
     setEditingBillId(null);
-    setEditingBillingVendorId(null);
     setEditingBillOriginalNo("");
     setHistoricalHireBillId(null);
     setVendorSearch("");
@@ -1332,7 +1327,6 @@ export default function VendorBills() {
     setSelectedSiteId(siteAnswer);
     setSiteAnswerAtEdit(siteAnswer);
     setVendorName(bill.vendorName);
-    setEditingBillingVendorId(bill.vendorId == null ? null : Number(bill.vendorId));
     setVendorSearch(bill.vendorName);
     setVendorFilterSearch(bill.vendorName);
     setVendorEditing(false);
@@ -1710,22 +1704,10 @@ export default function VendorBills() {
     try {
       const calculated = hireResult(group);
       const adjustments = group.adjustments;
-      const financialInput = {
-        grossHire: Number(calculated.grossAmount || 0),
-        breakdownDeduction: Number(calculated.deductionAmount || 0),
-        hsdRecovery: Number(calculated.diesel?.finalRecoveryAmount ?? group.dieselRecoveryFinalAmount ?? 0),
-        otherDebit: Number(adjustments?.otherDebit || 0),
-        advanceAdjustment: Number(adjustments?.advanceAdjustment || 0),
-        otherCredit: Number(adjustments?.otherCredit || 0),
-        gstRate: gstRateEquipment,
-        tdsRate,
-      };
-      const financials = useRestoredHireCalculation
-        ? calculateEquipmentHireFinancials(financialInput)
-        : calculateLegacyEquipmentHireFinancials(financialInput);
-      return { group, result: { ...calculated, netAmount: financials.taxableAmount } };
+      const netAdjustment = Number(adjustments?.otherCredit || 0) - Number(adjustments?.otherDebit || 0) - Number(adjustments?.advanceAdjustment || 0);
+      return { group, result: { ...calculated, netAmount: Math.max(0, calculated.netAmount + netAdjustment) } };
     } catch { return { group, result: null }; }
-  }), [hireGroups, hireActivityRows, hireEquipment, equipmentPerformanceRevision, gstRateEquipment, tdsRate, useRestoredHireCalculation]);
+  }), [hireGroups, hireActivityRows, hireEquipment, equipmentPerformanceRevision]);
   const includedHireGroups = useMemo(
     () => hireGroups.filter(group => group.includeInBill !== false),
     [hireGroups],
@@ -1734,23 +1716,6 @@ export default function VendorBills() {
     () => hireCalculated.filter(({ group }) => group.includeInBill !== false),
     [hireCalculated],
   );
-  const hireFinancialsFor = (group: HireGroup, result: any) => {
-    const adjustments = group.adjustments || {};
-    const financialInput = {
-      grossHire: Number(result?.grossAmount || 0),
-      breakdownDeduction: Number(result?.deductionAmount || 0),
-      hsdRecovery: Number(result?.diesel?.finalRecoveryAmount ?? group.dieselRecoveryFinalAmount ?? 0),
-      otherDebit: Number(adjustments.otherDebit || 0),
-      advanceAdjustment: Number(adjustments.advanceAdjustment || 0),
-      otherCredit: Number(adjustments.otherCredit || 0),
-      gstRate: gstRateEquipment,
-      tdsRate,
-      paid: 0,
-    };
-    return useRestoredHireCalculation
-      ? calculateEquipmentHireFinancials(financialInput)
-      : calculateLegacyEquipmentHireFinancials(financialInput);
-  };
   const availableOtherItems = useMemo(
     () => availableOtherBillItems(billableAutoItems, lineItems, includedHireGroups)
       .filter(item => !suppressedAutoItemsRef.current.has(autoBillItemIdentity(item))),
@@ -2464,7 +2429,7 @@ export default function VendorBills() {
       gstRateTransport: gstRateTransport || null,
       gstRateLabour: gstRateLabour || null,
       tdsRate: tdsRate || null,
-      hireBillingMode: useRestoredHireCalculation && includedHireGroups.length > 0 ? "vb10_automatic" : "historical",
+      hireBillingMode: !isHistoricalHireEdit && includedHireGroups.length > 0 ? "vb10_automatic" : "historical",
       ...(includeHireGroups ? { hireGroups: includedHireCalculated.map(({ group, result }) => ({
         hireStatementId: group.hireStatementId, equipmentId: group.equipmentId, periodFrom: group.periodFrom, periodTo: group.periodTo, basis: group.basis,
         rate: group.rate, dailyDecisions: group.dailyDecisions, tripDecisions: group.tripDecisions,
@@ -2475,8 +2440,7 @@ export default function VendorBills() {
           dieselRecoveryRemarks: group.dieselRecoveryRemarks, breakdownHoursPerDay: group.breakdownHoursPerDay,
           breakdownGraceDays: group.breakdownGraceDays ?? 0,
           projectSite: group.projectSite,
-          adjustments: group.adjustments,
-          calculatedQuantity: result!.calculatedQuantity,
+         adjustments: group.adjustments, calculatedQuantity: result!.calculatedQuantity,
         calculatedGrossAmount: result!.calculatedGrossAmount, netAmount: result!.netAmount,
       })) } : {}),
       items: lineItems.filter(i => !isTrulyBlankManualBillRow(i)).map(item => ({
@@ -3386,16 +3350,22 @@ export default function VendorBills() {
                 );
                 const projectSites = Array.from(new Set(dailyRows.map(row => row.performance?.projectSite).filter((value): value is string => !!value)));
                 const adjustments = selection.adjustments || {};
-                const financials = hireFinancialsFor(selection, result);
+                const hsdRecovery = Number(selection.dieselRecoveryFinalAmount || 0);
+                const otherDebit = Number(adjustments.otherDebit || 0);
+                const advanceAdjustment = Number(adjustments.advanceAdjustment || 0);
+                const otherCredit = Number(adjustments.otherCredit || 0);
+                 const financials = calculateEquipmentHireFinancials({
+                   grossHire: Number(result?.grossAmount || 0),
+                   breakdownDeduction: Number(result?.deductionAmount || 0),
+                   hsdRecovery, otherDebit, advanceAdjustment, otherCredit,
+                   gstRate: gstRateEquipment, tdsRate, paid: 0,
+                 });
                 const exportData: EquipmentHireExportData = {
                   billNo, vendorName, equipmentName: formatEquipmentOptionLabel(equipment || {}), projectSite: selection.projectSite,
                   periodFrom: selection.periodFrom, periodTo: selection.periodTo, hireBasis: HIRE_BASIS_LABELS[selection.basis],
                   rate: selection.rate, grossHire: Number(result?.grossAmount || 0), breakdownDeduction: Number(result?.deductionAmount || 0),
-                  hsdRecovery: financials.hsdRecovery, otherDebit: financials.otherDebit, otherDebitReason: adjustments.otherDebitReason,
-                  advanceAdjustment: financials.advanceAdjustment,
-                  advanceAdjustmentReason: adjustments.advanceAdjustmentReason,
-                  otherCredit: financials.otherCredit, otherCreditReason: adjustments.otherCreditReason,
-                  hireCalculationVersion: useRestoredHireCalculation ? "hire_bill_restore_03" : undefined,
+                  hsdRecovery, otherDebit, otherDebitReason: adjustments.otherDebitReason, advanceAdjustment,
+                  advanceAdjustmentReason: adjustments.advanceAdjustmentReason, otherCredit, otherCreditReason: adjustments.otherCreditReason,
                    gstRate: financials.gstRate, gstAmount: financials.gstAmount, taxableAmount: financials.taxableAmount,
                    invoiceTotal: financials.invoiceTotal, tdsRate: financials.tdsRate, tdsAmount: financials.tdsAmount,
                    netPayable: financials.netPayable, paid: financials.paid,
@@ -3568,13 +3538,12 @@ export default function VendorBills() {
                       {selection.dieselRecoveryDecision === "edit" && <div className="grid gap-2 sm:grid-cols-2"><div><Label className="text-[10px] uppercase">Final Recovery ₹</Label><Input type="number" min="0" placeholder="Enter agreed ₹ amount" value={selection.dieselRecoveryFinalAmount ?? ""} onChange={event => patchHireGroup(selection.id, { dieselRecoveryFinalAmount: event.target.value === "" ? undefined : Number(event.target.value) })} /></div><div><Label className="text-[10px] uppercase">Reason / reference (required)</Label><Input value={selection.dieselRecoveryRemarks || ""} onChange={event => patchHireGroup(selection.id, { dieselRecoveryRemarks: event.target.value.toUpperCase() })} /></div></div>}
                     </div>}
                     <div className="grid gap-2 sm:grid-cols-3">
-                      {[["Other Debit / Recovery", "otherDebit", "otherDebitReason"], ["Advance Adjustment", "advanceAdjustment", "advanceAdjustmentReason"], ["Other Credit", "otherCredit", "otherCreditReason"]]
-                        .map(([label, amountKey, reasonKey]) => <div key={amountKey}><Label className="text-[10px] uppercase">{label} ₹</Label><Input type="number" min="0" step="0.01" value={(adjustments as any)[amountKey] ?? ""} onChange={event => patchHireGroup(selection.id, { adjustments: { ...adjustments, [amountKey]: event.target.value === "" ? undefined : Number(event.target.value) } })} data-testid={`hire-adjustment-${amountKey}-${selection.id}`} /><Input className="mt-1" placeholder="Reason / reference (required when amount is entered)" value={(adjustments as any)[reasonKey] || ""} onChange={event => patchHireGroup(selection.id, { adjustments: { ...adjustments, [reasonKey]: event.target.value.toUpperCase() } })} data-testid={`hire-adjustment-reason-${amountKey}-${selection.id}`} /></div>)}
+                      {[["Other Debit / Recovery", "otherDebit", "otherDebitReason"], ["Advance Adjustment", "advanceAdjustment", "advanceAdjustmentReason"], ["Other Credit", "otherCredit", "otherCreditReason"]].map(([label, amountKey, reasonKey]) => <div key={amountKey}><Label className="text-[10px] uppercase">{label} ₹</Label><Input type="number" min="0" step="0.01" value={(adjustments as any)[amountKey] ?? ""} onChange={event => patchHireGroup(selection.id, { adjustments: { ...adjustments, [amountKey]: event.target.value === "" ? undefined : Number(event.target.value) } })} /><Input className="mt-1" placeholder="Reason / reference" value={(adjustments as any)[reasonKey] || ""} onChange={event => patchHireGroup(selection.id, { adjustments: { ...adjustments, [reasonKey]: event.target.value.toUpperCase() } })} /></div>)}
                     </div>
                   </div>
                   <div className="grid gap-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/20 sm:grid-cols-2">
                     <div className="space-y-1">
-                      {[["Gross Hire", financials.grossHire], ["− Breakdown Deduction", financials.breakdownDeduction], ...(String(equipment?.hireDieselResponsibility || "").toLowerCase() === "vendor" ? [] : [["− HSD Recovery", financials.hsdRecovery]]), ["− Other Debit / Recovery", financials.otherDebit], [`− Advance${adjustments.advanceAdjustmentReason ? ` · ${adjustments.advanceAdjustmentReason}` : ""}`, financials.advanceAdjustment], ["+ Other Credit", financials.otherCredit], ["= Taxable / Bill Amount", financials.taxableAmount], [`+ GST @ ${financials.gstRate}%`, financials.gstAmount], ["= Invoice Total", financials.invoiceTotal], [`− TDS @ ${financials.tdsRate}%`, financials.tdsAmount], ["= NET PAYABLE", financials.netPayable], ["Paid", financials.paid], ["= BALANCE THIS BILL", financials.balanceThisBill]].map(([label, amount]) => <div key={String(label)} className="flex justify-between"><span>{label}</span><strong>₹{formatCurrency(Number(amount))}</strong></div>)}
+                      {[["Gross Hire", financials.grossHire], ["− Breakdown Deduction", financials.breakdownDeduction], ...(String(equipment?.hireDieselResponsibility || "").toLowerCase() === "vendor" ? [] : [["− HSD Recovery", financials.hsdRecovery]]), ["− Other Debit / Recovery", financials.otherDebit], ["− Advance Adjustment", financials.advanceAdjustment], ["+ Other Credit", financials.otherCredit], ["= Taxable / Bill Amount", financials.taxableAmount], [`+ GST @ ${financials.gstRate}%`, financials.gstAmount], ["= Invoice Total", financials.invoiceTotal], [`− TDS @ ${financials.tdsRate}%`, financials.tdsAmount], ["= NET PAYABLE", financials.netPayable], ["Paid", financials.paid], ["= BALANCE THIS BILL", financials.balanceThisBill]].map(([label, amount]) => <div key={String(label)} className="flex justify-between"><span>{label}</span><strong>₹{formatCurrency(Number(amount))}</strong></div>)}
                     </div>
                     <div className="space-y-3">
                       <div><Label className="text-[10px] uppercase">GST Rate %</Label><Input type="number" min="0" step="0.01" value={gstRateEquipment || ""} placeholder="0" onChange={event => setGstRateEquipment(Number(event.target.value) || 0)} data-testid="input-gst-equipment-rate" /></div>
@@ -3593,7 +3562,7 @@ export default function VendorBills() {
               <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-wider"><Calculator className="h-4 w-4 text-orange-600" />Auto-generated monthly hire</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 pt-0">
-              <p className="text-xs text-muted-foreground">Monthly equipment is billed for its active hire-date overlap even with no DPR/Plant log. Only recorded breakdowns reduce the line. Each month’s Advance Adjustment is deducted on that month’s line; bill-level adjustments remain separate below the monthly subtotal.</p>
+              <p className="text-xs text-muted-foreground">Monthly equipment is billed for its active hire-date overlap even with no DPR/Plant log. Only recorded breakdowns reduce the line; the server recalculates and freezes this evidence on save.</p>
               {monthlyHireExclusions.length > 0 && <div className="rounded border border-orange-200 bg-orange-50 p-3 text-xs dark:bg-orange-950/20" data-testid="monthly-hire-exclusions">
                 <p className="font-semibold">Monthly equipment not auto-added</p>
                 <ul className="mt-2 space-y-1">
@@ -3617,8 +3586,17 @@ export default function VendorBills() {
                 const calendar = buildHireActivityDays(activeFrom, activeTo, activityForGroup(group), maintenance.map((row: any) => ({
                   id: row.sourceId, date: row.businessDate, eventType: row.eventType, description: row.description, downtimeHours: row.downtimeHours,
                 })));
-                  const adjustments = group.adjustments || {};
-                  const financials = hireFinancialsFor(group, result);
+                 const adjustments = group.adjustments || {};
+                 const hsdRecovery = Number(group.dieselRecoveryFinalAmount || 0);
+                 const otherDebit = Number(adjustments.otherDebit || 0);
+                 const advanceAdjustment = Number(adjustments.advanceAdjustment || 0);
+                 const otherCredit = Number(adjustments.otherCredit || 0);
+                 const financials = calculateEquipmentHireFinancials({
+                   grossHire: Number(result?.grossAmount || 0),
+                   breakdownDeduction: Number(result?.deductionAmount || 0),
+                   hsdRecovery, otherDebit, advanceAdjustment, otherCredit,
+                   gstRate: gstRateEquipment, tdsRate, paid: 0,
+                 });
                  const vendorDieselScope = String(equipment?.hireDieselResponsibility || "").toLowerCase() === "vendor";
                  const groupActivities = activityForGroup(group);
                  const tripApplicable = group.basis === "trip" || groupActivities.some(activity =>
@@ -3648,10 +3626,9 @@ export default function VendorBills() {
                    hireBasis: HIRE_BASIS_LABELS[group.basis], rate: group.rate,
                    grossHire: Number(result?.grossAmount || 0),
                    breakdownDeduction: Number(result?.deductionAmount || 0),
-                    hsdRecovery: financials.hsdRecovery, otherDebit: financials.otherDebit, otherDebitReason: adjustments.otherDebitReason,
-                    advanceAdjustment: financials.advanceAdjustment, advanceAdjustmentReason: adjustments.advanceAdjustmentReason,
-                    otherCredit: financials.otherCredit, otherCreditReason: adjustments.otherCreditReason,
-                    hireCalculationVersion: useRestoredHireCalculation ? "hire_bill_restore_03" : undefined,
+                   hsdRecovery, otherDebit, otherDebitReason: adjustments.otherDebitReason,
+                   advanceAdjustment, advanceAdjustmentReason: adjustments.advanceAdjustmentReason,
+                   otherCredit, otherCreditReason: adjustments.otherCreditReason,
                    gstRate: financials.gstRate, gstAmount: financials.gstAmount,
                    taxableAmount: financials.taxableAmount, invoiceTotal: financials.invoiceTotal,
                    tdsRate: financials.tdsRate, tdsAmount: financials.tdsAmount,
@@ -3712,14 +3689,12 @@ export default function VendorBills() {
                             step="0.01"
                             value={(adjustments as any)[amountKey] ?? ""}
                             onChange={event => patchHireGroup(group.id, { adjustments: { ...adjustments, [amountKey]: event.target.value === "" ? undefined : Number(event.target.value) } })}
-                            data-testid={`monthly-hire-adjustment-${amountKey}-${monthlyTestSuffix}`}
                           />
                           <Input
                             className="mt-1"
                             placeholder="Reason / reference"
                             value={(adjustments as any)[reasonKey] || ""}
                             onChange={event => patchHireGroup(group.id, { adjustments: { ...adjustments, [reasonKey]: event.target.value.toUpperCase() } })}
-                            data-testid={`monthly-hire-adjustment-reason-${amountKey}-${monthlyTestSuffix}`}
                           />
                         </div>
                       ))}
@@ -3741,10 +3716,7 @@ export default function VendorBills() {
                           <strong>₹{formatCurrency(financials.hsdRecovery)}</strong>
                         </div>}
                         {financials.otherDebit > 0 && <div className="flex justify-between gap-3"><span>− Other Debit / Recovery</span><strong>₹{formatCurrency(financials.otherDebit)}</strong></div>}
-                        <div className="flex justify-between gap-3" data-testid={`monthly-hire-advance-${monthlyTestSuffix}`}>
-                          <span>− Advance{adjustments.advanceAdjustmentReason ? <span className="block text-[11px] text-muted-foreground">{adjustments.advanceAdjustmentReason}</span> : null}</span>
-                          <strong>₹{formatCurrency(financials.advanceAdjustment)}</strong>
-                        </div>
+                        {financials.advanceAdjustment > 0 && <div className="flex justify-between gap-3"><span>− Advance Adjustment</span><strong>₹{formatCurrency(financials.advanceAdjustment)}</strong></div>}
                         {financials.otherCredit > 0 && <div className="flex justify-between gap-3"><span>+ Other Credit</span><strong>₹{formatCurrency(financials.otherCredit)}</strong></div>}
                         <div className="flex justify-between gap-3 border-t pt-1 font-semibold"><span>= Net line (pre-GST / TDS)</span><strong data-testid={`monthly-hire-taxable-${monthlyTestSuffix}`}>₹{formatCurrency(financials.taxableAmount)}</strong></div>
                       </div>

@@ -100,33 +100,6 @@ describe("one saved-bill financial selection", () => {
     // Saved net value already incorporates hire recoveries/advance deductions.
     expect(billPaymentPosition({ ...row, netPayableAmount: 700 }).outstanding).toBe(400);
   });
-  it("shows proposed new-rule hire cash recoveries after tax on draft bills", () => {
-    const draft = bill(43, {
-      status: "draft",
-      totalAmount: 95_000,
-      gstRateEquipment: 18,
-      tdsRate: 2,
-      hireStatements: [{
-        calculationSnapshot: {
-          taxRuleVersion: "hire_advance_tax_01",
-          financials: {
-            hsdRecovery: 2_000,
-            otherDebit: 1_000,
-            advanceRecovery: 500,
-            otherCredit: 200,
-          },
-        },
-      }],
-    });
-    expect(getBillFinancialTotals(draft)).toMatchObject({
-      totalAmount: 95_000,
-      totalGst: 17_100,
-      tds: 1_900,
-      netTotal: 106_900,
-    });
-    // Approval stores the final amount; do not apply snapshot recoveries twice.
-    expect(getBillFinancialTotals({ ...draft, netPayableAmount: 106_900 }).netTotal).toBe(106_900);
-  });
   it("sums only established positive balances without offsetting vendor credits", () => {
     const summary = summarizeBillReview(fixture.map(billPaymentPosition));
     expect(summary.outstanding).toBe(3700);

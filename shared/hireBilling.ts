@@ -197,9 +197,6 @@ export interface EquipmentHireFinancialInput {
   breakdownDeduction?: number | null;
   hsdRecovery?: number | null;
   otherDebit?: number | null;
-  /** Retained for compatibility with frozen pre-restore snapshots. */
-  advanceRecovery?: number | null;
-  /** Advance entered for this segment; it is applied after tax and may carry within this bill. */
   advanceAdjustment?: number | null;
   otherCredit?: number | null;
   gstRate?: number | null;
@@ -212,8 +209,6 @@ export interface EquipmentHireFinancials {
   breakdownDeduction: number;
   hsdRecovery: number;
   otherDebit: number;
-  advanceRecovery: number;
-  /** Advance entered for this segment. */
   advanceAdjustment: number;
   otherCredit: number;
   taxableAmount: number;
@@ -227,32 +222,7 @@ export interface EquipmentHireFinancials {
   balanceThisBill: number;
 }
 
-/** Restored hire calculation: recoveries reduce the taxable monthly line, without a zero floor. */
 export function calculateEquipmentHireFinancials(input: EquipmentHireFinancialInput): EquipmentHireFinancials {
-  const nonNegative = (value: number | null | undefined) => Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0;
-  const grossHire = money(nonNegative(input.grossHire));
-  const breakdownDeduction = money(nonNegative(input.breakdownDeduction));
-  const hsdRecovery = money(nonNegative(input.hsdRecovery));
-  const otherDebit = money(nonNegative(input.otherDebit));
-  const advanceAdjustment = money(nonNegative(input.advanceAdjustment));
-  const otherCredit = money(nonNegative(input.otherCredit));
-  const gstRate = money(nonNegative(input.gstRate));
-  const tdsRate = money(nonNegative(input.tdsRate));
-  const taxableAmount = money(grossHire - breakdownDeduction - hsdRecovery - otherDebit - advanceAdjustment + otherCredit);
-  const gstAmount = money(taxableAmount * gstRate / 100);
-  const invoiceTotal = money(taxableAmount + gstAmount);
-  const tdsAmount = money(taxableAmount * tdsRate / 100);
-  const netPayable = money(invoiceTotal - tdsAmount);
-  const paid = money(nonNegative(input.paid));
-  return {
-    grossHire, breakdownDeduction, hsdRecovery, otherDebit, advanceRecovery: 0, advanceAdjustment, otherCredit,
-    taxableAmount, gstRate, gstAmount, invoiceTotal, tdsRate, tdsAmount, netPayable, paid,
-    balanceThisBill: money(netPayable - paid),
-  };
-}
-
-/** Reproduces the calculation used by saved pre-HIRE-ADVANCE-TAX-01 records. */
-export function calculateLegacyEquipmentHireFinancials(input: EquipmentHireFinancialInput): EquipmentHireFinancials {
   const nonNegative = (value: number | null | undefined) => Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0;
   const grossHire = money(nonNegative(input.grossHire));
   const breakdownDeduction = money(nonNegative(input.breakdownDeduction));
@@ -269,7 +239,7 @@ export function calculateLegacyEquipmentHireFinancials(input: EquipmentHireFinan
   const netPayable = money(invoiceTotal - tdsAmount);
   const paid = money(nonNegative(input.paid));
   return {
-    grossHire, breakdownDeduction, hsdRecovery, otherDebit, advanceRecovery: 0, advanceAdjustment, otherCredit,
+    grossHire, breakdownDeduction, hsdRecovery, otherDebit, advanceAdjustment, otherCredit,
     taxableAmount, gstRate, gstAmount, invoiceTotal, tdsRate, tdsAmount, netPayable, paid,
     balanceThisBill: money(Math.max(0, netPayable - paid)),
   };

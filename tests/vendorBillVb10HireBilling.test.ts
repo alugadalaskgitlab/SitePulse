@@ -93,7 +93,7 @@ describe("VB-10 monthly availability hire calculation", () => {
     expect(rows[0].source).toBe("plant_usage");
   });
 
-  it("deducts monthly debit before GST and TDS", () => {
+  it("applies debit, GST, and TDS once to a shared taxable hire amount", () => {
     expect(calculateEquipmentHireFinancials({
       grossHire: 10_000, otherDebit: 1_000, gstRate: 18, tdsRate: 2,
     })).toMatchObject({ taxableAmount: 9_000, gstAmount: 1_620, tdsAmount: 180, netPayable: 10_440 });

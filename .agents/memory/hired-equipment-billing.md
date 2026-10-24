@@ -67,9 +67,9 @@ Grace is a per-bill, per-machine allowance (per selected calendar-month group wh
 
 Monthly availability across calendar months is independently selectable; an omitted month creates no liability or reserved billing period.
 
-**Why:** Vendors invoice by calendar month, and the preparer must be able to close one month while leaving another for later. The user distinguishes segment-level advance carry from bill-level additional adjustments.
+**Why:** Vendors invoice by calendar month, and the preparer must be able to close one month while leaving another for later. Diesel netting, breakdown grace, and adjustments must not cross those selected month boundaries.
 
-**How to apply:** Reuse the existing gross calculation's calendar segmentation without changing proration arithmetic. Carry unused Advance Adjustment only through included segments of the same bill; keep bill-level additional adjustment rows separate after the monthly subtotal, never allocate them to segments. Preserve historical saved groups, validate overlap only for included persisted groups, and scope performance evidence to each group's dates.
+**How to apply:** Reuse the existing gross calculation's calendar segmentation without changing proration arithmetic. Keep historical saved combined groups intact; validate overlap only for included persisted groups, and scope performance evidence to each group's dates.
 
 Where the retained linked-statement workflow uses hire groups, terms must have an exact valid Equipment Master basis: monthly, daily, hourly, or trip. This is not an eligibility gate for shared itemized bills.
 

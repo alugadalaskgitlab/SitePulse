@@ -73,33 +73,6 @@ function storedStatementRows(bill: any) {
     const adjustments = snapshot.adjustments || {};
     const financials = snapshot.financials || {};
     const saved = (field: string) => numberOrNull(adjustments[field] ?? financials[field]) ?? 0;
-    const grossAmount = numberOrNull(statement.grossAmount ?? financials.grossHire ?? snapshot.grossAmount)!;
-    const netAmount = numberOrNull(statement.netAmount)!;
-    if (["hire_advance_tax_01", "hire_advance_bill_carry_02"].includes(snapshot.taxRuleVersion)) {
-      const breakdown = saved("breakdownDeduction");
-      push("Breakdown deduction", -breakdown,
-        exceptionEvidence(snapshot, ["breakdown"], adjustments.breakdownDeductionReason) + ` · ${statement.equipmentName || `Equipment #${statement.equipmentId}`}`,
-        "deduction");
-      push("HSD recovery", -saved("hsdRecovery"),
-        `${String(adjustments.hsdRecoveryReason || "Reason: Not recorded")} · ${statement.equipmentName || `Equipment #${statement.equipmentId}`}`,
-        "deduction");
-      push("Other debit / recovery", -saved("otherDebit"),
-        `${String(adjustments.otherDebitReason || "Reason: Not recorded")} · ${statement.equipmentName || `Equipment #${statement.equipmentId}`}`,
-        "deduction");
-      const advanceRecovery = saved("advanceRecovery");
-      const advanceCarry = snapshot.advanceCarry || {};
-      const advanceReason = snapshot.taxRuleVersion === "hire_advance_bill_carry_02"
-        ? `Entered this segment: ${Number(advanceCarry.advanceThisMonth ?? adjustments.advanceAdjustment ?? 0).toFixed(2)} · Carried in: ${Number(advanceCarry.carriedIn || 0).toFixed(2)} · Carried forward: ${Number(advanceCarry.carriedForward || 0).toFixed(2)}`
-        : `Opening balance: ${Number((snapshot.advanceLedgerProposal || {}).openingBalance || 0).toFixed(2)} · Closing balance: ${Number((snapshot.advanceLedgerProposal || {}).closingBalance || 0).toFixed(2)}`;
-      push(snapshot.taxRuleVersion === "hire_advance_bill_carry_02" ? "Advance recovered" : "Vendor advance recovered", -advanceRecovery,
-        `${advanceReason} · ${statement.equipmentName || `Equipment #${statement.equipmentId}`}`,
-        "deduction");
-      push("Other credit", saved("otherCredit"),
-        `${String(adjustments.otherCreditReason || "Reason: Not recorded")} · ${statement.equipmentName || `Equipment #${statement.equipmentId}`}`,
-        "credit");
-      if (!closeTo(grossAmount - netAmount, breakdown)) statementComponentsReconcile = false;
-      continue;
-    }
     const exceptionRows: any[] = Array.isArray(snapshot.exceptions) ? snapshot.exceptions : [];
     const operatorExceptions = exceptionRows.filter((entry: any) =>
       ["operator_unavailable", "driver_unavailable"].includes(String(entry?.exceptionType || "").toLowerCase().replace(/-/g, "_")) &&
@@ -110,6 +83,8 @@ function storedStatementRows(bill: any) {
     const otherDebit = saved("otherDebit");
     const advance = saved("advanceAdjustment");
     const credit = saved("otherCredit");
+    const grossAmount = numberOrNull(statement.grossAmount ?? financials.grossHire ?? snapshot.grossAmount)!;
+    const netAmount = numberOrNull(statement.netAmount)!;
     const storedDelta = grossAmount - netAmount;
     const standardDelta = breakdown + hsd + otherDebit + advance - credit;
     const operatorIsIncluded = operatorAmount > 0 && operatorAmount <= otherDebit + 0.005 &&

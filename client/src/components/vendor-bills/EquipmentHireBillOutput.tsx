@@ -6,7 +6,7 @@ import { format } from "date-fns";
 import { Download, FileText } from "lucide-react";
 import type { EquipmentPerformanceDailyRow } from "@shared/equipmentPerformance";
 import { computeEquipmentUsage, formatEquipmentDuration, formatEquipmentTime } from "@shared/equipmentUsage";
-import { calculateLegacyEquipmentHireFinancials } from "@shared/hireBilling";
+import { calculateEquipmentHireFinancials } from "@shared/hireBilling";
 import { projectHireReview, hireReviewDisclosureLines, hireReviewTable, MONTHLY_BILL_HEADERS, type HireReview } from "@shared/vendorBillLayout";
 import { getBaseSiteName } from "@shared/siteName";
 import { formatConsumptionRate } from "./HireActivityBreakdownCalendar";
@@ -180,19 +180,8 @@ export type EquipmentHireExportData = {
   hsdRecovery: number;
   otherDebit: number;
   otherDebitReason?: string;
-  advanceRecovery?: number;
-  advanceRecoveryReason?: string;
   advanceAdjustment: number;
   advanceAdjustmentReason?: string;
-  advanceCarry?: {
-    advanceThisMonth: number;
-    carriedIn: number;
-    available: number;
-    recovered: number;
-    carriedForward: number;
-  };
-  hireCalculationVersion?: string;
-  taxRuleVersion?: string;
   otherCredit: number;
   otherCreditReason?: string;
   gstRate: number;
@@ -524,18 +513,7 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
     ["Breakdown Deduction", `− ${money(data.breakdownDeduction)}`],
     ...(String(data.dieselResponsibility).toLowerCase() === "vendor" ? [] : [["HSD Recovery", `− ${money(data.hsdRecovery)}`]]),
     ["Other Debit / Recovery", `− ${money(data.otherDebit)}${data.otherDebitReason ? ` (${data.otherDebitReason})` : ""}`],
-    ...(data.hireCalculationVersion === "hire_bill_restore_03"
-      ? [["− Advance", `${money(data.advanceAdjustment)}${data.advanceAdjustmentReason ? ` (${data.advanceAdjustmentReason})` : ""}`]]
-      : data.taxRuleVersion === "hire_advance_bill_carry_02"
-      ? [
-          ["Advance Adjustment this month", `${money(data.advanceAdjustment)}${data.advanceAdjustmentReason ? ` (${data.advanceAdjustmentReason})` : ""}`],
-          ["Advance carried in", money(data.advanceCarry?.carriedIn || 0)],
-          ["Advance recovered", `− ${money(data.advanceRecovery)}`],
-          ["Advance carried forward", money(data.advanceCarry?.carriedForward || 0)],
-        ]
-      : data.taxRuleVersion === "hire_advance_tax_01"
-        ? [["Vendor Advance Recovered", `− ${money(data.advanceRecovery)}${data.advanceRecoveryReason ? ` (${data.advanceRecoveryReason})` : ""}`]]
-        : [["Advance Adjustment", `− ${money(data.advanceAdjustment)}${data.advanceAdjustmentReason ? ` (${data.advanceAdjustmentReason})` : ""}`]]),
+    ["Advance Adjustment", `− ${money(data.advanceAdjustment)}${data.advanceAdjustmentReason ? ` (${data.advanceAdjustmentReason})` : ""}`],
     ["Other Credit", `+ ${money(data.otherCredit)}${data.otherCreditReason ? ` (${data.otherCreditReason})` : ""}`],
     ...(String(data.dieselResponsibility).toLowerCase() === "vendor" ? [["Fuel / Diesel", "Contractor Scope"]] : []),
     ["Taxable / Bill Amount", money(data.taxableAmount)],
@@ -827,22 +805,16 @@ export function buildSavedEquipmentHireBillOutput(bill: any): { data: EquipmentH
   const breakdownDeduction = Number(snapshot.adjustments?.breakdownDeduction ?? snapshot.deductionAmount ?? 0);
   const hsdRecovery = Number(snapshot.adjustments?.hsdRecovery ?? snapshot.dieselRecoveryFinalAmount ?? snapshot.diesel?.finalRecoveryAmount ?? 0);
   const otherDebit = Number(adjustments.otherDebit || 0);
-  const advanceRecovery = Number(adjustments.advanceRecovery ?? snapshot.financials?.advanceRecovery ?? 0);
   const advanceAdjustment = Number(adjustments.advanceAdjustment || 0);
-  const advanceCarry = snapshot.advanceCarry && typeof snapshot.advanceCarry === "object"
-    ? snapshot.advanceCarry as EquipmentHireExportData["advanceCarry"] : undefined;
   const otherCredit = Number(adjustments.otherCredit || 0);
   const frozenFinancials = snapshot.financials || {};
-  const hasFrozenFinancials = Number.isFinite(Number(frozenFinancials.grossHire)) &&
-    Number.isFinite(Number(frozenFinancials.gstAmount)) && Number.isFinite(Number(frozenFinancials.tdsAmount)) &&
-    Number.isFinite(Number(frozenFinancials.netPayable));
-  const financials = hasFrozenFinancials ? frozenFinancials : calculateLegacyEquipmentHireFinancials({
-    grossHire: grossHire,
-    breakdownDeduction,
-    hsdRecovery,
-    otherDebit,
-    advanceAdjustment,
-    otherCredit,
+  const financials = calculateEquipmentHireFinancials({
+    grossHire: frozenFinancials.grossHire ?? grossHire,
+    breakdownDeduction: frozenFinancials.breakdownDeduction ?? breakdownDeduction,
+    hsdRecovery: frozenFinancials.hsdRecovery ?? hsdRecovery,
+    otherDebit: frozenFinancials.otherDebit ?? otherDebit,
+    advanceAdjustment: frozenFinancials.advanceAdjustment ?? advanceAdjustment,
+    otherCredit: frozenFinancials.otherCredit ?? otherCredit,
     gstRate: frozenFinancials.gstRate ?? bill.gstRateEquipment,
     tdsRate: frozenFinancials.tdsRate ?? bill.tdsRate,
   });
@@ -856,21 +828,11 @@ export function buildSavedEquipmentHireBillOutput(bill: any): { data: EquipmentH
     equipmentType: statement.equipmentType || undefined, projectSite: snapshot.projectSite,
     periodFrom, periodTo, hireBasis: String(statement.billingBasis || snapshot.terms?.billingBasis || "Hire").toUpperCase(),
     rate: Number(statement.rate ?? snapshot.terms?.rate ?? 0), grossHire, breakdownDeduction, hsdRecovery,
-    otherDebit, otherDebitReason: adjustments.otherDebitReason, advanceRecovery,
-    advanceRecoveryReason: snapshot.advanceLedgerProposal
-      ? `Opening ${money(Number(snapshot.advanceLedgerProposal.openingBalance || 0))}; closing ${money(Number(snapshot.advanceLedgerProposal.closingBalance || 0))}`
-      : undefined,
-    advanceAdjustment, advanceAdjustmentReason: adjustments.advanceAdjustmentReason, advanceCarry,
-    taxRuleVersion: snapshot.taxRuleVersion,
+    otherDebit, otherDebitReason: adjustments.otherDebitReason, advanceAdjustment, advanceAdjustmentReason: adjustments.advanceAdjustmentReason,
     otherCredit, otherCreditReason: adjustments.otherCreditReason,
     gstRate: financials.gstRate, gstAmount: financials.gstAmount, taxableAmount: financials.taxableAmount,
     invoiceTotal: financials.invoiceTotal, tdsRate: financials.tdsRate, tdsAmount: financials.tdsAmount,
-    netPayable: snapshot.hireCalculationVersion === "hire_bill_restore_03" ||
-      ["hire_advance_tax_01", "hire_advance_bill_carry_02"].includes(snapshot.taxRuleVersion)
-      ? Number(financials.netPayable)
-      : Number(bill.netPayableAmount ?? financials.netPayable),
-    hireCalculationVersion: snapshot.hireCalculationVersion,
-    paid,
+    netPayable: Number(bill.netPayableAmount ?? financials.netPayable), paid,
     dieselResponsibility: snapshot.terms?.dieselResponsibility ?? statement.dieselResponsibility,
     consumptionNorm: snapshot.diesel?.consumptionNorm ?? snapshot.terms?.consumptionNorm,
     meterType: snapshot.terms?.meterType,

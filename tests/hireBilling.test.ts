@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateLegacyEquipmentHireFinancials, calculateHireBilling, calculateHireDieselPricing, calculateHireGroup, duplicateBillItemPayload, getHireReviewGaps, isEquipmentHireBillEligible, mergeOtherBillItems, normalizeHireActivities, planHireRegisterRows, rawAutoItemCoveredByHireGroup, uniqueDuplicateBillMatches } from "../shared/hireBilling";
+import { availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateHireBilling, calculateHireDieselPricing, calculateHireGroup, duplicateBillItemPayload, getHireReviewGaps, isEquipmentHireBillEligible, mergeOtherBillItems, normalizeHireActivities, planHireRegisterRows, rawAutoItemCoveredByHireGroup, uniqueDuplicateBillMatches } from "../shared/hireBilling";
 import { computeEquipmentUsage } from "../shared/equipmentUsage";
 
 describe("hire billing calculator", () => {
@@ -853,36 +853,33 @@ describe("07B equipment-hire discovery and commercial parity", () => {
     }).grossAmount).toBe(90_000);
   });
 
-  it("deducts monthly recoveries before GST and TDS", () => {
+  it("uses one rounded taxable/GST/TDS sequence and preserves the pre-GST TDS rule", () => {
     const withoutGst = calculateEquipmentHireFinancials({
       grossHire: 100_000, breakdownDeduction: 5_000, hsdRecovery: 2_000,
-      otherDebit: 1_000, advanceAdjustment: 3_000, advanceRecovery: 3_000, otherCredit: 500, tdsRate: 2,
+      otherDebit: 1_000, advanceAdjustment: 3_000, otherCredit: 500, tdsRate: 2,
     });
     expect(withoutGst).toMatchObject({
-      advanceAdjustment: 3_000,
-      advanceRecovery: 0,
       taxableAmount: 89_500, gstAmount: 0, invoiceTotal: 89_500,
       tdsAmount: 1_790, netPayable: 87_710,
     });
     const withGst = calculateEquipmentHireFinancials({
       grossHire: 100_000, breakdownDeduction: 5_000, hsdRecovery: 2_000,
-      otherDebit: 1_000, advanceAdjustment: 3_000, advanceRecovery: 3_000, otherCredit: 500, gstRate: 18, tdsRate: 2,
+      otherDebit: 1_000, advanceAdjustment: 3_000, otherCredit: 500, gstRate: 18, tdsRate: 2,
     });
     expect(withGst).toMatchObject({
-      advanceAdjustment: 3_000,
-      advanceRecovery: 0,
       taxableAmount: 89_500, gstAmount: 16_110, invoiceTotal: 105_610,
+      // TDS remains on taxable amount, as in the established itemized flow.
       tdsAmount: 1_790, netPayable: 103_820,
     });
   });
 
-  it("keeps historical snapshots on their original tax calculation", () => {
-    const saved = calculateLegacyEquipmentHireFinancials({
+  it("reproduces the exact saved commercial snapshot at approval, including GST", () => {
+    const saved = calculateEquipmentHireFinancials({
       grossHire: 31_000, breakdownDeduction: 1_000, hsdRecovery: 600,
       otherDebit: 200, advanceAdjustment: 1_500, otherCredit: 50,
       gstRate: 18, tdsRate: 1,
     });
-    const approved = calculateLegacyEquipmentHireFinancials({
+    const approved = calculateEquipmentHireFinancials({
       grossHire: saved.grossHire, breakdownDeduction: saved.breakdownDeduction,
       hsdRecovery: saved.hsdRecovery, otherDebit: saved.otherDebit,
       advanceAdjustment: saved.advanceAdjustment, otherCredit: saved.otherCredit,
@@ -894,21 +891,6 @@ describe("07B equipment-hire discovery and commercial parity", () => {
       invoiceTotal: saved.invoiceTotal,
       tdsAmount: saved.tdsAmount,
       netPayable: saved.netPayable,
-    });
-  });
-
-  it("allows a monthly advance to make taxable amount, net payable, and balance negative", () => {
-    expect(calculateEquipmentHireFinancials({
-      grossHire: 29_032.26,
-      advanceAdjustment: 50_000,
-      gstRate: 18,
-      tdsRate: 2,
-    })).toMatchObject({
-      taxableAmount: -20_967.74,
-      invoiceTotal: -24_741.93,
-      advanceRecovery: 0,
-      netPayable: -24_322.58,
-      balanceThisBill: -24_322.58,
     });
   });
 

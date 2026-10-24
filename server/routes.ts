@@ -12751,6 +12751,7 @@ export async function registerRoutes(
     catch { res.status(500).json({ message: "Could not load Vendor Master identities" }); }
   });
 
+
   app.get("/api/vendor-bills/previous-rates", async (req, res) => {
     try {
       const vendorName = req.query.vendorName as string;

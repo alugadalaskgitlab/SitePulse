@@ -28,20 +28,11 @@ export function getBillFinancialTotals(bill: any) {
   }));
   const primaryAdjustment = Number(bill.adjustmentAmount) || 0;
   const additionalTotal = additional.reduce((sum: number, a: any) => sum + a.amount, 0);
+  // Preserve the existing bill-detail calculation; tax reporting below never
+  // treats this calculated amount as evidence of a recorded deduction.
   const tds = totalAmount * (Number(bill.tdsRate) || 0) / 100;
-  const hireCashAdjustments = (bill.hireStatements || []).reduce((sum: number, statement: any) => {
-    const snapshot = statement.calculationSnapshot || {};
-    if (!["hire_advance_tax_01", "hire_advance_bill_carry_02"].includes(snapshot.taxRuleVersion)) return sum;
-    const adjustments = snapshot.adjustments || {};
-    const financials = snapshot.financials || {};
-    const amount = (key: string) => Number(adjustments[key] ?? financials[key] ?? 0) || 0;
-    return sum + amount("hsdRecovery") + amount("otherDebit") +
-      amount("advanceRecovery") - amount("otherCredit");
-  }, 0);
   return { totalAmount, totalGst, gstRows, primaryAdjustment, additional, additionalTotal, tds,
-    netTotal: bill.netPayableAmount == null
-      ? totalAmount + totalGst + primaryAdjustment + additionalTotal - tds - hireCashAdjustments
-      : Number(bill.netPayableAmount) };
+    netTotal: bill.netPayableAmount == null ? totalAmount + totalGst + primaryAdjustment + additionalTotal - tds : Number(bill.netPayableAmount) };
 }
 
 export function billPaymentPosition(bill: any) {

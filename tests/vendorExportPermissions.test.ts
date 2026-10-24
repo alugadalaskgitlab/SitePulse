@@ -376,7 +376,7 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
         accountSource: "Not recorded",
       });
       expect(createHash("sha256").update(jsonBeforeBytes).digest("hex"))
-        .toBe("996545a18e113468ba9a83c8ba408b24971d6291624fd86cc9c4c579a5cb558c");
+        .toBe("64c77b57f1b188fac65d4b8d8e52fc57ce916faca7a1273c4b232d25be7af8dc");
 
       const xlsxResponse = await request(app)
         .get("/api/vendor-bills/export?format=xlsx")
@@ -426,7 +426,7 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
       const jsonAfterBytes = jsonAfter.body as Buffer;
       expect(jsonAfterBytes.equals(jsonBeforeBytes)).toBe(true);
       expect(createHash("sha256").update(jsonAfterBytes).digest("hex"))
-        .toBe("996545a18e113468ba9a83c8ba408b24971d6291624fd86cc9c4c579a5cb558c");
+        .toBe("64c77b57f1b188fac65d4b8d8e52fc57ce916faca7a1273c4b232d25be7af8dc");
     } finally {
       vi.useRealTimers();
       storage.getVendorBills.mockReset();

@@ -514,8 +514,6 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     fireEvent.change(periodFrom, { target: { value: "2026-09-02" } });
     expect(screen.queryByTestId("button-add-item")).toBeNull();
     await waitFor(() => expect((screen.getByTestId("button-view-daily-activity") as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(screen.getByTestId("select-bill-site"));
-    fireEvent.click(await screen.findByText("ALL SITES"));
     fireEvent.click(screen.getByTestId("button-save-bill"));
     await waitFor(() => expect(vendorBillWrites.some(write => write.method === "PUT")).toBe(true));
     const payload = vendorBillWrites.find(write => write.method === "PUT")!.body;

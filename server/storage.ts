@@ -16,7 +16,7 @@ import { insertLabourWithWorkers, readWorkerNames } from "./labourWorkers";
 import { assertSectionTokens, DprSectionConflict, findSectionDrafts, lockDprIdentity, readSectionAggregate, readDraftStoppages, stageDraftStoppages, reconcileRows, reconcileDraftEquipmentAssignments, sameContext, sectionSnapshot } from "./dprSections";
 import { normalizeDprSectionContext } from "../shared/dprSections";
 import { formatPurchaseIndentNumber, reconcileDeliveryEvidence, validateDeliveryDestination, isBulkPiDeliveryItem, type DeliveryEvidence } from "../shared/purchaseIndentDelivery";
-import { authoritativeHireDieselPeriod, calculateEquipmentHireFinancials, calculateLegacyEquipmentHireFinancials, calculateHireGroup, getHireReviewGaps, isEquipmentHireBillEligible, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
+import { authoritativeHireDieselPeriod, calculateEquipmentHireFinancials, calculateHireGroup, getHireReviewGaps, isEquipmentHireBillEligible, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
 import { hasCumulativeVendorPayment } from "../shared/vendorBillPayment";
 import { normalizeDprSiteName } from "../shared/dprBoqSelection";
 import { hasDprBoqReferences } from "../shared/dprBoqReferences";
@@ -18061,17 +18061,11 @@ export class DatabaseStorage implements IStorage {
       const otherDebit = Number(adjustments.otherDebit || 0);
       const advanceAdjustment = Number(adjustments.advanceAdjustment || 0);
       const otherCredit = Number(adjustments.otherCredit || 0);
-      if (!Number.isFinite(advanceAdjustment) || advanceAdjustment < 0) {
-        throw Object.assign(new Error("Advance Adjustment must be a non-negative amount."), { code: "BAD_REQUEST" });
-      }
-      if (advanceAdjustment > 0 && !String(adjustments.advanceAdjustmentReason || "").trim()) {
-        throw Object.assign(new Error("Enter a reason or reference for the Advance Adjustment."), { code: "BAD_REQUEST" });
-      }
       // Every figure is derived from the just-reloaded operational facts and
       // saved in the immutable statement JSON.  Client totals/items are never
       // an authority for the straight equipment-hire form.
       const breakdownDeduction = calc.deductionAmount;
-      const commonFinancialInput = {
+      const financials = calculateEquipmentHireFinancials({
         grossHire: calc.grossAmount,
         breakdownDeduction,
         hsdRecovery: calc.diesel.finalRecoveryAmount,
@@ -18080,20 +18074,20 @@ export class DatabaseStorage implements IStorage {
         otherCredit,
         gstRate: bill.gstRateEquipment,
         tdsRate: bill.tdsRate,
-      };
-      const financials = calculateEquipmentHireFinancials(commonFinancialInput);
+      });
       const netAfterBillAdjustments = financials.taxableAmount;
       const patch: any = { equipmentId: group.equipmentId, vendorName: bill.vendorName, billingBasis: terms.billingBasis, rate: terms.rate,
         monthlyDivisorType: terms.monthlyDivisorType, monthlyDivisor: terms.monthlyDivisor, hireStartDate: terms.hireStartDate,
         hireEndDate: terms.hireEndDate, dieselResponsibility: equipment.hireDieselResponsibility, operatorResponsibility: equipment.hireOperatorResponsibility,
         agreementRemarks: equipment.hireAgreementRemarks, periodFrom: group.periodFrom, periodTo: group.periodTo, quantity: calc.quantity,
-        grossAmount: calc.grossAmount, deductionAmount: calc.deductionAmount + calc.diesel.finalRecoveryAmount +
-          otherDebit + advanceAdjustment - otherCredit, netAmount: netAfterBillAdjustments,
+        grossAmount: calc.grossAmount, deductionAmount: calc.deductionAmount + calc.diesel.finalRecoveryAmount + otherDebit + advanceAdjustment - otherCredit, netAmount: netAfterBillAdjustments,
         status: "draft", vendorBillId: bill.id, calculationSnapshot: {
+          // Existing snapshots decide their own lineage. New groups are always
+          // integrated VB10 work; a client cannot downgrade one to historical
+          // merely by sending a different marker during an edit.
           billingIntegration: statement
             ? ((statement.calculationSnapshot as any)?.billingIntegration || "historical")
             : "vb10_automatic",
-          hireCalculationVersion: "hire_bill_restore_03",
           terms,
           ...calc,
           workingSheet,
@@ -18118,8 +18112,8 @@ export class DatabaseStorage implements IStorage {
              hsdRecoveryReason: group.dieselRecoveryRemarks ?? null,
              otherDebit,
              otherDebitReason: adjustments.otherDebitReason ?? null,
-              advanceAdjustment,
-              advanceAdjustmentReason: adjustments.advanceAdjustmentReason ?? null,
+             advanceAdjustment,
+             advanceAdjustmentReason: adjustments.advanceAdjustmentReason ?? null,
              otherCredit,
              otherCreditReason: adjustments.otherCreditReason ?? null,
            },
@@ -18496,12 +18490,6 @@ export class DatabaseStorage implements IStorage {
       if (existing.isCancelled === true) {
         throw Object.assign(new Error("A voided vendor bill cannot be edited"), { code: "CONFLICT" });
       }
-      if (data.billingVendorId) {
-        const [identity] = await tx.select().from(identityVendors).where(eq(identityVendors.id, data.billingVendorId));
-        if (!identity?.isActive || ownerNameKey(identity.name) !== ownerNameKey(data.vendorName))
-          throw Object.assign(new Error("Selected Vendor Master identity does not match the bill vendor"), { code: "BAD_REQUEST" });
-      }
-      const effectiveVendorId = data.billingVendorId ?? existing.vendorId;
       const linkedStatements: HireStatement[] = await tx.select().from(hireStatements)
         .where(eq(hireStatements.vendorBillId, id)).for("update");
       if (hasFrozenTripDailyHire({ hireStatements: linkedStatements })) {
@@ -18531,7 +18519,6 @@ export class DatabaseStorage implements IStorage {
           billDate: data.billDate,
           billType: data.billType.toUpperCase(),
           vendorName: uppercaseBusinessText(data.vendorName),
-          vendorId: effectiveVendorId,
           periodFrom: data.periodFrom,
           periodTo: data.periodTo,
           notes: data.notes?.toUpperCase() || data.notes,
@@ -18840,11 +18827,8 @@ export class DatabaseStorage implements IStorage {
           // category participate once. Statement financials are evidence for
           // their line only; summing their invoice totals here previously
           // omitted ordinary/mixed lines and applied GST/TDS per statement.
-          const hasVb10AutomaticStatement = linkedStatements.some(statement => {
-            const snapshot: any = statement.calculationSnapshot || {};
-            return snapshot.billingIntegration === "vb10_automatic" ||
-              snapshot.hireCalculationVersion === "hire_bill_restore_03";
-          });
+          const hasVb10AutomaticStatement = linkedStatements.some(statement =>
+            (statement.calculationSnapshot as any)?.billingIntegration === "vb10_automatic");
           const itemRows = await tx.select({ category: vendorBillItems.category, amount: vendorBillItems.amount })
             .from(vendorBillItems).where(eq(vendorBillItems.billId, id));
           const categorySubtotals = itemRows.reduce((totals: Record<string, number>, item) => {
@@ -18859,23 +18843,6 @@ export class DatabaseStorage implements IStorage {
             (categorySubtotals.transport || 0) * Number(existing.gstRateTransport || 0) / 100 +
             (categorySubtotals.labour || 0) * Number(existing.gstRateLabour || 0) / 100
           );
-          const automaticHireCashAdjustments = linkedStatements
-            .filter(statement => {
-              const snapshot: any = statement.calculationSnapshot || {};
-              return snapshot.billingIntegration === "vb10_automatic" ||
-                snapshot.hireCalculationVersion === "hire_bill_restore_03";
-            })
-            .reduce((sum, statement) => {
-              const snapshot: any = statement.calculationSnapshot || {};
-              if (snapshot.hireCalculationVersion === "hire_bill_restore_03") return sum;
-              const financials = snapshot.financials || {};
-              const adjustments = snapshot.adjustments || {};
-              return sum +
-                Number(financials.hsdRecovery ?? adjustments.hsdRecovery ?? 0) +
-                Number(financials.otherDebit ?? adjustments.otherDebit ?? 0) +
-                Number(financials.advanceRecovery ?? adjustments.advanceRecovery ?? 0) -
-                Number(financials.otherCredit ?? adjustments.otherCredit ?? 0);
-            }, 0);
           if (linkedStatements.length && !hasVb10AutomaticStatement) {
             // Pre-VB10 linked statements retain their approved straight-form
             // financial snapshots exactly; they are not silently reinterpreted
@@ -18885,7 +18852,7 @@ export class DatabaseStorage implements IStorage {
               .filter((financials: any) => financials && Number.isFinite(Number(financials.grossHire)));
             if (savedFinancials.length) {
               const legacyNet = savedFinancials.reduce((sum: number, financials: any) => sum +
-                calculateLegacyEquipmentHireFinancials(financials).netPayable, 0);
+                calculateEquipmentHireFinancials(financials).netPayable, 0);
               // Legacy statement snapshots retain their historical financial
               // path. VB18 additions are bill-level and additive without
               // changing how the existing primary adjustment was treated.
@@ -18898,8 +18865,7 @@ export class DatabaseStorage implements IStorage {
             }
           } else {
             const tdsAmount = subtotal * Number(existing.tdsRate || 0) / 100;
-            updates.netPayableAmount = Math.round((subtotal + gst + Number(existing.adjustmentAmount || 0) +
-              additionalAdjustmentAmount - tdsAmount - automaticHireCashAdjustments + Number.EPSILON) * 100) / 100;
+            updates.netPayableAmount = Math.round((subtotal + gst + Number(existing.adjustmentAmount || 0) + additionalAdjustmentAmount - tdsAmount + Number.EPSILON) * 100) / 100;
           }
           // Unknown remains NULL until a person records an amount.
           updates.amountPaid = existing.amountPaid;

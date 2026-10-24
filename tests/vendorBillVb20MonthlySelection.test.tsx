@@ -131,36 +131,6 @@ describe("VB-20 monthly hire segment selection", () => {
     expect(JSON.stringify(writes[0])).not.toContain("01-SEP-2026");
   }, 15_000);
 
-  it("shows the monthly advance deduction and keeps each month independent", async () => {
-    await openMonthlyBill("2026-08-01", "2026-09-20");
-    const augustInput = screen.getByTestId(`monthly-hire-adjustment-advanceAdjustment-${equipmentId}-2026-08-01`);
-    const augustReference = screen.getByTestId(`monthly-hire-adjustment-reason-advanceAdjustment-${equipmentId}-2026-08-01`);
-    fireEvent.change(augustInput, { target: { value: "100000" } });
-    fireEvent.change(augustReference, { target: { value: "ADVANCE REF 27" } });
-
-    await waitFor(() => {
-      const augustBreakdown = screen.getByTestId(`monthly-hire-financial-breakdown-${equipmentId}-2026-08-01`);
-      const septemberBreakdown = screen.getByTestId(`monthly-hire-financial-breakdown-${equipmentId}-2026-09-01`);
-      expect(augustBreakdown.textContent).toContain("− Advance");
-      expect(augustBreakdown.textContent).toContain("ADVANCE REF 27");
-      expect(augustBreakdown.textContent).not.toContain("carried");
-      expect(septemberBreakdown.textContent).toContain("− Advance");
-      expect(septemberBreakdown.textContent).not.toContain("carried in");
-      expect(screen.getByTestId(`monthly-hire-net-${equipmentId}-2026-08-01`).textContent).toContain("₹-40,000.00");
-    });
-
-    fireEvent.click(screen.getByTestId("select-bill-site"));
-    fireEvent.click(await screen.findByText("ALL SITES"));
-    fireEvent.click(screen.getByTestId("button-save-bill"));
-    await waitFor(() => expect(writes).toHaveLength(1));
-    expect(writes[0].hireGroups).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        periodFrom: "2026-08-01",
-        adjustments: expect.objectContaining({ advanceAdjustment: 100_000, advanceAdjustmentReason: "ADVANCE REF 27" }),
-      }),
-    ]));
-  }, 15_000);
-
   it("supports three selected months and preserves single-month behavior without a selector", async () => {
     await openMonthlyBill("2026-08-01", "2026-10-20");
     expect(screen.getAllByText("Include in this bill")).toHaveLength(3);

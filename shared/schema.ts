@@ -2510,32 +2510,6 @@ export const hireStatements = pgTable("hire_statements", {
   }),
 }));
 
-// Dormant legacy table retained for historical compatibility; the active hire
-// advance flow is bill-local and does not read or write this table.
-export const vendorHireAdvanceLedger = pgTable("vendor_hire_advance_ledger", {
-  id: serial("id").primaryKey(),
-  vendorId: integer("vendor_id").references(() => vendors.id, { onDelete: "restrict" }),
-  siteId: integer("site_id").references(() => sites.id, { onDelete: "set null" }),
-  kind: text("kind"), // opening_balance | advance_paid | recovery
-  amount: numeric("amount", { precision: 14, scale: 2, mode: "number" }),
-  effectiveDate: date("effective_date"),
-  reference: text("reference"),
-  billId: integer("bill_id").references(() => vendorBills.id, { onDelete: "set null" }),
-  hireStatementId: integer("hire_statement_id").references(() => hireStatements.id, { onDelete: "set null" }),
-  clientRequestId: text("client_request_id"),
-  createdByUserId: integer("created_by_user_id"),
-  createdBy: text("created_by"),
-  createdAt: timestamp("created_at").defaultNow(),
-}, (table) => ({
-  vendorDateIdx: index("vendor_hire_advance_ledger_vendor_date_idx").on(table.vendorId, table.effectiveDate, table.id),
-  recoveryStatementUq: uniqueIndex("vendor_hire_advance_ledger_recovery_statement_uq")
-    .on(table.hireStatementId).where(sql`${table.kind} = 'recovery' AND ${table.hireStatementId} IS NOT NULL`),
-  openingVendorUq: uniqueIndex("vendor_hire_advance_ledger_opening_vendor_uq")
-    .on(table.vendorId).where(sql`${table.kind} = 'opening_balance' AND ${table.vendorId} IS NOT NULL`),
-  clientRequestUq: uniqueIndex("vendor_hire_advance_ledger_client_request_uq")
-    .on(table.clientRequestId).where(sql`${table.clientRequestId} IS NOT NULL`),
-}));
-
 // A compact, persisted review decision for an operational fact.  sourceId is
 // intentionally polymorphic (equipment usage, maintenance log, or manual).
 export const hireStatementExceptions = pgTable("hire_statement_exceptions", {

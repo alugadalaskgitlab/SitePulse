@@ -25,13 +25,7 @@ beforeAll(async () => {
   await pg.exec("ALTER TABLE audit_logs ALTER COLUMN created_at SET DEFAULT NOW()");
   db = holder.db = drizzle(pg, { schema });
   storage = new (await import("../server/storage")).DatabaseStorage();
-  await db.insert(schema.vendors).values([
-    { id: 9, name: "Agency", isActive: true },
-    { id: 20, name: "ONE TIME TEST OWNER", isActive: true },
-    { id: 30, name: "TERMS OWNER", isActive: true },
-    { id: 80, name: "BASIS OWNER 80", isActive: true },
-    { id: 81, name: "BASIS OWNER 81", isActive: true },
-  ]);
+  await db.insert(schema.vendors).values({ id: 9, name: "Agency", isActive: true });
   await db.insert(schema.auditLogs).values([1, 2].map(transactionId => ({ module: "equipment_master", transactionId,
     action: "confirm_vendor_identity", userId: 4, userName: "Reviewer", reason: "Reviewed owner identity",
     newValues: { vendorId: 9, recordedName: "AGENCY" } })));
@@ -84,7 +78,7 @@ it("persists append-only confirmation and retains deliveries as non-daily eviden
 it("saves a real daily bill from a DPR log without charging confirmed material trips", async () => {
   await db.insert(schema.dprs).values({ id: 1, date: trip.date, site: trip.site, dprStatus: "submitted", isSuperseded: false });
   await db.insert(schema.equipmentLogs).values({ id: 1, dprId: 1, equipmentId: 1, entryType: "daily", status: "closed" });
-  const data = { billDate: trip.date, billType: "equipment", vendorName: "Agency", billingVendorId: 9, periodFrom: trip.date,
+  const data = { billDate: trip.date, billType: "equipment", vendorName: "Agency", periodFrom: trip.date,
     periodTo: trip.date, status: "draft", items: [{ equipmentId: 1, date: trip.date, source: "hire_group", category: "equipment",
       description: "Generated preview", qty: .5, rate: 2000, amount: 1000 }], hireBillingMode: "vb10_automatic",
     hireGroups: [{ equipmentId: 1, basis: "daily", rate: 2000, periodFrom: trip.date, periodTo: trip.date,
@@ -116,7 +110,7 @@ it("blocks confirmed-link changes on paid activity and ordinary rows covered by 
   await db.insert(schema.vendorBills).values({ id: 100, status: "paid", billNo: "PAID" });
   await db.insert(schema.vendorBillItems).values({ id: 100, billId: 100, equipmentId: 1, date: trip.date, category: "equipment", description: "Earlier daily hire" });
   await db.insert(schema.vendorBillItems).values({ id: 101, billId: 100, equipmentId: 2, date: trip.date, category: "equipment", description: "Paid operational day" });
-  await expect(storage.createVendorBill({ billDate: trip.date, billType: "equipment", vendorName: "Agency", billingVendorId: 9, periodFrom: trip.date,
+  await expect(storage.createVendorBill({ billDate: trip.date, billType: "equipment", vendorName: "Agency", periodFrom: trip.date,
     periodTo: trip.date, status: "draft", items: [], hireGroups: [{ equipmentId: 2, basis: "daily", rate: 2000,
       periodFrom: trip.date, periodTo: trip.date, dailyDecisions: [{ date: trip.date, decision: "full_day", reason: "Reviewed" }] }] })).rejects.toThrow(/already billed/);
   const review = await tripHireReview(db, trip);
@@ -160,7 +154,7 @@ it("real routes preserve trip evidence but reject a second bill in an overlappin
     attachVendorBillEquipmentEvidence: async (rows: any[]) => rows };
   new Function(...Object.keys(deps), ts.transpileModule(routes.join(";\n"), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText)(...Object.values(deps));
   const payload = (first: string, second: string) => ({
-    billDate: "2026-11-02", billNo: "AUTO", billType: "equipment", siteId: null, vendorName: machine.vendorName, billingVendorId: 20, status: "draft", totalAmount: 0,
+    billDate: "2026-11-02", billNo: "AUTO", billType: "equipment", siteId: null, vendorName: machine.vendorName, status: "draft", totalAmount: 0,
     periodFrom: "2026-11-01", periodTo: "2026-11-02", items: [], hireBillingMode: "vb10_automatic",
     hireGroups: [{ equipmentId: 20, basis: "daily", rate: 2000, periodFrom: "2026-11-01", periodTo: "2026-11-02",
       dailyDecisions: [{ date: "2026-11-01", decision: first, reason: "DPR and two trips checked" },
@@ -206,7 +200,7 @@ it.each(["trip", "daily"])("keeps confirmed trip evidence without charging it as
   const decisions = originals.map(row => ({ source: "site_material_trip", sourceId: row.id, selected: true, remarks: "Individual trip checked" }));
   const group = (basis: string) => ({ equipmentId: id, basis, rate: 1000, periodFrom: date, periodTo: date,
     tripDecisions: decisions, dailyDecisions: [{ date, decision: "full_day", reason: "Both trips reviewed together" }] });
-  const payload: any = { billDate: date, billType: "equipment", vendorName: machine.vendorName, billingVendorId: id,
+  const payload: any = { billDate: date, billType: "equipment", vendorName: machine.vendorName,
     periodFrom: date, periodTo: date, status: "draft", items: [], hireGroups: [group(defaultBasis)] };
   const bill = await storage.createVendorBill(payload);
   expect(bill.items[0]).toMatchObject({ qty: defaultBasis === "daily" ? 1 : 2 });
@@ -244,7 +238,7 @@ it("saves Master-based hire groups, permits draft edits and freezes completed bi
   await db.insert(schema.siteMaterialTrips).values(t);
   await db.transaction((tx: any) => confirmTripHireLink(tx, t, { equipmentId: 30, reason: "Identity confirmed" }, { id: 4, fullName: "Reviewer" }, true));
   await db.insert(schema.equipmentUsage).values({ id: 31, equipmentId: 31, date: t.date, entryType: "hourly", hoursOrKmRun: 4, status: "closed" });
-  const payload: any = { billDate: t.date, billType: "equipment", vendorName: "TERMS OWNER", billingVendorId: 30, periodFrom: t.date,
+  const payload: any = { billDate: t.date, billType: "equipment", vendorName: "TERMS OWNER", periodFrom: t.date,
     periodTo: t.date, status: "draft", items: [], hireGroups: [
       { equipmentId: 30, basis: "trip", rate: 500, periodFrom: t.date, periodTo: t.date,
         tripDecisions: [{ source: "site_material_trip", sourceId: 30, selected: true, remarks: "Recorded trip reviewed" }] },
