@@ -61,9 +61,6 @@ beforeEach(() => {
       }
       return new Response(JSON.stringify([]));
     }
-    if (url.includes("/api/vendor-bills/hire-advances/summary")) {
-      return new Response(JSON.stringify({ openingBalanceRecorded: false, balanceByPeriodTo: {} }));
-    }
     if (url.includes("/api/vendor-bills/summary")) {
       return new Response(JSON.stringify({ total: 0, totalAmount: 0, draft: 0, draftAmount: 0, verified: 0, verifiedAmount: 0, approved: 0, approvedAmount: 0, paid: 0, paidAmount: 0, gstByCategory: {}, totalGst: 0 }));
     }
@@ -123,7 +120,6 @@ describe("VB-20 monthly hire segment selection", () => {
     fireEvent.click(screen.getByTestId(`checkbox-include-monthly-hire-${equipmentId}-2026-09-01`));
     fireEvent.click(screen.getByTestId("select-bill-site"));
     fireEvent.click(await screen.findByText("ALL SITES"));
-    await waitFor(() => expect(screen.getByTestId("vendor-hire-advance-balance").textContent).toContain("₹0.00"));
     fireEvent.click(screen.getByTestId("button-save-bill"));
     await waitFor(() => expect(writes).toHaveLength(1));
 
@@ -133,6 +129,30 @@ describe("VB-20 monthly hire segment selection", () => {
     expect(writes[0].items).toHaveLength(1);
     expect(writes[0].items[0].description).toContain("01-AUG-2026–31-AUG-2026");
     expect(JSON.stringify(writes[0])).not.toContain("01-SEP-2026");
+  }, 15_000);
+
+  it("shows a required inline advance reference and carries unused value to the next month on this bill", async () => {
+    await openMonthlyBill("2026-08-01", "2026-09-20");
+    const augustInput = screen.getByTestId(`monthly-hire-adjustment-advanceAdjustment-${equipmentId}-2026-08-01`);
+    const augustReference = screen.getByTestId(`monthly-hire-adjustment-reason-advanceAdjustment-${equipmentId}-2026-08-01`);
+    fireEvent.change(augustInput, { target: { value: "100000" } });
+    fireEvent.change(augustReference, { target: { value: "ADVANCE REF 27" } });
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`monthly-hire-financial-breakdown-${equipmentId}-2026-08-01`).textContent).toContain("Advance carried forward");
+      expect(screen.getByTestId(`monthly-hire-financial-breakdown-${equipmentId}-2026-09-01`).textContent).toContain("Advance carried in");
+    });
+
+    fireEvent.click(screen.getByTestId("select-bill-site"));
+    fireEvent.click(await screen.findByText("ALL SITES"));
+    fireEvent.click(screen.getByTestId("button-save-bill"));
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0].hireGroups).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        periodFrom: "2026-08-01",
+        adjustments: expect.objectContaining({ advanceAdjustment: 100_000, advanceAdjustmentReason: "ADVANCE REF 27" }),
+      }),
+    ]));
   }, 15_000);
 
   it("supports three selected months and preserves single-month behavior without a selector", async () => {
@@ -180,7 +200,6 @@ describe("VB-20 monthly hire segment selection", () => {
 
     fireEvent.click(screen.getByTestId("select-bill-site"));
     fireEvent.click(await screen.findByText("ALL SITES"));
-    await waitFor(() => expect(screen.getByTestId("vendor-hire-advance-balance").textContent).toContain("₹0.00"));
     fireEvent.click(screen.getByTestId("button-save-bill"));
     await waitFor(() => expect(writes).toHaveLength(1));
     expect(writes[0].hireGroups).toEqual(expect.arrayContaining([

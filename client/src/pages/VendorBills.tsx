@@ -929,9 +929,6 @@ export default function VendorBills() {
     if (selectedVendor !== vendorName) {
       setHireGroups([]);
       setEditingBillingVendorId(null);
-      setAdvanceEntryKind("advance_paid");
-      setAdvanceEntryAmount("");
-      setAdvanceEntryReference("");
       monthlyHireSeedRef.current = "";
       setMonthlyHireSeedKey("");
     }
@@ -1275,10 +1272,6 @@ export default function VendorBills() {
     setTdsRate(0);
     setEditingBillId(null);
     setEditingBillingVendorId(null);
-    setAdvanceEntryKind("advance_paid");
-    setAdvanceEntryAmount("");
-    setAdvanceEntryDate(format(new Date(), "yyyy-MM-dd"));
-    setAdvanceEntryReference("");
     setEditingBillOriginalNo("");
     setHistoricalHireBillId(null);
     setVendorSearch("");
@@ -3041,11 +3034,6 @@ export default function VendorBills() {
               <div>
                 <Label className="text-sm uppercase">Site</Label>
                 <Select value={selectedSiteId} onValueChange={(value) => {
-                  if (value !== selectedSiteId) {
-                    setAdvanceEntryKind("advance_paid");
-                    setAdvanceEntryAmount("");
-                    setAdvanceEntryReference("");
-                  }
                   cancelActivePull();
                   const selectedName = sites.find(site => String(site.id) === value)?.name ?? null;
                   const previousScopeIsUnfiltered = !selectedSiteId || selectedSiteId === "all";
@@ -3602,7 +3590,7 @@ export default function VendorBills() {
                     </div>}
                     <div className="grid gap-2 sm:grid-cols-3">
                       {[["Other Debit / Recovery", "otherDebit", "otherDebitReason"], ["Advance Adjustment", "advanceAdjustment", "advanceAdjustmentReason"], ["Other Credit", "otherCredit", "otherCreditReason"]]
-                        .map(([label, amountKey, reasonKey]) => <div key={amountKey}><Label className="text-[10px] uppercase">{label} ₹</Label><Input type="number" min="0" step="0.01" value={(adjustments as any)[amountKey] ?? ""} onChange={event => patchHireGroup(selection.id, { adjustments: { ...adjustments, [amountKey]: event.target.value === "" ? undefined : Number(event.target.value) } })} /><Input className="mt-1" placeholder="Reason / reference" value={(adjustments as any)[reasonKey] || ""} onChange={event => patchHireGroup(selection.id, { adjustments: { ...adjustments, [reasonKey]: event.target.value.toUpperCase() } })} /></div>)}
+                        .map(([label, amountKey, reasonKey]) => <div key={amountKey}><Label className="text-[10px] uppercase">{label} ₹</Label><Input type="number" min="0" step="0.01" value={(adjustments as any)[amountKey] ?? ""} onChange={event => patchHireGroup(selection.id, { adjustments: { ...adjustments, [amountKey]: event.target.value === "" ? undefined : Number(event.target.value) } })} data-testid={`hire-adjustment-${amountKey}-${selection.id}`} /><Input className="mt-1" placeholder="Reason / reference (required when amount is entered)" value={(adjustments as any)[reasonKey] || ""} onChange={event => patchHireGroup(selection.id, { adjustments: { ...adjustments, [reasonKey]: event.target.value.toUpperCase() } })} data-testid={`hire-adjustment-reason-${amountKey}-${selection.id}`} /></div>)}
                     </div>
                   </div>
                   <div className="grid gap-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/20 sm:grid-cols-2">
@@ -3626,7 +3614,7 @@ export default function VendorBills() {
               <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-wider"><Calculator className="h-4 w-4 text-orange-600" />Auto-generated monthly hire</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 pt-0">
-              <p className="text-xs text-muted-foreground">Monthly equipment is billed for its active hire-date overlap even with no DPR/Plant log. Only recorded breakdowns reduce the line; the server recalculates and freezes this evidence on save.</p>
+              <p className="text-xs text-muted-foreground">Monthly equipment is billed for its active hire-date overlap even with no DPR/Plant log. Only recorded breakdowns reduce the line. Advance balances carry only between segments on this bill; bill-level adjustments remain separate below the monthly subtotal and are not allocated to months.</p>
               {monthlyHireExclusions.length > 0 && <div className="rounded border border-orange-200 bg-orange-50 p-3 text-xs dark:bg-orange-950/20" data-testid="monthly-hire-exclusions">
                 <p className="font-semibold">Monthly equipment not auto-added</p>
                 <ul className="mt-2 space-y-1">
@@ -3749,12 +3737,14 @@ export default function VendorBills() {
                             step="0.01"
                             value={(adjustments as any)[amountKey] ?? ""}
                             onChange={event => patchHireGroup(group.id, { adjustments: { ...adjustments, [amountKey]: event.target.value === "" ? undefined : Number(event.target.value) } })}
+                            data-testid={`monthly-hire-adjustment-${amountKey}-${monthlyTestSuffix}`}
                           />
                           <Input
                             className="mt-1"
                             placeholder="Reason / reference"
                             value={(adjustments as any)[reasonKey] || ""}
                             onChange={event => patchHireGroup(group.id, { adjustments: { ...adjustments, [reasonKey]: event.target.value.toUpperCase() } })}
+                            data-testid={`monthly-hire-adjustment-reason-${amountKey}-${monthlyTestSuffix}`}
                           />
                         </div>
                       ))}

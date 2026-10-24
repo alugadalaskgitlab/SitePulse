@@ -238,7 +238,7 @@ export function calculateEquipmentHireFinancials(input: EquipmentHireFinancialIn
   const hsdRecovery = money(nonNegative(input.hsdRecovery));
   const otherDebit = money(nonNegative(input.otherDebit));
   const advanceAdjustment = money(nonNegative(input.advanceAdjustment));
-  const requestedAdvanceRecovery = money(nonNegative(input.advanceRecovery ?? input.advanceAdjustment));
+  const requestedAdvanceRecovery = money(nonNegative(input.advanceRecovery));
   const otherCredit = money(nonNegative(input.otherCredit));
   const gstRate = money(nonNegative(input.gstRate));
   const tdsRate = money(nonNegative(input.tdsRate));

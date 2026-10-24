@@ -106,7 +106,9 @@ export function displayedHireTotals(outputs: EquipmentHireExportData[], netPayab
       { label: "BREAKDOWN DEDUCTION", amount: -output.breakdownDeduction },
       { label: "HSD RECOVERY", amount: -output.hsdRecovery },
       { label: "OTHER DEBIT", amount: -output.otherDebit, reason: output.otherDebitReason },
-      ...(output.taxRuleVersion === "hire_advance_tax_01"
+      ...(output.taxRuleVersion === "hire_advance_bill_carry_02"
+        ? [{ label: "ADVANCE RECOVERED", amount: -Number(output.advanceRecovery || 0), reason: output.advanceRecoveryReason }]
+        : output.taxRuleVersion === "hire_advance_tax_01"
         ? [{ label: "VENDOR ADVANCE RECOVERY", amount: -Number(output.advanceRecovery || 0), reason: output.advanceRecoveryReason }]
         : [{ label: "ADVANCE ADJUSTMENT", amount: -output.advanceAdjustment, reason: output.advanceAdjustmentReason }]),
       { label: "OTHER CREDIT", amount: output.otherCredit, reason: output.otherCreditReason },

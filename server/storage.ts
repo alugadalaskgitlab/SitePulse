@@ -18097,7 +18097,7 @@ export class DatabaseStorage implements IStorage {
         carriedForward: number;
       } | null = null;
       if (useAdvanceTaxRules) {
-        const beforeAdvance = calculateEquipmentHireFinancials(commonFinancialInput);
+        const beforeAdvance = calculateEquipmentHireFinancials({ ...commonFinancialInput, advanceRecovery: 0 });
         const carriedIn = carriedAdvanceBalance;
         const available = Math.round((carriedIn + advanceAdjustment + Number.EPSILON) * 100) / 100;
         const recovery = Math.round((Math.min(available, Math.max(0, beforeAdvance.netPayable)) + Number.EPSILON) * 100) / 100;
@@ -18541,9 +18541,6 @@ export class DatabaseStorage implements IStorage {
           throw Object.assign(new Error("Selected Vendor Master identity does not match the bill vendor"), { code: "BAD_REQUEST" });
       }
       const effectiveVendorId = data.billingVendorId ?? existing.vendorId;
-      if (data.hireBillingMode === "vb10_automatic" && data.hireGroups?.length && effectiveVendorId == null) {
-        throw Object.assign(new Error("Link this hire bill to a Vendor Master record before applying advance-ledger tax rules."), { code: "BAD_REQUEST" });
-      }
       const linkedStatements: HireStatement[] = await tx.select().from(hireStatements)
         .where(eq(hireStatements.vendorBillId, id)).for("update");
       if (hasFrozenTripDailyHire({ hireStatements: linkedStatements })) {

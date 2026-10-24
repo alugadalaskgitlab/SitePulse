@@ -412,6 +412,54 @@ describe("equipment hire bill output", () => {
     expect(summary).not.toContainEqual(["Advance Adjustment", "− ₹0.00"]);
   });
 
+  it("exports bill-local advance input, recovery, and carry details", () => {
+    const output = buildSavedEquipmentHireBillOutput({
+      billNo: "VB-EH-CARRY", vendorName: "ACME HIRE", billType: "equipment",
+      periodFrom: "2026-01-01", periodTo: "2026-02-28", netPayableAmount: 7_000, amountPaid: null,
+      hireStatements: [{
+        id: 510, equipmentId: 9, equipmentName: "Excavator · EX-01",
+        periodFrom: "2026-01-01", periodTo: "2026-01-31",
+        billingBasis: "monthly", rate: 10_000, grossAmount: 10_000, deductionAmount: 1_000, netAmount: 9_000,
+        calculationSnapshot: {
+          billingIntegration: "vb10_automatic",
+          taxRuleVersion: "hire_advance_bill_carry_02",
+          adjustments: {
+            breakdownDeduction: 1_000,
+            advanceAdjustment: 5_000,
+            advanceAdjustmentReason: "ADVANCE REF",
+            advanceRecovery: 2_000,
+          },
+          advanceCarry: {
+            advanceThisMonth: 5_000,
+            carriedIn: 0,
+            available: 5_000,
+            recovered: 2_000,
+            carriedForward: 3_000,
+          },
+          financials: {
+            grossHire: 10_000, breakdownDeduction: 1_000,
+            hsdRecovery: 0, otherDebit: 0, advanceAdjustment: 5_000, advanceRecovery: 2_000,
+            otherCredit: 0, taxableAmount: 9_000, gstRate: 0, gstAmount: 0, invoiceTotal: 9_000,
+            tdsRate: 0, tdsAmount: 0, netPayable: 7_000,
+          },
+        },
+      }],
+    });
+    expect(output?.data).toMatchObject({
+      taxRuleVersion: "hire_advance_bill_carry_02",
+      advanceAdjustment: 5_000,
+      advanceRecovery: 2_000,
+      advanceCarry: { carriedIn: 0, carriedForward: 3_000 },
+      netPayable: 7_000,
+    });
+    excelSheets.length = 0;
+    exportEquipmentHireBill(output!.data, output!.rows, "xlsx");
+    const summary = excelSheets.find(sheet => sheet.name === "Bill Summary")!.data;
+    expect(summary).toContainEqual(["Advance Adjustment this month", "₹5,000.00 (ADVANCE REF)"]);
+    expect(summary).toContainEqual(["Advance recovered", "− ₹2,000.00"]);
+    expect(summary).toContainEqual(["Advance carried forward", "₹3,000.00"]);
+  });
+
   it("retains legacy paid bill net without inventing a payment when amountPaid is absent", () => {
     const output = buildSavedEquipmentHireBillOutput({
       billNo: "VB-EH-LEGACY", vendorName: "ACME HIRE", billType: "equipment",

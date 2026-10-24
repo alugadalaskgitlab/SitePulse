@@ -70,9 +70,6 @@ beforeEach(() => {
       if (init?.method === "POST" || init?.method === "PUT") return new Response(JSON.stringify({}), { status: 200 });
       return new Response(JSON.stringify([]));
     }
-    if (url.includes("/api/vendor-bills/hire-advances/summary")) {
-      return new Response(JSON.stringify({ openingBalanceRecorded: false, balanceByPeriodTo: {} }));
-    }
     if (url.includes("/api/vendor-bills/summary")) {
       return new Response(JSON.stringify({ total: 0, totalAmount: 0, draft: 0, draftAmount: 0, verified: 0, verifiedAmount: 0, approved: 0, approvedAmount: 0, paid: 0, paidAmount: 0, gstByCategory: {}, totalGst: 0 }));
     }

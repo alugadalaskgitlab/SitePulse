@@ -109,9 +109,6 @@ beforeEach(() => {
       }
       return new Response(JSON.stringify(billListOverrideForTest || [historicalBill, itemizedEquipmentBill]));
     }
-    if (url.includes("/api/vendor-bills/hire-advances/summary")) return new Response(JSON.stringify({
-      openingBalanceRecorded: false, balanceByPeriodTo: {},
-    }));
     if (url.includes("/api/vendor-bills/summary")) return new Response(JSON.stringify({ total: 0, totalAmount: 0, draft: 0, draftAmount: 0, verified: 0, verifiedAmount: 0, approved: 0, approvedAmount: 0, paid: 0, paidAmount: 0, gstByCategory: {}, totalGst: 0 }));
     if (url.includes("/api/vendor-bills/vendor-names")) return new Response(JSON.stringify(vendorNamesForTest));
     if (url.includes("/api/vendor-bills/vendor-identities")) return new Response(JSON.stringify(billingIdentitiesForTest));
@@ -519,7 +516,6 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     await waitFor(() => expect((screen.getByTestId("button-view-daily-activity") as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByTestId("select-bill-site"));
     fireEvent.click(await screen.findByText("ALL SITES"));
-    await waitFor(() => expect(screen.getByTestId("vendor-hire-advance-balance").textContent).toContain("₹0.00"));
     fireEvent.click(screen.getByTestId("button-save-bill"));
     await waitFor(() => expect(vendorBillWrites.some(write => write.method === "PUT")).toBe(true));
     const payload = vendorBillWrites.find(write => write.method === "PUT")!.body;

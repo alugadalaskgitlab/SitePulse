@@ -306,7 +306,7 @@ describe("VB-09 server itemized equipment hire", () => {
     expect(fx.txRows).toHaveLength(0);
   });
 
-  it("posts the recomputed vendor-advance recovery and freezes the approved financial snapshot", async () => {
+  it("approves the saved bill-local advance without reading or writing the dormant ledger", async () => {
     const newTaxBill = {
       id: 108,
       billType: "EQUIPMENT",
@@ -318,7 +318,7 @@ describe("VB-09 server itemized equipment hire", () => {
       totalAmount: 29_032.26,
       amountPaid: null,
       adjustmentAmount: 0,
-      additionalAdjustments: [],
+      additionalAdjustments: [{ label: "RETENTION", amount: -1_000 }],
       gstRateEquipment: 0,
       tdsRate: 0,
     };
@@ -334,16 +334,27 @@ describe("VB-09 server itemized equipment hire", () => {
       netAmount: 29_032.26,
       calculationSnapshot: {
         billingIntegration: "vb10_automatic",
-        taxRuleVersion: "hire_advance_tax_01",
+        taxRuleVersion: "hire_advance_bill_carry_02",
         financials: {
           grossHire: 29_032.26,
           breakdownDeduction: 0,
           hsdRecovery: 0,
           otherDebit: 0,
-          advanceRecovery: 0,
+          advanceAdjustment: 50_000,
+          advanceRecovery: 20_000,
           otherCredit: 0,
+          taxableAmount: 29_032.26,
+          netPayable: 9_032.26,
           gstRate: 0,
           tdsRate: 0,
+        },
+        adjustments: { advanceAdjustment: 50_000, advanceRecovery: 20_000 },
+        advanceCarry: {
+          advanceThisMonth: 50_000,
+          carriedIn: 0,
+          available: 50_000,
+          recovered: 20_000,
+          carriedForward: 30_000,
         },
       },
     };
@@ -351,12 +362,6 @@ describe("VB-09 server itemized equipment hire", () => {
       [newTaxBill],
       [statement],
       [{ category: "equipment", amount: 29_032.26 }],
-      [
-        { vendorId: 7, kind: "advance_paid", amount: "50000", effectiveDate: "2026-08-01" },
-        { vendorId: 7, kind: "advance_paid", amount: "60000", effectiveDate: "2026-09-01" },
-      ],
-      [{ id: 108, status: "verified" }],
-      [statement],
     );
     fx.lastBill = { ...newTaxBill, status: "approved", netPayableAmount: 0 };
     const storage = new DatabaseStorage();
@@ -364,36 +369,10 @@ describe("VB-09 server itemized equipment hire", () => {
     const approved = await storage.updateVendorBillStatus(108, "approved", "reviewer");
 
     expect(approved).toMatchObject({ id: 108, status: "approved" });
-    const ledgerPosting = fx.writes.find(write =>
-      write.kind === "insert" && write.value.kind === "recovery");
-    expect(ledgerPosting?.value).toMatchObject({
-      vendorId: 7,
-      siteId: 3,
-      kind: "recovery",
-      amount: "29032.26",
-      effectiveDate: "2026-08-31",
-      billId: 108,
-      hireStatementId: 508,
-    });
-    const frozenStatement = fx.writes.find(write => write.kind === "update" && write.value.calculationSnapshot);
-    expect(frozenStatement?.value.calculationSnapshot).toMatchObject({
-      taxRuleVersion: "hire_advance_tax_01",
-      adjustments: { advanceRecovery: 29_032.26 },
-      advanceLedgerProposal: {
-        openingBalance: 50_000,
-        recovery: 29_032.26,
-        closingBalance: 20_967.74,
-        posted: true,
-        approvedBy: "REVIEWER",
-      },
-      financials: {
-        taxableAmount: 29_032.26,
-        advanceRecovery: 29_032.26,
-        netPayable: 0,
-      },
-    });
+    expect(fx.writes.some(write => write.kind === "insert")).toBe(false);
+    expect(fx.writes.filter(write => write.kind === "update")).toHaveLength(1);
     expect(fx.writes.find(write => write.kind === "update" && write.value.status === "approved")?.value)
-      .toMatchObject({ netPayableAmount: 0, amountPaid: null });
+      .toMatchObject({ netPayableAmount: 8_032.26, amountPaid: null });
   });
 
   it("keeps linked legacy equipment item approval on its established tax path", async () => {
