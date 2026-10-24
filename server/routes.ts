@@ -73,6 +73,13 @@ import { classifyArrangementEdit } from "@shared/executionState";
 import { arrangementTripRatesSchema } from "@shared/arrangementTripRates";
 import { appendArrangementStatusChange, arrangementStatusAsOf, hasRecordedArrangementStatusChange, isValidArrangementEffectiveDate } from "@shared/arrangementStatusHistory";
 import { computeDieselReceiptState } from "@shared/dieselReceiptStatus";
+import {
+  equipmentActivityAllocations as equipmentActivityAllocationsTable,
+  equipmentActivitySegments as equipmentActivitySegmentsTable,
+  equipmentActivitySegmentBoqItems as equipmentActivitySegmentBoqItemsTable,
+  equipmentMaster as equipmentMasterTable,
+  materialUomConversions as materialUomConversionsTable,
+} from "@shared/schema";
 import { validateFulfilment } from "@shared/requirementFulfilment";
 import { validateOutcomeInput, resolveCarryTargetDate, buildCarryForwardPlan, buildOutcomeRecord, computeExecutionComparison, businessToday } from "@shared/planOutcome";
 import { syncArrangementBarAllocations } from "./arrangementAllocationSync";
@@ -122,6 +129,7 @@ import { canonicalizeUnit } from "@shared/boqNormalise";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
+import { normalizedEquipmentTypeName, plannedHoursInDateRange } from "./dprActualTheoretical";
 import { aggregateGstBreakdown, computeBillGstByCategory, type GstCategory } from "@shared/vendor-bill-gst";
 import { requireAuth, isPublicApiPath, isOptionalAuthPath, optionalAuth, lookupSessionFromCookie, loadUserPermissionsMatrix } from "./auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
@@ -19272,7 +19280,7 @@ export async function registerRoutes(
         return { ...item, materials: cleanedRows, materialSetupWarning: null, isProgrammed: barItemIds.has(item.id) };
       });
 
-      return { items, bars, project, expandedItems, excludedCount: allBoqItems.length - items.length };
+      return { items, bars, project, expandedItems, allBoqItems, excludedCount: allBoqItems.length - items.length };
   }
 
   // BOM demand for the whole project
@@ -19309,6 +19317,580 @@ export async function registerRoutes(
     } catch (err) {
       console.error("GET /api/boq/projects/:id/bom:", err);
       res.status(500).json({ error: "Failed to fetch BOM data" });
+    }
+  });
+
+  // Phase 1 equipment reconciliation. This endpoint is read-only and uses the
+  // same BOM demand engine and diesel comparison builder as the existing reports.
+  app.get("/api/reports/dpr-actual-vs-theoretical", async (req, res) => {
+    const validDate = (value: unknown): value is string =>
+      typeof value === "string" &&
+      /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+      !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) &&
+      new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+    try {
+      if (!assertView(req, res, "site_dprs")) return;
+      if (!assertDieselOrStoresView(req, res)) return;
+
+      const projectId = Number(req.query.projectId);
+      const from = req.query.from;
+      const to = req.query.to;
+      if (!Number.isSafeInteger(projectId) || projectId <= 0) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      if (!validDate(from) || !validDate(to) || from > to) {
+        return res.status(400).json({ error: "Valid from/to dates are required" });
+      }
+
+      const bom = await computeProjectBom(projectId);
+      const project = bom.project;
+      if (!project) return res.status(404).json({ error: "BOQ project not found" });
+      const allItems = bom.allBoqItems as any[];
+      const itemById = new Map<number, any>(allItems.map(item => [Number(item.id), item]));
+      const itemIds = Array.from(itemById.keys());
+      const itemIdSet = new Set(itemIds);
+      const sites = await storage.getSites();
+      const projectSite = project.siteId != null
+        ? sites.find(site => site.id === project.siteId)?.name ?? null
+        : null;
+      const permittedSites = await getPermittedSiteNames(req);
+      if (
+        permittedSites !== null &&
+        (!projectSite || !siteMatchesPermitted(projectSite, permittedSites))
+      ) {
+        return res.status(403).json({ error: "Access denied or BOQ project has no assigned site" });
+      }
+
+      const [arrangementsRaw, arrangementAllocations, planningTypes] = await Promise.all([
+        storage.getEarthworkArrangements(projectId),
+        storage.getArrangementProgrammeAllocationsForProject(projectId),
+        storage.getPlanningEquipmentTypes(true),
+      ]);
+      const allocationsByArrangement = new Map<number, Array<{ programmeBarId: number; boqItemId: number; qty: number }>>();
+      for (const allocation of arrangementAllocations) {
+        const list = allocationsByArrangement.get(allocation.arrangementId) ?? [];
+        list.push({
+          programmeBarId: allocation.programmeBarId,
+          boqItemId: allocation.boqItemId,
+          qty: Number(allocation.allocatedQty) || 0,
+        });
+        allocationsByArrangement.set(allocation.arrangementId, list);
+      }
+      const arrangements = arrangementsRaw.map(arrangement => ({
+        ...arrangement,
+        programmeAllocations: allocationsByArrangement.get(arrangement.id) ?? [],
+      })) as any;
+      const planTypeById = new Map<number, string>(planningTypes.map(type => [type.id, type.name]));
+      const normType = (value: unknown) =>
+        normalizedEquipmentTypeName(canonicalizeMachineType(String(value ?? "")));
+      const planTypeIdsByName = new Map<string, number[]>();
+      for (const type of planningTypes) {
+        const key = normType(type.name);
+        planTypeIdsByName.set(key, [...(planTypeIdsByName.get(key) ?? []), type.id]);
+      }
+      const expandedById = new Map<number, any>(
+        (bom.expandedItems as any[]).map(item => [Number(item.id), item]),
+      );
+      const bars = bom.bars as any[];
+      const barsByItem = new Map<number, any[]>();
+      const barById = new Map<number, any>();
+      for (const bar of bars) {
+        const list = barsByItem.get(bar.boqItemId) ?? [];
+        list.push(bar);
+        barsByItem.set(bar.boqItemId, list);
+        barById.set(bar.id, bar);
+      }
+      const plannedByItemType = new Map<string, {
+        itemId: number; typeKey: string; typeName: string; hours: number | null;
+      }>();
+      const planTypeForRecipe = (item: any, engineName: string) => {
+        const recipes = (item?.equipment ?? []).filter((recipe: any) =>
+          normType(recipe.equipmentName) === normType(engineName),
+        );
+        const explicitIds = Array.from(new Set<number>(
+          recipes.map((recipe: any) => Number(recipe.planningEquipmentTypeId))
+            .filter((id: number) => Number.isSafeInteger(id) && id > 0),
+        ));
+        if (explicitIds.length === 1) {
+          const id = explicitIds[0];
+          return {
+            key: `type:${id}`,
+            name: planTypeById.get(id) ?? engineName,
+          };
+        }
+        const matchingIds = planTypeIdsByName.get(normType(engineName)) ?? [];
+        if (matchingIds.length === 1) {
+          const id = matchingIds[0];
+          return { key: `type:${id}`, name: planTypeById.get(id) ?? engineName };
+        }
+        const key = normType(engineName);
+        return { key: `name:${key}`, name: engineName };
+      };
+
+      const totalMonths = Number(project.totalMonths) || 12;
+      for (const item of Array.from(expandedById.values())) {
+        const itemBars = barsByItem.get(item.id) ?? [];
+        const demand = calculateBomDemand([item], itemBars, totalMonths, { arrangements });
+        for (const row of demand.equipment) {
+          const type = planTypeForRecipe(item, row.equipmentName);
+          const hasMonthPhasing = itemBars.length > 0 &&
+            Object.keys(row.monthlyHours ?? {}).length > 0 &&
+          !!project.startDate;
+          const hours = hasMonthPhasing
+            ? plannedHoursInDateRange(row.monthlyHours, from, to, project.startDate)
+            : null;
+          const key = `${item.id}|${type.key}`;
+          plannedByItemType.set(key, {
+            itemId: item.id,
+            typeKey: type.key,
+            typeName: type.name,
+            hours,
+          });
+        }
+      }
+
+      const rawLogs = await db.select({
+        id: equipmentLogs.id,
+        dprId: equipmentLogs.dprId,
+        dprDate: dprsTable.date,
+        dprSite: dprsTable.site,
+        dprProjectId: dprsTable.boqProjectId,
+        machine: equipmentLogs.machine,
+        equipmentId: equipmentLogs.equipmentId,
+        equipmentMasterName: equipmentMasterTable.name,
+        equipmentMasterType: equipmentMasterTable.equipmentType,
+        hoursWorked: equipmentLogs.hoursWorked,
+        diesel: equipmentLogs.diesel,
+        directBoqItemId: equipmentLogs.boqItemId,
+      })
+        .from(equipmentLogs)
+        .innerJoin(dprsTable, eq(equipmentLogs.dprId, dprsTable.id))
+        .leftJoin(equipmentMasterTable, eq(equipmentLogs.equipmentId, equipmentMasterTable.id))
+        .where(and(
+          gte(dprsTable.date, from),
+          lte(dprsTable.date, to),
+          eq(dprsTable.dprStatus, "submitted"),
+          eq(dprsTable.isSuperseded, false),
+          eq(dprsTable.isCancelled, false),
+          eq(dprsTable.isDeleted, false),
+        ));
+      const siteLogs = projectSite
+        ? rawLogs.filter(row => siteMatchesPermitted(row.dprSite, [projectSite]))
+        : rawLogs;
+      const logIds = siteLogs.map(row => row.id);
+      const [segments, segmentLinks, legacyAllocations] = logIds.length
+        ? await Promise.all([
+            db.select().from(equipmentActivitySegmentsTable)
+              .where(drizzleInArray(equipmentActivitySegmentsTable.equipmentLogId, logIds)),
+            db.select().from(equipmentActivitySegmentBoqItemsTable)
+              .where(drizzleInArray(equipmentActivitySegmentBoqItemsTable.segmentId,
+                db.select({ id: equipmentActivitySegmentsTable.id })
+                  .from(equipmentActivitySegmentsTable)
+                  .where(drizzleInArray(equipmentActivitySegmentsTable.equipmentLogId, logIds)))),
+            db.select().from(equipmentActivityAllocationsTable)
+              .where(drizzleInArray(equipmentActivityAllocationsTable.equipmentLogId, logIds)),
+          ])
+        : [[], [], []] as any;
+
+      const segmentLinksById = new Map<number, any[]>();
+      for (const link of segmentLinks as any[]) {
+        const list = segmentLinksById.get(link.segmentId) ?? [];
+        list.push(link);
+        segmentLinksById.set(link.segmentId, list);
+      }
+      const segmentsByLog = new Map<number, any[]>();
+      for (const segment of segments as any[]) {
+        const list = segmentsByLog.get(segment.equipmentLogId) ?? [];
+        list.push(segment);
+        segmentsByLog.set(segment.equipmentLogId, list);
+      }
+      const legacyByLog = new Map<number, any[]>();
+      for (const allocation of legacyAllocations as any[]) {
+        const list = legacyByLog.get(allocation.equipmentLogId) ?? [];
+        list.push(allocation);
+        legacyByLog.set(allocation.equipmentLogId, list);
+      }
+      const logs = siteLogs.filter(log => {
+        if (log.dprProjectId != null) return Number(log.dprProjectId) === projectId;
+        if (log.directBoqItemId != null && itemIdSet.has(Number(log.directBoqItemId))) return true;
+        const hasExplicitProjectItem =
+          (segmentsByLog.get(log.id) ?? []).some(segment =>
+            (segmentLinksById.get(segment.id) ?? [])
+              .some(link => itemIdSet.has(Number(link.boqItemId))),
+          ) ||
+          (legacyByLog.get(log.id) ?? [])
+            .some(allocation => itemIdSet.has(Number(allocation.boqItemId)));
+        return hasExplicitProjectItem;
+      });
+      const actualByItemType = new Map<string, {
+        itemId: number; typeKey: string; typeName: string; hours: number; recordIds: Set<number>;
+        stretches: Map<string, { programmeBarId: number | null; label: string; hours: number }>;
+        unmappedType: boolean;
+      }>();
+      const unlinkedLogIds = new Set<number>();
+      let unlinkedEquipmentHours = 0;
+      const equipmentTypeForActual = (itemId: number, log: any) => {
+        const item = itemById.get(itemId);
+        const recipes = (item?.equipment ?? []) as any[];
+        const directlyAssigned = recipes
+          .filter(recipe => recipe.equipmentMasterId != null &&
+            Number(recipe.equipmentMasterId) === Number(log.equipmentId) &&
+            recipe.planningEquipmentTypeId != null)
+          .map(recipe => Number(recipe.planningEquipmentTypeId));
+        const directIds = Array.from(new Set(directlyAssigned));
+        if (directIds.length === 1) {
+          const id = directIds[0];
+          return { key: `type:${id}`, name: planTypeById.get(id) ?? log.machine, unmapped: false };
+        }
+        const labels = [log.equipmentMasterType, log.equipmentMasterName, log.machine]
+          .filter((value: unknown) => typeof value === "string" && String(value).trim());
+        const matchedIds = Array.from(new Set(labels.flatMap((label: unknown) =>
+          planTypeIdsByName.get(normType(label)) ?? [],
+        )));
+        if (matchedIds.length === 1) {
+          const id = matchedIds[0];
+          return { key: `type:${id}`, name: planTypeById.get(id) ?? log.machine, unmapped: false };
+        }
+        const exactRecipeIds = Array.from(new Set(recipes
+          .filter(recipe => labels.some((label: unknown) =>
+            normType(label) === normType(recipe.equipmentName),
+          ))
+          .map(recipe => Number(recipe.planningEquipmentTypeId))
+          .filter((id: number) => Number.isSafeInteger(id) && id > 0)));
+        if (exactRecipeIds.length === 1) {
+          const id = exactRecipeIds[0];
+          return { key: `type:${id}`, name: planTypeById.get(id) ?? log.machine, unmapped: false };
+        }
+        const display = String(log.equipmentMasterName || log.machine || `Equipment #${log.equipmentId ?? "unidentified"}`);
+        const identity = log.equipmentId != null
+          ? `equipment:${log.equipmentId}`
+          : `name:${normType(display)}`;
+        return { key: `unmapped:${identity}`, name: `${display} — type not linked`, unmapped: true };
+      };
+      const addActual = (log: any, itemId: number, programmeBarId: number | null, hoursValue: unknown) => {
+        const hours = Number(hoursValue);
+        if (!Number.isFinite(hours) || hours <= 0 || !itemIdSet.has(itemId)) return false;
+        const type = equipmentTypeForActual(itemId, log);
+        const key = `${itemId}|${type.key}`;
+        let group = actualByItemType.get(key);
+        if (!group) {
+          group = {
+            itemId, typeKey: type.key, typeName: type.name, hours: 0,
+            recordIds: new Set(), stretches: new Map(), unmappedType: type.unmapped,
+          };
+          actualByItemType.set(key, group);
+        }
+        group.hours += hours;
+        group.recordIds.add(log.id);
+        const bar = programmeBarId == null ? null : barById.get(programmeBarId);
+        const stretchKey = bar ? `bar:${bar.id}` : "unlinked-stretch";
+        const stretchLabel = bar
+          ? [bar.reachLabel, bar.chainageFrom != null ? `${bar.chainageFrom}–${bar.chainageTo ?? ""}` : null]
+              .filter(Boolean).join(" · ") || `Programme bar #${bar.id}`
+          : "No recognized programme stretch";
+        const stretch = group.stretches.get(stretchKey) ?? {
+          programmeBarId: bar?.id ?? null, label: stretchLabel, hours: 0,
+        };
+        stretch.hours += hours;
+        group.stretches.set(stretchKey, stretch);
+        return true;
+      };
+      for (const log of logs as any[]) {
+        let coveredHours = 0;
+        const logSegments = segmentsByLog.get(log.id) ?? [];
+        const logAllocations = legacyByLog.get(log.id) ?? [];
+        if (logSegments.length > 0) {
+          for (const segment of logSegments) {
+            const links = segmentLinksById.get(segment.id) ?? [];
+            const linkedToProject = links.filter(link => itemIdSet.has(Number(link.boqItemId)));
+            if (linkedToProject.length === 0) {
+              const segmentHours = Number(segment.hoursWorked) || 0;
+              if (segmentHours > 0) {
+                unlinkedEquipmentHours += segmentHours;
+                unlinkedLogIds.add(log.id);
+              }
+              continue;
+            }
+            const segmentHours = Number(segment.hoursWorked) || 0;
+            coveredHours += segmentHours;
+            for (const link of linkedToProject) {
+              addActual(log, Number(link.boqItemId), link.programmeBarId ?? null, segmentHours);
+            }
+          }
+        } else if (logAllocations.length > 0) {
+          for (const allocation of logAllocations) {
+            const allocationHours = Number(allocation.hoursWorked) || 0;
+            if (itemIdSet.has(Number(allocation.boqItemId))) {
+              if (addActual(log, Number(allocation.boqItemId), allocation.programmeBarId ?? null, allocationHours)) {
+                coveredHours += allocationHours;
+              }
+            } else if (allocationHours > 0) {
+              unlinkedEquipmentHours += allocationHours;
+              unlinkedLogIds.add(log.id);
+            }
+          }
+        } else if (log.directBoqItemId != null && itemIdSet.has(Number(log.directBoqItemId))) {
+          coveredHours = Number(log.hoursWorked) || 0;
+          addActual(log, Number(log.directBoqItemId), null, coveredHours);
+        } else {
+          const hours = Number(log.hoursWorked) || 0;
+          if (hours > 0) {
+            unlinkedEquipmentHours += hours;
+            unlinkedLogIds.add(log.id);
+          }
+        }
+        const parentHours = Number(log.hoursWorked) || 0;
+        if (parentHours > coveredHours + 0.001 && (logSegments.length > 0 || logAllocations.length > 0)) {
+          unlinkedEquipmentHours += parentHours - coveredHours;
+          unlinkedLogIds.add(log.id);
+        }
+      }
+
+      const reconciliationRows = new Map<string, any>();
+      for (const planned of Array.from(plannedByItemType.values())) {
+        const key = `${planned.itemId}|${planned.typeKey}`;
+        const actual = actualByItemType.get(key);
+        const item = itemById.get(planned.itemId);
+        const usedHours = actual ? actual.hours : null;
+        const balanceHours = planned.hours != null && usedHours != null
+          ? planned.hours - usedHours
+          : null;
+        reconciliationRows.set(key, {
+          boqItemId: planned.itemId,
+          itemCode: item?.itemCode ?? null,
+          itemName: item?.itemName ?? item?.displayName ?? item?.description ?? `BOQ item #${planned.itemId}`,
+          unit: item?.unit ?? null,
+          equipmentType: planned.typeName,
+          plannedHours: planned.hours,
+          usedHours,
+          balanceHours,
+          balanceStatus: actual
+            ? (balanceHours == null ? "INCOMPLETE — missing planned hours" : "Comparable")
+            : "INCOMPLETE — no linked usage record",
+          actualRecordCount: actual?.recordIds.size ?? 0,
+          stretchDetails: actual ? Array.from(actual.stretches.values()) : [],
+          incomplete: planned.hours == null || !actual,
+        });
+      }
+      for (const actual of Array.from(actualByItemType.values())) {
+        const key = `${actual.itemId}|${actual.typeKey}`;
+        if (reconciliationRows.has(key)) {
+          const row = reconciliationRows.get(key);
+          row.usedHours = actual.hours;
+          row.balanceHours = row.plannedHours == null ? null : row.plannedHours - actual.hours;
+          row.actualRecordCount = actual.recordIds.size;
+          row.stretchDetails = Array.from(actual.stretches.values());
+          row.balanceStatus = actual.unmappedType
+            ? "INCOMPLETE — actual machine type not linked"
+            : row.plannedHours == null
+              ? "INCOMPLETE — missing planned hours"
+              : "Comparable";
+          row.incomplete = row.balanceStatus !== "Comparable";
+        } else {
+          const item = itemById.get(actual.itemId);
+          reconciliationRows.set(key, {
+            boqItemId: actual.itemId,
+            itemCode: item?.itemCode ?? null,
+            itemName: item?.itemName ?? item?.displayName ?? item?.description ?? `BOQ item #${actual.itemId}`,
+            unit: item?.unit ?? null,
+            equipmentType: actual.typeName,
+            plannedHours: null,
+            usedHours: actual.hours,
+            balanceHours: null,
+            balanceStatus: actual.unmappedType
+              ? "INCOMPLETE — actual machine type not linked"
+              : "INCOMPLETE — no equipment recipe / plan row",
+            actualRecordCount: actual.recordIds.size,
+            stretchDetails: Array.from(actual.stretches.values()),
+            incomplete: true,
+          });
+        }
+      }
+      const equipmentRows = Array.from(reconciliationRows.values())
+        .sort((a, b) =>
+          String(a.itemCode ?? "").localeCompare(String(b.itemCode ?? "")) ||
+          String(a.itemName).localeCompare(String(b.itemName)) ||
+          String(a.equipmentType).localeCompare(String(b.equipmentType)),
+        );
+
+      const isActiveArrangement = (arrangement: any) =>
+        ["approved", "mobilisation_pending", "in_progress", "on_hold"].includes(String(arrangement.status ?? "").toLowerCase());
+      const arrangementDieselScopes = arrangementsRaw.filter((arrangement: any) => {
+        if (!isActiveArrangement(arrangement)) return false;
+        const responsibility = String(arrangement.dieselResponsibility ?? "").toLowerCase();
+        const componentResponsibility = String(arrangement.components?.diesel_fuel ?? "").toLowerCase();
+        return ["agency", "mixed"].includes(responsibility) ||
+          ["agency", "mixed"].includes(componentResponsibility);
+      });
+      const dieselWithoutItemLinkCount = (logs as any[]).filter(log =>
+        Number(log.diesel) > 0 &&
+        (log.directBoqItemId == null || !itemIdSet.has(Number(log.directBoqItemId))),
+      ).length;
+
+      const isAdminOrOwner = !!(req.authUser?.isAdmin || req.authUser?.isOwner);
+      const hasSiteMaterialsAccess = isAdminOrOwner || !!(
+        req.authPermissions?.site_materials?.view ||
+        req.authPermissions?.site_materials?.create ||
+        req.authPermissions?.site_materials?.edit
+      );
+      const hasPlantProductionAccess = isAdminOrOwner || !!(
+        req.authPermissions?.plant_production?.view ||
+        req.authPermissions?.plant_production?.create ||
+        req.authPermissions?.plant_production?.edit
+      );
+
+      let dispatchGap: any = {
+        count: null,
+        unit: "dispatch records",
+        status: "INCOMPLETE — plant production access required",
+        note: "Dispatches have no BOQ-item or programme-stretch link. Count is unavailable without plant production access.",
+      };
+      if (hasPlantProductionAccess) {
+        const visiblePlants = await permittedReportPlants(req);
+        let dispatchRows: any[] = [];
+        if (visiblePlants === null) {
+          dispatchRows = await db.select({ id: truckDispatchesTable.id })
+            .from(truckDispatchesTable)
+            .where(and(gte(truckDispatchesTable.date, from), lte(truckDispatchesTable.date, to)));
+        } else if (visiblePlants.size > 0) {
+          dispatchRows = await db.select({ id: truckDispatchesTable.id, plantName: truckDispatchesTable.plantName })
+            .from(truckDispatchesTable)
+            .where(and(
+              gte(truckDispatchesTable.date, from),
+              lte(truckDispatchesTable.date, to),
+              drizzleInArray(truckDispatchesTable.plantName, Array.from(visiblePlants)),
+            ));
+        }
+        dispatchGap = {
+          count: dispatchRows.length,
+          unit: "dispatch records",
+          status: "INCOMPLETE — needs BOQ / stretch linking",
+          note: visiblePlants !== null && visiblePlants.size === 0
+            ? "No configured plant is visible in this user's site scope; no dispatch rows were counted."
+            : "Count covers permitted plants in the selected date range, not dispatches assigned to this BOQ project. No plant-to-project link was inferred.",
+        };
+      }
+
+      let aggregateProfileGap: any = {
+        count: null,
+        unit: "linked aggregate trips",
+        status: "INCOMPLETE — site materials access required",
+        note: "Count is unavailable without site-materials access.",
+      };
+      if (hasSiteMaterialsAccess && itemIds.length > 0) {
+        const aggregateItemIds = new Set<number>();
+        for (const item of allItems) {
+          const category = String(item.workCategory ?? "").toLowerCase();
+          const classified = classifyWorkType(String(item.description ?? ""), String(item.unit ?? ""));
+          if (category === "gsb" || category === "wmm" || classified === "gsb" || classified === "wmm") {
+            aggregateItemIds.add(Number(item.id));
+          }
+        }
+        const trips = aggregateItemIds.size > 0
+          ? await db.select().from(siteMaterialTrips)
+              .where(and(
+                gte(siteMaterialTrips.date, from),
+                lte(siteMaterialTrips.date, to),
+                drizzleInArray(siteMaterialTrips.boqItemId, Array.from(aggregateItemIds)),
+                eq(siteMaterialTrips.isCancelled, false),
+                eq(siteMaterialTrips.isDeleted, false),
+              ))
+          : [];
+        const siteTrips = projectSite
+          ? trips.filter(trip => siteMatchesPermitted(trip.site, [projectSite]))
+          : trips;
+        const materialMasterRows = await storage.getPlantMaterials();
+        const materialIdByName = new Map<string, number>();
+        for (const material of materialMasterRows) {
+          const aliases: string[] = [];
+          try {
+            const parsed = typeof material.aliases === "string" ? JSON.parse(material.aliases) : material.aliases;
+            if (Array.isArray(parsed)) aliases.push(...parsed.map(String));
+          } catch { /* malformed alias lists do not create a match */ }
+          for (const label of [material.name, ...aliases]) {
+            materialIdByName.set(normalizeMaterialLabel(String(label)).toLowerCase(), material.id);
+          }
+        }
+        const conversions = await db.select().from(materialUomConversionsTable)
+          .where(and(
+            eq(materialUomConversionsTable.conversionType, "loose_to_compacted"),
+            eq(materialUomConversionsTable.isActive, 1),
+          ));
+        const profiledMaterialIds = new Set(conversions.map(row => row.materialId));
+        const missingProfileTrips = siteTrips.filter(trip => {
+          const materialId = materialIdByName.get(normalizeMaterialLabel(trip.material).toLowerCase());
+          return materialId == null || !profiledMaterialIds.has(materialId);
+        });
+        aggregateProfileGap = {
+          count: missingProfileTrips.length,
+          unit: "linked aggregate trips",
+          status: siteTrips.length === 0
+            ? "INCOMPLETE — no linked GSB/WMM trips to evaluate"
+            : "INCOMPLETE — needs material linking/config",
+          note: `${siteTrips.length} explicitly BOQ-linked GSB/WMM trip(s) were evaluated in the selected period. ${missingProfileTrips.length} have no active loose-to-compacted profile; unmatched material names are included as needing configuration.`,
+        };
+      }
+
+      const dieselDateRows = await storage.getDieselComparisonReport(from, to);
+      const dateWise = dieselDateRows.map((row: any) => ({
+        date: row.date,
+        planned: row.totalPlanned,
+        purchased: row.totalPurchased ?? null,
+        actual: row.totalActualIssued ?? null,
+      }));
+      const dieselSources = await storage.getDieselComparisonEquipmentSources(from, to);
+      const dieselEquipmentRows = buildEquipmentComparison({ ...dieselSources, dateWise }, from, to);
+      const dieselTotals = dateWise.reduce((totals, row: any) => ({
+        planned: totals.planned + (Number(row.planned) || 0),
+        purchased: totals.purchased + (Number(row.purchased) || 0),
+        actual: totals.actual + (Number(row.actual) || 0),
+      }), { planned: 0, purchased: 0, actual: 0 });
+
+      res.json({
+        project: {
+          id: project.id,
+          name: project.name,
+          startDate: project.startDate ?? null,
+          site: projectSite,
+        },
+        period: { from, to },
+        equipmentRows,
+        dieselComparison: { rows: dieselEquipmentRows, totals: dieselTotals },
+        incompleteAttribution: {
+          bituminousDispatches: dispatchGap,
+          arrangementOwnedDiesel: {
+            count: arrangementDieselScopes.length,
+            unit: "active agency/mixed diesel-responsibility arrangements",
+            status: "INCOMPLETE — actual diesel is not linked to arrangement / BOQ / stretch",
+            unlinkedDieselLogCount: dieselWithoutItemLinkCount,
+            note: "Count is qualifying active arrangements, not a fuel-transaction count. The separate log count is site DPR equipment rows with diesel but no direct BOQ-item link; they are not asserted to belong to these arrangements.",
+          },
+          aggregateCompactionProfiles: aggregateProfileGap,
+          equipmentHours: {
+            unlinkedLogCount: unlinkedLogIds.size,
+            unlinkedHours: unlinkedEquipmentHours,
+            status: unlinkedLogIds.size > 0
+              ? "INCOMPLETE — some equipment hours have no BOQ-item link"
+              : "No unlinked equipment hours found in the selected period",
+          },
+          itemsWithoutEquipmentRecipe: allItems.filter(item =>
+            item.includedInPlanning !== false &&
+            !(item.equipment ?? []).length,
+          ).length,
+          plannedRowsWithoutMonthPhasing: Array.from(plannedByItemType.values())
+            .filter(row => row.hours == null).length,
+        },
+        notes: [
+          "Equipment planned hours reuse the current Work Programme BOM engine and arrangement exclusions.",
+          "Planned hours are phased monthly by that engine; selected date ranges prorate within each programme-month bucket.",
+          "Actual machine types are matched only by explicit recipe/master links or exact normalized names; unmatched types remain incomplete.",
+          "No dispatch, arrangement, plant, equipment, or BOQ links were created or inferred.",
+          "Diesel values and gap flags come from the existing equipment comparison module and are not allocated to BOQ items.",
+        ],
+      });
+    } catch (err) {
+      console.error("GET /api/reports/dpr-actual-vs-theoretical:", err);
+      res.status(500).json({ error: "Failed to build DPR actual-vs-theoretical report" });
     }
   });
 
