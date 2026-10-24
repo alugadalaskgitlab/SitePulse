@@ -32,7 +32,7 @@ import { siteMatchesPermitted } from "@shared/siteName";
 import { filterFinancialBills, billPaymentPosition, getBillFinancialTotals, type BillScope } from "@shared/vendorBillFinancialReport";
 import { VendorBillTaxesSummary } from "@/components/vendor-bills/VendorBillTaxesSummary";
 import { defaultConvertedQuantity, isDifferentBillingUnit, matchingRateCardsForGroup, normalizeRateCardPart, selectAutoMaterialRateConversion, type RateCardUnitOption, type VendorRateCardRecord } from "@/lib/vendorBillRateSelection";
-import { autoBillItemIdentity, availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateHireGroup, duplicateBillItemPayload, mergeOtherBillItems, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, uniqueDuplicateBillMatches, type DuplicateBillItemMatch, type HireActivity, type HireBillingBasis } from "@shared/hireBilling";
+import { autoBillItemIdentity, availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateHireGroup, calculateLegacyEquipmentHireFinancials, duplicateBillItemPayload, mergeOtherBillItems, monthlyHireSegments, normalizeHireActivities, proposeHireAdvanceRecoveries, rawAutoItemCoveredByHireGroup, uniqueDuplicateBillMatches, type DuplicateBillItemMatch, type HireActivity, type HireBillingBasis } from "@shared/hireBilling";
 import { calculationTermsForBill as savedCalculationTermsForBill, type BillHireTerms } from "@/components/vendor-bills/hireBillTerms";
 import type { EquipmentPerformanceReport } from "@shared/equipmentPerformance";
 import { vendorHireEquipmentLabel as formatEquipmentOptionLabel } from "@/components/trip-master-selection";
@@ -185,6 +185,10 @@ type HireGroup = BillHireTerms & {
   breakdownHoursPerDay?: number; breakdownGraceDays?: number;
   projectSite?: string;
   adjustments?: { otherDebit?: number; otherDebitReason?: string; advanceAdjustment?: number; advanceAdjustmentReason?: string; otherCredit?: number; otherCreditReason?: string };
+};
+type VendorHireAdvanceSummary = {
+  openingBalanceRecorded: boolean;
+  balanceByPeriodTo: Record<string, number>;
 };
 
 const HIRE_BASIS_LABELS: Record<HireBillingBasis, string> = {
@@ -660,6 +664,7 @@ export default function VendorBills() {
     if (Number.isSafeInteger(id) && id > 0) { setSelectedBillId(id); setView("detail"); }
   }, []);
   const [editingBillId, setEditingBillId] = useState<number | null>(null);
+  const [editingBillingVendorId, setEditingBillingVendorId] = useState<number | null>(null);
   const [editingBillStatus, setEditingBillStatus] = useState("draft");
   const [editingBillOriginalNo, setEditingBillOriginalNo] = useState("");
   const { rememberCalendar, readCalendars } = useWholeBillCalendarSnapshots();
@@ -730,6 +735,10 @@ export default function VendorBills() {
   const [dateGroupExpansionMode, setDateGroupExpansionMode] = useState<"auto" | "expanded" | "collapsed">("auto");
   const [dateGroupExpansionOverrides, setDateGroupExpansionOverrides] = useState<Record<string, boolean>>({});
   const [hireGroups, setHireGroups] = useState<HireGroup[]>([]);
+  const [advanceEntryKind, setAdvanceEntryKind] = useState<"opening_balance" | "advance_paid">("advance_paid");
+  const [advanceEntryAmount, setAdvanceEntryAmount] = useState("");
+  const [advanceEntryDate, setAdvanceEntryDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [advanceEntryReference, setAdvanceEntryReference] = useState("");
   const monthlyHireSeedRef = useRef("");
   const [monthlyHireSeedKey, setMonthlyHireSeedKey] = useState("");
   const contractorAdvanceSeedRef = useRef("");
@@ -745,6 +754,7 @@ export default function VendorBills() {
   // reloading a group's details must never switch the editor into the new
   // itemized flow mid-edit.
   const isHistoricalHireEdit = editingBillId !== null && historicalHireBillId === editingBillId;
+  const useAdvanceTaxRules = !isHistoricalHireEdit || editingBillStatus === "draft";
 
 
   useEffect(() => {
@@ -865,7 +875,59 @@ export default function VendorBills() {
   });
   const isHireVendorDisplay = ["equipment", "all"].includes(billType);
   const selectedHireVendorLabel = vendorBillingIdentityLabel(vendorName, billingIdentities.data);
+  const selectedHireVendorId = matchingBillingIdentities.length === 1
+    ? matchingBillingIdentities[0].id
+    : matchingBillingIdentities.length === 0 && editingBillId !== null ? editingBillingVendorId : null;
+  const hireAdvancePeriodTos = useMemo(
+    () => {
+      const groupPeriods = Array.from(new Set(hireGroups.filter(group => group.includeInBill !== false).map(group => group.periodTo))).sort();
+      return groupPeriods.length ? groupPeriods : periodTo ? [periodTo] : [];
+    },
+    [hireGroups, periodTo],
+  );
+  const hireAdvanceSummary = useQuery<VendorHireAdvanceSummary>({
+    queryKey: ["/api/vendor-bills/hire-advances/summary", selectedHireVendorId, selectedSiteId || "all", hireAdvancePeriodTos],
+    enabled: view === "form" && ["equipment", "all"].includes(billType) &&
+      selectedHireVendorId != null && !!selectedSiteId && hireAdvancePeriodTos.length > 0,
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        vendorId: String(selectedHireVendorId),
+        siteId: selectedSiteId || "all",
+        periodTos: hireAdvancePeriodTos.join(","),
+      });
+      const response = await apiRequest("GET", `/api/vendor-bills/hire-advances/summary?${params}`);
+      return response.json();
+    },
+  });
+  useEffect(() => {
+    if (hireAdvanceSummary.data?.openingBalanceRecorded && advanceEntryKind === "opening_balance") {
+      setAdvanceEntryKind("advance_paid");
+    }
+  }, [hireAdvanceSummary.data?.openingBalanceRecorded, advanceEntryKind]);
   const { data: sites = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
+
+  const hireAdvanceEntryMutation = useMutation({
+    mutationFn: async (entry: {
+      vendorId: number;
+      siteId: number | null;
+      kind: "opening_balance" | "advance_paid";
+      amount: number;
+      effectiveDate: string;
+      reference: string;
+      clientRequestId: string;
+    }) => {
+      const response = await apiRequest("POST", "/api/vendor-bills/hire-advances", entry);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills/hire-advances/summary"] });
+      setAdvanceEntryAmount("");
+      setAdvanceEntryReference("");
+      setAdvanceEntryKind("advance_paid");
+      toast({ title: "Vendor advance recorded" });
+    },
+    onError: (error: Error) => toast({ title: "Could not record vendor advance", description: error.message, variant: "destructive" }),
+  });
 
   const addAliasMutation = useMutation({
     mutationFn: (data: { canonicalName: string; alias: string }) =>
@@ -926,6 +988,10 @@ export default function VendorBills() {
     const selectedVendor = name.trim().toUpperCase();
     if (selectedVendor !== vendorName) {
       setHireGroups([]);
+      setEditingBillingVendorId(null);
+      setAdvanceEntryKind("advance_paid");
+      setAdvanceEntryAmount("");
+      setAdvanceEntryReference("");
       monthlyHireSeedRef.current = "";
       setMonthlyHireSeedKey("");
     }
@@ -1172,6 +1238,7 @@ export default function VendorBills() {
       toast({ title: "Vendor bill updated successfully" });
       resetForm();
       setEditingBillId(null);
+      setEditingBillingVendorId(null);
       if (payablesReturnTo) {
         setSelectedBillId(variables.id);
         setView("detail");
@@ -1267,6 +1334,11 @@ export default function VendorBills() {
     setGstRateLabour(0);
     setTdsRate(0);
     setEditingBillId(null);
+    setEditingBillingVendorId(null);
+    setAdvanceEntryKind("advance_paid");
+    setAdvanceEntryAmount("");
+    setAdvanceEntryDate(format(new Date(), "yyyy-MM-dd"));
+    setAdvanceEntryReference("");
     setEditingBillOriginalNo("");
     setHistoricalHireBillId(null);
     setVendorSearch("");
@@ -1327,6 +1399,7 @@ export default function VendorBills() {
     setSelectedSiteId(siteAnswer);
     setSiteAnswerAtEdit(siteAnswer);
     setVendorName(bill.vendorName);
+    setEditingBillingVendorId(bill.vendorId == null ? null : Number(bill.vendorId));
     setVendorSearch(bill.vendorName);
     setVendorFilterSearch(bill.vendorName);
     setVendorEditing(false);
@@ -1705,9 +1778,11 @@ export default function VendorBills() {
       const calculated = hireResult(group);
       const adjustments = group.adjustments;
       const netAdjustment = Number(adjustments?.otherCredit || 0) - Number(adjustments?.otherDebit || 0) - Number(adjustments?.advanceAdjustment || 0);
-      return { group, result: { ...calculated, netAmount: Math.max(0, calculated.netAmount + netAdjustment) } };
+      return { group, result: { ...calculated, netAmount: useAdvanceTaxRules
+        ? calculated.netAmount
+        : Math.max(0, calculated.netAmount + netAdjustment) } };
     } catch { return { group, result: null }; }
-  }), [hireGroups, hireActivityRows, hireEquipment, equipmentPerformanceRevision]);
+  }), [hireGroups, hireActivityRows, hireEquipment, equipmentPerformanceRevision, useAdvanceTaxRules]);
   const includedHireGroups = useMemo(
     () => hireGroups.filter(group => group.includeInBill !== false),
     [hireGroups],
@@ -1716,6 +1791,47 @@ export default function VendorBills() {
     () => hireCalculated.filter(({ group }) => group.includeInBill !== false),
     [hireCalculated],
   );
+  const hireAdvanceProposals = useMemo(() => {
+    if (!useAdvanceTaxRules || !hireAdvanceSummary.data) return {};
+    const periodCapacities = includedHireCalculated.flatMap(({ group, result }) => {
+      if (!result) return [];
+      const beforeAdvance = calculateEquipmentHireFinancials({
+        grossHire: Number(result.grossAmount || 0),
+        breakdownDeduction: Number(result.deductionAmount || 0),
+        hsdRecovery: Number(result.diesel?.finalRecoveryAmount ?? group.dieselRecoveryFinalAmount ?? 0),
+        otherDebit: Number(group.adjustments?.otherDebit || 0),
+        otherCredit: Number(group.adjustments?.otherCredit || 0),
+        gstRate: gstRateEquipment,
+        tdsRate,
+      });
+      return [{
+        key: group.id,
+        periodTo: group.periodTo,
+        periodFrom: group.periodFrom,
+        equipmentId: group.equipmentId,
+        payableBeforeAdvance: beforeAdvance.netPayable,
+      }];
+    });
+    return proposeHireAdvanceRecoveries(periodCapacities, hireAdvanceSummary.data.balanceByPeriodTo || {});
+  }, [useAdvanceTaxRules, hireAdvanceSummary.data, includedHireCalculated, gstRateEquipment, tdsRate]);
+  const hireFinancialsFor = (group: HireGroup, result: any) => {
+    const adjustments = group.adjustments || {};
+    const input = {
+      grossHire: Number(result?.grossAmount || 0),
+      breakdownDeduction: Number(result?.deductionAmount || 0),
+      hsdRecovery: Number(result?.diesel?.finalRecoveryAmount ?? group.dieselRecoveryFinalAmount ?? 0),
+      otherDebit: Number(adjustments.otherDebit || 0),
+      advanceAdjustment: Number(adjustments.advanceAdjustment || 0),
+      advanceRecovery: Number(hireAdvanceProposals[group.id]?.recovery || 0),
+      otherCredit: Number(adjustments.otherCredit || 0),
+      gstRate: gstRateEquipment,
+      tdsRate,
+      paid: 0,
+    };
+    return useAdvanceTaxRules
+      ? calculateEquipmentHireFinancials(input)
+      : calculateLegacyEquipmentHireFinancials(input);
+  };
   const availableOtherItems = useMemo(
     () => availableOtherBillItems(billableAutoItems, lineItems, includedHireGroups)
       .filter(item => !suppressedAutoItemsRef.current.has(autoBillItemIdentity(item))),
@@ -2295,6 +2411,16 @@ export default function VendorBills() {
       toast({ title: "Complete every equipment hire review before saving", variant: "destructive" });
       return;
     }
+    if (useAdvanceTaxRules && includedHireGroups.length > 0) {
+      if (selectedHireVendorId == null || !selectedSiteId) {
+        toast({ title: "Link the hire bill to a Vendor Master record and site scope before saving", variant: "destructive" });
+        return;
+      }
+      if (hireAdvanceSummary.isLoading || hireAdvanceSummary.isError || !hireAdvanceSummary.data) {
+        toast({ title: "Wait for the vendor advance balance before saving", description: "The server still recalculates the final recovery at approval.", variant: "destructive" });
+        return;
+      }
+    }
     for (let i = 0; i < includedHireGroups.length; i++) {
       const group = includedHireGroups[i];
       if (includedHireGroups.some((other, j) => j !== i && other.equipmentId === group.equipmentId &&
@@ -2390,7 +2516,7 @@ export default function VendorBills() {
       }
       const adjustments = group.adjustments;
       if ((Number(adjustments?.otherDebit || 0) > 0 && !adjustments?.otherDebitReason?.trim()) ||
-          (Number(adjustments?.advanceAdjustment || 0) > 0 && !adjustments?.advanceAdjustmentReason?.trim()) ||
+          (!useAdvanceTaxRules && Number(adjustments?.advanceAdjustment || 0) > 0 && !adjustments?.advanceAdjustmentReason?.trim()) ||
           (Number(adjustments?.otherCredit || 0) > 0 && !adjustments?.otherCreditReason?.trim())) {
         toast({ title: "Every manual adjustment needs a reason or reference", variant: "destructive" });
         return;
@@ -2429,7 +2555,7 @@ export default function VendorBills() {
       gstRateTransport: gstRateTransport || null,
       gstRateLabour: gstRateLabour || null,
       tdsRate: tdsRate || null,
-      hireBillingMode: !isHistoricalHireEdit && includedHireGroups.length > 0 ? "vb10_automatic" : "historical",
+      hireBillingMode: useAdvanceTaxRules && includedHireGroups.length > 0 ? "vb10_automatic" : "historical",
       ...(includeHireGroups ? { hireGroups: includedHireCalculated.map(({ group, result }) => ({
         hireStatementId: group.hireStatementId, equipmentId: group.equipmentId, periodFrom: group.periodFrom, periodTo: group.periodTo, basis: group.basis,
         rate: group.rate, dailyDecisions: group.dailyDecisions, tripDecisions: group.tripDecisions,
@@ -2440,7 +2566,10 @@ export default function VendorBills() {
           dieselRecoveryRemarks: group.dieselRecoveryRemarks, breakdownHoursPerDay: group.breakdownHoursPerDay,
           breakdownGraceDays: group.breakdownGraceDays ?? 0,
           projectSite: group.projectSite,
-         adjustments: group.adjustments, calculatedQuantity: result!.calculatedQuantity,
+          adjustments: useAdvanceTaxRules
+            ? { ...group.adjustments, advanceAdjustment: undefined, advanceAdjustmentReason: undefined }
+            : group.adjustments,
+          calculatedQuantity: result!.calculatedQuantity,
         calculatedGrossAmount: result!.calculatedGrossAmount, netAmount: result!.netAmount,
       })) } : {}),
       items: lineItems.filter(i => !isTrulyBlankManualBillRow(i)).map(item => ({
@@ -2981,6 +3110,11 @@ export default function VendorBills() {
               <div>
                 <Label className="text-sm uppercase">Site</Label>
                 <Select value={selectedSiteId} onValueChange={(value) => {
+                  if (value !== selectedSiteId) {
+                    setAdvanceEntryKind("advance_paid");
+                    setAdvanceEntryAmount("");
+                    setAdvanceEntryReference("");
+                  }
                   cancelActivePull();
                   const selectedName = sites.find(site => String(site.id) === value)?.name ?? null;
                   const previousScopeIsUnfiltered = !selectedSiteId || selectedSiteId === "all";
@@ -3181,6 +3315,65 @@ export default function VendorBills() {
                 }} data-testid="input-period-to" />
               </div>
             </div>
+            {["equipment", "all"].includes(billType) && vendorName && selectedHireVendorId != null && selectedSiteId && (
+              <div className="mt-4 rounded-md border border-amber-300 bg-amber-50/60 p-3 dark:border-amber-800 dark:bg-amber-950/20" data-testid="vendor-hire-advance-ledger">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-wide">Vendor Advance Ledger</p>
+                    <p className="text-xs text-muted-foreground">Advance recovery is proposed on drafts and posted only when the hire bill is approved.</p>
+                  </div>
+                  <div className="text-right text-sm">
+                    <span className="block text-[10px] uppercase text-muted-foreground">Balance as of {hireAdvancePeriodTos[hireAdvancePeriodTos.length - 1] || periodTo || "selected period"}</span>
+                    <strong data-testid="vendor-hire-advance-balance">
+                      {hireAdvanceSummary.isLoading ? "Loading…" : hireAdvanceSummary.isError ? "Unavailable" :
+                        `₹${formatCurrency(Number(hireAdvanceSummary.data?.balanceByPeriodTo?.[hireAdvancePeriodTos[hireAdvancePeriodTos.length - 1]] || 0))}`}
+                    </strong>
+                  </div>
+                </div>
+                {hireAdvanceSummary.data?.openingBalanceRecorded && (
+                  <p className="mt-1 text-xs text-muted-foreground">Opening balance has been recorded; it cannot be added again.</p>
+                )}
+                {hireAdvanceSummary.isError && (
+                  <p role="alert" className="mt-2 text-xs text-destructive">Could not load this vendor’s advance balance. Retry before saving the hire bill.</p>
+                )}
+                {canMarkPaid && (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-5">
+                    <Select value={advanceEntryKind} onValueChange={value => setAdvanceEntryKind(value as "opening_balance" | "advance_paid")}>
+                      <SelectTrigger aria-label="Advance entry type" data-testid="select-hire-advance-kind"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {!hireAdvanceSummary.data?.openingBalanceRecorded && <SelectItem value="opening_balance">Opening balance</SelectItem>}
+                        <SelectItem value="advance_paid">Advance paid</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input aria-label="Advance amount" type="number" min="0.01" step="0.01" placeholder="Amount ₹"
+                      value={advanceEntryAmount} onChange={event => setAdvanceEntryAmount(event.target.value)} data-testid="input-hire-advance-amount" />
+                    <Input aria-label="Advance effective date" type="date" value={advanceEntryDate}
+                      onChange={event => setAdvanceEntryDate(event.target.value)} data-testid="input-hire-advance-date" />
+                    <Input aria-label="Advance reference" placeholder="Reference (required)" value={advanceEntryReference}
+                      onChange={event => setAdvanceEntryReference(event.target.value)} data-testid="input-hire-advance-reference" />
+                    <Button type="button" disabled={hireAdvanceEntryMutation.isPending || !Number.isFinite(Number(advanceEntryAmount)) ||
+                      Number(advanceEntryAmount) <= 0 || !validHireDate(advanceEntryDate) || !advanceEntryReference.trim() ||
+                      (advanceEntryKind === "opening_balance" && !!hireAdvanceSummary.data?.openingBalanceRecorded)}
+                      onClick={() => {
+                        if (selectedHireVendorId == null) return;
+                        hireAdvanceEntryMutation.mutate({
+                          vendorId: selectedHireVendorId,
+                          siteId: selectedSiteId === "all" ? null : Number(selectedSiteId),
+                          kind: advanceEntryKind,
+                          amount: Number(advanceEntryAmount),
+                          effectiveDate: advanceEntryDate,
+                          reference: advanceEntryReference.trim().toUpperCase(),
+                          clientRequestId: crypto.randomUUID(),
+                        });
+                      }}
+                      data-testid="button-record-hire-advance">
+                      {hireAdvanceEntryMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      Record
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
              {discoveryPeriodReady && billType !== "other" && !vendorName && (
               <div className="border-t pt-4">
                 <Button
@@ -3350,22 +3543,19 @@ export default function VendorBills() {
                 );
                 const projectSites = Array.from(new Set(dailyRows.map(row => row.performance?.projectSite).filter((value): value is string => !!value)));
                 const adjustments = selection.adjustments || {};
-                const hsdRecovery = Number(selection.dieselRecoveryFinalAmount || 0);
-                const otherDebit = Number(adjustments.otherDebit || 0);
-                const advanceAdjustment = Number(adjustments.advanceAdjustment || 0);
-                const otherCredit = Number(adjustments.otherCredit || 0);
-                 const financials = calculateEquipmentHireFinancials({
-                   grossHire: Number(result?.grossAmount || 0),
-                   breakdownDeduction: Number(result?.deductionAmount || 0),
-                   hsdRecovery, otherDebit, advanceAdjustment, otherCredit,
-                   gstRate: gstRateEquipment, tdsRate, paid: 0,
-                 });
+                const financials = hireFinancialsFor(selection, result);
+                const advanceProposal = hireAdvanceProposals[selection.id];
                 const exportData: EquipmentHireExportData = {
                   billNo, vendorName, equipmentName: formatEquipmentOptionLabel(equipment || {}), projectSite: selection.projectSite,
                   periodFrom: selection.periodFrom, periodTo: selection.periodTo, hireBasis: HIRE_BASIS_LABELS[selection.basis],
                   rate: selection.rate, grossHire: Number(result?.grossAmount || 0), breakdownDeduction: Number(result?.deductionAmount || 0),
-                  hsdRecovery, otherDebit, otherDebitReason: adjustments.otherDebitReason, advanceAdjustment,
-                  advanceAdjustmentReason: adjustments.advanceAdjustmentReason, otherCredit, otherCreditReason: adjustments.otherCreditReason,
+                  hsdRecovery: financials.hsdRecovery, otherDebit: financials.otherDebit, otherDebitReason: adjustments.otherDebitReason,
+                  advanceRecovery: financials.advanceRecovery,
+                  advanceRecoveryReason: advanceProposal ? `Opening ${formatCurrency(advanceProposal.openingBalance)} · Closing ${formatCurrency(advanceProposal.closingBalance)}` : undefined,
+                  advanceAdjustment: financials.advanceAdjustment,
+                  advanceAdjustmentReason: adjustments.advanceAdjustmentReason,
+                  otherCredit: financials.otherCredit, otherCreditReason: adjustments.otherCreditReason,
+                  taxRuleVersion: useAdvanceTaxRules ? "hire_advance_tax_01" : undefined,
                    gstRate: financials.gstRate, gstAmount: financials.gstAmount, taxableAmount: financials.taxableAmount,
                    invoiceTotal: financials.invoiceTotal, tdsRate: financials.tdsRate, tdsAmount: financials.tdsAmount,
                    netPayable: financials.netPayable, paid: financials.paid,
@@ -3538,12 +3728,15 @@ export default function VendorBills() {
                       {selection.dieselRecoveryDecision === "edit" && <div className="grid gap-2 sm:grid-cols-2"><div><Label className="text-[10px] uppercase">Final Recovery ₹</Label><Input type="number" min="0" placeholder="Enter agreed ₹ amount" value={selection.dieselRecoveryFinalAmount ?? ""} onChange={event => patchHireGroup(selection.id, { dieselRecoveryFinalAmount: event.target.value === "" ? undefined : Number(event.target.value) })} /></div><div><Label className="text-[10px] uppercase">Reason / reference (required)</Label><Input value={selection.dieselRecoveryRemarks || ""} onChange={event => patchHireGroup(selection.id, { dieselRecoveryRemarks: event.target.value.toUpperCase() })} /></div></div>}
                     </div>}
                     <div className="grid gap-2 sm:grid-cols-3">
-                      {[["Other Debit / Recovery", "otherDebit", "otherDebitReason"], ["Advance Adjustment", "advanceAdjustment", "advanceAdjustmentReason"], ["Other Credit", "otherCredit", "otherCreditReason"]].map(([label, amountKey, reasonKey]) => <div key={amountKey}><Label className="text-[10px] uppercase">{label} ₹</Label><Input type="number" min="0" step="0.01" value={(adjustments as any)[amountKey] ?? ""} onChange={event => patchHireGroup(selection.id, { adjustments: { ...adjustments, [amountKey]: event.target.value === "" ? undefined : Number(event.target.value) } })} /><Input className="mt-1" placeholder="Reason / reference" value={(adjustments as any)[reasonKey] || ""} onChange={event => patchHireGroup(selection.id, { adjustments: { ...adjustments, [reasonKey]: event.target.value.toUpperCase() } })} /></div>)}
+                      {(useAdvanceTaxRules
+                        ? [["Other Debit / Recovery", "otherDebit", "otherDebitReason"], ["Other Credit", "otherCredit", "otherCreditReason"]]
+                        : [["Other Debit / Recovery", "otherDebit", "otherDebitReason"], ["Advance Adjustment", "advanceAdjustment", "advanceAdjustmentReason"], ["Other Credit", "otherCredit", "otherCreditReason"]]
+                      ).map(([label, amountKey, reasonKey]) => <div key={amountKey}><Label className="text-[10px] uppercase">{label} ₹</Label><Input type="number" min="0" step="0.01" value={(adjustments as any)[amountKey] ?? ""} onChange={event => patchHireGroup(selection.id, { adjustments: { ...adjustments, [amountKey]: event.target.value === "" ? undefined : Number(event.target.value) } })} /><Input className="mt-1" placeholder="Reason / reference" value={(adjustments as any)[reasonKey] || ""} onChange={event => patchHireGroup(selection.id, { adjustments: { ...adjustments, [reasonKey]: event.target.value.toUpperCase() } })} /></div>)}
                     </div>
                   </div>
                   <div className="grid gap-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/20 sm:grid-cols-2">
                     <div className="space-y-1">
-                      {[["Gross Hire", financials.grossHire], ["− Breakdown Deduction", financials.breakdownDeduction], ...(String(equipment?.hireDieselResponsibility || "").toLowerCase() === "vendor" ? [] : [["− HSD Recovery", financials.hsdRecovery]]), ["− Other Debit / Recovery", financials.otherDebit], ["− Advance Adjustment", financials.advanceAdjustment], ["+ Other Credit", financials.otherCredit], ["= Taxable / Bill Amount", financials.taxableAmount], [`+ GST @ ${financials.gstRate}%`, financials.gstAmount], ["= Invoice Total", financials.invoiceTotal], [`− TDS @ ${financials.tdsRate}%`, financials.tdsAmount], ["= NET PAYABLE", financials.netPayable], ["Paid", financials.paid], ["= BALANCE THIS BILL", financials.balanceThisBill]].map(([label, amount]) => <div key={String(label)} className="flex justify-between"><span>{label}</span><strong>₹{formatCurrency(Number(amount))}</strong></div>)}
+                      {[["Gross Hire", financials.grossHire], ["− Breakdown Deduction", financials.breakdownDeduction], ...(String(equipment?.hireDieselResponsibility || "").toLowerCase() === "vendor" ? [] : [["− HSD Recovery", financials.hsdRecovery]]), ["− Other Debit / Recovery", financials.otherDebit], [useAdvanceTaxRules ? advanceProposal ? `− Vendor Advance Recovery (opening ₹${formatCurrency(advanceProposal.openingBalance)}, closing ₹${formatCurrency(advanceProposal.closingBalance)})` : "− Vendor Advance Recovery" : "− Advance Adjustment", useAdvanceTaxRules ? financials.advanceRecovery : financials.advanceAdjustment], ["+ Other Credit", financials.otherCredit], ["= Taxable / Bill Amount", financials.taxableAmount], [`+ GST @ ${financials.gstRate}%`, financials.gstAmount], ["= Invoice Total", financials.invoiceTotal], [`− TDS @ ${financials.tdsRate}%`, financials.tdsAmount], ["= NET PAYABLE", financials.netPayable], ["Paid", financials.paid], ["= BALANCE THIS BILL", financials.balanceThisBill]].map(([label, amount]) => <div key={String(label)} className="flex justify-between"><span>{label}</span><strong>₹{formatCurrency(Number(amount))}</strong></div>)}
                     </div>
                     <div className="space-y-3">
                       <div><Label className="text-[10px] uppercase">GST Rate %</Label><Input type="number" min="0" step="0.01" value={gstRateEquipment || ""} placeholder="0" onChange={event => setGstRateEquipment(Number(event.target.value) || 0)} data-testid="input-gst-equipment-rate" /></div>
@@ -3586,17 +3779,9 @@ export default function VendorBills() {
                 const calendar = buildHireActivityDays(activeFrom, activeTo, activityForGroup(group), maintenance.map((row: any) => ({
                   id: row.sourceId, date: row.businessDate, eventType: row.eventType, description: row.description, downtimeHours: row.downtimeHours,
                 })));
-                 const adjustments = group.adjustments || {};
-                 const hsdRecovery = Number(group.dieselRecoveryFinalAmount || 0);
-                 const otherDebit = Number(adjustments.otherDebit || 0);
-                 const advanceAdjustment = Number(adjustments.advanceAdjustment || 0);
-                 const otherCredit = Number(adjustments.otherCredit || 0);
-                 const financials = calculateEquipmentHireFinancials({
-                   grossHire: Number(result?.grossAmount || 0),
-                   breakdownDeduction: Number(result?.deductionAmount || 0),
-                   hsdRecovery, otherDebit, advanceAdjustment, otherCredit,
-                   gstRate: gstRateEquipment, tdsRate, paid: 0,
-                 });
+                  const adjustments = group.adjustments || {};
+                  const financials = hireFinancialsFor(group, result);
+                  const advanceProposal = hireAdvanceProposals[group.id];
                  const vendorDieselScope = String(equipment?.hireDieselResponsibility || "").toLowerCase() === "vendor";
                  const groupActivities = activityForGroup(group);
                  const tripApplicable = group.basis === "trip" || groupActivities.some(activity =>
@@ -3626,9 +3811,12 @@ export default function VendorBills() {
                    hireBasis: HIRE_BASIS_LABELS[group.basis], rate: group.rate,
                    grossHire: Number(result?.grossAmount || 0),
                    breakdownDeduction: Number(result?.deductionAmount || 0),
-                   hsdRecovery, otherDebit, otherDebitReason: adjustments.otherDebitReason,
-                   advanceAdjustment, advanceAdjustmentReason: adjustments.advanceAdjustmentReason,
-                   otherCredit, otherCreditReason: adjustments.otherCreditReason,
+                    hsdRecovery: financials.hsdRecovery, otherDebit: financials.otherDebit, otherDebitReason: adjustments.otherDebitReason,
+                    advanceRecovery: financials.advanceRecovery,
+                    advanceRecoveryReason: advanceProposal ? `Opening ${formatCurrency(advanceProposal.openingBalance)} · Closing ${formatCurrency(advanceProposal.closingBalance)}` : undefined,
+                    advanceAdjustment: financials.advanceAdjustment, advanceAdjustmentReason: adjustments.advanceAdjustmentReason,
+                    otherCredit: financials.otherCredit, otherCreditReason: adjustments.otherCreditReason,
+                    taxRuleVersion: useAdvanceTaxRules ? "hire_advance_tax_01" : undefined,
                    gstRate: financials.gstRate, gstAmount: financials.gstAmount,
                    taxableAmount: financials.taxableAmount, invoiceTotal: financials.invoiceTotal,
                    tdsRate: financials.tdsRate, tdsAmount: financials.tdsAmount,
@@ -3680,7 +3868,10 @@ export default function VendorBills() {
                       <p className="mt-1 text-[11px] text-muted-foreground">Total allowance per machine; default 0. Saved in this bill snapshot, not Equipment Master.</p>
                     </div>
                     <div className="grid gap-2 sm:grid-cols-3" data-testid={`monthly-hire-adjustments-${monthlyTestSuffix}`}>
-                      {[["Other Debit / Recovery", "otherDebit", "otherDebitReason"], ["Advance Adjustment", "advanceAdjustment", "advanceAdjustmentReason"], ["Other Credit", "otherCredit", "otherCreditReason"]].map(([label, amountKey, reasonKey]) => (
+                      {(useAdvanceTaxRules
+                        ? [["Other Debit / Recovery", "otherDebit", "otherDebitReason"], ["Other Credit", "otherCredit", "otherCreditReason"]]
+                        : [["Other Debit / Recovery", "otherDebit", "otherDebitReason"], ["Advance Adjustment", "advanceAdjustment", "advanceAdjustmentReason"], ["Other Credit", "otherCredit", "otherCreditReason"]]
+                      ).map(([label, amountKey, reasonKey]) => (
                         <div key={amountKey}>
                           <Label className="text-[10px] uppercase">{label} ₹</Label>
                           <Input
@@ -3716,7 +3907,8 @@ export default function VendorBills() {
                           <strong>₹{formatCurrency(financials.hsdRecovery)}</strong>
                         </div>}
                         {financials.otherDebit > 0 && <div className="flex justify-between gap-3"><span>− Other Debit / Recovery</span><strong>₹{formatCurrency(financials.otherDebit)}</strong></div>}
-                        {financials.advanceAdjustment > 0 && <div className="flex justify-between gap-3"><span>− Advance Adjustment</span><strong>₹{formatCurrency(financials.advanceAdjustment)}</strong></div>}
+                        {useAdvanceTaxRules && advanceProposal?.recovery > 0 && <div className="flex justify-between gap-3"><span>− Vendor Advance Recovered <span className="block text-[10px] text-muted-foreground">Opening ₹{formatCurrency(advanceProposal.openingBalance)} · Closing ₹{formatCurrency(advanceProposal.closingBalance)}</span></span><strong>₹{formatCurrency(financials.advanceRecovery)}</strong></div>}
+                        {!useAdvanceTaxRules && financials.advanceAdjustment > 0 && <div className="flex justify-between gap-3"><span>− Advance Adjustment</span><strong>₹{formatCurrency(financials.advanceAdjustment)}</strong></div>}
                         {financials.otherCredit > 0 && <div className="flex justify-between gap-3"><span>+ Other Credit</span><strong>₹{formatCurrency(financials.otherCredit)}</strong></div>}
                         <div className="flex justify-between gap-3 border-t pt-1 font-semibold"><span>= Net line (pre-GST / TDS)</span><strong data-testid={`monthly-hire-taxable-${monthlyTestSuffix}`}>₹{formatCurrency(financials.taxableAmount)}</strong></div>
                       </div>

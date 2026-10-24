@@ -33,7 +33,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, vendors, vendorAliases, sites as sitesTable, appSettings, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, createVendorHireAdvanceLedgerEntrySchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, vendors, vendorAliases, sites as sitesTable, appSettings, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
 import {
   insertPartySchema,
   insertPlantMaterialSchema,
@@ -12749,6 +12749,65 @@ export async function registerRoutes(
     try { res.json(await db.select({ id: billingIdentityVendors.id, name: billingIdentityVendors.name, businessName: billingIdentityVendors.businessName })
       .from(billingIdentityVendors).where(eq(billingIdentityVendors.isActive, true))); }
     catch { res.status(500).json({ message: "Could not load Vendor Master identities" }); }
+  });
+
+  app.get("/api/vendor-bills/hire-advances/summary", async (req, res) => {
+    try {
+      if (!assertViewEither(req, res, "vendor_bills", "vendor_bills_view")) return;
+      const query = z.object({
+        vendorId: z.coerce.number().int().positive(),
+        siteId: z.string().min(1).max(20),
+        periodTos: z.string().max(700).default(""),
+      }).parse(req.query);
+      const periodTos = query.periodTos
+        ? query.periodTos.split(",").filter(Boolean)
+        : [];
+      if (periodTos.length > 60 || periodTos.some(date => !/^\d{4}-\d{2}-\d{2}$/.test(date))) {
+        return res.status(400).json({ message: "Provide valid hire period end dates." });
+      }
+      const siteId = query.siteId === "all" ? null : query.siteId;
+      if (siteId == null && await getPermittedSiteNames(req) !== null) {
+        return res.status(403).json({ message: "All-site vendor advance balances are not available in this site scope." });
+      }
+      if (!await resolveVendorBillSite(req, res, siteId)) return;
+      res.setHeader("Cache-Control", "no-store");
+      res.json(await storage.getVendorHireAdvanceSummary(query.vendorId, periodTos));
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message || "Invalid vendor advance query." });
+      console.error("Error fetching vendor hire-advance summary:", err);
+      res.status(500).json({ message: "Could not load vendor advance balance." });
+    }
+  });
+
+  app.post("/api/vendor-bills/hire-advances", async (req, res) => {
+    try {
+      if (!assertApprove(req, res, "vendor_bills_approve")) return;
+      const input = createVendorHireAdvanceLedgerEntrySchema.parse(req.body);
+      if (input.siteId == null && await getPermittedSiteNames(req) !== null) {
+        return res.status(403).json({ message: "Recording an all-site vendor advance requires all-site access." });
+      }
+      if (!await resolveVendorBillSite(req, res, input.siteId)) return;
+      const result = await storage.createVendorHireAdvanceLedgerEntry(
+        input,
+        req.authUser?.id ?? null,
+        currentUserName(req),
+      );
+      if (result.created) {
+        await recordChange(req, storage, {
+          module: "vendor_hire_advance_ledger",
+          transactionId: result.entry.id,
+          action: input.kind === "opening_balance" ? "opening_balance_recorded" : "advance_paid",
+          after: result.entry,
+        });
+      }
+      res.status(result.created ? 201 : 200).json(result.entry);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message || "Invalid vendor advance entry." });
+      if ((err as any)?.code === "CONFLICT") return res.status(409).json({ message: (err as any).message });
+      if ((err as any)?.code === "BAD_REQUEST") return res.status(400).json({ message: (err as any).message });
+      console.error("Error recording vendor hire advance:", err);
+      res.status(500).json({ message: "Could not record vendor advance." });
+    }
   });
 
 

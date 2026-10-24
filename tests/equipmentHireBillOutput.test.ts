@@ -343,6 +343,75 @@ describe("equipment hire bill output", () => {
     expect(output?.rows[1]).toMatchObject({ status: "Breakdown", downtimeHours: 4 });
   });
 
+  it("keeps new-rule saved hire financials frozen and exports advance recovery separately", () => {
+    const output = buildSavedEquipmentHireBillOutput({
+      id: 45,
+      billNo: "VB-EH-045",
+      vendorName: "ACME HIRE",
+      billType: "equipment",
+      periodFrom: "2026-01-10",
+      periodTo: "2026-01-11",
+      netPayableAmount: 104_700,
+      amountPaid: 0,
+      hireStatements: [{
+        id: 509,
+        equipmentId: 9,
+        equipmentName: "Excavator · EX-01",
+        periodFrom: "2026-01-10",
+        periodTo: "2026-01-11",
+        billingBasis: "monthly",
+        rate: 100_000,
+        grossAmount: 100_000,
+        deductionAmount: 10_500,
+        netAmount: 95_000,
+        calculationSnapshot: {
+          billingIntegration: "vb10_automatic",
+          taxRuleVersion: "hire_advance_tax_01",
+          adjustments: {
+            breakdownDeduction: 5_000,
+            hsdRecovery: 2_000,
+            otherDebit: 1_000,
+            advanceRecovery: 3_000,
+            otherCredit: 500,
+          },
+          advanceLedgerProposal: {
+            openingBalance: 10_000,
+            recovery: 3_000,
+            closingBalance: 7_000,
+            posted: true,
+          },
+          financials: {
+            grossHire: 100_000,
+            breakdownDeduction: 5_000,
+            hsdRecovery: 2_000,
+            otherDebit: 1_000,
+            advanceRecovery: 3_000,
+            otherCredit: 500,
+            taxableAmount: 95_000,
+            gstRate: 18,
+            gstAmount: 17_100,
+            invoiceTotal: 112_100,
+            tdsRate: 2,
+            tdsAmount: 1_900,
+            netPayable: 104_700,
+          },
+        },
+      }],
+    });
+    expect(output?.data).toMatchObject({
+      taxRuleVersion: "hire_advance_tax_01",
+      taxableAmount: 95_000,
+      advanceRecovery: 3_000,
+      advanceAdjustment: 0,
+      netPayable: 104_700,
+    });
+    excelSheets.length = 0;
+    exportEquipmentHireBill(output!.data, output!.rows, "xlsx");
+    const summary = excelSheets.find(sheet => sheet.name === "Bill Summary")!.data;
+    expect(summary).toContainEqual(["Vendor Advance Recovered", "− ₹3,000.00 (Opening ₹10,000.00; closing ₹7,000.00)"]);
+    expect(summary).not.toContainEqual(["Advance Adjustment", "− ₹0.00"]);
+  });
+
   it("retains legacy paid bill net without inventing a payment when amountPaid is absent", () => {
     const output = buildSavedEquipmentHireBillOutput({
       billNo: "VB-EH-LEGACY", vendorName: "ACME HIRE", billType: "equipment",

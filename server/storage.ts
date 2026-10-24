@@ -16,7 +16,7 @@ import { insertLabourWithWorkers, readWorkerNames } from "./labourWorkers";
 import { assertSectionTokens, DprSectionConflict, findSectionDrafts, lockDprIdentity, readSectionAggregate, readDraftStoppages, stageDraftStoppages, reconcileRows, reconcileDraftEquipmentAssignments, sameContext, sectionSnapshot } from "./dprSections";
 import { normalizeDprSectionContext } from "../shared/dprSections";
 import { formatPurchaseIndentNumber, reconcileDeliveryEvidence, validateDeliveryDestination, isBulkPiDeliveryItem, type DeliveryEvidence } from "../shared/purchaseIndentDelivery";
-import { authoritativeHireDieselPeriod, calculateEquipmentHireFinancials, calculateLegacyEquipmentHireFinancials, calculateHireGroup, getHireReviewGaps, hireAdvanceBalancesByDate, isEquipmentHireBillEligible, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, type HireAdvancePeriodCapacity, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
+import { authoritativeHireDieselPeriod, calculateEquipmentHireFinancials, calculateLegacyEquipmentHireFinancials, calculateHireGroup, getHireReviewGaps, hireAdvanceBalancesByDate, isEquipmentHireBillEligible, monthlyHireSegments, normalizeHireActivities, proposeHireAdvanceRecoveries, rawAutoItemCoveredByHireGroup, type HireAdvancePeriodCapacity, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
 import { hasCumulativeVendorPayment } from "../shared/vendorBillPayment";
 import { normalizeDprSiteName } from "../shared/dprBoqSelection";
 import { hasDprBoqReferences } from "../shared/dprBoqReferences";
@@ -17730,7 +17730,7 @@ export class DatabaseStorage implements IStorage {
     vendorId: number,
     periodTos: string[],
   ): Promise<{ openingBalanceRecorded: boolean; balanceByPeriodTo: Record<string, number> }> {
-    const dates = [...new Set(periodTos.filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date)))].sort();
+    const dates = Array.from(new Set(periodTos.filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date)))).sort();
     const [opening] = await db.select({ id: vendorHireAdvanceLedger.id })
       .from(vendorHireAdvanceLedger)
       .where(and(
@@ -17789,7 +17789,7 @@ export class DatabaseStorage implements IStorage {
         vendorId: data.vendorId,
         siteId: data.siteId,
         kind: data.kind,
-        amount: Math.round((data.amount + Number.EPSILON) * 100) / 100,
+        amount: (Math.round((data.amount + Number.EPSILON) * 100) / 100).toFixed(2),
         effectiveDate: data.effectiveDate,
         reference: uppercaseBusinessText(data.reference),
         clientRequestId: data.clientRequestId,
@@ -17900,7 +17900,12 @@ export class DatabaseStorage implements IStorage {
     const orderedGroups = [...groups].sort((a, b) =>
       a.periodTo.localeCompare(b.periodTo) || a.periodFrom.localeCompare(b.periodFrom) ||
       a.equipmentId - b.equipmentId);
-    const useAdvanceTaxRules = data.hireBillingMode === "vb10_automatic";
+    // This reconciler only runs for drafts. The tax rules are server-selected;
+    // a client cannot opt a new/revised draft back into legacy treatment.
+    const useAdvanceTaxRules = true;
+    if (groups.length && !bill.vendorId) {
+      throw Object.assign(new Error("Link this hire bill to a Vendor Master record before applying advance-ledger tax rules."), { code: "BAD_REQUEST" });
+    }
     if (useAdvanceTaxRules && groups.some(group => Number(group.adjustments?.advanceAdjustment || 0) > 0)) {
       throw Object.assign(new Error("Advance Adjustment is retired for new hire bills. Record an advance in the vendor advance ledger instead."), { code: "BAD_REQUEST" });
     }
@@ -18622,6 +18627,15 @@ export class DatabaseStorage implements IStorage {
       if (existing.isCancelled === true) {
         throw Object.assign(new Error("A voided vendor bill cannot be edited"), { code: "CONFLICT" });
       }
+      if (data.billingVendorId) {
+        const [identity] = await tx.select().from(identityVendors).where(eq(identityVendors.id, data.billingVendorId));
+        if (!identity?.isActive || ownerNameKey(identity.name) !== ownerNameKey(data.vendorName))
+          throw Object.assign(new Error("Selected Vendor Master identity does not match the bill vendor"), { code: "BAD_REQUEST" });
+      }
+      const effectiveVendorId = data.billingVendorId ?? existing.vendorId;
+      if (data.hireBillingMode === "vb10_automatic" && data.hireGroups?.length && effectiveVendorId == null) {
+        throw Object.assign(new Error("Link this hire bill to a Vendor Master record before applying advance-ledger tax rules."), { code: "BAD_REQUEST" });
+      }
       const linkedStatements: HireStatement[] = await tx.select().from(hireStatements)
         .where(eq(hireStatements.vendorBillId, id)).for("update");
       if (hasFrozenTripDailyHire({ hireStatements: linkedStatements })) {
@@ -18651,6 +18665,7 @@ export class DatabaseStorage implements IStorage {
           billDate: data.billDate,
           billType: data.billType.toUpperCase(),
           vendorName: uppercaseBusinessText(data.vendorName),
+          vendorId: effectiveVendorId,
           periodFrom: data.periodFrom,
           periodTo: data.periodTo,
           notes: data.notes?.toUpperCase() || data.notes,
@@ -18975,6 +18990,130 @@ export class DatabaseStorage implements IStorage {
             (categorySubtotals.transport || 0) * Number(existing.gstRateTransport || 0) / 100 +
             (categorySubtotals.labour || 0) * Number(existing.gstRateLabour || 0) / 100
           );
+          let automaticHireCashAdjustments = 0;
+          const newTaxStatements = linkedStatements.filter(statement =>
+            (statement.calculationSnapshot as any)?.taxRuleVersion === "hire_advance_tax_01");
+          if (newTaxStatements.length) {
+            if (existing.vendorId) {
+              await tx.execute(sql`SELECT pg_advisory_xact_lock(1428, ${existing.vendorId})`);
+            }
+            const ledgerEntries = existing.vendorId
+              ? await tx.select().from(vendorHireAdvanceLedger)
+                  .where(eq(vendorHireAdvanceLedger.vendorId, existing.vendorId))
+              : [];
+            const recoveryStatementIds = ledgerEntries
+              .filter(entry => entry.kind === "recovery" && entry.hireStatementId != null)
+              .map(entry => Number(entry.hireStatementId));
+            const vendorBillsForOrder = existing.vendorId
+              ? await tx.select({ id: vendorBills.id, status: vendorBills.status }).from(vendorBills)
+                  .where(eq(vendorBills.vendorId, existing.vendorId))
+              : [];
+            const vendorBillIds = vendorBillsForOrder.map(bill => bill.id);
+            const currentVendorStatements = vendorBillIds.length
+              ? await tx.select().from(hireStatements).where(inArray(hireStatements.vendorBillId, vendorBillIds))
+              : [];
+            const recoveredVendorStatements = recoveryStatementIds.length
+              ? await tx.select().from(hireStatements).where(inArray(hireStatements.id, recoveryStatementIds))
+              : [];
+            const allVendorStatements = Array.from(new Map(
+              [...currentVendorStatements, ...recoveredVendorStatements].map(statement => [statement.id, statement]),
+            ).values());
+            const billStatusById = new Map(vendorBillsForOrder.map(bill => [bill.id, bill.status]));
+            const orderKey = (statement: HireStatement) =>
+              `${statement.periodTo}|${statement.periodFrom}|${String(statement.equipmentId).padStart(12, "0")}|${String(statement.id).padStart(12, "0")}`;
+            const orderedStatements = [...newTaxStatements].sort((a, b) =>
+              orderKey(a).localeCompare(orderKey(b)));
+            const earliestCurrentKey = orderedStatements.length ? orderKey(orderedStatements[0]) : "";
+            const currentIds = new Set(linkedStatements.map(statement => statement.id));
+            const earlierPending = allVendorStatements.find(statement => {
+              if (currentIds.has(statement.id) ||
+                  (statement.calculationSnapshot as any)?.taxRuleVersion !== "hire_advance_tax_01" ||
+                  orderKey(statement) >= earliestCurrentKey ||
+                  !["draft", "reviewed"].includes(statement.status) ||
+                  statement.vendorBillId == null) return false;
+              return ["draft", "verified"].includes(String(billStatusById.get(statement.vendorBillId) || ""));
+            });
+            const laterRecovered = allVendorStatements.find(statement =>
+              !currentIds.has(statement.id) &&
+              (statement.calculationSnapshot as any)?.taxRuleVersion === "hire_advance_tax_01" &&
+              orderKey(statement) > earliestCurrentKey &&
+              recoveryStatementIds.includes(statement.id));
+            if (earlierPending || laterRecovered) {
+              throw Object.assign(new Error("Approve vendor hire bills in billing-period order so advance recoveries are not assigned out of sequence."), { code: "CONFLICT" });
+            }
+
+            const balanceByPeriodTo = hireAdvanceBalancesByDate(
+              ledgerEntries,
+              newTaxStatements.map(statement => statement.periodTo),
+            );
+            const periodCapacities: HireAdvancePeriodCapacity[] = orderedStatements.map(statement => {
+              const snapshot: any = statement.calculationSnapshot || {};
+              const savedFinancials = snapshot.financials || {};
+              const beforeAdvance = calculateEquipmentHireFinancials({
+                ...savedFinancials,
+                advanceRecovery: 0,
+              });
+              return {
+                key: String(statement.id),
+                periodTo: statement.periodTo,
+                periodFrom: statement.periodFrom,
+                equipmentId: statement.equipmentId,
+                payableBeforeAdvance: beforeAdvance.netPayable,
+              };
+            });
+            const approvalProposals = proposeHireAdvanceRecoveries(periodCapacities, balanceByPeriodTo);
+            for (const statement of orderedStatements) {
+              const snapshot: any = statement.calculationSnapshot || {};
+              const savedFinancials = snapshot.financials || {};
+              const proposal = approvalProposals[String(statement.id)] || {
+                openingBalance: 0, recovery: 0, closingBalance: 0,
+              };
+              const recovery = proposal.recovery;
+              const finalFinancials = calculateEquipmentHireFinancials({
+                ...savedFinancials,
+                advanceRecovery: recovery,
+              });
+              const closingBalance = proposal.closingBalance;
+              const nextSnapshot = {
+                ...snapshot,
+                adjustments: { ...(snapshot.adjustments || {}), advanceRecovery: recovery },
+                advanceLedgerProposal: {
+                  openingBalance: proposal.openingBalance,
+                  recovery,
+                  closingBalance,
+                  vendorId: existing.vendorId ?? null,
+                  periodTo: statement.periodTo,
+                  posted: true,
+                  approvedAt: now,
+                  approvedBy: actorUpper,
+                },
+                financials: finalFinancials,
+              };
+              await tx.update(hireStatements).set({
+                calculationSnapshot: nextSnapshot,
+                deductionAmount: Math.round((
+                  finalFinancials.breakdownDeduction + finalFinancials.hsdRecovery +
+                  finalFinancials.otherDebit + recovery - finalFinancials.otherCredit + Number.EPSILON
+                ) * 100) / 100,
+                netAmount: finalFinancials.taxableAmount,
+              }).where(eq(hireStatements.id, statement.id));
+              if (recovery > 0 && existing.vendorId) {
+                await tx.insert(vendorHireAdvanceLedger).values({
+                  vendorId: existing.vendorId,
+                  siteId: existing.siteId ?? null,
+                  kind: "recovery",
+                  amount: recovery.toFixed(2),
+                  effectiveDate: statement.periodTo,
+                  reference: `HIRE ADVANCE RECOVERY · ${existing.billNo}`,
+                  billId: id,
+                  hireStatementId: statement.id,
+                  createdBy: actorUpper,
+                });
+              }
+              automaticHireCashAdjustments += finalFinancials.hsdRecovery +
+                finalFinancials.otherDebit + recovery - finalFinancials.otherCredit;
+            }
+          }
           if (linkedStatements.length && !hasVb10AutomaticStatement) {
             // Pre-VB10 linked statements retain their approved straight-form
             // financial snapshots exactly; they are not silently reinterpreted
@@ -18984,7 +19123,7 @@ export class DatabaseStorage implements IStorage {
               .filter((financials: any) => financials && Number.isFinite(Number(financials.grossHire)));
             if (savedFinancials.length) {
               const legacyNet = savedFinancials.reduce((sum: number, financials: any) => sum +
-                calculateEquipmentHireFinancials(financials).netPayable, 0);
+                calculateLegacyEquipmentHireFinancials(financials).netPayable, 0);
               // Legacy statement snapshots retain their historical financial
               // path. VB18 additions are bill-level and additive without
               // changing how the existing primary adjustment was treated.
@@ -18997,7 +19136,8 @@ export class DatabaseStorage implements IStorage {
             }
           } else {
             const tdsAmount = subtotal * Number(existing.tdsRate || 0) / 100;
-            updates.netPayableAmount = Math.round((subtotal + gst + Number(existing.adjustmentAmount || 0) + additionalAdjustmentAmount - tdsAmount + Number.EPSILON) * 100) / 100;
+            updates.netPayableAmount = Math.round((subtotal + gst + Number(existing.adjustmentAmount || 0) +
+              additionalAdjustmentAmount - tdsAmount - automaticHireCashAdjustments + Number.EPSILON) * 100) / 100;
           }
           // Unknown remains NULL until a person records an amount.
           updates.amountPaid = existing.amountPaid;

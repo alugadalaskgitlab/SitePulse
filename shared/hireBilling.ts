@@ -284,6 +284,8 @@ export function calculateLegacyEquipmentHireFinancials(input: EquipmentHireFinan
 export interface HireAdvancePeriodCapacity {
   key: string;
   periodTo: string;
+  periodFrom?: string;
+  equipmentId?: number;
   /** Post-tax amount remaining before vendor-advance recovery. */
   payableBeforeAdvance: number;
 }
@@ -298,7 +300,7 @@ export function hireAdvanceBalancesByDate(
   events: HireAdvanceLedgerBalanceEvent[],
   dates: string[],
 ): Record<string, number> {
-  const uniqueDates = [...new Set(dates)].sort();
+  const uniqueDates = Array.from(new Set(dates)).sort();
   const result: Record<string, number> = {};
   for (const date of uniqueDates) {
     const balance = events.reduce((sum, event) => {
@@ -323,7 +325,10 @@ export function proposeHireAdvanceRecoveries(
   balanceByPeriodTo: Record<string, number>,
 ): Record<string, { openingBalance: number; recovery: number; closingBalance: number }> {
   const ordered = [...periods].sort((a, b) =>
-    a.periodTo.localeCompare(b.periodTo) || a.key.localeCompare(b.key));
+    a.periodTo.localeCompare(b.periodTo) ||
+    (a.periodFrom || "").localeCompare(b.periodFrom || "") ||
+    Number(a.equipmentId || 0) - Number(b.equipmentId || 0) ||
+    a.key.localeCompare(b.key));
   const proposals: Record<string, { openingBalance: number; recovery: number; closingBalance: number }> = {};
   let proposedRecoveryThroughDate = 0;
   for (const period of ordered) {

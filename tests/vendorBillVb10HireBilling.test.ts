@@ -96,7 +96,7 @@ describe("VB-10 monthly availability hire calculation", () => {
   it("applies debit, GST, and TDS once to a shared taxable hire amount", () => {
     expect(calculateEquipmentHireFinancials({
       grossHire: 10_000, otherDebit: 1_000, gstRate: 18, tdsRate: 2,
-    })).toMatchObject({ taxableAmount: 9_000, gstAmount: 1_620, tdsAmount: 180, netPayable: 10_440 });
+    })).toMatchObject({ taxableAmount: 10_000, gstAmount: 1_800, tdsAmount: 200, netPayable: 10_600 });
   });
 
   it("keeps monthly and hourly machines as separate groups while preserving each basis", () => {
@@ -209,8 +209,8 @@ describe("VB-10 monthly availability hire calculation", () => {
     });
     expect(financials).toMatchObject({
       otherDebit: 2_160,
-      taxableAmount: 87_840,
-      netPayable: 101_894.4,
+      taxableAmount: 90_000,
+      netPayable: 102_240,
     });
     const noRate = calculateHireDieselPricing([{
       source: "plant_usage", sourceId: 40, equipmentId: 1002,

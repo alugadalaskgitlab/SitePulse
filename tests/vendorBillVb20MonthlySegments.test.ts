@@ -199,6 +199,7 @@ describe("VB-20 monthly hire calendar segments", () => {
     const bill = (id: number, from: string, to: string) => ({
       id,
       vendorName: "TEST VENDOR",
+      vendorId: 7001,
       periodFrom: from,
       periodTo: to,
       status: "draft",

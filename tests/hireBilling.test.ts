@@ -859,16 +859,18 @@ describe("07B equipment-hire discovery and commercial parity", () => {
       otherDebit: 1_000, advanceAdjustment: 3_000, otherCredit: 500, tdsRate: 2,
     });
     expect(withoutGst).toMatchObject({
+      advanceAdjustment: 0,
       taxableAmount: 95_000, gstAmount: 0, invoiceTotal: 95_000,
-      tdsAmount: 1_900, netPayable: 87_600,
+      tdsAmount: 1_900, netPayable: 90_600,
     });
     const withGst = calculateEquipmentHireFinancials({
       grossHire: 100_000, breakdownDeduction: 5_000, hsdRecovery: 2_000,
       otherDebit: 1_000, advanceAdjustment: 3_000, otherCredit: 500, gstRate: 18, tdsRate: 2,
     });
     expect(withGst).toMatchObject({
+      advanceAdjustment: 0,
       taxableAmount: 95_000, gstAmount: 17_100, invoiceTotal: 112_100,
-      tdsAmount: 1_900, netPayable: 104_700,
+      tdsAmount: 1_900, netPayable: 107_700,
     });
   });
 

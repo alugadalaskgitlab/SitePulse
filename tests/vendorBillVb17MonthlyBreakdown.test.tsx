@@ -70,6 +70,9 @@ beforeEach(() => {
       if (init?.method === "POST" || init?.method === "PUT") return new Response(JSON.stringify({}), { status: 200 });
       return new Response(JSON.stringify([]));
     }
+    if (url.includes("/api/vendor-bills/hire-advances/summary")) {
+      return new Response(JSON.stringify({ openingBalanceRecorded: false, balanceByPeriodTo: {} }));
+    }
     if (url.includes("/api/vendor-bills/summary")) {
       return new Response(JSON.stringify({ total: 0, totalAmount: 0, draft: 0, draftAmount: 0, verified: 0, verifiedAmount: 0, approved: 0, approvedAmount: 0, paid: 0, paidAmount: 0, gstByCategory: {}, totalGst: 0 }));
     }
@@ -115,7 +118,7 @@ describe("VB-17 monthly auto-hire financial display", () => {
     const breakdown = screen.getByTestId(`monthly-hire-financial-breakdown-${equipmentId}`);
     expect(breakdown.textContent).toContain("Excess Fuel Consumed (2.00 L × ₹100.00)");
     expect(breakdown.textContent).toContain("₹200.00");
-    expect(screen.getByTestId(`monthly-hire-net-${equipmentId}`).textContent).toContain("₹86,800.00");
+    expect(screen.getByTestId(`monthly-hire-net-${equipmentId}`).textContent).toContain("₹87,000.00");
   }, 15_000);
 
   it("keeps the original suggestion visible when Edit applies a different amount", async () => {

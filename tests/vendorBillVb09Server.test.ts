@@ -306,6 +306,96 @@ describe("VB-09 server itemized equipment hire", () => {
     expect(fx.txRows).toHaveLength(0);
   });
 
+  it("posts the recomputed vendor-advance recovery and freezes the approved financial snapshot", async () => {
+    const newTaxBill = {
+      id: 108,
+      billType: "EQUIPMENT",
+      vendorName: "ORSU VENKANNA",
+      vendorId: 7,
+      siteId: 3,
+      billNo: "VB-EH-108",
+      status: "verified",
+      totalAmount: 29_032.26,
+      amountPaid: null,
+      adjustmentAmount: 0,
+      additionalAdjustments: [],
+      gstRateEquipment: 0,
+      tdsRate: 0,
+    };
+    const statement = {
+      id: 508,
+      vendorBillId: 108,
+      equipmentId: 9,
+      periodFrom: "2026-08-01",
+      periodTo: "2026-08-31",
+      status: "billed",
+      grossAmount: 29_032.26,
+      deductionAmount: 0,
+      netAmount: 29_032.26,
+      calculationSnapshot: {
+        billingIntegration: "vb10_automatic",
+        taxRuleVersion: "hire_advance_tax_01",
+        financials: {
+          grossHire: 29_032.26,
+          breakdownDeduction: 0,
+          hsdRecovery: 0,
+          otherDebit: 0,
+          advanceRecovery: 0,
+          otherCredit: 0,
+          gstRate: 0,
+          tdsRate: 0,
+        },
+      },
+    };
+    fx.txRows.push(
+      [newTaxBill],
+      [statement],
+      [{ category: "equipment", amount: 29_032.26 }],
+      [
+        { vendorId: 7, kind: "advance_paid", amount: "50000", effectiveDate: "2026-08-01" },
+        { vendorId: 7, kind: "advance_paid", amount: "60000", effectiveDate: "2026-09-01" },
+      ],
+      [{ id: 108, status: "verified" }],
+      [statement],
+    );
+    fx.lastBill = { ...newTaxBill, status: "approved", netPayableAmount: 0 };
+    const storage = new DatabaseStorage();
+
+    const approved = await storage.updateVendorBillStatus(108, "approved", "reviewer");
+
+    expect(approved).toMatchObject({ id: 108, status: "approved" });
+    const ledgerPosting = fx.writes.find(write =>
+      write.kind === "insert" && write.value.kind === "recovery");
+    expect(ledgerPosting?.value).toMatchObject({
+      vendorId: 7,
+      siteId: 3,
+      kind: "recovery",
+      amount: 29_032.26,
+      effectiveDate: "2026-08-31",
+      billId: 108,
+      hireStatementId: 508,
+    });
+    const frozenStatement = fx.writes.find(write => write.kind === "update" && write.value.calculationSnapshot);
+    expect(frozenStatement?.value.calculationSnapshot).toMatchObject({
+      taxRuleVersion: "hire_advance_tax_01",
+      adjustments: { advanceRecovery: 29_032.26 },
+      advanceLedgerProposal: {
+        openingBalance: 50_000,
+        recovery: 29_032.26,
+        closingBalance: 20_967.74,
+        posted: true,
+        approvedBy: "REVIEWER",
+      },
+      financials: {
+        taxableAmount: 29_032.26,
+        advanceRecovery: 29_032.26,
+        netPayable: 0,
+      },
+    });
+    expect(fx.writes.find(write => write.kind === "update" && write.value.status === "approved")?.value)
+      .toMatchObject({ netPayableAmount: 0, amountPaid: null });
+  });
+
   it("keeps linked legacy equipment item approval on its established tax path", async () => {
     const historical = {
       id: 104,

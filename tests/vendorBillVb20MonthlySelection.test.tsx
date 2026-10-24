@@ -61,6 +61,9 @@ beforeEach(() => {
       }
       return new Response(JSON.stringify([]));
     }
+    if (url.includes("/api/vendor-bills/hire-advances/summary")) {
+      return new Response(JSON.stringify({ openingBalanceRecorded: false, balanceByPeriodTo: {} }));
+    }
     if (url.includes("/api/vendor-bills/summary")) {
       return new Response(JSON.stringify({ total: 0, totalAmount: 0, draft: 0, draftAmount: 0, verified: 0, verifiedAmount: 0, approved: 0, approvedAmount: 0, paid: 0, paidAmount: 0, gstByCategory: {}, totalGst: 0 }));
     }
@@ -120,6 +123,7 @@ describe("VB-20 monthly hire segment selection", () => {
     fireEvent.click(screen.getByTestId(`checkbox-include-monthly-hire-${equipmentId}-2026-09-01`));
     fireEvent.click(screen.getByTestId("select-bill-site"));
     fireEvent.click(await screen.findByText("ALL SITES"));
+    await waitFor(() => expect(screen.getByTestId("vendor-hire-advance-balance").textContent).toContain("₹0.00"));
     fireEvent.click(screen.getByTestId("button-save-bill"));
     await waitFor(() => expect(writes).toHaveLength(1));
 
@@ -176,6 +180,7 @@ describe("VB-20 monthly hire segment selection", () => {
 
     fireEvent.click(screen.getByTestId("select-bill-site"));
     fireEvent.click(await screen.findByText("ALL SITES"));
+    await waitFor(() => expect(screen.getByTestId("vendor-hire-advance-balance").textContent).toContain("₹0.00"));
     fireEvent.click(screen.getByTestId("button-save-bill"));
     await waitFor(() => expect(writes).toHaveLength(1));
     expect(writes[0].hireGroups).toEqual(expect.arrayContaining([

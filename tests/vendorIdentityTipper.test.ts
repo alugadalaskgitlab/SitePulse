@@ -175,7 +175,7 @@ it("independently links historical supplier, transporter and equipment then save
     dprStatus: "submitted", isSuperseded: false });
   await db.insert(schema.equipmentLogs).values({ id: 80, dprId: 80, equipmentId: 80,
     entryType: "daily", status: "closed" });
-  const payload: any = { billDate: original.date, billType: "equipment", vendorName: "REVIEWED NARSIMULU",
+  const payload: any = { billDate: original.date, billType: "equipment", vendorName: "REVIEWED NARSIMULU", billingVendorId: 81,
     periodFrom: original.date, periodTo: original.date, status: "draft", items: [], hireGroups: [{
       equipmentId: 80, basis: "daily", rate: 5000, periodFrom: original.date, periodTo: original.date,
       dailyDecisions: [{ date: original.date, decision: "full_day", reason: "Both trips on one reviewed date" }],

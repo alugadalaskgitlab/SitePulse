@@ -28,6 +28,12 @@ beforeAll(async () => {
   await pg.exec("CREATE UNIQUE INDEX hire_statements_equipment_period_uq ON hire_statements(equipment_id,period_from,period_to)");
   db = holder.db = drizzle(pg, { schema });
   storage = new (await import("../server/storage")).DatabaseStorage();
+  await db.insert(schema.vendors).values([
+    { id: 1, name: "RECOVERY OWNER", isActive: true },
+    { id: 2, name: "MONTHLY OWNER", isActive: true },
+    { id: 3, name: "SYNTHETIC HIRE OWNER", isActive: true },
+    { id: 4, name: "SYNTHETIC DEDUCTION OWNER", isActive: true },
+  ]);
   await db.insert(schema.equipmentMaster).values({
     id: 1, name: "RECOVERY TIPPER", registrationNumber: "TEST01", vendorName: "RECOVERY OWNER",
     ownership: "hired", hireBillingBasis: "daily", hireRate: 2000, hireStartDate: "2026-01-01",
@@ -45,7 +51,7 @@ beforeAll(async () => {
 afterAll(async () => { await pg?.close(); });
 
 const dailyPayload = () => ({
-  billDate: "2026-10-02", billType: "equipment", vendorName: "RECOVERY OWNER",
+  billDate: "2026-10-02", billType: "equipment", vendorName: "RECOVERY OWNER", billingVendorId: 1,
   periodFrom: "2026-10-01", periodTo: "2026-10-02", status: "draft", items: [],
   hireGroups: [{ equipmentId: 1, basis: "daily", rate: 2000, periodFrom: "2026-10-01", periodTo: "2026-10-02",
     dailyDecisions: [], tripDecisions: [], exceptionDecisions: [] }],
@@ -97,7 +103,7 @@ describe("selective pre-tipper billing recovery", () => {
       hireMonthlyDivisorType: "30", hireDieselResponsibility: "vendor",
     });
     const bill = await storage.createVendorBill({
-      billDate: "2026-05-31", billType: "equipment", vendorName: "MONTHLY OWNER",
+      billDate: "2026-05-31", billType: "equipment", vendorName: "MONTHLY OWNER", billingVendorId: 2,
       periodFrom: "2026-05-01", periodTo: "2026-05-31", status: "draft", items: [],
       hireGroups: [{ equipmentId: 2, basis: "monthly", rate: 1, periodFrom: "2026-05-01", periodTo: "2026-05-31" }],
     });
@@ -198,7 +204,7 @@ describe("selective pre-tipper billing recovery", () => {
     ]);
 
     const bill = await storage.createVendorBill({
-      billDate: "2026-10-15", billType: "equipment", vendorName: "SYNTHETIC HIRE OWNER",
+      billDate: "2026-10-15", billType: "equipment", vendorName: "SYNTHETIC HIRE OWNER", billingVendorId: 3,
       periodFrom: "2026-10-10", periodTo: "2026-10-15", status: "draft", items: [],
       hireGroups: [{
         equipmentId: 3, basis: "monthly", rate: 1,
@@ -256,7 +262,7 @@ describe("selective pre-tipper billing recovery", () => {
     });
 
     const bill = await storage.createVendorBill({
-      billDate: "2026-10-15", billType: "equipment", vendorName: "SYNTHETIC DEDUCTION OWNER",
+      billDate: "2026-10-15", billType: "equipment", vendorName: "SYNTHETIC DEDUCTION OWNER", billingVendorId: 4,
       periodFrom: "2026-10-10", periodTo: "2026-10-15", status: "draft", items: [],
       hireGroups: [{
         equipmentId: 4, basis: "monthly", rate: 1,

@@ -61,6 +61,7 @@ function billAdjustmentCategory(label: string, amount: number): string {
   const text = label.toLowerCase();
   if (text.includes("breakdown")) return "breakdownDeduction";
   if (text.includes("hsd") || text.includes("diesel")) return "hsdRecovery";
+  if (text.includes("advance") && text.includes("recovery")) return "advanceRecovery";
   if (text.includes("advance")) return "advanceAdjustment";
   return amount < 0 ? "otherDebit" : "otherCredit";
 }
@@ -70,6 +71,7 @@ function billAdjustments(bill: any) {
     breakdownDeduction: [],
     hsdRecovery: [],
     otherDebit: [],
+    advanceRecovery: [],
     advanceAdjustment: [],
     otherCredit: [],
   };
@@ -108,6 +110,7 @@ function hireAdjustmentRecords(bill: any) {
     breakdownDeduction: [],
     hsdRecovery: [],
     otherDebit: [],
+    advanceRecovery: [],
     advanceAdjustment: [],
     otherCredit: [],
   };
@@ -136,6 +139,7 @@ function hireAdjustmentRecords(bill: any) {
       firstRecorded(snapshot?.deductionAmount, statement.deductionAmount));
     add("hsdRecovery", "hsdRecovery", "hsdRecoveryReason");
     add("otherDebit", "otherDebit", "otherDebitReason");
+    add("advanceRecovery", "advanceRecovery", "advanceRecoveryReason");
     add("advanceAdjustment", "advanceAdjustment", "advanceAdjustmentReason");
     add("otherCredit", "otherCredit", "otherCreditReason");
   }
@@ -209,6 +213,7 @@ export function buildVendorBillExport(
       "breakdownDeduction",
       "hsdRecovery",
       "otherDebit",
+      "advanceRecovery",
       "advanceAdjustment",
       "otherCredit",
     ]) {
@@ -274,6 +279,7 @@ export function buildVendorBillExport(
         breakdownDeduction: sumComponentRows(adjustments.breakdownDeduction),
         hsdRecovery: sumComponentRows(adjustments.hsdRecovery),
         otherDebit: sumComponentRows(adjustments.otherDebit),
+        advanceRecovery: sumComponentRows(adjustments.advanceRecovery),
         advanceAdjustment: sumComponentRows(adjustments.advanceAdjustment),
         otherCredit: sumComponentRows(adjustments.otherCredit),
         adjustmentDetails: adjustments,
@@ -388,6 +394,11 @@ export function buildVendorBillExport(
       advanceAdjustments: advanceAdjustmentRows.length ? advanceAdjustmentTotal : NOT_RECORDED,
       advanceAdjustmentBillCount: advanceAdjustmentRows.length,
       advanceAdjustmentNotIncludedInPaid: true,
+      advanceRecoveries: exportedBills.some(bill => typeof bill.money.advanceRecovery === "number")
+        ? exportedBills.reduce((sum, bill) => sum + (typeof bill.money.advanceRecovery === "number" ? bill.money.advanceRecovery : 0), 0)
+        : NOT_RECORDED,
+      advanceRecoveryBillCount: exportedBills.filter(bill => typeof bill.money.advanceRecovery === "number").length,
+      advanceRecoveryNotIncludedInPaid: true,
       voidedBillCount: exportedBills.filter(bill => bill.status.voided).length,
       unlinkedBillCount: exportedBills.filter(bill => bill.vendor.linkStatus === "unlinked").length,
     },
