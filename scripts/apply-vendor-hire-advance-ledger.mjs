@@ -23,7 +23,7 @@ const expectedForeignKeys = [
   "vendor_hire_advance_ledger_vendor_id_vendors_id_fk",
   "vendor_hire_advance_ledger_site_id_sites_id_fk",
   "vendor_hire_advance_ledger_bill_id_vendor_bills_id_fk",
-  "vendor_hire_advance_ledger_hire_statement_id_hire_statements_id_fk",
+  "vendor_hire_advance_ledger_hire_statement_id_hire_statements_id",
 ];
 const migration = await readFile(
   new URL("../migrations/0051_vendor_hire_advance_ledger.sql", import.meta.url),
@@ -144,7 +144,10 @@ try {
     .filter(state => state.inTransaction)
     .map(state => state.client.query("ROLLBACK").catch(() => undefined)));
   const code = typeof error?.code === "string" ? ` (${error.code})` : "";
-  console.error(`Vendor advance ledger migration failed during ${step}${code}; no credentials were logged.`);
+  const safeDetail = error instanceof Error && error.message.startsWith("Schema verification mismatch in ")
+    ? `: ${error.message}`
+    : "";
+  console.error(`Vendor advance ledger migration failed during ${step}${code}${safeDetail}; no credentials were logged.`);
   process.exitCode = 1;
 } finally {
   await Promise.all(clients.map(state => state.client.end().catch(() => undefined)));

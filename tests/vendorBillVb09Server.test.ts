@@ -370,7 +370,7 @@ describe("VB-09 server itemized equipment hire", () => {
       vendorId: 7,
       siteId: 3,
       kind: "recovery",
-      amount: 29_032.26,
+      amount: "29032.26",
       effectiveDate: "2026-08-31",
       billId: 108,
       hireStatementId: 508,
