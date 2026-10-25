@@ -18122,6 +18122,7 @@ export class DatabaseStorage implements IStorage {
              otherDebitReason: adjustments.otherDebitReason ?? null,
              advanceAdjustment,
              advanceAdjustmentReason: adjustments.advanceAdjustmentReason ?? null,
+             advanceAdjustmentDate: adjustments.advanceAdjustmentDate ?? null,
              otherCredit,
              otherCreditReason: adjustments.otherCreditReason ?? null,
            },

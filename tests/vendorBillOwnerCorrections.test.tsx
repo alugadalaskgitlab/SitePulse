@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
-import { VendorBillOwnerCorrections } from "@/components/VendorBillOwnerCorrections";
+import { VendorBillOwnerCorrections, VendorBillSiteCorrection } from "@/components/VendorBillOwnerCorrections";
 
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
@@ -32,9 +32,11 @@ const mount = (isOwner: boolean) => render(
         status: "paid",
         amountPaid: 40,
         netPayableAmount: 90,
-        siteId: 1,
-        siteScopeConfirmed: true,
       }}
+    />
+    <VendorBillSiteCorrection
+      isOwner={isOwner}
+      bill={{ id: 20, siteId: 1, siteScopeConfirmed: true }}
       sites={[{ id: 1, name: "Site A" }, { id: 2, name: "Site B" }]}
     />
   </QueryClientProvider>,
@@ -52,7 +54,7 @@ it("submits a reason-required paid amount correction", async () => {
   vi.stubGlobal("fetch", fetchMock);
   mount(true);
 
-  expect(screen.getByText("Paid amount: ₹40.00 · Site: Site A")).toBeTruthy();
+  expect(screen.getByText("Paid amount: ₹40.00")).toBeTruthy();
   fireEvent.click(screen.getByTestId("button-open-vb-amount-correction"));
   const saveButton = screen.getByTestId("button-save-vb-amount-correction") as HTMLButtonElement;
   expect(saveButton.disabled).toBe(true);

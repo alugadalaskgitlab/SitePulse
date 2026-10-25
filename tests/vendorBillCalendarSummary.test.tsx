@@ -29,7 +29,11 @@ const statement = (id: number) => ({
     performanceDailyRows: [day], terms: { dieselResponsibility: "hlc", meterType: "hour_meter" },
     sourceEvidence: { maintenance: [{ businessDate: "2026-10-02", description: "Hose repair", downtimeHours: 4 }] },
     dailyDecisions: [{ date: "2026-10-01", decision: "half_day", reason: "Attendance verified" }],
-    adjustments: { advanceAdjustment: 100, advanceAdjustmentReason: "Previously verified advance" },
+    adjustments: {
+      advanceAdjustment: 100,
+      advanceAdjustmentReason: "Previously verified advance",
+      advanceAdjustmentDate: "2026-10-02",
+    },
   },
 });
 function renderQuery(ui: React.ReactNode) {
@@ -43,8 +47,8 @@ describe("saved calendars", () => {
     const before = JSON.stringify(input);
     const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
     render(<SavedBillCalendars bill={input} canExport />);
-    expect(screen.getAllByText(/Detailed recorded evidence/)).toHaveLength(2);
-    screen.getAllByText(/Detailed recorded evidence/).forEach(summary => {
+    expect(screen.getAllByText(/Detailed activity/)).toHaveLength(2);
+    screen.getAllByText(/Detailed activity/).forEach(summary => {
       const details = summary.closest("details")!;
       details.open = true;
       fireEvent(details, new Event("toggle"));
@@ -52,7 +56,8 @@ describe("saved calendars", () => {
     expect(screen.getAllByText(/Hose repair/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Activity Not Recorded/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Attendance verified/)).toHaveLength(2);
-    expect(screen.getAllByTestId("equipment-hire-period-totals")).toHaveLength(2);
+    expect(screen.getAllByText("Advance payment date: 2026-10-02")).toHaveLength(2);
+    expect(screen.getAllByTestId("saved-hire-activity-totals")).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: "Export Calendar PDF" })).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: "Export Calendar Excel" })).toHaveLength(2);
     expect(fetcher).not.toHaveBeenCalled();
@@ -61,7 +66,7 @@ describe("saved calendars", () => {
   it("shows only available saved lines for legacy evidence, never inventing activity", () => {
     render(<SavedBillCalendars bill={{ ...bill(1), items: [{ id: 10, category: "equipment", equipmentId: 3, description: "Legacy excavator", qty: 1, amount: 1000 }] }} />);
     expect(screen.getByText(/Working hours, idle days, diesel and historical decisions: Not established/)).toBeTruthy();
-    expect(screen.queryByTestId("equipment-hire-period-totals")).toBeNull();
+    expect(screen.queryByTestId("saved-hire-activity-totals")).toBeNull();
   });
   it("keeps legacy working-sheet facts in one daily table when frozen performance rows are missing", () => {
     const input = {
@@ -86,22 +91,21 @@ describe("saved calendars", () => {
       items: [],
     };
     render(<SavedBillCalendars bill={input} />);
-    const details = screen.getByText(/Detailed recorded evidence/).closest("details")!;
+    const details = screen.getByText(/Detailed activity/).closest("details")!;
     details.open = true;
     fireEvent(details, new Event("toggle"));
     const dailyTables = screen.getAllByRole("table").filter(table =>
       within(table).queryByText("Date"));
     expect(dailyTables).toHaveLength(1);
     const dailyTable = dailyTables[0];
-    expect(dailyTable.textContent).toContain("Opening Meter");
-    expect(dailyTable.textContent).toContain("Expected");
-    expect(dailyTable.textContent).toContain("Trips");
-    expect(dailyTable.textContent).toContain("Consumption Rate");
+    expect(dailyTable.textContent).toContain("Open meter");
+    expect(dailyTable.textContent).toContain("Diesel issued");
+    expect(dailyTable.textContent).toContain("Tank open");
+    expect(dailyTable.textContent).not.toContain("Trips");
+    expect(dailyTable.textContent).toContain("Consumption rate");
     expect(dailyTable.textContent).toContain("100");
     expect(dailyTable.textContent).toContain("108");
-    expect(dailyTable.textContent).toContain("18.00 L");
-    expect(dailyTable.textContent).toContain("+2.00 L");
-    expect(dailyTable.textContent).toContain("Tank Readings N/A");
+    expect(dailyTable.textContent).toContain("N/A");
     expect(dailyTable.textContent).toContain("Decision: half_day — Manager approval");
     expect(dailyTable.textContent).toContain("Operator attendance confirmed");
     expect(dailyTable.textContent).toContain("Movement: MOVE-17");
@@ -131,14 +135,13 @@ describe("saved calendars", () => {
     };
     render(<SavedBillCalendars bill={input} />);
     expect(screen.getAllByText("Monthly Billing Summary")).toHaveLength(1);
-    const details = screen.getByText(/Detailed recorded evidence/).closest("details")!;
+    const details = screen.getByText(/Detailed activity/).closest("details")!;
     details.open = true;
     fireEvent(details, new Event("toggle"));
     const dailyTables = screen.getAllByRole("table").filter(table =>
       within(table).queryByText("Date"));
     expect(dailyTables).toHaveLength(1);
-    expect(dailyTables[0].textContent).toContain("18.00 L");
-    expect(dailyTables[0].textContent).toContain("17.00 L");
+    expect(dailyTables[0].textContent).toContain("8:00");
     expect(dailyTables[0].textContent).toContain("01 Oct 2026");
     expect(dailyTables[0].textContent).toContain("02 Oct 2026");
   });
@@ -216,7 +219,7 @@ describe("financial overview and statement", () => {
     expect(screen.getByText("Bill period")).toBeTruthy();
     expect(screen.getAllByText("₹800.00").length).toBeGreaterThan(1);
     expect(screen.getByText(/Balance carried up to this bill/)).toBeTruthy();
-    expect(screen.getByText(/Confirmed vendor · permitted sites · excludes this bill and later bills/)).toBeTruthy();
+    expect(screen.getByText(/Shows earlier bills for this vendor that are available to you, up to but not including this bill/)).toBeTruthy();
     expect(screen.queryByText(/Last Payment/)).toBeNull();
     expect(JSON.stringify([current, earlier])).toBe(before);
   });
@@ -229,7 +232,7 @@ describe("financial overview and statement", () => {
     renderQuery(<VendorRunningStatement bill={current} bills={[current]} />);
     await waitFor(() => expect(screen.getByText("No previous bills for this vendor.")).toBeTruthy());
     expect(screen.queryByText(/Total Gross Bills up to Previous/)).toBeNull();
-    expect(screen.queryByText(/Confirmed vendor · permitted sites/)).toBeNull();
+    expect(screen.queryByText(/Shows earlier bills for this vendor/)).toBeNull();
     expect(screen.queryByText(/View Previous Bills/)).toBeNull();
   });
   it("does not fetch or show empty previous-billing totals for an unlinked vendor", () => {

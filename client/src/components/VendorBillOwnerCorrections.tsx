@@ -1,12 +1,14 @@
 import { FormEvent, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Pencil } from "lucide-react";
 
 type SiteOption = { id: number; name: string };
 
@@ -17,12 +19,9 @@ type VendorBillOwnerCorrectionsProps = {
     billType?: string | null;
     isCancelled?: boolean | null;
     netPayableAmount?: number | string | null;
-    siteId?: number | null;
-    siteScopeConfirmed?: boolean | null;
     status?: string | null;
     totalAmount?: number | string | null;
   };
-  sites: SiteOption[];
   isOwner: boolean;
 };
 
@@ -31,13 +30,11 @@ const money = (value: number) => new Intl.NumberFormat("en-IN", {
   maximumFractionDigits: 2,
 }).format(value);
 
-export function VendorBillOwnerCorrections({ bill, sites, isOwner }: VendorBillOwnerCorrectionsProps) {
+export function VendorBillOwnerCorrections({ bill, isOwner }: VendorBillOwnerCorrectionsProps) {
   const { toast } = useToast();
-  const [activeCorrection, setActiveCorrection] = useState<"amount" | "site" | null>(null);
+  const [activeCorrection, setActiveCorrection] = useState(false);
   const [amountDraft, setAmountDraft] = useState("");
   const [amountReason, setAmountReason] = useState("");
-  const [siteChoice, setSiteChoice] = useState("");
-  const [siteReason, setSiteReason] = useState("");
 
   const invalidateBillViews = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills"] });
@@ -52,28 +49,11 @@ export function VendorBillOwnerCorrections({ bill, sites, isOwner }: VendorBillO
     }),
     onSuccess: () => {
       invalidateBillViews();
-      setActiveCorrection(null);
+      setActiveCorrection(false);
       toast({ title: "Recorded paid amount corrected" });
     },
     onError: (error: Error) => toast({
       title: "Could not correct recorded paid amount",
-      description: error.message,
-      variant: "destructive",
-    }),
-  });
-
-  const siteMutation = useMutation({
-    mutationFn: () => apiRequest("PATCH", `/api/vendor-bills/${bill.id}/owner-correction/site`, {
-      siteId: siteChoice === "all" ? null : Number(siteChoice),
-      reason: siteReason.trim(),
-    }),
-    onSuccess: () => {
-      invalidateBillViews();
-      setActiveCorrection(null);
-      toast({ title: "Recorded site answer corrected" });
-    },
-    onError: (error: Error) => toast({
-      title: "Could not correct recorded site answer",
       description: error.message,
       variant: "destructive",
     }),
@@ -88,27 +68,14 @@ export function VendorBillOwnerCorrections({ bill, sites, isOwner }: VendorBillO
   const amountValue = Number(amountDraft);
   const amountCanSave = amountDraft !== "" && Number.isFinite(amountValue) && amountValue >= 0 &&
     Number.isFinite(netPayable) && amountValue <= netPayable && amountReason.trim().length > 0;
-  const currentSite = bill.siteId == null
-    ? bill.siteScopeConfirmed === true ? "ALL SITES" : "No site answer recorded"
-    : sites.find(site => site.id === bill.siteId)?.name || `Site #${bill.siteId}`;
-
   const openAmountCorrection = () => {
     setAmountDraft("");
     setAmountReason("");
-    setActiveCorrection("amount");
-  };
-  const openSiteCorrection = () => {
-    setSiteChoice("");
-    setSiteReason("");
-    setActiveCorrection("site");
+    setActiveCorrection(true);
   };
   const submitAmountCorrection = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (amountCanSave) amountMutation.mutate();
-  };
-  const submitSiteCorrection = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (siteChoice && siteReason.trim()) siteMutation.mutate();
   };
 
   return (
@@ -116,7 +83,7 @@ export function VendorBillOwnerCorrections({ bill, sites, isOwner }: VendorBillO
       <div>
         <p className="text-sm font-semibold">Recorded values</p>
         <p className="text-xs text-muted-foreground">
-          Paid amount: {recordedAmount == null ? "No recorded amount" : `₹${money(recordedAmount)}`} · Site: {currentSite}
+          Paid amount: {recordedAmount == null ? "No recorded amount" : `₹${money(recordedAmount)}`}
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -131,18 +98,9 @@ export function VendorBillOwnerCorrections({ bill, sites, isOwner }: VendorBillO
             Correct recorded amount
           </Button>
         )}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={openSiteCorrection}
-          data-testid="button-open-vb-site-correction"
-        >
-          Correct site
-        </Button>
       </div>
 
-      {activeCorrection === "amount" && (
+      {activeCorrection && (
         <form className="grid gap-3 rounded-md border p-3 sm:max-w-xl" onSubmit={submitAmountCorrection} data-testid="form-vb-amount-correction">
           <div>
             <Label htmlFor={`vb-correct-amount-${bill.id}`}>New recorded paid amount (₹)</Label>
@@ -170,16 +128,79 @@ export function VendorBillOwnerCorrections({ bill, sites, isOwner }: VendorBillO
             />
           </div>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setActiveCorrection(null)}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={() => setActiveCorrection(false)}>Cancel</Button>
             <Button type="submit" disabled={!amountCanSave || amountMutation.isPending} data-testid="button-save-vb-amount-correction">
               Save amount correction
             </Button>
           </div>
         </form>
       )}
+    </section>
+  );
+}
 
-      {activeCorrection === "site" && (
-        <form className="grid gap-3 rounded-md border p-3 sm:max-w-xl" onSubmit={submitSiteCorrection} data-testid="form-vb-site-correction">
+export function VendorBillSiteCorrection({
+  bill,
+  sites,
+  isOwner,
+}: {
+  bill: { id: number; isCancelled?: boolean | null; siteId?: number | null; siteScopeConfirmed?: boolean | null };
+  sites: SiteOption[];
+  isOwner: boolean;
+}) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [siteChoice, setSiteChoice] = useState("");
+  const [siteReason, setSiteReason] = useState("");
+  const invalidateBillViews = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills"] });
+    queryClient.invalidateQueries({ queryKey: [`/api/vendor-bills/${bill.id}`] });
+    queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills/attention"] });
+  };
+  const siteMutation = useMutation({
+    mutationFn: () => apiRequest("PATCH", `/api/vendor-bills/${bill.id}/owner-correction/site`, {
+      siteId: siteChoice === "all" ? null : Number(siteChoice),
+      reason: siteReason.trim(),
+    }),
+    onSuccess: () => {
+      invalidateBillViews();
+      setOpen(false);
+      toast({ title: "Recorded site answer corrected" });
+    },
+    onError: (error: Error) => toast({
+      title: "Could not correct recorded site answer",
+      description: error.message,
+      variant: "destructive",
+    }),
+  });
+  if (!isOwner || bill.isCancelled === true) return null;
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (siteChoice && siteReason.trim()) siteMutation.mutate();
+  };
+
+  return <>
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className="h-6 w-6"
+      aria-label="Correct site"
+      title="Correct site"
+      onClick={() => {
+        setSiteChoice("");
+        setSiteReason("");
+        setOpen(true);
+      }}
+      data-testid="button-open-vb-site-correction"
+    >
+      <Pencil className="h-3 w-3" />
+    </Button>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Correct site answer</DialogTitle></DialogHeader>
+        <form className="grid gap-3" onSubmit={handleSubmit} data-testid="form-vb-site-correction">
           <div>
             <Label htmlFor={`vb-correct-site-${bill.id}`}>Correct site answer</Label>
             <Select value={siteChoice} onValueChange={setSiteChoice}>
@@ -204,13 +225,13 @@ export function VendorBillOwnerCorrections({ bill, sites, isOwner }: VendorBillO
             />
           </div>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setActiveCorrection(null)}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
             <Button type="submit" disabled={!siteChoice || !siteReason.trim() || siteMutation.isPending} data-testid="button-save-vb-site-correction">
               Save site correction
             </Button>
           </div>
         </form>
-      )}
-    </section>
-  );
+      </DialogContent>
+    </Dialog>
+  </>;
 }

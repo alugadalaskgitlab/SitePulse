@@ -330,10 +330,11 @@ const cardId = await evaluate("Number(document.querySelector('[data-testid^=\"ca
 await clickTestId(`card-bill-${cardId}`);
 await waitFor("!!document.querySelector('[data-testid=\"text-detail-title\"]')", "VB-10 detail");
 text = await bodyText();
-assert(text.includes("EQUIPMENT HIRE CALCULATION SNAPSHOT"), "frozen hire snapshot is missing");
-assert(text.includes("HSD ACTUAL / EXPECTED 55.00 / 50.00 L"), "frozen HLC actual/expected values are missing");
-assert(text.includes("APPLICABLE WEIGHTED HSD RATE ₹105.00 / L"), "frozen weighted diesel rate is missing");
-const detailImage = await capture("vb10-created-frozen-snapshot");
+assert(text.includes("Equipment hire terms"), "saved equipment hire terms are missing from the bill header");
+assert(text.includes("Monthly Billing Summary"), "monthly hire summary is missing");
+assert(text.includes("HSD recovery"), "saved HSD recovery is missing from the monthly summary");
+assert(!text.includes("EQUIPMENT HIRE CALCULATION SNAPSHOT"), "separate calculation snapshot should not be shown");
+const detailImage = await capture("vb10-clean-hire-detail");
 await clickTestId("button-edit-bill");
 await waitFor("!!document.querySelector('[data-testid=\"monthly-hire-auto-summary\"]')", "saved VB-10 shared edit form");
 assert(!(await hasTestId("equipment-hire-straight-form")), "VB10 marker incorrectly opened the historical straight-form editor");

@@ -2640,6 +2640,7 @@ export const hireGroupRequestSchema = z.object({
     otherDebitReason: z.string().max(2000).nullable().optional(),
     advanceAdjustment: z.number().finite().nonnegative().optional(),
     advanceAdjustmentReason: z.string().max(2000).nullable().optional(),
+    advanceAdjustmentDate: hireGroupDate.nullable().optional(),
     otherCredit: z.number().finite().nonnegative().optional(),
     otherCreditReason: z.string().max(2000).nullable().optional(),
   }).optional(),

@@ -85,7 +85,7 @@ export function VendorRunningStatement({ bill, bills, loading, error }: { bill: 
     {bill.vendorId != null && history.isSuccess && !history.isFetching && previous && rows.length === 0 &&
       <p className="text-xs text-muted-foreground">No previous bills for this vendor.</p>}
     {history.isSuccess && !history.isFetching && previous && latest && <>
-      <p className="text-xs"><strong>Latest previous bill:</strong> {latest.billDate} · {latest.billNo} · {latest.status} · Net value {money(latest.net)}</p>
+      <p className="text-xs"><strong>Latest previous bill:</strong> {latest.billDate} · {latest.billNo} · {latest.status} · Period {latest.periodFrom || "Not recorded"} – {latest.periodTo || "Not recorded"} · Net value {money(latest.net)}</p>
       <dl className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
         {[
           ["Total Gross Bills up to Previous", money(previous.gross)],
@@ -93,7 +93,9 @@ export function VendorRunningStatement({ bill, bills, loading, error }: { bill: 
           ["Balance carried up to this bill", money(previous.balance)],
         ].map(([label, value]) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="mt-1 font-semibold tabular-nums">{value}</dd></div>)}
       </dl>
-      <p className="text-xs text-muted-foreground">Confirmed vendor · permitted sites · excludes this bill and later bills{hasProvisionalRows ? " · Draft / Verified values are provisional." : "."}</p>
+      <p className="text-xs text-muted-foreground">
+        Shows earlier bills for this vendor that are available to you, up to but not including this bill{hasProvisionalRows ? ". Draft / Verified values are provisional." : "."}
+      </p>
     <details>
     <summary className="cursor-pointer text-xs font-semibold">View Previous Bills</summary>
     <div className="space-y-3 pt-3">
@@ -106,27 +108,24 @@ export function VendorRunningStatement({ bill, bills, loading, error }: { bill: 
                <td className="p-2">{row.periodFrom || "Not recorded"} – {row.periodTo || "Not recorded"}</td>
                 <td className="p-2">{row.status}{row.provisional && <span className="block">Provisional</span>}</td>
                 <td className="p-2">{money(row.net)}</td>
-                <td className="p-2">{money(row.paid)}<span className="block text-muted-foreground">Cumulative recorded amount; individual payment dates/history: Not established</span>
+                 <td className="p-2">{money(row.paid)}
                  {row.paidAt && <span className="block">Paid status recorded: {row.paidAt}</span>}
                </td>
                 <td className="p-2">{money(row.balance)}</td>
                 <td className="p-2">{money(row.credit)}{row.provisional && row.credit > 0 && " (provisional)"}</td>
                 <td className="p-2">{money(row.runningBalance)}</td>
              </tr>
-             <tr className="border-t bg-muted/10">
-               <td colSpan={8} className="px-3 py-2">
+              {row.adjustments.length > 0 && <tr className="border-t bg-muted/10">
+                <td colSpan={8} className="px-3 py-2">
                  <p className="font-semibold">Recorded adjustments / advance deductions</p>
-                  {row.adjustments.length
-                    ? row.adjustments.map((adjustment, index) =>
-                      <p key={index}>{adjustment.label || "Adjustment"}: {money(Number(adjustment.amount))}{adjustment.reason ? ` · ${adjustment.reason}` : ""}</p>)
-                   : <p>No separate bill-level adjustment recorded.</p>}
-                 <p className="mt-1 text-muted-foreground">Advance payment history / unused advance balance: Not established. Recorded deductions are already included in bill value, not new payments.</p>
+                  {row.adjustments.map((adjustment, index) =>
+                    <p key={index}>{adjustment.label || "Adjustment"}: {money(Number(adjustment.amount))}{adjustment.reason ? ` · ${adjustment.reason}` : ""}</p>)}
                </td>
-             </tr>
+              </tr>}
            </Fragment>;
         })}</tbody>
       </table></div>
-       <p className="text-xs text-muted-foreground">*Calculated movement uses cumulative recorded payments in previous-bill date order; it is not a historical payment-date balance or the vendor's opening/closing account balance. Credits are indicative, not confirmed available for settlement.</p>
+        <p className="text-xs text-muted-foreground">Payment dates and unused advance balances are not established; running movement follows bill-date order, and credits are not confirmed for settlement.</p>
     </div>
     </details></>}
     </section>;

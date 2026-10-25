@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import CancelDialog from "@/components/CancelDialog";
 import HistoryDialog from "@/components/HistoryDialog";
 import AuditHistoryButton from "@/components/AuditHistoryButton";
-import { VendorBillOwnerCorrections } from "@/components/VendorBillOwnerCorrections";
+import { VendorBillOwnerCorrections, VendorBillSiteCorrection } from "@/components/VendorBillOwnerCorrections";
 import { Link, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Check, Circle, Info, Fuel, Settings, Copy, X, Download, Search, Edit, PlusCircle, BarChart2, Calculator, History } from "lucide-react";
@@ -184,7 +184,15 @@ type HireGroup = BillHireTerms & {
   dieselRecoveryDecision?: "accept" | "edit" | "ignore"; dieselRecoveryFinalAmount?: number; dieselRecoveryRemarks?: string;
   breakdownHoursPerDay?: number; breakdownGraceDays?: number;
   projectSite?: string;
-  adjustments?: { otherDebit?: number; otherDebitReason?: string; advanceAdjustment?: number; advanceAdjustmentReason?: string; otherCredit?: number; otherCreditReason?: string };
+  adjustments?: {
+    otherDebit?: number;
+    otherDebitReason?: string;
+    advanceAdjustment?: number;
+    advanceAdjustmentReason?: string;
+    advanceAdjustmentDate?: string | null;
+    otherCredit?: number;
+    otherCreditReason?: string;
+  };
 };
 
 const HIRE_BASIS_LABELS: Record<HireBillingBasis, string> = {
@@ -3576,7 +3584,24 @@ export default function VendorBills() {
                       {selection.dieselRecoveryDecision === "edit" && <div className="grid gap-2 sm:grid-cols-2"><div><Label className="text-[10px] uppercase">Final Recovery ₹</Label><Input type="number" min="0" placeholder="Enter agreed ₹ amount" value={selection.dieselRecoveryFinalAmount ?? ""} onChange={event => patchHireGroup(selection.id, { dieselRecoveryFinalAmount: event.target.value === "" ? undefined : Number(event.target.value) })} /></div><div><Label className="text-[10px] uppercase">Reason / reference (required)</Label><Input value={selection.dieselRecoveryRemarks || ""} onChange={event => patchHireGroup(selection.id, { dieselRecoveryRemarks: event.target.value.toUpperCase() })} /></div></div>}
                     </div>}
                     <div className="grid gap-2 sm:grid-cols-3">
-                      {[["Other Debit / Recovery", "otherDebit", "otherDebitReason"], ["Advance Adjustment", "advanceAdjustment", "advanceAdjustmentReason"], ["Other Credit", "otherCredit", "otherCreditReason"]].map(([label, amountKey, reasonKey]) => <div key={amountKey}><Label className="text-[10px] uppercase">{label} ₹</Label><Input type="number" min="0" step="0.01" value={(adjustments as any)[amountKey] ?? ""} onChange={event => patchHireGroup(selection.id, { adjustments: { ...adjustments, [amountKey]: event.target.value === "" ? undefined : Number(event.target.value) } })} /><Input className="mt-1" placeholder="Reason / reference" value={(adjustments as any)[reasonKey] || ""} onChange={event => patchHireGroup(selection.id, { adjustments: { ...adjustments, [reasonKey]: event.target.value.toUpperCase() } })} /></div>)}
+                      {[["Other Debit / Recovery", "otherDebit", "otherDebitReason"], ["Advance Adjustment", "advanceAdjustment", "advanceAdjustmentReason"], ["Other Credit", "otherCredit", "otherCreditReason"]].map(([label, amountKey, reasonKey]) => (
+                        <div key={amountKey}>
+                          <Label className="text-[10px] uppercase">{label} ₹</Label>
+                          <Input type="number" min="0" step="0.01" value={(adjustments as any)[amountKey] ?? ""} onChange={event => patchHireGroup(selection.id, { adjustments: { ...adjustments, [amountKey]: event.target.value === "" ? undefined : Number(event.target.value) } })} />
+                          <Input className="mt-1" placeholder="Reason / reference" value={(adjustments as any)[reasonKey] || ""} onChange={event => patchHireGroup(selection.id, { adjustments: { ...adjustments, [reasonKey]: event.target.value.toUpperCase() } })} />
+                          {amountKey === "advanceAdjustment" && <>
+                            <Label className="mt-2 block text-[10px] uppercase">Advance payment date</Label>
+                            <Input
+                              className="mt-1"
+                              type="date"
+                              aria-label="Advance payment date"
+                              value={adjustments.advanceAdjustmentDate || ""}
+                              onChange={event => patchHireGroup(selection.id, { adjustments: { ...adjustments, advanceAdjustmentDate: event.target.value || undefined } })}
+                              data-testid="input-advance-adjustment-date"
+                            />
+                          </>}
+                        </div>
+                      ))}
                     </div>
                   </div>
                   <div className="grid gap-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/20 sm:grid-cols-2">
@@ -3740,6 +3765,17 @@ export default function VendorBills() {
                             value={(adjustments as any)[reasonKey] || ""}
                             onChange={event => patchHireGroup(group.id, { adjustments: { ...adjustments, [reasonKey]: event.target.value.toUpperCase() } })}
                           />
+                          {amountKey === "advanceAdjustment" && <>
+                            <Label className="mt-2 block text-[10px] uppercase">Advance payment date</Label>
+                            <Input
+                              className="mt-1"
+                              type="date"
+                              aria-label="Advance payment date"
+                              value={adjustments.advanceAdjustmentDate || ""}
+                              onChange={event => patchHireGroup(group.id, { adjustments: { ...adjustments, advanceAdjustmentDate: event.target.value || undefined } })}
+                              data-testid="input-monthly-advance-adjustment-date"
+                            />
+                          </>}
                         </div>
                       ))}
                     </div>
@@ -4927,6 +4963,55 @@ export default function VendorBills() {
       }));
     const detailFinancials = getBillFinancialTotals(bill);
     const detailVendorName = vendorDisplayName(bill);
+    const detailSiteName = (bill as any).siteName ||
+      (bill.siteId == null
+        ? (bill as any).siteScopeConfirmed === true ? "ALL SITES" : "Not recorded"
+        : sites?.find(site => Number(site.id) === Number(bill.siteId))?.name || `Site #${bill.siteId}`);
+    const savedHireTerms = ((bill as any).hireStatements || []).map((statement: any, index: number) => {
+      const review = projectHireReview(statement, bill);
+      const output = savedHireOutputs[index];
+      const data = output?.data;
+      const basis = String(review.basis || "").toLowerCase();
+      const rateUnit = ({ monthly: "Month", daily: "Day", hourly: "Hour", trip: "Trip" } as Record<string, string>)[basis] || "unit not recorded";
+      const norm = data?.consumptionNorm == null ? null : Number(data.consumptionNorm);
+      return {
+        key: statement.id ?? index,
+        name: review.name || data?.equipmentName || "Equipment",
+        masterReference: review.masterReference,
+        basis: basis ? basis[0].toUpperCase() + basis.slice(1) : "Not recorded",
+        rate: review.rate,
+        rateUnit,
+        divisor: basis === "monthly" ? review.divisor : null,
+        norm: norm != null && Number.isFinite(norm) ? norm : null,
+        normUnit: data?.consumptionRateUnit || "",
+      };
+    });
+    const screenFinancialRows = buildSavedBillPresentationRows(bill, detailFinancials).map(sourceRow => {
+      const row = { ...sourceRow };
+      if (String(bill.billType || "").toLowerCase() !== "equipment") return row;
+      if (row.reason) {
+        if (row.reason.trim().toLowerCase() === `reason: ${row.label}`.toLowerCase()) row.reason = "";
+        row.reason = row.reason
+          .replace(/(?:\s*·\s*)?Date\/decision: Not recorded/gi, "")
+          .replace(/\s*·\s*·/g, " · ")
+          .trim();
+      }
+      if (row.label.trim().toLowerCase() === "advance adjustment") {
+        const advanceDetails = ((bill as any).hireStatements || []).flatMap((statement: any) => {
+          const adjustments = statement.calculationSnapshot?.adjustments || {};
+          if (Number(adjustments.advanceAdjustment || 0) <= 0) return [];
+          const equipment = statement.equipmentName || (statement.equipmentId ? `Equipment #${statement.equipmentId}` : "");
+          const details = [
+            equipment,
+            adjustments.advanceAdjustmentReason ? `Reason: ${adjustments.advanceAdjustmentReason}` : "",
+            adjustments.advanceAdjustmentDate ? `Payment date: ${formatDate(adjustments.advanceAdjustmentDate)}` : "",
+          ].filter(Boolean);
+          return details.length ? [details.join(" · ")] : [];
+        });
+        if (advanceDetails.length) row.reason = advanceDetails.join("\n");
+      }
+      return row;
+    });
     const detailSubtotals: Record<string, number> = {};
     bill.items.forEach((item: any) => {
       const category = item.category || "other";
@@ -5030,13 +5115,24 @@ export default function VendorBills() {
               <div>
                 <p className="text-sm text-muted-foreground uppercase">Vendor</p>
                 <p className="text-xl font-bold" data-testid="text-vendor-name">{detailVendorName}</p>
+                {savedHireTerms.length > 0 && <div className="mt-2 space-y-1 rounded-md bg-muted/30 p-2 text-xs" data-testid="equipment-hire-header-details">
+                  <p className="font-semibold">Equipment hire terms</p>
+                  {savedHireTerms.map((term: any) => <div key={term.key} className="flex flex-wrap gap-x-4 gap-y-1">
+                    <strong>{term.name}</strong>
+                    <span>Equipment Master reference: {term.masterReference ?? "—"}</span>
+                    <span>Hire basis: {term.basis}</span>
+                    <span>Rate / unit: {term.rate == null ? "—" : `₹${formatCurrency(term.rate)} / ${term.rateUnit}`}</span>
+                    {term.divisor && <span>Monthly divisor: {term.divisor}</span>}
+                    <span>Diesel norm: {term.norm == null ? "—" : `${formatCurrency(term.norm)}${term.normUnit ? ` ${term.normUnit}` : " (unit not recorded)"}`}</span>
+                  </div>)}
+                </div>}
               </div>
               <Badge variant="outline" className={`uppercase text-sm ${getStatusBadgeClass(bill.isCancelled ? "voided" : bill.status)} no-default-hover-elevate no-default-active-elevate`} data-testid="badge-bill-status">
                 {bill.isCancelled ? "VOID" : bill.status}
               </Badge>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <div>
                 <p className="text-sm text-muted-foreground uppercase">Bill Number</p>
                 <p className="text-sm font-semibold" data-testid="text-bill-no">{bill.billNo}</p>
@@ -5072,6 +5168,13 @@ export default function VendorBills() {
                   {bill.periodFrom && bill.periodTo ? `${formatDate(bill.periodFrom)} to ${formatDate(bill.periodTo)}` : "-"}
                 </p>
               </div>
+              <div>
+                <p className="text-sm text-muted-foreground uppercase">Site</p>
+                <div className="flex items-center gap-1">
+                  <p className="text-sm font-semibold" data-testid="text-bill-site">{detailSiteName}</p>
+                  <VendorBillSiteCorrection bill={bill} sites={sites || []} isOwner={!!user?.isOwner} />
+                </div>
+              </div>
             </div>
 
             <VendorRunningStatement bill={bill} bills={bills || []} />
@@ -5085,7 +5188,7 @@ export default function VendorBills() {
                 canRecordMissingPaidAmount={(isAdmin || !!user?.isOwner) && !bill.isCancelled}
               />
             )}
-            <VendorBillOwnerCorrections bill={bill} sites={sites} isOwner={!!user?.isOwner} />
+            <VendorBillOwnerCorrections bill={bill} isOwner={!!user?.isOwner} />
 
             {!bill.isCancelled && <div className="border-t pt-4">
               <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 mb-2">Status Progress</p>
@@ -5296,23 +5399,10 @@ export default function VendorBills() {
           </DialogContent>
         </Dialog>
 
-        {hasPersistedHireStatements && (
-          <Card className="border-orange-200 dark:border-orange-800">
-            <CardHeader className="py-3"><CardTitle className="text-sm uppercase tracking-wider">EQUIPMENT HIRE CALCULATION SNAPSHOT</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              {hasFrozenTripDailyHire(bill as any) && <p className="text-sm text-amber-700">{FROZEN_TRIP_DAILY_MESSAGE}</p>}
-              {(bill as any).hireStatements.map((statement: any) => (
-                <div key={statement.id} className="border rounded p-3 text-xs space-y-2">
-                  <p>{formatDate(statement.periodFrom)}–{formatDate(statement.periodTo)} · {String(statement.billingBasis).toUpperCase()} · {String(statement.status).toUpperCase()}</p>
-                  <p>QTY {statement.quantity} · RATE ₹{formatCurrency(statement.rate)} · GROSS ₹{formatCurrency(statement.grossAmount)} · DEDUCTION ₹{formatCurrency(statement.deductionAmount)} · NET ₹{formatCurrency(statement.netAmount)}</p>
-                  <p>HSD ACTUAL / EXPECTED {statement.calculationSnapshot?.diesel?.actualDiesel ?? "—"} / {statement.calculationSnapshot?.diesel?.expectedDiesel ?? "—"} L</p>
-                  <p>NET EXCESS {statement.calculationSnapshot?.diesel?.suggestedExcess ?? "—"} L · FINAL RECOVERY {statement.calculationSnapshot?.diesel?.finalRecoveryAmount == null ? "—" : `₹${formatCurrency(statement.calculationSnapshot.diesel.finalRecoveryAmount)}`}</p>
-                </div>
-              ))}
-              <SavedBillCalendars bill={bill} canExport={canExport} />
-            </CardContent>
-          </Card>
-        )}
+        {hasPersistedHireStatements && <div className="space-y-3">
+          {hasFrozenTripDailyHire(bill as any) && <p className="text-sm text-amber-700">{FROZEN_TRIP_DAILY_MESSAGE}</p>}
+          <SavedBillCalendars bill={bill} canExport={canExport} />
+        </div>}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2">
             <span className="font-bold text-amber-600 dark:text-amber-400" data-testid="text-detail-total">
@@ -5525,7 +5615,7 @@ export default function VendorBills() {
                     )}
                   </tbody>
                   <tfoot>
-                    {buildSavedBillPresentationRows(bill, detailFinancials).map((row, index) => {
+                    {screenFinancialRows.map((row, index) => {
                       const negative = row.amount < 0;
                       const highlighted = row.kind === "gross" || row.kind === "net";
                       const tone = row.kind === "gst" || row.kind === "credit"

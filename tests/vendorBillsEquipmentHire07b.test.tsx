@@ -475,11 +475,12 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     expect(screen.queryByTestId("button-auto-populate")).toBeNull();
   });
 
-  it("keeps the historical fixture snapshot readable and isolated when edited", async () => {
+  it("keeps the historical hire details near the header and saved activity readable when edited", async () => {
     render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
     fireEvent.click(await screen.findByTestId("card-bill-81"));
-    expect(await screen.findByText("EQUIPMENT HIRE CALCULATION SNAPSHOT")).toBeTruthy();
-    expect(screen.getByText(/HSD ACTUAL \/ EXPECTED/)).toBeTruthy();
+    expect(await screen.findByTestId("equipment-hire-header-details")).toBeTruthy();
+    expect(screen.getByText(/Detailed activity/)).toBeTruthy();
+    expect(screen.queryByText(/EQUIPMENT HIRE CALCULATION SNAPSHOT/)).toBeNull();
     fireEvent.click(screen.getByTestId("button-edit-bill"));
     expect(await screen.findByTestId("equipment-hire-straight-form")).toBeTruthy();
     expect(screen.getByTestId("equipment-hire-straight-form").textContent).toContain("Master terms");

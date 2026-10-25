@@ -86,8 +86,9 @@ describe("07C vendor-bill hire transaction wiring", () => {
 
   it("keeps historical hire snapshots readable without restoring the removed composer", () => {
     expect(client).toContain("SavedBillCalendars");
-    expect(savedCalendars).toContain("Detailed recorded evidence");
-    expect(client).toContain("EQUIPMENT HIRE CALCULATION SNAPSHOT");
+    expect(savedCalendars).toContain("Detailed activity");
+    expect(client).toContain("equipment-hire-header-details");
+    expect(client).not.toContain("EQUIPMENT HIRE CALCULATION SNAPSHOT");
     expect(client).toContain('isHistoricalHireEdit && billType === "equipment"');
     expect(client).not.toContain("false &&");
     expect(client).not.toContain("EDIT QTY / AMOUNT");
@@ -101,13 +102,14 @@ describe("07C vendor-bill hire transaction wiring", () => {
 
   it("retains the historical working-sheet snapshot as read-only evidence", () => {
     expect(client).toContain("SavedBillCalendars");
-    expect(savedCalendars).toContain("Current equipment activity is not substituted.");
+    expect(savedCalendars).not.toContain("Current equipment activity is not substituted.");
+    expect(savedCalendars).toContain("SavedHireActivityTable");
     expect(savedCalendars).toContain("buildSavedEquipmentHireBillOutput");
     expect(hireOutput).toContain("buildSavedHireDailyRows");
     expect(hireOutput).toContain("consumptionRateText");
     expect(hireOutput).toContain("varianceLitres");
     expect(hireOutput).not.toContain("SAVED_EVIDENCE_HEADERS");
-    expect(client).toContain("FINAL RECOVERY");
+    expect(savedCalendars).toContain('label: "HSD recovery"');
   });
 
   it("routes saved itemized equipment through the footer whole-bill PDF action", () => {
