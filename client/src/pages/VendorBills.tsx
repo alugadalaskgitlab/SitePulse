@@ -60,6 +60,7 @@ import { mapAutoBillItemWithEvidence, type EquipmentLogEvidence } from "@/compon
 import { useWholeBillCalendarSnapshots } from "@/components/vendor-bills/useWholeBillCalendarSnapshots";
 import { displayedHireTotals, historicalHireSheetRows, projectVendorBillPageItems } from "@/components/vendor-bills/wholeBillPageProjection";
 import type { WholeBillSnapshot } from "@/components/vendor-bills/wholeBillSnapshot";
+import { deduplicateEquipmentHireTerms, projectSavedHireDetailFinancials } from "@/components/vendor-bills/savedBillDetailFinancials";
 import { BillDateGroupControls, BillDateGroupRows } from "@/components/vendor-bills/BillDateGroups";
 import { isTrulyBlankManualBillRow } from "@/lib/vendorBillBlankRows";
 import RateCards from "@/pages/RateCards";
@@ -4967,26 +4968,30 @@ export default function VendorBills() {
       (bill.siteId == null
         ? (bill as any).siteScopeConfirmed === true ? "ALL SITES" : "Not recorded"
         : sites?.find(site => Number(site.id) === Number(bill.siteId))?.name || `Site #${bill.siteId}`);
-    const savedHireTerms = ((bill as any).hireStatements || []).map((statement: any, index: number) => {
-      const review = projectHireReview(statement, bill);
-      const output = savedHireOutputs[index];
-      const data = output?.data;
-      const basis = String(review.basis || "").toLowerCase();
-      const rateUnit = ({ monthly: "Month", daily: "Day", hourly: "Hour", trip: "Trip" } as Record<string, string>)[basis] || "unit not recorded";
-      const norm = data?.consumptionNorm == null ? null : Number(data.consumptionNorm);
-      return {
-        key: statement.id ?? index,
-        name: review.name || data?.equipmentName || "Equipment",
-        masterReference: review.masterReference,
-        basis: basis ? basis[0].toUpperCase() + basis.slice(1) : "Not recorded",
-        rate: review.rate,
-        rateUnit,
-        divisor: basis === "monthly" ? review.divisor : null,
-        norm: norm != null && Number.isFinite(norm) ? norm : null,
-        normUnit: data?.consumptionRateUnit || "",
-      };
-    });
-    const screenFinancialRows = buildSavedBillPresentationRows(bill, detailFinancials).map(sourceRow => {
+    const savedHireTerms = deduplicateEquipmentHireTerms(
+      ((bill as any).hireStatements || []).map((statement: any, index: number) => {
+        const review = projectHireReview(statement, bill);
+        const output = savedHireOutputs[index];
+        const data = output?.data;
+        const basis = String(review.basis || "").toLowerCase();
+        const rateUnit = ({ monthly: "Month", daily: "Day", hourly: "Hour", trip: "Trip" } as Record<string, string>)[basis] || "unit not recorded";
+        const norm = data?.consumptionNorm == null ? null : Number(data.consumptionNorm);
+        return {
+          key: statement.id ?? index,
+          equipmentId: statement.equipmentId,
+          name: review.name || data?.equipmentName || "Equipment",
+          masterReference: review.masterReference,
+          basis: basis ? basis[0].toUpperCase() + basis.slice(1) : "Not recorded",
+          rate: review.rate,
+          rateUnit,
+          divisor: basis === "monthly" ? review.divisor : null,
+          norm: norm != null && Number.isFinite(norm) ? norm : null,
+          normUnit: data?.consumptionRateUnit || "",
+        };
+      }),
+    );
+    const screenDetailFinancials = projectSavedHireDetailFinancials(bill, detailFinancials) || detailFinancials;
+    const screenFinancialRows = buildSavedBillPresentationRows(bill, screenDetailFinancials).map(sourceRow => {
       const row = { ...sourceRow };
       if (String(bill.billType || "").toLowerCase() !== "equipment") return row;
       if (row.reason) {
