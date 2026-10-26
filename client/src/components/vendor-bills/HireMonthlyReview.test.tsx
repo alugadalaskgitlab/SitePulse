@@ -64,7 +64,7 @@ describe("approved month review presentation", () => {
     expect(screen.getByTestId("hire-monthly-adjustment-amount").className).toContain("text-right");
     expect(container.textContent).toContain("Hydraulic fault");
   });
-  it("carries identical month rows and stored totals to Excel and PDF", () => {
+  it("carries month data to Excel and PDF without putting review-count lines on the bill page", () => {
     const snapshot: WholeBillSnapshot = {
       companyName: "HLC", vendorName: "Vendor", billNo: "VB-1", billDate: "2026-10-01",
       periodFrom: review.from, periodTo: review.to, site: "Site", billType: "equipment",
@@ -82,7 +82,7 @@ describe("approved month review presentation", () => {
     expect(pdf).toContain("August 2026");
     expect(pdf).toContain("September 2026");
     const pdfText = Array.from(pdf.matchAll(/\((.*?)\) Tj/g), match => match[1]).join(" ");
-    expect(pdfText).toMatch(/August 2026: 30 dates\s+require review\./);
+    expect(pdfText).not.toMatch(/August 2026: 30 dates\s+require review\./);
     expect(pdf).not.toContain("Days Billed follows the hire terms");
     expect(pdf).not.toContain("Recorded evidence only");
     expect(rows.some(row => String(row[0]).includes("dates require review"))).toBe(true);

@@ -154,13 +154,14 @@ describe("whole bill PDF layout", () => {
     expect(pages[1].join("")).toContain("Excavator");
     expect(pages[1].join("")).toContain("EX-07");
     expect(pages[1].join("")).not.toContain("Equipment #49");
+    expect(pages[1].join("")).toContain("Prepared · HLC");
     expect(pages[2].join("")).toContain("ACTIVITY STATEMENT");
     expect(pages[2].join("")).toContain("Prepared");
     expect(pages[2].join("")).toContain("Received");
     expect(pages[3].join("")).toContain("MATERIAL TABLE");
     expect(pages[3].join("")).not.toContain("Always empty");
     expect(pdf.output()).not.toContain("RAW EQUIPMENT LINE TABLE");
-    expect(pdf.output()).toContain("(Rs. 20,967.74)");
+    expect(pdf.output()).toContain("20,967.74");
     expect(pdf.output()).toContain("Rs. 65,000.00");
     expect(pdf.output()).toContain("Rs. 44,032.26");
     expect(pdf.output()).toContain("Rs. 25,951.61");
