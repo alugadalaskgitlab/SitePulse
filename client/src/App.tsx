@@ -8,6 +8,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import RequireAuth from "@/components/RequireAuth";
 import { useFeatureFlags } from "@/lib/featureFlags";
+import { AppErrorBoundary, AppUpdateNotice } from "@/components/AppRecovery";
 import type { SectionKey } from "@shared/permissions";
 import { HubShell } from "@/components/HubShell";
 
@@ -445,8 +446,11 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <Toaster />
+        <AppUpdateNotice />
         {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
-        <Router />
+        <AppErrorBoundary>
+          <Router />
+        </AppErrorBoundary>
       </AuthProvider>
     </QueryClientProvider>
   );

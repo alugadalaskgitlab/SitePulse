@@ -2,7 +2,14 @@
 import React, { useState } from "react";
 import { readFileSync } from "node:fs";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { groupRateItems } from "@shared/vendorBillCandidates";
+import type { ArrangementPricing } from "@shared/vendorBillArrangement";
+import {
+  ArrangementBillGroupRow,
+  ArrangementBillOverallTotals,
+  type ArrangementBillItem,
+} from "@/components/vendor-bills/ArrangementBillGroups";
 import {
   BillDateGroupControls,
   BillDateGroupRows,
@@ -73,6 +80,80 @@ function Harness({ items }: { items: Item[] }) {
   );
 }
 
+type ArrangementTestItem = ArrangementBillItem & {
+  date: string;
+  amount: number;
+  rate: number;
+  arrangementPricing: ArrangementPricing;
+};
+
+function arrangementItem(date: string, tripId: number): ArrangementTestItem {
+  return {
+    date,
+    amount: 100,
+    rate: 100,
+    category: "transport",
+    description: "SOIL · Arrangement #2",
+    unit: "TRIP",
+    equipmentId: null,
+    arrangementPricing: {
+      arrangementId: 2,
+      tripId,
+      terms: { scope: "transport_only", basis: "trip" },
+      tripQuantity: 1,
+      tripUom: "CUM",
+      rateApplied: 100,
+      billedQty: 1,
+      billedUnit: "TRIP",
+      reason: null,
+      conflict: false,
+    },
+  };
+}
+
+function ArrangementHarness({
+  items,
+  onRemoveAll,
+}: {
+  items: ArrangementTestItem[];
+  onRemoveAll: (items: ArrangementTestItem[]) => void;
+}) {
+  const groups = groupRateItems(items);
+  return (
+    <table>
+      <tbody>
+        <BillDateGroupRows
+          items={items.map((item, idx) => ({ item, idx }))}
+          scope="arrangement"
+          totalColumns={4}
+          totalBillItems={items.length}
+          expansionMode="expanded"
+          expansionOverrides={{}}
+          onToggle={() => {}}
+          renderRow={(item, idx, dateGroup) => (
+            <ArrangementBillGroupRow
+              item={item}
+              idx={idx}
+              dateGroup={dateGroup}
+              allArrangementGroups={groups}
+              colSpan={4}
+              formatAmount={amount => amount.toFixed(2)}
+              onRemoveAll={onRemoveAll}
+            />
+          )}
+          formatDate={date => String(date)}
+          formatAmount={amount => amount.toFixed(2)}
+        />
+        <ArrangementBillOverallTotals
+          groups={groups}
+          colSpan={4}
+          formatAmount={amount => amount.toFixed(2)}
+        />
+      </tbody>
+    </table>
+  );
+}
+
 describe("vendor bill date groups", () => {
   it("groups 100+ trip rows by date and keeps original indexes and exact grand total", () => {
     const items = Array.from({ length: 105 }, (_, idx) => ({
@@ -133,8 +214,48 @@ describe("vendor bill date groups", () => {
     expect([...equipment, ...siteLabour, ...plantLabour].reduce((sum, group) => sum + group.subtotal, 0)).toBe(60);
   });
 
+  it("renders one arrangement summary per date and preserves the all-days total and full-group removal", () => {
+    const items = [
+      arrangementItem("2026-08-13", 1),
+      arrangementItem("2026-08-13", 2),
+      arrangementItem("2026-08-14", 3),
+    ];
+    const onRemoveAll = vi.fn();
+    render(<ArrangementHarness items={items} onRemoveAll={onRemoveAll} />);
+
+    expect(screen.getByTestId("row-date-group-arrangement-2026-08-13").textContent).toContain("2 items");
+    expect(screen.getByTestId("row-date-group-arrangement-2026-08-14").textContent).toContain("1 item");
+    expect(screen.getAllByTestId(/arrangement-bill-group-/)).toHaveLength(2);
+    expect(screen.getByTestId("arrangement-bill-group-0-2026-08-13").textContent)
+      .toContain("2 trips · Rate ₹100 · ₹200.00 that day");
+    expect(screen.getByTestId("arrangement-bill-group-2-2026-08-14").textContent)
+      .toContain("1 trips · Rate ₹100 · ₹100.00 that day");
+    expect(screen.getByTestId("arrangement-bill-overall-total").textContent)
+      .toContain("3 trips · ₹300.00");
+
+    fireEvent.click(screen.getAllByText("Remove group from this bill")[0]);
+    expect(onRemoveAll).toHaveBeenCalledTimes(1);
+    expect(onRemoveAll.mock.calls[0][0].map(item => item.date)).toEqual([
+      "2026-08-13",
+      "2026-08-13",
+      "2026-08-14",
+    ]);
+  });
+
+  it("keeps a single-day arrangement count and amount unchanged", () => {
+    const items = [arrangementItem("2026-08-13", 1), arrangementItem("2026-08-13", 2)];
+    render(<ArrangementHarness items={items} onRemoveAll={vi.fn()} />);
+    expect(screen.getAllByTestId(/arrangement-bill-group-/)).toHaveLength(1);
+    expect(screen.getByTestId("arrangement-bill-group-0-2026-08-13").textContent)
+      .toContain("2 trips · Rate ₹100 · ₹200.00 that day");
+    expect(screen.getByTestId("arrangement-bill-overall-total").textContent)
+      .toContain("2 trips · ₹200.00");
+  });
+
   it("wires date rows into both edit and read-only tables without replacing original row indexes", () => {
     const source = readFileSync("client/src/pages/VendorBills.tsx", "utf8");
+    expect(source).toContain("dateGroup={dateGroup}");
+    expect(source).toContain("ArrangementBillOverallTotals");
     expect(source).toContain('scope={`edit-${cat}`}');
     expect(source).toContain('scope={`detail-${cat}`}');
     expect(source).toContain('scope={`edit-${cat}-labour-${grp.key}`}');

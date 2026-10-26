@@ -8,6 +8,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useSearch, useLocation } from "wouter";
 import { format } from "date-fns";
+import { tripListDefaultsFromSearch } from "@/lib/tripListDefaults";
 import { Plus, Trash2, Loader2, ArrowLeft, Truck, Package, Camera, ImagePlus, X, History, Ban } from "lucide-react";
 import CancelDialog from "@/components/CancelDialog";
 import HistoryDialog from "@/components/HistoryDialog";
@@ -77,8 +78,9 @@ export default function SiteMaterialTrips() {
   const today = format(new Date(), "yyyy-MM-dd");
   const currentTime = format(new Date(), "HH:mm");
 
+  const hireEvidenceDefaults = tripListDefaultsFromSearch(window.location.search, today);
   const hireEvidenceParams = new URLSearchParams(window.location.search);
-  const hireEvidenceDate = /^\d{4}-\d{2}-\d{2}$/.test(hireEvidenceParams.get("hireDate") || "") ? hireEvidenceParams.get("hireDate")! : today;
+  const hireEvidenceDate = hireEvidenceDefaults.hireDate;
   const [dateFromFilter, setDateFromFilter] = useState(hireEvidenceDate);
   const [dateToFilter, setDateToFilter] = useState(hireEvidenceDate);
   const [siteFilter, setSiteFilter] = useState(piParams.site || "");
@@ -87,7 +89,7 @@ export default function SiteMaterialTrips() {
   const [supplierFilter, setSupplierFilter] = useState("");
   const [onlyUnassigned, setOnlyUnassigned] = useState(false);
   const [onlyWithoutArrangement, setOnlyWithoutArrangement] = useState(false);
-  const [roleFilter, setRoleFilter] = useState<TripRoleFilter>("all");
+  const [roleFilter, setRoleFilter] = useState<TripRoleFilter>(hireEvidenceDefaults.roleFilter);
   const [roleChoice, setRoleChoice] = useState<TripTransportRole | null>("same_party");
   const [editingRoleTrip, setEditingRoleTrip] = useState<SiteMaterialTrip | null>(null);
   const [bulkMaterialSourceSupplier, setBulkMaterialSourceSupplier] = useState("");

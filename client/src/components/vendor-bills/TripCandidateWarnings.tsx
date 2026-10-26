@@ -6,14 +6,25 @@ type UnconfirmedOffer = TripCandidateSafety & {
   sourceId?: string | number | null;
   date: string;
   description: string;
+  siteName?: string | null;
   vehicleNumber?: string | null;
   receiptNumber?: string | null;
 };
 
-export function UnconfirmedTripOffers({ items, refreshing, onRefresh }: {
+export function buildTripRoleConfirmationHref(item: Pick<UnconfirmedOffer, "date" | "siteName">, returnTo?: string) {
+  const params = new URLSearchParams();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(item.date)) params.set("hireDate", item.date);
+  if (item.siteName?.trim()) params.set("site", encodeURIComponent(item.siteName.trim()));
+  params.set("hireRole", "unresolved");
+  if (returnTo) params.set("returnTo", encodeURIComponent(returnTo));
+  return `/site/material-trips?${params.toString()}`;
+}
+
+export function UnconfirmedTripOffers({ items, refreshing, onRefresh, returnTo }: {
   items: readonly UnconfirmedOffer[];
   refreshing: boolean;
   onRefresh: () => void;
+  returnTo?: string;
 }) {
   if (!items.length) return null;
   return <div className="space-y-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200" data-testid="unconfirmed-trip-offers">
@@ -23,7 +34,7 @@ export function UnconfirmedTripOffers({ items, refreshing, onRefresh }: {
         <p className="font-semibold">{item.roleWarning || UNCONFIRMED_TRIP_WARNING}</p>
         <p>{item.date} · {item.description}{item.tripId != null ? ` · Trip ${item.tripId}` : ""}</p>
         {(item.vehicleNumber || item.receiptNumber) && <p>{item.vehicleNumber ? `Vehicle: ${item.vehicleNumber}` : ""}{item.vehicleNumber && item.receiptNumber ? " · " : ""}{item.receiptNumber ? `Receipt: ${item.receiptNumber}` : ""}</p>}
-        <p>Cannot add to this bill. Confirm <Link href="/site/material-trips" className="font-semibold underline underline-offset-2">Who brought it?</Link> on the trip, then refresh records. No material or transport role has been assumed.</p>
+        <p>Cannot add to this bill. Confirm <Link href={buildTripRoleConfirmationHref(item, returnTo)} className="font-semibold underline underline-offset-2">Who brought it?</Link> on the trip, then refresh records. No material or transport role has been assumed.</p>
       </div>
     </div>)}
     <Button type="button" variant="outline" size="sm" onClick={onRefresh} disabled={refreshing} data-testid="button-refresh-trip-roles">

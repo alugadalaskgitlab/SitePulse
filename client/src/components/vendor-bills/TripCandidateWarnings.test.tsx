@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { TransportPricingNote, UnconfirmedTripOffers } from "./TripCandidateWarnings";
+import { buildTripRoleConfirmationHref, TransportPricingNote, UnconfirmedTripOffers } from "./TripCandidateWarnings";
 import { UNCONFIRMED_TRIP_WARNING } from "./tripCandidateSafety";
 
 afterEach(cleanup);
@@ -10,10 +10,10 @@ describe("trip warnings (mock candidate component tests only)", () => {
   const items = [{
     sourceType: "site_material_trip_unresolved", sourceId: 718, tripId: 718,
     rolesUnconfirmed: true, roleWarning: UNCONFIRMED_TRIP_WARNING,
-    date: "2026-10-09", description: "20 MM AGGREGATE", vehicleNumber: "KA 05 7812",
+    date: "2026-10-09", description: "20 MM AGGREGATE", siteName: "North Yard", vehicleNumber: "KA 05 7812",
   }];
   it("offers an amber, disabled unchecked row with the exact warning and trip-fix link", () => {
-    render(<UnconfirmedTripOffers items={items} refreshing={false} onRefresh={vi.fn()} />);
+    render(<UnconfirmedTripOffers items={items} refreshing={false} onRefresh={vi.fn()} returnTo="/plant/vendor-bills" />);
     const checkbox = screen.getByRole("checkbox") as HTMLInputElement;
     expect(checkbox.checked).toBe(false);
     expect(checkbox.disabled).toBe(true);
@@ -21,9 +21,21 @@ describe("trip warnings (mock candidate component tests only)", () => {
     expect(checkbox.checked).toBe(false);
     expect(screen.getByText(UNCONFIRMED_TRIP_WARNING)).toBeTruthy();
     expect(screen.getByTestId("unconfirmed-trip-offers").className).toContain("bg-amber-50");
-    expect(screen.getByRole("link", { name: "Who brought it?" }).getAttribute("href")).toBe("/site/material-trips");
+    const link = screen.getByRole("link", { name: "Who brought it?" });
+    const href = new URL(link.getAttribute("href")!, "https://example.test");
+    expect(href.pathname).toBe("/site/material-trips");
+    expect(href.searchParams.get("hireDate")).toBe("2026-10-09");
+    expect(decodeURIComponent(href.searchParams.get("site")!)).toBe("North Yard");
+    expect(href.searchParams.get("hireRole")).toBe("unresolved");
+    expect(decodeURIComponent(href.searchParams.get("returnTo")!)).toBe("/plant/vendor-bills");
     expect(screen.getByText(/Cannot add to this bill/)).toBeTruthy();
     expect(screen.getByText(/Trip 718/)).toBeTruthy();
+  });
+  it("omits unavailable site information from the trip link", () => {
+    const href = new URL(buildTripRoleConfirmationHref({ date: "2026-10-09" }), "https://example.test");
+    expect(href.searchParams.get("hireDate")).toBe("2026-10-09");
+    expect(href.searchParams.has("site")).toBe(false);
+    expect(href.searchParams.get("hireRole")).toBe("unresolved");
   });
   it("refresh invokes the supplied query refetch and is disabled while fetching", () => {
     const refresh = vi.fn();

@@ -34,7 +34,7 @@ export function groupBillItemsByDate<T extends { date?: string | null; amount?: 
       });
     }
   }
-  return [...groups.values()].sort((a, b) => {
+  return Array.from(groups.values()).sort((a, b) => {
     if (a.key === MISSING_BILL_ITEM_DATE) return 1;
     if (b.key === MISSING_BILL_ITEM_DATE) return -1;
     return a.key.localeCompare(b.key);
@@ -51,7 +51,7 @@ type BillDateGroupRowsProps<T extends { date?: string | null; amount?: number | 
   onToggle: (key: string, expanded: boolean) => void;
   onRemoveGroup?: (items: Array<IndexedBillItem<T>>, label: string) => void;
   hideSubtotalForGroup?: (group: BillDateGroup<T>) => boolean;
-  renderRow: (item: T, idx: number) => ReactNode;
+  renderRow: (item: T, idx: number, dateGroup: BillDateGroup<T>) => ReactNode;
   formatDate: (date: string | null | undefined) => string;
   formatAmount: (amount: number) => string;
 };
@@ -114,7 +114,7 @@ export function BillDateGroupRows<T extends { date?: string | null; amount?: num
                 )}
               </td>
             </tr>
-            {expanded && group.items.map(({ item, idx }) => renderRow(item, idx))}
+            {expanded && group.items.map(({ item, idx }) => renderRow(item, idx, group))}
           </Fragment>
         );
       })}

@@ -65,13 +65,14 @@ import {
   projectSavedHireDetailFinancials,
   reconcileDraftHireNetPayableRows,
 } from "@/components/vendor-bills/savedBillDetailFinancials";
-import { BillDateGroupControls, BillDateGroupRows } from "@/components/vendor-bills/BillDateGroups";
+import { BillDateGroupControls, BillDateGroupRows, type BillDateGroup } from "@/components/vendor-bills/BillDateGroups";
+import { ArrangementBillGroupRow, ArrangementBillOverallTotals } from "@/components/vendor-bills/ArrangementBillGroups";
 import { isTrulyBlankManualBillRow } from "@/lib/vendorBillBlankRows";
 import RateCards from "@/pages/RateCards";
 import { applyTransportCard, changeTransportBasis } from "@shared/vendorBillTransport";
 import { TransportPricingRow } from "@/components/vendor-bills/TransportPricingRow";
 import { UnconfirmedTripOffers, TransportPricingNote } from "@/components/vendor-bills/TripCandidateWarnings";
-import { arrangementWorking, type ArrangementPricing } from "@shared/vendorBillArrangement";
+import { type ArrangementPricing } from "@shared/vendorBillArrangement";
 import { billableTripCandidates, isUnconfirmedTrip, isSiteTripTransport } from "@/components/vendor-bills/tripCandidateSafety";
 import { calcCandidateAmount, groupRateItems, stripSourceSuffix, canonicalMachineName, canonicalTransportName, canonicalMatName, deriveLabourKey, type RateGroup as SharedRateGroup } from "@shared/vendorBillCandidates";
 
@@ -4005,7 +4006,12 @@ export default function VendorBills() {
                 </span>
                   {billType !== "equipment" && <span className="mt-1 block text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">Other billable activities for this vendor/period are shown here.</span>}
                   <div className="mt-3 space-y-2">
-                    <UnconfirmedTripOffers items={unconfirmedTripOffers} refreshing={autoItemsLoading} onRefresh={() => { void refreshAutoItems(); }} />
+                    <UnconfirmedTripOffers
+                      items={unconfirmedTripOffers}
+                      refreshing={autoItemsLoading}
+                      onRefresh={() => { void refreshAutoItems(); }}
+                      returnTo={typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : "/plant/vendor-bills"}
+                    />
                     {(billType === "material" || billType === "all") && (
                       <Link href={`/site/material-trips?returnTo=${encodeURIComponent(typeof window !== "undefined" ? window.location.pathname : "/plant/vendor-bills")}`}>
                         <Button type="button" variant="ghost" size="sm" className="h-auto px-0 text-xs" data-testid="link-material-trip-backlog">
@@ -4140,21 +4146,16 @@ export default function VendorBills() {
               ];
 
               const arrangementGroups = groupRateItems(lineItems.filter(item => item.arrangementPricing));
-              const renderItemRow = (item: LineItem, idx: number) => item.arrangementPricing ? (
-                arrangementGroups.find(group => group.items.includes(item))?.items[0] !== item ? null :
-                <tr key={idx} data-testid={`arrangement-bill-group-${idx}`} className="border-b">
-                  <td colSpan={totalColSpan} className="p-3">
-                    <strong>{item.description}</strong>
-                    <p>{arrangementGroups.find(group => group.items.includes(item))!.count} trips · Rate ₹{item.rate}</p>
-                    <p className={item.arrangementPricing.reason ? "text-amber-700" : ""}>
-                      {arrangementWorking(item.arrangementPricing, arrangementGroups.find(group => group.items.includes(item))!.count)}
-                    </p>
-                    <button type="button" className="text-xs underline" onClick={() => {
-                      const group = arrangementGroups.find(group => group.items.includes(item))!;
-                      setLineItems(prev => prev.filter(row => !group.items.includes(row)));
-                    }}>Remove group from this bill</button>
-                  </td>
-                </tr>
+              const renderItemRow = (item: LineItem, idx: number, dateGroup: BillDateGroup<LineItem>) => item.arrangementPricing ? (
+                <ArrangementBillGroupRow
+                  item={item}
+                  idx={idx}
+                  dateGroup={dateGroup}
+                  allArrangementGroups={arrangementGroups}
+                  colSpan={totalColSpan}
+                  formatAmount={formatCurrency}
+                  onRemoveAll={itemsToRemove => setLineItems(prev => prev.filter(row => !itemsToRemove.includes(row)))}
+                />
               ) : (
                 <tr key={idx} className={`border-b ${item.unitRateWarning ? "bg-amber-100 dark:bg-amber-900/30" : ""}`} data-testid={`bill-item-row-${idx}`}>
                   <td className="px-2 py-1.5 text-muted-foreground text-sm">{idx + 1}</td>
@@ -4411,6 +4412,9 @@ export default function VendorBills() {
                           const catItems = lineItems.map((item, idx) => ({ item, idx })).filter(({ item }) => item.category === cat);
                           if (catItems.length === 0) return null;
                           const catTotal = catItems.reduce((sum, { item }) => sum + (item.amount || 0), 0);
+                          const categoryArrangementGroups = groupRateItems(
+                            catItems.map(({ item }) => item).filter(item => item.arrangementPricing),
+                          );
 
                           let labourSubGroups: Array<{ key: "site" | "plant" | "other"; label: string; items: Array<{ item: LineItem; idx: number }> }> | null = null;
                           if (cat === "labour") {
@@ -4495,6 +4499,11 @@ export default function VendorBills() {
                                   formatAmount={formatCurrency}
                                 />
                               )}
+                              <ArrangementBillOverallTotals
+                                groups={categoryArrangementGroups}
+                                colSpan={totalColSpan}
+                                formatAmount={formatCurrency}
+                              />
                               <tr className="border-b bg-muted/40">
                                 <td colSpan={labelColSpan} className="px-2 py-2 text-right text-sm font-semibold uppercase" data-testid={`text-subtotal-label-${cat}`}>
                                   {catLabels[cat]} Sub-total
@@ -4507,25 +4516,32 @@ export default function VendorBills() {
                         })}
                       </>
                     ) : (
-                      <BillDateGroupRows
-                        items={lineItems
-                          .map((item, idx) => ({ item, idx }))
-                          .filter(({ item }) => {
-                          if (item.category !== "labour" || labourFilter === "all" || !showLabourFilter) return true;
-                          return getLabourSource(item) === labourFilter;
-                          })}
-                        scope="edit-all"
-                        hideSubtotalForGroup={group => !isHistoricalHireEdit && billType === "equipment" && group.items.some(({ item }) => item.source === "hire_group")}
-                        onRemoveGroup={removeItemGroup}
-                        totalColumns={totalColSpan}
-                        totalBillItems={lineItems.length}
-                        expansionMode={dateGroupExpansionMode}
-                        expansionOverrides={dateGroupExpansionOverrides}
-                        onToggle={toggleDateGroup}
-                        renderRow={renderItemRow}
-                        formatDate={formatDate}
-                        formatAmount={formatCurrency}
-                      />
+                      <>
+                        <BillDateGroupRows
+                          items={lineItems
+                            .map((item, idx) => ({ item, idx }))
+                            .filter(({ item }) => {
+                            if (item.category !== "labour" || labourFilter === "all" || !showLabourFilter) return true;
+                            return getLabourSource(item) === labourFilter;
+                            })}
+                          scope="edit-all"
+                          hideSubtotalForGroup={group => !isHistoricalHireEdit && billType === "equipment" && group.items.some(({ item }) => item.source === "hire_group")}
+                          onRemoveGroup={removeItemGroup}
+                          totalColumns={totalColSpan}
+                          totalBillItems={lineItems.length}
+                          expansionMode={dateGroupExpansionMode}
+                          expansionOverrides={dateGroupExpansionOverrides}
+                          onToggle={toggleDateGroup}
+                          renderRow={renderItemRow}
+                          formatDate={formatDate}
+                          formatAmount={formatCurrency}
+                        />
+                        <ArrangementBillOverallTotals
+                          groups={arrangementGroups}
+                          colSpan={totalColSpan}
+                          formatAmount={formatCurrency}
+                        />
+                      </>
                     )}
                   </tbody>
                   <tfoot>
