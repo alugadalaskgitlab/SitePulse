@@ -9,7 +9,6 @@ import {
   type WholeBillSnapshot,
   type HireStatementExport,
 } from "./wholeBillSnapshot";
-import { hireReviewDisclosureLines } from "@shared/vendorBillLayout";
 import { drawPdfBillFooter, drawPdfBillHeader, INK_LIGHT_TABLE } from "./pdfExportStyle";
 
 const printable = (value: unknown) => String(value ?? "")
@@ -71,21 +70,36 @@ function monthlyRows(statements: HireStatementExport[], snapshot: WholeBillSnaps
     const month = months[0];
     const exact = <K extends "daysBilled" | "grossHire" | "breakdownDeduction" | "grossBillAmount" | "advanceAdjustment" | "netMonth">(field: K) =>
       sumIfComplete(months.map(item => asAmount(item[field])));
+    const grossBill = exact("grossBillAmount");
+    const advance = exact("advanceAdjustment");
     return {
       key,
       month: month.label || key,
       days: exact("daysBilled"),
       gross: exact("grossHire"),
       breakdown: exact("breakdownDeduction"),
-      grossBill: exact("grossBillAmount"),
-      advance: exact("advanceAdjustment"),
-      net: exact("netMonth"),
+      grossBill,
+      advance,
+      // This column is the month's bill amount less its saved advance only.
+      // TDS and bill-level deductions remain in the Bill Summary box.
+      net: grossBill != null && advance != null ? grossBill - advance : null,
     };
   }).sort((a, b) => a.key.localeCompare(b.key));
 }
 
 function detailLines(snapshot: WholeBillSnapshot, statements: HireStatementExport[]) {
-  return statements.map(statement => {
+  const unique = (values: Array<string | number | null | undefined>) =>
+    Array.from(new Set(values.map(value => String(value ?? "").trim()).filter(Boolean))).join("; ") || "Not recorded";
+  const equipmentLabels = statements.map(statement => {
+    const rawName = String(statement.equipmentName || "").trim();
+    const placeholder = /^equipment\s*#\s*\d+$/i.test(rawName);
+    const name = placeholder
+      ? statement.equipmentType || snapshot.equipmentType || "Equipment"
+      : rawName || statement.equipmentType || snapshot.equipmentType || "Equipment";
+    const master = typeof statement.masterReference === "string" ? statement.masterReference.trim() : "";
+    return master && !name.includes(master) ? `${name} · ${master}` : name;
+  });
+  const basisLines = statements.map(statement => {
     const monthly = statement.basis.toLowerCase().includes("monthly");
     const divisorValue = statement.monthlyDivisorType === "30"
       ? 30
@@ -100,12 +114,14 @@ function detailLines(snapshot: WholeBillSnapshot, statements: HireStatementExpor
     const ratePerDay = monthly && divisorValue && divisorValue > 0
       ? amountText(statement.rate / divisorValue)
       : monthly ? "Varies by month" : "Not applicable";
-    const norm = statement.dieselNorm == null
-      ? "Not recorded"
-      : `${statement.dieselNorm.toLocaleString("en-IN")} ${statement.dieselNormUnit || ""}`.trim();
-    const master = statement.masterReference == null ? "Not recorded" : String(statement.masterReference);
-    return `Vendor: ${snapshot.vendorName} · Equipment: ${statement.equipmentName} · Master ref: ${master} · Hire basis: ${statement.basis}, ${amountText(statement.rate)}${monthly ? "/month" : ""} · Monthly divisor: ${divisor} · Rate/day: ${ratePerDay} · Site: ${statement.site || snapshot.site || "Not recorded"} · Diesel norm: ${norm}`;
+    return `${statement.basis}, ${amountText(statement.rate)}${monthly ? "/month" : ""} · Rate/day: ${ratePerDay} · Divisor: ${divisor}`;
   });
+  const norms = statements.map(statement => statement.dieselNorm == null
+    ? "" : `${statement.dieselNorm.toLocaleString("en-IN")} ${statement.dieselNormUnit || ""}`.trim());
+  return [
+    `Vendor: ${snapshot.vendorName} · Equipment: ${unique(equipmentLabels)} · Site: ${unique(statements.map(statement => statement.site || snapshot.site))}`,
+    `Hire basis: ${unique(basisLines)} · Diesel norm: ${unique(norms)}`,
+  ];
 }
 
 function financialRows(snapshot: WholeBillSnapshot) {
@@ -128,7 +144,7 @@ function advances(statements: HireStatementExport[]) {
   return statements
     .filter(statement => statement.advanceAdjustment > 0)
     .map(statement => ({
-      label: `Advance · ${dateText(statement.advanceAdjustmentDate)} · ${statement.equipmentName}`,
+      label: `Advance · ${dateText(statement.advanceAdjustmentDate)}`,
       amount: -Math.abs(statement.advanceAdjustment),
       reason: statement.advanceAdjustmentReason || "",
     }));
@@ -221,7 +237,10 @@ function addSignatures(doc: jsPDF, y: number) {
   });
 }
 
-export function buildWholeBillEquipmentPdf(snapshot: WholeBillSnapshot): jsPDF {
+export function buildWholeBillEquipmentPdf(
+  snapshot: WholeBillSnapshot,
+  appendActivityPages?: (doc: jsPDF) => void,
+): jsPDF {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const statements = snapshot.hireStatementDetails || [];
   const header = makeHeader(snapshot, statements);
@@ -241,6 +260,7 @@ export function buildWholeBillEquipmentPdf(snapshot: WholeBillSnapshot): jsPDF {
     row.month, row.days ?? "—", amountText(row.gross), amountText(row.breakdown),
     amountText(row.grossBill), amountText(row.advance), amountText(row.net),
   ]);
+  const monthlyNetTotal = sumIfComplete(monthRows.map(row => row.net));
   const totals: BillExportCell[] = [
     "Total",
     monthRows.length && monthRows.every(row => row.days != null)
@@ -249,7 +269,7 @@ export function buildWholeBillEquipmentPdf(snapshot: WholeBillSnapshot): jsPDF {
     amountText(totalRowValue(snapshot, statements, "breakdownDeduction")),
     amountText(totalRowValue(snapshot, statements, "grossBillAmount")),
     amountText(totalRowValue(snapshot, statements, "advanceAdjustment")),
-    amountText(totalRowValue(snapshot, statements, "netPayable")),
+    amountText(monthlyNetTotal),
   ];
   autoTable(doc, {
     startY: headerBottom + 5,
@@ -280,19 +300,6 @@ export function buildWholeBillEquipmentPdf(snapshot: WholeBillSnapshot): jsPDF {
   });
 
   let y = Number((doc as any).lastAutoTable?.finalY || headerBottom + 5) + 7;
-  const reviewNotes = (snapshot.hireReviews || []).flatMap(hireReviewDisclosureLines);
-  for (const note of reviewNotes) {
-    const lines = doc.splitTextToSize(printable(note), pageWidth - 20);
-    if (y + lines.length * 3.2 > pageHeight - 18) {
-      doc.addPage();
-      y = drawPdfBillHeader(doc, header) + 3;
-    }
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(6.8);
-    doc.setTextColor(50, 50, 50);
-    doc.text(lines.length === 1 ? lines[0] : lines, 10, y);
-    y += lines.length * 3.2 + 2;
-  }
   const advancesList = advances(statements);
   const advanceTotal = totalRowValue(snapshot, statements, "advanceAdjustment");
   const breakdownTotal = totalRowValue(snapshot, statements, "breakdownDeduction");
@@ -357,7 +364,7 @@ export function buildWholeBillEquipmentPdf(snapshot: WholeBillSnapshot): jsPDF {
       2: { cellWidth: 75 },
       3: { cellWidth: 27, halign: "right" },
     },
-    margin: { left: 10, right: 10, top: headerBottom + 2, bottom: 16 },
+    margin: { left: 10, right: 10, top: headerBottom + 2, bottom: 44 },
     didDrawPage: drawHeader,
     didParseCell: cell => {
       const raw = cell.row.raw as string[] | undefined;
@@ -369,28 +376,46 @@ export function buildWholeBillEquipmentPdf(snapshot: WholeBillSnapshot): jsPDF {
     },
   });
 
-  for (const section of populatedBillSections(snapshot)) {
+  let billNotesY = Number((doc as any).lastAutoTable?.finalY || y + 2) + 4;
+  if (snapshot.notes?.trim()) {
+    const noteLines = doc.splitTextToSize(printable(`Notes / remarks: ${snapshot.notes.trim()}`), pageWidth - 20);
+    if (billNotesY + noteLines.length * 3.2 < pageHeight - 46) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.5);
+      doc.setTextColor(45, 45, 45);
+      doc.text(noteLines, 10, billNotesY);
+      billNotesY += noteLines.length * 3.2 + 3;
+    }
+  }
+  addSignatures(doc, pageHeight - 42);
+
+  appendActivityPages?.(doc);
+
+  const hasHireData = statements.length > 0 || !!snapshot.hireReviews?.length || snapshot.billType.toLowerCase() === "equipment";
+  const nonHireSections = populatedBillSections(snapshot).filter(section =>
+    !hasHireData || section.category.toLowerCase() !== "equipment");
+  for (const section of nonHireSections) {
     const content = billSectionTable(section);
     if (!content.values.length) continue;
-    doc.addPage();
+    const visibleColumns = content.headers
+      .map((_, index) => index)
+      .filter(index => content.values.some(row => row[index] != null && String(row[index]).trim() !== ""));
+    const headers = visibleColumns.map(index => printable(content.headers[index]));
+    const values = content.values.map(row => visibleColumns.map(index => printable(row[index])));
+    if (!headers.length) continue;
+    doc.addPage("a4", "landscape");
+    const nonHireHeaderBottom = drawPdfBillHeader(doc, header);
     autoTable(doc, {
-      startY: headerBottom + 5,
-      head: [[{ content: printable(section.category.toUpperCase()), colSpan: content.headers.length }], content.headers.map(printable)],
-      body: content.values.map(row => row.map(printable)),
+      startY: nonHireHeaderBottom + 5,
+      head: [[{ content: printable(section.category.toUpperCase()), colSpan: headers.length }], headers],
+      body: values,
       ...INK_LIGHT_TABLE,
-      styles: { ...INK_LIGHT_TABLE.styles, fontSize: 6.7, cellPadding: 1.6 },
-      margin: { left: 10, right: 10, top: headerBottom + 2, bottom: 16 },
+      styles: { ...INK_LIGHT_TABLE.styles, fontSize: 5.5, cellPadding: 1.1, overflow: "ellipsize" },
+      margin: { left: 7, right: 7, top: nonHireHeaderBottom + 2, bottom: 16 },
       showHead: "everyPage",
-      didDrawPage: drawHeader,
+      didDrawPage: () => { drawPdfBillHeader(doc, header); },
     });
   }
-
-  let signatureY = Number((doc as any).lastAutoTable?.finalY || headerBottom + 5) + 7;
-  if (signatureY > pageHeight - 38) {
-    doc.addPage();
-    signatureY = drawPdfBillHeader(doc, header) + 12;
-  }
-  addSignatures(doc, Math.min(signatureY, pageHeight - 35));
 
   const pages = doc.getNumberOfPages();
   const generatedAt = snapshot.generatedAt

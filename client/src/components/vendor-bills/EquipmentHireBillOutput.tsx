@@ -604,7 +604,13 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
       netPayable: data.netPayable ?? Number.NaN,
     },
   };
-  const doc = buildWholeBillEquipmentPdf(billSnapshot);
+  const doc = buildWholeBillEquipmentPdf(billSnapshot, pdfDoc => {
+    exportEquipmentHireCalendar(data, rows, "pdf", {
+      doc: pdfDoc,
+      startNewPage: true,
+      append: true,
+    });
+  });
   doc.save(`${safeName}.pdf`);
 }
 
@@ -721,7 +727,20 @@ function activityMonthTotalRow(
  * Export only the daily activity calendar and its period totals.  The bill
  * summary deliberately lives only in exportEquipmentHireBill.
  */
-export function exportEquipmentHireCalendar(data: EquipmentHireExportData, rows: BillingDailyRow[], exportFormat: "pdf" | "xlsx") {
+export type EquipmentHireCalendarPdfOptions = {
+  /** Append this Activity Statement to an existing bill PDF instead of saving a separate file. */
+  doc?: jsPDF;
+  startNewPage?: boolean;
+  append?: boolean;
+  emptyMessage?: string;
+};
+
+export function exportEquipmentHireCalendar(
+  data: EquipmentHireExportData,
+  rows: BillingDailyRow[],
+  exportFormat: "pdf" | "xlsx",
+  pdfOptions: EquipmentHireCalendarPdfOptions = {},
+) {
   const fuelIsContractorScope = String(data.dieselResponsibility).toLowerCase() === "vendor";
   const totals = buildEquipmentHirePeriodTotals(rows, data.dieselResponsibility);
   // Excel is the internal audit copy: retain the full fuel/tank evidence columns
@@ -753,9 +772,10 @@ export function exportEquipmentHireCalendar(data: EquipmentHireExportData, rows:
     return;
   }
 
-  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  const doc = pdfOptions.doc || new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  if (pdfOptions.startNewPage) doc.addPage("a4", "landscape");
   const isHourMeter = String(data.meterType || "").toLowerCase().includes("hour");
-  const tripColumn = !isHourMeter && String(data.hireBasis).toLowerCase().includes("trip") &&
+  const tripColumn = !pdfOptions.append && !isHourMeter && String(data.hireBasis).toLowerCase().includes("trip") &&
     rows.some(row => Number(rowTrips(row) || 0) > 0);
   const activityHeaders = [
     "Date", "Site", "Open meter", "Close meter", "Working hrs (h:min)",
@@ -801,6 +821,14 @@ export function exportEquipmentHireCalendar(data: EquipmentHireExportData, rows:
   let y = headerBottom + 4;
   let reviewSeen = false;
   const noActivityDays = rows.filter(noActivityRecorded).length;
+  if (!rowsByMonth.size && pdfOptions.emptyMessage) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(45, 45, 45);
+    const messageLines = doc.splitTextToSize(pdfText(pdfOptions.emptyMessage), doc.internal.pageSize.getWidth() - 16);
+    doc.text(messageLines, 8, y);
+    y += messageLines.length * 4 + 4;
+  }
   for (const [key, monthRows] of Array.from(rowsByMonth).sort(([a], [b]) => a.localeCompare(b))) {
     const title = monthTitle(`${key}-01`);
     if (y > doc.internal.pageSize.getHeight() - 55) {
@@ -892,13 +920,16 @@ export function exportEquipmentHireCalendar(data: EquipmentHireExportData, rows:
   doc.line(16 + signatureWidth, y + 15, doc.internal.pageSize.getWidth() - 8, y + 15);
   doc.text("Received · Vendor", 16 + signatureWidth, y + 20);
 
-  const generatedAt = format(new Date(), "dd MMM yyyy HH:mm");
-  const pages = doc.getNumberOfPages();
-  for (let page = 1; page <= pages; page++) {
-    doc.setPage(page);
-    drawPdfBillFooter(doc, page, pages, generatedAt, data.billNo || "Not yet saved");
+  if (!pdfOptions.append) {
+    const generatedAt = format(new Date(), "dd MMM yyyy HH:mm");
+    const pages = doc.getNumberOfPages();
+    for (let page = 1; page <= pages; page++) {
+      doc.setPage(page);
+      drawPdfBillFooter(doc, page, pages, generatedAt, data.billNo || "Not yet saved");
+    }
+    doc.save(`${safeName}-calendar.pdf`);
   }
-  doc.save(`${safeName}-calendar.pdf`);
+  return pdfOptions.append ? doc : undefined;
 }
 
 export type EquipmentHireExportFormat = "pdf" | "xlsx";

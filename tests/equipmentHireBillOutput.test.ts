@@ -78,16 +78,21 @@ describe("equipment hire bill output", () => {
     expect(rows[1]).toMatchObject({ status: "Breakdown", downtimeHours: 4, remarks: expect.stringContaining("Hydraulic hose") });
   });
 
-  it("exports a portrait bill PDF with the monthly summary and frozen financial summary, separate from activity", () => {
+  it("exports a portrait bill with the monthly summary and appends the landscape Activity Statement", () => {
     pdfEvents.length = 0;
     tables.length = 0;
     exportEquipmentHireBill(data, rows, "pdf");
-    expect(tables).toHaveLength(2);
+    expect(tables).toHaveLength(3);
     expect(tables[0].head[0]).toEqual(["Month", "Days billed", "Gross hire", "Breakdown", "Gross bill amount", "Advance", "Net—month"]);
     expect(tables[1].body.flat()).toEqual(expect.arrayContaining(["Gross bill amount", "NET PAYABLE", "Rs. 8,036.00"]));
     expect(tables.flatMap(table => table.body.flat()).join("")).not.toMatch(/[₹−×]/);
-    expect(tables.flatMap(table => table.head.flat()).join(" ")).not.toContain("DAILY ACTIVITY");
+    expect(tables[2].head[0]).toEqual([
+      "Date", "Site", "Open meter", "Close meter", "Working hrs (h:min)", "Start time",
+      "End time", "Clock duration", "Tank open", "Tank close", "Diesel issued",
+      "Consumption (L/hr)", "Status",
+    ]);
     expect(pdfEvents.some(event => event.type === "text" && event.value === "EQUIPMENT HIRE BILL")).toBe(true);
+    expect(pdfEvents.some(event => event.type === "text" && event.value === "ACTIVITY STATEMENT")).toBe(true);
     expect(pdfEvents.some(event => event.type === "rect" && event.args?.join(",") === "10,8,15,12")).toBe(true);
     expect(pdfEvents.some(event => event.type === "text" && event.value === "HLC")).toBe(true);
     expect(pdfEvents).toContainEqual({ type: "save", value: "VB-EH-001.pdf" });
@@ -615,7 +620,7 @@ describe("equipment hire bill output", () => {
     expect(monthly.data.flat().join(" ")).not.toContain("Days Billed follows the hire terms");
     pdfEvents.length = 0;
     exportEquipmentHireBill(withReview, rows, "pdf");
-    expect(pdfEvents.some(event => event.type === "text" && event.value === notice)).toBe(true);
+    expect(pdfEvents.some(event => event.type === "text" && event.value === notice)).toBe(false);
     expect(tables.flatMap(table => table.body.flat()).join(" ")).not.toContain("Days Billed follows the hire terms");
   });
 });
