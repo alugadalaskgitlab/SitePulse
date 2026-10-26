@@ -1,6 +1,7 @@
 import { billReviewAmounts } from "./vendorBillReview";
 import { computeBillGstByCategory, aggregateGstBreakdown } from "./vendor-bill-gst";
 import { siteMatchesPermitted, vendorBillItemMatchesSite } from "./siteName";
+import { replaceHireNetAmountsWithTaxBases } from "./hireBilling";
 
 export const taxCategories = ["equipment", "material", "transport", "labour"] as const;
 export type TaxCategory = typeof taxCategories[number];
@@ -8,17 +9,52 @@ export type BillScope = "unpaid" | "all";
 
 /** Same saved-bill arithmetic used by the bill detail. No postings or writes. */
 export function getBillFinancialTotals(bill: any) {
+  const items = bill.items || [];
   const categories: Record<string, number> = {};
-  for (const item of bill.items || []) categories[item.category || "other"] = (categories[item.category || "other"] || 0) + (Number(item.amount) || 0);
+  for (const item of items) categories[item.category || "other"] = (categories[item.category || "other"] || 0) + (Number(item.amount) || 0);
   const grouped = String(bill.billType).toLowerCase() === "all" || Object.values(categories).filter(v => v !== 0).length > 1;
   const totalAmount = Number(bill.totalAmount) || 0;
+  const hireTaxBaseReplacements = (bill.hireStatements || []).flatMap((statement: any) => {
+    const snapshot = statement?.calculationSnapshot;
+    const taxBase = snapshot?.financials?.taxBase;
+    if (
+      snapshot?.billingIntegration !== "vb10_automatic" ||
+      taxBase == null ||
+      !Number.isFinite(Number(taxBase))
+    ) return [];
+    const linkedItems = items.filter((item: any) =>
+      Number(item.hireStatementId) === Number(statement.id),
+    );
+    if (!linkedItems.length) return [];
+    return [{
+      netAmount: linkedItems.reduce((sum: number, item: any) => sum + (Number(item.amount) || 0), 0),
+      taxBase: Number(taxBase),
+      category: String(linkedItems[0].category || "other"),
+    }];
+  });
+  const hasHireTaxBases = hireTaxBaseReplacements.length > 0;
+  const totalTaxBase = hasHireTaxBases
+    ? replaceHireNetAmountsWithTaxBases(totalAmount, hireTaxBaseReplacements)
+    : totalAmount;
+  const categoryTaxBase = (category: string) => {
+    const categoryReplacements = hireTaxBaseReplacements.filter(row => row.category === category);
+    return categoryReplacements.length
+      ? replaceHireNetAmountsWithTaxBases(categories[category] || 0, categoryReplacements)
+      : categories[category] || 0;
+  };
+  const roundedTax = (base: number, rate: number) => {
+    const amount = base * rate / 100;
+    return hasHireTaxBases
+      ? Math.round((amount + Number.EPSILON) * 100) / 100
+      : amount;
+  };
   const rates = taxCategories.map(c => Number(bill[`gstRate${c[0].toUpperCase()}${c.slice(1)}`]) || 0);
   const gstRows = grouped
-    ? taxCategories.map((c, i) => ({ label: `GST ON ${c.toUpperCase()} @ ${rates[i]}%`, amount: (categories[c] || 0) * rates[i] / 100, rate: rates[i] }))
+    ? taxCategories.map((c, i) => ({ label: `GST ON ${c.toUpperCase()} @ ${rates[i]}%`, amount: roundedTax(categoryTaxBase(c), rates[i]), rate: rates[i] }))
       .filter((row, i) => row.rate > 0 && categories[taxCategories[i]] != null)
     : (() => {
       const rate = rates[taxCategories.indexOf(String(bill.billType || "").toLowerCase() as TaxCategory)] || 0;
-      return rate > 0 ? [{ label: `GST @ ${rate}%`, amount: totalAmount * rate / 100, rate }] : [];
+      return rate > 0 ? [{ label: `GST @ ${rate}%`, amount: roundedTax(totalTaxBase, rate), rate }] : [];
     })();
   const totalGst = gstRows.reduce((sum, row) => sum + row.amount, 0);
   let raw = bill.additionalAdjustments ?? bill.additional_adjustments;
@@ -30,7 +66,7 @@ export function getBillFinancialTotals(bill: any) {
   const additionalTotal = additional.reduce((sum: number, a: any) => sum + a.amount, 0);
   // Preserve the existing bill-detail calculation; tax reporting below never
   // treats this calculated amount as evidence of a recorded deduction.
-  const tds = totalAmount * (Number(bill.tdsRate) || 0) / 100;
+  const tds = roundedTax(totalTaxBase, Number(bill.tdsRate) || 0);
   return { totalAmount, totalGst, gstRows, primaryAdjustment, additional, additionalTotal, tds,
     netTotal: bill.netPayableAmount == null ? totalAmount + totalGst + primaryAdjustment + additionalTotal - tds : Number(bill.netPayableAmount) };
 }

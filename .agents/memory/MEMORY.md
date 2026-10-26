@@ -130,4 +130,4 @@
 - [Instruction and attachment handling](instruction-text-handling.md) — Never commit pasted instructions or supplied attachment contents.
 - [Administrator per-item permissions](admin-per-item-permissions.md) — design per-item admin overrides for audit history, editing, and other privileges in a later permissions review; add no key now.
 - [Tally cutover ownership](tally-cutover-ownership.md) — Tally owns periods ending through 2026-01-31; periods starting 2026-02-01 onward are post-cutover.
-- [Hire-bill tax display](hire-bill-tax-display.md) — draft net follows signed screen rows; monthly missing-activity counts are informational, with approved figures and exports unchanged.
+- [Hire-bill tax base](hire-bill-tax-display.md) — saved VB10 taxes use gross less breakdown; cash net starts from item subtotal; approved stored net stays frozen.

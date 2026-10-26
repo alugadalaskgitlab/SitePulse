@@ -401,6 +401,83 @@ describe("VB-09 server itemized equipment hire", () => {
     expect(approval).toMatchObject({ netPayableAmount: 11400, amountPaid: null });
   });
 
+  it("uses the VB10 tax base for taxes but the item subtotal for approved cash net", async () => {
+    const verified = {
+      id: 106,
+      billType: "EQUIPMENT",
+      vendorName: "ORSU VENKANNA",
+      status: "verified",
+      totalAmount: 44_032.26,
+      amountPaid: null,
+      adjustmentAmount: -5_000,
+      additionalAdjustments: [{ label: "OPR UNAVAILABLE", amount: -10_000 }],
+      gstRateEquipment: 0,
+      gstRateMaterial: null,
+      gstRateTransport: null,
+      gstRateLabour: null,
+      tdsRate: 2,
+    };
+    fx.txRows.push(
+      [verified],
+      [
+        {
+          id: 13,
+          vendorBillId: 106,
+          status: "reviewed",
+          calculationSnapshot: {
+            billingIntegration: "vb10_automatic",
+            financials: { taxBase: 29_032.26 },
+          },
+        },
+        {
+          id: 14,
+          vendorBillId: 106,
+          status: "reviewed",
+          calculationSnapshot: {
+            billingIntegration: "vb10_automatic",
+            financials: { taxBase: 125_000 },
+          },
+        },
+      ],
+      [
+        { category: "equipment", amount: -20_967.74, hireStatementId: 13 },
+        { category: "equipment", amount: 65_000, hireStatementId: 14 },
+      ],
+    );
+    fx.lastBill = { ...verified, status: "approved" };
+    const storage = new DatabaseStorage();
+
+    await storage.updateVendorBillStatus(106, "approved", "reviewer");
+
+    const approval = fx.writes.find(write => write.kind === "update")?.value;
+    expect(approval).toMatchObject({
+      status: "approved",
+      netPayableAmount: 25_951.61,
+      amountPaid: null,
+    });
+  });
+
+  it("does not recalculate an approved bill's frozen net when recording payment", async () => {
+    const approved = {
+      id: 107,
+      billType: "EQUIPMENT",
+      vendorName: "ORSU VENKANNA",
+      status: "approved",
+      totalAmount: 44_032.26,
+      netPayableAmount: 25_951.61,
+      amountPaid: null,
+    };
+    fx.txRows.push([approved], []);
+    fx.lastBill = { ...approved, status: "paid", amountPaid: 25_951.61 };
+    const storage = new DatabaseStorage();
+
+    await storage.updateVendorBillStatus(107, "paid", "reviewer", 25_951.61);
+
+    const payment = fx.writes.find(write => write.kind === "update")?.value;
+    expect(payment).toMatchObject({ status: "paid", amountPaid: 25_951.61 });
+    expect(payment).not.toHaveProperty("netPayableAmount");
+  });
+
   it("matches shared UI GST category totals and subtotal TDS for mixed itemized equipment", async () => {
     const itemized = {
       id: 103,

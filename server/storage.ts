@@ -18863,11 +18863,17 @@ export class DatabaseStorage implements IStorage {
             : [];
           const totalTaxBase = replaceHireNetAmountsWithTaxBases(subtotal, vb10TaxBaseReplacements);
           const equipmentTaxBase = replaceHireNetAmountsWithTaxBases(categorySubtotals.equipment || 0, vb10TaxBaseReplacements);
-          const gst = (
-            equipmentTaxBase * Number(existing.gstRateEquipment || 0) / 100 +
-            (categorySubtotals.material || 0) * Number(existing.gstRateMaterial || 0) / 100 +
-            (categorySubtotals.transport || 0) * Number(existing.gstRateTransport || 0) / 100 +
-            (categorySubtotals.labour || 0) * Number(existing.gstRateLabour || 0) / 100
+          const gstAmounts = [
+            equipmentTaxBase * Number(existing.gstRateEquipment || 0) / 100,
+            (categorySubtotals.material || 0) * Number(existing.gstRateMaterial || 0) / 100,
+            (categorySubtotals.transport || 0) * Number(existing.gstRateTransport || 0) / 100,
+            (categorySubtotals.labour || 0) * Number(existing.gstRateLabour || 0) / 100,
+          ];
+          const roundTaxAmount = (amount: number) =>
+            Math.round((amount + Number.EPSILON) * 100) / 100;
+          const gst = gstAmounts.reduce(
+            (sum, amount) => sum + (hasVb10AutomaticStatement ? roundTaxAmount(amount) : amount),
+            0,
           );
           if (linkedStatements.length && !hasVb10AutomaticStatement) {
             // Pre-VB10 linked statements retain their approved straight-form
@@ -18890,8 +18896,11 @@ export class DatabaseStorage implements IStorage {
                 (1 - Number(existing.tdsRate || 0) / 100) + additionalAdjustmentAmount + Number.EPSILON) * 100) / 100;
             }
           } else {
-            const tdsAmount = totalTaxBase * Number(existing.tdsRate || 0) / 100;
-            updates.netPayableAmount = Math.round((totalTaxBase + gst + Number(existing.adjustmentAmount || 0) + additionalAdjustmentAmount - tdsAmount + Number.EPSILON) * 100) / 100;
+            const rawTdsAmount = totalTaxBase * Number(existing.tdsRate || 0) / 100;
+            const tdsAmount = hasVb10AutomaticStatement
+              ? roundTaxAmount(rawTdsAmount)
+              : rawTdsAmount;
+            updates.netPayableAmount = Math.round((subtotal + gst + Number(existing.adjustmentAmount || 0) + additionalAdjustmentAmount - tdsAmount + Number.EPSILON) * 100) / 100;
           }
           // Unknown remains NULL until a person records an amount.
           updates.amountPaid = existing.amountPaid;
