@@ -28,6 +28,31 @@ describe("opt-in transport billing", () => {
     expect(result.amount).toBeCloseTo(21584);
     expect(result.transportPricing?.basis).toBe("mt");
   });
+  it("prices material-trip transport by actual MT when recorded, otherwise by trip", () => {
+    const materialCard = {
+      ...card,
+      itemKey: "EQ_WMM_TRIP",
+      rate: 90,
+      ratePerKm: 90,
+      leadDistanceKm: 12,
+      payloadMt: 30,
+    };
+    const weighted = applyTransportCard({
+      ...row,
+      description: "WMM - TRANSPORT",
+      actualMt: 28.4,
+    }, [materialCard], "VENDOR");
+    expect(weighted).toMatchObject({ unit: "MT", qty: 28.4, amount: 2044.8 });
+    expect(weighted.transportPricing).toMatchObject({ basis: "mt", ratePerKm: 90, payloadMt: 30 });
+
+    const unweighted = applyTransportCard({
+      ...row,
+      description: "WMM - TRANSPORT",
+      actualMt: null,
+    }, [materialCard], "VENDOR");
+    expect(unweighted).toMatchObject({ unit: "TRIP", qty: 1, amount: 2160 });
+    expect(unweighted.transportPricing?.basis).toBe("trip");
+  });
   it("preserves source weight supplied separately on a receipt candidate", () => {
     const mapped = mapAutoBillItem({ ...row, actualMt: null, physicalQuantity: 28400, physicalUnit: "KG" });
     expect(applyTransportCard(mapped, [card], "VENDOR")).toMatchObject({ qty: 28.4, unit: "MT", amount: 21584 });

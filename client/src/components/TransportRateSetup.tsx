@@ -24,11 +24,12 @@ export function TransportRateBasis({ fields }: { fields: TransportRateFields }) 
   </span>;
 }
 
-export function TransportRateSetup({ label, fields, onSave, onClose }: {
+export function TransportRateSetup({ label, fields, onSave, onClose, requireRateAndLead = false }: {
   label: string;
   fields?: Partial<TransportRateFields> | null;
   onSave: (fields: TransportRateFields) => Promise<void>;
   onClose: () => void;
+  requireRateAndLead?: boolean;
 }) {
   const [rate, setRate] = useState(String(fields?.ratePerKm ?? ""));
   const [lead, setLead] = useState(String(fields?.leadDistanceKm ?? ""));
@@ -38,7 +39,10 @@ export function TransportRateSetup({ label, fields, onSave, onClose }: {
   const parsed = (value: string) => value.trim() === "" ? null : Number(value);
   const values: TransportRateFields = { ratePerKm: parsed(rate), leadDistanceKm: parsed(lead), payloadMt: parsed(payload) };
   const invalidPayload = values.payloadMt === null || !Number.isFinite(values.payloadMt) || values.payloadMt <= 0;
-  const invalidOther = [values.ratePerKm, values.leadDistanceKm].some(value => value !== null && (!Number.isFinite(value) || value < 0));
+  const invalidOther = [values.ratePerKm, values.leadDistanceKm].some(value =>
+    (value !== null && (!Number.isFinite(value) || value < 0)) ||
+    (requireRateAndLead && (value === null || value <= 0)),
+  );
   const result = calculateTransportRate(values);
   const price = (value: number | null) => value === null ? "" : `₹${transportNumber(value)}`;
   const save = async () => {
@@ -72,7 +76,9 @@ export function TransportRateSetup({ label, fields, onSave, onClose }: {
           </div>
         </fieldset>
         {invalidPayload && <p role="alert" className="text-sm text-destructive">Payload required for ₹/MT</p>}
-        {invalidOther && <p role="alert" className="text-sm text-destructive">Rate and lead distance must be zero or greater.</p>}
+        {invalidOther && <p role="alert" className="text-sm text-destructive">
+          {requireRateAndLead ? "Rate and lead distance must be greater than zero." : "Rate and lead distance must be zero or greater."}
+        </p>}
         <dl className="rounded-md border bg-muted/40 p-4 space-y-2 text-sm">
           <div className="flex justify-between gap-4"><dt>Two-way distance</dt><dd className="font-mono" data-testid="transport-two-way">{result.twoWayDistanceKm === null ? "—" : `${transportNumber(result.twoWayDistanceKm)} km`}</dd></div>
           <div className="flex justify-between gap-4"><dt>₹ per trip</dt><dd className="font-mono" data-testid="transport-per-trip">{price(result.perTrip)}</dd></div>

@@ -10,7 +10,7 @@ import { Link, useSearch } from "wouter";
 import { ChevronLeft, Loader2, Save, Lock, Search, Plus, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { isManualVendorRateCard, MANUAL_VENDOR_RATE_CARD_NOTE, vendorRateCardIdentity } from "@shared/vendorRateCardIdentity";
+import { isManualVendorRateCard, MANUAL_VENDOR_RATE_CARD_NOTE } from "@shared/vendorRateCardIdentity";
 import type { VendorAlias } from "@shared/schema";
 import { TransportRateBasis, TransportRateSetup, hasTransportSetup } from "@/components/TransportRateSetup";
 import type { TransportRateFields } from "@/components/TransportRateSetup";
@@ -33,6 +33,8 @@ type ManualRow = {
   unit: string;
   rate: number | string;
   rateCardId?: number;
+  notes?: string | null;
+  isNewMaterialTransport?: boolean;
 };
 type VendorMasterOption = { id: number; name: string; isActive?: boolean };
 
@@ -54,7 +56,21 @@ const TRANSPORT_MODES = [
 ];
 
 const LABOUR_CATEGORIES = ["SKILLED", "SEMI-SKILLED", "UNSKILLED", "SUPERVISOR"];
-const LABOUR_GENDERS = ["", "MALE", "FEMALE"];
+const normalizeItemName = (value: string) => value.trim().toUpperCase().replace(/\s+/g, " ");
+const compactItemName = (value: string) => normalizeItemName(value).replace(/\s/g, "");
+const normalizeDuplicateIdentity = (category: string, itemKey: string, unit: string) => {
+  const upperCategory = category.trim().toUpperCase();
+  const upperUnit = unit.trim().toUpperCase().replace(/\s+/g, "_");
+  let name = itemKey.trim().toUpperCase();
+  if (upperCategory === "MATERIAL" && name.startsWith("MAT_")) name = name.slice(4);
+  else if (["EQUIPMENT", "TRANSPORT"].includes(upperCategory) && name.startsWith("EQ_")) name = name.slice(3);
+  else if (upperCategory === "LABOUR" && name.startsWith("LAB_")) name = name.slice(4);
+  const unitSuffix = `_${upperUnit}`;
+  if (name.endsWith(unitSuffix)) name = name.slice(0, -unitSuffix.length);
+  return `${upperCategory}:${name.replace(/[\s_]/g, "")}:${upperUnit}`;
+};
+const rateCardRowStateKey = (item: { itemKey: string; rateCardId?: number | null }) =>
+  item.rateCardId != null ? `card_${item.rateCardId}` : `key_${item.itemKey}`;
 
 const getCategoryBadgeClass = (cat: string) => {
   switch (cat) {
@@ -82,7 +98,6 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
 
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [manualRows, setManualRows] = useState<ManualRow[]>([]);
-  const deletedManualRowsRef = useRef(new Map<number, ManualRow>());
   const [setupRow, setSetupRow] = useState<DiscoveredItem | ManualRow | null>(null);
   const activeVendorRef = useRef(selectedVendor);
   activeVendorRef.current = selectedVendor;
@@ -96,8 +111,10 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
   const [addMatUnit, setAddMatUnit] = useState("CFT");
 
   const [showAddTransport, setShowAddTransport] = useState(false);
+  const [addTransKind, setAddTransKind] = useState<"machine" | "material">("machine");
   const [addTransType, setAddTransType] = useState("");
   const [addTransMode, setAddTransMode] = useState("");
+  const [addTransMaterial, setAddTransMaterial] = useState("");
 
   const [showAddLabour, setShowAddLabour] = useState(false);
   const [addLabCategory, setAddLabCategory] = useState("");
@@ -128,21 +145,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
     setUnitOverrides({});
     setSearchFilter("");
     setManualRows([]);
-    deletedManualRowsRef.current.clear();
   };
-
-  const { data: discoveredItems = [], isLoading: isDiscovering } = useQuery<DiscoveredItem[]>({
-    queryKey: ["/api/vendor-rate-cards/discover", selectedVendor],
-    enabled: !!selectedVendor,
-    queryFn: async () => {
-      const r = await fetch(`/api/vendor-rate-cards/discover?vendorName=${encodeURIComponent(selectedVendor)}`);
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({ message: "Failed to discover items" }));
-        throw new Error(err.message || "Failed to discover items");
-      }
-      return r.json();
-    },
-  });
 
   const { data: allRateCards = [], isFetched: isRateCardsFetched } = useQuery<any[]>({
     queryKey: ["/api/vendor-rate-cards", selectedVendor],
@@ -153,75 +156,21 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
     },
   });
 
-  const persistedManualCards = useMemo(
-    () => allRateCards.filter(card => isManualVendorRateCard(card.notes)),
-    [allRateCards],
-  );
-
-  const persistedManualKeys = useMemo(
-    () => new Set(persistedManualCards.map(card => vendorRateCardIdentity(card.category, String(card.itemKey), card.unit))),
-    [persistedManualCards],
-  );
-
-  const discoveredManualItems = useMemo(
-    () => discoveredItems.filter(item => item.isManual && item.rateCardId !== null),
-    [discoveredItems],
-  );
-
-  useEffect(() => {
-    if (!isRateCardsFetched) return;
-    setManualRows(previous => {
-      const unsavedRows = previous.filter(row => row.rateCardId === undefined);
-      const existingByRateCardId = new Map(
-        previous
-          .filter(row => row.rateCardId !== undefined)
-          .map(row => [row.rateCardId!, row]),
-      );
-      const persistedRows = persistedManualCards.map(card => {
-        const rateCardId = Number(card.id);
-        return existingByRateCardId.get(rateCardId) || deletedManualRowsRef.current.get(rateCardId) || {
-          id: `manual_saved_${card.id}`,
-          rateCardId,
-           itemKey: card.category === "transport" ? String(card.itemKey) : String(card.itemKey).toUpperCase().trim(),
-          itemLabel: card.itemLabel || card.itemKey,
-          category: card.category,
-          unit: card.unit,
-          rate: card.rate ?? "",
-        };
-      });
-      const persistedIds = new Set(persistedRows.map(row => row.rateCardId));
-      const persistedKeys = new Set(persistedRows.map(row => vendorRateCardIdentity(row.category, row.itemKey, row.unit)));
-      const legacyRows = discoveredManualItems
-        .filter(item => !persistedKeys.has(vendorRateCardIdentity(item.category, item.itemKey, item.unit)))
-        .map(item => {
-          const rateCardId = Number(item.rateCardId);
-          return existingByRateCardId.get(rateCardId) || deletedManualRowsRef.current.get(rateCardId) || {
-            id: `manual_saved_${item.rateCardId}`,
-            rateCardId,
-             itemKey: item.category === "transport" ? item.itemKey : item.itemKey.toUpperCase().trim(),
-            itemLabel: item.itemLabel,
-            category: item.category,
-            unit: item.unit,
-            rate: item.rate ?? "",
-          };
-        });
-      return [
-        ...persistedRows,
-        ...legacyRows,
-        ...unsavedRows.filter(row =>
-          (!row.rateCardId || !persistedIds.has(row.rateCardId)) &&
-          !persistedKeys.has(vendorRateCardIdentity(row.category, row.itemKey, row.unit)) &&
-          !legacyRows.some(legacy => legacy.rateCardId === row.rateCardId),
-        ),
-      ];
-    });
-  }, [isRateCardsFetched, persistedManualCards, discoveredManualItems]);
+  const savedItems = useMemo<DiscoveredItem[]>(() => allRateCards.map(card => ({
+    itemKey: String(card.itemKey ?? "").trim().toUpperCase(),
+    itemLabel: String(card.itemLabel || card.itemKey || "").trim(),
+    category: String(card.category ?? "").trim().toLowerCase(),
+    unit: String(card.unit ?? "").trim().toUpperCase(),
+    rate: Number(card.rate),
+    rateCardId: Number(card.id),
+    isManual: isManualVendorRateCard(card.notes),
+  })).filter(item => item.itemKey && item.itemLabel && item.category && item.unit && Number.isFinite(item.rate) && Number.isFinite(item.rateCardId)), [allRateCards]);
 
   const { data: canonicalTypes = [] } = useQuery<string[]>({
-    queryKey: ["/api/equipment-master/canonical-types", selectedVendor],
+    queryKey: ["/api/equipment-master/canonical-types"],
     enabled: !!selectedVendor,
     queryFn: async () => {
-      const r = await fetch(`/api/equipment-master/canonical-types?vendorName=${encodeURIComponent(selectedVendor)}`);
+      const r = await fetch("/api/equipment-master/canonical-types");
       return r.ok ? r.json() : [];
     },
   });
@@ -232,24 +181,27 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
   });
 
   useEffect(() => {
-    if (discoveredItems.length > 0) {
-      setRates(previous => {
-        const rateMap = { ...previous };
-        discoveredItems.forEach(item => {
-          if (!(item.itemKey in rateMap)) {
-            rateMap[item.itemKey] = item.rate ?? "";
-          }
-        });
-        return rateMap;
+    if (!isRateCardsFetched || savedItems.length === 0) return;
+    setRates(previous => {
+      const rateMap = { ...previous };
+      savedItems.forEach(item => {
+        const stateKey = rateCardRowStateKey(item);
+        if (!(stateKey in rateMap)) rateMap[stateKey] = item.rate ?? "";
       });
-    }
-  }, [discoveredItems]);
+      return rateMap;
+    });
+  }, [isRateCardsFetched, savedItems]);
 
   const bulkSaveMutation = useMutation({
     mutationFn: (items: any[]) => apiRequest("POST", "/api/vendor-rate-cards/bulk-upsert", { items }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards/discover", selectedVendor] });
+      const savedIdentities = new Set(variables.map((item: any) =>
+        normalizeDuplicateIdentity(item.category, item.itemKey, item.unit),
+      ));
+      setManualRows(previous => previous.filter(row =>
+        !savedIdentities.has(normalizeDuplicateIdentity(row.category, row.itemKey, row.unit)),
+      ));
       const savedCount = variables.filter((i: any) => i.rate && i.rate > 0).length;
       toast({ title: `${savedCount} rate(s) saved` });
       onReturnToDraft?.();
@@ -257,70 +209,37 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
     onError: (err: any) => toast({ title: err.message || "Failed to save rates", variant: "destructive" }),
   });
 
-  const deleteManualMutation = useMutation({
-    mutationFn: ({ rateCardId }: { rateCardId: number; row: ManualRow }) =>
-      apiRequest("DELETE", `/api/vendor-rate-cards/${rateCardId}`),
-    onSuccess: (_, variables) => {
-      deletedManualRowsRef.current.delete(variables.rateCardId);
-      queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards/discover", selectedVendor] });
-      toast({ title: "Manual rate-card row removed" });
-    },
-    onError: (err: any, variables) => {
-      const removedRow = deletedManualRowsRef.current.get(variables.rateCardId);
-      if (removedRow) {
-        setManualRows(previous => previous.some(row => row.id === removedRow.id) ? previous : [...previous, removedRow]);
-        deletedManualRowsRef.current.delete(variables.rateCardId);
-      }
-      queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards/discover", selectedVendor] });
-      toast({ title: err.message || "Failed to remove rate-card row", variant: "destructive" });
-    },
-  });
-
-  const deleteDiscoveredMutation = useMutation({
+  const deleteSavedCardMutation = useMutation({
     mutationFn: (item: DiscoveredItem) => apiRequest("DELETE", `/api/vendor-rate-cards/${item.rateCardId}`),
     onSuccess: (_, item) => {
-      setRates(previous => ({ ...previous, [item.itemKey]: "" }));
+      setRates(previous => ({ ...previous, [rateCardRowStateKey(item)]: "" }));
       setUnitOverrides(previous => {
         const next = { ...previous };
-        delete next[item.itemKey];
+        delete next[rateCardRowStateKey(item)];
         return next;
       });
       queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards/discover", selectedVendor] });
-      toast({ title: "Saved rate removed. Historical item remains available." });
+      toast({ title: "Saved rate card deleted. Existing bills are not affected." });
     },
     onError: (err: Error) => toast({ title: err.message || "Failed to remove saved rate", variant: "destructive" }),
   });
 
-  const handleResetDiscoveredRow = (item: DiscoveredItem) => {
-    if (item.rateCardId != null) {
-      if (window.confirm(`Remove saved rate for ${item.itemLabel}? The historical item will remain available.`)) {
-        deleteDiscoveredMutation.mutate(item);
-      }
-      return;
-    }
-    setRates(previous => ({ ...previous, [item.itemKey]: "" }));
-    setUnitOverrides(previous => {
-      const next = { ...previous };
-      delete next[item.itemKey];
-      return next;
-    });
+  const handleDeleteSavedCard = (item: DiscoveredItem) => {
+    if (!window.confirm(`Delete the saved rate card for "${item.itemLabel}"? Existing bills keep their saved rates and are not affected.`)) return;
+    deleteSavedCardMutation.mutate(item);
   };
 
   const visibleDiscoveredItems = useMemo(
-    () => discoveredItems.filter(item =>
-      !item.isManual &&
-      !persistedManualKeys.has(vendorRateCardIdentity(item.category, item.itemKey, item.unit)),
+    () => savedItems.filter(item =>
+      !searchFilter || item.itemLabel.toUpperCase().includes(searchFilter.toUpperCase()),
     ),
-    [discoveredItems, persistedManualKeys],
+    [savedItems, searchFilter],
   );
 
-  const getEffectiveUnit = (item: DiscoveredItem) => unitOverrides[item.itemKey] || item.unit;
+  const getEffectiveUnit = (item: DiscoveredItem) => unitOverrides[rateCardRowStateKey(item)] || item.unit;
 
   const getEffectiveKey = (item: DiscoveredItem) => {
-    const overriddenUnit = unitOverrides[item.itemKey];
+    const overriddenUnit = unitOverrides[rateCardRowStateKey(item)];
     if (!overriddenUnit || overriddenUnit === item.unit) return item.itemKey;
     const parts = item.itemKey.split("_");
     if (parts.length >= 2) {
@@ -347,10 +266,34 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
 
   const saveTransportSetup = async (fields: TransportRateFields) => {
     if (!setupRow) return;
-    const row = setupRow;
+    let row = setupRow;
     const vendor = selectedVendor;
-    const card = findTransportCard(row);
-    if (!card?.id) throw new Error("Rate setup is available only for existing saved rate-card rows");
+    let card = findTransportCard(row);
+    if (row.category === "transport" && "isNewMaterialTransport" in row && row.isNewMaterialTransport && !card) {
+      if (!selectedVendorMaster) throw new Error("Choose a Vendor Master record before adding a transport rate.");
+      if (!(Number(fields.ratePerKm) > 0) || !(Number(fields.leadDistanceKm) > 0) || !(Number(fields.payloadMt) > 0)) {
+        throw new Error("Enter a positive rate, one-way lead and payload.");
+      }
+      const createResponse = await apiRequest("POST", "/api/vendor-rate-cards", {
+        vendorName: selectedVendor,
+        vendorId: selectedVendorMaster.id,
+        category: "transport",
+        itemKey: row.itemKey,
+        itemLabel: row.itemLabel,
+        unit: "TRIP",
+        rate: fields.ratePerKm,
+        notes: MANUAL_VENDOR_RATE_CARD_NOTE,
+      });
+      card = await createResponse.json();
+      const updatedRow = { ...row, rateCardId: Number(card.id), isNewMaterialTransport: true } as ManualRow;
+      row = updatedRow;
+      setSetupRow(current => current && "id" in current && current.id === updatedRow.id ? updatedRow : current);
+      queryClient.setQueryData<any[]>(["/api/vendor-rate-cards", vendor], previous => [
+        ...(previous ?? []).filter(candidate => Number(candidate.id) !== Number(card.id)),
+        card,
+      ]);
+    }
+    if (!card?.id) throw new Error("Rate setup is available only for a saved rate-card row");
     const body = {
       itemKey: card.itemKey,
       ...fields,
@@ -367,20 +310,21 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
   };
 
   const handleUnitChange = (item: DiscoveredItem, newUnit: string) => {
-    setUnitOverrides(prev => ({ ...prev, [item.itemKey]: newUnit }));
+    const stateKey = rateCardRowStateKey(item);
+    setUnitOverrides(prev => ({ ...prev, [stateKey]: newUnit }));
     const parts = item.itemKey.split("_");
     if (parts.length >= 2) {
       parts[parts.length - 1] = newUnit;
       const newKey = parts.join("_");
       const existingCard = allRateCards.find(
-        (rc: any) => rc.itemKey.toUpperCase() === newKey.toUpperCase() && rc.category === item.category
+        (rc: any) => rc.itemKey.toUpperCase() === newKey.toUpperCase() && rc.category === item.category && rc.unit === newUnit
       );
       if (existingCard && Number(existingCard.rate) > 0) {
-        setRates(prev => ({ ...prev, [item.itemKey]: Number(existingCard.rate) }));
+        setRates(prev => ({ ...prev, [stateKey]: Number(existingCard.rate) }));
       } else {
         setRates(prev => {
           const updated = { ...prev };
-          delete updated[item.itemKey];
+          delete updated[stateKey];
           return updated;
         });
       }
@@ -394,20 +338,20 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
     }
     const mode = BILLING_MODES.find(m => m.value === addEqMode);
     const unit = mode?.unit || "HRS";
-    const key = `EQ_${addEqType.replace(/\s+/g, "_")}_${unit}`;
-    const existing = discoveredItems.find(d => d.itemKey === key && d.category === "equipment");
-    const existingManual = manualRows.find(r => r.itemKey === key && r.category === "equipment");
-    if (existing || existingManual) {
+    const machine = normalizeItemName(addEqType);
+    const key = `EQ_${machine.replace(/\s+/g, "_")}_${unit}`;
+    if (hasDuplicateRateCard("equipment", key, unit)) {
       toast({ title: `${addEqType} - ${addEqMode} already exists`, variant: "destructive" });
       return;
     }
     setManualRows(prev => [...prev, {
       id: `manual_eq_${Date.now()}`,
       itemKey: key,
-      itemLabel: `${addEqType} - ${addEqMode}`,
+      itemLabel: `${machine} - ${addEqMode}`,
       category: "equipment",
       unit,
       rate: "",
+      notes: MANUAL_VENDOR_RATE_CARD_NOTE,
     }]);
     setAddEqType("");
     setAddEqMode("");
@@ -419,20 +363,21 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
       toast({ title: "Select material and unit", variant: "destructive" });
       return;
     }
-    const key = `MAT_${addMatName.replace(/\s+/g, "_")}_${addMatUnit}`;
-    const existing = discoveredItems.find(d => d.itemKey === key && d.category === "material");
-    const existingManual = manualRows.find(r => r.itemKey === key && r.category === "material");
-    if (existing || existingManual) {
+    const material = normalizeItemName(addMatName);
+    const unit = addMatUnit.trim().toUpperCase();
+    const key = `MAT_${material.replace(/\s+/g, "_")}_${unit}`;
+    if (hasDuplicateRateCard("material", key, unit)) {
       toast({ title: `${addMatName} - ${addMatUnit} already exists`, variant: "destructive" });
       return;
     }
     setManualRows(prev => [...prev, {
       id: `manual_mat_${Date.now()}`,
       itemKey: key,
-      itemLabel: addMatName,
+      itemLabel: material,
       category: "material",
-      unit: addMatUnit,
+      unit,
       rate: "",
+      notes: MANUAL_VENDOR_RATE_CARD_NOTE,
     }]);
     setAddMatName("");
     setAddMatUnit("CFT");
@@ -440,26 +385,50 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
   };
 
   const handleAddTransportRow = () => {
+    if (addTransKind === "material") {
+      if (!addTransMaterial) {
+        toast({ title: "Select material", variant: "destructive" });
+        return;
+      }
+      const material = normalizeItemName(addTransMaterial);
+      const key = `EQ_${material.replace(/\s+/g, "_")}_TRIP`;
+      if (hasDuplicateRateCard("transport", key, "TRIP")) {
+        toast({ title: `${material} transport already exists`, variant: "destructive" });
+        return;
+      }
+      setSetupRow({
+        id: `new_material_transport_${Date.now()}`,
+        itemKey: key,
+        itemLabel: `${material} - TRANSPORT`,
+        category: "transport",
+        unit: "TRIP",
+        rate: "",
+        isNewMaterialTransport: true,
+      });
+      setAddTransMaterial("");
+      setShowAddTransport(false);
+      return;
+    }
     if (!addTransType || !addTransMode) {
       toast({ title: "Select machine type and billing mode", variant: "destructive" });
       return;
     }
+    const machine = normalizeItemName(addTransType);
     const mode = TRANSPORT_MODES.find(m => m.value === addTransMode);
     const unit = mode?.unit || "TRIP";
-    const key = `EQ_${addTransType.replace(/\s+/g, "_")}_${unit}`;
-    const existing = discoveredItems.find(d => d.itemKey === key && d.category === "transport");
-    const existingManual = manualRows.find(r => r.itemKey === key && r.category === "transport");
-    if (existing || existingManual) {
-      toast({ title: `${addTransType} - ${addTransMode} already exists`, variant: "destructive" });
+    const key = `EQ_${machine.replace(/\s+/g, "_")}_${unit}`;
+    if (hasDuplicateRateCard("transport", key, unit)) {
+      toast({ title: `${machine} - ${addTransMode} already exists`, variant: "destructive" });
       return;
     }
     setManualRows(prev => [...prev, {
       id: `manual_trans_${Date.now()}`,
       itemKey: key,
-      itemLabel: `${addTransType} - ${addTransMode}`,
+      itemLabel: `${machine} - ${addTransMode}`,
       category: "transport",
       unit,
       rate: "",
+      notes: MANUAL_VENDOR_RATE_CARD_NOTE,
     }]);
     setAddTransType("");
     setAddTransMode("");
@@ -475,9 +444,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
     const gender = addLabGender.toUpperCase();
     const key = gender ? `LAB_${cat}_${gender}` : `LAB_${cat}`;
     const label = gender ? `LABOUR ${cat} ${gender}` : `LABOUR ${cat}`;
-    const existing = discoveredItems.find(d => d.itemKey === key && d.category === "labour");
-    const existingManual = manualRows.find(r => r.itemKey === key && r.category === "labour");
-    if (existing || existingManual) {
+    if (hasDuplicateRateCard("labour", key, "HEAD-DAY")) {
       toast({ title: `${label} already exists`, variant: "destructive" });
       return;
     }
@@ -488,6 +455,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
       category: "labour",
       unit: "HEAD-DAY",
       rate: "",
+      notes: MANUAL_VENDOR_RATE_CARD_NOTE,
     }]);
     setAddLabCategory("");
     setAddLabGender("");
@@ -499,7 +467,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
       toast({ title: "Choose a Vendor Master record before saving", description: "Add an unknown spelling as an alias or create the vendor first.", variant: "destructive" });
       return;
     }
-    const discoveredToSave = visibleDiscoveredItems.map(item => {
+    const discoveredToSave = savedItems.map(item => {
       const setupCard = item.category === "transport" ? findTransportCard(item) : undefined;
       const effectiveUnit = hasTransportSetup(setupCard) ? setupCard.unit : getEffectiveUnit(item);
       const effectiveKey = hasTransportSetup(setupCard) ? setupCard.itemKey : getEffectiveKey(item);
@@ -510,7 +478,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
         itemKey: effectiveKey,
         itemLabel: item.itemLabel,
         unit: effectiveUnit,
-        rate: parseFloat(String(rates[item.itemKey] || 0)) || 0,
+        rate: parseFloat(String(rates[rateCardRowStateKey(item)] ?? item.rate ?? 0)) || 0,
         ...transportSaveFields(item),
       };
     }).filter(i => i.rate > 0);
@@ -523,7 +491,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
       itemLabel: row.itemLabel,
       unit: row.unit,
       rate: parseFloat(String(row.rate || 0)) || 0,
-      notes: MANUAL_VENDOR_RATE_CARD_NOTE,
+      ...(row.notes !== undefined ? { notes: row.notes } : { notes: MANUAL_VENDOR_RATE_CARD_NOTE }),
       ...transportSaveFields(row),
     })).filter(i => i.rate > 0);
 
@@ -536,16 +504,8 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
     bulkSaveMutation.mutate(allToSave);
   };
 
-  const handleRemoveManualRow = (row: ManualRow) => {
-    if (!window.confirm(`Remove "${row.itemLabel}" from this vendor's rate card? This cannot be undone.`)) {
-      return;
-    }
+  const handleRemoveManualRow = (row: ManualRow) =>
     setManualRows(previous => previous.filter(candidate => candidate.id !== row.id));
-    if (row.rateCardId !== undefined) {
-      deletedManualRowsRef.current.set(row.rateCardId, row);
-      deleteManualMutation.mutate({ rateCardId: row.rateCardId, row });
-    }
-  };
 
   const toggleSection = (section: string) => {
     setCollapsedSections(prev => ({ ...prev, [section]: !prev[section] }));
@@ -589,14 +549,40 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
   const labourManualRows = useMemo(() => manualRows.filter(r => r.category === "labour"), [manualRows]);
 
   const filledCount = useMemo(() => {
-    const discoveredFilled = visibleDiscoveredItems.filter(item => parseFloat(String(rates[item.itemKey])) > 0).length;
+    const discoveredFilled = visibleDiscoveredItems.filter(item => parseFloat(String(rates[rateCardRowStateKey(item)])) > 0).length;
     const manualFilled = manualRows.filter(r => parseFloat(String(r.rate)) > 0).length;
     return discoveredFilled + manualFilled;
   }, [rates, manualRows, visibleDiscoveredItems]);
 
   const materialNameOptions = useMemo(() => {
-    return plantMaterials.map((m: any) => m.name?.toUpperCase()?.trim()).filter(Boolean).sort();
+    const names = plantMaterials
+      .map((material: any) => normalizeItemName(String(material.name ?? "")))
+      .filter(Boolean)
+      .sort((a: string, b: string) => a.localeCompare(b));
+    const unique = new Map<string, string>();
+    names.forEach((name: string) => {
+      if (!unique.has(compactItemName(name))) unique.set(compactItemName(name), name);
+    });
+    return Array.from(unique.values());
   }, [plantMaterials]);
+
+  const machineTypeOptions = useMemo(() => {
+    const names = canonicalTypes
+      .map(name => normalizeItemName(name))
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+    const unique = new Map<string, string>();
+    names.forEach(name => {
+      if (!unique.has(compactItemName(name))) unique.set(compactItemName(name), name);
+    });
+    return Array.from(unique.values());
+  }, [canonicalTypes]);
+
+  const hasDuplicateRateCard = (category: string, itemKey: string, unit: string) => {
+    const identity = normalizeDuplicateIdentity(category, itemKey, unit);
+    return savedItems.some(item => normalizeDuplicateIdentity(item.category, item.itemKey, item.unit) === identity) ||
+      manualRows.some(row => normalizeDuplicateIdentity(row.category, row.itemKey, row.unit) === identity);
+  };
 
   const renderItemRow = (item: DiscoveredItem, idx: number) => (
     <tr key={item.itemKey} className="border-t hover:bg-muted/30" data-testid={`row-discovered-item-${idx}`}>
@@ -624,8 +610,8 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
           type="number"
           step="0.01"
           min="0"
-          value={rates[item.itemKey] ?? ""}
-          onChange={e => setRates(prev => ({ ...prev, [item.itemKey]: e.target.value }))}
+          value={rates[rateCardRowStateKey(item)] ?? item.rate ?? ""}
+          onChange={e => setRates(prev => ({ ...prev, [rateCardRowStateKey(item)]: e.target.value }))}
           onWheel={e => (e.target as HTMLInputElement).blur()}
           placeholder="0.00"
           className="text-right font-mono w-full"
@@ -635,10 +621,10 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
       </td>
       <td className="px-3 py-2 w-16">
         <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive"
-          disabled={deleteDiscoveredMutation.isPending}
+          disabled={deleteSavedCardMutation.isPending}
           aria-label={`${item.rateCardId != null ? "Remove saved rate for" : "Reset unsaved rate for"} ${item.itemLabel}`}
-          title={item.rateCardId != null ? "Delete saved rate (historical item remains)" : "Reset local rate only"}
-          onClick={() => handleResetDiscoveredRow(item)}
+          title="Delete saved rate card; existing bills are not affected"
+          onClick={() => handleDeleteSavedCard(item)}
           data-testid={`button-remove-discovered-${idx}`}>
           <Trash2 className="h-4 w-4" />
         </Button>
@@ -711,7 +697,14 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
 
   return (
     <div className="max-w-5xl mx-auto space-y-4 p-4">
-      {setupRow && <TransportRateSetup key={`${selectedVendor}:${setupRow.itemKey}`} label={setupRow.itemLabel} fields={findTransportCard(setupRow)} onSave={saveTransportSetup} onClose={() => setSetupRow(null)} />}
+      {setupRow && <TransportRateSetup
+        key={`${selectedVendor}:${setupRow.itemKey}`}
+        label={setupRow.itemLabel}
+        fields={findTransportCard(setupRow)}
+        requireRateAndLead={!!("isNewMaterialTransport" in setupRow && setupRow.isNewMaterialTransport)}
+        onSave={saveTransportSetup}
+        onClose={() => setSetupRow(null)}
+      />}
       <div className="flex items-center gap-4 flex-wrap">
         {onReturnToDraft ? (
           <Button variant="ghost" onClick={onReturnToDraft} data-testid="button-back-rate-cards">
@@ -776,20 +769,20 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
         </CardContent>
       </Card>
 
-      {selectedVendor && isDiscovering && (
+      {selectedVendor && !isRateCardsFetched && (
         <div className="flex justify-center py-8">
           <Loader2 className="w-6 h-6 animate-spin" />
-          <span className="ml-2 text-sm text-muted-foreground">Discovering items for {selectedVendor}...</span>
+          <span className="ml-2 text-sm text-muted-foreground">Loading saved rate cards for {selectedVendor}...</span>
         </div>
       )}
 
-      {selectedVendor && !isDiscovering && (
+      {selectedVendor && isRateCardsFetched && (
         <>
           <Card>
             <CardContent className="pt-4">
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-semibold">{visibleDiscoveredItems.length + manualRows.length} ITEMS</span>
+                  <span className="text-sm font-semibold">{visibleDiscoveredItems.length + manualRows.length} SAVED / NEW ITEMS</span>
                   <Badge variant="outline" className="text-[12px] bg-green-600 text-white border-green-700 no-default-hover-elevate no-default-active-elevate">
                     {filledCount} RATES SET
                   </Badge>
@@ -827,7 +820,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                       {equipmentItems.map((item, idx) => renderItemRow(item, idx))}
                       {equipmentManualRows.map((row, idx) => renderManualRow(row, idx))}
                       {equipmentItems.length === 0 && equipmentManualRows.length === 0 && (
-                        <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground text-sm">No equipment items discovered. Use ADD ROW to add manually.</td></tr>
+                        <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground text-sm">No saved equipment rate cards. Use ADD ROW to add one.</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -845,7 +838,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                               <SelectValue placeholder="Select type..." />
                             </SelectTrigger>
                             <SelectContent>
-                              {canonicalTypes.map(t => (
+                              {machineTypeOptions.map(t => (
                                 <SelectItem key={t} value={t}>{t}</SelectItem>
                               ))}
                             </SelectContent>
@@ -893,7 +886,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                       {materialItems.map((item, idx) => renderItemRow(item, idx))}
                       {materialManualRows.map((row, idx) => renderManualRow(row, idx))}
                       {materialItems.length === 0 && materialManualRows.length === 0 && (
-                        <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground text-sm">No materials discovered. Use ADD ROW to add manually.</td></tr>
+                        <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground text-sm">No saved material rate cards. Use ADD ROW to add one.</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -959,7 +952,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                       {transportItems.map((item, idx) => renderItemRow(item, idx))}
                       {transportManualRows.map((row, idx) => renderManualRow(row, idx))}
                       {transportItems.length === 0 && transportManualRows.length === 0 && (
-                        <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground text-sm">No transport items discovered. Use ADD ROW to add manually.</td></tr>
+                        <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground text-sm">No saved transport rate cards. Use ADD ROW to add one.</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -972,33 +965,76 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                     ) : (
                       <div className="flex items-end gap-2 flex-wrap">
                         <div className="space-y-1">
-                          <Label className="text-[12px] uppercase">Machine Type</Label>
-                          <Select value={addTransType} onValueChange={setAddTransType}>
-                            <SelectTrigger className="w-44 h-8 text-sm" data-testid="select-add-trans-type">
-                              <SelectValue placeholder="Select type..." />
+                          <Label className="text-[12px] uppercase">Transport Type</Label>
+                          <Select value={addTransKind} onValueChange={(value: "machine" | "material") => setAddTransKind(value)}>
+                            <SelectTrigger className="w-44 h-8 text-sm" data-testid="select-add-transport-kind">
+                              <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              {canonicalTypes.map(t => (
-                                <SelectItem key={t} value={t}>{t}</SelectItem>
-                              ))}
+                              <SelectItem value="machine">Machine type</SelectItem>
+                              <SelectItem value="material">By material</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
-                        <div className="space-y-1">
-                          <Label className="text-[12px] uppercase">Billing Mode</Label>
-                          <Select value={addTransMode} onValueChange={setAddTransMode}>
-                            <SelectTrigger className="w-40 h-8 text-sm" data-testid="select-add-trans-mode">
-                              <SelectValue placeholder="Select mode..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {TRANSPORT_MODES.map(m => (
-                                <SelectItem key={m.value} value={m.value}>{m.value} ({m.unit})</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <Button size="sm" onClick={handleAddTransportRow} data-testid="button-confirm-add-transport">ADD</Button>
-                        <Button variant="ghost" size="sm" onClick={() => { setShowAddTransport(false); setAddTransType(""); setAddTransMode(""); }}>CANCEL</Button>
+                        {addTransKind === "machine" ? (
+                          <>
+                            <div className="space-y-1">
+                              <Label className="text-[12px] uppercase">Machine Type</Label>
+                              <Select value={addTransType} onValueChange={setAddTransType}>
+                                <SelectTrigger className="w-44 h-8 text-sm" data-testid="select-add-trans-type">
+                                  <SelectValue placeholder="Select type..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {machineTypeOptions.map(t => (
+                                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[12px] uppercase">Billing Mode</Label>
+                              <Select value={addTransMode} onValueChange={setAddTransMode}>
+                                <SelectTrigger className="w-40 h-8 text-sm" data-testid="select-add-trans-mode">
+                                  <SelectValue placeholder="Select mode..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {TRANSPORT_MODES.map(m => (
+                                    <SelectItem key={m.value} value={m.value}>{m.value} ({m.unit})</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="space-y-1">
+                              <Label className="text-[12px] uppercase">Material</Label>
+                              <Select value={addTransMaterial} onValueChange={setAddTransMaterial}>
+                                <SelectTrigger className="w-48 h-8 text-sm" data-testid="select-add-trans-material">
+                                  <SelectValue placeholder="Select material..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {materialNameOptions.map(material => (
+                                    <SelectItem key={material} value={material}>{material}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[12px] uppercase">Basis</Label>
+                              <span className="inline-flex h-8 items-center rounded border px-3 text-sm">Per km (payload)</span>
+                            </div>
+                          </>
+                        )}
+                        <Button size="sm" onClick={handleAddTransportRow} data-testid="button-confirm-add-transport">
+                          {addTransKind === "material" ? "SET UP RATE" : "ADD"}
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => {
+                          setShowAddTransport(false);
+                          setAddTransType("");
+                          setAddTransMode("");
+                          setAddTransMaterial("");
+                        }}>CANCEL</Button>
                       </div>
                     )}
                   </div>
@@ -1021,7 +1057,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                       {labourItems.map((item, idx) => renderItemRow(item, idx))}
                       {labourManualRows.map((row, idx) => renderManualRow(row, idx))}
                       {labourItems.length === 0 && labourManualRows.length === 0 && (
-                        <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground text-sm">No labour items discovered. Use ADD ROW to add manually.</td></tr>
+                        <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground text-sm">No saved labour rate cards. Use ADD ROW to add one.</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -1073,7 +1109,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
             <Button
               size="lg"
               onClick={handleSaveAll}
-              disabled={bulkSaveMutation.isPending || deleteDiscoveredMutation.isPending}
+              disabled={bulkSaveMutation.isPending || deleteSavedCardMutation.isPending}
               data-testid="button-save-all-rates"
             >
               {bulkSaveMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}

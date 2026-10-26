@@ -27,6 +27,10 @@ beforeEach(() => {
     if (url.pathname === "/api/vendor-bills/vendor-identities") return json([{ id: 70, name: "DRAFT VENDOR" }]);
     if (url.pathname === "/api/vendor-master") return json([{ id: 70, name: "DRAFT VENDOR", isActive: true }]);
     if (url.pathname === "/api/vendor-aliases") return json([]);
+    if (url.pathname === "/api/vendor-rate-cards") return json([{
+      id: 1, vendorName: "DRAFT VENDOR", category: "material", itemKey: "MAT_SOIL_CFT",
+      itemLabel: "SOIL", unit: "CFT", rate: 12, notes: null,
+    }]);
     if (url.pathname === "/api/vendor-rate-cards/discover") return json([{
       itemKey: "MAT_SOIL_CFT", itemLabel: "SOIL", category: "material", unit: "CFT", rate: 12, rateCardId: 1,
     }]);

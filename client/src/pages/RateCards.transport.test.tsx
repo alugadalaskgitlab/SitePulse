@@ -27,6 +27,8 @@ let cards: any[];
 let discovered: any[];
 let writes: any[];
 let bulkWrites: any[];
+let creates: any[];
+let materials: any[];
 let failure: boolean;
 const base = { id: 7, vendorName: "RAVI HAULAGE", category: "transport", itemKey: "EQ_TIPPER_HRS", itemLabel: "TIPPER — HOURLY HIRE", unit: "HRS", rate: 387, notes: "Agreed flat rate", ratePerKm: null, leadDistanceKm: null, payloadMt: null };
 beforeEach(() => {
@@ -35,19 +37,30 @@ beforeEach(() => {
   discovered = [{ ...base, rateCardId: 7 }];
   writes = [];
   bulkWrites = [];
+  creates = [];
+  materials = [{ name: "WMM" }, { name: "20 MM" }, { name: "20MM" }];
   failure = false;
+  toast.mockClear();
   Element.prototype.scrollIntoView = vi.fn();
   window.history.replaceState(null, "", "/plant/rate-cards");
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), "http://localhost");
     const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
-    if (url.pathname === "/api/vendor-rate-cards/7/transport-setup" && init?.method === "PATCH") {
+    if (/^\/api\/vendor-rate-cards\/\d+\/transport-setup$/.test(url.pathname) && init?.method === "PATCH") {
       const body = JSON.parse(String(init.body));
       writes.push(body);
       if (failure) return json({ message: "Setup save failed" }, 500);
-      const saved = { ...cards.find(card => card.itemKey === body.itemKey), ...body, id: 7 };
-      cards = [saved];
+      const id = Number(url.pathname.split("/")[3]);
+      const saved = { ...cards.find(card => Number(card.id) === id), ...body, id };
+      cards = [...cards.filter(card => Number(card.id) !== id), saved];
       return json(saved);
+    }
+    if (url.pathname === "/api/vendor-rate-cards" && init?.method === "POST") {
+      const body = JSON.parse(String(init.body));
+      creates.push(body);
+      const saved = { ...body, id: 8, ratePerKm: null, leadDistanceKm: null, payloadMt: null };
+      cards = [...cards, saved];
+      return json(saved, 201);
     }
     if (url.pathname === "/api/vendor-rate-cards/bulk-upsert") {
       bulkWrites.push(JSON.parse(String(init?.body)));
@@ -62,6 +75,7 @@ beforeEach(() => {
     if (url.pathname === "/api/vendor-rate-cards/discover") return json(url.searchParams.get("vendorName") === "SHANKAR LOGISTICS" ? [] : discovered);
     if (url.pathname === "/api/vendor-rate-cards") return json(url.searchParams.get("vendorName") === "SHANKAR LOGISTICS" ? [] : cards);
     if (url.pathname === "/api/equipment-master/canonical-types") return json(["TIPPER"]);
+    if (url.pathname === "/api/plant-materials") return json(materials);
     return json([]);
   }));
 });
@@ -157,7 +171,7 @@ describe("transport-only rate setup", () => {
     expect(bulkWrites[0].items[0]).not.toHaveProperty("ratePerKm");
   });
 
-  it("joins discovered rows without ids using exact category/key/unit identity", async () => {
+  it("uses the selected saved card for its setup fields", async () => {
     discovered[0].rateCardId = null;
     cards[0] = { ...base, ratePerKm: 950, leadDistanceKm: 12, payloadMt: 31 };
     mount();
@@ -166,22 +180,56 @@ describe("transport-only rate setup", () => {
     expect((screen.getByLabelText("Payload (MT)") as HTMLInputElement).value).toBe("31");
   });
 
-  it("does not borrow setup from another unit sharing the same item key", async () => {
-    discovered[0].rateCardId = null;
-    cards[0] = { ...base, unit: "MT", ratePerKm: 950, leadDistanceKm: 12, payloadMt: 31 };
+  it("does not display historical rows without a saved card", async () => {
+    cards = [];
+    discovered = [{ ...base, rateCardId: null }];
     mount();
-    const button = await screen.findByRole("button", { name: `Rate setup for ${base.itemLabel}` });
-    expect((button as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.queryByTestId("transport-rate-basis")).toBeNull();
+    expect(await screen.findByText("No saved transport rate cards. Use ADD ROW to add one.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Rate setup for/ })).toBeNull();
   });
 
-  it("preserves the typed flat rate on an unsaved discovered row", async () => {
+  it("adds a material transport card and opens per-km setup immediately", async () => {
     cards = [];
-    discovered[0].rateCardId = null;
+    discovered = [];
     mount();
-    fireEvent.change(await screen.findByTestId("input-rate-0"), { target: { value: "463" } });
-    expect((screen.getByRole("button", { name: `Rate setup for ${base.itemLabel}` }) as HTMLButtonElement).disabled).toBe(true);
-    expect(writes).toHaveLength(0);
+    fireEvent.click(await screen.findByTestId("button-add-transport-row"));
+    fireEvent.change(screen.getByTestId("select-add-transport-kind"), { target: { value: "material" } });
+    const materialSelect = screen.getByTestId("select-add-trans-material") as HTMLSelectElement;
+    expect(Array.from(materialSelect.options).map(option => option.value)).toEqual(["", "20 MM", "WMM"]);
+    fireEvent.change(materialSelect, { target: { value: "WMM" } });
+    fireEvent.click(screen.getByTestId("button-confirm-add-transport"));
+
+    await screen.findByRole("dialog");
+    fireEvent.change(screen.getByLabelText("Rate (₹ per km per load)"), { target: { value: "90" } });
+    fireEvent.change(screen.getByLabelText("Lead distance — ONE WAY (km)"), { target: { value: "12" } });
+    fireEvent.change(screen.getByLabelText("Payload (MT)"), { target: { value: "30" } });
+    expect(screen.getByTestId("transport-per-trip").textContent).toBe("₹2,160");
+    expect(screen.getByTestId("transport-per-mt").textContent).toBe("₹72");
+    fireEvent.click(screen.getByRole("button", { name: "SAVE RATE SETUP" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    expect(creates).toEqual([expect.objectContaining({
+      category: "transport",
+      itemKey: "EQ_WMM_TRIP",
+      itemLabel: "WMM - TRANSPORT",
+      unit: "TRIP",
+      rate: 90,
+    })]);
+    expect(writes).toEqual([{ itemKey: "EQ_WMM_TRIP", ratePerKm: 90, leadDistanceKm: 12, payloadMt: 30 }]);
+    expect(screen.getByTestId("transport-rate-basis").textContent).toContain("₹90/km · 12 km one way · 30 MT → ₹2,160/trip · ₹72/MT");
+  });
+
+  it("treats names with and without spaces as an existing material transport card", async () => {
+    cards = [{ ...base, id: 9, itemKey: "EQ_20_MM_TRIP", itemLabel: "20 MM - TRANSPORT", unit: "TRIP" }];
+    discovered = [];
+    mount();
+    fireEvent.click(await screen.findByTestId("button-add-transport-row"));
+    fireEvent.change(screen.getByTestId("select-add-transport-kind"), { target: { value: "material" } });
+    fireEvent.change(screen.getByTestId("select-add-trans-material"), { target: { value: "20 MM" } });
+    fireEvent.click(screen.getByTestId("button-confirm-add-transport"));
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "20 MM transport already exists" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(creates).toHaveLength(0);
   });
 
   it("reopens persisted manual setup while preserving manual provenance and flat rate", async () => {

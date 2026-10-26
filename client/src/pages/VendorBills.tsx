@@ -75,7 +75,7 @@ import { TransportPricingRow } from "@/components/vendor-bills/TransportPricingR
 import { UnconfirmedTripOffers, TransportPricingNote } from "@/components/vendor-bills/TripCandidateWarnings";
 import { type ArrangementPricing } from "@shared/vendorBillArrangement";
 import { billableTripCandidates, isUnconfirmedTrip, isSiteTripTransport } from "@/components/vendor-bills/tripCandidateSafety";
-import { calcCandidateAmount, groupRateItems, stripSourceSuffix, canonicalMachineName, canonicalTransportName, canonicalMatName, deriveLabourKey, type RateGroup as SharedRateGroup } from "@shared/vendorBillCandidates";
+import { calcCandidateAmount, groupRateItems, type RateGroup as SharedRateGroup } from "@shared/vendorBillCandidates";
 
 const formatDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return "-";
@@ -2554,48 +2554,6 @@ export default function VendorBills() {
         `Bill ${editingBillOriginalNo} is currently ${editingBillStatus}. Saving this edit will return it to draft, require it to be verified and approved again, and remove it from Payable now until it is approved again. Continue?`,
       );
       if (!confirmed) return;
-    }
-
-    const rateCardItems: any[] = [];
-    lineItems.filter(i => i.description && i.rate > 0 && !i.transportPricing && !i.arrangementPricing && !["hire_group", "hire_statement"].includes(i.source)).forEach(item => {
-      let itemKey = "";
-      if (item.category === "transport") {
-        const canonical = canonicalTransportName(item.description);
-        const unit = (item.unit || "TRIP").toUpperCase();
-        itemKey = `EQ_${canonical}_${unit}`;
-      } else if (item.category === "material") {
-        const mn = canonicalMatName(item.description);
-        const unit = (item.unit || "NOS").toUpperCase();
-        itemKey = `MAT_${mn}_${unit}`;
-      } else if (item.category === "labour") {
-        itemKey = deriveLabourKey(item.description);
-      } else if (item.equipmentId) {
-        const mn = canonicalMachineName(item.description);
-        const unit = (item.unit || "HRS").toUpperCase();
-        itemKey = `EQ_${mn}_${unit}`;
-      } else {
-        itemKey = stripSourceSuffix(item.description.trim().toUpperCase());
-      }
-      if (itemKey && !rateCardItems.some(rc => rc.itemKey === itemKey.toUpperCase() && rc.category === item.category)) {
-        rateCardItems.push({
-          vendorName: vendorName.toUpperCase(),
-          category: item.category,
-          itemKey: itemKey.toUpperCase(),
-          itemLabel: item.description.split(" - ")[0]?.trim().toUpperCase() || item.description.toUpperCase(),
-          unit: item.unit,
-          rate: item.rate,
-          notes: null,
-        });
-      }
-    });
-    if (rateCardItems.length > 0) {
-      fetch("/api/vendor-rate-cards/bulk-upsert", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: rateCardItems }),
-      }).then(() => {
-        queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards"] });
-      }).catch(() => {});
     }
 
     if (editingBillId) {

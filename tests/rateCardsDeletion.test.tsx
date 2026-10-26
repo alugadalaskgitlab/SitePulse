@@ -86,74 +86,72 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
-describe("Rate Cards manual row deletion", () => {
-  it("deletes saved discovered rates through the existing route", async () => {
-    vi.stubGlobal("confirm", vi.fn(() => true));
+describe("Rate Cards saved-row management", () => {
+  it("deletes a saved rate card through the existing route", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<QueryClientProvider client={makeClient()}><RateCards /></QueryClientProvider>);
-    fireEvent.click(await screen.findByRole("button", { name: "Remove saved rate for HARVESTER - HOURLY HIRE" }));
-    await waitFor(() => expect(screen.getByTestId("input-rate-0")).toHaveValue(null));
+    fireEvent.click(await screen.findByRole("button", { name: "Remove saved rate for ROLLER - HOURLY HIRE" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Remove saved rate for ROLLER - HOURLY HIRE" })).toBeNull());
     expect((fetch as ReturnType<typeof vi.fn>).mock.calls.some(([url, init]) =>
-      String(url) === "/api/vendor-rate-cards/20" && init?.method === "DELETE")).toBe(true);
+      String(url) === "/api/vendor-rate-cards/11" && init?.method === "DELETE")).toBe(true);
   });
-  it("resets an unsaved discovered edit without DELETE or confirmation", async () => {
+  it("shows saved cards only and never requests historical discovery rows", async () => {
     const confirm = vi.fn();
-    vi.stubGlobal("confirm", confirm);
+    vi.spyOn(window, "confirm").mockImplementation(confirm);
     render(<QueryClientProvider client={makeClient()}><RateCards /></QueryClientProvider>);
-    const button = await screen.findByRole("button", { name: "Reset unsaved rate for UNSAVED EQUIPMENT" });
-    const rate = within(button.closest("tr")!).getByRole("spinbutton");
-    fireEvent.change(rate, { target: { value: "42" } });
-    fireEvent.click(button);
-    expect(rate).toHaveValue(null);
+    await screen.findByRole("button", { name: "Remove saved rate for ROLLER - HOURLY HIRE" });
+    expect(screen.queryByText("UNSAVED EQUIPMENT")).not.toBeInTheDocument();
     expect(confirm).not.toHaveBeenCalled();
-    expect((fetch as ReturnType<typeof vi.fn>).mock.calls.some(([, init]) => init?.method === "DELETE")).toBe(false);
+    expect((fetch as ReturnType<typeof vi.fn>).mock.calls.some(([url]) =>
+      String(url).includes("/api/vendor-rate-cards/discover"))).toBe(false);
   });
   it("retains a saved discovered edit when DELETE fails", async () => {
-    vi.stubGlobal("confirm", vi.fn(() => true));
-    failingDeleteId = 20;
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    failingDeleteId = 11;
     render(<QueryClientProvider client={makeClient()}><RateCards /></QueryClientProvider>);
-    const button = await screen.findByRole("button", { name: "Remove saved rate for HARVESTER - HOURLY HIRE" });
+    const button = await screen.findByRole("button", { name: "Remove saved rate for ROLLER - HOURLY HIRE" });
     fireEvent.change(screen.getByTestId("input-rate-0"), { target: { value: "777" } });
     fireEvent.click(button);
     await waitFor(() => expect(button).not.toBeDisabled());
     expect(screen.getByTestId("input-rate-0")).toHaveValue(777);
   });
-  it("confirms and deletes persisted manual rows in every section without hiding discovered rows", async () => {
+  it("confirms before deleting saved rows in every section and explains bills are unaffected", async () => {
     const client = makeClient();
     const confirm = vi.fn(() => false);
-    vi.stubGlobal("confirm", confirm);
+    vi.spyOn(window, "confirm").mockImplementation(confirm);
     render(<QueryClientProvider client={client}><RateCards /></QueryClientProvider>);
 
-    await waitFor(() => expect(screen.getByTestId("button-remove-manual-equipment-0")).toBeInTheDocument());
-    expect(screen.getByTestId("button-remove-manual-material-0")).toBeInTheDocument();
-    expect(screen.getByTestId("button-remove-manual-transport-0")).toBeInTheDocument();
-    expect(screen.getByTestId("button-remove-manual-labour-0")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Remove LEGACY SAND" })).toBeInTheDocument();
-    expect(screen.getByTestId("row-discovered-item-0")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Remove saved rate for ROLLER - HOURLY HIRE" })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Remove saved rate for SAND" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove saved rate for TIPPER - TRIP" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove saved rate for LABOUR SKILLED" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove saved rate for LEGACY SAND" })).toBeInTheDocument();
+    expect(screen.queryByText("UNSAVED EQUIPMENT")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByTestId("button-remove-manual-equipment-0"));
+    fireEvent.click(screen.getByRole("button", { name: "Remove saved rate for ROLLER - HOURLY HIRE" }));
     expect(confirm).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId("button-remove-manual-equipment-0")).toBeInTheDocument();
+    expect(confirm.mock.calls[0][0]).toContain("Existing bills keep their saved rates and are not affected.");
     expect((fetch as ReturnType<typeof vi.fn>).mock.calls.some(([url, init]) =>
       String(url).includes("/api/vendor-rate-cards/11") && init?.method === "DELETE",
     )).toBe(false);
 
     confirm.mockReturnValue(true);
     for (const [label, id] of [["ROLLER - HOURLY HIRE", 11], ["SAND", 12], ["TIPPER - TRIP", 13], ["LABOUR SKILLED", 14]] as const) {
-      fireEvent.click(screen.getByRole("button", { name: `Remove ${label}` }));
-      await waitFor(() => expect(screen.queryByRole("button", { name: `Remove ${label}` })).toBeNull());
+      fireEvent.click(screen.getByRole("button", { name: `Remove saved rate for ${label}` }));
+      await waitFor(() => expect(screen.queryByRole("button", { name: `Remove saved rate for ${label}` })).toBeNull());
       expect((fetch as ReturnType<typeof vi.fn>).mock.calls.some(([url, init]) =>
         String(url).includes(`/api/vendor-rate-cards/${id}`) && init?.method === "DELETE",
       )).toBe(true);
     }
-    fireEvent.click(screen.getByRole("button", { name: "Remove LEGACY SAND" }));
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Remove LEGACY SAND" })).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Remove saved rate for LEGACY SAND" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Remove saved rate for LEGACY SAND" })).toBeNull());
     expect((fetch as ReturnType<typeof vi.fn>).mock.calls.some(([url, init]) =>
       String(url).includes("/api/vendor-rate-cards/15") && init?.method === "DELETE",
     )).toBe(true);
-    expect(screen.getByTestId("row-discovered-item-0")).toBeInTheDocument();
   });
 
   it("preserves another row's edit and restores the exact row when deletion fails", async () => {
@@ -161,22 +159,24 @@ describe("Rate Cards manual row deletion", () => {
     vi.stubGlobal("confirm", vi.fn(() => true));
     render(<QueryClientProvider client={client}><RateCards /></QueryClientProvider>);
 
-    await waitFor(() => expect(screen.getByTestId("input-manual-rate-equipment-0")).toBeInTheDocument());
-    fireEvent.change(screen.getByTestId("input-manual-rate-equipment-0"), { target: { value: "777" } });
-    fireEvent.change(screen.getByTestId("input-manual-rate-material-0"), { target: { value: "888" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Remove saved rate for ROLLER - HOURLY HIRE" })).toBeInTheDocument());
+    const rollerRow = screen.getByRole("button", { name: "Remove saved rate for ROLLER - HOURLY HIRE" }).closest("tr")!;
+    const sandRow = screen.getByRole("button", { name: "Remove saved rate for SAND" }).closest("tr")!;
+    fireEvent.change(within(rollerRow).getByRole("spinbutton"), { target: { value: "777" } });
+    fireEvent.change(within(sandRow).getByRole("spinbutton"), { target: { value: "888" } });
     failingDeleteId = 12;
-    fireEvent.click(screen.getByTestId("button-remove-manual-material-0"));
+    fireEvent.click(screen.getByRole("button", { name: "Remove saved rate for SAND" }));
 
-    await waitFor(() => expect(screen.getByTestId("button-remove-manual-material-0")).toBeInTheDocument());
-    expect(screen.getByTestId("input-manual-rate-equipment-0")).toHaveValue(777);
-    const restoredSandRow = screen.getByRole("button", { name: "Remove SAND" }).closest("tr");
-    expect(restoredSandRow).not.toBeNull();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Remove saved rate for SAND" })).toBeInTheDocument());
+    const retainedRoller = screen.getByRole("button", { name: "Remove saved rate for ROLLER - HOURLY HIRE" }).closest("tr")!;
+    const restoredSandRow = screen.getByRole("button", { name: "Remove saved rate for SAND" }).closest("tr")!;
+    expect(within(retainedRoller).getByRole("spinbutton")).toHaveValue(777);
     expect(within(restoredSandRow!).getByRole("spinbutton")).toHaveValue(888);
   });
 
-  it("does not put a pending deletion back into a bulk save", async () => {
+  it("prevents saving while a saved-card deletion is still pending", async () => {
     const client = makeClient();
-    vi.stubGlobal("confirm", vi.fn(() => true));
+    vi.spyOn(window, "confirm").mockReturnValue(true);
     deferDelete = true;
     client.setQueryData(["/api/vendor-master"], [{ id: 99, name: vendorName, isActive: true }]);
     client.setQueryData(["/api/vendor-aliases"], []);
@@ -186,17 +186,10 @@ describe("Rate Cards manual row deletion", () => {
     await waitFor(() => expect(masterSelect.options.length).toBeGreaterThan(1));
     await waitFor(() => expect(masterSelect.value).toBe("99"));
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Remove SAND" })).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Remove SAND" }));
-    fireEvent.click(screen.getByTestId("button-save-all-rates"));
-
-    await waitFor(() => {
-      const bulkCall = (fetch as ReturnType<typeof vi.fn>).mock.calls.find(([url, init]) =>
-        String(url).includes("/api/vendor-rate-cards/bulk-upsert") && init?.method === "POST",
-      );
-      expect(bulkCall).toBeTruthy();
-      expect(String(bulkCall?.[1]?.body)).not.toContain("MAT_SAND_CFT");
-    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Remove saved rate for SAND" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Remove saved rate for SAND" }));
+    expect((screen.getByTestId("button-save-all-rates") as HTMLButtonElement).disabled).toBe(true);
+    expect((fetch as ReturnType<typeof vi.fn>).mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
     finishDeferredDelete?.();
   });
 
