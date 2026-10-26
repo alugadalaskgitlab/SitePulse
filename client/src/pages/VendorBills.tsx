@@ -70,8 +70,8 @@ import { BillDateGroupControls, BillDateGroupRows, type BillDateGroup } from "@/
 import { ArrangementBillGroupRow, ArrangementBillOverallTotals } from "@/components/vendor-bills/ArrangementBillGroups";
 import { isTrulyBlankManualBillRow } from "@/lib/vendorBillBlankRows";
 import RateCards from "@/pages/RateCards";
-import { applyTransportCard, changeTransportBasis } from "@shared/vendorBillTransport";
-import { TransportPricingRow } from "@/components/vendor-bills/TransportPricingRow";
+import { applyTransportCard } from "@shared/vendorBillTransport";
+import { TransportPricingRow, transportPricingGroups } from "@/components/vendor-bills/TransportPricingRow";
 import { UnconfirmedTripOffers, TransportPricingNote } from "@/components/vendor-bills/TripCandidateWarnings";
 import { type ArrangementPricing } from "@shared/vendorBillArrangement";
 import { billableTripCandidates, isUnconfirmedTrip, isSiteTripTransport } from "@/components/vendor-bills/tripCandidateSafety";
@@ -993,7 +993,7 @@ export default function VendorBills() {
     ? `/api/vendor-bills/auto-items?vendorName=${encodeURIComponent(vendorName)}&billType=${encodeURIComponent(billType)}&periodFrom=${encodeURIComponent(periodFrom)}&periodTo=${encodeURIComponent(periodTo)}${!selectedSiteId || selectedSiteId === "all" ? "" : `&siteId=${encodeURIComponent(selectedSiteId)}`}`
     : null;
 
-  const { data: autoItems, isFetching: autoItemsLoading, refetch: refreshAutoItems } = useQuery<any[]>({
+  const { data: autoItems, isFetching: autoItemsLoading } = useQuery<any[]>({
     queryKey: ["/api/vendor-bills/auto-items", vendorName, billType, periodFrom, periodTo, selectedSiteId],
     queryFn: () => autoItemsUrl ? fetch(autoItemsUrl).then(r => r.json()) : Promise.resolve([]),
     enabled: !!autoItemsUrl,
@@ -1001,6 +1001,21 @@ export default function VendorBills() {
   const mappedAutoItems = useMemo(() => (autoItems || []).map(mapAutoBillItemWithEvidence), [autoItems]);
   const billableAutoItems = useMemo(() => billableTripCandidates(mappedAutoItems), [mappedAutoItems]);
   const unconfirmedTripOffers = useMemo(() => mappedAutoItems.filter(isUnconfirmedTrip), [mappedAutoItems]);
+  const siteTripTransportCandidates = useMemo(
+    () => mappedAutoItems.filter(isSiteTripTransport),
+    [mappedAutoItems],
+  );
+  const transportRateCardPreview = useQuery<any[]>({
+    queryKey: ["/api/vendor-rate-cards", "transport-preview", vendorName],
+    queryFn: async () => {
+      const response = await fetch(`/api/vendor-rate-cards?vendorName=${encodeURIComponent(vendorName)}`);
+      if (!response.ok) throw new Error((await response.text()) || "Could not load transport rate cards");
+      return response.json();
+    },
+    enabled: view === "form" && !!vendorName && siteTripTransportCandidates.length > 0,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
 
   const hireEvidenceFrom = [periodFrom, ...hireGroups.map(group => group.periodFrom)].filter(validHireDate).sort()[0] || periodFrom;
   const hireEvidenceTo = [periodTo, ...hireGroups.map(group => group.periodTo)].filter(validHireDate).sort().at(-1) || periodTo;
@@ -1595,11 +1610,10 @@ export default function VendorBills() {
       if (!isCurrentPull()) return;
 
       const dups = uniqueDuplicateBillMatches(duplicateBody as DuplicateBillItemMatch[]);
-      for (const d of dups) {
-        mapped[d.index] = { ...mapped[d.index], billedIn: { billNo: d.billNo, billStatus: d.billStatus } };
-      }
+      const alreadyOnBillIndexes = new Set(dups.map(match => match.index));
 
       const uniqueMapped = mapped.filter((item, index, all) =>
+        !alreadyOnBillIndexes.has(index) &&
         !suppressedAutoItemsRef.current.has(autoBillItemIdentity(item)) &&
         all.findIndex(candidate => autoBillItemIdentity(candidate) === autoBillItemIdentity(item)) === index
       );
@@ -1621,7 +1635,13 @@ export default function VendorBills() {
         ));
       }
 
-      toast({ title: `${pulledCount} item(s) added from records` });
+      const alreadyOnBillNos = Array.from(new Set(dups.map(match => `#${match.billNo}`)));
+      toast({
+        title: `${pulledCount} item(s) added from records`,
+        description: dups.length
+          ? `Skipped ${dups.length} item${dups.length === 1 ? "" : "s"} already on ${alreadyOnBillNos.join(", ")}.`
+          : undefined,
+      });
     } catch (error: any) {
       // A failed duplicate preflight/fresh check must not fall through to a
       // merge: treating an unknown response as zero duplicates is unsafe.
@@ -1826,34 +1846,45 @@ export default function VendorBills() {
   });
   const duplicatePreflightBlocked = availableOtherItems.length > 0 &&
     (!duplicatePreflight.isSuccess || duplicatePreflight.isFetching);
-  const preflightBilledIdentities = useMemo(() => {
-    if (!duplicatePreflight.isSuccess) return new Set<string>();
-    return new Set(
-      (duplicatePreflight.data || [])
-        .map(match => availableOtherItems[match.index])
-        .filter(Boolean)
-        .map(item => autoBillItemIdentity(item)),
-    );
+  const preflightBilledMatches = useMemo(() => {
+    const matches = new Map<string, DuplicateBillItemMatch>();
+    if (!duplicatePreflight.isSuccess) return matches;
+    for (const match of duplicatePreflight.data || []) {
+      const item = availableOtherItems[match.index];
+      if (item) matches.set(autoBillItemIdentity(item), match);
+    }
+    return matches;
   }, [availableOtherItems, duplicatePreflight.data, duplicatePreflight.isSuccess]);
+  const availableToPullItems = useMemo(
+    () => duplicatePreflight.isSuccess
+      ? availableOtherItems.filter(item => !preflightBilledMatches.has(autoBillItemIdentity(item)))
+      : [],
+    [availableOtherItems, duplicatePreflight.isSuccess, preflightBilledMatches],
+  );
   // Deleted source identities remain suppressed for this draft context.
   const candidatePullGroups = useMemo(() => {
     const candidates = availableOtherBillItems(billableAutoItems, [], includedHireGroups)
       .filter(item => !suppressedAutoItemsRef.current.has(autoBillItemIdentity(item)));
-    return groupRateItems(candidates).map(group => ({
-      ...group,
-      pendingItems: availableOtherBillItems(group.items, lineItems, includedHireGroups),
-      alreadyBilledCount: duplicatePreflight.isSuccess
-        ? availableOtherBillItems(group.items, lineItems, includedHireGroups)
-          .filter(item => preflightBilledIdentities.has(autoBillItemIdentity(item))).length
-        : null,
-      toPullCount: duplicatePreflight.isSuccess
-        ? availableOtherBillItems(group.items, lineItems, includedHireGroups).length
-        : null,
-    })).sort((a, b) => {
+    return groupRateItems(candidates).map(group => {
+      const pendingFromRecords = availableOtherBillItems(group.items, lineItems, includedHireGroups);
+      const billedMatches = duplicatePreflight.isSuccess
+        ? pendingFromRecords.map(item => preflightBilledMatches.get(autoBillItemIdentity(item))).filter((match): match is DuplicateBillItemMatch => !!match)
+        : [];
+      const pendingItems = duplicatePreflight.isSuccess
+        ? pendingFromRecords.filter(item => !preflightBilledMatches.has(autoBillItemIdentity(item)))
+        : pendingFromRecords;
+      return {
+        ...group,
+        pendingItems,
+        alreadyBilledCount: duplicatePreflight.isSuccess ? billedMatches.length : null,
+        alreadyBilledBillNos: Array.from(new Set(billedMatches.map(match => match.billNo))),
+        toPullCount: duplicatePreflight.isSuccess ? pendingItems.length : null,
+      };
+    }).sort((a, b) => {
       const categoryDifference = (categoryOrder[a.category] ?? 3) - (categoryOrder[b.category] ?? 3);
       return categoryDifference || a.groupName.localeCompare(b.groupName) || a.entryType.localeCompare(b.entryType);
     });
-  }, [duplicatePreflight.isSuccess, includedHireGroups, lineItems, billableAutoItems, preflightBilledIdentities]);
+  }, [duplicatePreflight.isSuccess, includedHireGroups, lineItems, billableAutoItems, preflightBilledMatches]);
 
   // Keep asynchronous Pull work scoped to the form identity that started it.
   useEffect(() => {
@@ -3982,8 +4013,7 @@ export default function VendorBills() {
                   <div className="mt-3 space-y-2">
                     <UnconfirmedTripOffers
                       items={unconfirmedTripOffers}
-                      refreshing={autoItemsLoading}
-                      onRefresh={() => { void refreshAutoItems(); }}
+                      vendorName={vendorName}
                       returnTo={typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : "/plant/vendor-bills"}
                     />
                     {(billType === "material" || billType === "all") && (
@@ -4018,14 +4048,23 @@ export default function VendorBills() {
                       </div>
                     )}
                     {candidatePullGroups.map(group => {
-                      const addedCount = group.count - group.pendingItems.length;
+                      const alreadyBilledCount = group.alreadyBilledCount ?? 0;
+                      const addedCount = Math.max(0, group.count - group.pendingItems.length - alreadyBilledCount);
                       const categoryLabel = group.category === "equipment" ? "EQUIPMENT" : group.category.toUpperCase();
+                      const transportNotes = Array.from(new Set(group.items
+                        .filter(isSiteTripTransport)
+                        .map(item => transportRateCardPreview.isError
+                          ? `Could not check the transport rate card for ${vendorName} – ${group.groupName}.`
+                          : transportRateCardPreview.isSuccess
+                            ? applyTransportCard(item, transportRateCardPreview.data || [], vendorName).transportPricingNote
+                            : null)
+                        .filter((note): note is string => !!note)));
                       return <div key={group.key} className={`flex flex-wrap items-center gap-2 rounded border px-2 py-2 text-xs ${group.pendingItems.length ? "border-blue-200 bg-background/40 dark:border-blue-800" : "border-muted bg-muted/40 text-muted-foreground"}`} data-testid={`pull-group-${group.key}`}>
                         <Badge variant="outline" className={getCategoryBadgeClass(group.category)}>{categoryLabel}</Badge>
                         <span className="min-w-[12rem] flex-1 font-semibold uppercase">{group.groupName}{group.entryType && group.entryType !== group.unit ? ` · ${group.entryType}` : ""}</span>
                         <span className="font-medium">
                           {duplicatePreflight.isSuccess
-                            ? `${group.count} ITEM${group.count === 1 ? "" : "S"} (${group.alreadyBilledCount} ALREADY BILLED, ${group.toPullCount} TO PULL)`
+                            ? `${group.count} ITEM${group.count === 1 ? "" : "S"} · ${group.alreadyBilledCount} ALREADY ON BILLS${group.alreadyBilledBillNos.length ? ` (${group.alreadyBilledBillNos.map(billNo => `#${billNo}`).join(", ")})` : ""} · ${group.toPullCount} TO PULL`
                             : `${group.count} ITEM${group.count === 1 ? "" : "S"}`}
                         </span>
                         {addedCount > 0 && <span className="font-semibold text-emerald-700 dark:text-emerald-400">✓ ADDED {addedCount}/{group.count}</span>}
@@ -4037,23 +4076,29 @@ export default function VendorBills() {
                           disabled={autoItemsLoading || pullInFlight || duplicatePreflightBlocked || group.pendingItems.length === 0}
                           data-testid={`button-pull-group-${group.key}`}
                         >
-                          {group.pendingItems.length ? `PULL ${group.pendingItems.length}` : "✓ ADDED"}
+                          {group.pendingItems.length
+                            ? `PULL ${group.pendingItems.length}`
+                            : alreadyBilledCount > 0 && !addedCount ? "ALREADY ON BILLS" : "✓ ADDED"}
                         </Button>
-                        {[...new Set(group.items.map(item => item.transportPricingNote).filter(Boolean))].map(note =>
-                          <div key={note} className="w-full"><TransportPricingNote note={note} /></div>
+                        {transportNotes.map(note =>
+                          <div key={note} className="w-full"><TransportPricingNote note={note} vendorName={vendorName} /></div>
                         )}
                       </div>;
                     })}
-                    {candidatePullGroups.length > 0 && availableOtherItems.length > 0 && <Button
+                    {candidatePullGroups.length > 0 && availableOtherItems.length > 0 && (
+                      !duplicatePreflight.isSuccess || availableToPullItems.length > 0
+                    ) && <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => handleAutoPopulate()}
-                      disabled={autoItemsLoading || pullInFlight || duplicatePreflightBlocked}
+                      onClick={() => handleAutoPopulate(availableToPullItems)}
+                      disabled={autoItemsLoading || pullInFlight || duplicatePreflightBlocked || availableToPullItems.length === 0}
                       data-testid="button-auto-populate"
                     >
                       {autoItemsLoading || duplicatePreflight.isFetching || pullInFlight ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
-                      {`PULL ALL ${availableOtherItems.length} ITEM${availableOtherItems.length === 1 ? "" : "S"}`}
+                      {duplicatePreflight.isSuccess
+                        ? `PULL ALL ${availableToPullItems.length} ITEM${availableToPullItems.length === 1 ? "" : "S"}`
+                        : "PULL ALL — CHECKING DUPLICATES"}
                     </Button>}
                     {candidatePullGroups.length === 0 && <span className="text-[11px] font-semibold uppercase">{billType === "equipment" ? "No billable activities available" : "No other billable activities available"}</span>}
                   </div>

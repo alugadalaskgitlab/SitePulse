@@ -78,12 +78,12 @@ export default function SiteMaterialTrips() {
   const hireEvidenceDefaults = tripListDefaultsFromSearch(window.location.search, today);
   const hireEvidenceParams = new URLSearchParams(window.location.search);
   const hireEvidenceDate = hireEvidenceDefaults.hireDate;
-  const [dateFromFilter, setDateFromFilter] = useState(hireEvidenceDate);
-  const [dateToFilter, setDateToFilter] = useState(hireEvidenceDate);
+  const [dateFromFilter, setDateFromFilter] = useState(hireEvidenceDefaults.dateFrom);
+  const [dateToFilter, setDateToFilter] = useState(hireEvidenceDefaults.dateTo);
   const [siteFilter, setSiteFilter] = useState(piParams.site || "");
   const [materialFilter, setMaterialFilter] = useState("");
   const [vehicleFilter, setVehicleFilter] = useState(hireEvidenceParams.get("hireVehicle") || "");
-  const [supplierFilter, setSupplierFilter] = useState("");
+  const [supplierFilter, setSupplierFilter] = useState(hireEvidenceDefaults.supplierFilter);
   const [onlyUnassigned, setOnlyUnassigned] = useState(false);
   const [onlyWithoutArrangement, setOnlyWithoutArrangement] = useState(false);
   const [roleFilter, setRoleFilter] = useState<TripRoleFilter>(hireEvidenceDefaults.roleFilter);
