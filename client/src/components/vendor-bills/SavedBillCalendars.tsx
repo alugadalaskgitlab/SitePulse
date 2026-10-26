@@ -110,6 +110,8 @@ export default function SavedBillCalendars({ bill, canExport = false }: { bill: 
       const activityMonthGroups = new Map<string, {
         key: string;
         label: string;
+        from: string;
+        to: string;
         rows: BillingDailyRow[];
         hasFrozenRows: boolean;
       }>();
@@ -119,17 +121,28 @@ export default function SavedBillCalendars({ bill, canExport = false }: { bill: 
         return new Date(Date.UTC(year, month - 1, 1))
           .toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "UTC" });
       };
+      const monthBounds = (key: string) => {
+        const [year, month] = key.split("-").map(Number);
+        if (!year || !month || month < 1 || month > 12) return { from: "", to: "" };
+        return {
+          from: `${key}-01`,
+          to: new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10),
+        };
+      };
       for (const review of reviews) {
         for (const month of review.months || []) {
           const key = String(month.key || month.from?.slice(0, 7) || "");
-          if (key && !activityMonthGroups.has(key)) {
-            activityMonthGroups.set(key, {
-              key,
-              label: month.label || monthLabel(key),
-              rows: [],
-              hasFrozenRows: false,
-            });
-          }
+          if (!key) continue;
+          const current = activityMonthGroups.get(key);
+          const bounds = monthBounds(key);
+          activityMonthGroups.set(key, {
+            key,
+            label: month.label || current?.label || monthLabel(key),
+            from: current?.from && current.from < month.from ? current.from : month.from || bounds.from,
+            to: current?.to && current.to > month.to ? current.to : month.to || bounds.to,
+            rows: current?.rows || [],
+            hasFrozenRows: current?.hasFrozenRows || false,
+          });
         }
       }
       for (const result of outputs) {
@@ -140,6 +153,7 @@ export default function SavedBillCalendars({ bill, canExport = false }: { bill: 
           const group = activityMonthGroups.get(key) || {
             key,
             label: monthLabel(key),
+            ...monthBounds(key),
             rows: [],
             hasFrozenRows: false,
           };
@@ -149,6 +163,7 @@ export default function SavedBillCalendars({ bill, canExport = false }: { bill: 
         }
       }
       const activityMonths = Array.from(activityMonthGroups.values())
+        .map(month => ({ ...month, rows: month.rows.sort((a, b) => a.date.localeCompare(b.date)) }))
         .sort((a, b) => a.key.localeCompare(b.key));
       const adjustments = savedAdjustmentRows(equipmentStatements);
       return <div className="space-y-3" key={groupKey}>
@@ -160,13 +175,14 @@ export default function SavedBillCalendars({ bill, canExport = false }: { bill: 
             showEquipmentTerms={false}
             adjustments={adjustments}
           />}
-        <details className="rounded-lg border p-3">
-        <summary className="cursor-pointer font-semibold text-sm">Monthly activity · {name}</summary>
-        <div className="space-y-3 pt-3">
-          {activityMonths.map(month => <section key={month.key}
-            className="space-y-2 rounded border p-3"
-            data-testid="saved-hire-activity-month-section">
-            <h4 className="text-sm font-semibold">Detailed activity · {name} · {month.label}</h4>
+        {activityMonths.map(month => <details key={month.key}
+          className="rounded-lg border p-3"
+          data-testid="saved-hire-activity-month-section"
+          data-month={month.key}>
+          <summary className="cursor-pointer font-semibold text-sm">
+            Detailed activity · {name} · {month.label}
+          </summary>
+          <div className="space-y-3 pt-3">
             {!month.hasFrozenRows && <p className="text-sm text-amber-700">
               Complete frozen performance rows are unavailable for this legacy bill. Saved working-sheet values appear in the daily table. {missingSavedPerformanceFields(month.rows)}
             </p>}
@@ -176,18 +192,40 @@ export default function SavedBillCalendars({ bill, canExport = false }: { bill: 
                 isTripBased={reviews.some(review => String(review.basis).toLowerCase() === "trip")}
               />
               : !month.hasFrozenRows && <p className="text-xs text-muted-foreground">No dated daily evidence was saved for this month.</p>}
-          </section>)}
-          {canExport && allFrozenRows && displayData?.periodFrom && displayData?.periodTo && <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => exportEquipmentHireCalendar(displayData, rows, "pdf")}>Export Calendar PDF</Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => exportEquipmentHireCalendar(displayData, rows, "xlsx")}>Export Calendar Excel</Button>
-          </div>}
-          {periodDetails.map(({ statement, snapshot, periodDecisions }, index) => <div className="contents" key={`saved-period-${statement.id ?? index}`}>
+            {canExport && <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm"
+                disabled={!month.hasFrozenRows || !month.rows.length || !displayData}
+                onClick={() => displayData && exportEquipmentHireCalendar(
+                  { ...displayData, periodFrom: month.from, periodTo: month.to },
+                  month.rows,
+                  "pdf",
+                )}>Export Calendar PDF</Button>
+              <Button type="button" variant="outline" size="sm"
+                disabled={!month.hasFrozenRows || !month.rows.length || !displayData}
+                onClick={() => displayData && exportEquipmentHireCalendar(
+                  { ...displayData, periodFrom: month.from, periodTo: month.to },
+                  month.rows,
+                  "xlsx",
+                )}>Export Calendar Excel</Button>
+            </div>}
+          </div>
+        </details>)}
+        {canExport && allFrozenRows && displayData?.periodFrom && displayData?.periodTo && <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-muted-foreground">Export all months:</span>
+          <Button type="button" variant="outline" size="sm" onClick={() => exportEquipmentHireCalendar(displayData, rows, "pdf")}>Export All Months PDF</Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => exportEquipmentHireCalendar(displayData, rows, "xlsx")}>Export All Months Excel</Button>
+        </div>}
+        {periodDetails.some(detail => detail.periodDecisions.length > 0) && <details className="rounded-lg border p-3">
+          <summary className="cursor-pointer font-semibold text-sm">Period-level saved billing decisions · {name}</summary>
+          <div className="space-y-3 pt-3">
+          {periodDetails.map(({ statement, periodDecisions }, index) => <div className="contents" key={`saved-period-${statement.id ?? index}`}>
             {periodDecisions.length > 0 && <div><h4 className="text-xs font-semibold">Period-level saved billing decisions · {statement.periodFrom || "Not established"} to {statement.periodTo || "Not established"}</h4>
               {periodDecisions.map((d: any, i: number) => <p className="text-xs" key={i}>{d.sourceId || "Period"} · {d.decision || d.action || d.resolution} · {d.reason || "Reason not recorded"}</p>)}
             </div>}
           </div>)}
-        </div>
-      </details></div>;
+          </div>
+        </details>}
+      </div>;
     })}
     {Array.from(legacyGroups, ([key, items]) => <div className="space-y-3" key={key}>
       <details className="rounded-lg border p-3">

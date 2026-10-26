@@ -18,7 +18,7 @@ import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Check, Circle, Info, Fuel, Settings, Copy, X, Download, Search, Edit, PlusCircle, BarChart2, Calculator, History } from "lucide-react";
 import { queryClient, apiRequest, isForbiddenError, NO_PERMISSION_DESCRIPTION } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { vendorBillStatusError } from "@/lib/vendorBillStatusError";
+import { vendorBillHsdRecoveryMonths, vendorBillStatusError, type HsdRecoveryVerificationMonth } from "@/lib/vendorBillStatusError";
 import { vendorBillingIdentityLabel, type VendorBillingIdentity } from "@/components/vendor-bills/vendorBillingIdentityLabel";
 import { hasCumulativeVendorPayment } from "@shared/vendorBillPayment";
 import { hasFrozenTripDailyHire, FROZEN_TRIP_DAILY_MESSAGE } from "@shared/vendorBillRecovery";
@@ -48,7 +48,7 @@ import {
 } from "@/components/vendor-bills/EquipmentHireBillOutput";
 import DraftEquipmentHireCalendar, { SavedEquipmentCalendarExport } from "@/components/vendor-bills/DraftEquipmentHireCalendar";
 import SavedBillCalendars from "@/components/vendor-bills/SavedBillCalendars";
-import { projectBillHireReviews, projectHireReview } from "@shared/vendorBillLayout";
+import { calendarMonths, projectBillHireReviews, projectHireReview } from "@shared/vendorBillLayout";
 import { buildSavedBillPresentationRows } from "@shared/vendorBillPresentation";
 import { vendorIdentityDisplayName } from "@shared/vendorIdentityDisplay";
 import { VendorBillFinancialSummary, VendorRunningStatement } from "@/components/vendor-bills/VendorBillReview";
@@ -664,6 +664,15 @@ export default function VendorBills() {
 
   const [view, setView] = useState<ViewMode>("list");
   const [selectedBillId, setSelectedBillId] = useState<number | null>(null);
+  const [hireVerificationHsdNotice, setHireVerificationHsdNotice] = useState<{
+    billId: number;
+    months: HsdRecoveryVerificationMonth[];
+  } | null>(null);
+  const [pendingHsdReconciliation, setPendingHsdReconciliation] = useState<{
+    billId: number;
+    monthKey: string;
+  } | null>(null);
+  const scrolledHsdReconciliationRef = useRef<string | null>(null);
   const requestedReturnTo = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("returnTo") : null;
   const payablesReturnTo = requestedReturnTo === "/reports/vendor-payables" || requestedReturnTo?.startsWith("/reports/vendor-payables/")
     ? requestedReturnTo
@@ -1018,6 +1027,21 @@ export default function VendorBills() {
     });
     return Array.from(byId.values());
   }, [billType, discoveredVendors, hireActivityRows, vendorName, isHistoricalHireEdit]);
+  useEffect(() => {
+    if (
+      view !== "form" ||
+      !pendingHsdReconciliation ||
+      pendingHsdReconciliation.billId !== editingBillId
+    ) return;
+    const targetKey = `${pendingHsdReconciliation.billId}:${pendingHsdReconciliation.monthKey}`;
+    if (scrolledHsdReconciliationRef.current === targetKey) return;
+    const target = Array.from(document.querySelectorAll<HTMLElement>("[data-hire-diesel-months]"))
+      .find(element => element.dataset.hireDieselMonths?.split(/\s+/).includes(pendingHsdReconciliation.monthKey));
+    if (target && typeof target.scrollIntoView === "function") {
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      scrolledHsdReconciliationRef.current = targetKey;
+    }
+  }, [view, pendingHsdReconciliation, editingBillId, hireGroups, hireEquipment]);
   const currentMonthlySeedKey = `${vendorName}|${periodFrom}|${periodTo}`;
   const monthlyHireExclusions = useMemo(() => {
     if (!vendorName || !validHireDate(periodFrom) || !validHireDate(periodTo) || periodFrom > periodTo ||
@@ -1200,16 +1224,21 @@ export default function VendorBills() {
   const statusMutation = useMutation({
     mutationFn: ({ id, status, amountPaid }: { id: number; status: string; amountPaid?: number }) =>
       apiRequest("PATCH", `/api/vendor-bills/${id}/status`, { status, ...(amountPaid === undefined ? {} : { amountPaid }) }),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills"] });
       if (selectedBillId) {
         queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills", selectedBillId] });
       }
+      setHireVerificationHsdNotice(current =>
+        current?.billId === variables.id ? null : current,
+      );
       setPendingPaidStatus(null);
       setPaidStatusAmount("");
       toast({ title: "Bill status updated" });
     },
-    onError: (err: Error) => {
+    onError: (err: Error, variables) => {
+      const months = vendorBillHsdRecoveryMonths(err);
+      if (months.length) setHireVerificationHsdNotice({ billId: variables.id, months });
       toast({ ...vendorBillStatusError(err), variant: "destructive" });
     },
   });
@@ -3651,6 +3680,8 @@ export default function VendorBills() {
                 const diesel = result?.diesel;
                 const activeFrom = result?.billablePeriodFrom || group.periodFrom;
                 const activeTo = result?.billablePeriodTo || group.periodTo;
+                const reconciliationMonthKeys = calendarMonths(group.periodFrom, group.periodTo)
+                  .map(month => month.key);
                 const calendar = buildHireActivityDays(activeFrom, activeTo, activityForGroup(group), maintenance.map((row: any) => ({
                   id: row.sourceId, date: row.businessDate, eventType: row.eventType, description: row.description, downtimeHours: row.downtimeHours,
                 })));
@@ -3823,7 +3854,17 @@ export default function VendorBills() {
                       </div>
                     )}
                     {String(equipment?.hireDieselResponsibility || "").toLowerCase() === "hlc" && (
-                      <div className="rounded bg-muted/50 p-2 text-xs">
+                      <div
+                        className={`rounded bg-muted/50 p-2 text-xs ${
+                          pendingHsdReconciliation?.billId === editingBillId &&
+                          reconciliationMonthKeys.includes(pendingHsdReconciliation.monthKey)
+                            ? "ring-2 ring-amber-500 ring-offset-2"
+                            : ""
+                        }`}
+                        data-testid={`hire-diesel-reconciliation-${group.id}`}
+                        data-hire-diesel-months={reconciliationMonthKeys.join(" ")}
+                        tabIndex={-1}
+                      >
                         <strong>HLC diesel reconciliation</strong>
                         <div className="mt-2 grid gap-2 sm:grid-cols-4">
                           <span>Expected: <strong>{diesel?.expectedDieselAvailable === false ? "Tank Readings N/A" : `${Number(diesel?.expectedDiesel || 0).toFixed(2)} L`}</strong></span>
@@ -5202,6 +5243,33 @@ export default function VendorBills() {
             )}
             <VendorBillOwnerCorrections bill={bill} isOwner={!!user?.isOwner} />
 
+            {hireVerificationHsdNotice?.billId === bill.id && <div
+              role="alert"
+              className="space-y-3 rounded border border-amber-400 bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-950/20"
+              data-testid="hire-verification-hsd-notice"
+            >
+              <p className="font-semibold">Verification is blocked until the HLC diesel reconciliation has a disposition for:</p>
+              <ul className="list-inside list-disc">
+                {hireVerificationHsdNotice.months.map(month => <li key={month.key}>{month.label}</li>)}
+              </ul>
+              <p>For each listed month, choose Accept Suggested, Edit, or No Recovery in its reconciliation.</p>
+              {canEditBill && <div className="flex flex-wrap gap-2">
+                {hireVerificationHsdNotice.months.map(month => <Button
+                  key={month.key}
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    scrolledHsdReconciliationRef.current = null;
+                    setPendingHsdReconciliation({ billId: bill.id, monthKey: month.key });
+                    handleEditBill(bill);
+                  }}
+                >
+                  Open {month.label} reconciliation
+                </Button>)}
+              </div>}
+            </div>}
+
             {!bill.isCancelled && <div className="border-t pt-4">
               <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 mb-2">Status Progress</p>
               {renderStatusSteps(bill.status, {
@@ -5638,7 +5706,9 @@ export default function VendorBills() {
                       return <tr key={`${row.kind}-${index}`}
                         className={`${highlighted ? "border-t-2 border-amber-600 bg-amber-50 dark:bg-amber-900/20" : "border-t bg-muted/10"} ${row.kind === "net" ? "font-bold text-base" : ""}`}
                         data-testid={`row-detail-financial-${row.kind}-${index}`}>
-                        <td colSpan={labelCols} className={`px-2 py-2 text-right font-semibold uppercase ${tone}`}>
+                        <td colSpan={labelCols} className={`px-2 py-2 ${
+                          row.kind === "deduction" || row.kind === "tds" ? "text-left" : "text-right"
+                        } font-semibold uppercase ${tone}`}>
                           {row.label}
                           {row.reason && <div className="mt-1 whitespace-pre-line text-left text-xs font-normal normal-case text-muted-foreground">{row.reason}</div>}
                         </td>

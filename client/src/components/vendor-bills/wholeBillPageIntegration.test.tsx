@@ -36,6 +36,8 @@ const baseBill = {
 };
 let bill: any;
 let autoItems: any[];
+let hireActivityRows: any[];
+let statusFailure: string | null;
 let requests: Array<{ url: string; method: string; body?: any }>;
 beforeEach(() => {
   queryClient.clear();
@@ -43,6 +45,8 @@ beforeEach(() => {
   state.save.mockReset().mockResolvedValue({ cancelled: false, notes: [] });
   bill = structuredClone(baseBill);
   autoItems = [];
+  hireActivityRows = [];
+  statusFailure = null;
   requests = [];
   window.history.replaceState(null, "", "/plant/vendor-bills");
   Object.defineProperty(window, "matchMedia", { configurable: true, value: vi.fn().mockReturnValue({
@@ -55,6 +59,12 @@ beforeEach(() => {
     const json = (value: unknown) => new Response(JSON.stringify(value), { status: 200 });
     if (/\/api\/vendor-bills\/731(?:\?|$)/.test(url)) return json(bill);
     if (url === "/api/vendor-bills/financial-review") return json([bill]);
+    if (url.includes("/api/vendor-bills/hire-activities")) return json(hireActivityRows);
+    if (url === "/api/vendor-bills/731/status" && init?.method === "PATCH") {
+      return statusFailure
+        ? new Response(JSON.stringify({ error: statusFailure }), { status: 409 })
+        : json(bill);
+    }
     if (url.endsWith("/attention/paid-amount") && typeof init?.body === "string") {
       bill.amountPaid = JSON.parse(init.body).amountPaid;
       return json(bill);
@@ -109,6 +119,74 @@ describe("VB-LAYOUT-01 recorded payment display", () => {
     const payment = screen.getByTestId("section-payment-details").textContent;
     expect(payment).toContain("PAID: ₹100.00");
     expect(payment).toContain("BALANCE THIS BILL: ₹400.00");
+  });
+
+  it("left-aligns deduction and TDS labels in the saved bill summary while keeping amounts right-aligned", async () => {
+    bill.billType = "equipment";
+    bill.adjustmentLabel = "ADVANCE ADJUSTMENT";
+    bill.adjustmentAmount = -43.75;
+    bill.tdsRate = 2;
+    bill.items[0] = { ...bill.items[0], category: "equipment" };
+    await openDetail();
+
+    const deduction = screen.getByTestId(/^row-detail-financial-deduction-/);
+    const tds = screen.getByTestId(/^row-detail-financial-tds-/);
+    const gross = screen.getByTestId("row-detail-financial-gross-0");
+    const net = screen.getByTestId(/^row-detail-financial-net-/);
+    for (const row of [deduction, tds]) {
+      expect(row.children[0].className).toContain("text-left");
+      expect(row.children[1].className).toContain("text-right");
+    }
+    expect(gross.children[0].className).toContain("text-right");
+    expect(net.children[0].className).toContain("text-right");
+  });
+
+  it("explains a blocked HSD verification by month and opens that reconciliation in the bill editor", async () => {
+    bill.billType = "equipment";
+    bill.periodFrom = "2026-08-01";
+    bill.periodTo = "2026-08-31";
+    bill.totalAmount = 60000;
+    bill.netPayableAmount = 60000;
+    bill.items = [{
+      id: 7311, date: "2026-08-31", category: "equipment", description: "TEST EQUIPMENT",
+      qty: 1, unit: "MONTH", rate: 60000, amount: 60000, source: "hire_statement",
+      hireStatementId: 81, equipmentId: 81,
+    }];
+    bill.hireStatements = [{
+      id: 81, equipmentId: 81, equipmentName: "TEST EQUIPMENT",
+      periodFrom: "2026-08-01", periodTo: "2026-08-31", billingBasis: "monthly",
+      rate: 60000, grossAmount: 60000, status: "draft",
+      calculationSnapshot: {
+        billingIntegration: "vb10_automatic",
+        terms: {
+          billingBasis: "monthly", rate: 60000, monthlyDivisorType: "calendar",
+          hireStartDate: "2026-08-01", dieselResponsibility: "hlc",
+        },
+        diesel: { suggestedExcess: 10, suggestedRecoveryAmount: 1000, expectedDieselAvailable: true },
+      },
+    }];
+    hireActivityRows = [{
+      source: "equipment_default",
+      equipmentId: 81,
+      equipment: {
+        id: 81, name: "TEST EQUIPMENT", hireBillingBasis: "monthly", hireRate: 60000,
+        hireStartDate: "2026-08-01", hireMonthlyDivisorType: "calendar",
+        hireDieselResponsibility: "hlc",
+      },
+    }];
+    statusFailure = "Complete the hire review before verification: 2026-08-01–2026-08-31: HSD recovery disposition";
+
+    await openDetail();
+    fireEvent.click(screen.getByTestId("button-advance-status"));
+    const notice = await screen.findByTestId("hire-verification-hsd-notice");
+    expect(notice.textContent).toContain("HLC diesel reconciliation");
+    expect(notice.textContent).toContain("August 2026");
+    expect(notice.textContent).toContain("Accept Suggested, Edit, or No Recovery");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open August 2026 reconciliation" }));
+    const reconciliation = await screen.findByTestId("hire-diesel-reconciliation-loaded-81");
+    await waitFor(() => expect(reconciliation.scrollIntoView).toHaveBeenCalled());
+    expect(reconciliation.className).toContain("ring-2");
   });
 
   it("refreshes Bill Detail after recording a paid amount and leaves a real partial balance", async () => {
