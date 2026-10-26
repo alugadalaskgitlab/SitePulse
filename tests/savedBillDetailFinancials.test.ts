@@ -4,6 +4,7 @@ import { buildSavedBillPresentationRows } from "../shared/vendorBillPresentation
 import {
   deduplicateEquipmentHireTerms,
   projectSavedHireDetailFinancials,
+  reconcileDraftHireNetPayableRows,
 } from "../client/src/components/vendor-bills/savedBillDetailFinancials";
 
 function makeOrsuBill(status = "draft", gstRateEquipment = 0) {
@@ -44,9 +45,9 @@ function makeOrsuBill(status = "draft", gstRateEquipment = 0) {
         advanceAdjustment: 110_000,
         otherCredit: 0,
         gstRate: gstRateEquipment,
-        gstAmount: gstRateEquipment ? 750 : 0,
+        gstAmount: gstRateEquipment ? (status === "draft" ? 6_250 : 750) : 0,
         tdsRate: 2,
-        tdsAmount: 300,
+        tdsAmount: status === "draft" ? 2_500 : 300,
       },
       adjustments: { advanceAdjustment: 110_000 },
     },
@@ -56,7 +57,9 @@ function makeOrsuBill(status = "draft", gstRateEquipment = 0) {
     billType: "equipment",
     status,
     totalAmount: 44_032.26,
-    netPayableAmount: 28_151.61,
+    netPayableAmount: gstRateEquipment ? 30_353.22 : 28_151.61,
+    adjustmentAmount: -15_000,
+    adjustmentLabel: "OTHER DEDUCTION",
     gstRateEquipment,
     tdsRate: 2,
     hireStatements: [firstStatement, secondStatement],
@@ -74,22 +77,34 @@ function project(bill: ReturnType<typeof makeOrsuBill>) {
   return totals;
 }
 
+function screenRows(bill: any) {
+  const totals = project(bill);
+  return reconcileDraftHireNetPayableRows(
+    bill,
+    buildSavedBillPresentationRows(bill, totals),
+  );
+}
+
 describe("saved equipment-hire bill detail financials", () => {
-  it("uses gross minus breakdown for draft hire TDS and adjusts only the displayed tax delta", () => {
+  it("reconciles the draft net to displayed tax rows even when snapshots already have corrected TDS", () => {
     const bill = makeOrsuBill();
     const totals = project(bill);
-    const rows = buildSavedBillPresentationRows(bill as any, totals);
+    const rows = screenRows(bill);
+    const netRow = rows.find(row => row.kind === "net");
 
     expect(totals.tds).toBe(3_080.65);
-    expect(totals.netTotal).toBe(25_951.61);
     expect(rows.find(row => row.kind === "tds")?.amount).toBe(-3_080.65);
-    expect(rows.find(row => row.kind === "net")?.amount).toBe(25_951.61);
+    expect(netRow?.amount).toBe(25_951.61);
+    expect(Math.round(rows.filter(row => row.kind !== "net").reduce((sum, row) => sum + row.amount, 0) * 100) / 100)
+      .toBe(netRow?.amount);
     expect(bill.netPayableAmount).toBe(28_151.61);
   });
 
   it("calculates draft GST from the same gross-minus-breakdown base", () => {
-    const totals = project(makeOrsuBill("draft", 5));
+    const bill = makeOrsuBill("draft", 5);
+    const totals = project(bill);
     expect(totals.gstRows.reduce((sum, row) => sum + row.amount, 0)).toBe(7_701.61);
+    expect(screenRows(bill).find(row => row.kind === "net")?.amount).toBe(33_653.22);
   });
 
   it("leaves a no-advance draft unchanged when its gross-minus-breakdown tax base equals the current base", () => {
@@ -120,16 +135,19 @@ describe("saved equipment-hire bill detail financials", () => {
       items: [{ source: "hire_statement", hireStatementId: 8, category: "equipment", amount: 9_032.5 }],
     };
     const totals = project(bill as any);
+    const rows = screenRows(bill);
 
     expect(totals.tds).toBe(180.65);
-    expect(totals.netTotal).toBe(8_851.85);
+    expect(rows.find(row => row.kind === "net")?.amount).toBe(8_851.85);
   });
 
   it("preserves approved bill tax and net figures", () => {
-    const totals = project(makeOrsuBill("approved", 5));
+    const bill = makeOrsuBill("approved", 5);
+    const totals = project(bill);
+    const rows = screenRows(bill);
     expect(totals.gstRows.reduce((sum, row) => sum + row.amount, 0)).toBe(2_201.61);
     expect(totals.tds).toBe(880.65);
-    expect(totals.netTotal).toBe(28_151.61);
+    expect(rows.find(row => row.kind === "net")?.amount).toBe(30_353.22);
   });
 
   it("keeps one terms row per equipment identity while retaining separate machines", () => {

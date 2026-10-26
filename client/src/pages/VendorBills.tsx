@@ -60,7 +60,11 @@ import { mapAutoBillItemWithEvidence, type EquipmentLogEvidence } from "@/compon
 import { useWholeBillCalendarSnapshots } from "@/components/vendor-bills/useWholeBillCalendarSnapshots";
 import { displayedHireTotals, historicalHireSheetRows, projectVendorBillPageItems } from "@/components/vendor-bills/wholeBillPageProjection";
 import type { WholeBillSnapshot } from "@/components/vendor-bills/wholeBillSnapshot";
-import { deduplicateEquipmentHireTerms, projectSavedHireDetailFinancials } from "@/components/vendor-bills/savedBillDetailFinancials";
+import {
+  deduplicateEquipmentHireTerms,
+  projectSavedHireDetailFinancials,
+  reconcileDraftHireNetPayableRows,
+} from "@/components/vendor-bills/savedBillDetailFinancials";
 import { BillDateGroupControls, BillDateGroupRows } from "@/components/vendor-bills/BillDateGroups";
 import { isTrulyBlankManualBillRow } from "@/lib/vendorBillBlankRows";
 import RateCards from "@/pages/RateCards";
@@ -4991,32 +4995,35 @@ export default function VendorBills() {
       }),
     );
     const screenDetailFinancials = projectSavedHireDetailFinancials(bill, detailFinancials) || detailFinancials;
-    const screenFinancialRows = buildSavedBillPresentationRows(bill, screenDetailFinancials).map(sourceRow => {
-      const row = { ...sourceRow };
-      if (String(bill.billType || "").toLowerCase() !== "equipment") return row;
-      if (row.reason) {
-        if (row.reason.trim().toLowerCase() === `reason: ${row.label}`.toLowerCase()) row.reason = "";
-        row.reason = row.reason
-          .replace(/(?:\s*·\s*)?Date\/decision: Not recorded/gi, "")
-          .replace(/\s*·\s*·/g, " · ")
-          .trim();
-      }
-      if (row.label.trim().toLowerCase() === "advance adjustment") {
-        const advanceDetails = ((bill as any).hireStatements || []).flatMap((statement: any) => {
-          const adjustments = statement.calculationSnapshot?.adjustments || {};
-          if (Number(adjustments.advanceAdjustment || 0) <= 0) return [];
-          const equipment = statement.equipmentName || (statement.equipmentId ? `Equipment #${statement.equipmentId}` : "");
-          const details = [
-            equipment,
-            adjustments.advanceAdjustmentReason ? `Reason: ${adjustments.advanceAdjustmentReason}` : "",
-            adjustments.advanceAdjustmentDate ? `Payment date: ${formatDate(adjustments.advanceAdjustmentDate)}` : "",
-          ].filter(Boolean);
-          return details.length ? [details.join(" · ")] : [];
-        });
-        if (advanceDetails.length) row.reason = advanceDetails.join("\n");
-      }
-      return row;
-    });
+    const screenFinancialRows = reconcileDraftHireNetPayableRows(
+      bill,
+      buildSavedBillPresentationRows(bill, screenDetailFinancials).map(sourceRow => {
+        const row = { ...sourceRow };
+        if (String(bill.billType || "").toLowerCase() !== "equipment") return row;
+        if (row.reason) {
+          if (row.reason.trim().toLowerCase() === `reason: ${row.label}`.toLowerCase()) row.reason = "";
+          row.reason = row.reason
+            .replace(/(?:\s*·\s*)?Date\/decision: Not recorded/gi, "")
+            .replace(/\s*·\s*·/g, " · ")
+            .trim();
+        }
+        if (row.label.trim().toLowerCase() === "advance adjustment") {
+          const advanceDetails = ((bill as any).hireStatements || []).flatMap((statement: any) => {
+            const adjustments = statement.calculationSnapshot?.adjustments || {};
+            if (Number(adjustments.advanceAdjustment || 0) <= 0) return [];
+            const equipment = statement.equipmentName || (statement.equipmentId ? `Equipment #${statement.equipmentId}` : "");
+            const details = [
+              equipment,
+              adjustments.advanceAdjustmentReason ? `Reason: ${adjustments.advanceAdjustmentReason}` : "",
+              adjustments.advanceAdjustmentDate ? `Payment date: ${formatDate(adjustments.advanceAdjustmentDate)}` : "",
+            ].filter(Boolean);
+            return details.length ? [details.join(" · ")] : [];
+          });
+          if (advanceDetails.length) row.reason = advanceDetails.join("\n");
+        }
+        return row;
+      }),
+    );
     const detailSubtotals: Record<string, number> = {};
     bill.items.forEach((item: any) => {
       const category = item.category || "other";

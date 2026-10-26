@@ -147,6 +147,10 @@ describe("selective pre-tipper billing recovery", () => {
     const html = renderToStaticMarkup(createElement(SavedBillCalendars, { bill: saved }));
     expect(html.match(/Monthly Billing Summary/g)).toHaveLength(1);
     expect(html.match(/Activity Calendar —/g)).toBeNull();
+    expect(html.match(/data-testid="saved-hire-activity-month-section"/g)).toHaveLength(2);
+    expect(html).toMatch(/Detailed activity[^<]*August 2026/);
+    expect(html).toMatch(/Detailed activity[^<]*September 2026/);
+    expect(html).not.toContain("Recorded period Gross Hire");
     expect(buildSavedEquipmentHireBillOutput(saved)?.data.hireReview?.months).toHaveLength(2);
     expect(JSON.stringify(saved)).toBe(before);
 

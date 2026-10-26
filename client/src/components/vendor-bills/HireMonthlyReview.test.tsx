@@ -29,14 +29,40 @@ describe("approved month review presentation", () => {
     expect(review.months.map(m => [m.worked, m.idle, m.breakdown, m.operatorUnavailable])).toEqual([[1, 0, 0, 0], [0, 1, 0, 1]]);
     expect(container.textContent).not.toContain("Recorded evidence only. Missing activity is not Idle or Breakdown.");
   });
-  it("keeps the factual review sentence prominent without the removed activity calendar or boilerplate", () => {
+  it("softens monthly missing-activity review and removes the repeated recorded gross lines", () => {
     const { container } = render(<HireMonthlyReview review={review} calendars={false} />);
     expect(container.querySelectorAll("details")).toHaveLength(0);
-    const requiredDays = review.months.filter(month => month.unknown > 0)
-      .map(month => `${month.label}: ${month.unknown} dates require review.`);
-    expect(screen.getAllByTestId("hire-review-required-days").map(node => node.textContent)).toEqual(requiredDays);
+    const missingActivityTotal = review.months.reduce((sum, month) => sum + month.unknown, 0);
+    expect(screen.getByTestId("hire-review-required-days-note").textContent)
+      .toContain(`${missingActivityTotal} dates are classified as Activity Not Recorded`);
+    expect(screen.queryByTestId("hire-review-required-days")).toBeNull();
+    expect(container.textContent).not.toContain("Recorded period Gross Hire");
     expect(container.textContent).not.toContain("Days Billed follows the hire terms");
     expect(container.textContent).not.toContain("Recorded evidence only");
+  });
+  it("keeps the amber review alert for non-monthly hire and left-aligns adjustment details", () => {
+    const nonMonthlyReview = { ...review, basis: "daily" } as typeof review;
+    const { container, rerender } = render(
+      <HireMonthlyReview review={nonMonthlyReview} calendars={false} />,
+    );
+    expect(screen.getAllByTestId("hire-review-required-days").length).toBeGreaterThan(0);
+
+    rerender(<HireMonthlyReview
+      review={review}
+      calendars={false}
+      adjustments={[{
+        period: "August 2026",
+        label: "Breakdown deduction",
+        amount: 25,
+        kind: "deduction",
+        reason: "Hydraulic fault",
+      }]}
+    />);
+    const row = screen.getByTestId("hire-monthly-adjustment-row-0");
+    expect(row.className).toContain("grid-cols-[minmax(0,1fr)_auto]");
+    expect(screen.getByTestId("hire-monthly-adjustment-label").className).toContain("text-left");
+    expect(screen.getByTestId("hire-monthly-adjustment-amount").className).toContain("text-right");
+    expect(container.textContent).toContain("Hydraulic fault");
   });
   it("carries identical month rows and stored totals to Excel and PDF", () => {
     const snapshot: WholeBillSnapshot = {

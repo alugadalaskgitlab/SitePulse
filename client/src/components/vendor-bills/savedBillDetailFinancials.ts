@@ -1,6 +1,5 @@
 import {
   calculateEquipmentHireFinancials,
-  calculateEquipmentHireFinancialsLegacy,
 } from "@shared/hireBilling";
 
 type TaxRow = { label: string; amount: number; rate?: number };
@@ -51,7 +50,6 @@ export function projectSavedHireDetailFinancials<T extends BillDetailTotals>(
   let displayedHireGst = 0;
   let displayedHireTds = 0;
   let linkedHireItemAmount = 0;
-  let netTaxDelta = 0;
 
   for (const statement of statements) {
     const snapshot = statement?.calculationSnapshot || {};
@@ -84,24 +82,6 @@ export function projectSavedHireDetailFinancials<T extends BillDetailTotals>(
     const savedTds = numberOrNull(financials.tdsAmount);
     if (!isDraft && (savedGst == null || savedTds == null)) return null;
 
-    const savedRates = {
-      gstRate: firstNumber(financials.gstRate, billGstRate) ?? 0,
-      tdsRate: firstNumber(financials.tdsRate, billTdsRate) ?? 0,
-    };
-    const savedInput = {
-      grossHire,
-      breakdownDeduction,
-      hsdRecovery: firstNumber(financials.hsdRecovery, adjustments.hsdRecovery, snapshot.dieselRecoveryFinalAmount, snapshot.diesel?.finalRecoveryAmount) ?? 0,
-      otherDebit: firstNumber(financials.otherDebit, adjustments.otherDebit) ?? 0,
-      advanceAdjustment: firstNumber(financials.advanceAdjustment, adjustments.advanceAdjustment) ?? 0,
-      otherCredit: firstNumber(financials.otherCredit, adjustments.otherCredit) ?? 0,
-      ...savedRates,
-    };
-    const savedCalculation = numberOrNull(financials.taxBase) != null
-      ? calculateEquipmentHireFinancials(savedInput)
-      : calculateEquipmentHireFinancialsLegacy(savedInput);
-    const previousGst = savedGst ?? savedCalculation.gstAmount;
-    const previousTds = savedTds ?? savedCalculation.tdsAmount;
     const statementGst = isDraft ? current.gstAmount : savedGst!;
     const statementTds = isDraft ? current.tdsAmount : savedTds!;
 
@@ -117,9 +97,6 @@ export function projectSavedHireDetailFinancials<T extends BillDetailTotals>(
     displayedHireGst += statementGst;
     displayedHireTds += statementTds;
     linkedHireItemAmount += lineAmount;
-    if (isDraft) {
-      netTaxDelta += (statementGst - previousGst) - (statementTds - previousTds);
-    }
   }
 
   const gstRows = (fallback.gstRows || []).map(row => ({ ...row }));
@@ -153,8 +130,36 @@ export function projectSavedHireDetailFinancials<T extends BillDetailTotals>(
     gstRows,
     totalGst: roundMoney(gstRows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0)),
     tds: roundMoney((Number(fallback.tds) || 0) + displayedHireTds - linkedHireItemAmount * billTdsRate / 100),
-    netTotal: isDraft ? roundMoney(netTotal + netTaxDelta) : netTotal,
+    netTotal,
   };
+}
+
+/**
+ * Draft bill detail must total the same signed rows it renders. The stored
+ * bill net may predate a screen-only tax correction, while statement snapshots
+ * may already contain the corrected tax and therefore cannot be the delta
+ * baseline.
+ */
+export function reconcileDraftHireNetPayableRows<T extends { kind: string; amount: number }>(
+  bill: any,
+  rows: T[],
+): T[] {
+  if (
+    String(bill?.status || "").toLowerCase() !== "draft" ||
+    bill?.isCancelled === true ||
+    !Array.isArray(bill?.hireStatements) ||
+    bill.hireStatements.length === 0
+  ) return rows;
+
+  const netIndex = rows.findIndex(row => row.kind === "net");
+  if (netIndex < 0) return rows;
+  const netAmount = roundMoney(rows.reduce(
+    (sum, row, index) => index === netIndex ? sum : sum + (Number(row.amount) || 0),
+    0,
+  ));
+  return rows.map((row, index) =>
+    index === netIndex ? { ...row, amount: netAmount } : row,
+  );
 }
 
 export function deduplicateEquipmentHireTerms<T extends {

@@ -28,6 +28,11 @@ export default function HireMonthlyReview({
   const rows = reviews.flatMap(item => hireReviewTable(item).map(row => row.slice(1)))
     .map((row, index) => [index + 1, ...row]);
   const disclosures = reviews.flatMap(hireReviewDisclosureLines);
+  const isMonthlyHire = reviews.length > 0 && reviews.every(item => String(item.basis).toLowerCase() === "monthly");
+  const unrecordedDateCount = isMonthlyHire
+    ? reviews.flatMap(item => item.months).reduce((sum, month) => sum + month.unknown, 0)
+    : 0;
+  const otherDisclosures = disclosures.filter(line => !line.includes("dates require review"));
   const money = (value: number | null) => value == null ? "—" : `₹${value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   return <section className="space-y-3" aria-label={`Equipment hire review · ${review.name}`}>
     {showEquipmentTerms && <div className="rounded border px-3 py-2 text-xs flex flex-wrap gap-x-5 gap-y-2">
@@ -61,24 +66,26 @@ export default function HireMonthlyReview({
       </table></div>
       {adjustments.length > 0 && <div className="space-y-1 border-t pt-2" data-testid="hire-monthly-adjustments">
         <h4 className="text-xs font-semibold">Recorded deductions / recoveries</h4>
-        {adjustments.map((item, index) => <div key={`${item.period}-${item.label}-${index}`} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-xs">
-          <span>
+        {adjustments.map((item, index) => <div key={`${item.period}-${item.label}-${index}`}
+          className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-1 text-xs"
+          data-testid={`hire-monthly-adjustment-row-${index}`}>
+          <span className="min-w-0 text-left" data-testid="hire-monthly-adjustment-label">
             {item.period && <span className="text-muted-foreground">{item.period} · </span>}
             {item.label}
             {item.reason && <span className="text-muted-foreground"> · {item.reason}</span>}
             {item.paymentDate && <span className="block text-muted-foreground">Advance payment date: {item.paymentDate}</span>}
           </span>
-          <strong className="tabular-nums">{item.kind === "credit" ? "+" : "−"}{money(item.amount)}</strong>
+          <strong className="shrink-0 text-right tabular-nums" data-testid="hire-monthly-adjustment-amount">
+            {item.kind === "credit" ? "+" : "−"}{money(item.amount)}
+          </strong>
         </div>)}
       </div>}
-      {disclosures.map((line, index) => <p key={index}
-        className={line.includes("dates require review") ? "rounded border-l-4 border-amber-500 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900" : "text-xs text-muted-foreground"}
-        data-testid={line.includes("dates require review") ? "hire-review-required-days" : undefined}>{line}</p>)}
-      {reviews.length === 1
-        ? <p className="text-xs">Recorded period Gross Hire: <strong>{money(review.gross)}</strong></p>
-        : <div className="space-y-1 text-xs">{reviews.map((item, index) => <p key={`${item.from}-${item.to}-${index}`}>
-          Recorded period Gross Hire ({item.from} to {item.to}): <strong>{money(item.gross)}</strong>
-        </p>)}</div>}
+      {isMonthlyHire && unrecordedDateCount > 0 && <p className="text-xs text-muted-foreground" data-testid="hire-review-required-days-note">
+        {unrecordedDateCount} dates are classified as Activity Not Recorded. Monthly hire is billed by calendar-date overlap, so this does not affect the amount.
+      </p>}
+      {(isMonthlyHire ? otherDisclosures : disclosures).map((line, index) => <p key={index}
+        className={!isMonthlyHire && line.includes("dates require review") ? "rounded border-l-4 border-amber-500 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900" : "text-xs text-muted-foreground"}
+        data-testid={!isMonthlyHire && line.includes("dates require review") ? "hire-review-required-days" : undefined}>{line}</p>)}
     </div>
   </section>;
 }

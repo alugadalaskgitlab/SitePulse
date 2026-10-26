@@ -82,7 +82,6 @@ export default function SavedBillCalendars({ bill, canExport = false }: { bill: 
       const rows = outputs.flatMap(result => result?.rows || [])
         .sort((a, b) => a.date.localeCompare(b.date));
       const allFrozenRows = outputs.length > 0 && outputs.every(result => result?.hasFrozenDailyRows);
-      const someFrozenRows = outputs.some(result => result?.hasFrozenDailyRows);
       const periods = equipmentStatements.map(statement => ({
         from: statement.periodFrom || bill.periodFrom || "",
         to: statement.periodTo || bill.periodTo || "",
@@ -108,6 +107,49 @@ export default function SavedBillCalendars({ bill, canExport = false }: { bill: 
             !(decision.date || decision.businessDate || decision.exceptionDate || decision.key)),
         };
       });
+      const activityMonthGroups = new Map<string, {
+        key: string;
+        label: string;
+        rows: BillingDailyRow[];
+        hasFrozenRows: boolean;
+      }>();
+      const monthLabel = (key: string) => {
+        const [year, month] = key.split("-").map(Number);
+        if (!year || !month || month < 1 || month > 12) return key;
+        return new Date(Date.UTC(year, month - 1, 1))
+          .toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "UTC" });
+      };
+      for (const review of reviews) {
+        for (const month of review.months || []) {
+          const key = String(month.key || month.from?.slice(0, 7) || "");
+          if (key && !activityMonthGroups.has(key)) {
+            activityMonthGroups.set(key, {
+              key,
+              label: month.label || monthLabel(key),
+              rows: [],
+              hasFrozenRows: false,
+            });
+          }
+        }
+      }
+      for (const result of outputs) {
+        if (!result) continue;
+        for (const row of result.rows || []) {
+          const key = String(row.date || "").slice(0, 7);
+          if (!/^\d{4}-\d{2}$/.test(key)) continue;
+          const group = activityMonthGroups.get(key) || {
+            key,
+            label: monthLabel(key),
+            rows: [],
+            hasFrozenRows: false,
+          };
+          group.rows.push(row);
+          group.hasFrozenRows ||= Boolean(result.hasFrozenDailyRows);
+          activityMonthGroups.set(key, group);
+        }
+      }
+      const activityMonths = Array.from(activityMonthGroups.values())
+        .sort((a, b) => a.key.localeCompare(b.key));
       const adjustments = savedAdjustmentRows(equipmentStatements);
       return <div className="space-y-3" key={groupKey}>
         {reviews.some(review => review.months.length > 0) &&
@@ -119,19 +161,26 @@ export default function SavedBillCalendars({ bill, canExport = false }: { bill: 
             adjustments={adjustments}
           />}
         <details className="rounded-lg border p-3">
-        <summary className="cursor-pointer font-semibold text-sm">Detailed activity · {name}</summary>
+        <summary className="cursor-pointer font-semibold text-sm">Monthly activity · {name}</summary>
         <div className="space-y-3 pt-3">
-          {!allFrozenRows && <p className="text-sm text-amber-700">Complete frozen performance rows are unavailable for this legacy bill. Saved working-sheet values appear in the daily table. {missingSavedPerformanceFields(rows)}</p>}
-          {rows.length ? <>
-            {output && <SavedHireActivityTable
-              rows={rows}
-              isTripBased={reviews.some(review => String(review.basis).toLowerCase() === "trip")}
-            />}
-            {canExport && allFrozenRows && displayData?.periodFrom && displayData?.periodTo && <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => exportEquipmentHireCalendar(displayData, rows, "pdf")}>Export Calendar PDF</Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => exportEquipmentHireCalendar(displayData, rows, "xlsx")}>Export Calendar Excel</Button>
-            </div>}
-          </> : !someFrozenRows && <p className="text-xs text-muted-foreground">No dated daily evidence was saved for this bill.</p>}
+          {activityMonths.map(month => <section key={month.key}
+            className="space-y-2 rounded border p-3"
+            data-testid="saved-hire-activity-month-section">
+            <h4 className="text-sm font-semibold">Detailed activity · {name} · {month.label}</h4>
+            {!month.hasFrozenRows && <p className="text-sm text-amber-700">
+              Complete frozen performance rows are unavailable for this legacy bill. Saved working-sheet values appear in the daily table. {missingSavedPerformanceFields(month.rows)}
+            </p>}
+            {month.rows.length > 0
+              ? <SavedHireActivityTable
+                rows={month.rows}
+                isTripBased={reviews.some(review => String(review.basis).toLowerCase() === "trip")}
+              />
+              : !month.hasFrozenRows && <p className="text-xs text-muted-foreground">No dated daily evidence was saved for this month.</p>}
+          </section>)}
+          {canExport && allFrozenRows && displayData?.periodFrom && displayData?.periodTo && <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => exportEquipmentHireCalendar(displayData, rows, "pdf")}>Export Calendar PDF</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => exportEquipmentHireCalendar(displayData, rows, "xlsx")}>Export Calendar Excel</Button>
+          </div>}
           {periodDetails.map(({ statement, snapshot, periodDecisions }, index) => <div className="contents" key={`saved-period-${statement.id ?? index}`}>
             {periodDecisions.length > 0 && <div><h4 className="text-xs font-semibold">Period-level saved billing decisions · {statement.periodFrom || "Not established"} to {statement.periodTo || "Not established"}</h4>
               {periodDecisions.map((d: any, i: number) => <p className="text-xs" key={i}>{d.sourceId || "Period"} · {d.decision || d.action || d.resolution} · {d.reason || "Reason not recorded"}</p>)}
