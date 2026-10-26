@@ -4,6 +4,7 @@ import * as XLSX from "xlsx";
 import { hireReviewDisclosureLines, MONTHLY_BILL_HEADERS, hireReviewTable } from "@shared/vendorBillLayout";
 import { equipmentHireActivitySheetRows } from "./EquipmentHireBillOutput";
 import { getBaseSiteName } from "@shared/siteName";
+import { buildWholeBillEquipmentPdf } from "./wholeBillEquipmentPdf";
 import {
   BILL_EXPORT_SHEET_NAMES, DRAFT_BILL_NOTICE, billExportIsDraft, billExportStatus,
   billSectionTable, billSummaryRows, populatedBillSections, wholeBillFilename, wholeBillPricingNotes,
@@ -13,11 +14,15 @@ import {
 export type WholeBillExportFormat = "xlsx" | "pdf";
 const printable = (value: BillExportCell) => String(value ?? "")
   .replace(/₹/g, "Rs. ").replace(/[−–—→]/g, "-").replace(/×/g, "x").replace(/·/g, " / ");
+const exportSummaryRows = (snapshot: WholeBillSnapshot) => billSummaryRows(snapshot).map(row => {
+  if (String(row[0] ?? "").trim().toLowerCase() !== "hire earned") return row;
+  return ["Gross bill amount", ...row.slice(1)];
+});
 
 /** Exactly Summary + populated categories; calendars stay inside Equipment. */
 export function buildWholeBillWorkbook(snapshot: WholeBillSnapshot): XLSX.WorkBook {
   const workbook = XLSX.utils.book_new();
-  const summary = XLSX.utils.aoa_to_sheet([["VENDOR BILL"], ...billSummaryRows(snapshot)]);
+  const summary = XLSX.utils.aoa_to_sheet([["VENDOR BILL"], ...exportSummaryRows(snapshot)]);
   summary["!cols"] = [{ wch: 42 }, { wch: 68 }, { wch: 48 }];
   XLSX.utils.book_append_sheet(workbook, summary, "Summary");
   if (snapshot.hireReviews?.length) {
@@ -44,7 +49,7 @@ export function buildWholeBillWorkbook(snapshot: WholeBillSnapshot): XLSX.WorkBo
     let calendarColumns: { wch: number }[] = [];
     if (section.category === "equipment" || (snapshot.billType !== "all" && populated.some(value => value.category === "equipment"))) {
       for (const calendar of snapshot.calendars) {
-        const activity = equipmentHireActivitySheetRows(calendar.rows, calendar.dieselResponsibility, calendar.consumptionNorm, calendar.meterType, true);
+        const activity = equipmentHireActivitySheetRows(calendar.rows, "hlc", calendar.consumptionNorm, calendar.meterType, false);
         calendarColumns = activity.columns;
         values.push([], ["DAILY ACTIVITY", calendar.equipmentName],
           ["Period", `${calendar.periodFrom} to ${calendar.periodTo}`],
@@ -75,6 +80,9 @@ export function buildWholeBillWorkbook(snapshot: WholeBillSnapshot): XLSX.WorkBo
 
 /** Totals and grouping are projections only; no financial calculation here. */
 export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
+  if (snapshot.billType.toLowerCase() === "equipment" || snapshot.hireStatementDetails?.length || snapshot.hireReviews?.length) {
+    return buildWholeBillEquipmentPdf(snapshot);
+  }
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const pageHeaderHeight = 52;
   const renderTable = (title: string, headers: string[], rows: BillExportCell[][], startY: number, addPage: boolean) => {
@@ -115,7 +123,7 @@ export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
 
   const headerLabels = new Set(["Company", "Vendor", "Bill number", "Bill date", "Period from", "Period to", "Site", "Bill type", "Equipment type", "Status", "Generated"]);
   renderTable("BILL SUMMARY / ADJUSTMENTS", ["Detail", "Value / Amount", "Reason / Reference"],
-    billSummaryRows(snapshot).filter(row => row.length && !headerLabels.has(String(row[0])))
+    exportSummaryRows(snapshot).filter(row => row.length && !headerLabels.has(String(row[0])))
       .map(row => [row[0], row[1] ?? "", row[2] ?? ""]),
     pageHeaderHeight, false);
   for (const review of snapshot.hireReviews || []) {

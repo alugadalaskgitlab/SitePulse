@@ -78,7 +78,7 @@ describe("approved month review presentation", () => {
     expect(rows.some(row => String(row[1]).includes("August 2026") && row[8] === 1000)).toBe(true);
     expect(rows.some(row => String(row[1]).includes("September 2026") && row[8] === 1000)).toBe(true);
     const pdf = buildWholeBillPdf(snapshot).output();
-    expect(pdf).toContain("Monthly Billing Summary");
+    expect(pdf).toContain("MONTHLY BILLING SUMMARY");
     expect(pdf).toContain("August 2026");
     expect(pdf).toContain("September 2026");
     const pdfText = Array.from(pdf.matchAll(/\((.*?)\) Tj/g), match => match[1]).join(" ");

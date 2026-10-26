@@ -59,7 +59,7 @@ import EquipmentLogFacts from "@/components/vendor-bills/EquipmentLogFacts";
 import { mapAutoBillItemWithEvidence, type EquipmentLogEvidence } from "@/components/vendor-bills/equipmentLogEvidence";
 import { useWholeBillCalendarSnapshots } from "@/components/vendor-bills/useWholeBillCalendarSnapshots";
 import { displayedHireTotals, historicalHireSheetRows, projectVendorBillPageItems } from "@/components/vendor-bills/wholeBillPageProjection";
-import type { WholeBillSnapshot } from "@/components/vendor-bills/wholeBillSnapshot";
+import { hireStatementExportFromData, type WholeBillSnapshot } from "@/components/vendor-bills/wholeBillSnapshot";
 import {
   deduplicateEquipmentHireTerms,
   projectSavedHireDetailFinancials,
@@ -2113,6 +2113,7 @@ export default function VendorBills() {
           unavailableReason: "Daily activity is not available in the current rendered bill.",
         }];
       }),
+      hireStatementDetails: hireOutputs.map(hireStatementExportFromData),
       totals: isHistoricalHireEdit ? displayedHireTotals(hireOutputs) : {
         subtotal: totalAmount, totalGst: totalGstAmount,
         gst: gstCategories.map(category => ({
@@ -3442,12 +3443,23 @@ export default function VendorBills() {
                    gstRate: gstRateEquipment, tdsRate, paid: 0,
                  });
                 const exportData: EquipmentHireExportData = {
-                  billNo, vendorName, equipmentName: formatEquipmentOptionLabel(equipment || {}), projectSite: selection.projectSite,
+                  billNo, billDate, billStatus: editingBillId !== null ? editingBillStatus : "Draft",
+                  companyName: companyName || "Highlane Constructions",
+                  vendorName, equipmentName: formatEquipmentOptionLabel(equipment || {}),
+                  equipmentType: equipment?.equipmentType,
+                  equipmentMasterReference: equipment?.registrationNumber || equipment?.equipmentNumber || selection.equipmentId,
+                  projectSite: selection.projectSite,
                   periodFrom: selection.periodFrom, periodTo: selection.periodTo, hireBasis: HIRE_BASIS_LABELS[selection.basis],
-                  rate: selection.rate, grossHire: Number(result?.grossAmount || 0), breakdownDeduction: Number(result?.deductionAmount || 0),
+                  rate: selection.rate, monthlyDivisorType: selection.monthlyDivisorType,
+                  monthlyDivisor: selection.monthlyDivisor,
+                  grossHire: Number(result?.grossAmount || 0), breakdownDeduction: Number(result?.deductionAmount || 0),
                   hsdRecovery, otherDebit, otherDebitReason: adjustments.otherDebitReason, advanceAdjustment,
-                  advanceAdjustmentReason: adjustments.advanceAdjustmentReason, otherCredit, otherCreditReason: adjustments.otherCreditReason,
+                  hsdRecoveryReason: selection.dieselRecoveryRemarks,
+                  advanceAdjustmentReason: adjustments.advanceAdjustmentReason,
+                  advanceAdjustmentDate: adjustments.advanceAdjustmentDate,
+                  otherCredit, otherCreditReason: adjustments.otherCreditReason,
                     gstRate: financials.gstRate, gstAmount: financials.gstAmount, taxableAmount: financials.taxableAmount,
+                    taxBase: financials.taxBase,
                    invoiceTotal: financials.invoiceTotal, tdsRate: financials.tdsRate, tdsAmount: financials.tdsAmount,
                    netPayable: financials.netPayable, paid: financials.paid,
                    dieselResponsibility: equipment?.hireDieselResponsibility, consumptionNorm: equipment?.consumptionNorm,
@@ -5104,6 +5116,7 @@ export default function VendorBills() {
         generatedAt: new Date().toISOString(), notes: bill.notes || "",
         financialRows: buildSavedBillPresentationRows(b, detailFinancials),
         hireReviews: projectBillHireReviews(b),
+        hireStatementDetails: outputs.map(hireStatementExportFromData),
         sections: projectVendorBillPageItems({
           items: bill.items, subtotals: detailSubtotals, shouldGroup, billType: type, total: detailFinancials.totalAmount,
           getLabourSource: item => getLabourSource({ siteName: item.siteName, description: item.description || "" }),

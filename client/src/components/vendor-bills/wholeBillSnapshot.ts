@@ -1,4 +1,4 @@
-import type { BillingDailyRow } from "./EquipmentHireBillOutput";
+import type { BillingDailyRow, EquipmentHireExportData } from "./EquipmentHireBillOutput";
 import type { HireReview } from "@shared/vendorBillLayout";
 import { getBaseSiteName } from "@shared/siteName";
 
@@ -47,6 +47,115 @@ export type BillExportCalendar = {
   breakdown?: { headers: string[]; rows: BillExportCell[][] };
   unavailableReason?: string;
 };
+export type HireStatementMonthExport = {
+  label: string;
+  from: string;
+  to: string;
+  daysBilled: number | null;
+  grossHire: number | null;
+  breakdownDeduction: number | null;
+  grossBillAmount: number | null;
+  advanceAdjustment: number | null;
+  netMonth: number | null;
+};
+export type HireStatementExport = {
+  equipmentName: string;
+  equipmentType?: string;
+  masterReference?: string | number | null;
+  basis: string;
+  rate: number;
+  monthlyDivisorType?: string | null;
+  monthlyDivisor?: number | null;
+  divisorLabel?: string;
+  periodFrom: string;
+  periodTo: string;
+  site?: string;
+  dieselNorm?: number | null;
+  dieselNormUnit?: string;
+  grossHire: number;
+  breakdownDeduction: number;
+  grossBillAmount: number | null;
+  hsdRecovery: number;
+  hsdRecoveryReason?: string;
+  otherDebit: number;
+  otherDebitReason?: string;
+  advanceAdjustment: number;
+  advanceAdjustmentDate?: string | null;
+  advanceAdjustmentReason?: string;
+  otherCredit: number;
+  otherCreditReason?: string;
+  gstRate: number;
+  gstAmount: number | null;
+  tdsRate: number;
+  tdsAmount: number | null;
+  netPayable: number | null;
+  months: HireStatementMonthExport[];
+};
+
+const finiteAmount = (value: unknown): number | null => {
+  if (value == null || value === "") return null;
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : null;
+};
+
+/** Projects already-prepared equipment statement values into the export snapshot. */
+export function hireStatementExportFromData(data: EquipmentHireExportData): HireStatementExport {
+  const reviewMonths = data.hireReview?.months || [];
+  const singleMonth = reviewMonths.length === 1;
+  const paymentDate = data.advanceAdjustmentDate || null;
+  const monthRows = reviewMonths.map(month => {
+    const advanceMatchesMonth = paymentDate
+      ? paymentDate >= month.from && paymentDate <= month.to
+      : singleMonth;
+    return {
+      label: month.label,
+      from: month.from,
+      to: month.to,
+      daysBilled: finiteAmount(month.daysBilled),
+      grossHire: finiteAmount(month.gross) ?? (singleMonth ? finiteAmount(data.grossHire) : null),
+      // A period-level amount is not spread across months without saved allocation.
+      breakdownDeduction: singleMonth ? finiteAmount(data.breakdownDeduction) : null,
+      grossBillAmount: singleMonth ? finiteAmount(data.taxBase ?? data.taxableAmount) : null,
+      advanceAdjustment: data.advanceAdjustment === 0
+        ? 0
+        : advanceMatchesMonth ? finiteAmount(data.advanceAdjustment) : paymentDate ? 0 : null,
+      netMonth: singleMonth ? finiteAmount(data.netPayable) : null,
+    };
+  });
+  return {
+    equipmentName: data.equipmentName,
+    equipmentType: data.equipmentType,
+    masterReference: data.equipmentMasterReference ?? data.hireReview?.masterReference ?? null,
+    basis: data.hireBasis,
+    rate: data.rate,
+    monthlyDivisorType: data.monthlyDivisorType,
+    monthlyDivisor: finiteAmount(data.monthlyDivisor),
+    divisorLabel: data.hireReview?.divisor,
+    periodFrom: data.periodFrom,
+    periodTo: data.periodTo,
+    site: data.projectSite,
+    dieselNorm: finiteAmount(data.consumptionNorm),
+    dieselNormUnit: data.consumptionRateUnit || "",
+    grossHire: finiteAmount(data.grossHire) ?? 0,
+    breakdownDeduction: finiteAmount(data.breakdownDeduction) ?? 0,
+    grossBillAmount: finiteAmount(data.taxBase ?? data.taxableAmount),
+    hsdRecovery: finiteAmount(data.hsdRecovery) ?? 0,
+    hsdRecoveryReason: data.hsdRecoveryReason,
+    otherDebit: finiteAmount(data.otherDebit) ?? 0,
+    otherDebitReason: data.otherDebitReason,
+    advanceAdjustment: finiteAmount(data.advanceAdjustment) ?? 0,
+    advanceAdjustmentDate: paymentDate,
+    advanceAdjustmentReason: data.advanceAdjustmentReason,
+    otherCredit: finiteAmount(data.otherCredit) ?? 0,
+    otherCreditReason: data.otherCreditReason,
+    gstRate: data.gstRate,
+    gstAmount: finiteAmount(data.gstAmount),
+    tdsRate: data.tdsRate,
+    tdsAmount: finiteAmount(data.tdsAmount),
+    netPayable: finiteAmount(data.netPayable),
+    months: monthRows,
+  };
+}
 export type WholeBillSnapshot = {
   companyName: string;
   vendorName: string;
@@ -64,6 +173,7 @@ export type WholeBillSnapshot = {
   sections: BillExportSection[];
   calendars: BillExportCalendar[];
   hireReviews?: HireReview[];
+  hireStatementDetails?: HireStatementExport[];
   hireFinancialRows?: BillExportAdjustment[];
   /** Complete saved-bill financial presentation from the existing detail path. */
   financialRows?: BillExportAdjustment[];

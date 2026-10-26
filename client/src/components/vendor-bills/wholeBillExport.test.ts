@@ -131,12 +131,13 @@ describe("whole-bill workbook and PDF", () => {
       dieselResponsibility: "vendor",
     };
     snapshot.calendars = [calendar];
-    const expected = equipmentHireActivitySheetRows(calendar.rows, calendar.dieselResponsibility, undefined, undefined, true);
+     const expected = equipmentHireActivitySheetRows(calendar.rows, "hlc", undefined, undefined, false);
     const book = buildWholeBillWorkbook(snapshot);
     expect(book.SheetNames).toEqual(["Summary", "Equipment"]);
     const values = readSheet(book, "Equipment");
     expect(values.some(row => JSON.stringify(row.slice(0, expected.headers.length)) === JSON.stringify(expected.headers))).toBe(true);
     expect(values.some(row => row.includes(expected.values[0].at(-1)!))).toBe(true);
+     expect(expected.headers).toEqual(expect.arrayContaining(["Expected", "Difference", "Norm", "Opening Tank", "Closing Tank", "Status / Remarks"]));
   });
   it("preserves spreadsheet values as text, not executable formulas", () => {
     const snapshot = exampleSnapshot();

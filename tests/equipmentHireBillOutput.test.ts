@@ -7,13 +7,31 @@ const excelWrites = vi.hoisted(() => [] as string[]);
 
 vi.mock("jspdf", () => ({
   jsPDF: class MockPdf {
+    pageCount = 1;
+    lastAutoTable = { finalY: 0 };
+    internal = { pageSize: { getWidth: () => 297, getHeight: () => 210 } };
     setFontSize(value: number) { pdfEvents.push({ type: "font", value }); }
-    text(value: string) { pdfEvents.push({ type: "text", value }); }
-    addPage() { pdfEvents.push({ type: "page" }); }
+    setFont(_family: string, _style?: string) {}
+    setTextColor(..._values: number[]) {}
+    setFillColor(..._values: number[]) {}
+    setDrawColor(..._values: number[]) {}
+    setLineWidth(_value: number) {}
+    rect(..._values: unknown[]) {}
+    line(..._values: unknown[]) {}
+    splitTextToSize(value: string) { return [value]; }
+    text(value: string | string[]) { pdfEvents.push({ type: "text", value }); }
+    addPage() { this.pageCount += 1; pdfEvents.push({ type: "page" }); }
+    getNumberOfPages() { return this.pageCount; }
+    setPage(_page: number) {}
     save(value: string) { pdfEvents.push({ type: "save", value }); }
   },
 }));
-vi.mock("jspdf-autotable", () => ({ default: vi.fn((_doc: unknown, options: any) => tables.push(options)) }));
+vi.mock("jspdf-autotable", () => ({
+  default: vi.fn((doc: any, options: any) => {
+    tables.push(options);
+    doc.lastAutoTable = { finalY: Number(options.startY || 0) + 10 };
+  }),
+}));
 vi.mock("xlsx", () => ({
   utils: {
     book_new: () => ({}),
@@ -58,16 +76,16 @@ describe("equipment hire bill output", () => {
     expect(rows[1]).toMatchObject({ status: "Breakdown", downtimeHours: 4, remarks: expect.stringContaining("Hydraulic hose") });
   });
 
-  it("exports a PDF with the financial summary on page one and daily activity on page two", () => {
+  it("exports a portrait bill PDF with the monthly summary and frozen financial summary, separate from activity", () => {
     pdfEvents.length = 0;
     tables.length = 0;
     exportEquipmentHireBill(data, rows, "pdf");
     expect(tables).toHaveLength(2);
-    expect(tables[0].body).toEqual(expect.arrayContaining([["Vendor", "Acme Hire"], ["Project / Site", "North Site"], ["Taxable / Bill Amount", "Rs. 8,200.00"], ["GST @ 0%", "+ Rs. 0.00"], ["Invoice Total", "Rs. 8,200.00"], ["NET PAYABLE", "Rs. 8,036.00"], ["Balance This Bill", "Rs. 5,036.00"]]));
+    expect(tables[0].head[0]).toEqual(["Month", "Days billed", "Gross hire", "Breakdown", "Gross bill amount", "Advance", "Net—month"]);
+    expect(tables[1].body.flat()).toEqual(expect.arrayContaining(["Gross bill amount", "NET PAYABLE", "Rs. 8,036.00"]));
     expect(tables.flatMap(table => table.body.flat()).join("")).not.toMatch(/[₹−×]/);
-    expect(tables[1].head[0]).toContain("Project / Site");
-    expect(tables[1].body).toHaveLength(2);
-    expect(pdfEvents.findIndex(event => event.type === "page")).toBeGreaterThan(pdfEvents.findIndex(event => event.value === "EQUIPMENT HIRE VENDOR BILL"));
+    expect(tables.flatMap(table => table.head.flat()).join(" ")).not.toContain("DAILY ACTIVITY");
+    expect(pdfEvents.some(event => event.type === "text" && event.value === "EQUIPMENT HIRE BILL")).toBe(true);
     expect(pdfEvents).toContainEqual({ type: "save", value: "VB-EH-001.pdf" });
   });
 
@@ -82,16 +100,18 @@ describe("equipment hire bill output", () => {
     expect(excelWrites).toEqual(["VB-EH-001.xlsx"]);
   });
 
-  it("keeps canonical norm units separate and hides fuel-performance columns for contractor-scope fuel", () => {
+  it("keeps canonical norm units and full raw fuel columns in Excel for either responsibility", () => {
     excelSheets.length = 0;
     exportEquipmentHireBill({ ...data, dieselResponsibility: "vendor", consumptionNorm: 3.5 }, rows, "xlsx");
     const activity = excelSheets.find(sheet => sheet.name === "Daily Activity")!.data;
     expect(activity[0]).toEqual(["Fuel / Diesel: Contractor Scope"]);
-    expect(activity[1]).not.toContain("Diesel Issued");
-    expect(activity[1]).not.toContain("Opening Tank");
-    expect(activity[1]).not.toContain("Closing Tank");
-    expect(activity[1]).not.toContain("Diesel Consumed");
-    expect(activity[1]).not.toContain("Norm");
+    expect(activity[1]).toContain("Diesel Issued");
+    expect(activity[1]).toContain("Opening Tank");
+    expect(activity[1]).toContain("Closing Tank");
+    expect(activity[1]).toContain("Diesel Consumed");
+    expect(activity[1]).toContain("Expected");
+    expect(activity[1]).toContain("Difference");
+    expect(activity[1]).toContain("Norm");
 
     excelSheets.length = 0;
     exportEquipmentHireBill({ ...data, dieselResponsibility: "hlc", consumptionNorm: 3.5 }, rows, "xlsx");
@@ -172,19 +192,75 @@ describe("equipment hire bill output", () => {
     tables.length = 0;
     pdfEvents.length = 0;
     exportEquipmentHireCalendar(data, rows, "pdf");
-    expect(tables).toHaveLength(2);
-    expect(tables[0].body).toContainEqual(["Total Hours", "8"]);
-    expect(tables[1].head[0]).toContain("Status / Remarks");
+    expect(tables).toHaveLength(1);
+    expect(tables[0].head[0]).toEqual([
+      "Date", "Site", "Open meter", "Close meter", "Working hrs (h:min)",
+      "Start time", "End time", "Clock duration", "Tank open", "Tank close",
+      "Diesel issued", "Consumption (L/hr)", "Status",
+    ]);
+    expect(tables[0].head[0]).not.toContain("Expected");
+    expect(tables[0].head[0]).not.toContain("Difference");
+    expect(tables[0].head[0]).not.toContain("Norm");
+    expect(tables[0].body.flat().join(" ")).toContain("January 2026 total");
+    expect(tables[0].body.flat().join(" ")).toContain("Breakdown");
+    expect(tables[0].body[0][4]).toBe("8:00");
+    expect(tables[0].body.at(-1)?.[4]).toBe("8:00");
+    expect(tables[0].body.at(-1)?.[10]).toBe("20.00 L");
+    expect(tables[0].body.at(-1)?.[11]).toBe("3.13 L/hr");
+    expect(pdfEvents.some(event => event.type === "text" && String(event.value).includes("dip/meter incomplete"))).toBe(false);
+    expect(pdfEvents.some(event => event.type === "text" && event.value === "ACTIVITY STATEMENT")).toBe(true);
     expect(pdfEvents).toContainEqual({ type: "save", value: "VB-EH-001-calendar.pdf" });
     expect(tables.flatMap(table => table.body.flat()).join("")).not.toContain("Bill Summary");
   });
 
-  it("omits diesel totals and columns for contractor-scope calendar exports", () => {
+  it("marks incomplete worked activity for review without mislabeling breakdown days", () => {
+    const incomplete = {
+      ...rows[0],
+      date: "2026-01-11",
+      performance: {
+        ...rows[0].performance!,
+        key: "11",
+        date: "2026-01-11",
+        openingTank: null,
+        closingTank: null,
+        consumptionIncomplete: true,
+      },
+    };
+    tables.length = 0;
+    pdfEvents.length = 0;
+    exportEquipmentHireCalendar(data, [incomplete], "pdf");
+    expect(tables[0].body.flat().join(" ")).toContain("Review‡");
+    expect(pdfEvents.some(event => String(event.value).includes("dip/meter incomplete — amount unaffected on monthly hire"))).toBe(true);
+  });
+
+  it("omits no-work dates and shows trips only for recorded trips on non-hour-meter trip hire", () => {
+    const noWork = { date: "2026-01-12", status: "No Work" as const, remarks: "No activity recorded", downtimeHours: 0 };
+    tables.length = 0;
+    pdfEvents.length = 0;
+    exportEquipmentHireCalendar({ ...data, hireBasis: "Trip Hire", meterType: "odometer" }, [
+      { ...rows[0], trips: 2 }, noWork,
+    ], "pdf");
+    expect(tables[0].head[0]).toContain("Trips");
+    expect(tables[0].body.flat().join(" ")).not.toContain("Activity Not Recorded");
+    expect(pdfEvents.some(event => String(event.value).includes("No activity recorded on 1 other day(s)"))).toBe(true);
+
+    tables.length = 0;
+    exportEquipmentHireCalendar({ ...data, hireBasis: "Trip Hire", meterType: "hour_meter" }, [
+      { ...rows[0], trips: 2 },
+    ], "pdf");
+    expect(tables[0].head[0]).not.toContain("Trips");
+  });
+
+  it("omits contractor diesel totals but keeps full raw columns in the calendar workbook", () => {
     excelSheets.length = 0;
     exportEquipmentHireCalendar({ ...data, dieselResponsibility: "vendor" }, rows, "xlsx");
     const activity = excelSheets[0].data;
     expect(activity).not.toContainEqual(["Total Diesel Issued", 20]);
-    expect(activity.find(row => row.includes("Date"))).not.toContain("Diesel Issued");
+    expect(activity.find(row => row.includes("Date"))).toContain("Diesel Issued");
+    expect(activity.find(row => row.includes("Date"))).toContain("Opening Tank");
+    expect(activity.find(row => row.includes("Date"))).toContain("Expected");
+    expect(activity.find(row => row.includes("Date"))).toContain("Difference");
+    expect(activity.find(row => row.includes("Date"))).toContain("Norm");
   });
 
   it("keeps incomplete tank readings unknown even when stale values are present", () => {
@@ -353,8 +429,57 @@ describe("equipment hire bill output", () => {
         calculationSnapshot: { adjustments: { breakdownDeduction: 1000 }, financials: { grossHire: 10000, breakdownDeduction: 1000, tdsRate: 2 } },
       }],
     });
-    expect(output?.data.netPayable).toBe(8820);
+    expect(output?.data.netPayable).toBeNull();
     expect(output?.data.paid).toBeNull();
+  });
+  it("does not recalculate financials when a saved calculation snapshot has no financial section", () => {
+    const output = buildSavedEquipmentHireBillOutput({
+      billNo: "VB-EH-SNAPSHOT", vendorName: "ACME HIRE", billType: "equipment",
+      periodFrom: "2026-01-01", periodTo: "2026-01-01", status: "draft",
+      hireStatements: [{
+        equipmentId: 9, periodFrom: "2026-01-01", periodTo: "2026-01-01",
+        billingBasis: "daily", rate: 5000, grossAmount: 5000, deductionAmount: 1000,
+        calculationSnapshot: {
+          terms: { billingBasis: "daily" },
+          adjustments: { breakdownDeduction: 1000, advanceAdjustment: 1000 },
+        },
+      }],
+    });
+    expect(output?.data.grossHire).toBe(5000);
+    expect(output?.data.taxBase).toBeNull();
+    expect(output?.data.tdsAmount).toBeNull();
+    expect(output?.data.netPayable).toBeNull();
+  });
+  it("uses saved snapshot financials for approved/draft exports without recalculating them", () => {
+    const output = buildSavedEquipmentHireBillOutput({
+      billNo: "VB-EH-0064", vendorName: "ACME HIRE", billType: "equipment",
+      periodFrom: "2026-01-01", periodTo: "2026-01-31", status: "draft",
+      hireStatements: [{
+        equipmentId: 64, equipmentName: "Backhoe loader", periodFrom: "2026-01-01", periodTo: "2026-01-31",
+        billingBasis: "monthly", rate: 150000, grossAmount: 150000,
+        calculationSnapshot: {
+          terms: { billingBasis: "monthly", monthlyDivisorType: "30", monthlyDivisor: 30 },
+          adjustments: { breakdownDeduction: 1000, hsdRecovery: 0, otherDebit: 15000, advanceAdjustment: 110000 },
+          financials: {
+            grossHire: 155032.26, breakdownDeduction: 1000, hsdRecovery: 0, otherDebit: 15000,
+            advanceAdjustment: 110000, otherCredit: 0, taxBase: 154032.26, taxableAmount: 44032.26,
+            gstRate: 0, gstAmount: 0, invoiceTotal: 44032.26, tdsRate: 2, tdsAmount: 3080.65,
+            netPayable: 25951.61,
+          },
+        },
+      }],
+    });
+    expect(output?.data).toMatchObject({
+      grossHire: 155032.26, breakdownDeduction: 1000, taxableAmount: 44032.26,
+      taxBase: 154032.26, tdsRate: 2, tdsAmount: 3080.65, netPayable: 25951.61,
+    });
+    tables.length = 0;
+    exportEquipmentHireBill(output!.data, output!.rows, "pdf");
+    const billPdfText = tables.flatMap(table => table.body.flat()).join(" ");
+    expect(billPdfText).toContain("Rs. 25,951.61");
+    expect(billPdfText).toContain("(Rs. 3,080.65)");
+    expect(billPdfText).toContain("Rs. 1,54,032.26");
+    expect(billPdfText).toContain("(Rs. 1,10,000.00)");
   });
   it("shows saved working-sheet facts in the daily table when legacy performance rows are absent", () => {
     const output = buildSavedEquipmentHireBillOutput({

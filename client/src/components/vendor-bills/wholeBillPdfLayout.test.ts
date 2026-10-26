@@ -3,7 +3,7 @@ import { buildWholeBillPdf } from "./wholeBillExport";
 import type { WholeBillSnapshot } from "./wholeBillSnapshot";
 
 describe("whole bill PDF layout", () => {
-  it("starts with the signed abstract and puts daily activity on the next page without a blank page", () => {
+  it("uses a portrait bill layout and keeps the Activity Statement in its separate export", () => {
     const snapshot: WholeBillSnapshot = {
       companyName: "High Lane Constructions",
       vendorName: "Vendor",
@@ -44,10 +44,12 @@ describe("whole bill PDF layout", () => {
     const pdf = buildWholeBillPdf(snapshot);
     const pages = (pdf as any).internal.pages as string[][];
 
-    expect(pdf.getNumberOfPages()).toBe(2);
-    expect(pages[1].join("")).toContain("BILL SUMMARY / ADJUSTMENTS");
+    expect(pdf.internal.pageSize.getWidth()).toBeLessThan(pdf.internal.pageSize.getHeight());
+    expect(pdf.getNumberOfPages()).toBe(1);
+    expect(pages[1].join("")).toContain("EQUIPMENT HIRE BILL");
     expect(pages[1].join("")).toContain("Equipment type: Excavator");
-    expect(pages[1].join("")).toContain("Authorized Signatory");
-    expect(pages[2].join("")).toContain("DAILY ACTIVITY");
+    expect(pages[1].join("")).toContain("Received");
+    expect(pdf.output()).not.toContain("DAILY ACTIVITY");
+    expect(pdf.output()).toContain("NET PAYABLE");
   });
 });

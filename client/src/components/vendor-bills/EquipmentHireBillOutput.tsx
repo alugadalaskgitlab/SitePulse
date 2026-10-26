@@ -6,12 +6,15 @@ import { format } from "date-fns";
 import { Download, FileText } from "lucide-react";
 import type { EquipmentPerformanceDailyRow } from "@shared/equipmentPerformance";
 import { computeEquipmentUsage, formatEquipmentDuration, formatEquipmentTime } from "@shared/equipmentUsage";
-import { calculateEquipmentHireFinancials, calculateEquipmentHireFinancialsLegacy } from "@shared/hireBilling";
+import { calculateEquipmentHireFinancials } from "@shared/hireBilling";
 import { projectHireReview, hireReviewDisclosureLines, hireReviewTable, MONTHLY_BILL_HEADERS, type HireReview } from "@shared/vendorBillLayout";
 import { getBaseSiteName } from "@shared/siteName";
 import { formatConsumptionRate } from "./HireActivityBreakdownCalendar";
+import { drawPdfBillFooter, drawPdfBillHeader, INK_LIGHT_TABLE } from "./pdfExportStyle";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { hireStatementExportFromData, type WholeBillSnapshot } from "./wholeBillSnapshot";
+import { buildWholeBillEquipmentPdf } from "./wholeBillEquipmentPdf";
 
 export type BillingMaintenance = {
   businessDate?: string;
@@ -167,9 +170,13 @@ export type EquipmentHirePeriodTotals = {
 
 export type EquipmentHireExportData = {
   billNo: string;
+  billDate?: string;
+  billStatus?: string;
+  companyName?: string;
   vendorName: string;
   equipmentName: string;
   equipmentType?: string;
+  equipmentMasterReference?: string | number | null;
   projectSite?: string;
   periodFrom: string;
   periodTo: string;
@@ -182,17 +189,21 @@ export type EquipmentHireExportData = {
   otherDebitReason?: string;
   advanceAdjustment: number;
   advanceAdjustmentReason?: string;
+  advanceAdjustmentDate?: string | null;
   otherCredit: number;
   otherCreditReason?: string;
+  hsdRecoveryReason?: string;
   gstRate: number;
-  gstAmount: number;
-  taxableAmount: number;
-  taxBase?: number;
-  invoiceTotal: number;
+  gstAmount: number | null;
+  taxableAmount: number | null;
+  taxBase?: number | null;
+  invoiceTotal: number | null;
   tdsRate: number;
-  tdsAmount: number;
-  netPayable: number;
+  tdsAmount: number | null;
+  netPayable: number | null;
   paid: number | null;
+  monthlyDivisorType?: string | null;
+  monthlyDivisor?: number | null;
   hireReview?: HireReview;
   dieselResponsibility?: "hlc" | "vendor" | string | null;
   consumptionNorm?: number | null;
@@ -200,7 +211,9 @@ export type EquipmentHireExportData = {
   consumptionRateUnit?: "L/hr" | "L/km" | null;
 };
 
-const money = (value: number | null | undefined) => `₹${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const money = (value: number | null | undefined) => value == null
+  ? "—"
+  : `₹${Number(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const number = (value: number | null | undefined, decimals = 1) => value == null ? "—" : Number(value).toLocaleString("en-IN", { maximumFractionDigits: decimals });
 const numberFixed = (value: number, decimals = 2) => Number(value).toLocaleString("en-IN", {
   minimumFractionDigits: decimals, maximumFractionDigits: decimals,
@@ -507,12 +520,12 @@ export function EquipmentHireDailyActivity({ open, onOpenChange, rows, dieselRes
 }
 
 export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: BillingDailyRow[], format: "pdf" | "xlsx") {
-  const balance = data.paid == null ? null : data.netPayable - data.paid;
+  const balance = data.paid == null || data.netPayable == null ? null : data.netPayable - data.paid;
   const summary = [
     ["Vendor", data.vendorName], ["Equipment", data.equipmentName], ...(data.projectSite ? [["Project / Site", data.projectSite]] : []), ["Bill period", `${dateLabel(data.periodFrom)} to ${dateLabel(data.periodTo)}`],
     ["Hire basis", data.hireBasis], ["Rate", money(data.rate)], ["Gross Hire", money(data.grossHire)],
     ["Breakdown Deduction", `− ${money(data.breakdownDeduction)}`],
-    ...(data.taxBase == null ? [] : [["GST/TDS tax base", money(data.taxBase)]]),
+    ...(data.taxBase == null ? [] : [["Gross bill amount (taxable)", money(data.taxBase)]]),
     ...(String(data.dieselResponsibility).toLowerCase() === "vendor" ? [] : [["HSD Recovery", `− ${money(data.hsdRecovery)}`]]),
     ["Other Debit / Recovery", `− ${money(data.otherDebit)}${data.otherDebitReason ? ` (${data.otherDebitReason})` : ""}`],
     ["Advance Adjustment", `− ${money(data.advanceAdjustment)}${data.advanceAdjustmentReason ? ` (${data.advanceAdjustmentReason})` : ""}`],
@@ -523,12 +536,11 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
     [`TDS @ ${data.tdsRate}%`, `− ${money(data.tdsAmount)}`], ["NET PAYABLE", money(data.netPayable)], ["Paid", data.paid == null ? "—" : money(data.paid)], ["Balance This Bill", balance == null ? "—" : money(balance)],
   ];
   const safeName = (data.billNo || "equipment-hire-bill").replace(/[^\w-]+/g, "-");
-  const consumptionUnit = calendarConsumptionUnit(rows, data.meterType, data.consumptionRateUnit);
   if (format === "xlsx") {
     const workbook = XLSX.utils.book_new();
     const summarySheet = XLSX.utils.aoa_to_sheet([["Equipment Hire Bill Summary"], ...summary]);
     summarySheet["!cols"] = [{ wch: 28 }, { wch: 60 }];
-    const activity = equipmentHireActivitySheetRows(rows, data.dieselResponsibility, data.consumptionNorm, data.meterType);
+    const activity = equipmentHireActivitySheetRows(rows, "hlc", data.consumptionNorm, data.meterType, false);
     const headers = activity.headers;
     const activitySheet = XLSX.utils.aoa_to_sheet([
       ...(String(data.dieselResponsibility).toLowerCase() === "vendor" ? [["Fuel / Diesel: Contractor Scope"]] : []),
@@ -548,64 +560,47 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
     XLSX.writeFile(workbook, `${safeName}.xlsx`);
     return;
   }
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-  doc.setFontSize(16);
-  doc.text("EQUIPMENT HIRE VENDOR BILL", 14, 16);
-  doc.setFontSize(9);
-  doc.text(`Bill No: ${data.billNo || "Draft"}`, 14, 23);
-  autoTable(doc, {
-    startY: 28,
-    head: [["Bill Summary", "Amount / Detail"]],
-    body: summary.map(row => row.map(value => pdfText(String(value)))),
-    theme: "grid",
-    styles: { fontSize: 8, cellPadding: 2 },
-    headStyles: { fillColor: [180, 83, 9] },
-    columnStyles: { 0: { fontStyle: "bold", cellWidth: 65 }, 1: { cellWidth: 110 } },
-    didParseCell: cell => {
-      const label = String((cell.row.raw as string[] | undefined)?.[0] || "");
-      if (cell.section === "body" && ["Taxable / Bill Amount", "GST/TDS tax base", "Net amount - this bill (before GST/TDS)", "Invoice Total", "NET PAYABLE", "Balance This Bill"].includes(label)) {
-        cell.cell.styles.fontStyle = "bold";
-      }
+  const statementExport = hireStatementExportFromData(data);
+  const gstAmount = data.gstAmount != null && Number.isFinite(data.gstAmount) ? data.gstAmount : 0;
+  const billSnapshot: WholeBillSnapshot = {
+    companyName: data.companyName || "Highlane Constructions",
+    vendorName: data.vendorName,
+    billNo: data.billNo || "",
+    billDate: data.billDate || data.periodTo,
+    periodFrom: data.periodFrom,
+    periodTo: data.periodTo,
+    site: data.projectSite || "",
+    equipmentType: data.equipmentType,
+    billType: "equipment",
+    billTypeLabel: "Equipment hire",
+    saved: !!data.billStatus && data.billStatus.toLowerCase() !== "draft",
+    status: data.billStatus || "Draft",
+    generatedAt: new Date().toISOString(),
+    sections: [],
+    calendars: [],
+    hireReviews: data.hireReview ? [data.hireReview] : [],
+    hireStatementDetails: [statementExport],
+    financialRows: [
+      { label: "Gross hire", amount: data.grossHire },
+      { label: "Breakdown deduction", amount: -Math.abs(data.breakdownDeduction) },
+      { label: "Gross bill amount", amount: data.taxBase ?? data.taxableAmount ?? Number.NaN },
+      ...(String(data.dieselResponsibility).toLowerCase() === "vendor" ? [] : [{ label: "HSD recovery", amount: -Math.abs(data.hsdRecovery), reason: data.hsdRecoveryReason }]),
+      ...(data.otherDebit ? [{ label: "Other debit", amount: -Math.abs(data.otherDebit), reason: data.otherDebitReason }] : []),
+      ...(data.advanceAdjustment ? [{ label: "Advance adjustment", amount: -Math.abs(data.advanceAdjustment), reason: data.advanceAdjustmentReason }] : []),
+      ...(data.otherCredit ? [{ label: "Other credit", amount: Math.abs(data.otherCredit), reason: data.otherCreditReason }] : []),
+      ...(data.tdsAmount == null ? [] : [{ label: `IT TDS @ ${data.tdsRate}%`, amount: -Math.abs(data.tdsAmount) }]),
+      { label: "NET PAYABLE", amount: data.netPayable ?? Number.NaN },
+    ],
+    totals: {
+      subtotal: data.taxableAmount ?? Number.NaN,
+      gst: gstAmount > 0 ? [{ label: `GST @ ${data.gstRate}%`, amount: gstAmount }] : [],
+      totalGst: gstAmount,
+      adjustments: [],
+      tds: { label: `IT TDS @ ${data.tdsRate}%`, amount: data.tdsAmount == null ? Number.NaN : -Math.abs(data.tdsAmount) },
+      netPayable: data.netPayable ?? Number.NaN,
     },
-  });
-  if (data.hireReview) {
-    doc.addPage("a4", "landscape");
-    doc.setFontSize(12);
-    doc.text("Monthly Billing Summary", 14, 16);
-    autoTable(doc, { startY: 22, head: [MONTHLY_BILL_HEADERS.map(pdfText)],
-      body: hireReviewTable(data.hireReview).map(row => row.map((value, index) =>
-        MONTHLY_BILL_HEADERS[index] === "Gross Amount (₹)" && typeof value === "number"
-          ? pdfText(money(value))
-          : pdfText(String(value)))),
-      styles: { fontSize: 8 }, headStyles: { fillColor: [180, 83, 9] } });
-    const disclosures = hireReviewDisclosureLines(data.hireReview);
-    if (disclosures.length) {
-      let y = ((doc as any).lastAutoTable?.finalY ?? 188) + 7;
-      doc.setFontSize(9);
-      for (const line of disclosures) {
-        if (y > 195) { doc.addPage("a4", "landscape"); y = 16; }
-        doc.text(pdfText(line), 14, y);
-        y += 5;
-      }
-    }
-  }
-  // The activity always begins on a new page, keeping the summary cleanly on page one.
-  doc.addPage("a4", "landscape");
-  doc.setFontSize(13);
-  doc.text("DAILY ACTIVITY", 14, 12);
-  if (String(data.dieselResponsibility).toLowerCase() === "vendor") {
-    doc.setFontSize(9);
-    doc.text("Fuel / Diesel: Contractor Scope", 14, 17);
-  }
-  autoTable(doc, {
-    startY: String(data.dieselResponsibility).toLowerCase() === "vendor" ? 21 : 16,
-    head: [dailyHeaders(data.dieselResponsibility)],
-    body: rows.map(row => dailyValues(row, data.dieselResponsibility, data.consumptionNorm, consumptionUnit).map(value => pdfText(String(value)))),
-    theme: "grid",
-    styles: { fontSize: 5.7, cellPadding: 1.2, overflow: "linebreak" },
-    headStyles: { fillColor: [180, 83, 9], fontSize: 5.8 },
-    margin: { left: 6, right: 6 },
-  });
+  };
+  const doc = buildWholeBillEquipmentPdf(billSnapshot);
   doc.save(`${safeName}.pdf`);
 }
 
@@ -627,15 +622,108 @@ function calendarTotalsRows(
   ];
 }
 
+const noActivityRecorded = (row: BillingDailyRow) =>
+  row.status === "No Work" ||
+  row.statusLabel === "No Activity — Still Billable" ||
+  row.statusLabel === "Activity Not Recorded";
+
+function monthTitle(value: string) {
+  try { return format(new Date(`${value.slice(0, 10)}T00:00:00`), "MMMM yyyy"); } catch { return value.slice(0, 7); }
+}
+
+function formatHoursMinutes(value: number) {
+  const totalMinutes = Math.round(Number(value) * 60);
+  const sign = totalMinutes < 0 ? "-" : "";
+  const absoluteMinutes = Math.abs(totalMinutes);
+  return `${sign}${Math.floor(absoluteMinutes / 60)}:${String(absoluteMinutes % 60).padStart(2, "0")}`;
+}
+
+function activityStatementRow(
+  row: BillingDailyRow,
+  data: EquipmentHireExportData,
+  tripColumn: boolean,
+  fuelIsContractorScope: boolean,
+  consumptionUnit: string,
+) {
+  const item = row.performance;
+  const isBreakdown = row.status === "Breakdown";
+  const review = !isBreakdown && (!item || !!item.workingHoursIncomplete || !!item.clockDurationIncomplete ||
+    (!fuelIsContractorScope && (
+      item.openingTank == null || item.closingTank == null || !!item.consumptionIncomplete
+    )));
+  const status = isBreakdown ? "Breakdown" : review ? "Review‡" : "Billed";
+  const values: Array<string | number> = [
+    dateLabel(row.date),
+    item?.projectSite || data.projectSite || "—",
+    number(item?.openingMeter),
+    number(item?.closingMeter),
+    item?.workingHours == null ? "—" : formatHoursMinutes(item.workingHours),
+    ...(tripColumn ? [number(rowTrips(row), 2)] : []),
+    formatEquipmentTime(item?.startTime ?? undefined),
+    formatEquipmentTime(item?.endTime ?? undefined),
+    item?.clockDuration == null ? "—" : formatHoursMinutes(item.clockDuration),
+    item?.openingTank == null ? "N/A" : `${number(item.openingTank)} L`,
+    item?.closingTank == null ? "N/A" : `${number(item.closingTank)} L`,
+    fuelIsContractorScope
+      ? "Contractor scope"
+      : item?.dieselIssued == null ? "N/A" : `${numberFixed(item.dieselIssued)} L`,
+    fuelIsContractorScope || item?.openingTank == null || item?.closingTank == null || item?.consumptionIncomplete || item?.consumptionRate == null
+      ? "" : `${number(item.consumptionRate, 2)} ${consumptionUnit}`,
+    status,
+  ];
+  return { values, review };
+}
+
+function activityMonthTotalRow(
+  month: BillingDailyRow[],
+  monthName: string,
+  headers: string[],
+  tripColumn: boolean,
+  fuelIsContractorScope: boolean,
+  consumptionUnit: string,
+) {
+  const active = month.filter(row => !noActivityRecorded(row));
+  const workingRows = active.filter(row => row.status !== "Breakdown");
+  const totals = active.length
+    ? buildEquipmentHirePeriodTotals(active, fuelIsContractorScope ? "vendor" : "hlc")
+    : null;
+  const hoursComplete = workingRows.length > 0 && workingRows.every(row =>
+    row.performance?.workingHours != null && !row.performance.workingHoursIncomplete);
+  const issuedComplete = workingRows.length > 0 && (fuelIsContractorScope || workingRows.every(row => row.performance?.dieselIssued != null));
+  const consumptionComplete = workingRows.length > 0 && !fuelIsContractorScope && workingRows.every(row =>
+    row.performance?.dieselConsumed != null &&
+    row.performance.openingTank != null &&
+    row.performance.closingTank != null &&
+    !row.performance.consumptionIncomplete);
+  const hourTotal = totals?.hours == null || !hoursComplete ? "—" : formatHoursMinutes(totals.hours);
+  const issuedTotal = fuelIsContractorScope
+    ? "Contractor scope"
+    : !issuedComplete || totals?.dieselIssued == null ? "N/A" : `${numberFixed(totals.dieselIssued)} L`;
+  const average = consumptionComplete && totals?.hours && totals.dieselConsumed != null
+    ? `${number(totals.dieselConsumed / totals.hours, 2)} ${consumptionUnit}`
+    : "";
+  const values: string[] = Array(headers.length).fill("");
+  values[0] = `${monthName} total`;
+  values[4] = hourTotal;
+  const first = tripColumn ? 6 : 5;
+  if (tripColumn) values[5] = number(totals?.trips ?? 0, 2);
+  values[first + 5] = issuedTotal;
+  values[first + 6] = average;
+  values[headers.length - 1] = "TOTAL";
+  return values;
+}
+
 /**
  * Export only the daily activity calendar and its period totals.  The bill
  * summary deliberately lives only in exportEquipmentHireBill.
  */
-export function exportEquipmentHireCalendar(data: EquipmentHireExportData, rows: BillingDailyRow[], format: "pdf" | "xlsx") {
+export function exportEquipmentHireCalendar(data: EquipmentHireExportData, rows: BillingDailyRow[], exportFormat: "pdf" | "xlsx") {
   const fuelIsContractorScope = String(data.dieselResponsibility).toLowerCase() === "vendor";
   const totals = buildEquipmentHirePeriodTotals(rows, data.dieselResponsibility);
-  const headers = dailyHeaders(data.dieselResponsibility);
-  const consumptionUnit = calendarConsumptionUnit(rows, data.meterType, data.consumptionRateUnit);
+  // Excel is the internal audit copy: retain the full fuel/tank evidence columns
+  // even when the vendor is responsible for diesel.
+  const headers = dailyHeaders("hlc");
+  const consumptionUnit = calendarConsumptionUnit(rows, data.meterType, data.consumptionRateUnit) || "L/hr";
   const safeName = (data.billNo || "equipment-hire-bill").replace(/[^\w-]+/g, "-");
   const metadata: Array<Array<string | number | null>> = [
     ["Equipment Hire Daily Activity"],
@@ -644,7 +732,7 @@ export function exportEquipmentHireCalendar(data: EquipmentHireExportData, rows:
     ["Bill period", `${dateLabel(data.periodFrom)} to ${dateLabel(data.periodTo)}`],
     ...(fuelIsContractorScope ? [["Fuel / Diesel", "Contractor Scope"]] : []),
   ];
-  if (format === "xlsx") {
+  if (exportFormat === "xlsx") {
     const workbook = XLSX.utils.book_new();
     const activitySheet = XLSX.utils.aoa_to_sheet([
       ...metadata,
@@ -653,7 +741,7 @@ export function exportEquipmentHireCalendar(data: EquipmentHireExportData, rows:
       [],
       ...(fuelIsContractorScope ? [["Fuel / Diesel: Contractor Scope"]] : []),
       headers,
-      ...rows.map(row => dailyValues(row, data.dieselResponsibility, data.consumptionNorm, consumptionUnit)),
+       ...rows.map(row => dailyValues(row, "hlc", data.consumptionNorm, consumptionUnit)),
     ]);
     activitySheet["!cols"] = headers.map((header, index) => ({ wch: index === headers.length - 1 ? 52 : Math.max(14, header.length + 2) }));
     XLSX.utils.book_append_sheet(workbook, activitySheet, "Daily Activity");
@@ -662,38 +750,149 @@ export function exportEquipmentHireCalendar(data: EquipmentHireExportData, rows:
   }
 
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-  doc.setFontSize(13);
-  doc.text("DAILY ACTIVITY CALENDAR", 14, 12);
-  doc.setFontSize(8);
-  doc.text(`Equipment: ${pdfText(String(data.equipmentName))}`, 14, 18);
-  doc.text(`Period: ${pdfText(`${dateLabel(data.periodFrom)} to ${dateLabel(data.periodTo)}`)}`, 14, 23);
-  if (data.projectSite) doc.text(`Project / Site: ${pdfText(data.projectSite)}`, 14, 28);
-  const totalsStartY = data.projectSite ? 33 : 28;
-  autoTable(doc, {
-    startY: totalsStartY,
-    head: [["Period Totals", "Value"]],
-    body: calendarTotalsRows(totals, fuelIsContractorScope).slice(1).map(row => row.map(value => pdfText(String(value == null ? "—" : value)))),
-    theme: "grid",
-    styles: { fontSize: 7, cellPadding: 1.5 },
-    headStyles: { fillColor: [180, 83, 9] },
-    columnStyles: { 0: { fontStyle: "bold", cellWidth: 45 }, 1: { cellWidth: 35 } },
-  });
-  doc.addPage("a4", "landscape");
-  doc.setFontSize(13);
-  doc.text("DAILY ACTIVITY", 14, 12);
-  if (fuelIsContractorScope) {
-    doc.setFontSize(9);
-    doc.text("Fuel / Diesel: Contractor Scope", 14, 17);
+  const isHourMeter = String(data.meterType || "").toLowerCase().includes("hour");
+  const tripColumn = !isHourMeter && String(data.hireBasis).toLowerCase().includes("trip") &&
+    rows.some(row => Number(rowTrips(row) || 0) > 0);
+  const activityHeaders = [
+    "Date", "Site", "Open meter", "Close meter", "Working hrs (h:min)",
+    ...(tripColumn ? ["Trips"] : []),
+    "Start time", "End time", "Clock duration", "Tank open", "Tank close",
+    "Diesel issued", "Consumption (L/hr)", "Status",
+  ];
+  const rowsByMonth = new Map<string, BillingDailyRow[]>();
+  for (const row of rows) {
+    const key = row.date.slice(0, 7);
+    rowsByMonth.set(key, [...(rowsByMonth.get(key) || []), row]);
   }
-  autoTable(doc, {
-    startY: fuelIsContractorScope ? 21 : 16,
-    head: [headers],
-    body: rows.map(row => dailyValues(row, data.dieselResponsibility, data.consumptionNorm, consumptionUnit).map(value => pdfText(String(value)))),
-    theme: "grid",
-    styles: { fontSize: 5.7, cellPadding: 1.2, overflow: "linebreak" },
-    headStyles: { fillColor: [180, 83, 9], fontSize: 5.8 },
-    margin: { left: 6, right: 6 },
-  });
+  const isMonthly = String(data.hireBasis).toLowerCase().includes("monthly");
+  const divisorValue = data.monthlyDivisorType === "30"
+    ? 30
+    : data.monthlyDivisorType === "custom" ? data.monthlyDivisor : null;
+  const divisorLabel = data.monthlyDivisorType === "calendar"
+    ? "Calendar days"
+    : divisorValue ? `${divisorValue} days` : "Not recorded";
+  const ratePerDay = isMonthly && divisorValue && divisorValue > 0
+    ? pdfText(money(data.rate / divisorValue))
+    : isMonthly ? "Varies by month" : "Not applicable";
+  const detailLine = [
+    `Vendor: ${data.vendorName || "Not recorded"}`,
+    `Equipment: ${data.equipmentName} · Master ref: ${data.equipmentMasterReference ?? "Not recorded"}`,
+    `Hire basis: ${data.hireBasis} · Rate: ${pdfText(money(data.rate))} · Rate/day: ${ratePerDay}`,
+    `Monthly divisor: ${divisorLabel}`,
+    `Site: ${data.projectSite || "Not recorded"} · Diesel norm: ${data.consumptionNorm == null ? "Not recorded" : `${number(data.consumptionNorm, 2)} ${data.consumptionRateUnit || ""}`}`,
+  ].join(" · ");
+  const header = {
+    title: "ACTIVITY STATEMENT",
+    companyName: data.companyName || "Highlane Constructions",
+    billNo: data.billNo || "Not yet saved",
+    billDate: data.billDate,
+    periodFrom: data.periodFrom,
+    periodTo: data.periodTo,
+    status: data.billStatus || "Draft",
+    detailLines: [detailLine],
+  };
+  const headerBottom = drawPdfBillHeader(doc, header);
+  const drawHeader = () => { drawPdfBillHeader(doc, header); };
+  let y = headerBottom + 4;
+  let reviewSeen = false;
+  const noActivityDays = rows.filter(noActivityRecorded).length;
+  for (const [key, monthRows] of Array.from(rowsByMonth).sort(([a], [b]) => a.localeCompare(b))) {
+    const title = monthTitle(`${key}-01`);
+    if (y > doc.internal.pageSize.getHeight() - 55) {
+      doc.addPage("a4", "landscape");
+      y = drawPdfBillHeader(doc, header) + 4;
+    }
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(25, 25, 25);
+    doc.text(title, 8, y);
+    const active = monthRows.filter(row => !noActivityRecorded(row));
+    const tableRows = active.map(row => {
+      const projected = activityStatementRow(row, data, tripColumn, fuelIsContractorScope, consumptionUnit);
+      reviewSeen ||= projected.review;
+      return projected.values.map(value => pdfText(String(value)));
+    });
+    tableRows.push(activityMonthTotalRow(active, title, activityHeaders, tripColumn, fuelIsContractorScope, consumptionUnit));
+    autoTable(doc, {
+      startY: y + 2,
+      head: [activityHeaders.map(pdfText)],
+      body: tableRows,
+      ...INK_LIGHT_TABLE,
+      styles: { ...INK_LIGHT_TABLE.styles, fontSize: 6.3, cellPadding: 1.3 },
+      headStyles: { ...INK_LIGHT_TABLE.headStyles, fontSize: 6.4 },
+      columnStyles: {
+        0: { cellWidth: 20 },
+        1: { cellWidth: 32 },
+        2: { cellWidth: 19, halign: "right" },
+        3: { cellWidth: 19, halign: "right" },
+        4: { cellWidth: 25, halign: "right" },
+        ...(tripColumn ? { 5: { cellWidth: 11, halign: "right" as const } } : {}),
+        [tripColumn ? 6 : 5]: { cellWidth: 17 },
+        [tripColumn ? 7 : 6]: { cellWidth: 17 },
+        [tripColumn ? 8 : 7]: { cellWidth: 22, halign: "right" },
+        [tripColumn ? 9 : 8]: { cellWidth: 18, halign: "right" },
+        [tripColumn ? 10 : 9]: { cellWidth: 18, halign: "right" },
+        [tripColumn ? 11 : 10]: { cellWidth: 20, halign: "right" },
+        [tripColumn ? 12 : 11]: { cellWidth: 27, halign: "right" },
+        [tripColumn ? 13 : 12]: { cellWidth: 18 },
+      },
+      margin: { left: 7, right: 7, top: headerBottom + 2, bottom: 16 },
+      showHead: "everyPage",
+      didDrawPage: drawHeader,
+      didParseCell: cell => {
+        if (cell.section === "body" && cell.row.index === tableRows.length - 1) {
+          cell.cell.styles.fontStyle = "bold";
+          cell.cell.styles.lineColor = [65, 65, 65];
+          cell.cell.styles.lineWidth = 0.5;
+        }
+      },
+    });
+    y = Number((doc as any).lastAutoTable?.finalY || y + 10) + 7;
+  }
+
+  if (reviewSeen) {
+    if (y > doc.internal.pageSize.getHeight() - 35) {
+      doc.addPage("a4", "landscape");
+      y = drawPdfBillHeader(doc, header) + 5;
+    }
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(45, 45, 45);
+    doc.text("‡ dip/meter incomplete — amount unaffected on monthly hire", 8, y);
+    y += 5;
+  }
+  if (noActivityDays > 0) {
+    if (y > doc.internal.pageSize.getHeight() - 35) {
+      doc.addPage("a4", "landscape");
+      y = drawPdfBillHeader(doc, header) + 5;
+    }
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(45, 45, 45);
+    doc.text(`No activity recorded on ${noActivityDays} other day(s) in the period.`, 8, y);
+    y += 6;
+  }
+  if (y > doc.internal.pageSize.getHeight() - 35) {
+    doc.addPage("a4", "landscape");
+    y = drawPdfBillHeader(doc, header) + 6;
+  }
+  const signatureWidth = (doc.internal.pageSize.getWidth() - 24) / 2;
+  doc.setDrawColor(65, 65, 65);
+  doc.setLineWidth(0.3);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(45, 45, 45);
+  doc.line(8, y + 15, 8 + signatureWidth, y + 15);
+  doc.text("Prepared · HLC", 8, y + 20);
+  doc.line(16 + signatureWidth, y + 15, doc.internal.pageSize.getWidth() - 8, y + 15);
+  doc.text("Received · Vendor", 16 + signatureWidth, y + 20);
+
+  const generatedAt = format(new Date(), "dd MMM yyyy HH:mm");
+  const pages = doc.getNumberOfPages();
+  for (let page = 1; page <= pages; page++) {
+    doc.setPage(page);
+    drawPdfBillFooter(doc, page, pages, generatedAt, data.billNo || "Not yet saved");
+  }
   doc.save(`${safeName}-calendar.pdf`);
 }
 
@@ -809,37 +1008,81 @@ export function buildSavedEquipmentHireBillOutput(bill: any): { data: EquipmentH
   const otherDebit = Number(adjustments.otherDebit || 0);
   const advanceAdjustment = Number(adjustments.advanceAdjustment || 0);
   const otherCredit = Number(adjustments.otherCredit || 0);
-  const frozenFinancials = snapshot.financials || {};
-  const hasFrozenNewTaxBase = frozenFinancials.taxBase != null && Number.isFinite(Number(frozenFinancials.taxBase));
-  const calculateSavedFinancials = hasFrozenNewTaxBase
-    ? calculateEquipmentHireFinancials
-    : calculateEquipmentHireFinancialsLegacy;
-  const financials = calculateSavedFinancials({
-    grossHire: frozenFinancials.grossHire ?? grossHire,
-    breakdownDeduction: frozenFinancials.breakdownDeduction ?? breakdownDeduction,
-    hsdRecovery: frozenFinancials.hsdRecovery ?? hsdRecovery,
-    otherDebit: frozenFinancials.otherDebit ?? otherDebit,
-    advanceAdjustment: frozenFinancials.advanceAdjustment ?? advanceAdjustment,
-    otherCredit: frozenFinancials.otherCredit ?? otherCredit,
-    gstRate: frozenFinancials.gstRate ?? bill.gstRateEquipment,
-    tdsRate: frozenFinancials.tdsRate ?? bill.tdsRate,
-  });
+  const frozenFinancials = snapshot.financials && typeof snapshot.financials === "object"
+    ? snapshot.financials : null;
+  const hasFrozenFinancials = !!frozenFinancials && Object.keys(frozenFinancials).length > 0;
+  const hasCalculationSnapshot = Object.keys(snapshot).length > 0;
+  const financials = hasFrozenFinancials
+    ? {
+      grossHire: savedNumber(frozenFinancials.grossHire) ?? grossHire,
+      breakdownDeduction: savedNumber(frozenFinancials.breakdownDeduction) ?? breakdownDeduction,
+      hsdRecovery: savedNumber(frozenFinancials.hsdRecovery) ?? hsdRecovery,
+      otherDebit: savedNumber(frozenFinancials.otherDebit) ?? otherDebit,
+      advanceAdjustment: savedNumber(frozenFinancials.advanceAdjustment) ?? advanceAdjustment,
+      otherCredit: savedNumber(frozenFinancials.otherCredit) ?? otherCredit,
+        taxBase: savedNumber(frozenFinancials.taxBase) ?? savedNumber(snapshot.taxBase),
+        taxableAmount: savedNumber(frozenFinancials.taxableAmount) ?? savedNumber(snapshot.taxableAmount),
+        gstRate: savedNumber(frozenFinancials.gstRate) ?? savedNumber(snapshot.gstRate) ?? Number(bill.gstRateEquipment || 0),
+        gstAmount: savedNumber(frozenFinancials.gstAmount) ?? savedNumber(snapshot.gstAmount),
+        invoiceTotal: savedNumber(frozenFinancials.invoiceTotal) ?? savedNumber(snapshot.invoiceTotal),
+        tdsRate: savedNumber(frozenFinancials.tdsRate) ?? savedNumber(snapshot.tdsRate) ?? Number(bill.tdsRate || 0),
+        tdsAmount: savedNumber(frozenFinancials.tdsAmount) ?? savedNumber(snapshot.tdsAmount),
+        netPayable: savedNumber(frozenFinancials.netPayable) ??
+          savedNumber(snapshot.netPayable) ?? savedNumber(bill.netPayableAmount),
+    }
+    : hasCalculationSnapshot
+      ? {
+        grossHire,
+        breakdownDeduction,
+        hsdRecovery,
+        otherDebit,
+        advanceAdjustment,
+        otherCredit,
+        taxBase: savedNumber(snapshot.taxBase),
+        taxableAmount: savedNumber(snapshot.taxableAmount ?? statement.taxableAmount),
+        gstRate: savedNumber(snapshot.gstRate) ?? Number(bill.gstRateEquipment || 0),
+        gstAmount: savedNumber(snapshot.gstAmount),
+        invoiceTotal: savedNumber(snapshot.invoiceTotal),
+        tdsRate: savedNumber(snapshot.tdsRate) ?? Number(bill.tdsRate || 0),
+        tdsAmount: savedNumber(snapshot.tdsAmount),
+        netPayable: savedNumber(snapshot.netPayable) ?? savedNumber(bill.netPayableAmount),
+      }
+      : calculateEquipmentHireFinancials({
+      grossHire, breakdownDeduction, hsdRecovery, otherDebit, advanceAdjustment, otherCredit,
+      gstRate: bill.gstRateEquipment, tdsRate: bill.tdsRate,
+    });
   // Paid status and paidAt do not establish a cash/bank amount.
   const paid = bill.amountPaid != null && bill.amountPaid !== "" && Number.isFinite(Number(bill.amountPaid))
     ? Number(bill.amountPaid) : null;
   const data: EquipmentHireExportData = {
     hireReview: bill.hireReview || projectHireReview(statement, bill),
-    billNo: bill.billNo, vendorName: bill.vendorName,
+    billNo: bill.billNo, billDate: bill.billDate, billStatus: bill.status,
+    companyName: bill.companyName,
+    vendorName: bill.vendorName,
     equipmentName: statement.equipmentName || snapshot.equipmentName || (equipmentId ? `Equipment #${equipmentId}` : "Equipment"),
+    equipmentMasterReference: snapshot.equipmentMasterReference ?? snapshot.equipment?.registrationNumber ?? equipmentId,
     equipmentType: statement.equipmentType || undefined, projectSite: snapshot.projectSite,
     periodFrom, periodTo, hireBasis: String(statement.billingBasis || snapshot.terms?.billingBasis || "Hire").toUpperCase(),
-    rate: Number(statement.rate ?? snapshot.terms?.rate ?? 0), grossHire, breakdownDeduction, hsdRecovery,
-    otherDebit, otherDebitReason: adjustments.otherDebitReason, advanceAdjustment, advanceAdjustmentReason: adjustments.advanceAdjustmentReason,
-    otherCredit, otherCreditReason: adjustments.otherCreditReason,
+    rate: Number(statement.rate ?? snapshot.terms?.rate ?? 0),
+    grossHire: financials.grossHire,
+    breakdownDeduction: financials.breakdownDeduction,
+    hsdRecovery: financials.hsdRecovery,
+    otherDebit: financials.otherDebit,
+    otherDebitReason: adjustments.otherDebitReason,
+    hsdRecoveryReason: adjustments.hsdRecoveryReason,
+    advanceAdjustment: financials.advanceAdjustment,
+    advanceAdjustmentReason: adjustments.advanceAdjustmentReason,
+    advanceAdjustmentDate: adjustments.advanceAdjustmentDate,
+    otherCredit: financials.otherCredit, otherCreditReason: adjustments.otherCreditReason,
     gstRate: financials.gstRate, gstAmount: financials.gstAmount, taxableAmount: financials.taxableAmount,
-    ...(hasFrozenNewTaxBase ? { taxBase: financials.taxBase } : {}),
     invoiceTotal: financials.invoiceTotal, tdsRate: financials.tdsRate, tdsAmount: financials.tdsAmount,
-    netPayable: Number(bill.netPayableAmount ?? financials.netPayable), paid,
+    taxBase: financials.taxBase,
+    netPayable: hasFrozenFinancials || hasCalculationSnapshot
+      ? financials.netPayable ?? savedNumber(bill.netPayableAmount)
+      : savedNumber(bill.netPayableAmount) ?? financials.netPayable,
+    paid,
+    monthlyDivisorType: snapshot.terms?.monthlyDivisorType,
+    monthlyDivisor: savedNumber(snapshot.terms?.monthlyDivisor),
     dieselResponsibility: snapshot.terms?.dieselResponsibility ?? statement.dieselResponsibility,
     consumptionNorm: snapshot.diesel?.consumptionNorm ?? snapshot.terms?.consumptionNorm,
     meterType: snapshot.terms?.meterType,
