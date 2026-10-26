@@ -42,11 +42,15 @@ describe("Part C trip bill candidates", () => {
     expect(result).toMatchObject({amount:21584,qty:28.4,unit:"MT",physicalQuantity:28.4,transportPricing:{basis:"mt",payloadMt:30}});
     expect(vendorBillAutoSourceFromCandidate(row)).toBe(row.source);
   });
-  it.each([{cards:[]},{cards:[{...card,itemKey:"EQ_SOIL_TRIP"}]},{cards:[card,{...card,id:2}]}])("missing, unrelated or ambiguous cards remain unpriced", ({cards})=>{
+  it.each([
+    { cards: [], note: "No transport rate card for HAULER – DUST." },
+    { cards: [{ ...card, itemKey: "EQ_SOIL_TRIP" }], note: "No transport rate card for HAULER – DUST." },
+    { cards: [card, { ...card, id: 2 }], note: "Two transport cards match HAULER – DUST; keep one." },
+  ])("missing, unrelated or ambiguous cards remain unpriced", ({cards, note})=>{
     const row=mapAutoBillItem(vendorBillTripCandidate(trip,false,true,"transport")!);
     const result=applyTransportCard(row,cards,"HAULER");
     expect(result.rate).toBe(0); expect(result.amount).toBe(0);
-    expect(result.transportPricingNote).toMatch(/^Unpriced/);
+    expect(result.transportPricingNote).toBe(note);
   });
   it("saved transport snapshots are never recomputed",()=>{
     const row=mapAutoBillItem(vendorBillTripCandidate(trip,false,true,"transport")!);

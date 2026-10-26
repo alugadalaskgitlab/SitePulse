@@ -42,11 +42,15 @@ export function applyTransportCard<T extends Row>(row: T, cards: TransportCard[]
     // a material price, or array order to choose between standing cards.
     const allExact = cards.filter(c => c.category === "transport" &&
       matchingRateCardsForGroup(group, c.unit || "", [c], vendor, { allowVendorAliases: true }).length);
+    const material = group?.groupName || row.description.replace(/\s*-\s*TRANSPORT(?:\s.*)?$/i, "").trim();
+    const vendorLabel = vendor.trim() || "vendor";
     if (allExact.length !== 1 || exact.length !== 1) return {
       ...row, rate: 0, amount: 0,
       transportPricingNote: allExact.length > 1
-        ? "Unpriced — multiple transport rate cards match this vendor and material."
-        : "Unpriced — no configured transport rate card matches this vendor and material.",
+        ? `${allExact.length === 2 ? "Two" : allExact.length} transport cards match ${vendorLabel} – ${material}; keep one.`
+        : allExact.length === 1
+          ? `Transport rate card for ${vendorLabel} – ${material} needs complete setup.`
+          : `No transport rate card for ${vendorLabel} – ${material}.`,
     };
   }
   // A single configured transport card is the vendor's default. Ambiguous

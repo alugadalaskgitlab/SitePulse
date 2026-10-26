@@ -58,6 +58,59 @@ describe("opt-in transport billing", () => {
     expect(unweighted).toMatchObject({ unit: "TRIP", qty: 1, amount: 2160 });
     expect(unweighted.transportPricing?.basis).toBe("trip");
   });
+  it("keeps the approved WMM example values for 24.65 MT and for no recorded weight", () => {
+    const wmmCard = {
+      ...card,
+      vendorName: "G SANGANNA",
+      itemKey: "EQ_WMM_TRIP",
+      rate: 90,
+      ratePerKm: 90,
+      leadDistanceKm: 30,
+      payloadMt: 30,
+    };
+    const weighted = applyTransportCard({
+      ...row,
+      sourceType: "site_material_trip_transport",
+      description: "WMM - TRANSPORT",
+      qty: 24.65,
+      unit: "MT",
+      actualMt: 24.65,
+      leadDistance: null,
+    }, [wmmCard], "G SANGANNA");
+    expect(weighted).toMatchObject({ qty: 24.65, unit: "MT", rate: 90, leadDistance: 30, amount: 4437 });
+    expect(transportWorking(weighted)).toContain("₹180/MT");
+
+    const noWeight = applyTransportCard({
+      ...row,
+      sourceType: "site_material_trip_transport",
+      description: "WMM - TRANSPORT",
+      qty: 1,
+      unit: "TRIP",
+      actualMt: null,
+      leadDistance: null,
+    }, [wmmCard], "G SANGANNA");
+    expect(noWeight).toMatchObject({ qty: 1, unit: "TRIP", rate: 90, leadDistance: 30, amount: 5400 });
+  });
+  it("names the vendor and material when the transport card is missing or duplicated", () => {
+    const wmmCard = {
+      ...card,
+      vendorName: "G SANGANNA",
+      itemKey: "EQ_WMM_TRIP",
+      rate: 90,
+      ratePerKm: 90,
+      leadDistanceKm: 30,
+      payloadMt: 30,
+    };
+    const trip = {
+      ...row,
+      sourceType: "site_material_trip_transport",
+      description: "WMM - TRANSPORT",
+    };
+    expect(applyTransportCard(trip, [], "G SANGANNA").transportPricingNote)
+      .toBe("No transport rate card for G SANGANNA – WMM.");
+    expect(applyTransportCard(trip, [wmmCard, { ...wmmCard, id: 4 }], "G SANGANNA").transportPricingNote)
+      .toBe("Two transport cards match G SANGANNA – WMM; keep one.");
+  });
   it("preserves source weight supplied separately on a receipt candidate", () => {
     const mapped = mapAutoBillItem({ ...row, actualMt: null, physicalQuantity: 28400, physicalUnit: "KG" });
     expect(applyTransportCard(mapped, [card], "VENDOR")).toMatchObject({ qty: 28.4, unit: "MT", amount: 21584 });

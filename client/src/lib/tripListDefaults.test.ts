@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 import { tripListDefaultsFromSearch } from "./tripListDefaults";
 
 describe("material trip list URL defaults", () => {
-  it("opens the requested date range with unresolved roles selected", () => {
+  it("opens the requested date range, transporter, and unresolved roles", () => {
     expect(tripListDefaultsFromSearch(
-      "?hireDate=2026-08-14&hireRole=unresolved",
+      "?dateFrom=2026-09-16&dateTo=2026-09-19&hireSupplier=G%20SANGANNA&hireRole=unresolved",
       "2026-10-26",
     )).toEqual({
-      hireDate: "2026-08-14",
+      hireDate: "2026-10-26",
+      dateFrom: "2026-09-16",
+      dateTo: "2026-09-19",
+      supplierFilter: "G SANGANNA",
       roleFilter: "unresolved",
     });
   });
@@ -15,6 +18,9 @@ describe("material trip list URL defaults", () => {
   it("keeps normal visits on today with all roles selected", () => {
     expect(tripListDefaultsFromSearch("", "2026-10-26")).toEqual({
       hireDate: "2026-10-26",
+      dateFrom: "2026-10-26",
+      dateTo: "2026-10-26",
+      supplierFilter: "",
       roleFilter: "all",
     });
   });
@@ -25,6 +31,9 @@ describe("material trip list URL defaults", () => {
       "2026-10-26",
     )).toEqual({
       hireDate: "2026-10-26",
+      dateFrom: "2026-10-26",
+      dateTo: "2026-10-26",
+      supplierFilter: "",
       roleFilter: "all",
     });
   });

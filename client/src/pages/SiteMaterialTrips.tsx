@@ -77,7 +77,6 @@ export default function SiteMaterialTrips() {
 
   const hireEvidenceDefaults = tripListDefaultsFromSearch(window.location.search, today);
   const hireEvidenceParams = new URLSearchParams(window.location.search);
-  const hireEvidenceDate = hireEvidenceDefaults.hireDate;
   const [dateFromFilter, setDateFromFilter] = useState(hireEvidenceDefaults.dateFrom);
   const [dateToFilter, setDateToFilter] = useState(hireEvidenceDefaults.dateTo);
   const [siteFilter, setSiteFilter] = useState(piParams.site || "");

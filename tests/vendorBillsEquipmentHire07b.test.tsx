@@ -648,7 +648,7 @@ describe("VB-11 grouped ordinary activity pull", () => {
   it("Test A/B/C: groups mixed activity, pulls equipment only, then adds one material group without disturbing it", async () => {
     autoItemsForTest = vb11Items;
     rateCardsForTest = [{ itemKey: "EQ_JCB_HRS", category: "equipment", unit: "HRS", vendorName: "ABC EQUIPMENT", rate: 250 }];
-    duplicateRowsForTest = [{ index: 1, billNo: "VB-OTHER-2", billStatus: "approved" }];
+    duplicateRowsForTest = [];
     await openVb11MixedBill();
 
     // The existing Set Rates key intentionally groups a machine/unit even
@@ -663,44 +663,84 @@ describe("VB-11 grouped ordinary activity pull", () => {
     await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(3));
     expect(screen.getByTestId(groupRowId(vb11GroupIds.equipment)).textContent).toContain("✓ ADDED 3/3");
     expect(screen.getByTestId(groupRowId(vb11GroupIds.soil)).textContent).toContain("PULL 2");
-    expect(screen.getByTestId("badge-billed-1")).toBeTruthy();
     expect((screen.getAllByTestId(/input-item-rate-/)[0] as HTMLInputElement).value).toBe("250");
     expect(screen.queryByTestId("input-item-desc-0")).toBeNull();
 
-    // Pulling always includes the flagged row. The preparer can remove every
-    // billed row after reviewing the complete pulled picture.
-    expect(screen.getByTestId("button-exclude-already-billed").textContent).toContain("(1)");
-    fireEvent.click(screen.getByTestId("button-exclude-already-billed"));
-    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(2));
-    expect(screen.queryByTestId("badge-billed-1")).toBeNull();
-    expect(screen.getByTestId(groupRowId(vb11GroupIds.equipment)).textContent).toContain("PULL 1");
-    await waitFor(() => expect((screen.getByTestId(vb11GroupIds.equipment) as HTMLButtonElement).disabled).toBe(false));
-    duplicateRowsForTest = [{ index: 0, billNo: "VB-OTHER-2", billStatus: "approved" }];
-    fireEvent.click(screen.getByTestId(vb11GroupIds.equipment));
-    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(3));
-    expect(screen.getByTestId("badge-billed-2")).toBeTruthy();
-    expect(screen.getByTestId("button-exclude-already-billed").textContent).toContain("(1)");
-    fireEvent.click(screen.getByTestId("button-exclude-already-billed"));
-    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(2));
-
-    duplicateRowsForTest = [];
     fireEvent.click(screen.getByTestId(vb11GroupIds.soil));
-    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(4));
-    expect(screen.getAllByTestId(/text-item-desc-/).filter(node => node.textContent?.includes("JCB-SITE"))).toHaveLength(2);
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(5));
+    expect(screen.getAllByTestId(/text-item-desc-/).filter(node => node.textContent?.includes("JCB-SITE"))).toHaveLength(3);
     expect(screen.getByTestId(groupRowId(vb11GroupIds.sand)).textContent).toContain("PULL 1");
 
     // Deliberately removed sources stay suppressed for this draft. Other
     // unpulled sources remain available without restoring the removed row.
     fireEvent.click(screen.getByTestId("button-remove-item-0"));
-    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(3));
-    expect(screen.getByTestId(groupRowId(vb11GroupIds.equipment)).textContent).toContain("2 ITEMS");
-    expect(screen.getByTestId(groupRowId(vb11GroupIds.equipment)).textContent).toContain("PULL 1");
-    fireEvent.click(screen.getByTestId(vb11GroupIds.sand));
     await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(4));
-    expect(screen.getAllByTestId(/text-item-desc-/).filter(node => node.textContent?.includes("JCB-SITE"))).toHaveLength(1);
+    expect(screen.getByTestId(groupRowId(vb11GroupIds.equipment)).textContent).toContain("2 ITEMS");
+    expect(screen.getByTestId(groupRowId(vb11GroupIds.equipment)).textContent).toContain("0 TO PULL");
+    fireEvent.click(screen.getByTestId(vb11GroupIds.sand));
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(5));
+    expect(screen.getAllByTestId(/text-item-desc-/).filter(node => node.textContent?.includes("JCB-SITE"))).toHaveLength(2);
   });
 
-  it("Test D/E/F: Pull All applies rates and duplicate flags, clears the blank row, and retains Added groups", async () => {
+  it("shows billed sources and bills in the group, and excludes them from group Pull", async () => {
+    autoItemsForTest = [vb11Items[3], vb11Items[4]];
+    duplicateRowsForTest = [{ index: 0, billNo: "VB-OTHER-2", billStatus: "approved" }];
+    await openFreshPullBill(autoItemsForTest);
+
+    const soilGroup = screen.getByTestId(groupRowId(vb11GroupIds.soil));
+    expect(soilGroup.textContent).toContain("2 ITEMS · 1 ALREADY ON BILLS (#VB-OTHER-2) · 1 TO PULL");
+    expect(screen.getByTestId(vb11GroupIds.soil).textContent).toContain("PULL 1");
+    expect(screen.queryByTestId("button-exclude-already-billed")).toBeNull();
+
+    duplicateRowsForTest = [];
+    fireEvent.click(screen.getByTestId(vb11GroupIds.soil));
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(1));
+    expect(screen.getByTestId("text-item-desc-0").textContent).toContain("SOIL (PLANT)");
+  });
+
+  it("Pull All includes only sources not already on another bill", async () => {
+    autoItemsForTest = [vb11Items[3], vb11Items[4], vb11Items[5]];
+    duplicateRowsForTest = [{ index: 0, billNo: "VB-OTHER-3", billStatus: "verified" }];
+    await openFreshPullBill(autoItemsForTest);
+
+    const pullAll = screen.getByTestId("button-auto-populate");
+    expect(pullAll.textContent).toContain("PULL ALL 2 ITEMS");
+    duplicateRowsForTest = [];
+    fireEvent.click(pullAll);
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(2));
+    expect(screen.getAllByTestId(/text-item-desc-/).some(node => node.textContent?.includes("SOIL (SITE)"))).toBe(false);
+  });
+
+  it("shows the WMM 2-way lead, one group working line, vehicle/receipt, and no-weight trip rate", async () => {
+    autoItemsForTest = [{
+      date: "2026-09-15", category: "transport", description: "WMM - TRANSPORT",
+      qty: 1, unit: "TRIP", rate: 0, amount: 0,
+      source: "auto:site_material_trip_transport:101",
+      sourceType: "site_material_trip_transport", sourceId: 101, tripId: 101,
+      actualMt: null, vehicleNumber: "TRUCK-101", receiptNumber: "RCPT-101",
+      siteName: "SITE: TEST",
+    }];
+    rateCardsForTest = [{
+      itemKey: "EQ_WMM_TRIP", category: "transport", unit: "TRIP",
+      vendorName: "ABC EQUIPMENT", rate: 90, ratePerKm: 90, leadDistanceKm: 30, payloadMt: 30,
+    }];
+    await openFreshPullBill(autoItemsForTest);
+
+    fireEvent.click(screen.getByTestId("button-auto-populate"));
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(1));
+    expect((screen.getByTestId("input-item-lead-0") as HTMLInputElement).value).toBe("60");
+    expect(screen.getByTestId("text-item-trip-reference-0").textContent).toContain("TRUCK-101");
+    expect(screen.getByTestId("text-item-trip-reference-0").textContent).toContain("RCPT-101");
+    expect(screen.getByTestId("badge-no-transport-weight-0").textContent).toBe("no weight — per trip");
+    expect(screen.getByTestId("transport-pricing-row").textContent).toContain("₹180/MT");
+    expect(screen.getByTestId("transport-pricing-row").textContent).toContain("₹5,400/trip");
+    expect(screen.getByTestId("text-item-amount-0").textContent).toContain("5,400");
+    expect(screen.queryByRole("button", { name: "Per trip" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Per MT" })).toBeNull();
+    expect(vendorBillWrites).toHaveLength(0);
+  });
+
+  it("Test D/E/F: Pull All applies rates, skips preflight duplicates, clears the blank row, and retains Added groups", async () => {
     autoItemsForTest = vb11Items;
     rateCardsForTest = [
       { itemKey: "EQ_JCB_HRS", category: "equipment", unit: "HRS", vendorName: "ABC EQUIPMENT", rate: 250 },
@@ -709,16 +749,15 @@ describe("VB-11 grouped ordinary activity pull", () => {
     duplicateRowsForTest = [{ index: 2, billNo: "VB-OTHER-3", billStatus: "verified" }];
     await openVb11MixedBill();
 
+    expect(screen.getByTestId("button-auto-populate").textContent).toContain("PULL ALL 7 ITEMS");
+    duplicateRowsForTest = [];
     fireEvent.click(screen.getByTestId("button-auto-populate"));
-    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(vb11Items.length));
+    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(vb11Items.length - 1));
     expect(screen.queryByTestId("input-item-desc-0")).toBeNull();
     expect(screen.getAllByTestId(/input-item-rate-/).slice(0, 2).every(node => (node as HTMLInputElement).value === "250")).toBe(true);
-    expect(screen.getByTestId("badge-billed-2")).toBeTruthy();
-    Object.values(vb11GroupIds).forEach(id => expect(screen.getByTestId(groupRowId(id)).textContent).toContain("✓ ADDED"));
-    expect(screen.queryByTestId("button-auto-populate")).toBeNull();
-    fireEvent.click(screen.getByTestId("button-exclude-already-billed"));
-    await waitFor(() => expect(screen.getAllByTestId(/text-item-desc-/)).toHaveLength(vb11Items.length - 1));
     expect(screen.queryByTestId("badge-billed-2")).toBeNull();
+    Object.values(vb11GroupIds).forEach(id => expect(screen.getByTestId(groupRowId(id)).textContent).toContain("✓ ADDED"));
+    expect(screen.getByTestId("button-auto-populate").textContent).toContain("PULL ALL 1 ITEM");
   });
 
   it("does not leak a deferred pull into a new bill with the same vendor, period, and type", async () => {

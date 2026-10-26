@@ -72,7 +72,9 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(client).toContain("setLineItems(prev => mergeOtherBillItems(");
     expect(client).toContain("mapped,");
     expect(client).not.toContain("setLineItems(uncovered)");
-    expect(client).toContain("PULL ALL ${availableOtherItems.length}");
+    expect(client).toContain("PULL ALL ${availableToPullItems.length}");
+    expect(client).toContain("ALREADY ON BILLS");
+    expect(client).toContain("alreadyBilledBillNos.map");
     expect(client).toContain("candidatePullGroups");
     expect(client).toContain('const isGrouped = billType === "all" || billType === "equipment"');
     expect(client).not.toContain('const singleType = billType === "equipment"');

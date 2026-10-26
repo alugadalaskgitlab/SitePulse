@@ -1500,6 +1500,18 @@ export default function VendorBills() {
 
     try {
       let mapped: LineItem[] = billableItems.map(item => ({ ...item }));
+      const markTransportRatesUnavailable = () => {
+        mapped = mapped.map(item => {
+          if (!isSiteTripTransport(item)) return item;
+          const group = groupRateItems([item])[0];
+          return {
+            ...item,
+            rate: 0,
+            amount: 0,
+            transportPricingNote: `Could not check the transport rate card for ${vendorName} – ${group?.groupName || "material"}.`,
+          };
+        });
+      };
 
       try {
         const rcRes = await fetch(`/api/vendor-rate-cards?vendorName=${encodeURIComponent(vendorName)}`, {
@@ -1575,10 +1587,13 @@ export default function VendorBills() {
               description: "A different-unit rate card exists, but the quantity cannot be derived safely. Logged quantity and unit were retained with rate ₹0; use Set Rates to confirm the billing quantity.",
             });
           }
+        } else {
+          markTransportRatesUnavailable();
         }
       } catch (_e) {
         // Rate-card lookup has always been advisory; the duplicate check below
         // remains authoritative for whether this pull may proceed.
+        markTransportRatesUnavailable();
       }
 
       // A rate-card response can resolve after the preparer has selected
@@ -4153,6 +4168,7 @@ export default function VendorBills() {
               const categories = ["equipment", "material", "transport", "labour", "other"] as const;
               const catLabels: Record<string, string> = { equipment: "EQUIPMENT", material: "MATERIAL", transport: "TRANSPORT", labour: "LABOUR", other: "OTHER" };
               const shouldGroup = computeCategorySubTotals(lineItems).length > 1;
+              const transportGroups = transportPricingGroups(lineItems);
 
               const labourItemsAll = lineItems.filter(i => i.category === "labour");
               const labourSiteCount = labourItemsAll.filter(i => getLabourSource(i) === "site").length;
@@ -4218,6 +4234,9 @@ export default function VendorBills() {
                   <td className="px-2 py-1.5">
                     {isGeneratedEvidenceLine(item.source) ? (
                       <div className="space-y-1">
+                        {transportGroups.has(idx) && (
+                          <TransportPricingRow item={item} groupItems={transportGroups.get(idx)} />
+                        )}
                         <span className="text-sm" data-testid={`text-item-desc-${idx}`}>{item.description}</span>
                         {(item.vehicleNumber || item.receiptNumber) && (
                           <div className="text-[11px] text-muted-foreground" data-testid={`text-item-trip-reference-${idx}`}>
@@ -4246,6 +4265,11 @@ export default function VendorBills() {
                               BILLED ({item.billedIn.billNo} - {item.billedIn.billStatus.toUpperCase()})
                             </Badge>
                           )}
+                          {item.transportPricing?.basis === "trip" && item.transportPricing.actualMt == null && (
+                            <Badge variant="outline" className="text-[11px] text-amber-800 border-amber-400 dark:text-amber-300" data-testid={`badge-no-transport-weight-${idx}`}>
+                              no weight — per trip
+                            </Badge>
+                          )}
                         </div>
                         </div>
                     ) : (
@@ -4259,11 +4283,7 @@ export default function VendorBills() {
                       />
                     )}
                     <EquipmentLogFacts category={item.category} evidence={item.equipmentLogEvidence} rowKey={`form-${idx}`} />
-                    <TransportPricingRow item={item} onBasisChange={basis => {
-                      unitEditGeneration.current++;
-                      setLineItems(rows => rows.map((row, i) => i === idx ? changeTransportBasis(row, basis) : row));
-                    }} />
-                    <TransportPricingNote note={item.transportPricingNote} />
+                    <TransportPricingNote note={item.transportPricingNote} vendorName={vendorName} />
                   </td>
                   {hasSuppliedOrTransporter && (
                     <td className="px-2 py-1.5">
@@ -4323,10 +4343,10 @@ export default function VendorBills() {
                           <Input
                             type="number"
                             step="0.01"
-                            value={item.leadDistance || ""}
-                            onChange={e => updateLineItem(idx, "leadDistance", parseFloat(e.target.value) || 0)}
-                            placeholder="ONE-WAY KM"
-                            className="text-sm h-8"
+                            value={item.leadDistance ? item.leadDistance * 2 : ""}
+                            onChange={e => updateLineItem(idx, "leadDistance", (parseFloat(e.target.value) || 0) / 2)}
+                            placeholder="2-WAY KM"
+                            className="h-8 text-center text-sm tabular-nums"
                             onWheel={e => (e.target as HTMLInputElement).blur()}
                             data-testid={`input-item-lead-${idx}`}
                           />
@@ -4418,7 +4438,7 @@ export default function VendorBills() {
                       {hasSuppliedOrTransporter && <th className="px-2 py-2 text-left w-28">Transporter</th>}
                       <th className="px-2 py-2 text-left w-24">Qty</th>
                       <th className="px-2 py-2 text-left w-20">Unit</th>
-                      {hasLead && <th className="px-2 py-2 text-left w-28">Lead (KM)</th>}
+                      {hasLead && <th className="px-2 py-2 text-center w-28">LEAD KM (2-WAY)</th>}
                       <th className="px-2 py-2 text-left w-32">Rate (₹)</th>
                       <th className="px-2 py-2 text-right w-36">Amount (₹)</th>
                       <th className="px-2 py-2 w-10"></th>
@@ -5531,7 +5551,7 @@ export default function VendorBills() {
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
             {(() => {
-              const hasLead = bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0);
+              const hasLead = bill.items.some((it: any) => it.category === "transport" || (it.leadDistance && it.leadDistance > 0));
               const hasSuppliedOrTransporter = canViewBills && bill.items.some((it: any) => it.suppliedTo || it.transporter);
               const totalCols = hasLead ? (hasSuppliedOrTransporter ? 11 : 9) : (hasSuppliedOrTransporter ? 10 : 8);
               const labelCols = hasLead ? (hasSuppliedOrTransporter ? 9 : 7) : (hasSuppliedOrTransporter ? 8 : 6);
@@ -5539,6 +5559,7 @@ export default function VendorBills() {
               const shouldGroup = catSubs.length > 1;
               const categories = ["equipment", "material", "transport", "labour", "other"] as const;
               const catLabels: Record<string, string> = { equipment: "EQUIPMENT", material: "MATERIAL", transport: "TRANSPORT", labour: "LABOUR", other: "OTHER" };
+              const transportGroups = transportPricingGroups(bill.items);
 
               const renderDetailRow = (item: any, idx: number) => (
                 <tr key={item.id || idx} className="border-b">
@@ -5560,10 +5581,17 @@ export default function VendorBills() {
                   </td>
                   <td className="px-2 py-2 font-medium text-sm" data-testid={`text-detail-item-desc-${idx}`}>
                     <div className="space-y-1">
+                      {transportGroups.has(idx) && (
+                        <TransportPricingRow item={item} groupItems={transportGroups.get(idx)} />
+                      )}
                       <span>{item.description}</span>
                       <EquipmentLogFacts category={item.category} evidence={item.equipmentLogEvidence as EquipmentLogEvidence | null | undefined} rowKey={`detail-${idx}`} />
-                      <TransportPricingRow item={item} />
                       <div className="flex items-center gap-1 flex-wrap">
+                        {item.transportPricing?.basis === "trip" && item.transportPricing.actualMt == null && (
+                          <Badge variant="outline" className="text-[11px] text-amber-800 border-amber-400 dark:text-amber-300" data-testid={`badge-detail-no-transport-weight-${idx}`}>
+                            no weight — per trip
+                          </Badge>
+                        )}
                         {(() => {
                           const badge = parseSiteBadge(item);
                           return badge ? (
@@ -5588,7 +5616,7 @@ export default function VendorBills() {
                   {hasLead && (
                     <td className="px-2 py-2 text-sm">
                       {item.leadDistance && item.leadDistance > 0 ? (
-                        <span>{formatQty(item.leadDistance)} <span className="text-muted-foreground">(RT: {formatQty(item.leadDistance * 2)})</span></span>
+                        <span className="block text-center tabular-nums">{formatQty(item.leadDistance * 2)}</span>
                       ) : "-"}
                     </td>
                   )}
@@ -5611,7 +5639,7 @@ export default function VendorBills() {
                       {hasSuppliedOrTransporter && <th className="px-2 py-2 text-left w-28">Transporter</th>}
                       <th className="px-2 py-2 text-left w-24">Qty</th>
                       <th className="px-2 py-2 text-left w-16">Unit</th>
-                      {hasLead && <th className="px-2 py-2 text-left w-28">Lead (KM)</th>}
+                      {hasLead && <th className="px-2 py-2 text-center w-28">LEAD KM (2-WAY)</th>}
                       <th className="px-2 py-2 text-right w-32">Rate (₹)</th>
                       <th className="px-2 py-2 text-right w-36">Amount (₹)</th>
                     </tr>
