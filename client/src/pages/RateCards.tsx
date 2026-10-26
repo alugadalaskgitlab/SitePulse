@@ -11,6 +11,7 @@ import { ChevronLeft, Loader2, Save, Lock, Search, Plus, ChevronDown, ChevronUp,
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { isManualVendorRateCard, MANUAL_VENDOR_RATE_CARD_NOTE } from "@shared/vendorRateCardIdentity";
+import { SITE_MATERIAL_TRIP_MATERIAL_OPTIONS } from "@shared/siteMaterialTripMaterials";
 import type { VendorAlias } from "@shared/schema";
 import { TransportRateBasis, TransportRateSetup, hasTransportSetup } from "@/components/TransportRateSetup";
 import type { TransportRateFields } from "@/components/TransportRateSetup";
@@ -176,9 +177,14 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
     },
   });
 
-  const { data: plantMaterials = [] } = useQuery<any[]>({
-    queryKey: ["/api/plant-materials"],
+  const { data: plantMaterials = [], isError: plantMaterialsError } = useQuery<any[]>({
+    queryKey: ["/api/plant-module/materials"],
     enabled: !!selectedVendor,
+    queryFn: async () => {
+      const response = await fetch("/api/plant-module/materials", { credentials: "include" });
+      if (!response.ok) throw new Error("Couldn't load materials");
+      return response.json();
+    },
   });
 
   useEffect(() => {
@@ -556,10 +562,12 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
   }, [rates, manualRows, visibleDiscoveredItems]);
 
   const materialNameOptions = useMemo(() => {
-    const names = plantMaterials
+    const names = [
+      ...SITE_MATERIAL_TRIP_MATERIAL_OPTIONS,
+      ...plantMaterials
       .map((material: any) => normalizeItemName(String(material.name ?? "")))
-      .filter(Boolean)
-      .sort((a: string, b: string) => a.localeCompare(b));
+      .filter(Boolean),
+    ].map(name => normalizeItemName(name)).sort((a, b) => a.localeCompare(b));
     const unique = new Map<string, string>();
     names.forEach((name: string) => {
       if (!unique.has(compactItemName(name))) unique.set(compactItemName(name), name);
@@ -901,7 +909,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                         <div className="space-y-1">
                           <Label className="text-[12px] uppercase">Material</Label>
                           <Select value={addMatName} onValueChange={setAddMatName}>
-                            <SelectTrigger className="w-48 h-8 text-sm" data-testid="select-add-mat-name">
+                            <SelectTrigger className="w-48 h-8 text-sm" data-testid="select-add-mat-name" disabled={plantMaterialsError}>
                               <SelectValue placeholder="Select material..." />
                             </SelectTrigger>
                             <SelectContent>
@@ -910,6 +918,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                               ))}
                             </SelectContent>
                           </Select>
+                          {plantMaterialsError && <p role="alert" className="text-sm text-destructive">Couldn't load materials</p>}
                         </div>
                         <div className="space-y-1">
                           <Label className="text-[12px] uppercase">Unit</Label>
@@ -1011,7 +1020,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                             <div className="space-y-1">
                               <Label className="text-[12px] uppercase">Material</Label>
                               <Select value={addTransMaterial} onValueChange={setAddTransMaterial}>
-                                <SelectTrigger className="w-48 h-8 text-sm" data-testid="select-add-trans-material">
+                                <SelectTrigger className="w-48 h-8 text-sm" data-testid="select-add-trans-material" disabled={plantMaterialsError}>
                                   <SelectValue placeholder="Select material..." />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -1020,6 +1029,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                                   ))}
                                 </SelectContent>
                               </Select>
+                                {plantMaterialsError && <p role="alert" className="text-sm text-destructive">Couldn't load materials</p>}
                             </div>
                             <div className="space-y-1">
                               <Label className="text-[12px] uppercase">Basis</Label>

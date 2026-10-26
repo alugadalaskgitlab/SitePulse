@@ -14,7 +14,7 @@ vi.mock("@/components/ui/select", async () => {
   return {
     Select: ({ value, onValueChange, children }: any) => {
       const parts = React.Children.toArray(children) as any[];
-      return <select data-testid={parts[0]?.props["data-testid"]} value={value} onChange={event => onValueChange(event.target.value)}>{parts[1]}</select>;
+      return <select data-testid={parts[0]?.props["data-testid"]} disabled={parts[0]?.props.disabled} value={value} onChange={event => onValueChange(event.target.value)}>{parts[1]}</select>;
     },
     SelectTrigger: () => null,
     SelectValue: () => null,
@@ -30,6 +30,8 @@ let bulkWrites: any[];
 let creates: any[];
 let materials: any[];
 let failure: boolean;
+let materialsLoadFailure: boolean;
+let materialRequests: string[];
 const base = { id: 7, vendorName: "RAVI HAULAGE", category: "transport", itemKey: "EQ_TIPPER_HRS", itemLabel: "TIPPER — HOURLY HIRE", unit: "HRS", rate: 387, notes: "Agreed flat rate", ratePerKm: null, leadDistanceKm: null, payloadMt: null };
 beforeEach(() => {
   queryClient.clear();
@@ -38,8 +40,10 @@ beforeEach(() => {
   writes = [];
   bulkWrites = [];
   creates = [];
-  materials = [{ name: "WMM" }, { name: "20 MM" }, { name: "20MM" }];
+  materials = [{ name: "WMM" }, { name: "20 MM" }, { name: "20MM" }, { name: "Aggregate" }];
   failure = false;
+  materialsLoadFailure = false;
+  materialRequests = [];
   toast.mockClear();
   Element.prototype.scrollIntoView = vi.fn();
   window.history.replaceState(null, "", "/plant/rate-cards");
@@ -75,7 +79,10 @@ beforeEach(() => {
     if (url.pathname === "/api/vendor-rate-cards/discover") return json(url.searchParams.get("vendorName") === "SHANKAR LOGISTICS" ? [] : discovered);
     if (url.pathname === "/api/vendor-rate-cards") return json(url.searchParams.get("vendorName") === "SHANKAR LOGISTICS" ? [] : cards);
     if (url.pathname === "/api/equipment-master/canonical-types") return json(["TIPPER"]);
-    if (url.pathname === "/api/plant-materials") return json(materials);
+    if (url.pathname === "/api/plant-module/materials") {
+      materialRequests.push(url.pathname);
+      return materialsLoadFailure ? json({ message: "Unavailable" }, 500) : json(materials);
+    }
     return json([]);
   }));
 });
@@ -188,14 +195,21 @@ describe("transport-only rate setup", () => {
     expect(screen.queryByRole("button", { name: /Rate setup for/ })).toBeNull();
   });
 
-  it("adds a material transport card and opens per-km setup immediately", async () => {
+  it("loads the real material endpoint, merges site-trip and master names, and saves WMM transport setup", async () => {
     cards = [];
     discovered = [];
     mount();
     fireEvent.click(await screen.findByTestId("button-add-transport-row"));
     fireEvent.change(screen.getByTestId("select-add-transport-kind"), { target: { value: "material" } });
     const materialSelect = screen.getByTestId("select-add-trans-material") as HTMLSelectElement;
-    expect(Array.from(materialSelect.options).map(option => option.value)).toEqual(["20 MM", "WMM"]);
+    const options = Array.from(materialSelect.options).map(option => option.value);
+    expect(materialRequests).toContain("/api/plant-module/materials");
+    expect(options).toContain("WMM");
+    expect(options).toContain("GSB");
+    expect(options).toContain("BC MIX");
+    expect(options).toContain("DBM MIX");
+    expect(options).toContain("AGGREGATE");
+    expect(options.filter(name => name.replace(/\s/g, "") === "20MM")).toHaveLength(1);
     fireEvent.change(materialSelect, { target: { value: "WMM" } });
     fireEvent.click(screen.getByTestId("button-confirm-add-transport"));
 
@@ -217,6 +231,31 @@ describe("transport-only rate setup", () => {
     })]);
     expect(writes).toEqual([{ itemKey: "EQ_WMM_TRIP", ratePerKm: 90, leadDistanceKm: 12, payloadMt: 30 }]);
     expect(screen.getByTestId("transport-rate-basis").textContent).toContain("₹90/km · 12 km one way · 30 MT → ₹2,160/trip · ₹72/MT");
+  });
+
+  it("uses the same loaded material list in the Material section Add Row dropdown", async () => {
+    cards = [];
+    discovered = [];
+    mount();
+    fireEvent.click(await screen.findByTestId("button-add-material-row"));
+    const options = Array.from((await screen.findByTestId("select-add-mat-name") as HTMLSelectElement).options).map(option => option.value);
+    expect(options).toContain("SOIL");
+    expect(options).toContain("AGGREGATE");
+    expect(materialRequests).toContain("/api/plant-module/materials");
+  });
+
+  it("shows a clear error instead of empty material dropdowns when loading fails", async () => {
+    materialsLoadFailure = true;
+    cards = [];
+    discovered = [];
+    mount();
+    fireEvent.click(await screen.findByTestId("button-add-material-row"));
+    expect(await screen.findByText("Couldn't load materials")).toBeTruthy();
+    expect((screen.getByTestId("select-add-mat-name") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByTestId("button-add-transport-row"));
+    fireEvent.change(screen.getByTestId("select-add-transport-kind"), { target: { value: "material" } });
+    expect(screen.getAllByText("Couldn't load materials").length).toBeGreaterThan(0);
+    expect((screen.getByTestId("select-add-trans-material") as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("treats names with and without spaces as an existing material transport card", async () => {

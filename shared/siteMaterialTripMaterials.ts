@@ -1,0 +1,15 @@
+export const SITE_MATERIAL_TRIP_MATERIAL_OPTIONS = [
+  "WMM",
+  "GSB",
+  "Soil",
+  "Dust",
+  "6MM DOWN",
+  "10/12MM",
+  "20MM",
+  "BC Mix",
+  "DBM Mix",
+  "Water",
+  "Bitumen",
+  "Emulsion",
+  "Diesel",
+] as const;

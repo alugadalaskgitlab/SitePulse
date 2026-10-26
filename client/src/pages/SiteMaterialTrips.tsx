@@ -32,14 +32,11 @@ import {
   useSiteMaterialSuggestions,
 } from "@/hooks/use-site-material-suggestions";
 import { useAuth } from "@/lib/auth-context";
+import { SITE_MATERIAL_TRIP_MATERIAL_OPTIONS } from "@shared/siteMaterialTripMaterials";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-
-const MATERIAL_OPTIONS = [
-  "WMM", "GSB", "Soil", "Dust", "6MM DOWN", "10/12MM", "20MM", "BC Mix", "DBM Mix", "Water", "Bitumen", "Emulsion", "Diesel"
-];
 
 const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs", "Tons"];
 
@@ -594,7 +591,7 @@ export default function SiteMaterialTrips() {
                       <SelectValue placeholder="Select Material" />
                     </SelectTrigger>
                     <SelectContent>
-                      {MATERIAL_OPTIONS.map((mat) => (
+                      {SITE_MATERIAL_TRIP_MATERIAL_OPTIONS.map((mat) => (
                         <SelectItem key={mat} value={mat}>{mat}</SelectItem>
                       ))}
                     </SelectContent>
@@ -895,7 +892,7 @@ export default function SiteMaterialTrips() {
                   <SelectTrigger data-testid="select-filter-material"><SelectValue placeholder="All Materials" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Materials</SelectItem>
-                    {MATERIAL_OPTIONS.map((material) => <SelectItem key={material} value={material}>{material}</SelectItem>)}
+                    {SITE_MATERIAL_TRIP_MATERIAL_OPTIONS.map((material) => <SelectItem key={material} value={material}>{material}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
