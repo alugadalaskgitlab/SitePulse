@@ -78,27 +78,65 @@ describe("equipment hire bill output", () => {
     expect(rows[1]).toMatchObject({ status: "Breakdown", downtimeHours: 4, remarks: expect.stringContaining("Hydraulic hose") });
   });
 
-  it("exports a portrait bill with the monthly summary and appends the landscape Activity Statement", () => {
+  it("exports a portrait bill page without embedding the Activity Statement", () => {
     pdfEvents.length = 0;
     tables.length = 0;
     exportEquipmentHireBill(data, rows, "pdf");
-    expect(tables).toHaveLength(3);
+    expect(tables).toHaveLength(2);
     expect(tables[0].head[0]).toEqual(["Month", "Days billed", "Gross hire", "Breakdown", "Gross bill amount", "Advance", "Net—month"]);
     expect(tables[1].body.flat()).toEqual(expect.arrayContaining(["Gross bill amount", "NET PAYABLE", "Rs. 8,036.00"]));
     expect(tables.flatMap(table => table.body.flat()).join("")).not.toMatch(/[₹−×]/);
-    expect(tables[2].head[0]).toEqual([
-      "Date", "Site", "Open meter", "Close meter", "Working hrs (h:min)", "Start time",
-      "End time", "Clock duration", "Tank open", "Tank close", "Diesel issued",
-      "Consumption (L/hr)", "Status",
-    ]);
     expect(pdfEvents.some(event => event.type === "text" && event.value === "EQUIPMENT HIRE BILL")).toBe(true);
-    expect(pdfEvents.some(event => event.type === "text" && event.value === "ACTIVITY STATEMENT")).toBe(true);
+    expect(pdfEvents.some(event => event.type === "text" && event.value === "ACTIVITY STATEMENT")).toBe(false);
+    expect(pdfEvents.some(event => event.type === "page")).toBe(false);
     expect(pdfEvents.some(event => event.type === "rect" && event.args?.join(",") === "10,8,15,12")).toBe(true);
     expect(pdfEvents.some(event => event.type === "text" && event.value === "HLC")).toBe(true);
     expect(pdfEvents).toContainEqual({ type: "save", value: "VB-EH-001.pdf" });
   });
 
-  it("embeds the configured logo in both equipment-hire PDF headers", () => {
+  it("sums recorded month values and ignores missing hours, diesel, and consumption rates", () => {
+    const base = rows[0].performance!;
+    const partialRows = [
+      {
+        ...rows[0],
+        date: "2026-01-10",
+        performance: {
+          ...base, key: "partial-1", date: "2026-01-10", workingHours: 8, workingHoursIncomplete: false,
+          dieselIssued: 20, dieselConsumed: 22, openingTank: 30, closingTank: 25,
+          consumptionRate: 2.75, consumptionIncomplete: false,
+        },
+      },
+      {
+        ...rows[0],
+        date: "2026-01-11",
+        performance: {
+          ...base, key: "partial-2", date: "2026-01-11", workingHours: 4, workingHoursIncomplete: false,
+          dieselIssued: 10, dieselConsumed: 20, openingTank: 25, closingTank: 20,
+          consumptionRate: 5, consumptionIncomplete: false,
+        },
+      },
+      {
+        ...rows[0],
+        date: "2026-01-12",
+        performance: {
+          ...base, key: "partial-3", date: "2026-01-12", workingHours: null, workingHoursIncomplete: true,
+          dieselIssued: null, dieselConsumed: null, openingTank: null, closingTank: null,
+          consumptionRate: null, consumptionIncomplete: true,
+        },
+      },
+    ] as typeof rows;
+    pdfEvents.length = 0;
+    tables.length = 0;
+
+    exportEquipmentHireCalendar(data, partialRows, "pdf");
+
+    const totalRow = tables[0].body.at(-1);
+    expect(totalRow[4]).toBe("12:00");
+    expect(totalRow[10]).toBe("30.00 L");
+    expect(totalRow[11]).toBe("3.88 L/hr");
+  });
+
+  it("embeds the configured logo in both the bill and standalone Activity Statement PDFs", () => {
     const logoDataUrl = "data:image/png;base64,bG9nbw==";
     pdfEvents.length = 0;
     exportEquipmentHireBill({ ...data, logoDataUrl }, rows, "pdf");

@@ -3,7 +3,7 @@ import { buildWholeBillPdf } from "./wholeBillExport";
 import type { WholeBillSnapshot } from "./wholeBillSnapshot";
 
 describe("whole bill PDF layout", () => {
-  it("keeps the bill portrait, appends a landscape Activity Statement, and omits the hire line table", () => {
+  it("exports an equipment bill as one portrait bill page and keeps other categories landscape", () => {
     const snapshot: WholeBillSnapshot = {
       companyName: "Highlane Constructions",
       vendorName: "Vendor",
@@ -140,32 +140,39 @@ describe("whole bill PDF layout", () => {
         netPayable: 25_951.61,
       },
     };
-    const pdf = buildWholeBillPdf(snapshot);
+    const pdf = buildWholeBillPdf({
+      ...snapshot,
+      sections: snapshot.sections.filter(section => section.category === "equipment"),
+    });
     const pages = (pdf as any).internal.pages as string[][];
 
     pdf.setPage(1);
     expect(pdf.internal.pageSize.getWidth()).toBeLessThan(pdf.internal.pageSize.getHeight());
-    pdf.setPage(2);
-    expect(pdf.internal.pageSize.getWidth()).toBeGreaterThan(pdf.internal.pageSize.getHeight());
-    pdf.setPage(3);
-    expect(pdf.internal.pageSize.getWidth()).toBeGreaterThan(pdf.internal.pageSize.getHeight());
-    expect(pdf.getNumberOfPages()).toBe(3);
+    expect(pdf.getNumberOfPages()).toBe(1);
     expect(pages[1].join("")).toContain("EQUIPMENT HIRE BILL");
     expect(pages[1].join("")).toContain("Excavator");
     expect(pages[1].join("")).toContain("EX-07");
-    expect(pages[1].join("")).not.toContain("Equipment #49");
     expect(pages[1].join("")).toContain("Prepared · HLC");
-    expect(pages[2].join("")).toContain("ACTIVITY STATEMENT");
-    expect(pages[2].join("")).toContain("Prepared");
-    expect(pages[2].join("")).toContain("Received");
-    expect(pages[3].join("")).toContain("MATERIAL TABLE");
-    expect(pages[3].join("")).not.toContain("Always empty");
+    expect(pages[1].join("")).toContain("Received · Vendor");
+    expect(pages[1].join("")).not.toContain("Equipment #49");
+    expect(pages[1].join("")).not.toContain("ACTIVITY STATEMENT");
+    expect(pages[1].join("")).not.toContain("MATERIAL TABLE");
     expect(pdf.output()).not.toContain("RAW EQUIPMENT LINE TABLE");
+    expect(pdf.output()).not.toContain("ACTIVITY STATEMENT");
     expect(pdf.output()).toContain("20,967.74");
     expect(pdf.output()).toContain("Rs. 65,000.00");
     expect(pdf.output()).toContain("Rs. 44,032.26");
     expect(pdf.output()).toContain("Rs. 25,951.61");
     expect(pdf.output()).toContain("3,080.65");
     expect(pdf.output()).toContain("NET PAYABLE");
+
+    const mixedPdf = buildWholeBillPdf(snapshot);
+    const mixedPages = (mixedPdf as any).internal.pages as string[][];
+    expect(mixedPdf.getNumberOfPages()).toBe(2);
+    mixedPdf.setPage(2);
+    expect(mixedPdf.internal.pageSize.getWidth()).toBeGreaterThan(mixedPdf.internal.pageSize.getHeight());
+    expect(mixedPages[2].join("")).toContain("MATERIAL TABLE");
+    expect(mixedPages[2].join("")).not.toContain("Always empty");
+    expect(mixedPdf.output()).not.toContain("ACTIVITY STATEMENT");
   });
 });

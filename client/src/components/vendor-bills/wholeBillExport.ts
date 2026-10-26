@@ -3,8 +3,7 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { hireReviewDisclosureLines, MONTHLY_BILL_HEADERS, hireReviewTable } from "@shared/vendorBillLayout";
 import {
-  equipmentHireActivitySheetRows, exportEquipmentHireCalendar,
-  type EquipmentHireExportData,
+  equipmentHireActivitySheetRows,
 } from "./EquipmentHireBillOutput";
 import { getBaseSiteName } from "@shared/siteName";
 import { buildWholeBillEquipmentPdf } from "./wholeBillEquipmentPdf";
@@ -85,88 +84,7 @@ export function buildWholeBillWorkbook(snapshot: WholeBillSnapshot): XLSX.WorkBo
 /** Totals and grouping are projections only; no financial calculation here. */
 export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
   if (snapshot.billType.toLowerCase() === "equipment" || snapshot.hireStatementDetails?.length || snapshot.hireReviews?.length) {
-    return buildWholeBillEquipmentPdf(snapshot, doc => {
-      const groups = new Map<string, {
-        calendars: WholeBillSnapshot["calendars"];
-        statements: NonNullable<WholeBillSnapshot["hireStatementDetails"]>;
-      }>();
-      (snapshot.calendars || []).forEach((calendar, index) => {
-        const statement = snapshot.hireStatementDetails?.[index];
-        const reference = statement?.masterReference;
-        const key = reference != null && String(reference).trim()
-          ? `${typeof reference === "number" ? "id" : "ref"}:${String(reference).trim().toLowerCase()}`
-          : `name:${String(statement?.equipmentName || calendar.equipmentName).trim().toLowerCase()}`;
-        const group = groups.get(key) || { calendars: [], statements: [] };
-        group.calendars.push(calendar);
-        if (statement) group.statements.push(statement);
-        groups.set(key, group);
-      });
-
-      for (const group of groups.values()) {
-        const calendar = group.calendars[0];
-        const statement = group.statements[0];
-        const allRows = group.calendars.flatMap(item => item.rows || []).sort((a, b) => a.date.localeCompare(b.date));
-        const periodsFrom = group.calendars.map(item => item.periodFrom).filter(Boolean).sort();
-        const periodsTo = group.calendars.map(item => item.periodTo).filter(Boolean).sort();
-        const rawEquipmentName = String(statement?.equipmentName || calendar.equipmentName || "Equipment");
-        const equipmentName = /^equipment\s*#\s*\d+$/i.test(rawEquipmentName)
-          ? statement?.equipmentType || calendar.equipmentType || "Equipment"
-          : rawEquipmentName;
-        const masterReference = typeof statement?.masterReference === "string"
-          ? statement.masterReference
-          : null;
-        const data: EquipmentHireExportData = {
-          billNo: snapshot.billNo,
-          billDate: snapshot.billDate,
-          billStatus: snapshot.status,
-          companyName: snapshot.companyName,
-          logoFile: snapshot.logoFile,
-          logoDataUrl: snapshot.logoDataUrl,
-          vendorName: snapshot.vendorName,
-          equipmentName,
-          equipmentType: statement?.equipmentType || calendar.equipmentType,
-          equipmentMasterReference: masterReference,
-          projectSite: statement?.site || snapshot.site,
-          periodFrom: periodsFrom[0] || statement?.periodFrom || snapshot.periodFrom,
-          periodTo: periodsTo.at(-1) || statement?.periodTo || snapshot.periodTo,
-          hireBasis: statement?.basis || "Hire",
-          rate: statement?.rate ?? 0,
-          grossHire: statement?.grossHire ?? 0,
-          breakdownDeduction: statement?.breakdownDeduction ?? 0,
-          hsdRecovery: statement?.hsdRecovery ?? 0,
-          otherDebit: statement?.otherDebit ?? 0,
-          otherDebitReason: statement?.otherDebitReason,
-          advanceAdjustment: statement?.advanceAdjustment ?? 0,
-          advanceAdjustmentReason: statement?.advanceAdjustmentReason,
-          advanceAdjustmentDate: statement?.advanceAdjustmentDate,
-          otherCredit: statement?.otherCredit ?? 0,
-          otherCreditReason: statement?.otherCreditReason,
-          gstRate: statement?.gstRate ?? 0,
-          gstAmount: statement?.gstAmount ?? null,
-          taxableAmount: statement?.grossBillAmount ?? null,
-          taxBase: statement?.grossBillAmount ?? null,
-          invoiceTotal: statement?.grossBillAmount ?? null,
-          tdsRate: statement?.tdsRate ?? 0,
-          tdsAmount: statement?.tdsAmount ?? null,
-          netPayable: statement?.netPayable ?? null,
-          paid: null,
-          monthlyDivisorType: statement?.monthlyDivisorType,
-          monthlyDivisor: statement?.monthlyDivisor,
-          dieselResponsibility: calendar.dieselResponsibility,
-          consumptionNorm: calendar.consumptionNorm ?? statement?.dieselNorm,
-          meterType: calendar.meterType,
-          consumptionRateUnit: statement?.dieselNormUnit === "L/hr" || statement?.dieselNormUnit === "L/km"
-            ? statement.dieselNormUnit : null,
-        };
-        const emptyMessage = group.calendars.map(item => item.unavailableReason).filter(Boolean).join(" · ");
-        exportEquipmentHireCalendar(data, allRows, "pdf", {
-          doc,
-          startNewPage: true,
-          append: true,
-          emptyMessage: allRows.length ? undefined : emptyMessage || undefined,
-        });
-      }
-    });
+    return buildWholeBillEquipmentPdf(snapshot);
   }
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const pageHeaderHeight = 52;

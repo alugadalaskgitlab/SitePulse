@@ -5514,7 +5514,7 @@ export default function VendorBills() {
 
         {hasPersistedHireStatements && <div className="space-y-3">
           {hasFrozenTripDailyHire(bill as any) && <p className="text-sm text-amber-700">{FROZEN_TRIP_DAILY_MESSAGE}</p>}
-          <SavedBillCalendars bill={bill} canExport={canExport} />
+          <SavedBillCalendars bill={bill} canExport={canExport} logoFile={logoFile} />
         </div>}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2">

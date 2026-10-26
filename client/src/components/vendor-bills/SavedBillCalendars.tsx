@@ -65,7 +65,9 @@ function missingSavedPerformanceFields(rows: BillingDailyRow[]) {
 }
 
 /** Only persisted bill/statement evidence; deliberately has no live-data query. */
-export default function SavedBillCalendars({ bill, canExport = false }: { bill: any; canExport?: boolean }) {
+export default function SavedBillCalendars({
+  bill, canExport = false, logoFile,
+}: { bill: any; canExport?: boolean; logoFile?: string | null }) {
   const statements: any[] = bill.hireStatements || [];
   const statementGroups = new Map<string, any[]>();
   for (const statement of statements) {
@@ -88,7 +90,7 @@ export default function SavedBillCalendars({ bill, canExport = false }: { bill: 
       const outputs = equipmentStatements.map((statement, index) =>
         buildSavedEquipmentHireBillOutput({
           ...bill, netPayableAmount: undefined, hireStatements: [statement], hireReview: reviews[index],
-        }));
+        }, logoFile || undefined));
       const output = outputs.find(Boolean) || null;
       const name = reviews[0]?.name || equipmentStatements[0].equipmentName || `Equipment #${equipmentStatements[0].equipmentId}`;
       const rows = outputs.flatMap(result => result?.rows || [])

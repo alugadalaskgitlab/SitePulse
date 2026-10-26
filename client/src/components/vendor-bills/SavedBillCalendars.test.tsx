@@ -1,15 +1,19 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import SavedBillCalendars from "./SavedBillCalendars";
 import {
   buildSavedEquipmentHireBillOutput,
   exportEquipmentHireCalendar,
 } from "./EquipmentHireBillOutput";
+import { loadPdfLogoDataUrl } from "./pdfExportStyle";
 
 vi.mock("./EquipmentHireBillOutput", () => ({
   buildSavedEquipmentHireBillOutput: vi.fn(),
   exportEquipmentHireCalendar: vi.fn(),
+}));
+vi.mock("./pdfExportStyle", () => ({
+  loadPdfLogoDataUrl: vi.fn(),
 }));
 
 const augustRow: any = {
@@ -75,13 +79,14 @@ const savedBill: any = {
 };
 
 beforeEach(() => {
-  vi.mocked(buildSavedEquipmentHireBillOutput).mockReturnValue({
+  vi.mocked(buildSavedEquipmentHireBillOutput).mockImplementation((_bill: any, logoFile?: string) => ({
     data: {
       billNo: "VB-1",
       equipmentName: "EXCAVATOR",
       vendorName: "HIRE VENDOR",
       periodFrom: "2026-08-20",
       periodTo: "2026-09-15",
+      logoFile,
       dieselResponsibility: "hlc",
       consumptionNorm: 2,
       meterType: "hour_meter",
@@ -89,8 +94,10 @@ beforeEach(() => {
     } as any,
     rows: [augustRow, septemberRow],
     hasFrozenDailyRows: true,
-  });
+  }));
   vi.mocked(exportEquipmentHireCalendar).mockClear();
+  vi.mocked(loadPdfLogoDataUrl).mockReset();
+  vi.mocked(loadPdfLogoDataUrl).mockResolvedValue("data:image/png;base64,logo");
 });
 
 afterEach(cleanup);
@@ -136,5 +143,21 @@ describe("saved hire activity month sections", () => {
       [augustRow, septemberRow],
       "pdf",
     );
+  });
+
+  it("uses the configured company logo for standalone Activity Statement PDFs", async () => {
+    render(<SavedBillCalendars bill={savedBill} canExport logoFile="company/logo.png" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Activity Statement PDF" }));
+
+    await waitFor(() => expect(loadPdfLogoDataUrl).toHaveBeenCalledWith("company/logo.png"));
+    await waitFor(() => expect(exportEquipmentHireCalendar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        logoFile: "company/logo.png",
+        logoDataUrl: "data:image/png;base64,logo",
+      }),
+      [augustRow, septemberRow],
+      "pdf",
+    ));
   });
 });

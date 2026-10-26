@@ -237,10 +237,7 @@ function addSignatures(doc: jsPDF, y: number) {
   });
 }
 
-export function buildWholeBillEquipmentPdf(
-  snapshot: WholeBillSnapshot,
-  appendActivityPages?: (doc: jsPDF) => void,
-): jsPDF {
+export function buildWholeBillEquipmentPdf(snapshot: WholeBillSnapshot): jsPDF {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const statements = snapshot.hireStatementDetails || [];
   const header = makeHeader(snapshot, statements);
@@ -349,8 +346,8 @@ export function buildWholeBillEquipmentPdf(
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8);
   doc.setTextColor(25, 25, 25);
-  doc.text("DEDUCTIONS & ADJUSTMENTS", 10, y);
-  doc.text("BILL SUMMARY", pageWidth / 2 + 2, y);
+  doc.text("Deductions & Adjustments", 10, y);
+  doc.text("Bill Summary", pageWidth / 2 + 2, y);
   autoTable(doc, {
     startY: y + 2,
     head: [["Adjustment", "Amount", "Summary", "Amount"]],
@@ -388,8 +385,6 @@ export function buildWholeBillEquipmentPdf(
     }
   }
   addSignatures(doc, pageHeight - 42);
-
-  appendActivityPages?.(doc);
 
   const hasHireData = statements.length > 0 || !!snapshot.hireReviews?.length || snapshot.billType.toLowerCase() === "equipment";
   const nonHireSections = populatedBillSections(snapshot).filter(section =>

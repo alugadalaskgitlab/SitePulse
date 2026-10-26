@@ -604,13 +604,7 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
       netPayable: data.netPayable ?? Number.NaN,
     },
   };
-  const doc = buildWholeBillEquipmentPdf(billSnapshot, pdfDoc => {
-    exportEquipmentHireCalendar(data, rows, "pdf", {
-      doc: pdfDoc,
-      startNewPage: true,
-      append: true,
-    });
-  });
+  const doc = buildWholeBillEquipmentPdf(billSnapshot);
   doc.save(`${safeName}.pdf`);
 }
 
@@ -693,24 +687,22 @@ function activityMonthTotalRow(
   consumptionUnit: string,
 ) {
   const active = month.filter(row => !noActivityRecorded(row));
-  const workingRows = active.filter(row => row.status !== "Breakdown");
   const totals = active.length
     ? buildEquipmentHirePeriodTotals(active, fuelIsContractorScope ? "vendor" : "hlc")
     : null;
-  const hoursComplete = workingRows.length > 0 && workingRows.every(row =>
-    row.performance?.workingHours != null && !row.performance.workingHoursIncomplete);
-  const issuedComplete = workingRows.length > 0 && (fuelIsContractorScope || workingRows.every(row => row.performance?.dieselIssued != null));
-  const consumptionComplete = workingRows.length > 0 && !fuelIsContractorScope && workingRows.every(row =>
-    row.performance?.dieselConsumed != null &&
-    row.performance.openingTank != null &&
-    row.performance.closingTank != null &&
-    !row.performance.consumptionIncomplete);
-  const hourTotal = totals?.hours == null || !hoursComplete ? "—" : formatHoursMinutes(totals.hours);
+  const hourTotal = totals?.hours == null ? "—" : formatHoursMinutes(totals.hours);
   const issuedTotal = fuelIsContractorScope
     ? "Contractor scope"
-    : !issuedComplete || totals?.dieselIssued == null ? "N/A" : `${numberFixed(totals.dieselIssued)} L`;
-  const average = consumptionComplete && totals?.hours && totals.dieselConsumed != null
-    ? `${number(totals.dieselConsumed / totals.hours, 2)} ${consumptionUnit}`
+    : totals?.dieselIssued == null ? "N/A" : `${numberFixed(totals.dieselIssued)} L`;
+  const consumptionRates = fuelIsContractorScope ? [] : active
+    .map(row => row.performance)
+    .filter((item): item is EquipmentPerformanceDailyRow => !!item &&
+      item.openingTank != null && item.closingTank != null &&
+      !item.consumptionIncomplete && item.consumptionRate != null &&
+      Number.isFinite(Number(item.consumptionRate)))
+    .map(item => Number(item.consumptionRate));
+  const average = consumptionRates.length
+    ? `${number(consumptionRates.reduce((sum, rate) => sum + rate, 0) / consumptionRates.length, 2)} ${consumptionUnit}`
     : "";
   const values: string[] = Array(headers.length).fill("");
   values[0] = `${monthName} total`;
