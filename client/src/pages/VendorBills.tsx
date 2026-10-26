@@ -46,6 +46,7 @@ import {
   exportEquipmentHireBill,
   type EquipmentHireExportData,
 } from "@/components/vendor-bills/EquipmentHireBillOutput";
+import { loadPdfLogoDataUrl } from "@/components/vendor-bills/pdfExportStyle";
 import DraftEquipmentHireCalendar, { SavedEquipmentCalendarExport } from "@/components/vendor-bills/DraftEquipmentHireCalendar";
 import SavedBillCalendars from "@/components/vendor-bills/SavedBillCalendars";
 import { calendarMonths, projectBillHireReviews, projectHireReview } from "@shared/vendorBillLayout";
@@ -2098,7 +2099,7 @@ export default function VendorBills() {
       ? `Active labour view filter: ${labourFilter}. Exported rows follow the displayed filter; category subtotals, GST, TDS and net payable retain the broader whole-bill screen totals, including hidden rows.`
       : "";
     return {
-      companyName: companyName || "HLC", vendorName, billNo, billDate, periodFrom, periodTo,
+      companyName: companyName || "HLC", logoFile, vendorName, billNo, billDate, periodFrom, periodTo,
       site: selectedSiteId === "all"
         ? "All sites"
         : sites?.find(site => String(site.id) === selectedSiteId)?.name || "Site answer not recorded",
@@ -3444,7 +3445,7 @@ export default function VendorBills() {
                  });
                 const exportData: EquipmentHireExportData = {
                   billNo, billDate, billStatus: editingBillId !== null ? editingBillStatus : "Draft",
-                  companyName: companyName || "Highlane Constructions",
+                  companyName: companyName || "Highlane Constructions", logoFile,
                   vendorName, equipmentName: formatEquipmentOptionLabel(equipment || {}),
                   equipmentType: equipment?.equipmentType,
                   equipmentMasterReference: equipment?.registrationNumber || equipment?.equipmentNumber || selection.equipmentId,
@@ -3506,7 +3507,10 @@ export default function VendorBills() {
                     <>
                       <div className="flex flex-wrap gap-2">
                         <Button type="button" variant="outline" size="sm" onClick={() => setShowEquipmentDailyActivity(true)} disabled={equipmentPerformance.isFetching} data-testid="button-view-daily-activity">{equipmentPerformance.isFetching ? "Loading daily activity…" : "View Daily Activity"}</Button>
-                        {canExport && <Button type="button" variant="outline" size="sm" disabled={equipmentPerformance.isFetching} onClick={() => exportEquipmentHireBill(exportData, dailyRows, "pdf")} data-testid="button-export-equipment-hire-pdf">EXPORT PDF</Button>}
+                        {canExport && <Button type="button" variant="outline" size="sm" disabled={equipmentPerformance.isFetching} onClick={async () => exportEquipmentHireBill({
+                          ...exportData,
+                          logoDataUrl: exportData.logoDataUrl ?? (exportData.logoFile ? await loadPdfLogoDataUrl(exportData.logoFile) : null),
+                        }, dailyRows, "pdf")} data-testid="button-export-equipment-hire-pdf">EXPORT PDF</Button>}
                         {canExport && <Button type="button" variant="outline" size="sm" disabled={equipmentPerformance.isFetching} onClick={() => exportEquipmentHireBill(exportData, dailyRows, "xlsx")} data-testid="button-export-equipment-hire-excel">EXPORT EXCEL</Button>}
                       </div>
                       <EquipmentHireDailyActivity open={showEquipmentDailyActivity} onOpenChange={setShowEquipmentDailyActivity} rows={dailyRows} dieselResponsibility={equipment?.hireDieselResponsibility} consumptionNorm={equipment?.consumptionNorm} />
@@ -5034,7 +5038,7 @@ export default function VendorBills() {
         hireReview: projectHireReview(statement, bill),
         // Bill-wide net must not be repeated once for each statement.
         ...(index > 0 ? { netPayableAmount: undefined } : {}),
-      }));
+      }, logoFile));
     const detailFinancials = getBillFinancialTotals(bill);
     const detailVendorName = vendorDisplayName(bill);
     const detailSiteName = (bill as any).siteName ||
@@ -5107,7 +5111,7 @@ export default function VendorBills() {
       const outputs = savedHireOutputs.flatMap((output: ReturnType<typeof buildSavedEquipmentHireBillOutput>) =>
         output ? [output.data] : []);
       return {
-        companyName: companyName || "HLC", vendorName: detailVendorName, billNo: bill.billNo, billDate: bill.billDate,
+        companyName: companyName || "HLC", logoFile, vendorName: detailVendorName, billNo: bill.billNo, billDate: bill.billDate,
         periodFrom: bill.periodFrom || "", periodTo: bill.periodTo || "",
         site: b.siteName || (b.siteId == null ? "All sites" : sites?.find(site => site.id === b.siteId)?.name || ""),
         equipmentType: Array.from(new Set((b.hireStatements || [])

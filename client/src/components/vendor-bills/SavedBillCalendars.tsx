@@ -1,8 +1,20 @@
 import { buildSavedEquipmentHireBillOutput, exportEquipmentHireCalendar, type BillingDailyRow } from "./EquipmentHireBillOutput";
+import { loadPdfLogoDataUrl } from "./pdfExportStyle";
 import { Button } from "@/components/ui/button";
 import HireMonthlyReview from "./HireMonthlyReview";
-import { projectHireReview } from "@shared/vendorBillLayout";
 import { SavedHireActivityTable } from "./SavedHireActivityTable";
+import { projectHireReview } from "@shared/vendorBillLayout";
+
+async function exportActivityStatement(
+  data: NonNullable<ReturnType<typeof buildSavedEquipmentHireBillOutput>>["data"],
+  rows: BillingDailyRow[],
+  format: "pdf" | "xlsx",
+) {
+  const exportData = format === "pdf" && data.logoFile && !data.logoDataUrl
+    ? { ...data, logoDataUrl: await loadPdfLogoDataUrl(data.logoFile) }
+    : data;
+  exportEquipmentHireCalendar(exportData, rows, format);
+}
 
 const show = (v: unknown) => v == null ? "Not established" : String(v);
 
@@ -195,14 +207,14 @@ export default function SavedBillCalendars({ bill, canExport = false }: { bill: 
             {canExport && <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" size="sm"
                 disabled={!month.hasFrozenRows || !month.rows.length || !displayData}
-                onClick={() => displayData && exportEquipmentHireCalendar(
+                onClick={() => displayData && exportActivityStatement(
                   { ...displayData, periodFrom: month.from, periodTo: month.to },
                   month.rows,
                   "pdf",
                 )}>Export Activity Statement PDF</Button>
               <Button type="button" variant="outline" size="sm"
                 disabled={!month.hasFrozenRows || !month.rows.length || !displayData}
-                onClick={() => displayData && exportEquipmentHireCalendar(
+                onClick={() => displayData && exportActivityStatement(
                   { ...displayData, periodFrom: month.from, periodTo: month.to },
                   month.rows,
                   "xlsx",
@@ -212,8 +224,8 @@ export default function SavedBillCalendars({ bill, canExport = false }: { bill: 
         </details>)}
         {canExport && allFrozenRows && displayData?.periodFrom && displayData?.periodTo && <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-muted-foreground">Export all months:</span>
-          <Button type="button" variant="outline" size="sm" onClick={() => exportEquipmentHireCalendar(displayData, rows, "pdf")}>Activity Statement PDF</Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => exportEquipmentHireCalendar(displayData, rows, "xlsx")}>Activity Statement Excel</Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => exportActivityStatement(displayData, rows, "pdf")}>Activity Statement PDF</Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => exportActivityStatement(displayData, rows, "xlsx")}>Activity Statement Excel</Button>
         </div>}
         {periodDetails.some(detail => detail.periodDecisions.length > 0) && <details className="rounded-lg border p-3">
           <summary className="cursor-pointer font-semibold text-sm">Period-level saved billing decisions · {name}</summary>

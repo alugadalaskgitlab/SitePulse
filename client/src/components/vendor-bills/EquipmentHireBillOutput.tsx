@@ -10,7 +10,7 @@ import { calculateEquipmentHireFinancials } from "@shared/hireBilling";
 import { projectHireReview, hireReviewDisclosureLines, hireReviewTable, MONTHLY_BILL_HEADERS, type HireReview } from "@shared/vendorBillLayout";
 import { getBaseSiteName } from "@shared/siteName";
 import { formatConsumptionRate } from "./HireActivityBreakdownCalendar";
-import { drawPdfBillFooter, drawPdfBillHeader, INK_LIGHT_TABLE } from "./pdfExportStyle";
+import { drawPdfBillFooter, drawPdfBillHeader, INK_LIGHT_TABLE, loadPdfLogoDataUrl } from "./pdfExportStyle";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { hireStatementExportFromData, type WholeBillSnapshot } from "./wholeBillSnapshot";
@@ -173,6 +173,8 @@ export type EquipmentHireExportData = {
   billDate?: string;
   billStatus?: string;
   companyName?: string;
+  logoFile?: string;
+  logoDataUrl?: string | null;
   vendorName: string;
   equipmentName: string;
   equipmentType?: string;
@@ -564,6 +566,8 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
   const gstAmount = data.gstAmount != null && Number.isFinite(data.gstAmount) ? data.gstAmount : 0;
   const billSnapshot: WholeBillSnapshot = {
     companyName: data.companyName || "Highlane Constructions",
+    logoFile: data.logoFile,
+    logoDataUrl: data.logoDataUrl,
     vendorName: data.vendorName,
     billNo: data.billNo || "",
     billDate: data.billDate || data.periodTo,
@@ -783,7 +787,8 @@ export function exportEquipmentHireCalendar(data: EquipmentHireExportData, rows:
   ].join(" · ");
   const header = {
     title: "ACTIVITY STATEMENT",
-    companyName: data.companyName || "Highlane Constructions",
+    companyName: "Highlane Constructions",
+    logoDataUrl: data.logoDataUrl,
     billNo: data.billNo || "Not yet saved",
     billDate: data.billDate,
     periodFrom: data.periodFrom,
@@ -909,7 +914,7 @@ export function EquipmentHireExportButtons({
   data: EquipmentHireExportData;
   rows: BillingDailyRow[];
   disabled?: boolean;
-  onExportBill?: (format: EquipmentHireExportFormat) => void | Promise<void>;
+  onExportBill?: (format: EquipmentHireExportFormat, data?: EquipmentHireExportData) => void | Promise<void>;
   availableFormats?: EquipmentHireExportFormat[];
 }) {
   const [exporting, setExporting] = useState<string | null>(null);
@@ -927,11 +932,14 @@ export function EquipmentHireExportButtons({
     setChoiceFormat(null);
     setExportError(null);
     try {
+      const exportData = kind === "pdf" && data.logoFile && !data.logoDataUrl
+        ? { ...data, logoDataUrl: await loadPdfLogoDataUrl(data.logoFile) }
+        : data;
       if (mode === "bill" || mode === "both") {
-        if (onExportBill) await onExportBill(kind);
-        else exportEquipmentHireBill(data, rows, kind);
+        if (onExportBill) await onExportBill(kind, exportData);
+        else exportEquipmentHireBill(exportData, rows, kind);
       }
-      if (mode === "calendar" || mode === "both") exportEquipmentHireCalendar(data, rows, kind);
+      if (mode === "calendar" || mode === "both") exportEquipmentHireCalendar(exportData, rows, kind);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setExportError(message || "The export could not be completed.");
@@ -963,7 +971,7 @@ export function EquipmentHireExportButtons({
 }
 
 /** Converts the persisted statement shape into the exact export model. */
-export function buildSavedEquipmentHireBillOutput(bill: any): { data: EquipmentHireExportData; rows: BillingDailyRow[]; hasFrozenDailyRows: boolean } | null {
+export function buildSavedEquipmentHireBillOutput(bill: any, logoFile?: string): { data: EquipmentHireExportData; rows: BillingDailyRow[]; hasFrozenDailyRows: boolean } | null {
   const statement = Array.isArray(bill.hireStatements) ? bill.hireStatements[0] : null;
   const snapshot = statement?.calculationSnapshot || {};
   const equipmentId = Number(statement?.equipmentId || snapshot?.equipmentId || 0);
@@ -1064,6 +1072,7 @@ export function buildSavedEquipmentHireBillOutput(bill: any): { data: EquipmentH
     hireReview: bill.hireReview || projectHireReview(statement, bill),
     billNo: bill.billNo, billDate: bill.billDate, billStatus: bill.status,
     companyName: bill.companyName,
+    logoFile,
     vendorName: bill.vendorName,
     equipmentName: statement.equipmentName || snapshot.equipmentName || (equipmentId ? `Equipment #${equipmentId}` : "Equipment"),
     equipmentMasterReference: snapshot.equipmentMasterReference ?? snapshot.equipment?.registrationNumber ?? equipmentId,

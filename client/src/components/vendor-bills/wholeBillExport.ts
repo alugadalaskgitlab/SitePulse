@@ -5,6 +5,7 @@ import { hireReviewDisclosureLines, MONTHLY_BILL_HEADERS, hireReviewTable } from
 import { equipmentHireActivitySheetRows } from "./EquipmentHireBillOutput";
 import { getBaseSiteName } from "@shared/siteName";
 import { buildWholeBillEquipmentPdf } from "./wholeBillEquipmentPdf";
+import { loadPdfLogoDataUrl } from "./pdfExportStyle";
 import {
   BILL_EXPORT_SHEET_NAMES, DRAFT_BILL_NOTICE, billExportIsDraft, billExportStatus,
   billSectionTable, billSummaryRows, populatedBillSections, wholeBillFilename, wholeBillPricingNotes,
@@ -255,9 +256,12 @@ export async function saveWholeBillFile(
       if (!(error instanceof Error) || !["SecurityError", "NotAllowedError", "NotSupportedError"].includes(error.name)) throw error;
     }
   }
+  const pdfSnapshot = kind === "pdf"
+    ? { ...snapshot, logoDataUrl: snapshot.logoDataUrl ?? await loadPdfLogoDataUrl(snapshot.logoFile) }
+    : snapshot;
   const blob = kind === "xlsx"
     ? new Blob([XLSX.write(buildWholeBillWorkbook(snapshot), { bookType: "xlsx", type: "array" })], { type: mime })
-    : buildWholeBillPdf(snapshot).output("blob");
+    : buildWholeBillPdf(pdfSnapshot).output("blob");
   if (handle) {
     const writable = await handle.createWritable();
     try {

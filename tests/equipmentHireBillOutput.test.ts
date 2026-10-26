@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-const pdfEvents = vi.hoisted(() => [] as Array<{ type: string; value?: unknown }>);
+const pdfEvents = vi.hoisted(() => [] as Array<{ type: string; value?: unknown; args?: unknown[] }>);
 const tables = vi.hoisted(() => [] as Array<any>);
 const excelSheets = vi.hoisted(() => [] as Array<{ name: string; data: unknown[][] }>);
 const excelWrites = vi.hoisted(() => [] as string[]);
@@ -16,10 +16,12 @@ vi.mock("jspdf", () => ({
     setFillColor(..._values: number[]) {}
     setDrawColor(..._values: number[]) {}
     setLineWidth(_value: number) {}
-    rect(..._values: unknown[]) {}
+    rect(...args: unknown[]) { pdfEvents.push({ type: "rect", args }); }
     line(..._values: unknown[]) {}
     splitTextToSize(value: string) { return [value]; }
     text(value: string | string[]) { pdfEvents.push({ type: "text", value }); }
+    getImageProperties(_image: string) { return { width: 100, height: 80 }; }
+    addImage(image: string, ...args: unknown[]) { pdfEvents.push({ type: "image", value: image, args }); }
     addPage() { this.pageCount += 1; pdfEvents.push({ type: "page" }); }
     getNumberOfPages() { return this.pageCount; }
     setPage(_page: number) {}
@@ -86,7 +88,24 @@ describe("equipment hire bill output", () => {
     expect(tables.flatMap(table => table.body.flat()).join("")).not.toMatch(/[₹−×]/);
     expect(tables.flatMap(table => table.head.flat()).join(" ")).not.toContain("DAILY ACTIVITY");
     expect(pdfEvents.some(event => event.type === "text" && event.value === "EQUIPMENT HIRE BILL")).toBe(true);
+    expect(pdfEvents.some(event => event.type === "rect" && event.args?.join(",") === "10,8,15,12")).toBe(true);
+    expect(pdfEvents.some(event => event.type === "text" && event.value === "HLC")).toBe(true);
     expect(pdfEvents).toContainEqual({ type: "save", value: "VB-EH-001.pdf" });
+  });
+
+  it("embeds the configured logo in both equipment-hire PDF headers", () => {
+    const logoDataUrl = "data:image/png;base64,bG9nbw==";
+    pdfEvents.length = 0;
+    exportEquipmentHireBill({ ...data, logoDataUrl }, rows, "pdf");
+    expect(pdfEvents).toContainEqual({ type: "image", value: logoDataUrl, args: ["PNG", 10, 8, 15, 12] });
+    expect(pdfEvents.some(event => (event.type === "rect" && event.args?.join(",") === "10,8,15,12") || event.value === "HLC")).toBe(false);
+    expect(pdfEvents.some(event => event.type === "text" && event.value === "Highlane Constructions")).toBe(true);
+
+    pdfEvents.length = 0;
+    exportEquipmentHireCalendar({ ...data, logoDataUrl }, rows, "pdf");
+    expect(pdfEvents).toContainEqual({ type: "image", value: logoDataUrl, args: ["PNG", 10, 8, 15, 12] });
+    expect(pdfEvents.some(event => (event.type === "rect" && event.args?.join(",") === "10,8,15,12") || event.value === "HLC")).toBe(false);
+    expect(pdfEvents.some(event => event.type === "text" && event.value === "Highlane Constructions")).toBe(true);
   });
 
   it("exports separate Bill Summary and Daily Activity Excel sheets with the same calculations", () => {

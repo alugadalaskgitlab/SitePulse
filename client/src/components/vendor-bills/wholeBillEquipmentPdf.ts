@@ -191,6 +191,7 @@ function makeHeader(snapshot: WholeBillSnapshot, statements: HireStatementExport
   return {
     title: "EQUIPMENT HIRE BILL",
     companyName: "Highlane Constructions",
+    logoDataUrl: snapshot.logoDataUrl,
     billNo: snapshot.saved ? snapshot.billNo : "Not yet saved",
     billDate: snapshot.billDate,
     periodFrom: snapshot.periodFrom,
