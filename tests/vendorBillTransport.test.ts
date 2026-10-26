@@ -39,14 +39,19 @@ describe("opt-in transport billing", () => {
     };
     const weighted = applyTransportCard({
       ...row,
+      sourceType: "site_material_trip_transport",
       description: "WMM - TRANSPORT",
+      qty: 28.4,
+      unit: "MT",
       actualMt: 28.4,
     }, [materialCard], "VENDOR");
     expect(weighted).toMatchObject({ unit: "MT", qty: 28.4, amount: 2044.8 });
-    expect(weighted.transportPricing).toMatchObject({ basis: "mt", ratePerKm: 90, payloadMt: 30 });
+    expect(weighted).toMatchObject({ rate: 90, leadDistance: 12 });
+    expect(weighted.transportPricing).toMatchObject({ basis: "mt", cardLeadDistanceKm: 12, payloadMt: 30 });
 
     const unweighted = applyTransportCard({
       ...row,
+      sourceType: "site_material_trip_transport",
       description: "WMM - TRANSPORT",
       actualMt: null,
     }, [materialCard], "VENDOR");

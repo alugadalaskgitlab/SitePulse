@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link, useSearch } from "wouter";
 import { ChevronLeft, Loader2, Save, Lock, Search, Plus, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { isManualVendorRateCard, MANUAL_VENDOR_RATE_CARD_NOTE } from "@shared/vendorRateCardIdentity";
 import type { VendorAlias } from "@shared/schema";
@@ -84,6 +84,7 @@ const getCategoryBadgeClass = (cat: string) => {
 
 export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendor?: string; onReturnToDraft?: () => void } = {}) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const searchString = useSearch();
   const params = new URLSearchParams(searchString);
   const preselectedVendor = draftVendor ?? params.get("vendorName") ?? "";

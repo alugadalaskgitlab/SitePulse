@@ -339,6 +339,7 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     fireEvent.click(screen.getByTestId("button-save-bill"));
     await waitFor(() => expect(vendorBillWrites.some(write => write.method === "PUT")).toBe(true));
     expect(vendorBillWrites.find(write => write.method === "PUT")?.body.billDate).toBe("2026-10-02");
+    expect(fetch).not.toHaveBeenCalledWith("/api/vendor-rate-cards/bulk-upsert", expect.anything());
     confirm.mockRestore();
 
     cleanup();

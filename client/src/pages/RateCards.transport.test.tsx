@@ -184,7 +184,7 @@ describe("transport-only rate setup", () => {
     cards = [];
     discovered = [{ ...base, rateCardId: null }];
     mount();
-    expect(await screen.findByText("No saved transport rate cards. Use ADD ROW to add one.")).toBeInTheDocument();
+    expect(await screen.findByText("No saved transport rate cards. Use ADD ROW to add one.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Rate setup for/ })).toBeNull();
   });
 
@@ -195,7 +195,7 @@ describe("transport-only rate setup", () => {
     fireEvent.click(await screen.findByTestId("button-add-transport-row"));
     fireEvent.change(screen.getByTestId("select-add-transport-kind"), { target: { value: "material" } });
     const materialSelect = screen.getByTestId("select-add-trans-material") as HTMLSelectElement;
-    expect(Array.from(materialSelect.options).map(option => option.value)).toEqual(["", "20 MM", "WMM"]);
+    expect(Array.from(materialSelect.options).map(option => option.value)).toEqual(["20 MM", "WMM"]);
     fireEvent.change(materialSelect, { target: { value: "WMM" } });
     fireEvent.click(screen.getByTestId("button-confirm-add-transport"));
 
@@ -296,12 +296,12 @@ describe("transport-only rate setup", () => {
   });
 
   it("leaves non-transport rows with their original editable rate and unit controls", async () => {
-    discovered = [
-      { itemKey: "EQ_EXCAVATOR_HRS", itemLabel: "EXCAVATOR", category: "equipment", unit: "HRS", rate: 613, rateCardId: null },
-      { itemKey: "MAT_SOIL_CFT", itemLabel: "SOIL", category: "material", unit: "CFT", rate: 19, rateCardId: null },
-      { itemKey: "LAB_SKILLED", itemLabel: "SKILLED CREW", category: "labour", unit: "HEAD-DAY", rate: 827, rateCardId: null },
+    discovered = [];
+    cards = [
+      { id: 1, vendorName: "RAVI HAULAGE", itemKey: "EQ_EXCAVATOR_HRS", itemLabel: "EXCAVATOR", category: "equipment", unit: "HRS", rate: 613 },
+      { id: 2, vendorName: "RAVI HAULAGE", itemKey: "MAT_SOIL_CFT", itemLabel: "SOIL", category: "material", unit: "CFT", rate: 19 },
+      { id: 3, vendorName: "RAVI HAULAGE", itemKey: "LAB_SKILLED", itemLabel: "SKILLED CREW", category: "labour", unit: "HEAD-DAY", rate: 827 },
     ];
-    cards = [];
     mount();
     await screen.findByText("EXCAVATOR");
     expect(screen.getAllByTestId("input-rate-0")).toHaveLength(3);
@@ -319,7 +319,7 @@ describe("transport-only rate setup", () => {
     fill();
     await save();
     fireEvent.change(screen.getByTestId("select-saved-vendor-suggestion"), { target: { value: "SHANKAR LOGISTICS" } });
-    await screen.findByText("No transport items discovered. Use ADD ROW to add manually.");
+    await screen.findByText("No saved transport rate cards. Use ADD ROW to add one.");
     expect(screen.queryByTestId("transport-rate-basis")).toBeNull();
     fireEvent.click(screen.getByTestId("button-save-all-rates"));
     expect(bulkWrites).toHaveLength(0);

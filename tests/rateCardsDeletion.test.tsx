@@ -114,10 +114,11 @@ describe("Rate Cards saved-row management", () => {
     failingDeleteId = 11;
     render(<QueryClientProvider client={makeClient()}><RateCards /></QueryClientProvider>);
     const button = await screen.findByRole("button", { name: "Remove saved rate for ROLLER - HOURLY HIRE" });
-    fireEvent.change(screen.getByTestId("input-rate-0"), { target: { value: "777" } });
+    const rollerRow = button.closest("tr")!;
+    fireEvent.change(within(rollerRow).getByRole("spinbutton"), { target: { value: "777" } });
     fireEvent.click(button);
     await waitFor(() => expect(button).not.toBeDisabled());
-    expect(screen.getByTestId("input-rate-0")).toHaveValue(777);
+    expect(within(rollerRow).getByRole("spinbutton")).toHaveValue(777);
   });
   it("confirms before deleting saved rows in every section and explains bills are unaffected", async () => {
     const client = makeClient();
@@ -188,7 +189,9 @@ describe("Rate Cards saved-row management", () => {
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Remove saved rate for SAND" })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Remove saved rate for SAND" }));
-    expect((screen.getByTestId("button-save-all-rates") as HTMLButtonElement).disabled).toBe(true);
+    expect(window.confirm).toHaveBeenCalled();
+    await waitFor(() => expect((fetch as ReturnType<typeof vi.fn>).mock.calls.some(([, init]) => init?.method === "DELETE")).toBe(true));
+    await waitFor(() => expect((screen.getByTestId("button-save-all-rates") as HTMLButtonElement).disabled).toBe(true));
     expect((fetch as ReturnType<typeof vi.fn>).mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
     finishDeferredDelete?.();
   });
