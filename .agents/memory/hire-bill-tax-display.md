@@ -8,8 +8,10 @@ For saved VB10 equipment-hire bills, calculate GST/TDS using each linked stateme
 
 A non-null stored net on an approved bill remains frozen and must not be retroactively recalculated. New values may be persisted when a bill enters approval; do not backfill approved bills. Keep export formats, layouts, and schema unchanged unless separately requested.
 
+For equipment-hire exports, print saved snapshot financials unchanged. If a calculation snapshot exists but lacks financial fields, use other saved bill values where available or leave the fields blank; invoke the hire calculator only when no snapshot exists.
+
 For monthly hire, dates classified as Activity Not Recorded are informational; the hire amount is based on calendar-date overlap. Keep the bill-detail note low-key and do not change shared report/export wording.
 
-**Why:** Hire line items already contain advances and other statement deductions. Replacing the cash net subtotal with gross-minus-breakdown would add those amounts back. Approved net amounts are frozen financial evidence, and the user requires no retroactive changes.
+**Why:** Hire line items already contain advances and other statement deductions. Replacing the cash net subtotal with gross-minus-breakdown would add those amounts back. Approved net amounts are frozen financial evidence, and export-time recalculation can print a figure different from the saved bill.
 
-**How to apply:** Use statement tax bases only for tax calculations; keep net cash arithmetic on the bill item subtotal. Preserve approved stored nets and verify calculations with saved statement snapshots. Treat missing monthly activity as informational.
+**How to apply:** Use statement tax bases only for tax calculations; keep net cash arithmetic on the bill item subtotal. Preserve approved stored nets and use snapshots as the export source; do not silently recalculate incomplete snapshots. Treat missing monthly activity as informational.

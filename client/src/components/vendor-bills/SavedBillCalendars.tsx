@@ -199,21 +199,21 @@ export default function SavedBillCalendars({ bill, canExport = false }: { bill: 
                   { ...displayData, periodFrom: month.from, periodTo: month.to },
                   month.rows,
                   "pdf",
-                )}>Export Calendar PDF</Button>
+                )}>Export Activity Statement PDF</Button>
               <Button type="button" variant="outline" size="sm"
                 disabled={!month.hasFrozenRows || !month.rows.length || !displayData}
                 onClick={() => displayData && exportEquipmentHireCalendar(
                   { ...displayData, periodFrom: month.from, periodTo: month.to },
                   month.rows,
                   "xlsx",
-                )}>Export Calendar Excel</Button>
+                )}>Export Activity Statement Excel</Button>
             </div>}
           </div>
         </details>)}
         {canExport && allFrozenRows && displayData?.periodFrom && displayData?.periodTo && <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-muted-foreground">Export all months:</span>
-          <Button type="button" variant="outline" size="sm" onClick={() => exportEquipmentHireCalendar(displayData, rows, "pdf")}>Export All Months PDF</Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => exportEquipmentHireCalendar(displayData, rows, "xlsx")}>Export All Months Excel</Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => exportEquipmentHireCalendar(displayData, rows, "pdf")}>Activity Statement PDF</Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => exportEquipmentHireCalendar(displayData, rows, "xlsx")}>Activity Statement Excel</Button>
         </div>}
         {periodDetails.some(detail => detail.periodDecisions.length > 0) && <details className="rounded-lg border p-3">
           <summary className="cursor-pointer font-semibold text-sm">Period-level saved billing decisions · {name}</summary>

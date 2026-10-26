@@ -112,7 +112,7 @@ describe("saved hire activity month sections", () => {
     expect(augustTotals.textContent).toContain("Working hours: 4:00");
     expect(augustTotals.textContent).toContain("Average consumption rate: 2 L/hr");
 
-    fireEvent.click(within(months[0]).getByRole("button", { name: "Export Calendar PDF" }));
+    fireEvent.click(within(months[0]).getByRole("button", { name: "Export Activity Statement PDF" }));
     expect(exportEquipmentHireCalendar).toHaveBeenLastCalledWith(
       expect.objectContaining({ periodFrom: "2026-08-20", periodTo: "2026-08-31" }),
       [augustRow],
@@ -123,14 +123,14 @@ describe("saved hire activity month sections", () => {
     const septemberTotals = within(months[1]).getByTestId("saved-hire-activity-totals");
     expect(septemberTotals.textContent).toContain("Working hours: 5:00");
     expect(septemberTotals.textContent).toContain("Average consumption rate: 2 L/hr");
-    fireEvent.click(within(months[1]).getByRole("button", { name: "Export Calendar Excel" }));
+    fireEvent.click(within(months[1]).getByRole("button", { name: "Export Activity Statement Excel" }));
     expect(exportEquipmentHireCalendar).toHaveBeenLastCalledWith(
       expect.objectContaining({ periodFrom: "2026-09-01", periodTo: "2026-09-15" }),
       [septemberRow],
       "xlsx",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Export All Months PDF" }));
+    fireEvent.click(screen.getByRole("button", { name: "Activity Statement PDF" }));
     expect(exportEquipmentHireCalendar).toHaveBeenLastCalledWith(
       expect.objectContaining({ periodFrom: "2026-08-20", periodTo: "2026-09-15" }),
       [augustRow, septemberRow],

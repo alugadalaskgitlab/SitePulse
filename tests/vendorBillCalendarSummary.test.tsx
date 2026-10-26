@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { billReviewAmounts, summarizeBillReview, vendorStatementBills } from "../shared/vendorBillReview";
 import { VendorBillFinancialSummary, VendorRunningStatement } from "../client/src/components/vendor-bills/VendorBillReview";
+import { EquipmentHireExportButtons } from "../client/src/components/vendor-bills/EquipmentHireBillOutput";
 import SavedBillCalendars from "../client/src/components/vendor-bills/SavedBillCalendars";
 import { SavedEquipmentCalendarExport } from "../client/src/components/vendor-bills/DraftEquipmentHireCalendar";
 
@@ -58,8 +59,8 @@ describe("saved calendars", () => {
     expect(screen.getAllByText(/Attendance verified/)).toHaveLength(2);
     expect(screen.getAllByText("Advance payment date: 2026-10-02")).toHaveLength(2);
     expect(screen.getAllByTestId("saved-hire-activity-totals")).toHaveLength(2);
-    expect(screen.getAllByRole("button", { name: "Export Calendar PDF" })).toHaveLength(2);
-    expect(screen.getAllByRole("button", { name: "Export Calendar Excel" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Export Activity Statement PDF" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Export Activity Statement Excel" })).toHaveLength(2);
     expect(fetcher).not.toHaveBeenCalled();
     expect(JSON.stringify(input)).toBe(before);
   });
@@ -145,15 +146,31 @@ describe("saved calendars", () => {
     expect(dailyTables[0].textContent).toContain("01 Oct 2026");
     expect(dailyTables[0].textContent).toContain("02 Oct 2026");
   });
-  it("keeps legacy Bill export working while unavailable frozen Calendar export is disabled", async () => {
+  it("keeps legacy Bill export working while unavailable frozen Activity Statement export is disabled", async () => {
     const exportBill = vi.fn();
     const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
     renderQuery(<SavedEquipmentCalendarExport bill={{ ...bill(1), periodFrom: "2026-10-01", periodTo: "2026-10-03", items: [{ category: "equipment", equipmentId: 3 }] }} onExportBill={exportBill} />);
     fireEvent.click(screen.getByTestId("button-export-pdf"));
     expect((screen.getByTestId("button-export-equipment-hire-choice-calendar") as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: "Export Activity Statement PDF" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Export Bill PDF" })).toBeTruthy();
     fireEvent.click(screen.getByTestId("button-export-equipment-hire-choice-bill"));
     await waitFor(() => expect(exportBill).toHaveBeenCalledWith("pdf"));
     expect(fetcher).not.toHaveBeenCalled();
+  });
+  it("labels bill and Activity Statement exports separately for PDF", () => {
+    render(<EquipmentHireExportButtons data={{ billNo: "VB-1" } as any} rows={[]} />);
+    fireEvent.click(screen.getByTestId("button-export-equipment-hire-pdf"));
+    expect(screen.getByRole("button", { name: "Export Activity Statement PDF" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Export Bill PDF" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Export Both PDFs" })).toBeTruthy();
+  });
+  it("labels bill and Activity Statement exports separately for Excel", () => {
+    render(<EquipmentHireExportButtons data={{ billNo: "VB-1" } as any} rows={[]} />);
+    fireEvent.click(screen.getByTestId("button-export-equipment-hire-excel"));
+    expect(screen.getByRole("button", { name: "Export Activity Statement Excel" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Export Bill Excel" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Export Both Excel Files" })).toBeTruthy();
   });
 });
 

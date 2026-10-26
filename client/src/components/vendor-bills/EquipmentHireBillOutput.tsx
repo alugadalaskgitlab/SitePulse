@@ -947,9 +947,15 @@ export function EquipmentHireExportButtons({
       <DialogContent className="max-w-md">
         <DialogHeader><DialogTitle>Choose {choiceFormat === "xlsx" ? "Excel" : "PDF"} export</DialogTitle></DialogHeader>
         <div className="grid gap-2">
-          <Button type="button" variant="outline" disabled={!!exporting} onClick={() => download("calendar")} data-testid="button-export-equipment-hire-choice-calendar">Export Calendar</Button>
-          <Button type="button" variant="outline" disabled={!!exporting} onClick={() => download("bill")} data-testid="button-export-equipment-hire-choice-bill">Export Bill</Button>
-          <Button type="button" disabled={!!exporting} onClick={() => download("both")} data-testid="button-export-equipment-hire-choice-both">Export Both</Button>
+          <Button type="button" variant="outline" disabled={!!exporting} onClick={() => download("calendar")} data-testid="button-export-equipment-hire-choice-calendar">
+            Export Activity Statement {choiceFormat === "xlsx" ? "Excel" : "PDF"}
+          </Button>
+          <Button type="button" variant="outline" disabled={!!exporting} onClick={() => download("bill")} data-testid="button-export-equipment-hire-choice-bill">
+            Export Bill {choiceFormat === "xlsx" ? "Excel" : "PDF"}
+          </Button>
+          <Button type="button" disabled={!!exporting} onClick={() => download("both")} data-testid="button-export-equipment-hire-choice-both">
+            {choiceFormat === "xlsx" ? "Export Both Excel Files" : "Export Both PDFs"}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -1020,15 +1026,15 @@ export function buildSavedEquipmentHireBillOutput(bill: any): { data: EquipmentH
       otherDebit: savedNumber(frozenFinancials.otherDebit) ?? otherDebit,
       advanceAdjustment: savedNumber(frozenFinancials.advanceAdjustment) ?? advanceAdjustment,
       otherCredit: savedNumber(frozenFinancials.otherCredit) ?? otherCredit,
-        taxBase: savedNumber(frozenFinancials.taxBase) ?? savedNumber(snapshot.taxBase),
-        taxableAmount: savedNumber(frozenFinancials.taxableAmount) ?? savedNumber(snapshot.taxableAmount),
-        gstRate: savedNumber(frozenFinancials.gstRate) ?? savedNumber(snapshot.gstRate) ?? Number(bill.gstRateEquipment || 0),
-        gstAmount: savedNumber(frozenFinancials.gstAmount) ?? savedNumber(snapshot.gstAmount),
-        invoiceTotal: savedNumber(frozenFinancials.invoiceTotal) ?? savedNumber(snapshot.invoiceTotal),
-        tdsRate: savedNumber(frozenFinancials.tdsRate) ?? savedNumber(snapshot.tdsRate) ?? Number(bill.tdsRate || 0),
-        tdsAmount: savedNumber(frozenFinancials.tdsAmount) ?? savedNumber(snapshot.tdsAmount),
-        netPayable: savedNumber(frozenFinancials.netPayable) ??
-          savedNumber(snapshot.netPayable) ?? savedNumber(bill.netPayableAmount),
+      taxBase: savedNumber(frozenFinancials.taxBase) ?? savedNumber(snapshot.taxBase),
+      taxableAmount: savedNumber(frozenFinancials.taxableAmount) ?? savedNumber(snapshot.taxableAmount),
+      gstRate: savedNumber(frozenFinancials.gstRate) ?? savedNumber(snapshot.gstRate) ?? Number(bill.gstRateEquipment || 0),
+      gstAmount: savedNumber(frozenFinancials.gstAmount) ?? savedNumber(snapshot.gstAmount),
+      invoiceTotal: savedNumber(frozenFinancials.invoiceTotal) ?? savedNumber(snapshot.invoiceTotal),
+      tdsRate: savedNumber(frozenFinancials.tdsRate) ?? savedNumber(snapshot.tdsRate) ?? Number(bill.tdsRate || 0),
+      tdsAmount: savedNumber(frozenFinancials.tdsAmount) ?? savedNumber(snapshot.tdsAmount),
+      netPayable: savedNumber(frozenFinancials.netPayable) ??
+        savedNumber(snapshot.netPayable) ?? savedNumber(bill.netPayableAmount),
     }
     : hasCalculationSnapshot
       ? {

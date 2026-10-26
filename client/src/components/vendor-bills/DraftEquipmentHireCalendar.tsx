@@ -364,7 +364,7 @@ export function SavedEquipmentCalendarExport({
               onClick={() => exportSelection("pdf", "calendar")}
               data-testid="button-export-equipment-hire-choice-calendar"
             >
-              Export Calendar
+              Export Activity Statement PDF
             </Button>
             <Button
               type="button"
@@ -373,7 +373,7 @@ export function SavedEquipmentCalendarExport({
               onClick={() => exportSelection("pdf", "bill")}
               data-testid="button-export-equipment-hire-choice-bill"
             >
-              Export Bill
+              Export Bill PDF
             </Button>
             <Button
               type="button"
@@ -381,7 +381,7 @@ export function SavedEquipmentCalendarExport({
               onClick={() => exportSelection("pdf", "both")}
               data-testid="button-export-equipment-hire-choice-both"
             >
-              Export Both
+              Export Both PDFs
             </Button>
           </div>
         </DialogContent>
