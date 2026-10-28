@@ -463,6 +463,7 @@ import {
   type SnlSourceWithCounts,
   type SnlSearchResult,
 } from "@shared/schema";
+import { bulkConfirmableTripRole, bulkTripRoleGroupKey, type BulkConfirmableTripRole } from "@shared/tripTransportRoles";
 import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike, getTableColumns, exists, aliasedTable } from "drizzle-orm";
 import { materialReceiptTransactionDate } from "@shared/materialReceiptDates";
 import { format } from "date-fns";
@@ -1409,6 +1410,12 @@ export interface IStorage {
     permittedSiteNames?: string[];
     actor: { userId: number; userName: string; userRole?: string | null };
   }): Promise<{ updatedCount: number }>;
+  bulkConfirmSiteMaterialTripRoles(input: {
+    tripIds: number[];
+    role: BulkConfirmableTripRole;
+    permittedSiteNames?: string[];
+    actor: { userId: number; userName: string; userRole?: string | null };
+  }): Promise<{ updatedCount: number; role: BulkConfirmableTripRole }>;
   hasActiveSiteMaterialTripVehicle(site: string, vehicleNumber: string): Promise<boolean>;
   correctVehicleSupplierAssociation(input: {
     site: string;
@@ -12955,6 +12962,65 @@ export class DatabaseStorage implements IStorage {
         reason: "Bulk assigned material source supplier",
       })));
       return { updatedCount: ids.length };
+    });
+  }
+
+  async bulkConfirmSiteMaterialTripRoles(input: {
+    tripIds: number[];
+    role: BulkConfirmableTripRole;
+    permittedSiteNames?: string[];
+    actor: { userId: number; userName: string; userRole?: string | null };
+  }): Promise<{ updatedCount: number; role: BulkConfirmableTripRole }> {
+    const ids = [...new Set(input.tripIds)].sort((a, b) => a - b);
+    if (ids.length === 0 || ids.length !== input.tripIds.length || ids.length > 1000) {
+      throw Object.assign(new Error("Choose between 1 and 1,000 unique trips."), { code: "BAD_REQUEST" });
+    }
+
+    return db.transaction(async (tx) => {
+      if (input.permittedSiteNames?.length === 0) {
+        throw Object.assign(new Error("The selected trips are outside your site access."), { code: "TRIP_ROLE_BULK_CONFLICT" });
+      }
+      const conditions = [
+        inArray(siteMaterialTrips.id, ids),
+        eq(siteMaterialTrips.isCancelled, false),
+        eq(siteMaterialTrips.isDeleted, false),
+      ];
+      if (input.permittedSiteNames) {
+        conditions.push(inArray(siteMaterialTrips.site, input.permittedSiteNames));
+      }
+      const matched = await tx.select().from(siteMaterialTrips)
+        .where(and(...conditions))
+        .orderBy(asc(siteMaterialTrips.id))
+        .for("update");
+      const conflict = () => Object.assign(
+        new Error("The trip group changed or contains trips that cannot be bulk-confirmed. Refresh and review it again."),
+        { code: "TRIP_ROLE_BULK_CONFLICT" },
+      );
+      if (matched.length !== ids.length) throw conflict();
+
+      const expectedGroupKey = bulkTripRoleGroupKey(matched[0]);
+      if (matched.some((trip) =>
+        bulkTripRoleGroupKey(trip) !== expectedGroupKey ||
+        bulkConfirmableTripRole(trip) !== input.role
+      )) {
+        throw conflict();
+      }
+
+      await tx.update(siteMaterialTrips)
+        .set({ transportType: "agency_vendor" })
+        .where(inArray(siteMaterialTrips.id, ids));
+      await tx.insert(auditLogs).values(matched.map((trip) => ({
+        module: "site_material_trips",
+        transactionId: trip.id,
+        action: "edit",
+        userId: input.actor.userId,
+        userName: input.actor.userName,
+        userRole: input.actor.userRole ?? null,
+        oldValues: { transportType: trip.transportType },
+        newValues: { transportType: "agency_vendor" },
+        reason: `Bulk confirmed trip role: ${input.role}`,
+      })));
+      return { updatedCount: ids.length, role: input.role };
     });
   }
 

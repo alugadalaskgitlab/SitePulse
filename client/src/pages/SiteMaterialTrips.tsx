@@ -2,6 +2,7 @@ import { formatTripQuantity } from "@shared/tripQuantityDisplay";
 import { classifyTripRoles, tripRolePayload, validateTripRoles, type TripTransportRole } from "@shared/tripTransportRoles";
 import { TripTransportRoleFields } from "@/components/TripTransportRoleFields";
 import { TripRoleEditDialog } from "@/components/TripRoleEditDialog";
+import { TripRoleBulkConfirmation } from "@/components/TripRoleBulkConfirmation";
 import { BulkTripArrangement } from "@/components/BulkTripArrangement";
 import { filterTripsByRole, resolveSelectedTripVendor, tripRoleDescription, type ExistingTripVendor, type TripRoleFilter } from "@/components/trip-role-utils";
 import { useState, useMemo } from "react";
@@ -33,6 +34,7 @@ import {
 } from "@/hooks/use-site-material-suggestions";
 import { useAuth } from "@/lib/auth-context";
 import { SITE_MATERIAL_TRIP_MATERIAL_OPTIONS } from "@shared/siteMaterialTripMaterials";
+import type { BulkConfirmableTripRole } from "@shared/tripTransportRoles";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -458,6 +460,30 @@ export default function SiteMaterialTrips() {
         title: "Bulk assignment failed",
         description: error instanceof Error ? error.message : "The material source could not be assigned.",
         variant: "destructive",
+      });
+    },
+  });
+
+  const bulkConfirmTripRolesMutation = useMutation({
+    mutationFn: async (input: { tripIds: number[]; role: BulkConfirmableTripRole }) => {
+      const response = await apiRequest("POST", "/api/site-material-trips/roles/bulk-confirm", input);
+      const result = await response.json() as { updatedCount?: unknown; role?: unknown };
+      if (result.updatedCount !== input.tripIds.length || result.role !== input.role) {
+        throw new Error("The server did not confirm the entire trip group. Refresh the trips before retrying.");
+      }
+      return { updatedCount: result.updatedCount as number, role: input.role };
+    },
+    onSuccess: ({ updatedCount, role }) => {
+      queryClient.invalidateQueries({ predicate: (query) =>
+        typeof query.queryKey[0] === "string" && (
+          query.queryKey[0].startsWith("/api/site-material-trips") ||
+          query.queryKey[0].startsWith("/api/vendor-bills")
+        )
+      });
+      invalidateSiteMaterialSuggestions(siteFilter);
+      toast({
+        title: "Trip roles confirmed",
+        description: `${updatedCount} trip${updatedCount === 1 ? "" : "s"} confirmed as ${role.replaceAll("_", " ")}.`,
       });
     },
   });
@@ -930,6 +956,14 @@ export default function SiteMaterialTrips() {
             <p className="pt-2 text-xs text-muted-foreground" data-testid="trip-role-filter-count">{roleFilteredTrips.length} matching trip{roleFilteredTrips.length === 1 ? "" : "s"} · Role filters include all material-source assignments within the date/site/material/vehicle/transporter filters. The legacy “without a material source” checkbox is separate and resets the role filter.</p>
           </CardHeader>
           <CardContent>
+            {canEdit && (
+              <TripRoleBulkConfirmation
+                trips={filteredTrips}
+                onConfirm={async (input) => {
+                  await bulkConfirmTripRolesMutation.mutateAsync(input);
+                }}
+              />
+            )}
             {canEdit && hasUnassignedFilteredTrips && (
               <details className="mb-4 rounded-lg border bg-muted/20 p-3" data-testid="bulk-material-source-panel">
                 <summary className="cursor-pointer font-medium" data-testid="bulk-material-source-disclosure">

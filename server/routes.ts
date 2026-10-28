@@ -1038,6 +1038,38 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/site-material-trips/roles/bulk-confirm", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "site_materials")) return;
+      const input = z.object({
+        tripIds: z.array(z.number().int().positive()).min(1).max(1000)
+          .refine(ids => new Set(ids).size === ids.length, "Trip IDs must be unique."),
+        role: z.enum(["same_party", "different_parties", "own_source_agency"]),
+      }).strict().parse(req.body);
+      const permittedSiteNames = await getPermittedSiteNames(req);
+      const result = await storage.bulkConfirmSiteMaterialTripRoles({
+        ...input,
+        ...(permittedSiteNames !== null ? { permittedSiteNames } : {}),
+        actor: {
+          userId: req.authUser!.id,
+          userName: currentUserName(req),
+          userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
+        },
+      });
+      res.json(result);
+    } catch (err) {
+      const code = (err as any)?.code;
+      if (err instanceof z.ZodError || code === "BAD_REQUEST") {
+        return res.status(400).json({ message: err instanceof z.ZodError ? err.errors[0]?.message : (err as any).message });
+      }
+      if (code === "TRIP_ROLE_BULK_CONFLICT") {
+        return res.status(409).json({ message: (err as any).message });
+      }
+      console.error("POST /api/site-material-trips/roles/bulk-confirm:", err);
+      res.status(500).json({ message: "Failed to confirm trip roles" });
+    }
+  });
+
   app.post("/api/site-material-trips/material-source/bulk", async (req, res) => {
     try {
       if (!assertEdit(req, res, "site_materials")) return;

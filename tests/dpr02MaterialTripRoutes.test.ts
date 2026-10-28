@@ -15,6 +15,7 @@ const spies = vi.hoisted(() => ({
   getTrips: vi.fn(),
   createTrip: vi.fn(),
   updateTrip: vi.fn(),
+  bulkConfirmRoles: vi.fn(),
 }));
 
 vi.mock("../server/storage", () => {
@@ -26,6 +27,7 @@ vi.mock("../server/storage", () => {
     getSiteMaterialTripById: spies.getTrip, createSiteMaterialTrip: spies.createTrip,
     getSiteMaterialTrips: spies.getTrips,
     updateSiteMaterialTrip: spies.updateTrip,
+    bulkConfirmSiteMaterialTripRoles: spies.bulkConfirmRoles,
   };
   return { StockShortageError: class extends Error {}, storage: new Proxy(base, {
     get(target, key: string) { return key in target ? target[key] : (target[key] = vi.fn().mockResolvedValue([])); },
@@ -63,6 +65,7 @@ beforeEach(() => {
   spies.getArrangementsForItem.mockResolvedValue([]);
   spies.createTrip.mockImplementation(async (value) => ({ id: 99, ...value }));
   spies.updateTrip.mockImplementation(async (_id, value) => ({ id: 99, ...value }));
+  spies.bulkConfirmRoles.mockResolvedValue({ updatedCount: 2, role: "different_parties" });
   spies.getTrip.mockResolvedValue({ id: 99, ...body, programmeBarId: 3, earthworkArrangementId: 4 });
 });
 
@@ -73,6 +76,25 @@ describe("DPR-02 site-material-trip route enforcement", () => {
     expect(spies.getTrips).toHaveBeenLastCalledWith(expect.objectContaining({vehicleNumber:"ab-12",supplier:"Carrier",onlyUnassigned:true,permittedSiteNames:["Site A"]}));
     await request(app).get("/api/site-material-trips?vehicleNumber=%20&supplier=%20&onlyUnassigned=false");
     expect(spies.getTrips).toHaveBeenLastCalledWith(expect.objectContaining({vehicleNumber:undefined,supplier:undefined,onlyUnassigned:false}));
+  });
+  it("requires explicit unique trip IDs and forwards the bulk role with site scope", async () => {
+    const res = await request(app)
+      .post("/api/site-material-trips/roles/bulk-confirm")
+      .send({ tripIds: [11, 12], role: "different_parties" });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ updatedCount: 2, role: "different_parties" });
+    expect(spies.bulkConfirmRoles).toHaveBeenCalledWith({
+      tripIds: [11, 12],
+      role: "different_parties",
+      permittedSiteNames: ["Site A"],
+      actor: { userId: 7, userName: "tester", userRole: "manager" },
+    });
+
+    const duplicateIds = await request(app)
+      .post("/api/site-material-trips/roles/bulk-confirm")
+      .send({ tripIds: [11, 11], role: "different_parties" });
+    expect(duplicateIds.status).toBe(400);
+    expect(spies.bulkConfirmRoles).toHaveBeenCalledOnce();
   });
   it("rejects a direct create missing required BOQ linkage", async () => {
     const res = await request(app).post("/api/site-material-trips").send({ ...body, boqItemId: undefined });

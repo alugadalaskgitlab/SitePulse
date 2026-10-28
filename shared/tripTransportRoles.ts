@@ -36,6 +36,60 @@ export function classifyTripRoles(trip: TripRoleFacts): TripTransportRole {
   return source === carrier ? "same_party" : "different_parties";
 }
 
+export type BulkConfirmableTripRole = "same_party" | "different_parties" | "own_source_agency";
+
+/**
+ * Only offer a bulk confirmation when the parties are already recorded and
+ * adding the missing agency/vendor transport type resolves the role without
+ * changing any party or equipment identity.
+ */
+export function bulkConfirmableTripRole(trip: TripRoleFacts): BulkConfirmableTripRole | null {
+  if (trip.transportType != null || trip.internalEquipmentId != null) return null;
+
+  if (trip.materialSourceType === "own_source") {
+    if (!trip.materialSourceLabel?.trim() || !nameKey(trip.supplier)) return null;
+    const candidate = classifyTripRoles({ ...trip, transportType: "agency_vendor" });
+    return candidate === "own_source_agency" ? candidate : null;
+  }
+
+  if (!nameKey(trip.materialSourceSupplier) || !nameKey(trip.supplier)) return null;
+  const candidate = classifyTripRoles({ ...trip, transportType: "agency_vendor" });
+  return candidate === "same_party" || candidate === "different_parties" ? candidate : null;
+}
+
+export function bulkTripRoleReviewReason(trip: TripRoleFacts): string {
+  if (trip.transportType != null) return "Transport type is already recorded; review the conflicting role details individually.";
+  if (trip.internalEquipmentId != null) return "An equipment link is present; review the vehicle role individually.";
+  if (trip.materialSourceType === "own_source") {
+    if (!trip.materialSourceLabel?.trim()) return "The own-source label is missing.";
+    if (!nameKey(trip.supplier)) return "The transporter is missing.";
+    return "The own-source role details need individual review.";
+  }
+  if (!nameKey(trip.materialSourceSupplier)) return "The material source is missing.";
+  if (!nameKey(trip.supplier)) return "The transporter is missing.";
+  if (trip.materialSourceVendorId != null && trip.supplierVendorId != null) {
+    const namesMatch = nameKey(trip.materialSourceSupplier) === nameKey(trip.supplier);
+    const idsMatch = trip.materialSourceVendorId === trip.supplierVendorId;
+    if (namesMatch !== idsMatch) return "Vendor IDs conflict with the recorded party names.";
+  }
+  return "These role details need individual review.";
+}
+
+export function bulkTripRoleGroupKey(trip: TripRoleFacts & { site?: string | null }): string {
+  const site = nameKey(trip.site);
+  return JSON.stringify([
+    site,
+    trip.materialSourceType ?? null,
+    nameKey(trip.materialSourceLabel),
+    nameKey(trip.materialSourceSupplier),
+    trip.materialSourceVendorId ?? null,
+    nameKey(trip.supplier),
+    trip.supplierVendorId ?? null,
+    trip.transportType ?? null,
+    trip.internalEquipmentId ?? null,
+  ]);
+}
+
 /** New-entry validation only: historical unrelated edits remain backward compatible. */
 export function validateTripRoles(trip: TripRoleFacts, requireSourceLabel = true): string | null {
   if (trip.materialSourceType === "own_source") {

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { classifyTripRoles, tripRolePayload, validateTripRoles } from "../shared/tripTransportRoles";
+import {
+  bulkConfirmableTripRole,
+  bulkTripRoleGroupKey,
+  classifyTripRoles,
+  tripRolePayload,
+  validateTripRoles,
+} from "../shared/tripTransportRoles";
 
 const seller = { id: 101, name: "SELLER" };
 const hauler = { id: 102, name: "HAULER" };
@@ -59,5 +65,40 @@ describe("trip transport/source roles: explicit entry, read-only classification"
   });
   it("blocks same vendor under Another transporter", () => {
     expect(() => tripRolePayload("different_parties", seller, seller, null, "TRUCK")).toThrow("Same party");
+  });
+  it("offers bulk confirmation only when existing parties resolve after adding agency transport", () => {
+    expect(bulkConfirmableTripRole({
+      materialSourceSupplier: "RAMESH", materialSourceVendorId: 101,
+      supplier: "G SANGANNA", supplierVendorId: 102, transportType: null,
+    })).toBe("different_parties");
+    expect(bulkConfirmableTripRole({
+      materialSourceSupplier: "SELLER", materialSourceVendorId: 101,
+      supplier: " seller ", supplierVendorId: 101, transportType: null,
+    })).toBe("same_party");
+    expect(bulkConfirmableTripRole({
+      materialSourceType: "own_source", materialSourceLabel: "Borrow pit",
+      supplier: "HAULER", supplierVendorId: 102, transportType: null,
+    })).toBe("own_source_agency");
+  });
+  it("does not bulk-confirm missing or conflicting role facts", () => {
+    expect(bulkConfirmableTripRole({
+      materialSourceSupplier: "SELLER", supplier: "HAULER", transportType: "agency_vendor",
+    })).toBeNull();
+    expect(bulkConfirmableTripRole({
+      materialSourceSupplier: "SELLER", supplier: "", transportType: null,
+    })).toBeNull();
+    expect(bulkConfirmableTripRole({
+      materialSourceSupplier: "SELLER", materialSourceVendorId: 1,
+      supplier: "SELLER", supplierVendorId: 2, transportType: null,
+    })).toBeNull();
+  });
+  it("keeps bulk role groups separate by site and vendor identity", () => {
+    const base = {
+      site: "Site A", materialSourceSupplier: "SELLER", materialSourceVendorId: 1,
+      supplier: "HAULER", supplierVendorId: 2, transportType: null,
+    };
+    expect(bulkTripRoleGroupKey(base)).toBe(bulkTripRoleGroupKey({ ...base }));
+    expect(bulkTripRoleGroupKey(base)).not.toBe(bulkTripRoleGroupKey({ ...base, site: "Site B" }));
+    expect(bulkTripRoleGroupKey(base)).not.toBe(bulkTripRoleGroupKey({ ...base, supplierVendorId: 3 }));
   });
 });
