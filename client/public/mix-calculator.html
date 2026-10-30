@@ -1226,7 +1226,7 @@ function saveState(){
       scopeState: scopeState, scopeMarginPct: scopeMargin,
       quoteMode: quoteMode, aggReturnTrip: aggReturnTrip,
       transReturnTrip: transReturnTrip, ldoMode: ldoMode, plantCostMode: plantCostMode,
-      materialsBy: materialsBy, rateUnit: rateUnit,
+      materialsBy: materialsBy, materialScopeTicksVersion: 1, rateUnit: rateUnit,
       _savedAt: Date.now()
     }));
     _showDraftSavedBadge();
@@ -1294,7 +1294,7 @@ function loadState(){
     }
     if(state.ldoMode) setLdoMode(state.ldoMode, true);
     if(state.plantCostMode) setPlantCostMode(state.plantCostMode, true);
-    if(state.materialsBy) setMaterialsBy(state.materialsBy, true);
+    restoreMaterialScopeState(state);
     if(state.rateUnit)    setRateUnit(state.rateUnit, true);
     if(state._savedAt){
       _draftSavedAt = new Date(state._savedAt);
@@ -1354,7 +1354,8 @@ function getDbState(){
     activeMixIdx: activeMixIdx, aggBasis: aggBasis,
     contractRates: contractRates,
     scopeState: scopeState, scopeMarginPct: scopeMargin,
-    quoteMode: quoteMode, aggReturnTrip: aggReturnTrip,
+    quoteMode: quoteMode, materialsBy: materialsBy, materialScopeTicksVersion: 1,
+    aggReturnTrip: aggReturnTrip,
     transReturnTrip: transReturnTrip, ldoMode: ldoMode, plantCostMode: plantCostMode
   });
 }
@@ -2248,10 +2249,6 @@ function recalc(){
   }
 
   // ====== PER-MIX-TYPE RATE CALCULATION ======
-  // Quote-mode visibility flags (computed once, reused in renderRateSummary and per-mix calc)
-  var _qShowTrans  = (quoteMode !== 'supply_only');
-  var _qShowLaying = (quoteMode === 'supply_laying' || quoteMode === 'full_road');
-
   var eqCosts = {};
   var plantEquipPerMT = 0;
   var plantHsdPerMT = 0;
@@ -2374,13 +2371,13 @@ function recalc(){
     var lines = [
       {
         key:'aggregate', label:'Aggregates',
-        inScope:scopeState.groups.mixing && scopeTickEnabled('mixing','aggregate') && materialsBy==='us',
+        inScope:scopeState.groups.mixing && scopeTickEnabled('mixing','aggregate'),
         qtyPerUnit:aggFrac*(1+P.aggWastePct/100), rate:P.aggLanded,
         amount:aggFrac*(1+P.aggWastePct/100)*P.aggLanded
       },
       {
         key:'bitumen', label:'Bitumen',
-        inScope:scopeState.groups.mixing && scopeTickEnabled('mixing','bitumen') && materialsBy==='us',
+        inScope:scopeState.groups.mixing && scopeTickEnabled('mixing','bitumen'),
         qtyPerUnit:bitKgPerMT, rate:P.bitPrice, amount:bitKgPerMT*P.bitPrice
       }
     ];
@@ -2417,22 +2414,25 @@ function recalc(){
     var laying = sumKeys(rateLines.pavingKeys);
     var overhead = amountFor('overhead');
     var exPlant = aggCostPMT + bitCostPMT + equipment + fuel + crew;
-    var quotedBase = exPlant + (_qShowTrans ? transport : 0) + (_qShowLaying ? laying : 0) + overhead;
+    var perMT_cost = exPlant + transport + laying + overhead;
+    var quotedBase = perMT_cost;
     var marginAmt = quotedBase * marginPct / 100;
     lines.push({
       key:'margin', label:'Margin', inScope:true, qtyPerUnit:quotedBase,
       rate:marginPct/100, amount:marginAmt
     });
-    var perMT_cost   = exPlant + transport + laying + overhead;
     var perMT_quoted = quotedBase + marginAmt;
     var incl = [];
-    if(aggCostPMT>0) incl.push('Agg');
-    if(bitCostPMT>0) incl.push('Bit');
-    if(equipment>0 || fuel>0) incl.push('Plant+Fuel');
-    if(crew>0) incl.push('Crew');
-    if(_qShowTrans && transport>0) incl.push('Trans');
-    if(_qShowLaying && laying>0) incl.push('Laying');
-    if(overhead>0) incl.push('OH');
+    function hasInScopeLine(keys){
+      return lines.some(function(line){return line.inScope && keys.indexOf(line.key)!==-1;});
+    }
+    if(hasInScopeLine(['aggregate'])) incl.push('Agg');
+    if(hasInScopeLine(['bitumen'])) incl.push('Bit');
+    if(hasInScopeLine(rateLines.plantHireKeys.concat(rateLines.plantFuelKeys, ['ldo','boilerProd','boilerPreheat']))) incl.push('Plant+Fuel');
+    if(hasInScopeLine(['crew'])) incl.push('Crew');
+    if(hasInScopeLine(['transport'])) incl.push('Trans');
+    if(hasInScopeLine(rateLines.pavingKeys)) incl.push('Laying');
+    if(hasInScopeLine(['overhead'])) incl.push('OH');
     if(marginPct>0) incl.push('Margin '+marginPct+'%');
     function bitQty(){
       var row = lines.find(function(line){return line.key==='bitumen';});
@@ -2612,7 +2612,7 @@ function renderSupplyQuote(mixRates, marginPct){
   var unitLabel = isCUM ? '/CUM' : '/MT';
   var html='';
   mixRates.forEach(function(r){
-    // Use computeRate output fields — respect quoteMode and materialsBy
+    // Use computeRate output fields — respect the current scope ticks
     var cost   = isCUM ? r.perCUM_cost   : r.perMT_cost;
     var quoted = isCUM ? r.perCUM_quoted : r.perMT_quoted;
     // Total quantity and label must match the selected unit
@@ -2646,6 +2646,40 @@ function renderSupplyQuote(mixRates, marginPct){
 // ====== renderRateWorkbench — consolidated Rate Workbench (Stage 3) ======
 // Called from recalc() with usedMixRates. Shows one block per used mix:
 // Cost layers → Cost/Margin/Quoted trio → includes chip. Respects rateUnit toggle.
+function rateLineInScope(rate, key){
+  return !!(rate && (rate.lines||[]).some(function(line){return line.key===key && line.inScope;}));
+}
+
+function rateGroupInScope(rate, group){
+  if(!rate) return false;
+  var keys = [];
+  if(group==='paving'){
+    keys.push('pavingCrew');
+    equipDefs.forEach(function(eq){
+      if(eq.isLaying) keys.push(eq.id+'Hire', eq.id+'Hsd');
+    });
+  } else {
+    keys.push(group);
+  }
+  return (rate.lines||[]).some(function(line){return line.inScope && keys.indexOf(line.key)!==-1;});
+}
+
+function anyRateLineInScope(rates, key){
+  return (rates||[]).some(function(rate){return rateLineInScope(rate,key);});
+}
+
+function anyRateGroupInScope(rates, group){
+  return (rates||[]).some(function(rate){return rateGroupInScope(rate,group);});
+}
+
+function materialsScopeDescription(){
+  var aggregate = scopeTickEnabled('mixing','aggregate');
+  var bitumen = scopeTickEnabled('mixing','bitumen');
+  if(aggregate && bitumen) return 'Materials by HLC';
+  if(!aggregate && !bitumen) return 'Materials by client';
+  return aggregate ? 'Aggregates by HLC; Bitumen by client' : 'Bitumen by HLC; Aggregates by client';
+}
+
 function renderRateWorkbench(usedMixRates, marginPct){
   var el = document.getElementById('rateWorkbenchContent');
   if(!el) return;
@@ -2680,13 +2714,13 @@ function renderRateWorkbench(usedMixRates, marginPct){
     }
     // Cost layers — hidden / greyed based on current switches
     var layers = [
-      {label:'Aggregates', val:r.aggregate||0, off:(materialsBy!=='us')},
-      {label:'Bitumen',    val:r.bitumen||0,   off:(materialsBy!=='us')},
+      {label:'Aggregates', val:r.aggregate||0, off:!rateLineInScope(r,'aggregate')},
+      {label:'Bitumen',    val:r.bitumen||0,   off:!rateLineInScope(r,'bitumen')},
       {label:'Fuel/Energy',val:r.fuel||0,      off:false},
       {label:'Plant Hire', val:r.equipment||0, off:false},
       {label:'Crew',       val:r.crew||0,      off:false},
-      {label:'Transport',  val:r.transport||0, off:(quoteMode==='supply_only')},
-      {label:'Laying',     val:r.laying||0,    off:(quoteMode!=='supply_laying'&&quoteMode!=='full_road')},
+      {label:'Transport',  val:r.transport||0, off:!rateLineInScope(r,'transport')},
+      {label:'Laying',     val:r.laying||0,    off:!rateGroupInScope(r,'paving')},
       {label:'Mob/OH',     val:r.overhead||0,  off:((r.overhead||0)===0)}
     ];
     html += '<div style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:12px;padding:8px 0;border-top:1px solid var(--gray-200);border-bottom:1px solid var(--gray-200)">';
@@ -2741,7 +2775,7 @@ function generateQuotation(si){
     full_road:       'Full Road Scope — Supply, Transport, Laying & Coat Works'
   };
   var sowText  = _sowMap[quoteMode] || 'Bituminous Mix Supply';
-  var matText  = (materialsBy==='us') ? 'Materials by HLC' : 'Materials by client';
+  var matText  = materialsScopeDescription();
 
   var _firstCR = _lastComputedRates[Object.keys(_lastComputedRates)[0]] || {};
   var inclText = _firstCR.includes || '';
@@ -2902,9 +2936,9 @@ function renderRateSummary(mixRates){
   var _titleEl = document.getElementById('rateSummaryTitle');
   if(_titleEl) _titleEl.textContent = _titleMap[quoteMode] || 'Live Rate Summary';
 
-  // Quote mode drives which rows are shown
-  var _showTrans = (quoteMode !== 'supply_only');
-  var _showPav   = (quoteMode === 'supply_laying' || quoteMode === 'full_road');
+  // Actual scope lines drive which rows are shown, including custom scopes.
+  var _showTrans = anyRateLineInScope(mixRates,'transport');
+  var _showPav   = anyRateGroupInScope(mixRates,'paving');
   var isCUM      = (rateUnit === 'CUM');
   var colHdr     = isCUM ? '₹/CUM' : '₹/MT';
 
@@ -2918,19 +2952,25 @@ function renderRateSummary(mixRates){
   mixRates.forEach(function(){ html+='<th>'+colHdr+'</th>'; });
   html += '</tr></thead><tbody>';
 
-  // Material rows — hidden when client supplies materials
-  var matRows = [
-    {label:'Aggregate', key:'aggregate'},
-    {label:'Bitumen',   key:'bitumen'}
-  ];
-  if(materialsBy === 'us'){
-    matRows.forEach(function(row){
-      html+='<tr><td>'+row.label+'</td>';
-      mixRates.forEach(function(r){ html+='<td>'+fmtR(_v(r, r[row.key]))+'</td>'; });
-      html+='</tr>';
-    });
-  } else {
-    html+='<tr><td colspan="'+(nc+1)+'" style="font-size:11px;color:var(--gray-400);font-style:italic;padding:4px 8px">Materials supplied by client — agg &amp; bitumen excluded</td></tr>';
+  // Material rows follow the individual material scope ticks.
+  var _showAgg = anyRateLineInScope(mixRates,'aggregate');
+  var _showBit = anyRateLineInScope(mixRates,'bitumen');
+  if(_showAgg){
+    html+='<tr><td>Aggregate</td>';
+    mixRates.forEach(function(r){ html+='<td>'+fmtR(_v(r, r.aggregate))+'</td>'; });
+    html+='</tr>';
+  }
+  if(_showBit){
+    html+='<tr><td>Bitumen</td>';
+    mixRates.forEach(function(r){ html+='<td>'+fmtR(_v(r, r.bitumen))+'</td>'; });
+    html+='</tr>';
+  }
+  if(!_showAgg && !_showBit){
+    html+='<tr><td colspan="'+(nc+1)+'" style="font-size:11px;color:var(--gray-400);font-style:italic;padding:4px 8px">'+esc(materialsScopeDescription())+' — materials excluded from this rate</td></tr>';
+  } else if(!_showAgg){
+    html+='<tr><td colspan="'+(nc+1)+'" style="font-size:11px;color:var(--gray-400);font-style:italic;padding:4px 8px">Aggregates excluded by scope</td></tr>';
+  } else if(!_showBit){
+    html+='<tr><td colspan="'+(nc+1)+'" style="font-size:11px;color:var(--gray-400);font-style:italic;padding:4px 8px">Bitumen excluded by scope</td></tr>';
   }
   var eqFuelRows = [
     {label:'Equipment (Hire)', key:'equipment'},
@@ -3033,8 +3073,8 @@ function renderScopePanel(){
     if(scopeTickEnabled('mixing','tipperHire')) mx+=sc.tipperHire||0;
     if(scopeTickEnabled('mixing','tipperHsd'))  mx+=sc.tipperHsd||0;
     if(scopeTickEnabled('mixing','crew'))       mx+=sc.crewPerMT||0;
-    if(scopeTickEnabled('mixing','bitumen') && materialsBy==='us') mx+=mType.binderPct/100*1000*(1+_bitW/100)*bitP;
-    if(scopeTickEnabled('mixing','aggregate') && materialsBy==='us') mx+=FRAC_KEYS.reduce(function(s,k){return s+(mType.fractions[k]||0);},0)/100*(1+_aggW/100)*aggL;
+    if(scopeTickEnabled('mixing','bitumen')) mx+=mType.binderPct/100*1000*(1+_bitW/100)*bitP;
+    if(scopeTickEnabled('mixing','aggregate')) mx+=FRAC_KEYS.reduce(function(s,k){return s+(mType.fractions[k]||0);},0)/100*(1+_aggW/100)*aggL;
     totalMT+=mx;
     rows.push(_mk('🏭 Mixing',mx,'MT'));
   }
@@ -3079,6 +3119,30 @@ function renderScopePanel(){
 }
 
 // ====== QUOTE MODE / LDO MODE / PLANT COST MODE SETTERS ======
+var QUOTE_MODE_GROUPS = {
+  'supply_only':     {mixing:true, transport:false, spraying:false, paving:false},
+  'supply_transport':{mixing:true, transport:true,  spraying:false, paving:false},
+  'supply_laying':   {mixing:true, transport:true,  spraying:true,  paving:true},
+  'full_road':       {mixing:true, transport:true,  spraying:true,  paving:true}
+};
+
+function syncQuoteModeButtons(){
+  var groups = scopeState && scopeState.groups;
+  if(!groups) return;
+  var keys = ['mixing','transport','spraying','paving'];
+  var matchingModes = [];
+  Object.keys(QUOTE_MODE_GROUPS).forEach(function(mode){
+    var expected = QUOTE_MODE_GROUPS[mode];
+    var matches = keys.every(function(key){return !!groups[key] === expected[key];});
+    if(matches) matchingModes.push(mode);
+  });
+  var activeMode = matchingModes.indexOf(quoteMode)!==-1 ? quoteMode : matchingModes[0];
+  Object.keys(QUOTE_MODE_GROUPS).forEach(function(mode){
+    var btn = document.getElementById('qm_'+mode);
+    if(btn) btn.classList.toggle('qm-active', mode===activeMode);
+  });
+}
+
 function setQuoteMode(mode, noRecalc, preserveGroups){
   quoteMode = mode;
   var desc = {
@@ -3087,10 +3151,6 @@ function setQuoteMode(mode, noRecalc, preserveGroups){
     'supply_laying':   'Supply + transport + laying — spraying shown, uncheck emulsion if contractor supplies',
     'full_road':       'Full scope — all components included'
   };
-  ['supply_only','supply_transport','supply_laying','full_road'].forEach(function(m){
-    var btn = document.getElementById('qm_'+m);
-    if(btn) btn.classList.toggle('qm-active', m===mode);
-  });
   var descEl = document.getElementById('quoteModeDesc');
   if(descEl) descEl.textContent = desc[mode] || '';
   // Visually dim cards that are excluded from the current scope
@@ -3103,13 +3163,7 @@ function setQuoteMode(mode, noRecalc, preserveGroups){
   if(claying) claying.style.opacity = showLaying ? '1' : '0.4';
   if(ccoat)   ccoat.style.opacity   = (mode==='full_road'||mode==='supply_laying') ? '1' : '0.4';
   // Auto-drive scope quotation groups based on quote mode
-  var _modeGroups = {
-    'supply_only':     {mixing:true, transport:false, spraying:false, paving:false},
-    'supply_transport':{mixing:true, transport:true,  spraying:false, paving:false},
-    'supply_laying':   {mixing:true, transport:true,  spraying:true,  paving:true},
-    'full_road':       {mixing:true, transport:true,  spraying:true,  paving:true}
-  };
-  var _ng = _modeGroups[mode];
+  var _ng = QUOTE_MODE_GROUPS[mode];
   if(_ng && typeof scopeState !== 'undefined'){
     if(!preserveGroups){
       Object.keys(_ng).forEach(function(k){ scopeState.groups[k] = _ng[k]; });
@@ -3117,6 +3171,7 @@ function setQuoteMode(mode, noRecalc, preserveGroups){
     if(typeof restoreScopeUI === 'function') restoreScopeUI();
     if(!noRecalc && typeof renderScopeQuotation === 'function') renderScopeQuotation();
   }
+  syncQuoteModeButtons();
   if(!noRecalc) recalc();
 }
 
@@ -3143,11 +3198,10 @@ function setPlantCostMode(mode, noRecalc){
 }
 
 function setMaterialsBy(mode, noRecalc){
-  materialsBy = mode;
-  var usBtn = document.getElementById('mb_us');
-  var clBtn = document.getElementById('mb_client');
-  if(usBtn) usBtn.classList.toggle('qm-active', mode==='us');
-  if(clBtn) clBtn.classList.toggle('qm-active', mode==='client');
+  materialsBy = mode === 'client' ? 'client' : 'us';
+  scopeState.mixing.aggregate = materialsBy === 'us';
+  scopeState.mixing.bitumen = materialsBy === 'us';
+  syncMaterialsButtons();
   if(!noRecalc){ saveState(); recalc(); }
 }
 
@@ -3422,12 +3476,9 @@ function renderProfGlance(mixRates){
 function renderCostBar(mixRates){
   var r = mixRates[activeMixIdx]||mixRates[0];
   if(!r) return;
-  // Materials supplied by client → exclude aggregate & bitumen (match computeRate / Workbench)
-  var _mAgg = (materialsBy==='client') ? 0 : r.aggregate;
-  var _mBit = (materialsBy==='client') ? 0 : r.bitumen;
   var heads = [
-    {label:'Material',color:'#f59e0b',val:_mAgg},
-    {label:'Bitumen',color:'#8b5cf6',val:_mBit},
+    {label:'Material',color:'#f59e0b',val:r.aggregate},
+    {label:'Bitumen',color:'#8b5cf6',val:r.bitumen},
     {label:'Equipment',color:'#3b82f6',val:r.equipment},
     {label:'Fuel',color:'#ef4444',val:r.fuel},
     {label:'Crew',color:'#10b981',val:r.crew},
@@ -4374,7 +4425,7 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
 
     // --- Aggregates: HLC-supplied or contractor-supplied based on scope ---
     if(totalAggMT>0){
-      if(g.mixing && scopeTickEnabled('mixing','aggregate') && materialsBy==='us'){
+      if(g.mixing && scopeTickEnabled('mixing','aggregate')){
         FRAC_KEYS.forEach(function(k,fi){
           var qty=fracQtys[k], amt=qty*aggLanded;
           var revAmt = rv ? qty*rv.aggLanded : null;
@@ -4388,7 +4439,7 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
             +'<td style="text-align:right">'+fmtR(aggLanded)+'</td><td style="text-align:right;font-weight:600">'+fmtI(Math.round(totalAggAmt))+'</td>'
             +(rv?revCells(aggLanded,totalAggAmt,rv.aggLanded,totalAggAmtRev):'')+'</tr>';
       } else {
-        var _aggNote = (materialsBy==='client') ? '(client-supplied)' : (g.mixing ? '(aggregate unchecked in scope)' : '(contractor-supplied)');
+        var _aggNote = (!scopeTickEnabled('mixing','aggregate') && !scopeTickEnabled('mixing','bitumen')) ? '(client-supplied)' : (g.mixing ? '(aggregate unchecked in scope)' : '(contractor-supplied)');
         FRAC_KEYS.forEach(function(k,fi){
           var qty=fracQtys[k];
           if(qty>0) html+=qtyOnlyRow(FRAC_LABELS[fi], qty.toFixed(1), 'MT', _aggNote);
@@ -4403,10 +4454,10 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
 
     // --- Bitumen: HLC-supplied or contractor-supplied based on scope ---
     if(totalBitMT>0){
-      if(g.mixing && scopeTickEnabled('mixing','bitumen') && materialsBy==='us'){
+      if(g.mixing && scopeTickEnabled('mixing','bitumen')){
         // shown below in HLC-supplied section
       } else {
-        var _bitNote = (materialsBy==='client') ? '(client-supplied)' : (g.mixing ? '(bitumen unchecked in scope)' : '(contractor-supplied)');
+        var _bitNote = (!scopeTickEnabled('mixing','aggregate') && !scopeTickEnabled('mixing','bitumen')) ? '(client-supplied)' : (g.mixing ? '(bitumen unchecked in scope)' : '(contractor-supplied)');
         html+=qtyOnlyRow('Bitumen (VG30)',
           (totalBitMT*1000).toFixed(0)+' kg ('+totalBitMT.toFixed(2)+' MT)',
           '', _bitNote);
@@ -4436,10 +4487,10 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
     var scopeHsdL = scopeHsdLPerMT*totalMT;
     var scopeHsdAmt = scopeHsdL*hsdPrice;
     var scopeGrandTotal = 0, scopeGrandScTotal = 0;
-    if(g.mixing && scopeTickEnabled('mixing','aggregate') && materialsBy==='us'){ scopeGrandTotal += totalAggAmt; scopeGrandScTotal += (rv ? (totalAggAmtRev||totalAggAmt) : totalAggAmt); }
+    if(g.mixing && scopeTickEnabled('mixing','aggregate')){ scopeGrandTotal += totalAggAmt; scopeGrandScTotal += (rv ? (totalAggAmtRev||totalAggAmt) : totalAggAmt); }
 
     // Bitumen — show as HLC-supplied if bitumen checked in scope AND we supply materials
-    if(totalBitMT>0 && g.mixing && scopeTickEnabled('mixing','bitumen') && materialsBy==='us'){
+    if(totalBitMT>0 && g.mixing && scopeTickEnabled('mixing','bitumen')){
       html+='<tr><td>Bitumen (VG30)</td>'
           +'<td style="text-align:right">'+(totalBitMT*1000).toFixed(0)+' <span style="color:var(--gray-400);font-size:11px">('+totalBitMT.toFixed(2)+' MT)</span></td><td>kg</td>'
           +'<td style="text-align:right">'+fmtR(bitPrice)+'</td>'
@@ -4679,7 +4730,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         if(scopeTickEnabled('mixing','jcbHsd')) mx+=sc2.jcbHsd*hm;
         if(scopeTickEnabled('mixing','tipperHire')) mx+=sc2.tipperHire;
         if(scopeTickEnabled('mixing','tipperHsd')) mx+=sc2.tipperHsd*hm;
-        if(scopeTickEnabled('mixing','aggregate') && materialsBy==='us') mx+=sc2.aggregate*am;
+        if(scopeTickEnabled('mixing','aggregate')) mx+=sc2.aggregate*am;
         mx+=sc2.crewPerMT;
         (sc2.customEquip||[]).forEach(function(ce){
           if(ce.isLaying||!ce.enabled) return;
@@ -4745,7 +4796,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     _scopePav=_rScopePav; _rScopePav=_tmpSP;
     hasRevised=true;
   }
-  var _scopeBit = (_scopeActive && _sg.mixing && scopeTickEnabled('mixing','bitumen') && materialsBy==='us');
+  var _scopeBit = (_scopeActive && _sg.mixing && scopeTickEnabled('mixing','bitumen'));
   function _effCPM(stpm,rev,bitCostPMT){ if(!_scopeActive)return null; return ((rev?_rScopeMix:_scopeMix)+(_scopeBit?(bitCostPMT||0):0)+(_sg.transport?stpm:0)+(rev?_rScopePav:_scopePav)); }
   var _sPrimeRaw = _smf>0 ? _sPrime/_smf : _sPrime;
   var _sTackRaw = _smf>0 ? _sTack/_smf : _sTack;
@@ -4987,7 +5038,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       var mr=mixRates[mq.mixIdx]||mixRates[0]; if(!mr) return;
       var mix=mixTypes[mq.mixIdx]||mixTypes[0];
       var vol=mq.cum*mix.density;
-      // Use _lastComputedRates.exPlant so materialsBy gate is honoured (client-supply drops agg+bit)
+      // Use the canonical rate engine's scope-gated exPlant amount.
       var _cr=_lastComputedRates[mix.name];
       var _exPlant=_cr?_cr.exPlant:mr.exPlant;
       basePlantCost += mq.cum*_exPlant*mix.density;
@@ -5671,7 +5722,8 @@ function loadScenarioState(state){
     var smEl = document.getElementById('scopeMarginPct');
     if(smEl) smEl.value = state.scopeMarginPct;
   }
-    restoreQuoteModeState(state);
+  restoreQuoteModeState(state);
+  restoreMaterialScopeState(state);
   if(state.aggReturnTrip !== undefined){
     aggReturnTrip = !!state.aggReturnTrip;
     var _artEl2 = document.getElementById('aggReturnTripChk');
@@ -5844,6 +5896,26 @@ function scopeTickEnabled(section, key){
   return !sectionState || sectionState[key] !== false;
 }
 
+function syncMaterialsButtons(){
+  var aggregate = scopeTickEnabled('mixing','aggregate');
+  var bitumen = scopeTickEnabled('mixing','bitumen');
+  var usBtn = document.getElementById('mb_us');
+  var clientBtn = document.getElementById('mb_client');
+  if(usBtn) usBtn.classList.toggle('qm-active', aggregate && bitumen);
+  if(clientBtn) clientBtn.classList.toggle('qm-active', !aggregate && !bitumen);
+}
+
+function restoreMaterialScopeState(state){
+  var mode = state && state.materialsBy === 'client' ? 'client' : 'us';
+  if(state && state.materialScopeTicksVersion !== 1){
+    scopeState.mixing.aggregate = mode === 'us';
+    scopeState.mixing.bitumen = mode === 'us';
+    state.materialScopeTicksVersion = 1;
+  }
+  materialsBy = mode;
+  syncMaterialsButtons();
+}
+
 function restoreQuoteModeState(state){
   var mode = (state && state.quoteMode) || quoteMode || 'full_road';
   var groups = state && state.scopeState && state.scopeState.groups;
@@ -5876,6 +5948,8 @@ function restoreScopeUI(){
   var so = document.getElementById('scopeOutput');
   if(mr) mr.classList.toggle('hidden', !anyActive);
   if(so) so.classList.toggle('hidden', !anyActive);
+  syncQuoteModeButtons();
+  syncMaterialsButtons();
 }
 
 function scopeToggleGroup(group, checked){
@@ -5889,6 +5963,7 @@ function scopeToggleGroup(group, checked){
     var el = document.getElementById('scopeMarginPct');
     if(parseFloat(el.value)===0){ var gm=n('marginPct'); if(gm>0) el.value=gm; }
   }
+  syncQuoteModeButtons();
   renderScopeQuotation();
   recalc();
 }
@@ -6025,7 +6100,7 @@ function calcScopeComponents(){
 }
 
 function renderScopeRow(container, stateObj, key, label, val, unit, disabled){
-  // disabled=true: materialsBy is the authority — lock checkbox off and grey the row
+  // Scope ticks are independently editable; no preset may lock a row.
   var on = disabled ? false : stateObj[key] !== false;
   var row = document.createElement('div');
   row.className = 'scope-row';
@@ -6035,7 +6110,7 @@ function renderScopeRow(container, stateObj, key, label, val, unit, disabled){
   row.innerHTML =
     '<label'+rowStyle+disabledTitle+'>'+
       '<input type="checkbox" '+(on?'checked':'')+disabledAttr+
-        (!disabled?' onchange="scopeState.'+container+'[\''+key+'\']=this.checked;renderScopeQuotation();recalc()"':'')+
+        (!disabled?' onchange="scopeState.'+container+'[\''+key+'\']=this.checked;syncMaterialsButtons();renderScopeQuotation();recalc()"':'')+
       '> '+label+
     '</label>'+
     '<span class="sc-amt off">'+fmtR(val)+'<span style="font-size:11px;font-weight:400;color:var(--gray-400)"> /'+unit+'</span></span>';
@@ -6062,8 +6137,8 @@ function _sanitizeMn(mn){ return mn.toUpperCase().replace(/[\s-]+/g,'_'); }
     var sg=scopeState.groups;
     var mf=1+(parseFloat(scopeMarginPct)||0)/100;
     var _cmAggW=n('aggWastage'), _cmBitW=n('bitWastage');
-    var mixBitumen   =(sg.mixing&&scopeTickEnabled('mixing','bitumen')  &&materialsBy==='us')?(mType.binderPct/100*1000*(1+_cmBitW/100)*bitPriceVal):0;
-    var mixAggregate =(sg.mixing&&scopeTickEnabled('mixing','aggregate')&&materialsBy==='us')?(FRAC_KEYS.reduce(function(s,k){return s+(mType.fractions[k]||0);},0)/100*(1+_cmAggW/100)*aggLandedVal):0;
+    var mixBitumen   =(sg.mixing&&scopeTickEnabled('mixing','bitumen'))?(mType.binderPct/100*1000*(1+_cmBitW/100)*bitPriceVal):0;
+    var mixAggregate =(sg.mixing&&scopeTickEnabled('mixing','aggregate'))?(FRAC_KEYS.reduce(function(s,k){return s+(mType.fractions[k]||0);},0)/100*(1+_cmAggW/100)*aggLandedVal):0;
     var mixCost=0;
     if(sg.mixing){
       if(scopeTickEnabled('mixing','hotmixHire')) mixCost+=sc.hotmixHire||0;
@@ -6123,6 +6198,7 @@ function _sanitizeMn(mn){ return mn.toUpperCase().replace(/[\s-]+/g,'_'); }
 
   function renderScopeQuotation(){
   var g = scopeState.groups;
+  syncMaterialsButtons();
   if(!g.mixing && !g.transport && !g.spraying && !g.paving) return;
   updateScopeAutoRatesCache();
   var sc = calcScopeComponents();
@@ -6152,9 +6228,8 @@ function _sanitizeMn(mn){ return mn.toUpperCase().replace(/[\s-]+/g,'_'); }
       mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, ce.id+'Hire', esc(ce.name)+' — hire', ce.hire, 'MT'));
       if(ce.hsd>0) mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, ce.id+'Hsd', esc(ce.name)+' HSD (fuel)', ce.hsd, 'MT'));
     });
-    var _matDisabled = (materialsBy === 'client');
-    mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, 'bitumen',   'Bitumen / Binder',     sc.bitumen,   'MT', _matDisabled));
-    mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, 'aggregate', 'Aggregates (landed)',  sc.aggregate, 'MT', _matDisabled));
+    mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, 'bitumen',   'Bitumen / Binder',     sc.bitumen,   'MT'));
+    mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, 'aggregate', 'Aggregates (landed)',  sc.aggregate, 'MT'));
     mixCont.appendChild(renderScopeAlwaysRow('Plant Crew + Overhead', sc.crewPerMT, 'MT'));
   }
 
