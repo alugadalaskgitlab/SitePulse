@@ -950,19 +950,14 @@ function addCustomEquipment(isLaying){
     capex:2000000, life:8, maint:10, hireBasis:'daily', hireRate:5000, hireHrsDay:8, hireHrsMonth:200,
     enabled:true, isLaying:isLaying, fuelConsump:0, custom:true
   });
+  seedScopeEquipmentTicks();
   saveState(); renderEquipCards(); recalc();
 }
 
 function removeCustomEquipment(idx){
   if(idx<0||idx>=equipDefs.length||!equipDefs[idx].custom) return;
-  var eqId = equipDefs[idx].id;
   equipDefs.splice(idx,1);
-  ['mixing','paving'].forEach(function(sec){
-    if(scopeState[sec]){
-      delete scopeState[sec][eqId+'Hire'];
-      delete scopeState[sec][eqId+'Hsd'];
-    }
-  });
+  seedScopeEquipmentTicks();
   saveState(); renderEquipCards(); recalc();
 }
 
@@ -1276,19 +1271,17 @@ function loadState(){
     if(mtBtn) mtBtn.className = 'toggle-btn'+(b==='MT'?' active-amber':'');
     if(cftBtn) cftBtn.className = 'toggle-btn'+(b==='CFT'?' active-amber':'');
     if(aggLbl) aggLbl.textContent = 'Purchase Rate (₹/'+b+')';
-    if(state.scopeState && typeof state.scopeState === 'object'){
-      if(state.scopeState.groups) scopeState.groups = Object.assign(scopeState.groups, state.scopeState.groups);
-      if(state.scopeState.mixing) scopeState.mixing = Object.assign(scopeState.mixing, state.scopeState.mixing);
-      if(state.scopeState.spraying) scopeState.spraying = Object.assign(scopeState.spraying, state.scopeState.spraying);
-      if(state.scopeState.paving) scopeState.paving = Object.assign(scopeState.paving, state.scopeState.paving);
-    }
+     if(state.scopeState && typeof state.scopeState === 'object'){
+       if(state.scopeState.groups) scopeState.groups = Object.assign(scopeState.groups, state.scopeState.groups);
+       if(state.scopeState.mixing) scopeState.mixing = Object.assign(scopeState.mixing, state.scopeState.mixing);
+       if(state.scopeState.spraying) scopeState.spraying = Object.assign(scopeState.spraying, state.scopeState.spraying);
+       if(state.scopeState.paving) scopeState.paving = Object.assign(scopeState.paving, state.scopeState.paving);
+     }
     if(state.scopeMarginPct != null){
       var smEl = document.getElementById('scopeMarginPct');
       if(smEl) smEl.value = state.scopeMarginPct;
     }
-    restoreScopeUI();
-    // Restore new quote-mode state
-    if(state.quoteMode) setQuoteMode(state.quoteMode, true);
+     restoreQuoteModeState(state);
     if(state.aggReturnTrip !== undefined){
       aggReturnTrip = !!state.aggReturnTrip;
       var _artEl = document.getElementById('aggReturnTripChk');
@@ -2297,15 +2290,15 @@ function recalc(){
     var currentLdoRate = lineLdoRate === ldoRate;
     addLine(mixing, 'ldo', 'LDO', ldoConsump, lineLdoRate,
       currentLdoRate ? ldoPerMT : ldoConsump * lineLdoRate,
-      scopeState.groups.mixing && scopeState.mixing.ldo);
+      scopeState.groups.mixing && scopeTickEnabled('mixing','ldo'));
     var prodLdoQty = boilerCampaignMt > 0 ? (boilerProdLhr * boilerProdHrs / boilerCampaignMt) : 0;
     var preheatLdoQty = boilerCampaignMt > 0 ? (boilerPreheatLhr * boilerPreheatHrs / boilerCampaignMt) : 0;
     addLine(mixing, 'boilerProd', 'Boiler production fuel', prodLdoQty, lineLdoRate,
       currentLdoRate ? boilerProdPerMT : (boilerCampaignMt > 0 ? boilerProdLhr * lineLdoRate * boilerProdHrs / boilerCampaignMt : 0),
-      scopeState.groups.mixing && scopeState.mixing.ldo);
+      scopeState.groups.mixing && scopeTickEnabled('mixing','ldo'));
     addLine(mixing, 'boilerPreheat', 'Boiler preheat fuel', preheatLdoQty, lineLdoRate,
       currentLdoRate ? boilerPreheatPerMT : (boilerCampaignMt > 0 ? boilerPreheatLhr * lineLdoRate * boilerPreheatHrs / boilerCampaignMt : 0),
-      scopeState.groups.mixing && scopeState.mixing.ldo);
+      scopeState.groups.mixing && scopeTickEnabled('mixing','ldo'));
 
     equipDefs.forEach(function(eq){
       if(eq.isLaying) return;
@@ -2315,16 +2308,16 @@ function recalc(){
       plantHireKeys.push(hireKey);
       plantFuelKeys.push(fuelKey);
       addLine(mixing, hireKey, (eq.name || eq.id) + ' — hire', 1, costs.hire || 0, costs.hire || 0,
-        scopeState.groups.mixing && scopeState.mixing[hireKey]);
+        scopeState.groups.mixing && scopeTickEnabled('mixing',hireKey));
       var fuelQty = (eq.enabled && tph > 0) ? ((eq.fuelConsump || 0) / tph) : 0;
       var fuelAmount = lineHsdPrice === hsdPrice
         ? (costs.fuel || 0)
         : (fuelQty * lineHsdPrice);
       addLine(mixing, fuelKey, (eq.name || eq.id) + ' — HSD', fuelQty, lineHsdPrice, fuelAmount,
-        scopeState.groups.mixing && scopeState.mixing[fuelKey]);
+        scopeState.groups.mixing && scopeTickEnabled('mixing',fuelKey));
     });
     addLine(mixing, 'crew', 'Plant crew', 1, crewPerMT, crewPerMT,
-      scopeState.groups.mixing && scopeState.mixing.crew);
+      scopeState.groups.mixing && scopeTickEnabled('mixing','crew'));
 
     var layingMachineTotal = 0;
     equipDefs.forEach(function(eq){
@@ -2340,16 +2333,16 @@ function recalc(){
       var fuelAmount = (layProd > 0) ? fuelDaily / layProd : 0;
       pavingKeys.push(hireKey, fuelKey);
       addLine(paving, hireKey, (eq.name || eq.id) + ' — hire', layProd > 0 ? 1 / layProd : 0, hireDaily, hireAmount,
-        scopeState.groups.paving && scopeState.paving[hireKey]);
+        scopeState.groups.paving && scopeTickEnabled('paving',hireKey));
       addLine(paving, fuelKey, (eq.name || eq.id) + ' — HSD', fuelQty, equipHsdPrice, fuelAmount,
-        scopeState.groups.paving && scopeState.paving[fuelKey]);
+        scopeState.groups.paving && scopeTickEnabled('paving',fuelKey));
       layingMachineTotal += hireAmount;
       layingMachineTotal += fuelAmount;
     });
     var layingCrewAmount = (layProd > 0) ? (targetLaying - layingMachineTotal) : 0;
     pavingKeys.push('pavingCrew');
     addLine(paving, 'pavingCrew', 'Laying crew', layProd > 0 ? 1 / layProd : 0, layCrewD, layingCrewAmount,
-      scopeState.groups.paving && scopeState.paving.crew);
+      scopeState.groups.paving && scopeTickEnabled('paving','crew'));
     return {
       mixing:mixing, paving:paving,
       plantHireKeys:plantHireKeys, plantFuelKeys:plantFuelKeys, pavingKeys:pavingKeys,
@@ -2381,13 +2374,13 @@ function recalc(){
     var lines = [
       {
         key:'aggregate', label:'Aggregates',
-        inScope:scopeState.groups.mixing && scopeState.mixing.aggregate && materialsBy==='us',
+        inScope:scopeState.groups.mixing && scopeTickEnabled('mixing','aggregate') && materialsBy==='us',
         qtyPerUnit:aggFrac*(1+P.aggWastePct/100), rate:P.aggLanded,
         amount:aggFrac*(1+P.aggWastePct/100)*P.aggLanded
       },
       {
         key:'bitumen', label:'Bitumen',
-        inScope:scopeState.groups.mixing && scopeState.mixing.bitumen && materialsBy==='us',
+        inScope:scopeState.groups.mixing && scopeTickEnabled('mixing','bitumen') && materialsBy==='us',
         qtyPerUnit:bitKgPerMT, rate:P.bitPrice, amount:bitKgPerMT*P.bitPrice
       }
     ];
@@ -2445,13 +2438,6 @@ function recalc(){
       var row = lines.find(function(line){return line.key==='bitumen';});
       return row ? row.qtyPerUnit : 0;
     }
-    var equipmentById = {};
-    equipDefs.forEach(function(eq){
-      equipmentById[eq.id] = {
-        hire:amountFor(eq.id + 'Hire'),
-        fuel:amountFor(eq.id + 'Hsd')
-      };
-    });
     return {
       name: mix.name, density: mix.density,
       aggregate: aggCostPMT, bitumen: bitCostPMT, bitKgPerMT:bitQty(),
@@ -2462,7 +2448,6 @@ function recalc(){
       perMT_cost: perMT_cost, perMT_quoted: perMT_quoted,
       perCUM_cost: perMT_cost * mix.density, perCUM_quoted: perMT_quoted * mix.density,
       perCum:perMT_quoted * mix.density,
-      equipmentById:equipmentById,
       includes: incl.join(', '), lines:lines
     };
   }
@@ -3021,9 +3006,6 @@ function renderScopePanel(){
   if(!anyActive){ el.style.display='none'; return; }
   el.style.display='block';
   var sc = calcScopeComponents();
-  var sm = scopeState.mixing||{};
-  var sv = scopeState.spraying||{};
-  var sp = scopeState.paving||{};
   var mType = mixTypes[activeMixIdx]||mixTypes[0]||{binderPct:5.4,fractions:{f20mm:25,f10mm:20,f6mm:15,fDust:30,fFiller:4.6}};
   var aggL = parseFloat(((document.getElementById('aggLanded')||{}).value||'0').replace(/,/g,''))||0;
   var bitP = n('bitPrice');
@@ -3042,17 +3024,17 @@ function renderScopePanel(){
   var rows=[], totalMT=0;
   if(sg.mixing){
     var mx=0;
-    if(sm.hotmixHire) mx+=sc.hotmixHire||0;
-    if(sm.ldo)        mx+=sc.ldo||0;
-    if(sm.dgHire)     mx+=sc.dgHire||0;
-    if(sm.dgHsd)      mx+=sc.dgHsd||0;
-    if(sm.jcbHire)    mx+=sc.jcbHire||0;
-    if(sm.jcbHsd)     mx+=sc.jcbHsd||0;
-    if(sm.tipperHire) mx+=sc.tipperHire||0;
-    if(sm.tipperHsd)  mx+=sc.tipperHsd||0;
-    if(sm.crew)       mx+=sc.crewPerMT||0;
-    if(sm.bitumen  && materialsBy==='us') mx+=mType.binderPct/100*1000*(1+_bitW/100)*bitP;
-    if(sm.aggregate&& materialsBy==='us') mx+=FRAC_KEYS.reduce(function(s,k){return s+(mType.fractions[k]||0);},0)/100*(1+_aggW/100)*aggL;
+    if(scopeTickEnabled('mixing','hotmixHire')) mx+=sc.hotmixHire||0;
+    if(scopeTickEnabled('mixing','ldo'))        mx+=sc.ldo||0;
+    if(scopeTickEnabled('mixing','dgHire'))     mx+=sc.dgHire||0;
+    if(scopeTickEnabled('mixing','dgHsd'))      mx+=sc.dgHsd||0;
+    if(scopeTickEnabled('mixing','jcbHire'))    mx+=sc.jcbHire||0;
+    if(scopeTickEnabled('mixing','jcbHsd'))     mx+=sc.jcbHsd||0;
+    if(scopeTickEnabled('mixing','tipperHire')) mx+=sc.tipperHire||0;
+    if(scopeTickEnabled('mixing','tipperHsd'))  mx+=sc.tipperHsd||0;
+    if(scopeTickEnabled('mixing','crew'))       mx+=sc.crewPerMT||0;
+    if(scopeTickEnabled('mixing','bitumen') && materialsBy==='us') mx+=mType.binderPct/100*1000*(1+_bitW/100)*bitP;
+    if(scopeTickEnabled('mixing','aggregate') && materialsBy==='us') mx+=FRAC_KEYS.reduce(function(s,k){return s+(mType.fractions[k]||0);},0)/100*(1+_aggW/100)*aggL;
     totalMT+=mx;
     rows.push(_mk('🏭 Mixing',mx,'MT'));
   }
@@ -3062,20 +3044,20 @@ function renderScopePanel(){
     rows.push(_mk('🚛 Transport',tx,'MT'));
   }
   if(sg.spraying){
-    var prC = sv.prime?(sc.primeEm+sc.sprayOp):0;
-    var tkC = sv.tack?(sc.tackEm+sc.sprayOp):0;
+    var prC = (scopeTickEnabled('spraying','primeEmulsion')?sc.primeEm:0)+(scopeTickEnabled('spraying','operation')?sc.sprayOp:0);
+    var tkC = (scopeTickEnabled('spraying','tackEmulsion')?sc.tackEm:0)+(scopeTickEnabled('spraying','operation')?sc.sprayOp:0);
     var spTotal = prC+tkC;
     if(spTotal>0) rows.push(_mk('💦 Spraying',spTotal,'sqm'));
   }
   if(sg.paving){
     var pv=0;
-    if(sp.paverHire) pv+=sc.paverHire||0;
-    if(sp.paverHsd)  pv+=sc.paverHsd||0;
-    if(sp.rollerHire)pv+=sc.rollerHire||0;
-    if(sp.rollerHsd) pv+=sc.rollerHsd||0;
-    if(sp.ptrHire&&sc.ptrEnabled)  pv+=sc.ptrHire||0;
-    if(sp.ptrHsd&&sc.ptrEnabled)   pv+=sc.ptrHsd||0;
-    if(sp.crew)      pv+=sc.layCrewPerMT||0;
+    if(scopeTickEnabled('paving','paverHire'))  pv+=sc.paverHire||0;
+    if(scopeTickEnabled('paving','paverHsd'))   pv+=sc.paverHsd||0;
+    if(scopeTickEnabled('paving','rollerHire')) pv+=sc.rollerHire||0;
+    if(scopeTickEnabled('paving','rollerHsd'))  pv+=sc.rollerHsd||0;
+    if(scopeTickEnabled('paving','ptrHire')&&sc.ptrEnabled) pv+=sc.ptrHire||0;
+    if(scopeTickEnabled('paving','ptrHsd')&&sc.ptrEnabled)  pv+=sc.ptrHsd||0;
+    if(scopeTickEnabled('paving','crew'))       pv+=sc.layCrewPerMT||0;
     totalMT+=pv;
     rows.push(_mk('🛣️ Paving',pv,'MT'));
   }
@@ -3097,7 +3079,7 @@ function renderScopePanel(){
 }
 
 // ====== QUOTE MODE / LDO MODE / PLANT COST MODE SETTERS ======
-function setQuoteMode(mode, noRecalc){
+function setQuoteMode(mode, noRecalc, preserveGroups){
   quoteMode = mode;
   var desc = {
     'supply_only':     'Ex-plant rate — transport, laying & coat excluded',
@@ -3129,7 +3111,9 @@ function setQuoteMode(mode, noRecalc){
   };
   var _ng = _modeGroups[mode];
   if(_ng && typeof scopeState !== 'undefined'){
-    Object.keys(_ng).forEach(function(k){ scopeState.groups[k] = _ng[k]; });
+    if(!preserveGroups){
+      Object.keys(_ng).forEach(function(k){ scopeState.groups[k] = _ng[k]; });
+    }
     if(typeof restoreScopeUI === 'function') restoreScopeUI();
     if(!noRecalc && typeof renderScopeQuotation === 'function') renderScopeQuotation();
   }
@@ -3974,7 +3958,11 @@ function renderJobCard(si,ji,j){
 
 function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, primeSpray, tackSpray, primeDilution, tackDilution, marginPct){
   var grandMT=0, grandPlant=0, grandTrans=0, grandLay=0, grandPrime=0, grandTack=0, grandTotal=0;
-  var sprayScope = scopeState.groups.spraying ? (scopeState.spraying || {}) : {};
+  var sprayScope = {
+    operation:scopeTickEnabled('spraying','operation'),
+    primeEmulsion:scopeTickEnabled('spraying','primeEmulsion'),
+    tackEmulsion:scopeTickEnabled('spraying','tackEmulsion')
+  };
   var sprayProd = n('sprayProd');
   var sprayOperationPerSqm = sprayProd>0 ? ((n('sprayBowser')+n('sprayCrew'))/sprayProd) : 0;
   var primeEmulsionPerSqm = primeSpray*n('primePrice')/(primeDilution||1);
@@ -4386,7 +4374,7 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
 
     // --- Aggregates: HLC-supplied or contractor-supplied based on scope ---
     if(totalAggMT>0){
-      if(g.mixing && scopeState.mixing.aggregate && materialsBy==='us'){
+      if(g.mixing && scopeTickEnabled('mixing','aggregate') && materialsBy==='us'){
         FRAC_KEYS.forEach(function(k,fi){
           var qty=fracQtys[k], amt=qty*aggLanded;
           var revAmt = rv ? qty*rv.aggLanded : null;
@@ -4415,7 +4403,7 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
 
     // --- Bitumen: HLC-supplied or contractor-supplied based on scope ---
     if(totalBitMT>0){
-      if(g.mixing && scopeState.mixing.bitumen && materialsBy==='us'){
+      if(g.mixing && scopeTickEnabled('mixing','bitumen') && materialsBy==='us'){
         // shown below in HLC-supplied section
       } else {
         var _bitNote = (materialsBy==='client') ? '(client-supplied)' : (g.mixing ? '(bitumen unchecked in scope)' : '(contractor-supplied)');
@@ -4431,20 +4419,16 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
     // --- Scope HSD: calculate from active scope equipment (respects individual HSD checkboxes) ---
     var scopeHsdLPerMT = 0;
     if(g.mixing){
-      var _mxHsdMap = {dg:'dgHsd', jcb:'jcbHsd', tipper:'tipperHsd'};
       equipDefs.forEach(function(eq){
         if(!eq.enabled || eq.isLaying) return;
-        var hsdKey = _mxHsdMap[eq.id];
-        if(hsdKey && !scopeState.mixing[hsdKey]) return;
+        if(!scopeTickEnabled('mixing',eq.id+'Hsd')) return;
         scopeHsdLPerMT += tph>0?(eq.fuelConsump||0)/tph:0;
       });
     }
     if(g.paving){
-      var _pvHsdMap = {paver:'paverHsd', roller:'rollerHsd', ptr:'ptrHsd'};
       equipDefs.forEach(function(eq){
         if(!eq.enabled || !eq.isLaying) return;
-        var hsdKey = _pvHsdMap[eq.id];
-        if(hsdKey && !scopeState.paving[hsdKey]) return;
+        if(!scopeTickEnabled('paving',eq.id+'Hsd')) return;
         var hrsDay = eq.hireHrsDay||8;
         scopeHsdLPerMT += layProd>0?(eq.fuelConsump||0)*hrsDay/layProd:0;
       });
@@ -4452,10 +4436,10 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
     var scopeHsdL = scopeHsdLPerMT*totalMT;
     var scopeHsdAmt = scopeHsdL*hsdPrice;
     var scopeGrandTotal = 0, scopeGrandScTotal = 0;
-    if(g.mixing && scopeState.mixing.aggregate && materialsBy==='us'){ scopeGrandTotal += totalAggAmt; scopeGrandScTotal += (rv ? (totalAggAmtRev||totalAggAmt) : totalAggAmt); }
+    if(g.mixing && scopeTickEnabled('mixing','aggregate') && materialsBy==='us'){ scopeGrandTotal += totalAggAmt; scopeGrandScTotal += (rv ? (totalAggAmtRev||totalAggAmt) : totalAggAmt); }
 
     // Bitumen — show as HLC-supplied if bitumen checked in scope AND we supply materials
-    if(totalBitMT>0 && g.mixing && scopeState.mixing.bitumen && materialsBy==='us'){
+    if(totalBitMT>0 && g.mixing && scopeTickEnabled('mixing','bitumen') && materialsBy==='us'){
       html+='<tr><td>Bitumen (VG30)</td>'
           +'<td style="text-align:right">'+(totalBitMT*1000).toFixed(0)+' <span style="color:var(--gray-400);font-size:11px">('+totalBitMT.toFixed(2)+' MT)</span></td><td>kg</td>'
           +'<td style="text-align:right">'+fmtR(bitPrice)+'</td>'
@@ -4468,7 +4452,7 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
 
     // LDO — qty row always; rate+amount only if Mixing+ldo checked
     if(totalLdoL>0){
-      if(g.mixing && scopeState.mixing.ldo){
+      if(g.mixing && scopeTickEnabled('mixing','ldo')){
         html+='<tr><td>LDO — Dryer + Boiler</td>'
             +'<td style="text-align:right">'+totalLdoL.toFixed(0)+'</td><td>L</td>'
             +'<td style="text-align:right">'+fmtR(ldoRate)+'</td>'
@@ -4502,7 +4486,7 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
 
     // Prime emulsion — qty row always (if any jobs have prime); rate+amount only if spraying+primeEmulsion
     if(totalPrimeKg>0){
-      if(g.spraying && scopeState.spraying.primeEmulsion){
+      if(g.spraying && scopeTickEnabled('spraying','primeEmulsion')){
         var spPrimeAmt=totalPrimeKg*primePrice;
         html+='<tr><td>Prime Coat Emulsion</td>'
             +'<td style="text-align:right">'+totalPrimeKg.toFixed(0)+'</td><td>kg</td>'
@@ -4519,7 +4503,7 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
 
     // Tack emulsion — same pattern
     if(totalTackKg>0){
-      if(g.spraying && scopeState.spraying.tackEmulsion){
+      if(g.spraying && scopeTickEnabled('spraying','tackEmulsion')){
         var spTackAmt=totalTackKg*tackPrice;
         html+='<tr><td>Tack Coat Emulsion</td>'
             +'<td style="text-align:right">'+totalTackKg.toFixed(0)+'</td><td>kg</td>'
@@ -4687,35 +4671,35 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       var sc2=scOverride||_sc;
       var mx=0,pv=0;
       if(_sg.mixing){
-        if(scopeState.mixing.hotmixHire) mx+=sc2.hotmixHire;
-        if(scopeState.mixing.ldo) mx+=sc2.ldo*lm;
-        if(scopeState.mixing.dgHire) mx+=sc2.dgHire;
-        if(scopeState.mixing.dgHsd) mx+=sc2.dgHsd*hm;
-        if(scopeState.mixing.jcbHire) mx+=sc2.jcbHire;
-        if(scopeState.mixing.jcbHsd) mx+=sc2.jcbHsd*hm;
-        if(scopeState.mixing.tipperHire) mx+=sc2.tipperHire;
-        if(scopeState.mixing.tipperHsd) mx+=sc2.tipperHsd*hm;
-        if(scopeState.mixing.aggregate && materialsBy==='us') mx+=sc2.aggregate*am;
+        if(scopeTickEnabled('mixing','hotmixHire')) mx+=sc2.hotmixHire;
+        if(scopeTickEnabled('mixing','ldo')) mx+=sc2.ldo*lm;
+        if(scopeTickEnabled('mixing','dgHire')) mx+=sc2.dgHire;
+        if(scopeTickEnabled('mixing','dgHsd')) mx+=sc2.dgHsd*hm;
+        if(scopeTickEnabled('mixing','jcbHire')) mx+=sc2.jcbHire;
+        if(scopeTickEnabled('mixing','jcbHsd')) mx+=sc2.jcbHsd*hm;
+        if(scopeTickEnabled('mixing','tipperHire')) mx+=sc2.tipperHire;
+        if(scopeTickEnabled('mixing','tipperHsd')) mx+=sc2.tipperHsd*hm;
+        if(scopeTickEnabled('mixing','aggregate') && materialsBy==='us') mx+=sc2.aggregate*am;
         mx+=sc2.crewPerMT;
         (sc2.customEquip||[]).forEach(function(ce){
           if(ce.isLaying||!ce.enabled) return;
-          if(scopeState.mixing[ce.id+'Hire']) mx+=ce.hire;
-          if(scopeState.mixing[ce.id+'Hsd']) mx+=ce.hsd*hm;
+          if(scopeTickEnabled('mixing',ce.id+'Hire')) mx+=ce.hire;
+          if(scopeTickEnabled('mixing',ce.id+'Hsd')) mx+=ce.hsd*hm;
         });
       }
       if(_sg.paving){
-        if(scopeState.paving.paverHire) pv+=sc2.paverHire;
-        if(scopeState.paving.paverHsd) pv+=sc2.paverHsd*hm;
-        if(scopeState.paving.rollerHire) pv+=sc2.rollerHire;
-        if(scopeState.paving.rollerHsd) pv+=sc2.rollerHsd*hm;
+        if(scopeTickEnabled('paving','paverHire')) pv+=sc2.paverHire;
+        if(scopeTickEnabled('paving','paverHsd')) pv+=sc2.paverHsd*hm;
+        if(scopeTickEnabled('paving','rollerHire')) pv+=sc2.rollerHire;
+        if(scopeTickEnabled('paving','rollerHsd')) pv+=sc2.rollerHsd*hm;
         if(sc2.ptrEnabled){
-          if(scopeState.paving.ptrHire) pv+=sc2.ptrHire;
-          if(scopeState.paving.ptrHsd) pv+=sc2.ptrHsd*hm;
+          if(scopeTickEnabled('paving','ptrHire')) pv+=sc2.ptrHire;
+          if(scopeTickEnabled('paving','ptrHsd')) pv+=sc2.ptrHsd*hm;
         }
         (sc2.customEquip||[]).forEach(function(ce){
           if(!ce.isLaying||!ce.enabled) return;
-          if(scopeState.paving[ce.id+'Hire']) pv+=ce.hire;
-          if(scopeState.paving[ce.id+'Hsd']) pv+=ce.hsd*hm;
+          if(scopeTickEnabled('paving',ce.id+'Hire')) pv+=ce.hire;
+          if(scopeTickEnabled('paving',ce.id+'Hsd')) pv+=ce.hsd*hm;
         });
         pv+=sc2.layCrewPerMT;
       }
@@ -4724,9 +4708,9 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     var _base=_sumMixPav(1,1);
     _scopeMix=_base.mix; _scopePav=_base.pav;
     if(_sg.spraying){
-      var _sOp=scopeState.spraying.operation?_sc.sprayOp:0;
-      _sPrime=(_sOp+(scopeState.spraying.primeEmulsion?_sc.primeEm:0))*_smf;
-      _sTack=(_sOp+(scopeState.spraying.tackEmulsion?_sc.tackEm:0))*_smf;
+      var _sOp=scopeTickEnabled('spraying','operation')?_sc.sprayOp:0;
+      _sPrime=(_sOp+(scopeTickEnabled('spraying','primeEmulsion')?_sc.primeEm:0))*_smf;
+      _sTack=(_sOp+(scopeTickEnabled('spraying','tackEmulsion')?_sc.tackEm:0))*_smf;
     } else { _sPrime=0; _sTack=0; }
     _rScopeMix=_scopeMix; _rScopePav=_scopePav;
     if(scenarioMode && scenarioBaseSnapshot){
@@ -4761,7 +4745,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     _scopePav=_rScopePav; _rScopePav=_tmpSP;
     hasRevised=true;
   }
-  var _scopeBit = (_scopeActive && _sg.mixing && scopeState.mixing.bitumen && materialsBy==='us');
+  var _scopeBit = (_scopeActive && _sg.mixing && scopeTickEnabled('mixing','bitumen') && materialsBy==='us');
   function _effCPM(stpm,rev,bitCostPMT){ if(!_scopeActive)return null; return ((rev?_rScopeMix:_scopeMix)+(_scopeBit?(bitCostPMT||0):0)+(_sg.transport?stpm:0)+(rev?_rScopePav:_scopePav)); }
   var _sPrimeRaw = _smf>0 ? _sPrime/_smf : _sPrime;
   var _sTackRaw = _smf>0 ? _sTack/_smf : _sTack;
@@ -5677,19 +5661,17 @@ function loadScenarioState(state){
   if(mtBtn) mtBtn.className='toggle-btn'+(b==='MT'?' active-amber':'');
   if(cftBtn) cftBtn.className='toggle-btn'+(b==='CFT'?' active-amber':'');
   if(aggLbl) aggLbl.textContent='Purchase Rate (₹/'+b+')';
-  if(state.scopeState && typeof state.scopeState === 'object'){
-    if(state.scopeState.groups) scopeState.groups = Object.assign(scopeState.groups, state.scopeState.groups);
-    if(state.scopeState.mixing) scopeState.mixing = Object.assign(scopeState.mixing, state.scopeState.mixing);
-    if(state.scopeState.spraying) scopeState.spraying = Object.assign(scopeState.spraying, state.scopeState.spraying);
-    if(state.scopeState.paving) scopeState.paving = Object.assign(scopeState.paving, state.scopeState.paving);
-  }
+    if(state.scopeState && typeof state.scopeState === 'object'){
+      if(state.scopeState.groups) scopeState.groups = Object.assign(scopeState.groups, state.scopeState.groups);
+      if(state.scopeState.mixing) scopeState.mixing = Object.assign(scopeState.mixing, state.scopeState.mixing);
+      if(state.scopeState.spraying) scopeState.spraying = Object.assign(scopeState.spraying, state.scopeState.spraying);
+      if(state.scopeState.paving) scopeState.paving = Object.assign(scopeState.paving, state.scopeState.paving);
+    }
   if(state.scopeMarginPct != null){
     var smEl = document.getElementById('scopeMarginPct');
     if(smEl) smEl.value = state.scopeMarginPct;
   }
-  restoreScopeUI();
-  // Restore quote-mode state for scenario mode
-  if(state.quoteMode) setQuoteMode(state.quoteMode, true);
+    restoreQuoteModeState(state);
   if(state.aggReturnTrip !== undefined){
     aggReturnTrip = !!state.aggReturnTrip;
     var _artEl2 = document.getElementById('aggReturnTripChk');
@@ -5833,11 +5815,51 @@ function saveScenarioToDb(){
 
 // ====== SCOPE QUOTATION ======
 var scopeState = {
-  groups:  {mixing:false, transport:false, spraying:false, paving:false},
-  mixing:  {hotmixHire:true, ldo:true, dgHire:true, dgHsd:true, jcbHire:true, jcbHsd:true, tipperHire:true, tipperHsd:true, bitumen:true, aggregate:true, crew:true},
+  groups:  {mixing:true, transport:true, spraying:true, paving:true},
+  mixing:  {ldo:true, bitumen:true, aggregate:true, crew:true},
   spraying:{operation:true, primeEmulsion:true, tackEmulsion:true},
-  paving:  {paverHire:true, paverHsd:true, rollerHire:true, rollerHsd:true, ptrHire:true, ptrHsd:true, crew:true}
+  paving:  {crew:true}
 };
+
+function seedScopeEquipmentTicks(){
+  if(!scopeState || !Array.isArray(equipDefs)) return;
+  var validKeys = {mixing:{}, paving:{}};
+  equipDefs.forEach(function(eq){
+    var section = eq.isLaying ? 'paving' : 'mixing';
+    ['Hire','Hsd'].forEach(function(suffix){
+      var key = eq.id + suffix;
+      validKeys[section][key] = true;
+      if(scopeState[section][key] === undefined) scopeState[section][key] = true;
+    });
+  });
+  ['mixing','paving'].forEach(function(section){
+    Object.keys(scopeState[section]).forEach(function(key){
+      if(/(?:Hire|Hsd)$/.test(key) && !validKeys[section][key]) delete scopeState[section][key];
+    });
+  });
+}
+
+function scopeTickEnabled(section, key){
+  var sectionState = scopeState && scopeState[section];
+  return !sectionState || sectionState[key] !== false;
+}
+
+function restoreQuoteModeState(state){
+  var mode = (state && state.quoteMode) || quoteMode || 'full_road';
+  var groups = state && state.scopeState && state.scopeState.groups;
+  var groupKeys = ['mixing','transport','spraying','paving'];
+  var hasSavedGroups = !!groups && groupKeys.some(function(key){
+    return typeof groups[key] === 'boolean';
+  });
+  var allGroupsOff = hasSavedGroups && groupKeys.every(function(key){
+    return groups[key] === false;
+  });
+  seedScopeEquipmentTicks();
+  setQuoteMode(mode, true, hasSavedGroups && !allGroupsOff);
+  restoreScopeUI();
+}
+
+seedScopeEquipmentTicks();
 
 function restoreScopeUI(){
   var g = scopeState.groups;
@@ -6004,7 +6026,7 @@ function calcScopeComponents(){
 
 function renderScopeRow(container, stateObj, key, label, val, unit, disabled){
   // disabled=true: materialsBy is the authority — lock checkbox off and grey the row
-  var on = disabled ? false : !!stateObj[key];
+  var on = disabled ? false : stateObj[key] !== false;
   var row = document.createElement('div');
   row.className = 'scope-row';
   var disabledAttr = disabled ? ' disabled' : '';
@@ -6037,45 +6059,45 @@ function renderScopeAlwaysRow(label, val, unit){
 function _sanitizeMn(mn){ return mn.toUpperCase().replace(/[\s-]+/g,'_'); }
 
   function computeMixScopeRate(mType, sc, aggLandedVal, bitPriceVal, scopeMarginPct){
-    var sg=scopeState.groups, sm=scopeState.mixing||{}, sp=scopeState.paving||{};
+    var sg=scopeState.groups;
     var mf=1+(parseFloat(scopeMarginPct)||0)/100;
     var _cmAggW=n('aggWastage'), _cmBitW=n('bitWastage');
-    var mixBitumen   =(sg.mixing&&sm.bitumen  &&materialsBy==='us')?(mType.binderPct/100*1000*(1+_cmBitW/100)*bitPriceVal):0;
-    var mixAggregate =(sg.mixing&&sm.aggregate&&materialsBy==='us')?(FRAC_KEYS.reduce(function(s,k){return s+(mType.fractions[k]||0);},0)/100*(1+_cmAggW/100)*aggLandedVal):0;
+    var mixBitumen   =(sg.mixing&&scopeTickEnabled('mixing','bitumen')  &&materialsBy==='us')?(mType.binderPct/100*1000*(1+_cmBitW/100)*bitPriceVal):0;
+    var mixAggregate =(sg.mixing&&scopeTickEnabled('mixing','aggregate')&&materialsBy==='us')?(FRAC_KEYS.reduce(function(s,k){return s+(mType.fractions[k]||0);},0)/100*(1+_cmAggW/100)*aggLandedVal):0;
     var mixCost=0;
     if(sg.mixing){
-      if(sm.hotmixHire) mixCost+=sc.hotmixHire||0;
-      if(sm.ldo)        mixCost+=sc.ldo||0;
-      if(sm.dgHire)     mixCost+=sc.dgHire||0;
-      if(sm.dgHsd)      mixCost+=sc.dgHsd||0;
-      if(sm.jcbHire)    mixCost+=sc.jcbHire||0;
-      if(sm.jcbHsd)     mixCost+=sc.jcbHsd||0;
-      if(sm.tipperHire) mixCost+=sc.tipperHire||0;
-      if(sm.tipperHsd)  mixCost+=sc.tipperHsd||0;
+      if(scopeTickEnabled('mixing','hotmixHire')) mixCost+=sc.hotmixHire||0;
+      if(scopeTickEnabled('mixing','ldo'))        mixCost+=sc.ldo||0;
+      if(scopeTickEnabled('mixing','dgHire'))     mixCost+=sc.dgHire||0;
+      if(scopeTickEnabled('mixing','dgHsd'))      mixCost+=sc.dgHsd||0;
+      if(scopeTickEnabled('mixing','jcbHire'))    mixCost+=sc.jcbHire||0;
+      if(scopeTickEnabled('mixing','jcbHsd'))     mixCost+=sc.jcbHsd||0;
+      if(scopeTickEnabled('mixing','tipperHire')) mixCost+=sc.tipperHire||0;
+      if(scopeTickEnabled('mixing','tipperHsd'))  mixCost+=sc.tipperHsd||0;
       mixCost+=mixBitumen;
       mixCost+=mixAggregate;
       (sc.customEquip||[]).forEach(function(ce){
         if(ce.isLaying||!ce.enabled) return;
-        if(sm[ce.id+'Hire']) mixCost+=ce.hire||0;
-        if(sm[ce.id+'Hsd'])  mixCost+=ce.hsd||0;
+        if(scopeTickEnabled('mixing',ce.id+'Hire')) mixCost+=ce.hire||0;
+        if(scopeTickEnabled('mixing',ce.id+'Hsd'))  mixCost+=ce.hsd||0;
       });
       mixCost+=sc.crewPerMT||0;
     }
     var transCost=sg.transport?(sc.transPerMT||0):0;
     var pavCost=0;
     if(sg.paving){
-      if(sp.paverHire)  pavCost+=sc.paverHire||0;
-      if(sp.paverHsd)   pavCost+=sc.paverHsd||0;
-      if(sp.rollerHire) pavCost+=sc.rollerHire||0;
-      if(sp.rollerHsd)  pavCost+=sc.rollerHsd||0;
+      if(scopeTickEnabled('paving','paverHire'))  pavCost+=sc.paverHire||0;
+      if(scopeTickEnabled('paving','paverHsd'))   pavCost+=sc.paverHsd||0;
+      if(scopeTickEnabled('paving','rollerHire')) pavCost+=sc.rollerHire||0;
+      if(scopeTickEnabled('paving','rollerHsd'))  pavCost+=sc.rollerHsd||0;
       if(sc.ptrEnabled){
-        if(sp.ptrHire) pavCost+=sc.ptrHire||0;
-        if(sp.ptrHsd)  pavCost+=sc.ptrHsd||0;
+        if(scopeTickEnabled('paving','ptrHire')) pavCost+=sc.ptrHire||0;
+        if(scopeTickEnabled('paving','ptrHsd'))  pavCost+=sc.ptrHsd||0;
       }
       (sc.customEquip||[]).forEach(function(ce){
         if(!ce.isLaying||!ce.enabled) return;
-        if(sp[ce.id+'Hire']) pavCost+=ce.hire||0;
-        if(sp[ce.id+'Hsd'])  pavCost+=ce.hsd||0;
+        if(scopeTickEnabled('paving',ce.id+'Hire')) pavCost+=ce.hire||0;
+        if(scopeTickEnabled('paving',ce.id+'Hsd'))  pavCost+=ce.hsd||0;
       });
       pavCost+=sc.layCrewPerMT||0;
     }
@@ -6197,20 +6219,20 @@ function _sanitizeMn(mn){ return mn.toUpperCase().replace(/[\s-]+/g,'_'); }
 
   var mixBase = 0;
   if(showMix){
-    if(scopeState.mixing.hotmixHire) mixBase += sc.hotmixHire;
-    if(scopeState.mixing.ldo)        mixBase += sc.ldo;
-    if(scopeState.mixing.dgHire)     mixBase += sc.dgHire;
-    if(scopeState.mixing.dgHsd)      mixBase += sc.dgHsd;
-    if(scopeState.mixing.jcbHire)    mixBase += sc.jcbHire;
-    if(scopeState.mixing.jcbHsd)     mixBase += sc.jcbHsd;
-    if(scopeState.mixing.tipperHire) mixBase += sc.tipperHire;
-    if(scopeState.mixing.tipperHsd)  mixBase += sc.tipperHsd;
-    if(scopeState.mixing.bitumen)    mixBase += sc.bitumen;
-    if(scopeState.mixing.aggregate)  mixBase += sc.aggregate;
+    if(scopeTickEnabled('mixing','hotmixHire')) mixBase += sc.hotmixHire;
+    if(scopeTickEnabled('mixing','ldo'))        mixBase += sc.ldo;
+    if(scopeTickEnabled('mixing','dgHire'))     mixBase += sc.dgHire;
+    if(scopeTickEnabled('mixing','dgHsd'))      mixBase += sc.dgHsd;
+    if(scopeTickEnabled('mixing','jcbHire'))    mixBase += sc.jcbHire;
+    if(scopeTickEnabled('mixing','jcbHsd'))     mixBase += sc.jcbHsd;
+    if(scopeTickEnabled('mixing','tipperHire')) mixBase += sc.tipperHire;
+    if(scopeTickEnabled('mixing','tipperHsd'))  mixBase += sc.tipperHsd;
+    if(scopeTickEnabled('mixing','bitumen'))    mixBase += sc.bitumen;
+    if(scopeTickEnabled('mixing','aggregate'))  mixBase += sc.aggregate;
     (sc.customEquip||[]).forEach(function(ce){
       if(ce.isLaying||!ce.enabled) return;
-      if(scopeState.mixing[ce.id+'Hire']) mixBase += ce.hire;
-      if(scopeState.mixing[ce.id+'Hsd'])  mixBase += ce.hsd;
+      if(scopeTickEnabled('mixing',ce.id+'Hire')) mixBase += ce.hire;
+      if(scopeTickEnabled('mixing',ce.id+'Hsd'))  mixBase += ce.hsd;
     });
     mixBase += sc.crewPerMT;
     // mixBase kept PRE-MARGIN — margin applied once at the grand total
@@ -6218,26 +6240,26 @@ function _sanitizeMn(mn){ return mn.toUpperCase().replace(/[\s-]+/g,'_'); }
   var transTotal  = showTrans  ? sc.transPerMT : 0;
   var primeSprayTotal = 0, tackSprayTotal = 0;
   if(showSpray){
-    var spOp = scopeState.spraying.operation    ? sc.sprayOp : 0;
-    var prEm = scopeState.spraying.primeEmulsion? sc.primeEm : 0;
-    var tkEm = scopeState.spraying.tackEmulsion ? sc.tackEm  : 0;
+    var spOp = scopeTickEnabled('spraying','operation')    ? sc.sprayOp : 0;
+    var prEm = scopeTickEnabled('spraying','primeEmulsion')? sc.primeEm : 0;
+    var tkEm = scopeTickEnabled('spraying','tackEmulsion') ? sc.tackEm  : 0;
     primeSprayTotal = (spOp + prEm);
     tackSprayTotal  = (spOp + tkEm);
   }
   var pavBase = 0;
   if(showPav){
-    if(scopeState.paving.paverHire)  pavBase += sc.paverHire;
-    if(scopeState.paving.paverHsd)   pavBase += sc.paverHsd;
-    if(scopeState.paving.rollerHire) pavBase += sc.rollerHire;
-    if(scopeState.paving.rollerHsd)  pavBase += sc.rollerHsd;
+    if(scopeTickEnabled('paving','paverHire'))  pavBase += sc.paverHire;
+    if(scopeTickEnabled('paving','paverHsd'))   pavBase += sc.paverHsd;
+    if(scopeTickEnabled('paving','rollerHire')) pavBase += sc.rollerHire;
+    if(scopeTickEnabled('paving','rollerHsd'))  pavBase += sc.rollerHsd;
     if(sc.ptrEnabled){
-      if(scopeState.paving.ptrHire)  pavBase += sc.ptrHire;
-      if(scopeState.paving.ptrHsd)   pavBase += sc.ptrHsd;
+      if(scopeTickEnabled('paving','ptrHire'))  pavBase += sc.ptrHire;
+      if(scopeTickEnabled('paving','ptrHsd'))   pavBase += sc.ptrHsd;
     }
     (sc.customEquip||[]).forEach(function(ce){
       if(!ce.isLaying||!ce.enabled) return;
-      if(scopeState.paving[ce.id+'Hire']) pavBase += ce.hire;
-      if(scopeState.paving[ce.id+'Hsd'])  pavBase += ce.hsd;
+      if(scopeTickEnabled('paving',ce.id+'Hire')) pavBase += ce.hire;
+      if(scopeTickEnabled('paving',ce.id+'Hsd'))  pavBase += ce.hsd;
     });
     pavBase += sc.layCrewPerMT;
     // pavBase kept PRE-MARGIN — margin applied once at the grand total
@@ -6355,7 +6377,11 @@ function init(){
     if(document.activeElement&&document.activeElement.type==='number') document.activeElement.blur();
   },{passive:false});
 
-  loadState();
+  var hasRestoredState = loadState();
+  if(!hasRestoredState){
+    seedScopeEquipmentTicks();
+    setQuoteMode(quoteMode, true);
+  }
 
   var savedId = localStorage.getItem(STORAGE_KEY+'_estId');
   var savedName = localStorage.getItem(STORAGE_KEY+'_estName');
