@@ -2291,18 +2291,21 @@ function recalc(){
     var targetFuel = (overrides.fuelTotal !== undefined) ? overrides.fuelTotal : fuelTotal;
     var targetLaying = (overrides.layPerMT !== undefined) ? overrides.layPerMT : layPerMT;
     var mixing = [], paving = [], plantHireKeys = [], plantFuelKeys = [], pavingKeys = [];
-    function addLine(target, key, label, qtyPerUnit, rate, amount){
-      target.push({key:key, label:label, inScope:true, qtyPerUnit:qtyPerUnit, rate:rate, amount:amount});
+    function addLine(target, key, label, qtyPerUnit, rate, amount, inScope){
+      target.push({key:key, label:label, inScope:!!inScope, qtyPerUnit:qtyPerUnit, rate:rate, amount:amount});
     }
     var currentLdoRate = lineLdoRate === ldoRate;
     addLine(mixing, 'ldo', 'LDO', ldoConsump, lineLdoRate,
-      currentLdoRate ? ldoPerMT : ldoConsump * lineLdoRate);
+      currentLdoRate ? ldoPerMT : ldoConsump * lineLdoRate,
+      scopeState.groups.mixing && scopeState.mixing.ldo);
     var prodLdoQty = boilerCampaignMt > 0 ? (boilerProdLhr * boilerProdHrs / boilerCampaignMt) : 0;
     var preheatLdoQty = boilerCampaignMt > 0 ? (boilerPreheatLhr * boilerPreheatHrs / boilerCampaignMt) : 0;
     addLine(mixing, 'boilerProd', 'Boiler production fuel', prodLdoQty, lineLdoRate,
-      currentLdoRate ? boilerProdPerMT : (boilerCampaignMt > 0 ? boilerProdLhr * lineLdoRate * boilerProdHrs / boilerCampaignMt : 0));
+      currentLdoRate ? boilerProdPerMT : (boilerCampaignMt > 0 ? boilerProdLhr * lineLdoRate * boilerProdHrs / boilerCampaignMt : 0),
+      scopeState.groups.mixing && scopeState.mixing.ldo);
     addLine(mixing, 'boilerPreheat', 'Boiler preheat fuel', preheatLdoQty, lineLdoRate,
-      currentLdoRate ? boilerPreheatPerMT : (boilerCampaignMt > 0 ? boilerPreheatLhr * lineLdoRate * boilerPreheatHrs / boilerCampaignMt : 0));
+      currentLdoRate ? boilerPreheatPerMT : (boilerCampaignMt > 0 ? boilerPreheatLhr * lineLdoRate * boilerPreheatHrs / boilerCampaignMt : 0),
+      scopeState.groups.mixing && scopeState.mixing.ldo);
 
     equipDefs.forEach(function(eq){
       if(eq.isLaying) return;
@@ -2311,27 +2314,17 @@ function recalc(){
       var fuelKey = eq.id + 'Hsd';
       plantHireKeys.push(hireKey);
       plantFuelKeys.push(fuelKey);
-      addLine(mixing, hireKey, (eq.name || eq.id) + ' — hire', 1, costs.hire || 0, costs.hire || 0);
+      addLine(mixing, hireKey, (eq.name || eq.id) + ' — hire', 1, costs.hire || 0, costs.hire || 0,
+        scopeState.groups.mixing && scopeState.mixing[hireKey]);
       var fuelQty = (eq.enabled && tph > 0) ? ((eq.fuelConsump || 0) / tph) : 0;
       var fuelAmount = lineHsdPrice === hsdPrice
         ? (costs.fuel || 0)
         : (fuelQty * lineHsdPrice);
-      addLine(mixing, fuelKey, (eq.name || eq.id) + ' — HSD', fuelQty, lineHsdPrice, fuelAmount);
+      addLine(mixing, fuelKey, (eq.name || eq.id) + ' — HSD', fuelQty, lineHsdPrice, fuelAmount,
+        scopeState.groups.mixing && scopeState.mixing[fuelKey]);
     });
-    function adjustLastLine(target, keys, lines){
-      if(!keys.length) return;
-      var lastKey = keys[keys.length - 1];
-      var priorTotal = 0;
-      lines.forEach(function(line){
-        if(line.key !== lastKey && keys.indexOf(line.key) !== -1) priorTotal += line.amount;
-      });
-      lines.forEach(function(line){
-        if(line.key === lastKey) line.amount = target - priorTotal;
-      });
-    }
-    adjustLastLine(targetPlantEquip, plantHireKeys, mixing);
-    adjustLastLine(targetPlantHsd, plantFuelKeys, mixing);
-    addLine(mixing, 'crew', 'Plant crew', 1, crewPerMT, crewPerMT);
+    addLine(mixing, 'crew', 'Plant crew', 1, crewPerMT, crewPerMT,
+      scopeState.groups.mixing && scopeState.mixing.crew);
 
     var layingMachineTotal = 0;
     equipDefs.forEach(function(eq){
@@ -2346,14 +2339,17 @@ function recalc(){
       var fuelQty = (layProd > 0 && eq.enabled) ? ((eq.fuelConsump || 0) * (eq.hireHrsDay || 8) / layProd) : 0;
       var fuelAmount = (layProd > 0) ? fuelDaily / layProd : 0;
       pavingKeys.push(hireKey, fuelKey);
-      addLine(paving, hireKey, (eq.name || eq.id) + ' — hire', layProd > 0 ? 1 / layProd : 0, hireDaily, hireAmount);
-      addLine(paving, fuelKey, (eq.name || eq.id) + ' — HSD', fuelQty, equipHsdPrice, fuelAmount);
+      addLine(paving, hireKey, (eq.name || eq.id) + ' — hire', layProd > 0 ? 1 / layProd : 0, hireDaily, hireAmount,
+        scopeState.groups.paving && scopeState.paving[hireKey]);
+      addLine(paving, fuelKey, (eq.name || eq.id) + ' — HSD', fuelQty, equipHsdPrice, fuelAmount,
+        scopeState.groups.paving && scopeState.paving[fuelKey]);
       layingMachineTotal += hireAmount;
       layingMachineTotal += fuelAmount;
     });
     var layingCrewAmount = (layProd > 0) ? (targetLaying - layingMachineTotal) : 0;
     pavingKeys.push('pavingCrew');
-    addLine(paving, 'pavingCrew', 'Laying crew', layProd > 0 ? 1 / layProd : 0, layCrewD, layingCrewAmount);
+    addLine(paving, 'pavingCrew', 'Laying crew', layProd > 0 ? 1 / layProd : 0, layCrewD, layingCrewAmount,
+      scopeState.groups.paving && scopeState.paving.crew);
     return {
       mixing:mixing, paving:paving,
       plantHireKeys:plantHireKeys, plantFuelKeys:plantFuelKeys, pavingKeys:pavingKeys,
@@ -2384,12 +2380,14 @@ function recalc(){
     var bitKgPerMT = bitFrac*1000*(1+P.bitWastePct/100);
     var lines = [
       {
-        key:'aggregate', label:'Aggregates', inScope:materialsBy==='us',
+        key:'aggregate', label:'Aggregates',
+        inScope:scopeState.groups.mixing && scopeState.mixing.aggregate && materialsBy==='us',
         qtyPerUnit:aggFrac*(1+P.aggWastePct/100), rate:P.aggLanded,
         amount:aggFrac*(1+P.aggWastePct/100)*P.aggLanded
       },
       {
-        key:'bitumen', label:'Bitumen', inScope:materialsBy==='us',
+        key:'bitumen', label:'Bitumen',
+        inScope:scopeState.groups.mixing && scopeState.mixing.bitumen && materialsBy==='us',
         qtyPerUnit:bitKgPerMT, rate:P.bitPrice, amount:bitKgPerMT*P.bitPrice
       }
     ];
@@ -2398,7 +2396,10 @@ function recalc(){
       plantHsdPerMT:plantHsdPerMT, fuelTotal:P.fuelTotal, layPerMT:P.layPerMT
     });
     rateLines.mixing.forEach(function(line){ lines.push(line); });
-    lines.push({key:'transport', label:'Transport', inScope:true, qtyPerUnit:1, rate:tpm, amount:tpm});
+    lines.push({
+      key:'transport', label:'Transport', inScope:!!scopeState.groups.transport,
+      qtyPerUnit:1, rate:tpm, amount:tpm
+    });
     rateLines.paving.forEach(function(line){ lines.push(line); });
     lines.push({key:'overhead', label:'Overheads', inScope:true, qtyPerUnit:1, rate:P.overheadPerMT, amount:P.overheadPerMT});
     function sumKeys(keys){
@@ -2432,8 +2433,10 @@ function recalc(){
     var perMT_cost   = exPlant + transport + laying + overhead;
     var perMT_quoted = quotedBase + marginAmt;
     var incl = [];
-    if(materialsBy==='us'){ incl.push('Agg'); incl.push('Bit'); }
-    incl.push('Plant+Fuel'); incl.push('Crew');
+    if(aggCostPMT>0) incl.push('Agg');
+    if(bitCostPMT>0) incl.push('Bit');
+    if(equipment>0 || fuel>0) incl.push('Plant+Fuel');
+    if(crew>0) incl.push('Crew');
     if(_qShowTrans && transport>0) incl.push('Trans');
     if(_qShowLaying && laying>0) incl.push('Laying');
     if(overhead>0) incl.push('OH');
@@ -2442,6 +2445,13 @@ function recalc(){
       var row = lines.find(function(line){return line.key==='bitumen';});
       return row ? row.qtyPerUnit : 0;
     }
+    var equipmentById = {};
+    equipDefs.forEach(function(eq){
+      equipmentById[eq.id] = {
+        hire:amountFor(eq.id + 'Hire'),
+        fuel:amountFor(eq.id + 'Hsd')
+      };
+    });
     return {
       name: mix.name, density: mix.density,
       aggregate: aggCostPMT, bitumen: bitCostPMT, bitKgPerMT:bitQty(),
@@ -2452,45 +2462,12 @@ function recalc(){
       perMT_cost: perMT_cost, perMT_quoted: perMT_quoted,
       perCUM_cost: perMT_cost * mix.density, perCUM_quoted: perMT_quoted * mix.density,
       perCum:perMT_quoted * mix.density,
-      hotmix:amountFor('hotmixHire'), dg:amountFor('dgHire'), jcb:amountFor('jcbHire'), tipper:amountFor('tipperHire'),
-      dgFuel:amountFor('dgHsd'), jcbFuel:amountFor('jcbHsd'), tipperFuel:amountFor('tipperHsd'),
+      equipmentById:equipmentById,
       includes: incl.join(', '), lines:lines
     };
   }
 
-  var mixRates = mixTypes.map(function(m){
-    var aggFrac = FRAC_KEYS.reduce(function(s,k){return s+(m.fractions[k]||0);},0)/100;
-    var bitFrac = m.binderPct/100;
-    // Apply aggregate wastage uplift
-    var aggCostPerMT = aggFrac*(1+_aggWastePct/100)*aggLanded;
-    // Bitumen: theoretical kg/MT = binder% × 10, then apply wastage
-    var bitKgPerMT = bitFrac*1000*(1+_bitWastePct/100);
-    var bitCostPerMT = bitKgPerMT*bitPrice;
-    var plantSubtotal = aggCostPerMT+bitCostPerMT+plantEquipPerMT+fuelTotal+crewPerMT;
-    // Quote-mode controls which items are included in the quoted cost
-    var quotedBase = plantSubtotal+(_qShowTrans?_wTransPerMT:0)+(_qShowLaying?layPerMT:0)+overheadPerMT;
-    var allCostBeforeMargin = plantSubtotal+_wTransPerMT+layPerMT+overheadPerMT; // full cost (for breakdown display)
-    var marginAmt = quotedBase*marginPct/100;
-    var exPlant = plantSubtotal;
-    var finalLaid = quotedBase+marginAmt;
-    return {
-      name:m.name, density:m.density,
-      aggregate:aggCostPerMT, bitumen:bitCostPerMT, bitKgPerMT:bitKgPerMT,
-      equipment:plantEquipPerMT, plantHsd:plantHsdPerMT,
-      ldo:ldoPerMT, boilerProd:boilerProdPerMT, boilerPreheat:boilerPreheatPerMT,
-      fuel:fuelTotal, crew:crewPerMT, overhead:overheadPerMT, margin:marginAmt,
-      exPlant:exPlant, transport:_wTransPerMT, laying:layPerMT, finalLaid:finalLaid,
-      quotedCost:quotedBase,
-      perCum:finalLaid*m.density,
-      hotmix:(eqCosts.hotmix||{}).hire||0,
-      dg:(eqCosts.dg||{}).hire||0,
-      jcb:(eqCosts.jcb||{}).hire||0,
-      tipper:(eqCosts.tipper||{}).hire||0,
-      dgFuel:(eqCosts.dg||{}).fuel||0,
-      jcbFuel:(eqCosts.jcb||{}).fuel||0,
-      tipperFuel:(eqCosts.tipper||{}).fuel||0
-    };
-  });
+  var mixRates = [];
 
   // ====== REVISED PRICES (What-If) ======
   var revAggOvr = contractRates['__REV_AGG']!=null ? contractRates['__REV_AGG'] : null;
@@ -2601,13 +2578,13 @@ function recalc(){
   var usedMixIdxs = {};
   var hasAnyJob = false;
   sites.forEach(function(s){ s.jobs.forEach(function(j){ hasAnyJob=true; (j.mixes||[]).forEach(function(mx){ usedMixIdxs[mx.mixIdx]=true; }); }); });
-  var displayMixRates = hasAnyJob ? mixRates.filter(function(_,i){ return usedMixIdxs[i]; }) : mixRates;
-
   // Canonical rate objects — all panels must use these (produced by computeRate)
   // When no jobs exist show only the active mix tab (not all mix types)
   var usedMixTypes = hasAnyJob
     ? mixTypes.filter(function(_,i){ return usedMixIdxs[i]; })
     : [mixTypes[activeMixIdx] || mixTypes[0]];
+  mixRates = mixTypes.map(function(mt){ return computeRate(mt); });
+  var displayMixRates = hasAnyJob ? mixRates.filter(function(_,i){ return usedMixIdxs[i]; }) : mixRates;
   var usedMixRates = usedMixTypes.map(function(mt){ return computeRate(mt); });
   // Expose computeRate and its results for top-level functions (recalcJobs, renderProfitability)
   _computeRate = computeRate;
@@ -3997,6 +3974,20 @@ function renderJobCard(si,ji,j){
 
 function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, primeSpray, tackSpray, primeDilution, tackDilution, marginPct){
   var grandMT=0, grandPlant=0, grandTrans=0, grandLay=0, grandPrime=0, grandTack=0, grandTotal=0;
+  var sprayScope = scopeState.groups.spraying ? (scopeState.spraying || {}) : {};
+  var sprayProd = n('sprayProd');
+  var sprayOperationPerSqm = sprayProd>0 ? ((n('sprayBowser')+n('sprayCrew'))/sprayProd) : 0;
+  var primeEmulsionPerSqm = primeSpray*n('primePrice')/(primeDilution||1);
+  var tackEmulsionPerSqm = tackSpray*n('tackPrice')/(tackDilution||1);
+  var sprayMarginFactor = 1+marginPct/100;
+  var jobPrimePerSqm = !scopeState.groups.spraying ? 0 :
+    (sprayScope.operation && sprayScope.primeEmulsion ? primePerSqm :
+      ((sprayScope.operation ? sprayOperationPerSqm : 0) +
+       (sprayScope.primeEmulsion ? primeEmulsionPerSqm : 0))*sprayMarginFactor);
+  var jobTackPerSqm = !scopeState.groups.spraying ? 0 :
+    (sprayScope.operation && sprayScope.tackEmulsion ? tackPerSqm :
+      ((sprayScope.operation ? sprayOperationPerSqm : 0) +
+       (sprayScope.tackEmulsion ? tackEmulsionPerSqm : 0))*sprayMarginFactor);
   // Read global transport params for per-site fallback calculation
   var gTransRate = n('transRate');
   var gTransPayload = n('transPayload');
@@ -4030,16 +4021,16 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
       // Per-job prime/tack amounts — respect checkbox flags
       // Tack coat is applied once per layer (one before each mix), prime coat is once per job
       var numLayers = j.mixes.length||1;
-      var primeAmt = (j.prime !== false) ? area * primePerSqm : 0;
-      var tackAmt  = (j.tack  !== false) ? area * numLayers * tackPerSqm : 0;
+      var primeAmt = (j.prime !== false) ? area * jobPrimePerSqm : 0;
+      var tackAmt  = (j.tack  !== false) ? area * numLayers * jobTackPerSqm : 0;
       j._primeAmt = primeAmt;
       j._tackAmt = tackAmt;
 
       // ₹/MT for prime/tack based on first mix density and job thickness
       var firstMix = mixTypes[(j.mixes[0]||{}).mixIdx||0]||mixTypes[0];
       var thickMm = j.thickness||50;
-      var primePerMT = (thickMm>0&&firstMix.density>0)?(primePerSqm*1000/(firstMix.density*thickMm)):0;
-      var tackPerMT  = (thickMm>0&&firstMix.density>0)?(tackPerSqm*1000/(firstMix.density*thickMm)):0;
+      var primePerMT = (thickMm>0&&firstMix.density>0)?(jobPrimePerSqm*1000/(firstMix.density*thickMm)):0;
+      var tackPerMT  = (thickMm>0&&firstMix.density>0)?(jobTackPerSqm*1000/(firstMix.density*thickMm)):0;
 
       var jobPlant=0, jobTrans=0, jobLay=0, jobOverhead=0, jobMT=0, jobCum=0;
 
@@ -4092,12 +4083,12 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
       var el;
       if(j.prime !== false){
         el=document.getElementById('jPrimeArea_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(area))+' sqm';
-        el=document.getElementById('jPrimeRate_'+si+'_'+ji); if(el) el.textContent=primeKgSqm.toFixed(2)+' kg/sqm · ₹'+fmtR(primePerSqm)+'/sqm'+(primePerMT>0?' · ₹'+fmtR(primePerMT)+'/MT':'');
+        el=document.getElementById('jPrimeRate_'+si+'_'+ji); if(el) el.textContent=primeKgSqm.toFixed(2)+' kg/sqm · ₹'+fmtR(jobPrimePerSqm)+'/sqm'+(primePerMT>0?' · ₹'+fmtR(primePerMT)+'/MT':'');
         el=document.getElementById('jPrimeAmt_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(primeAmt));
       }
       if(j.tack !== false){
         el=document.getElementById('jTackArea_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(area*numLayers))+' sqm'+(numLayers>1?' ('+numLayers+'× '+fmtI(Math.round(area))+')':'');
-        el=document.getElementById('jTackRate_'+si+'_'+ji); if(el) el.textContent=tackKgSqm.toFixed(2)+' kg/sqm · ₹'+fmtR(tackPerSqm)+'/sqm'+(tackPerMT>0?' · ₹'+fmtR(tackPerMT)+'/MT':'');
+        el=document.getElementById('jTackRate_'+si+'_'+ji); if(el) el.textContent=tackKgSqm.toFixed(2)+' kg/sqm · ₹'+fmtR(jobTackPerSqm)+'/sqm'+(tackPerMT>0?' · ₹'+fmtR(tackPerMT)+'/MT':'');
         el=document.getElementById('jTackAmt_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(tackAmt));
       }
 
@@ -5843,9 +5834,9 @@ function saveScenarioToDb(){
 // ====== SCOPE QUOTATION ======
 var scopeState = {
   groups:  {mixing:false, transport:false, spraying:false, paving:false},
-  mixing:  {hotmixHire:true, ldo:true, dgHire:true, dgHsd:true, jcbHire:true, jcbHsd:true, tipperHire:true, tipperHsd:true, bitumen:true, aggregate:true},
+  mixing:  {hotmixHire:true, ldo:true, dgHire:true, dgHsd:true, jcbHire:true, jcbHsd:true, tipperHire:true, tipperHsd:true, bitumen:true, aggregate:true, crew:true},
   spraying:{operation:true, primeEmulsion:true, tackEmulsion:true},
-  paving:  {paverHire:true, paverHsd:true, rollerHire:true, rollerHsd:true, ptrHire:true, ptrHsd:true}
+  paving:  {paverHire:true, paverHsd:true, rollerHire:true, rollerHsd:true, ptrHire:true, ptrHsd:true, crew:true}
 };
 
 function restoreScopeUI(){
