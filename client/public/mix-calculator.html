@@ -1021,7 +1021,10 @@ function setContractMode(siteId, mode){
     var si=sites.findIndex(function(s){return s.id===siteId;});
     if(si>=0 && !sites[si].roadLengthM){
       var maxGeo=0;
-      sites[si].jobs.forEach(function(j){if(j.basis==='GEOMETRY'&&(j.length||0)>maxGeo)maxGeo=j.length||0;});
+      sites[si].jobs.forEach(function(j){
+        var length = getJobQuantities(j).length || 0;
+        if(length > maxGeo) maxGeo = length;
+      });
       if(maxGeo>0) sites[si].roadLengthM=maxGeo;
     }
   }
@@ -1141,6 +1144,10 @@ function migrateState(state){
       if(s.jobs) s.jobs.forEach(function(j){
         if(j.prime === undefined) j.prime = true;
         if(j.tack === undefined) j.tack = true;
+        if(j.basis === 'BOQ' && j.qty == null){
+          j.basis = 'CUM';
+          j.qty = parseFloat(j.volume) || 0;
+        }
       });
     });
   }
@@ -1155,6 +1162,76 @@ function migrateState(state){
   if(!state.materialsBy) state.materialsBy = 'us';
   if(!state.rateUnit)    state.rateUnit    = 'MT';
   return state;
+}
+
+function getJobQuantities(j, mixDefinitions){
+  var thickness = parseFloat(j.thickness) || 0;
+  var width = parseFloat(j.width) || 0;
+  var definitions = mixDefinitions || mixTypes;
+  var firstMix = definitions[(j.mixes && j.mixes[0] ? j.mixes[0].mixIdx : 0)] || definitions[0];
+  var density = firstMix ? (parseFloat(firstMix.density) || 0) : 0;
+  var area = 0, cum = 0, mt = 0;
+  var qty = j.qty == null ? null : (parseFloat(j.qty) || 0);
+
+  if(j.basis === 'GEOMETRY'){
+    area = (parseFloat(j.length) || 0) * width;
+    cum = area * thickness / 1000;
+    mt = cum * density;
+  } else if(j.basis === 'AREA_SQM'){
+    area = qty || 0;
+    cum = area * thickness / 1000;
+    mt = cum * density;
+  } else if(j.basis === 'AREA_SFT'){
+    area = (qty || 0) / 10.7639;
+    cum = area * thickness / 1000;
+    mt = cum * density;
+  } else if(j.basis === 'MT'){
+    mt = qty || 0;
+    cum = density > 0 ? mt / density : 0;
+    area = thickness > 0 ? cum * 1000 / thickness : 0;
+  } else {
+    // CUM plus legacy BOQ states use volume as the canonical entry.
+    cum = qty == null ? (parseFloat(j.volume) || 0) : qty;
+    area = thickness > 0 ? cum * 1000 / thickness : 0;
+    mt = cum * density;
+  }
+
+  return {
+    area: area,
+    cum: cum,
+    mt: mt,
+    length: j.basis === 'GEOMETRY'
+      ? (parseFloat(j.length) || 0)
+      : (width > 0 ? area / width : null)
+  };
+}
+
+function setJobBasis(si, ji, basis){
+  var job = sites[si].jobs[ji];
+  var current = getJobQuantities(job);
+  job.basis = basis;
+  if(basis === 'CUM'){
+    job.qty = current.cum;
+    job.volume = current.cum;
+  } else if(basis === 'AREA_SQM'){
+    job.qty = current.area;
+  } else if(basis === 'AREA_SFT'){
+    job.qty = current.area * 10.7639;
+  } else if(basis === 'MT'){
+    job.qty = current.mt;
+  } else if(basis === 'GEOMETRY' && job.width > 0 && current.area > 0){
+    job.length = current.area / job.width;
+  }
+  renderSites();
+  recalc();
+}
+
+function setJobQuantity(si, ji, value){
+  var job = sites[si].jobs[ji];
+  var qty = parseFloat(value);
+  job.qty = isNaN(qty) ? null : qty;
+  if(job.basis === 'CUM') job.volume = isNaN(qty) ? 0 : qty;
+  recalc();
 }
 
 var _draftSavedAt = null;
@@ -2205,13 +2282,7 @@ function recalc(){
       var _siteLead = (s.transLead!=null&&s.transLead>0) ? s.transLead : transDist;
       var _sTransPMT = transPayload>0 ? (_siteLead*_transTripMul*transRate/transPayload) : 0;
       s.jobs.forEach(function(j){
-        var isGeo = j.basis==='GEOMETRY';
-        var jCum;
-        if(isGeo){
-          jCum = (j.length||0)*(j.width||0)*(j.thickness||0)/1000;
-        } else {
-          jCum = j.volume||0;
-        }
+        var jCum = getJobQuantities(j).cum;
         (j.mixes||[]).forEach(function(mx){
           var mt = mixTypes[mx.mixIdx]||mixTypes[0];
           if(!mt) return;
@@ -2541,8 +2612,7 @@ function recalc(){
       var _bMixTypes = scenarioBaseSnapshot.mixTypes || mixTypes;
       var _bPreGrandMT = 0;
       _bSites.forEach(function(s){ (s.jobs||[]).forEach(function(j){
-        var _bIsGeo = j.basis==='GEOMETRY';
-        var _bJCum = _bIsGeo ? (j.length||0)*(j.width||0)*(j.thickness||0)/1000 : (j.volume||0);
+        var _bJCum = getJobQuantities(j,_bMixTypes).cum;
         (j.mixes||[]).forEach(function(mx){
           var mt = _bMixTypes[mx.mixIdx]||_bMixTypes[0];
           if(!mt) return;
@@ -2786,8 +2856,7 @@ function generateQuotation(si){
   var siteTransPerMT = _gTransPayload>0 ? (siteLead*2*_gTransRate/_gTransPayload) : 0;
   var mixSums = {};
   s.jobs.forEach(function(j){
-    var isGeo = j.basis==='GEOMETRY';
-    var cum = isGeo ? (j.length*j.width*j.thickness/1000) : (j.volume||0);
+    var cum = getJobQuantities(j).cum;
     j.mixes.forEach(function(mx){
       var mix = mixTypes[mx.mixIdx]||mixTypes[0]; if(!mix) return;
       var cr  = _computeRate ? _computeRate(mix,{transPerMT:siteTransPerMT}) : (_lastComputedRates[mix.name]||{});
@@ -3888,20 +3957,36 @@ function renderSites(){
 function renderJobCard(si,ji,j){
   var isGeo = j.basis==='GEOMETRY';
   var mixCount = j.mixes.length;
+  var jobQuantities = getJobQuantities(j);
+  var quantityLabels = {
+    CUM:'Vol (cum)',
+    AREA_SQM:'Area (sqm)',
+    AREA_SFT:'Area (sft)',
+    MT:'Tonnage (MT)'
+  };
+  var quantityValue = j.qty != null ? j.qty : (
+    j.basis==='AREA_SQM' ? jobQuantities.area :
+    j.basis==='AREA_SFT' ? jobQuantities.area*10.7639 :
+    j.basis==='MT' ? jobQuantities.mt : jobQuantities.cum
+  );
   var html = '<div class="job-card">';
   html += '<div class="job-card-header">';
   html += '<div class="jc-group"><span class="jc-label">Job</span><input value="'+esc(j.id)+'" oninput="sites['+si+'].jobs['+ji+'].id=this.value" style="width:55px;font-weight:700"></div>';
   html += '<div class="jc-group"><span class="jc-label">Contractor</span><input value="'+esc(j.contractor||'')+'" oninput="var p=this.selectionStart;this.value=this.value.toUpperCase();try{this.setSelectionRange(p,p)}catch(x){};sites['+si+'].jobs['+ji+'].contractor=this.value" style="width:100px" placeholder="Name"></div>';
-  html += '<div class="jc-group"><span class="jc-label">Basis</span><select onchange="sites['+si+'].jobs['+ji+'].basis=this.value;renderSites();recalc()"><option value="GEOMETRY"'+(isGeo?' selected':'')+'>Geometry</option><option value="BOQ"'+(!isGeo?' selected':'')+'>BOQ</option></select></div>';
+  html += '<div class="jc-group"><span class="jc-label">Quantity</span><select aria-label="Quantity entry mode" onchange="setJobBasis('+si+','+ji+',this.value)">';
+  html += '<option value="GEOMETRY"'+(isGeo?' selected':'')+'>Geometry</option>';
+  html += '<option value="CUM"'+(j.basis==='CUM'?' selected':'')+'>Volume (cum)</option>';
+  html += '<option value="AREA_SQM"'+(j.basis==='AREA_SQM'?' selected':'')+'>Area (sqm)</option>';
+  html += '<option value="AREA_SFT"'+(j.basis==='AREA_SFT'?' selected':'')+'>Area (sft)</option>';
+  html += '<option value="MT"'+(j.basis==='MT'?' selected':'')+'>Tonnage (MT)</option></select></div>';
   if(isGeo){
     html += '<div class="jc-group"><span class="jc-label">L(m)</span><input type="number" value="'+j.length+'" oninput="sites['+si+'].jobs['+ji+'].length=parseFloat(this.value)||0;recalc()" style="width:65px"></div>';
     html += '<div class="jc-group"><span class="jc-label">W(m)</span><input type="number" value="'+j.width+'" oninput="sites['+si+'].jobs['+ji+'].width=parseFloat(this.value)||0;recalc()" style="width:55px"></div>';
     html += '<div class="jc-group"><span class="jc-label">T(mm)</span><input type="number" value="'+j.thickness+'" oninput="sites['+si+'].jobs['+ji+'].thickness=parseFloat(this.value)||0;recalc()" style="width:55px"></div>';
   } else {
-    html += '<div class="jc-group"><span class="jc-label">L(m)</span><span class="jc-derived" id="jobLen_'+si+'_'+ji+'" style="min-width:40px;text-align:center">—</span></div>';
-    html += '<div class="jc-group"><span class="jc-label">W(m)</span><input type="number" value="'+j.width+'" oninput="sites['+si+'].jobs['+ji+'].width=parseFloat(this.value)||0;recalc()" style="width:55px"></div>';
+    html += '<div class="jc-group"><span class="jc-label">L(m)</span><span class="jc-derived" id="jobLen_'+si+'_'+ji+'" style="min-width:40px;text-align:center">'+(jobQuantities.length!=null&&j.width>0?jobQuantities.length.toFixed(1):'—')+'</span></div>';
     html += '<div class="jc-group"><span class="jc-label">T(mm)</span><input type="number" value="'+j.thickness+'" oninput="sites['+si+'].jobs['+ji+'].thickness=parseFloat(this.value)||0;recalc()" style="width:55px"></div>';
-    html += '<div class="jc-group"><span class="jc-label">Vol(CUM)</span><input type="number" value="'+j.volume+'" oninput="sites['+si+'].jobs['+ji+'].volume=parseFloat(this.value)||0;recalc()" style="width:65px"></div>';
+    html += '<div class="jc-group"><span class="jc-label">'+quantityLabels[j.basis]+'</span><input type="number" value="'+(quantityValue||'')+'" oninput="setJobQuantity('+si+','+ji+',this.value)" style="width:85px"></div>';
   }
   html += '<span class="jc-derived" id="jobArea_'+si+'_'+ji+'"></span>';
   html += '<label class="checkbox-label" title="Include Prime Coat for this job" style="gap:3px;font-size:11px;white-space:nowrap"><input type="checkbox" '+(j.prime!==false?'checked':'')+' onchange="sites['+si+'].jobs['+ji+'].prime=this.checked;renderSites();recalc()"> Prime</label>';
@@ -3923,7 +4008,7 @@ function renderJobCard(si,ji,j){
   html += '</tr></thead><tbody>';
 
   j.mixes.forEach(function(mx,mi){
-    var autoCum = isGeo?(j.length*j.width*(j.thickness/1000)):(j.volume||0);
+    var autoCum = jobQuantities.cum;
     var autoMix = mixTypes[mx.mixIdx]||mixTypes[0];
     var autoMT = (autoCum>0&&autoMix.density>0)?(autoCum*autoMix.density):0;
     var mtPlaceholder = autoMT>0?autoMT.toFixed(1):'MT';
@@ -4039,23 +4124,13 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
     var siteTransPerMT = gTransPayload>0?(siteLead*2*gTransRate/gTransPayload):0;
 
     s.jobs.forEach(function(j,ji){
-      var isGeo = j.basis==='GEOMETRY';
-      var cum, area, len;
-      if(isGeo){
-        var thickM = j.thickness/1000;
-        cum = j.length*j.width*thickM;
-        area = j.length*j.width;
-        len = j.length;
-      } else {
-        cum = j.volume;
-        var thickM = j.thickness/1000;
-        len = (j.width>0&&thickM>0)?(cum/(j.width*thickM)):0;
-        area = len*j.width;
-        var el = document.getElementById('jobLen_'+si+'_'+ji);
-        if(el) el.textContent = len.toFixed(1);
-      }
+      var quantities = getJobQuantities(j);
+      var cum = quantities.cum, area = quantities.area, len = quantities.length;
+      var lengthEl = document.getElementById('jobLen_'+si+'_'+ji);
+      if(lengthEl) lengthEl.textContent = len != null && j.width > 0 ? len.toFixed(1) : '—';
       j._area = area;
       j._cum = cum;
+      j._derivedMT = quantities.mt;
 
       // Per-job prime/tack amounts — respect checkbox flags
       // Tack coat is applied once per layer (one before each mix), prime coat is once per job
@@ -4135,7 +4210,7 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
       var jobTotal = jobMixCostWithMargin+primeAmt+tackAmt;
       j._mt=jobMT; j._plantAmt=jobPlant; j._transAmt=jobTrans; j._layAmt=jobLay; j._totalAmt=jobTotal;
 
-      el=document.getElementById('jobArea_'+si+'_'+ji); if(el) el.textContent='Area: '+fmtI(Math.round(area))+' sqm · CUM: '+cum.toFixed(2);
+      el=document.getElementById('jobArea_'+si+'_'+ji); if(el) el.textContent='Area: '+fmtI(Math.round(area))+' sqm · CUM: '+cum.toFixed(2)+' · MT: '+quantities.mt.toFixed(1);
       el=document.getElementById('jobTotal_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobTotal));
       el=document.getElementById('jTotMT_'+si+'_'+ji); if(el) el.textContent=jobMT.toFixed(1);
       el=document.getElementById('jTotPlant_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobPlant));
@@ -5345,7 +5420,10 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       var kmKey=s.id+'__KM_RATE';
       var kmRate=contractRates[kmKey]!=null?contractRates[kmKey]:null;
       var maxGeoHint=0;
-      s.jobs.forEach(function(j){if(j.basis==='GEOMETRY'&&(j.length||0)>maxGeoHint)maxGeoHint=j.length||0;});
+      s.jobs.forEach(function(j){
+        var length = getJobQuantities(j).length || 0;
+        if(length > maxGeoHint) maxGeoHint = length;
+      });
       html+='<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end">';
       html+='<div><label style="font-size:12px;font-weight:600;color:#b45309;display:block;margin-bottom:3px">Road Length (m)</label>';
       html+='<input type="number" value="'+(s.roadLengthM!=null?s.roadLengthM:'')+'" placeholder="'+(maxGeoHint>0?maxGeoHint:'e.g. 4000')+'" oninput="siteRoadLengthChanged('+si_km+',this.value)" onblur="recalc()" style="width:120px;padding:5px 10px;border:1px solid '+(s.roadLengthM!=null?'#d97706':'#d1d5db')+';border-radius:4px;font-size:13px;font-weight:600">';
