@@ -1248,11 +1248,15 @@ function fmtRateValue(value){
 function getRateThicknessInfo(mixIndex){
   var mix = mixTypes[mixIndex];
   if(!mix) return {thickness:null,source:'missing'};
-  var totalMt = 0, mtOverThickness = 0;
+  var totalMt = 0, mtOverThickness = 0, validJobThicknessTotal = 0, validJobCount = 0, hasRelevantJob = false;
   getAllJobs().forEach(function(job){
-    if(!hasPositiveThickness(job.thickness)) return;
     (job.mixes||[]).forEach(function(row){
-      if(row.mixIdx !== mixIndex) return;
+      if(parseInt(row.mixIdx,10) !== mixIndex) return;
+      hasRelevantJob = true;
+      if(!hasPositiveThickness(job.thickness)) return;
+      var jobThickness = parseFloat(job.thickness);
+      validJobThicknessTotal += jobThickness;
+      validJobCount++;
       var mt = parseFloat(row.qty_mt)||0;
       if(mt<=0){
         var derived = getJobQuantities(job);
@@ -1260,15 +1264,19 @@ function getRateThicknessInfo(mixIndex){
       }
       if(mt>0){
         totalMt += mt;
-        mtOverThickness += mt/(parseFloat(job.thickness)||1);
+        mtOverThickness += mt/jobThickness;
       }
     });
   });
   if(totalMt>0 && mtOverThickness>0){
     return {thickness:totalMt/mtOverThickness,source:'job'};
   }
+  if(validJobCount>0){
+    return {thickness:validJobThicknessTotal/validJobCount,source:'job'};
+  }
+  if(hasRelevantJob) return {thickness:null,source:'missing'};
   var defaultThickness = parseFloat(mix.defaultThickness)||0;
-  return defaultThickness>0
+  return hasPositiveThickness(defaultThickness)
     ? {thickness:defaultThickness,source:'default'}
     : {thickness:null,source:'missing'};
 }
@@ -1276,11 +1284,12 @@ function getRateThicknessInfo(mixIndex){
 function rateFromMT(perMT, density, thickness, unit){
   var value = parseFloat(perMT);
   var rho = parseFloat(density)||0;
+  if(!isFinite(rho)) rho = 0;
   if(!isFinite(value)) return null;
   if(unit==='MT') return value;
   if(unit==='CUM') return rho>0 ? value*rho : null;
   var t = parseFloat(thickness)||0;
-  if((unit==='SQM'||unit==='SFT') && rho>0 && t>0){
+  if((unit==='SQM'||unit==='SFT') && rho>0 && hasPositiveThickness(t)){
     var perSqm = value*rho*t/1000;
     return unit==='SFT' ? perSqm/SQFT_PER_SQM : perSqm;
   }
@@ -1290,10 +1299,11 @@ function rateFromMT(perMT, density, thickness, unit){
 function quantityFromMT(mt, density, thickness, unit){
   var value = parseFloat(mt)||0;
   var rho = parseFloat(density)||0;
+  if(!isFinite(rho)) rho = 0;
   if(unit==='MT') return value;
   if(unit==='CUM') return rho>0 ? value/rho : null;
   var t = parseFloat(thickness)||0;
-  if((unit==='SQM'||unit==='SFT') && rho>0 && t>0){
+  if((unit==='SQM'||unit==='SFT') && rho>0 && hasPositiveThickness(t)){
     var sqm = value*1000/(rho*t);
     return unit==='SFT' ? sqm*SQFT_PER_SQM : sqm;
   }
@@ -1307,7 +1317,7 @@ function rateFromSqm(perSqm, density, thickness, unit){
   if(unit==='SFT') return value/SQFT_PER_SQM;
   var rho = parseFloat(density)||0;
   var t = parseFloat(thickness)||0;
-  if(rho<=0||t<=0) return null;
+  if(!isFinite(rho)||rho<=0||!hasPositiveThickness(t)) return null;
   return rateFromMT(value*1000/(rho*t),rho,t,unit);
 }
 
@@ -3129,12 +3139,13 @@ function generateQuotation(si){
   h+='</tr>';
   Object.keys(_lastComputedRates).forEach(function(mn){
     var cr=_lastComputedRates[mn];
-    var cv=isCUM?cr.perCUM_cost:cr.perMT_cost;
-    var qv=isCUM?cr.perCUM_quoted:cr.perMT_quoted;
+    var thickness=getRateThicknessInfo(getRateMixIndex(cr)).thickness;
+    var cv=rateFromMT(cr.perMT_cost,cr.density,thickness,rateUnit);
+    var qv=rateFromMT(cr.perMT_quoted,cr.density,thickness,rateUnit);
     h+='<tr><td style="padding:4px 8px;font-weight:600">'+esc(mn)+'</td>';
-    h+='<td style="padding:4px 8px;text-align:right">₹'+fmtI(Math.round(cv))+'</td>';
-    h+='<td style="padding:4px 8px;text-align:right;color:#16a34a">+₹'+fmtI(Math.round(qv-cv))+'</td>';
-    h+='<td style="padding:4px 8px;text-align:right;font-weight:700;color:#d97706">₹'+fmtI(Math.round(qv))+'</td></tr>';
+    h+='<td style="padding:4px 8px;text-align:right">'+(cv==null?'—':'₹'+fmtI(Math.round(cv)))+'</td>';
+    h+='<td style="padding:4px 8px;text-align:right;color:#16a34a">'+(cv==null||qv==null?'—':'+₹'+fmtI(Math.round(qv-cv)))+'</td>';
+    h+='<td style="padding:4px 8px;text-align:right;font-weight:700;color:#d97706">'+(qv==null?'—':'₹'+fmtI(Math.round(qv)))+'</td></tr>';
   });
   h+='</table></div>';
 
@@ -3230,21 +3241,21 @@ function renderRateSummary(mixRates){
   });
   html+='<tr class="separator"><td colspan="'+(nc+1)+'"></td></tr>';
   html+='<tr style="font-weight:700"><td>Plant Subtotal</td>';
-  mixRates.forEach(function(r){ html+='<td style="color:var(--amber)">'+fmtR(_v(r, r.exPlant))+'</td>'; });
+  mixRates.forEach(function(r){ html+='<td style="color:var(--amber)">'+fmtRateValue(_v(r, r.exPlant))+'</td>'; });
   html+='</tr>';
   if(_showTrans){
     html+='<tr><td>Transport</td>';
-    mixRates.forEach(function(r){ html+='<td>'+fmtR(_v(r, r.transport))+'</td>'; });
+    mixRates.forEach(function(r){ html+='<td>'+fmtRateValue(_v(r, r.transport))+'</td>'; });
     html+='</tr>';
   }
   if(_showPav){
     html+='<tr><td>Laying</td>';
-    mixRates.forEach(function(r){ html+='<td>'+fmtR(_v(r, r.laying))+'</td>'; });
+    mixRates.forEach(function(r){ html+='<td>'+fmtRateValue(_v(r, r.laying))+'</td>'; });
     html+='</tr>';
   }
   if(mixRates[0]&&(mixRates[0].overhead||0)>0){
     html+='<tr><td>Mob/Demob</td>';
-    mixRates.forEach(function(r){ html+='<td>'+fmtR(_v(r, r.overhead||0))+'</td>'; });
+    mixRates.forEach(function(r){ html+='<td>'+fmtRateValue(_v(r, r.overhead||0))+'</td>'; });
     html+='</tr>';
   }
   var _mPct = n('marginPct')/100;
@@ -3252,14 +3263,14 @@ function renderRateSummary(mixRates){
     html+='<tr><td>Margin / Profit</td>';
     mixRates.forEach(function(r){
       var mgn = r.quotedCost * _mPct;
-      html+='<td>'+fmtR(_v(r, mgn))+'</td>';
+      html+='<td>'+fmtRateValue(_v(r, mgn))+'</td>';
     });
     html+='</tr>';
   }
   // Cost row (pre-margin, scope-gated)
   html+='<tr style="font-weight:600;background:#f0fdf4"><td>Cost (pre-margin)</td>';
   mixRates.forEach(function(r){
-    html+='<td style="color:#15803d">'+fmtR(isCUM ? r.perCUM_cost : r.perMT_cost)+'</td>';
+    html+='<td style="color:#15803d">'+fmtRateValue(_v(r,r.perMT_cost))+'</td>';
   });
   html+='</tr>';
   var _finalLabels = {
@@ -3269,8 +3280,8 @@ function renderRateSummary(mixRates){
   var _finalLabel = _finalLabels[quoteMode] || 'Final Rate';
   html+='<tr class="total-row"><td>'+_finalLabel+'</td>';
   mixRates.forEach(function(r){
-    var finalVal = isCUM ? r.perCUM_quoted : r.perMT_quoted;
-    html+='<td style="color:var(--amber);font-weight:700">'+fmtR(finalVal)+'</td>';
+    var finalVal = _v(r,r.perMT_quoted);
+    html+='<td style="color:var(--amber);font-weight:700">'+fmtRateValue(finalVal)+'</td>';
   });
   html+='</tr>';
   // "Includes" chip
@@ -4167,7 +4178,8 @@ function renderJobCard(si,ji,j){
   var mixCount = j.mixes.length;
   var hasThickness = hasPositiveThickness(j.thickness);
   var thicknessValue = hasThickness ? parseFloat(j.thickness) : null;
-  var dynamicUnit = rateUnit==='MT' ? 'CUM' : getRateUnitLabel(rateUnit);
+  var dynamicUnit = rateUnit==='MT' ? 'CUM' : rateUnit;
+  var dynamicUnitLabel = getRateUnitLabel(dynamicUnit);
   var jobQuantities = getJobQuantities(j);
   var quantityLabels = {
     CUM:'Vol (cum)',
@@ -4214,9 +4226,9 @@ function renderJobCard(si,ji,j){
 
   html += '<div class="job-card-body"><table><thead><tr>';
   html += '<th style="text-align:left">Mix / Coat</th><th>MT / Area</th>';
-  html += '<th>Plant ₹/MT</th><th style="color:var(--blue)">Plant ₹/'+dynamicUnit+'</th>';
-  html += '<th>Trans ₹/MT</th><th style="color:var(--blue)">Trans ₹/'+dynamicUnit+'</th>';
-  html += '<th>Lay ₹/MT</th><th style="color:var(--blue)">Lay ₹/'+dynamicUnit+'</th>';
+  html += '<th>Plant ₹/MT</th><th style="color:var(--blue)">Plant ₹/'+dynamicUnitLabel+'</th>';
+  html += '<th>Trans ₹/MT</th><th style="color:var(--blue)">Trans ₹/'+dynamicUnitLabel+'</th>';
+  html += '<th>Lay ₹/MT</th><th style="color:var(--blue)">Lay ₹/'+dynamicUnitLabel+'</th>';
   html += '<th style="font-weight:700">Total ₹/MT</th>';
   html += '<th style="color:var(--green);font-size:11px">Whole-job ₹/'+getRateUnitLabel(rateUnit)+'</th>';
   html += '<th class="no-print" style="width:30px"></th>';
@@ -4402,15 +4414,16 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
 
       if(j.mixes.length>1){
         var el;
-        el=document.getElementById('jSubMT_'+si+'_'+ji); if(el) el.textContent=jobMT.toFixed(1);
-        el=document.getElementById('jSubPlant_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobPlant));
-        el=document.getElementById('jSubPlantCum_'+si+'_'+ji); if(el) el.textContent=dynamicQuantity>0?fmtI(Math.round(jobPlant/dynamicQuantity)):'—';
-        el=document.getElementById('jSubTrans_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobTrans));
-        el=document.getElementById('jSubTransCum_'+si+'_'+ji); if(el) el.textContent=dynamicQuantity>0?fmtI(Math.round(jobTrans/dynamicQuantity)):'—';
-        el=document.getElementById('jSubLay_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobLay));
-        el=document.getElementById('jSubLayCum_'+si+'_'+ji); if(el) el.textContent=dynamicQuantity>0?fmtI(Math.round(jobLay/dynamicQuantity)):'—';
-        el=document.getElementById('jSubMixTotal_'+si+'_'+ji); if(el) el.textContent=fmtI(Math.round(jobPlant+jobTrans+jobLay+jobOverhead));
-        el=document.getElementById('jSubMixTotalCum_'+si+'_'+ji); if(el) el.textContent=dynamicQuantity>0?fmtI(Math.round((jobPlant+jobTrans+jobLay+jobOverhead)/dynamicQuantity)):'—';
+        var mixSubtotal = jobPlant+jobTrans+jobLay+jobOverhead;
+        el=document.getElementById('jSubMT_'+si+'_'+ji); if(el) el.textContent=costable?jobMT.toFixed(1):'—';
+        el=document.getElementById('jSubPlant_'+si+'_'+ji); if(el) el.textContent=costable&&jobMT>0?fmtI(Math.round(jobPlant/jobMT)):'—';
+        el=document.getElementById('jSubPlantCum_'+si+'_'+ji); if(el) el.textContent=costable&&dynamicQuantity>0?fmtI(Math.round(jobPlant/dynamicQuantity)):'—';
+        el=document.getElementById('jSubTrans_'+si+'_'+ji); if(el) el.textContent=costable&&jobMT>0?fmtI(Math.round(jobTrans/jobMT)):'—';
+        el=document.getElementById('jSubTransCum_'+si+'_'+ji); if(el) el.textContent=costable&&dynamicQuantity>0?fmtI(Math.round(jobTrans/dynamicQuantity)):'—';
+        el=document.getElementById('jSubLay_'+si+'_'+ji); if(el) el.textContent=costable&&jobMT>0?fmtI(Math.round(jobLay/jobMT)):'—';
+        el=document.getElementById('jSubLayCum_'+si+'_'+ji); if(el) el.textContent=costable&&dynamicQuantity>0?fmtI(Math.round(jobLay/dynamicQuantity)):'—';
+        el=document.getElementById('jSubMixTotal_'+si+'_'+ji); if(el) el.textContent=costable&&jobMT>0?fmtI(Math.round(mixSubtotal/jobMT)):'—';
+        el=document.getElementById('jSubMixTotalCum_'+si+'_'+ji); if(el) el.textContent=costable&&dynamicQuantity>0?fmtI(Math.round(mixSubtotal/dynamicQuantity)):'—';
       }
 
       var primeKgSqm = primeSpray;   // full surface application rate (dilution only affects procurement qty)
