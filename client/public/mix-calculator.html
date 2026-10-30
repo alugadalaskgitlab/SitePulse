@@ -2282,12 +2282,95 @@ function recalc(){
   // ====== computeRate — canonical single-mix rate function (Stage 1) ======
   // All display panels call this so they always show identical numbers.
   // Snapshot of current closure prices — lets computeRate be called with frozen inputs (Impact/Variation).
+  function buildRateCostLines(overrides){
+    overrides = overrides || {};
+    var lineHsdPrice = (overrides.hsdPrice !== undefined) ? overrides.hsdPrice : hsdPrice;
+    var lineLdoRate = (overrides.ldoRate !== undefined) ? overrides.ldoRate : ldoRate;
+    var targetPlantEquip = (overrides.plantEquipPerMT !== undefined) ? overrides.plantEquipPerMT : plantEquipPerMT;
+    var targetPlantHsd = (overrides.plantHsdPerMT !== undefined) ? overrides.plantHsdPerMT : plantHsdPerMT;
+    var targetFuel = (overrides.fuelTotal !== undefined) ? overrides.fuelTotal : fuelTotal;
+    var targetLaying = (overrides.layPerMT !== undefined) ? overrides.layPerMT : layPerMT;
+    var mixing = [], paving = [], plantHireKeys = [], plantFuelKeys = [], pavingKeys = [];
+    function addLine(target, key, label, qtyPerUnit, rate, amount){
+      target.push({key:key, label:label, inScope:true, qtyPerUnit:qtyPerUnit, rate:rate, amount:amount});
+    }
+    var currentLdoRate = lineLdoRate === ldoRate;
+    addLine(mixing, 'ldo', 'LDO', ldoConsump, lineLdoRate,
+      currentLdoRate ? ldoPerMT : ldoConsump * lineLdoRate);
+    var prodLdoQty = boilerCampaignMt > 0 ? (boilerProdLhr * boilerProdHrs / boilerCampaignMt) : 0;
+    var preheatLdoQty = boilerCampaignMt > 0 ? (boilerPreheatLhr * boilerPreheatHrs / boilerCampaignMt) : 0;
+    addLine(mixing, 'boilerProd', 'Boiler production fuel', prodLdoQty, lineLdoRate,
+      currentLdoRate ? boilerProdPerMT : (boilerCampaignMt > 0 ? boilerProdLhr * lineLdoRate * boilerProdHrs / boilerCampaignMt : 0));
+    addLine(mixing, 'boilerPreheat', 'Boiler preheat fuel', preheatLdoQty, lineLdoRate,
+      currentLdoRate ? boilerPreheatPerMT : (boilerCampaignMt > 0 ? boilerPreheatLhr * lineLdoRate * boilerPreheatHrs / boilerCampaignMt : 0));
+
+    equipDefs.forEach(function(eq){
+      if(eq.isLaying) return;
+      var costs = eqCosts[eq.id] || {hire:0, fuel:0};
+      var hireKey = eq.id + 'Hire';
+      var fuelKey = eq.id + 'Hsd';
+      plantHireKeys.push(hireKey);
+      plantFuelKeys.push(fuelKey);
+      addLine(mixing, hireKey, (eq.name || eq.id) + ' — hire', 1, costs.hire || 0, costs.hire || 0);
+      var fuelQty = (eq.enabled && tph > 0) ? ((eq.fuelConsump || 0) / tph) : 0;
+      var fuelAmount = lineHsdPrice === hsdPrice
+        ? (costs.fuel || 0)
+        : (fuelQty * lineHsdPrice);
+      addLine(mixing, fuelKey, (eq.name || eq.id) + ' — HSD', fuelQty, lineHsdPrice, fuelAmount);
+    });
+    function adjustLastLine(target, keys, lines){
+      if(!keys.length) return;
+      var lastKey = keys[keys.length - 1];
+      var priorTotal = 0;
+      lines.forEach(function(line){
+        if(line.key !== lastKey && keys.indexOf(line.key) !== -1) priorTotal += line.amount;
+      });
+      lines.forEach(function(line){
+        if(line.key === lastKey) line.amount = target - priorTotal;
+      });
+    }
+    adjustLastLine(targetPlantEquip, plantHireKeys, mixing);
+    adjustLastLine(targetPlantHsd, plantFuelKeys, mixing);
+    addLine(mixing, 'crew', 'Plant crew', 1, crewPerMT, crewPerMT);
+
+    var layingMachineTotal = 0;
+    equipDefs.forEach(function(eq){
+      if(!eq.isLaying) return;
+      var hireKey = eq.id + 'Hire';
+      var fuelKey = eq.id + 'Hsd';
+      var hireDaily = getEquipHireDailyCost(eq);
+      var revisedCoreLayingEq = eq === paverEq || eq === rollerEq || eq === ptrEq;
+      var equipHsdPrice = (lineHsdPrice !== hsdPrice && !revisedCoreLayingEq) ? hsdPrice : lineHsdPrice;
+      var fuelDaily = eq.enabled ? (eq.fuelConsump || 0) * (eq.hireHrsDay || 8) * equipHsdPrice : 0;
+      var hireAmount = layProd > 0 ? hireDaily / layProd : 0;
+      var fuelQty = (layProd > 0 && eq.enabled) ? ((eq.fuelConsump || 0) * (eq.hireHrsDay || 8) / layProd) : 0;
+      var fuelAmount = (layProd > 0) ? fuelDaily / layProd : 0;
+      pavingKeys.push(hireKey, fuelKey);
+      addLine(paving, hireKey, (eq.name || eq.id) + ' — hire', layProd > 0 ? 1 / layProd : 0, hireDaily, hireAmount);
+      addLine(paving, fuelKey, (eq.name || eq.id) + ' — HSD', fuelQty, equipHsdPrice, fuelAmount);
+      layingMachineTotal += hireAmount;
+      layingMachineTotal += fuelAmount;
+    });
+    var layingCrewAmount = (layProd > 0) ? (targetLaying - layingMachineTotal) : 0;
+    pavingKeys.push('pavingCrew');
+    addLine(paving, 'pavingCrew', 'Laying crew', layProd > 0 ? 1 / layProd : 0, layCrewD, layingCrewAmount);
+    return {
+      mixing:mixing, paving:paving,
+      plantHireKeys:plantHireKeys, plantFuelKeys:plantFuelKeys, pavingKeys:pavingKeys,
+      plantEquipPerMT:targetPlantEquip, plantHsdPerMT:targetPlantHsd, fuelTotal:targetFuel,
+      layPerMT:targetLaying
+    };
+  }
   function livePrices(){
     return {
       aggLanded: aggLanded, bitPrice: bitPrice, fuelTotal: fuelTotal,
       plantEquipPerMT: plantEquipPerMT, crewPerMT: crewPerMT,
       layPerMT: layPerMT, overheadPerMT: overheadPerMT,
-      aggWastePct: _aggWastePct, bitWastePct: _bitWastePct
+      aggWastePct: _aggWastePct, bitWastePct: _bitWastePct,
+      costLines: buildRateCostLines({
+        hsdPrice:hsdPrice, ldoRate:ldoRate, plantEquipPerMT:plantEquipPerMT,
+        plantHsdPerMT:plantHsdPerMT, fuelTotal:fuelTotal, layPerMT:layPerMT
+      })
     };
   }
   // opts.transPerMT overrides the weighted average (for per-site labelling).
@@ -2298,30 +2381,80 @@ function recalc(){
     var tpm = (opts.transPerMT !== undefined) ? opts.transPerMT : _wTransPerMT;
     var aggFrac = FRAC_KEYS.reduce(function(s,k){return s+(mix.fractions[k]||0);},0)/100;
     var bitFrac = mix.binderPct/100;
-    // Client-supplied materials → zero out material costs; keep plant equipment
-    var aggCostPMT = (materialsBy==='us') ? aggFrac*(1+P.aggWastePct/100)*P.aggLanded : 0;
-    var bitCostPMT = (materialsBy==='us') ? bitFrac*1000*(1+P.bitWastePct/100)*P.bitPrice : 0;
-    var exPlant = aggCostPMT + bitCostPMT + P.plantEquipPerMT + P.fuelTotal + P.crewPerMT;
-    var quotedBase = exPlant + (_qShowTrans ? tpm : 0) + (_qShowLaying ? P.layPerMT : 0) + P.overheadPerMT;
+    var bitKgPerMT = bitFrac*1000*(1+P.bitWastePct/100);
+    var lines = [
+      {
+        key:'aggregate', label:'Aggregates', inScope:materialsBy==='us',
+        qtyPerUnit:aggFrac*(1+P.aggWastePct/100), rate:P.aggLanded,
+        amount:aggFrac*(1+P.aggWastePct/100)*P.aggLanded
+      },
+      {
+        key:'bitumen', label:'Bitumen', inScope:materialsBy==='us',
+        qtyPerUnit:bitKgPerMT, rate:P.bitPrice, amount:bitKgPerMT*P.bitPrice
+      }
+    ];
+    var rateLines = P.costLines || buildRateCostLines({
+      hsdPrice:hsdPrice, ldoRate:ldoRate, plantEquipPerMT:P.plantEquipPerMT,
+      plantHsdPerMT:plantHsdPerMT, fuelTotal:P.fuelTotal, layPerMT:P.layPerMT
+    });
+    rateLines.mixing.forEach(function(line){ lines.push(line); });
+    lines.push({key:'transport', label:'Transport', inScope:true, qtyPerUnit:1, rate:tpm, amount:tpm});
+    rateLines.paving.forEach(function(line){ lines.push(line); });
+    lines.push({key:'overhead', label:'Overheads', inScope:true, qtyPerUnit:1, rate:P.overheadPerMT, amount:P.overheadPerMT});
+    function sumKeys(keys){
+      return lines.reduce(function(sum,line){
+        return line.inScope && keys.indexOf(line.key)!==-1 ? sum+line.amount : sum;
+      },0);
+    }
+    function amountFor(key){
+      var line = lines.find(function(row){return row.key===key;});
+      return line && line.inScope ? line.amount : 0;
+    }
+    var aggCostPMT = amountFor('aggregate');
+    var bitCostPMT = amountFor('bitumen');
+    var equipment = sumKeys(rateLines.plantHireKeys);
+    var plantHsd = sumKeys(rateLines.plantFuelKeys);
+    var ldo = amountFor('ldo');
+    var boilerProd = amountFor('boilerProd');
+    var boilerPreheat = amountFor('boilerPreheat');
+    var fuel = plantHsd + ldo + boilerProd + boilerPreheat;
+    var crew = amountFor('crew');
+    var transport = amountFor('transport');
+    var laying = sumKeys(rateLines.pavingKeys);
+    var overhead = amountFor('overhead');
+    var exPlant = aggCostPMT + bitCostPMT + equipment + fuel + crew;
+    var quotedBase = exPlant + (_qShowTrans ? transport : 0) + (_qShowLaying ? laying : 0) + overhead;
     var marginAmt = quotedBase * marginPct / 100;
-    var perMT_cost   = exPlant + tpm + P.layPerMT + P.overheadPerMT;
+    lines.push({
+      key:'margin', label:'Margin', inScope:true, qtyPerUnit:quotedBase,
+      rate:marginPct/100, amount:marginAmt
+    });
+    var perMT_cost   = exPlant + transport + laying + overhead;
     var perMT_quoted = quotedBase + marginAmt;
     var incl = [];
     if(materialsBy==='us'){ incl.push('Agg'); incl.push('Bit'); }
     incl.push('Plant+Fuel'); incl.push('Crew');
-    if(_qShowTrans && tpm>0) incl.push('Trans');
-    if(_qShowLaying && P.layPerMT>0) incl.push('Laying');
-    if(P.overheadPerMT>0) incl.push('OH');
+    if(_qShowTrans && transport>0) incl.push('Trans');
+    if(_qShowLaying && laying>0) incl.push('Laying');
+    if(overhead>0) incl.push('OH');
     if(marginPct>0) incl.push('Margin '+marginPct+'%');
+    function bitQty(){
+      var row = lines.find(function(line){return line.key==='bitumen';});
+      return row ? row.qtyPerUnit : 0;
+    }
     return {
       name: mix.name, density: mix.density,
-      aggregate: aggCostPMT, bitumen: bitCostPMT,
-      equipment: P.plantEquipPerMT, plantHsd: plantHsdPerMT, fuel: P.fuelTotal, crew: P.crewPerMT,
-      overhead: P.overheadPerMT, transport: tpm, laying: P.layPerMT,
+      aggregate: aggCostPMT, bitumen: bitCostPMT, bitKgPerMT:bitQty(),
+      equipment: equipment, plantHsd: plantHsd, ldo:ldo, boilerProd:boilerProd, boilerPreheat:boilerPreheat,
+      fuel: fuel, crew: crew, margin:marginAmt,
+      overhead: overhead, transport: transport, laying: laying,
       exPlant: exPlant, quotedCost: quotedBase, finalLaid: perMT_quoted,
       perMT_cost: perMT_cost, perMT_quoted: perMT_quoted,
       perCUM_cost: perMT_cost * mix.density, perCUM_quoted: perMT_quoted * mix.density,
-      includes: incl.join(', ')
+      perCum:perMT_quoted * mix.density,
+      hotmix:amountFor('hotmixHire'), dg:amountFor('dgHire'), jcb:amountFor('jcbHire'), tipper:amountFor('tipperHire'),
+      dgFuel:amountFor('dgHsd'), jcbFuel:amountFor('jcbHsd'), tipperFuel:amountFor('tipperHsd'),
+      includes: incl.join(', '), lines:lines
     };
   }
 
@@ -2397,7 +2530,11 @@ function recalc(){
       aggLanded: revAggLanded, bitPrice: revBitPrice, fuelTotal: revFuelTotal,
       plantEquipPerMT: plantEquipPerMT, crewPerMT: crewPerMT,
       layPerMT: revLayPerMT, overheadPerMT: overheadPerMT,
-      aggWastePct: _aggWastePct, bitWastePct: _bitWastePct
+      aggWastePct: _aggWastePct, bitWastePct: _bitWastePct,
+      costLines: buildRateCostLines({
+        hsdPrice:revHsdPrice, ldoRate:revLdoRate, plantEquipPerMT:plantEquipPerMT,
+        plantHsdPerMT:revPlantHsdPerMT, fuelTotal:revFuelTotal, layPerMT:revLayPerMT
+      })
     };
     revisedMixRates = mixTypes.map(function(m){ return computeRate(m, { prices: _revPricesSnap }); });
     revisedProcPrices = {aggLanded:revAggLanded, bitPrice:revBitPrice, hsdPrice:revHsdPrice, ldoRate:revLdoRate};
