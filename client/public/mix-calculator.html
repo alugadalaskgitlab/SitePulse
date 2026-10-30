@@ -931,9 +931,12 @@ var _quoteProfitTarget  = 300;
 var _quoteProfitPremium = 500;
 
 var mixTypes = [
-  { name:'BC', binderPct:5.4, density:2.35, fractions:{f20mm:25,f10mm:20,f6mm:15,fDust:30,fFiller:4.6} },
-  { name:'DBM', binderPct:4.5, density:2.30, fractions:{f20mm:30,f10mm:22,f6mm:12,fDust:27,fFiller:4.5} }
+  { name:'BC', binderPct:5.4, density:2.35, defaultThickness:40, fractions:{f20mm:25,f10mm:20,f6mm:15,fDust:30,fFiller:4.6} },
+  { name:'DBM', binderPct:4.5, density:2.30, defaultThickness:50, fractions:{f20mm:30,f10mm:22,f6mm:12,fDust:27,fFiller:4.5} }
 ];
+var _seedMixThicknessDefaults = mixTypes.map(function(mix){
+  return {name:mix.name, defaultThickness:mix.defaultThickness};
+});
 
 var FRAC_KEYS = ['f20mm','f10mm','f6mm','fDust','fFiller'];
 var FRAC_LABELS = ['20mm','10mm','6mm / Chips','Dust / Screening','Filler'];
@@ -1121,6 +1124,15 @@ function migrateState(state){
     state.siteCounter = 1;
     delete state.jobs;
   }
+  // Add editable thickness defaults to legacy saved mix definitions.
+  if(Array.isArray(state.mixTypes)){
+    state.mixTypes.forEach(function(mix, index){
+      if(mix.defaultThickness === undefined){
+        var seed = _seedMixThicknessDefaults[index];
+        mix.defaultThickness = seed && seed.name === mix.name ? seed.defaultThickness : null;
+      }
+    });
+  }
   // equipDefs: add fuelConsump if missing
   if(state.equipDefs){
     state.equipDefs.forEach(function(eq){
@@ -1231,6 +1243,12 @@ function setJobQuantity(si, ji, value){
   var qty = parseFloat(value);
   job.qty = isNaN(qty) ? null : qty;
   if(job.basis === 'CUM') job.volume = isNaN(qty) ? 0 : qty;
+  recalc();
+}
+
+function setJobThickness(si, ji, value){
+  var thickness = parseFloat(value);
+  sites[si].jobs[ji].thickness = isNaN(thickness) || thickness <= 0 ? null : thickness;
   recalc();
 }
 
@@ -1952,9 +1970,14 @@ function removeMix(i){
 }
 function addMixType(){
   if(mixTypes.length>=4) return;
-  mixTypes.push({name:'MIX'+(mixTypes.length+1), binderPct:4.5, density:2.30, fractions:{f20mm:25,f10mm:20,f6mm:15,fDust:30,fFiller:5.5}});
+  mixTypes.push({name:'MIX'+(mixTypes.length+1), binderPct:4.5, density:2.30, defaultThickness:null, fractions:{f20mm:25,f10mm:20,f6mm:15,fDust:30,fFiller:5.5}});
   activeMixIdx=mixTypes.length-1;
   renderMixTabs(); renderMixPanels(); recalc();
+}
+function setMixDefaultThickness(index, value){
+  var thickness = parseFloat(value);
+  mixTypes[index].defaultThickness = isNaN(thickness) || thickness <= 0 ? null : thickness;
+  recalc();
 }
 function renderMixPanels(){
   var container = document.getElementById('mixPanels');
@@ -1965,6 +1988,7 @@ function renderMixPanels(){
   html += '<div class="form-group"><label>Mix Name</label><input value="'+m.name+'" oninput="var p=this.selectionStart;this.value=this.value.toUpperCase();try{this.setSelectionRange(p,p)}catch(x){};mixTypes['+activeMixIdx+'].name=this.value;renderMixTabs();recalc()"></div>';
   html += '<div class="form-group"><label>Binder Content %</label><input type="number" value="'+m.binderPct+'" step="0.1" oninput="mixTypes['+activeMixIdx+'].binderPct=parseFloat(this.value)||0;updateMixCalc();recalc()"></div>';
   html += '<div class="form-group"><label>Compacted Density (MT/CUM)</label><input type="number" value="'+m.density+'" step="0.01" oninput="mixTypes['+activeMixIdx+'].density=parseFloat(this.value)||0;recalc()"></div>';
+  html += '<div class="form-group"><label>Default thickness (mm)</label><input type="number" min="0" step="any" value="'+(m.defaultThickness!=null?m.defaultThickness:'')+'" placeholder="Set per mix" oninput="setMixDefaultThickness('+activeMixIdx+',this.value)"></div>';
   html += '</div>';
   html += '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px">';
   html += '<tr style="background:var(--gray-50)"><th style="text-align:left;padding:6px;font-size:11px;text-transform:uppercase;color:var(--gray-500)">Component</th><th style="text-align:right;padding:6px;font-size:11px;text-transform:uppercase;color:var(--gray-500)">% of Mix</th><th style="text-align:right;padding:6px;font-size:11px;text-transform:uppercase;color:var(--gray-500)">kg/MT</th><th style="text-align:right;padding:6px;font-size:11px;text-transform:uppercase;color:var(--gray-500)">kg/CUM</th></tr>';
@@ -3896,13 +3920,28 @@ function removeSite(si){
   if(sites.length === 0){ siteCounter = 0; jobCounter = 0; }
   renderSites(); recalc(); saveState(); autoSaveToDb();
 }
+function setJobMix(si, ji, mi, value){
+  var job = sites[si].jobs[ji];
+  var mixIdx = parseInt(value,10);
+  if(isNaN(mixIdx) || !mixTypes[mixIdx]) return;
+  var row = job.mixes[mi];
+  var changed = parseInt(row.mixIdx,10) !== mixIdx;
+  row.mixIdx = mixIdx;
+  if(mi === 0 && changed){
+    var defaultThickness = mixTypes[mixIdx].defaultThickness;
+    job.thickness = defaultThickness == null ? null : (parseFloat(defaultThickness) || null);
+  }
+  renderSites(); recalc();
+}
 function addSiteJob(si){
   jobCounter++;
+  var defaultThickness = mixTypes[0] ? parseFloat(mixTypes[0].defaultThickness) : NaN;
+  var thickness = isNaN(defaultThickness) || defaultThickness <= 0 ? null : defaultThickness;
   sites[si].jobs.push({
     id:'J'+String(jobCounter).padStart(2,'0'),
     contractor:'',
     basis:'GEOMETRY',
-    length:100, width:7, thickness:50, volume:35,
+    length:100, width:7, thickness:thickness, volume:thickness ? (100*7*thickness/1000) : 0,
     prime:true, tack:true,
     mixes:[{mixIdx:0, qty_mt:null}]
   });
@@ -3982,10 +4021,10 @@ function renderJobCard(si,ji,j){
   if(isGeo){
     html += '<div class="jc-group"><span class="jc-label">L(m)</span><input type="number" value="'+j.length+'" oninput="sites['+si+'].jobs['+ji+'].length=parseFloat(this.value)||0;recalc()" style="width:65px"></div>';
     html += '<div class="jc-group"><span class="jc-label">W(m)</span><input type="number" value="'+j.width+'" oninput="sites['+si+'].jobs['+ji+'].width=parseFloat(this.value)||0;recalc()" style="width:55px"></div>';
-    html += '<div class="jc-group"><span class="jc-label">T(mm)</span><input type="number" value="'+j.thickness+'" oninput="sites['+si+'].jobs['+ji+'].thickness=parseFloat(this.value)||0;recalc()" style="width:55px"></div>';
+    html += '<div class="jc-group"><span class="jc-label">T(mm)</span><input type="number" value="'+(j.thickness!=null?j.thickness:'')+'" oninput="setJobThickness('+si+','+ji+',this.value)" style="width:55px"></div>';
   } else {
     html += '<div class="jc-group"><span class="jc-label">L(m)</span><span class="jc-derived" id="jobLen_'+si+'_'+ji+'" style="min-width:40px;text-align:center">'+(jobQuantities.length!=null&&j.width>0?jobQuantities.length.toFixed(1):'—')+'</span></div>';
-    html += '<div class="jc-group"><span class="jc-label">T(mm)</span><input type="number" value="'+j.thickness+'" oninput="sites['+si+'].jobs['+ji+'].thickness=parseFloat(this.value)||0;recalc()" style="width:55px"></div>';
+    html += '<div class="jc-group"><span class="jc-label">T(mm)</span><input type="number" value="'+(j.thickness!=null?j.thickness:'')+'" oninput="setJobThickness('+si+','+ji+',this.value)" style="width:55px"></div>';
     html += '<div class="jc-group"><span class="jc-label">'+quantityLabels[j.basis]+'</span><input type="number" value="'+(quantityValue||'')+'" oninput="setJobQuantity('+si+','+ji+',this.value)" style="width:85px"></div>';
   }
   html += '<span class="jc-derived" id="jobArea_'+si+'_'+ji+'"></span>';
@@ -4014,7 +4053,7 @@ function renderJobCard(si,ji,j){
     var mtPlaceholder = autoMT>0?autoMT.toFixed(1):'MT';
     var hasMT = mx.qty_mt!=null&&mx.qty_mt>0;
     html += '<tr>';
-    html += '<td style="text-align:left"><select onchange="sites['+si+'].jobs['+ji+'].mixes['+mi+'].mixIdx=parseInt(this.value);renderSites();recalc()" style="width:85px">';
+    html += '<td style="text-align:left"><select onchange="setJobMix('+si+','+ji+','+mi+',this.value)" style="width:85px">';
     mixTypes.forEach(function(m,mti){
       html+='<option value="'+mti+'"'+(mx.mixIdx===mti?' selected':'')+'>'+m.name+'</option>';
     });
@@ -4142,7 +4181,7 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
 
       // ₹/MT for prime/tack based on first mix density and job thickness
       var firstMix = mixTypes[(j.mixes[0]||{}).mixIdx||0]||mixTypes[0];
-      var thickMm = j.thickness||50;
+      var thickMm = parseFloat(j.thickness)||0;
       var primePerMT = (thickMm>0&&firstMix.density>0)?(jobPrimePerSqm*1000/(firstMix.density*thickMm)):0;
       var tackPerMT  = (thickMm>0&&firstMix.density>0)?(jobTackPerSqm*1000/(firstMix.density*thickMm)):0;
 
@@ -6574,9 +6613,11 @@ function init(){
     if(getAllJobs().length===0){
       siteCounter++;
       jobCounter++;
+      var presetThickness = mixTypes[0] ? parseFloat(mixTypes[0].defaultThickness) : NaN;
+      presetThickness = isNaN(presetThickness) || presetThickness <= 0 ? null : presetThickness;
       sites.push({
         id:'S'+String(siteCounter).padStart(2,'0'), name:'',
-        jobs:[{id:'J'+String(jobCounter).padStart(2,'0'), contractor:presetContractor, basis:'GEOMETRY', length:100, width:7, thickness:50, volume:35, mixes:[{mixIdx:0,qty_mt:null}]}]
+        jobs:[{id:'J'+String(jobCounter).padStart(2,'0'), contractor:presetContractor, basis:'GEOMETRY', length:100, width:7, thickness:presetThickness, volume:presetThickness?(100*7*presetThickness/1000):0, mixes:[{mixIdx:0,qty_mt:null}]}]
       });
       renderSites(); recalc();
     } else if(sites.length>0&&sites[0].jobs.length>0){
