@@ -534,8 +534,10 @@ body{font-size:11px;background:#fff}
     <div class="form-grid" style="margin-bottom:12px">
       <div class="form-group"><label>Production Rate (TPH)</label><input id="tph" type="number" value="60" oninput="recalc()"></div>
       <div class="form-group"><label>Plant Hours / Month</label><input id="plantHrsMonth" type="number" value="200" oninput="recalc()"></div>
+      <div class="form-group"><label>Actual output (MT/year)</label><input id="actualOutputMTYear" type="number" min="0" step="any" value="20000" oninput="recalc()"></div>
     </div>
     <div id="equipCards"></div>
+    <div id="equipOwnershipAwareness" style="margin:8px 0 4px;font-size:12px;color:#6b7280;line-height:1.6"></div>
     <div style="margin-top:10px;text-align:center">
       <button class="admin-only" onclick="addCustomEquipment(false)" style="padding:6px 18px;font-size:13px;font-weight:600;border:1px dashed #d97706;background:#fffbeb;color:#92400e;border-radius:8px;cursor:pointer" data-testid="btn-add-plant-equip">+ Add Plant Equipment</button>
       <button class="admin-only" onclick="addCustomEquipment(true)" style="padding:6px 18px;font-size:13px;font-weight:600;border:1px dashed #2563eb;background:#eff6ff;color:#1e40af;border-radius:8px;cursor:pointer;margin-left:8px" data-testid="btn-add-laying-equip">+ Add Laying Equipment</button>
@@ -947,17 +949,25 @@ var FRAC_KEYS = ['f20mm','f10mm','f6mm','fDust','fFiller'];
 var FRAC_LABELS = ['20mm','10mm','6mm / Chips','Dust / Screening','Filler'];
 
 var DEFAULT_FUEL = {hotmix:0, dg:12, jcb:8, tipper:4, paver:12, roller:6, ptr:5};
+var DEFAULT_EQUIP_OWNERSHIP = {salvagePct:10, interestPct:11, insurancePct:1};
 var _customEqCounter = 0;
 var CORE_EQUIP_IDS = ['hotmix','dg','jcb','tipper','paver','roller','ptr'];
+
+function ensureEquipOwnershipDefaults(eq){
+  if(eq.salvagePct === undefined || eq.salvagePct === null) eq.salvagePct = DEFAULT_EQUIP_OWNERSHIP.salvagePct;
+  if(eq.interestPct === undefined || eq.interestPct === null) eq.interestPct = DEFAULT_EQUIP_OWNERSHIP.interestPct;
+  if(eq.insurancePct === undefined || eq.insurancePct === null) eq.insurancePct = DEFAULT_EQUIP_OWNERSHIP.insurancePct;
+  return eq;
+}
 
 function addCustomEquipment(isLaying){
   _customEqCounter++;
   var newId = 'custom_'+(Date.now()+'').slice(-6)+'_'+_customEqCounter;
-  equipDefs.push({
+  equipDefs.push(ensureEquipOwnershipDefaults({
     id:newId, name:isLaying?'Custom Laying Equip':'Custom Equipment', mode:'hired',
     capex:2000000, life:8, maint:10, hireBasis:'daily', hireRate:5000, hireHrsDay:8, hireHrsMonth:200,
     enabled:true, isLaying:isLaying, fuelConsump:0, custom:true
-  });
+  }));
   seedScopeEquipmentTicks();
   saveState(); renderEquipCards(); recalc();
 }
@@ -986,6 +996,7 @@ var equipDefs = [
   {id:'roller', name:'Tandem Roller',     mode:'hired',capex:4000000, life:10,maint:15,hireBasis:'daily',hireRate:8000, hireHrsDay:8, hireHrsMonth:200,enabled:true,isLaying:true, fuelConsump:6},
   {id:'ptr',    name:'Pneumatic Tyre Roller (PTR)',mode:'hired',capex:3000000,life:10,maint:15,hireBasis:'daily',hireRate:6000,hireHrsDay:8,hireHrsMonth:200,enabled:true,isLaying:true,fuelConsump:5}
 ];
+equipDefs.forEach(ensureEquipOwnershipDefaults);
 
 // New structure: sites with nested jobs
 var sites = [];
@@ -1106,7 +1117,7 @@ function resetRevisedRates(){
 var PERSIST_INPUTS = [
   'projName','projBy','projDate','projContractor','projAddress','projContact','projPhone',
   'aggRate','aggDensity','aggDist','aggFreightRate','aggPayload','aggWastage','bitPrice','bitWastage',
-  'tph','plantHrsMonth',
+  'tph','plantHrsMonth','actualOutputMTYear',
   'hsdPrice',
   'ldoConsump','ldoRate','ldoOpenMeter','ldoCloseMeter','ldoProdMT',
   'boilerProdLhr','boilerPreheatLhr','boilerProdHrs','boilerPreheatHrs','boilerCampaignMt',
@@ -1141,6 +1152,7 @@ function migrateState(state){
   // equipDefs: add fuelConsump if missing
   if(state.equipDefs){
     state.equipDefs.forEach(function(eq){
+      ensureEquipOwnershipDefaults(eq);
       if(eq.fuelConsump === undefined || eq.fuelConsump === null){
         eq.fuelConsump = DEFAULT_FUEL[eq.id] || 0;
       }
@@ -2162,13 +2174,54 @@ function getEquipHireCostPerMT(eq){
   if(tph<=0) return 0;
   if(eq.mode==='owned'){
     if(eq.life<=0||phm<=0) return 0;
-    return (eq.capex/eq.life/12)*(1+eq.maint/100)/phm/tph;
+    return getEquipOwnershipMonthly(eq)/phm/tph;
   } else {
     if(eq.hireBasis==='daily') return eq.hireHrsDay>0?eq.hireRate/eq.hireHrsDay/tph:0;
     if(eq.hireBasis==='hourly') return eq.hireRate/tph;
     var bh=eq.hireHrsMonth||phm; return bh>0?eq.hireRate/bh/tph:0;
   }
 }
+function getEquipOwnershipMonthly(eq){
+  if(!eq || eq.mode!=='owned') return 0;
+  var capex=parseFloat(eq.capex)||0, life=parseFloat(eq.life)||0;
+  if(life<=0) return 0;
+  var salvagePct=eq.salvagePct!=null?parseFloat(eq.salvagePct):DEFAULT_EQUIP_OWNERSHIP.salvagePct;
+  var interestPct=eq.interestPct!=null?parseFloat(eq.interestPct):DEFAULT_EQUIP_OWNERSHIP.interestPct;
+  var insurancePct=eq.insurancePct!=null?parseFloat(eq.insurancePct):DEFAULT_EQUIP_OWNERSHIP.insurancePct;
+  var maint=parseFloat(eq.maint)||0;
+  if(salvagePct===0 && interestPct===0 && insurancePct===0){
+    return (capex/life/12)*(1+maint/100);
+  }
+  var salvage=capex*salvagePct/100;
+  var annualDepreciation=(capex-salvage)/life;
+  var annualInterest=((capex+salvage)/2)*interestPct/100;
+  var annualRepairs=annualDepreciation*maint/100;
+  var annualInsurance=capex*insurancePct/100;
+  return (annualDepreciation+annualInterest+annualRepairs+annualInsurance)/12;
+}
+
+function updateEquipOwnershipAwareness(){
+  var el=document.getElementById('equipOwnershipAwareness');
+  if(!el) return;
+  var plantHoursPerYear=Math.max(0,n('plantHrsMonth'))*12;
+  var tph=Math.max(0,n('tph'));
+  var actualOutput=Math.max(0,n('actualOutputMTYear'));
+  var annualOwnershipCost=0, chargedRecovery=0;
+  equipDefs.forEach(function(eq){
+    if(!eq.enabled || eq.isLaying || eq.mode!=='owned') return;
+    var monthly=getEquipOwnershipMonthly(eq);
+    annualOwnershipCost+=monthly*12;
+    if(plantCostMode!=='marginal' && plantHoursPerYear>0 && tph>0){
+      chargedRecovery+=monthly/(plantHoursPerYear/12)/tph;
+    }
+  });
+  var awarenessRecovery=actualOutput>0?annualOwnershipCost/actualOutput:null;
+  el.textContent='Plant recovery charged: ₹'+fmtR(chargedRecovery)+'/MT at '+fmtI(plantHoursPerYear)+' hours/year. '
+    +'Over your actual '+fmtI(actualOutput)+' MT/year the same ownership cost is '
+    +(awarenessRecovery!=null?'₹'+fmtR(awarenessRecovery)+'/MT':'—')
+    +' — shown for awareness, not charged.';
+}
+
 function getEquipFuelPerMT(eq){
   if(!eq.enabled||eq.isLaying) return 0;
   var tph=n('tph'), hsd=n('hsdPrice');
@@ -2180,7 +2233,7 @@ function getEquipHireDailyCost(eq){
   if(!eq.enabled) return 0;
   if(eq.mode==='owned'){
     if(eq.life<=0) return 0;
-    return (eq.capex/eq.life/12)*(1+eq.maint/100)/25;
+    return getEquipOwnershipMonthly(eq)/25;
   } else {
     if(eq.hireBasis==='daily') return eq.hireRate;
     if(eq.hireBasis==='hourly') return eq.hireRate*(eq.hireHrsDay||8);
@@ -2259,6 +2312,9 @@ function renderEquipCards(){
         html += '<div class="form-group"><label>Capex (₹)</label><input type="number" value="'+eq.capex+'" oninput="equipDefs['+i+'].capex=parseFloat(this.value)||0;recalc()"></div>';
         html += '<div class="form-group"><label>Life (years)</label><input type="number" value="'+eq.life+'" oninput="equipDefs['+i+'].life=parseFloat(this.value)||0;recalc()"></div>';
         html += '<div class="form-group"><label>Maintenance %</label><input type="number" value="'+eq.maint+'" oninput="equipDefs['+i+'].maint=parseFloat(this.value)||0;recalc()"></div>';
+        html += '<div class="form-group"><label>Salvage value %</label><input type="number" min="0" step="any" value="'+eq.salvagePct+'" oninput="equipDefs['+i+'].salvagePct=parseFloat(this.value)||0;recalc()"></div>';
+        html += '<div class="form-group"><label>Interest on capital %</label><input type="number" min="0" step="any" value="'+eq.interestPct+'" oninput="equipDefs['+i+'].interestPct=parseFloat(this.value)||0;recalc()"></div>';
+        html += '<div class="form-group"><label>Insurance &amp; taxes %</label><input type="number" min="0" step="any" value="'+eq.insurancePct+'" oninput="equipDefs['+i+'].insurancePct=parseFloat(this.value)||0;recalc()"></div>';
       } else {
         html += '<div class="form-group"><label>Hire Basis</label><select onchange="equipDefs['+i+'].hireBasis=this.value;renderEquipCards();recalc()"><option value="daily"'+(eq.hireBasis==='daily'?' selected':'')+'>Daily</option><option value="hourly"'+(eq.hireBasis==='hourly'?' selected':'')+'>Hourly</option><option value="monthly"'+(eq.hireBasis==='monthly'?' selected':'')+'>Monthly</option></select></div>';
         if(eq.hireBasis==='daily'){
@@ -2303,6 +2359,7 @@ function updateEquipBadges(){
     }
     if(fuelEl) fuelEl.style.borderColor = (eq.fuelConsump||0)>0?'#16a34a':'var(--gray-300)';
   });
+  updateEquipOwnershipAwareness();
 }
 
 // ====== MAIN RECALC ======
@@ -2743,7 +2800,7 @@ function recalc(){
     function _bEqDailyCost(eq){
       if(!eq||!eq.enabled) return 0;
       var hire=0;
-      if(eq.mode==='owned'){ if(eq.life>0) hire=(eq.capex/eq.life/12)*(1+eq.maint/100)/25; }
+      if(eq.mode==='owned'){ if(eq.life>0) hire=getEquipOwnershipMonthly(eq)/25; }
       else { if(eq.hireBasis==='daily') hire=eq.hireRate; else if(eq.hireBasis==='hourly') hire=eq.hireRate*(eq.hireHrsDay||8); else hire=eq.hireRate/25; }
       var fuel=0;
       if(eq.isLaying) fuel=(eq.fuelConsump||0)*(eq.hireHrsDay||8)*_bHsd;
@@ -6384,7 +6441,7 @@ function calcScopeComponentsFromInputs(inp, eqDefs, mTypes){
   function _eqHirePMT(eq){
     if(!eq||!eq.enabled) return 0;
     if(tph<=0) return 0;
-    if(eq.mode==='owned'){ if(eq.life<=0||phm<=0) return 0; return (eq.capex/eq.life/12)*(1+eq.maint/100)/phm/tph; }
+    if(eq.mode==='owned'){ if(eq.life<=0||phm<=0) return 0; return getEquipOwnershipMonthly(eq)/phm/tph; }
     else { if(eq.hireBasis==='daily') return eq.hireHrsDay>0?eq.hireRate/eq.hireHrsDay/tph:0; if(eq.hireBasis==='hourly') return eq.hireRate/tph; var bh=eq.hireHrsMonth||phm; return bh>0?eq.hireRate/bh/tph:0; }
   }
   function _eqFuelPMT(eq){
@@ -6393,7 +6450,7 @@ function calcScopeComponentsFromInputs(inp, eqDefs, mTypes){
   }
   function _eqHireDaily(eq){
     if(!eq||!eq.enabled) return 0;
-    if(eq.mode==='owned'){ if(eq.life<=0) return 0; return (eq.capex/eq.life/12)*(1+eq.maint/100)/25; }
+    if(eq.mode==='owned'){ if(eq.life<=0) return 0; return getEquipOwnershipMonthly(eq)/25; }
     else { if(eq.hireBasis==='daily') return eq.hireRate; if(eq.hireBasis==='hourly') return eq.hireRate*(eq.hireHrsDay||8); return eq.hireRate/25; }
   }
   function _eqFuelDay(eq){
