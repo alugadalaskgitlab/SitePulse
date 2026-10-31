@@ -102,17 +102,17 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .job-cost-warning{font-size:11px;font-weight:700;color:#991b1b;background:#fee2e2;border:1px solid #fecaca;border-radius:5px;padding:4px 8px}
 .rate-unit-note{font-size:11px;color:var(--gray-500);background:#f8fafc;border:1px solid var(--gray-200);border-radius:6px;padding:6px 9px;margin:0 0 10px}
 .job-card-body{padding:0}
-.job-card-body table{width:100%;border-collapse:collapse;font-size:13px}
+.job-card-body table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed}
 @media screen{
   .job-card-body{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
-  .job-card-body table{width:max-content;min-width:100%}
+  .job-card-body table{width:100%;min-width:100%;table-layout:fixed}
 }
-.job-card-body th{background:var(--gray-50);padding:6px 8px;text-align:right;font-size:11px;text-transform:uppercase;color:var(--gray-500);font-weight:700;border-bottom:1px solid var(--gray-200);white-space:nowrap}
+.job-card-body th{background:var(--gray-50);padding:5px 3px;text-align:right;font-size:10px;text-transform:uppercase;color:var(--gray-500);font-weight:700;border-bottom:1px solid var(--gray-200);white-space:normal;line-height:1.15}
 .job-card-body th:first-child{text-align:left}
-.job-card-body td{padding:5px 8px;border-bottom:1px solid var(--gray-100);text-align:right;vertical-align:middle}
+.job-card-body td{padding:4px 3px;border-bottom:1px solid var(--gray-100);text-align:right;vertical-align:middle;overflow:hidden;text-overflow:ellipsis}
 .job-card-body td:first-child{text-align:left}
 .job-card-body .jc-calc{background:var(--amber-bg);font-weight:600;white-space:nowrap}
-.job-card-body input,.job-card-body select{padding:3px 6px;border:1px solid var(--gray-200);border-radius:4px;font-size:13px}
+.job-card-body input,.job-card-body select{padding:3px 4px;border:1px solid var(--gray-200);border-radius:4px;font-size:11px;max-width:100%;box-sizing:border-box}
 .job-card-body tr.coat-row td{background:#f0fdf4;border-top:1px dashed #bbf7d0;color:var(--gray-700);font-size:12px}
 .job-card-body tr.coat-row td:first-child{font-weight:600;color:#16a34a}
 .job-card-body tr.job-total-row td{font-weight:700;border-top:2px solid var(--amber);background:var(--amber-bg);font-size:12px}
@@ -311,6 +311,7 @@ body{font-size:11px;background:#fff}
     <button class="btn btn-secondary btn-sm no-print" id="btnSaved" onclick="openSavedPanel()" title="View saved estimates">📂 Saved</button>
     <a id="btnPriceImpact" class="btn btn-secondary btn-sm no-print" href="#" title="View Price Impact scenarios for this estimate" style="display:none;color:var(--amber)">📊 Price Impact</a>
     <button class="btn btn-secondary btn-sm no-print admin-only" id="btnSave" onclick="saveToDb()" title="Save estimate to database" style="color:var(--green)">💾 Save</button>
+    <button class="btn btn-secondary btn-sm no-print admin-only" id="btnRevertSaved" onclick="revertToSaved()" title="Restore the state captured when this estimate was opened" style="display:none">↶ Revert to saved</button>
     <button class="btn btn-secondary btn-sm no-print admin-only" onclick="resetState()" title="Clear saved data and reset all inputs to defaults" style="color:var(--red)">↺ Reset</button>
     <button class="btn btn-primary no-print" onclick="openPrintSettings()">🖨 Print</button>
     <button class="btn btn-secondary btn-sm no-print" onclick="mixLogout()" title="Logout" style="color:var(--gray-500)">⏻ Logout</button>
@@ -1289,8 +1290,16 @@ function getRateMixIndex(rate){
   return mixTypes.findIndex(function(mix){return rate&&mix.name===rate.name;});
 }
 
-function fmtRateValue(value){
-  return value==null||!isFinite(value) ? '—' : fmtR(value);
+function fmtPerUnit(value, unit, preserveMtPrecision){
+  var amount = parseFloat(value);
+  if(value==null||!isFinite(amount)) return '—';
+  // Keep the accepted per-MT quoted-rate baseline precise; other rates use the display threshold.
+  if(preserveMtPrecision&&(unit||rateUnit)==='MT') return fmt(amount);
+  return Math.abs(amount)<100 ? fmt(amount) : fmtI(amount);
+}
+
+function fmtRateValue(value, unit, preserveMtPrecision){
+  return fmtPerUnit(value, unit||rateUnit, preserveMtPrecision);
 }
 
 function getRateThicknessInfo(mixIndex){
@@ -1603,6 +1612,77 @@ var _estimatesList = {};
 var procScenarioPrices = null; // prices extracted from selected scenario for procurement comparison
 var procBasePrices = null; // prices extracted from frozen baseState for base cost computation
 var _procScenariosList = [];   // cached scenarios for current estimate
+var SAVED_SNAPSHOT_PREFIX = STORAGE_KEY+'_savedSnapshot_';
+
+function savedSnapshotKey(id){
+  var numericId = parseInt(id,10);
+  return numericId>0 ? SAVED_SNAPSHOT_PREFIX+numericId : null;
+}
+
+function getSavedSnapshot(id){
+  var key = savedSnapshotKey(id);
+  if(!key) return null;
+  try { return localStorage.getItem(key); } catch(e){ return null; }
+}
+
+function setSavedSnapshot(id,state){
+  var key = savedSnapshotKey(id);
+  if(!key||!state) return false;
+  try {
+    var serialized = typeof state==='string' ? state : JSON.stringify(state);
+    JSON.parse(serialized);
+    localStorage.setItem(key,serialized);
+    updateRevertButtonVisibility();
+    return true;
+  } catch(e){ return false; }
+}
+
+function captureInitialSavedSnapshot(){
+  if(!currentEstimateId||scenarioMode||getSavedSnapshot(currentEstimateId)) return;
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if(raw) setSavedSnapshot(currentEstimateId,raw);
+  } catch(e){}
+}
+
+function updateRevertButtonVisibility(){
+  var button = document.getElementById('btnRevertSaved');
+  if(!button) return;
+  button.style.display = currentEstimateId&&!scenarioMode&&getSavedSnapshot(currentEstimateId) ? '' : 'none';
+}
+
+function revertToSaved(){
+  if(!currentEstimateId||scenarioMode) return;
+  var snapshot = getSavedSnapshot(currentEstimateId);
+  if(!snapshot){ updateRevertButtonVisibility(); showToast('No saved snapshot is available',true); return; }
+  if(!confirm('Restore the saved version of this estimate? Unsaved changes will be discarded.')) return;
+
+  var previousState = null;
+  try {
+    previousState = localStorage.getItem(STORAGE_KEY);
+    var restoredState = migrateState(JSON.parse(snapshot));
+    snapshot = JSON.stringify(restoredState);
+  } catch(e){ showToast('Saved snapshot is invalid',true); return; }
+
+  if(_autoSaveTimer){ clearTimeout(_autoSaveTimer); _autoSaveTimer=null; }
+  _suppressAutoSave = true;
+  try {
+    localStorage.setItem(STORAGE_KEY,snapshot);
+    if(!loadState()) throw new Error('Saved snapshot could not be restored');
+    renderSites();
+    recalc();
+    _localDirty = false;
+    updateBadge();
+    _suppressAutoSave = false;
+    scheduleAutoSave();
+    showToast('Restored saved estimate');
+  } catch(e){
+    if(previousState==null) localStorage.removeItem(STORAGE_KEY);
+    else localStorage.setItem(STORAGE_KEY,previousState);
+    _suppressAutoSave = false;
+    showToast('Could not restore the saved estimate',true);
+  }
+}
 
 function getDbState(){
   var inputs = {};
@@ -1662,6 +1742,7 @@ function updateBadge(){
       piBtn.style.display='';
     } else { piBtn.setAttribute('href','#'); piBtn.style.display='none'; }
   }
+  updateRevertButtonVisibility();
   updateCalcNavHeader();
 }
 
@@ -1727,6 +1808,7 @@ function confirmSaveToDb(){
         currentEstimateName = est.name;
         localStorage.setItem(STORAGE_KEY+'_estId', String(est.id));
         localStorage.setItem(STORAGE_KEY+'_estName', est.name);
+        setSavedSnapshot(est.id,payload.state);
         _syncedUpdatedAt = est.updatedAt||null; _localDirty = false;
         updateBadge();
         showToast('Saved ✓');
@@ -1748,6 +1830,7 @@ function confirmSaveToDb(){
             currentEstimateName = est.name;
             localStorage.setItem(STORAGE_KEY+'_estId', String(est.id));
             localStorage.setItem(STORAGE_KEY+'_estName', est.name);
+            setSavedSnapshot(est.id,payload.state);
             _syncedUpdatedAt = est.updatedAt||null; _localDirty = false;
             updateBadge();
             showToast('Saved ✓');
@@ -1888,7 +1971,9 @@ function loadFromDb(est){
   if(!confirm('Load "'+est.name+'"? This will replace the current calculator state.')) return;
   try {
     var state = migrateState(JSON.parse(est.state));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    var serializedState = JSON.stringify(state);
+    setSavedSnapshot(est.id,serializedState);
+    localStorage.setItem(STORAGE_KEY, serializedState);
   } catch(e){ showToast('Invalid estimate data', true); return; }
   localStorage.setItem(STORAGE_KEY+'_estId', String(est.id));
   localStorage.setItem(STORAGE_KEY+'_estName', est.name);
@@ -3058,7 +3143,7 @@ function renderRateWorkbench(usedMixRates, marginPct){
       var lc = l.off ? '#9ca3af' : 'var(--gray-400)';
       html += '<div style="min-width:84px">';
       html += '<div style="font-size:10px;color:'+lc+';font-weight:600;text-transform:uppercase;letter-spacing:.4px">'+l.label+'</div>';
-      html += '<div style="font-size:13px;font-weight:700;color:'+c+'">'+(l.off?'<span title="excluded by current scope">—</span>':(vv==null?'—':'₹'+fmtI(Math.round(vv))))+'</div>';
+      html += '<div style="font-size:13px;font-weight:700;color:'+c+'">'+(l.off?'<span title="excluded by current scope">—</span>':(vv==null?'—':'₹'+fmtPerUnit(vv,rateUnit)))+'</div>';
       html += '</div>';
     });
     html += '</div>';
@@ -3066,15 +3151,15 @@ function renderRateWorkbench(usedMixRates, marginPct){
     html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">';
     html += '<div style="background:#f0fdf4;border-radius:8px;padding:10px 12px">';
     html += '<div style="font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Cost</div>';
-    html += '<div style="font-size:17px;font-weight:700;color:#15803d">'+(vCost==null?'—':'₹'+fmtI(Math.round(vCost)))+'<span style="font-size:10px;font-weight:400;color:#6b7280">/'+unit+'</span></div>';
+    html += '<div style="font-size:17px;font-weight:700;color:#15803d">'+(vCost==null?'—':'₹'+fmtPerUnit(vCost,rateUnit))+'<span style="font-size:10px;font-weight:400;color:#6b7280">/'+unit+'</span></div>';
     html += '</div>';
     html += '<div style="background:#fffbeb;border-radius:8px;padding:10px 12px">';
     html += '<div style="font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Margin '+fmtR(mPct)+'%</div>';
-    html += '<div style="font-size:17px;font-weight:700;color:#92400e">'+(vMgn==null?'—':'₹'+fmtI(Math.round(vMgn)))+'<span style="font-size:10px;font-weight:400;color:#6b7280">/'+unit+'</span></div>';
+    html += '<div style="font-size:17px;font-weight:700;color:#92400e">'+(vMgn==null?'—':'₹'+fmtPerUnit(vMgn,rateUnit))+'<span style="font-size:10px;font-weight:400;color:#6b7280">/'+unit+'</span></div>';
     html += '</div>';
     html += '<div style="background:linear-gradient(135deg,#d97706,#b45309);border-radius:8px;padding:10px 12px">';
     html += '<div style="font-size:10px;color:rgba(255,255,255,.8);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">▶ QUOTED</div>';
-    html += '<div style="font-size:17px;font-weight:700;color:#fff">'+(vQuot==null?'—':'₹'+fmt(vQuot))+'<span style="font-size:10px;font-weight:400;color:rgba(255,255,255,.7)">/'+unit+'</span></div>';
+    html += '<div style="font-size:17px;font-weight:700;color:#fff">'+(vQuot==null?'—':'₹'+fmtPerUnit(vQuot,rateUnit,true))+'<span style="font-size:10px;font-weight:400;color:rgba(255,255,255,.7)">/'+unit+'</span></div>';
     html += '</div>';
     html += '</div>';
     html += '</div>';
@@ -3374,7 +3459,7 @@ function renderRateSummary(mixRates){
   html+='<tr class="total-row"><td>'+_finalLabel+'</td>';
   mixRates.forEach(function(r){
     var finalVal = _v(r,r.perMT_quoted);
-    html+='<td style="color:var(--amber);font-weight:700">'+fmtRateValue(finalVal)+'</td>';
+    html+='<td style="color:var(--amber);font-weight:700">'+fmtRateValue(finalVal,rateUnit,true)+'</td>';
   });
   html+='</tr>';
   // "Includes" chip
@@ -4270,8 +4355,7 @@ function renderJobCard(si,ji,j){
   var isGeo = j.basis==='GEOMETRY';
   var hasThickness = hasPositiveThickness(j.thickness);
   var thicknessValue = hasThickness ? parseFloat(j.thickness) : null;
-  var dynamicUnit = rateUnit==='MT' ? 'CUM' : rateUnit;
-  var dynamicUnitLabel = getRateUnitLabel(dynamicUnit);
+  var selectedUnitLabel = getRateUnitLabel(rateUnit);
   var jobQuantities = getJobQuantities(j);
   var quantityLabels = {
     CUM:'Vol (cum)',
@@ -4315,13 +4399,15 @@ function renderJobCard(si,ji,j){
   html += '<button class="btn btn-danger btn-sm no-print admin-only" onclick="removeSiteJob('+si+','+ji+')" style="padding:4px 8px">×</button>';
   html += '</div></div>';
 
-  html += '<div class="job-card-body"><table><thead><tr>';
+  html += '<div class="job-card-body"><table><colgroup>';
+  html += '<col style="width:12%"><col style="width:12%"><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:12%"><col style="width:24%"><col class="no-print" style="width:30px">';
+  html += '</colgroup><thead><tr>';
   html += '<th style="text-align:left">Mix / Coat</th><th>MT / Area</th>';
-  html += '<th>Plant ₹/MT</th><th style="color:var(--blue)">Plant ₹/'+dynamicUnitLabel+'</th>';
-  html += '<th>Trans ₹/MT</th><th style="color:var(--blue)">Trans ₹/'+dynamicUnitLabel+'</th>';
-  html += '<th>Lay ₹/MT</th><th style="color:var(--blue)">Lay ₹/'+dynamicUnitLabel+'</th>';
-  html += '<th style="font-weight:700">Total ₹/MT</th>';
-  html += '<th style="color:var(--green);font-size:11px">Whole-job ₹/'+dynamicUnitLabel+'</th>';
+  html += '<th>Plant ₹/'+selectedUnitLabel+'</th>';
+  html += '<th style="color:var(--blue)">Trans ₹/'+selectedUnitLabel+'</th>';
+  html += '<th>Lay ₹/'+selectedUnitLabel+'</th>';
+  html += '<th style="font-weight:700">Total ₹/'+selectedUnitLabel+'</th>';
+  html += '<th style="color:var(--green);font-size:10px">Whole-job ₹/'+selectedUnitLabel+'</th>';
   html += '<th class="no-print" style="width:30px"></th>';
   html += '</tr></thead><tbody>';
 
@@ -4339,13 +4425,10 @@ function renderJobCard(si,ji,j){
     html += '</select></td>';
     html += '<td><input type="number" value="'+(hasMT?mx.qty_mt:'')+'" placeholder="'+mtPlaceholder+'" oninput="var v=parseFloat(this.value);sites['+si+'].jobs['+ji+'].mixes['+mi+'].qty_mt=(isNaN(v)||v<=0?null:v);recalc()" style="width:75px;text-align:right;color:'+(hasMT?'inherit':'var(--amber)')+'"></td>';
     html += '<td class="jc-calc" id="jmPlantRate_'+si+'_'+ji+'_'+mi+'"></td>';
-    html += '<td class="jc-calc" style="color:var(--blue)" id="jmPlantCum_'+si+'_'+ji+'_'+mi+'"></td>';
-    html += '<td class="jc-calc" id="jmTransRate_'+si+'_'+ji+'_'+mi+'"></td>';
-    html += '<td class="jc-calc" style="color:var(--blue)" id="jmTransCum_'+si+'_'+ji+'_'+mi+'"></td>';
+    html += '<td class="jc-calc" style="color:var(--blue)" id="jmTransRate_'+si+'_'+ji+'_'+mi+'"></td>';
     html += '<td class="jc-calc" id="jmLayRate_'+si+'_'+ji+'_'+mi+'"></td>';
-    html += '<td class="jc-calc" style="color:var(--blue)" id="jmLayCum_'+si+'_'+ji+'_'+mi+'"></td>';
     html += '<td class="jc-calc" id="jmTotalRate_'+si+'_'+ji+'_'+mi+'" style="font-weight:700"></td>';
-    html += '<td class="jc-calc" style="color:var(--green);font-size:11px" id="jmTotalCum_'+si+'_'+ji+'_'+mi+'"></td>';
+    html += '<td class="jc-calc" style="color:var(--green);font-size:10px" id="jmWholeJobRate_'+si+'_'+ji+'_'+mi+'"></td>';
     html += '<td class="no-print"></td>';
     html += '</tr>';
   });
@@ -4353,11 +4436,11 @@ function renderJobCard(si,ji,j){
   // Prime coat row — shown only if j.prime is true
   if(j.prime !== false){
     html += '<tr class="coat-row">';
-    html += '<td>🟢 Prime Coat</td>';
+    html += '<td>🟢 Prime Coat <small id="jPrimeAmt_'+si+'_'+ji+'" style="display:block;font-weight:400"></small></td>';
     html += '<td id="jPrimeArea_'+si+'_'+ji+'" style="font-size:12px"></td>';
-    html += '<td colspan="6" style="text-align:left;padding-left:8px;font-size:11px;color:var(--gray-500)" id="jPrimeRate_'+si+'_'+ji+'"></td>';
-    html += '<td class="jc-calc" id="jPrimeAmt_'+si+'_'+ji+'" style="background:#f0fdf4"></td>';
-    html += '<td></td>';
+    html += '<td colspan="3" style="text-align:left;padding-left:6px;font-size:10px;color:var(--gray-500)" id="jPrimeRate_'+si+'_'+ji+'"></td>';
+    html += '<td class="jc-calc" id="jPrimeUnitRate_'+si+'_'+ji+'" style="background:#f0fdf4"></td>';
+    html += '<td class="jc-calc" id="jPrimeWholeJobRate_'+si+'_'+ji+'" style="color:var(--green);background:#f0fdf4"></td>';
     html += '<td class="no-print"></td>';
     html += '</tr>';
   }
@@ -4365,11 +4448,11 @@ function renderJobCard(si,ji,j){
   // Tack coat row — shown only if j.tack is true
   if(j.tack !== false){
     html += '<tr class="coat-row">';
-    html += '<td>🟡 Tack Coat</td>';
+    html += '<td>🟡 Tack Coat <small id="jTackAmt_'+si+'_'+ji+'" style="display:block;font-weight:400"></small></td>';
     html += '<td id="jTackArea_'+si+'_'+ji+'" style="font-size:12px"></td>';
-    html += '<td colspan="6" style="text-align:left;padding-left:8px;font-size:11px;color:var(--gray-500)" id="jTackRate_'+si+'_'+ji+'"></td>';
-    html += '<td class="jc-calc" id="jTackAmt_'+si+'_'+ji+'" style="background:#fefce8"></td>';
-    html += '<td></td>';
+    html += '<td colspan="3" style="text-align:left;padding-left:6px;font-size:10px;color:var(--gray-500)" id="jTackRate_'+si+'_'+ji+'"></td>';
+    html += '<td class="jc-calc" id="jTackUnitRate_'+si+'_'+ji+'" style="background:#fefce8"></td>';
+    html += '<td class="jc-calc" id="jTackWholeJobRate_'+si+'_'+ji+'" style="color:var(--green);background:#fefce8"></td>';
     html += '<td class="no-print"></td>';
     html += '</tr>';
   }
@@ -4379,13 +4462,10 @@ function renderJobCard(si,ji,j){
   html += '<td style="text-align:left">Job Total</td>';
   html += '<td id="jTotMT_'+si+'_'+ji+'"></td>';
   html += '<td id="jTotPlant_'+si+'_'+ji+'"></td>';
-  html += '<td id="jTotPlantCum_'+si+'_'+ji+'" style="color:var(--blue)"></td>';
   html += '<td id="jTotTrans_'+si+'_'+ji+'"></td>';
-  html += '<td id="jTotTransCum_'+si+'_'+ji+'" style="color:var(--blue)"></td>';
   html += '<td id="jTotLay_'+si+'_'+ji+'"></td>';
-  html += '<td id="jTotLayCum_'+si+'_'+ji+'" style="color:var(--blue)"></td>';
   html += '<td id="jTotTotal_'+si+'_'+ji+'" style="font-size:14px;color:var(--amber)"></td>';
-  html += '<td id="jTotTotalCum_'+si+'_'+ji+'" style="font-size:12px;color:var(--green)"></td>';
+  html += '<td id="jTotWholeJob_'+si+'_'+ji+'" style="font-size:11px;color:var(--green)"></td>';
   html += '<td class="no-print"></td>';
   html += '</tr>';
 
@@ -4394,7 +4474,7 @@ function renderJobCard(si,ji,j){
 }
 
 function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, primeSpray, tackSpray, primeDilution, tackDilution, marginPct){
-  var grandMT=0, grandPlant=0, grandTrans=0, grandLay=0, grandPrime=0, grandTack=0, grandTotal=0;
+  var grandMT=0, grandCum=0, grandArea=0, grandPlant=0, grandTrans=0, grandLay=0, grandPrime=0, grandTack=0, grandTotal=0;
   var sprayScope = {
     operation:scopeTickEnabled('spraying','operation'),
     primeEmulsion:scopeTickEnabled('spraying','primeEmulsion'),
@@ -4419,7 +4499,7 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
   var gTransDist = n('transDist');
 
   sites.forEach(function(s,si){
-    var siteMT=0, sitePlant=0, siteTrans=0, siteLay=0, sitePrime=0, siteTack=0, siteTotal=0;
+    var siteMT=0, siteCum=0, siteArea=0, sitePlant=0, siteTrans=0, siteLay=0, sitePrime=0, siteTack=0, siteTotal=0;
     // Per-site transport ₹/MT — use site lead if set, else global reference distance
     var siteLead = (s.transLead!=null&&s.transLead>0) ? s.transLead : gTransDist;
     var siteTransPerMT = gTransPayload>0?(siteLead*2*gTransRate/gTransPayload):0;
@@ -4428,9 +4508,6 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
       var quantities = getJobQuantities(j);
       var cum = quantities.cum, area = quantities.area, len = quantities.length;
       var costable = hasPositiveThickness(j.thickness);
-      var dynamicUnit = rateUnit==='MT' ? 'CUM' : rateUnit;
-      var dynamicQuantity = dynamicUnit==='CUM' ? cum : dynamicUnit==='SQM' ? area :
-        dynamicUnit==='SFT' ? area*SQFT_PER_SQM : quantities.mt;
       var lengthEl = document.getElementById('jobLen_'+si+'_'+ji);
       if(lengthEl) lengthEl.textContent = len != null && j.width > 0 ? len.toFixed(1) : '—';
       j._costable = costable;
@@ -4468,36 +4545,35 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
         var mxCum = mix.density>0?mt/mix.density:0;
 
         var el;
-        var transLabel = siteTransPerMT>0 ? fmtR(r.transport)+' @'+siteLead+'km' : fmtR(r.transport);
-        var dynamicRate = rateFromMT(r.finalLaid,mix.density,thickMm,dynamicUnit);
-        el=document.getElementById('jmPlantRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=fmtR(r.exPlant);
-        el=document.getElementById('jmPlantCum_'+si+'_'+ji+'_'+mi); if(el) el.textContent=fmtRateValue(rateFromMT(r.exPlant,mix.density,thickMm,dynamicUnit));
-        el=document.getElementById('jmTransRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=transLabel;
-        el=document.getElementById('jmTransCum_'+si+'_'+ji+'_'+mi); if(el) el.textContent=fmtRateValue(rateFromMT(r.transport,mix.density,thickMm,dynamicUnit));
-        el=document.getElementById('jmLayRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=fmtR(r.laying);
-        el=document.getElementById('jmLayCum_'+si+'_'+ji+'_'+mi); if(el) el.textContent=fmtRateValue(rateFromMT(r.laying,mix.density,thickMm,dynamicUnit));
-        el=document.getElementById('jmTotalRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=mt>0?fmt(r.finalLaid):'—';
-        el=document.getElementById('jmTotalCum_'+si+'_'+ji+'_'+mi); if(el) el.textContent=mt>0&&dynamicRate!=null?fmtR(dynamicRate):'—';
+        var plantUnitRate = rateFromMT(r.exPlant,mix.density,thickMm,rateUnit);
+        var transUnitRate = rateFromMT(r.transport,mix.density,thickMm,rateUnit);
+        var layUnitRate = rateFromMT(r.laying,mix.density,thickMm,rateUnit);
+        var totalUnitRate = rateFromMT(r.finalLaid,mix.density,thickMm,rateUnit);
+        var transLabel = transUnitRate==null ? '—' :
+          fmtPerUnit(transUnitRate,rateUnit)+(siteTransPerMT>0?' @'+siteLead+'km':'');
+        el=document.getElementById('jmPlantRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=mt>0?fmtPerUnit(plantUnitRate,rateUnit):'—';
+        el=document.getElementById('jmTransRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=mt>0?transLabel:'—';
+        el=document.getElementById('jmLayRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=mt>0?fmtPerUnit(layUnitRate,rateUnit):'—';
+        el=document.getElementById('jmTotalRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=mt>0?fmtPerUnit(totalUnitRate,rateUnit,true):'—';
 
         mx._mt=mt; mx._plantAmt=plantAmt; mx._transAmt=transAmt; mx._layAmt=layAmt; mx._overheadAmt=overheadAmt;
         jobPlant+=plantAmt; jobTrans+=transAmt; jobLay+=layAmt; jobOverhead+=overheadAmt; jobMT+=mt; jobCum+=mxCum;
       });
-
-      if(dynamicUnit==='CUM') dynamicQuantity=jobCum;
-      else if(dynamicUnit==='MT') dynamicQuantity=jobMT;
 
       var primeKgSqm = primeSpray;   // full surface application rate (dilution only affects procurement qty)
       var tackKgSqm = tackSpray;    // full surface application rate
       var el;
       if(j.prime !== false){
         el=document.getElementById('jPrimeArea_'+si+'_'+ji); if(el) el.textContent=costable?fmtI(Math.round(area))+' sqm':'— sqm';
-        el=document.getElementById('jPrimeRate_'+si+'_'+ji); if(el) el.textContent=primeKgSqm.toFixed(2)+' kg/sqm · ₹'+fmtR(jobPrimePerSqm)+'/sqm · ₹'+fmtRateValue(rateFromSqm(jobPrimePerSqm,firstMix.density,thickMm,rateUnit))+'/'+getRateUnitLabel(rateUnit);
-        el=document.getElementById('jPrimeAmt_'+si+'_'+ji); if(el) el.textContent=costable?fmtI(Math.round(primeAmt)):'—';
+        el=document.getElementById('jPrimeRate_'+si+'_'+ji); if(el) el.textContent=primeKgSqm.toFixed(2)+' kg/sqm';
+        el=document.getElementById('jPrimeUnitRate_'+si+'_'+ji); if(el) el.textContent=costable?fmtRateValue(rateFromSqm(jobPrimePerSqm,firstMix.density,thickMm,rateUnit),rateUnit):'—';
+        el=document.getElementById('jPrimeAmt_'+si+'_'+ji); if(el) el.textContent=costable?'₹'+fmtI(Math.round(primeAmt))+' total':'—';
       }
       if(j.tack !== false){
         el=document.getElementById('jTackArea_'+si+'_'+ji); if(el) el.textContent=costable?fmtI(Math.round(area*numLayers))+' sqm'+(numLayers>1?' ('+numLayers+'× '+fmtI(Math.round(area))+')':''):'— sqm';
-        el=document.getElementById('jTackRate_'+si+'_'+ji); if(el) el.textContent=tackKgSqm.toFixed(2)+' kg/sqm · ₹'+fmtR(jobTackPerSqm)+'/sqm · ₹'+fmtRateValue(rateFromSqm(jobTackPerSqm,firstMix.density,thickMm,rateUnit))+'/'+getRateUnitLabel(rateUnit);
-        el=document.getElementById('jTackAmt_'+si+'_'+ji); if(el) el.textContent=costable?fmtI(Math.round(tackAmt)):'—';
+        el=document.getElementById('jTackRate_'+si+'_'+ji); if(el) el.textContent=tackKgSqm.toFixed(2)+' kg/sqm';
+        el=document.getElementById('jTackUnitRate_'+si+'_'+ji); if(el) el.textContent=costable?fmtRateValue(rateFromSqm(jobTackPerSqm,firstMix.density,thickMm,rateUnit),rateUnit):'—';
+        el=document.getElementById('jTackAmt_'+si+'_'+ji); if(el) el.textContent=costable?'₹'+fmtI(Math.round(tackAmt))+' total':'—';
       }
 
       var jobMixCostWithMargin = (jobPlant+jobTrans+jobLay+jobOverhead)*(1+marginPct/100);
@@ -4509,7 +4585,7 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
       var headerRateQuantity = rateUnit==='MT' ? jobMT : rateUnit==='CUM' ? jobCum :
         rateUnit==='SQM' ? area : area*SQFT_PER_SQM;
       var allInRateText = costable&&headerRateQuantity>0
-        ? ' · ₹'+fmtI(Math.round(jobTotal/headerRateQuantity))+'/'+getRateUnitLabel(rateUnit)+' all-in'
+        ? ' · ₹'+fmtPerUnit(jobTotal/headerRateQuantity,rateUnit)+'/'+getRateUnitLabel(rateUnit)+' all-in'
         : ' · —/'+getRateUnitLabel(rateUnit)+' all-in';
       var derivedText = 'Area: '+areaText+' · CUM: '+(costable?cum.toFixed(2):'—')+' · MT: '+(costable?quantities.mt.toFixed(1):'—')+allInRateText;
       el=document.getElementById('jobArea_'+si+'_'+ji); if(el) el.textContent=derivedText;
@@ -4517,19 +4593,23 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
       el=document.getElementById('jobCostWarning_'+si+'_'+ji); if(el) el.style.display=costable?'none':'inline-flex';
       el=document.getElementById('jobThicknessRequired_'+si+'_'+ji); if(el) el.style.display=costable?'none':'inline';
       el=document.getElementById('jTotMT_'+si+'_'+ji); if(el) el.textContent=costable?jobMT.toFixed(1):'—';
-      var perMT = function(amount){return costable&&jobMT>0?fmtI(Math.round(amount/jobMT)):'—';};
-      var perDynamic = function(amount){return costable&&dynamicQuantity>0?fmtI(Math.round(amount/dynamicQuantity)):'—';};
-      el=document.getElementById('jTotPlant_'+si+'_'+ji); if(el) el.textContent=perMT(jobPlant);
-      el=document.getElementById('jTotPlantCum_'+si+'_'+ji); if(el) el.textContent=perDynamic(jobPlant);
-      el=document.getElementById('jTotTrans_'+si+'_'+ji); if(el) el.textContent=perMT(jobTrans);
-      el=document.getElementById('jTotTransCum_'+si+'_'+ji); if(el) el.textContent=perDynamic(jobTrans);
-      el=document.getElementById('jTotLay_'+si+'_'+ji); if(el) el.textContent=perMT(jobLay);
-      el=document.getElementById('jTotLayCum_'+si+'_'+ji); if(el) el.textContent=perDynamic(jobLay);
-      el=document.getElementById('jTotTotal_'+si+'_'+ji); if(el) el.textContent=costable?'₹'+perMT(jobTotal):'—';
-      el=document.getElementById('jTotTotalCum_'+si+'_'+ji);
-      if(el) el.textContent=costable&&dynamicQuantity>0?'₹'+perDynamic(jobTotal):'—';
+      var selectedQuantity = rateUnit==='MT' ? jobMT : rateUnit==='CUM' ? jobCum :
+        rateUnit==='SQM' ? area : area*SQFT_PER_SQM;
+      var perSelected = function(amount,preserveMtPrecision){return costable&&selectedQuantity>0?fmtPerUnit(amount/selectedQuantity,rateUnit,preserveMtPrecision):'—';};
+      el=document.getElementById('jTotPlant_'+si+'_'+ji); if(el) el.textContent=perSelected(jobPlant);
+      el=document.getElementById('jTotTrans_'+si+'_'+ji); if(el) el.textContent=perSelected(jobTrans);
+      el=document.getElementById('jTotLay_'+si+'_'+ji); if(el) el.textContent=perSelected(jobLay);
+      el=document.getElementById('jTotTotal_'+si+'_'+ji); if(el) el.textContent=perSelected(jobMixCostWithMargin,true);
+      el=document.getElementById('jTotWholeJob_'+si+'_'+ji); if(el) el.textContent=perSelected(jobTotal);
+      el=document.getElementById('jPrimeWholeJobRate_'+si+'_'+ji); if(el) el.textContent=perSelected(jobTotal);
+      el=document.getElementById('jTackWholeJobRate_'+si+'_'+ji); if(el) el.textContent=perSelected(jobTotal);
+      j.mixes.forEach(function(mx,mi){
+        el=document.getElementById('jmWholeJobRate_'+si+'_'+ji+'_'+mi);
+        if(el) el.textContent=perSelected(jobTotal);
+      });
 
       siteMT+=jobMT; sitePlant+=jobPlant; siteTrans+=jobTrans; siteLay+=jobLay;
+      if(costable){ siteCum+=jobCum; siteArea+=area; }
       sitePrime+=primeAmt; siteTack+=tackAmt; siteTotal+=jobTotal;
     });
 
@@ -4541,6 +4621,7 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
         var siteCostableCount=s.jobs.filter(function(job){return hasPositiveThickness(job.thickness);}).length;
         var siteBlockedCount=s.jobs.length-siteCostableCount;
         if(siteCostableCount){
+          var siteRateQuantity=rateUnit==='MT'?siteMT:rateUnit==='CUM'?siteCum:rateUnit==='SQM'?siteArea:siteArea*SQFT_PER_SQM;
           stBar.innerHTML='<span class="stb-label">📍 Site Total</span>'+
             '<span><span class="stb-label">MT</span> '+siteMT.toFixed(1)+'</span>'+
             '<span><span class="stb-label">Plant</span> ₹'+fmtI(Math.round(sitePlant))+'</span>'+
@@ -4548,6 +4629,7 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
             '<span><span class="stb-label">Lay</span> ₹'+fmtI(Math.round(siteLay))+'</span>'+
             '<span><span class="stb-label">Prime</span> ₹'+fmtI(Math.round(sitePrime))+'</span>'+
             '<span><span class="stb-label">Tack</span> ₹'+fmtI(Math.round(siteTack))+'</span>'+
+            '<span><span class="stb-label">All-in ₹/'+getRateUnitLabel(rateUnit)+'</span> ₹'+(siteRateQuantity>0?fmtPerUnit(siteTotal/siteRateQuantity,rateUnit):'—')+'</span>'+
             (siteBlockedCount?'<span class="job-cost-warning" style="display:inline-flex">'+siteBlockedCount+' job(s) cannot be costed</span>':'')+
             '<span style="margin-left:auto;color:var(--blue);font-size:14px">₹'+fmtI(Math.round(siteTotal))+'</span>';
         } else {
@@ -4561,7 +4643,7 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
       badge.textContent=siteHasCostable?'₹'+fmtI(Math.round(siteTotal)):'Cannot be costed';
     }
 
-    grandMT+=siteMT; grandPlant+=sitePlant; grandTrans+=siteTrans; grandLay+=siteLay;
+    grandMT+=siteMT; grandCum+=siteCum; grandArea+=siteArea; grandPlant+=sitePlant; grandTrans+=siteTrans; grandLay+=siteLay;
     grandPrime+=sitePrime; grandTack+=siteTack; grandTotal+=siteTotal;
   });
 
@@ -4579,15 +4661,16 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
     html+='<span><span class="jt-label">Lay</span> <span class="jt-value">₹'+fmtI(Math.round(grandLay))+'</span></span>';
     html+='<span><span class="jt-label">Prime</span> <span class="jt-value">₹'+fmtI(Math.round(grandPrime))+'</span></span>';
     html+='<span><span class="jt-label">Tack</span> <span class="jt-value">₹'+fmtI(Math.round(grandTack))+'</span></span>';
-    var _combinedMixPerMT  = grandMT>0 ? (grandTotal-grandPrime-grandTack)/grandMT : 0;
-      var _combinedFullPerMT = grandMT>0 ? grandTotal/grandMT : 0;
+      var grandRateQuantity=rateUnit==='MT'?grandMT:rateUnit==='CUM'?grandCum:rateUnit==='SQM'?grandArea:grandArea*SQFT_PER_SQM;
+      var _combinedMixRate = grandRateQuantity>0 ? (grandTotal-grandPrime-grandTack)/grandRateQuantity : null;
+      var _combinedFullRate = grandRateQuantity>0 ? grandTotal/grandRateQuantity : null;
       var _distinctMixIdxs = {};
       allJobs.forEach(function(j){ if(!hasPositiveThickness(j.thickness)) return; (j.mixes||[]).forEach(function(mx){ _distinctMixIdxs[mx.mixIdx]=true; }); });
       var _multiMix = Object.keys(_distinctMixIdxs).length > 1;
       if(_multiMix){
-        html+='<span><span class="jt-label">Mix ₹/MT</span> <span class="jt-value" title="Weighted avg (plant+trans+pav incl margin) across all mixes">₹'+fmtI(Math.round(_combinedMixPerMT))+'</span></span>';
-        html+='<span><span class="jt-label">Full ₹/MT</span> <span class="jt-value" title="Total incl prime+tack amortised per MT">₹'+fmtI(Math.round(_combinedFullPerMT))+'</span></span>';
+        html+='<span><span class="jt-label">Mix ₹/'+getRateUnitLabel(rateUnit)+'</span> <span class="jt-value" title="Weighted average base mix cost with margin">₹'+fmtPerUnit(_combinedMixRate,rateUnit,true)+'</span></span>';
       }
+      html+='<span><span class="jt-label">All-in ₹/'+getRateUnitLabel(rateUnit)+'</span> <span class="jt-value">₹'+fmtPerUnit(_combinedFullRate,rateUnit)+'</span></span>';
       html+='<span style="margin-left:auto;font-size:15px;color:var(--amber)">Total: ₹'+fmtI(Math.round(grandTotal))+'</span>';
     } else {
       html+='<span class="job-cost-warning" style="display:inline-flex">Cannot be costed — all '+grandBlockedCount+' job(s) need a positive thickness</span>';
@@ -6552,7 +6635,7 @@ function renderScopeRow(container, stateObj, key, label, val, unit, disabled){
         (!disabled?' onchange="scopeState.'+container+'[\''+key+'\']=this.checked;syncMaterialsButtons();renderScopeQuotation();recalc()"':'')+
       '> '+label+
     '</label>'+
-    '<span class="sc-amt off">'+fmtR(val)+'<span style="font-size:11px;font-weight:400;color:var(--gray-400)"> /'+unit+'</span></span>';
+      '<span class="sc-amt off">'+fmtPerUnit(val,unit)+'<span style="font-size:11px;font-weight:400;color:var(--gray-400)"> /'+unit+'</span></span>';
   if(!disabled){
     // Restore active styling when checked
     var span = row.querySelector('.sc-amt');
@@ -6566,7 +6649,7 @@ function renderScopeAlwaysRow(label, val, unit){
   row.className = 'scope-always';
   row.innerHTML =
     '<span>✓ '+label+' <em style="font-size:11px">(always included)</em></span>'+
-    '<span class="sc-amt">'+fmtR(val)+' <span style="font-size:10px;font-weight:400">/'+unit+'</span></span>';
+    '<span class="sc-amt">'+fmtPerUnit(val,unit)+' <span style="font-size:10px;font-weight:400">/'+unit+'</span></span>';
   return row;
 }
 
@@ -6683,7 +6766,7 @@ function _sanitizeMn(mn){ return mn.toUpperCase().replace(/[\s-]+/g,'_'); }
           ? ' <span style="font-size:11px;color:var(--gray-400)">(weighted avg from estimator site leads)</span>'
           : ' <span style="font-size:11px;color:var(--gray-400)">(lead '+n('transDist')+' km × 2 × ₹'+n('transRate')+'/km ÷ '+n('transPayload')+' MT)</span>') +
         '</span>' +
-        '<span class="sc-amt">'+fmtR(sc.transPerMT)+' <span style="font-size:11px;font-weight:400;color:var(--gray-400)">/MT</span></span>';
+        '<span class="sc-amt">'+fmtPerUnit(sc.transPerMT,'MT')+' <span style="font-size:11px;font-weight:400;color:var(--gray-400)">/MT</span></span>';
     transCont.appendChild(tRow);
   }
 
@@ -6823,7 +6906,7 @@ function _sanitizeMn(mn){ return mn.toUpperCase().replace(/[\s-]+/g,'_'); }
       var mixType = mixTypes[mixIdx];
       if(!mixType) return;
       var rate = scopeRatesByMix[mixIdx][rateKey];
-      var value = rate!=null&&isFinite(rate) ? '₹'+fmtR(rate)+' <span>/sqm</span>' : '—';
+      var value = rate!=null&&isFinite(rate) ? '₹'+fmtPerUnit(rate,'SQM')+' <span>/sqm</span>' : '—';
       outHtml += '<div style="display:flex;justify-content:space-between;gap:10px;color:'+(highlight?'#15803d':'var(--gray-700)')+'"><span>'+esc(mixType.name)+'</span><strong>'+value+'</strong></div>';
     });
     outHtml += '</div></div>';
@@ -6859,7 +6942,7 @@ function _sanitizeMn(mn){ return mn.toUpperCase().replace(/[\s-]+/g,'_'); }
         var amt = qtyMT * mixRatePerMT;
         outHtml += '<div style="display:flex;justify-content:space-between;align-items:baseline;font-size:13px;color:var(--gray-700);margin-bottom:4px">'
                  + '<span><strong style="color:#15803d">'+esc(mType.name)+'</strong>'
-                 + ' &nbsp;<span style="color:var(--gray-500)">'+(qty==null?'—':fmtR(qty)+' '+scopeUnit)+' &times; '+(unitRate==null?'—':'₹'+fmtR(unitRate)+'/'+scopeUnit)+'</span></span>'
+                 + ' &nbsp;<span style="color:var(--gray-500)">'+(qty==null?'—':fmtR(qty)+' '+scopeUnit)+' &times; '+(unitRate==null?'—':'₹'+fmtPerUnit(unitRate,rateUnit,true)+'/'+scopeUnit)+'</span></span>'
                  + '<span style="font-weight:600;color:#15803d">₹'+fmtI(Math.round(amt))+'</span>'
                  + '</div>';
       });
@@ -6872,7 +6955,7 @@ function _sanitizeMn(mn){ return mn.toUpperCase().replace(/[\s-]+/g,'_'); }
     var wholeScopeQuantity = rateUnit==='MT' ? scopeTotalMT : rateUnit==='CUM' ? scopeTotalCUM :
       rateUnit==='SQM' ? scopeJobArea : scopeJobArea*SQFT_PER_SQM;
     if(wholeScopeQuantity>0){
-      outHtml += '<div style="font-size:12px;font-weight:700;color:#15803d;margin-top:3px">₹'+fmtR(grandScopeTotal/wholeScopeQuantity)+'/'+scopeUnit+' whole-job equivalent</div>';
+       outHtml += '<div style="font-size:12px;font-weight:700;color:#15803d;margin-top:3px">₹'+fmtPerUnit(grandScopeTotal/wholeScopeQuantity,rateUnit,true)+'/'+scopeUnit+' whole-job equivalent</div>';
     }
     if(marginAmt > 0){
       outHtml += '<div style="font-size:11px;color:var(--gray-500);margin-top:3px">'
@@ -6932,7 +7015,7 @@ function init(){
   var savedId = localStorage.getItem(STORAGE_KEY+'_estId');
   var savedName = localStorage.getItem(STORAGE_KEY+'_estName');
   if(savedName === 'undefined' || savedName === 'null') savedName = null;
-  if(savedId && parseInt(savedId) > 0){ currentEstimateId=parseInt(savedId); currentEstimateName=savedName||''; updateBadge(); fetchProcScenarios(); }
+  if(savedId && parseInt(savedId) > 0){ currentEstimateId=parseInt(savedId); currentEstimateName=savedName||''; captureInitialSavedSnapshot(); updateBadge(); fetchProcScenarios(); }
 
   document.addEventListener('input', function(e){
     var el = e.target;
