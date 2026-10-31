@@ -103,6 +103,10 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .rate-unit-note{font-size:11px;color:var(--gray-500);background:#f8fafc;border:1px solid var(--gray-200);border-radius:6px;padding:6px 9px;margin:0 0 10px}
 .job-card-body{padding:0}
 .job-card-body table{width:100%;border-collapse:collapse;font-size:13px}
+@media screen{
+  .job-card-body{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .job-card-body table{width:max-content;min-width:100%}
+}
 .job-card-body th{background:var(--gray-50);padding:6px 8px;text-align:right;font-size:11px;text-transform:uppercase;color:var(--gray-500);font-weight:700;border-bottom:1px solid var(--gray-200);white-space:nowrap}
 .job-card-body th:first-child{text-align:left}
 .job-card-body td{padding:5px 8px;border-bottom:1px solid var(--gray-100);text-align:right;vertical-align:middle}
@@ -4317,7 +4321,7 @@ function renderJobCard(si,ji,j){
   html += '<th>Trans ₹/MT</th><th style="color:var(--blue)">Trans ₹/'+dynamicUnitLabel+'</th>';
   html += '<th>Lay ₹/MT</th><th style="color:var(--blue)">Lay ₹/'+dynamicUnitLabel+'</th>';
   html += '<th style="font-weight:700">Total ₹/MT</th>';
-  html += '<th style="color:var(--green);font-size:11px">Whole-job ₹/'+getRateUnitLabel(rateUnit)+'</th>';
+  html += '<th style="color:var(--green);font-size:11px">Whole-job ₹/'+dynamicUnitLabel+'</th>';
   html += '<th class="no-print" style="width:30px"></th>';
   html += '</tr></thead><tbody>';
 
@@ -4502,7 +4506,12 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
 
       var areaIsDerivable = costable || (j.basis!=='CUM'&&j.basis!=='MT');
       var areaText = areaIsDerivable ? fmtI(Math.round(area))+' sqm' : '— sqm';
-      var derivedText = 'Area: '+areaText+' · CUM: '+(costable?cum.toFixed(2):'—')+' · MT: '+(costable?quantities.mt.toFixed(1):'—');
+      var headerRateQuantity = rateUnit==='MT' ? jobMT : rateUnit==='CUM' ? jobCum :
+        rateUnit==='SQM' ? area : area*SQFT_PER_SQM;
+      var allInRateText = costable&&headerRateQuantity>0
+        ? ' · ₹'+fmtI(Math.round(jobTotal/headerRateQuantity))+'/'+getRateUnitLabel(rateUnit)+' all-in'
+        : ' · —/'+getRateUnitLabel(rateUnit)+' all-in';
+      var derivedText = 'Area: '+areaText+' · CUM: '+(costable?cum.toFixed(2):'—')+' · MT: '+(costable?quantities.mt.toFixed(1):'—')+allInRateText;
       el=document.getElementById('jobArea_'+si+'_'+ji); if(el) el.textContent=derivedText;
       el=document.getElementById('jobTotal_'+si+'_'+ji); if(el) el.textContent=costable?'₹'+fmtI(Math.round(jobTotal)):'—';
       el=document.getElementById('jobCostWarning_'+si+'_'+ji); if(el) el.style.display=costable?'none':'inline-flex';
@@ -4517,10 +4526,8 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
       el=document.getElementById('jTotLay_'+si+'_'+ji); if(el) el.textContent=perMT(jobLay);
       el=document.getElementById('jTotLayCum_'+si+'_'+ji); if(el) el.textContent=perDynamic(jobLay);
       el=document.getElementById('jTotTotal_'+si+'_'+ji); if(el) el.textContent=costable?'₹'+perMT(jobTotal):'—';
-      var wholeJobQuantity = rateUnit==='MT' ? jobMT : rateUnit==='CUM' ? jobCum :
-        rateUnit==='SQM' ? area : area*SQFT_PER_SQM;
       el=document.getElementById('jTotTotalCum_'+si+'_'+ji);
-      if(el) el.textContent=costable&&wholeJobQuantity>0?'₹'+fmtI(Math.round(jobTotal/wholeJobQuantity)):'—';
+      if(el) el.textContent=costable&&dynamicQuantity>0?'₹'+perDynamic(jobTotal):'—';
 
       siteMT+=jobMT; sitePlant+=jobPlant; siteTrans+=jobTrans; siteLay+=jobLay;
       sitePrime+=primeAmt; siteTack+=tackAmt; siteTotal+=jobTotal;
