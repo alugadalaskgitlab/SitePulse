@@ -109,7 +109,6 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .job-card-body td:first-child{text-align:left}
 .job-card-body .jc-calc{background:var(--amber-bg);font-weight:600;white-space:nowrap}
 .job-card-body input,.job-card-body select{padding:3px 6px;border:1px solid var(--gray-200);border-radius:4px;font-size:13px}
-.job-card-body tr.jc-subtotal td{font-weight:700;border-top:2px solid var(--amber);background:var(--amber-bg);font-size:12px}
 .job-card-body tr.coat-row td{background:#f0fdf4;border-top:1px dashed #bbf7d0;color:var(--gray-700);font-size:12px}
 .job-card-body tr.coat-row td:first-child{font-weight:600;color:#16a34a}
 .job-card-body tr.job-total-row td{font-weight:700;border-top:2px solid var(--amber);background:var(--amber-bg);font-size:12px}
@@ -1168,17 +1167,51 @@ function migrateState(state){
   }
   // Add prime/tack flags to jobs and transLead to sites if missing
   if(state.sites){
+    var nextJobCounter = parseInt(state.jobCounter,10);
+    if(isNaN(nextJobCounter)||nextJobCounter<0) nextJobCounter = 0;
+    var usedJobIds = Object.create(null);
+    state.sites.forEach(function(site){
+      (Array.isArray(site.jobs)?site.jobs:[]).forEach(function(job){
+        if(job.id!=null) usedJobIds[String(job.id).toUpperCase()] = true;
+        var match = String(job.id||'').match(/^J(\d+)$/i);
+        if(match) nextJobCounter = Math.max(nextJobCounter,parseInt(match[1],10)||0);
+      });
+    });
+    function allocateMigratedJobId(){
+      var id;
+      do {
+        nextJobCounter++;
+        id = 'J'+String(nextJobCounter).padStart(2,'0');
+      } while(usedJobIds[id.toUpperCase()]);
+      usedJobIds[id] = true;
+      return id;
+    }
     state.sites.forEach(function(s){
       if(s.transLead === undefined) s.transLead = null;
-      if(s.jobs) s.jobs.forEach(function(j){
+      var migratedJobs = [];
+      (Array.isArray(s.jobs)?s.jobs:[]).forEach(function(j){
         if(j.prime === undefined) j.prime = true;
         if(j.tack === undefined) j.tack = true;
         if(j.basis === 'BOQ' && j.qty == null){
           j.basis = 'CUM';
           j.qty = parseFloat(j.volume) || 0;
         }
+        var mixes = Array.isArray(j.mixes)&&j.mixes.length ? j.mixes : [{mixIdx:0,qty_mt:null}];
+        j.mixes = [mixes[0]];
+        migratedJobs.push(j);
+        for(var mi=1;mi<mixes.length;mi++){
+          var additionalJob = Object.assign({},j,{
+            id:allocateMigratedJobId(),
+            prime:false,
+            tack:j.tack,
+            mixes:[mixes[mi]]
+          });
+          migratedJobs.push(additionalJob);
+        }
       });
+      s.jobs = migratedJobs;
     });
+    state.jobCounter = nextJobCounter;
   }
   // Initialize contractRates if missing
   if(!state.contractRates) state.contractRates = {};
@@ -4197,16 +4230,6 @@ function removeSiteJob(si,ji){
   sites[si].jobs.splice(ji,1);
   renderSites(); recalc(); saveState(); autoSaveToDb();
 }
-function addSiteJobMix(si,ji){
-  var nextIdx = sites[si].jobs[ji].mixes.length<mixTypes.length?sites[si].jobs[ji].mixes.length:0;
-  sites[si].jobs[ji].mixes.push({mixIdx:Math.min(nextIdx,mixTypes.length-1), qty_mt:null});
-  renderSites(); recalc(); saveState(); autoSaveToDb();
-}
-function removeSiteJobMix(si,ji,mi){
-  if(sites[si].jobs[ji].mixes.length<=1) return;
-  sites[si].jobs[ji].mixes.splice(mi,1);
-  renderSites(); recalc(); saveState(); autoSaveToDb();
-}
 
 function renderSites(){
   var container = document.getElementById('sitesContainer');
@@ -4241,7 +4264,6 @@ function renderSites(){
 
 function renderJobCard(si,ji,j){
   var isGeo = j.basis==='GEOMETRY';
-  var mixCount = j.mixes.length;
   var hasThickness = hasPositiveThickness(j.thickness);
   var thicknessValue = hasThickness ? parseFloat(j.thickness) : null;
   var dynamicUnit = rateUnit==='MT' ? 'CUM' : rateUnit;
@@ -4286,7 +4308,6 @@ function renderJobCard(si,ji,j){
   html += '<label class="checkbox-label" title="Include Tack Coat for this job" style="gap:3px;font-size:11px;white-space:nowrap"><input type="checkbox" '+(j.tack!==false?'checked':'')+' onchange="sites['+si+'].jobs['+ji+'].tack=this.checked;renderSites();recalc()"> Tack</label>';
   html += '<div style="margin-left:auto;display:flex;gap:4px;align-items:center">';
   html += '<span class="jc-derived" id="jobTotal_'+si+'_'+ji+'" style="font-weight:700"></span>';
-  html += '<button class="btn btn-secondary btn-sm no-print admin-only" onclick="addSiteJobMix('+si+','+ji+')">+ Mix</button>';
   html += '<button class="btn btn-danger btn-sm no-print admin-only" onclick="removeSiteJob('+si+','+ji+')" style="padding:4px 8px">×</button>';
   html += '</div></div>';
 
@@ -4321,26 +4342,9 @@ function renderJobCard(si,ji,j){
     html += '<td class="jc-calc" style="color:var(--blue)" id="jmLayCum_'+si+'_'+ji+'_'+mi+'"></td>';
     html += '<td class="jc-calc" id="jmTotalRate_'+si+'_'+ji+'_'+mi+'" style="font-weight:700"></td>';
     html += '<td class="jc-calc" style="color:var(--green);font-size:11px" id="jmTotalCum_'+si+'_'+ji+'_'+mi+'"></td>';
-    html += '<td class="no-print">'+(mixCount>1?'<button class="btn btn-danger btn-sm admin-only" onclick="removeSiteJobMix('+si+','+ji+','+mi+')" style="padding:2px 6px;font-size:11px">×</button>':'')+'</td>';
-    html += '</tr>';
-  });
-
-  // Subtotal row for multiple mixes
-  if(mixCount>1){
-    html += '<tr class="jc-subtotal">';
-    html += '<td style="text-align:left">Mix Subtotal</td>';
-    html += '<td id="jSubMT_'+si+'_'+ji+'"></td>';
-    html += '<td id="jSubPlant_'+si+'_'+ji+'"></td>';
-    html += '<td id="jSubPlantCum_'+si+'_'+ji+'" style="color:var(--blue)"></td>';
-    html += '<td id="jSubTrans_'+si+'_'+ji+'"></td>';
-    html += '<td id="jSubTransCum_'+si+'_'+ji+'" style="color:var(--blue)"></td>';
-    html += '<td id="jSubLay_'+si+'_'+ji+'"></td>';
-    html += '<td id="jSubLayCum_'+si+'_'+ji+'" style="color:var(--blue)"></td>';
-    html += '<td id="jSubMixTotal_'+si+'_'+ji+'" style="font-weight:700"></td>';
-    html += '<td id="jSubMixTotalCum_'+si+'_'+ji+'" style="color:var(--green);font-size:11px"></td>';
     html += '<td class="no-print"></td>';
     html += '</tr>';
-  }
+  });
 
   // Prime coat row — shown only if j.prime is true
   if(j.prime !== false){
@@ -4431,8 +4435,8 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
       j._derivedMT = quantities.mt;
 
       // Per-job prime/tack amounts — respect checkbox flags
-      // Tack coat is applied once per layer (one before each mix), prime coat is once per job
-      var numLayers = j.mixes.length||1;
+      // Every job is one layer: prime is once per job and tack is once for that layer.
+      var numLayers = 1;
       var primeAmt = costable && j.prime !== false ? area * jobPrimePerSqm : 0;
       var tackAmt  = costable && j.tack !== false ? area * numLayers * jobTackPerSqm : 0;
       j._primeAmt = primeAmt;
@@ -4477,20 +4481,6 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
 
       if(dynamicUnit==='CUM') dynamicQuantity=jobCum;
       else if(dynamicUnit==='MT') dynamicQuantity=jobMT;
-
-      if(j.mixes.length>1){
-        var el;
-        var mixSubtotal = jobPlant+jobTrans+jobLay+jobOverhead;
-        el=document.getElementById('jSubMT_'+si+'_'+ji); if(el) el.textContent=costable?jobMT.toFixed(1):'—';
-        el=document.getElementById('jSubPlant_'+si+'_'+ji); if(el) el.textContent=costable&&jobMT>0?fmtI(Math.round(jobPlant/jobMT)):'—';
-        el=document.getElementById('jSubPlantCum_'+si+'_'+ji); if(el) el.textContent=costable&&dynamicQuantity>0?fmtI(Math.round(jobPlant/dynamicQuantity)):'—';
-        el=document.getElementById('jSubTrans_'+si+'_'+ji); if(el) el.textContent=costable&&jobMT>0?fmtI(Math.round(jobTrans/jobMT)):'—';
-        el=document.getElementById('jSubTransCum_'+si+'_'+ji); if(el) el.textContent=costable&&dynamicQuantity>0?fmtI(Math.round(jobTrans/dynamicQuantity)):'—';
-        el=document.getElementById('jSubLay_'+si+'_'+ji); if(el) el.textContent=costable&&jobMT>0?fmtI(Math.round(jobLay/jobMT)):'—';
-        el=document.getElementById('jSubLayCum_'+si+'_'+ji); if(el) el.textContent=costable&&dynamicQuantity>0?fmtI(Math.round(jobLay/dynamicQuantity)):'—';
-        el=document.getElementById('jSubMixTotal_'+si+'_'+ji); if(el) el.textContent=costable&&jobMT>0?fmtI(Math.round(mixSubtotal/jobMT)):'—';
-        el=document.getElementById('jSubMixTotalCum_'+si+'_'+ji); if(el) el.textContent=costable&&dynamicQuantity>0?fmtI(Math.round(mixSubtotal/dynamicQuantity)):'—';
-      }
 
       var primeKgSqm = primeSpray;   // full surface application rate (dilution only affects procurement qty)
       var tackKgSqm = tackSpray;    // full surface application rate
