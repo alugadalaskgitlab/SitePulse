@@ -111,8 +111,10 @@ describe("§7/§9 hard guards in PlantMaterialReceipts.tsx (source-level)", () =
   const src = fs.readFileSync("client/src/pages/PlantMaterialReceipts.tsx", "utf8");
 
   it("payload forces indentRef null in diesel mode (create + update)", () => {
-    const guards = src.match(/indentRef: linkedDieselRequirementId != null \? null : \(indentRef \|\| null\)/g) || [];
+    const guards = src.match(/indentRef: linkedDieselRequirementId != null \? null : /g) || [];
     expect(guards.length).toBe(2);
+    expect(src).toContain("indentRef: linkedDieselRequirementId != null ? null : (isSelectedPartyNonPurchase ? null : (indentRef || null))");
+    expect(src).toContain("indentRef: linkedDieselRequirementId != null ? null : (indentRef || null)");
   });
 
   it("PI close-loop PATCH is gated on no diesel link", () => {

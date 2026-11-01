@@ -114,3 +114,12 @@ minified CommonJS server even while its renderer and route tests passed.
 test, then request actual files from the built server with normal authenticated
 synthetic accounts and disposable persistence. A successful build alone does
 not prove that a lazily executed export function works.
+
+Source-contract assertions for routes must be scoped to the named route block,
+not searched across the whole route file.
+
+**Why:** Similar handlers can share submit guards; a global match can appear
+valid even when the behavior was attached to a neighboring endpoint.
+
+**How to apply:** Isolate the route by its exact path through the next route
+registration before asserting endpoint-specific policy.

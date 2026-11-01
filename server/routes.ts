@@ -27,6 +27,7 @@ import { getBaseSiteName } from "../shared/siteName";
 import { vendorIdentityDisplayName } from "../shared/vendorIdentityDisplay";
 import { receiptSlipSendWindow } from "../shared/receiptSlipStatus";
 import { resolveVendorNameMatch } from "./vendorNameResolution";
+import { isPartyNonPurchaseReceipt } from "@shared/materialReceiptParty";
 import { pipeOperatorManualPdf } from './operator-manual-pdf';
 import { pipeAdminGuidePdf } from './admin-guide-pdf';
 import { pipeEstimatorGuidePdf } from './estimator-guide-pdf';
@@ -5503,9 +5504,8 @@ export async function registerRoutes(
     }
   });
 
-  // Final Submit: locks the receipt for normal-user edits once required
-  // documents (challan/DC/invoice/receipt) are attached. Owner/Admin can
-  // force-submit without a document for testing/edge cases (spec §H, §F).
+  // HLC-owned and plant-common receipts require a supporting document for
+  // normal-user Final Submit; party-owned stock is not a purchase.
   app.post("/api/plant-module/material-receipts/:id/final-submit", async (req, res) => {
     try {
       if (!assertEdit(req, res, "plant_materials")) return;
@@ -5514,7 +5514,15 @@ export async function registerRoutes(
       if (!before) return res.status(404).json({ message: "Receipt not found" });
       if (before.documentStatus === "submitted") return res.status(400).json({ message: "This receipt is already Final Submitted" });
       const isOwnerOrAdmin = !!(req.authUser!.isOwner || req.authUser!.isAdmin);
+      let hlcPartyId: number | null = null;
       if (!isOwnerOrAdmin) {
+        try {
+          hlcPartyId = await storage.getHlcPartyId();
+        } catch (error) {
+          console.error("Could not resolve HLC party for receipt Final Submit; retaining document requirement.", error);
+        }
+      }
+      if (!isOwnerOrAdmin && !isPartyNonPurchaseReceipt(before, hlcPartyId)) {
         const docs = await storage.getAttachments("material_receipt", id);
         const requiredTypes = ["bill", "challan", "dc", "invoice", "receipt"];
         const hasRequiredDoc = docs.some(d => requiredTypes.includes((d as any).docType));

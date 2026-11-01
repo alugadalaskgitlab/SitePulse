@@ -39,6 +39,7 @@ import { UOM_OPTIONS } from "@shared/schema";
 import { materialReceiptTransactionDate } from "@shared/materialReceiptDates";
 import { decidePiAutoSelect, submitBlockedByPi, showPiIndentBlock, showPiPendingBadge, showRegulariseIndentNotice, receiptClosureStatus } from "@shared/dieselReceiptSource";
 import { stockOwnerLabel } from "@shared/stockOwnerLabel";
+import { isPartyNonPurchaseReceipt } from "@shared/materialReceiptParty";
 import type { DieselReceiptState } from "@shared/dieselReceiptStatus";
 import { resolveHlcParty } from "@shared/hlcParty";
 import { formatEnteredByDisplay, type MaterialReceiptSlipData } from "@/lib/materialReceiptSlipTypes";
@@ -422,6 +423,12 @@ export default function PlantMaterialReceipts() {
     queryKey: ["/api/plant-module/parties"],
   });
   const selectedHlcPartyId = resolveHlcParty(parties || [])?.id ?? null;
+  const isSelectedPartyNonPurchase = isPartyNonPurchaseReceipt(
+    { partyId: partyId ? Number(partyId) : null, isPlantCommon: 0 },
+    selectedHlcPartyId,
+  );
+  const isPartyReceipt = (receipt: MaterialReceipt) =>
+    isPartyNonPurchaseReceipt(receipt, selectedHlcPartyId);
   const isHlcOwnedReceipt = !!partyId && selectedHlcPartyId != null && Number(partyId) === selectedHlcPartyId;
   const vendorMasterQuery = useQuery<ExistingTripVendor[]>({
     queryKey: ["/api/vendor-master"],
@@ -538,6 +545,13 @@ export default function PlantMaterialReceipts() {
   // 06M-C-HF §8: never fires for a diesel-sourced receipt — a coincidental Diesel
   // PI/indent must not replace the Diesel Requirement source context.
   useEffect(() => {
+    if (isSelectedPartyNonPurchase && !editingReceipt) {
+      setIndentRef("");
+      setIndentComboSearch("");
+      setIndentOverride(false);
+      setSelectedPendingPiItemId(null);
+      return;
+    }
     const decision = decidePiAutoSelect({
       linkedDieselRequirementId,
       editing: !!editingReceipt,
@@ -552,7 +566,7 @@ export default function PlantMaterialReceipts() {
       return;
     }
     setSelectedPendingPiItemId(null);
-  }, [allPurchaseIndents, pendingMaterialIndents, editingReceipt, linkedDieselRequirementId]);
+  }, [allPurchaseIndents, pendingMaterialIndents, editingReceipt, linkedDieselRequirementId, isSelectedPartyNonPurchase]);
 
   const { data: nextReceiptNoData } = useQuery<{ number: string }>({
     queryKey: ["/api/plant-module/next-receipt-number", materialId],
@@ -578,7 +592,7 @@ export default function PlantMaterialReceipts() {
     },
     onSuccess: async (receipt: any) => {
       // If a pending Material Indent item was identified, close the PI loop
-      if (selectedPendingPiItemId && receipt?.id && linkedDieselRequirementId == null) {
+      if (selectedPendingPiItemId && receipt?.id && linkedDieselRequirementId == null && !isSelectedPartyNonPurchase) {
         try {
           await apiRequest("PATCH", `/api/purchase-indents/items/${selectedPendingPiItemId}/link-receipt`, { receiptId: receipt.id });
           queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
@@ -856,7 +870,7 @@ export default function PlantMaterialReceipts() {
     // 06M-C-HF §5: PI validation is skipped only for diesel-sourced receipts;
     // ordinary receipts keep the existing rule exactly.
     const selectedPI = indentRef ? allPurchaseIndents.find(pi => pi.indentNo === indentRef) : null;
-    if (submitBlockedByPi({ linkedDieselRequirementId, selectedPiStatus: selectedPI?.status ?? null, indentOverride })) {
+    if (!isSelectedPartyNonPurchase && submitBlockedByPi({ linkedDieselRequirementId, selectedPiStatus: selectedPI?.status ?? null, indentOverride })) {
       toast({ title: "Indent not approved", description: "Tick the override checkbox to proceed.", variant: "destructive" });
       return;
     }
@@ -917,7 +931,7 @@ export default function PlantMaterialReceipts() {
         challanNumber,
         invoiceNo: invoiceNo || null,
         invoiceDate: effectiveInvoiceDate,
-        indentRef: linkedDieselRequirementId != null ? null : (indentRef || null),
+        indentRef: linkedDieselRequirementId != null ? null : (isSelectedPartyNonPurchase ? null : (indentRef || null)),
         tankNumber: (isTankMaterial && tankNumber && tankNumber !== "none") ? parseInt(tankNumber) : null,
         // 06M-C: purchase↔receipt audit linkage (never inferred, only deep-linked)
         linkedDieselRequirementId: linkedDieselRequirementId ?? null,
@@ -996,6 +1010,7 @@ export default function PlantMaterialReceipts() {
     }
     if (filterMaterialId !== "all" && r.materialId !== parseInt(filterMaterialId)) return false;
     if (filterUnapprovedIndent) {
+      if (isPartyReceipt(r)) return false;
       const ref = (r as any).indentRef;
       if (!ref) return false;
       const status = indentStatusMap[ref];
@@ -1685,7 +1700,11 @@ export default function PlantMaterialReceipts() {
               )}
 
               {/* Indent Ref — searchable combobox + status card */}
-              {showPiIndentBlock(linkedDieselRequirementId) && (() => {
+              {isSelectedPartyNonPurchase ? (
+                <p className="text-xs text-muted-foreground" data-testid="notice-party-stock-no-pi">
+                  Party-owned material — no Purchase Indent needed.
+                </p>
+              ) : showPiIndentBlock(linkedDieselRequirementId) && (() => {
                 const approvedPIs = allPurchaseIndents.filter(pi => pi.status === "approved" || pi.status === "ordered");
                 const noPiForMaterial = !!materialId && approvedPIs.length === 0;
                 const selectedPI = indentRef ? allPurchaseIndents.find(pi => pi.indentNo === indentRef) : null;
@@ -2076,7 +2095,16 @@ export default function PlantMaterialReceipts() {
                                   />
                                 </div>
                                 {receipt.supplier && <span className="text-sm text-muted-foreground">{receipt.supplier}</span>}
-                                 {showPiPendingBadge({
+                                {isPartyReceipt(receipt) && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[12px] px-1.5 py-0 border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300"
+                                    data-testid={`badge-party-stock-${receipt.id}`}
+                                  >
+                                    {getPartyName(receipt.partyId, receipt.materialId)} stock
+                                  </Badge>
+                                )}
+                                 {!isPartyReceipt(receipt) && showPiPendingBadge({
                                    linkedDieselRequirementId: (receipt as any).linkedDieselRequirementId,
                                    indentRef: (receipt as any).indentRef,
                                    indentStatus: indentStatusMap[(receipt as any).indentRef],
@@ -2097,6 +2125,7 @@ export default function PlantMaterialReceipts() {
                                       </Badge>
                                     );
                                   }
+                                   if (isPartyReceipt(receipt)) return null;
                                    if (closureStatus === "Pending Document") {
                                     return (
                                       <Badge variant="outline" className="text-[12px] px-1.5 py-0 border-red-400 text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 gap-1" data-testid={`badge-doc-status-${receipt.id}`}>
@@ -2120,9 +2149,9 @@ export default function PlantMaterialReceipts() {
                                     size="icon"
                                     variant="ghost"
                                     onClick={() => finalSubmitMutation.mutate(receipt.id)}
-                                    disabled={finalSubmitMutation.isPending || !(receipt as any).hasRequiredDoc}
+                                    disabled={finalSubmitMutation.isPending || (!(receipt as any).hasRequiredDoc && !isPartyReceipt(receipt))}
                                     data-testid={`button-final-submit-receipt-${receipt.id}`}
-                                       title={(receipt as any).hasRequiredDoc ? "Final Submit" : "Upload a bill/challan/DC/invoice/receipt document first"}
+                                       title={(receipt as any).hasRequiredDoc || isPartyReceipt(receipt) ? "Final Submit" : "Upload a bill/challan/DC/invoice/receipt document first"}
                                   >
                                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                                   </Button>
@@ -2223,7 +2252,7 @@ export default function PlantMaterialReceipts() {
                                     <span className="text-muted-foreground text-sm block">Invoice Date</span>
                                     <span className="font-medium">{getReceiptTransactionDate(receipt)}</span>
                                   </div>
-                                  {(receipt as any).indentRef && (
+                                  {(receipt as any).indentRef && !isPartyReceipt(receipt) && (
                                     <div>
                                       <span className="text-muted-foreground text-sm block">Indent Ref</span>
                                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -2259,6 +2288,7 @@ export default function PlantMaterialReceipts() {
                                   />
                                 </div>
                                  {(() => {
+                                   if (isPartyReceipt(receipt)) return null;
                                    const closureStatus = receiptClosureStatus((receipt as any).documentStatus, (receipt as any).hasRequiredDoc);
                                    if (closureStatus !== "Pending Document") return null;
                                    return (
@@ -2292,7 +2322,7 @@ export default function PlantMaterialReceipts() {
                                     indentRef,
                                     indentStatus,
                                   });
-                                  if (!needsNotice) return null;
+                                 if (!needsNotice || isPartyReceipt(receipt)) return null;
                                   return (
                                     <div className="mt-3 flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 px-3 py-2" data-testid={`notice-pi-pending-${receipt.id}`}>
                                       <svg className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" /></svg>
