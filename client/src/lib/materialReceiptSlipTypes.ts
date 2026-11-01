@@ -14,6 +14,7 @@ export type MaterialReceiptSlipData = {
   location?: string | null;
   vehicleNumber?: string | null;
   driverName?: string | null;
+  receivedByName?: string | null;
   supplier?: string | null;
   transporter?: string | null;
   materialSourceType?: string | null;

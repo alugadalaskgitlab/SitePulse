@@ -40,6 +40,7 @@ import { materialReceiptTransactionDate } from "@shared/materialReceiptDates";
 import { decidePiAutoSelect, submitBlockedByPi, showPiIndentBlock, showPiPendingBadge, showRegulariseIndentNotice, receiptClosureStatus } from "@shared/dieselReceiptSource";
 import { stockOwnerLabel } from "@shared/stockOwnerLabel";
 import { isPartyNonPurchaseReceipt } from "@shared/materialReceiptParty";
+import { formatPersonName } from "@shared/personName";
 import type { DieselReceiptState } from "@shared/dieselReceiptStatus";
 import { resolveHlcParty } from "@shared/hlcParty";
 import { formatEnteredByDisplay, type MaterialReceiptSlipData } from "@/lib/materialReceiptSlipTypes";
@@ -56,7 +57,7 @@ function invalidateDieselRequirementQueries() {
 export default function PlantMaterialReceipts() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
-  const { sectionCan, isOwner, isAdmin } = useAuth();
+  const { sectionCan, isOwner, isAdmin, user } = useAuth();
   const isOwnerOrAdmin = isOwner || isAdmin;
   const { companyName, companyInfo, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("plant_stock", "create");
@@ -238,6 +239,8 @@ export default function PlantMaterialReceipts() {
   const [transporter, setTransporter] = useState("");
   const [vehicleNumber, setVehicleNumber] = useState("");
   const [driverName, setDriverName] = useState("");
+  const [receivedByName, setReceivedByName] = useState(user?.fullName || "");
+  const receivedByTouchedRef = useRef(false);
   const [challanNumber, setChallanNumber] = useState("");
   const [tankNumber, setTankNumber] = useState<string>("");
   const [invoiceNo, setInvoiceNo] = useState("");
@@ -271,6 +274,7 @@ export default function PlantMaterialReceipts() {
     transporter: string;
     vehicleNumber: string;
     driverName: string;
+    receivedByName?: string;
     challanNumber: string;
     tankNumber: string;
     invoiceNo: string;
@@ -280,8 +284,8 @@ export default function PlantMaterialReceipts() {
   }
 
   const formData = useMemo<ReceiptFormData>(() => ({
-    date, time, partyId, materialId, quantity, uom, supplier, transporter, vehicleNumber, driverName, challanNumber, tankNumber, invoiceNo, invoiceDate, indentRef, dieselExceptionReason
-  }), [date, time, partyId, materialId, quantity, uom, supplier, transporter, vehicleNumber, driverName, challanNumber, tankNumber, invoiceNo, invoiceDate, indentRef, dieselExceptionReason]);
+    date, time, partyId, materialId, quantity, uom, supplier, transporter, vehicleNumber, driverName, receivedByName, challanNumber, tankNumber, invoiceNo, invoiceDate, indentRef, dieselExceptionReason
+  }), [date, time, partyId, materialId, quantity, uom, supplier, transporter, vehicleNumber, driverName, receivedByName, challanNumber, tankNumber, invoiceNo, invoiceDate, indentRef, dieselExceptionReason]);
 
   const handleRestoreDraft = useCallback((data: ReceiptFormData) => {
     setDate(data.date);
@@ -294,6 +298,8 @@ export default function PlantMaterialReceipts() {
     setTransporter(data.transporter || "");
     setVehicleNumber(data.vehicleNumber);
     setDriverName(data.driverName || "");
+    receivedByTouchedRef.current = data.receivedByName !== undefined;
+    setReceivedByName(data.receivedByName === undefined ? (user?.fullName || "") : data.receivedByName);
     setChallanNumber(data.challanNumber);
     setTankNumber(data.tankNumber || "");
     setInvoiceNo(data.invoiceNo || "");
@@ -302,7 +308,13 @@ export default function PlantMaterialReceipts() {
     invoiceNoDefaultSourceRef.current = "restored";
     setIndentRef(data.indentRef || "");
     setDieselExceptionReason(data.dieselExceptionReason || "");
-  }, []);
+  }, [user?.fullName]);
+
+  useEffect(() => {
+    if (dialogOpen && !editingReceipt && !receivedByTouchedRef.current && !receivedByName) {
+      setReceivedByName(user?.fullName || "");
+    }
+  }, [dialogOpen, editingReceipt, receivedByName, user?.fullName]);
 
   const { hasDraft, draftAge, lastSavedAt, isDirty, restoreDraft, discardDraft, clearDraft } = useAutosave<ReceiptFormData>({
     formKey: "plant-material-receipt-new",
@@ -614,6 +626,7 @@ export default function PlantMaterialReceipts() {
         partyName: getPartyName(receipt.partyId, receipt.materialId),
         vehicleNumber: receipt.vehicleNumber,
         driverName: receipt.driverName,
+        receivedByName: receipt.receivedByName,
         supplier: receipt.supplier,
         transporter: receipt.transporter,
         challanNumber: receipt.challanNumber,
@@ -692,6 +705,7 @@ export default function PlantMaterialReceipts() {
         partyName: getPartyName(receipt.partyId, receipt.materialId),
         vehicleNumber: receipt.vehicleNumber,
         driverName: receipt.driverName,
+        receivedByName: receipt.receivedByName,
         supplier: receipt.supplier,
         transporter: receipt.transporter,
         challanNumber: receipt.challanNumber,
@@ -785,6 +799,8 @@ export default function PlantMaterialReceipts() {
     setTransporter("");
     setVehicleNumber("");
     setDriverName("");
+    receivedByTouchedRef.current = false;
+    setReceivedByName(user?.fullName || "");
     setChallanNumber("");
     setTankNumber("");
     setInvoiceNo("");
@@ -815,7 +831,9 @@ export default function PlantMaterialReceipts() {
     setSupplier(receipt.supplier || "");
     setTransporter(receipt.transporter || "");
     setVehicleNumber(receipt.vehicleNumber || "");
-    setDriverName((receipt as any).driverName || "");
+    setDriverName(formatPersonName(receipt.driverName));
+    receivedByTouchedRef.current = true;
+    setReceivedByName(formatPersonName(receipt.receivedByName));
     setChallanNumber(receipt.challanNumber || "");
     setTankNumber(receipt.tankNumber ? String(receipt.tankNumber) : "");
     setInvoiceNo((receipt as any).invoiceNo || "");
@@ -903,6 +921,7 @@ export default function PlantMaterialReceipts() {
         transporter,
         vehicleNumber,
         driverName,
+        receivedByName: formatPersonName(receivedByName) || null,
         challanNumber,
         invoiceNo: invoiceNo || null,
         invoiceDate: effectiveInvoiceDate,
@@ -928,6 +947,7 @@ export default function PlantMaterialReceipts() {
         transporter,
         vehicleNumber,
         driverName,
+        receivedByName: formatPersonName(receivedByName) || null,
         challanNumber,
         invoiceNo: invoiceNo || null,
         invoiceDate: effectiveInvoiceDate,
@@ -977,7 +997,8 @@ export default function PlantMaterialReceipts() {
       plantName: (receipt as any).plantName || "Main Plant",
       partyName: getPartyName(receipt.partyId, receipt.materialId),
       vehicleNumber: receipt.vehicleNumber,
-      driverName: (receipt as any).driverName,
+      driverName: receipt.driverName,
+      receivedByName: receipt.receivedByName,
       supplier: receipt.supplier,
       transporter: receipt.transporter,
       challanNumber: receipt.challanNumber,
@@ -1238,21 +1259,21 @@ export default function PlantMaterialReceipts() {
           <table>
             <thead>
               <tr>
-                <th>RECV No.</th>
-                <th>Entry Date</th>
-                <th>Entry Time</th>
+                <th>Receipt no.</th>
+                <th>Entry date</th>
+                <th>Entry time</th>
                 <th>Material</th>
                 <th>Qty</th>
                 <th>UOM</th>
                 <th>Vehicle</th>
                 <th>Driver</th>
                 <th>Challan</th>
-                <th>Invoice No</th>
-                <th>Invoice Date</th>
+                <th>Invoice no.</th>
+                <th>Invoice date</th>
                 <th>Indent Ref</th>
                 <th>Supplier</th>
                 <th>Transporter</th>
-                <th>Party/Job</th>
+                <th>Party/job</th>
               </tr>
             </thead>
             <tbody>
@@ -1353,9 +1374,13 @@ export default function PlantMaterialReceipts() {
                   <p className="font-semibold">
                     {savedReceiptForSlip.materialName} · {savedReceiptForSlip.quantity} {savedReceiptForSlip.uom}
                   </p>
-                  {Boolean(savedReceiptForSlip.vehicleNumber || savedReceiptForSlip.driverName) && (
+                  {Boolean(savedReceiptForSlip.vehicleNumber || savedReceiptForSlip.driverName || savedReceiptForSlip.receivedByName) && (
                     <p className="text-muted-foreground">
-                      {[savedReceiptForSlip.vehicleNumber, savedReceiptForSlip.driverName ? `Driver ${savedReceiptForSlip.driverName}` : null].filter(Boolean).join(" · ")}
+                      {[
+                        savedReceiptForSlip.vehicleNumber,
+                        savedReceiptForSlip.driverName ? `Driver ${formatPersonName(savedReceiptForSlip.driverName)}` : null,
+                        savedReceiptForSlip.receivedByName ? `Received by ${formatPersonName(savedReceiptForSlip.receivedByName)}` : null,
+                      ].filter(Boolean).join(" · ")}
                     </p>
                   )}
                   {savedReceiptForSlip.partyName && (
@@ -1545,7 +1570,7 @@ export default function PlantMaterialReceipts() {
               <div className="grid grid-cols-2 gap-4">
                 {isHlcOwnedReceipt ? (
                   <VendorMasterNamePicker
-                    label="Supplier"
+                    label="Supplier/Vendor"
                     value={supplier}
                     vendors={vendorMasterQuery.data || []}
                     loading={vendorMasterQuery.isLoading}
@@ -1594,6 +1619,18 @@ export default function PlantMaterialReceipts() {
                 <div>
                   <Label>Driver (optional)</Label>
                   <Input value={driverName} onChange={(e) => setDriverName(e.target.value)} placeholder="Driver name" data-testid="input-driver-name" />
+                </div>
+                <div>
+                  <Label>Received by</Label>
+                  <Input
+                    value={receivedByName}
+                    onChange={(e) => {
+                      receivedByTouchedRef.current = true;
+                      setReceivedByName(e.target.value);
+                    }}
+                    placeholder="Name"
+                    data-testid="input-received-by-name"
+                  />
                 </div>
                 <div>
                   <Label>Challan / DN No. <span className="text-muted-foreground text-sm">(optional)</span></Label>
@@ -2085,7 +2122,8 @@ export default function PlantMaterialReceipts() {
                                 <span className="font-semibold">{getMaterialName(receipt.materialId)}</span>
                                 <span className="font-medium">{receipt.quantity} {receipt.uom}</span>
                                 {receipt.vehicleNumber && <span className="text-sm text-muted-foreground">{receipt.vehicleNumber}</span>}
-                                {(receipt as any).driverName && <span className="text-sm text-muted-foreground">Driver: {(receipt as any).driverName}</span>}
+                                {receipt.driverName && <span className="text-sm text-muted-foreground">Driver: {formatPersonName(receipt.driverName)}</span>}
+                                {receipt.receivedByName && <span className="text-sm text-muted-foreground">Received by: {formatPersonName(receipt.receivedByName)}</span>}
                                 <div className="ml-auto" onClick={event => event.stopPropagation()}>
                                   <MaterialReceiptSlipActions
                                     mode="row"
@@ -2203,15 +2241,15 @@ export default function PlantMaterialReceipts() {
                               <div className="px-4 pb-4 pt-3 border-t border-border/50">
                                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2 text-sm">
                                   <div>
-                                    <span className="text-muted-foreground text-sm block">RECV No.</span>
+                                    <span className="text-muted-foreground text-sm block">Receipt no.</span>
                                     <span className="font-medium font-mono text-sm">{(receipt as any).receiptNo || "—"}</span>
                                   </div>
                                   <div>
-                                    <span className="text-muted-foreground text-sm block">Entry Date</span>
+                                    <span className="text-muted-foreground text-sm block">Entry date</span>
                                     <span className="font-medium">{receipt.date}</span>
                                   </div>
                                   <div>
-                                    <span className="text-muted-foreground text-sm block">Entry Time</span>
+                                    <span className="text-muted-foreground text-sm block">Entry time</span>
                                     <span className="font-medium">{receipt.time || "-"}</span>
                                   </div>
                                   <div>
@@ -2227,11 +2265,19 @@ export default function PlantMaterialReceipts() {
                                     <span className="font-medium">{receipt.vehicleNumber || "-"}</span>
                                   </div>
                                   <div>
-                                    <span className="text-muted-foreground text-sm block">Challan</span>
+                                    <span className="text-muted-foreground text-sm block">Driver</span>
+                                    <span className="font-medium">{formatPersonName(receipt.driverName) || "—"}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground text-sm block">Received by</span>
+                                    <span className="font-medium">{formatPersonName(receipt.receivedByName) || "—"}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground text-sm block">Supplier challan</span>
                                     <span className="font-medium">{receipt.challanNumber || "-"}</span>
                                   </div>
                                   <div>
-                                    <span className="text-muted-foreground text-sm block">Supplier</span>
+                                    <span className="text-muted-foreground text-sm block">Supplier/Vendor</span>
                                     <span className="font-medium">{receipt.supplier || "-"}</span>
                                   </div>
                                   <div>
@@ -2239,17 +2285,17 @@ export default function PlantMaterialReceipts() {
                                     <span className="font-medium">{receipt.transporter || "-"}</span>
                                   </div>
                                   <div>
-                                    <span className="text-muted-foreground text-sm block">Party/Job</span>
+                                    <span className="text-muted-foreground text-sm block">Party/job</span>
                                     <span className="font-medium">{getPartyName(receipt.partyId, receipt.materialId)}</span>
                                   </div>
                                   {(receipt as any).invoiceNo && (
                                     <div>
-                                      <span className="text-muted-foreground text-sm block">Invoice No</span>
+                                      <span className="text-muted-foreground text-sm block">Invoice no.</span>
                                       <span className="font-medium">{(receipt as any).invoiceNo}</span>
                                     </div>
                                   )}
                                   <div>
-                                    <span className="text-muted-foreground text-sm block">Invoice Date</span>
+                                    <span className="text-muted-foreground text-sm block">Invoice date</span>
                                     <span className="font-medium">{getReceiptTransactionDate(receipt)}</span>
                                   </div>
                                   {(receipt as any).indentRef && !isPartyReceipt(receipt) && (

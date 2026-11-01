@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import type { MaterialReceiptSlipCompany, MaterialReceiptSlipData } from "./materialReceiptSlipTypes";
 import { loadPdfLogoDataUrl } from "@/components/vendor-bills/pdfExportStyle";
+import { formatPersonName } from "@shared/personName";
 
 const W = 148;
 const M = 10;
@@ -46,13 +47,8 @@ function label(doc: jsPDF, text: string, x: number, y: number, align: "left" | "
   doc.setFont("helvetica", "normal");
   doc.setFontSize(6.2);
   doc.setTextColor(...MID);
-  if (align === "left") {
-    doc.setCharSpace(0.25);
-    doc.text(text.toUpperCase(), x, y);
-    doc.setCharSpace(0);
-  } else {
-    doc.text(text.toUpperCase(), x, y, { align });
-  }
+  if (align === "right") doc.text(text, x, y, { align });
+  else doc.text(text, x, y);
 }
 
 function reference(record: MaterialReceiptSlipData): string {
@@ -76,16 +72,16 @@ function convertedMt(record: MaterialReceiptSlipData): string | null {
 function detailRows(record: MaterialReceiptSlipData): [string, string][] {
   const rows: [string, string][] = [];
   if (record.kind === "plant") {
-    if (record.supplier) rows.push(["Supplier", record.supplier]);
+    if (record.supplier) rows.push(["Supplier/Vendor", record.supplier]);
     if (record.transporter) rows.push(["Transporter", record.transporter]);
   } else {
     const own = record.materialSourceType === "own_source";
     const source = own ? record.materialSourceLabel : record.materialSourceSupplier;
-    if (source) rows.push([own ? "Source" : "Supplier", source]);
+    if (source) rows.push([own ? "Source" : "Supplier/Vendor", source]);
     if (record.supplier) rows.push(["Transporter", record.supplier]);
   }
   if (record.vehicleNumber) rows.push(["Vehicle", record.vehicleNumber]);
-  if (record.driverName) rows.push(["Driver", record.driverName]);
+  if (record.driverName) rows.push(["Driver", formatPersonName(record.driverName)]);
   if (record.kind === "plant") {
     if (record.challanNumber) rows.push(["Supplier challan", record.challanNumber]);
     if (record.invoiceNo || record.invoiceDate) {
@@ -130,7 +126,7 @@ function layout(
   doc.setFont("helvetica", "bold");
   doc.setFontSize(13);
   doc.setTextColor(...INK);
-  doc.text(doc.splitTextToSize((company.name || "High Lane Constructions").toUpperCase(), W - M - textX).slice(0, 1), textX, 15.5);
+  doc.text(doc.splitTextToSize(company.name || "High Lane Constructions", W - M - textX).slice(0, 1), textX, 15.5);
   const companyLines = [
     company.address?.trim() || "",
     [
@@ -154,7 +150,7 @@ function layout(
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   doc.setCharSpace(0.8);
-  doc.text(record.kind === "plant" ? "MATERIAL RECEIPT" : "SITE MATERIAL RECEIPT", M + 4, y + 6);
+  doc.text(record.kind === "plant" ? "Material receipt" : "Site material receipt", M + 4, y + 6);
   doc.setCharSpace(0);
   doc.setFontSize(9.5);
   doc.text(reference(record), W - M - 4, y + 6, { align: "right" });
@@ -164,7 +160,7 @@ function layout(
     doc.setFont("helvetica", "bold");
     doc.setFontSize(6.5);
     doc.setTextColor(...MID);
-    doc.text(`REVISED COPY · ${revisedAt} · replaces earlier copy`, W - M, y + 4, { align: "right" });
+    doc.text(`Revised copy · ${revisedAt} · replaces earlier copy`, W - M, y + 4, { align: "right" });
     y += 4;
   }
 
@@ -267,22 +263,26 @@ function layout(
 
   y += 22;
   const half = (W - 2 * M - 12) / 2;
+  const receivedByName = formatPersonName(record.receivedByName);
+  const driverName = formatPersonName(record.driverName);
+  const receivedByCaption = "Received by · For High Lane Constructions Pvt Ltd";
+  const receivedByCaptionLines = doc.splitTextToSize(receivedByCaption, half);
   doc.setDrawColor(...DARK);
   doc.setLineWidth(0.25);
   doc.line(M, y, M + half, y);
   doc.line(W - M - half, y, W - M, y);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.2);
+  doc.setFontSize(8.5);
   doc.setTextColor(...DARK);
-  doc.text(`For ${(company.name || "HLC").toUpperCase()}`, M, y + 4.5);
-  doc.text("Driver", W - M - half, y + 4.5);
+  if (receivedByName) doc.text(doc.splitTextToSize(receivedByName, half), M, y + 5);
+  if (driverName) doc.text(doc.splitTextToSize(driverName, half), W - M - half, y + 5);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(6.5);
   doc.setTextColor(...MID);
-  doc.text("Received in good order", M, y + 8);
-  if (record.driverName) doc.text(record.driverName, W - M - half, y + 8);
+  doc.text(receivedByCaptionLines, M, y + 10);
+  doc.text("Driver", W - M - half, y + 10);
 
-  y += 15;
+  y += 17;
   doc.setDrawColor(...RULE);
   doc.setLineWidth(0.2);
   doc.line(M, y, W - M, y);
@@ -327,16 +327,19 @@ export function materialReceiptSlipFilename(record: MaterialReceiptSlipData): st
 }
 
 export function materialReceiptSlipCaption(record: MaterialReceiptSlipData): string {
-  const heading = record.kind === "plant" ? "*HLC · Material Receipt*" : "*HLC · Site Material Receipt*";
+  const heading = record.kind === "plant" ? "*HLC · Material receipt*" : "*HLC · Site material receipt*";
   const reference = record.kind === "plant"
     ? record.receiptNo || `Receipt #${record.id}`
     : `Trip ${record.id}${record.receiptNumber ? ` · Challan ${record.receiptNumber}` : ""}`;
   const dateTime = [displayDate(record.date), record.time].filter(Boolean).join(" · ");
+  const receivedByName = formatPersonName(record.receivedByName || record.enteredBy);
   return [
     heading,
     `${reference}${record.latestEditAt ? " · REVISED" : ""}`,
     `${record.materialName} — ${record.quantity} ${record.uom}`,
     record.vehicleNumber ? `Vehicle: ${record.vehicleNumber}` : null,
+    record.driverName ? `Driver: ${formatPersonName(record.driverName)}` : null,
+    receivedByName ? `Received by: ${receivedByName}` : null,
     dateTime,
   ].filter(Boolean).join("\n");
 }

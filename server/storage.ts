@@ -136,6 +136,7 @@ import { resolvePermittedSiteIds } from "@shared/siteAccess";
 import { getBaseSiteName, siteMatchesPermitted, vendorBillItemMatchesSite } from "@shared/siteName";
 import { getBillFinancialTotals } from "@shared/vendorBillFinancialReport";
 import { isAlpsLikeFreeTextPayer } from "@shared/vendorBillAttention";
+import { formatPersonName } from "@shared/personName";
 import {
   buildSiteTripSuggestions,
   normalizeSiteTripHistorySite,
@@ -6105,6 +6106,8 @@ export class DatabaseStorage implements IStorage {
         transporter: receipt.transporter?.toUpperCase(),
         vehicleNumber: receipt.vehicleNumber?.toUpperCase(),
         challanNumber: receipt.challanNumber?.toUpperCase(),
+        driverName: formatPersonName(receipt.driverName) || null,
+        receivedByName: formatPersonName(receipt.receivedByName) || null,
         invoiceDate: transactionDate,
         documentStatus: "draft" as const,
       };
@@ -6232,6 +6235,8 @@ export class DatabaseStorage implements IStorage {
       if (updates.transporter) updates.transporter = updates.transporter.toUpperCase();
       if (updates.vehicleNumber) updates.vehicleNumber = updates.vehicleNumber.toUpperCase();
       if (updates.challanNumber) updates.challanNumber = updates.challanNumber.toUpperCase();
+      if (receipt.driverName !== undefined) updates.driverName = formatPersonName(receipt.driverName) || null;
+      if (receipt.receivedByName !== undefined) updates.receivedByName = formatPersonName(receipt.receivedByName) || null;
       
       // Calculate old stock quantity (what was originally added)
       const [oldMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, existing.materialId)).limit(1);
@@ -13126,6 +13131,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createSiteMaterialTrip(data: InsertSiteMaterialTrip, hireLink?: NewTripHireLink, masterSelection?: TripMasterSelection): Promise<SiteMaterialTrip> {
+    data = {
+      ...data,
+      driverName: formatPersonName(data.driverName) || null,
+      enteredBy: formatPersonName(data.enteredBy) || null,
+    };
     if (data.materialSourceType === "own_source") {
       if (!data.materialSourceLabel?.trim()) throw new Error("Enter the borrow area / source description.");
       data = { ...data, materialSourceSupplier: null, materialSourceLabel: data.materialSourceLabel.trim() };
@@ -13246,6 +13256,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>, actor?: { userId: number; userName: string; userRole?: string | null }, masterSelection?: TripMasterSelection): Promise<SiteMaterialTrip> {
+    data = { ...data };
+    if (data.driverName !== undefined) data.driverName = formatPersonName(data.driverName) || null;
+    if (data.enteredBy !== undefined) data.enteredBy = formatPersonName(data.enteredBy) || null;
     const [trip] = await db.transaction(async (tx) => {
         const [existing] = await tx.select().from(siteMaterialTrips)
           .where(eq(siteMaterialTrips.id, id))

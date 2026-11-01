@@ -6,7 +6,7 @@ vi.mock("@/components/vendor-bills/pdfExportStyle", () => ({
   loadPdfLogoDataUrl: loadLogo,
 }));
 
-import { buildMaterialReceiptSlipPdf } from "./materialReceiptSlipPdf";
+import { buildMaterialReceiptSlipPdf, materialReceiptSlipCaption } from "./materialReceiptSlipPdf";
 
 const logoFileDataUrl = `data:image/jpeg;base64,${readFileSync(new URL("../../public/hlc-logo.jpg", import.meta.url)).toString("base64")}`;
 const company = { name: "Highlane Constructions", address: "", gstin: "", phone: "" };
@@ -21,7 +21,9 @@ const receipt = {
   plantName: "Main Plant",
   partyName: "HLC",
   vehicleNumber: "KA01AB1234",
-  driverName: "Ravi",
+  driverName: "praveen",
+  receivedByName: "sunil kumar",
+  supplier: "NORTH SUPPLIER",
   receiptNo: "RECV/AGG 26/27 0064",
   conversionFactor: 0.0425,
   conversionFromUom: "CFT",
@@ -73,7 +75,41 @@ describe("material receipt slip PDF logo handling", () => {
     expect(text).not.toContain("Ph ");
   });
 
-  it("does not print staff attribution on a site trip slip", async () => {
+  it("formats people, uses Supplier/Vendor and prints the requested signature captions", async () => {
+    loadLogo.mockResolvedValue(null);
+    const pdf = await buildMaterialReceiptSlipPdf(receipt, company, null);
+    const text = await pdf.text();
+
+    expect(text).toContain("Supplier/Vendor");
+    expect(text).toContain("Praveen");
+    expect(text).toContain("Sunil Kumar");
+    expect(text).toContain("Received by");
+    expect(text).toContain("For High Lane Constructions Pvt Ltd");
+    expect(text).toContain("Driver");
+    expect(text).not.toContain("Received in good order");
+    expect(materialReceiptSlipCaption(receipt)).toContain("Driver: Praveen");
+    expect(materialReceiptSlipCaption(receipt)).toContain("Received by: Sunil Kumar");
+  });
+
+  it("keeps old null names blank without printing null or undefined", async () => {
+    loadLogo.mockResolvedValue(null);
+    const pdf = await buildMaterialReceiptSlipPdf({
+      ...receipt,
+      driverName: null,
+      receivedByName: null,
+    }, company, null);
+    const text = await pdf.text();
+
+    expect(text).toContain("Received by");
+    expect(text).toContain("For High Lane Constructions Pvt Ltd");
+    expect(text).toContain("Driver");
+    expect(text).not.toContain("(null) Tj");
+    expect(text).not.toContain("(undefined) Tj");
+    expect(text).not.toContain("Praveen");
+    expect(text).not.toContain("Sunil Kumar");
+  });
+
+  it("shows the received-by name for a site trip without exposing audit attribution", async () => {
     loadLogo.mockResolvedValue(null);
     const pdf = await buildMaterialReceiptSlipPdf({
       kind: "site",
@@ -84,11 +120,54 @@ describe("material receipt slip PDF logo handling", () => {
       quantity: 90,
       uom: "MT",
       site: "Road Site",
-      enteredBy: "Staff Name",
+      enteredBy: "staff name",
+      receivedByName: "staff name",
     }, company, null);
 
-    expect(await pdf.text()).not.toContain("Entered by");
-    expect(await pdf.text()).not.toContain("Staff Name");
+    const text = await pdf.text();
+    expect(text).not.toContain("Entered by");
+    expect(text).toContain("Staff Name");
+    expect(materialReceiptSlipCaption({
+      kind: "site",
+      id: 12,
+      date: "2026-11-01",
+      time: "10:42",
+      materialName: "WMM",
+      quantity: 90,
+      uom: "MT",
+      site: "Road Site",
+      enteredBy: "staff name",
+    })).toContain("Received by: Staff Name");
+  });
+
+  it("uses Supplier/Vendor for site vendors and retains Source for own-source trips", async () => {
+    loadLogo.mockResolvedValue(null);
+    const vendorPdf = await buildMaterialReceiptSlipPdf({
+      kind: "site",
+      id: 20,
+      date: "2026-11-01",
+      materialName: "WMM",
+      quantity: 90,
+      uom: "MT",
+      site: "Road Site",
+      materialSourceType: "vendor",
+      materialSourceSupplier: "Aggregate Supplier",
+    }, company, null);
+    const ownSourcePdf = await buildMaterialReceiptSlipPdf({
+      kind: "site",
+      id: 21,
+      date: "2026-11-01",
+      materialName: "Soil",
+      quantity: 90,
+      uom: "CFT",
+      site: "Road Site",
+      materialSourceType: "own_source",
+      materialSourceLabel: "Borrow pit",
+    }, company, null);
+
+    expect(await vendorPdf.text()).toContain("Supplier/Vendor");
+    expect(await ownSourcePdf.text()).toContain("(Source) Tj");
+    expect(await ownSourcePdf.text()).not.toContain("Supplier/Vendor");
   });
 
   it("labels an edited receipt as a revised copy", async () => {
@@ -101,7 +180,7 @@ describe("material receipt slip PDF logo handling", () => {
       latestEditAt: "2026-11-01T06:15:00.000Z",
     }, company, null);
 
-    expect(await pdf.text()).toContain("REVISED COPY");
+    expect(await pdf.text()).toContain("Revised copy");
     expect(await pdf.text()).toContain("replaces earlier copy");
   });
 });

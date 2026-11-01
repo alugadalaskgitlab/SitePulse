@@ -36,6 +36,7 @@ import {
 } from "@/hooks/use-site-material-suggestions";
 import { useAuth } from "@/lib/auth-context";
 import { SITE_MATERIAL_TRIP_MATERIAL_OPTIONS } from "@shared/siteMaterialTripMaterials";
+import { formatPersonName } from "@shared/personName";
 import type { BulkConfirmableTripRole } from "@shared/tripTransportRoles";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -46,7 +47,7 @@ const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs", "Tons"];
 
 export default function SiteMaterialTrips() {
   const { toast } = useToast();
-  const { sectionCan, isAdmin, isOwner } = useAuth();
+  const { sectionCan, isAdmin, isOwner, user } = useAuth();
   const canEdit = sectionCan("site_materials", "edit");
   const { companyName, companyInfo, logoFile } = useFeatureFlags();
   const searchString = useSearch();
@@ -96,6 +97,7 @@ export default function SiteMaterialTrips() {
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
   const [savedTripForSlip, setSavedTripForSlip] = useState<MaterialReceiptSlipData | null>(null);
   const savedTripPanelRef = useRef<HTMLDivElement | null>(null);
+  const enteredByTouchedRef = useRef(false);
 
   useEffect(() => {
     if (savedTripForSlip) {
@@ -126,13 +128,19 @@ export default function SiteMaterialTrips() {
     uom: piParams.uom || "CFT",
     location: "",
     receiptNumber: "",
-    enteredBy: "",
+    enteredBy: user?.fullName || "",
     notes: "",
     workType: "",
     // 06S §6: where the truck actually unloaded — permanent physical fact.
     unloadedAt: "stretch",
     yardLabel: "",
   });
+  useEffect(() => {
+    if (!user?.fullName || enteredByTouchedRef.current) return;
+    setNewTrip((previous) => previous.enteredBy
+      ? previous
+      : { ...previous, enteredBy: user.fullName });
+  }, [user?.fullName]);
   // Normal entry searches Vendor Master only; historical suggestions remain filters only.
   const masterPickerSite = editingRoleTrip?.site || newTrip.site;
   const vendorQuery = useQuery<ExistingTripVendor[]>({
@@ -352,6 +360,7 @@ export default function SiteMaterialTrips() {
         location: trip.location || trip.yardLabel,
         vehicleNumber: trip.vehicleNumber,
         driverName: trip.driverName,
+        receivedByName: trip.enteredBy,
         supplier: trip.supplier,
         materialSourceType: trip.materialSourceType,
         materialSourceSupplier: trip.materialSourceSupplier,
@@ -366,12 +375,14 @@ export default function SiteMaterialTrips() {
         slipSendTrackingEnabled: trip.slipSendTrackingEnabled,
       });
       toast({ title: "Trip Logged", description: "Material trip has been recorded successfully." });
+      enteredByTouchedRef.current = false;
       if (isPILinked) {
         // In PI-linked mode reset material/qty but keep site + PI context for next truckload
         setNewTrip(prev => ({
           ...prev,
           vehicleNumber: "",
           driverName: "",
+          enteredBy: user?.fullName || "",
           equipmentId: null,
           vehicleManual: false,
             internalEquipmentId: null,
@@ -388,6 +399,7 @@ export default function SiteMaterialTrips() {
           time: format(new Date(), "HH:mm"),
           vehicleNumber: "",
           driverName: "",
+          enteredBy: user?.fullName || "",
           equipmentId: null,
           internalEquipmentId: null,
           vehicleManual: false,
@@ -419,7 +431,7 @@ export default function SiteMaterialTrips() {
           uom: "CFT",
           location: "",
           receiptNumber: "",
-          enteredBy: newTrip.enteredBy,
+          enteredBy: user?.fullName || "",
           notes: "",
           workType: "",
           unloadedAt: "stretch",
@@ -773,12 +785,14 @@ export default function SiteMaterialTrips() {
                   />
                 </div>
                 <div>
-                  <Label className="text-sm">Entered By</Label>
+                  <Label className="text-sm">Received by</Label>
                   <Input
                     placeholder="Your name"
                     value={newTrip.enteredBy}
-                    onChange={(e) => setNewTrip({ ...newTrip, enteredBy: e.target.value.toUpperCase() })}
-                    className="uppercase"
+                    onChange={(e) => {
+                      enteredByTouchedRef.current = true;
+                      setNewTrip({ ...newTrip, enteredBy: e.target.value });
+                    }}
                     data-testid="input-trip-enteredby"
                   />
                 </div>
@@ -805,9 +819,13 @@ export default function SiteMaterialTrips() {
                         <p className="font-semibold">
                           {savedTripForSlip.materialName} · {savedTripForSlip.quantity} {savedTripForSlip.uom}
                         </p>
-                        {Boolean(savedTripForSlip.vehicleNumber || savedTripForSlip.driverName) && (
+                        {Boolean(savedTripForSlip.vehicleNumber || savedTripForSlip.driverName || savedTripForSlip.receivedByName) && (
                           <p className="text-muted-foreground">
-                            {[savedTripForSlip.vehicleNumber, savedTripForSlip.driverName ? `Driver ${savedTripForSlip.driverName}` : null].filter(Boolean).join(" · ")}
+                            {[
+                              savedTripForSlip.vehicleNumber,
+                              savedTripForSlip.driverName ? `Driver ${formatPersonName(savedTripForSlip.driverName)}` : null,
+                              savedTripForSlip.receivedByName ? `Received by ${formatPersonName(savedTripForSlip.receivedByName)}` : null,
+                            ].filter(Boolean).join(" · ")}
                           </p>
                         )}
                         {Boolean(savedTripForSlip.site || savedTripForSlip.location) && (
@@ -1145,7 +1163,8 @@ export default function SiteMaterialTrips() {
                         </td>
                         <td className="p-2">
                           {trip.vehicleNumber || '-'}
-                          {trip.driverName && <p className="text-xs text-muted-foreground">Driver: {trip.driverName}</p>}
+                          {trip.driverName && <p className="text-xs text-muted-foreground">Driver: {formatPersonName(trip.driverName)}</p>}
+                          {trip.enteredBy && <p className="text-xs text-muted-foreground">Received by: {formatPersonName(trip.enteredBy)}</p>}
                           <p className="mt-1 text-xs text-muted-foreground" data-testid={`text-trip-entered-by-${trip.id}`}>
                             {formatEnteredByDisplay((trip as any).enteredByUserName, (trip as any).createdAt)}
                           </p>
@@ -1178,6 +1197,7 @@ export default function SiteMaterialTrips() {
                                 location: trip.location || trip.yardLabel,
                                 vehicleNumber: trip.vehicleNumber,
                                 driverName: trip.driverName,
+                                receivedByName: trip.enteredBy,
                                 supplier: trip.supplier,
                                 materialSourceType: trip.materialSourceType,
                                 materialSourceSupplier: trip.materialSourceSupplier,
