@@ -597,6 +597,7 @@ export const materialReceipts = pgTable("material_receipts", {
   tankNumber: integer("tank_number"),
   notes: text("notes"),
   driverName: text("driver_name"),
+  receivedByName: text("received_by_name"),
   enteredByUserId: integer("entered_by_user_id"),
   slipSharedAt: timestamp("slip_shared_at"),
   slipSharedByUserId: integer("slip_shared_by_user_id"),
