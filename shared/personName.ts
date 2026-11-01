@@ -1,6 +1,7 @@
 /**
  * Normalize whitespace in person names and title-case names that were entered
- * entirely in one case. Mixed-case spelling is preserved.
+ * entirely in one case. Mixed-case spelling is preserved; initials separated
+ * by periods are capitalized independently.
  */
 export function formatPersonName(name?: string | null): string {
   const normalized = (name ?? "").trim().replace(/\s+/g, " ");
@@ -21,7 +22,7 @@ export function formatPersonName(name?: string | null): string {
     const character = lower[index];
     const isLetter = character.toLowerCase() !== character.toUpperCase();
     formatted += isLetter && capitalizeNext ? character.toUpperCase() : character;
-    capitalizeNext = /[\s'’\-]/.test(character);
+    capitalizeNext = /[\s'’.\-]/.test(character);
   }
   return formatted;
 }

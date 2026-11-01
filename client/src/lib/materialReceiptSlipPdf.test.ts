@@ -9,7 +9,7 @@ vi.mock("@/components/vendor-bills/pdfExportStyle", () => ({
 import { buildMaterialReceiptSlipPdf, materialReceiptSlipCaption } from "./materialReceiptSlipPdf";
 
 const logoFileDataUrl = `data:image/jpeg;base64,${readFileSync(new URL("../../public/hlc-logo.jpg", import.meta.url)).toString("base64")}`;
-const company = { name: "Highlane Constructions", address: "", gstin: "", phone: "" };
+const company = { name: "High Lane Constructions Pvt Ltd", address: "", gstin: "", phone: "" };
 const receipt = {
   kind: "plant" as const,
   id: 64,
@@ -69,6 +69,13 @@ describe("material receipt slip PDF logo handling", () => {
     expect(heightMm).toBeGreaterThanOrEqual(150);
     expect(heightMm).toBeLessThan(200);
     expect(text).toContain("10:42 AM");
+    expect(text).toContain("MATERIAL RECEIPT");
+    expect(text).toContain("DATE");
+    expect(text).toContain("TIME");
+    expect(text).toContain("RECEIVED AT");
+    expect(text).toContain("MATERIAL");
+    expect(text).toContain("STOCK OF");
+    expect(text).toContain("QUANTITY RECEIVED");
     expect(text).toContain("Approx.");
     expect(text).toContain("4.25 MT");
     expect(text).not.toContain("GSTIN");
@@ -81,14 +88,18 @@ describe("material receipt slip PDF logo handling", () => {
     const text = await pdf.text();
 
     expect(text).toContain("Supplier/Vendor");
+    expect(text).toContain("DELIVERY DETAILS");
     expect(text).toContain("Praveen");
     expect(text).toContain("Sunil Kumar");
     expect(text).toContain("Received by");
-    expect(text).toContain("For High Lane Constructions Pvt Ltd");
+    expect(text).toContain("for High Lane Constructions Pvt Ltd");
+    expect(text.indexOf("(Sunil Kumar) Tj")).toBeLessThan(text.indexOf("(Received by) Tj"));
+    expect(text.indexOf("(Received by) Tj")).toBeLessThan(text.indexOf("(for High Lane Constructions Pvt Ltd) Tj"));
     expect(text).toContain("Driver");
     expect(text).not.toContain("Received in good order");
     expect(materialReceiptSlipCaption(receipt)).toContain("Driver: Praveen");
     expect(materialReceiptSlipCaption(receipt)).toContain("Received by: Sunil Kumar");
+    expect(materialReceiptSlipCaption(receipt)).toContain("*HLC · Material Receipt*");
   });
 
   it("keeps old null names blank without printing null or undefined", async () => {
@@ -101,7 +112,7 @@ describe("material receipt slip PDF logo handling", () => {
     const text = await pdf.text();
 
     expect(text).toContain("Received by");
-    expect(text).toContain("For High Lane Constructions Pvt Ltd");
+    expect(text).toContain("for High Lane Constructions Pvt Ltd");
     expect(text).toContain("Driver");
     expect(text).not.toContain("(null) Tj");
     expect(text).not.toContain("(undefined) Tj");
@@ -138,6 +149,15 @@ describe("material receipt slip PDF logo handling", () => {
       site: "Road Site",
       enteredBy: "staff name",
     })).toContain("Received by: Staff Name");
+    expect(materialReceiptSlipCaption({
+      kind: "site",
+      id: 12,
+      date: "2026-11-01",
+      time: "10:42",
+      materialName: "WMM",
+      quantity: 90,
+      uom: "MT",
+    })).toContain("*HLC · Site Material Receipt*");
   });
 
   it("uses Supplier/Vendor for site vendors and retains Source for own-source trips", async () => {
@@ -166,6 +186,7 @@ describe("material receipt slip PDF logo handling", () => {
     }, company, null);
 
     expect(await vendorPdf.text()).toContain("Supplier/Vendor");
+    expect(await vendorPdf.text()).toContain("SITE MATERIAL RECEIPT");
     expect(await ownSourcePdf.text()).toContain("(Source) Tj");
     expect(await ownSourcePdf.text()).not.toContain("Supplier/Vendor");
   });
@@ -182,5 +203,9 @@ describe("material receipt slip PDF logo handling", () => {
 
     expect(await pdf.text()).toContain("Revised copy");
     expect(await pdf.text()).toContain("replaces earlier copy");
+    expect(materialReceiptSlipCaption({
+      ...receipt,
+      latestEditAt: "2026-11-01T06:15:00.000Z",
+    })).toContain(" · Revised");
   });
 });

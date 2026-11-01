@@ -11,6 +11,8 @@ describe("RECEIPT-07 person-name flow", () => {
     ["praveen", "Praveen"],
     ["RAMESH SINGH", "Ramesh Singh"],
     ["k. v. babu", "K. V. Babu"],
+    ["k.v. babu", "K.V. Babu"],
+    ["K.V. BABU", "K.V. Babu"],
     ["McDonald", "McDonald"],
     ["   ", ""],
     [null, ""],
