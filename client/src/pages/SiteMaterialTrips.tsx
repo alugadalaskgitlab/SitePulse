@@ -5,7 +5,7 @@ import { TripRoleEditDialog } from "@/components/TripRoleEditDialog";
 import { TripRoleBulkConfirmation } from "@/components/TripRoleBulkConfirmation";
 import { BulkTripArrangement } from "@/components/BulkTripArrangement";
 import { filterTripsByRole, resolveSelectedTripVendor, tripRoleDescription, type ExistingTripVendor, type TripRoleFilter } from "@/components/trip-role-utils";
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useSearch, useLocation } from "wouter";
 import { format } from "date-fns";
@@ -95,6 +95,13 @@ export default function SiteMaterialTrips() {
   const [bulkMaterialSourceSupplier, setBulkMaterialSourceSupplier] = useState("");
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
   const [savedTripForSlip, setSavedTripForSlip] = useState<MaterialReceiptSlipData | null>(null);
+  const savedTripPanelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (savedTripForSlip) {
+      savedTripPanelRef.current?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+    }
+  }, [savedTripForSlip]);
 
   const [newTrip, setNewTrip] = useState({
     date: today,
@@ -775,8 +782,8 @@ export default function SiteMaterialTrips() {
                     data-testid="input-trip-enteredby"
                   />
                 </div>
-                <div className="flex flex-col justify-end gap-1">
-                  {!isPILinked && (
+                <div className={`flex flex-col justify-end gap-1 ${savedTripForSlip ? "col-span-2 md:col-span-4" : ""}`}>
+                  {!savedTripForSlip && !isPILinked && (
                     <label className="flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer select-none" data-testid="checkbox-keep-context">
                       <input
                         type="checkbox"
@@ -787,20 +794,59 @@ export default function SiteMaterialTrips() {
                       Keep this work context for next trip
                     </label>
                   )}
-                  <Button 
-                    type="submit" 
-                    className="w-full"
-                    disabled={createMutation.isPending || !hasRequiredWorkContext(workCtx)}
-                    data-testid="button-submit-trip"
-                  >
-                    {createMutation.isPending ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <>
-                        <Plus className="w-4 h-4 mr-1" /> Add Trip
-                      </>
-                    )}
-                  </Button>
+                  {savedTripForSlip ? (
+                    <div
+                      ref={savedTripPanelRef}
+                      className="rounded-md border bg-muted/40 p-3 space-y-2"
+                      data-testid={`trip-saved-view-${savedTripForSlip.id}`}
+                    >
+                      <p className="text-sm font-medium">✓ Trip saved · Trip #{savedTripForSlip.id}</p>
+                      <div className="rounded-md bg-background/70 px-3 py-2 text-sm space-y-1" data-testid="trip-saved-summary">
+                        <p className="font-semibold">
+                          {savedTripForSlip.materialName} · {savedTripForSlip.quantity} {savedTripForSlip.uom}
+                        </p>
+                        {Boolean(savedTripForSlip.vehicleNumber || savedTripForSlip.driverName) && (
+                          <p className="text-muted-foreground">
+                            {[savedTripForSlip.vehicleNumber, savedTripForSlip.driverName ? `Driver ${savedTripForSlip.driverName}` : null].filter(Boolean).join(" · ")}
+                          </p>
+                        )}
+                        {Boolean(savedTripForSlip.site || savedTripForSlip.location) && (
+                          <p className="text-muted-foreground">
+                            {[savedTripForSlip.site, savedTripForSlip.location].filter(Boolean).join(" · ")}
+                          </p>
+                        )}
+                      </div>
+                      <MaterialReceiptSlipActions
+                        record={savedTripForSlip}
+                        company={companyInfo}
+                        logoFile={logoFile}
+                        sendLabel="Send on WhatsApp"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setSavedTripForSlip(null)}
+                        data-testid="button-log-next-trip"
+                      >
+                        Log next trip
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      disabled={createMutation.isPending || !hasRequiredWorkContext(workCtx)}
+                      data-testid="button-submit-trip"
+                    >
+                      {createMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <>
+                          <Plus className="w-4 h-4 mr-1" /> Add Trip
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </div>
               </div>
 
@@ -910,18 +956,6 @@ export default function SiteMaterialTrips() {
             </form>
           </CardContent>
         </Card>
-
-        {savedTripForSlip && (
-          <Card data-testid={`trip-saved-panel-${savedTripForSlip.id}`}>
-            <CardContent className="p-4">
-              <p className="font-semibold">Receipt saved</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Trip {savedTripForSlip.id}{savedTripForSlip.receiptNumber ? ` · Challan ${savedTripForSlip.receiptNumber}` : ""}
-              </p>
-              <MaterialReceiptSlipActions record={savedTripForSlip} company={companyInfo} logoFile={logoFile} />
-            </CardContent>
-          </Card>
-        )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {Object.entries(tripsByMaterial).map(([material, data]) => (

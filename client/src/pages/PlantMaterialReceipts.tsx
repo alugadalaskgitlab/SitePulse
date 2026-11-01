@@ -76,6 +76,7 @@ export default function PlantMaterialReceipts() {
     description: string;
   } | null>(null);
   const [savedReceiptForSlip, setSavedReceiptForSlip] = useState<any | null>(null);
+  const [savedReceiptAction, setSavedReceiptAction] = useState<"created" | "updated" | null>(null);
   const submittedSummaryRef = useRef<{ date: string; quantity: string; uom: string } | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
@@ -625,8 +626,8 @@ export default function PlantMaterialReceipts() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
       await invalidateDieselRequirementQueries();
-      setDialogOpen(false);
       resetForm();
+      setSavedReceiptAction("created");
       const summary = submittedSummaryRef.current;
       const receiptDate = receipt?.date || summary?.date || "the selected date";
       const receiptQuantity = receipt?.quantity ?? summary?.quantity;
@@ -664,7 +665,6 @@ export default function PlantMaterialReceipts() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
       await invalidateDieselRequirementQueries();
-      setDialogOpen(false);
       setEditingReceipt(null);
       setSavedReceiptForSlip({
         kind: "plant",
@@ -687,11 +687,16 @@ export default function PlantMaterialReceipts() {
         tankNumber: receipt.tankNumber,
         createdAt: receipt.createdAt,
         latestEditAt: receipt.latestEditAt,
+        slipSharedAt: receipt.slipSharedAt,
+        slipSharedByUserName: receipt.slipSharedByUserName,
+        slipSendWindowOpen: receipt.slipSendWindowOpen,
+        slipSendTrackingEnabled: receipt.slipSendTrackingEnabled,
         conversionFactor: materials?.find(material => material.id === receipt.materialId)?.conversionFactor,
         conversionFromUom: materials?.find(material => material.id === receipt.materialId)?.conversionFromUom,
         conversionToUom: materials?.find(material => material.id === receipt.materialId)?.conversionToUom,
         bulkDensity: materials?.find(material => material.id === receipt.materialId)?.bulkDensity,
       } as MaterialReceiptSlipData);
+      setSavedReceiptAction("updated");
       resetForm();
       const summary = submittedSummaryRef.current;
       const receiptDate = receipt?.date || summary?.date || "the selected date";
@@ -783,6 +788,9 @@ export default function PlantMaterialReceipts() {
   };
 
   const openEditDialog = (receipt: MaterialReceipt) => {
+    setSavedReceiptAction(null);
+    setSavedReceiptForSlip(null);
+    setSubmissionFeedback(null);
     setEditingReceipt(receipt);
     setDate(receipt.date);
     setTime(receipt.time || "");
@@ -1286,7 +1294,13 @@ export default function PlantMaterialReceipts() {
         <Dialog open={dialogOpen} onOpenChange={(open) => {
           setDialogOpen(open);
           if (open) setSubmissionFeedback(null);
-          if (!open) { setEditingReceipt(null); resetForm(); }
+          if (open) { setSavedReceiptAction(null); setSavedReceiptForSlip(null); }
+          if (!open) {
+            setSavedReceiptAction(null);
+            setSavedReceiptForSlip(null);
+            setEditingReceipt(null);
+            resetForm();
+          }
         }}>
           {canCreate && (
             <DialogTrigger asChild>
@@ -1297,15 +1311,74 @@ export default function PlantMaterialReceipts() {
           )}
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 flex-wrap">
-                {editingReceipt ? "Edit Receipt" : "Record Material Receipt"}
-                {!editingReceipt && nextReceiptNoData?.number && (
-                  <span className="text-sm font-mono font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded" data-testid="text-recv-preview-number">
-                    {nextReceiptNoData.number}
-                  </span>
+              <DialogTitle className={savedReceiptAction ? "truncate text-base font-semibold" : "flex items-center gap-2 flex-wrap"}>
+                {savedReceiptAction && savedReceiptForSlip ? (
+                  <>
+                    {savedReceiptAction === "updated" ? "Receipt updated" : "✓ Receipt saved"}
+                    {" · "}
+                    {savedReceiptForSlip.receiptNo
+                      ? `GRN ${savedReceiptForSlip.receiptNo}`
+                      : savedReceiptForSlip.challanNumber || `#${savedReceiptForSlip.id}`}
+                  </>
+                ) : (
+                  <>
+                    {editingReceipt ? "Edit Receipt" : "Record Material Receipt"}
+                    {!editingReceipt && nextReceiptNoData?.number && (
+                      <span className="text-sm font-mono font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded" data-testid="text-recv-preview-number">
+                        {nextReceiptNoData.number}
+                      </span>
+                    )}
+                  </>
                 )}
               </DialogTitle>
             </DialogHeader>
+            {savedReceiptAction && savedReceiptForSlip ? (
+              <div className="space-y-3 pt-2" data-testid="plant-receipt-saved-view">
+                <div className="rounded-md bg-muted/60 px-3 py-2 text-sm space-y-1" data-testid="plant-receipt-saved-summary">
+                  <p className="font-semibold">
+                    {savedReceiptForSlip.materialName} · {savedReceiptForSlip.quantity} {savedReceiptForSlip.uom}
+                  </p>
+                  {Boolean(savedReceiptForSlip.vehicleNumber || savedReceiptForSlip.driverName) && (
+                    <p className="text-muted-foreground">
+                      {[savedReceiptForSlip.vehicleNumber, savedReceiptForSlip.driverName ? `Driver ${savedReceiptForSlip.driverName}` : null].filter(Boolean).join(" · ")}
+                    </p>
+                  )}
+                  {savedReceiptForSlip.partyName && (
+                    <p className="text-muted-foreground">Stock of: {savedReceiptForSlip.partyName}</p>
+                  )}
+                </div>
+                {(savedReceiptAction === "created" || savedReceiptForSlip.slipSendWindowOpen) && (
+                  <MaterialReceiptSlipActions
+                    record={savedReceiptForSlip as MaterialReceiptSlipData}
+                    company={companyInfo}
+                    logoFile={logoFile}
+                    sendLabel={savedReceiptAction === "updated" ? "Send revised on WhatsApp" : "Send on WhatsApp"}
+                  />
+                )}
+                <div className="flex justify-end gap-2 pt-1">
+                  {savedReceiptAction === "created" && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setSavedReceiptAction(null);
+                        setSavedReceiptForSlip(null);
+                        setSubmissionFeedback(null);
+                        setEditingReceipt(null);
+                        resetForm();
+                      }}
+                      data-testid="button-new-receipt-from-saved"
+                    >
+                      New Receipt
+                    </Button>
+                  )}
+                  <Button type="button" onClick={() => setDialogOpen(false)} data-testid="button-done-receipt-saved">
+                    Done
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
             {hasDraft && !editingReceipt && (
               <DraftRestoreBanner
                 draftAge={draftAge}
@@ -1757,6 +1830,8 @@ export default function PlantMaterialReceipts() {
                 {!editingReceipt && <AutoSaveIndicator lastSavedAt={lastSavedAt} className="justify-center w-full" />}
               </div>
             </div>
+              </>
+            )}
           </DialogContent>
         </Dialog>
       </div>
@@ -1778,13 +1853,6 @@ export default function PlantMaterialReceipts() {
           <div>
             <p className="text-sm font-semibold">{submissionFeedback.title}</p>
             <p className="text-sm">{submissionFeedback.description}</p>
-            {submissionFeedback.kind === "success" && savedReceiptForSlip && (
-              <MaterialReceiptSlipActions
-                record={savedReceiptForSlip as MaterialReceiptSlipData}
-                company={companyInfo}
-                logoFile={logoFile}
-              />
-            )}
           </div>
         </div>
       )}

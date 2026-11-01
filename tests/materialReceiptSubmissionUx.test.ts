@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
 const receiptPage = readFileSync("client/src/pages/PlantMaterialReceipts.tsx", "utf8");
+const siteTripPage = readFileSync("client/src/pages/SiteMaterialTrips.tsx", "utf8");
 
 describe("material receipt submission UX", () => {
   it("guards same-tick double clicks before React can render pending state", () => {
@@ -27,5 +28,40 @@ describe("material receipt submission UX", () => {
     expect(receiptPage).toContain('data-testid={`receipt-submission-${submissionFeedback.kind}`}');
     expect(receiptPage).toContain("Next: choose New Receipt");
     expect(receiptPage).toContain("if (open) setSubmissionFeedback(null)");
+  });
+
+  it("keeps the plant popup open in its saved view and removes banner actions", () => {
+    const createSuccess = receiptPage.slice(
+      receiptPage.indexOf("const createMutation"),
+      receiptPage.indexOf("const updateMutation"),
+    );
+    const banner = receiptPage.slice(
+      receiptPage.indexOf("{submissionFeedback &&"),
+      receiptPage.indexOf("{/* Export/Print Actions */}"),
+    );
+    const newReceiptButton = receiptPage.indexOf('data-testid="button-new-receipt-from-saved"');
+    const doneButton = receiptPage.indexOf('data-testid="button-done-receipt-saved"');
+    const savedFooter = receiptPage.slice(newReceiptButton - 1000, doneButton + 300);
+
+    expect(createSuccess).not.toContain("setDialogOpen(false)");
+    expect(createSuccess).toContain('setSavedReceiptAction("created")');
+    expect(receiptPage).toContain('data-testid="plant-receipt-saved-view"');
+    expect(receiptPage).toContain('data-testid="plant-receipt-saved-summary"');
+    expect(receiptPage).toContain('data-testid="button-new-receipt-from-saved"');
+    expect(receiptPage).toContain('data-testid="button-done-receipt-saved"');
+    expect(savedFooter).toContain("setSavedReceiptAction(null)");
+    expect(savedFooter).toContain("setSavedReceiptForSlip(null)");
+    expect(savedFooter).toContain("resetForm();");
+    expect(savedFooter).toContain("onClick={() => setDialogOpen(false)}");
+    expect(receiptPage).toContain('savedReceiptAction === "created" || savedReceiptForSlip.slipSendWindowOpen');
+    expect(receiptPage).toContain('sendLabel={savedReceiptAction === "updated" ? "Send revised on WhatsApp" : "Send on WhatsApp"}');
+    expect(banner).not.toContain("MaterialReceiptSlipActions");
+  });
+
+  it("puts the site-trip saved view in the submit area and scrolls it into view", () => {
+    expect(siteTripPage).toContain('data-testid={`trip-saved-view-${savedTripForSlip.id}`}');
+    expect(siteTripPage).toContain('data-testid="button-log-next-trip"');
+    expect(siteTripPage).toContain("savedTripPanelRef.current?.scrollIntoView");
+    expect(siteTripPage).not.toContain("trip-saved-panel-");
   });
 });

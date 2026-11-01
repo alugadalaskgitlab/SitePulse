@@ -8,16 +8,18 @@ import type { MaterialReceiptSlipCompany, MaterialReceiptSlipData } from "@/lib/
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export function MaterialReceiptSlipActions({
-  record, company, logoFile, mode = "success",
+  record, company, logoFile, mode = "success", sendLabel = "Send on WhatsApp",
 }: {
   record: MaterialReceiptSlipData;
   company: MaterialReceiptSlipCompany;
   logoFile?: string | null;
   mode?: "success" | "row";
+  sendLabel?: string;
 }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [loadingAction, setLoadingAction] = useState<"view" | "send" | null>(null);
+  const [hasShared, setHasShared] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   useEffect(() => () => {
     if (pdfUrl) URL.revokeObjectURL(pdfUrl);
@@ -82,10 +84,12 @@ export function MaterialReceiptSlipActions({
         }
         if (sharedByFile) {
           await markShared();
+          setHasShared(true);
         } else {
           download(blob, filename);
           window.open(`https://wa.me/?text=${encodeURIComponent(caption)}`, "_blank", "noopener,noreferrer");
           await markShared();
+          setHasShared(true);
           toast({ title: "PDF downloaded — attach it in WhatsApp." });
         }
       }
@@ -133,21 +137,41 @@ export function MaterialReceiptSlipActions({
   }
 
   return <>
-    <div className="mt-3 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-      <Button
+    <div className="mt-2 flex items-center gap-3 flex-wrap" data-testid={`receipt-slip-actions-${record.kind}-${record.id}`}>
+      {hasShared ? (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">✓ Sent</span>
+          <button
+            type="button"
+            className="text-xs text-primary underline underline-offset-4"
+            onClick={() => void run("send")}
+            disabled={loadingAction !== null}
+            data-testid={`button-receipt-send-again-${record.kind}-${record.id}`}
+          >
+            {loadingAction === "send" ? "Sending…" : "Send again"}
+          </button>
+        </div>
+      ) : (
+        <Button
+          type="button"
+          onClick={() => void run("send")}
+          disabled={loadingAction !== null}
+          data-testid={`button-receipt-send-${record.kind}-${record.id}`}
+        >
+          {loadingAction === "send" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageCircle className="mr-2 h-4 w-4" />}
+          {sendLabel}
+        </Button>
+      )}
+      <button
         type="button"
-        className="w-full sm:flex-1"
-        onClick={() => void run("send")}
+        className="inline-flex items-center text-sm text-primary underline underline-offset-4"
+        onClick={() => void run("view")}
         disabled={loadingAction !== null}
-        data-testid={`button-receipt-send-${record.kind}-${record.id}`}
+        data-testid={`button-receipt-view-${record.kind}-${record.id}`}
       >
-        {loadingAction === "send" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageCircle className="mr-2 h-4 w-4" />}
-        Send receipt on WhatsApp
-      </Button>
-      <Button type="button" size="sm" variant="ghost" className="self-center text-primary" onClick={() => void run("view")} disabled={loadingAction !== null} data-testid={`button-receipt-view-${record.kind}-${record.id}`}>
         {loadingAction === "view" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Eye className="mr-1 h-3.5 w-3.5" />}
-        View
-      </Button>
+        View receipt
+      </button>
     </div>
     {open && <Dialog open={open} onOpenChange={(nextOpen) => {
       setOpen(nextOpen);
@@ -160,7 +184,9 @@ export function MaterialReceiptSlipActions({
         <DialogHeader><DialogTitle>Receipt PDF</DialogTitle></DialogHeader>
         {pdfUrl && <iframe src={pdfUrl} title="Material receipt PDF" className="min-h-0 flex-1 rounded border" />}
         <DialogFooter>
-          <Button type="button" onClick={() => void run("send")} disabled={loadingAction !== null}>Send on WhatsApp</Button>
+          <Button type="button" onClick={() => void run("send")} disabled={loadingAction !== null}>
+            {hasShared ? "Send again" : sendLabel}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>}

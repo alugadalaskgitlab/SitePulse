@@ -50,11 +50,24 @@ afterEach(() => {
 });
 
 describe("receipt slip actions", () => {
-  it("shows one primary WhatsApp action and View, without a Save PDF button", () => {
+  it("shows a standard-size WhatsApp action and a View receipt link, without Save PDF", () => {
     render(<MaterialReceiptSlipActions record={record} company={company} />);
-    expect(screen.getByRole("button", { name: /Send receipt on WhatsApp/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "View" })).toBeTruthy();
+    const sendButton = screen.getByRole("button", { name: "Send on WhatsApp" });
+    expect(sendButton).toBeTruthy();
+    expect(sendButton.className).not.toContain("w-full");
+    expect(screen.getByRole("button", { name: "View receipt" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Save PDF/i })).toBeNull();
+  });
+
+  it("uses the revised-receipt label when supplied by the edit flow", () => {
+    render(
+      <MaterialReceiptSlipActions
+        record={record}
+        company={company}
+        sendLabel="Send revised on WhatsApp"
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Send revised on WhatsApp" })).toBeTruthy();
   });
 
   it("renders the expected list statuses and hides pre-rollout records", () => {
@@ -102,7 +115,7 @@ describe("receipt slip actions", () => {
     Object.defineProperty(navigator, "canShare", { configurable: true, value: () => true });
     render(<MaterialReceiptSlipActions record={record} company={company} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Send receipt on WhatsApp/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Send on WhatsApp" }));
     await waitFor(() => expect(share).toHaveBeenCalled());
     expect(apiRequestMock).not.toHaveBeenCalled();
   });
@@ -115,9 +128,14 @@ describe("receipt slip actions", () => {
     apiRequestMock.mockResolvedValue({ ok: true });
     render(<MaterialReceiptSlipActions record={record} company={company} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Send receipt on WhatsApp/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Send on WhatsApp" }));
     await waitFor(() => expect(apiRequestMock).toHaveBeenCalledWith("POST", "/api/material-receipts/64/slip-shared"));
     expect(invalidateMock).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.getByText("✓ Sent")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Send again" })).toBeTruthy();
+    });
+    expect(screen.queryByRole("button", { name: "Send on WhatsApp" })).toBeNull();
   });
 
   it("downloads and opens WhatsApp when file sharing is unavailable", async () => {
@@ -130,7 +148,7 @@ describe("receipt slip actions", () => {
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
     render(<MaterialReceiptSlipActions record={record} company={company} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Send receipt on WhatsApp/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Send on WhatsApp" }));
     await waitFor(() => expect(apiRequestMock).toHaveBeenCalled());
     expect(open).toHaveBeenCalledWith("https://wa.me/?text=Receipt%20caption", "_blank", "noopener,noreferrer");
     expect(toastMock).toHaveBeenCalledWith({ title: "PDF downloaded — attach it in WhatsApp." });
@@ -141,7 +159,7 @@ describe("receipt slip actions", () => {
     Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:test") });
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
     render(<MaterialReceiptSlipActions record={record} company={company} />);
-    fireEvent.click(screen.getByRole("button", { name: "View" }));
+    fireEvent.click(screen.getByRole("button", { name: "View receipt" }));
 
     expect(await screen.findByRole("dialog")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Send on WhatsApp" })).toBeTruthy();

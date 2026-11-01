@@ -558,3 +558,47 @@ describe("B1/B2 role list and filter scope", () => {
     expect(JSON.stringify(rows)).toBe(before);
   });
 });
+
+describe("saved site-trip receipt view", () => {
+  it("shows receipt actions inline, scrolls the saved view into sight, and restores the form for the next trip", async () => {
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+
+    try {
+      renderPage();
+      await ready();
+      fillBasic();
+      harness.request.mockImplementationOnce(async (_method, _url, payload) => ({
+        json: async () => ({ ...payload, id: 101, slipSendWindowOpen: true }),
+      }));
+      await submit();
+
+      expect(await screen.findByTestId("button-log-next-trip")).toBeInTheDocument();
+      expect(screen.getByTestId("trip-saved-view-101")).toBeInTheDocument();
+      expect(screen.getByText("✓ Trip saved · Trip #101")).toBeInTheDocument();
+      expect(screen.getByText(/Soil · 14/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Send on WhatsApp" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "View receipt" })).toBeInTheDocument();
+      expect(screen.queryByTestId("trip-saved-panel-101")).not.toBeInTheDocument();
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "nearest" });
+
+      fireEvent.click(screen.getByTestId("button-log-next-trip"));
+      expect(await screen.findByTestId("button-submit-trip")).toBeInTheDocument();
+      expect(screen.queryByTestId("trip-saved-view-101")).not.toBeInTheDocument();
+      expect((screen.getByTestId("input-trip-quantity") as HTMLInputElement).value).toBe("");
+    } finally {
+      if (originalScrollIntoView) {
+        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+          configurable: true,
+          value: originalScrollIntoView,
+        });
+      } else {
+        delete (HTMLElement.prototype as any).scrollIntoView;
+      }
+    }
+  });
+});
