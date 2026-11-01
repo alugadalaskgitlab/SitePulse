@@ -147,6 +147,7 @@ describe("VB-15 vendor-bill activity mirror suppression", () => {
       if (billType === "all") fx.dbRows.splice(1, 0, []); // role-aware trip query after aliases
       const equipment = fx.dbRows[billType === "all" ? 2 : 1];
       fx.dbRows.splice(1, 0, [], equipment, [], []); // selected vendor, owner equipment, vendor identities, audits
+      if (billType === "all") fx.dbRows.splice(5, 0, []); // strict HLC-party lookup before the receipt-linked trip query
       const storage = new DatabaseStorage();
       const items = await storage.getVendorBillAutoItems(
         "Mirror Vendor",

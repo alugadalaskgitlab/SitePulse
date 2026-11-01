@@ -993,11 +993,20 @@ export default function VendorBills() {
     ? `/api/vendor-bills/auto-items?vendorName=${encodeURIComponent(vendorName)}&billType=${encodeURIComponent(billType)}&periodFrom=${encodeURIComponent(periodFrom)}&periodTo=${encodeURIComponent(periodTo)}${!selectedSiteId || selectedSiteId === "all" ? "" : `&siteId=${encodeURIComponent(selectedSiteId)}`}`
     : null;
 
-  const { data: autoItems, isFetching: autoItemsLoading } = useQuery<any[]>({
+  const { data: autoItemsResult, isFetching: autoItemsLoading } = useQuery<{ items: any[]; hlcPartyMissing: boolean }>({
     queryKey: ["/api/vendor-bills/auto-items", vendorName, billType, periodFrom, periodTo, selectedSiteId],
-    queryFn: () => autoItemsUrl ? fetch(autoItemsUrl).then(r => r.json()) : Promise.resolve([]),
+    queryFn: async () => {
+      if (!autoItemsUrl) return { items: [], hlcPartyMissing: false };
+      const response = await fetch(autoItemsUrl, { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load vendor bill activities.");
+      return {
+        items: await response.json(),
+        hlcPartyMissing: response.headers.get("X-HLC-Party-Not-Found") === "true",
+      };
+    },
     enabled: !!autoItemsUrl,
   });
+  const autoItems = autoItemsResult?.items ?? [];
   const mappedAutoItems = useMemo(() => (autoItems || []).map(mapAutoBillItemWithEvidence), [autoItems]);
   const billableAutoItems = useMemo(() => billableTripCandidates(mappedAutoItems), [mappedAutoItems]);
   const unconfirmedTripOffers = useMemo(() => mappedAutoItems.filter(isUnconfirmedTrip), [mappedAutoItems]);
@@ -4025,6 +4034,11 @@ export default function VendorBills() {
                     : `Transport dispatches for ${vendorName} (${formatDate(periodFrom)} to ${formatDate(periodTo)}) from truck dispatch records.`}
                 </span>
                   {billType !== "equipment" && <span className="mt-1 block text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">Other billable activities for this vendor/period are shown here.</span>}
+                  {autoItemsResult?.hlcPartyMissing && (billType === "material" || billType === "transport" || billType === "all") && (
+                    <p role="alert" className="mt-2 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs font-medium text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200" data-testid="warning-hlc-party-not-found">
+                      HLC party not found — receipts not offered.
+                    </p>
+                  )}
                   <div className="mt-3 space-y-2">
                     <UnconfirmedTripOffers
                       items={unconfirmedTripOffers}

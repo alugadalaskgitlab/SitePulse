@@ -85,6 +85,8 @@ describePostgres("vehicle supplier association PostgreSQL transactions", () => {
         material_source_type text,
         material_source_label text,
         vehicle_number text,
+        driver_name text,
+        entered_by_user_id integer,
         transport_type text,
         internal_equipment_id integer,
         quantity real,

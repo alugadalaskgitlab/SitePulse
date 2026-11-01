@@ -23,6 +23,8 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { EquipmentMasterType, SiteMaterialTrip, Site } from "@shared/schema";
 import { useFeatureFlags } from "@/lib/featureFlags";
+import { MaterialReceiptSlipActions } from "@/components/MaterialReceiptSlipActions";
+import { formatEnteredByDisplay, type MaterialReceiptSlipData } from "@/lib/materialReceiptSlipTypes";
 import { useUpload } from "@/hooks/use-upload";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
 import { FreeTextSuggestionInput } from "@/components/FreeTextSuggestionInput";
@@ -92,6 +94,7 @@ export default function SiteMaterialTrips() {
   const [editingRoleTrip, setEditingRoleTrip] = useState<SiteMaterialTrip | null>(null);
   const [bulkMaterialSourceSupplier, setBulkMaterialSourceSupplier] = useState("");
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [savedTripForSlip, setSavedTripForSlip] = useState<MaterialReceiptSlipData | null>(null);
 
   const [newTrip, setNewTrip] = useState({
     date: today,
@@ -107,6 +110,7 @@ export default function SiteMaterialTrips() {
     materialSourceType: "vendor" as "vendor" | "own_source" | null,
     materialSourceLabel: "" as string | null,
     vehicleNumber: "",
+    driverName: "",
     transportType: "agency_vendor",
     internalEquipmentId: null as number | null,
     equipmentId: null as number | null,
@@ -329,12 +333,34 @@ export default function SiteMaterialTrips() {
           typeof q.queryKey[0] === "string" && q.queryKey[0].startsWith("/api/purchase-indents")
         });
       }
+      setSavedTripForSlip({
+        kind: "site",
+        id: trip.id,
+        date: trip.date,
+        time: trip.time,
+        materialName: trip.material,
+        quantity: trip.quantity,
+        uom: trip.uom,
+        site: trip.site,
+        location: trip.location || trip.yardLabel,
+        vehicleNumber: trip.vehicleNumber,
+        driverName: trip.driverName,
+        supplier: trip.supplier,
+        materialSourceType: trip.materialSourceType,
+        materialSourceSupplier: trip.materialSourceSupplier,
+        materialSourceLabel: trip.materialSourceLabel,
+        receiptNumber: trip.receiptNumber,
+        enteredBy: trip.enteredBy,
+        createdAt: trip.createdAt,
+        latestEditAt: trip.latestEditAt,
+      });
       toast({ title: "Trip Logged", description: "Material trip has been recorded successfully." });
       if (isPILinked) {
         // In PI-linked mode reset material/qty but keep site + PI context for next truckload
         setNewTrip(prev => ({
           ...prev,
           vehicleNumber: "",
+          driverName: "",
           equipmentId: null,
           vehicleManual: false,
             internalEquipmentId: null,
@@ -350,6 +376,7 @@ export default function SiteMaterialTrips() {
           ...prev,
           time: format(new Date(), "HH:mm"),
           vehicleNumber: "",
+          driverName: "",
           equipmentId: null,
           internalEquipmentId: null,
           vehicleManual: false,
@@ -372,6 +399,7 @@ export default function SiteMaterialTrips() {
            materialSourceType: "vendor",
            materialSourceLabel: "",
           vehicleNumber: "",
+          driverName: "",
           equipmentId: null,
           vehicleManual: false,
              transportType: "agency_vendor",
@@ -671,6 +699,15 @@ export default function SiteMaterialTrips() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div>
+                  <Label className="text-sm">Driver (optional)</Label>
+                  <Input
+                    placeholder="Driver name"
+                    value={newTrip.driverName}
+                    onChange={(e) => setNewTrip({ ...newTrip, driverName: e.target.value })}
+                    data-testid="input-trip-driver-name"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -870,6 +907,18 @@ export default function SiteMaterialTrips() {
           </CardContent>
         </Card>
 
+        {savedTripForSlip && (
+          <Card data-testid={`trip-saved-panel-${savedTripForSlip.id}`}>
+            <CardContent className="p-4">
+              <p className="font-semibold">Receipt saved</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Trip {savedTripForSlip.id}{savedTripForSlip.receiptNumber ? ` · Challan ${savedTripForSlip.receiptNumber}` : ""}
+              </p>
+              <MaterialReceiptSlipActions record={savedTripForSlip} companyName={companyName} logoFile={logoFile} />
+            </CardContent>
+          </Card>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {Object.entries(tripsByMaterial).map(([material, data]) => (
             <Card key={material} className="bg-primary/5">
@@ -1056,7 +1105,13 @@ export default function SiteMaterialTrips() {
                         </> : trip.materialSourceSupplier?.trim() || '-'}
                           <p className="mt-1 text-xs text-muted-foreground">Receipt/Challan No.: <span className="break-words" data-testid={`trip-receipt-${trip.id}`}>{trip.receiptNumber?.trim() || "-"}</span></p>
                         </td>
-                        <td className="p-2">{trip.vehicleNumber || '-'}</td>
+                        <td className="p-2">
+                          {trip.vehicleNumber || '-'}
+                          {trip.driverName && <p className="text-xs text-muted-foreground">Driver: {trip.driverName}</p>}
+                          <p className="mt-1 text-xs text-muted-foreground" data-testid={`text-trip-entered-by-${trip.id}`}>
+                            {formatEnteredByDisplay((trip as any).enteredByUserName, (trip as any).createdAt)}
+                          </p>
+                        </td>
                         <td className="p-2 text-right font-mono">{formatTripQuantity(trip, false)}</td>
                         <td className="p-2">{trip.uom}</td>
                         <td className="p-2">{trip.location || '-'}</td>
@@ -1071,6 +1126,32 @@ export default function SiteMaterialTrips() {
                         </td>
                         <td className="p-2 text-center">
                           <div className="flex items-center justify-center gap-1">
+                            <MaterialReceiptSlipActions
+                              compact
+                              record={{
+                                kind: "site",
+                                id: trip.id,
+                                date: trip.date,
+                                time: trip.time,
+                                materialName: trip.material,
+                                quantity: trip.quantity,
+                                uom: trip.uom,
+                                site: trip.site,
+                                location: trip.location || trip.yardLabel,
+                                vehicleNumber: trip.vehicleNumber,
+                                driverName: trip.driverName,
+                                supplier: trip.supplier,
+                                materialSourceType: trip.materialSourceType,
+                                materialSourceSupplier: trip.materialSourceSupplier,
+                                materialSourceLabel: trip.materialSourceLabel,
+                                receiptNumber: trip.receiptNumber,
+                                enteredBy: trip.enteredBy,
+                                createdAt: (trip as any).createdAt,
+                                latestEditAt: (trip as any).latestEditAt,
+                              }}
+                              companyName={companyName}
+                              logoFile={logoFile}
+                            />
                             <Button variant="outline" size="sm" onClick={() => setEditingRoleTrip(trip)} data-testid={`button-edit-trip-roles-${trip.id}`}>{canEdit ? "Edit" : "Details"}</Button>
                             <AuditHistoryButton
                               variant="ghost"

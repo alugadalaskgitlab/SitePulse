@@ -35,7 +35,7 @@ vi.mock("../server/storage", () => {
 });
 vi.mock("../server/push", () => ({ sendPushToAll: vi.fn(), sendPushToAudience: vi.fn(), sendPushToSection: vi.fn().mockResolvedValue(undefined), sendTestPush: vi.fn() }));
 vi.mock("../server/auth", () => ({
-  requireAuth: (req: Request, _res: Response, next: NextFunction) => { (req as any).authUser = { id: 7, isAdmin: false }; next(); },
+  requireAuth: (req: Request, _res: Response, next: NextFunction) => { (req as any).authUser = { id: 7, fullName: "Test User", isAdmin: false }; next(); },
   isPublicApiPath: () => false, isOptionalAuthPath: () => false, optionalAuth: (_req: Request, _res: Response, next: NextFunction) => next(),
   lookupSessionFromCookie: vi.fn(), loadUserPermissionsMatrix: vi.fn(),
 }));
@@ -63,7 +63,7 @@ beforeEach(() => {
   spies.getProject.mockResolvedValue({ id: 1, siteId: 1 });
   spies.getItem.mockResolvedValue({ id: 10, boqProjectId: 1 });
   spies.getArrangementsForItem.mockResolvedValue([]);
-  spies.createTrip.mockImplementation(async (value) => ({ id: 99, ...value }));
+  spies.createTrip.mockImplementation(async (value) => ({ id: 99, ...value, createdAt: new Date("2026-08-30T12:00:00.000Z") }));
   spies.updateTrip.mockImplementation(async (_id, value) => ({ id: 99, ...value }));
   spies.bulkConfirmRoles.mockResolvedValue({ updatedCount: 2, role: "different_parties" });
   spies.getTrip.mockResolvedValue({ id: 99, ...body, programmeBarId: 3, earthworkArrangementId: 4 });
@@ -119,18 +119,28 @@ describe("DPR-02 site-material-trip route enforcement", () => {
     expect(spies.updateTrip).not.toHaveBeenCalled();
   });
   it("allows a valid same-site create", async () => {
-    const res = await request(app).post("/api/site-material-trips").send(body);
+    const res = await request(app).post("/api/site-material-trips").send({
+      ...body, enteredByUserId: 999, driverName: " Ravi ",
+    });
     expect(res.status).toBe(201);
     expect(spies.createTrip).toHaveBeenCalledOnce();
+    expect(spies.createTrip.mock.calls[0][0]).toMatchObject({
+      enteredByUserId: 7,
+      driverName: "Ravi",
+    });
+    expect(res.body.enteredByUserName).toBe("Test User");
+    expect(res.body.latestEditAt).toBeNull();
   });
   it("allows an atomic same-site BOQ reclassification that clears stale bar and arrangement", async () => {
     spies.getItem.mockResolvedValue({ id: 11, boqProjectId: 1 });
     const res = await request(app).patch("/api/site-material-trips/99").send({
       boqProjectId: 1, boqItemId: 11, programmeBarId: null, earthworkArrangementId: null,
+      enteredByUserId: 999,
     });
     expect(res.status).toBe(200);
     expect(spies.updateTrip).toHaveBeenCalledWith(99, expect.objectContaining({
       boqProjectId: 1, boqItemId: 11, programmeBarId: null, earthworkArrangementId: null,
     }), { userId: 7, userName: "tester", userRole: "manager" }, undefined);
+    expect(spies.updateTrip.mock.calls[0][1]).not.toHaveProperty("enteredByUserId");
   });
 });

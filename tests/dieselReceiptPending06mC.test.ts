@@ -35,7 +35,7 @@ vi.mock("../server/push", () => ({
 vi.mock("../server/auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../server/auth")>();
   const inject = (req: any, _res: any, next: any) => {
-    req.authUser = { id: 9, username: "test-user", isAdmin: fx.auth.isAdmin, isOwner: fx.auth.isOwner, isActive: true };
+    req.authUser = { id: 9, username: "test-user", fullName: "Test User", isAdmin: fx.auth.isAdmin, isOwner: fx.auth.isOwner, isActive: true };
     req.authPermissions = fx.auth.permissions;
     req.session = { role: "admin", username: "test-user", userId: 9 };
     next();
@@ -289,6 +289,20 @@ describe("06M-C linked material receipt", () => {
     expect(res.body.id).toBe(501);
   });
 
+  it("stamps the authenticated creator and normalizes the driver on receipt create", async () => {
+    const { storage } = await import("../server/storage");
+    const res = await request(app).post("/api/plant-module/material-receipts").send({
+      date: "2026-08-15", materialId: 30, quantity: 100, uom: "Ton",
+      partyId: null, isPlantCommon: 1, enteredByUserId: 999, driverName: " Ravi ",
+    });
+    expect(res.status).toBe(201);
+    expect((storage.createMaterialReceipt as any).mock.calls.at(-1)[0]).toMatchObject({
+      enteredByUserId: 9,
+      driverName: "Ravi",
+    });
+    expect(res.body.enteredByUserName).toBe("Test User");
+  });
+
   it("D/T/22: creating a LINKED receipt notifies partial progress with derived figures (stock-IN via existing receipt path)", async () => {
     pushCalls.length = 0;
     fx.linkedReceipts = [];
@@ -347,11 +361,12 @@ describe("06M-C linked material receipt", () => {
     const { storage } = await import("../server/storage");
     fx.linkedReceipts = [R(501, 100)];
     const res = await request(app).put("/api/plant-module/material-receipts/501").send({
-      quantity: 570, linkedDieselRequirementId: 12345,
+      quantity: 570, linkedDieselRequirementId: 12345, enteredByUserId: 999,
     });
     expect(res.status).toBe(200);
     const passed = (storage as any).updateMaterialReceipt.mock.calls.at(-1)[1];
     expect("linkedDieselRequirementId" in passed).toBe(false);
+    expect(passed).not.toHaveProperty("enteredByUserId");
     expect(passed.quantity).toBe(570);
   });
 

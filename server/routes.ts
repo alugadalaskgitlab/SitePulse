@@ -133,7 +133,7 @@ import { normalizedEquipmentTypeName, plannedHoursInDateRange } from "./dprActua
 import { aggregateGstBreakdown, computeBillGstByCategory, type GstCategory } from "@shared/vendor-bill-gst";
 import { requireAuth, isPublicApiPath, isOptionalAuthPath, optionalAuth, lookupSessionFromCookie, loadUserPermissionsMatrix } from "./auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
-import { insertAttachmentSchema, attachmentModuleTypes, boqProjects as boqProjectsTable, dprs as dprsTable, progressEntries as progressEntriesTable, sitePurchases as auditSitePurchases, materialReceipts as auditMaterialReceipts } from "@shared/schema";
+import { insertAttachmentSchema, attachmentModuleTypes, boqProjects as boqProjectsTable, dprs as dprsTable, progressEntries as progressEntriesTable, sitePurchases as auditSitePurchases, materialReceipts as auditMaterialReceipts, auditLogs as auditLogsTable } from "@shared/schema";
 import { MAX_ACTIVITY_PHOTOS } from "@shared/dprPhotos";
 import { isBarSide, isDprSideCompatible, barSideLabel, parseChainageKm, areSidesDistinctCorridors } from "@shared/barSide";
 import { checkProgrammeLinkRow, deriveChainageReviewStatus, barSideCoverage, normalizeDprSideKey } from "@shared/dprProgrammeLink";
@@ -393,6 +393,33 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  async function withReceiptDisplayMetadata<T extends { id: number; enteredByUserId?: number | null }>(
+    module: "material_receipts" | "site_material_trips",
+    rows: T[],
+  ): Promise<(T & { enteredByUserName: string | null; latestEditAt: Date | null })[]> {
+    if (!rows.length) return [];
+    const ids = rows.map(row => row.id);
+    const userIds = Array.from(new Set(rows.map(row => row.enteredByUserId).filter((id): id is number => id != null)));
+    const userRows = userIds.length
+      ? await db.select({ id: users.id, fullName: users.fullName }).from(users).where(drizzleInArray(users.id, userIds))
+      : [];
+    const editRows = await db.select({
+      transactionId: auditLogsTable.transactionId,
+      latestEditAt: sql<Date | null>`max(${auditLogsTable.createdAt})`,
+    }).from(auditLogsTable).where(and(
+      eq(auditLogsTable.module, module),
+      eq(auditLogsTable.action, "edit"),
+      drizzleInArray(auditLogsTable.transactionId, ids),
+    )).groupBy(auditLogsTable.transactionId);
+    const names = new Map(userRows.map(user => [user.id, user.fullName]));
+    const edits = new Map(editRows.map(edit => [edit.transactionId, edit.latestEditAt]));
+    return rows.map(row => ({
+      ...row,
+      enteredByUserName: row.enteredByUserId == null ? null : names.get(row.enteredByUserId) ?? null,
+      latestEditAt: edits.get(row.id) ?? null,
+    }));
+  }
+
   function assertDieselOrStoresView(req: any, res: any, allowDedicatedView = false): boolean {
     if (!req.authUser) {
       res.status(401).json({ error: "not_authenticated" });
@@ -1031,7 +1058,7 @@ export async function registerRoutes(
         ...(permittedSiteNames !== null && !req.query.indentItemId && !req.query.indentId ? { permittedSiteNames } : {}),
       };
       const trips = await storage.getSiteMaterialTrips(filters);
-      res.json(trips);
+      res.json(await withReceiptDisplayMetadata("site_material_trips", trips));
     } catch (err) {
       console.error("Error fetching site material trips:", err);
       res.status(500).json({ message: "Failed to fetch site material trips" });
@@ -1324,6 +1351,8 @@ export async function registerRoutes(
       const masterSelection = req.body.masterSelection === undefined ? undefined :
         { ...tripMasterSelectionSchema.parse(req.body.masterSelection), actor: req.authUser! };
       const input = (masterSelection ? insertSiteMaterialTripSchema.extend(tripMasterPartyFields) : insertSiteMaterialTripSchema).parse(req.body);
+      input.enteredByUserId = req.authUser!.id;
+      input.driverName = input.driverName?.trim() || null;
       if (input.materialSourceType === "own_source") {
         if (!input.materialSourceLabel?.trim()) return res.status(400).json({ message: "Enter the borrow area / source description." });
         input.materialSourceSupplier = null;
@@ -1350,7 +1379,11 @@ export async function registerRoutes(
       }
       const trip = await storage.createSiteMaterialTrip(input, hireLink, masterSelection);
       sendPushToSection("site_materials", "Site Material Trip Added", `${input.material || 'Material'} - ${input.site || ''}`, "/site-reports").catch(() => {});
-      res.status(201).json(trip);
+      res.status(201).json({
+        ...trip,
+        enteredByUserName: req.authUser!.fullName ?? null,
+        latestEditAt: null,
+      });
     } catch (err) {
       console.error("Error creating site material trip:", err);
       res.status(err instanceof z.ZodError ? 400 : (err as any)?.status || 500).json({ message: (err as any)?.status ? (err as any).message : "Failed to create site material trip" });
@@ -1366,6 +1399,8 @@ export async function registerRoutes(
         { ...tripMasterSelectionSchema.parse(req.body.masterSelection), actor: req.authUser! };
       const input: Partial<z.infer<typeof insertSiteMaterialTripSchema>> & { supplierVendorId?: number | null; materialSourceVendorId?: number | null } =
         (masterSelection ? insertSiteMaterialTripSchema.extend(tripMasterPartyFields) : insertSiteMaterialTripSchema).partial().parse(req.body);
+      delete input.enteredByUserId;
+      if (input.driverName !== undefined) input.driverName = input.driverName?.trim() || null;
       const existing = await storage.getSiteMaterialTripById(id);
       if (!existing) return res.status(404).json({ message: "Site material trip not found" });
       if (!await assertTripSiteAccess(req, res, existing.site)) return;
@@ -1414,7 +1449,7 @@ export async function registerRoutes(
       }, masterSelection);
       if (!trip) return res.status(404).json({ message: "Site material trip not found" });
       sendPushToSection("site_materials", "Site Material Trip Updated", `Trip #${id} updated`, "/site-reports").catch(() => {});
-      res.json(trip);
+      res.json((await withReceiptDisplayMetadata("site_material_trips", [trip]))[0]);
     } catch (err) {
       console.error("Error updating site material trip:", err);
       res.status(err instanceof z.ZodError ? 400 : (err as any)?.status || 500).json({ message: (err as any)?.status ? (err as any).message : "Failed to update site material trip" });
@@ -5172,7 +5207,7 @@ export async function registerRoutes(
         dateTo: req.query.dateTo as string | undefined,
       };
       const receipts = await storage.getMaterialReceipts(filters);
-      res.json(receipts);
+      res.json(await withReceiptDisplayMetadata("material_receipts", receipts));
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch material receipts" });
     }
@@ -5186,6 +5221,8 @@ export async function registerRoutes(
         body.isPlantCommon = body.isPlantCommon ? 1 : 0;
       }
       const input = insertMaterialReceiptSchema.parse(body);
+      input.enteredByUserId = req.authUser!.id;
+      input.driverName = input.driverName?.trim() || null;
       const dieselControlError = await validateDieselReceiptControl(req, input);
       if (dieselControlError) return res.status(dieselControlError.status).json(dieselControlError.body);
       // 06M-C: a purchase↔receipt link must point at a real PURCHASED Daily
@@ -5268,7 +5305,11 @@ export async function registerRoutes(
         }
       }
 
-      res.status(201).json(receipt);
+      res.status(201).json({
+        ...receipt,
+        enteredByUserName: req.authUser!.fullName,
+        latestEditAt: null,
+      });
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid receipt data", errors: err.errors });
       if (handleDieselReceiptRemainingError(err, res)) return;
@@ -5330,6 +5371,8 @@ export async function registerRoutes(
         body.isPlantCommon = body.isPlantCommon ? 1 : 0;
       }
       const input = insertMaterialReceiptSchema.partial().parse(body);
+      delete input.enteredByUserId;
+      if (input.driverName !== undefined) input.driverName = input.driverName?.trim() || null;
       const dieselControlError = await validateDieselReceiptControl(req, input, existing);
       if (dieselControlError) return res.status(dieselControlError.status).json(dieselControlError.body);
       // A receipt already linked to a diesel purchase remains constrained during
@@ -5378,7 +5421,7 @@ export async function registerRoutes(
         newValues: updated,
       });
       sendPushToSection("plant_materials", "Material Receipt Updated", `Receipt #${req.params.id} updated`, "/plant").catch(() => {});
-      res.json(updated);
+      res.json((await withReceiptDisplayMetadata("material_receipts", [updated]))[0]);
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid receipt data", errors: err.errors });
       if (handleDieselReceiptRemainingError(err, res)) return;
@@ -10166,7 +10209,7 @@ export async function registerRoutes(
       const actionBy = currentUserName(req);
       const { items } = req.body;
       if (!items?.length) return res.status(400).json({ message: "items array is required" });
-      const indent = await storage.recordMaterialIndentReceipt(id, items, actionBy);
+      const indent = await storage.recordMaterialIndentReceipt(id, items, actionBy, req.authUser?.id ?? null);
       if (!indent) return res.status(404).json({ message: "Indent not found" });
       res.json(indent);
     } catch (err) {
@@ -12747,13 +12790,15 @@ export async function registerRoutes(
       }
       const selectedSite = await resolveVendorBillSite(req, res, req.query.siteId);
       if (!selectedSite) return;
-      let items = await storage.getVendorBillAutoItems(vendorName, billType, periodFrom, periodTo, entryTypeFilter, selectedSite.siteName);
+      const hlcPartyId = await storage.getHlcPartyId();
+      let items = await storage.getVendorBillAutoItems(vendorName, billType, periodFrom, periodTo, entryTypeFilter, selectedSite.siteName, hlcPartyId);
       if (!selectedSite.siteName) {
         const permitted = await getPermittedSiteNames(req);
         if (permitted !== null) {
           items = items.filter(item => permitted.some(site => vendorBillItemMatchesSite(item.siteName, site)));
         }
       }
+      if (hlcPartyId == null) res.setHeader("X-HLC-Party-Not-Found", "true");
       res.json(await attachVendorBillEquipmentEvidence(items, await getPermittedSiteNames(req)));
     } catch (err) {
       console.error("Error fetching vendor bill auto items:", err);

@@ -8,6 +8,7 @@ import { dailyHireBilledDays } from "./dailyHireBilledDays";
 import { hasFrozenTripDailyHire, FROZEN_TRIP_DAILY_MESSAGE } from "../shared/vendorBillRecovery";
 import { purchaseOrders } from "../shared/schema";
 import { linkedPiStoreStock } from "../shared/piStoreStock";
+import { resolveHlcParty } from "../shared/hlcParty";
 import { bulkTripConditions } from "./siteMaterialTripFilters";
 import { currentVendorNamesByIds, resolveVendorNameMatch, resolveVendorNameMatchById, vendorNameIdentityCondition } from "./vendorNameResolution";
 import { validatedTransportRateFields } from "../shared/transportRate";
@@ -1539,7 +1540,7 @@ export interface IStorage {
   updateRequirementOrderedQty(requirementId: number, delta: number): Promise<void>;
   updateRequirementInternallyIssued(requirementId: number, delta: number): Promise<void>;
   submitHandover(data: { indentItemId: number; indentId: number; handoverQty: number; acceptedQty: number; rejectedQty: number; handoverDate?: string; receivedBy?: string; storesRemarks?: string; remarks?: string }, actionBy: string): Promise<PiItemTransaction>;
-  recordBulkMaterialReceipt(indentId: number, items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[], actionBy: string): Promise<void>;
+  recordBulkMaterialReceipt(indentId: number, items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[], actionBy: string, actorUserId?: number | null): Promise<void>;
   submitBulkReceiptAsPending(indentId: number, receivingLocation: string, receivingSiteId: number | null, items: { itemId: number; materialId?: number; materialName: string; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; purchaseDate?: string; paymentMode?: string }[], createdByUserId: number, createdBy: string): Promise<void>;
   getPendingPlantReceipts(filters?: { status?: string; receivingLocation?: string; receivingSiteId?: number; indentId?: number }): Promise<PendingPlantReceipt[]>;
   countPendingPlantReceipts(filters?: { status?: string }): Promise<number>;
@@ -1548,7 +1549,7 @@ export interface IStorage {
   createServiceCompletion(data: { indentId: number; indentItemId: number; itemDescription?: string; completionStatus: string; completionDate?: string; qty?: number | null; hours?: number | null; remarks?: string; documentUrl?: string | null; verifiedByUserId: number; verifiedByName: string; createdByUserId: number }): Promise<ServiceCompletion>;
   getServiceCompletions(indentId?: number): Promise<ServiceCompletion[]>;
   placeOrderIndent(id: number, items: { itemId: number; receivingLocation?: string; receivingSiteId?: number; vendor?: string; expectedDelivery?: string; orderedQty?: number; orderedBy?: string }[], actionBy: string, userId?: number): Promise<PurchaseIndentWithItems | undefined>;
-  recordMaterialIndentReceipt(indentId: number, items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; notes?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[], actionBy: string): Promise<PurchaseIndentWithItems | undefined>;
+  recordMaterialIndentReceipt(indentId: number, items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; notes?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[], actionBy: string, actorUserId?: number | null): Promise<PurchaseIndentWithItems | undefined>;
   getPendingIndentsForMaterial(materialId: number): Promise<{ indentId: number; indentNo: string; itemId: number; description: string; approvedQty: number; uom: string; status: string; vendor: string | null; expectedDelivery: string | null; orderedQty: number | null }[]>;
   linkReceiptToIndentItem(itemId: number, receiptId: number, actionBy: string): Promise<PurchaseIndentItem | undefined>;
 
@@ -1618,7 +1619,7 @@ export interface IStorage {
     id: number,
     onBeforeDelete?: (bill: VendorBillWithItems, executor: any) => Promise<void>,
   ): Promise<boolean>;
-  getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null, siteName?: string | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null })[]>;
+  getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null, siteName?: string | null, hlcPartyId?: number | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null })[]>;
   getEquipmentHireVendors(periodFrom: string, periodTo: string): Promise<{
     vendorName: string;
     equipmentCount: number;
@@ -1643,6 +1644,7 @@ export interface IStorage {
   transitionHireStatement(id: number, expectedRevision: number, allowedStatuses: string[], data: Partial<InsertHireStatement>): Promise<HireStatement | undefined>;
   createHireStatementVendorBill(statementId: number, bill: Omit<CreateVendorBillRequest, "items" | "billNo"> & { items: Omit<InsertVendorBillItem, "billId">[] }): Promise<{ statement: HireStatement; bill: VendorBillWithItems; created: boolean }>;
   getVendorNames(): Promise<string[]>;
+  getHlcPartyId(): Promise<number | null>;
   getVendorNamesByIds(ids: number[]): Promise<{ id: number; name: string }[]>;
   getVendorAliases(): Promise<VendorAlias[]>;
   addVendorAlias(canonicalName: string, alias: string): Promise<VendorAlias>;
@@ -2630,6 +2632,11 @@ async function lockBoqItemForRecipeWrite(tx: any, boqItemId: number, manualEdit:
 }
 
 export class DatabaseStorage implements IStorage {
+  async getHlcPartyId(): Promise<number | null> {
+    const partyRows = await db.select({ id: parties.id, name: parties.name }).from(parties).orderBy(parties.id);
+    return resolveHlcParty(partyRows)?.id ?? null;
+  }
+
   /** Acquire sorted item locks before creating an application-owned reference. */
   async _lockPiItemsWithinTx(tx: any, ids: number[], indentId?: number): Promise<PurchaseIndentItem[]> {
     const unique = [...new Set(ids)].sort((a, b) => a - b);
@@ -6198,6 +6205,7 @@ export class DatabaseStorage implements IStorage {
       
       // Uppercase text fields
       const updates = { ...receipt };
+      delete updates.enteredByUserId;
       if (existing.linkedDieselRequirementId != null) {
         delete (updates as any).linkedDieselRequirementId;
       }
@@ -13256,6 +13264,7 @@ export class DatabaseStorage implements IStorage {
         const [updated] = await this._mutatePiDeliverySourceWithinTx(tx, "trip", id, async () => tx.update(siteMaterialTrips)
           .set({
             ...data,
+            enteredByUserId: existing.enteredByUserId,
             ...(data.materialSourceSupplier !== undefined
               ? { materialSourceSupplier: typeof data.materialSourceSupplier === "string" && data.materialSourceSupplier.trim()
                   ? data.materialSourceSupplier
@@ -16219,7 +16228,8 @@ export class DatabaseStorage implements IStorage {
   async recordBulkMaterialReceipt(
     indentId: number,
     items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[],
-    actionBy: string
+    actionBy: string,
+    actorUserId?: number | null
   ): Promise<void> {
     const existing = await this.getPurchaseIndent(indentId);
     if (!existing) throw new Error(`Indent ${indentId} not found`);
@@ -16246,6 +16256,7 @@ export class DatabaseStorage implements IStorage {
         remarks: item.remarks ?? null,
         indentRef: existing.indentNo,
         plantName: "Main Plant",
+        enteredByUserId: actorUserId ?? null,
       } as any);
       // Insert pi_item_transactions record
       await this.insertPiTransaction({
@@ -16390,6 +16401,7 @@ export class DatabaseStorage implements IStorage {
       remarks: ppr.remarks ?? null,
       indentRef: ppr.indentNo ?? undefined,
       plantName: "Main Plant",
+      enteredByUserId: confirmedByUserId || null,
     } as any);
     // Update the most-recent matching pending transaction to bulk_receipt (row-specific to avoid broad updates)
     await db.execute(sql.raw(`
@@ -16699,7 +16711,8 @@ export class DatabaseStorage implements IStorage {
   async recordMaterialIndentReceipt(
     indentId: number,
     items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; notes?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[],
-    actionBy: string
+    actionBy: string,
+    actorUserId?: number | null
   ): Promise<PurchaseIndentWithItems | undefined> {
     const existing = await this.getPurchaseIndent(indentId);
     if (!existing) return undefined;
@@ -16731,6 +16744,7 @@ export class DatabaseStorage implements IStorage {
         notes: item.notes ?? null,
         indentRef: existing.indentNo,
         plantName: "Main Plant",
+        enteredByUserId: actorUserId ?? null,
       } as any);
       // Link PI item to the created receipt and update running totals
       const [existingItem] = await db.select({
@@ -19436,7 +19450,7 @@ export class DatabaseStorage implements IStorage {
     ];
   }
 
-  async getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null, siteName?: string | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null; actualMt?: number | null; physicalQuantity?: number; physicalUnit?: string | null })[]> {
+  async getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null, siteName?: string | null, knownHlcPartyId?: number | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null; actualMt?: number | null; physicalQuantity?: number; physicalUnit?: string | null })[]> {
     const vendorVariants = await this.resolveVendorAliases(vendorName);
     const vendorVariantKeys = new Set(vendorVariants.map(ownerNameKey));
     const selectedIdentities = (await db.select().from(identityVendors)).filter(v =>
@@ -19448,6 +19462,10 @@ export class DatabaseStorage implements IStorage {
     const reviewedIds = ownerEquipment.filter(e => ownerIdentities.get(e.id)?.auditId).map(e => e.id);
     const matchingIds = ownerEquipment.filter(e => ownerIdentities.get(e.id)?.vendor?.id === selectedIdentity).map(e => e.id);
     const bt = billType.toLowerCase();
+    const needsReceiptOwnershipFilter = bt === "material" || bt === "transport" || bt === "all";
+    const hlcPartyId = needsReceiptOwnershipFilter
+      ? knownHlcPartyId === undefined ? await this.getHlcPartyId() : knownHlcPartyId
+      : null;
     const items: (Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null; actualMt?: number | null; physicalQuantity?: number; physicalUnit?: string | null })[] = [];
 
     const entryTypeLabel = (entryType: string | null) => {
@@ -19770,7 +19788,7 @@ export class DatabaseStorage implements IStorage {
         }
       }
 
-      const plantReceipts = await db.select({
+      const plantReceipts = hlcPartyId == null ? [] : await db.select({
         id: materialReceipts.id,
         date: materialReceipts.date,
         materialId: materialReceipts.materialId,
@@ -19787,6 +19805,7 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(parties, eq(parties.id, materialReceipts.partyId))
       .where(and(
         vendorMatchSql(materialReceipts.supplier),
+        or(eq(materialReceipts.partyId, hlcPartyId), isNull(materialReceipts.partyId), eq(materialReceipts.isPlantCommon, 1)),
         gte(materialReceipts.date, periodFrom),
         lte(materialReceipts.date, periodTo),
       ));
@@ -19883,7 +19902,7 @@ export class DatabaseStorage implements IStorage {
 
       // Material receipts where the transporter matches the vendor — allows
       // generating haulage bills for aggregate/material transport contractors.
-      const transportReceipts = await db.select({
+      const transportReceipts = hlcPartyId == null ? [] : await db.select({
         id: materialReceipts.id,
         date: materialReceipts.date,
         materialName: plantMaterials.name,
@@ -19898,6 +19917,7 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(parties, eq(parties.id, materialReceipts.partyId))
       .where(and(
         vendorMatchSql(materialReceipts.transporter),
+        or(eq(materialReceipts.partyId, hlcPartyId), isNull(materialReceipts.partyId), eq(materialReceipts.isPlantCommon, 1)),
         gte(materialReceipts.date, periodFrom),
         lte(materialReceipts.date, periodTo),
       ));
@@ -20043,9 +20063,13 @@ export class DatabaseStorage implements IStorage {
       .where(sql`${equipmentMaster.vendorName} IS NOT NULL AND ${equipmentMaster.vendorName} != ''`);
     for (const r of eqVendors) { if (r.name) names.add(r.name.toUpperCase().trim()); }
 
-    const mrSuppliers = await db.select({ name: materialReceipts.supplier })
+    const hlcPartyId = await this.getHlcPartyId();
+    const mrSuppliers = hlcPartyId == null ? [] : await db.select({ name: materialReceipts.supplier })
       .from(materialReceipts)
-      .where(sql`${materialReceipts.supplier} IS NOT NULL AND ${materialReceipts.supplier} != ''`);
+      .where(and(
+        sql`${materialReceipts.supplier} IS NOT NULL AND ${materialReceipts.supplier} != ''`,
+        or(eq(materialReceipts.partyId, hlcPartyId), isNull(materialReceipts.partyId), eq(materialReceipts.isPlantCommon, 1)),
+      ));
     for (const r of mrSuppliers) { if (r.name) names.add(r.name.toUpperCase().trim()); }
 
     const mlSuppliers = await db.select({ name: materialLogs.supplier })
@@ -22822,12 +22846,14 @@ export class DatabaseStorage implements IStorage {
         if (row.supplier) addRecord(row.supplier, "material");
       }
 
-      const plantReceipts = await db.select({
+      const hlcPartyId = await this.getHlcPartyId();
+      const plantReceipts = hlcPartyId == null ? [] : await db.select({
         supplier: materialReceipts.supplier,
       })
       .from(materialReceipts)
       .where(and(
         sql`${materialReceipts.supplier} IS NOT NULL AND ${materialReceipts.supplier} != ''`,
+        or(eq(materialReceipts.partyId, hlcPartyId), isNull(materialReceipts.partyId), eq(materialReceipts.isPlantCommon, 1)),
         gte(materialReceipts.date, periodFrom),
         lte(materialReceipts.date, periodTo),
       ));
@@ -23576,13 +23602,17 @@ export class DatabaseStorage implements IStorage {
       addMaterial(row.material || "MATERIAL", row.uom);
     }
 
-    const plantReceipts = await db.selectDistinct({
+    const hlcPartyId = await this.getHlcPartyId();
+    const plantReceipts = hlcPartyId == null ? [] : await db.selectDistinct({
       materialName: plantMaterials.name,
       uom: materialReceipts.uom,
     })
     .from(materialReceipts)
     .innerJoin(plantMaterials, eq(plantMaterials.id, materialReceipts.materialId))
-    .where(vendorMatchSql(materialReceipts.supplier));
+    .where(and(
+      vendorMatchSql(materialReceipts.supplier),
+      or(eq(materialReceipts.partyId, hlcPartyId), isNull(materialReceipts.partyId), eq(materialReceipts.isPlantCommon, 1)),
+    ));
 
     for (const row of plantReceipts) {
       addMaterial(row.materialName || "MATERIAL", row.uom);

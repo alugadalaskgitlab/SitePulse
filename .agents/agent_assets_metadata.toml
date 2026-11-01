@@ -6163,3 +6163,17 @@ mtime_ms = 1792595019598
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/0af47e41-6f17-43a6-89e4-bbb7e50abcca/62528443-ec95-43ae-aa44-b9e2da289c40"
 storage_version_token = "1792595060834607"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "xibxinSKIVlT6VEMoyial"
+uri = "file://generated-artifacts/HLC-material-receipt-sample.pdf"
+type = "pdf"
+title = "Material receipt slip sample"
+description = "Final one-page A5 sample showing the configured HLC logo and company name in the header."
+logical_id = "6de86676-bcac-4266-b0f8-8bf8375e62a9"
+content_hash = "sha256:408f8e84c6bcb9f2b880843f056fcf418f48c8a59e9e09317a7e67bdab3e6ab8"
+size = 21875
+mtime_ms = 1793509748431
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/6de86676-bcac-4266-b0f8-8bf8375e62a9/70e96be1-54ed-404b-b40a-301ae6dd3552"
+storage_version_token = "1793509969762827"
+content_type = "application/pdf"

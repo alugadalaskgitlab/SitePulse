@@ -22,6 +22,9 @@ import HistoryDialog from "@/components/HistoryDialog";
 import AuditHistoryButton from "@/components/AuditHistoryButton";
 import { AttachmentUploader } from "@/components/AttachmentUploader";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
+import { MaterialReceiptSlipActions } from "@/components/MaterialReceiptSlipActions";
+import { VendorMasterNamePicker } from "@/components/VendorMasterNamePicker";
+import type { ExistingTripVendor } from "@/components/trip-role-utils";
 import { useUpload } from "@/hooks/use-upload";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -37,6 +40,8 @@ import { materialReceiptTransactionDate } from "@shared/materialReceiptDates";
 import { decidePiAutoSelect, submitBlockedByPi, showPiIndentBlock, showPiPendingBadge, showRegulariseIndentNotice, receiptClosureStatus } from "@shared/dieselReceiptSource";
 import { stockOwnerLabel } from "@shared/stockOwnerLabel";
 import type { DieselReceiptState } from "@shared/dieselReceiptStatus";
+import { resolveHlcParty } from "@shared/hlcParty";
+import { formatEnteredByDisplay, type MaterialReceiptSlipData } from "@/lib/materialReceiptSlipTypes";
 import { dieselTotalIssued } from "@/lib/dieselIssued";
 
 function invalidateDieselRequirementQueries() {
@@ -70,6 +75,7 @@ export default function PlantMaterialReceipts() {
     title: string;
     description: string;
   } | null>(null);
+  const [savedReceiptForSlip, setSavedReceiptForSlip] = useState<any | null>(null);
   const submittedSummaryRef = useRef<{ date: string; quantity: string; uom: string } | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
@@ -229,6 +235,7 @@ export default function PlantMaterialReceipts() {
   const [supplier, setSupplier] = useState("");
   const [transporter, setTransporter] = useState("");
   const [vehicleNumber, setVehicleNumber] = useState("");
+  const [driverName, setDriverName] = useState("");
   const [challanNumber, setChallanNumber] = useState("");
   const [tankNumber, setTankNumber] = useState<string>("");
   const [invoiceNo, setInvoiceNo] = useState("");
@@ -261,6 +268,7 @@ export default function PlantMaterialReceipts() {
     supplier: string;
     transporter: string;
     vehicleNumber: string;
+    driverName: string;
     challanNumber: string;
     tankNumber: string;
     invoiceNo: string;
@@ -270,8 +278,8 @@ export default function PlantMaterialReceipts() {
   }
 
   const formData = useMemo<ReceiptFormData>(() => ({
-    date, time, partyId, materialId, quantity, uom, supplier, transporter, vehicleNumber, challanNumber, tankNumber, invoiceNo, invoiceDate, indentRef, dieselExceptionReason
-  }), [date, time, partyId, materialId, quantity, uom, supplier, transporter, vehicleNumber, challanNumber, tankNumber, invoiceNo, invoiceDate, indentRef, dieselExceptionReason]);
+    date, time, partyId, materialId, quantity, uom, supplier, transporter, vehicleNumber, driverName, challanNumber, tankNumber, invoiceNo, invoiceDate, indentRef, dieselExceptionReason
+  }), [date, time, partyId, materialId, quantity, uom, supplier, transporter, vehicleNumber, driverName, challanNumber, tankNumber, invoiceNo, invoiceDate, indentRef, dieselExceptionReason]);
 
   const handleRestoreDraft = useCallback((data: ReceiptFormData) => {
     setDate(data.date);
@@ -283,6 +291,7 @@ export default function PlantMaterialReceipts() {
     setSupplier(data.supplier);
     setTransporter(data.transporter || "");
     setVehicleNumber(data.vehicleNumber);
+    setDriverName(data.driverName || "");
     setChallanNumber(data.challanNumber);
     setTankNumber(data.tankNumber || "");
     setInvoiceNo(data.invoiceNo || "");
@@ -303,7 +312,7 @@ export default function PlantMaterialReceipts() {
   const [, setLocation] = useLocation();
   const { confirmLeave } = useBeforeUnload(isDirty);
 
-  const { data: receipts, isLoading } = useQuery<MaterialReceipt[]>({
+  const { data: receipts, isLoading } = useQuery<(MaterialReceipt & { enteredByUserName?: string | null; latestEditAt?: string | Date | null })[]>({
     queryKey: ["/api/plant-module/material-receipts"],
   });
 
@@ -410,6 +419,12 @@ export default function PlantMaterialReceipts() {
 
   const { data: parties } = useQuery<Party[]>({
     queryKey: ["/api/plant-module/parties"],
+  });
+  const selectedHlcPartyId = resolveHlcParty(parties || [])?.id ?? null;
+  const isHlcOwnedReceipt = !!partyId && selectedHlcPartyId != null && Number(partyId) === selectedHlcPartyId;
+  const vendorMasterQuery = useQuery<ExistingTripVendor[]>({
+    queryKey: ["/api/vendor-master"],
+    enabled: dialogOpen && isHlcOwnedReceipt,
   });
 
   const selectedMaterialName = useMemo(() => {
@@ -572,6 +587,32 @@ export default function PlantMaterialReceipts() {
         }
       }
       await clearDraft();
+      setSavedReceiptForSlip({
+        kind: "plant",
+        id: receipt.id,
+        date: receipt.date,
+        time: receipt.time,
+        materialName: getMaterialName(receipt.materialId),
+        quantity: receipt.quantity,
+        uom: receipt.uom,
+        plantName: receipt.plantName || "Main Plant",
+        partyName: getPartyName(receipt.partyId, receipt.materialId),
+        vehicleNumber: receipt.vehicleNumber,
+        driverName: receipt.driverName,
+        supplier: receipt.supplier,
+        transporter: receipt.transporter,
+        challanNumber: receipt.challanNumber,
+        receiptNo: receipt.receiptNo,
+        invoiceNo: receipt.invoiceNo,
+        invoiceDate: receipt.invoiceDate,
+        tankNumber: receipt.tankNumber,
+        createdAt: receipt.createdAt,
+        latestEditAt: receipt.latestEditAt,
+        conversionFactor: materials?.find(material => material.id === receipt.materialId)?.conversionFactor,
+        conversionFromUom: materials?.find(material => material.id === receipt.materialId)?.conversionFromUom,
+        conversionToUom: materials?.find(material => material.id === receipt.materialId)?.conversionToUom,
+        bulkDensity: materials?.find(material => material.id === receipt.materialId)?.bulkDensity,
+      } as MaterialReceiptSlipData);
       if (stagedPhotos.length > 0 && receipt?.id) {
         await uploadStagedReceiptPhotos(receipt.id);
         queryClient.invalidateQueries({ queryKey: ["/api/attachments", "material_receipt", receipt.id] });
@@ -621,6 +662,32 @@ export default function PlantMaterialReceipts() {
       await invalidateDieselRequirementQueries();
       setDialogOpen(false);
       setEditingReceipt(null);
+      setSavedReceiptForSlip({
+        kind: "plant",
+        id: receipt.id,
+        date: receipt.date,
+        time: receipt.time,
+        materialName: getMaterialName(receipt.materialId),
+        quantity: receipt.quantity,
+        uom: receipt.uom,
+        plantName: receipt.plantName || "Main Plant",
+        partyName: getPartyName(receipt.partyId, receipt.materialId),
+        vehicleNumber: receipt.vehicleNumber,
+        driverName: receipt.driverName,
+        supplier: receipt.supplier,
+        transporter: receipt.transporter,
+        challanNumber: receipt.challanNumber,
+        receiptNo: receipt.receiptNo,
+        invoiceNo: receipt.invoiceNo,
+        invoiceDate: receipt.invoiceDate,
+        tankNumber: receipt.tankNumber,
+        createdAt: receipt.createdAt,
+        latestEditAt: receipt.latestEditAt,
+        conversionFactor: materials?.find(material => material.id === receipt.materialId)?.conversionFactor,
+        conversionFromUom: materials?.find(material => material.id === receipt.materialId)?.conversionFromUom,
+        conversionToUom: materials?.find(material => material.id === receipt.materialId)?.conversionToUom,
+        bulkDensity: materials?.find(material => material.id === receipt.materialId)?.bulkDensity,
+      } as MaterialReceiptSlipData);
       resetForm();
       const summary = submittedSummaryRef.current;
       const receiptDate = receipt?.date || summary?.date || "the selected date";
@@ -694,6 +761,7 @@ export default function PlantMaterialReceipts() {
     setSupplier("");
     setTransporter("");
     setVehicleNumber("");
+    setDriverName("");
     setChallanNumber("");
     setTankNumber("");
     setInvoiceNo("");
@@ -721,6 +789,7 @@ export default function PlantMaterialReceipts() {
     setSupplier(receipt.supplier || "");
     setTransporter(receipt.transporter || "");
     setVehicleNumber(receipt.vehicleNumber || "");
+    setDriverName((receipt as any).driverName || "");
     setChallanNumber(receipt.challanNumber || "");
     setTankNumber(receipt.tankNumber ? String(receipt.tankNumber) : "");
     setInvoiceNo((receipt as any).invoiceNo || "");
@@ -745,6 +814,23 @@ export default function PlantMaterialReceipts() {
     // React may not render the disabled button until after this handler returns.
     if (submitLockRef.current) return;
     if (!materialId || !quantity || !partyId) return;
+    if (isHlcOwnedReceipt) {
+      const activeVendorName = (name: string) => !!name.trim() && (vendorMasterQuery.data || []).some(vendor =>
+        (vendor.isActive == null || vendor.isActive === true || Number(vendor.isActive) === 1) &&
+        vendor.name.trim().toUpperCase() === name.trim().toUpperCase()
+      );
+      const supplierUnchanged = !!editingReceipt && supplier.trim() === (editingReceipt.supplier || "").trim();
+      const transporterUnchanged = !!editingReceipt && transporter.trim() === (editingReceipt.transporter || "").trim();
+      if ((supplier.trim() && !activeVendorName(supplier) && !supplierUnchanged) ||
+          (transporter.trim() && !activeVendorName(transporter) && !transporterUnchanged)) {
+        toast({
+          title: "Select a Vendor Master entry",
+          description: "For HLC stock, supplier and transporter names must be selected from Vendor Master.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
     if (isSelectedDiesel && linkedDieselRequirementId == null) {
       if (!canRecordStandaloneDiesel) {
         toast({ title: "Daily Diesel Requirement required", description: "Select a purchased Daily Diesel Requirement. Only Owner/Admin/PM may use the standalone exception.", variant: "destructive" });
@@ -790,6 +876,7 @@ export default function PlantMaterialReceipts() {
         supplier,
         transporter,
         vehicleNumber,
+        driverName,
         challanNumber,
         invoiceNo: invoiceNo || null,
         invoiceDate: effectiveInvoiceDate,
@@ -814,6 +901,7 @@ export default function PlantMaterialReceipts() {
         supplier,
         transporter,
         vehicleNumber,
+        driverName,
         challanNumber,
         invoiceNo: invoiceNo || null,
         invoiceDate: effectiveInvoiceDate,
@@ -850,6 +938,35 @@ export default function PlantMaterialReceipts() {
     resolvedPartyName: id == null ? null : parties?.find((p) => p.id === id)?.name,
     unresolvedPartyPrefix: "Party #",
   });
+  const toReceiptSlipData = (receipt: MaterialReceipt & { latestEditAt?: string | Date | null }): MaterialReceiptSlipData => {
+    const material = materials?.find(row => row.id === receipt.materialId);
+    return {
+      kind: "plant",
+      id: receipt.id,
+      date: receipt.date,
+      time: receipt.time,
+      materialName: material?.name || "Unknown",
+      quantity: receipt.quantity,
+      uom: receipt.uom,
+      plantName: (receipt as any).plantName || "Main Plant",
+      partyName: getPartyName(receipt.partyId, receipt.materialId),
+      vehicleNumber: receipt.vehicleNumber,
+      driverName: (receipt as any).driverName,
+      supplier: receipt.supplier,
+      transporter: receipt.transporter,
+      challanNumber: receipt.challanNumber,
+      receiptNo: (receipt as any).receiptNo,
+      invoiceNo: (receipt as any).invoiceNo,
+      invoiceDate: (receipt as any).invoiceDate,
+      tankNumber: receipt.tankNumber,
+      createdAt: receipt.createdAt,
+      latestEditAt: receipt.latestEditAt,
+      conversionFactor: material?.conversionFactor,
+      conversionFromUom: material?.conversionFromUom,
+      conversionToUom: material?.conversionToUom,
+      bulkDensity: material?.bulkDensity,
+    };
+  };
   const getReceiptTransactionDate = (receipt: MaterialReceipt): string =>
     materialReceiptTransactionDate((receipt as any).invoiceDate, receipt.date);
 
@@ -935,6 +1052,8 @@ export default function PlantMaterialReceipts() {
         Quantity: r.quantity,
         UOM: r.uom,
         "Vehicle No": r.vehicleNumber || "",
+        Driver: (r as any).driverName || "",
+        "Entered By": formatEnteredByDisplay((r as any).enteredByUserName, r.createdAt),
         "Challan No": r.challanNumber || "",
         "Invoice No": (r as any).invoiceNo || "",
         "Invoice Date": getReceiptTransactionDate(r),
@@ -999,6 +1118,7 @@ export default function PlantMaterialReceipts() {
         getMaterialName(r.materialId),
         `${r.quantity} ${r.uom}`,
         r.vehicleNumber || "-",
+        (r as any).driverName || "-",
         r.challanNumber || "-",
         (r as any).invoiceNo || "-",
         getReceiptTransactionDate(r),
@@ -1010,7 +1130,7 @@ export default function PlantMaterialReceipts() {
       
       autoTable(doc, {
         startY: filterDateFrom || filterDateTo ? 34 : 28,
-        head: [["RECV No", "Entry Date", "Entry Time", "Material", "Quantity", "Vehicle No", "Challan", "Invoice No", "Invoice Date", "Supplier", "Transporter", "Party/Job", "Indent Ref"]],
+        head: [["RECV No", "Entry Date", "Entry Time", "Material", "Quantity", "Vehicle No", "Driver", "Challan", "Invoice No", "Invoice Date", "Supplier", "Transporter", "Party/Job", "Indent Ref"]],
         body: tableData,
         theme: "striped",
         headStyles: { fillColor: [59, 130, 246] },
@@ -1094,6 +1214,7 @@ export default function PlantMaterialReceipts() {
                 <th>Qty</th>
                 <th>UOM</th>
                 <th>Vehicle</th>
+                <th>Driver</th>
                 <th>Challan</th>
                 <th>Invoice No</th>
                 <th>Invoice Date</th>
@@ -1113,6 +1234,7 @@ export default function PlantMaterialReceipts() {
                   <td>${r.quantity}</td>
                   <td>${r.uom}</td>
                   <td>${r.vehicleNumber || '-'}</td>
+                  <td>${(r as any).driverName || '-'}</td>
                   <td>${r.challanNumber || '-'}</td>
                   <td>${(r as any).invoiceNo || '-'}</td>
                   <td>${getReceiptTransactionDate(r)}</td>
@@ -1325,14 +1447,38 @@ export default function PlantMaterialReceipts() {
               )}
 
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Supplier</Label>
-                  <Input value={supplier} onChange={(e) => setSupplier(e.target.value.toUpperCase())} placeholder="Who sold it" data-testid="input-supplier" />
-                </div>
-                <div>
-                  <Label>Transporter <span className="text-muted-foreground text-sm">(optional)</span></Label>
-                  <Input value={transporter} onChange={(e) => setTransporter(e.target.value.toUpperCase())} placeholder="Who carried it" data-testid="input-transporter" />
-                </div>
+                {isHlcOwnedReceipt ? (
+                  <VendorMasterNamePicker
+                    label="Supplier"
+                    value={supplier}
+                    vendors={vendorMasterQuery.data || []}
+                    loading={vendorMasterQuery.isLoading}
+                    error={vendorMasterQuery.isError}
+                    testId="input-supplier"
+                    onSelect={setSupplier}
+                  />
+                ) : (
+                  <div>
+                    <Label>Source (for record)</Label>
+                    <Input value={supplier} onChange={(e) => setSupplier(e.target.value.toUpperCase())} placeholder="e.g. Own stock / crusher name" data-testid="input-supplier" />
+                  </div>
+                )}
+                {isHlcOwnedReceipt ? (
+                  <VendorMasterNamePicker
+                    label="Transporter (optional)"
+                    value={transporter}
+                    vendors={vendorMasterQuery.data || []}
+                    loading={vendorMasterQuery.isLoading}
+                    error={vendorMasterQuery.isError}
+                    testId="input-transporter"
+                    onSelect={setTransporter}
+                  />
+                ) : (
+                  <div>
+                    <Label>Transporter (for record) <span className="text-muted-foreground text-sm">(optional)</span></Label>
+                    <Input value={transporter} onChange={(e) => setTransporter(e.target.value.toUpperCase())} placeholder="e.g. Own stock / crusher name" data-testid="input-transporter" />
+                  </div>
+                )}
               </div>
 
               {!editingReceipt && (
@@ -1348,6 +1494,10 @@ export default function PlantMaterialReceipts() {
                 <div>
                   <Label>Vehicle No</Label>
                   <Input value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())} placeholder="e.g., KA-01-XX-1234" data-testid="input-vehicle" />
+                </div>
+                <div>
+                  <Label>Driver (optional)</Label>
+                  <Input value={driverName} onChange={(e) => setDriverName(e.target.value)} placeholder="Driver name" data-testid="input-driver-name" />
                 </div>
                 <div>
                   <Label>Challan / DN No. <span className="text-muted-foreground text-sm">(optional)</span></Label>
@@ -1620,6 +1770,13 @@ export default function PlantMaterialReceipts() {
           <div>
             <p className="text-sm font-semibold">{submissionFeedback.title}</p>
             <p className="text-sm">{submissionFeedback.description}</p>
+            {submissionFeedback.kind === "success" && savedReceiptForSlip && (
+              <MaterialReceiptSlipActions
+                record={savedReceiptForSlip as MaterialReceiptSlipData}
+                companyName={companyName}
+                logoFile={logoFile}
+              />
+            )}
           </div>
         </div>
       )}
@@ -1827,9 +1984,21 @@ export default function PlantMaterialReceipts() {
                                 <span className="text-sm text-muted-foreground">
                                   Entered {receipt.date}{receipt.time ? ` ${receipt.time}` : ""}
                                 </span>
+                                <span className="text-xs text-muted-foreground" data-testid={`text-entered-by-${receipt.id}`}>
+                                  {formatEnteredByDisplay((receipt as any).enteredByUserName, receipt.createdAt)}
+                                </span>
                                 <span className="font-semibold">{getMaterialName(receipt.materialId)}</span>
                                 <span className="font-medium">{receipt.quantity} {receipt.uom}</span>
                                 {receipt.vehicleNumber && <span className="text-sm text-muted-foreground">{receipt.vehicleNumber}</span>}
+                                {(receipt as any).driverName && <span className="text-sm text-muted-foreground">Driver: {(receipt as any).driverName}</span>}
+                                <div className="ml-auto" onClick={event => event.stopPropagation()}>
+                                  <MaterialReceiptSlipActions
+                                    compact
+                                    record={toReceiptSlipData(receipt)}
+                                    companyName={companyName}
+                                    logoFile={logoFile}
+                                  />
+                                </div>
                                 {receipt.supplier && <span className="text-sm text-muted-foreground">{receipt.supplier}</span>}
                                  {showPiPendingBadge({
                                    linkedDieselRequirementId: (receipt as any).linkedDieselRequirementId,

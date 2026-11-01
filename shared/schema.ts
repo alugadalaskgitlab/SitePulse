@@ -596,6 +596,8 @@ export const materialReceipts = pgTable("material_receipts", {
   indentRef: text("indent_ref"),
   tankNumber: integer("tank_number"),
   notes: text("notes"),
+  driverName: text("driver_name"),
+  enteredByUserId: integer("entered_by_user_id"),
   // 06M-C: links a Diesel receipt back to the Daily Diesel Requirement purchase
   // it fulfils (nullable — only set for receipts recorded against a purchase).
   linkedDieselRequirementId: integer("linked_diesel_requirement_id"),
@@ -928,7 +930,9 @@ export const siteMaterialTrips = pgTable("site_material_trips", {
   uom: text("uom").notNull(),
   location: text("location"), // Chainage/location where dumped
   receiptNumber: text("receipt_number"), // Challan/receipt number
+  driverName: text("driver_name"),
   enteredBy: text("entered_by"), // Supervisor name
+  enteredByUserId: integer("entered_by_user_id"),
   notes: text("notes"),
   workType: text("work_type"), // "road" | "structure"
   // PI linkage — set when this trip is logged against a Purchase Indent (material route, site destination)

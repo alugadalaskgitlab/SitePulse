@@ -67,6 +67,8 @@ describePostgres("FIX 1 linked diesel receipt concurrency", () => {
         supplier text,
         transporter text,
         vehicle_number text,
+        driver_name text,
+        entered_by_user_id integer,
         challan_number text,
         receipt_no text,
         invoice_no text,
