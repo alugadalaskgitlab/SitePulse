@@ -65,6 +65,8 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .equip-rate-detail{font-size:11px;color:var(--gray-500);margin-top:2px}
 .rate-panel{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:16px}
 .rate-panel h2{font-size:15px;font-weight:700;color:var(--gray-800);margin-bottom:12px;text-transform:uppercase;border-bottom:2px solid var(--amber);padding-bottom:8px}
+#procurementPanel{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-top:12px}
+.right-col > #procurementPanel + .rate-panel{margin-top:12px}
 .rate-table{width:100%;border-collapse:collapse;font-size:14px}
 .rate-table th{text-align:right;padding:6px 8px;font-weight:700;color:var(--gray-500);font-size:12px;text-transform:uppercase}
 .rate-table th:first-child{text-align:left}
@@ -77,7 +79,8 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .cost-legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .cost-legend span{font-size:12px;display:flex;align-items:center;gap:3px}
 .cost-legend span::before{content:'';width:10px;height:10px;border-radius:2px;display:inline-block;background:var(--swatch-color)}
-.breakdown-toggle{font-size:12px;color:var(--amber);cursor:pointer;font-weight:600;margin-top:12px;display:flex;align-items:center;gap:4px}
+.breakdown-label{font-size:11px;font-weight:600;color:var(--gray-500);text-transform:uppercase}
+.breakdown-toggle{font-size:12px;color:var(--amber);cursor:pointer;font-weight:600;line-height:1.4;margin-top:12px;display:flex;align-items:center;gap:4px}
 .full-width{max-width:1600px;margin:0 auto;padding:0 16px 40px}
 /* Site + Job Cards */
 .sites-container{display:flex;flex-direction:column;gap:16px}
@@ -154,6 +157,10 @@ table.proc-table tr.grand-total td{font-weight:700;border-top:2px solid var(--am
 .scope-row label input[type=checkbox]{width:16px;height:16px;accent-color:var(--blue);flex-shrink:0}
 .scope-row .sc-amt{font-size:13px;font-weight:600;min-width:90px;text-align:right}
 .scope-row .sc-amt.off{color:var(--gray-300)}
+.scope-row .sc-unit{font-size:11px;font-weight:400;color:var(--gray-400)}
+.scope-row .sc-amt.off .sc-unit{color:var(--gray-400)}
+.scope-always .sc-unit{font-size:11px;font-weight:400}
+.scope-note{font-size:11px;color:var(--gray-400)}
 .scope-always{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-top:1px dashed var(--amber-border);margin-top:3px;font-size:12px;color:var(--amber);font-style:italic}
 .scope-always .sc-amt{font-size:12px;font-weight:600;color:var(--amber)}
 .scope-margin-row{display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:12px;border-top:2px solid var(--gray-200)}
@@ -172,6 +179,30 @@ table.proc-table tr.grand-total td{font-weight:700;border-top:2px solid var(--am
 .sc-save-btn:hover{background:rgba(255,255,255,.35)}
 .sc-back-link{color:rgba(255,255,255,.85);font-size:12px;text-decoration:none;white-space:nowrap}
 .sc-back-link:hover{color:#fff;text-decoration:underline}
+@media screen and (min-width:901px){
+  .right-col{width:380px;padding:16px}
+  #procurementPanel{padding:16px!important}
+  .right-col #fullBreakdown .rate-table{table-layout:fixed;font-size:11px}
+  .right-col #fullBreakdown .rate-table th,.right-col #fullBreakdown .rate-table td{padding:4px 3px;line-height:1.25;overflow-wrap:anywhere}
+  .right-col #fullBreakdown .rate-table th:first-child,.right-col #fullBreakdown .rate-table td:first-child{width:34%;text-align:left}
+  .right-col #fullBreakdown .rate-table tbody td:not(:first-child){white-space:nowrap}
+}
+@media screen{
+  .right-col{overflow-x:auto}
+  .right-col .rate-table th{color:var(--gray-600)}
+  .job-card-body th{font-size:11px;color:var(--gray-600);line-height:1.25}
+  table.proc-table th{color:var(--gray-600)}
+  .profit-summary-table th{color:var(--gray-600)}
+  .pi-table-header .pi-row-val,.pi-table-header .pi-row-delta{font-size:11px;color:var(--gray-600)}
+  .equip-rate-detail,.job-cost-warning,.rate-unit-note{font-size:12px;color:var(--gray-600);line-height:1.4}
+  .job-thickness-required{font-size:12px;line-height:1.4}
+  .breakdown-label{font-size:12px;color:var(--gray-600);line-height:1.4}
+  .scope-out-label{font-size:12px;color:var(--gray-600);line-height:1.4}
+  .scope-row .sc-unit{font-size:12px;color:var(--gray-600)}
+  .scope-row .sc-amt.off .sc-unit{color:var(--gray-400)}
+  .scope-always .sc-unit{font-size:12px}
+  .scope-note{font-size:12px;color:var(--gray-600);line-height:1.4}
+}
 @media(max-width:900px){
 .calc-shell{flex-direction:column}
 .calc-nav{width:100%;flex-direction:row;flex-wrap:nowrap;overflow-x:auto;padding:4px 6px;position:static;height:auto;-webkit-overflow-scrolling:touch}
@@ -372,7 +403,7 @@ body{font-size:11px;background:#fff}
     <button id="ru_SQM" class="qm-btn"            onclick="setRateUnit('SQM')">₹/sqm</button>
     <button id="ru_SFT" class="qm-btn"            onclick="setRateUnit('SFT')">₹/sft</button>
   </div>
-  <div id="quoteModeDesc" style="margin-left:auto;font-size:11px;color:rgba(255,255,255,.65);font-style:italic;white-space:nowrap">Ex-plant rate — transport, laying &amp; coat excluded</div>
+  <div id="quoteModeDesc" style="margin-left:auto;font-size:12px;color:rgba(255,255,255,.85);font-style:italic;line-height:1.4;white-space:nowrap">Ex-plant rate — transport, laying &amp; coat excluded</div>
 </div>
 
 <div class="calc-shell">
@@ -418,10 +449,10 @@ body{font-size:11px;background:#fff}
       <div class="form-group"><label>Date</label><input id="projDate" type="date"></div>
     </div>
     <div class="form-grid" style="margin-top:10px">
-      <div class="form-group"><label>Contractor / Company <span style="font-size:10px;color:var(--gray-400);font-weight:400">(optional)</span></label><input id="projContractor" placeholder="Contractor or company name"></div>
-      <div class="form-group"><label>Address <span style="font-size:10px;color:var(--gray-400);font-weight:400">(optional)</span></label><input id="projAddress" placeholder="Site or office address"></div>
-      <div class="form-group"><label>Contact Person <span style="font-size:10px;color:var(--gray-400);font-weight:400">(optional)</span></label><input id="projContact" placeholder="Contact name"></div>
-      <div class="form-group"><label>Contact Phone <span style="font-size:10px;color:var(--gray-400);font-weight:400">(optional)</span></label><input id="projPhone" type="tel" placeholder="+91 XXXXX XXXXX"></div>
+      <div class="form-group"><label>Contractor / Company <span style="font-size:12px;color:var(--gray-600);font-weight:400">(optional)</span></label><input id="projContractor" placeholder="Contractor or company name"></div>
+      <div class="form-group"><label>Address <span style="font-size:12px;color:var(--gray-600);font-weight:400">(optional)</span></label><input id="projAddress" placeholder="Site or office address"></div>
+      <div class="form-group"><label>Contact Person <span style="font-size:12px;color:var(--gray-600);font-weight:400">(optional)</span></label><input id="projContact" placeholder="Contact name"></div>
+      <div class="form-group"><label>Contact Phone <span style="font-size:12px;color:var(--gray-600);font-weight:400">(optional)</span></label><input id="projPhone" type="tel" placeholder="+91 XXXXX XXXXX"></div>
     </div>
   </div>
 </div>
@@ -437,7 +468,7 @@ body{font-size:11px;background:#fff}
         <label>Total MT to supply</label>
         <input id="supplyMT" type="number" value="500" min="1" style="width:120px" oninput="recalc()">
       </div>
-      <p style="font-size:11px;color:var(--gray-400);margin:20px 0 0;line-height:1.55;max-width:360px">
+      <p style="font-size:12px;color:var(--gray-600);margin:20px 0 0;line-height:1.55;max-width:360px">
         Ex-plant supply only — rates pulled live from sections ②–⑨.
         Transport, Laying &amp; Prime/Tack are excluded.
       </p>
@@ -533,7 +564,7 @@ body{font-size:11px;background:#fff}
       <span style="font-size:12px;font-weight:700;color:#15803d">Plant Cost Mode:</span>
       <button id="pm_full" class="plant-mode-btn active" onclick="setPlantCostMode('full')">Full Cost (incl. depreciation)</button>
       <button id="pm_marginal" class="plant-mode-btn" onclick="setPlantCostMode('marginal')">Marginal Only (running cost)</button>
-      <span style="font-size:11px;color:#6b7280;font-style:italic">Marginal excludes owned equipment depreciation — use for incremental quotes</span>
+      <span style="font-size:12px;color:var(--gray-600);font-style:italic;line-height:1.4">Marginal excludes owned equipment depreciation — use for incremental quotes</span>
     </div>
     <div class="form-grid" style="margin-bottom:12px">
       <div class="form-group"><label>Production Rate (TPH)</label><input id="tph" type="number" value="60" oninput="recalc()"></div>
@@ -566,7 +597,7 @@ body{font-size:11px;background:#fff}
     <div class="ldo-mode-toggle no-print">
       <button id="ldoMode_norm" class="ldo-mode-btn active" onclick="setLdoMode('norm')">📊 Norm Mode (L/MT)</button>
       <button id="ldoMode_actual" class="ldo-mode-btn" onclick="setLdoMode('actual')">🔢 Actual (Flow Meter)</button>
-      <span style="font-size:11px;color:#6b7280;font-style:italic">Actual mode: compute L/MT from open/close meter readings</span>
+      <span style="font-size:12px;color:var(--gray-600);font-style:italic;line-height:1.4">Actual mode: compute L/MT from open/close meter readings</span>
     </div>
     <div class="form-grid">
       <div class="form-group" id="ldoNormRow"><label>LDO Consumption (L/MT)</label><input id="ldoConsump" type="number" value="4.5" step="0.1" oninput="recalc()"></div>
@@ -604,7 +635,7 @@ body{font-size:11px;background:#fff}
     <h2>⑨ Overhead & Margin</h2><span class="chevron">▼</span>
   </div>
   <div class="card-body open">
-    <p style="font-size:11px;color:var(--gray-400);margin-bottom:8px">Lump-sum costs amortized over total estimated MT across all jobs</p>
+    <p style="font-size:12px;color:var(--gray-600);margin-bottom:8px;line-height:1.4">Lump-sum costs amortized over total estimated MT across all jobs</p>
     <div class="form-grid">
       <div class="form-group"><label>Mobilisation Cost (₹)</label><input id="mobCost" type="number" value="0" oninput="recalc()"></div>
       <div class="form-group"><label>Demobilisation Cost (₹)</label><input id="demobCost" type="number" value="0" oninput="recalc()"></div>
@@ -697,7 +728,7 @@ body{font-size:11px;background:#fff}
     <h2>⑧ Laying & Compaction</h2><span class="chevron">▼</span>
   </div>
   <div class="card-body open">
-    <p style="font-size:11px;color:var(--gray-400);margin-bottom:8px">Equipment hire + fuel costs auto-pulled from Section ④ (Paver, Tandem Roller, PTR)</p>
+    <p style="font-size:12px;color:var(--gray-600);margin-bottom:8px;line-height:1.4">Equipment hire + fuel costs auto-pulled from Section ④ (Paver, Tandem Roller, PTR)</p>
     <div class="form-grid">
       <div class="form-group"><label>Paver Daily Cost incl. Fuel (₹)</label><input class="derived" id="layPaverCost" readonly></div>
       <div class="form-group"><label>Tandem Roller Daily Cost incl. Fuel (₹)</label><input class="derived" id="layRollerCost" readonly></div>
@@ -729,7 +760,7 @@ body{font-size:11px;background:#fff}
     <h2>Custom Scope Quotation</h2><span class="chevron">▼</span>
   </div>
   <div class="card-body" id="scopeCardBody">
-    <p style="font-size:12px;color:var(--gray-500);margin-bottom:14px;line-height:1.6">
+    <p style="font-size:12px;color:var(--gray-600);margin-bottom:14px;line-height:1.6">
       Select what HLC provides for this contractor. All costs are pulled live from the equipment cards and inputs above.
       Set a <strong>separate margin</strong> here — partial-scope work typically carries a lower margin since procurement savings aren't available when the contractor controls materials or equipment.
     </p>
@@ -737,7 +768,7 @@ body{font-size:11px;background:#fff}
     <div class="scope-chk-group">
       <label class="scope-group-hdr">
         <input type="checkbox" id="scopeChkMixing" style="width:17px;height:17px" onchange="scopeToggleGroup('mixing',this.checked)">
-        🏭 Mixing &nbsp;<span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0;color:var(--gray-400);font-size:11px">(₹/MT)</span>
+        🏭 Mixing &nbsp;<span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0;color:var(--gray-600);font-size:12px">(₹/MT)</span>
       </label>
       <div id="scopeBodyMixing" class="scope-group-body hidden"></div>
     </div>
@@ -746,7 +777,7 @@ body{font-size:11px;background:#fff}
     <div class="scope-chk-group">
       <label class="scope-group-hdr">
         <input type="checkbox" id="scopeChkTransport" style="width:17px;height:17px" onchange="scopeToggleGroup('transport',this.checked)">
-        🚛 Transport to Site &nbsp;<span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0;color:var(--gray-400);font-size:11px">(₹/MT — from Section ⑥)</span>
+        🚛 Transport to Site &nbsp;<span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0;color:var(--gray-600);font-size:12px">(₹/MT — from Section ⑥)</span>
       </label>
       <div id="scopeBodyTransport" class="scope-group-body hidden"></div>
     </div>
@@ -755,7 +786,7 @@ body{font-size:11px;background:#fff}
     <div class="scope-chk-group">
       <label class="scope-group-hdr">
         <input type="checkbox" id="scopeChkSpraying" style="width:17px;height:17px" onchange="scopeToggleGroup('spraying',this.checked)">
-        💦 Spraying — Prime &amp; Tack &nbsp;<span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0;color:var(--gray-400);font-size:11px">(₹/sqm)</span>
+        💦 Spraying — Prime &amp; Tack &nbsp;<span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0;color:var(--gray-600);font-size:12px">(₹/sqm)</span>
       </label>
       <div id="scopeBodySpraying" class="scope-group-body hidden"></div>
     </div>
@@ -764,7 +795,7 @@ body{font-size:11px;background:#fff}
     <div class="scope-chk-group">
       <label class="scope-group-hdr">
         <input type="checkbox" id="scopeChkPaving" style="width:17px;height:17px" onchange="scopeToggleGroup('paving',this.checked)">
-        🛣️ Paving &amp; Rolling &nbsp;<span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0;color:var(--gray-400);font-size:11px">(₹/MT)</span>
+        🛣️ Paving &amp; Rolling &nbsp;<span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0;color:var(--gray-600);font-size:12px">(₹/MT)</span>
       </label>
       <div id="scopeBodyPaving" class="scope-group-body hidden"></div>
     </div>
@@ -775,7 +806,7 @@ body{font-size:11px;background:#fff}
       <input type="number" id="scopeMarginPct" value="0" step="0.5" min="0" max="100"
         style="width:72px;padding:6px 8px;border:2px solid var(--blue-border);border-radius:6px;font-size:15px;font-weight:600;color:var(--blue);outline:none;text-align:right"
         oninput="renderScopeQuotation()">
-      <span style="font-size:11px;color:var(--gray-400);line-height:1.4">Separate from main calculator margin. Lower for partial scopes — procurement upside doesn't apply.</span>
+      <span style="font-size:12px;color:var(--gray-600);line-height:1.4">Separate from main calculator margin. Lower for partial scopes — procurement upside doesn't apply.</span>
     </div>
 
     <!-- Output summary -->
@@ -876,11 +907,11 @@ body{font-size:11px;background:#fff}
   </div>
 
   <!-- Material Procurement Budget -->
-  <div id="procurementPanel" style="display:none;background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-top:12px"></div>
+  <div id="procurementPanel" style="display:none"></div>
 
   <!-- Cost Breakdown Bar — collapsible, at bottom -->
-  <div class="rate-panel no-print" style="margin-top:12px">
-    <label style="font-size:11px;font-weight:600;color:var(--gray-500);text-transform:uppercase">Cost Breakdown</label>
+  <div class="rate-panel no-print">
+    <label class="breakdown-label">Cost Breakdown</label>
     <div id="costBarContainer"></div>
     <div class="breakdown-toggle" id="breakdownToggle" onclick="toggleBreakdown()">▼ Show full breakdown</div>
     <div id="fullBreakdown" class="hidden" style="margin-top:12px"></div>
@@ -1953,7 +1984,7 @@ function openSavedPanel(){
         var d=est.updatedAt?new Date(est.updatedAt).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):'';
         var isCurrent=est.id===currentEstimateId;
         html+='<tr style="border-bottom:1px solid var(--gray-100)'+(isCurrent?';background:var(--amber-bg)':'')+'">';
-        html+='<td style="padding:8px;font-weight:600;color:var(--gray-800)">'+(isCurrent?'★ ':'')+esc(est.name)+(est.contractorList?'<br><span style="font-size:11px;color:var(--gray-400)">'+esc(est.contractorList)+'</span>':'')+'</td>';
+        html+='<td style="padding:8px;font-weight:600;color:var(--gray-800)">'+(isCurrent?'★ ':'')+esc(est.name)+(est.contractorList?'<br><span style="font-size:12px;line-height:1.4;color:var(--gray-600)">'+esc(est.contractorList)+'</span>':'')+'</td>';
         html+='<td style="padding:8px;text-align:right;color:var(--gray-600)">'+(est.totalMt?est.totalMt.toFixed(0)+' MT':'—')+'</td>';
         html+='<td style="padding:8px;text-align:right;color:var(--gray-600)">'+(est.totalAmt?'₹'+Math.round(est.totalAmt).toLocaleString('en-IN'):'—')+'</td>';
         html+='<td style="padding:8px;text-align:right;color:var(--gray-400);font-size:12px">'+d+'</td>';
@@ -2254,7 +2285,7 @@ function renderMixPanels(){
   html += '<div class="form-group"><label>Default thickness (mm)</label><input type="number" min="0" step="any" value="'+(m.defaultThickness!=null?m.defaultThickness:'')+'" placeholder="Set per mix" oninput="setMixDefaultThickness('+activeMixIdx+',this.value)"></div>';
   html += '</div>';
   html += '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px">';
-  html += '<tr style="background:var(--gray-50)"><th style="text-align:left;padding:6px;font-size:11px;text-transform:uppercase;color:var(--gray-500)">Component</th><th style="text-align:right;padding:6px;font-size:11px;text-transform:uppercase;color:var(--gray-500)">% of Mix</th><th style="text-align:right;padding:6px;font-size:11px;text-transform:uppercase;color:var(--gray-500)">kg/MT</th><th style="text-align:right;padding:6px;font-size:11px;text-transform:uppercase;color:var(--gray-500)">kg/CUM</th></tr>';
+  html += '<tr style="background:var(--gray-50)"><th style="text-align:left;padding:6px;font-size:11px;text-transform:uppercase;color:var(--gray-600)">Component</th><th style="text-align:right;padding:6px;font-size:11px;text-transform:uppercase;color:var(--gray-600)">% of Mix</th><th style="text-align:right;padding:6px;font-size:11px;text-transform:uppercase;color:var(--gray-600)">kg/MT</th><th style="text-align:right;padding:6px;font-size:11px;text-transform:uppercase;color:var(--gray-600)">kg/CUM</th></tr>';
   FRAC_KEYS.forEach(function(k,fi){
     var pct = m.fractions[k]||0;
     html += '<tr><td style="padding:6px">'+FRAC_LABELS[fi]+'</td>';
@@ -2267,7 +2298,7 @@ function renderMixPanels(){
   html += '<tr style="border-top:2px solid var(--gray-300)"><td style="padding:6px;font-weight:700">Total</td><td style="text-align:right;padding:6px;font-weight:700;color:'+(valid?'var(--green)':'var(--red)')+'" id="fracTotalPct">'+fracTotal.toFixed(1)+'%</td><td></td><td></td></tr>';
   html += '</table>';
   html += '<div class="validation-bar"><div class="fill" id="fracValFill" style="width:'+Math.min(fracTotal,100)+'%;background:'+(valid?'var(--green)':'var(--red)')+'"></div></div>';
-  html += '<div id="fracValText" style="font-size:11px;color:'+(valid?'var(--green)':'var(--red)')+';margin-top:4px">'+(valid?'✓ Total = 100%':'⚠ Total ≠ 100% ('+fracTotal.toFixed(1)+'%)')+'</div>';
+  html += '<div id="fracValText" style="font-size:12px;color:'+(valid?'var(--green)':'var(--red)')+';margin-top:4px;line-height:1.4">'+(valid?'✓ Total = 100%':'⚠ Total ≠ 100% ('+fracTotal.toFixed(1)+'%)')+'</div>';
   container.innerHTML = html;
 }
 function updateMixCalc(){
@@ -3057,7 +3088,7 @@ function renderSupplyQuote(mixRates, marginPct){
     var notes=[];
     if((r.overhead||0)>0) notes.push('OH ₹'+fmtI(Math.round(r.overhead))+'/MT incl.');
     if(r.includes) notes.push('Includes: '+r.includes);
-    if(notes.length) html += '<div style="font-size:10px;color:var(--gray-500);margin-top:8px">'+notes.join(' · ')+'</div>';
+    if(notes.length) html += '<div style="font-size:12px;color:var(--gray-600);line-height:1.4;margin-top:8px">'+notes.join(' · ')+'</div>';
     html += '</div>';
   });
   el.innerHTML = html;
@@ -3109,7 +3140,7 @@ function renderRateWorkbench(usedMixRates, marginPct){
   if(!el) return;
   var rates = usedMixRates || _lastUsedMixRates;
   if(!rates || !rates.length){
-    el.innerHTML='<p style="font-size:12px;color:var(--gray-400);margin:0">Fill in sections ①–⑨ to see rates here.</p>';
+    el.innerHTML='<p style="font-size:12px;color:var(--gray-600);line-height:1.4;margin:0">Fill in sections ①–⑨ to see rates here.</p>';
     return;
   }
   var unit   = getRateUnitLabel(rateUnit);
@@ -3131,11 +3162,11 @@ function renderRateWorkbench(usedMixRates, marginPct){
     // Mix name + density
     html += '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">';
     html += '<div style="font-size:15px;font-weight:700;color:var(--gray-800)">'+esc(r.name)+'</div>';
-    html += '<div style="font-size:11px;color:var(--gray-400)">'+den.toFixed(2)+' T/CUM</div>';
+    html += '<div style="font-size:12px;color:var(--gray-600);line-height:1.4">'+den.toFixed(2)+' T/CUM</div>';
     html += '</div>';
     // Includes chip
     if(r.includes){
-      html += '<div style="font-size:11px;color:var(--gray-500);background:#f3f4f6;border-radius:12px;padding:3px 10px;display:inline-block;margin-bottom:10px">includes: '+esc(r.includes)+'</div>';
+      html += '<div style="font-size:12px;color:var(--gray-600);line-height:1.4;background:#f3f4f6;border-radius:12px;padding:3px 10px;display:inline-block;margin-bottom:10px">includes: '+esc(r.includes)+'</div>';
     }
     // Cost layers — hidden / greyed based on current switches
     var layers = [
@@ -3152,9 +3183,9 @@ function renderRateWorkbench(usedMixRates, marginPct){
     layers.forEach(function(l){
       var vv = v(l.val, den, thickness);
       var c  = l.off ? '#d1d5db' : 'var(--gray-700)';
-      var lc = l.off ? '#9ca3af' : 'var(--gray-400)';
+      var lc = l.off ? '#9ca3af' : 'var(--gray-600)';
       html += '<div style="min-width:84px">';
-      html += '<div style="font-size:10px;color:'+lc+';font-weight:600;text-transform:uppercase;letter-spacing:.4px">'+l.label+'</div>';
+      html += '<div style="font-size:11px;color:'+lc+';font-weight:600;text-transform:uppercase;letter-spacing:.4px">'+l.label+'</div>';
       html += '<div style="font-size:13px;font-weight:700;color:'+c+'">'+(l.off?'<span title="excluded by current scope">—</span>':(vv==null?'—':'₹'+fmtPerUnit(vv,rateUnit)))+'</div>';
       html += '</div>';
     });
@@ -3162,16 +3193,16 @@ function renderRateWorkbench(usedMixRates, marginPct){
     // Cost → Margin → Quoted trio
     html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">';
     html += '<div style="background:#f0fdf4;border-radius:8px;padding:10px 12px">';
-    html += '<div style="font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Cost</div>';
-    html += '<div style="font-size:17px;font-weight:700;color:#15803d">'+(vCost==null?'—':'₹'+fmtPerUnit(vCost,rateUnit))+'<span style="font-size:10px;font-weight:400;color:#6b7280">/'+unit+'</span></div>';
+    html += '<div style="font-size:12px;color:var(--gray-600);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Cost</div>';
+    html += '<div style="font-size:17px;font-weight:700;color:#15803d">'+(vCost==null?'—':'₹'+fmtPerUnit(vCost,rateUnit))+'<span style="font-size:12px;font-weight:400;color:var(--gray-600)">/'+unit+'</span></div>';
     html += '</div>';
     html += '<div style="background:#fffbeb;border-radius:8px;padding:10px 12px">';
-    html += '<div style="font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Margin '+fmtR(mPct)+'%</div>';
-    html += '<div style="font-size:17px;font-weight:700;color:#92400e">'+(vMgn==null?'—':'₹'+fmtPerUnit(vMgn,rateUnit))+'<span style="font-size:10px;font-weight:400;color:#6b7280">/'+unit+'</span></div>';
+    html += '<div style="font-size:12px;color:var(--gray-600);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Margin '+fmtR(mPct)+'%</div>';
+    html += '<div style="font-size:17px;font-weight:700;color:#92400e">'+(vMgn==null?'—':'₹'+fmtPerUnit(vMgn,rateUnit))+'<span style="font-size:12px;font-weight:400;color:var(--gray-600)">/'+unit+'</span></div>';
     html += '</div>';
     html += '<div style="background:linear-gradient(135deg,#d97706,#b45309);border-radius:8px;padding:10px 12px">';
-    html += '<div style="font-size:10px;color:rgba(255,255,255,.8);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">▶ QUOTED</div>';
-    html += '<div style="font-size:17px;font-weight:700;color:#fff">'+(vQuot==null?'—':'₹'+fmtPerUnit(vQuot,rateUnit))+'<span style="font-size:10px;font-weight:400;color:rgba(255,255,255,.7)">/'+unit+'</span></div>';
+    html += '<div style="font-size:12px;color:rgba(255,255,255,.85);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">▶ QUOTED</div>';
+    html += '<div style="font-size:17px;font-weight:700;color:#fff">'+(vQuot==null?'—':'₹'+fmtPerUnit(vQuot,rateUnit))+'<span style="font-size:12px;font-weight:400;color:rgba(255,255,255,.85)">/'+unit+'</span></div>';
     html += '</div>';
     html += '</div>';
     html += '</div>';
@@ -3413,11 +3444,11 @@ function renderRateSummary(mixRates){
     html+='</tr>';
   }
   if(!_showAgg && !_showBit){
-    html+='<tr><td colspan="'+(nc+1)+'" style="font-size:11px;color:var(--gray-400);font-style:italic;padding:4px 8px">'+esc(materialsScopeDescription())+' — materials excluded from this rate</td></tr>';
+    html+='<tr><td colspan="'+(nc+1)+'" style="font-size:12px;color:var(--gray-600);line-height:1.4;font-style:italic;padding:4px 8px">'+esc(materialsScopeDescription())+' — materials excluded from this rate</td></tr>';
   } else if(!_showAgg){
-    html+='<tr><td colspan="'+(nc+1)+'" style="font-size:11px;color:var(--gray-400);font-style:italic;padding:4px 8px">Aggregates excluded by scope</td></tr>';
+    html+='<tr><td colspan="'+(nc+1)+'" style="font-size:12px;color:var(--gray-600);line-height:1.4;font-style:italic;padding:4px 8px">Aggregates excluded by scope</td></tr>';
   } else if(!_showBit){
-    html+='<tr><td colspan="'+(nc+1)+'" style="font-size:11px;color:var(--gray-400);font-style:italic;padding:4px 8px">Bitumen excluded by scope</td></tr>';
+    html+='<tr><td colspan="'+(nc+1)+'" style="font-size:12px;color:var(--gray-600);line-height:1.4;font-style:italic;padding:4px 8px">Bitumen excluded by scope</td></tr>';
   }
   var eqFuelRows = [
     {label:'Equipment (Hire)', key:'equipment'},
@@ -3479,7 +3510,7 @@ function renderRateSummary(mixRates){
   html+='</tr>';
   // "Includes" chip
   if(mixRates[0]&&mixRates[0].includes){
-    html+='<tr><td colspan="'+(nc+1)+'" style="font-size:10px;color:var(--gray-400);font-style:italic;padding:4px 8px">Includes: '+mixRates[0].includes+'</td></tr>';
+    html+='<tr><td colspan="'+(nc+1)+'" style="font-size:12px;color:var(--gray-600);line-height:1.4;font-style:italic;padding:4px 8px">Includes: '+mixRates[0].includes+'</td></tr>';
   }
   html+='</tbody></table>';
   document.getElementById('rateSummaryTable').innerHTML = html;
@@ -3817,20 +3848,20 @@ function renderProcurementPanel(){
   });
   el.style.display='block';
   var grandTotal=totalAggCost+totalBitCost;
-  var html='<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--gray-500);margin-bottom:9px;padding-bottom:6px;border-bottom:2px solid var(--amber)">🛒 Procurement Budget</div>';
-  html+='<div style="font-size:11px;color:var(--gray-400);margin-bottom:8px">For <strong style="color:var(--gray-700)">'+fmtR(totalMixMT)+' MT</strong> of mix</div>';
+  var html='<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--gray-600);line-height:1.4;margin-bottom:9px;padding-bottom:6px;border-bottom:2px solid var(--amber)">🛒 Procurement Budget</div>';
+  html+='<div style="font-size:12px;color:var(--gray-600);line-height:1.4;margin-bottom:8px">For <strong style="color:var(--gray-700)">'+fmtR(totalMixMT)+' MT</strong> of mix</div>';
   // Aggregate
   html+='<div style="padding:5px 0;border-bottom:1px solid var(--gray-100)">';
   html+='<div style="display:flex;justify-content:space-between;align-items:baseline">';
   html+='<span style="font-size:12px;font-weight:600;color:var(--gray-700)">🪨 Aggregate</span>';
   html+='<span style="font-size:13px;font-weight:700;color:var(--amber)">₹'+Math.round(totalAggCost).toLocaleString('en-IN')+'</span></div>';
-  html+='<div style="font-size:11px;color:var(--gray-400);margin-top:2px">'+fmtR(totalAggMT)+' MT'+(aggLanded>0?' @ ₹'+fmtR(aggLanded)+'/MT':'')+'</div></div>';
+  html+='<div style="font-size:12px;color:var(--gray-600);line-height:1.4;margin-top:2px">'+fmtR(totalAggMT)+' MT'+(aggLanded>0?' @ ₹'+fmtR(aggLanded)+'/MT':'')+'</div></div>';
   // Bitumen
   html+='<div style="padding:5px 0;border-bottom:1px solid var(--gray-100)">';
   html+='<div style="display:flex;justify-content:space-between;align-items:baseline">';
   html+='<span style="font-size:12px;font-weight:600;color:var(--gray-700)">🛢 Bitumen</span>';
   html+='<span style="font-size:13px;font-weight:700;color:var(--amber)">₹'+Math.round(totalBitCost).toLocaleString('en-IN')+'</span></div>';
-  html+='<div style="font-size:11px;color:var(--gray-400);margin-top:2px">'+fmtR(totalBitKg/1000)+' MT'+(bitPrice>0?' @ ₹'+fmtR(bitPrice)+'/kg':'')+'</div></div>';
+  html+='<div style="font-size:12px;color:var(--gray-600);line-height:1.4;margin-top:2px">'+fmtR(totalBitKg/1000)+' MT'+(bitPrice>0?' @ ₹'+fmtR(bitPrice)+'/kg':'')+'</div></div>';
   // Grand total
   html+='<div style="display:flex;justify-content:space-between;align-items:baseline;padding:8px 0 2px;border-top:2px solid var(--amber);margin-top:4px">';
   html+='<span style="font-size:12px;font-weight:700;color:#1e3a5f">Total Material Cost</span>';
@@ -4026,8 +4057,8 @@ function _renderRecQuoteSection(){
   // Mix rate table
   html += '<table style="width:100%;border-collapse:collapse;font-size:13px">';
   html += '<thead><tr style="background:var(--gray-50)">'
-    +'<th style="padding:8px 10px;text-align:left;border-bottom:2px solid var(--gray-200);font-size:11px;text-transform:uppercase;color:var(--gray-500)">Mix</th>'
-    +'<th style="padding:8px 10px;text-align:right;border-bottom:2px solid var(--gray-200);font-size:11px;text-transform:uppercase;color:var(--gray-500)">Cost ₹/MT</th>'
+    +'<th style="padding:8px 10px;text-align:left;border-bottom:2px solid var(--gray-200);font-size:11px;text-transform:uppercase;color:var(--gray-600)">Mix</th>'
+    +'<th style="padding:8px 10px;text-align:right;border-bottom:2px solid var(--gray-200);font-size:11px;text-transform:uppercase;color:var(--gray-600)">Cost ₹/MT</th>'
     +'<th style="padding:8px 10px;text-align:right;border-bottom:2px solid var(--gray-200);font-size:11px;text-transform:uppercase;color:#92400e">Min ₹/MT</th>'
     +'<th style="padding:8px 10px;text-align:right;border-bottom:2px solid var(--gray-200);font-size:11px;text-transform:uppercase;color:#1d4ed8">Target ₹/MT</th>'
     +'<th style="padding:8px 10px;text-align:right;border-bottom:2px solid var(--gray-200);font-size:11px;text-transform:uppercase;color:#7c3aed">Premium ₹/MT</th>'
@@ -4410,8 +4441,8 @@ function renderJobCard(si,ji,j){
     html += '<span class="rate-unit-note" style="margin:0;padding:3px 7px">Area rates at '+fmtR(thicknessValue)+' mm (job)</span>';
   }
   html += '<span id="jobCostWarning_'+si+'_'+ji+'" class="job-cost-warning" style="display:'+(hasThickness?'none':'inline-flex')+'">Cannot be costed — enter a positive thickness</span>';
-  html += '<label class="checkbox-label" title="Include Prime Coat for this job" style="gap:3px;font-size:11px;white-space:nowrap"><input type="checkbox" '+(j.prime!==false?'checked':'')+' onchange="sites['+si+'].jobs['+ji+'].prime=this.checked;renderSites();recalc()"> Prime</label>';
-  html += '<label class="checkbox-label" title="Include Tack Coat for this job" style="gap:3px;font-size:11px;white-space:nowrap"><input type="checkbox" '+(j.tack!==false?'checked':'')+' onchange="sites['+si+'].jobs['+ji+'].tack=this.checked;renderSites();recalc()"> Tack</label>';
+    html += '<label class="checkbox-label" title="Include Prime Coat for this job" style="gap:3px;font-size:12px;white-space:nowrap"><input type="checkbox" '+(j.prime!==false?'checked':'')+' onchange="sites['+si+'].jobs['+ji+'].prime=this.checked;renderSites();recalc()"> Prime</label>';
+    html += '<label class="checkbox-label" title="Include Tack Coat for this job" style="gap:3px;font-size:12px;white-space:nowrap"><input type="checkbox" '+(j.tack!==false?'checked':'')+' onchange="sites['+si+'].jobs['+ji+'].tack=this.checked;renderSites();recalc()"> Tack</label>';
   html += '<div style="margin-left:auto;display:flex;gap:4px;align-items:center">';
   html += '<span class="jc-derived" id="jobTotal_'+si+'_'+ji+'" style="font-weight:700"></span>';
   html += '<button class="btn btn-danger btn-sm no-print admin-only" onclick="removeSiteJob('+si+','+ji+')" style="padding:4px 8px">×</button>';
@@ -4425,7 +4456,7 @@ function renderJobCard(si,ji,j){
   html += '<th style="color:var(--blue)">Trans ₹/'+selectedUnitLabel+'</th>';
   html += '<th>Lay ₹/'+selectedUnitLabel+'</th>';
   html += '<th style="font-weight:700">Total ₹/'+selectedUnitLabel+'</th>';
-  html += '<th style="color:var(--green);font-size:10px">Whole-job ₹/'+selectedUnitLabel+'</th>';
+  html += '<th style="color:var(--green);font-size:11px">Whole-job ₹/'+selectedUnitLabel+'</th>';
   html += '<th class="no-print" style="width:30px"></th>';
   html += '</tr></thead><tbody>';
 
@@ -4446,7 +4477,7 @@ function renderJobCard(si,ji,j){
     html += '<td class="jc-calc" style="color:var(--blue)" id="jmTransRate_'+si+'_'+ji+'_'+mi+'"></td>';
     html += '<td class="jc-calc" id="jmLayRate_'+si+'_'+ji+'_'+mi+'"></td>';
     html += '<td class="jc-calc" id="jmTotalRate_'+si+'_'+ji+'_'+mi+'" style="font-weight:700"></td>';
-    html += '<td class="jc-calc" style="color:var(--green);font-size:10px" id="jmWholeJobRate_'+si+'_'+ji+'_'+mi+'"></td>';
+    html += '<td class="jc-calc" style="color:var(--green);font-size:11px" id="jmWholeJobRate_'+si+'_'+ji+'_'+mi+'"></td>';
     html += '<td class="no-print"></td>';
     html += '</tr>';
   });
@@ -4456,7 +4487,7 @@ function renderJobCard(si,ji,j){
     html += '<tr class="coat-row">';
     html += '<td>🟢 Prime Coat <small id="jPrimeAmt_'+si+'_'+ji+'" style="display:block;font-weight:400"></small></td>';
     html += '<td id="jPrimeArea_'+si+'_'+ji+'" style="font-size:12px"></td>';
-    html += '<td colspan="3" style="text-align:left;padding-left:6px;font-size:10px;color:var(--gray-500)" id="jPrimeRate_'+si+'_'+ji+'"></td>';
+    html += '<td colspan="3" style="text-align:left;padding-left:6px;font-size:12px;color:var(--gray-600);line-height:1.4" id="jPrimeRate_'+si+'_'+ji+'"></td>';
     html += '<td class="jc-calc" id="jPrimeUnitRate_'+si+'_'+ji+'" style="background:#f0fdf4"></td>';
     html += '<td class="jc-calc" id="jPrimeWholeJobRate_'+si+'_'+ji+'" style="color:var(--green);background:#f0fdf4"></td>';
     html += '<td class="no-print"></td>';
@@ -4468,7 +4499,7 @@ function renderJobCard(si,ji,j){
     html += '<tr class="coat-row">';
     html += '<td>🟡 Tack Coat <small id="jTackAmt_'+si+'_'+ji+'" style="display:block;font-weight:400"></small></td>';
     html += '<td id="jTackArea_'+si+'_'+ji+'" style="font-size:12px"></td>';
-    html += '<td colspan="3" style="text-align:left;padding-left:6px;font-size:10px;color:var(--gray-500)" id="jTackRate_'+si+'_'+ji+'"></td>';
+    html += '<td colspan="3" style="text-align:left;padding-left:6px;font-size:12px;color:var(--gray-600);line-height:1.4" id="jTackRate_'+si+'_'+ji+'"></td>';
     html += '<td class="jc-calc" id="jTackUnitRate_'+si+'_'+ji+'" style="background:#fefce8"></td>';
     html += '<td class="jc-calc" id="jTackWholeJobRate_'+si+'_'+ji+'" style="color:var(--green);background:#fefce8"></td>';
     html += '<td class="no-print"></td>';
@@ -4877,7 +4908,7 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
 
   // Helper: render a qty-only row (no rate, no amount) for contractor-supplied materials
   var qtyOnlyRow = function(label, qty, unit, note){
-    var noteHtml = note ? ' <span style="font-size:10px;color:var(--gray-400)">'+note+'</span>' : '';
+    var noteHtml = note ? ' <span style="font-size:12px;color:var(--gray-600);line-height:1.4">'+note+'</span>' : '';
     return '<tr style="color:var(--gray-400)">'
       +'<td>'+label+noteHtml+'</td>'
       +'<td style="text-align:right">'+qty+'</td>'
@@ -4903,7 +4934,7 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
         +'<td style="text-align:right">'+fmtR(aggLanded)+'</td><td style="text-align:right">'+fmtI(Math.round(totalAggAmt))+'</td>'
         +(rv?revCells(aggLanded,totalAggAmt,rv.aggLanded,totalAggAmtRev):'')+'</tr>';
 
-    html+='<tr><td>Bitumen (VG30)</td><td style="text-align:right">'+(totalBitMT*1000).toFixed(0)+' <span style="color:var(--gray-400);font-size:11px">('+totalBitMT.toFixed(2)+' MT)</span></td><td>kg</td>'
+    html+='<tr><td>Bitumen (VG30)</td><td style="text-align:right">'+(totalBitMT*1000).toFixed(0)+' <span style="color:var(--gray-600);font-size:12px">('+totalBitMT.toFixed(2)+' MT)</span></td><td>kg</td>'
         +'<td style="text-align:right">'+fmtR(bitPrice)+'</td><td style="text-align:right">'+fmtI(Math.round(bitAmt))+'</td>'
         +(rv?revCells(bitPrice,bitAmt,rv.bitPrice,bitAmtRev):'')+'</tr>';
 
@@ -4970,7 +5001,7 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
           if(qty>0) html+=qtyOnlyRow(FRAC_LABELS[fi], qty.toFixed(1), 'MT', _aggNote);
         });
         html+='<tr style="color:var(--gray-500);font-weight:600;background:var(--gray-50)">'
-            +'<td>Total Aggregates <span style="font-size:10px;font-weight:400;color:var(--gray-400)">'+_aggNote+'</span></td>'
+            +'<td>Total Aggregates <span style="font-size:12px;font-weight:400;color:var(--gray-600);line-height:1.4">'+_aggNote+'</span></td>'
             +'<td style="text-align:right">'+totalAggMT.toFixed(1)+'</td><td>MT</td>'
             +'<td style="text-align:right">—</td><td style="text-align:right">—</td>'
             +(rv?'<td></td><td></td><td></td>':'')+'</tr>';
@@ -4990,7 +5021,7 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
     }
 
     // --- Separator before HLC items ---
-    html+='<tr><td colspan="'+colSpan+'" style="padding:4px 0;border-top:1px dashed var(--gray-300)"><span style="font-size:11px;color:var(--gray-400);padding-left:4px">▼ HLC-supplied below</span></td></tr>';
+    html+='<tr><td colspan="'+colSpan+'" style="padding:4px 0;border-top:1px dashed var(--gray-300)"><span style="font-size:12px;color:var(--gray-600);line-height:1.4;padding-left:4px">▼ HLC-supplied below</span></td></tr>';
 
     // --- Scope HSD: calculate from active scope equipment (respects individual HSD checkboxes) ---
     var scopeHsdLPerMT = 0;
@@ -5017,7 +5048,7 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
     // Bitumen — show as HLC-supplied if bitumen checked in scope AND we supply materials
     if(totalBitMT>0 && g.mixing && scopeTickEnabled('mixing','bitumen')){
       html+='<tr><td>Bitumen (VG30)</td>'
-          +'<td style="text-align:right">'+(totalBitMT*1000).toFixed(0)+' <span style="color:var(--gray-400);font-size:11px">('+totalBitMT.toFixed(2)+' MT)</span></td><td>kg</td>'
+          +'<td style="text-align:right">'+(totalBitMT*1000).toFixed(0)+' <span style="color:var(--gray-600);font-size:12px">('+totalBitMT.toFixed(2)+' MT)</span></td><td>kg</td>'
           +'<td style="text-align:right">'+fmtR(bitPrice)+'</td>'
           +'<td style="text-align:right;font-weight:600">'+fmtI(Math.round(bitAmt))+'</td>'
           +(rv?revCells(bitPrice,bitAmt,rv.bitPrice||bitPrice,totalBitMT*1000*(rv.bitPrice||bitPrice)):'')+'</tr>';
@@ -5425,7 +5456,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
   html+='<div style="margin-bottom:14px;padding:8px 14px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;font-size:12px;color:#92400e;display:flex;align-items:center;gap:12px;flex-wrap:wrap">';
   html+='<span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:14px;height:14px;border:2px solid #d97706;border-radius:3px"></span> Auto-calculated from Job Estimator</span>';
   html+='<span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:14px;height:14px;border:2px solid #16a34a;border-radius:3px"></span> Manually entered</span>';
-  html+='<span style="font-size:11px;color:#78716c">(Clear input to revert to auto rate)</span>';
+  html+='<span style="font-size:12px;color:var(--gray-600);line-height:1.4">(Clear input to revert to auto rate)</span>';
   html+='</div>';
 
   function _calcSiteRevenue(sId, sMode, sMixQty, sPrimeArea, sTackArea, sTotalRoadKm, sTotalSiteMT, sTotalSiteCUM, ratesObj, autoRatesObj){
@@ -5905,18 +5936,18 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         html+='<div style="margin-top:12px;padding:12px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">';
         html+='<div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px">Cost vs Contract</div>';
         html+='<div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start">';
-        html+='<div><div style="font-size:11px;color:#6b7280;margin-bottom:2px">Our cost ₹/km</div>';
+        html+='<div><div style="font-size:12px;color:var(--gray-600);line-height:1.4;margin-bottom:2px">Our cost ₹/km</div>';
         html+='<div style="font-size:18px;font-weight:700;color:#1e293b">₹'+fmtI(Math.round(_ourCostKm))+'</div></div>';
         if(kmRate!=null){
-          html+='<div><div style="font-size:11px;color:#6b7280;margin-bottom:2px">Contract ₹/km'+(contractRates[s.id+'__ADJ_PER_KM']?'+adj':'')+'</div>';
+          html+='<div><div style="font-size:12px;color:var(--gray-600);line-height:1.4;margin-bottom:2px">Contract ₹/km'+(contractRates[s.id+'__ADJ_PER_KM']?'+adj':'')+'</div>';
           html+='<div style="font-size:18px;font-weight:700;color:#16a34a">₹'+fmtI(Math.round(_ctrKm))+'</div></div>';
-          html+='<div><div style="font-size:11px;color:#6b7280;margin-bottom:2px">Profit ₹/km</div>';
+          html+='<div><div style="font-size:12px;color:var(--gray-600);line-height:1.4;margin-bottom:2px">Profit ₹/km</div>';
           html+='<div style="font-size:18px;font-weight:700;color:'+(_profitKm>=0?'#16a34a':'#ef4444')+'">'+(_profitKm>=0?'+':'')+fmtI(Math.round(_profitKm))+'</div></div>';
-          html+='<div><div style="font-size:11px;color:#6b7280;margin-bottom:2px">Total profit ('+_km.toFixed(2)+' km)</div>';
+          html+='<div><div style="font-size:12px;color:var(--gray-600);line-height:1.4;margin-bottom:2px">Total profit ('+_km.toFixed(2)+' km)</div>';
           html+='<div style="font-size:18px;font-weight:700;color:'+(_totalProfit>=0?'#16a34a':'#ef4444')+'">'+(_totalProfit<0?'−':'')+'₹'+fmtI(Math.round(Math.abs(_totalProfit)))+(_totalProfit<0?' Loss':'')+'</div></div>';
         }
         html+='</div>';
-        if(_inclChip) html+='<div style="font-size:11px;color:#6b7280;margin-top:6px">includes: '+esc(_inclChip)+'</div>';
+        if(_inclChip) html+='<div style="font-size:12px;color:var(--gray-600);line-height:1.4;margin-top:6px">includes: '+esc(_inclChip)+'</div>';
         html+='</div>';
       }
     } else {
@@ -5955,7 +5986,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
           html+='<span style="font-size:16px;font-weight:700;color:'+(_lsWorth?'#16a34a':'#ef4444')+'">'+(_lsWorth?'+':'')+fmtI(Math.round(_lsProfit))+' ('+_lsPct.toFixed(1)+'%) '+(_lsWorth?'<span style="font-size:12px;background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:600">✅ Worth doing</span>':'<span style="font-size:12px;background:#fee2e2;color:#ef4444;padding:2px 8px;border-radius:10px;font-weight:600">⚠️ Below cost</span>')+'</span></div>';
         }
         html+='</div>';
-        if(_lsInclChip) html+='<div style="font-size:11px;color:#6b7280;margin-top:8px">includes: '+esc(_lsInclChip)+'</div>';
+        if(_lsInclChip) html+='<div style="font-size:12px;color:var(--gray-600);line-height:1.4;margin-top:8px">includes: '+esc(_lsInclChip)+'</div>';
         html+='</div>';
       }
     }
@@ -5978,7 +6009,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       var tCost = useSc ? row._scenarioCost : row._baseCost;
       var targetRev = tCost / tmDiv;
       var tProfit = targetRev - tCost;
-      if(useSc) html+='<span style="font-size:11px;color:#6b7280;font-style:italic">(on scenario cost)</span>';
+      if(useSc) html+='<span style="font-size:12px;color:var(--gray-600);font-style:italic;line-height:1.4">(on scenario cost)</span>';
 
       if(mode==='itemised'){
         var _rm = row.revMode;
@@ -6656,7 +6687,7 @@ function renderScopeRow(container, stateObj, key, label, val, unit, disabled){
         (!disabled?' onchange="scopeState.'+container+'[\''+key+'\']=this.checked;syncMaterialsButtons();renderScopeQuotation();recalc()"':'')+
       '> '+label+
     '</label>'+
-      '<span class="sc-amt off">'+fmtPerUnit(val,unit)+'<span style="font-size:11px;font-weight:400;color:var(--gray-400)"> /'+unit+'</span></span>';
+      '<span class="sc-amt off">'+fmtPerUnit(val,unit)+'<span class="sc-unit"> /'+unit+'</span></span>';
   if(!disabled){
     // Restore active styling when checked
     var span = row.querySelector('.sc-amt');
@@ -6669,8 +6700,8 @@ function renderScopeAlwaysRow(label, val, unit){
   var row = document.createElement('div');
   row.className = 'scope-always';
   row.innerHTML =
-    '<span>✓ '+label+' <em style="font-size:11px">(always included)</em></span>'+
-    '<span class="sc-amt">'+fmtPerUnit(val,unit)+' <span style="font-size:10px;font-weight:400">/'+unit+'</span></span>';
+    '<span>✓ '+label+' <em class="sc-unit">(always included)</em></span>'+
+    '<span class="sc-amt">'+fmtPerUnit(val,unit)+' <span class="sc-unit">/'+unit+'</span></span>';
   return row;
 }
 
@@ -6800,10 +6831,10 @@ function scopeRateFromSqm(ratePerSqm,mixIdx,unit){
     tRow.innerHTML =
         '<span style="font-size:13px;color:var(--gray-700);flex:1">Transport to Site' +
         (_wTransPerMT > 0 && _preGrandMT > 0
-          ? ' <span style="font-size:11px;color:var(--gray-400)">(weighted avg from estimator site leads)</span>'
-          : ' <span style="font-size:11px;color:var(--gray-400)">(lead '+n('transDist')+' km × 2 × ₹'+n('transRate')+'/km ÷ '+n('transPayload')+' MT)</span>') +
+          ? ' <span class="scope-note">(weighted avg from estimator site leads)</span>'
+          : ' <span class="scope-note">(lead '+n('transDist')+' km × 2 × ₹'+n('transRate')+'/km ÷ '+n('transPayload')+' MT)</span>') +
         '</span>' +
-        '<span class="sc-amt">'+fmtPerUnit(sc.transPerMT,'MT')+' <span style="font-size:11px;font-weight:400;color:var(--gray-400)">/MT</span></span>';
+        '<span class="sc-amt">'+fmtPerUnit(sc.transPerMT,'MT')+' <span class="sc-unit">/MT</span></span>';
     transCont.appendChild(tRow);
   }
 
@@ -6939,7 +6970,7 @@ function scopeRateFromSqm(ratePerSqm,mixIdx,unit){
   var outHtml = scopeMixIndexes.length ? getRateUnitAssumptionNote(scopeMixIndexes,true) : '';
   var scopeRateHeading = 'Per-'+scopeRateCardLabel+' rates';
   if(rateUnit==='MT') scopeRateHeading += ' (coats are area-based)';
-  outHtml += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-600);margin-bottom:10px">'+scopeRateHeading+' (includes '+fmtR(scopeMargin)+'% scope margin)</div><div class="scope-output-grid">';
+  outHtml += '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-600);line-height:1.4;margin-bottom:10px">'+scopeRateHeading+' (includes '+fmtR(scopeMargin)+'% scope margin)</div><div class="scope-output-grid">';
   function appendScopeRateCard(label, rateKey, highlight){
     outHtml += '<div class="scope-out-item"><div class="scope-out-label">'+label+'</div>';
     outHtml += '<div class="scope-out-val" style="font-size:14px;display:flex;flex-direction:column;gap:6px">';
@@ -6956,7 +6987,7 @@ function scopeRateFromSqm(ratePerSqm,mixIdx,unit){
   appendScopeRateCard('Mix, transport and paving','mix',false);
   if(overheadCost>0) appendScopeRateCard('Mob/Demob overhead','overhead',false);
   if(primeCost>0||tackCost>0) appendScopeRateCard('Coats','coats',false);
-   appendScopeRateCard('Total per '+scopeRateCardLabel+', all in','total',true);
+    appendScopeRateCard('Total per '+scopeRateCardLabel+', all in','total',true);
   outHtml += '</div>';
   if(scopeUncostableJobs.length){
     outHtml += '<div class="job-cost-warning" style="display:block;margin-top:10px">Cannot be costed: '+scopeUncostableJobs.map(esc).join(', ')+'. Enter a positive thickness; these jobs are excluded from the scope total.</div>';
@@ -6965,10 +6996,10 @@ function scopeRateFromSqm(ratePerSqm,mixIdx,unit){
     // --- Grand total box ---
   if(grandScopeTotal > 0){
     outHtml += '<div style="margin-top:14px;padding:12px 16px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px">';
-    outHtml += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#15803d;margin-bottom:10px">'
-              +'Total Quoted Value'
-              +(scopeTotalMT>0?' <span style="font-weight:400;color:var(--gray-500)">('+scopeTotalMT.toFixed(1)+' MT)</span>':'')
-              +'</div>';
+    outHtml += '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#15803d;line-height:1.4;margin-bottom:10px">'
+             +'Total Quoted Value'
+             +(scopeTotalMT>0?' <span style="font-weight:400;color:var(--gray-500)">('+scopeTotalMT.toFixed(1)+' MT)</span>':'')
+             +'</div>';
     // Per-mix itemised breakdown
     var _mixIdxKeys = Object.keys(_mixQtyMap);
     if(_mixIdxKeys.length > 0){
@@ -6992,7 +7023,7 @@ function scopeRateFromSqm(ratePerSqm,mixIdx,unit){
     }
     outHtml += '<div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-end">';
     outHtml += '<div style="margin-left:auto;text-align:right">'
-             +'<div style="font-size:11px;color:var(--gray-500);margin-bottom:2px">Grand Total</div>'
+             +'<div style="font-size:12px;color:var(--gray-600);line-height:1.4;margin-bottom:2px">Grand Total</div>'
              +'<div style="font-size:26px;font-weight:800;color:#15803d">₹ '+fmtI(Math.round(grandScopeTotal))+'</div>';
     var wholeScopeQuantity = rateUnit==='MT' ? scopeTotalMT : rateUnit==='CUM' ? scopeTotalCUM :
       rateUnit==='SQM' ? scopeJobArea : scopeJobArea*SQFT_PER_SQM;
@@ -7000,17 +7031,17 @@ function scopeRateFromSqm(ratePerSqm,mixIdx,unit){
        outHtml += '<div style="font-size:12px;font-weight:700;color:#15803d;margin-top:3px">₹'+fmtPerUnit(grandScopeTotal/wholeScopeQuantity,rateUnit)+'/'+scopeUnit+' whole-job equivalent</div>';
     }
     if(marginAmt > 0){
-      outHtml += '<div style="font-size:11px;color:var(--gray-500);margin-top:3px">'
+      outHtml += '<div style="font-size:12px;color:var(--gray-600);line-height:1.4;margin-top:3px">'
                +'Base ₹&thinsp;'+fmtI(Math.round(baseAmt))
                +' &nbsp;+&nbsp; Margin ('+scopeMargin+'%) ₹&thinsp;'+fmtI(Math.round(marginAmt))
                +'</div>';
     }
     outHtml += '</div></div>';
     if(overheadCost > 0){
-      outHtml += '<div style="margin-top:8px;font-size:11px;color:var(--gray-500)">Mob/Demob overhead: ₹&thinsp;'+fmtI(Math.round(overheadCost))+'</div>';
+      outHtml += '<div style="margin-top:8px;font-size:12px;color:var(--gray-600);line-height:1.4">Mob/Demob overhead: ₹&thinsp;'+fmtI(Math.round(overheadCost))+'</div>';
     }
     if(showSpray && (primeCost > 0 || tackCost > 0)){
-      outHtml += '<div style="margin-top:8px;font-size:11px;color:var(--gray-500)">';
+      outHtml += '<div style="margin-top:8px;font-size:12px;color:var(--gray-600);line-height:1.4">';
       if(primeCost > 0) outHtml += 'Prime coat: ₹&thinsp;'+fmtI(Math.round(primeCost))+'&emsp;';
       if(tackCost  > 0) outHtml += 'Tack coat: ₹&thinsp;'+fmtI(Math.round(tackCost));
       outHtml += '</div>';
