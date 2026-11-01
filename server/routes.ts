@@ -25,6 +25,7 @@ import { getBillFinancialTotals } from "../shared/vendorBillFinancialReport";
 import { buildSavedBillPresentationRows } from "../shared/vendorBillPresentation";
 import { getBaseSiteName } from "../shared/siteName";
 import { vendorIdentityDisplayName } from "../shared/vendorIdentityDisplay";
+import { receiptSlipSendWindow } from "../shared/receiptSlipStatus";
 import { resolveVendorNameMatch } from "./vendorNameResolution";
 import { pipeOperatorManualPdf } from './operator-manual-pdf';
 import { pipeAdminGuidePdf } from './admin-guide-pdf';
@@ -393,13 +394,27 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  async function withReceiptDisplayMetadata<T extends { id: number; enteredByUserId?: number | null }>(
+  async function withReceiptDisplayMetadata<T extends {
+    id: number;
+    enteredByUserId?: number | null;
+    slipSharedByUserId?: number | null;
+    createdAt?: string | Date | null;
+    slipSharedAt?: string | Date | null;
+  }>(
     module: "material_receipts" | "site_material_trips",
     rows: T[],
-  ): Promise<(T & { enteredByUserName: string | null; latestEditAt: Date | null })[]> {
+  ): Promise<(T & {
+    enteredByUserName: string | null;
+    latestEditAt: Date | null;
+    slipSharedByUserName: string | null;
+    slipSendTrackingEnabled: boolean;
+    slipSendWindowOpen: boolean;
+  })[]> {
     if (!rows.length) return [];
     const ids = rows.map(row => row.id);
-    const userIds = Array.from(new Set(rows.map(row => row.enteredByUserId).filter((id): id is number => id != null)));
+    const userIds = Array.from(new Set(rows.flatMap(row =>
+      [row.enteredByUserId, row.slipSharedByUserId].filter((id): id is number => id != null),
+    )));
     const userRows = userIds.length
       ? await db.select({ id: users.id, fullName: users.fullName }).from(users).where(drizzleInArray(users.id, userIds))
       : [];
@@ -417,6 +432,8 @@ export async function registerRoutes(
       ...row,
       enteredByUserName: row.enteredByUserId == null ? null : names.get(row.enteredByUserId) ?? null,
       latestEditAt: edits.get(row.id) ?? null,
+      slipSharedByUserName: row.slipSharedByUserId == null ? null : names.get(row.slipSharedByUserId) ?? null,
+      ...receiptSlipSendWindow(row.createdAt, edits.get(row.id) ?? null),
     }));
   }
 
@@ -481,6 +498,15 @@ export async function registerRoutes(
     const logoFile = process.env.COMPANY_LOGO_FILE
       ?? (await storage.getSetting("company_logo_file"))
       ?? "hlc-logo.jpg";
+    const companyAddress = process.env.COMPANY_ADDRESS
+      ?? (await storage.getSetting("company_address"))
+      ?? "";
+    const companyGstin = process.env.COMPANY_GSTIN
+      ?? (await storage.getSetting("company_gstin"))
+      ?? "";
+    const companyPhone = process.env.COMPANY_PHONE
+      ?? (await storage.getSetting("company_phone"))
+      ?? "";
     // Licensed modules: deployment-wide setting stored as a JSON array.
     // [] = unrestricted (HLC internal — all modules visible, backward-compatible default).
     // "roads" is the explicit base marker for any restricted deployment.
@@ -488,7 +514,7 @@ export async function registerRoutes(
     //      ["roads","hmp","rmc"] = Roads+HMP+RMC.
     const licensedModulesRaw = await storage.getSetting("licensed_modules");
     const licensedModules: string[] = licensedModulesRaw ? JSON.parse(licensedModulesRaw) : [];
-    return { companyName, companyShortName, appTagline, logoFile, licensedModules };
+    return { companyName, companyShortName, appTagline, logoFile, companyAddress, companyGstin, companyPhone, licensedModules };
   }
 
   function getCompanyLogoPath(logoFile: string): string {
@@ -504,7 +530,16 @@ export async function registerRoutes(
       const cfg = await getCompanyConfig();
       res.json({ rmcEnabled: RMC_ENABLED, ...cfg });
     } catch {
-      res.json({ rmcEnabled: RMC_ENABLED, companyName: "High Lane Constructions Pvt Ltd", companyShortName: "HLC", appTagline: "Live Ops. Not Just Logs.", logoFile: "hlc-logo.jpg" });
+      res.json({
+        rmcEnabled: RMC_ENABLED,
+        companyName: "High Lane Constructions Pvt Ltd",
+        companyShortName: "HLC",
+        appTagline: "Live Ops. Not Just Logs.",
+        logoFile: "hlc-logo.jpg",
+        companyAddress: "",
+        companyGstin: "",
+        companyPhone: "",
+      });
     }
   });
 
@@ -548,7 +583,7 @@ export async function registerRoutes(
   app.post("/api/admin/branding", requireAuth, async (req, res) => {
     try {
       if (!assertAdmin(req, res)) return;
-      const { companyName, companyShortName, appTagline, logoFile } = req.body;
+      const { companyName, companyShortName, appTagline, logoFile, companyAddress, companyGstin, companyPhone } = req.body;
       if (typeof companyName === "string" && companyName.trim())
         await storage.setSetting("company_name", companyName.trim());
       if (typeof companyShortName === "string" && companyShortName.trim())
@@ -557,6 +592,12 @@ export async function registerRoutes(
         await storage.setSetting("app_tagline", appTagline.trim());
       if (typeof logoFile === "string" && logoFile.trim())
         await storage.setSetting("company_logo_file", logoFile.trim());
+      if (typeof companyAddress === "string")
+        await storage.setSetting("company_address", companyAddress.trim());
+      if (typeof companyGstin === "string")
+        await storage.setSetting("company_gstin", companyGstin.trim());
+      if (typeof companyPhone === "string")
+        await storage.setSetting("company_phone", companyPhone.trim());
       res.json({ ok: true });
     } catch (e: any) {
       res.status(500).json({ message: e?.message ?? "Failed to save branding config" });
@@ -1325,6 +1366,21 @@ export async function registerRoutes(
       if (!await assertTripSiteAccess(req, res, trip.site)) return;
       res.json(await tripHireReview(db, trip));
     } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+  app.post("/api/site-material-trips/:id/slip-shared", async (req, res) => {
+    try {
+      if (!assertView(req, res, "site_materials")) return;
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid trip ID" });
+      const trip = await storage.getSiteMaterialTripById(id);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+      if (!await assertTripSiteAccess(req, res, trip.site)) return;
+      const updated = await storage.markSiteMaterialTripSlipShared(id, req.authUser!.id);
+      if (!updated) return res.status(404).json({ message: "Trip not found" });
+      res.json({ ok: true, slipSharedAt: updated.slipSharedAt });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Could not update receipt share status" });
+    }
   });
   const tripHireConfirmationSchema = z.object({
     equipmentId: z.number().int().positive(), reason: z.string().trim().min(3),
@@ -5210,6 +5266,21 @@ export async function registerRoutes(
       res.json(await withReceiptDisplayMetadata("material_receipts", receipts));
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch material receipts" });
+    }
+  });
+
+  app.post("/api/material-receipts/:id/slip-shared", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_materials")) return;
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid receipt ID" });
+      const receipt = await storage.getMaterialReceipt(id);
+      if (!receipt) return res.status(404).json({ message: "Material receipt not found" });
+      const updated = await storage.markMaterialReceiptSlipShared(id, req.authUser!.id);
+      if (!updated) return res.status(404).json({ message: "Material receipt not found" });
+      res.json({ ok: true, slipSharedAt: updated.slipSharedAt });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Could not update receipt share status" });
     }
   });
 

@@ -799,6 +799,7 @@ export interface IStorage {
   
   // Plant Module Phase-1 - Transactions
   getMaterialReceipt(id: number): Promise<MaterialReceipt | undefined>;
+  markMaterialReceiptSlipShared(id: number, userId: number): Promise<MaterialReceipt | undefined>;
   getMaterialReceipts(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<MaterialReceipt[]>;
   createMaterialReceipt(receipt: InsertMaterialReceipt): Promise<MaterialReceipt>;
   updateMaterialReceipt(id: number, receipt: Partial<InsertMaterialReceipt>): Promise<MaterialReceipt | undefined>;
@@ -1436,6 +1437,7 @@ export interface IStorage {
   }>;
   createSiteMaterialTrip(data: InsertSiteMaterialTrip, hireLink?: NewTripHireLink, masterSelection?: TripMasterSelection): Promise<SiteMaterialTrip>;
   getSiteMaterialTripById(id: number): Promise<SiteMaterialTrip | undefined>;
+  markSiteMaterialTripSlipShared(id: number, userId: number): Promise<SiteMaterialTrip | undefined>;
   updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>, actor?: { userId: number; userName: string; userRole?: string | null }, masterSelection?: TripMasterSelection): Promise<SiteMaterialTrip>;
   deleteSiteMaterialTrip(id: number): Promise<void>;
   getSiteMaterialReconciliation(filters?: { permittedSiteNames?: string[]; dateFrom?: string; dateTo?: string }): Promise<{
@@ -5935,6 +5937,14 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
+  async markMaterialReceiptSlipShared(id: number, userId: number): Promise<MaterialReceipt | undefined> {
+    const [row] = await db.update(materialReceipts)
+      .set({ slipSharedAt: new Date(), slipSharedByUserId: userId })
+      .where(eq(materialReceipts.id, id))
+      .returning();
+    return row;
+  }
+
   async getMaterialReceipts(filters?: { partyId?: number; dateFrom?: string; dateTo?: string; includeCancelled?: boolean }): Promise<MaterialReceipt[]> {
     let conditions = [];
     const transactionDate = sql<string>`COALESCE(${materialReceipts.invoiceDate}, ${materialReceipts.date})`;
@@ -6089,6 +6099,8 @@ export class DatabaseStorage implements IStorage {
       const uppercased = {
         ...receipt,
         receiptNo: autoReceiptNo,
+        slipSharedAt: null,
+        slipSharedByUserId: null,
         supplier: receipt.supplier?.toUpperCase(),
         transporter: receipt.transporter?.toUpperCase(),
         vehicleNumber: receipt.vehicleNumber?.toUpperCase(),
@@ -6206,6 +6218,8 @@ export class DatabaseStorage implements IStorage {
       // Uppercase text fields
       const updates = { ...receipt };
       delete updates.enteredByUserId;
+      delete updates.slipSharedAt;
+      delete updates.slipSharedByUserId;
       if (existing.linkedDieselRequirementId != null) {
         delete (updates as any).linkedDieselRequirementId;
       }
@@ -13148,6 +13162,8 @@ export class DatabaseStorage implements IStorage {
         const [inserted] = await this._mutatePiDeliverySourceWithinTx(tx, "trip", null, async () => tx.insert(siteMaterialTrips).values({
           ...data,
           materialSourceSupplier,
+          slipSharedAt: null,
+          slipSharedByUserId: null,
           ...(data.materialSourceType === "own_source" ? { materialSourceVendorId: null } : {}),
         }).returning(), data.indentItemId);
         // The association for a new pair is committed only in the same
@@ -13221,6 +13237,14 @@ export class DatabaseStorage implements IStorage {
     return trip;
   }
 
+  async markSiteMaterialTripSlipShared(id: number, userId: number): Promise<SiteMaterialTrip | undefined> {
+    const [trip] = await db.update(siteMaterialTrips)
+      .set({ slipSharedAt: new Date(), slipSharedByUserId: userId })
+      .where(eq(siteMaterialTrips.id, id))
+      .returning();
+    return trip;
+  }
+
   async updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>, actor?: { userId: number; userName: string; userRole?: string | null }, masterSelection?: TripMasterSelection): Promise<SiteMaterialTrip> {
     const [trip] = await db.transaction(async (tx) => {
         const [existing] = await tx.select().from(siteMaterialTrips)
@@ -13265,6 +13289,8 @@ export class DatabaseStorage implements IStorage {
           .set({
             ...data,
             enteredByUserId: existing.enteredByUserId,
+            slipSharedAt: existing.slipSharedAt,
+            slipSharedByUserId: existing.slipSharedByUserId,
             ...(data.materialSourceSupplier !== undefined
               ? { materialSourceSupplier: typeof data.materialSourceSupplier === "string" && data.materialSourceSupplier.trim()
                   ? data.materialSourceSupplier

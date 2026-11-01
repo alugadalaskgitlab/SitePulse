@@ -1,11 +1,14 @@
 import jsPDF from "jspdf";
-import type { MaterialReceiptSlipData } from "./materialReceiptSlipTypes";
+import type { MaterialReceiptSlipCompany, MaterialReceiptSlipData } from "./materialReceiptSlipTypes";
 import { loadPdfLogoDataUrl } from "@/components/vendor-bills/pdfExportStyle";
 
-const PAGE_MARGIN = 10;
+const W = 148;
+const M = 10;
+const INK: [number, number, number] = [33, 33, 33];
 const DARK: [number, number, number] = [55, 55, 55];
-const MID: [number, number, number] = [115, 115, 115];
-const LIGHT: [number, number, number] = [238, 238, 238];
+const MID: [number, number, number] = [110, 110, 110];
+const RULE: [number, number, number] = [205, 205, 205];
+const TINT: [number, number, number] = [244, 244, 244];
 
 function displayDate(value?: string | null): string {
   if (!value) return "-";
@@ -24,221 +27,284 @@ function displayDateTime(value?: string | Date | null): string {
   }).format(date);
 }
 
-function drawHeader(doc: jsPDF, record: MaterialReceiptSlipData, companyName: string, logoDataUrl: string | null): number {
-  const width = doc.internal.pageSize.getWidth();
-  let logoDrawn = false;
-  if (logoDataUrl) {
-    try {
-      const image = doc.getImageProperties(logoDataUrl);
-      const box = { x: PAGE_MARGIN, y: 8, width: 15, height: 12 };
-      const scale = Math.min(box.width / image.width, box.height / image.height);
-      const imageWidth = image.width * scale;
-      const imageHeight = image.height * scale;
-      const format = image.fileType === "JPEG" || image.fileType === "PNG" ? image.fileType : "PNG";
-      doc.addImage(logoDataUrl, format, box.x + (box.width - imageWidth) / 2, box.y + (box.height - imageHeight) / 2, imageWidth, imageHeight);
-      logoDrawn = true;
-    } catch {
-      // Fall back to the compact HLC mark if the configured logo cannot be embedded.
-    }
-  }
-  doc.setDrawColor(...DARK);
-  doc.setLineWidth(0.3);
-  if (!logoDrawn) {
-    doc.rect(PAGE_MARGIN, 8, 15, 12);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
-    doc.setTextColor(...DARK);
-    doc.text("HLC", PAGE_MARGIN + 7.5, 15.5, { align: "center" });
-  }
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(...DARK);
-  doc.setFontSize(9);
-  doc.text(companyName || "Highlane Constructions", 29, 13);
+function displayTime(value?: string | null): string {
+  if (!value) return "-";
+  const match = /^(\d{1,2}):(\d{2})/.exec(value.trim());
+  if (!match) return value;
+  const hour = Number(match[1]);
+  return `${((hour + 11) % 12) + 1}:${match[2]} ${hour < 12 ? "AM" : "PM"}`;
+}
 
-  const title = record.kind === "plant" ? "MATERIAL RECEIPT" : "SITE MATERIAL RECEIPT";
-  const reference = record.kind === "plant"
-    ? record.receiptNo || `Receipt #${record.id}`
-    : `Trip ${record.id}${record.receiptNumber ? ` · Challan ${record.receiptNumber}` : ""}`;
-  doc.setFontSize(10);
-  doc.text(title, width - PAGE_MARGIN, 11, { align: "right" });
+function formatQty(value: number | string): string {
+  const number = Number(value);
+  return Number.isFinite(number)
+    ? number.toLocaleString("en-IN", { maximumFractionDigits: 3 })
+    : String(value);
+}
+
+function label(doc: jsPDF, text: string, x: number, y: number, align: "left" | "right" = "left") {
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(7);
-  doc.text(reference, width - PAGE_MARGIN, 16, { align: "right" });
-  const revisedAt = displayDateTime(record.latestEditAt);
-  if (revisedAt) {
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(...MID);
-    doc.text(`REVISED · ${revisedAt}`, width - PAGE_MARGIN, 20, { align: "right" });
+  doc.setFontSize(6.2);
+  doc.setTextColor(...MID);
+  if (align === "left") {
+    doc.setCharSpace(0.25);
+    doc.text(text.toUpperCase(), x, y);
+    doc.setCharSpace(0);
+  } else {
+    doc.text(text.toUpperCase(), x, y, { align });
   }
-  doc.setDrawColor(...DARK);
-  doc.line(PAGE_MARGIN, 24, width - PAGE_MARGIN, 24);
-  return 28;
 }
 
-function drawInfoGrid(doc: jsPDF, record: MaterialReceiptSlipData, startY: number): number {
-  const width = doc.internal.pageSize.getWidth();
-  const gap = 3;
-  const cellWidth = (width - PAGE_MARGIN * 2 - gap) / 2;
-  const cellHeight = 12;
-  const rows = record.kind === "plant"
-    ? [
-      ["Received at", record.plantName || "Main Plant"],
-      ["Stock of", record.partyName || "HLC"],
-      ["Date", displayDate(record.date)],
-      ["Time", record.time || "-"],
-    ]
-    : [
-      ["Site", record.site || "-"],
-      ["Location / chainage", record.location || "-"],
-      ["Date", displayDate(record.date)],
-      ["Time", record.time || "-"],
-    ];
-  rows.forEach(([label, value], index) => {
-    const column = index % 2;
-    const row = Math.floor(index / 2);
-    const x = PAGE_MARGIN + column * (cellWidth + gap);
-    const y = startY + row * (cellHeight + gap);
-    doc.setFillColor(...LIGHT);
-    doc.setDrawColor(185, 185, 185);
-    doc.roundedRect(x, y, cellWidth, cellHeight, 1.2, 1.2, "FD");
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(...MID);
-    doc.setFontSize(6);
-    doc.text(label.toUpperCase(), x + 2, y + 4);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(...DARK);
-    doc.setFontSize(8);
-    doc.text(doc.splitTextToSize(value || "-", cellWidth - 4).slice(0, 1), x + 2, y + 9);
-  });
-  return startY + cellHeight * 2 + gap;
+function reference(record: MaterialReceiptSlipData): string {
+  return record.kind === "plant" ? record.receiptNo || `Receipt #${record.id}` : `Trip #${record.id}`;
 }
 
-function plantConvertedMt(record: MaterialReceiptSlipData): string | null {
+function convertedMt(record: MaterialReceiptSlipData): string | null {
+  if (record.kind !== "plant") return null;
   const factor = Number(record.conversionFactor);
   const from = (record.conversionFromUom || "").trim().toUpperCase();
   const to = (record.conversionToUom || "").trim().toUpperCase();
-  if (!Number.isFinite(factor) || factor <= 0 || !from || !/^(MT|TONS?|TONNES?|METRIC TONS?)$/.test(to)) return null;
+  if (!Number.isFinite(factor) || factor <= 0 || !/^(CFT|CUBIC FEET)$/.test(from)) return null;
+  if (!/^(MT|TONS?|TONNES?|METRIC TONS?)$/.test(to)) return null;
   if ((record.uom || "").trim().toUpperCase() !== from) return null;
   const mt = Number(record.quantity) * factor;
   if (!Number.isFinite(mt)) return null;
   const density = Number(record.bulkDensity);
-  const densityText = Number.isFinite(density) && density > 0 ? ` at ${density.toFixed(2)} t/cum` : "";
-  return `Approx. ${mt.toFixed(2)} MT${densityText}`;
-}
-
-function drawQuantityBand(doc: jsPDF, record: MaterialReceiptSlipData, startY: number): number {
-  const width = doc.internal.pageSize.getWidth();
-  const height = 19;
-  doc.setFillColor(247, 247, 247);
-  doc.setDrawColor(...DARK);
-  doc.roundedRect(PAGE_MARGIN, startY, width - PAGE_MARGIN * 2, height, 1.2, 1.2, "FD");
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(...DARK);
-  doc.setFontSize(10);
-  const materialText = record.materialName || "Material";
-  doc.text(doc.splitTextToSize(materialText, 82).slice(0, 1), PAGE_MARGIN + 3, startY + 7);
-  doc.setFontSize(11);
-  doc.text(`${record.quantity} ${record.uom}`, width - PAGE_MARGIN - 3, startY + 8, { align: "right" });
-  const converted = record.kind === "plant" ? plantConvertedMt(record) : null;
-  if (converted) {
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7);
-    doc.setTextColor(...MID);
-    doc.text(converted, width - PAGE_MARGIN - 3, startY + 14, { align: "right" });
-  }
-  return startY + height;
+  return `Approx. ${mt.toFixed(2)} MT${Number.isFinite(density) && density > 0 ? ` · at ${density.toFixed(2)} t/cum` : ""}`;
 }
 
 function detailRows(record: MaterialReceiptSlipData): [string, string][] {
   const rows: [string, string][] = [];
+  if (record.kind === "plant") {
+    if (record.supplier) rows.push(["Supplier", record.supplier]);
+    if (record.transporter) rows.push(["Transporter", record.transporter]);
+  } else {
+    const own = record.materialSourceType === "own_source";
+    const source = own ? record.materialSourceLabel : record.materialSourceSupplier;
+    if (source) rows.push([own ? "Source" : "Supplier", source]);
+    if (record.supplier) rows.push(["Transporter", record.supplier]);
+  }
   if (record.vehicleNumber) rows.push(["Vehicle", record.vehicleNumber]);
   if (record.driverName) rows.push(["Driver", record.driverName]);
   if (record.kind === "plant") {
-    if (record.supplier) rows.push(["From / Supplier", record.supplier]);
-    if (record.transporter) rows.push(["Brought by / Transporter", record.transporter]);
-    if (record.challanNumber) rows.push(["Challan", record.challanNumber]);
+    if (record.challanNumber) rows.push(["Supplier challan", record.challanNumber]);
     if (record.invoiceNo || record.invoiceDate) {
-      rows.push(["Invoice", [record.invoiceNo, record.invoiceDate ? displayDate(record.invoiceDate) : null].filter(Boolean).join(" - ")]);
+      rows.push(["Invoice", [record.invoiceNo, record.invoiceDate ? displayDate(record.invoiceDate) : null].filter(Boolean).join(" · ")]);
     }
-    if (record.tankNumber != null) rows.push(["Tank", String(record.tankNumber)]);
-  } else {
-    const source = record.materialSourceType === "own_source"
-      ? record.materialSourceLabel
-      : record.materialSourceSupplier;
-    if (source) rows.push([record.materialSourceType === "own_source" ? "From / Source" : "From / Supplier", source]);
-    if (record.supplier) rows.push(["Brought by / Transporter", record.supplier]);
-    if (record.receiptNumber) rows.push(["Challan", record.receiptNumber]);
-    if (record.enteredBy?.trim()) rows.push(["Entered by", record.enteredBy.trim()]);
+    if (record.tankNumber != null) rows.push(["Unloaded into", `Tank ${record.tankNumber}`]);
+  } else if (record.receiptNumber) {
+    rows.push(["Supplier challan", record.receiptNumber]);
   }
   return rows;
 }
 
-function drawDetails(doc: jsPDF, record: MaterialReceiptSlipData, startY: number): number {
-  const labelX = PAGE_MARGIN + 2;
-  const valueX = PAGE_MARGIN + 34;
-  const valueWidth = doc.internal.pageSize.getWidth() - valueX - PAGE_MARGIN;
-  let y = startY + 6;
-  for (const [label, value] of detailRows(record)) {
-    const wrapped = doc.splitTextToSize(value, valueWidth);
-    const lineCount = Math.min(2, wrapped.length);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7.5);
-    doc.setTextColor(...MID);
-    doc.text(label, labelX, y);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(...DARK);
-    doc.text(wrapped.slice(0, lineCount), valueX, y);
-    y += Math.max(5, lineCount * 4);
-    doc.setDrawColor(220, 220, 220);
-    doc.setLineWidth(0.15);
-    doc.line(PAGE_MARGIN, y - 2, doc.internal.pageSize.getWidth() - PAGE_MARGIN, y - 2);
+function layout(
+  doc: jsPDF,
+  record: MaterialReceiptSlipData,
+  company: MaterialReceiptSlipCompany,
+  logoDataUrl: string | null,
+): number {
+  let logoWidth = 0;
+  if (logoDataUrl) {
+    try {
+      const image = doc.getImageProperties(logoDataUrl);
+      const scale = Math.min(22 / image.width, 18 / image.height);
+      logoWidth = image.width * scale;
+      doc.addImage(logoDataUrl, image.fileType === "PNG" ? "PNG" : "JPEG", M, 9, logoWidth, image.height * scale);
+    } catch {
+      logoWidth = 0;
+    }
   }
-  return y;
+  if (!logoWidth) {
+    doc.setDrawColor(...INK);
+    doc.setLineWidth(0.5);
+    doc.rect(M, 9, 18, 18);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...INK);
+    doc.text("HLC", M + 9, 19.5, { align: "center" });
+    logoWidth = 18;
+  }
+
+  const textX = M + logoWidth + 4;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.setTextColor(...INK);
+  doc.text(doc.splitTextToSize((company.name || "High Lane Constructions").toUpperCase(), W - M - textX).slice(0, 1), textX, 15.5);
+  const companyLines = [
+    company.address?.trim() || "",
+    [
+      company.gstin?.trim() ? `GSTIN ${company.gstin.trim()}` : "",
+      company.phone?.trim() ? `Ph ${company.phone.trim()}` : "",
+    ].filter(Boolean).join("   ·   "),
+  ].filter(Boolean);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(...MID);
+  let companyY = 20.5;
+  for (const line of companyLines) {
+    doc.text(doc.splitTextToSize(line, W - M - textX).slice(0, 1), textX, companyY);
+    companyY += 3.6;
+  }
+
+  let y = 31;
+  doc.setFillColor(...DARK);
+  doc.rect(M, y, W - 2 * M, 9, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setCharSpace(0.8);
+  doc.text(record.kind === "plant" ? "MATERIAL RECEIPT" : "SITE MATERIAL RECEIPT", M + 4, y + 6);
+  doc.setCharSpace(0);
+  doc.setFontSize(9.5);
+  doc.text(reference(record), W - M - 4, y + 6, { align: "right" });
+  y += 9;
+  const revisedAt = displayDateTime(record.latestEditAt);
+  if (revisedAt) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.5);
+    doc.setTextColor(...MID);
+    doc.text(`REVISED COPY · ${revisedAt} · replaces earlier copy`, W - M, y + 4, { align: "right" });
+    y += 4;
+  }
+
+  y += 5;
+  const info = record.kind === "plant"
+    ? [["Date", displayDate(record.date)], ["Time", displayTime(record.time)], ["Received at", record.plantName || "Main Plant"]] as [string, string][]
+    : [["Date", displayDate(record.date)], ["Time", displayTime(record.time)], ["Site", record.site || "-"], ["Location", record.location || "-"]] as [string, string][];
+  const widths = record.kind === "plant" ? [30, 24, 74] : [26, 20, 41, 41];
+  doc.setDrawColor(...RULE);
+  doc.setLineWidth(0.2);
+  doc.line(M, y, W - M, y);
+  doc.line(M, y + 13, W - M, y + 13);
+  let x = M;
+  info.forEach(([key, value], index) => {
+    const left = x + (index ? 3 : 0);
+    label(doc, key, left, y + 4.6);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.2);
+    doc.setTextColor(...INK);
+    const wrapped = doc.splitTextToSize(value, widths[index] - 4);
+    doc.text(wrapped.length > 1 ? wrapped.slice(0, 2) : wrapped, left, y + (wrapped.length > 1 ? 8.6 : 9.8));
+    if (index) doc.line(x, y + 2.5, x, y + 10.5);
+    x += widths[index];
+  });
+  y += 13 + 5;
+
+  const heroHeight = 25;
+  doc.setFillColor(...TINT);
+  doc.rect(M, y, W - 2 * M, heroHeight, "F");
+  doc.setFillColor(...INK);
+  doc.rect(M, y, 1.6, heroHeight, "F");
+  label(doc, "Material", M + 6, y + 7);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(15);
+  doc.setTextColor(...INK);
+  doc.text(doc.splitTextToSize(record.materialName || "Material", 62).slice(0, 1), M + 6, y + 14.5);
+  if (record.kind === "plant") {
+    label(doc, "Stock of", M + 6, y + 20.5);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.6);
+    doc.setTextColor(...INK);
+    doc.text(doc.splitTextToSize(record.partyName || "HLC", 46).slice(0, 1), M + 22, y + 20.5);
+  }
+  label(doc, "Quantity received", W - M - 5, y + 7, "right");
+  const uom = (record.uom || "").toUpperCase();
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...INK);
+  doc.setFontSize(11);
+  const uomWidth = doc.getTextWidth(uom);
+  doc.text(uom, W - M - 5, y + 16, { align: "right" });
+  doc.setFontSize(24);
+  doc.text(formatQty(record.quantity), W - M - 5 - uomWidth - 1.8, y + 16, { align: "right" });
+  const converted = convertedMt(record);
+  if (converted) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.2);
+    doc.setTextColor(...MID);
+    doc.text(converted, W - M - 5, y + 21.5, { align: "right" });
+  }
+  y += heroHeight;
+
+  const details = detailRows(record);
+  if (details.length) {
+    y += 7;
+    label(doc, "Delivery details", M, y);
+    y += 2;
+    doc.setDrawColor(...INK);
+    doc.setLineWidth(0.35);
+    doc.line(M, y, W - M, y);
+    for (const [key, value] of details) {
+      const lines = doc.splitTextToSize(value, W - M - 52).slice(0, 2);
+      const height = 4 + lines.length * 3.6 + 1.2;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.8);
+      doc.setTextColor(...MID);
+      doc.text(key, M + 1, y + 5);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.4);
+      doc.setTextColor(...INK);
+      doc.text(lines, M + 42, y + 5);
+      y += height;
+      doc.setDrawColor(...RULE);
+      doc.setLineWidth(0.15);
+      doc.line(M, y, W - M, y);
+    }
+  }
+
+  if (record.kind === "plant" && /^(CFT|CUBIC FEET|CUM|CUMM|TRIP|TRIPS)$/i.test((record.uom || "").trim())) {
+    y += 5;
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(6.8);
+    doc.setTextColor(...MID);
+    doc.text(
+      doc.splitTextToSize("Not weighed — quantity measured by tipper body volume; MT shown is approximate, at the agreed bulk density.", W - 2 * M),
+      M,
+      y,
+    );
+    y += 2;
+  }
+
+  y += 22;
+  const half = (W - 2 * M - 12) / 2;
+  doc.setDrawColor(...DARK);
+  doc.setLineWidth(0.25);
+  doc.line(M, y, M + half, y);
+  doc.line(W - M - half, y, W - M, y);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.2);
+  doc.setTextColor(...DARK);
+  doc.text(`For ${(company.name || "HLC").toUpperCase()}`, M, y + 4.5);
+  doc.text("Driver", W - M - half, y + 4.5);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.5);
+  doc.setTextColor(...MID);
+  doc.text("Received in good order", M, y + 8);
+  if (record.driverName) doc.text(record.driverName, W - M - half, y + 8);
+
+  y += 15;
+  doc.setDrawColor(...RULE);
+  doc.setLineWidth(0.2);
+  doc.line(M, y, W - M, y);
+  doc.setFontSize(6);
+  doc.setTextColor(...MID);
+  doc.text("System-generated receipt · SitePulse", M, y + 4);
+  doc.text(`Issued ${displayDateTime(new Date())}`, W - M, y + 4, { align: "right" });
+  return y + 9;
 }
 
 export function drawMaterialReceiptSlip(
   doc: jsPDF,
   record: MaterialReceiptSlipData,
-  companyName: string,
+  company: MaterialReceiptSlipCompany,
   logoDataUrl: string | null,
-): void {
-  const width = doc.internal.pageSize.getWidth();
-  let y = drawHeader(doc, record, companyName, logoDataUrl);
-  y = drawInfoGrid(doc, record, y);
-  y += 4;
-  y = drawQuantityBand(doc, record, y) + 1;
-  y = drawDetails(doc, record, y);
-  const isPlantVolume = record.kind === "plant" && /^(CFT|CUBIC FEET|CUM|CUMM|TRIP|TRIPS)$/i.test(record.uom.trim());
-  if (isPlantVolume) {
-    doc.setFont("helvetica", "italic");
-    doc.setFontSize(6.8);
-    doc.setTextColor(...MID);
-    doc.text(
-      doc.splitTextToSize("Not weighed - quantity by tipper body volume, converted at the agreed bulk density.", width - PAGE_MARGIN * 2),
-      PAGE_MARGIN + 1,
-      Math.min(y + 2, 162),
-    );
-  }
-  const signatureY = 177;
-  doc.setDrawColor(...DARK);
-  doc.setLineWidth(0.25);
-  doc.line(PAGE_MARGIN + 3, signatureY, width / 2 - 4, signatureY);
-  doc.line(width / 2 + 4, signatureY, width - PAGE_MARGIN - 3, signatureY);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(...MID);
-  doc.setFontSize(7);
-  doc.text("Received · HLC", (PAGE_MARGIN + 3 + width / 2 - 4) / 2, signatureY + 5, { align: "center" });
-  doc.text("Driver", (width / 2 + 4 + width - PAGE_MARGIN - 3) / 2, signatureY + 5, { align: "center" });
-  doc.setDrawColor(180, 180, 180);
-  doc.line(PAGE_MARGIN, 194, width - PAGE_MARGIN, 194);
-  doc.setFontSize(6);
-  doc.text(`Generated by SitePulse - ${displayDateTime(new Date())}`, PAGE_MARGIN, 199);
-  doc.text("Page 1 of 1", width - PAGE_MARGIN, 199, { align: "right" });
+): number {
+  return layout(doc, record, company, logoDataUrl);
 }
 
 export async function buildMaterialReceiptSlipPdf(
   record: MaterialReceiptSlipData,
-  companyName: string,
+  company: MaterialReceiptSlipCompany,
   logoFile?: string | null,
 ): Promise<Blob> {
   let logoDataUrl: string | null = null;
@@ -247,8 +313,10 @@ export async function buildMaterialReceiptSlipPdf(
   } catch {
     // A missing or inaccessible logo must not prevent a receipt slip from being saved.
   }
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a5" });
-  drawMaterialReceiptSlip(doc, record, companyName, logoDataUrl);
+  const probe = new jsPDF({ unit: "mm", format: [148, 400] });
+  const height = Math.max(150, Math.ceil(layout(probe, record, company, logoDataUrl)));
+  const doc = new jsPDF({ unit: "mm", format: [148, height], orientation: "portrait" });
+  layout(doc, record, company, logoDataUrl);
   return doc.output("blob");
 }
 

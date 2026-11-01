@@ -57,7 +57,7 @@ export default function PlantMaterialReceipts() {
   const { getPlantBackLink } = useOrigin();
   const { sectionCan, isOwner, isAdmin } = useAuth();
   const isOwnerOrAdmin = isOwner || isAdmin;
-  const { companyName, logoFile } = useFeatureFlags();
+  const { companyName, companyInfo, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("plant_stock", "create");
   const canEdit = sectionCan("plant_stock", "edit");
   const canDirectEditSubmittedReceipt = isOwnerOrAdmin || sectionCan("plant_materials", "edit");
@@ -608,6 +608,10 @@ export default function PlantMaterialReceipts() {
         tankNumber: receipt.tankNumber,
         createdAt: receipt.createdAt,
         latestEditAt: receipt.latestEditAt,
+        slipSharedAt: receipt.slipSharedAt,
+        slipSharedByUserName: receipt.slipSharedByUserName,
+        slipSendWindowOpen: receipt.slipSendWindowOpen,
+        slipSendTrackingEnabled: receipt.slipSendTrackingEnabled,
         conversionFactor: materials?.find(material => material.id === receipt.materialId)?.conversionFactor,
         conversionFromUom: materials?.find(material => material.id === receipt.materialId)?.conversionFromUom,
         conversionToUom: materials?.find(material => material.id === receipt.materialId)?.conversionToUom,
@@ -961,6 +965,10 @@ export default function PlantMaterialReceipts() {
       tankNumber: receipt.tankNumber,
       createdAt: receipt.createdAt,
       latestEditAt: receipt.latestEditAt,
+      slipSharedAt: (receipt as any).slipSharedAt,
+      slipSharedByUserName: (receipt as any).slipSharedByUserName,
+      slipSendWindowOpen: (receipt as any).slipSendWindowOpen,
+      slipSendTrackingEnabled: (receipt as any).slipSendTrackingEnabled,
       conversionFactor: material?.conversionFactor,
       conversionFromUom: material?.conversionFromUom,
       conversionToUom: material?.conversionToUom,
@@ -1773,7 +1781,7 @@ export default function PlantMaterialReceipts() {
             {submissionFeedback.kind === "success" && savedReceiptForSlip && (
               <MaterialReceiptSlipActions
                 record={savedReceiptForSlip as MaterialReceiptSlipData}
-                companyName={companyName}
+                company={companyInfo}
                 logoFile={logoFile}
               />
             )}
@@ -1993,9 +2001,9 @@ export default function PlantMaterialReceipts() {
                                 {(receipt as any).driverName && <span className="text-sm text-muted-foreground">Driver: {(receipt as any).driverName}</span>}
                                 <div className="ml-auto" onClick={event => event.stopPropagation()}>
                                   <MaterialReceiptSlipActions
-                                    compact
+                                    mode="row"
                                     record={toReceiptSlipData(receipt)}
-                                    companyName={companyName}
+                                    company={companyInfo}
                                     logoFile={logoFile}
                                   />
                                 </div>

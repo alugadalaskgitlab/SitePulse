@@ -48,7 +48,7 @@ export default function SiteMaterialTrips() {
   const { toast } = useToast();
   const { sectionCan, isAdmin, isOwner } = useAuth();
   const canEdit = sectionCan("site_materials", "edit");
-  const { companyName, logoFile } = useFeatureFlags();
+  const { companyName, companyInfo, logoFile } = useFeatureFlags();
   const searchString = useSearch();
   const [, navigate] = useLocation();
   const piParams = (() => {
@@ -353,6 +353,10 @@ export default function SiteMaterialTrips() {
         enteredBy: trip.enteredBy,
         createdAt: trip.createdAt,
         latestEditAt: trip.latestEditAt,
+        slipSharedAt: trip.slipSharedAt,
+        slipSharedByUserName: trip.slipSharedByUserName,
+        slipSendWindowOpen: trip.slipSendWindowOpen,
+        slipSendTrackingEnabled: trip.slipSendTrackingEnabled,
       });
       toast({ title: "Trip Logged", description: "Material trip has been recorded successfully." });
       if (isPILinked) {
@@ -914,7 +918,7 @@ export default function SiteMaterialTrips() {
               <p className="mt-1 text-sm text-muted-foreground">
                 Trip {savedTripForSlip.id}{savedTripForSlip.receiptNumber ? ` · Challan ${savedTripForSlip.receiptNumber}` : ""}
               </p>
-              <MaterialReceiptSlipActions record={savedTripForSlip} companyName={companyName} logoFile={logoFile} />
+              <MaterialReceiptSlipActions record={savedTripForSlip} company={companyInfo} logoFile={logoFile} />
             </CardContent>
           </Card>
         )}
@@ -1127,7 +1131,7 @@ export default function SiteMaterialTrips() {
                         <td className="p-2 text-center">
                           <div className="flex items-center justify-center gap-1">
                             <MaterialReceiptSlipActions
-                              compact
+                              mode="row"
                               record={{
                                 kind: "site",
                                 id: trip.id,
@@ -1148,8 +1152,12 @@ export default function SiteMaterialTrips() {
                                 enteredBy: trip.enteredBy,
                                 createdAt: (trip as any).createdAt,
                                 latestEditAt: (trip as any).latestEditAt,
+                                slipSharedAt: (trip as any).slipSharedAt,
+                                slipSharedByUserName: (trip as any).slipSharedByUserName,
+                                slipSendWindowOpen: (trip as any).slipSendWindowOpen,
+                                slipSendTrackingEnabled: (trip as any).slipSendTrackingEnabled,
                               }}
-                              companyName={companyName}
+                              company={companyInfo}
                               logoFile={logoFile}
                             />
                             <Button variant="outline" size="sm" onClick={() => setEditingRoleTrip(trip)} data-testid={`button-edit-trip-roles-${trip.id}`}>{canEdit ? "Edit" : "Details"}</Button>

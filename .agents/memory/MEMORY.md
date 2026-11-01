@@ -117,6 +117,7 @@
 - [Conservative resource attribution](boq-resource-linking.md) — wrong links are worse than missing links; entry defaults, reviewed historical linking, and report math are separate scopes.
 - [Test suite verification](test-suite-verification.md) — compare file inventories, not only totals; bounded workers and separate build runs avoid setup skips.
 - [Published export verification](published-export-verification.md) — a successful build is not proof workspace gates are live; verify real restricted-user exports.
+- [Publishing approval](publishing-approval.md) — The user must review work before it is published.
 - [Vendor payables preview](vendor-payables-preview.md) — indicative unsaved GST with last-bill provenance; unallocated monthly charges separate from site subtotal, included in vendor total.
 - [Payables vs prior statement](vendor-payables-prior-statement.md) — aggregate liability includes all eligible bills; prior-bill exclusions remain local and must be explained.
 - [Vendor bill log evidence](vendor-bill-log-evidence.md) — display-only facts; missing legacy IDs require exact unique matching, never equipment/date-only inference.

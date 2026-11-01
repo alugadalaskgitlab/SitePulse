@@ -6,6 +6,9 @@ interface AppConfig {
   companyShortName: string;
   appTagline: string;
   logoFile: string;
+  companyAddress: string;
+  companyGstin: string;
+  companyPhone: string;
   // Deployment-wide licensed modules list.
   // Empty = all modules visible (default, Roads Only effectively shows everything
   // the user has permission for — HMP/RMC just aren't visible since no plant exists).
@@ -20,12 +23,20 @@ export function useFeatureFlags() {
     gcTime: Infinity,
   });
   const licensedModules: string[] = data?.licensedModules ?? [];
+  const companyName = data?.companyName ?? "High Lane Constructions Pvt Ltd";
+  const companyAddress = data?.companyAddress ?? "";
+  const companyGstin = data?.companyGstin ?? "";
+  const companyPhone = data?.companyPhone ?? "";
   return {
     rmcEnabled: data?.rmcEnabled ?? false,
-    companyName: data?.companyName ?? "High Lane Constructions Pvt Ltd",
+    companyName,
     companyShortName: data?.companyShortName ?? "HLC",
     appTagline: data?.appTagline ?? "Live Ops. Not Just Logs.",
     logoFile: data?.logoFile ?? "hlc-logo.jpg",
+    companyAddress,
+    companyGstin,
+    companyPhone,
+    companyInfo: { name: companyName, address: companyAddress, gstin: companyGstin, phone: companyPhone },
     licensedModules,
     // Helper: returns true if the module is licensed (or if no restriction is set,
     // meaning this is an unrestricted deployment — HLC's own).

@@ -1,29 +1,30 @@
 import { useEffect, useState } from "react";
-import { Download, Eye, MessageCircle, Loader2 } from "lucide-react";
+import { Eye, MessageCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { buildMaterialReceiptSlipPdf, materialReceiptSlipCaption, materialReceiptSlipFilename } from "@/lib/materialReceiptSlipPdf";
-import type { MaterialReceiptSlipData } from "@/lib/materialReceiptSlipTypes";
+import type { MaterialReceiptSlipCompany, MaterialReceiptSlipData } from "@/lib/materialReceiptSlipTypes";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export function MaterialReceiptSlipActions({
-  record, companyName, logoFile, compact = false,
+  record, company, logoFile, mode = "success",
 }: {
   record: MaterialReceiptSlipData;
-  companyName: string;
+  company: MaterialReceiptSlipCompany;
   logoFile?: string | null;
-  compact?: boolean;
+  mode?: "success" | "row";
 }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
-  const [loadingAction, setLoadingAction] = useState<"view" | "save" | "send" | null>(null);
+  const [loadingAction, setLoadingAction] = useState<"view" | "send" | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   useEffect(() => () => {
     if (pdfUrl) URL.revokeObjectURL(pdfUrl);
   }, [pdfUrl]);
 
   const createPdf = async () => {
-    const blob = await buildMaterialReceiptSlipPdf(record, companyName, logoFile);
+    const blob = await buildMaterialReceiptSlipPdf(record, company, logoFile);
     return { blob, filename: materialReceiptSlipFilename(record) };
   };
   const download = (blob: Blob, filename: string) => {
@@ -37,7 +38,24 @@ export function MaterialReceiptSlipActions({
     anchor.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
-  const run = async (action: "view" | "save" | "send") => {
+  const markShared = async () => {
+    const path = record.kind === "plant" ? "material-receipts" : "site-material-trips";
+    try {
+      await apiRequest("POST", `/api/${path}/${record.id}/slip-shared`);
+      queryClient.invalidateQueries({
+        predicate: query => typeof query.queryKey[0] === "string" &&
+          (query.queryKey[0].startsWith("/api/plant-module/material-receipts") ||
+            query.queryKey[0].startsWith("/api/site-material-trips")),
+      });
+    } catch {
+      toast({
+        title: "Receipt shared, but status could not be recorded",
+        description: "The PDF may already have been shared. Refresh the list to check its status.",
+        variant: "destructive",
+      });
+    }
+  };
+  const run = async (action: "view" | "send") => {
     setLoadingAction(action);
     try {
       const { blob, filename } = await createPdf();
@@ -45,19 +63,30 @@ export function MaterialReceiptSlipActions({
         if (pdfUrl) URL.revokeObjectURL(pdfUrl);
         setPdfUrl(URL.createObjectURL(blob));
         setOpen(true);
-      } else if (action === "save") {
-        download(blob, filename);
       } else {
         const caption = materialReceiptSlipCaption(record);
         const file = new File([blob], filename, { type: "application/pdf" });
         const shareNavigator = navigator as Navigator & {
           canShare?: (data?: ShareData) => boolean;
         };
+        let sharedByFile = false;
         if (typeof shareNavigator.share === "function" && shareNavigator.canShare?.({ files: [file] })) {
-          await shareNavigator.share({ files: [file], text: caption });
+          try {
+            await shareNavigator.share({ files: [file], text: caption });
+            sharedByFile = true;
+          } catch (error) {
+            const name = error instanceof Error ? error.name : "";
+            if (name === "AbortError") throw error;
+            if (!(error instanceof TypeError) && name !== "NotSupportedError") throw error;
+          }
+        }
+        if (sharedByFile) {
+          await markShared();
         } else {
           download(blob, filename);
           window.open(`https://wa.me/?text=${encodeURIComponent(caption)}`, "_blank", "noopener,noreferrer");
+          await markShared();
+          toast({ title: "PDF downloaded — attach it in WhatsApp." });
         }
       }
     } catch (error) {
@@ -71,20 +100,53 @@ export function MaterialReceiptSlipActions({
       setLoadingAction(null);
     }
   };
-  const buttonSize = compact ? "sm" : "default";
+  if (mode === "row") {
+    if (!record.slipSendTrackingEnabled) return null;
+    const sharedAt = record.slipSharedAt ? new Date(record.slipSharedAt) : null;
+    const validSharedAt = sharedAt && !Number.isNaN(sharedAt.getTime()) ? sharedAt : null;
+    const editedAt = record.latestEditAt ? new Date(record.latestEditAt) : null;
+    const revised = !!(validSharedAt && editedAt && editedAt.getTime() > validSharedAt.getTime());
+    if (validSharedAt && !revised) {
+      const sentLabel = new Intl.DateTimeFormat("en-IN", {
+        day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false,
+      }).format(validSharedAt);
+      return <span className="whitespace-nowrap text-xs text-muted-foreground" data-testid={`receipt-slip-status-${record.kind}-${record.id}`}>✓ Sent {sentLabel}</span>;
+    }
+    if (record.slipSendWindowOpen) {
+      const text = revised ? "Send revised" : "Send";
+      return (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-auto whitespace-nowrap p-0 text-xs text-primary underline-offset-4 hover:underline"
+          onClick={(event) => { event.stopPropagation(); void run("send"); }}
+          disabled={loadingAction !== null}
+          data-testid={`button-receipt-send-${record.kind}-${record.id}`}
+        >
+          {loadingAction === "send" ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <MessageCircle className="mr-1 h-3 w-3" />}
+          {text}
+        </Button>
+      );
+    }
+    return <span className="whitespace-nowrap text-xs text-muted-foreground" data-testid={`receipt-slip-status-${record.kind}-${record.id}`}>Not sent</span>;
+  }
+
   return <>
-    <div className={`flex flex-wrap items-center gap-1 ${compact ? "" : "mt-3"}`}>
-      <Button type="button" size={buttonSize} variant="outline" onClick={() => void run("send")} disabled={loadingAction !== null} data-testid={`button-receipt-send-${record.kind}-${record.id}`}>
-        {loadingAction === "send" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="mr-1 h-3.5 w-3.5" />}
-        Send on WhatsApp
+    <div className="mt-3 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+      <Button
+        type="button"
+        className="w-full sm:flex-1"
+        onClick={() => void run("send")}
+        disabled={loadingAction !== null}
+        data-testid={`button-receipt-send-${record.kind}-${record.id}`}
+      >
+        {loadingAction === "send" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageCircle className="mr-2 h-4 w-4" />}
+        Send receipt on WhatsApp
       </Button>
-      <Button type="button" size={buttonSize} variant="outline" onClick={() => void run("view")} disabled={loadingAction !== null} data-testid={`button-receipt-view-${record.kind}-${record.id}`}>
+      <Button type="button" size="sm" variant="ghost" className="self-center text-primary" onClick={() => void run("view")} disabled={loadingAction !== null} data-testid={`button-receipt-view-${record.kind}-${record.id}`}>
         {loadingAction === "view" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Eye className="mr-1 h-3.5 w-3.5" />}
         View
-      </Button>
-      <Button type="button" size={buttonSize} variant="outline" onClick={() => void run("save")} disabled={loadingAction !== null} data-testid={`button-receipt-save-${record.kind}-${record.id}`}>
-        {loadingAction === "save" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1 h-3.5 w-3.5" />}
-        Save PDF
       </Button>
     </div>
     {open && <Dialog open={open} onOpenChange={(nextOpen) => {
@@ -98,8 +160,7 @@ export function MaterialReceiptSlipActions({
         <DialogHeader><DialogTitle>Receipt PDF</DialogTitle></DialogHeader>
         {pdfUrl && <iframe src={pdfUrl} title="Material receipt PDF" className="min-h-0 flex-1 rounded border" />}
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => void run("send")} disabled={loadingAction !== null}>Send on WhatsApp</Button>
-          <Button type="button" onClick={() => void run("save")} disabled={loadingAction !== null}>Save PDF</Button>
+          <Button type="button" onClick={() => void run("send")} disabled={loadingAction !== null}>Send on WhatsApp</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>}

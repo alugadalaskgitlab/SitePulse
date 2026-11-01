@@ -31,12 +31,18 @@ export default function AdminSettings() {
   const [brandingName, setBrandingName] = useState("");
   const [brandingShortName, setBrandingShortName] = useState("");
   const [brandingTagline, setBrandingTagline] = useState("");
+  const [brandingAddress, setBrandingAddress] = useState("");
+  const [brandingGstin, setBrandingGstin] = useState("");
+  const [brandingPhone, setBrandingPhone] = useState("");
 
   // LDO Received By defaults
   const [ldoTank1ReceivedBy, setLdoTank1ReceivedBy] = useState("");
   const [ldoTank2ReceivedBy, setLdoTank2ReceivedBy] = useState("");
 
-  const { data: brandingData } = useQuery<{ companyName: string; companyShortName: string; appTagline: string; logoFile: string }>({
+  const { data: brandingData } = useQuery<{
+    companyName: string; companyShortName: string; appTagline: string; logoFile: string;
+    companyAddress: string; companyGstin: string; companyPhone: string;
+  }>({
     queryKey: ["/api/admin/branding"],
     enabled: authenticated,
   });
@@ -101,6 +107,9 @@ export default function AdminSettings() {
       setBrandingName(brandingData.companyName ?? "");
       setBrandingShortName(brandingData.companyShortName ?? "");
       setBrandingTagline(brandingData.appTagline ?? "");
+      setBrandingAddress(brandingData.companyAddress ?? "");
+      setBrandingGstin(brandingData.companyGstin ?? "");
+      setBrandingPhone(brandingData.companyPhone ?? "");
     }
   }, [brandingData]);
 
@@ -129,7 +138,10 @@ export default function AdminSettings() {
   });
 
   const saveBrandingMutation = useMutation({
-    mutationFn: async (data: { companyName: string; companyShortName: string; appTagline: string }) => {
+    mutationFn: async (data: {
+      companyName: string; companyShortName: string; appTagline: string;
+      companyAddress: string; companyGstin: string; companyPhone: string;
+    }) => {
       const response = await apiRequest("POST", "/api/admin/branding", data);
       if (!response.ok) {
         const error = await response.json();
@@ -306,8 +318,45 @@ export default function AdminSettings() {
                 data-testid="input-branding-tagline"
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="brandingAddress">Company Address</Label>
+              <Input
+                id="brandingAddress"
+                value={brandingAddress}
+                onChange={(e) => setBrandingAddress(e.target.value)}
+                placeholder="Optional address for receipt slips"
+                data-testid="input-branding-address"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="brandingGstin">Company GSTIN</Label>
+              <Input
+                id="brandingGstin"
+                value={brandingGstin}
+                onChange={(e) => setBrandingGstin(e.target.value)}
+                placeholder="Optional GSTIN"
+                data-testid="input-branding-gstin"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="brandingPhone">Company Phone</Label>
+              <Input
+                id="brandingPhone"
+                value={brandingPhone}
+                onChange={(e) => setBrandingPhone(e.target.value)}
+                placeholder="Optional phone number"
+                data-testid="input-branding-phone"
+              />
+            </div>
             <Button
-              onClick={() => saveBrandingMutation.mutate({ companyName: brandingName, companyShortName: brandingShortName, appTagline: brandingTagline })}
+              onClick={() => saveBrandingMutation.mutate({
+                companyName: brandingName,
+                companyShortName: brandingShortName,
+                appTagline: brandingTagline,
+                companyAddress: brandingAddress,
+                companyGstin: brandingGstin,
+                companyPhone: brandingPhone,
+              })}
               disabled={saveBrandingMutation.isPending || !brandingName.trim()}
               className="w-full gap-2"
               data-testid="button-save-branding"

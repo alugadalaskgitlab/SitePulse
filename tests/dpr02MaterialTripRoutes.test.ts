@@ -16,6 +16,9 @@ const spies = vi.hoisted(() => ({
   createTrip: vi.fn(),
   updateTrip: vi.fn(),
   bulkConfirmRoles: vi.fn(),
+  getMaterialReceipt: vi.fn(),
+  markMaterialSlipShared: vi.fn(),
+  markSiteTripSlipShared: vi.fn(),
 }));
 
 vi.mock("../server/storage", () => {
@@ -28,6 +31,9 @@ vi.mock("../server/storage", () => {
     getSiteMaterialTrips: spies.getTrips,
     updateSiteMaterialTrip: spies.updateTrip,
     bulkConfirmSiteMaterialTripRoles: spies.bulkConfirmRoles,
+    getMaterialReceipt: spies.getMaterialReceipt,
+    markMaterialReceiptSlipShared: spies.markMaterialSlipShared,
+    markSiteMaterialTripSlipShared: spies.markSiteTripSlipShared,
   };
   return { StockShortageError: class extends Error {}, storage: new Proxy(base, {
     get(target, key: string) { return key in target ? target[key] : (target[key] = vi.fn().mockResolvedValue([])); },
@@ -67,6 +73,9 @@ beforeEach(() => {
   spies.updateTrip.mockImplementation(async (_id, value) => ({ id: 99, ...value }));
   spies.bulkConfirmRoles.mockResolvedValue({ updatedCount: 2, role: "different_parties" });
   spies.getTrip.mockResolvedValue({ id: 99, ...body, programmeBarId: 3, earthworkArrangementId: 4 });
+  spies.getMaterialReceipt.mockResolvedValue({ id: 77, createdAt: new Date("2026-11-01T10:00:00Z") });
+  spies.markMaterialSlipShared.mockResolvedValue({ id: 77, slipSharedAt: new Date("2026-11-01T10:10:00Z") });
+  spies.markSiteTripSlipShared.mockResolvedValue({ id: 99, slipSharedAt: new Date("2026-11-01T10:10:00Z") });
 });
 
 describe("DPR-02 site-material-trip route enforcement", () => {
@@ -117,6 +126,26 @@ describe("DPR-02 site-material-trip route enforcement", () => {
     const res = await request(app).patch("/api/site-material-trips/99").send({ notes: "x" });
     expect(res.status).toBe(403);
     expect(spies.updateTrip).not.toHaveBeenCalled();
+  });
+  it("marks a visible site trip shared using the session user, ignoring request fields", async () => {
+    const res = await request(app)
+      .post("/api/site-material-trips/99/slip-shared")
+      .send({ slipSharedByUserId: 999, slipSharedAt: "2000-01-01T00:00:00Z" });
+    expect(res.status).toBe(200);
+    expect(spies.markSiteTripSlipShared).toHaveBeenCalledWith(99, 7);
+  });
+  it("rejects slip sharing for a site trip outside the caller's site scope", async () => {
+    spies.getTrip.mockResolvedValue({ id: 99, ...body, site: "Site B" });
+    const res = await request(app).post("/api/site-material-trips/99/slip-shared");
+    expect(res.status).toBe(403);
+    expect(spies.markSiteTripSlipShared).not.toHaveBeenCalled();
+  });
+  it("marks a visible plant receipt shared using the session user, ignoring request fields", async () => {
+    const res = await request(app)
+      .post("/api/material-receipts/77/slip-shared")
+      .send({ slipSharedByUserId: 999, slipSharedAt: "2000-01-01T00:00:00Z" });
+    expect(res.status).toBe(200);
+    expect(spies.markMaterialSlipShared).toHaveBeenCalledWith(77, 7);
   });
   it("allows a valid same-site create", async () => {
     const res = await request(app).post("/api/site-material-trips").send({

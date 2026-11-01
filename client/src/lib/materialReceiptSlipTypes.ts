@@ -31,6 +31,17 @@ export type MaterialReceiptSlipData = {
   conversionToUom?: string | null;
   bulkDensity?: number | string | null;
   latestEditAt?: string | Date | null;
+  slipSharedAt?: string | Date | null;
+  slipSharedByUserName?: string | null;
+  slipSendWindowOpen?: boolean;
+  slipSendTrackingEnabled?: boolean;
+};
+
+export type MaterialReceiptSlipCompany = {
+  name: string;
+  address?: string | null;
+  gstin?: string | null;
+  phone?: string | null;
 };
 
 export function formatEnteredByDisplay(name?: string | null, createdAt?: string | Date | null): string {

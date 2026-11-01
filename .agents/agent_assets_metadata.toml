@@ -6177,3 +6177,45 @@ mtime_ms = 1793509748431
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/6de86676-bcac-4266-b0f8-8bf8375e62a9/70e96be1-54ed-404b-b40a-301ae6dd3552"
 storage_version_token = "1793509969762827"
 content_type = "application/pdf"
+
+[[outputs]]
+id = "NUcq8E0z491AYYNSOVNAR"
+uri = "file://generated-artifacts/receipt-slips/contractor-cft-aggregate.pdf"
+type = "pdf"
+title = "Contractor CFT aggregate receipt"
+description = "One-page receipt showing CFT quantity and approximate MT conversion, with the company logo."
+logical_id = "bb22e98f-e55f-4304-b8c3-77600f619fb7"
+content_hash = "sha256:8c53cc1f37f3f68e4ebd2edd7c5635f712a051d6bbecd6b50ded6b89f5f97c45"
+size = 20967
+mtime_ms = 1793516303106
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/bb22e98f-e55f-4304-b8c3-77600f619fb7/aa335834-3f01-4b09-b348-12326b29d7d7"
+storage_version_token = "1793516580771192"
+content_type = "application/pdf"
+
+[[outputs]]
+id = "fx1N_pbOS70EadYV0SFFP"
+uri = "file://generated-artifacts/receipt-slips/edited-bitumen-receipt.pdf"
+type = "pdf"
+title = "Revised bitumen receipt"
+description = "One-page revised receipt with an edit notice and preserved invoice/tank details."
+logical_id = "e0b066c8-e2d3-48e1-b5b3-c2bd7022e3f8"
+content_hash = "sha256:fdfa0ccfd8f0264b508ef8e4d7103bbddeffd6b72c170886273f625736b894a5"
+size = 21489
+mtime_ms = 1793516303118
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e0b066c8-e2d3-48e1-b5b3-c2bd7022e3f8/bed2e963-5937-4376-af0e-caf304cc35dc"
+storage_version_token = "1793516582131506"
+content_type = "application/pdf"
+
+[[outputs]]
+id = "zoLIHlFKd4D0snV5EQhsu"
+uri = "file://generated-artifacts/receipt-slips/site-wmm-trip.pdf"
+type = "pdf"
+title = "Site WMM trip receipt"
+description = "One-page site-trip receipt showing the site, location, material, quantity, and company logo."
+logical_id = "26cc2fb1-f958-43d4-8a16-2c4cc88d9417"
+content_hash = "sha256:34267e18b672c040e99655b1bfb57d7161b2dddda58618a3190d242cdff300ae"
+size = 20709
+mtime_ms = 1793516303126
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/26cc2fb1-f958-43d4-8a16-2c4cc88d9417/1376a5d2-b9b4-4d24-9de3-8759b72530d8"
+storage_version_token = "1793516584044129"
+content_type = "application/pdf"
