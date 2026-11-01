@@ -3,7 +3,7 @@ import { buildWholeBillPdf } from "./wholeBillExport";
 import type { WholeBillSnapshot } from "./wholeBillSnapshot";
 
 describe("whole bill PDF layout", () => {
-  it("keeps the bill portrait, appends a landscape Activity Statement, and omits the hire line table", () => {
+  it("exports equipment hire as one portrait bill page without an Activity Statement", () => {
     const snapshot: WholeBillSnapshot = {
       companyName: "Highlane Constructions",
       vendorName: "Vendor",
@@ -26,18 +26,6 @@ describe("whole bill PDF layout", () => {
             rows: [{
               date: "2026-08-01", category: "equipment", description: "RAW EQUIPMENT LINE TABLE",
               qty: 1, unit: "month", rate: 1, amount: 1,
-            }],
-            subtotal: 1,
-          }],
-          subtotal: 1,
-        },
-        {
-          category: "material",
-          groups: [{
-            label: "Road Site",
-            rows: [{
-              date: "2026-08-01", category: "material", description: "MATERIAL TABLE",
-              qty: 1, unit: "MT", rate: 1, amount: 1, details: { "Always empty": "" },
             }],
             subtotal: 1,
           }],
@@ -143,24 +131,17 @@ describe("whole bill PDF layout", () => {
     const pdf = buildWholeBillPdf(snapshot);
     const pages = (pdf as any).internal.pages as string[][];
 
+    expect(pdf.getNumberOfPages()).toBe(1);
     pdf.setPage(1);
     expect(pdf.internal.pageSize.getWidth()).toBeLessThan(pdf.internal.pageSize.getHeight());
-    pdf.setPage(2);
-    expect(pdf.internal.pageSize.getWidth()).toBeGreaterThan(pdf.internal.pageSize.getHeight());
-    pdf.setPage(3);
-    expect(pdf.internal.pageSize.getWidth()).toBeGreaterThan(pdf.internal.pageSize.getHeight());
-    expect(pdf.getNumberOfPages()).toBe(3);
     expect(pages[1].join("")).toContain("EQUIPMENT HIRE BILL");
     expect(pages[1].join("")).toContain("Excavator");
     expect(pages[1].join("")).toContain("EX-07");
     expect(pages[1].join("")).not.toContain("Equipment #49");
-    expect(pages[2].join("")).toContain("ACTIVITY STATEMENT");
-    expect(pages[2].join("")).toContain("Prepared");
-    expect(pages[2].join("")).toContain("Received");
-    expect(pages[3].join("")).toContain("MATERIAL TABLE");
-    expect(pages[3].join("")).not.toContain("Always empty");
+    expect(pdf.output()).not.toContain("ACTIVITY STATEMENT");
+    expect(pdf.output()).not.toContain("MATERIAL TABLE");
     expect(pdf.output()).not.toContain("RAW EQUIPMENT LINE TABLE");
-    expect(pdf.output()).toContain("(Rs. 20,967.74)");
+    expect(pdf.output()).toContain("\\(Rs. 20,967.74\\)");
     expect(pdf.output()).toContain("Rs. 65,000.00");
     expect(pdf.output()).toContain("Rs. 44,032.26");
     expect(pdf.output()).toContain("Rs. 25,951.61");
