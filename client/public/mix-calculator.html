@@ -926,6 +926,7 @@ var aggBasis = 'MT';
 var activeMixIdx = 0;
 var breakdownOpen = false;
 var _scopeAutoRates = {}; // keyed by sanitized mix name; updated by updateScopeAutoRatesCache()
+var _scopeAggLandedExact = null;
 
 // ====== QUOTE MODE & NEW FEATURE STATE ======
 var quoteMode = 'full_road';         // 'supply_only' | 'supply_transport' | 'supply_laying' | 'full_road'
@@ -1290,16 +1291,14 @@ function getRateMixIndex(rate){
   return mixTypes.findIndex(function(mix){return rate&&mix.name===rate.name;});
 }
 
-function fmtPerUnit(value, unit, preserveMtPrecision){
+function fmtPerUnit(value, unit){
   var amount = parseFloat(value);
   if(value==null||!isFinite(amount)) return '—';
-  // Keep the accepted per-MT quoted-rate baseline precise; other rates use the display threshold.
-  if(preserveMtPrecision&&(unit||rateUnit)==='MT') return fmt(amount);
-  return Math.abs(amount)<100 ? fmt(amount) : fmtI(amount);
+  return fmt(amount);
 }
 
-function fmtRateValue(value, unit, preserveMtPrecision){
-  return fmtPerUnit(value, unit||rateUnit, preserveMtPrecision);
+function fmtRateValue(value, unit){
+  return fmtPerUnit(value, unit||rateUnit);
 }
 
 function getRateThicknessInfo(mixIndex){
@@ -2498,6 +2497,7 @@ function recalc(){
   var aggFreight = aggPayload>0?(aggDist*_aggTripMul*aggFreightRate/aggPayload):0;
   var aggRateMT = (aggBasis==='CFT'&&aggDensity>0)?(aggRateInput/aggDensity*35.3147):aggRateInput;
   var aggLanded = aggRateMT + aggFreight;
+  _scopeAggLandedExact = aggLanded;
   document.getElementById('aggFreight').value = fmt(aggFreight);
   document.getElementById('aggLanded').value = fmt(aggLanded);
 
@@ -2685,21 +2685,23 @@ function recalc(){
     var targetFuel = (overrides.fuelTotal !== undefined) ? overrides.fuelTotal : fuelTotal;
     var targetLaying = (overrides.layPerMT !== undefined) ? overrides.layPerMT : layPerMT;
     var mixing = [], paving = [], plantHireKeys = [], plantFuelKeys = [], pavingKeys = [];
-    function addLine(target, key, label, qtyPerUnit, rate, amount, inScope){
-      target.push({key:key, label:label, inScope:!!inScope, qtyPerUnit:qtyPerUnit, rate:rate, amount:amount});
+    function addLine(target, key, label, qtyPerUnit, rate, amount, inScope, metadata){
+      var line = {key:key, label:label, inScope:!!inScope, qtyPerUnit:qtyPerUnit, rate:rate, amount:amount};
+      if(metadata) Object.keys(metadata).forEach(function(name){line[name]=metadata[name];});
+      target.push(line);
     }
     var currentLdoRate = lineLdoRate === ldoRate;
     addLine(mixing, 'ldo', 'LDO', ldoConsump, lineLdoRate,
       currentLdoRate ? ldoPerMT : ldoConsump * lineLdoRate,
-      scopeState.groups.mixing && scopeTickEnabled('mixing','ldo'));
+      scopeState.groups.mixing && scopeTickEnabled('mixing','ldo'), {isPlantFuel:true});
     var prodLdoQty = boilerCampaignMt > 0 ? (boilerProdLhr * boilerProdHrs / boilerCampaignMt) : 0;
     var preheatLdoQty = boilerCampaignMt > 0 ? (boilerPreheatLhr * boilerPreheatHrs / boilerCampaignMt) : 0;
     addLine(mixing, 'boilerProd', 'Boiler production fuel', prodLdoQty, lineLdoRate,
       currentLdoRate ? boilerProdPerMT : (boilerCampaignMt > 0 ? boilerProdLhr * lineLdoRate * boilerProdHrs / boilerCampaignMt : 0),
-      scopeState.groups.mixing && scopeTickEnabled('mixing','ldo'));
+      scopeState.groups.mixing && scopeTickEnabled('mixing','ldo'), {isPlantFuel:true});
     addLine(mixing, 'boilerPreheat', 'Boiler preheat fuel', preheatLdoQty, lineLdoRate,
       currentLdoRate ? boilerPreheatPerMT : (boilerCampaignMt > 0 ? boilerPreheatLhr * lineLdoRate * boilerPreheatHrs / boilerCampaignMt : 0),
-      scopeState.groups.mixing && scopeTickEnabled('mixing','ldo'));
+      scopeState.groups.mixing && scopeTickEnabled('mixing','ldo'), {isPlantFuel:true});
 
     equipDefs.forEach(function(eq){
       if(eq.isLaying) return;
@@ -2709,13 +2711,15 @@ function recalc(){
       plantHireKeys.push(hireKey);
       plantFuelKeys.push(fuelKey);
       addLine(mixing, hireKey, (eq.name || eq.id) + ' — hire', 1, costs.hire || 0, costs.hire || 0,
-        scopeState.groups.mixing && scopeTickEnabled('mixing',hireKey));
+        scopeState.groups.mixing && scopeTickEnabled('mixing',hireKey),
+        {isPlantHire:true,breakdownEquipment:true});
       var fuelQty = (eq.enabled && tph > 0) ? ((eq.fuelConsump || 0) / tph) : 0;
       var fuelAmount = lineHsdPrice === hsdPrice
         ? (costs.fuel || 0)
         : (fuelQty * lineHsdPrice);
       addLine(mixing, fuelKey, (eq.name || eq.id) + ' — HSD', fuelQty, lineHsdPrice, fuelAmount,
-        scopeState.groups.mixing && scopeTickEnabled('mixing',fuelKey));
+        scopeState.groups.mixing && scopeTickEnabled('mixing',fuelKey),
+        {isPlantFuel:true,breakdownEquipment:true});
     });
     addLine(mixing, 'crew', 'Plant crew', 1, crewPerMT, crewPerMT,
       scopeState.groups.mixing && scopeTickEnabled('mixing','crew'));
@@ -2832,7 +2836,11 @@ function recalc(){
     }
     if(hasInScopeLine(['aggregate'])) incl.push('Agg');
     if(hasInScopeLine(['bitumen'])) incl.push('Bit');
-    if(hasInScopeLine(rateLines.plantHireKeys.concat(rateLines.plantFuelKeys, ['ldo','boilerProd','boilerPreheat']))) incl.push('Plant+Fuel');
+    function hasInScopeFlag(flag){
+      return lines.some(function(line){return line.inScope && line[flag];});
+    }
+    if(hasInScopeFlag('isPlantHire')) incl.push('Plant hire');
+    if(hasInScopeFlag('isPlantFuel')) incl.push('Plant fuel');
     if(hasInScopeLine(['crew'])) incl.push('Crew');
     if(hasInScopeLine(['transport'])) incl.push('Trans');
     if(hasInScopeLine(rateLines.pavingKeys)) incl.push('Laying');
@@ -3062,6 +3070,10 @@ function rateLineInScope(rate, key){
   return !!(rate && (rate.lines||[]).some(function(line){return line.key===key && line.inScope;}));
 }
 
+function rateFuelInScope(rate){
+  return !!(rate && (rate.lines||[]).some(function(line){return line.isPlantFuel && line.inScope;}));
+}
+
 function rateGroupInScope(rate, group){
   if(!rate) return false;
   var keys = [];
@@ -3129,7 +3141,7 @@ function renderRateWorkbench(usedMixRates, marginPct){
     var layers = [
       {label:'Aggregates', val:r.aggregate||0, off:!rateLineInScope(r,'aggregate')},
       {label:'Bitumen',    val:r.bitumen||0,   off:!rateLineInScope(r,'bitumen')},
-      {label:'Fuel/Energy',val:r.fuel||0,      off:false},
+      {label:'Fuel/Energy',val:r.fuel||0,      off:!rateFuelInScope(r)},
       {label:'Plant Hire', val:r.equipment||0, off:false},
       {label:'Crew',       val:r.crew||0,      off:false},
       {label:'Transport',  val:r.transport||0, off:!rateLineInScope(r,'transport')},
@@ -3159,7 +3171,7 @@ function renderRateWorkbench(usedMixRates, marginPct){
     html += '</div>';
     html += '<div style="background:linear-gradient(135deg,#d97706,#b45309);border-radius:8px;padding:10px 12px">';
     html += '<div style="font-size:10px;color:rgba(255,255,255,.8);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">▶ QUOTED</div>';
-    html += '<div style="font-size:17px;font-weight:700;color:#fff">'+(vQuot==null?'—':'₹'+fmtPerUnit(vQuot,rateUnit,true))+'<span style="font-size:10px;font-weight:400;color:rgba(255,255,255,.7)">/'+unit+'</span></div>';
+    html += '<div style="font-size:17px;font-weight:700;color:#fff">'+(vQuot==null?'—':'₹'+fmtPerUnit(vQuot,rateUnit))+'<span style="font-size:10px;font-weight:400;color:rgba(255,255,255,.7)">/'+unit+'</span></div>';
     html += '</div>';
     html += '</div>';
     html += '</div>';
@@ -3414,7 +3426,10 @@ function renderRateSummary(mixRates){
   ];
   eqFuelRows.forEach(function(row){
     html+='<tr><td>'+row.label+'</td>';
-    mixRates.forEach(function(r){ html+='<td>'+fmtRateValue(_v(r, r[row.key]))+'</td>'; });
+    mixRates.forEach(function(r){
+      var inScope = row.key!=='fuel' || rateFuelInScope(r);
+      html+='<td>'+(inScope?fmtRateValue(_v(r, r[row.key])):'—')+'</td>';
+    });
     html+='</tr>';
   });
   html+='<tr class="separator"><td colspan="'+(nc+1)+'"></td></tr>';
@@ -3459,7 +3474,7 @@ function renderRateSummary(mixRates){
   html+='<tr class="total-row"><td>'+_finalLabel+'</td>';
   mixRates.forEach(function(r){
     var finalVal = _v(r,r.perMT_quoted);
-    html+='<td style="color:var(--amber);font-weight:700">'+fmtRateValue(finalVal,rateUnit,true)+'</td>';
+    html+='<td style="color:var(--amber);font-weight:700">'+fmtRateValue(finalVal,rateUnit)+'</td>';
   });
   html+='</tr>';
   // "Includes" chip
@@ -4220,16 +4235,18 @@ function renderFullBreakdown(mixRates){
   var _fbMPct = n('marginPct')/100;
   var _fbTrans = scopeState.groups.transport;
   var _fbPav   = scopeState.groups.paving;
+  var equipmentRows=[], equipmentKeys=Object.create(null);
+  mixRates.forEach(function(rate){
+    (rate.lines||[]).forEach(function(line){
+      if(!line.breakdownEquipment||!line.inScope||equipmentKeys[line.key]) return;
+      equipmentKeys[line.key]=true;
+      equipmentRows.push({label:line.label,lineKey:line.key});
+    });
+  });
   var rows=[
     {label:'Aggregate (landed)',key:'aggregate'},
     {label:'Bitumen',key:'bitumen'},
-    {label:'Hot Mix Plant (Hire)',key:'hotmix'},
-    {label:'DG / Generator (Hire)',key:'dg'},
-    {label:'Wheel Loader / JCB (Hire)',key:'jcb'},
-    {label:'Tipper (Hire)',key:'tipper'},
-    {label:'DG Diesel',key:'dgFuel'},
-    {label:'JCB Diesel',key:'jcbFuel'},
-    {label:'Tipper Diesel',key:'tipperFuel'},
+  ].concat(equipmentRows,[
     {label:'Dryer LDO',key:'ldo'},
     {label:'Boiler Production',key:'boilerProd'},
     {label:'Boiler Preheat',key:'boilerPreheat'},
@@ -4238,7 +4255,7 @@ function renderFullBreakdown(mixRates){
     {label:'Transport to Site',key:'transport',scopeGroup:'transport'},
     {label:'Laying & Compaction',key:'laying',scopeGroup:'paving'},
     {label:'Mob/Demob Overhead',key:'overhead'}
-  ];
+  ]);
   var html='<table class="rate-table"><thead><tr><th></th>';
   mixRates.forEach(function(r){ html+='<th colspan="2" style="text-align:center;color:var(--amber)">'+r.name+'</th>'; });
   html+='</tr><tr><th></th>';
@@ -4248,9 +4265,10 @@ function renderFullBreakdown(mixRates){
     if(row.scopeGroup==='transport'&&!_fbTrans) return;
     if(row.scopeGroup==='paving'&&!_fbPav) return;
     var cls=row.bold?' style="font-weight:700;border-top:2px solid var(--amber)"':'';
-    html+='<tr'+cls+'><td>'+row.label+'</td>';
+    html+='<tr'+cls+'><td>'+(row.lineKey?esc(row.label):row.label)+'</td>';
     mixRates.forEach(function(r){
-      var v=r[row.key]||0;
+      var line=row.lineKey&&(r.lines||[]).find(function(item){return item.key===row.lineKey;});
+      var v=row.lineKey?(line&&line.inScope?(parseFloat(line.amount)||0):0):(r[row.key]||0);
       html+='<td>'+fmtR(v)+'</td><td style="color:var(--blue)">'+fmtR(v*r.density)+'</td>';
     });
     html+='</tr>';
@@ -4554,7 +4572,7 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
         el=document.getElementById('jmPlantRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=mt>0?fmtPerUnit(plantUnitRate,rateUnit):'—';
         el=document.getElementById('jmTransRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=mt>0?transLabel:'—';
         el=document.getElementById('jmLayRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=mt>0?fmtPerUnit(layUnitRate,rateUnit):'—';
-        el=document.getElementById('jmTotalRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=mt>0?fmtPerUnit(totalUnitRate,rateUnit,true):'—';
+        el=document.getElementById('jmTotalRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=mt>0?fmtPerUnit(totalUnitRate,rateUnit):'—';
 
         mx._mt=mt; mx._plantAmt=plantAmt; mx._transAmt=transAmt; mx._layAmt=layAmt; mx._overheadAmt=overheadAmt;
         jobPlant+=plantAmt; jobTrans+=transAmt; jobLay+=layAmt; jobOverhead+=overheadAmt; jobMT+=mt; jobCum+=mxCum;
@@ -4595,11 +4613,11 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
       el=document.getElementById('jTotMT_'+si+'_'+ji); if(el) el.textContent=costable?jobMT.toFixed(1):'—';
       var selectedQuantity = rateUnit==='MT' ? jobMT : rateUnit==='CUM' ? jobCum :
         rateUnit==='SQM' ? area : area*SQFT_PER_SQM;
-      var perSelected = function(amount,preserveMtPrecision){return costable&&selectedQuantity>0?fmtPerUnit(amount/selectedQuantity,rateUnit,preserveMtPrecision):'—';};
+      var perSelected = function(amount){return costable&&selectedQuantity>0?fmtPerUnit(amount/selectedQuantity,rateUnit):'—';};
       el=document.getElementById('jTotPlant_'+si+'_'+ji); if(el) el.textContent=perSelected(jobPlant);
       el=document.getElementById('jTotTrans_'+si+'_'+ji); if(el) el.textContent=perSelected(jobTrans);
       el=document.getElementById('jTotLay_'+si+'_'+ji); if(el) el.textContent=perSelected(jobLay);
-      el=document.getElementById('jTotTotal_'+si+'_'+ji); if(el) el.textContent=perSelected(jobMixCostWithMargin,true);
+       el=document.getElementById('jTotTotal_'+si+'_'+ji); if(el) el.textContent=perSelected(jobMixCostWithMargin);
       el=document.getElementById('jTotWholeJob_'+si+'_'+ji); if(el) el.textContent=perSelected(jobTotal);
       el=document.getElementById('jPrimeWholeJobRate_'+si+'_'+ji); if(el) el.textContent=perSelected(jobTotal);
       el=document.getElementById('jTackWholeJobRate_'+si+'_'+ji); if(el) el.textContent=perSelected(jobTotal);
@@ -4668,7 +4686,7 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
       allJobs.forEach(function(j){ if(!hasPositiveThickness(j.thickness)) return; (j.mixes||[]).forEach(function(mx){ _distinctMixIdxs[mx.mixIdx]=true; }); });
       var _multiMix = Object.keys(_distinctMixIdxs).length > 1;
       if(_multiMix){
-        html+='<span><span class="jt-label">Mix ₹/'+getRateUnitLabel(rateUnit)+'</span> <span class="jt-value" title="Weighted average base mix cost with margin">₹'+fmtPerUnit(_combinedMixRate,rateUnit,true)+'</span></span>';
+        html+='<span><span class="jt-label">Mix ₹/'+getRateUnitLabel(rateUnit)+'</span> <span class="jt-value" title="Weighted average base mix cost with margin">₹'+fmtPerUnit(_combinedMixRate,rateUnit)+'</span></span>';
       }
       html+='<span><span class="jt-label">All-in ₹/'+getRateUnitLabel(rateUnit)+'</span> <span class="jt-value">₹'+fmtPerUnit(_combinedFullRate,rateUnit)+'</span></span>';
       html+='<span style="margin-left:auto;font-size:15px;color:var(--amber)">Total: ₹'+fmtI(Math.round(grandTotal))+'</span>';
@@ -6614,7 +6632,10 @@ function calcScopeComponentsFromInputs(inp, eqDefs, mTypes){
 function calcScopeComponents(){
   var inp = {};
   PERSIST_INPUTS.forEach(function(id){ var el=document.getElementById(id); if(el) inp[id]=el.value; });
-  inp._aggLanded = parseFloat(((document.getElementById('aggLanded')||{}).value||'').replace(/,/g,''))||0;
+  inp._aggLanded = _scopeAggLandedExact;
+  if(inp._aggLanded==null){
+    inp._aggLanded = parseFloat(((document.getElementById('aggLanded')||{}).value||'').replace(/,/g,''))||0;
+  }
   inp._activeMixIdx = activeMixIdx;
   inp._preGrandMT = _preGrandMT;
   if(_wTransPerMT > 0) inp._wTransOverride = _wTransPerMT;
@@ -6716,6 +6737,22 @@ function _sanitizeMn(mn){ return mn.toUpperCase().replace(/[\s-]+/g,'_'); }
       _scopeAutoRates[san]=computeMixScopeRate(mixComponents,scopeMarginPct);
     });
   }
+
+function getScopeRateCardUnit(unit){
+  return unit==='MT'?'SQM':unit;
+}
+
+function scopeRateFromSqm(ratePerSqm,mixIdx,unit){
+  if(ratePerSqm==null||!isFinite(ratePerSqm)) return null;
+  var cardUnit=getScopeRateCardUnit(unit);
+  if(cardUnit==='SQM') return ratePerSqm;
+  if(cardUnit==='SFT') return ratePerSqm/SQFT_PER_SQM;
+  if(cardUnit==='CUM'){
+    var thickness=getRateThicknessInfo(mixIdx).thickness;
+    return hasPositiveThickness(thickness)?ratePerSqm*1000/parseFloat(thickness):null;
+  }
+  return null;
+}
 
   function renderScopeQuotation(){
   var g = scopeState.groups;
@@ -6875,6 +6912,8 @@ function _sanitizeMn(mn){ return mn.toUpperCase().replace(/[\s-]+/g,'_'); }
 
   // --- Render output ---
   var scopeUnit = getRateUnitLabel(rateUnit);
+  var scopeRateCardUnit = getScopeRateCardUnit(rateUnit);
+  var scopeRateCardLabel = getRateUnitLabel(scopeRateCardUnit);
   var scopeRatesByMix = Object.create(null);
   scopeMixIndexes.forEach(function(mixIdx){
     var mixType = mixTypes[mixIdx];
@@ -6898,15 +6937,18 @@ function _sanitizeMn(mn){ return mn.toUpperCase().replace(/[\s-]+/g,'_'); }
     };
   });
   var outHtml = scopeMixIndexes.length ? getRateUnitAssumptionNote(scopeMixIndexes,true) : '';
-  outHtml += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-600);margin-bottom:10px">Per-sqm rates (includes '+fmtR(scopeMargin)+'% scope margin)</div><div class="scope-output-grid">';
+  var scopeRateHeading = 'Per-'+scopeRateCardLabel+' rates';
+  if(rateUnit==='MT') scopeRateHeading += ' (coats are area-based)';
+  outHtml += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-600);margin-bottom:10px">'+scopeRateHeading+' (includes '+fmtR(scopeMargin)+'% scope margin)</div><div class="scope-output-grid">';
   function appendScopeRateCard(label, rateKey, highlight){
     outHtml += '<div class="scope-out-item"><div class="scope-out-label">'+label+'</div>';
     outHtml += '<div class="scope-out-val" style="font-size:14px;display:flex;flex-direction:column;gap:6px">';
     scopeMixIndexes.forEach(function(mixIdx){
       var mixType = mixTypes[mixIdx];
       if(!mixType) return;
-      var rate = scopeRatesByMix[mixIdx][rateKey];
-      var value = rate!=null&&isFinite(rate) ? '₹'+fmtPerUnit(rate,'SQM')+' <span>/sqm</span>' : '—';
+       var perSqmRate = scopeRatesByMix[mixIdx][rateKey];
+       var rate = scopeRateFromSqm(perSqmRate,mixIdx,rateUnit);
+       var value = rate!=null&&isFinite(rate) ? '₹'+fmtPerUnit(rate,scopeRateCardUnit)+' <span>/'+scopeRateCardLabel+'</span>' : '—';
       outHtml += '<div style="display:flex;justify-content:space-between;gap:10px;color:'+(highlight?'#15803d':'var(--gray-700)')+'"><span>'+esc(mixType.name)+'</span><strong>'+value+'</strong></div>';
     });
     outHtml += '</div></div>';
@@ -6914,7 +6956,7 @@ function _sanitizeMn(mn){ return mn.toUpperCase().replace(/[\s-]+/g,'_'); }
   appendScopeRateCard('Mix, transport and paving','mix',false);
   if(overheadCost>0) appendScopeRateCard('Mob/Demob overhead','overhead',false);
   if(primeCost>0||tackCost>0) appendScopeRateCard('Coats','coats',false);
-  appendScopeRateCard('Total per sqm, all in','total',true);
+   appendScopeRateCard('Total per '+scopeRateCardLabel+', all in','total',true);
   outHtml += '</div>';
   if(scopeUncostableJobs.length){
     outHtml += '<div class="job-cost-warning" style="display:block;margin-top:10px">Cannot be costed: '+scopeUncostableJobs.map(esc).join(', ')+'. Enter a positive thickness; these jobs are excluded from the scope total.</div>';
@@ -6942,7 +6984,7 @@ function _sanitizeMn(mn){ return mn.toUpperCase().replace(/[\s-]+/g,'_'); }
         var amt = qtyMT * mixRatePerMT;
         outHtml += '<div style="display:flex;justify-content:space-between;align-items:baseline;font-size:13px;color:var(--gray-700);margin-bottom:4px">'
                  + '<span><strong style="color:#15803d">'+esc(mType.name)+'</strong>'
-                 + ' &nbsp;<span style="color:var(--gray-500)">'+(qty==null?'—':fmtR(qty)+' '+scopeUnit)+' &times; '+(unitRate==null?'—':'₹'+fmtPerUnit(unitRate,rateUnit,true)+'/'+scopeUnit)+'</span></span>'
+                 + ' &nbsp;<span style="color:var(--gray-500)">'+(qty==null?'—':fmtR(qty)+' '+scopeUnit)+' &times; '+(unitRate==null?'—':'₹'+fmtPerUnit(unitRate,rateUnit)+'/'+scopeUnit)+'</span></span>'
                  + '<span style="font-weight:600;color:#15803d">₹'+fmtI(Math.round(amt))+'</span>'
                  + '</div>';
       });
@@ -6955,7 +6997,7 @@ function _sanitizeMn(mn){ return mn.toUpperCase().replace(/[\s-]+/g,'_'); }
     var wholeScopeQuantity = rateUnit==='MT' ? scopeTotalMT : rateUnit==='CUM' ? scopeTotalCUM :
       rateUnit==='SQM' ? scopeJobArea : scopeJobArea*SQFT_PER_SQM;
     if(wholeScopeQuantity>0){
-       outHtml += '<div style="font-size:12px;font-weight:700;color:#15803d;margin-top:3px">₹'+fmtPerUnit(grandScopeTotal/wholeScopeQuantity,rateUnit,true)+'/'+scopeUnit+' whole-job equivalent</div>';
+       outHtml += '<div style="font-size:12px;font-weight:700;color:#15803d;margin-top:3px">₹'+fmtPerUnit(grandScopeTotal/wholeScopeQuantity,rateUnit)+'/'+scopeUnit+' whole-job equivalent</div>';
     }
     if(marginAmt > 0){
       outHtml += '<div style="font-size:11px;color:var(--gray-500);margin-top:3px">'
