@@ -3,6 +3,7 @@ import {
   ACCESS_RULES_V2,
   ACCESS_RULES_V2_SETTING_KEY,
   buildAccessChangesPreview,
+  hasLegacyStaleGrnPushSubscription,
   parseAccessRulesV2Setting,
   evaluateAccessRule,
   type AccessRulePermissions,
@@ -584,11 +585,12 @@ export async function registerRoutes(
   app.get("/api/admin/access-changes-preview", requireAuth, async (req, res) => {
     try {
       if (!assertAdmin(req, res)) return;
-      const [enabledRaw, auditRows] = await Promise.all([
+      const [enabledRaw, auditRows, activePushSubscriptions] = await Promise.all([
         storage.getSetting(ACCESS_RULES_V2_SETTING_KEY),
         db.select().from(auditLogsTable)
           .where(and(eq(auditLogsTable.module, "access_rules_v2"), eq(auditLogsTable.transactionId, 0)))
           .orderBy(desc(auditLogsTable.createdAt)),
+        storage.getActivePushSubscriptions(),
       ]);
       const rows = await db
         .select({
@@ -614,7 +616,15 @@ export async function registerRoutes(
         .orderBy(asc(users.fullName), asc(users.id));
 
       const grouped = new Map<number, {
-        user: { id: number; fullName: string; isAdmin: boolean; isOwner: boolean; isFieldEngineer: boolean; legacyRole: string };
+        user: {
+          id: number;
+          fullName: string;
+          isAdmin: boolean;
+          isOwner: boolean;
+          isFieldEngineer: boolean;
+          legacyRole: null;
+          legacyStaleGrnPushAudience: boolean;
+        };
         permissions: AccessRulePermissions;
       }>();
       for (const row of rows) {
@@ -627,7 +637,8 @@ export async function registerRoutes(
               isAdmin: row.isAdmin,
               isOwner: row.isOwner,
               isFieldEngineer: row.isFieldEngineer,
-              legacyRole: row.isAdmin ? "admin" : "manager",
+              legacyRole: null,
+              legacyStaleGrnPushAudience: hasLegacyStaleGrnPushSubscription(row.id, activePushSubscriptions),
             },
             permissions: {},
           };

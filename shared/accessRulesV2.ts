@@ -45,6 +45,8 @@ export type AccessRuleActor = {
   businessRole?: string | null;
   /** The legacy app user.role / req.session.role value, if one exists. */
   legacyRole?: string | null;
+  /** Legacy stale-GRN push eligibility comes from stored subscription roles. */
+  legacyStaleGrnPushAudience?: boolean;
   authenticated?: boolean;
 };
 
@@ -290,7 +292,7 @@ function legacyAllowed(
     case "ldo_orphan_cleanup":
       return loggedIn(actor) && roleIs(actor, "admin");
     case "stale_grn_push_audience":
-      return loggedIn(actor) && (roleIs(actor, "manager", "admin") || !!actor?.isAdmin);
+      return loggedIn(actor) && actor?.legacyStaleGrnPushAudience === true;
   }
 }
 
@@ -344,4 +346,14 @@ export function getSectionAction(
   action: Action,
 ): boolean {
   return permissions?.[section]?.[action] === true;
+}
+
+export function hasLegacyStaleGrnPushSubscription(
+  userId: number,
+  subscriptions: ReadonlyArray<{ userId: number | null; role: string | null }>,
+): boolean {
+  return subscriptions.some(subscription =>
+    subscription.userId === userId
+    && (subscription.role === "manager" || subscription.role === "admin"),
+  );
 }

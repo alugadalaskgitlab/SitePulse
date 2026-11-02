@@ -4,6 +4,7 @@ import {
   buildAccessChangesPreview,
   compareAccessRule,
   evaluateAccessRule,
+  hasLegacyStaleGrnPushSubscription,
   parseAccessRulesV2Setting,
   type AccessRuleActor,
   type AccessRulePermissions,
@@ -86,11 +87,60 @@ describe("access_rules_v2 shared decision engine", () => {
   });
 
   it("previews every registered check for every active user", () => {
-    const user = { ...actor({ legacyRole: "manager" }), id: 41, fullName: "Preview User" };
-    const preview = buildAccessChangesPreview([{ user, permissions: { stores_inventory: { notify: true } } }]);
+    const user = {
+      ...actor({ legacyRole: null, legacyStaleGrnPushAudience: false }),
+      id: 41,
+      fullName: "Preview User",
+    };
+    const preview = buildAccessChangesPreview([{ user, permissions: {} }]);
     expect(preview).toHaveLength(1);
     expect(preview[0].changes.map(row => row.id)).toEqual(ACCESS_RULES_V2.map(rule => rule.id));
-    expect(preview[0].changes.find(row => row.id === "stale_grn_push_audience")?.outcome).toBe("UNCHANGED");
-    expect(preview[0].changes.find(row => row.id === "site_req_review_ui")?.outcome).toBe("LOSE");
+    const current = new Map(preview[0].changes.map(row => [row.id, row.current]));
+    for (const id of [
+      "site_req_review_ui",
+      "site_req_status_api",
+      "site_req_allocation_api",
+      "site_req_execution_summary",
+      "site_req_outcome",
+      "execution_arrangement_outcome",
+      "cutfill_reconciliation_ui",
+      "cutfill_reconciliation_api",
+      "ldo_orphan_cleanup",
+      "stale_grn_push_audience",
+    ] as const) {
+      expect(current.get(id), id).toBe(false);
+    }
+  });
+
+  it("derives the legacy stale-GRN audience from stored subscription roles, not Admin status", () => {
+    const subscriptions = [
+      { userId: 41, role: "manager" },
+      { userId: 42, role: "admin" },
+      { userId: 43, role: "engineer" },
+      { userId: null, role: "manager" },
+    ];
+    expect(hasLegacyStaleGrnPushSubscription(41, subscriptions)).toBe(true);
+    expect(hasLegacyStaleGrnPushSubscription(42, subscriptions)).toBe(true);
+    expect(hasLegacyStaleGrnPushSubscription(43, subscriptions)).toBe(false);
+    expect(hasLegacyStaleGrnPushSubscription(44, subscriptions)).toBe(false);
+
+    const subscribedManager = {
+      ...actor({
+        legacyRole: null,
+        legacyStaleGrnPushAudience: hasLegacyStaleGrnPushSubscription(41, subscriptions),
+      }),
+      id: 41,
+      fullName: "Subscribed Manager",
+    };
+    const subscribedPreview = buildAccessChangesPreview([{ user: subscribedManager, permissions: {} }]);
+    expect(subscribedPreview[0].changes.find(row => row.id === "stale_grn_push_audience")?.current).toBe(true);
+
+    const adminWithoutSubscription = {
+      ...actor({ isAdmin: true, legacyRole: null, legacyStaleGrnPushAudience: false }),
+      id: 45,
+      fullName: "Admin Without Subscription",
+    };
+    const preview = buildAccessChangesPreview([{ user: adminWithoutSubscription, permissions: {} }]);
+    expect(preview[0].changes.find(row => row.id === "stale_grn_push_audience")?.current).toBe(false);
   });
 });
