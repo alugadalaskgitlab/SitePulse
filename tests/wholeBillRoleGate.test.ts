@@ -38,7 +38,8 @@ describe("whole-bill export access rule", () => {
     const buttonSource = readFileSync("client/src/components/vendor-bills/WholeBillExportButtons.tsx", "utf8");
     const calls = billSource.match(/<WholeBillExportButtons\b[\s\S]*?\/>/g)!;
     expect(calls).toHaveLength(4);
-    expect(buttonSource).toContain('useAccessRule("whole_bill_export")');
-    expect(buttonSource).not.toContain("canExportWholeBill");
+    expect(buttonSource).toContain('evaluateAccessRule("whole_bill_export"');
+    expect(buttonSource).not.toContain("useAccessRule");
+    for (const call of calls) expect(call).toContain("accessRulesV2={accessRulesV2}");
   });
 });

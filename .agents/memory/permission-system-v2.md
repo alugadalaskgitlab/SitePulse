@@ -44,3 +44,11 @@ Exported from `server/auth-routes.ts`. Works identically to `assertEdit` but che
 ## Permission UI
 
 `UserManagement.tsx` uses shadcn Accordion (one item per PERMISSION_GROUPS entry + one for Site Access). Each group has a "Grant all" checkbox. Partial managers see disabled checkboxes for actions they don't have themselves. Legacy group hidden from partial managers.
+
+## Staged access-rule rollout
+
+Replacement access checks are gated by the single `access_rules_v2` setting in `app_settings`; a missing or invalid value means OFF. The client and server use the shared decision rules. Admins/Owners can inspect a read-only per-user preview, while only Owners can switch the setting; each actual transition is audited. The switch must not rewrite saved permissions, site access, or user flags.
+
+**Why:** The user requires access changes to remain inert until explicitly enabled and reviewed, without migrating existing grants.
+
+**How to apply:** Keep every replacement check behind this setting, compare legacy and proposed results in preview, verify OFF behavior and client/server parity with ON, and audit only actual state transitions.

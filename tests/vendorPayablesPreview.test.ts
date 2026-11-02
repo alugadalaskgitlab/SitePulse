@@ -10,6 +10,7 @@ import { authoritativeHireDieselPeriod, calculateEquipmentHireFinancialsLegacy, 
 import { buildPayablesPreviewWorkbook, buildPayablesPreviewPdf } from "../client/src/components/vendor-bills/payablesPreviewExport";
 import { vendorBillItemMatchesSite, siteMatchesPermitted } from "../shared/siteName";
 import { financialSites } from "../server/vendorFinancialAccess";
+import { canViewVendorFinancials } from "../shared/vendorFinancialAccess";
 
 const input = { vendorName: "KAVERI WORKS", periodFrom: "2026-06-01", periodTo: "2026-06-30" };
 const fullScope = { permittedSiteNames: null, siteId: null, siteName: null };
@@ -17,7 +18,7 @@ const equipment = { id: 7, name: "Excavator KA05", hireBillingBasis: "monthly", 
   hireStartDate: "2026-06-01", hireEndDate: null, hireMonthlyDivisorType: "30",
   hireDieselResponsibility: "vendor", hireBreakdownDeductionEnabled: true, meterType: "hour_meter" };
 let records: any[], activities: any[], bills: any[], statements: any[], cards: any[];
-let matches: any[], permitted: number[], permissions: any, fieldEngineer: boolean;
+let matches: any[], permitted: number[], permissions: any, fieldEngineer: boolean, v2Enabled: boolean;
 const write = vi.fn(() => { throw new Error("Business write attempted"); });
 const reader = {
   getVendorBillAutoItems: vi.fn(async () => records), getVendorBillHireActivities: vi.fn(async () => activities),
@@ -43,7 +44,7 @@ beforeEach(() => {
     { source: "maintenance", equipmentId: 7, sourceId: 73, businessDate: "2026-06-07", eventType: "breakdown", downtimeHours: 4, description: "Hydraulic hose", equipment },
   ];
   bills = []; statements = []; cards = []; matches = [];
-  permitted = [1]; permissions = {}; fieldEngineer = false;
+  permitted = [1]; permissions = {}; fieldEngineer = false; v2Enabled = false;
 });
 describe("VB-EXPORT-01 Part B canonical read-only service", () => {
   it("uses exactly the hire engine and financial sequence once across split sites", async () => {
@@ -217,7 +218,11 @@ const guard = productionNode(fs.readFileSync("server/auth-routes.ts", "utf8"), n
 const route = productionNode(source, n => ts.isCallExpression(n) && n.expression.getText().startsWith("app.get") && n.arguments[0]?.getText() === '"/api/vendor-bills/payables-preview"');
 const app = express();
 app.use((req: any, _res, next) => { req.authUser = { id: 5, isFieldEngineer: fieldEngineer }; req.authPermissions = permissions; next(); });
-const dependencies = { app, storage: reader, z, buildVendorPayablesPreview, vendorBillItemMatchesSite, siteMatchesPermitted, financialSites };
+const dependencies = {
+  app, storage: reader, z, buildVendorPayablesPreview, vendorBillItemMatchesSite,
+  siteMatchesPermitted, financialSites, canViewVendorFinancials,
+  accessRulesV2Enabled: async () => v2Enabled,
+};
 const compiled = ts.transpile(`${guard}\n${["getPermittedSiteNames", "assertTripSiteAccess", "resolveVendorBillSite"].map(fn).join("\n")}\n${route}`, { target: ts.ScriptTarget.ES2022 });
 new Function(...Object.keys(dependencies), compiled)(...Object.values(dependencies));
 describe("VB-EXPORT-01 Part B actual endpoint permission and site gates", () => {
@@ -239,6 +244,15 @@ describe("VB-EXPORT-01 Part B actual endpoint permission and site gates", () => 
     permissions = { vendor_bills_view: { view_reports: true } }; fieldEngineer = true;
     expect((await request(app).get("/api/vendor-bills/payables-preview").query(input)).status).toBe(403);
     expect(reader.getVendorBillAutoItems).not.toHaveBeenCalled();
+  });
+  it("uses the permission matrix instead of the field-user flag when access_rules_v2 is ON", async () => {
+    v2Enabled = true; fieldEngineer = true;
+    permissions = {
+      vendor_bills_view: { view_reports: true },
+      vendor_financials: { view: true },
+    };
+    const response = await request(app).get("/api/vendor-bills/payables-preview").query(input);
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
   });
   it("rejects an explicit other-site request before pulling candidates", async () => {
     permissions = { vendor_bills: { view_reports: true } };

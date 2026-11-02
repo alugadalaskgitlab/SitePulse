@@ -633,7 +633,7 @@ export default function VendorBills() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "stock" });
-  const { sectionCan, sectionVisible, isAdmin, user } = useAuth();
+  const { sectionCan, sectionVisible, isAdmin, user, accessRulesV2 } = useAuth();
   const canReadAuditHistory = isAdmin || !!user?.isOwner;
   const canViewFinancials = sectionCan("vendor_financials", "view");
   useEffect(() => {
@@ -3030,7 +3030,9 @@ export default function VendorBills() {
           <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
             <CardTitle className="text-base">BILL DETAILS</CardTitle>
             <Badge variant="secondary" className="uppercase" data-testid="badge-status-draft">DRAFT</Badge>
-            <WholeBillExportButtons position="header" getSnapshot={getCurrentFormSnapshot} />
+            <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
+              isAdmin={isAdmin} isOwner={user?.isOwner} accessRulesV2={accessRulesV2}
+              position="header" getSnapshot={getCurrentFormSnapshot} />
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -4829,7 +4831,9 @@ export default function VendorBills() {
               />
             </div>
             <div className="flex justify-end gap-2 flex-wrap">
-              <WholeBillExportButtons position="footer" getSnapshot={getCurrentFormSnapshot} />
+              <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
+                isAdmin={isAdmin} isOwner={user?.isOwner} accessRulesV2={accessRulesV2}
+                position="footer" getSnapshot={getCurrentFormSnapshot} />
               <Button variant="outline" onClick={() => { resetForm(); setView("list"); }} data-testid="button-cancel">
                 CANCEL
               </Button>
@@ -4859,7 +4863,9 @@ export default function VendorBills() {
               />
             </div>
             <div className="flex justify-end gap-2 flex-wrap">
-              <WholeBillExportButtons position="footer" getSnapshot={getCurrentFormSnapshot} />
+              <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
+                isAdmin={isAdmin} isOwner={user?.isOwner} accessRulesV2={accessRulesV2}
+                position="footer" getSnapshot={getCurrentFormSnapshot} />
               <Button variant="outline" onClick={() => { resetForm(); setView("list"); }} data-testid="button-cancel">
                 CANCEL
               </Button>
@@ -5808,7 +5814,9 @@ export default function VendorBills() {
         )}
 
         <div className="flex justify-end gap-2 flex-wrap">
-          <WholeBillExportButtons position="footer" getSnapshot={getCurrentDetailSnapshot} />
+          <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
+            isAdmin={isAdmin} isOwner={user?.isOwner} accessRulesV2={accessRulesV2}
+            position="footer" getSnapshot={getCurrentDetailSnapshot} />
         </div>
 
         {showDeleteConfirm && (

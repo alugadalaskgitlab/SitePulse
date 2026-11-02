@@ -9,7 +9,7 @@ export function useAccessRule(id: AccessRuleId): boolean {
     user ? {
       ...user,
       authenticated: true,
-      legacyRole: (user as typeof user & { role?: string }).role ?? null,
+      legacyRole: (user as typeof user & { role?: string }).role ?? (user.isAdmin ? "admin" : "manager"),
     } : null,
     permissions,
   );

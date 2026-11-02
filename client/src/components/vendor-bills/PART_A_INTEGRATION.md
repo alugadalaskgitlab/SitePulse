@@ -91,8 +91,9 @@ installed integration, not as outstanding page-wiring work.
 ## Page insertion points
 
 Import `WholeBillExportButtons`, snapshot types, projection helper and calendar
-registry hook. The button reads access through `useAccessRule("whole_bill_export")`;
-do not pass a separate role-based visibility decision.
+registry hook. Pass `canExport`, the field-user/Admin/Owner flags, and the
+`accessRulesV2` value from `useAuth`; the button applies the shared
+`whole_bill_export` rule itself.
 
 Add header controls inside BILL DETAILS CardHeader beside `badge-status-draft`
 (around 2503), not merely in the title row.
@@ -106,6 +107,11 @@ Example control (not status-conditioned):
 
 ```tsx
 <WholeBillExportButtons
+  canExport={canExport}
+  isFieldEngineer={user?.isFieldEngineer}
+  isAdmin={isAdmin}
+  isOwner={user?.isOwner}
+  accessRulesV2={accessRulesV2}
   position="header"
   getSnapshot={getCurrentFormSnapshot}
 />

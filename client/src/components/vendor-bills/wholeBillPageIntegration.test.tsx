@@ -8,10 +8,10 @@ import type { WholeBillSnapshot } from "./wholeBillSnapshot";
 import { wholeBillPricingNotes } from "./wholeBillSnapshot";
 import { EQUIPMENT_LOG_COLUMNS } from "./equipmentLogEvidence";
 
-const state = vi.hoisted(() => ({ permission: true, engineer: false, save: vi.fn() }));
+const state = vi.hoisted(() => ({ permission: true, engineer: false, admin: true, save: vi.fn() }));
 vi.mock("./wholeBillExport", () => ({ saveWholeBillFile: state.save }));
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({
-  isAdmin: true, user: { isFieldEngineer: state.engineer },
+  isAdmin: state.admin, accessRulesV2: false, user: { isFieldEngineer: state.engineer },
   sectionCan: (_section: string, permission: string) => permission === "export" ? state.permission : true,
   sectionVisible: () => true,
 }) }));
@@ -41,7 +41,7 @@ let statusFailure: string | null;
 let requests: Array<{ url: string; method: string; body?: any }>;
 beforeEach(() => {
   queryClient.clear();
-  state.permission = true; state.engineer = false;
+  state.permission = true; state.engineer = false; state.admin = true;
   state.save.mockReset().mockResolvedValue({ cancelled: false, notes: [] });
   bill = structuredClone(baseBill);
   autoItems = [];
@@ -415,6 +415,7 @@ describe("VB-EXPORT-02 Part A actual VendorBills page wiring", () => {
   });
   it.each([{ permission: false, engineer: false }, { permission: true, engineer: true }])(
     "no whole-bill controls in actual new/detail page for %o", async permissions => {
+      state.admin = false;
       Object.assign(state, permissions);
       await openDetail();
       expect(screen.queryByTestId("whole-bill-export-header")).toBeNull();
