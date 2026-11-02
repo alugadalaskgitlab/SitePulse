@@ -6,6 +6,10 @@ import { initPush, sendPushToAudience } from "./push";
 import { storage } from "./storage";
 import { pool } from "./db";
 import { verifyStartupReadiness } from "./startupReadiness";
+import {
+  ACCESS_RULES_V2_SETTING_KEY,
+  parseAccessRulesV2Setting,
+} from "@shared/accessRulesV2";
 
 const app = express();
 const httpServer = createServer(app);
@@ -92,10 +96,18 @@ function startStaleGrnNotifications() {
       const body = stale.length === 1
         ? `Draft GRN ${stale[0].grnNumber} has been waiting for a PI for over ${threshold}h`
         : `${stale.length} draft GRNs have been waiting for a PI for over ${threshold}h`;
-      await sendPushToAudience("⏳ Stale Draft GRN Alert", body, "/stores/grns", "managers", {
+      let audience: "managers" | "permission:stores_inventory:notify" = "managers";
+      try {
+        if (parseAccessRulesV2Setting(await storage.getSetting(ACCESS_RULES_V2_SETTING_KEY))) {
+          audience = "permission:stores_inventory:notify";
+        }
+      } catch {
+        // Missing/unavailable setting preserves the legacy manager audience.
+      }
+      await sendPushToAudience("⏳ Stale Draft GRN Alert", body, "/stores/grns", audience, {
         pruneExpiredSubscriptions: false,
       });
-      console.log(`[StaleGRN] Notified managers — ${stale.length} stale draft GRN(s)`);
+      console.log(`[StaleGRN] Notified ${audience} — ${stale.length} stale draft GRN(s)`);
     } catch (error) {
       console.error("[StaleGRN] Check failed:", error);
     }

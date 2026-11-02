@@ -67,9 +67,11 @@ installed integration, not as outstanding page-wiring work.
 
 ## Ready components / pure exports
 
-- `WholeBillExportButtons`: existing outline button style; renders `null` without
-  `canExport`, or for `isFieldEngineer`. No status gating. Supply `getSnapshot`
-  from the current render. It clones only on click, calls the save picker during
+- `WholeBillExportButtons`: existing outline button style; uses the shared
+  `whole_bill_export` access rule. With `access_rules_v2` OFF it preserves the
+  legacy export-permission and field-user behavior; with it ON, matrix export
+  permission controls visibility. No status gating. Supply `getSnapshot` from
+  the current render. It clones only on click, calls the save picker during
   user activation, and never saves/refetches/mutates bill state.
 - `wholeBillSnapshot`: typed, detached export model. All money is passed in.
 - `wholeBillScreenProjection`: reuses `groupBillItemsByDate` from the screen.
@@ -89,8 +91,8 @@ installed integration, not as outstanding page-wiring work.
 ## Page insertion points
 
 Import `WholeBillExportButtons`, snapshot types, projection helper and calendar
-registry hook. Use the **existing** `canExport` boolean and
-`isFieldEngineer={user?.isFieldEngineer}` on every occurrence.
+registry hook. The button reads access through `useAccessRule("whole_bill_export")`;
+do not pass a separate role-based visibility decision.
 
 Add header controls inside BILL DETAILS CardHeader beside `badge-status-draft`
 (around 2503), not merely in the title row.
@@ -104,8 +106,6 @@ Example control (not status-conditioned):
 
 ```tsx
 <WholeBillExportButtons
-  canExport={canExport}
-  isFieldEngineer={user?.isFieldEngineer}
   position="header"
   getSnapshot={getCurrentFormSnapshot}
 />

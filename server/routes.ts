@@ -1,4 +1,14 @@
 import { DPR_SECTIONS, DPR_SECTION_FIELDS, normalizeDprSectionContext } from "../shared/dprSections";
+import {
+  ACCESS_RULES_V2,
+  ACCESS_RULES_V2_SETTING_KEY,
+  buildAccessChangesPreview,
+  parseAccessRulesV2Setting,
+  evaluateAccessRule,
+  type AccessRulePermissions,
+  type AccessRuleId,
+  type AccessRuleActor,
+} from "../shared/accessRulesV2";
 import { requirementApprovalBlock, isRequirementDecision } from "../shared/siteRequirementApproval";
 import { attachVendorBillEquipmentEvidence, resolveSavedEquipmentEvidenceSources } from "./vendorBillEquipmentEvidence";
 import { assertSectionTokens, DprSectionConflict, findSectionDrafts, readSectionAggregate, saveDprSection, sectionSnapshot } from "./dprSections";
@@ -35,7 +45,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, vendors, vendorAliases, sites as sitesTable, appSettings, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, userPermissions, vendors, vendorAliases, sites as sitesTable, appSettings, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
 import {
   insertPartySchema,
   insertPlantMaterialSchema,
@@ -186,6 +196,29 @@ import { registerManagementReportRoutes } from "./management-report";
 import { PROGRAMME_BAR_OUTCOMES, PROGRAMME_BAR_OUTCOME_REASONS, programmeBarOutcomeInputError } from "@shared/programmeBarOutcome";
 
 const ESTIMATOR_COOKIE = 'hlc_est_role';
+
+async function accessRulesV2Enabled(): Promise<boolean> {
+  try {
+    return parseAccessRulesV2Setting(await storage.getSetting(ACCESS_RULES_V2_SETTING_KEY));
+  } catch {
+    // Missing/unavailable setting must preserve the legacy behavior.
+    return false;
+  }
+}
+
+function requestAccessRuleAllowed(req: Request, id: AccessRuleId, enabled: boolean): boolean {
+  const user = req.authUser;
+  const actor: AccessRuleActor | null = user ? {
+    id: user.id,
+    isAdmin: user.isAdmin,
+    isOwner: user.isOwner,
+    isFieldEngineer: user.isFieldEngineer,
+    businessRole: user.businessRole,
+    legacyRole: (req as any).session?.role ?? (user as any).role ?? null,
+    authenticated: true,
+  } : null;
+  return evaluateAccessRule(id, enabled, actor, req.authPermissions as AccessRulePermissions | undefined);
+}
 
 function parseCookie(header: string | undefined, name: string): string | undefined {
   if (!header) return undefined;
@@ -529,10 +562,14 @@ export async function registerRoutes(
   app.get("/api/config", async (_req, res) => {
     try {
       const cfg = await getCompanyConfig();
-      res.json({ rmcEnabled: RMC_ENABLED, ...cfg });
+      const accessRulesV2 = parseAccessRulesV2Setting(
+        await storage.getSetting(ACCESS_RULES_V2_SETTING_KEY),
+      );
+      res.json({ rmcEnabled: RMC_ENABLED, accessRulesV2, ...cfg });
     } catch {
       res.json({
         rmcEnabled: RMC_ENABLED,
+        accessRulesV2: false,
         companyName: "High Lane Constructions Pvt Ltd",
         companyShortName: "HLC",
         appTagline: "Live Ops. Not Just Logs.",
@@ -541,6 +578,131 @@ export async function registerRoutes(
         companyGstin: "",
         companyPhone: "",
       });
+    }
+  });
+
+  app.get("/api/admin/access-changes-preview", requireAuth, async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const [enabledRaw, auditRows] = await Promise.all([
+        storage.getSetting(ACCESS_RULES_V2_SETTING_KEY),
+        db.select().from(auditLogsTable)
+          .where(and(eq(auditLogsTable.module, "access_rules_v2"), eq(auditLogsTable.transactionId, 0)))
+          .orderBy(desc(auditLogsTable.createdAt)),
+      ]);
+      const rows = await db
+        .select({
+          id: users.id,
+          fullName: users.fullName,
+          isAdmin: users.isAdmin,
+          isOwner: users.isOwner,
+          isFieldEngineer: users.isFieldEngineer,
+          permissionUserId: userPermissions.userId,
+          sectionKey: userPermissions.sectionKey,
+          canView: userPermissions.canView,
+          canCreate: userPermissions.canCreate,
+          canEdit: userPermissions.canEdit,
+          canDelete: userPermissions.canDelete,
+          canViewReports: userPermissions.canViewReports,
+          canExport: userPermissions.canExport,
+          canApprove: userPermissions.canApprove,
+          canNotify: userPermissions.canNotify,
+        })
+        .from(users)
+        .leftJoin(userPermissions, eq(users.id, userPermissions.userId))
+        .where(eq(users.isActive, true))
+        .orderBy(asc(users.fullName), asc(users.id));
+
+      const grouped = new Map<number, {
+        user: { id: number; fullName: string; isAdmin: boolean; isOwner: boolean; isFieldEngineer: boolean; legacyRole: string };
+        permissions: AccessRulePermissions;
+      }>();
+      for (const row of rows) {
+        let entry = grouped.get(row.id);
+        if (!entry) {
+          entry = {
+            user: {
+              id: row.id,
+              fullName: row.fullName,
+              isAdmin: row.isAdmin,
+              isOwner: row.isOwner,
+              isFieldEngineer: row.isFieldEngineer,
+              legacyRole: row.isAdmin ? "admin" : "manager",
+            },
+            permissions: {},
+          };
+          grouped.set(row.id, entry);
+        }
+        if (row.permissionUserId != null && row.sectionKey) {
+          entry.permissions[row.sectionKey] = {
+            view: row.canView ?? false,
+            create: row.canCreate ?? false,
+            edit: row.canEdit ?? false,
+            delete: row.canDelete ?? false,
+            view_reports: row.canViewReports ?? false,
+            export: row.canExport ?? false,
+            approve: row.canApprove ?? false,
+            notify: row.canNotify ?? false,
+          };
+        }
+      }
+
+      const audit = auditRows.map(row => ({
+        from: (row.oldValues as any)?.enabled === true,
+        to: (row.newValues as any)?.enabled === true,
+        actorUserId: row.userId,
+        actorName: row.userName,
+        at: row.createdAt?.toISOString() ?? null,
+      }));
+      res.setHeader("Cache-Control", "no-store");
+      res.json({
+        enabled: parseAccessRulesV2Setting(enabledRaw),
+        rules: ACCESS_RULES_V2,
+        users: buildAccessChangesPreview(Array.from(grouped.values())),
+        audit,
+        canToggle: !!req.authUser?.isOwner,
+      });
+    } catch (error) {
+      console.error("[access-rules-v2] preview failed", error);
+      res.status(500).json({ error: "access_preview_unavailable" });
+    }
+  });
+
+  app.post("/api/admin/access-rules-v2", requireAuth, async (req, res) => {
+    try {
+      if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
+      if (!req.authUser.isOwner) return res.status(403).json({ error: "owner_required" });
+      if (typeof req.body?.enabled !== "boolean") {
+        return res.status(400).json({ error: "enabled_must_be_boolean" });
+      }
+      const enabled = req.body.enabled as boolean;
+      const result = await db.transaction(async tx => {
+        await tx.insert(appSettings).values({ key: ACCESS_RULES_V2_SETTING_KEY, value: "false" }).onConflictDoNothing();
+        const [setting] = await tx.select().from(appSettings)
+          .where(eq(appSettings.key, ACCESS_RULES_V2_SETTING_KEY)).for("update");
+        const previous = parseAccessRulesV2Setting(setting?.value);
+        if (previous === enabled) return { enabled, changed: false };
+        await tx.update(appSettings)
+          .set({ value: String(enabled), updatedAt: new Date() })
+          .where(eq(appSettings.key, ACCESS_RULES_V2_SETTING_KEY));
+        await storage.logAudit({
+          module: "access_rules_v2",
+          transactionId: 0,
+          action: "toggle",
+          userId: req.authUser!.id,
+          userName: currentUserName(req),
+          userRole: "owner",
+          oldValues: { enabled: previous },
+          newValues: { enabled },
+          reason: "Owner changed the access_rules_v2 setting",
+        }, tx);
+        return { enabled, changed: true };
+      });
+      res.setHeader("Cache-Control", "no-store");
+      res.json(result);
+    } catch (error) {
+      console.error("[access-rules-v2] setting update failed", error);
+      res.status(500).json({ error: "access_rules_update_failed" });
     }
   });
 
@@ -7903,7 +8065,12 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/ldo-orphaned-rows", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      const accessV2 = await accessRulesV2Enabled();
+      if (accessV2) {
+        if (!requestAccessRuleAllowed(req, "ldo_orphan_cleanup", true)) {
+          return res.status(403).json({ error: "admin_required" });
+        }
+      } else if (!assertAdmin(req, res)) return;
       const dateFrom = req.query.dateFrom as string | undefined;
       const dateTo = req.query.dateTo as string | undefined;
       const plant = req.query.plant as string | undefined;
@@ -12833,7 +13000,14 @@ export async function registerRoutes(
         && !req.authPermissions?.vendor_bills_view?.view_reports) {
         return res.status(403).json({ error: "forbidden", action: "view_reports" });
       }
-      if (req.authUser?.isFieldEngineer) return res.status(403).json({ error: "forbidden", message: "Payables preview is not available to field engineers." });
+      const accessV2 = await accessRulesV2Enabled();
+      if (accessV2) {
+        if (!canViewVendorFinancials(req.authUser, req.authPermissions)) {
+          return res.status(403).json({ error: "forbidden", section: "vendor_financials", action: "view" });
+        }
+      } else if (req.authUser?.isFieldEngineer) {
+        return res.status(403).json({ error: "forbidden", message: "Payables preview is not available to field engineers." });
+      }
       const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
         const parsed = new Date(`${value}T00:00:00Z`);
         return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
@@ -18268,11 +18442,19 @@ export async function registerRoutes(
     return true;
   }
 
-  function assertOutcomeManagerAuthority(req: any, res: any): boolean {
+  async function assertOutcomeManagerAuthority(req: any, res: any): Promise<boolean> {
     const user = req.authUser;
     if (!user) {
       res.status(401).json({ message: "Authentication required" });
       return false;
+    }
+    const accessV2 = await accessRulesV2Enabled();
+    if (accessV2) {
+      if (!requestAccessRuleAllowed(req, "execution_arrangement_outcome", true)) {
+        res.status(403).json({ message: "work_programme edit permission is required to record an outcome." });
+        return false;
+      }
+      return true;
     }
     const role = String(user.role ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
     const permitted = !!user.isAdmin || !!user.isOwner ||
@@ -18286,7 +18468,7 @@ export async function registerRoutes(
 
   app.post("/api/dpr/programme-bar-outcomes", async (req, res) => {
     try {
-      if (!assertOutcomeManagerAuthority(req, res)) return;
+      if (!await assertOutcomeManagerAuthority(req, res)) return;
       const parsed = outcomeInputSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid outcome event" });
       const input = parsed.data;
@@ -20881,7 +21063,16 @@ export async function registerRoutes(
   }
 
   async function assertCutFillProjectAccess(req: any, res: any, projectId: number, write = false): Promise<boolean> {
-    if (!assertAuthed(req, res) || !(write ? assertEdit(req, res, "work_programme_review") : assertView(req, res, "work_programme_review"))) return false;
+    if (!assertAuthed(req, res)) return false;
+    const accessV2 = await accessRulesV2Enabled();
+    if (accessV2) {
+      if (!requestAccessRuleAllowed(req, "cutfill_reconciliation_api", true)) {
+        res.status(403).json({ error: "forbidden", section: "work_programme_review", action: "edit" });
+        return false;
+      }
+    } else if (!(write ? assertEdit(req, res, "work_programme_review") : assertView(req, res, "work_programme_review"))) {
+      return false;
+    }
     const [project] = await db.select({ id: boqProjectsTable.id, siteId: boqProjectsTable.siteId })
       .from(boqProjectsTable).where(eq(boqProjectsTable.id, projectId));
     if (!project) { res.status(404).json({ message: "BOQ project not found" }); return false; }
@@ -20892,7 +21083,7 @@ export async function registerRoutes(
         res.status(403).json({ message: "Access denied for this site" }); return false;
       }
     }
-    if (write && !req.authUser?.isAdmin && !["manager", "pm", "project_manager"].includes(String(req.authUser?.role ?? "").toLowerCase())) {
+    if (!accessV2 && write && !req.authUser?.isAdmin && !["manager", "pm", "project_manager"].includes(String(req.authUser?.role ?? "").toLowerCase())) {
       res.status(403).json({ message: "Only a Project Manager or Admin can change cut/fill reconciliation settings." }); return false;
     }
     return true;
@@ -21594,7 +21785,7 @@ export async function registerRoutes(
         if (requestedStatus === "on_hold") patch.onHoldReason = body.statusReason.trim() || null;
       }
       if (confirmExistingStatus) {
-        if (!assertOutcomeManagerAuthority(req, res)) return;
+        if (!await assertOutcomeManagerAuthority(req, res)) return;
         const confirmed: any = await db.transaction(async (tx) => {
           const [row] = await tx.select().from(earthworkArrangementsTable)
             .where(eq(earthworkArrangementsTable.id, id)).for("update");
@@ -25677,10 +25868,17 @@ export function registerSiteRequirementRoutes(app: Express) {
         const blocked = requirementApprovalBlock(req.authUser, existing.submittedBy);
         if (blocked) return res.status(403).json({ error: blocked });
       } else {
-        // Non-approval allocation/status transitions retain their existing gate.
-        const role = req.session?.role ?? "engineer";
-        if (role !== "admin" && role !== "manager") {
-          return res.status(403).json({ error: "Only managers or admins can update status" });
+        const accessV2 = await accessRulesV2Enabled();
+        if (accessV2) {
+          if (!requestAccessRuleAllowed(req, "site_req_status_api", true)) {
+            return res.status(403).json({ error: "forbidden", section: "site_dprs", action: "edit" });
+          }
+        } else {
+          // Preserve the legacy role gate while the single switch is off.
+          const role = req.session?.role ?? "engineer";
+          if (role !== "admin" && role !== "manager") {
+            return res.status(403).json({ error: "Only managers or admins can update status" });
+          }
         }
       }
       const row = await storage.updateSiteRequirementStatus(parseInt(req.params.id), {
@@ -25697,9 +25895,16 @@ export function registerSiteRequirementRoutes(app: Express) {
   // PATCH /api/site-requirements/:id/allocation — PM/manager sets per-section allocation status
   app.patch("/api/site-requirements/:id/allocation", requireAuth, async (req: any, res) => {
     try {
-      const role = req.session?.role ?? "engineer";
-      if (role !== "admin" && role !== "manager") {
-        return res.status(403).json({ error: "Only managers or admins can update allocation" });
+      const accessV2 = await accessRulesV2Enabled();
+      if (accessV2) {
+        if (!requestAccessRuleAllowed(req, "site_req_allocation_api", true)) {
+          return res.status(403).json({ error: "forbidden", section: "site_dprs", action: "edit" });
+        }
+      } else {
+        const role = req.session?.role ?? "engineer";
+        if (role !== "admin" && role !== "manager") {
+          return res.status(403).json({ error: "Only managers or admins can update allocation" });
+        }
       }
       // 06J: whitelist section-level fields only — this endpoint must never
       // write outcome/carry-forward/item-array keys (forgery + wipe protection).
@@ -25722,9 +25927,19 @@ export function registerSiteRequirementRoutes(app: Express) {
       const u = req.authUser;
       const perms = req.authPermissions ?? {};
       const isManagerOrAdmin = !!(u?.isAdmin || u?.isOwner || req.session?.role === "manager");
-      const canStores    = isManagerOrAdmin || !!(perms["stores_inventory"]?.create);
-      const canEquipment = isManagerOrAdmin || !!(perms["plant_equipment"]?.create);
-      const canLabour    = isManagerOrAdmin || !!(perms["labour_management"]?.create);
+      const accessV2 = await accessRulesV2Enabled();
+      const canStores = accessV2
+        ? requestAccessRuleAllowed(req, "site_req_material_api", true)
+        : isManagerOrAdmin || !!(perms["stores_inventory"]?.create);
+      const canEquipment = accessV2
+        ? requestAccessRuleAllowed(req, "site_req_equipment_api", true)
+        : isManagerOrAdmin || !!(perms["plant_equipment"]?.create);
+      const canLabour = accessV2
+        ? requestAccessRuleAllowed(req, "site_req_labour_api", true)
+        : isManagerOrAdmin || !!(perms["labour_management"]?.create);
+      const canImmediate = accessV2
+        ? requestAccessRuleAllowed(req, "site_req_immediate_api", true)
+        : isManagerOrAdmin || canStores || canEquipment;
 
       const { category, itemIndex, lineKey, status, expectedBy, remarks,
         fulfilmentType, arrangementId, agencyNameSnapshot, exceptionReason } = req.body;
@@ -25751,7 +25966,7 @@ export function registerSiteRequirementRoutes(app: Express) {
       if (category === "labour" && !canLabour) {
         return res.status(403).json({ error: "Updating labour allocation requires Labour Management access" });
       }
-      if (category === "immediate" && !(isManagerOrAdmin || canStores || canEquipment)) {
+      if (category === "immediate" && !canImmediate) {
         return res.status(403).json({ error: "Updating immediate requirements requires Stores, Equipment, or PM access" });
       }
 
@@ -25866,9 +26081,16 @@ export function registerSiteRequirementRoutes(app: Express) {
   // (submitted DPR billable progress) for the plan's BOQ item. PM/Admin only.
   app.get("/api/site-requirements/:id/execution-summary", requireAuth, async (req: any, res) => {
     try {
-      const role = req.session?.role ?? "engineer";
-      if (role !== "admin" && role !== "manager") {
-        return res.status(403).json({ error: "Only managers or admins can review outcomes" });
+      const accessV2 = await accessRulesV2Enabled();
+      if (accessV2) {
+        if (!requestAccessRuleAllowed(req, "site_req_execution_summary", true)) {
+          return res.status(403).json({ error: "forbidden", section: "site_dprs", action: "view_reports" });
+        }
+      } else {
+        const role = req.session?.role ?? "engineer";
+        if (role !== "admin" && role !== "manager") {
+          return res.status(403).json({ error: "Only managers or admins can review outcomes" });
+        }
       }
       const plan = await storage.getSiteRequirement(parseInt(req.params.id));
       if (!plan) return res.status(404).json({ error: "Not found" });
@@ -25910,9 +26132,16 @@ export function registerSiteRequirementRoutes(app: Express) {
   // JSONB-only persistence; never creates a DPR; never mutates arrangements.
   app.post("/api/site-requirements/:id/outcome", requireAuth, async (req: any, res) => {
     try {
-      const role = req.session?.role ?? "engineer";
-      if (role !== "admin" && role !== "manager") {
-        return res.status(403).json({ error: "Only managers or admins can record work outcomes" });
+      const accessV2 = await accessRulesV2Enabled();
+      if (accessV2) {
+        if (!requestAccessRuleAllowed(req, "site_req_outcome", true)) {
+          return res.status(403).json({ error: "forbidden", section: "site_dprs", action: "approve" });
+        }
+      } else {
+        const role = req.session?.role ?? "engineer";
+        if (role !== "admin" && role !== "manager") {
+          return res.status(403).json({ error: "Only managers or admins can record work outcomes" });
+        }
       }
       const plan = await storage.getSiteRequirement(parseInt(req.params.id));
       if (!plan) return res.status(404).json({ error: "Not found" });

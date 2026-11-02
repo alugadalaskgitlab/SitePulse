@@ -137,7 +137,7 @@ export async function sendPushToAudience(
   title: string,
   body: string,
   url?: string,
-  audience: "all" | "managers" = "all",
+  audience: "all" | "managers" | "permission:stores_inventory:notify" = "all",
   options: { pruneExpiredSubscriptions?: boolean } = {},
 ) {
   if (!pushInitialized) return;
@@ -152,6 +152,13 @@ export async function sendPushToAudience(
       subscriptions = subscriptions.filter((s) => s.role === "manager" || s.role === "admin");
       if (subscriptions.length === 0) {
         console.log(`[Push] No manager/admin devices subscribed — dropping push for "${title}". Inbox notification still recorded.`);
+        return;
+      }
+    } else if (audience === "permission:stores_inventory:notify") {
+      const allowedUserIds = new Set(await storage.getUsersWithNotifyAccess("stores_inventory"));
+      subscriptions = subscriptions.filter((s) => s.userId != null && allowedUserIds.has(s.userId));
+      if (subscriptions.length === 0) {
+        console.log(`[Push] No stores-notify devices subscribed — dropping push for "${title}".`);
         return;
       }
     }

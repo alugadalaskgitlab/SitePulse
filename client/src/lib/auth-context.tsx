@@ -12,6 +12,7 @@ import { useLocation } from "wouter";
 import { bindDprEntryModeUser } from "@/lib/dprEntryMode";
 import { bindWorkspaceModeUser } from "@/lib/workspaceMode";
 import { canViewVendorFinancials } from "@shared/vendorFinancialAccess";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import {
   STRICT_IDLE_MINUTES,
   type PermissionMatrix,
@@ -58,6 +59,7 @@ type AuthContextType = {
   // admin. Independent of isManager; do NOT use isManager-derived logic to
   // infer this.
   isFieldEngineer: boolean;
+  accessRulesV2: boolean;
   // true if this user can manage permissions (admin or permission manager flag)
   canManagePermissions: boolean;
   // "full" | "partial" — only meaningful when canManagePermissions is true
@@ -78,6 +80,7 @@ const SESSION_PING_PATH = "/api/auth/me";
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
+  const { accessRulesV2 } = useFeatureFlags();
   const lastActivityRef = useRef<number>(Date.now());
 
   // Tab-close detection: if sessionStorage doesn't carry our marker on this
@@ -185,6 +188,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isOwner: !!u?.isOwner,
       isManager: !!u && !u.isAdmin,
       isFieldEngineer: !!u?.isFieldEngineer,
+      accessRulesV2,
       canManagePermissions,
       permissionManagerScope,
       sectionCan,
@@ -208,7 +212,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         navigate("/login");
       },
     };
-  }, [meQuery, qc, navigate]);
+  }, [meQuery, qc, navigate, accessRulesV2]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

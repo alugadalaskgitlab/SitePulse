@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { parseApiError } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth-context";
+import { useAccessRule } from "@/lib/accessRules";
 
 const STORE_CATEGORIES = ["Spares", "Lubricants", "Consumables", "Electricals", "Tools", "HMA", "RMC", "Office", "General", "Others"];
 const STORE_CATEGORY_CODES: Record<string, string> = {
@@ -89,7 +90,9 @@ interface Props { isNew?: boolean; detailId?: number }
 
 export default function StoresGrn({ isNew, detailId }: Props) {
   const { toast } = useToast();
-  const { isAdmin, isManager, user } = useAuth();
+  const { user } = useAuth();
+  const canSeeStaleGrnAlert = useAccessRule("stale_grn_alert");
+  const canEditGrnAcceptance = useAccessRule("grn_acceptance_edit");
   const { uploadFile } = useUpload();
   const [stagedGrnPhotos, setStagedGrnPhotos] = useState<File[]>([]);
   const grnPhotoInputRef = useRef<HTMLInputElement>(null);
@@ -427,7 +430,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
-    enabled: isAdmin || isManager,
+    enabled: canSeeStaleGrnAlert,
     staleTime: 5 * 60_000,
     refetchInterval: 30 * 60_000,
   });
@@ -801,7 +804,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
         </div>
 
         {/* Stale draft GRN alert for managers/admins */}
-        {(isAdmin || isManager) && !staleAlertDismissed && staleGrns.length > 0 && (
+        {canSeeStaleGrnAlert && !staleAlertDismissed && staleGrns.length > 0 && (
           <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 p-3" data-testid="alert-stale-grns">
             <Bell className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
@@ -1264,7 +1267,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                       </Button>
                     </>
                   )}
-                  {(isAdmin || isManager) && !editingAcceptance && selectedGrn.status !== "draft" && !selectedGrn.isCancelled && (
+                  {canEditGrnAcceptance && !editingAcceptance && selectedGrn.status !== "draft" && !selectedGrn.isCancelled && (
                     <Button
                       variant="outline"
                       size="sm"

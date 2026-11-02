@@ -3,6 +3,7 @@ import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, addDays } from "date-fns";
 import { useAuth } from "@/lib/auth-context";
+import { useAccessRule } from "@/lib/accessRules";
 import { requirementApprovalBlock, isRequirementDecision } from "@shared/siteRequirementApproval";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -241,10 +242,14 @@ function ItemEditPanel({
 // ── RequirementCard ───────────────────────────────────────────────────────────
 
 export function RequirementCard({
-  req, canReview, canApproveRequirements = false, canUpdateMaterials, canUpdateEquipment, canUpdateLabour, canUpdateImmediate, filterContext, allReqs,
+  req, canReview, canEditRequirement = false, canSeeExecutionSummary = false, canRecordOutcome = false,
+  canApproveRequirements = false, canUpdateMaterials, canUpdateEquipment, canUpdateLabour, canUpdateImmediate, filterContext, allReqs,
 }: {
   req: any;
   canReview: boolean;
+  canEditRequirement?: boolean;
+  canSeeExecutionSummary?: boolean;
+  canRecordOutcome?: boolean;
   canApproveRequirements?: boolean;
   canUpdateMaterials: boolean;
   canUpdateEquipment: boolean;
@@ -855,7 +860,7 @@ export function RequirementCard({
             <div className="bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2 space-y-1">
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Overall Allocation Summary</p>
-                {canReview && (
+                {canEditRequirement && (
                   <button type="button" onClick={() => setAllocEditing(true)} className="text-[10px] text-blue-600 hover:underline" data-testid={`button-edit-alloc-${req.id}`}>Edit</button>
                 )}
               </div>
@@ -1017,11 +1022,11 @@ export function RequirementCard({
           )}
 
           {/* PM review controls — overall status + section allocation */}
-          {(canReview || canApproveRequirements) && (
+          {(canEditRequirement || canApproveRequirements) && (
             <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-3">
 
               {/* Overall allocation form */}
-              {canReview && (allocEditing ? (
+              {canEditRequirement && (allocEditing ? (
                 <div className="space-y-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg px-3 py-3 border border-blue-100 dark:border-blue-800">
                   <p className="text-xs font-bold text-blue-700 dark:text-blue-300">Update Overall Allocation Status</p>
                   {[
@@ -1075,7 +1080,7 @@ export function RequirementCard({
                     Update Overall Status
                   </Button>
                   {/* 06J: execution outcome — only once the target date has passed */}
-                  {canReview && req.date && req.date < format(new Date(), "yyyy-MM-dd") && (
+                  {canRecordOutcome && req.date && req.date < format(new Date(), "yyyy-MM-dd") && (
                     <Button type="button" variant="outline" size="sm" onClick={() => setOutcomeOpen(true)} data-testid={`button-outcome-${req.id}`}>
                       {outcomeRec ? "Change Work Outcome" : "Update Work Outcome"}
                     </Button>
@@ -1086,7 +1091,7 @@ export function RequirementCard({
                   <Select value={newStatus} onValueChange={setNewStatus}>
                     <SelectTrigger className="text-sm" data-testid={`select-status-${req.id}`}><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {PM_STATUS_OPTIONS.filter(s => isRequirementDecision(s) ? canApproveRequirements : canReview).map(s => (
+                      {PM_STATUS_OPTIONS.filter(s => isRequirementDecision(s) ? canApproveRequirements : canEditRequirement).map(s => (
                         <SelectItem key={s} value={s} disabled={isRequirementDecision(s) && !!approvalBlock}>{STATUS_CONFIG[s]?.label ?? s}</SelectItem>
                       ))}
                     </SelectContent>
@@ -1095,7 +1100,7 @@ export function RequirementCard({
                     placeholder="PM remarks (optional)" className="text-sm resize-none" rows={2}
                     data-testid={`input-pm-remarks-${req.id}`} />
                   <div className="flex gap-2">
-                    <Button type="button" size="sm" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending || (isRequirementDecision(newStatus) ? !canApproveRequirements || !!approvalBlock : !canReview)}
+                    <Button type="button" size="sm" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending || (isRequirementDecision(newStatus) ? !canApproveRequirements || !!approvalBlock : !canEditRequirement)}
                       className="bg-orange-600 hover:bg-orange-700" data-testid={`button-save-status-${req.id}`}>
                       {updateMutation.isPending ? "Saving..." : "Save Status"}
                     </Button>
@@ -1109,7 +1114,7 @@ export function RequirementCard({
         </div>
       )}
       {outcomeOpen && (
-        <OutcomeDialog req={req} existing={outcomeRec} onClose={() => setOutcomeOpen(false)} onSaved={invalidate} />
+        <OutcomeDialog req={req} existing={outcomeRec} canSeeExecutionSummary={canSeeExecutionSummary} onClose={() => setOutcomeOpen(false)} onSaved={invalidate} />
       )}
     </div>
   );
@@ -1117,8 +1122,8 @@ export function RequirementCard({
 
 // ── 06J: Update Work Outcome dialog (PM/Admin only) ──────────────────────────
 
-function OutcomeDialog({ req, existing, onClose, onSaved }: {
-  req: any; existing: any; onClose: () => void; onSaved: () => void;
+function OutcomeDialog({ req, existing, canSeeExecutionSummary, onClose, onSaved }: {
+  req: any; existing: any; canSeeExecutionSummary: boolean; onClose: () => void; onSaved: () => void;
 }) {
   const { toast } = useToast();
   const [outcome, setOutcome] = useState<ExecutionOutcome | "">(existing?.outcome ?? "");
@@ -1135,7 +1140,7 @@ function OutcomeDialog({ req, existing, onClose, onSaved }: {
   // Planned vs executed (submitted DPR progress) — informational + suggestion.
   const { data: summary } = useQuery<any>({
     queryKey: [`/api/site-requirements/${req.id}/execution-summary`],
-    enabled: outcome === "partly_executed" || outcome === "executed",
+    enabled: canSeeExecutionSummary && (outcome === "partly_executed" || outcome === "executed"),
   });
 
   // Prefill suggested balance once when it becomes available (PM can edit).
@@ -1322,12 +1327,18 @@ const CONTEXT_CONFIG: Record<string, { title: string; subtitle: string; backLabe
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function SiteRequirementsList() {
-  const { sectionVisible, canApprove, user, isFieldEngineer } = useAuth();
+  const { sectionVisible, canApprove, isFieldEngineer } = useAuth();
+  const canReview = useAccessRule("site_req_review_ui");
+  const canEditRequirement = useAccessRule("site_req_status_api");
+  const canUpdateMaterials = useAccessRule("site_req_material_button");
+  const canUpdateEquipment = useAccessRule("site_req_equipment_button");
+  const canUpdateLabour = useAccessRule("site_req_labour_button");
+  const canUpdateImmediate = useAccessRule("site_req_immediate_button");
+  const canSeeExecutionSummary = useAccessRule("site_req_execution_summary");
+  const canRecordOutcome = useAccessRule("site_req_outcome");
   const search = useSearch();
   const queryClient = useQueryClient();
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const role = (user as any)?.role ?? "engineer";
-  const isManager = role === "admin" || role === "manager";
 
   const searchParams = new URLSearchParams(search);
   const context = searchParams.get("context") ?? "site";
@@ -1411,14 +1422,6 @@ export default function SiteRequirementsList() {
     : null;
 
   // Role-aware update flags — permission-based, not just role
-  const canUpdateMaterials = isManager || sectionVisible("stores_inventory");
-  const canUpdateEquipment = isManager || sectionVisible("plant_equipment");
-  const canUpdateLabour    = isManager || sectionVisible("labour_management");
-  const canUpdateImmediate = isManager || sectionVisible("stores_inventory") || sectionVisible("plant_equipment");
-
-  // Site engineers cannot approve/arrange their own requirements
-  const canReview = isManager;
-
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       <div className="max-w-3xl mx-auto px-4 py-4 pb-20">
@@ -1486,7 +1489,7 @@ export default function SiteRequirementsList() {
         )}
 
         {/* ── PM/Admin: Tomorrow's site-wise rollup summary ───────────────── */}
-        {isManager && !isLoading && siteRollups.length > 0 && (
+        {canSeeExecutionSummary && !isLoading && siteRollups.length > 0 && (
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-4">
             <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
               <div>
@@ -1546,6 +1549,9 @@ export default function SiteRequirementsList() {
               key={req.id}
               req={req}
               canReview={canReview}
+              canEditRequirement={canEditRequirement}
+              canSeeExecutionSummary={canSeeExecutionSummary}
+              canRecordOutcome={canRecordOutcome}
               canApproveRequirements={canApprove("site_dprs")}
               canUpdateMaterials={canUpdateMaterials}
               canUpdateEquipment={canUpdateEquipment}

@@ -1362,6 +1362,7 @@ export interface IStorage {
   // Push Subscriptions
   getAllPushSubscriptions(): Promise<PushSubscription[]>;
   getActivePushSubscriptions(): Promise<PushSubscription[]>;
+  getUsersWithNotifyAccess(sectionKey: string): Promise<number[]>;
   createPushSubscription(data: InsertPushSubscription): Promise<{ subscription: PushSubscription; created: boolean }>;
   deletePushSubscriptionByEndpoint(endpoint: string): Promise<void>;
   deletePushSubscriptionForUser(endpoint: string, userId: number): Promise<"deleted" | "missing" | "forbidden">;
@@ -11779,6 +11780,25 @@ export class DatabaseStorage implements IStorage {
       .from(userPermissions)
       .where(and(eq(userPermissions.sectionKey, sectionKey), eq(userPermissions.canNotify, true)));
     return rows.map((r) => r.userId);
+  }
+
+  async getUsersWithNotifyAccess(sectionKey: string): Promise<number[]> {
+    const rows = await db
+      .select({ id: users.id })
+      .from(users)
+      .leftJoin(userPermissions, and(
+        eq(userPermissions.userId, users.id),
+        eq(userPermissions.sectionKey, sectionKey),
+      ))
+      .where(and(
+        eq(users.isActive, true),
+        or(
+          eq(users.isAdmin, true),
+          eq(users.isOwner, true),
+          eq(userPermissions.canNotify, true),
+        ),
+      ));
+    return rows.map(row => row.id);
   }
 
   // Returns subscriptions that should actually receive a push:

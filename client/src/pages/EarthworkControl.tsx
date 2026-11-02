@@ -18,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/lib/auth-context";
+import { useAccessRule } from "@/lib/accessRules";
 import { ArrangementStatusBadge } from "@/components/EarthworkArrangementDialog";
 import { ArrangementRegisterLink } from "@/components/ArrangementRegisterLink";
 import type { EarthworkArrangementSummary } from "@shared/planningEngine";
@@ -104,8 +104,7 @@ export default function EarthworkControl() {
   const projectId = parseInt(params.id ?? "0", 10);
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { user } = useAuth();
-  const canManageReconciliation = !!user?.isAdmin || ["admin", "pm", "project_manager", "manager"].includes(String((user as any)?.role ?? "").toLowerCase());
+  const canManageReconciliation = useAccessRule("cutfill_reconciliation_ui");
   const [activationDate, setActivationDate] = useState("");
   const [openingQty, setOpeningQty] = useState<Record<number, string>>({});
   const [openingRemarks, setOpeningRemarks] = useState<Record<number, string>>({});

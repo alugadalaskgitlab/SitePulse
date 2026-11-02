@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AdminNotifications } from "@/components/AdminNotifications";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
+import { useAccessRule } from "@/lib/accessRules";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -33,8 +34,13 @@ interface NavItem {
 }
 
 export function HubShell({ children, title, subtitle, backHref, backLabel }: HubShellProps) {
-  const { user, isAdmin, isManager, isFieldEngineer, logout, sectionVisible } = useAuth();
+  const { user, isAdmin, isFieldEngineer, logout, sectionVisible } = useAuth();
   const { rmcEnabled, companyName, moduleAllowed } = useFeatureFlags();
+  const canSeeDashboardNav = useAccessRule("dashboard_nav");
+  const canSeeHmpNav = useAccessRule("hmp_nav");
+  const canSeeRmcNav = useAccessRule("rmc_nav");
+  const canSeeMastersNav = useAccessRule("masters_nav");
+  const canSeeSettingsNav = useAccessRule("settings_nav");
   const [location] = useLocation();
   const searchString = useSearch();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -125,10 +131,10 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
   );
 
   const mainNavItems: NavItem[] = [
-    { href: "/", icon: LayoutDashboard, label: "Dashboard" },
+    ...(canSeeDashboardNav ? [{ href: "/", icon: LayoutDashboard, label: "Dashboard" }] : []),
     ...(sectionVisible("site_hub") || isAdmin ? [{ href: "/site/hub", icon: HardHat, label: "Site Operations", matchPrefix: "/site", contextKey: "site" }] : []),
-    ...(moduleAllowed("hmp") ? [{ href: "/plant/hub", icon: Factory, label: "HMP Operations", matchPrefix: "/plant", contextKey: "hmp" }] : []),
-    ...(rmcEnabled && moduleAllowed("rmc") ? [{ href: "/rmc/hub", icon: Building2, label: "RMC Operations", matchPrefix: "/rmc", contextKey: "rmc" }] : []),
+    ...(canSeeHmpNav && moduleAllowed("hmp") ? [{ href: "/plant/hub", icon: Factory, label: "HMP Operations", matchPrefix: "/plant", contextKey: "hmp" }] : []),
+    ...(canSeeRmcNav && rmcEnabled && moduleAllowed("rmc") ? [{ href: "/rmc/hub", icon: Building2, label: "RMC Operations", matchPrefix: "/rmc", contextKey: "rmc" }] : []),
     ...(sectionVisible("equipment_hub") || sectionVisible("equipment_performance_report") || sectionVisible("plant_equipment") || isAdmin ? [{ href: "/equipment/hub", icon: Wrench, label: "Equipment & Fleet", matchPrefix: "/equipment", contextKey: "equipment" }] : []),
     // Dedicated readers need a direct entry without unrelated hub grants.
     ...(sectionVisible("diesel_req_view") && !sectionVisible("site_hub") && !isAdmin ? [{ href: "/plant/diesel-requirements", icon: Receipt, label: "Diesel Requirements", matchPrefix: "/plant/diesel-requirements" }] : []),
@@ -144,8 +150,8 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
 
   const bottomNavItems: NavItem[] = [
     ...(canSeeEstimator ? [{ href: "/estimator-login", icon: Calculator, label: "Estimator" }] : []),
-    ...(isAdmin || sectionVisible("master_parties") || sectionVisible("master_materials") || sectionVisible("master_equipment") || sectionVisible("master_personnel") ? [{ href: "/masters/hub", icon: Database, label: "Masters", matchPrefix: "/masters" }] : []),
-    ...(isAdmin ? [{ href: "/admin/hub", icon: Settings, label: "Settings", matchPrefix: "/admin" }] : []),
+    ...(canSeeMastersNav ? [{ href: "/masters/hub", icon: Database, label: "Masters", matchPrefix: "/masters" }] : []),
+    ...(canSeeSettingsNav ? [{ href: "/admin/hub", icon: Settings, label: "Settings", matchPrefix: "/admin" }] : []),
   ];
 
   // Some pages (e.g. shared plant/equipment usage & material pages) are reachable

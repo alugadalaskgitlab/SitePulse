@@ -1,32 +1,44 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { canExportWholeBill } from "../client/src/components/vendor-bills/wholeBillSnapshot";
+import { evaluateAccessRule } from "../shared/accessRulesV2";
 
-describe("whole-bill role precedence", () => {
+describe("whole-bill export access rule", () => {
   for (const canExport of [false, true]) {
     for (const field of [false, true]) {
       for (const admin of [false, true]) {
         for (const owner of [false, true]) {
-          it(`reports=${canExport}, field=${field}, admin=${admin}, owner=${owner}`, () => {
-            expect(canExportWholeBill(canExport, field, admin, owner))
-              .toBe(admin || owner || (canExport && !field));
+          it(`setting OFF preserves reports=${canExport}, field=${field}, admin=${admin}, owner=${owner}`, () => {
+            expect(evaluateAccessRule("whole_bill_export", false, {
+              authenticated: true,
+              isFieldEngineer: field,
+              isAdmin: admin,
+              isOwner: owner,
+            }, {
+              vendor_bills: { export: canExport },
+              vendor_bills_view: { export: false },
+            })).toBe(admin || owner || (canExport && !field));
+          });
+          it(`setting ON follows matrix export for reports=${canExport}, field=${field}, admin=${admin}, owner=${owner}`, () => {
+            expect(evaluateAccessRule("whole_bill_export", true, {
+              authenticated: true,
+              isFieldEngineer: field,
+              isAdmin: admin,
+              isOwner: owner,
+            }, {
+              vendor_bills: { export: canExport },
+              vendor_bills_view: { export: false },
+            })).toBe(admin || owner || canExport);
           });
         }
       }
     }
   }
-  it("preserves legacy non-privileged callers", () => {
-    expect(canExportWholeBill(true)).toBe(true);
-    expect(canExportWholeBill(false)).toBe(false);
-    expect(canExportWholeBill(true, true)).toBe(false);
-  });
-  it("threads both privileged flags into all remaining screen placements", () => {
-    const source = readFileSync("client/src/pages/VendorBills.tsx", "utf8");
-    const calls = source.match(/<WholeBillExportButtons\b[\s\S]*?\/>/g)!;
+  it("uses the shared rule for all four screen placements", () => {
+    const billSource = readFileSync("client/src/pages/VendorBills.tsx", "utf8");
+    const buttonSource = readFileSync("client/src/components/vendor-bills/WholeBillExportButtons.tsx", "utf8");
+    const calls = billSource.match(/<WholeBillExportButtons\b[\s\S]*?\/>/g)!;
     expect(calls).toHaveLength(4);
-    for (const call of calls) {
-      expect(call).toContain("isAdmin={user?.isAdmin}");
-      expect(call).toContain("isOwner={user?.isOwner}");
-    }
+    expect(buttonSource).toContain('useAccessRule("whole_bill_export")');
+    expect(buttonSource).not.toContain("canExportWholeBill");
   });
 });

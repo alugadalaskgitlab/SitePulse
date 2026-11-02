@@ -41,6 +41,10 @@ import {
   DEVICE_COOKIE_NAME,
 } from "@shared/permissions";
 import { and, eq, gt, isNull, desc, sql } from "drizzle-orm";
+import {
+  ACCESS_RULES_V2_SETTING_KEY,
+  parseAccessRulesV2Setting,
+} from "@shared/accessRulesV2";
 import * as crypto from "crypto";
 import bcrypt from "bcryptjs";
 import type { Request, Response, NextFunction } from "express";
@@ -631,11 +635,22 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 }
 
 export function requirePermission(section: SectionKey, action: Action) {
-  return function (req: Request, res: Response, next: NextFunction) {
+  return async function (req: Request, res: Response, next: NextFunction) {
     const u = req.authUser;
     const m = req.authPermissions;
     if (!u || !m) return res.status(401).json({ error: "not_authenticated" });
     if (u.isAdmin) return next();
+    if (u.isOwner) {
+      try {
+        const [setting] = await db.select({ value: appSettings.value })
+          .from(appSettings)
+          .where(eq(appSettings.key, ACCESS_RULES_V2_SETTING_KEY))
+          .limit(1);
+        if (parseAccessRulesV2Setting(setting?.value)) return next();
+      } catch {
+        // A missing/unavailable setting preserves the legacy permission rule.
+      }
+    }
     if (m[section] && m[section][action]) return next();
     return res.status(403).json({ error: "forbidden", section, action });
   };

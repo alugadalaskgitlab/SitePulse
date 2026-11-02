@@ -152,7 +152,7 @@ function usePushNotifications() {
 }
 
 export default function Account() {
-  const { user, isAdmin, isManager } = useAuth();
+  const { user, isAdmin, isFieldEngineer } = useAuth();
   const { status: pushStatus, isLoading: pushLoading, enablePush, disablePush } = usePushNotifications();
   const { toast } = useToast();
 
@@ -174,7 +174,7 @@ export default function Account() {
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState("");
 
-  const roleLabel = isAdmin ? "Admin" : isManager ? "Manager" : "Engineer";
+  const roleLabel = isAdmin ? "Admin" : isFieldEngineer ? "Engineer" : "Manager";
 
   const initials = user?.fullName
     ? user.fullName

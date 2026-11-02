@@ -128,6 +128,7 @@ const EquipmentHireBilling = lazy(() => import("@/pages/EquipmentHireBilling"));
 
 // Admin pages
 const AdminSettings    = lazy(() => import("@/pages/AdminSettings"));
+const AccessChangesPreview = lazy(() => import("@/pages/AccessChangesPreview"));
 const AdminReports     = lazy(() => import("@/pages/AdminReports"));
 const ManagementReport = lazy(() => import("@/pages/ManagementReport"));
 const DataSync         = lazy(() => import("@/pages/DataSync"));
@@ -409,6 +410,7 @@ function AuthedShell() {
           {/* Admin pages */}
           <Route path="/admin/site-backfill" component={gatedEither(SiteBackfill, "site_management", "admin_settings")} />
           <Route path="/admin/settings" component={gated(AdminSettings, "admin_settings")} />
+          <Route path="/admin/settings/access-changes-preview" component={gated(AccessChangesPreview, "admin_settings")} />
           <Route path="/admin/permission-migration-audit" component={gated(PermissionMigrationAudit, "admin_settings")} />
           <Route path="/admin/users" component={gatedEither(UserManagement, "user_management", "permission_manager")} />
           <Route path="/admin/devices" component={gated(DeviceApproval, "device_approval")} />

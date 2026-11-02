@@ -6,6 +6,7 @@ import { hasObservedConflict, legacySaveBody, previewChanges, changedCells, type
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import permissionActions from "@shared/permission-actions.generated.json";
 import { apiRequest } from "@/lib/queryClient";
 import {
@@ -286,6 +287,7 @@ function UserRow({
   onPerms: () => void;
   onResetPw: () => void;
 }) {
+  const { accessRulesV2 } = useFeatureFlags();
   const qc = useQueryClient();
   const { toast } = useToast();
 
@@ -319,7 +321,7 @@ function UserRow({
           {user.isFieldEngineer && <Badge variant="outline">Engineer / field user</Badge>}
           {user.isFieldEngineer && (user.isAdmin || user.isOwner) && (
             <p role="status" className="basis-full text-sm text-amber-700 dark:text-amber-400" data-testid={`role-conflict-${user.id}`}>
-              Role conflict: Admin/Owner and field user are both enabled. Whole-bill exports remain available, but field-user restrictions still hide Payables Preview and Dispatches Today. Review these flags; no automatic changes are made.
+              Role conflict: Admin/Owner and field user are both enabled. {accessRulesV2 ? "With access rules v2 ON, the permission matrix controls Payables Preview, Dispatches Today, and whole-bill exports." : "With access rules v2 OFF, field-user restrictions hide Payables Preview and Dispatches Today; whole-bill exports remain available to Admin/Owner."} Review these flags; no automatic changes are made.
             </p>
           )}
           {user.canManagePermissions && !user.isAdmin && (
@@ -392,6 +394,7 @@ function UserRow({
 // the SAME user (no duplicates).
 export function CreateUserDialog({ open, onClose, onAdvanced }: { open: boolean; onClose: () => void; onAdvanced?: (id: number) => void }) {
   const { isAdmin: currentIsAdmin, canManagePermissions, permissionManagerScope, permissions: myPerms } = useAuth();
+  const { accessRulesV2 } = useFeatureFlags();
   const isPartialManager = !currentIsAdmin && canManagePermissions && permissionManagerScope === "partial";
   const canAdjust = currentIsAdmin || canManagePermissions;
   const qc = useQueryClient();
@@ -665,7 +668,7 @@ export function CreateUserDialog({ open, onClose, onAdvanced }: { open: boolean;
               siteSummary={<p>Sites: {isAdmin ? "All sites (Administrator)" : siteMode === "all" ? "All sites (explicit draft grant)" : `${siteIds.size} selected: ${activeSites.filter(s => siteIds.has(s.id)).map(s => s.name).join(", ")}`}. Saved only by the existing Create / Retry setup workflow.</p>}
             />
             {!isAdmin && creationProposal.capped.length > 0 && <p role="status" className="text-amber-700" data-testid="wizard-role-capped">This review shows the effective permissions capped to your own grants. {creationProposal.capped.length} template grants cannot be assigned by you.</p>}
-            {!isAdmin && isFieldEngineer && <p className="text-muted-foreground">Engineer / field-user restrictions also apply, including hidden Payables Preview and Dispatches Today.</p>}
+            {isFieldEngineer && <p className="text-muted-foreground">{accessRulesV2 ? "The field-user flag is a label; access is controlled by the permission matrix." : "Legacy field-user restrictions apply to Payables Preview and Dispatches Today."}</p>}
             <p className="text-muted-foreground">Step 5 — Advanced permissions: {canAdjust ? "after creation, optionally fine-tune the account with the existing matrix and Save permissions." : "ask an administrator or permission manager to fine-tune this account after creation."} The account will exist before these optional adjustments.</p>
             {setupError && failedUserId != null && (
               <div className="flex items-start gap-2 rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-amber-800" data-testid="banner-setup-incomplete">
@@ -713,6 +716,7 @@ export function CreateUserDialog({ open, onClose, onAdvanced }: { open: boolean;
 }
 
 export function EditUserDialog({ userId, users, onClose, onPermissions }: { userId: number; users: SafeUser[]; onClose: () => void; onPermissions?: () => void }) {
+  const { accessRulesV2 } = useFeatureFlags();
   const qc = useQueryClient();
   const { toast } = useToast();
   const { user: currentUser, refresh, isAdmin, canManagePermissions } = useAuth();
@@ -810,7 +814,7 @@ export function EditUserDialog({ userId, users, onClose, onPermissions }: { user
           </div>
           {isFieldEngineerVal && (isAdminVal || target.isOwner) && (
             <p role="alert" className="text-sm text-amber-700 dark:text-amber-400" data-testid="edit-role-conflict">
-              Role conflict: Admin/Owner and field user are both enabled. Whole-bill exports remain available, but field-user restrictions still hide Payables Preview and Dispatches Today. Review these flags; saving will not automatically clear either role.
+              Role conflict: Admin/Owner and field user are both enabled. {accessRulesV2 ? "With access rules v2 ON, the permission matrix controls Payables Preview, Dispatches Today, and whole-bill exports." : "With access rules v2 OFF, field-user restrictions hide Payables Preview and Dispatches Today; whole-bill exports remain available to Admin/Owner."} Review these flags; saving will not automatically clear either role.
             </p>
           )}
           <div className="flex items-center justify-between">

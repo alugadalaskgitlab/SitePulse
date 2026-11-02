@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { useAuth } from "@/lib/auth-context";
+import { useAccessRule } from "@/lib/accessRules";
 import FieldHome from "@/pages/FieldHome";
 import { getWorkspaceMode, setWorkspaceMode, type WorkspaceMode } from "@/lib/workspaceMode";
 import { format, parseISO, subDays } from "date-fns";
@@ -64,7 +65,8 @@ function HomeDashboard({
   isFieldEngineer: boolean;
   onSwitchToFieldView: () => void;
 }) {
-  const { user, sectionVisible, isAdmin } = useAuth();
+  const { user, sectionVisible, isAdmin, accessRulesV2 } = useAuth();
+  const canSeeDispatchTile = useAccessRule("home_dispatch_tile");
   // Keep the dashboard's resume path identical to Field Home: structures use
   // the detailed editor, while road drafts honour the user's DPR entry mode.
   const continueDraftHref = (d: any): string =>
@@ -126,6 +128,7 @@ function HomeDashboard({
     queryFn: () =>
       fetch(`/api/plant-module/dispatches?dateFrom=${todayStr}&dateTo=${todayStr}`)
         .then((r) => r.json()),
+    enabled: !accessRulesV2 || canSeeDispatchTile,
   });
 
   const { data: unassigned } = useQuery<{
@@ -226,7 +229,7 @@ function HomeDashboard({
         {/* ── Stat cards ── */}
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           {/* Dispatches — plant/HMP metric; hidden for field-engineer-only viewers */}
-          {!isFieldEngineer && (
+          {canSeeDispatchTile && (
             <div className="bg-white rounded-xl border border-teal-200 p-4 flex flex-col gap-3" data-testid="stat-dispatches">
               <div className="w-9 h-9 rounded-lg bg-teal-50 flex items-center justify-center">
                 <Truck className="w-4 h-4 text-teal-600" />

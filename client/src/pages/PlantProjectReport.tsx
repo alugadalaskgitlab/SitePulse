@@ -10,6 +10,7 @@ import { ChevronLeft, Download, Factory, Building2, Loader2 } from "lucide-react
 import * as XLSX from "xlsx";
 import { format, subMonths } from "date-fns";
 import { useAuth } from "@/lib/auth-context";
+import { useAccessRule } from "@/lib/accessRules";
 import { useOrigin } from "@/hooks/use-origin";
 import type { Party, PlantSettingsWithSite } from "@shared/schema";
 
@@ -25,7 +26,7 @@ type SummaryRow = {
 import { ReportExportGate } from "@/components/ReportExportGate";
 
 export default function PlantProjectReport() {
-  const { isAdmin, isManager } = useAuth();
+  const canViewDispatchSummary = useAccessRule("plant_project_report");
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "reports" });
 
@@ -39,11 +40,11 @@ export default function PlantProjectReport() {
 
   const { data: plantSettings = [] } = useQuery<PlantSettingsWithSite[]>({
     queryKey: ["/api/plant-module/plant-settings"],
-    enabled: isAdmin || isManager,
+    enabled: canViewDispatchSummary,
   });
   const { data: parties = [] } = useQuery<Party[]>({
     queryKey: ["/api/plant-module/parties"],
-    enabled: isAdmin || isManager,
+    enabled: canViewDispatchSummary,
   });
 
   const availablePlants = plantSettings.map((s) => s.plantName);
@@ -64,7 +65,7 @@ export default function PlantProjectReport() {
         if (!r.ok) throw new Error("Failed to fetch summary");
         return r.json();
       }),
-    enabled: isAdmin || isManager,
+    enabled: canViewDispatchSummary,
   });
 
   const totalLoads = summaryRows.reduce((s, r) => s + r.loadCount, 0);
@@ -128,7 +129,7 @@ export default function PlantProjectReport() {
     XLSX.writeFile(wb, `plant-project-dispatch-${dateFrom}-to-${dateTo}.xlsx`);
   }
 
-  if (!isAdmin && !isManager) {
+  if (!canViewDispatchSummary) {
     return (
       <div className="max-w-md mx-auto text-center py-20">
         <p className="text-muted-foreground">Access restricted to administrators and managers.</p>

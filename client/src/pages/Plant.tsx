@@ -20,6 +20,7 @@ import * as XLSX from "xlsx";
 import { queryClient, apiRequest, isForbiddenError, NO_PERMISSION_DESCRIPTION, NO_CREATE_PERMISSION_DESCRIPTION } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
+import { useAccessRule } from "@/lib/accessRules";
 import type { Party, PlantMaterial, MixTemplate, EquipmentMasterType, MixType, MaterialOpeningStock, Personnel, LdoFlowReading, PlantSettings, PlantSettingsWithSite, Site } from "@shared/schema";
 import { Switch } from "@/components/ui/switch";
 import type { PlantTankConfig, SingleTankConfig, TankSlot } from "@shared/tank-calibration";
@@ -50,7 +51,8 @@ export default function Plant() {
   })();
 
   const [plantView, setPlantView] = useState<"home" | "hmp" | "fleet" | "reports">(initialView);
-  const { isAdmin, isManager, sectionCan } = useAuth();
+  const { isAdmin } = useAuth();
+  const canShowAdminGuide = useAccessRule("plant_admin_guide");
   const { rmcEnabled } = useFeatureFlags();
 
   const { data: allPlantSettings } = useQuery<PlantSettingsWithSite[]>({
@@ -92,7 +94,7 @@ export default function Plant() {
             <p className="text-muted-foreground mt-1">{VIEW_SUBTITLES[plantView]}</p>
           </div>
         </div>
-        {(isAdmin || isManager) && plantView === "home" && (
+        {(isAdmin || canShowAdminGuide) && plantView === "home" && (
           <div className="flex gap-2">
             {isAdmin && (
               <a
@@ -108,7 +110,7 @@ export default function Plant() {
                 </Button>
               </a>
             )}
-            {sectionCan("admin_settings", "export") && <a
+            {canShowAdminGuide && <a
               href={primaryPlantName
                 ? `/api/admin/admin-guide.pdf?plant=${encodeURIComponent(primaryPlantName)}`
                 : '/api/admin/admin-guide.pdf'}
@@ -156,7 +158,7 @@ function PlantHomeCards({
   rmcEnabled: boolean;
   onNavigate: (view: "hmp" | "fleet" | "reports") => void;
 }) {
-  const { sectionVisible, isAdmin, isManager } = useAuth();
+  const { sectionVisible } = useAuth();
   const { appendPlantContext } = useOrigin();
 
   const { data: openCountData } = useQuery<{ count: number }>({
@@ -798,7 +800,8 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
 }
 
 function ReportsTab({ plantType = "hma", rmcEnabled = false }: { plantType?: string; rmcEnabled?: boolean }) {
-  const { sectionVisible, isAdmin, isManager } = useAuth();
+  const { sectionVisible } = useAuth();
+  const canSeeDispatchSummary = useAccessRule("plant_dispatch_summary");
   const isRmc = rmcEnabled;
   const todayStr = new Date().toISOString().slice(0, 10);
   const appendRoleAndTab = (path: string) => {
@@ -875,7 +878,7 @@ function ReportsTab({ plantType = "hma", rmcEnabled = false }: { plantType?: str
           </Card>
         </Link>
         )}
-        {(isAdmin || isManager) && (
+        {canSeeDispatchSummary && (
         <Link href="/plant/dispatch-summary">
           <Card className="hover-elevate cursor-pointer h-full border-indigo-200 dark:border-indigo-800" data-testid="tile-plant-project-dispatch-summary">
             <CardContent className="p-6 flex items-center gap-4">

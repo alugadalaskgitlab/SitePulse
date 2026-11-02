@@ -7,6 +7,7 @@ import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
+import { useAccessRule } from "@/lib/accessRules";
 
 const HUB = "/reports/hub";
 
@@ -19,10 +20,10 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 }
 
 export default function ReportsHub() {
-  const { sectionVisible, isAdmin, isManager } = useAuth();
+  const { sectionVisible } = useAuth();
   const { rmcEnabled } = useFeatureFlags();
 
-  const canReports    = isAdmin || isManager || sectionVisible("reports");
+  const canReports    = useAccessRule("reports_hub_content");
   const canDailyRep   = sectionVisible("plant_daily_reports");
   const canSiteDprs   = sectionVisible("site_dprs");
   const canHeating    = sectionVisible("plant_heating");
