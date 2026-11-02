@@ -52,3 +52,9 @@ Replacement access checks are gated by the single `access_rules_v2` setting in `
 **Why:** The user requires access changes to remain inert until explicitly enabled and reviewed, without migrating existing grants.
 
 **How to apply:** Keep every replacement check behind this setting, compare legacy and proposed results in preview, verify OFF behavior and client/server parity with ON, and audit only actual state transitions.
+
+For legacy OFF behavior, preserve the user's actual legacy `role` value; an absent role remains `null` and must never be inferred from Admin/Manager flags. Preview users have no role column, so role-based current results use `null`. The stale-GRN current audience is the exception: derive it from active push subscriptions' stored manager/admin roles, matching the existing delivery audience.
+
+**Why:** Inferring a legacy role from admin status changes what role-gated controls show when the rollout setting is OFF, and stale-GRN delivery historically follows subscription roles rather than user flags.
+
+**How to apply:** Keep legacy-role fallback exact on the client and server; when previewing push audiences, use the same active-subscription records and role filter as delivery.

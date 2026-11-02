@@ -29,8 +29,22 @@ function fixture(actor: any = { id: 7, isAdmin: false, isOwner: false }, approve
   const handlers = new Map<string, Function>();
   const app = Object.fromEntries(["get", "post", "patch", "put"].map(method => [method,
     (path: string, ...handlers_: Function[]) => handlers.set(`${method} ${path}`, handlers_.at(-1)!)]));
-  const register = new Function("storage", "requireAuth", "requirementApprovalBlock", "isRequirementDecision",
-    `${approval}\n${compiled}\nreturn registerSiteRequirementRoutes;`)(storage, () => {}, requirementApprovalBlock, isRequirementDecision);
+  const register = new Function(
+    "storage",
+    "requireAuth",
+    "requirementApprovalBlock",
+    "isRequirementDecision",
+    "accessRulesV2Enabled",
+    "requestAccessRuleAllowed",
+    `${approval}\n${compiled}\nreturn registerSiteRequirementRoutes;`,
+  )(
+    storage,
+    () => {},
+    requirementApprovalBlock,
+    isRequirementDecision,
+    async () => false,
+    () => false,
+  );
   register(app);
   const matrix = emptyMatrix(); matrix.site_dprs.approve = approve;
   async function call(method: string, path: string, body: any = {}) {
