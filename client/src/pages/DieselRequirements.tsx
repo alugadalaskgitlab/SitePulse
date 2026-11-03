@@ -394,7 +394,7 @@ function DieselPurchaseSummary({ requirement }: { requirement: DieselRequirement
   const paymentRecordedBy = (requirement as any).paymentRecordedBy as string | null;
   const [showMarkPaid, setShowMarkPaid] = useState(false);
   const { featureCan } = useAuth();
-  const canEditDiesel = featureCan("diesel_issue", "edit");
+  const canEditDiesel = featureCan("diesel_requirement", "edit");
 
   return (
     <Card data-testid="card-purchase-summary">
@@ -530,10 +530,10 @@ export default function DieselRequirements() {
   const [rejectionReason, setRejectionReason] = useState("");
 
   const { featureCan, sectionCan } = useAuth();
-  const canEdit = featureCan("diesel_issue", "edit");
-  const canCreate = featureCan("diesel_issue", "add");
-  const canApprove = featureCan("diesel_issue", "approve");
-  const canDelete = featureCan("diesel_issue", "cancel");
+  const canEdit = featureCan("diesel_requirement", "edit");
+  const canCreate = featureCan("diesel_requirement", "add");
+  const canApprove = featureCan("diesel_requirement", "approve");
+  const canDelete = featureCan("diesel_requirement", "cancel");
 
   const [purchaseQty, setPurchaseQty] = useState("");
   const [purchaseSupplier, setPurchaseSupplier] = useState("");
@@ -1159,10 +1159,10 @@ export default function DieselRequirements() {
               </div>
             </div>
             <div className="flex gap-2">
-              {featureCan("diesel_issue", "view") || featureCan("issues_stock", "view") || featureCan("diesel_issue", "add") || featureCan("diesel_issue", "edit") ? (
+              {featureCan("diesel_requirement", "view") || featureCan("issues_stock", "view") || featureCan("diesel_requirement", "add") || featureCan("diesel_requirement", "edit") ? (
                 <Button variant="outline" size="sm" onClick={() => setView("daily-report")} data-testid="button-daily-report">DAILY REPORT</Button>
               ) : null}
-              {sectionCan("site_diesel", "export") && (
+              {featureCan("diesel_requirement", "export") && (
                 <Button variant="outline" size="sm" onClick={() => { setView("report"); setReportGenerated(false); }} data-testid="button-comparison-report">
                   COMPARISON REPORT
                 </Button>

@@ -262,7 +262,10 @@ export default function UserManagement() {
           userId={permsUserId}
           fullName={usersQ.data?.find(person => person.id === permsUserId)?.fullName ?? "User"}
           onClose={() => setPermsUserId(null)}
-          onSaved={() => { setPermsUserId(null); usersQ.refetch(); }}
+          onSaved={() => {
+            setPermsUserId(null);
+            toast({ title: "Access saved" });
+          }}
         />
       )}
       {pwUserId !== null && (

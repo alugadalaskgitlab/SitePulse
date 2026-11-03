@@ -735,7 +735,7 @@ export const EDIT_RECORD_TYPE_SECTION: Record<string, SectionKey> = {
   site_material_trip: "site_materials",
   site_purchase: "report_site_purchases",
   store_grn: "stores_inventory",
-  diesel_requirement: "site_diesel",
+  diesel_requirement: "diesel_req_raise",
   purchase_indent: "site_procurement",
   truck_dispatch: "plant_production",
   equipment_usage: "plant_equipment",

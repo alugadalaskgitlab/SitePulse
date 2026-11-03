@@ -231,6 +231,24 @@ function featureGated(Component: ComponentType<any>, feature: FeatureId, action:
   };
 }
 
+function featureGatedAny(Component: ComponentType<any>, features: FeatureId[]) {
+  function FeatureContent(params: any): ReactNode {
+    const { featureCan } = useAuth();
+    if (!features.some(feature => featureCan(feature, "view"))) {
+      return (
+        <div className="mx-auto max-w-md text-center py-20 space-y-3">
+          <h2 className="text-xl font-semibold">No access</h2>
+          <p className="text-sm text-muted-foreground">You don't have the required feature permission.</p>
+        </div>
+      );
+    }
+    return <Component {...params} />;
+  }
+  return function GatedFeatureRoute(params: any): ReactNode {
+    return <RequireAuth><FeatureContent {...params} /></RequireAuth>;
+  };
+}
+
 function reportGated(Component: ComponentType<any>, ...sourceFeatures: FeatureId[]) {
   function ReportContent(params: any): ReactNode {
     const { featureCan } = useAuth();
@@ -368,7 +386,7 @@ function AuthedShell() {
           <Route path="/site/material-stock" component={gated(SiteMaterialStock, "site_materials")} />
           <Route path="/site/purchases" component={reportGated(SitePurchasesReport, "purchase_orders")} />
           <Route path="/site/requirements/new" component={featureGated(SiteRequirementNew, "site_requirements", "add")} />
-          <Route path="/site/requirements" component={featureGated(SiteRequirementsList, "site_requirements")} />
+          <Route path="/site/requirements" component={featureGatedAny(SiteRequirementsList, ["site_requirements", "requirement_allocation_material", "requirement_allocation_equipment", "requirement_allocation_labour"])} />
           <Route path="/my-plans" component={gated(MyPlans, "site_dprs")} />
 
           {/* Plant pages */}
@@ -418,7 +436,7 @@ function AuthedShell() {
 
           {/* Finance / procurement pages */}
           <Route path="/plant/purchase-indents" component={featureGated(PurchaseIndents, "purchase_indent")} />
-          <Route path="/plant/diesel-requirements" component={featureGated(DieselRequirements, "diesel_issue")} />
+          <Route path="/plant/diesel-requirements" component={featureGated(DieselRequirements, "diesel_requirement")} />
           <Route path="/plant/vendor-bills" component={featureGated(VendorBills, "vendor_bills")} />
           <Route path="/finance/vendor-bills/attention" component={ownerGated(VendorBillsAttention)} />
           <Route path="/finance/vendor-bills/tally-readiness" component={featureGated(VendorTallyReadiness, "vendor_bills")} />

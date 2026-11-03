@@ -90,7 +90,7 @@ import {
   saveUserFeatureAccess,
   seedDefaultRoles,
 } from "./featureAccess";
-import { FEATURES, FEATURE_ACTIONS, ROLE_NAMES, can as canFeature, type EntryScope, type FeatureAction, type FeatureId, type FeatureTicks, type PersonalTickChanges } from "@shared/featureAccess";
+import { FEATURES, FEATURE_ACTIONS, ROLE_NAMES, SUGGESTED_NEW_ROW_ROLE_TICKS, can as canFeature, type EntryScope, type FeatureAction, type FeatureId, type FeatureTicks, type PersonalTickChanges } from "@shared/featureAccess";
 import { eq, and, isNull, desc } from "drizzle-orm";
 
 // Task #280 — identifier accepts either an email address or a phone number.
@@ -491,6 +491,42 @@ export function registerAuthRoutes(app: Express) {
       res.json({ ok: true, roles: await getRolesWithTicks() });
     } catch (err) {
       console.error("[POST /api/access-control/roles/seed]", err);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  app.post("/api/access-control/roles/apply-suggested-ticks", requireAuth, requireAdmin, async (req, res) => {
+    if (!req.authUser?.isOwner) return res.status(403).json({ error: "owner_required" });
+    try {
+      z.object({ confirm: z.literal(true) }).parse(req.body);
+      const grantedCount = await db.transaction(async tx => {
+        const roleRows = await tx.select({ id: roles.id, name: roles.name }).from(roles);
+        const inserts = roleRows.flatMap(role => {
+          const suggested = SUGGESTED_NEW_ROW_ROLE_TICKS[role.name as keyof typeof SUGGESTED_NEW_ROW_ROLE_TICKS];
+          if (!suggested) return [];
+          return Object.entries(suggested).flatMap(([feature, actions]) =>
+            Object.entries(actions ?? {})
+              .filter(([, granted]) => granted === true)
+              .map(([action]) => ({
+                roleId: role.id,
+                feature,
+                action,
+                granted: true,
+              })),
+          );
+        });
+        if (inserts.length) {
+          await tx.insert(roleTicks).values(inserts).onConflictDoUpdate({
+            target: [roleTicks.roleId, roleTicks.feature, roleTicks.action],
+            set: { granted: true },
+          });
+        }
+        return inserts.length;
+      });
+      res.json({ ok: true, grantedCount });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ error: "confirmation_required" });
+      console.error("[POST /api/access-control/roles/apply-suggested-ticks]", err);
       res.status(500).json({ error: "server_error" });
     }
   });

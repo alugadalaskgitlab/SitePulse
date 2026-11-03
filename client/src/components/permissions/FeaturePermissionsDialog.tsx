@@ -30,7 +30,7 @@ type AccessData = {
 };
 
 const ACTIONS: FeatureAction[] = [
-  "view", "add", "edit", "cancel", "verify", "technical_verify",
+  "view", "add", "edit", "cancel", "verify", "allocate", "technical_verify",
   "accounts_verify", "approve", "final", "export",
 ];
 
@@ -40,6 +40,7 @@ const ACTION_LABEL: Record<FeatureAction, string> = {
   edit: "Edit",
   cancel: "Cancel",
   verify: "Verify",
+  allocate: "Allocate",
   technical_verify: "Technical",
   accounts_verify: "Accounts",
   approve: "Approve",
@@ -51,6 +52,19 @@ async function fetchAccess(userId: number): Promise<AccessData> {
   const response = await fetch(`/api/auth/users/${userId}/feature-access`, { credentials: "include" });
   if (!response.ok) throw new Error(`Could not load access (${response.status})`);
   return response.json() as Promise<AccessData>;
+}
+
+function errorMessage(error: unknown): string | null {
+  if (!(error instanceof Error)) return null;
+  const raw = error.message.replace(/^\d{3}:\s*/, "");
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.message === "string") return parsed.message;
+    if (typeof parsed?.error === "string") return parsed.error;
+  } catch {
+    // Keep plain-text server errors readable.
+  }
+  return raw;
 }
 
 export function FeaturePermissionsDialog({
@@ -112,27 +126,33 @@ export function FeaturePermissionsDialog({
       }
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries();
+      // Refresh only the affected user's access and the user list. Invalidating
+      // every active query can tear down unrelated screens after this dialog saves.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/auth/users", userId, "feature-access"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/auth/users"] }),
+      ]);
       onSaved();
     },
   });
 
-  const displayError = save.error instanceof Error ? save.error.message : null;
+  const displayError = errorMessage(save.error);
   return (
     <Dialog open onOpenChange={open => !open && onClose()}>
-      <DialogContent className="max-h-[90dvh] max-w-6xl overflow-hidden">
-        <DialogHeader>
+      <DialogContent className="flex h-[90dvh] max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-6xl flex-col gap-0 overflow-hidden">
+        <DialogHeader className="shrink-0 pb-4">
           <DialogTitle>Feature access — {fullName}</DialogTitle>
         </DialogHeader>
-        {query.isLoading ? <p className="py-8 text-center">Loading access…</p> : query.isError ? (
-          <div className="space-y-3 py-6">
-            <p className="text-destructive">Access could not be loaded. No changes have been made.</p>
-            <Button variant="outline" onClick={() => query.refetch()}>Retry</Button>
-          </div>
-        ) : access?.rolesConfigured === false ? (
-          <p className="rounded border p-4 text-sm">Role setup required.</p>
-        ) : access ? (
-          <div className="space-y-5 overflow-y-auto pr-2">
+        <div data-testid="feature-access-scroll-area" className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-2">
+          {query.isLoading ? <p className="py-8 text-center">Loading access…</p> : query.isError ? (
+            <div className="space-y-3 py-6">
+              <p className="text-destructive">Access could not be loaded. No changes have been made.</p>
+              <Button variant="outline" onClick={() => query.refetch()}>Retry</Button>
+            </div>
+          ) : access?.rolesConfigured === false ? (
+            <p className="rounded border p-4 text-sm">Role setup required.</p>
+          ) : access ? (
+          <div className="space-y-5">
             <section>
               <h3 className="mb-2 font-semibold">Roles</h3>
               <p className="text-sm">{selectedRoles.map(role => role.name).join(", ") || "No roles assigned"}</p>
@@ -152,11 +172,12 @@ export function FeaturePermissionsDialog({
                   <h4 className="mb-2 border-b pb-1 text-sm font-semibold">{group.label}</h4>
                   <div className="space-y-2">
                     {FEATURES.filter(feature => feature.group === group.id && isFeatureLicensed(feature.id, access.licensedModules)).map(feature => (
-                      <div key={feature.id} className="grid gap-2 border-b pb-2 md:grid-cols-[minmax(180px,1fr)_repeat(9,minmax(68px,auto))]">
-                                <span className="text-sm font-medium">
-                                  {feature.label}
-                                  {feature.inactive && <span className="ml-2 text-xs text-muted-foreground">Inactive</span>}
-                                </span>
+                      <div key={feature.id} className="grid gap-2 border-b pb-2 md:grid-cols-[minmax(160px,1fr)_minmax(0,3fr)]">
+                        <span className="text-sm font-medium">
+                          {feature.label}
+                          {feature.inactive && <span className="ml-2 text-xs text-muted-foreground">Inactive</span>}
+                        </span>
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
                         {ACTIONS.filter(action => feature.actions.includes(action)).map(action => (
                           <label key={action} data-personal-change={hasPersonalChange(feature.id, action) || undefined}
                             className={`flex items-center gap-1 text-xs ${hasPersonalChange(feature.id, action) ? "rounded bg-amber-100 px-1 text-amber-950 dark:bg-amber-950 dark:text-amber-100" : ""}`}>
@@ -171,6 +192,7 @@ export function FeaturePermissionsDialog({
                             {ACTION_LABEL[action]}
                           </label>
                         ))}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -185,9 +207,10 @@ export function FeaturePermissionsDialog({
               </label>
             )}
           </div>
-        ) : null}
-        {displayError && <p role="alert" className="text-sm text-destructive">{displayError}</p>}
-        <DialogFooter>
+          ) : null}
+        </div>
+        {displayError && <p role="alert" className="shrink-0 pt-2 text-sm text-destructive">{displayError}</p>}
+        <DialogFooter className="shrink-0 border-t pt-3">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button onClick={() => save.mutate()} disabled={!access || !access.rolesConfigured || save.isPending}>
             {save.isPending ? "Saving…" : "Save access"}

@@ -6,9 +6,11 @@ import { useAuth } from "@/lib/auth-context";
 import {
   FEATURE_GROUPS,
   FEATURES,
+  SUGGESTED_NEW_ROW_ROLE_TICKS,
   isFeatureLicensed,
   type EntryScope,
   type FeatureAction,
+  type FeatureId,
   type FeatureTicks,
 } from "@shared/featureAccess";
 
@@ -53,6 +55,7 @@ const ACTION_LABELS: Record<FeatureAction, string> = {
   edit: "Edit",
   cancel: "Cancel",
   verify: "Verify",
+  allocate: "Allocate",
   technical_verify: "Technical verify",
   accounts_verify: "Accounts verify",
   approve: "Approve",
@@ -123,6 +126,7 @@ export default function AccessRoles() {
   const [roleDraft, setRoleDraft] = useState<RoleRow | null>(null);
   const [newRoleName, setNewRoleName] = useState("");
   const [setupConfirmation, setSetupConfirmation] = useState(false);
+  const [showSuggestedTicks, setShowSuggestedTicks] = useState(false);
   const [pendingDiscard, setPendingDiscard] = useState<PendingDiscard | null>(null);
   const activeLocationRef = useRef(location);
   const hasUnsavedChangesRef = useRef(false);
@@ -155,6 +159,18 @@ export default function AccessRoles() {
   }, [previewQuery.data, rolesQuery.data]);
 
   const roles = rolesQuery.data?.roles ?? [];
+  const suggestedRoleRows = Object.entries(SUGGESTED_NEW_ROW_ROLE_TICKS).map(([roleName, ticks]) => ({
+    roleName,
+    exists: roles.some(role => role.name === roleName),
+    features: Object.entries(ticks ?? {}).flatMap(([featureId, actions]) => {
+      const feature = FEATURES.find(item => item.id === featureId as FeatureId);
+      if (!feature) return [];
+      const labels = Object.entries(actions ?? {})
+        .filter(([, granted]) => granted === true)
+        .map(([action]) => ACTION_LABELS[action as FeatureAction]);
+      return labels.length ? [{ label: feature.label, actions: labels.join(", ") }] : [];
+    }),
+  }));
   const setup = previewQuery.data;
   const rolesConfigured = setup?.rolesConfigured ?? false;
   const activeRole = roles.find(role => role.id === activeRoleId) ?? null;
@@ -281,6 +297,19 @@ export default function AccessRoles() {
     onSuccess: async () => {
       setMessage("Role saved.");
       await queryClient.invalidateQueries({ queryKey: ["/api/access-control/roles"] });
+    },
+    onError: (error: Error) => setMessage(error.message),
+  });
+
+  const applySuggestedTicks = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/access-control/roles/apply-suggested-ticks", { confirm: true }),
+    onSuccess: async () => {
+      setShowSuggestedTicks(false);
+      setMessage("Suggested ticks applied to the listed roles.");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/access-control/roles"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/access-control/setup-preview"] }),
+      ]);
     },
     onError: (error: Error) => setMessage(error.message),
   });
@@ -510,6 +539,65 @@ export default function AccessRoles() {
         </section>
       ) : (
         <section className="grid gap-5 lg:grid-cols-[260px_1fr]">
+          {user?.isOwner && (
+            <section className="space-y-3 rounded-lg border p-4 lg:col-span-2" aria-label="Suggested ticks for new permission rows">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-semibold">Suggested ticks for new rows</h2>
+                  <p className="text-sm text-muted-foreground">Review the suggested grants by role. Nothing changes until you confirm.</p>
+                </div>
+                <button
+                  type="button"
+                  className="rounded border px-3 py-2"
+                  onClick={() => setShowSuggestedTicks(value => !value)}
+                  disabled={rolesQuery.isLoading || applySuggestedTicks.isPending}
+                  data-testid="button-preview-suggested-ticks"
+                >
+                  {showSuggestedTicks ? "Hide suggestions" : "Apply suggested ticks for new rows"}
+                </button>
+              </div>
+              {showSuggestedTicks && (
+                <div className="space-y-3">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[32rem] border-collapse text-left text-sm" data-testid="suggested-ticks-table">
+                      <thead><tr className="border-b"><th className="p-2">Role</th><th className="p-2">Feature</th><th className="p-2">Ticks to grant</th></tr></thead>
+                      <tbody>
+                        {suggestedRoleRows.map(row => (
+                          <tr key={row.roleName} className="border-b align-top">
+                            <th className="p-2 font-medium">{row.roleName}</th>
+                            <td className="p-2">
+                              {row.exists
+                                ? row.features.map(feature => <div key={feature.label}>{feature.label}</div>)
+                                : <span className="text-muted-foreground">Role not present; no ticks will be added.</span>}
+                            </td>
+                            <td className="p-2">
+                              {row.exists
+                                ? row.features.map(feature => <div key={feature.label}>{feature.actions}</div>)
+                                : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="rounded bg-primary px-3 py-2 text-primary-foreground"
+                      onClick={() => applySuggestedTicks.mutate()}
+                      disabled={applySuggestedTicks.isPending}
+                      data-testid="button-confirm-suggested-ticks"
+                    >
+                      {applySuggestedTicks.isPending ? "Applying…" : "Confirm and apply"}
+                    </button>
+                    <button type="button" className="rounded border px-3 py-2" onClick={() => setShowSuggestedTicks(false)} disabled={applySuggestedTicks.isPending}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
           <aside className="space-y-3 rounded-lg border p-4">
             <h2 className="font-semibold">Roles</h2>
             <ul className="space-y-1">
@@ -525,8 +613,8 @@ export default function AccessRoles() {
             </div>
           </aside>
           {roleDraft ? (
-            <div className="space-y-4 rounded-lg border p-4">
-              <div className="flex flex-wrap items-end gap-3">
+            <div className="flex max-h-[calc(100dvh-11rem)] min-h-0 flex-col gap-4 rounded-lg border p-4">
+              <div className="flex shrink-0 flex-wrap items-end gap-3">
                 <label className="grid gap-1 text-sm">Role name
                   <input className="rounded border px-3 py-2" value={roleDraft.name} onChange={event => setRoleDraft({ ...roleDraft, name: event.target.value })} />
                 </label>
@@ -551,7 +639,7 @@ export default function AccessRoles() {
                   Delete role
                 </button>
               </div>
-              <div className="space-y-5">
+              <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain pr-1" data-testid="role-feature-scroll-area">
                 {FEATURE_GROUPS.filter(group => FEATURES.some(feature =>
                   feature.group === group.id && isFeatureLicensed(feature.id, featureAccess?.licensedModules)
                 )).map(group => (
@@ -559,11 +647,12 @@ export default function AccessRoles() {
                     <h3 className="mb-2 border-b pb-1 font-semibold">{group.label}</h3>
                     <div className="space-y-2">
                       {FEATURES.filter(feature => feature.group === group.id && isFeatureLicensed(feature.id, featureAccess?.licensedModules)).map(feature => (
-                        <div key={feature.id} className="grid gap-2 border-b pb-2 md:grid-cols-[minmax(200px,1fr)_repeat(9,minmax(68px,auto))]">
+                        <div key={feature.id} className="grid gap-2 border-b pb-2 md:grid-cols-[minmax(160px,1fr)_minmax(0,3fr)]">
                           <div className="font-medium">
                             {feature.label}
                             {feature.inactive && <span className="ml-2 text-xs text-muted-foreground">Not active</span>}
                           </div>
+                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
                           {feature.actions.map(action => (
                             <label key={action} className="flex items-center gap-1 text-xs">
                               <input
@@ -577,6 +666,7 @@ export default function AccessRoles() {
                               {ACTION_LABELS[action]}
                             </label>
                           ))}
+                          </div>
                         </div>
                       ))}
                     </div>

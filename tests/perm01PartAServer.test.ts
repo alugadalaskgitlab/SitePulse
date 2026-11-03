@@ -63,21 +63,22 @@ describe("PERM-01 Part A server route guards", () => {
 
   it.each([
     ["post", "/api/irn/:id/raise-pi", "purchase_indent", "add"],
-    ["put", "/api/diesel-requirements/:id", "diesel_issue", "edit"],
+    ["put", "/api/diesel-requirements/:id", "diesel_requirement", "edit"],
     ["put", "/api/vendor-bills/:id", "vendor_bills", "edit"],
   ] as const)("%s %s uses its unified feature action", (method, path, feature, action) => {
     featureRouteGuard(method, path, feature, action);
   });
 
   it.each([
-    ["post", "/api/diesel-requirements", "Create"],
-    ["patch", "/api/diesel-requirements/:id/purchase-update", "Edit"],
-    ["patch", "/api/diesel-requirements/:id/payment-status", "Edit"],
-  ] as const)("diesel %s %s supports granular-only, legacy-only and neither", (method, path, action) => {
-    expectEitherPermissions(
-      routeGuard(method, path, action, "site_diesel", "diesel_req_raise"),
-      action.toLowerCase() as "create" | "edit", "site_diesel", "diesel_req_raise",
-    );
+    ["post", "/api/diesel-requirements", "diesel_requirement", "add"],
+    ["patch", "/api/diesel-requirements/:id/purchase-update", "diesel_requirement", "edit"],
+    ["patch", "/api/diesel-requirements/:id/payment-status", "diesel_requirement", "edit"],
+    ["patch", "/api/diesel-requirements/:id/approve", "diesel_requirement", "approve"],
+    ["patch", "/api/diesel-requirements/:id/reject", "diesel_requirement", "approve"],
+    ["patch", "/api/diesel-requirements/equipment/:id/consumption-norm", "diesel_requirement", "edit"],
+    ["delete", "/api/diesel-requirements/:id", "diesel_requirement", "cancel"],
+  ] as const)("%s %s uses the independent Diesel requirement permission", (method, path, feature, action) => {
+    featureRouteGuard(method, path, feature, action);
   });
 
   it.each([
@@ -90,14 +91,14 @@ describe("PERM-01 Part A server route guards", () => {
     );
   });
 
-  it("wires every former PI/diesel-only create/edit call without changing approval, view, or other modules", () => {
+  it("keeps the former PI/diesel-only calls on their intended feature rows", () => {
     const pi = routes.slice(routes.indexOf('app.post("/api/purchase-indents/route-corrections/apply"'), routes.indexOf('app.get("/api/diesel-requirements"'));
     expect(pi).not.toMatch(/assert(?:Create|Edit)\(req, res, "site_procurement"\)/);
     expect(routes).not.toMatch(/assert(?:Create|Edit)\(req, res, "site_diesel"\)/);
     expect(pi).toContain('assertApprove(req, res, "purchase_indents_approve")');
     expect(routes).toContain('if (!assertCreate(req, res, "site_procurement")) return;'); // material requirements, not PI
     expect(routes).toContain('if (!assertEdit(req, res, "vendor_bills")) return;'); // status workflow, outside three routes
-    expect(routes).toContain('if (!assertApprove(req, res, "diesel_req_approve")) return;');
+    expect(routes).toContain('if (!assertFeatureAction(req, res, "diesel_requirement", "approve")) return;');
     expect(routes).toContain('if (!assertApprove(req, res, "vendor_bills_approve")) return;');
     expect(routes).toContain('if (!await assertPiDeliveryScope(req, res, indentId, [req.body])) return;');
     expect(routes).toContain('if (existing.status === "verified" || existing.status === "approved" || existing.status === "paid") {');

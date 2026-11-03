@@ -457,7 +457,8 @@ export async function registerRoutes(
       res.status(401).json({ error: "not_authenticated" });
       return false;
     }
-    const canView = requestFeatureAllowed(req, "diesel_issue", "view") ||
+    const canView = requestFeatureAllowed(req, "diesel_requirement", "view") ||
+      requestFeatureAllowed(req, "diesel_issue", "view") ||
       requestFeatureAllowed(req, "issues_stock", "view");
     const canViewReports = allowDedicatedView || requestFeatureAllowed(req, "reports", "view");
     if (!canView || !canViewReports) {
@@ -11784,9 +11785,7 @@ export async function registerRoutes(
   app.patch("/api/diesel-requirements/equipment/:id/consumption-norm", async (req, res) => {
     try {
       if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
-      const allowed = requestFeatureAllowed(req, "diesel_issue", "add") ||
-        requestFeatureAllowed(req, "diesel_issue", "edit");
-      if (!allowed) return res.status(403).json({ error: "forbidden", action: "create_or_edit" });
+      if (!assertFeatureAction(req, res, "diesel_requirement", "edit")) return;
       const id = Number(req.params.id);
       if (!Number.isSafeInteger(id) || id <= 0 ||
           !req.body || Object.keys(req.body).length !== 1 ||
@@ -11836,7 +11835,7 @@ export async function registerRoutes(
 
   app.post("/api/diesel-requirements", async (req, res) => {
     try {
-      if (!assertCreateEither(req, res, "site_diesel", "diesel_req_raise")) return;
+      if (!assertFeatureAction(req, res, "diesel_requirement", "add")) return;
       const input = createDieselRequirementRequestSchema.parse(req.body);
       const requirement = await storage.createDieselRequirement(input);
       sendPushToSection("diesel_req_approve", "New Diesel Requirement", `${requirement.date} - ${requirement.totalPlanned} L planned`, "/plant/diesel-requirements").catch(() => {});
@@ -11855,7 +11854,7 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const { approvedItems } = req.body;
 
-      if (!assertApprove(req, res, "diesel_req_approve")) return;
+      if (!assertFeatureAction(req, res, "diesel_requirement", "approve")) return;
       // Self-approval prevention.
       const existingDr = await storage.getDieselRequirement(id);
       const mayBypassSelfApproval = req.authUser?.isOwner ||
@@ -11891,7 +11890,7 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const { reason } = req.body;
 
-      if (!assertApprove(req, res, "diesel_req_approve")) return;
+      if (!assertFeatureAction(req, res, "diesel_requirement", "approve")) return;
       const rejectedBy = currentUserName(req);
 
       if (!reason || typeof reason !== "string") {
@@ -11912,7 +11911,7 @@ export async function registerRoutes(
 
   app.patch("/api/diesel-requirements/:id/purchase-update", async (req, res) => {
     try {
-      if (!assertEditEither(req, res, "site_diesel", "diesel_req_raise")) return;
+      if (!assertFeatureAction(req, res, "diesel_requirement", "edit")) return;
       const id = Number(req.params.id);
       const updateSchema = z.object({
         qtyPurchased: z.number().optional(),
@@ -11957,7 +11956,7 @@ export async function registerRoutes(
   // paid. Touches ONLY payment fields; timestamp + recorder are server-set.
   app.patch("/api/diesel-requirements/:id/payment-status", async (req, res) => {
     try {
-      if (!assertEditEither(req, res, "site_diesel", "diesel_req_raise")) return;
+      if (!assertFeatureAction(req, res, "diesel_requirement", "edit")) return;
       const id = Number(req.params.id);
       const paymentSchema = z.object({
         paymentStatus: z.literal("paid").optional(),
@@ -12037,7 +12036,7 @@ export async function registerRoutes(
       const existing = await storage.getDieselRequirement(id);
       if (!existing) return res.status(404).json({ message: "Diesel requirement not found" });
 
-      if (!assertFeatureAction(req, res, "diesel_issue", "edit")) return;
+      if (!assertFeatureAction(req, res, "diesel_requirement", "edit")) return;
 
       const validatedData = createDieselRequirementRequestSchema.parse(data);
       const requirement = await storage.updateDieselRequirement(id, validatedData);
@@ -12054,7 +12053,7 @@ export async function registerRoutes(
 
   app.delete("/api/diesel-requirements/:id", async (req, res) => {
     try {
-      if (!assertFeatureAction(req, res, "diesel_issue", "cancel")) return;
+      if (!assertFeatureAction(req, res, "diesel_requirement", "cancel")) return;
       const id = Number(req.params.id);
       const deleted = await storage.deleteDieselRequirement(id);
       if (!deleted) return res.status(404).json({ message: "Diesel requirement not found" });
@@ -25777,10 +25776,33 @@ export function registerSiteRequirementRoutes(app: Express) {
     }
   });
 
+  const requirementAllocationFeatures = {
+    materials: { feature: "requirement_allocation_material", itemsKey: "materialItems" },
+    equipment: { feature: "requirement_allocation_equipment", itemsKey: "equipmentItems" },
+    labour: { feature: "requirement_allocation_labour", itemsKey: "labourItems" },
+  } as const;
+  const canViewAnyRequirementAllocation = (req: any) =>
+    Object.values(requirementAllocationFeatures).some(({ feature }) => requestFeatureAllowed(req, feature, "view"));
+  const canViewSiteRequirements = (req: any) =>
+    requestFeatureAllowed(req, "site_requirements", "view") || canViewAnyRequirementAllocation(req);
+  const redactRequirementAllocations = (req: any, row: any) => {
+    if (!row?.allocationStatus || typeof row.allocationStatus !== "object") return row;
+    const allocationStatus = { ...row.allocationStatus };
+    for (const [category, config] of Object.entries(requirementAllocationFeatures)) {
+      if (requestFeatureAllowed(req, config.feature, "view")) continue;
+      delete allocationStatus[category];
+      delete allocationStatus[`${category}Remark`];
+      delete allocationStatus[config.itemsKey];
+    }
+    return { ...row, allocationStatus };
+  };
+
   app.get("/api/site-requirements", requireAuth, async (req: any, res) => {
     const t0 = Date.now();
     try {
-      if (!assertFeatureAction(req, res, "site_requirements", "view")) return;
+      if (!canViewSiteRequirements(req)) {
+        return res.status(403).json({ error: "forbidden", feature: "site_requirements", action: "view" });
+      }
       const canReview = requestFeatureAllowed(req, "site_requirements", "verify") ||
         requestFeatureAllowed(req, "site_requirements", "approve");
       const filters: any = {};
@@ -25789,7 +25811,7 @@ export function registerSiteRequirementRoutes(app: Express) {
       if (req.query.siteId)   filters.siteId   = parseInt(req.query.siteId as string);
       if (req.query.status)   filters.status   = req.query.status as string;
       // Users without review or approval access see only their own submissions.
-      if (!canReview) {
+      if (!canReview && !canViewAnyRequirementAllocation(req)) {
         filters.submittedBy = req.authUser.id;
       }
       const rows = await storage.listSiteRequirements(filters);
@@ -25797,7 +25819,7 @@ export function registerSiteRequirementRoutes(app: Express) {
       if (dur > 200 || process.env.NODE_ENV !== "production") {
         console.log(`[perf] GET /api/site-requirements → ${rows.length} rows in ${dur}ms`);
       }
-      res.json(rows);
+      res.json(rows.map((row: any) => redactRequirementAllocations(req, row)));
     } catch (err: any) {
       console.error("GET /api/site-requirements error:", err);
       res.status(500).json({ error: err.message });
@@ -25806,16 +25828,18 @@ export function registerSiteRequirementRoutes(app: Express) {
 
   app.get("/api/site-requirements/:id", requireAuth, async (req: any, res) => {
     try {
-      if (!assertFeatureAction(req, res, "site_requirements", "view")) return;
+      if (!canViewSiteRequirements(req)) {
+        return res.status(403).json({ error: "forbidden", feature: "site_requirements", action: "view" });
+      }
       const row = await storage.getSiteRequirement(parseInt(req.params.id));
       if (!row) return res.status(404).json({ error: "Not found" });
       const canReview = requestFeatureAllowed(req, "site_requirements", "verify") ||
         requestFeatureAllowed(req, "site_requirements", "approve");
       const isCreator = row.submittedBy === req.authUser.id;
-      if (!canReview && !isCreator) {
+      if (!canReview && !canViewAnyRequirementAllocation(req) && !isCreator) {
         return res.status(403).json({ error: "Access denied" });
       }
-      res.json(row);
+      res.json(redactRequirementAllocations(req, row));
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -25850,17 +25874,32 @@ export function registerSiteRequirementRoutes(app: Express) {
   // PATCH /api/site-requirements/:id/allocation — PM/manager sets per-section allocation status
   app.patch("/api/site-requirements/:id/allocation", requireAuth, async (req: any, res) => {
     try {
-      if (!requestFeatureAllowed(req, "site_requirements", "edit")) {
-        return res.status(403).json({ error: "forbidden", feature: "site_requirements", action: "edit" });
-      }
       // 06J: whitelist section-level fields only — this endpoint must never
       // write outcome/carry-forward/item-array keys (forgery + wipe protection).
       const ALLOWED = ["materials", "materialsRemark", "equipment", "equipmentRemark", "labour", "labourRemark", "immediate", "immediateRemark"] as const;
+      const fieldPermissions = {
+        materials: { feature: "requirement_allocation_material", action: "allocate" },
+        materialsRemark: { feature: "requirement_allocation_material", action: "allocate" },
+        equipment: { feature: "requirement_allocation_equipment", action: "allocate" },
+        equipmentRemark: { feature: "requirement_allocation_equipment", action: "allocate" },
+        labour: { feature: "requirement_allocation_labour", action: "allocate" },
+        labourRemark: { feature: "requirement_allocation_labour", action: "allocate" },
+        immediate: { feature: "site_requirements", action: "edit" },
+        immediateRemark: { feature: "site_requirements", action: "edit" },
+      } as const;
+      const submittedFields = ALLOWED.filter(key => key in req.body);
+      if (!submittedFields.length) return res.status(400).json({ error: "At least one allocation field is required" });
+      for (const key of submittedFields) {
+        const permission = fieldPermissions[key];
+        if (!requestFeatureAllowed(req, permission.feature, permission.action)) {
+          return res.status(403).json({ error: "forbidden", ...permission });
+        }
+      }
       const data: Record<string, any> = {
         updatedByName: req.session?.username ?? null,
         updatedAt: new Date().toISOString(),
       };
-      for (const k of ALLOWED) if (k in req.body) data[k] = req.body[k];
+      for (const k of submittedFields) data[k] = req.body[k];
       const row = await storage.updateSiteRequirementAllocation(parseInt(req.params.id), data);
       res.json(row);
     } catch (err: any) {
@@ -25871,11 +25910,6 @@ export function registerSiteRequirementRoutes(app: Express) {
   // PATCH /api/site-requirements/:id/item-status — PM/Store/Equipment updates per-item allocation status
   app.patch("/api/site-requirements/:id/item-status", requireAuth, async (req: any, res) => {
     try {
-      const canStores = requestFeatureAllowed(req, "site_requirements", "edit");
-      const canEquipment = canStores;
-      const canLabour = canStores;
-      const canImmediate = canStores;
-
       const { category, itemIndex, lineKey, status, expectedBy, remarks,
         fulfilmentType, arrangementId, agencyNameSnapshot, exceptionReason } = req.body;
       if (!category || itemIndex === undefined || itemIndex === null) {
@@ -25892,17 +25926,15 @@ export function registerSiteRequirementRoutes(app: Express) {
       }
 
       // Per-category permission check
-      if (category === "materials" && !canStores) {
-        return res.status(403).json({ error: "Updating material allocation requires Stores & Inventory access" });
-      }
-      if (category === "equipment" && !canEquipment) {
-        return res.status(403).json({ error: "Updating equipment allocation requires Equipment & Fleet access" });
-      }
-      if (category === "labour" && !canLabour) {
-        return res.status(403).json({ error: "Updating labour allocation requires Labour Management access" });
-      }
-      if (category === "immediate" && !canImmediate) {
-        return res.status(403).json({ error: "Updating immediate requirements requires Stores, Equipment, or PM access" });
+      const permission = category === "materials"
+        ? { feature: "requirement_allocation_material", action: "allocate" }
+        : category === "equipment"
+          ? { feature: "requirement_allocation_equipment", action: "allocate" }
+          : category === "labour"
+            ? { feature: "requirement_allocation_labour", action: "allocate" }
+            : { feature: "site_requirements", action: "edit" };
+      if (!requestFeatureAllowed(req, permission.feature, permission.action)) {
+        return res.status(403).json({ error: "forbidden", ...permission });
       }
 
       // 06F: authoritative line identity — validate the target line against the

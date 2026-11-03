@@ -17,7 +17,7 @@ export const FEATURE_GROUPS = [
 ] as const;
 
 export const FEATURE_ACTIONS = [
-  "view", "add", "edit", "cancel", "verify", "technical_verify",
+  "view", "add", "edit", "cancel", "verify", "allocate", "technical_verify",
   "accounts_verify", "approve", "final", "export",
 ] as const;
 
@@ -26,7 +26,8 @@ export type FeatureGroupId = (typeof FEATURE_GROUPS)[number]["id"];
 export type EntryScope = "own" | "team" | "all";
 export type FeatureId =
   | "dpr" | "labour_attendance" | "site_materials" | "site_requirements"
-  | "grn" | "issues_stock" | "diesel_issue"
+  | "requirement_allocation_material" | "requirement_allocation_equipment" | "requirement_allocation_labour"
+  | "grn" | "issues_stock" | "diesel_issue" | "diesel_requirement"
   | "plant_receipts" | "hmp_rmc"
   | "equipment_usage" | "maintenance"
   | "irn" | "purchase_indent" | "purchase_orders" | "vendor_bills"
@@ -49,10 +50,14 @@ export const FEATURES: readonly FeatureDefinition[] = [
   { id: "dpr", label: "DPR", group: "site_work", actions: ["view", "add", "edit", "cancel", "verify", "approve", "export"] },
   { id: "labour_attendance", label: "Labour & attendance", group: "site_work", actions: ["view", "add", "edit", "cancel", "verify", "export"] },
   { id: "site_materials", label: "Material received at site", group: "site_work", actions: ["view", "add", "edit", "cancel", "verify", "export"] },
-  { id: "site_requirements", label: "Site requirements", group: "site_work", actions: ["view", "add", "edit", "cancel", "verify", "approve"] },
+  { id: "site_requirements", label: "Tomorrow's plan & requirements", group: "site_work", actions: ["view", "add", "edit", "cancel", "verify", "approve"] },
+  { id: "requirement_allocation_material", label: "Requirement allocation — material", group: "site_work", actions: ["view", "allocate"] },
+  { id: "requirement_allocation_equipment", label: "Requirement allocation — equipment", group: "site_work", actions: ["view", "allocate"] },
+  { id: "requirement_allocation_labour", label: "Requirement allocation — labour", group: "site_work", actions: ["view", "allocate"] },
   { id: "grn", label: "GRN", group: "stores", actions: ["view", "add", "edit", "cancel", "verify", "export"] },
   { id: "issues_stock", label: "Issues & stock ledger", group: "stores", actions: ["view", "add", "edit", "cancel", "verify", "export"] },
-  { id: "diesel_issue", label: "Diesel issue", group: "stores", actions: ["view", "add", "edit", "cancel", "verify", "approve", "export"] },
+  { id: "diesel_issue", label: "Diesel issue", group: "stores", actions: ["view", "add", "edit", "cancel", "verify", "export"] },
+  { id: "diesel_requirement", label: "Diesel requirement", group: "stores", actions: ["view", "add", "edit", "cancel", "verify", "approve", "export"] },
   { id: "plant_receipts", label: "Plant material receipts", group: "plant", actions: ["view", "add", "edit", "cancel", "verify", "export"], license: "hmp" },
   { id: "hmp_rmc", label: "HMP/RMC production & dispatch", group: "plant", actions: ["view", "add", "edit", "cancel", "verify", "export"], license: "hmp" },
   { id: "equipment_usage", label: "Equipment usage", group: "equipment", actions: ["view", "add", "edit", "cancel", "verify", "export"] },
@@ -83,6 +88,61 @@ export type RoleName = (typeof ROLE_NAMES)[number];
 export type FeatureTicks = Partial<Record<FeatureId, Partial<Record<FeatureAction, boolean>>>>;
 export type PersonalTickChanges = Partial<Record<FeatureId, Partial<Record<FeatureAction, boolean>>>>;
 
+// Suggestions are not applied by role seeding. They are written only after
+// an Owner reviews and confirms the preview in Settings.
+export const SUGGESTED_NEW_ROW_ROLE_TICKS: Partial<Record<RoleName, FeatureTicks>> = {
+  "Project Head": {
+    requirement_allocation_material: { view: true },
+    requirement_allocation_equipment: { view: true },
+    requirement_allocation_labour: { view: true },
+    diesel_requirement: { view: true },
+    diesel_issue: { view: true },
+  },
+  "Project Manager": {
+    requirement_allocation_material: { view: true },
+    requirement_allocation_equipment: { view: true },
+    requirement_allocation_labour: { view: true },
+    diesel_requirement: { view: true, approve: true },
+    diesel_issue: { view: true },
+  },
+  "Sr Engineer": {
+    diesel_requirement: { view: true, add: true, verify: true },
+  },
+  "Site Engineer": {
+    diesel_requirement: { view: true, add: true },
+    diesel_issue: { view: true },
+  },
+  "Supervisor": {
+    diesel_requirement: { view: true, add: true },
+    diesel_issue: { view: true },
+  },
+  "Store In-charge": {
+    requirement_allocation_material: { view: true, allocate: true },
+    diesel_requirement: { view: true },
+    diesel_issue: { view: true, add: true, edit: true, verify: true },
+  },
+  "Store Keeper": {
+    requirement_allocation_material: { view: true },
+    diesel_issue: { view: true, add: true },
+  },
+  "Plant Engineer": {
+    requirement_allocation_equipment: { view: true },
+    diesel_requirement: { view: true, add: true },
+    diesel_issue: { view: true },
+  },
+  "P&M In-charge": {
+    requirement_allocation_equipment: { view: true, allocate: true },
+    diesel_requirement: { view: true, verify: true },
+    diesel_issue: { view: true },
+  },
+  "Procurement": {
+    requirement_allocation_material: { view: true },
+  },
+  "HR / Site Admin": {
+    requirement_allocation_labour: { view: true, allocate: true },
+  },
+};
+
 type FeatureKey = `${FeatureId}.${FeatureAction}`;
 type RoleDefault = Partial<Record<FeatureKey, true>>;
 
@@ -109,7 +169,7 @@ export const DEFAULT_ROLE_TICKS: Record<RoleName, RoleDefault> = {
   "Project Manager": ticks([
     ["dpr", ["view", "verify", "approve"]], ["labour_attendance", ["view", "verify"]],
     ["site_materials", ["view", "verify"]], ["site_requirements", VAp], ["grn", V],
-    ["issues_stock", V], ["diesel_issue", VAp], ["plant_receipts", V], ["hmp_rmc", V],
+    ["issues_stock", V], ["diesel_issue", V], ["plant_receipts", V], ["hmp_rmc", V],
     ["equipment_usage", VVe], ["maintenance", VAp], ["irn", VAp], ["purchase_indent", VAp],
     ["purchase_orders", VVe], ["vendor_bills", ["view", "approve"]],
     ["boq_programme", ["view", "add", "edit", "approve"]],
@@ -195,10 +255,14 @@ export const LEGACY_FEATURE_KEYS: Readonly<Record<FeatureId, readonly SectionKey
   dpr: ["site_dprs"],
   labour_attendance: ["site_dprs", "plant_manpower_review"],
   site_materials: ["site_materials"],
-  site_requirements: ["site_dprs", "stores_inventory", "plant_equipment", "labour_management"],
+  site_requirements: ["site_dprs"],
+  requirement_allocation_material: ["stores_inventory"],
+  requirement_allocation_equipment: ["plant_equipment"],
+  requirement_allocation_labour: ["labour_management"],
   grn: ["stores_inventory"],
   issues_stock: ["stores_inventory", "plant_stock", "stock_reconciliation"],
-  diesel_issue: ["site_diesel", "diesel_req_view", "diesel_req_raise", "diesel_req_approve", "stores_inventory"],
+  diesel_issue: ["site_diesel", "stores_inventory"],
+  diesel_requirement: ["diesel_req_view", "diesel_req_raise", "diesel_req_approve"],
   plant_receipts: ["plant_materials"],
   hmp_rmc: ["plant_production", "plant_daily_reports", "plant_shift_logs", "rmc_operations", "rmc_batch_records", "rmc_mix_designs", "rmc_cube_tests", "rmc_raw_materials", "rmc_delivery_challans", "rmc_daily_report", "hmp_operations"],
   equipment_usage: ["plant_equipment"],
@@ -256,7 +320,7 @@ export function legacyFeatureTick(
     if (action === "view") {
       return row.view || ((feature === "reports" || feature === "vendor_bills") && row.view_reports);
     }
-    if (action === "add") return row.create;
+    if (action === "add" || action === "allocate") return row.create;
     if (action === "edit") return row.edit;
     if (action === "cancel") return row.delete;
     if (action === "export") return row.export;
@@ -308,10 +372,10 @@ export function can(
 export const FEATURE_ROUTE_ALIASES: Readonly<Partial<Record<SectionKey, readonly FeatureId[]>>> = {
   dashboard: ["dpr"],
   hmp_hub: ["hmp_rmc", "plant_receipts"],
-  site_hub: ["dpr", "labour_attendance", "site_materials", "site_requirements"],
+  site_hub: ["dpr", "labour_attendance", "site_materials", "site_requirements", "requirement_allocation_material", "requirement_allocation_equipment", "requirement_allocation_labour"],
   equipment_hub: ["equipment_usage", "maintenance"],
   reports_hub: ["reports"],
-  stores_hub: ["grn", "issues_stock", "diesel_issue", "plant_receipts"],
+  stores_hub: ["grn", "issues_stock", "diesel_issue", "diesel_requirement", "plant_receipts"],
   finance_hub: ["irn", "purchase_indent", "purchase_orders", "vendor_bills", "rate_cards", "payables"],
   masters_hub: ["masters"],
   admin_hub: ["users_permissions"],
@@ -323,9 +387,9 @@ export const FEATURE_ROUTE_ALIASES: Readonly<Partial<Record<SectionKey, readonly
   purchase_indents_raise: ["purchase_indent", "purchase_orders"],
   purchase_indents_approve: ["purchase_indent", "purchase_orders"],
   site_diesel: ["diesel_issue"],
-  diesel_req_view: ["diesel_issue"],
-  diesel_req_raise: ["diesel_issue"],
-  diesel_req_approve: ["diesel_issue"],
+  diesel_req_view: ["diesel_requirement"],
+  diesel_req_raise: ["diesel_requirement"],
+  diesel_req_approve: ["diesel_requirement"],
   irn_view: ["irn"],
   irn_raise: ["irn"],
   irn_approve: ["irn"],
@@ -333,7 +397,7 @@ export const FEATURE_ROUTE_ALIASES: Readonly<Partial<Record<SectionKey, readonly
   plant_manpower_review: ["labour_attendance"],
   plant_heating: ["hmp_rmc"],
   plant_heating_trends: ["reports"],
-  plant_equipment: ["equipment_usage", "maintenance", "site_requirements"],
+  plant_equipment: ["equipment_usage", "maintenance", "site_requirements", "requirement_allocation_equipment"],
   plant_generator_logs: ["maintenance"],
   plant_maintenance: ["maintenance"],
   plant_production: ["hmp_rmc"],
@@ -365,8 +429,8 @@ export const FEATURE_ROUTE_ALIASES: Readonly<Partial<Record<SectionKey, readonly
   reports: ["reports"],
   report_management: ["reports"],
   report_site_purchases: ["reports"],
-  stores_inventory: ["grn", "issues_stock", "diesel_issue", "plant_receipts", "irn", "purchase_indent"],
-  labour_management: ["site_requirements"],
+  stores_inventory: ["grn", "issues_stock", "diesel_issue", "plant_receipts", "irn", "purchase_indent", "requirement_allocation_material"],
+  labour_management: ["site_requirements", "requirement_allocation_labour"],
   estimator_portal: ["estimating"],
   mix_calculator: ["estimating"],
   concrete_calculator: ["estimating"],
@@ -410,7 +474,8 @@ export function featureForPath(path: string): FeatureId[] {
   if (/\/api\/(labour|labor|attendance|plant-module\/(manpower|shift-log-manpower))/.test(p)) return ["labour_attendance"];
   if (/\/api\/stores\/grns|\/api\/grns/.test(p)) return ["grn"];
   if (/\/api\/stores\/(issues|returns|stock)|\/api\/stock-reconciliation/.test(p)) return ["issues_stock"];
-  if (/\/api\/(diesel-requirements|site-diesel|diesel-issues)/.test(p)) return ["diesel_issue"];
+  if (/\/api\/diesel-requirements/.test(p)) return ["diesel_requirement"];
+  if (/\/api\/(site-diesel|diesel-issues)/.test(p)) return ["diesel_issue"];
   if (/\/api\/plant-module\/(material-receipts|materials\/receipts)|\/api\/plant\/material-receipts/.test(p)) return ["plant_receipts"];
   if (/\/api\/(rmc|plant-module\/dispatches|plant-module\/production|plant-module\/shift-logs)/.test(p)) return ["hmp_rmc"];
   if (/\/api\/(equipment|plant-module\/equipment-usage|plant\/equipment-usage)/.test(p)) return ["equipment_usage"];
@@ -434,6 +499,7 @@ export function featureForPath(path: string): FeatureId[] {
   if (/\/(site\/)?(labour|labor|attendance)(\/|$)/.test(p)) return ["labour_attendance"];
   if (/\/(stores\/)?(grn|grns)(\/|$)/.test(p)) return ["grn"];
   if (/\/(stores\/)?(issues|stock-ledger|stock-reconciliation)(\/|$)/.test(p)) return ["issues_stock"];
+  if (/\/plant\/diesel-requirements(\/|$)/.test(p)) return ["diesel_requirement"];
   if (/\/(diesel|diesel-requirements)(\/|$)/.test(p)) return ["diesel_issue"];
   if (/\/(plant\/)?(dispatches|production|shift-logs|hmp|rmc)(\/|$)/.test(p)) return ["hmp_rmc"];
   if (/\/plant\/material-receipts(\/|$)/.test(p)) return ["plant_receipts"];

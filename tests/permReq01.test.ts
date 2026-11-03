@@ -15,7 +15,7 @@ function extract(file: string, name: string) {
 }
 const compiled = extract("server/routes.ts", "registerSiteRequirementRoutes");
 function fixture(actor: any = { id: 7, isAdmin: false, isOwner: false }, approve = true, creator: number | null = 7) {
-  const featureState = {
+  const featureState: any = {
     rolesConfigured: true,
     userRoles: [1],
     roleTicks: {
@@ -31,7 +31,18 @@ function fixture(actor: any = { id: 7, isAdmin: false, isOwner: false }, approve
     },
     legacyPermissions: emptyMatrix(),
   };
-  const row = { id: 11, submittedBy: creator, status: "submitted", revisionStatus: "revision_requested", materials: [], equipment: [], labour: [] };
+  const row = {
+    id: 11, submittedBy: creator, status: "submitted", revisionStatus: "revision_requested",
+    materials: [], equipment: [], labour: [],
+    allocationStatus: {
+      materials: "available", materialsRemark: "material remark",
+      materialItems: [{ status: "arranged", remarks: "material item" }],
+      equipment: "expected", equipmentRemark: "equipment remark",
+      equipmentItems: [{ status: "expected", remarks: "equipment item" }],
+      labour: "partly", labourRemark: "labour remark",
+      labourItems: [{ status: "partly", remarks: "labour item" }],
+    },
+  };
   const storage = {
     getSiteRequirement: vi.fn(async () => row),
     createSiteRequirement: vi.fn(async input => ({ id: 12, ...input })),
@@ -41,6 +52,8 @@ function fixture(actor: any = { id: 7, isAdmin: false, isOwner: false }, approve
     rejectSiteRequirementRevision: vi.fn(async () => row),
     requestSiteRequirementRevision: vi.fn(async () => row),
     updateSiteRequirementContent: vi.fn(async () => row),
+    updateSiteRequirementAllocation: vi.fn(async () => row),
+    updateSiteRequirementItemStatus: vi.fn(async () => row),
   };
   const handlers = new Map<string, Function>();
   const app = Object.fromEntries(["get", "post", "patch", "put"].map(method => [method,
@@ -52,6 +65,7 @@ function fixture(actor: any = { id: 7, isAdmin: false, isOwner: false }, approve
     "isRequirementDecision",
     "requestFeatureAllowed",
     "assertFeatureAction",
+    "validateFulfilment",
     `${compiled}\nreturn registerSiteRequirementRoutes;`,
   )(
     storage,
@@ -64,6 +78,7 @@ function fixture(actor: any = { id: 7, isAdmin: false, isOwner: false }, approve
       res.status(403).json({ error: "forbidden", feature, action });
       return false;
     },
+    () => ({ ok: true, value: {} }),
   );
   register(app);
   async function call(method: string, path: string, body: any = {}) {
@@ -76,7 +91,7 @@ function fixture(actor: any = { id: 7, isAdmin: false, isOwner: false }, approve
     }, res);
     return res;
   }
-  return { call, storage, row };
+  return { call, storage, row, featureState };
 }
 describe("PERM-REQ-01 backend production handlers", () => {
   for (const status of ["approved", "rejected"]) {
@@ -131,6 +146,32 @@ describe("PERM-REQ-01 backend production handlers", () => {
     const f = fixture({ id: 8 }, false);
     await f.call("get", "/api/site-requirements");
     expect(f.storage.listSiteRequirements).toHaveBeenCalledWith({ submittedBy: 8 });
+  });
+  it("requires the matching Allocate tick for each category even when Site requirements Edit is granted", async () => {
+    for (const category of ["materials", "equipment", "labour"]) {
+      const f = fixture({ id: 8 }, false);
+      f.featureState.roleTicks[1].site_requirements.edit = true;
+      const response = await f.call("patch", "/api/site-requirements/:id/item-status", {
+        category, itemIndex: 0, status: "arranged",
+      });
+      expect(response.code, category).toBe(403);
+      expect(f.storage.updateSiteRequirementItemStatus).not.toHaveBeenCalled();
+    }
+    const f = fixture({ id: 8 }, false);
+    f.featureState.roleTicks[1].site_requirements.edit = true;
+    expect((await f.call("patch", "/api/site-requirements/:id/allocation", { materials: "available" })).code).toBe(403);
+    expect(f.storage.updateSiteRequirementAllocation).not.toHaveBeenCalled();
+  });
+  it("allows allocation viewers to see only their permitted category in the API", async () => {
+    const f = fixture({ id: 8 }, false);
+    f.featureState.roleTicks[1].site_requirements.view = false;
+    f.featureState.roleTicks[1].requirement_allocation_material = { view: true };
+    const response = await f.call("get", "/api/site-requirements");
+    expect(response.code).toBe(200);
+    expect(f.storage.listSiteRequirements).toHaveBeenCalledWith({});
+    expect(response.body[0].allocationStatus.materialItems).toEqual([{ status: "arranged", remarks: "material item" }]);
+    expect(response.body[0].allocationStatus.equipmentItems).toBeUndefined();
+    expect(response.body[0].allocationStatus.labourItems).toBeUndefined();
   });
   it("does not treat a name, designation or truthy string as Owner", () => {
     expect(requirementApprovalBlock({ id: 7, isOwner: "true" as any }, 7)).toContain("cannot approve");

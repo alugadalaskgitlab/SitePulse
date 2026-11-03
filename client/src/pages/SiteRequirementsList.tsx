@@ -243,6 +243,7 @@ function ItemEditPanel({
 export function RequirementCard({
   req, canReview, canEditRequirement = false, canSeeExecutionSummary = false, canRecordOutcome = false,
   canApproveRequirements = false, canUpdateMaterials, canUpdateEquipment, canUpdateLabour, canUpdateImmediate, filterContext, allReqs,
+  canViewMaterials = true, canViewEquipment = true, canViewLabour = true,
 }: {
   req: any;
   canReview: boolean;
@@ -254,6 +255,9 @@ export function RequirementCard({
   canUpdateEquipment: boolean;
   canUpdateLabour: boolean;
   canUpdateImmediate: boolean;
+  canViewMaterials?: boolean;
+  canViewEquipment?: boolean;
+  canViewLabour?: boolean;
   filterContext: string;
   allReqs: any[];
 }) {
@@ -332,13 +336,14 @@ export function RequirementCard({
   });
 
   const allocMutation = useMutation({
-    mutationFn: () =>
-      apiRequest("PATCH", `/api/site-requirements/${req.id}/allocation`, {
-        materials: allocMat || null, materialsRemark: allocMatR || null,
-        equipment: allocEq || null,  equipmentRemark: allocEqR || null,
-        labour:    allocLab || null, labourRemark:    allocLabR || null,
-        immediate: allocImm || null, immediateRemark: allocImmR || null,
-      }),
+    mutationFn: () => {
+      const payload: Record<string, string | null> = {};
+      if (canUpdateMaterials) Object.assign(payload, { materials: allocMat || null, materialsRemark: allocMatR || null });
+      if (canUpdateEquipment) Object.assign(payload, { equipment: allocEq || null, equipmentRemark: allocEqR || null });
+      if (canUpdateLabour) Object.assign(payload, { labour: allocLab || null, labourRemark: allocLabR || null });
+      if (canUpdateImmediate) Object.assign(payload, { immediate: allocImm || null, immediateRemark: allocImmR || null });
+      return apiRequest("PATCH", `/api/site-requirements/${req.id}/allocation`, payload);
+    },
     onSuccess: () => { invalidate(); toast({ title: "Allocation updated" }); setAllocEditing(false); },
     onError: () => toast({ title: "Failed to save allocation", variant: "destructive" }),
   });
@@ -394,6 +399,7 @@ export function RequirementCard({
   // Resolved once per requirement card from its planned work; only enabled
   // for reviewers (the Engineer's entry screen never sees this).
   const anyCanUpdate = canUpdateMaterials || canUpdateEquipment || canUpdateLabour;
+  const canManageAllocation = anyCanUpdate || canUpdateImmediate;
   const fulfilmentResolution = useRequirementFulfilmentContext(req.siteId, req.plannedWork, open && anyCanUpdate);
 
   const fulfilmentInitial = (alloc: any): FulfilmentValue => ({
@@ -413,8 +419,8 @@ export function RequirementCard({
   if (req.labour?.length)       sections.push("labour");
   if (req.immediateRequirements?.length) sections.push("immediate");
 
-  function renderItemAlloc(alloc: any | null) {
-    if (!alloc?.status) return null;
+  function renderItemAlloc(alloc: any | null, canView = true) {
+    if (!canView || !alloc?.status) return null;
     const cfg = ITEM_STATUS_BADGE[alloc.status];
     return (
       <div className="mt-0.5 space-y-0.5">
@@ -570,7 +576,7 @@ export function RequirementCard({
                               <span className="text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded">URGENT</span>
                             )}
                           </div>
-                          {renderItemAlloc(alloc)}
+                  {renderItemAlloc(alloc, canViewMaterials)}
                         </div>
                         {canUpdateMaterials && !isEditingThis && (
                           <button
@@ -640,7 +646,7 @@ export function RequirementCard({
                               ⚠ '{e.equipmentType}' also requested in "{eqConflictDesc}" today — total requested: {eqTotalNeeded}
                             </p>
                           )}
-                          {renderItemAlloc(alloc)}
+                          {renderItemAlloc(alloc, canViewEquipment)}
                         </div>
                         {canUpdateEquipment && !isEditingThis && (
                           <button
@@ -709,7 +715,7 @@ export function RequirementCard({
                               ⚠ '{l.labourType}' also requested in "{labConflictDesc}" today — total requested: {labTotalNeeded}
                             </p>
                           )}
-                          {renderItemAlloc(alloc)}
+                          {renderItemAlloc(alloc, canViewLabour)}
                         </div>
                         {canUpdateLabour && !isEditingThis && (
                           <button
@@ -840,7 +846,7 @@ export function RequirementCard({
           )}
 
           {/* 06J: previous day's allocation — REFERENCE ONLY, must be reconfirmed */}
-          {prevAllocRef && Array.isArray(prevAllocRef) && prevAllocRef.length > 0 && (
+          {canViewMaterials && prevAllocRef && Array.isArray(prevAllocRef) && prevAllocRef.length > 0 && (
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 space-y-0.5" data-testid={`prev-alloc-ref-${req.id}`}>
               <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider">
                 Previous day's allocation (reference — reconfirm for this date)
@@ -859,16 +865,16 @@ export function RequirementCard({
             <div className="bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2 space-y-1">
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Overall Allocation Summary</p>
-                {canEditRequirement && (
+                {canManageAllocation && (
                   <button type="button" onClick={() => setAllocEditing(true)} className="text-[10px] text-blue-600 hover:underline" data-testid={`button-edit-alloc-${req.id}`}>Edit</button>
                 )}
               </div>
               {[
-                { key: "materials", remarkKey: "materialsRemark", icon: Package, label: "Materials" },
-                { key: "equipment", remarkKey: "equipmentRemark", icon: Wrench, label: "Equipment" },
-                { key: "labour",    remarkKey: "labourRemark",    icon: Users, label: "Labour" },
-                { key: "immediate", remarkKey: "immediateRemark", icon: AlertTriangle, label: "Immediate" },
-              ].filter(r => req.allocationStatus[r.key]).map(r => {
+                { key: "materials", remarkKey: "materialsRemark", icon: Package, label: "Materials", canView: canViewMaterials },
+                { key: "equipment", remarkKey: "equipmentRemark", icon: Wrench, label: "Equipment", canView: canViewEquipment },
+                { key: "labour",    remarkKey: "labourRemark",    icon: Users, label: "Labour", canView: canViewLabour },
+                { key: "immediate", remarkKey: "immediateRemark", icon: AlertTriangle, label: "Immediate", canView: true },
+              ].filter(r => r.canView && req.allocationStatus[r.key]).map(r => {
                 const val = req.allocationStatus[r.key];
                 const remark = req.allocationStatus[r.remarkKey];
                 const badgeColor = val === "available" || val === "approved" || val === "arranged"
@@ -1025,15 +1031,15 @@ export function RequirementCard({
             <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-3">
 
               {/* Overall allocation form */}
-              {canEditRequirement && (allocEditing ? (
+              {canManageAllocation && (allocEditing ? (
                 <div className="space-y-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg px-3 py-3 border border-blue-100 dark:border-blue-800">
                   <p className="text-xs font-bold text-blue-700 dark:text-blue-300">Update Overall Allocation Status</p>
                   {[
-                    { label: "Materials",  state: allocMat,  setState: setAllocMat,  remarkState: allocMatR,  setRemarkState: setAllocMatR,  icon: Package,       show: req.materials?.length > 0 },
-                    { label: "Equipment",  state: allocEq,   setState: setAllocEq,   remarkState: allocEqR,   setRemarkState: setAllocEqR,   icon: Wrench,        show: req.equipment?.length > 0 },
-                    { label: "Labour",     state: allocLab,  setState: setAllocLab,  remarkState: allocLabR,  setRemarkState: setAllocLabR,  icon: Users,         show: req.labour?.length > 0 },
-                    { label: "Immediate",  state: allocImm,  setState: setAllocImm,  remarkState: allocImmR,  setRemarkState: setAllocImmR,  icon: AlertTriangle, show: req.immediateRequirements?.length > 0 },
-                  ].filter(r => r.show).map(r => (
+                    { label: "Materials",  state: allocMat,  setState: setAllocMat,  remarkState: allocMatR,  setRemarkState: setAllocMatR,  icon: Package,       show: req.materials?.length > 0, canEdit: canUpdateMaterials },
+                    { label: "Equipment",  state: allocEq,   setState: setAllocEq,   remarkState: allocEqR,   setRemarkState: setAllocEqR,   icon: Wrench,        show: req.equipment?.length > 0, canEdit: canUpdateEquipment },
+                    { label: "Labour",     state: allocLab,  setState: setAllocLab,  remarkState: allocLabR,  setRemarkState: setAllocLabR,  icon: Users,         show: req.labour?.length > 0, canEdit: canUpdateLabour },
+                    { label: "Immediate",  state: allocImm,  setState: setAllocImm,  remarkState: allocImmR,  setRemarkState: setAllocImmR,  icon: AlertTriangle, show: req.immediateRequirements?.length > 0, canEdit: canUpdateImmediate },
+                  ].filter(r => r.show && r.canEdit).map(r => (
                     <div key={r.label} className="space-y-1">
                       <p className="text-[10px] font-semibold text-slate-500 uppercase flex items-center gap-1">
                         <r.icon className="w-3 h-3" /> {r.label}
@@ -1329,9 +1335,12 @@ export default function SiteRequirementsList() {
   const { featureCan } = useAuth();
   const canReview = featureCan("site_requirements", "verify") || featureCan("site_requirements", "approve");
   const canEditRequirement = featureCan("site_requirements", "edit");
-  const canUpdateMaterials = featureCan("site_requirements", "edit");
-  const canUpdateEquipment = featureCan("site_requirements", "edit");
-  const canUpdateLabour = featureCan("site_requirements", "edit");
+  const canViewMaterials = featureCan("requirement_allocation_material", "view");
+  const canViewEquipment = featureCan("requirement_allocation_equipment", "view");
+  const canViewLabour = featureCan("requirement_allocation_labour", "view");
+  const canUpdateMaterials = featureCan("requirement_allocation_material", "allocate");
+  const canUpdateEquipment = featureCan("requirement_allocation_equipment", "allocate");
+  const canUpdateLabour = featureCan("requirement_allocation_labour", "allocate");
   const canUpdateImmediate = featureCan("site_requirements", "edit");
   const canSeeExecutionSummary = featureCan("site_requirements", "view");
   const canRecordOutcome = featureCan("site_requirements", "approve");
@@ -1553,6 +1562,9 @@ export default function SiteRequirementsList() {
               canUpdateEquipment={canUpdateEquipment}
               canUpdateLabour={canUpdateLabour}
               canUpdateImmediate={canUpdateImmediate}
+              canViewMaterials={canViewMaterials}
+              canViewEquipment={canViewEquipment}
+              canViewLabour={canViewLabour}
               filterContext={context}
               allReqs={reqs}
             />

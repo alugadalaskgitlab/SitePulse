@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   can,
   canLegacySection,
+  DEFAULT_ROLE_TICKS,
+  featureForPath,
   legacyFeatureTick,
   projectFeaturePermissions,
+  SUGGESTED_NEW_ROW_ROLE_TICKS,
   type FeatureAccessState,
   type LegacyActor,
 } from "../shared/featureAccess";
-import { emptyMatrix } from "../shared/permissions";
+import { EDIT_RECORD_TYPE_SECTION, emptyMatrix } from "../shared/permissions";
 
 const user: LegacyActor = { isActive: true, isAdmin: false, isOwner: false };
 
@@ -70,6 +73,77 @@ describe("shared feature access", () => {
     expect(canLegacySection(user, legacy, "site_dprs", "view", state, "/site/requirements")).toBe(true);
     expect(can(user, "site_requirements", "edit", state)).toBe(true);
     expect(can(user, "boq_programme", "approve", state)).toBe(false);
+  });
+
+  it("keeps requirement allocation grants separate by material, equipment, and labour", () => {
+    const state: FeatureAccessState = {
+      rolesConfigured: true,
+      userRoles: [1],
+      roleTicks: {
+        1: {
+          requirement_allocation_material: { view: true, allocate: true },
+          requirement_allocation_equipment: { view: true, allocate: false },
+          requirement_allocation_labour: { view: false, allocate: false },
+          site_requirements: { view: true, edit: true },
+        },
+      },
+      legacyPermissions: emptyMatrix(),
+    };
+    expect(can(user, "requirement_allocation_material", "allocate", state)).toBe(true);
+    expect(can(user, "requirement_allocation_equipment", "view", state)).toBe(true);
+    expect(can(user, "requirement_allocation_equipment", "allocate", state)).toBe(false);
+    expect(can(user, "requirement_allocation_labour", "view", state)).toBe(false);
+    expect(can(user, "requirement_allocation_labour", "allocate", state)).toBe(false);
+  });
+
+  it("maps legacy allocation and diesel-requirement grants without broadening the parent or issue feature", () => {
+    const legacy = emptyMatrix();
+    legacy.stores_inventory.view = true;
+    legacy.stores_inventory.create = true;
+    legacy.plant_equipment.create = true;
+    legacy.labour_management.create = true;
+    legacy.diesel_req_view.view = true;
+    legacy.diesel_req_raise.create = true;
+    legacy.diesel_req_approve.approve = true;
+    const state: FeatureAccessState = { rolesConfigured: false, legacyPermissions: legacy };
+
+    expect(can(user, "requirement_allocation_material", "view", state)).toBe(true);
+    expect(can(user, "requirement_allocation_material", "allocate", state)).toBe(true);
+    expect(can(user, "requirement_allocation_equipment", "allocate", state)).toBe(true);
+    expect(can(user, "requirement_allocation_labour", "allocate", state)).toBe(true);
+    expect(can(user, "site_requirements", "edit", state)).toBe(false);
+    expect(can(user, "diesel_requirement", "view", state)).toBe(true);
+    expect(can(user, "diesel_requirement", "add", state)).toBe(true);
+    expect(can(user, "diesel_requirement", "approve", state)).toBe(true);
+    expect(can(user, "diesel_issue", "add", state)).toBe(true); // stores_inventory remains a diesel-register grant.
+
+    const raiseOnly = emptyMatrix();
+    raiseOnly.diesel_req_raise.create = true;
+    expect(can(user, "diesel_issue", "add", { rolesConfigured: false, legacyPermissions: raiseOnly })).toBe(false);
+  });
+
+  it("keeps new permission rows unticked by default and only presents suggestions", () => {
+    const newRows = [
+      "requirement_allocation_material",
+      "requirement_allocation_equipment",
+      "requirement_allocation_labour",
+      "diesel_requirement",
+    ] as const;
+    for (const defaults of Object.values(DEFAULT_ROLE_TICKS)) {
+      for (const feature of newRows) expect(defaults[`${feature}.view` as keyof typeof defaults]).toBeUndefined();
+    }
+    expect(SUGGESTED_NEW_ROW_ROLE_TICKS["Store In-charge"]?.requirement_allocation_material?.allocate).toBe(true);
+    expect(featureForPath("/api/diesel-requirements")).toEqual(["diesel_requirement"]);
+    const editState: FeatureAccessState = {
+      rolesConfigured: true,
+      userRoles: [1],
+      roleTicks: { 1: { diesel_requirement: { edit: true } } },
+      legacyPermissions: emptyMatrix(),
+    };
+    expect(EDIT_RECORD_TYPE_SECTION.diesel_requirement).toBe("diesel_req_raise");
+    expect(canLegacySection(
+      user, emptyMatrix(), EDIT_RECORD_TYPE_SECTION.diesel_requirement, "edit", editState,
+    )).toBe(true);
   });
 
   it("requires Reports and the source feature for report routes", () => {

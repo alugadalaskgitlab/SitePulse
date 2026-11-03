@@ -148,4 +148,60 @@ describe("Settings roles page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Discard" }));
     await waitFor(() => expect(window.location.pathname).toBe("/admin/settings"));
   });
+
+  it("shows suggested role ticks without applying them until the Owner confirms", async () => {
+    const requests: Array<{ url: string; method?: string; body?: unknown }> = [];
+    let applied = false;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method;
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      requests.push({ url, method, body });
+      if (url.endsWith("/api/access-control/roles/apply-suggested-ticks") && method === "POST") {
+        applied = true;
+        return new Response(JSON.stringify({ ok: true, grantedCount: 1 }));
+      }
+      if (url.endsWith("/api/access-control/roles")) {
+        return new Response(JSON.stringify({
+          roles: [applied
+            ? { ...role, ticks: { ...role.ticks, requirement_allocation_material: { view: true } } }
+            : role],
+        }));
+      }
+      if (url.endsWith("/api/access-control/setup-preview")) {
+        return new Response(JSON.stringify({ roles: [role], rolesConfigured: true, users: [] }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    }));
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Apply suggested ticks for new rows" }));
+    expect(await screen.findByText("Requirement allocation — material")).toBeTruthy();
+    expect(requests.some(request => request.url.endsWith("/api/access-control/roles/apply-suggested-ticks"))).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and apply" }));
+    await waitFor(() => expect(applied).toBe(true));
+    const applyRequest = requests.find(request => request.url.endsWith("/api/access-control/roles/apply-suggested-ticks"));
+    expect(applyRequest).toEqual({
+      url: "/api/access-control/roles/apply-suggested-ticks",
+      method: "POST",
+      body: { confirm: true },
+    });
+  });
+
+  it("hides the suggested-ticks action from non-Owners", async () => {
+    authState.user = { id: 2, isOwner: false };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/access-control/roles")) return new Response(JSON.stringify({ roles: [role] }));
+      if (url.endsWith("/api/access-control/setup-preview")) {
+        return new Response(JSON.stringify({ roles: [role], rolesConfigured: true, users: [] }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    }));
+
+    renderPage();
+    await screen.findByRole("button", { name: "Project Manager" });
+    expect(screen.queryByRole("button", { name: "Apply suggested ticks for new rows" })).toBeNull();
+  });
 });
